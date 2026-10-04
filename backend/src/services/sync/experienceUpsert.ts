@@ -26,11 +26,17 @@
  * `pending` with no `published_at` under a gate, `auto` and now otherwise. On
  * conflict the membership keeps its state — publishing is a curator's act —
  * and takes only the run's own bookkeeping and the pointer rule: a held
- * membership keeps the pointer it has, one no longer held loses it. The
- * identity arbiter `UNIQUE(source_id, external_id)` means the place a run
- * conflicts with is one its own source created, so the membership it meets
- * is its own; a second source of one kind meeting the first's membership is
- * #628's design, not this statement's.
+ * membership keeps the pointer it has, one no longer held loses it.
+ *
+ * **The place is found through the membership** (ADR-0084): a place belongs
+ * to no source, so the run looks up the id its source knows the place by on
+ * its own membership (`lockSourcedExperience`), and the place it meets may be
+ * one another source wrote first. The statement's conflict target is
+ * therefore the place's `id`, bound when the lock found one, and the
+ * membership's is `(source_id, external_id)`; the place's own `source_id` and
+ * `external_id` are written once, by the insert, as provenance. A second
+ * source of one kind meeting the first's membership is #628's design, not
+ * this statement's.
  *
  * **And the extent rides with the point.** `boundary` and `area_km2` are
  * written from one expression in one statement — the shape repaired, the
@@ -60,7 +66,7 @@
 
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { MEMBERSHIPS, placeVisibleSql, membershipVisibleSql } from '../../db/membership.js';
+import { MEMBERSHIPS, placeVisibleSql, membershipVisibleSql, sourcePlacesSql } from '../../db/membership.js';
 import { pointHeldProposalAt } from './heldProposalPointer.js';
 import {
   computeChangeSet, METADATA_CLAIM_PREFIX, METADATA_SET_KEYS, SYNC_OWNED_METADATA_KEYS,
@@ -135,15 +141,11 @@ export interface UpsertOutcome {
  * still unread has nothing to protect, so it keeps being refreshed in place
  * and the curator reviews the newest state rather than whatever arrived first.
  *
- * A function, because the locked read and the preview alias the row
- * differently; the rule itself exists exactly once.
+ * Read off the place as `e`: under the lock by the read after it, and unlocked
+ * by the preview, so the rule exists exactly once.
  */
-const heldSql = (gate: string, alias: string) => `(${gate} AND ${placeVisibleSql(alias)})`;
 const GATE = '(SELECT requires_curation FROM experience_sources WHERE id = $1)';
-/** The form of the read under the lock, off the row the statement before it locked. */
-const LOCKED_HELD = heldSql(GATE, 'e');
-/** The preview's form: one SELECT, no lock. */
-const PREVIEW_HELD = heldSql(GATE, 'experiences');
+const PLACE_HELD = `(${GATE} AND ${placeVisibleSql('e')})`;
 /**
  * The upsert's form: the answer the locked read gave, bound as `$17` and read
  * off its own CTE, so every guard below and the membership arm read one value.
@@ -265,12 +267,12 @@ function snapshotFromParams(
  */
 async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutcome> {
   const result = await pool.query(
-    `SELECT id, curated_fields, missing_since, source_membership,
-            ${PREVIEW_HELD} AS was_held,
-            ${snapshotSelect()},
-            ST_X(location) AS lon, ST_Y(location) AS lat
-     FROM experiences
-     WHERE source_id = $1 AND external_id = $2`,
+    `SELECT e.id, e.curated_fields, e.missing_since, e.source_membership,
+            ${PLACE_HELD} AS was_held,
+            ${snapshotSelect('e.')},
+            ST_X(e.location) AS lon, ST_Y(e.location) AS lat
+     FROM ${sourcePlacesSql('e', 'sm')}
+     WHERE sm.source_id = $1 AND sm.external_id = $2`,
     [params.sourceId, params.externalId]
   );
 
@@ -432,10 +434,10 @@ async function writeUnderLock(
     `SELECT e.id, e.curated_fields, e.missing_since, e.source_membership,
             ${snapshotSelect('e.')},
             ST_X(e.location) AS lon, ST_Y(e.location) AS lat,
-            ${LOCKED_HELD} AS was_held
+            ${PLACE_HELD} AS was_held
        FROM experiences e
-      WHERE e.source_id = $1 AND e.external_id = $2`,
-    [params.sourceId, params.externalId],
+      WHERE e.id = $2`,
+    [params.sourceId, locked.id],
   )).rows[0] ?? null;
   const held = Boolean(stored?.was_held);
 
@@ -454,12 +456,17 @@ async function writeUnderLock(
       -- null, not store a shape with no area for a card to print as "0 ha".
       SELECT CASE WHEN geom IS NULL OR ST_IsEmpty(geom) THEN NULL ELSE geom END AS geom FROM made
     ), ins AS (
+      -- The place the lock found, by id ($20), or a new one. A COALESCE
+      -- rather than two statements so the guard arms below exist once:
+      -- with an id bound the insert meets its own row and every arm decides,
+      -- and nextval is evaluated only when there is none.
       INSERT INTO experiences (
-        source_id, external_id, name, name_local, description, short_description,
+        id, source_id, external_id, name, name_local, description, short_description,
         type, tags, location, country_codes, country_names, image_url, metadata,
         boundary, area_km2,
         first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at, created_at, updated_at
       ) VALUES (
+        COALESCE($20::integer, nextval(pg_get_serial_sequence('experiences', 'id'))),
         $1, $2, $3, $4, $5, $6, $7, $8,
         ST_SetSRID(ST_MakePoint($9, $10), 4326),
         $11, $12, $13, $14,
@@ -467,7 +474,7 @@ async function writeUnderLock(
         (SELECT ST_Area(geom::geography) / 1000000 FROM extent),
         $15, $15, NOW(), NOW(), NOW()
       )
-      ON CONFLICT (source_id, external_id) DO UPDATE SET
+      ON CONFLICT (id) DO UPDATE SET
         name = CASE WHEN experiences.curated_fields ? 'name' OR ${HELD} THEN experiences.name ELSE EXCLUDED.name END,
         name_local = CASE WHEN experiences.curated_fields ? 'name_local' OR ${HELD} THEN experiences.name_local ELSE EXCLUDED.name_local END,
         description = CASE WHEN experiences.curated_fields ? 'description' OR ${HELD} THEN experiences.description ELSE EXCLUDED.description END,
@@ -599,16 +606,17 @@ async function writeUnderLock(
       -- either way. Setting it is done after this statement, and only for a
       -- run that proposed something.
       INSERT INTO ${MEMBERSHIPS} (
-        experience_id, kind_id, source_id, admitted_for, curation_state, published_at
+        experience_id, kind_id, source_id, external_id, admitted_for, curation_state, published_at
       )
       SELECT ins.id,
              (SELECT kind_id FROM experience_sources WHERE id = $1),
              $1,
+             $2,
              $18::jsonb,
              CASE WHEN (SELECT requires_curation FROM gate) THEN 'pending' ELSE 'auto' END,
              CASE WHEN (SELECT requires_curation FROM gate) THEN NULL ELSE NOW() END
         FROM ins
-      ON CONFLICT (experience_id, kind_id) DO UPDATE SET
+      ON CONFLICT (source_id, external_id) DO UPDATE SET
         admitted_for = EXCLUDED.admitted_for,
         pending_change_sync_log_id = CASE WHEN ${HELD}
                                          THEN ${MEMBERSHIPS}.pending_change_sync_log_id
@@ -641,6 +649,7 @@ async function writeUnderLock(
       held,
       params.admittedFor ? JSON.stringify(params.admittedFor) : null,
       params.boundaryWkt ?? null,
+      locked?.id ?? null,
     ]
   );
 

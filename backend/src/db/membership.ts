@@ -90,6 +90,34 @@ export function placeOfferedSql(alias = 'e'): string {
 }
 
 /**
+ * A source's own places: each of its memberships joined to the place it hangs
+ * on, for `FROM` (ADR-0084 decision 2).
+ *
+ * A run reaches its places only through this — `WHERE sm.source_id = $1`,
+ * matched by `sm.external_id`, the id the source knows the place by — and
+ * never through the place's own `source_id` / `external_id`, which say only
+ * which source first brought the row. On a place two sources fill, the
+ * place's pair is the other source's, and a run matching it would refuse,
+ * mark or miss a place it still lists.
+ *
+ * `experience` and `membership` are the aliases the two tables take.
+ */
+export function sourcePlacesSql(experience = 'e', membership = 'sm'): string {
+  return `${MEMBERSHIPS} ${membership} JOIN experiences ${experience} ON ${experience}.id = ${membership}.experience_id`;
+}
+
+/**
+ * The place carries a membership the source named by `sourceParam` brought —
+ * the filter for "this source's places" in a read that is otherwise about the
+ * place, such as rebuilding one source's region assignments. `alias` is the
+ * `experiences` alias.
+ */
+export function placeOfSourceSql(alias = 'e', sourceParam = '$1'): string {
+  return `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} ${INNER}
+        WHERE ${INNER}.experience_id = ${alias}.id AND ${INNER}.source_id = ${sourceParam})`;
+}
+
+/**
  * The membership a curator's click on `/:id/…` answers, as a scalar subquery
  * over the place's id.
  *

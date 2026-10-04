@@ -11,6 +11,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { MEMBERSHIPS } from '../../db/membership.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { FilteredEntity, ProcessItemResult, SyncRunContext } from './syncContract.js';
@@ -122,11 +123,11 @@ function collectingSparql(
  */
 export async function readPreviousPlacements(sourceId: number): Promise<Record<string, string[]>> {
   const result = await pool.query(
-    `SELECT t.external_id AS work, e.external_id AS venue
+    `SELECT t.external_id AS work, sm.external_id AS venue
        FROM experience_treasures et
        JOIN treasures t ON t.id = et.treasure_id
-       JOIN experiences e ON e.id = et.experience_id
-      WHERE e.source_id = $1
+       JOIN ${MEMBERSHIPS} sm ON sm.experience_id = et.experience_id
+      WHERE sm.source_id = $1
         AND et.missing_since IS NULL`,
     [sourceId],
   );

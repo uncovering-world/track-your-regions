@@ -24,6 +24,7 @@
 
 import type { PoolClient } from 'pg';
 import { OBJECT_LOCK } from './locks.js';
+import { MEMBERSHIPS } from './membership.js';
 import { offeredLocationSql, publishedContentSql } from './readerPredicates.js';
 
 declare const locked: unique symbol;
@@ -62,21 +63,45 @@ export async function lockExperience<Row extends Record<string, unknown> = { id:
 
 /**
  * The same lock, found by the source's own name for the object — what a run
- * knows before it knows the id. Null where the source is offering it for the
- * first time: there is no row yet, and the insert's own row lock is the object
- * lock (`db/locks.ts`).
+ * knows before it knows the id — through the source's membership (ADR-0084:
+ * a place belongs to no source, so the place's own `source_id` is not the
+ * key). Null where the source is offering it for the first time: there is no
+ * row yet, and the insert's own row lock is the object lock (`db/locks.ts`).
+ *
+ * The membership is read again once the lock is held. The first statement
+ * chose the place under the snapshot it took before waiting, so a membership
+ * a merge moved to another place during that wait would leave the run holding
+ * the place it was moved from; the re-read names the place it hangs on now,
+ * and the lock is taken there instead.
+ *
+ * The source's name for the object is locked first, for the transaction
+ * (`pg_advisory_xact_lock`): where there is no place yet there is no row to
+ * lock, and two writers offering the same new object — two processes, which
+ * the in-memory `runningSyncs` guard cannot see — would both find nothing and
+ * both insert, the second refused by the place's own unique pair. With the
+ * name locked, the second waits, then finds the membership the first wrote.
+ * Nothing else takes this lock, so it is always taken before the row's.
  */
 export async function lockSourcedExperience(
   client: PoolClient,
   sourceId: number,
   externalId: string,
 ): Promise<LockedExperience | null> {
-  const result = await client.query(
-    `SELECT id FROM experiences WHERE source_id = $1 AND external_id = $2 ${OBJECT_LOCK}`,
+  const placeOf = async (): Promise<number | undefined> => (await client.query(
+    `SELECT experience_id FROM ${MEMBERSHIPS} WHERE source_id = $1 AND external_id = $2`,
     [sourceId, externalId],
-  );
-  const id = result.rows[0]?.id as number | undefined;
-  return id === undefined ? null : ({ id } as LockedExperience);
+  )).rows[0]?.experience_id as number | undefined;
+
+  await client.query('SELECT pg_advisory_xact_lock($1::integer, hashtext($2))', [sourceId, externalId]);
+  let id = await placeOf();
+  for (let attempt = 0; attempt < 3; attempt++) {
+    if (id === undefined) return null;
+    await client.query(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [id]);
+    const now = await placeOf();
+    if (now === id) return { id } as LockedExperience;
+    id = now;
+  }
+  throw new Error(`${sourceId}/${externalId} kept moving between places while a run locked it`);
 }
 
 /**

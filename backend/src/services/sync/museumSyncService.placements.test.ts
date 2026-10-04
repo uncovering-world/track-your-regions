@@ -31,7 +31,10 @@ describe('readPreviousPlacements', () => {
     // counted, it could never be withdrawn again and would drag the coverage
     // ratio down on every later run for works nobody sees.
     expect(sql).toContain('et.missing_since IS NULL');
-    expect(sql).toContain('e.source_id = $1');
+    // This source's places are the ones it has a membership on, and a venue is
+    // named by the id the source knows it by (ADR-0084).
+    expect(sql).toContain('sm.source_id = $1');
+    expect(sql).toContain('sm.external_id AS venue');
     expect(params).toEqual([2]);
   });
 

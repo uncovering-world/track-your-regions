@@ -106,13 +106,15 @@ describe('seedE2eFixture', () => {
 
     const memberships = calls(client)
       .filter(([sql]) => /INSERT INTO experience_kind_memberships/.test(sql))
-      .map(([, params]) => [params?.[0], params?.[3], params?.[4] instanceof Date]);
+      .map(([, params]) => [params?.[0], params?.[3], params?.[4], params?.[5] instanceof Date]);
+    // Each under the id its place was written with, which is what a run would
+    // find it by (ADR-0084).
     expect(memberships).toEqual([
-      [9001, 'auto', true],
-      [9002, 'auto', true],
-      [9003, 'auto', true],
-      [9004, 'pending', false],
-      [9005, 'pending', false],
+      [9001, 'e2e-9001', 'auto', true],
+      [9002, 'e2e-9002', 'auto', true],
+      [9003, 'e2e-9003', 'auto', true],
+      [9004, 'e2e-9004', 'pending', false],
+      [9005, 'e2e-9005', 'pending', false],
     ]);
 
     // Every place is placed in the fixture region, by its row and by its point.

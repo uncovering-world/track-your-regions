@@ -60,8 +60,8 @@ async function place(
     [id, `Point of ${id}`, lon, AT.lat],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, admission, curation_state)
-     VALUES ($1, $2, $3, $4, $5)`,
+    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, curation_state)
+     VALUES ($1, $2, $3, (SELECT external_id FROM experiences WHERE id = $1), $4, $5)`,
     [id, kind.kind, kind.source, admission, state],
   );
 }

@@ -14,6 +14,16 @@ import type { PoolClient } from 'pg';
 import type { AssignmentStatus, PlacementCounts } from '../../api/responses/admin.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { offeredLocationSql } from '../../db/readerPredicates.js';
+import { MEMBERSHIPS, placeOfSourceSql } from '../../db/membership.js';
+
+/**
+ * A rebuild narrowed to one source ($2) is narrowed to the places that source
+ * has a membership on — never to `experiences.source_id`, which names only the
+ * source that first brought the row (ADR-0084).
+ */
+const ONE_SOURCE = `AND ${placeOfSourceSql('e', '$2')}`;
+/** The same narrowing, as the ids of those places. */
+const ONE_SOURCE_PLACES = `(SELECT experience_id FROM ${MEMBERSHIPS} WHERE source_id = $2)`;
 
 export interface AssignmentProgress {
   cancel: boolean;
@@ -56,7 +66,7 @@ async function clearPreviousAssignments(
       AND elr.region_id = r.id
       AND r.world_view_id = $1
       AND elr.assignment_type = 'auto'
-      ${sourceId ? 'AND e.source_id = $2' : ''}
+      ${sourceId ? ONE_SOURCE : ''}
   `, params);
   console.log(`[Region Assignment] Cleared ${clearLocResult.rowCount} location-region auto-assignments`);
 
@@ -66,7 +76,7 @@ async function clearPreviousAssignments(
     WHERE er.region_id = r.id
       AND r.world_view_id = $1
       AND er.assignment_type = 'auto'
-      ${sourceId ? 'AND er.experience_id IN (SELECT id FROM experiences WHERE source_id = $2)' : ''}
+      ${sourceId ? `AND er.experience_id IN ${ONE_SOURCE_PLACES}` : ''}
   `, params);
   console.log(`[Region Assignment] Cleared ${clearExpResult.rowCount} experience-region auto-assignments`);
 }
@@ -184,8 +194,6 @@ function directPlacementSql(pointFilter: string): string {
   `;
 }
 
-/** The points of one source's objects, for a rebuild narrowed to that source. */
-const ONE_SOURCE = 'AND e.source_id = $2';
 /** The points of the objects a run or a curator has just moved. */
 const THESE_EXPERIENCES = 'AND el.experience_id = ANY($2::int[])';
 
@@ -229,8 +237,7 @@ async function assignAncestors(
         AND elr.assignment_type = 'auto'
         ${sourceId ? `AND elr.location_id IN (
           SELECT el.id FROM experience_locations el
-          JOIN experiences e ON el.experience_id = e.id
-          WHERE e.source_id = $2
+          WHERE el.experience_id IN ${ONE_SOURCE_PLACES}
         )` : ''}
 
       UNION
@@ -271,7 +278,7 @@ async function denormalizeExperienceRegions(
     JOIN experiences e ON el.experience_id = e.id
     JOIN regions r ON elr.region_id = r.id
     WHERE r.world_view_id = $1
-      ${sourceId ? 'AND e.source_id = $2' : ''}
+      ${sourceId ? ONE_SOURCE : ''}
     ON CONFLICT (experience_id, region_id) DO NOTHING
   `, params);
 
@@ -421,7 +428,7 @@ export async function getExperienceCountsByRegion(
       COUNT(er.experience_id) as count
     FROM regions r
     LEFT JOIN experience_regions er ON r.id = er.region_id
-      ${sourceId ? 'AND er.experience_id IN (SELECT id FROM experiences WHERE source_id = $2)' : ''}
+      ${sourceId ? `AND er.experience_id IN ${ONE_SOURCE_PLACES}` : ''}
     WHERE r.world_view_id = $1
     GROUP BY r.id, r.name
     HAVING COUNT(er.experience_id) > 0

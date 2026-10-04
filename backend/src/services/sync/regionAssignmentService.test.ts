@@ -32,6 +32,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
+import { placeOfSourceSql } from '../../db/membership.js';
 import {
   assignExperiencesToRegions, assignRegionsForExperiences, cancelAssignment, getAssignmentStatus,
 } from './regionAssignmentService.js';
@@ -57,7 +58,9 @@ function fakeClient(answer: (sql: string) => void = () => {}) {
   return { client, statements, calls };
 }
 
-const ONE_SOURCE = 'AND e.source_id = $2';
+// The places the source has a membership on, never the place's own
+// source_id, which names only the source that first brought the row (ADR-0084).
+const ONE_SOURCE = `AND ${placeOfSourceSql('e', '$2')}`;
 const THESE_EXPERIENCES = 'AND el.experience_id = ANY($2::int[])';
 
 /** The direct step is the insert that reads the leaves' pieces; the ancestor walk inserts too. */

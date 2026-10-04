@@ -52,8 +52,8 @@ async function rowIn(table: CuratedTable, from: CurationState, n: number): Promi
     case 'experience_kind_memberships': {
       await pool.query('DELETE FROM experience_kind_memberships WHERE experience_id = $1', [experienceId]);
       const inserted = await pool.query<{ id: number }>(
-        `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, curation_state)
-         VALUES ($1, (SELECT kind_id FROM experience_sources WHERE id = $2), $2, $3) RETURNING id`,
+        `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state)
+         VALUES ($1, (SELECT kind_id FROM experience_sources WHERE id = $2), $2, (SELECT external_id FROM experiences WHERE id = $1), $3) RETURNING id`,
         [experienceId, SOURCE_ID, from],
       );
       return { where: 'id = $2', params: [inserted.rows[0].id] };

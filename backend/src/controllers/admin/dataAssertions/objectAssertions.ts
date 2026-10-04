@@ -390,7 +390,8 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
  * why. Migration 046 refuses to commit with such a row, and the three writers
  * that create a place (the sync upsert, a curator's create, the e2e fixture)
  * write the membership in the same transaction; a row here means a writer
- * arrived that does not.
+ * arrived that does not. Its source's run finds no membership to reach it by
+ * and fails on that item on every run until one is written (ADR-0084).
  */
 const placeWithoutMembership: CatalogueAssertion = {
   id: 'place-without-membership',
@@ -401,7 +402,8 @@ const placeWithoutMembership: CatalogueAssertion = {
     'The row has no membership in any kind, so no list, map, count or search offers it and no '
     + 'queue asks about it: it is not refused and not unread, it is simply never asked. Every '
     + 'writer that creates a place writes its membership with it; a row here came in by a path '
-    + 'that did not, and wants one written by hand for the kind its source fills.',
+    + 'that did not, and wants one written by hand for the kind its source fills. Until then its '
+    + 'source\'s run fails on it on every run, finding no membership to reach it by.',
   sql: `SELECT e.id AS experience_id,
                e.name AS experience_name,
                c.name AS source_name
@@ -417,44 +419,53 @@ const placeWithoutMembership: CatalogueAssertion = {
 };
 
 /**
- * A membership that names a source other than the one its row is keyed on.
+ * A place none of whose memberships carries the source and id it was brought
+ * under.
  *
- * `experiences.source_id` is the arbiter of a row's identity —
- * `UNIQUE(source_id, external_id)` — until #755 moves a source's id onto the
- * membership; the membership's `source_id` is the source that brought it.
- * Every reader-facing row reads its kind through that equality
- * (`rowKindJoinSql`, #819): the membership with `source_id = e.source_id` is
- * the row's own. A row where the two disagree therefore has no kind to be
- * shown under — it is listed, counted and keyed with a null kind, which no
- * group, pin colour or chip knows how to draw — and the counts, which read
- * the memberships (#822), file it under the kind its membership names. The
- * two have to be made to agree, and this check is where that is seen.
+ * A run finds its places through its memberships — `(source_id,
+ * external_id)` on the membership (ADR-0084) — and the place's own pair says
+ * which source first brought the row and under what id. Until a merge (#755)
+ * folds a second source's membership onto a place, the two name the same
+ * membership, and every reader-facing row still reads its kind through that
+ * equality (`rowKindJoinSql`, #819). A place where none matches has lost the
+ * membership its first source would find it by: that source's next run does
+ * not find it, tries to create the place, and fails on that item on every
+ * run, since the place's own pair is still unique among places. Where no
+ * membership of it names the place's own source at all, every list also
+ * shows it with a null kind, which no group, pin colour or chip can draw;
+ * one that names the source under another id still gives it that kind.
  */
 const membershipSourceDisagreesWithRow: CatalogueAssertion = {
   id: 'membership-source-disagrees-with-row',
   area: 'objects',
-  title: 'A membership brought by a source other than the one its row is keyed on',
+  title: 'A place none of whose memberships carries the source and id it was brought under',
   kind: 'invariant',
   meaning:
-    'The row is keyed on one source and its membership says another brought it. Every list, '
-    + 'search, visit and review card reads the row\'s kind off the membership its own source '
-    + 'brought (#819), so this row has no kind to be shown under — it comes back with none, which '
-    + 'no group, pin colour or chip can draw — while the counts file it under the kind its '
-    + 'membership names. Either the membership was written for the wrong source or the row was '
-    + 're-keyed by hand; whichever it is, the two have to be made to agree.',
+    'The place says which source first brought it and under what id, and no membership of it '
+    + 'carries that pair. A run finds its places by the pair on the membership, so that source\'s '
+    + 'next run does not find this one, tries to create it, and fails on it on every run, since the '
+    + 'place\'s own pair is still taken. Where no membership names the place\'s source at all, every '
+    + 'list, search, visit and review card, which read the row\'s kind off that source\'s membership '
+    + '(#819), also show the row with no kind. Either the membership was written for the wrong source or id, or '
+    + 'the row was re-keyed by hand; whichever it is, the two have to be made to agree.',
   sql: `SELECT e.id AS experience_id,
                e.name AS experience_name,
-               row_source.name AS row_source_name,
-               membership_source.name AS membership_source_name
-          FROM ${MEMBERSHIPS} m
-          JOIN experiences e ON e.id = m.experience_id
+               e.external_id,
+               row_source.name AS row_source_name
+          FROM experiences e
           JOIN experience_sources row_source ON row_source.id = e.source_id
-          JOIN experience_sources membership_source ON membership_source.id = m.source_id
-         WHERE m.source_id <> e.source_id
+         WHERE EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id)
+           AND NOT EXISTS (
+             SELECT 1 FROM ${MEMBERSHIPS} m
+              WHERE m.experience_id = e.id
+                AND m.source_id = e.source_id
+                AND m.external_id = e.external_id
+           )
          ORDER BY e.name`,
   describe: row =>
-    `${text(row, 'experience_name')}: keyed on ${text(row, 'row_source_name')}, its membership `
-    + `brought by ${text(row, 'membership_source_name')} (experience ${count(row, 'experience_id')})`,
+    `${text(row, 'experience_name')}: brought by ${text(row, 'row_source_name')} as `
+    + `${text(row, 'external_id')}, and no membership of it carries that pair `
+    + `(experience ${count(row, 'experience_id')})`,
 };
 
 /** `column <> tidy(column)`: the stored value is not what the writers would store. */

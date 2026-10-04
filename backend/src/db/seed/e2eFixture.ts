@@ -135,9 +135,9 @@ async function seedPlace(
   // trusted source's arrival is; or pending, the way a gated one's is.
   await client.query(
     `INSERT INTO experience_kind_memberships
-       (experience_id, kind_id, source_id, curation_state, published_at)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [exp.id, source.kind_id, source.id, curationState,
+       (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+     VALUES ($1, $2, $3, $4, $5, $6)`,
+    [exp.id, source.kind_id, source.id, `e2e-${exp.id}`, curationState,
       curationState === 'auto' ? new Date() : null],
   );
 

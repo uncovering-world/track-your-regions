@@ -68,8 +68,8 @@ beforeEach(async () => {
   );
   await pool.query(
     `INSERT INTO experience_kind_memberships
-       (experience_id, kind_id, source_id, admission, admission_reason, curation_state)
-     VALUES ($1, $2, $3, 'refused', $4, 'auto')`,
+       (experience_id, kind_id, source_id, external_id, admission, admission_reason, curation_state)
+     VALUES ($1, $2, $3, (SELECT external_id FROM experiences WHERE id = $1), 'refused', $4, 'auto')`,
     [EXPERIENCE_ID, source.rows[0].kind_id, sourceId, REASON],
   );
 });

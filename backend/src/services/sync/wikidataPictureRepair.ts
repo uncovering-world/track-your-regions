@@ -9,6 +9,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { sourcePlacesSql } from '../../db/membership.js';
 import { sentenceFor } from '../../api/readerFacingError.js';
 import { fetchCommonsCredits, type ImageCredit } from './imageCredit.js';
 import { writeFoundPicture } from './pictureRepair.js';
@@ -173,11 +174,11 @@ export function makeWikidataPictureRepair(
     try {
       // Find rows missing an image or with an old local path
       const result = await pool.query(`
-        SELECT id, external_id, name, metadata
-        FROM experiences
-        WHERE source_id = $1
-          AND (image_url IS NULL OR image_url = '' OR image_url LIKE '/images/%')
-          AND metadata IS NOT NULL
+        SELECT e.id, sm.external_id, e.name, e.metadata
+        FROM ${sourcePlacesSql('e', 'sm')}
+        WHERE sm.source_id = $1
+          AND (e.image_url IS NULL OR e.image_url = '' OR e.image_url LIKE '/images/%')
+          AND e.metadata IS NOT NULL
       `, [sourceId]);
 
       const rows = result.rows;
