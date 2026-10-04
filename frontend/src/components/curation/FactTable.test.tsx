@@ -177,9 +177,9 @@ describe('FactTable', () => {
     render(<FactTable groups={groups} labels={HELD_LABELS} />);
 
     expect(screen.getByText('a place of this object')).toBeInTheDocument();
-    expect(screen.getByText('Château de Montségur')).toBeInTheDocument();
     expect(screen.getByText('place 4 of 8')).toBeInTheDocument();
-    screen.getByRole('button', { name: 'open' }).click();
+    // The part's name is its door: one way in, the name, on every row of the card.
+    screen.getByRole('button', { name: 'Château de Montségur' }).click();
     expect(onOpen).toHaveBeenCalled();
     // The object's own group has no heading: the card is its heading.
     expect(screen.queryByText('Royal Capetian Fortresses of Languedoc')).not.toBeInTheDocument();

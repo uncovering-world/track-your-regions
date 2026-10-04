@@ -236,16 +236,20 @@ function SubjectRow({ group, columns }: { group: FactGroup; columns: number }) {
           <Typography variant="caption" color="text.secondary" sx={{ textTransform: 'uppercase', letterSpacing: '.05em' }}>
             {subject.kind === 'place' ? 'a place of this object' : 'a work in this object'}
           </Typography>
-          <Typography variant="body2" sx={{ fontWeight: 600 }}>{subject.label}</Typography>
+          {/* The part's name is its door, as a work's name is in the arrived
+              table: one way in to the same dialog on every row of the card. */}
+          {subject.onOpen
+            ? (
+              <Link component="button" type="button" variant="body2" color="inherit" underline="hover"
+                onClick={subject.onOpen} sx={{ fontWeight: 600 }}>
+                {subject.label}
+              </Link>
+            )
+            : <Typography variant="body2" sx={{ fontWeight: 600 }}>{subject.label}</Typography>}
           {subject.detail && <Typography variant="body2" color="text.secondary">{subject.detail}</Typography>}
           {/* A claim a curator already holds on the stored part: the run below is
               proposing over a pin somebody put there, not over the source's own. */}
           {subject.claim && <Chip label={subject.claim} size="small" color="primary" variant="outlined" />}
-          {subject.onOpen && (
-            <Link component="button" type="button" variant="body2" onClick={subject.onOpen} underline="hover">
-              open
-            </Link>
-          )}
         </Stack>
       </TableCell>
     </TableRow>

@@ -85,6 +85,12 @@ export interface FactSubject {
   part?: { kind: ContentKind; ref: string | null; name: string | null };
   /** Opens the part where it can be looked at: a point on the map, a work with its picture. */
   onOpen?: () => void;
+  /**
+   * The unread point this group is, where the group is a point the source moved
+   * rather than a held field (`movedPointGroups.ts`): its answer publishes or
+   * turns down that point by id, not a held proposal.
+   */
+  movedPointId?: number;
 }
 
 export interface FactGroup {

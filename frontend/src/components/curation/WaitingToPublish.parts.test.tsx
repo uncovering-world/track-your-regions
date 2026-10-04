@@ -85,13 +85,13 @@ describe('a held card about a part', () => {
     // Both values in their own columns, and the summary above them.
     expect(screen.getByText('Johannes Vermeer')).toBeInTheDocument();
     expect(screen.getByText('1 changed')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Publish the change' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Publish everything on this card' })).toBeInTheDocument();
   });
 
   it('opens the work where it can be looked at', () => {
     renderCard(held());
 
-    fireEvent.click(screen.getByRole('button', { name: 'open' }));
+    fireEvent.click(screen.getByRole('button', { name: 'The Wine Glass' }));
 
     // The work as the works preview draws it: named, with its maker, linked to
     // where it came from.
@@ -112,9 +112,8 @@ describe('a held card about a part', () => {
     retitled.proposed_parts![0].workCuratedFields = ['name'];
     renderCard(retitled);
 
-    expect(screen.getByText('The Glass of Wine')).toBeInTheDocument();
     expect(screen.getByText('title corrected')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'open' }));
+    fireEvent.click(screen.getByRole('button', { name: 'The Glass of Wine' }));
     expect(screen.getByLabelText('Title')).toHaveValue('The Glass of Wine');
   });
 
@@ -215,7 +214,7 @@ describe('a held card about a part', () => {
     mockedDeclineHeld.mockReset().mockReturnValue(new Promise(() => {}));
     renderCard(held());
 
-    const publishAll = screen.getByRole('button', { name: 'Publish the change' });
+    const publishAll = screen.getByRole('button', { name: 'Publish everything on this card' });
     expect(publishAll).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: /not this/i }));
@@ -249,7 +248,7 @@ describe('a held card about a place', () => {
     // had nowhere to say so.
     renderCard(heldPlace(777));
 
-    fireEvent.click(screen.getByRole('button', { name: 'open' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Château de Montségur' }));
 
     // Opens on the form, as *this* place of *this* object — one mode, no button to
     // press before the pin is in hand.
@@ -271,7 +270,7 @@ describe('a held card about a place', () => {
     // recorded, but there is no row to correct.
     renderCard(heldPlace(null));
 
-    fireEvent.click(screen.getByRole('button', { name: 'open' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Château de Montségur' }));
 
     expect(screen.getByRole('dialog')).toHaveTextContent('Château de Montségur');
     expect(screen.queryByTestId('correction')).toBeNull();
