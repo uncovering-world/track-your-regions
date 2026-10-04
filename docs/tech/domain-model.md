@@ -80,10 +80,11 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md) for the full model.
 - **Attributes**:
   - `ID`: Unique identifier
-  - `SourceID`: The source that brought the place (UNESCO, etc.) — with `ExternalID`, the
-    identity arbiter until #755; what the place *is* to a traveller is its memberships
+  - `SourceID`: The source that first brought the place (UNESCO, etc.) — with `ExternalID`,
+    provenance only: a place belongs to no source (ADR-0084), a run finds it by the id on its
+    own membership, and what the place *is* to a traveller is its memberships
     (`ExperienceKindMembership`, ADR-0045 decision 4)
-  - `ExternalID`: ID from the original data source
+  - `ExternalID`: The id that first source knows the place by
   - `Name`: Name of the experience
   - `NameLocal`: Multilingual names (JSONB)
   - `Description`: Full description
