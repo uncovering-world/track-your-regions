@@ -36,7 +36,7 @@ import {
 } from '../../types/urlSafety.js';
 import { lockExperience, updateExperienceColumns, insertCuratedExperience } from '../../db/experienceWriter.js';
 import { insertCuratedPoint } from './experienceLocationWriter.js';
-import { insertManualMembership } from './membershipWriter.js';
+import { insertManualMembership, setTypeOnSourceMembership, typeClaimedBy } from './membershipWriter.js';
 
 /**
  * The same rule the request schema applied, asked again where the value is
@@ -506,7 +506,7 @@ export async function editExperience(
   }
 
   const expResult = await pool.query(
-    `SELECT id, source_id, name, short_description, description, type, image_url, tags, metadata, curated_fields
+    `SELECT id, source_id, name, short_description, description, image_url, tags, metadata, curated_fields
      FROM experiences WHERE id = $1`,
     [experienceId],
   );
@@ -556,16 +556,32 @@ export async function editExperience(
     // removed; and the `old` values in the audit row would name a version that
     // was already gone when the edit was written.
     const locked = await lockExperience<typeof existing>(
-      client, experienceId, 'curated_fields, name, short_description, description, type, image_url, tags, metadata',
+      client, experienceId, 'curated_fields, name, short_description, description, image_url, tags, metadata',
     );
     // A row deleted since the read above has nothing to lock and nothing to
     // edit: 404, as the read would have answered a moment later. The catch
     // below rolls the transaction back.
     if (!locked) throw notFound('Experience not found');
-    const before = locked.row;
-    const built = buildUpdateQuery(payload, (before.curated_fields as string[]) || []);
+    const before: Record<string, unknown> = { ...locked.row };
+    // The type within the kind is the membership's (ADR-0084), claimed there:
+    // the one the row is shown under, the membership its first source brought,
+    // until #1245 lets a curator name the kind they are editing.
+    const typeEdit = payload.updates.find(u => u.column === 'type');
+    const placePayload = { ...payload, updates: payload.updates.filter(u => u.column !== 'type') };
+    if (typeEdit) {
+      const typeWrite = await setTypeOnSourceMembership(
+        client, locked.lock, existing.source_id as number, clearedToNull(typeEdit.value), 'add',
+      );
+      before.type = typeWrite?.old ?? null;
+    }
+    const built = buildUpdateQuery(placePayload, (before.curated_fields as string[]) || []);
     newCurated = built.newCurated;
-    await updateExperienceColumns(client, locked.lock, built.assignments, built.values);
+    if (placePayload.updates.length > 0 || metadataPatchOf(placePayload) !== null) {
+      await updateExperienceColumns(client, locked.lock, built.assignments, built.values);
+    }
+    if (typeEdit || await typeClaimedBy(client, locked.lock, existing.source_id as number)) {
+      newCurated = [...newCurated, 'type'];
+    }
     const details = buildEditAuditDetails(payload, before);
     await client.query(`
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
@@ -772,7 +788,6 @@ async function insertManualExperience(
     externalId,
     name: body.name,
     shortDescription: body.shortDescription || null,
-    type: body.type || null,
     longitude: body.longitude,
     latitude: body.latitude,
     imageUrl: body.imageUrl || null,
@@ -789,7 +804,7 @@ async function insertManualExperience(
   // moment it is created, and visible
   // from the moment it exists: see the function comment above. A person's
   // judgement does not depend on the source's gate, so nothing here reads it.
-  await insertManualMembership(client, created, sourceId);
+  await insertManualMembership(client, created, sourceId, typeof body.type === 'string' && body.type !== '' ? body.type : null);
 
   const locationId = await insertCuratedPoint(client, created, body.name, body.longitude, body.latitude);
 

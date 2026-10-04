@@ -2631,9 +2631,8 @@ CREATE TABLE IF NOT EXISTS experiences (
     description TEXT,
     short_description TEXT,
 
-    -- Classification: the type within the kind (see the column comment). The kind is the
-    -- place's membership (experience_kind_memberships.kind_id); source_id names the source
-    type VARCHAR(100),
+    -- The type within a kind is the membership's (experience_kind_memberships.type,
+    -- ADR-0084): the Pantheon is a church as a place of worship and a site as archaeology.
     tags JSONB,  -- ["architecture", "religious", "ancient"]
 
     -- Location (required point - every experience must have a location)
@@ -2668,12 +2667,6 @@ CREATE TABLE IF NOT EXISTS experiences (
 COMMENT ON TABLE experiences IS 'Location-based experiences from various sources (UNESCO sites, museums, etc.)';
 COMMENT ON COLUMN experiences.external_id IS 'The id the source that first brought this row knows it by (e.g., a UNESCO id_no). Provenance only since ADR-0084: a run finds a place through its membership''s external_id, never through this.';
 COMMENT ON COLUMN experiences.name_local IS 'Multilingual names: {"en": "...", "fr": "...", ...}';
-COMMENT ON COLUMN experiences.type IS
-  'The type within the kind, where a kind has types a traveller still browses together '
-  '(ADR-0045): ''cultural''/''natural''/''mixed'' for World Heritage, ''monument''/''sculpture'' '
-  'for public art, ''cathedral''/''church''/''chapel''/''monastery''/''mosque''/''temple''/''shrine''/''synagogue'' '
-  'for a place of worship. NULL for a museum: an art museum and an archaeology museum are two kinds, '
-  'not two types. One vocabulary per kind, not one shared enum (#814).';
 COMMENT ON COLUMN experiences.location IS 'Required point location for the experience';
 COMMENT ON COLUMN experiences.boundary IS 'Optional boundary polygon for experiences with defined areas';
 COMMENT ON COLUMN experiences.country_codes IS 'ISO country codes, array for transboundary sites';
@@ -2684,7 +2677,6 @@ CREATE INDEX IF NOT EXISTS idx_experiences_location ON experiences USING GIST(lo
 CREATE INDEX IF NOT EXISTS idx_experiences_boundary ON experiences USING GIST(boundary) WHERE boundary IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_experiences_name_trgm ON experiences USING GIN(name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_experiences_source_id ON experiences(source_id);
-CREATE INDEX IF NOT EXISTS idx_experiences_type ON experiences(type) WHERE type IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_experiences_external_id ON experiences(source_id, external_id);
 
 -- Experience-Region junction table (auto-computed via spatial containment)
@@ -2863,12 +2855,13 @@ CREATE INDEX IF NOT EXISTS idx_experiences_existence ON experiences(existence) W
 -- membership: the badge is the world tier of a kind (decision 5), and a kind
 -- fed by a gated source holds the gated members per member (decision 7).
 --
---   place       name, description, type, location, boundary, picture, tags,
+--   place       name, description, location, boundary, picture, tags,
 --               what a source observes about the row (missing_since,
 --               source_membership) and what the world says of it (existence),
 --               the visit
 --   membership  kind, source and the id the source knows the place by
---               (external_id), admission and its reason, admitted_for,
+--               (external_id), the type within the kind, whether the source
+--               still lists the place, admission and its reason, admitted_for,
 --               is_iconic, the curator's pins on those, curation_state,
 --               published_at, pending_change_sync_log_id
 --
@@ -2908,6 +2901,7 @@ CREATE TABLE IF NOT EXISTS experience_kind_memberships (
     kind_id INTEGER NOT NULL REFERENCES experience_kinds(id),
     source_id INTEGER NOT NULL REFERENCES experience_sources(id) ON DELETE CASCADE,
     external_id VARCHAR(255) NOT NULL,
+    type VARCHAR(100),
     admission VARCHAR(10) NOT NULL DEFAULT 'admitted' CHECK (admission IN ('admitted', 'refused')),
     admission_reason TEXT,
     admission_answered_at TIMESTAMPTZ,
@@ -2940,6 +2934,7 @@ CREATE TABLE IF NOT EXISTS experience_kind_memberships (
 -- this fail on one whose memberships carry no id yet, which is migration 070's
 -- to backfill first.
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS external_id VARCHAR(255) NOT NULL;
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS type VARCHAR(100);
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS missing_since TIMESTAMPTZ;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS source_membership VARCHAR(10) NOT NULL DEFAULT 'present'
     CHECK (source_membership IN ('present', 'former'));
@@ -2953,6 +2948,13 @@ ALTER TABLE experience_kind_memberships ADD CONSTRAINT experience_kind_membershi
 COMMENT ON TABLE experience_kind_memberships IS 'A place''s membership in a kind (ADR-0045 decision 4): one row per (place, kind), carrying what the kind says about the place -- the source that brought it, the admission verdict, the badge, and whether a curator has passed the arrival. The place itself is the experiences row.';
 COMMENT ON COLUMN experience_kind_memberships.source_id IS 'The source that brought this membership (ADR-0045 decision 3): a kind may have several, and a run writes, refuses and badges only the memberships its own source brought.';
 COMMENT ON COLUMN experience_kind_memberships.external_id IS 'The id the source knows the place by -- a World Heritage id, a Wikidata item -- unique per source (ADR-0084 decision 2). A run finds, admits and marks its places through it; the place''s own source_id and external_id only say which source first brought the row.';
+COMMENT ON COLUMN experience_kind_memberships.type IS
+  'The type within this membership''s kind, where the kind has types a traveller still browses together '
+  '(ADR-0045): ''cultural''/''natural''/''mixed'' for World Heritage, ''monument''/''sculpture'' '
+  'for public art, ''cathedral''/''church''/''chapel''/''monastery''/''mosque''/''temple''/''shrine''/''synagogue'' '
+  'for a place of worship, ''site''/''museum'' for archaeology. NULL for an art museum. One vocabulary per kind (#814), '
+  'and the membership''s rather than the place''s, since a place in two kinds has a type in each (ADR-0084). '
+  'A curator''s claim on it is ''type'' in this row''s curated_fields.';
 COMMENT ON COLUMN experience_kind_memberships.missing_since IS 'When a clean run of this membership''s source, an authoritative one, first failed to list the place. A machine observation, not a verdict (ADR-0020); the source''s own, since another source may still list the place (ADR-0084).';
 COMMENT ON COLUMN experience_kind_memberships.source_membership IS 'present or former: whether this membership''s source still lists the place. Only a curator sets former; a run that lists the place again sets present, which only ever restores visibility (ADR-0020).';
 COMMENT ON COLUMN experience_kind_memberships.first_seen_sync_log_id IS 'The run of this membership''s source that first brought the place into this kind.';
@@ -2962,7 +2964,7 @@ COMMENT ON COLUMN experience_kind_memberships.admission_reason IS 'Why the kind 
 COMMENT ON COLUMN experience_kind_memberships.admission_answered_at IS 'When a batch answer confirmed this refusal without pinning it (ADR-0067): the question is closed, and the next run applies the rule again. A run that refuses a row it had admitted clears it, so a refusal that comes back is asked again.';
 COMMENT ON COLUMN experience_kind_memberships.admitted_for IS 'The work whose fame qualified a museum for the works-first source ({qid, label}, ADR-0023): the reason this membership exists. The run''s own bookkeeping, never proposed to a curator (#571).';
 COMMENT ON COLUMN experience_kind_memberships.is_iconic IS 'The must-see badge, the world tier of this kind (ADR-0045 decision 5): set by a source whose admission rule is a fame line, cleared with a refusal, pinned by a curator in curated_fields. The membership''s, not the place''s: a place admitted to a second kind carries that kind''s badge on that kind''s terms.';
-COMMENT ON COLUMN experience_kind_memberships.curated_fields IS 'Field names a curator has pinned on this membership -- admission (a confirmed or overridden refusal), is_iconic -- in the shape of experiences.curated_fields. A pinned field is skipped by every run.';
+COMMENT ON COLUMN experience_kind_memberships.curated_fields IS 'Field names a curator has pinned on this membership -- admission (a confirmed or overridden refusal), is_iconic, type -- in the shape of experiences.curated_fields. A pinned field is skipped by every run.';
 COMMENT ON COLUMN experience_kind_memberships.curation_state IS 'pending = arrived from a gated source and nobody has passed it; auto = published unread; verified = a curator passed what is live now. No reader-facing read may offer a place none of whose memberships has passed (ADR-0025; per member since ADR-0045 decision 7).';
 COMMENT ON COLUMN experience_kind_memberships.published_at IS 'When this membership became visible. NULL while pending and for every row that predates the gate. What the "New" chip counts from (#529): a gated row is found months before a reader can see it, so the run that found it is the wrong clock.';
 COMMENT ON COLUMN experience_kind_memberships.pending_change_sync_log_id IS 'The run of this membership''s source whose content proposal for the place is held while a reader can see it. NULL when nothing is held. Contents need no equivalent -- a content row is held by being written pending rather than withheld.';

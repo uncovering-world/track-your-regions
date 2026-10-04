@@ -722,7 +722,7 @@ describe('the membership the run writes beside the place', () => {
     // Found again by the id its source knows the place by (ADR-0084), which
     // the membership carries from the statement that creates it.
     expect(cte).toContain('ON CONFLICT (source_id, external_id) DO UPDATE SET');
-    expect(cte).toMatch(/source_id, external_id, admitted_for/);
+    expect(cte).toMatch(/source_id, external_id, type, admitted_for/);
     expect(cte).toContain('FROM ins');
   });
 
@@ -800,7 +800,7 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     // `tags` is not in this list, and its absence is the point of the test
     // below this one: derived labels nobody reads are written past the gate.
     for (const column of [
-      'name', 'name_local', 'description', 'short_description', 'type',
+      'name', 'name_local', 'description', 'short_description',
       'location', 'country_codes', 'country_names', 'image_url', 'metadata',
       // `boundary` and `area_km2` are deliberately **not** here — the extent
       // follows the source through the gate, and the test below says why. Every
@@ -813,6 +813,13 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
       expect(arm, `${column} has no CASE arm`).toMatch(/^CASE/);
       expect(arm, `${column} is not held`).toContain(HOLD);
     }
+    // The type within the kind is the membership's (ADR-0084), held and
+    // claimed there, and the place carries none.
+    expect(assigned.has('type')).toBe(false);
+    const typeArm = assignmentsIn(membershipSetListOf(upsert()[0])).get('type');
+    expect(typeArm).toMatch(/^CASE WHEN experience_kind_memberships\.curated_fields \? 'type' OR/);
+    expect(typeArm).toContain(HOLD);
+    expect(typeArm).toContain('THEN experience_kind_memberships.type ELSE EXCLUDED.type END');
   });
 
   it('writes tags past the gate and keeps them behind a claim', async () => {

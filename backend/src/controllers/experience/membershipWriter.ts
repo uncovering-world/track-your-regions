@@ -170,24 +170,109 @@ export async function setListingVerdict(
 }
 
 /**
+ * Whether the membership `sourceId` brought to the place claims its type — the
+ * claim a proposal of that source's run meets (ADR-0084: the type within a
+ * kind is the membership's, and so is a curator's pin on it).
+ */
+export async function typeClaimedBy(
+  client: PoolClient,
+  lock: LockedExperience,
+  sourceId: number,
+): Promise<boolean> {
+  const result = await client.query(
+    `SELECT curated_fields ? 'type' AS claimed FROM ${MEMBERSHIPS} WHERE experience_id = $1 AND source_id = $2`,
+    [lock.id, sourceId],
+  );
+  return Boolean(result.rows[0]?.claimed);
+}
+
+/**
+ * The type within the kind, written on the membership `sourceId` brought, with
+ * what becomes of a curator's claim on it: `add` for a curator's own edit,
+ * `release` for taking the source's value, `keep` otherwise. Answers the type it
+ * replaced, for the audit row, and `undefined` where the place has no such
+ * membership.
+ */
+export async function setTypeOnSourceMembership(
+  client: PoolClient,
+  lock: LockedExperience,
+  sourceId: number,
+  type: unknown,
+  claim: 'add' | 'release' | 'keep',
+): Promise<{ old: unknown } | undefined> {
+  const claims = {
+    add: `CASE WHEN m.curated_fields ? 'type' THEN m.curated_fields ELSE m.curated_fields || '["type"]'::jsonb END`,
+    release: `m.curated_fields - 'type'`,
+    keep: 'm.curated_fields',
+  }[claim];
+  const result = await client.query(
+    `WITH old AS (
+       SELECT id, type FROM ${MEMBERSHIPS} WHERE experience_id = $1 AND source_id = $2
+     )
+     UPDATE ${MEMBERSHIPS} m
+        SET type = $3, curated_fields = ${claims}, updated_at = NOW()
+       FROM old
+      WHERE m.id = old.id
+     RETURNING old.type AS old_type`,
+    [lock.id, sourceId, type],
+  );
+  return result.rows.length === 0 ? undefined : { old: result.rows[0].old_type };
+}
+
+/**
+ * A source's conflicting type a curator took (`accept-source`), written on the
+ * proposing source's membership with the curator's claim on it released;
+ * nothing where the accepted fields hold no type.
+ */
+export async function acceptTypeOnSourceMembership(
+  client: PoolClient,
+  lock: LockedExperience,
+  sourceId: number,
+  accepted: { new: unknown } | undefined,
+): Promise<void> {
+  if (accepted) await setTypeOnSourceMembership(client, lock, sourceId, accepted.new, 'release');
+}
+
+/**
+ * A held proposal's type, published onto the membership being published
+ * (`publishController.ts`): the run whose proposal it was is that membership's
+ * source, since the pointer the card answers is the membership's.
+ */
+export async function publishTypeOnMembership(
+  client: PoolClient,
+  lock: LockedExperience,
+  membershipId: number,
+  held: { value: unknown } | undefined,
+): Promise<void> {
+  if (!held) return;
+  const type = held.value;
+  await client.query(
+    `UPDATE ${MEMBERSHIPS} SET type = $3, updated_at = NOW() WHERE id = $2 AND experience_id = $1`,
+    [lock.id, membershipId, type],
+  );
+}
+
+/**
  * The membership of a place a curator created by hand, in the kind of the
  * source the curator chose (ADR-0045 decision 4, #822): `verified` and
  * published from the moment it exists, since a person's judgement does not
  * depend on the source's gate. Under the token the manual create's own insert
  * hands back (`insertCuratedExperience`). Its id within the source is the
- * place's own `curator-<id>-<ts>` key, which no source listing can ever name.
+ * place's own `curator-<id>-<ts>` key, which no source listing can ever name,
+ * and it carries the type within the kind the curator gave (ADR-0084).
  */
 export async function insertManualMembership(
   client: PoolClient,
   lock: LockedExperience,
   sourceId: number,
+  type: string | null,
 ): Promise<void> {
   await client.query(`
-    INSERT INTO ${MEMBERSHIPS} (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+    INSERT INTO ${MEMBERSHIPS} (experience_id, kind_id, source_id, external_id, type, curation_state, published_at)
     VALUES (
       $1, (SELECT kind_id FROM experience_sources WHERE id = $2), $2,
       (SELECT external_id FROM experiences WHERE id = $1),
-      'verified', NOW()
+      $3, 'verified', NOW()
     )
-  `, [lock.id, sourceId]);
+  `, [lock.id, sourceId, type]);
 }

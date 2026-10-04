@@ -17,6 +17,7 @@ import { pool } from '../../db/index.js';
 import { experienceOfferedToReaderSql, hideLostSql, offeredLinkSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
+import { membershipOfferedSql } from '../../db/membership.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -39,10 +40,13 @@ describe('getSiteFinds', () => {
     const sql = await findsSql();
 
     // Exact match on the Wikidata id: Mycenae's finds are filed under Mycenae.
-    expect(sql).toMatch(/JOIN treasures t ON t\.metadata->'foundAt'->>'qid' = e\.external_id/);
-    // The type only the Archaeology kind has — a QID a find names is a place
-    // somebody dug in, and a museum row with the same id is not the spot.
-    expect(sql).toMatch(/AND e\.type = 'site'/);
+    // Both the id and the type are the Archaeology membership's (ADR-0084), so
+    // a site another source wrote first keeps its finds; the type is the one
+    // only the Archaeology kind has — a QID a find names is a place somebody
+    // dug in, and a museum row with the same id is not the spot.
+    expect(sql).toMatch(/site_member\.experience_id = e\.id\s+AND site_member\.type = 'site'\s+AND site_member\.external_id = t\.metadata->'foundAt'->>'qid'/);
+    // And that membership offered itself, not the place through another kind.
+    expect(sql).toContain(`AND ${membershipOfferedSql('site_member')})`);
     const [, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
     expect(params).toEqual([14730]);
   });

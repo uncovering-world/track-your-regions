@@ -20,6 +20,8 @@ import type { declineSourceBodySchema, idParamSchema } from '../../types/index.j
 import { resolveExperienceScope } from './experienceScope.js';
 import { claimKeyFor } from '../../services/sync/changeSet.js';
 import { conflictChangeOpenSql } from './reviewQueuePredicates.js';
+import { withTypeClaim } from '../../db/membership.js';
+import { typeClaimedBy } from './membershipWriter.js';
 import { recordConflictRefusals } from './conflictDecisions.js';
 import { lockExperience } from '../../db/experienceWriter.js';
 
@@ -120,12 +122,12 @@ async function recordRefusals(
     const locked = await lockExperience<{ curated_fields: string[] | null }>(
       client, experienceId, 'curated_fields',
     );
-    const claimed: string[] = locked?.row.curated_fields ?? [];
+    const placeClaims: string[] = locked?.row.curated_fields ?? [];
 
     // The same proposal the queue would show, withdrawal check included — a conflict a
     // later run stopped proposing is not one a curator can answer here either.
     const proposal = await client.query(`
-      SELECT ch.sync_log_id, ch.changed_fields
+      SELECT ch.sync_log_id, l.source_id, ch.changed_fields
       FROM experience_sync_changes ch
       JOIN experience_sync_logs l ON l.id = ch.sync_log_id
       JOIN experiences e ON e.id = ch.experience_id
@@ -151,6 +153,10 @@ async function recordRefusals(
     if (fromSyncLogId !== expectedSyncLogId) {
       return await refuse('A newer run has proposed something else — reload to see it', fromSyncLogId);
     }
+    // A claim on the type is the proposing source's membership's (ADR-0084).
+    const claimed = withTypeClaim(
+      placeClaims, await typeClaimedBy(client, locked.lock, proposal.rows[0].source_id as number),
+    );
 
     const proposed = (proposal.rows[0].changed_fields as Array<{ field: string; new: unknown; curatedConflict?: boolean }>)
       .filter(f => f.curatedConflict && (fields === 'all' || fields.includes(f.field)));

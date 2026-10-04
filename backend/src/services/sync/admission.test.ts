@@ -360,7 +360,7 @@ describe('admittedExternalIds', () => {
     const ids = await admittedExternalIds(5, 'site');
 
     expect(ids).toEqual(new Set(['Q22647']));
-    expect(lastSql()).toContain('e.type = $2');
+    expect(lastSql()).toContain('m.type = $2');
     expect(mockedQuery.mock.calls[0][1]).toEqual([5, 'site']);
   });
 });

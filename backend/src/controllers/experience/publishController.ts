@@ -36,7 +36,7 @@ import type { PoolClient } from 'pg';
 import type { z } from 'zod/v4';
 import type { PublishResult, AppliedPart, PartNotFound } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
+import { MEMBERSHIPS, membershipToAnswerSql, withTypeClaim } from '../../db/membership.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { idParamSchema, publishExperienceBodySchema } from '../../types/index.js';
@@ -51,7 +51,7 @@ import { recordHeldAnswers } from './heldDecisions.js';
 import type { HeldSelection, SelectedPart } from './heldSelection.js';
 import { lockExperience, updateExperienceColumns, type LockedExperience } from '../../db/experienceWriter.js';
 import { lockWorksToPublish, type WorksToPublish } from './workWriter.js';
-import { publishMembership } from './membershipWriter.js';
+import { publishMembership, publishTypeOnMembership } from './membershipWriter.js';
 
 /**
  * What the curator asked to be published.
@@ -499,7 +499,7 @@ export async function publishUnderLock(
       // answers (`membershipToAnswerSql`), the place's only one until #755.
       `SELECT e.curated_fields, e.metadata, e.name_local, e.image_url,
               m.id AS membership_id, m.curation_state, m.admission,
-              m.pending_change_sync_log_id
+              m.pending_change_sync_log_id, m.curated_fields ? 'type' AS type_claimed
          FROM experiences e
          LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting')}
         WHERE e.id = $1`,
@@ -524,7 +524,9 @@ export async function publishUnderLock(
     );
     if (refusal) return await refuse(409, refusal);
 
-    const claimed: string[] = before.curated_fields ?? [];
+    // The membership's claim on the type joins the place's: the type within a
+    // kind is the membership's, and so is a curator's pin on it (ADR-0084).
+    const claimed = withTypeClaim(before.curated_fields, before.type_claimed);
     let applied: string[] = [];
     let claimedFieldsSkipped: string[] = [];
     let heldFrom: number | null = null;
@@ -581,6 +583,7 @@ export async function publishUnderLock(
       // two statements in the one transaction, under the one lock.
       // `write.params` binds the id as `$1`; the writer binds it itself.
       await updateExperienceColumns(client, locked.lock, write.assignments, write.params.slice(1));
+      await publishTypeOnMembership(client, locked.lock, membershipId, write.membershipType);
       await publishMembership(client, locked.lock, membershipId, publicationAssignments(before, heldLeftOpen));
 
       // The parts, after the object and in the same transaction: a held

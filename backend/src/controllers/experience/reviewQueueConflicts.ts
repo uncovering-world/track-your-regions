@@ -11,7 +11,7 @@
  */
 
 import { pool } from '../../db/index.js';
-import { rowKindJoinSql } from '../../db/membership.js';
+import { claimsFacingSql, rowKindJoinSql } from '../../db/membership.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import type { QueryResult } from 'pg';
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
@@ -142,7 +142,7 @@ export async function queryConflicts(
                             AND ${logScopeFilter}), '[]'::jsonb)))
                FROM jsonb_array_elements(ch.changed_fields) f
                WHERE (f->>'curatedConflict')::boolean
-                 AND e.curated_fields ? ${claimKeyFor(`f->>'field'`)}
+                 AND ${claimsFacingSql('e', 'l.source_id')} ? ${claimKeyFor(`f->>'field'`)}
                  -- ...and the curator has not already answered *this* proposal. By
                  -- value, not by field: a refusal says "not that text", and a source
                  -- that comes back with different text is asking a new question, which

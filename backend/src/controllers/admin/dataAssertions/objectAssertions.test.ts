@@ -345,7 +345,8 @@ describe('an archaeology site that is already a World Heritage row', () => {
   });
 
   it('pairs a kind-5 site against a source-1 row, by distance on the ground', () => {
-    expect(sql).toContain("e.type = 'site'");
+    // A site by its Archaeology membership's type (ADR-0084).
+    expect(sql).toContain("m.type = 'site'");
     expect(sql).toContain('ST_DWithin(e.location::geography, w.location::geography, 100)');
     expect(sql).toContain('w.source_id = 1');
   });

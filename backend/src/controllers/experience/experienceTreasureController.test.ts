@@ -32,6 +32,7 @@ import {
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 import { userRoutes } from '../../routes/userRoutes.js';
+import { membershipOfferedSql } from '../../db/membership.js';
 
 /** The user routes these specs answer through (ADR-0071). */
 const postViewedTreasure = routeAt(userRoutes, '/me/viewed-treasures/:treasureId', 'post');
@@ -165,7 +166,9 @@ describe('getExperienceTreasures gate', () => {
     await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'), { params: { id: '14551' } } as never, res as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
-    expect(sql).toMatch(/WHERE site\.type = 'site'\s+AND site\.external_id = t\.metadata->'foundAt'->>'qid'/);
+    // The Archaeology membership's type and id (ADR-0084).
+    expect(sql).toMatch(/site_member\.experience_id = site\.id\s+AND site_member\.type = 'site'\s+AND site_member\.external_id = t\.metadata->'foundAt'->>'qid'/);
+    expect(sql).toContain(`AND ${membershipOfferedSql('site_member')})`);
     expect(sql).toContain(experienceOfferedToReaderSql('site'));
     expect(sql).toContain(hideLostSql('site'));
     expect(sql).toMatch(/WHERE er\.experience_id = site\.id/);

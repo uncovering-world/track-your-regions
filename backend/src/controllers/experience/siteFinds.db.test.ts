@@ -37,14 +37,15 @@ async function clear(): Promise<void> {
 /** A place of the Archaeology kind: the dig, or a museum, read or not. */
 async function place(id: number, type: string, state: string): Promise<void> {
   await pool.query(
-    `INSERT INTO experiences (id, source_id, external_id, name, type, location)
-     VALUES ($1, 5, $2, $3, $4, ST_SetSRID(ST_MakePoint(22.75, 37.73), 4326))`,
-    [id, id === DIG ? DIG_QID : `Q-venue-${id}`, `Place ${id}`, type],
+    `INSERT INTO experiences (id, source_id, external_id, name, location)
+     VALUES ($1, 5, $2, $3, ST_SetSRID(ST_MakePoint(22.75, 37.73), 4326))`,
+    [id, id === DIG ? DIG_QID : `Q-venue-${id}`, `Place ${id}`],
   );
+  // The type within the kind is the membership's (ADR-0084).
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, curation_state)
-     VALUES ($1, 5, 5, (SELECT external_id FROM experiences WHERE id = $1), 'admitted', $2)`,
-    [id, state],
+    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, type, admission, curation_state)
+     VALUES ($1, 5, 5, (SELECT external_id FROM experiences WHERE id = $1), $3, 'admitted', $2)`,
+    [id, state, type],
   );
 }
 
@@ -118,6 +119,24 @@ describe('the finds on view of a site', () => {
     const list = await getSiteFinds({ params: { id: DIG } });
     expect(list.total).toBe(1);
     expect(await countOn(DIG)).toBe(list.total);
+  });
+
+  it('lists no finds where the site\'s Archaeology membership is refused, though another kind shows the place', async () => {
+    // A merged place (ADR-0084): the dig is also a place of worship, and the
+    // Archaeology rule has turned the site down. The place is still on show,
+    // through its other kind, but it is no site a reader is sent to for finds.
+    await pool.query(
+      `UPDATE experience_kind_memberships SET admission = 'refused' WHERE experience_id = $1 AND kind_id = 5`, [DIG],
+    );
+    await pool.query(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, type, curation_state)
+       VALUES ($1, 4, 4, 'Q9560-dig-as-worship', 'temple', 'auto')`,
+      [DIG],
+    );
+
+    const list = await getSiteFinds({ params: { id: DIG } });
+    expect(list.total).toBe(0);
+    expect(await countOn(DIG)).toBe(0);
   });
 
   it('counts nothing on a row that is not a site', async () => {

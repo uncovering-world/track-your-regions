@@ -123,7 +123,8 @@ export function buildRegionQueries(opts: {
         e.external_id,
         e.name,
         e.short_description,
-        e.type,
+        -- The type within that kind is the membership's too (ADR-0084).
+        m.type,
         -- The kind, off the row's membership: what a colour and a group are
         -- decided by (#814, #819).
         ${rowKindSelectSql()},
@@ -173,7 +174,7 @@ export function buildRegionQueries(opts: {
       ${rejectionFilter}
       ${membershipFilter}
       ${lifecycleFilter}
-      GROUP BY e.id, m.kind_id, k.name, k.display_priority
+      GROUP BY e.id, m.kind_id, m.type, k.name, k.display_priority
       ORDER BY e.name
       LIMIT $2 OFFSET $3
     `;
@@ -204,7 +205,8 @@ export function buildRegionQueries(opts: {
         e.external_id,
         e.name,
         e.short_description,
-        e.type,
+        -- The type within that kind is the membership's too (ADR-0084).
+        m.type,
         -- The kind, off the row's membership: what a colour and a group are
         -- decided by (#814, #819).
         ${rowKindSelectSql()},

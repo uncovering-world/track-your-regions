@@ -696,7 +696,7 @@ const archaeologySiteTwinOfWorldHeritage: CatalogueAssertion = {
                             -- then the metre test that decides.
                             AND ST_DWithin(e.location, w.location, 0.01)
                             AND ST_DWithin(e.location::geography, w.location::geography, 100)
-         WHERE e.type = 'site'
+         WHERE m.type = 'site'
          ORDER BY metres, e.name`,
   describe: row =>
     `${text(row, 'experience_name')} sits ${count(row, 'metres')} m from the World Heritage row `

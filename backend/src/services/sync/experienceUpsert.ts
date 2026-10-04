@@ -66,7 +66,9 @@
 
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { MEMBERSHIPS, placeVisibleSql, membershipVisibleSql, sourcePlacesSql } from '../../db/membership.js';
+import {
+  MEMBERSHIPS, placeVisibleSql, membershipVisibleSql, sourcePlacesSql, withTypeClaim,
+} from '../../db/membership.js';
 import { pointHeldProposalAt } from './heldProposalPointer.js';
 import {
   computeChangeSet, METADATA_CLAIM_PREFIX, METADATA_SET_KEYS, SYNC_OWNED_METADATA_KEYS,
@@ -171,9 +173,16 @@ const SYNC_OWNED_SLICE = `COALESCE((
 
 /** Columns the diff reads. Declared once; the SQL below is built from them. */
 const SNAPSHOT_COLUMNS = [
-  'name', 'name_local', 'description', 'short_description', 'type', 'tags',
+  'name', 'name_local', 'description', 'short_description', 'tags',
   'country_codes', 'country_names', 'image_url', 'metadata',
 ] as const;
+
+/**
+ * The type within the kind, and a curator's claim on it, read off the run's own
+ * membership `sm`: both are the membership's (ADR-0084), since a place in two
+ * kinds has a type in each.
+ */
+const MEMBERSHIP_TYPE_SELECT = `sm.type, sm.curated_fields ? 'type' AS type_claimed`;
 
 /**
  * The extent, repaired and made insertable in one expression, so the geometry
@@ -269,7 +278,7 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
   const result = await pool.query(
     `SELECT e.id, e.curated_fields, sm.missing_since, sm.source_membership,
             ${PLACE_HELD} AS was_held,
-            ${snapshotSelect('e.')},
+            ${snapshotSelect('e.')}, ${MEMBERSHIP_TYPE_SELECT},
             ST_X(e.location) AS lon, ST_Y(e.location) AS lat
      FROM ${sourcePlacesSql('e', 'sm')}
      WHERE sm.source_id = $1 AND sm.external_id = $2`,
@@ -290,7 +299,7 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
   }
 
   const row = result.rows[0];
-  const curatedFields: string[] = row.curated_fields ?? [];
+  const curatedFields = withTypeClaim(row.curated_fields, row.type_claimed);
 
   // What the run this preview stands in for would refuse to write, asked of the
   // same expression that run's own guards are built from. Asked at all because
@@ -432,7 +441,7 @@ async function writeUnderLock(
   // so its snapshot has that publish in it.
   const stored = locked === null ? null : (await client.query(
     `SELECT e.id, e.curated_fields, sm.missing_since, sm.source_membership,
-            ${snapshotSelect('e.')},
+            ${snapshotSelect('e.')}, ${MEMBERSHIP_TYPE_SELECT},
             ST_X(e.location) AS lon, ST_Y(e.location) AS lat,
             ${PLACE_HELD} AS was_held
        FROM ${sourcePlacesSql('e', 'sm')}
@@ -462,11 +471,11 @@ async function writeUnderLock(
       -- and nextval is evaluated only when there is none.
       INSERT INTO experiences (
         id, source_id, external_id, name, name_local, description, short_description,
-        type, tags, location, country_codes, country_names, image_url, metadata,
+        tags, location, country_codes, country_names, image_url, metadata,
         boundary, area_km2, created_at, updated_at
       ) VALUES (
         COALESCE($20::integer, nextval(pg_get_serial_sequence('experiences', 'id'))),
-        $1, $2, $3, $4, $5, $6, $7, $8,
+        $1, $2, $3, $4, $5, $6, $8,
         ST_SetSRID(ST_MakePoint($9, $10), 4326),
         $11, $12, $13, $14,
         (SELECT geom FROM extent),
@@ -478,7 +487,6 @@ async function writeUnderLock(
         name_local = CASE WHEN experiences.curated_fields ? 'name_local' OR ${HELD} THEN experiences.name_local ELSE EXCLUDED.name_local END,
         description = CASE WHEN experiences.curated_fields ? 'description' OR ${HELD} THEN experiences.description ELSE EXCLUDED.description END,
         short_description = CASE WHEN experiences.curated_fields ? 'short_description' OR ${HELD} THEN experiences.short_description ELSE EXCLUDED.short_description END,
-        type = CASE WHEN experiences.curated_fields ? 'type' OR ${HELD} THEN experiences.type ELSE EXCLUDED.type END,
         -- Behind a claim but not behind the gate. Tags are labels the import
         -- derives from facts it also stores by name -- the criteria, the danger
         -- listing, the landmark's type -- and no reader-facing read returns
@@ -599,13 +607,14 @@ async function writeUnderLock(
       -- nothing about them, and the place's own copy is derived from its
       -- memberships by derive_place_listing().
       INSERT INTO ${MEMBERSHIPS} (
-        experience_id, kind_id, source_id, external_id, admitted_for, curation_state, published_at,
+        experience_id, kind_id, source_id, external_id, type, admitted_for, curation_state, published_at,
         first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at
       )
       SELECT ins.id,
              (SELECT kind_id FROM experience_sources WHERE id = $1),
              $1,
              $2,
+             $7,
              $18::jsonb,
              CASE WHEN (SELECT requires_curation FROM gate) THEN 'pending' ELSE 'auto' END,
              CASE WHEN (SELECT requires_curation FROM gate) THEN NULL ELSE NOW() END,
@@ -613,6 +622,10 @@ async function writeUnderLock(
         FROM ins
       ON CONFLICT (source_id, external_id) DO UPDATE SET
         admitted_for = EXCLUDED.admitted_for,
+        -- The type within the kind is the membership's (ADR-0084), behind the
+        -- membership's own claim and behind the gate, as the place's content is.
+        type = CASE WHEN ${MEMBERSHIPS}.curated_fields ? 'type' OR ${HELD}
+                    THEN ${MEMBERSHIPS}.type ELSE EXCLUDED.type END,
         pending_change_sync_log_id = CASE WHEN ${HELD}
                                          THEN ${MEMBERSHIPS}.pending_change_sync_log_id
                                          ELSE NULL END,
@@ -663,7 +676,7 @@ async function writeUnderLock(
   const row = result.rows[0];
   const before = stored && !row.inserted ? snapshotFromRow(stored) : null;
   const incoming = snapshotFromParams(params, await measureExtent(client, params.boundaryWkt));
-  const changeSet = computeChangeSet(before, incoming, row.curated_fields ?? [], held);
+  const changeSet = computeChangeSet(before, incoming, withTypeClaim(row.curated_fields, stored?.type_claimed), held);
 
   // A curator's pass covered the object that was there; a changed object has not
   // been passed (ADR-0025). Resolved here rather than in SQL because the
