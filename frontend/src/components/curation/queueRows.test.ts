@@ -186,7 +186,7 @@ describe('queueRows', () => {
       order: [orderEntry({ kind: 'waiting', id: 10, subs: ['contents'] })],
     }));
 
-    expect(rows[0].specific).toBe('unread: 12 works, 3 places');
+    expect(rows[0].specific).toBe('12 works arrived, 3 new points');
   });
 
   it('a refused row carries the rule\'s own reason', () => {
