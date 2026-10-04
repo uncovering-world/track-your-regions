@@ -1,22 +1,22 @@
 /**
- * Tests for the contents card's rows: the unread works under a museum readers
- * already see.
+ * Tests for the arrived half of the review card (#524): one row per unread work
+ * and per new point, each with its own answer, and a point the source moved
+ * asked as a change beside the held fields.
  *
  * A curator deciding about twelve paintings that arrived since anyone looked
- * decides by looking at twelve paintings, and the row is where that starts: the
- * name opens the work's item, and beside it the article Wikidata resolves for it
- * (#806). What is worth pinning is that both are built from the work's own id —
- * and that a row an older server sends without one reads as it did before.
+ * decides by looking at twelve paintings, and one doubtful painting must not
+ * hold back the eleven beside it. What is pinned here is the wiring: which row
+ * opens what, which ids an answer sends, and which rows are not drawn at all.
  */
 
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 
-// The dialog is the shared surface a place is looked at and corrected in, with its
-// own test; what this file pins is the wiring — which row opens, as which place, and
-// where the outcome line goes.
+// The dialogs are the shared surfaces a place and a work are looked at and
+// corrected in, with their own tests; what this file pins is which row opens,
+// as which place or work of which object, and where the outcome line goes.
 vi.mock('../shared/PointPreviewDialog', () => ({
   PointPreviewDialog: ({ name, correction }: {
     name: string;
@@ -36,12 +36,33 @@ vi.mock('../shared/PointPreviewDialog', () => ({
     </div>
   ),
 }));
+vi.mock('../shared/WorkPreviewDialog', () => ({
+  WorkPreviewDialog: ({ work }: { work: { treasureId: number; experienceId: number; museumName: string; name: string } | null }) => (
+    work ? <div role="dialog">{`opened work ${work.treasureId} of ${work.experienceId} (${work.museumName})`}</div> : null
+  ),
+}));
+vi.mock('../../api/curation', async (original) => ({
+  ...await original<typeof import('../../api/curation')>(),
+  publishExperience: vi.fn(),
+  refuseContents: vi.fn(),
+}));
 
+import { publishExperience, refuseContents } from '../../api/curation';
 import { GatedCard } from './WaitingToPublish';
-import { pointsSentence, worksSentence } from './GatedContents';
 
-/** The Gemäldegalerie with unread paintings under it. */
-function contents(...works: NonNullable<ReviewQueueItem['pending_works']>): ReviewQueueItem {
+const mockedPublish = vi.mocked(publishExperience);
+const mockedRefuse = vi.mocked(refuseContents);
+
+beforeEach(() => {
+  mockedPublish.mockReset().mockResolvedValue({} as Awaited<ReturnType<typeof publishExperience>>);
+  mockedRefuse.mockReset().mockResolvedValue({} as Awaited<ReturnType<typeof refuseContents>>);
+});
+
+type Work = NonNullable<ReviewQueueItem['pending_works']>[number];
+type Point = NonNullable<ReviewQueueItem['pending_points']>[number];
+
+/** Gemäldegalerie Berlin with unread works under it. */
+function contents(...works: Work[]): ReviewQueueItem {
   return {
     id: 6194, external_id: 'Q165631', name: 'Gemäldegalerie Berlin',
     kind_id: 2, kind_name: 'Art Museums',
@@ -52,17 +73,8 @@ function contents(...works: NonNullable<ReviewQueueItem['pending_works']>): Revi
   };
 }
 
-function renderCard(item: ReviewQueueItem, onDone: (message?: string) => void = () => {}) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return render(
-    <QueryClientProvider client={client}>
-      <GatedCard group={{ id: item.id, name: item.name, contents: item }} onDone={onDone} />
-    </QueryClientProvider>,
-  );
-}
-
 /** Champagne Hillsides with unread components under it — nine on the live database. */
-function points(...rows: NonNullable<ReviewQueueItem['pending_points']>): ReviewQueueItem {
+function points(...rows: Point[]): ReviewQueueItem {
   return {
     id: 1345, external_id: '1465', name: 'Champagne Hillsides, Houses and Cellars',
     kind_id: 1, kind_name: 'World Heritage Sites',
@@ -73,49 +85,165 @@ function points(...rows: NonNullable<ReviewQueueItem['pending_points']>): Review
   };
 }
 
-describe('the works a contents card lists', () => {
-  it('opens each work at its item and at its article, each link named for its work', () => {
-    // Two works, because the card lists up to 25 and the article links all read
-    // "Wikipedia": a screen reader's link list has to say which work each opens.
-    renderCard(contents(
-      {
-        id: 3102, name: 'The Wine Glass', artists: ['Johannes Vermeer'], artistsCurated: false,
-        year: 1659, imageUrl: null, iconic: false, externalId: 'Q782639',
-      },
-      {
-        id: 3103, name: 'Portrait of Hieronymus Holzschuher', artists: ['Albrecht Dürer'],
-        artistsCurated: false, year: 1526, imageUrl: null, iconic: false, externalId: 'Q3399389',
-      },
-    ));
+function cardFor(item: ReviewQueueItem, onDone: (message?: string) => void, client: QueryClient) {
+  return (
+    <QueryClientProvider client={client}>
+      <GatedCard group={{ id: item.id, name: item.name, contents: item }} onDone={onDone} />
+    </QueryClientProvider>
+  );
+}
 
-    const item = screen.getByRole('link', { name: 'The Wine Glass' });
-    expect(item).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q782639');
+function renderCard(item: ReviewQueueItem, onDone: (message?: string) => void = () => {}) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return render(cardFor(item, onDone, client));
+}
+
+const WINE_GLASS: Work = {
+  id: 3102, name: 'The Wine Glass', artists: ['Johannes Vermeer'], artistsCurated: false,
+  year: 1659, imageUrl: null, iconic: false, externalId: 'Q782639', sitelinks: 41,
+};
+const HOLZSCHUHER: Work = {
+  id: 3103, name: 'Portrait of Hieronymus Holzschuher', artists: ['Albrecht Dürer'],
+  artistsCurated: false, year: 1526, imageUrl: null, iconic: false, externalId: 'Q3399389',
+};
+
+/** The table row a name stands in. */
+function rowOf(name: string): HTMLElement {
+  return screen.getByRole('button', { name }).closest('tr')!;
+}
+
+describe('the works that arrived', () => {
+  it('opens each work by its name, and its article by a link named for the work', () => {
+    // Two works, because the article links all read "Wikipedia": a screen
+    // reader's link list has to say which work each one opens.
+    renderCard(contents(WINE_GLASS, HOLZSCHUHER));
+
     const article = screen.getByRole('link', { name: 'Wikipedia article for The Wine Glass' });
     expect(article).toHaveTextContent('Wikipedia');
     expect(article).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Special:GoToLinkedPage/enwiki/Q782639');
+    expect(article).toHaveAttribute('target', '_blank');
+    expect(article).toHaveAttribute('rel', 'noopener noreferrer');
     expect(screen.getByRole('link', { name: 'Wikipedia article for Portrait of Hieronymus Holzschuher' }))
       .toHaveAttribute('href', 'https://www.wikidata.org/wiki/Special:GoToLinkedPage/enwiki/Q3399389');
-    for (const link of [item, article]) {
-      expect(link).toHaveAttribute('target', '_blank');
-      expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-    }
-    // The maker and the year stay on the row, after the name.
-    expect(screen.getByText('— Johannes Vermeer, 1659')).toBeInTheDocument();
+
+    // The maker and the year under the name, the Wikidata item as the small id,
+    // and how many Wikipedias write about it — the number the pool's line held
+    // it to (ADR-0082). A work the server sent without the count says nothing.
+    const row = within(rowOf('The Wine Glass'));
+    expect(row.getByText('Johannes Vermeer · 1659')).toBeInTheDocument();
+    expect(row.getByText('Q782639')).toBeInTheDocument();
+    expect(row.getByText('41 Wikipedia editions')).toBeInTheDocument();
+    expect(within(rowOf('Portrait of Hieronymus Holzschuher')).queryByText(/Wikipedia edition/)).toBeNull();
+
+    // The name is the one door to the work, opened as a work of this museum.
+    fireEvent.click(screen.getByRole('button', { name: 'The Wine Glass' }));
+    expect(screen.getByText('opened work 3102 of 6194 (Gemäldegalerie Berlin)')).toBeInTheDocument();
   });
 
-  it('reads as before when an older server sends the row without its id', () => {
-    renderCard(contents({
-      id: 3102, name: 'The Wine Glass', artists: ['Johannes Vermeer'], artistsCurated: false,
-      year: 1659, imageUrl: null, iconic: false,
-    }));
+  it('still opens a work an older server sent without its item, and links no article', () => {
+    renderCard(contents({ ...WINE_GLASS, externalId: undefined }));
 
-    expect(screen.getByText('The Wine Glass')).toBeInTheDocument();
-    expect(screen.queryByRole('link', { name: 'The Wine Glass' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'The Wine Glass' })).toBeInTheDocument();
     expect(screen.queryByRole('link', { name: /Wikipedia/ })).toBeNull();
+  });
+
+  it('answers one work on its own row, leaving the rest waiting', async () => {
+    renderCard(contents(WINE_GLASS, HOLZSCHUHER));
+
+    fireEvent.click(within(rowOf('Portrait of Hieronymus Holzschuher')).getByRole('button', { name: 'publish this' }));
+    await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(6194, { treasureIds: [3103] }));
+
+    fireEvent.click(within(rowOf('The Wine Glass')).getByRole('button', { name: 'not this' }));
+    await waitFor(() => expect(mockedRefuse).toHaveBeenCalledWith(6194, { treasureIds: [3102] }));
+  });
+
+  it('says a work readers already see in another list is not new, and names the list', () => {
+    // Boy with Thorn: on show under the Capitoline Museums' Art Museums row,
+    // unread under their Archaeology row.
+    const capitoline: ReviewQueueItem = {
+      ...contents({
+        id: 3447, name: 'Boy with Thorn', artists: [], artistsCurated: false, year: null,
+        imageUrl: null, iconic: false, externalId: 'Q1187500',
+        venues: [
+          { id: 6214, name: 'Capitoline Museums', kind: 'Art Museums', externalId: 'Q333906', onShow: true },
+          { id: 14546, name: 'Capitoline Museums', kind: 'Archaeology', externalId: 'Q333906', onShow: false },
+        ],
+      }),
+      id: 14546, external_id: 'Q333906', name: 'Capitoline Museums', kind_id: 5, kind_name: 'Archaeology',
+      pending_treasures_on_show: 1,
+    };
+    renderCard(capitoline);
+
+    const row = within(rowOf('Boy with Thorn'));
+    expect(row.getByText(/already on show elsewhere/)).toBeInTheDocument();
+    expect(row.getByText('readers see it in Capitoline Museums (Art Museums)')).toBeInTheDocument();
+    expect(row.queryByText(/new to the catalogue/)).toBeNull();
+  });
+
+  it('marks a work no list has yet as new to the catalogue', () => {
+    renderCard(contents(WINE_GLASS));
+
+    expect(within(rowOf('The Wine Glass')).getByText(/new to the catalogue/)).toBeInTheDocument();
   });
 });
 
-describe('the points a contents card lists', () => {
+describe('the heading of what arrived', () => {
+  it('counts what arrived and offers one no for all of it from five rows', async () => {
+    const five = Array.from({ length: 5 }, (_, i) => ({ ...HOLZSCHUHER, id: 4000 + i, name: `Work ${i + 1}` }));
+    renderCard(contents(...five));
+
+    expect(screen.getByText('5 works')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'turn all 5 down' }));
+    await waitFor(() => expect(mockedRefuse).toHaveBeenCalledWith(6194, {}));
+  });
+
+  it('names the rows it turns down where a point moved, so the moved point is left alone', async () => {
+    // A body naming nothing refuses every unread row, the moved point included,
+    // and refusing that takes its stored pin off the map — a row this section
+    // neither lists nor counts.
+    const five = Array.from({ length: 5 }, (_, i) => ({ ...HOLZSCHUHER, id: 4000 + i, name: `Work ${i + 1}` }));
+    renderCard({
+      ...contents(...five),
+      pending_locations: 1,
+      pending_moved_locations: 1,
+      pending_points: [{
+        id: 15624, name: null, externalRef: 'Q47611', latitude: 37.94058, longitude: 27.33939,
+        replaces: { latitude: 37.939722, longitude: 27.340833 },
+      }],
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'turn all 5 down' }));
+    await waitFor(() => expect(mockedRefuse).toHaveBeenCalledWith(6194, {
+      treasureIds: [4000, 4001, 4002, 4003, 4004],
+    }));
+  });
+
+  it('offers no "turn all down" on a capped list where a point moved, since it cannot name them all', () => {
+    const five = Array.from({ length: 5 }, (_, i) => ({ ...HOLZSCHUHER, id: 4000 + i, name: `Work ${i + 1}` }));
+    renderCard({
+      ...contents(...five),
+      pending_treasures: 30,
+      pending_locations: 1,
+      pending_moved_locations: 1,
+      pending_points: [{
+        id: 15624, name: null, externalRef: 'Q47611', latitude: 37.94058, longitude: 27.33939,
+        replaces: { latitude: 37.939722, longitude: 27.340833 },
+      }],
+    });
+
+    expect(screen.getByText('the first 5 are listed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /turn all/ })).toBeNull();
+  });
+
+  it('offers no "turn all down" below five rows, where each row is its own answer', () => {
+    renderCard(contents(WINE_GLASS, HOLZSCHUHER));
+
+    expect(screen.getByText('2 works')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /turn all/ })).toBeNull();
+  });
+});
+
+describe('the new points that arrived', () => {
   it('opens a point where it can be looked at and corrected, and reports the outcome', () => {
     const onDone = vi.fn();
     renderCard(points(
@@ -136,6 +264,19 @@ describe('the points a contents card lists', () => {
     expect(onDone).toHaveBeenCalledWith('fixed 6001 of Champagne Hillsides, Houses and Cellars');
   });
 
+  it('answers a point by its id', async () => {
+    renderCard(points(
+      { id: 6001, name: 'Coteaux de la Marne', externalRef: '1465-003', latitude: 49.0442, longitude: 3.955 },
+      { id: 6004, name: 'Avenue de Champagne', externalRef: '1465-002', latitude: 49.0427, longitude: 3.9590 },
+    ));
+
+    expect(screen.getByText('2 new points')).toBeInTheDocument();
+    // A new point's no takes nothing away: nobody has seen it.
+    expect(screen.queryByText(/takes the old pin off the map/)).toBeNull();
+    fireEvent.click(within(rowOf('Avenue de Champagne')).getByRole('button', { name: 'not this' }));
+    await waitFor(() => expect(mockedRefuse).toHaveBeenCalledWith(1345, { locationIds: [6004] }));
+  });
+
   it('says on the row when a curator has already corrected the point', () => {
     renderCard(points(
       {
@@ -146,84 +287,7 @@ describe('the points a contents card lists', () => {
 
     // Without the word, a pin a curator moved reads as the source's — on the very
     // screen where the next curator decides about it.
-    expect(screen.getByText('— 49.0442, 3.9550 · pin corrected')).toBeInTheDocument();
-  });
-
-  it('closes what a curator opened when the card moves to the next object', () => {
-    // `ReviewBench` mounts this card without a key on purpose — the object
-    // preview staying open as a curator works down the queue is behaviour
-    // `ObjectPreview` is written around — so the next waiting row reconciles
-    // into this same instance. Holding the open thing as the thing is not
-    // enough: the dialog pairs it with the *new* card's id and name, so a work
-    // of one museum would be corrected under another museum's id, which is what
-    // proves the caller may correct it at all.
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-    const first = contents(
-      { id: 7101, name: 'Amor Victorious', artists: ['Caravaggio'], artistsCurated: false,
-        year: 1602, imageUrl: null, iconic: true, externalId: 'Q1052156' },
-    );
-    const { rerender } = render(
-      <QueryClientProvider client={client}>
-        <GatedCard group={{ id: first.id, name: first.name, contents: first }} onDone={() => {}} />
-      </QueryClientProvider>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Correct Amor Victorious' }));
-    // The form itself, not the dialog element: MUI keeps the paper mounted
-    // through its closing transition, so an empty one would still answer to
-    // `role="dialog"` and the assertion below would pass on a stale form.
-    expect(screen.getByLabelText('Title')).toBeInTheDocument();
-
-    // The next card must hold contents of its own, or the section unmounts for
-    // want of rows and the state would go with it — the assertion would then
-    // pass without the guarantee it is about.
-    const next = {
-      ...contents(
-        { id: 7202, name: 'The Three Graces', artists: ['Peter Paul Rubens'],
-          artistsCurated: false, year: 1635, imageUrl: null, iconic: true,
-          externalId: 'Q1138017' },
-      ),
-      id: 6185,
-      name: 'Museo del Prado',
-    };
-    rerender(
-      <QueryClientProvider client={client}>
-        <GatedCard group={{ id: next.id, name: next.name, contents: next }} onDone={() => {}} />
-      </QueryClientProvider>,
-    );
-
-    // The section is still there — the next museum's own work is listed — so
-    // what closed the dialog is the object changing, not the rows going away.
-    expect(screen.getByText('The Three Graces')).toBeTruthy();
-    expect(screen.queryByLabelText('Title')).toBeNull();
-    expect(screen.queryByText('Amor Victorious')).toBeNull();
-  });
-
-  it('rules the points row off from the works row, as every other pair is', () => {
-    // On the card these two are drawn from their own file, entering the card's
-    // divided Stack as one child — so without a divider of their own the
-    // boundary between them would be whitespace where every neighbouring
-    // boundary is a line.
-    const both: ReviewQueueItem = {
-      ...points({ id: 6003, name: 'Coteaux', externalRef: '1465-001', latitude: 49, longitude: 4 }),
-      pending_treasures: 1,
-      pending_works: [
-        { id: 7301, name: 'Dom Pérignon', artists: [], artistsCurated: false,
-          year: null, imageUrl: null, iconic: false, externalId: 'Q1' },
-      ],
-    };
-    const { container } = renderCard(both);
-
-    // Both rows are actually on the card — otherwise there is no boundary to rule.
-    const pointsLabel = screen.getByText('points');
-    const worksLabel = screen.getByText('works');
-    // A rule standing *between* them, which is what a count of dividers would
-    // not tell apart from the card's own — a contents-only card has one row
-    // group, so the card's Stack draws none of its own.
-    const between = [...container.querySelectorAll('hr.MuiDivider-root')].filter(rule => (
-      pointsLabel.compareDocumentPosition(rule) & Node.DOCUMENT_POSITION_FOLLOWING
-      && worksLabel.compareDocumentPosition(rule) & Node.DOCUMENT_POSITION_PRECEDING
-    ));
-    expect(between).toHaveLength(1);
+    expect(screen.getByText('49.0442, 3.9550 · pin corrected')).toBeInTheDocument();
   });
 
   it('lists a point without a coordinate as text, since there is nothing to open', () => {
@@ -233,6 +297,99 @@ describe('the points a contents card lists', () => {
 
     expect(screen.getByText('Unplaced component')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Unplaced component' })).toBeNull();
+  });
+});
+
+describe('a point the source moved', () => {
+  /** Ephesus, run 146: the run keeps the stored pin and writes the new position unread. */
+  function ephesus(rows: Point[], extra: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
+    return {
+      ...points(...rows),
+      id: 14724, external_id: 'Q47611', name: 'Ephesus', kind_id: 5, kind_name: 'Archaeology',
+      pending_moved_locations: rows.length,
+      ...extra,
+    };
+  }
+  const MOVED: Point = {
+    id: 15624, name: null, externalRef: 'Q47611', latitude: 37.94058, longitude: 27.33939,
+    replaces: { latitude: 37.939722, longitude: 27.340833 },
+  };
+
+  it('is a change to what readers see, asked with the held changes and not as an arrival', async () => {
+    renderCard(ephesus([MOVED]));
+
+    // How far and which way, and the map with both pins — the point's own row
+    // in the changes table, headed by the place.
+    expect(screen.getByText(/Moved 158 m north-west/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'see the move on the map' })).toBeInTheDocument();
+    expect(screen.queryByText('Arrived, not shown to readers yet')).toBeNull();
+    // The one no on the card that changes what readers see: refusing the move
+    // releases the stored pin as withdrawn (ADR-0053), and the row says so.
+    expect(screen.getByText('A no also takes the old pin off the map, and it asks under lost places.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'publish this' }));
+    await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(14724, { locationIds: [15624] }));
+    fireEvent.click(screen.getByRole('button', { name: 'not this' }));
+    await waitFor(() => expect(mockedRefuse).toHaveBeenCalledWith(14724, { locationIds: [15624] }));
+  });
+
+  it('asks nothing of the point the coordinates row already moves', async () => {
+    // The object's coordinate and its one point are one move: the queue names
+    // the point publishing the coordinate takes along (`coordinates_move_point_id`),
+    // and the card asks about it once, on the coordinates row.
+    const other: Point = { ...MOVED, id: 15623, latitude: 37.9406, longitude: 27.3394,
+      replaces: { latitude: 37.9397, longitude: 27.3408 } };
+    renderCard(ephesus([other, MOVED], { coordinates_move_point_id: 15624 }));
+
+    expect(screen.getAllByRole('button', { name: 'see the move on the map' })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'publish this' }));
+    await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(14724, { locationIds: [15623] }));
+  });
+
+  it('keeps a moved point apart from a new one on a card that holds both', () => {
+    renderCard(ephesus(
+      [MOVED, { id: 15700, name: 'Basilica of St. John', externalRef: 'Q1546', latitude: 37.9518, longitude: 27.3679 }],
+      { pending_moved_locations: 1 },
+    ));
+
+    expect(screen.getByText('1 new point')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Basilica of St. John' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'see the move on the map' })).toHaveLength(1);
+  });
+});
+
+describe('a card moving to the next object', () => {
+  it('closes what a curator opened', () => {
+    // `ReviewBench` mounts this card without a key on purpose — the object
+    // preview staying open as a curator works down the queue is behaviour
+    // `ObjectPreview` is written around — so the next waiting row reconciles
+    // into this same instance. A work held open would then be paired with the
+    // *new* card's id and name, and corrected under another museum's id, which
+    // is what proves the caller may correct it at all.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const first = contents(
+      { id: 7101, name: 'Amor Victorious', artists: ['Caravaggio'], artistsCurated: false,
+        year: 1602, imageUrl: null, iconic: true, externalId: 'Q1052156' },
+    );
+    const { rerender } = render(cardFor(first, () => {}, client));
+    fireEvent.click(screen.getByRole('button', { name: 'Amor Victorious' }));
+    expect(screen.getByText('opened work 7101 of 6194 (Gemäldegalerie Berlin)')).toBeInTheDocument();
+
+    // The next card holds contents of its own, or the table unmounts for want of
+    // rows and the state would go with it — the assertion would then pass
+    // without the guarantee it is about.
+    const next = {
+      ...contents(
+        { id: 7202, name: 'The Three Graces', artists: ['Peter Paul Rubens'],
+          artistsCurated: false, year: 1635, imageUrl: null, iconic: true, externalId: 'Q1138017' },
+      ),
+      id: 6185,
+      name: 'Museo del Prado',
+    };
+    rerender(cardFor(next, () => {}, client));
+
+    expect(screen.getByRole('button', { name: 'The Three Graces' })).toBeInTheDocument();
+    expect(screen.queryByText(/opened work/)).toBeNull();
   });
 });
 
@@ -294,87 +451,3 @@ describe('the question the run wrote down', () => {
     expect(screen.queryByText(/The run asks:/)).toBeNull();
   });
 });
-
-describe('what the unread rows are, said as what they are', () => {
-  it('calls a point that replaces a stored one a move, with how far', () => {
-    // Ephesus, run 146: one point, moved 158 m. The run keeps the stored pin and
-    // writes the new position unread, naming what it replaces.
-    const ephesus: ReviewQueueItem = {
-      ...points({
-        id: 15624, name: null, externalRef: 'Q47611', latitude: 37.94058, longitude: 27.33939,
-        replaces: { latitude: 37.939722, longitude: 27.340833 },
-      }),
-      id: 14724, external_id: 'Q47611', name: 'Ephesus', kind_id: 5, kind_name: 'Archaeology',
-      pending_moved_locations: 1,
-    };
-    renderCard(ephesus);
-
-    expect(screen.getByText('1 point moved — readers see the old position until you publish.')).toBeInTheDocument();
-    expect(screen.getByText(/moved 158 m north-west from the position readers see/)).toBeInTheDocument();
-    expect(screen.queryByText(/new point/)).toBeNull();
-  });
-
-  it('marks the one point the server names as the coordinates row\'s move', () => {
-    // The object's coordinate and its one point are one move: the queue names
-    // the point the publish would take along (\`coordinates_move_point_id\`),
-    // and the card marks that row and says so rather than asking twice.
-    const ephesus: ReviewQueueItem = {
-      ...points(
-        { id: 15623, name: null, externalRef: 'Q47611', latitude: 37.9406, longitude: 27.3394,
-          replaces: { latitude: 37.9397, longitude: 27.3408 } },
-        { id: 15624, name: null, externalRef: 'Q47611', latitude: 37.94058, longitude: 27.33939,
-          replaces: { latitude: 37.939722, longitude: 27.340833 } },
-      ),
-      id: 14724, external_id: 'Q47611', name: 'Ephesus', kind_id: 5, kind_name: 'Archaeology',
-      pending_moved_locations: 2, coordinates_move_point_id: 15624,
-    };
-    renderCard(ephesus);
-
-    expect(screen.getByText(/One moved point, marked below, is the coordinates above/)).toBeInTheDocument();
-    expect(screen.getAllByText(/the coordinates above$/)).toHaveLength(1);
-    expect(pointsSentence(1, 1, true)).toBe(
-      '1 point moved — readers see the old position until you publish. '
-      + 'The moved point is the coordinates above: publishing them moves the pin with them.',
-    );
-  });
-
-  it('tells points that arrived from points that moved where a card holds both', () => {
-    expect(pointsSentence(3, 1)).toBe(
-      '2 new points waiting and 1 point moved — readers are shown the rest of this object without '
-      + 'the new ones, and a moved point at its old position.',
-    );
-    expect(pointsSentence(2, 0)).toBe('2 new points waiting — readers are shown the rest of this object without them.');
-  });
-
-  it('says a work readers already see in another list is not new, and names the list', () => {
-    // Boy with Thorn: on show under the Capitoline Museums' Art Museums row,
-    // unread under their Archaeology row.
-    const capitoline: ReviewQueueItem = {
-      ...contents({
-        id: 3447, name: 'Boy with Thorn', artists: [], artistsCurated: false, year: null,
-        imageUrl: null, iconic: false, externalId: 'Q1187500',
-        venues: [
-          { id: 6214, name: 'Capitoline Museums', kind: 'Art Museums', externalId: 'Q333906', onShow: true },
-          { id: 14546, name: 'Capitoline Museums', kind: 'Archaeology', externalId: 'Q333906', onShow: false },
-        ],
-      }),
-      id: 14546, external_id: 'Q333906', name: 'Capitoline Museums', kind_id: 5, kind_name: 'Archaeology',
-      pending_treasures_on_show: 1,
-    };
-    renderCard(capitoline);
-
-    expect(screen.getByText(
-      '1 work waiting that readers already see in another list — publishing adds it to this one.',
-    )).toBeInTheDocument();
-    expect(screen.getByText(/already on show in Capitoline Museums \(Art Museums\)/)).toBeInTheDocument();
-    expect(screen.queryByText(/new work/)).toBeNull();
-  });
-
-  it('keeps the two apart where a card holds new works and works on show elsewhere', () => {
-    expect(worksSentence(12, 0)).toBe('12 new works waiting — the museum itself is on show already.');
-    expect(worksSentence(3, 1)).toBe(
-      '2 new works waiting, and 1 work readers already see in another list — the museum itself is on show already.',
-    );
-  });
-});
-

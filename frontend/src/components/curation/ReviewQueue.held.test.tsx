@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { screen, waitFor, fireEvent, within } from '@testing-library/react';
 
 vi.mock('../../utils/queryInvalidation', () => ({
   invalidateExperiences: vi.fn(),
@@ -31,12 +31,14 @@ vi.mock('../../api/curation', () => ({
   declineSourceValue: vi.fn(),
   declineHeld: vi.fn(),
   publishExperience: vi.fn(),
+  refuseContents: vi.fn(),
   unrefuseContents: vi.fn(),
 }));
 vi.mock('../../api/experiences', () => ({
   fetchExperience: vi.fn(),
 }));
 
+import { refuseContents } from '../../api/curation';
 import { shaped, renderQueue, CONFLICT, ARRIVAL, HELD, CONTENTS } from './reviewQueueFixtures';
 import {
   mockedAccept, mockedPublish, mockedDeclineHeld, mockedExperience, mockedInvalidate,
@@ -66,8 +68,7 @@ describe('ReviewQueue', () => {
       // Awaited, not read on the spot: the page selects the first row by writing it into
       // the address, and the router re-renders through a transition, so the bench answers
       // one tick after the list does.
-      expect(await screen.findByText(/1 new point/)).toBeInTheDocument();
-      expect(screen.getByText(/12 new works/)).toBeInTheDocument();
+      expect(await screen.findByText('12 works, 1 new point')).toBeInTheDocument();
     });
 
     it('lists what is waiting, and says so when it is showing only some of it', async () => {
@@ -101,38 +102,49 @@ describe('ReviewQueue', () => {
       // And the cap said out loud. A list shorter than its count that keeps quiet
       // reads as "these are all of them", which is the silent truncation that
       // makes a queue untrustworthy — 25 of 93 here.
-      expect(screen.getByText(/showing 25 of 93 points/)).toBeInTheDocument();
-      // Nothing is capped on the works side, so nothing is claimed about it.
-      expect(screen.queryByText(/showing 2 of 2 works/)).not.toBeInTheDocument();
+      expect(screen.getByText('2 works, 93 new points')).toBeInTheDocument();
+      expect(screen.getByText('the first 27 are listed')).toBeInTheDocument();
     });
 
-    it('offers the change alone when a card holds both halves', async () => {
+    it('answers one arrived work on its own row, and turns one down the same way', async () => {
+      // #524's case: one doubtful painting must not hold back the others, and
+      // one painting a curator does not want must not take the others with it.
       mockedFetch.mockResolvedValue({
         missing: [], refused: [], conflicts: [],
-        held: [HELD], contents: [CONTENTS],
+        held: [HELD],
+        contents: [{
+          ...CONTENTS,
+          pending_locations: 0,
+          pending_treasures: 2,
+          pending_points: [],
+          pending_works: [
+            { id: 9, name: 'Venus de Milo', artists: [], artistsCurated: false, year: -100, imageUrl: null, iconic: true },
+            { id: 10, name: 'Study of a head', artists: [], artistsCurated: false, year: null, imageUrl: null, iconic: false },
+          ],
+        }],
         limit: 25,
       });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /Publish the change only/ }));
+      const venus = (await screen.findByRole('button', { name: 'Venus de Milo' })).closest('tr')!;
+      fireEvent.click(within(venus).getByRole('button', { name: 'publish this' }));
+      await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(7, { treasureIds: [9] }));
 
-      // #524's case, from the curator's side: doubting one proposed sentence
-      // must stop meaning twelve checked paintings stay invisible.
-      await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(
-        7, { fieldsOnly: true, expectedSyncLogId: 47 },
-      ));
+      const study = screen.getByRole('button', { name: 'Study of a head' }).closest('tr')!;
+      fireEvent.click(within(study).getByRole('button', { name: 'not this' }));
+      await waitFor(() => expect(refuseContents).toHaveBeenCalledWith(7, { treasureIds: [10] }));
     });
 
-    it('does not offer it where there is only one half to publish', async () => {
+    it('offers no card-level no and no change-only button: every row answers for itself', async () => {
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], contents: [CONTENTS], limit: 25,
+        missing: [], refused: [], conflicts: [], held: [HELD], contents: [CONTENTS], limit: 25,
       });
       renderQueue();
 
-      // The one button already means exactly one thing here, and a second saying
-      // "only" beside it would be a distinction without a difference.
-      await screen.findByText(/12 new works/);
+      await screen.findByText('12 works, 1 new point');
       expect(screen.queryByRole('button', { name: /Publish the change only/ })).not.toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Turn them down/ })).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Publish everything on this card' })).toBeInTheDocument();
     });
 
     it('publishes through the one endpoint that can apply a held field', async () => {
@@ -141,7 +153,7 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
 
       // Not `accept-source`: its lookup requires `curatedConflict: true`, and a
       // field held by the kind's gate carries false — that button would 409
@@ -189,7 +201,7 @@ describe('ReviewQueue', () => {
       expect(await screen.findByText(/Run 47 proposed only the catalogue’s own labels/)).toBeInTheDocument();
       expect(screen.queryByText(/proposes/)).not.toBeInTheDocument();
       expect(screen.queryByRole('columnheader')).not.toBeInTheDocument();
-      expect(screen.getByRole('button', { name: /publish the change/i })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: /publish everything on this card/i })).toBeInTheDocument();
     });
 
     it('says nothing of the kind when a value readers see is being replaced', async () => {
@@ -198,7 +210,7 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
-      await screen.findByRole('button', { name: /publish the change/i });
+      await screen.findByRole('button', { name: /publish everything on this card/i });
       expect(screen.getByText('1 changed')).toBeInTheDocument();
       expect(screen.queryByText(/nothing readers see changes/)).not.toBeInTheDocument();
     });
@@ -223,7 +235,7 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish what has arrived/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
 
       // `{}` means an object publish, which sets curation_state = 'verified' —
       // a false claim that a person read the museum when only twelve paintings
@@ -238,7 +250,7 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish the change and what arrived/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
 
       // A held half is a real object publish — sending `contentsOnly` here
       // would mark the row read without ever answering the held proposal.
@@ -261,7 +273,7 @@ describe('ReviewQueue', () => {
       expect(rows).toHaveLength(2);
 
       fireEvent.click(rows[1]);
-      fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
       await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(7, { expectedSyncLogId: 47 }));
 
       fireEvent.click(rows[0]);
@@ -309,7 +321,7 @@ describe('ReviewQueue', () => {
         .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25 });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
 
       // The refetch takes the card away, so this is the only place the moment a
       // replaced pin stopped being shown is recorded for the person who caused it.
@@ -329,7 +341,7 @@ describe('ReviewQueue', () => {
         .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25 });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
 
       expect(await screen.findByText(/were not recomputed/)).toBeInTheDocument();
     });
@@ -346,7 +358,7 @@ describe('ReviewQueue', () => {
         .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25 });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
 
       // Region assignment is admin-only end to end, and this page's ordinary
       // reader is a scoped curator. "Something about regions failed" is not a
@@ -370,7 +382,7 @@ describe('ReviewQueue', () => {
         .mockResolvedValue({ missing: [], refused: [], conflicts: [], limit: 25 });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
 
       // A different fact from a named world view refusing: nothing was placed at
       // all, and there is no world view to name.
@@ -383,7 +395,7 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
 
       // A publication changes the fields, points, works and counts every other
       // surface reads — including the object the curator just looked at from
@@ -451,12 +463,12 @@ describe('ReviewQueue', () => {
       });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /publish the change/i }));
+      fireEvent.click(await screen.findByRole('button', { name: /publish everything on this card/i }));
 
       // The refusal is the answer, and the card has to come back live rather
       // than disabled: the refetch redraws it against what the server now holds.
       await waitFor(() => expect(screen.getByText(/from a different run/)).toBeInTheDocument());
-      expect(screen.getByRole('button', { name: /publish the change/i })).toBeEnabled();
+      expect(screen.getByRole('button', { name: /publish everything on this card/i })).toBeEnabled();
     });
 
     it('follows the card through to the object the gate is hiding', async () => {

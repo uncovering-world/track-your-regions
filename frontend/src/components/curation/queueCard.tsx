@@ -44,7 +44,7 @@ export function ItemHeader({ item }: { item: ReviewQueueItem }) {
  *
  * Here rather than in either file that draws one, because the rows of a single
  * card are drawn from two now — the object's own held fields in
- * `WaitingToPublish`, its unread contents in `GatedContents` — and they stack in
+ * `WaitingToPublish`, its unread contents in `ArrivedTable` — and they stack in
  * the same column. The 56px label gutter is what lines them up, so it is one
  * decision: kept in two copies it would drift the first time a longer label
  * needed room, and nothing would fail.

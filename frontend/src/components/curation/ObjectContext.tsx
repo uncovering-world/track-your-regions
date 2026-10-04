@@ -89,8 +89,10 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   const hasPoint = typeof item.latitude === 'number' && typeof item.longitude === 'number';
   const regions = item.region_names ?? [];
   const links: Array<{ label: string; href: string }> = [];
-  if (item.website_url) links.push({ label: 'source page', href: item.website_url });
+  // The article first: it is what a curator reads to judge the place, where the
+  // source's page is where the data came from.
   if (item.wikipedia_url) links.push({ label: 'Wikipedia', href: item.wikipedia_url });
+  if (item.website_url) links.push({ label: 'source page', href: item.website_url });
 
   const madeOf = madeOfLabel(item.offered_locations, item.counted_works_total ?? undefined);
 

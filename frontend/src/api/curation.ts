@@ -32,7 +32,7 @@ export type {
   AcceptSourceResult, AdmissionResult, AppliedPart, ContentKind, CurationLog, CurationLogEntry,
   DeclineHeldResult, DeclineSourceResult, DeclinedPart, ExperienceEditResult,
   ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated,
-  PartNotFound, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsResult,
+  PartNotFound, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody, RefuseContentsResult,
   RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
 
@@ -206,14 +206,14 @@ export async function declineHeld(
 }
 
 /**
- * The five shapes the endpoint accepts, as five shapes rather than seven optional
- * fields.
+ * The four shapes the web sends, as four shapes rather than six optional fields.
+ * The endpoint takes a fifth, `fieldsOnly`, which no screen sends since every row
+ * of the card answers on its own (#524).
  *
  * A union because the server's own schema is one: `publishExperienceBodySchema`
- * refuses `fieldsOnly` beside `contentsOnly` or either id array, refuses
- * `expectedSyncLogId` on any contents publish, refuses a held selection beside a
- * contents publish — it already publishes the fields half — and refuses a held
- * selection *without* `expectedSyncLogId`, which is why the fifth member declares
+ * refuses `expectedSyncLogId` on any contents publish, refuses a held selection
+ * beside a contents publish — it already publishes the fields half — and refuses
+ * a held selection *without* `expectedSyncLogId`, which is why the fourth member declares
  * it required: a per-row answer is about the proposal one run made. Typed as a bag of optionals, a
  * caller could write the combination that 400s and find out at runtime; typed as
  * this, the compiler refuses it at the call site — which is where the card is
@@ -230,34 +230,24 @@ export async function declineHeld(
 export type PublishRequest =
   /** The object: its held fields, its own state, and every unread row under it. */
   | { locationIds?: undefined; treasureIds?: undefined; contentsOnly?: undefined;
-      fieldsOnly?: undefined; heldFields?: undefined; heldParts?: undefined;
+      heldFields?: undefined; heldParts?: undefined;
       expectedSyncLogId?: number }
   /** Every pending content row, the object's own state left alone. */
   | { contentsOnly: true; locationIds?: undefined; treasureIds?: undefined;
-      fieldsOnly?: undefined; heldFields?: undefined; heldParts?: undefined;
+      heldFields?: undefined; heldParts?: undefined;
       expectedSyncLogId?: undefined }
   /** Exactly these rows, and nothing else. */
   | { locationIds?: number[]; treasureIds?: number[]; contentsOnly?: undefined;
-      fieldsOnly?: undefined; heldFields?: undefined; heldParts?: undefined;
+      heldFields?: undefined; heldParts?: undefined;
       expectedSyncLogId?: undefined }
-  /**
-   * The object's held fields, and none of its unread contents (#524) — except
-   * the point that is the object's held coordinate moving (#1233).
-   */
-  | { fieldsOnly: true; locationIds?: undefined; treasureIds?: undefined;
-      contentsOnly?: undefined; heldFields?: undefined; heldParts?: undefined;
-      expectedSyncLogId?: number }
   /**
    * Exactly these rows of the held proposal, and the rest left open (#722).
    *
-   * The fields publish narrowed the way the id arrays narrow the contents one.
-   * It carries no `fieldsOnly` because naming held rows already says so — not
-   * because the server refuses the two together, which it deliberately does
-   * not: a body restating its own half has one reading, unlike the pairs the
-   * schema's `.refine`s forbid, so there is no defect to write a rule against.
+   * The fields publish narrowed the way the id arrays narrow the contents one:
+   * naming held rows publishes those and none of the unread contents.
    */
   | { heldFields?: string[]; heldParts?: HeldSelectionPart[]; locationIds?: undefined;
-      treasureIds?: undefined; contentsOnly?: undefined; fieldsOnly?: undefined;
+      treasureIds?: undefined; contentsOnly?: undefined;
       expectedSyncLogId: number };
 
 /**
@@ -292,12 +282,6 @@ export interface HeldSelectionPart {
  * — an absent body means the opposite (the object too), which is exactly the
  * inference a contents-only card must not make, since the object may already be
  * verified by a person who never looked at what just arrived under it.
- *
- * `fieldsOnly: true` is the mirror, and the reason it exists is #524: a museum
- * whose label is held *and* which gained twelve paintings could only be answered
- * as one act, so declining the label kept the paintings invisible. It is
- * exclusive with all three contents shapes — a body naming both halves is asking
- * for the object publish it could have asked for by naming nothing.
  */
 export async function publishExperience(
   experienceId: number,

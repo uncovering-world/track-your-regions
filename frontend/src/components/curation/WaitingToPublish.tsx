@@ -22,7 +22,7 @@
 
 import { useState } from 'react';
 import {
-  Box, Typography, Card, CardContent, Button, Stack, Divider,
+  Box, Typography, Card, CardContent, Button, Stack, Divider, Link, Collapse,
 } from '@mui/material';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -31,6 +31,7 @@ import {
   refuseArrival,
   refuseContents,
   type PublishRequest,
+  type RefuseContentsBody,
 } from '../../api/curation';
 import type { HeldPart, ReviewQueueItem } from '../../api/reviewQueue';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
@@ -44,7 +45,8 @@ import { HeldAnswer, type HeldSelection } from './HeldAnswer';
 import { ObjectPreview } from './ObjectPreview';
 import { heldRefusalOutcomeFor, publishOutcomeFor } from './publishOutcome';
 import { PartPreviewDialog } from './PartPreviewDialog';
-import { GatedContents } from './GatedContents';
+import { ArrivedTable, RowAnswer } from './ArrivedTable';
+import { movedPointGroups } from './movedPointGroups';
 
 /** One experience, with whatever a gated run left open about it. */
 export interface GatedGroup {
@@ -147,9 +149,14 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
   const parts = partGroups(
     held?.proposed_parts ?? [], context, { offeredLocations: item.offered_locations }, setOpenPart,
   );
-  const partRows = parts.flatMap(group => group.rows);
-  const points = count(contents?.pending_locations);
+  // A point the source moved is a change to what readers see, asked beside the
+  // parts' held fields; the point that is the object's own coordinate moving is
+  // the coordinates row itself and gets no group (`movedPointGroups.ts`).
+  const moved = movedPointGroups(contents, item.name);
+  const partRows = [...parts, ...moved].flatMap(group => group.rows);
   const works = count(contents?.pending_treasures);
+  const points = count(contents?.pending_locations) - count(contents?.pending_moved_locations);
+  const [showHow, setShowHow] = useState(false);
 
   const publish = useMutation({
     mutationFn: (body?: PublishRequest) => publishExperience(group.id, body ?? publishBodyFor(group)),
@@ -191,29 +198,34 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
   // Either answer in flight disables *every* button on the card, the object-level
   // ones included. Both endpoints take OBJECT_LOCK, and an object publish with no
   // selection writes every row still open: start refusing one field, click
-  // "Publish the change" before it lands, and if the publish wins the lock it
+  // "Publish everything on this card" before it lands, and if the publish wins the lock it
   // writes the value being refused and clears the pointer — the refusal then finds
   // no proposal, answers 409, and the value is on the site with no card left to
   // answer. Guarding only the per-row buttons would leave the two that publish the
   // most as the way to lose the answer being given.
-  // The no the two gated kinds without one lacked (#852, ADR-0053): an arrival
-  // kept out — written the way a rule's refusal is, so the kept-out list is
-  // where it comes back from — and unread contents turned down, which stay
-  // hidden and stop being asked about. Its own mutation for the reason the
-  // held refusal is: refusing an arrival writes the membership and nothing
-  // else; refusing contents marks part rows and, for any refused point,
-  // re-places the object — the point counts toward no region now, and a pin
-  // it was holding on the map is withdrawn — the one act here that changes
-  // what a reader sees.
+  // An arrival kept out (#852, ADR-0053) — written the way a rule's refusal
+  // is, so the kept-out list is where it comes back from. Its own mutation for
+  // the reason the held refusal is: it writes the membership and nothing else.
   const keepOut = useMutation({
-    mutationFn: async (): Promise<Partial<Awaited<ReturnType<typeof refuseContents>>>> => (
-      arrival ? refuseArrival(group.id).then(() => ({})) : refuseContents(group.id)),
-    onSettled: (data, error) => {
+    mutationFn: () => refuseArrival(group.id),
+    onSettled: (_data, error) => {
       invalidateExperiences(queryClient, { experienceId: group.id });
-      onDone(error ? messageFor(item, error) : keptOutOutcomeFor(item.name, arrival !== undefined, data));
+      onDone(error ? messageFor(item, error) : keptOutOutcomeFor(item.name, true, {}));
     },
   });
-  const answering = publish.isPending || refuse.isPending || keepOut.isPending;
+  // A no to unread rows — one work, one point, or the arrived section's all —
+  // which stay hidden and stop being asked about. Refusing a point re-places
+  // the object, since the point counts toward no region now, and a pin a moved
+  // point was holding on the map is withdrawn: the one no here that changes
+  // what a reader sees, said on that point's row.
+  const turnDown = useMutation({
+    mutationFn: (body: RefuseContentsBody) => refuseContents(group.id, body),
+    onSettled: (data, error) => {
+      invalidateExperiences(queryClient, { experienceId: group.id });
+      onDone(error ? messageFor(item, error) : keptOutOutcomeFor(item.name, false, data));
+    },
+  });
+  const answering = publish.isPending || refuse.isPending || keepOut.isPending || turnDown.isPending;
 
   return (
     <Card variant="outlined">
@@ -253,14 +265,14 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
           )}
 
           {(rows.length > 0 || partRows.length > 0) && (
-            <GatedRow label="fields">
+            <GatedRow label="changes">
               {/* What the run proposes, counted by kind, before a single row: the first
                   thing a curator needs to know is whether a value readers see is being
                   replaced or a fact is appearing where there was none, and on this
                   catalogue the second is the whole batch (#570). The parts' rows count
                   with the object's: one card, one decision. */}
               <ProposalSummary
-                lead={held?.sync_log_id ? `Run ${held.sync_log_id} proposes` : 'An earlier run proposes'}
+                lead={summaryLead(held)}
                 rows={[...rows, ...partRows]}
               />
               {/* The same table the conflict card draws, because it is the same
@@ -270,7 +282,7 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
                   A part's group follows the object's, headed by the part's name and a
                   way to open it. */}
               <FactTable
-                groups={[{ subject: { kind: 'object', label: item.name }, rows }, ...parts]}
+                groups={[{ subject: { kind: 'object', label: item.name }, rows }, ...parts, ...moved]}
                 labels={{ before: 'readers see', after: 'the run proposes' }}
                 // One fact at a time (#722), because a run improves and damages in
                 // the same breath: run 68 wants to drop "(Phase II)" from Getbol's
@@ -278,7 +290,20 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
                 // until now those were one button. The subject comes with the field
                 // because a field name is not an identity across groups — two works
                 // in one museum both have an attribution row.
-                answer={(field, _fieldRows, subject) => (
+                answer={(field, _fieldRows, subject) => (subject.movedPointId !== undefined ? (
+                  // A moved point is answered by its id: published, it replaces the
+                  // pin readers see; turned down, it stays hidden and the pin it
+                  // would replace is released as withdrawn and asks its own
+                  // question (ADR-0053, `releaseDeferredWithdrawals`) — the one no
+                  // on this card that changes what readers see, so its row says so
+                  // until #1233 decides what a no to a move should do.
+                  <RowAnswer
+                    busy={answering}
+                    onPublish={() => publish.mutate({ locationIds: [subject.movedPointId!] })}
+                    onRefuse={() => turnDown.mutate({ locationIds: [subject.movedPointId!] })}
+                    refuseNote="A no also takes the old pin off the map, and it asks under lost places."
+                  />
+                ) : (
                   <HeldAnswer
                     subject={subject}
                     field={field}
@@ -290,40 +315,49 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
                     })}
                     onRefuse={selection => refuse.mutate(selection)}
                   />
-                )}
+                ))}
               />
               {/* What the two answers differ in, and the difference is not
                   symmetric — the same sentence the conflict card ends on, for the
-                  same reason. Publishing puts the run's value on the site;
-                  refusing writes nothing at all, because the value readers see has
-                  already won every run since the gate first held this one. What it
-                  changes is the asking, and only for that value. */}
-              <Typography variant="caption" color="text.secondary">
-                Publishing one of these leaves the rest waiting. A picture is answered with its
-                credit, shown under it on each side. “Not this” changes nothing readers see and
-                settles the question — the run has to propose something different to ask again. On
-                a card raised before facts were asked one at a time, one combination still reaches
-                readers: say no to source data and then publish a new picture, and the picture goes
-                out with nobody credited, since the refused credit may not be written and the stored
-                one names a photograph nobody will see. A field you have edited yourself is a
-                different question and keeps
-                your wording either way.
-              </Typography>
+                  same reason. Folded: it is read once, and five lines under every
+                  table were most of what a curator scrolled past. */}
+              <Link component="button" type="button" variant="caption" underline="hover"
+                onClick={() => setShowHow(v => !v)} aria-expanded={showHow}>
+                How answers work
+              </Link>
+              <Collapse in={showHow}>
+                <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 0.5, maxWidth: '80ch' }}>
+                  Publishing one of these leaves the rest waiting. A picture is answered with its
+                  credit, shown under it on each side. “Not this” settles the question — the run has to
+                  propose something different to ask again — and changes nothing readers see, except
+                  on a moved point, whose row says what it takes away. On
+                  a card raised before facts were asked one at a time, one combination still reaches
+                  readers: say no to source data and then publish a new picture, and the picture goes
+                  out with nobody credited, since the refused credit may not be written and the stored
+                  one names a photograph nobody will see. A field you have edited yourself is a
+                  different question and keeps your wording either way.
+                </Typography>
+              </Collapse>
             </GatedRow>
           )}
           {(points > 0 || works > 0) && (
-            // Keyed on the object: this card is mounted unkeyed on purpose, so
-            // without it a point or a work a curator opened here would still be
-            // open on the next waiting row, paired with that row's id and name.
-            <GatedContents
-              key={group.id}
-              group={group}
-              item={item}
-              contents={contents}
-              points={points}
-              works={works}
-              onDone={onDone}
-            />
+            <GatedRow label="arrived">
+              {/* Keyed on the object: this card is mounted unkeyed on purpose, so
+                  without it a point or a work a curator opened here would still be
+                  open on the next waiting row, paired with that row's id and name. */}
+              <ArrivedTable
+                key={group.id}
+                group={group}
+                item={item}
+                contents={contents}
+                works={works}
+                points={points}
+                busy={answering}
+                onPublish={body => publish.mutate(body)}
+                onRefuse={body => turnDown.mutate(body)}
+                onDone={onDone}
+              />
+            </GatedRow>
           )}
         </Stack>
 
@@ -335,36 +369,18 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
           >
             {publishLabel(group)}
           </Button>
-          {/* Only where both halves are open, because that is the only case in
-              which the one button above does two things at once: on the card of
-              a museum holding twelve unread paintings and a proposed label,
-              answering the label releases the paintings, so a curator who doubts
-              one sentence would otherwise hold back twelve works (#524). The
-              change alone releases nothing unread, with one point excepted: the
-              one that is the object's held coordinate moving goes with that
-              coordinate (#1233, `pointMovedWithObject` on the server). */}
-          {held && contents && (
-            <Button
-              variant="text"
-              disabled={answering}
-              onClick={() => publish.mutate({ fieldsOnly: true, expectedSyncLogId: held.sync_log_id ?? undefined })}
-            >
-              Publish the change only
-            </Button>
-          )}
-          {/* The second answer (#852): an arrival is kept out; unread contents
-              under a visible object are turned down. A held field says no on its
-              own row, so a card that is held alone offers nothing here. The word
-              is the one the batch bar quotes for this kind, so one row and a
-              batch read alike. */}
-          {(arrival || contents) && (
+          {/* The arrival's no (#852): kept out, the way a rule's refusal is.
+              Everything else on a card is answered on its own row — a held field,
+              a moved point, an arrived work — so a card-level no would only say
+              one of those twice. */}
+          {arrival && (
             <Button
               variant="outlined"
               color="warning"
               disabled={answering}
               onClick={() => keepOut.mutate()}
             >
-              {arrival ? ANSWER_WORDS.arrival.reject : ANSWER_WORDS.contents.reject}
+              {ANSWER_WORDS.arrival.reject}
             </Button>
           )}
           <Button variant="text" onClick={() => setShowObject(v => !v)}>
@@ -400,6 +416,12 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
   );
 }
 
+/** Who the changes table's rows come from: a run's held proposal, or the source's moves alone. */
+function summaryLead(held: ReviewQueueItem | undefined): string {
+  if (!held) return 'The source moved';
+  return held.sync_log_id ? `Run ${held.sync_log_id} proposes` : 'An earlier run proposes';
+}
+
 /**
  * The body `POST /:id/publish` gets for this group — one shape per case a
  * card can be in.
@@ -415,10 +437,6 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
  * `expectedSyncLogId`. An arrival has neither a held half nor a published
  * object underneath it, so `{}` — the object publish — is the one case it is
  * right for: there is no earlier verified state to misreport.
- *
- * The fourth shape, `fieldsOnly`, is not built here: it is not what a card *is*,
- * it is a second thing a curator can ask of a card that is both — so the button
- * that offers it builds it, and only where both halves are open.
  */
 function publishBodyFor({ held, contents }: GatedGroup): PublishRequest {
   // A held card always names its run; the card type is shared with the arrival,
@@ -446,25 +464,14 @@ function runNote({ arrival }: GatedGroup): string {
 /**
  * What the one button will actually do, said on the button.
  *
- * One button rather than one per row, because publishing an object is one act at
- * the endpoint: naming no contents applies the held fields, marks the row read
- * *and* releases every unread point and work under it.
- *
- * The ids a per-row publish needs are here now — the queue lists them beside each
- * count — and `POST /:id/publish` has always accepted `locationIds`/`treasureIds`.
- * The narrower act has its own button now — `fieldsOnly`, offered only where both
- * halves are open, since that is the only case in which this one does two things
- * at once. It leaves the unread rows waiting, except the point that is the object's
- * own held coordinate moving, which is published with that coordinate (#1233). What is still missing of #524 is per-row publishing: the ids are here
- * beside each count and the endpoint has always accepted them, but nothing on the
- * card lets a curator choose among them, so a third button would promise a
- * precision the screen cannot express.
+ * One card-level button, because publishing an object is one act at the
+ * endpoint: naming no contents applies the held fields, marks the row read
+ * *and* releases every unread point and work under it. Everything narrower is
+ * a row's own answer (#524), so the button says it takes everything.
  */
 function publishLabel(group: GatedGroup): string {
   if (group.arrival) return 'Publish — readers may see it';
-  if (group.held && group.contents) return 'Publish the change and what arrived with it';
-  if (group.held) return 'Publish the change';
-  return 'Publish what has arrived';
+  return 'Publish everything on this card';
 }
 
 /**
