@@ -435,7 +435,6 @@ export default [
   {
     files: [
       'src/db/experienceWriter.ts',
-      'src/services/sync/missingDetection.ts',
       'src/services/sync/pictureRepair.ts',
     ],
     rules: {
@@ -513,6 +512,7 @@ export default [
       'src/services/sync/admission.ts',
       'src/services/sync/curationDecay.ts',
       'src/services/sync/heldProposalPointer.ts',
+      'src/services/sync/missingDetection.ts',
     ],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(MEMBERSHIP_WRITE_RULES),

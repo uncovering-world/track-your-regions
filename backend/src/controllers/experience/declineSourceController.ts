@@ -19,7 +19,7 @@ import { createError, notFound, Refusal } from '../../middleware/errorHandler.js
 import type { declineSourceBodySchema, idParamSchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { claimKeyFor } from '../../services/sync/changeSet.js';
-import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
+import { conflictChangeOpenSql } from './reviewQueuePredicates.js';
 import { recordConflictRefusals } from './conflictDecisions.js';
 import { lockExperience } from '../../db/experienceWriter.js';
 
@@ -130,13 +130,7 @@ async function recordRefusals(
       JOIN experience_sync_logs l ON l.id = ch.sync_log_id
       JOIN experiences e ON e.id = ch.experience_id
       WHERE ch.experience_id = $1
-        AND l.is_dry_run = FALSE
-        AND ch.changed_fields @> '[{"curatedConflict": true}]'
-        AND (e.last_seen_sync_log_id IS NULL
-             OR ch.sync_log_id >= e.last_seen_sync_log_id
-             OR NOT EXISTS (
-               SELECT 1 FROM experience_sync_logs prev
-               WHERE prev.id = e.last_seen_sync_log_id AND ${CHANGESET_LANDED_SQL}))
+        AND ${conflictChangeOpenSql('e', 'ch', 'l')}
       ORDER BY ch.id DESC
       LIMIT 1
     `, [experienceId]);

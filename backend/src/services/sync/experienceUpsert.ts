@@ -128,9 +128,9 @@ export interface UpsertOutcome {
   changeSet: ChangeSetResult;
   nameSnapshot: string;
   /**
-   * The source has produced a row it had stopped offering — either one still
-   * carrying `missing_since`, or one a curator had already called `former`,
-   * whose verdict is what cleared the flag.
+   * The source has produced a place it had stopped offering — its own
+   * membership still carrying `missing_since`, or one a curator had already
+   * called `former`, whose verdict is what cleared the flag.
    */
   returnedFromMissing: boolean;
 }
@@ -267,7 +267,7 @@ function snapshotFromParams(
  */
 async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutcome> {
   const result = await pool.query(
-    `SELECT e.id, e.curated_fields, e.missing_since, e.source_membership,
+    `SELECT e.id, e.curated_fields, sm.missing_since, sm.source_membership,
             ${PLACE_HELD} AS was_held,
             ${snapshotSelect('e.')},
             ST_X(e.location) AS lon, ST_Y(e.location) AS lat
@@ -431,13 +431,13 @@ async function writeUnderLock(
   // during the wait (`db/locks.ts`). This statement starts with the lock held,
   // so its snapshot has that publish in it.
   const stored = locked === null ? null : (await client.query(
-    `SELECT e.id, e.curated_fields, e.missing_since, e.source_membership,
+    `SELECT e.id, e.curated_fields, sm.missing_since, sm.source_membership,
             ${snapshotSelect('e.')},
             ST_X(e.location) AS lon, ST_Y(e.location) AS lat,
             ${PLACE_HELD} AS was_held
-       FROM experiences e
-      WHERE e.id = $2`,
-    [params.sourceId, locked.id],
+       FROM ${sourcePlacesSql('e', 'sm')}
+      WHERE e.id = $2 AND sm.source_id = $1 AND sm.external_id = $3`,
+    [params.sourceId, locked.id, params.externalId],
   )).rows[0] ?? null;
   const held = Boolean(stored?.was_held);
 
@@ -463,8 +463,7 @@ async function writeUnderLock(
       INSERT INTO experiences (
         id, source_id, external_id, name, name_local, description, short_description,
         type, tags, location, country_codes, country_names, image_url, metadata,
-        boundary, area_km2,
-        first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at, created_at, updated_at
+        boundary, area_km2, created_at, updated_at
       ) VALUES (
         COALESCE($20::integer, nextval(pg_get_serial_sequence('experiences', 'id'))),
         $1, $2, $3, $4, $5, $6, $7, $8,
@@ -472,7 +471,7 @@ async function writeUnderLock(
         $11, $12, $13, $14,
         (SELECT geom FROM extent),
         (SELECT ST_Area(geom::geography) / 1000000 FROM extent),
-        $15, $15, NOW(), NOW(), NOW()
+        NOW(), NOW()
       )
       ON CONFLICT (id) DO UPDATE SET
         name = CASE WHEN experiences.curated_fields ? 'name' OR ${HELD} THEN experiences.name ELSE EXCLUDED.name END,
@@ -511,7 +510,7 @@ async function writeUnderLock(
         -- The keys a run computes about its own pass stand outside both guards:
         -- a claim cannot hold them because nobody can be right about a
         -- measurement, and the gate does not hold them because they are not
-        -- content a reader sees. That is the standing last_seen_at has here,
+        -- content a reader sees. That is the standing the membership's last_seen_at has,
         -- and the one the treasures upsert gives sitelinks_count. Refusing them
         -- froze the Louvre's stored fame sum at the value it had when the gate
         -- went up, while every run went on asking a curator about the difference
@@ -577,17 +576,6 @@ async function writeUnderLock(
         -- split of #763 all over again.
         boundary = CASE WHEN experiences.curated_fields ? 'boundary' THEN experiences.boundary ELSE EXCLUDED.boundary END,
         area_km2 = CASE WHEN experiences.curated_fields ? 'boundary' THEN experiences.area_km2 ELSE EXCLUDED.area_km2 END,
-        last_seen_sync_log_id = COALESCE(EXCLUDED.last_seen_sync_log_id, experiences.last_seen_sync_log_id),
-        last_seen_at = NOW(),
-        missing_since = NULL,
-        -- The source listing a row is evidence about membership, exactly as
-        -- its absence was. A curator's 'former' was a claim about the source's
-        -- collection, and the source has just contradicted it; leaving it
-        -- would mark as delisted an object the source currently offers, with
-        -- nothing anywhere to say so. Existence is untouched: a listing says
-        -- nothing about whether the thing still stands. Only ever toward more
-        -- visibility, so a source outage still cannot hide anything (ADR-0020).
-        source_membership = 'present',
         updated_at = NOW()
       RETURNING id, (xmax = 0) AS inserted, curated_fields,
                 ${snapshotSelect()},
@@ -605,8 +593,14 @@ async function writeUnderLock(
       -- question about whether anything differs and the CASE arms above fire
       -- either way. Setting it is done after this statement, and only for a
       -- run that proposed something.
+      --
+      -- Whether the source lists the place, and when it first and last saw
+      -- it, are this membership's too (ADR-0084): another source's run says
+      -- nothing about them, and the place's own copy is derived from its
+      -- memberships by derive_place_listing().
       INSERT INTO ${MEMBERSHIPS} (
-        experience_id, kind_id, source_id, external_id, admitted_for, curation_state, published_at
+        experience_id, kind_id, source_id, external_id, admitted_for, curation_state, published_at,
+        first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at
       )
       SELECT ins.id,
              (SELECT kind_id FROM experience_sources WHERE id = $1),
@@ -614,13 +608,26 @@ async function writeUnderLock(
              $2,
              $18::jsonb,
              CASE WHEN (SELECT requires_curation FROM gate) THEN 'pending' ELSE 'auto' END,
-             CASE WHEN (SELECT requires_curation FROM gate) THEN NULL ELSE NOW() END
+             CASE WHEN (SELECT requires_curation FROM gate) THEN NULL ELSE NOW() END,
+             $15, $15, NOW()
         FROM ins
       ON CONFLICT (source_id, external_id) DO UPDATE SET
         admitted_for = EXCLUDED.admitted_for,
         pending_change_sync_log_id = CASE WHEN ${HELD}
                                          THEN ${MEMBERSHIPS}.pending_change_sync_log_id
                                          ELSE NULL END,
+        last_seen_sync_log_id = COALESCE(EXCLUDED.last_seen_sync_log_id, ${MEMBERSHIPS}.last_seen_sync_log_id),
+        last_seen_at = NOW(),
+        missing_since = NULL,
+        -- The source listing a place is evidence about its membership, exactly
+        -- as its absence was. A curator's 'former' was a claim about the
+        -- source's collection, and the source has just contradicted it;
+        -- leaving it would mark as delisted a place the source currently
+        -- offers, with nothing anywhere to say so. Existence is untouched: a
+        -- listing says nothing about whether the thing still stands. Only ever
+        -- toward more visibility, so a source outage still cannot hide
+        -- anything (ADR-0020).
+        source_membership = 'present',
         updated_at = NOW()
       RETURNING pending_change_sync_log_id
     )

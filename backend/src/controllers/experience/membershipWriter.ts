@@ -149,6 +149,27 @@ export async function clearHeldPointer(
 }
 
 /**
+ * A curator's verdict on whether the place's sources still list it (ADR-0020),
+ * on every membership of the place: the verdict is asked of the place, whose
+ * own flag reads missing only once every source has stopped listing it
+ * (`derive_place_listing()`), so it answers each of them. Clears
+ * `missing_since` whatever the verdict, because a verdict answers the flag:
+ * the flag is a question, and a curator has now said what it meant. A verdict
+ * on one membership is #1245's, when the queue asks per membership.
+ */
+export async function setListingVerdict(
+  client: PoolClient,
+  lock: LockedExperience,
+  sourceMembership: string,
+): Promise<void> {
+  await client.query(`
+    UPDATE ${MEMBERSHIPS}
+    SET source_membership = $2, missing_since = NULL, updated_at = NOW()
+    WHERE experience_id = $1
+  `, [lock.id, sourceMembership]);
+}
+
+/**
  * The membership of a place a curator created by hand, in the kind of the
  * source the curator chose (ADR-0045 decision 4, #822): `verified` and
  * published from the moment it exists, since a person's judgement does not

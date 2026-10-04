@@ -113,7 +113,7 @@ const MAJOR_METADATA_KEYS = ['inDanger', 'dateInscribed'] as const;
  * it.
  *
  * `experienceUpsert.ts` writes these keys past the gate for the same reason
- * `last_seen_at` goes past it, and the two halves have to agree. Ignored in the
+ * the membership's `last_seen_at` goes past it, and the two halves have to agree. Ignored in the
  * diff but refused by the write would leave the counter frozen at whatever it
  * read when the gate went up — which is exactly what the Louvre's stored 2363
  * already was: a number the queue kept asking about and no run could land, so

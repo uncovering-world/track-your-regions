@@ -468,6 +468,52 @@ const membershipSourceDisagreesWithRow: CatalogueAssertion = {
     + `(experience ${count(row, 'experience_id')})`,
 };
 
+/**
+ * A place whose own listing flags are not what its memberships say.
+ *
+ * Whether a source still lists a place is each membership's (ADR-0084); the
+ * place's `missing_since` and `source_membership` are their derivation —
+ * missing once every membership is, at the latest of their flags, `former`
+ * once every membership is — written by one trigger,
+ * `derive_place_listing()`, and by nothing else. The review queue's missing
+ * card and every `former` chip read the place's copy, so a place where the two
+ * disagree is asked about, or labelled, by a flag no source raised. A row here
+ * means a write reached the place's columns past the trigger, or a database is
+ * missing the trigger.
+ */
+const placeListingDisagreesWithMemberships: CatalogueAssertion = {
+  id: 'place-listing-disagrees-with-memberships',
+  area: 'objects',
+  title: 'A place whose missing or former flag is not what its memberships say',
+  kind: 'invariant',
+  meaning:
+    'The place\'s own flags say whether its sources still list it, and they are derived from its '
+    + 'memberships: missing once every source has stopped listing it, former once every membership '
+    + 'is. Here the two disagree, so the review queue asks about, or a card labels, a state no '
+    + 'source is in. Something wrote the place\'s flags past the trigger that derives them, or the '
+    + 'database is missing that trigger; re-applying the schema restores it.',
+  sql: `SELECT e.id AS experience_id,
+               e.name AS experience_name,
+               e.missing_since IS NOT NULL AS place_missing,
+               e.source_membership AS place_listing,
+               d.missing IS NOT NULL AS memberships_missing,
+               d.listing AS memberships_listing
+          FROM experiences e
+          JOIN (SELECT m.experience_id,
+                       CASE WHEN bool_and(m.missing_since IS NOT NULL) THEN max(m.missing_since) END AS missing,
+                       CASE WHEN bool_and(m.source_membership = 'former') THEN 'former' ELSE 'present' END AS listing
+                  FROM ${MEMBERSHIPS} m
+                 GROUP BY m.experience_id) d ON d.experience_id = e.id
+         WHERE e.missing_since IS DISTINCT FROM d.missing
+            OR e.source_membership IS DISTINCT FROM d.listing
+         ORDER BY e.name`,
+  describe: row =>
+    `${text(row, 'experience_name')}: the place reads `
+    + `${row.place_missing ? 'missing' : 'listed'}, ${text(row, 'place_listing')}; its memberships say `
+    + `${row.memberships_missing ? 'missing' : 'listed'}, ${text(row, 'memberships_listing')} `
+    + `(experience ${count(row, 'experience_id')})`,
+};
+
 /** `column <> tidy(column)`: the stored value is not what the writers would store. */
 const untidy = (column: string) => `${column} IS NOT NULL AND ${column} <> ${tidyLabelSql(column)}`;
 
@@ -635,5 +681,6 @@ export const objectAssertions: CatalogueAssertion[] = [
   archaeologySiteTwinOfWorldHeritage,
   placeWithoutMembership,
   membershipSourceDisagreesWithRow,
+  placeListingDisagreesWithMemberships,
   nameCarriesWhitespaceNobodyTyped,
 ];

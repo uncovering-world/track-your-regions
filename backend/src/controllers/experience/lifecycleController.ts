@@ -27,7 +27,7 @@ import type { experienceAdmissionBodySchema, idParamSchema, lifecycleStateBodySc
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
-import { answerAdmissionOnMembership } from './membershipWriter.js';
+import { answerAdmissionOnMembership, setListingVerdict } from './membershipWriter.js';
 import {
   lockExperience, setLifecycleVerdict, recordDecisionOnExperience, type LockedExperience,
 } from '../../db/experienceWriter.js';
@@ -204,8 +204,9 @@ export async function answerStateUnderLock(
     }
 
     await setLifecycleVerdict(client, locked.lock, {
-      sourceMembership: nextMembership, existence: nextExistence, decidedBy: userId, note: note ?? null,
+      existence: nextExistence, decidedBy: userId, note: note ?? null,
     });
+    await setListingVerdict(client, locked.lock, nextMembership);
 
     for (const action of actions) {
       await client.query(`

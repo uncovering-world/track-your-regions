@@ -17,7 +17,7 @@
  * the other (`db/readerPredicates.ts` sets the same rule).
  */
 
-import { admissionAnsweredSql, membershipAdmittedSql } from '../../db/membership.js';
+import { MEMBERSHIPS, admissionAnsweredSql, membershipAdmittedSql } from '../../db/membership.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import {
   hidePendingSql,
@@ -138,7 +138,9 @@ export function withdrawnContainerOpenSql(e = 'e'): string {
  * are the `experiences`, `experience_sync_changes` and `experience_sync_logs`
  * aliases.
  *
- * The staleness clause reads `last_seen_sync_log_id` against
+ * The staleness clause reads the `last_seen_sync_log_id` of the membership
+ * whose source ran the proposing run — another source's run seeing the place
+ * says nothing about whether this source still disagrees (ADR-0084) — against
  * `CHANGESET_LANDED_SQL` rather than trusting a closed log: a run that finds
  * the source agreeing again writes no new changeset row at all (see
  * `worthRecording`), so the absence of one is not by itself evidence the
@@ -156,10 +158,12 @@ export function withdrawnContainerOpenSql(e = 'e'): string {
 export function conflictChangeOpenSql(e = 'e', ch = 'ch', l = 'l'): string {
   return `${l}.is_dry_run = FALSE
     AND ${ch}.changed_fields @> '[{"curatedConflict": true}]'
-    AND (${e}.last_seen_sync_log_id IS NULL
-         OR ${ch}.sync_log_id >= ${e}.last_seen_sync_log_id
-         OR NOT EXISTS (SELECT 1 FROM experience_sync_logs prev
-                        WHERE prev.id = ${e}.last_seen_sync_log_id AND ${CHANGESET_LANDED_SQL}))`;
+    AND NOT EXISTS (SELECT 1 FROM ${MEMBERSHIPS} seen
+                      JOIN experience_sync_logs prev ON prev.id = seen.last_seen_sync_log_id
+                     WHERE seen.experience_id = ${e}.id
+                       AND seen.source_id = ${l}.source_id
+                       AND ${ch}.sync_log_id < seen.last_seen_sync_log_id
+                       AND ${CHANGESET_LANDED_SQL})`;
 }
 
 /**

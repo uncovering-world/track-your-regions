@@ -21,7 +21,7 @@ import { columnFor } from './acceptableFields.js';
 import type { ContentItemChange } from '../../services/sync/types.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
-import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
+import { conflictChangeOpenSql } from './reviewQueuePredicates.js';
 import { lockExperience, updateExperienceColumns } from '../../db/experienceWriter.js';
 import { releaseAnchorPointClaim, movePointTo } from './experienceLocationWriter.js';
 import { releaseConflictRefusals } from './conflictDecisions.js';
@@ -181,13 +181,7 @@ async function applyProposedFields(
       JOIN experience_sync_logs l ON l.id = ch.sync_log_id
       JOIN experiences e ON e.id = ch.experience_id
       WHERE ch.experience_id = $1
-        AND l.is_dry_run = FALSE
-        AND ch.changed_fields @> '[{"curatedConflict": true}]'
-        AND (e.last_seen_sync_log_id IS NULL
-             OR ch.sync_log_id >= e.last_seen_sync_log_id
-             OR NOT EXISTS (
-               SELECT 1 FROM experience_sync_logs prev
-               WHERE prev.id = e.last_seen_sync_log_id AND ${CHANGESET_LANDED_SQL}))
+        AND ${conflictChangeOpenSql('e', 'ch', 'l')}
       ORDER BY ch.id DESC
       LIMIT 1
     `, [experienceId]);

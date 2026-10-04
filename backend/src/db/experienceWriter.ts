@@ -208,27 +208,25 @@ export async function recordDecisionOnExperience(
 }
 
 /**
- * A lifecycle verdict on the place (ADR-0020, ADR-0021): whether its source
- * still lists it and whether it still stands, with who decided. Clears
- * `missing_since` whatever the verdict, because a verdict answers the flag:
- * the flag is a question, and a curator has now said what it meant.
+ * A lifecycle verdict on the place (ADR-0020, ADR-0021): whether it still
+ * stands, with who decided. Whether its sources still list it is its
+ * memberships' (ADR-0084) and is written beside this by `setListingVerdict`
+ * (`membershipWriter.ts`), under the same lock.
  */
 export async function setLifecycleVerdict(
   client: PoolClient,
   lock: LockedExperience,
-  verdict: { sourceMembership: string; existence: string; decidedBy: number; note: string | null },
+  verdict: { existence: string; decidedBy: number; note: string | null },
 ): Promise<void> {
   await client.query(`
     UPDATE experiences
-    SET source_membership = $2,
-        existence = $3,
-        missing_since = NULL,
-        state_decided_by = $4,
+    SET existence = $2,
+        state_decided_by = $3,
         state_decided_at = NOW(),
-        state_note = $5,
+        state_note = $4,
         updated_at = NOW()
     WHERE id = $1
-  `, [lock.id, verdict.sourceMembership, verdict.existence, verdict.decidedBy, verdict.note]);
+  `, [lock.id, verdict.existence, verdict.decidedBy, verdict.note]);
 }
 
 /**

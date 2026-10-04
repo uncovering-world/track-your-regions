@@ -15,7 +15,8 @@
  * curator's decision, made elsewhere.
  */
 
-import { pool } from '../../db/index.js';
+import { pool, rollbackQuietly } from '../../db/index.js';
+import { OBJECT_LOCK } from '../../db/locks.js';
 import { MEMBERSHIPS, membershipAdmittedSql, sourcePlacesSql } from '../../db/membership.js';
 import type { ChangeRecord } from './changeRecorder.js';
 import { hideLostSql } from '../../db/readerPredicates.js';
@@ -43,8 +44,8 @@ import { hideLostSql } from '../../db/readerPredicates.js';
  * dragging the source toward the 90 % floor that disables detection.
  */
 const EXPECTED = `sm.source_id = $1
-       AND e.source_membership = 'present'
-       AND e.missing_since IS NULL
+       AND sm.source_membership = 'present'
+       AND sm.missing_since IS NULL
        AND e.is_manual = FALSE
        AND ${hideLostSql('e')}
        AND ${membershipAdmittedSql('sm')}`;
@@ -126,6 +127,50 @@ export async function countSeenAmongActive(
 }
 
 /**
+ * Mark the memberships `flagged` names, under their places' locks.
+ *
+ * The places first, in one statement and in id order, then the memberships:
+ * the order a curator's write takes (the place's `OBJECT_LOCK`, then its
+ * membership), so this many-row write and a curator's one-row write cannot
+ * each hold what the other waits for. Marking the membership writes the place
+ * as well — its derived flag — which is the second half of that order.
+ */
+async function markMemberships(
+  flagged: string,
+  sourceId: number,
+  seenExternalIds: string[],
+): Promise<{ id: number; external_id: string; name: string }[]> {
+  const client = await pool.connect();
+  let unusable: Error | undefined;
+  try {
+    await client.query('BEGIN');
+    const locked = await client.query(
+      `SELECT id FROM experiences WHERE id IN (SELECT id FROM (${flagged}) f) ORDER BY id ${OBJECT_LOCK}`,
+      [sourceId, seenExternalIds],
+    );
+    // Only the places just locked: the next statement reads a newer snapshot,
+    // and a membership a curator restored in between would otherwise be
+    // marked under no lock of its place.
+    const marked = await client.query(
+      `UPDATE ${MEMBERSHIPS} m SET missing_since = NOW(), updated_at = NOW()
+         FROM (${flagged}) f
+        WHERE m.experience_id = f.id AND m.source_id = $1 AND m.external_id = f.external_id
+          AND m.experience_id = ANY($3::int[])
+          AND m.missing_since IS NULL
+       RETURNING f.id, f.external_id, f.name`,
+      [sourceId, seenExternalIds, locked.rows.map((row: { id: number }) => row.id)],
+    );
+    await client.query('COMMIT');
+    return marked.rows;
+  } catch (error) {
+    unusable = await rollbackQuietly(client);
+    throw error;
+  } finally {
+    client.release(unusable);
+  }
+}
+
+/**
  * Mark every still-present row the source did not offer this run, and describe
  * each one.
  *
@@ -144,26 +189,18 @@ export async function flagMissingExperiences(
   dryRun: boolean,
   seenExternalIds: string[],
 ): Promise<ChangeRecord[]> {
-  // The mark is the place's until #1251 moves it onto the membership: today
-  // every place has one membership, so its source's silence is the place's.
+  // The mark is the membership's (ADR-0084): this source has stopped listing
+  // the place, which says nothing of another source that still does. The
+  // place's own flag follows from its memberships (derive_place_listing()).
   const predicate = `${EXPECTED}
       AND sm.external_id <> ALL($2::text[])`;
+  const flagged = `SELECT e.id, sm.external_id, e.name FROM ${sourcePlacesSql('e', 'sm')} WHERE ${predicate}`;
 
-  const result = dryRun
-    ? await pool.query(
-        `SELECT e.id, sm.external_id, e.name FROM ${sourcePlacesSql('e', 'sm')} WHERE ${predicate}`,
-        [sourceId, seenExternalIds]
-      )
-    : await pool.query(
-        `UPDATE experiences e SET missing_since = NOW()
-           FROM ${MEMBERSHIPS} sm
-          WHERE sm.experience_id = e.id
-            AND ${predicate}
-         RETURNING e.id, sm.external_id, e.name`,
-        [sourceId, seenExternalIds]
-      );
+  const rows = dryRun
+    ? (await pool.query(flagged, [sourceId, seenExternalIds])).rows
+    : await markMemberships(flagged, sourceId, seenExternalIds);
 
-  return result.rows.map((row: { id: number; external_id: string; name: string }) => ({
+  return rows.map((row: { id: number; external_id: string; name: string }) => ({
     syncLogId,
     experienceId: row.id,
     externalId: row.external_id,
