@@ -4306,8 +4306,9 @@ source's own order, the works most famous first. Counting alone was #524's compl
 "counted rather than listed" asks a curator to decide about twelve things they cannot see. Listing
 alone would be worse at the other end, since the largest serial nomination — the Rock Art of the
 Mediterranean Basin on the Iberian Peninsula — holds hundreds of points, so the
-cap stays and the card says *"showing 25 of 93 points"* rather than letting a short list stand for a
-long one. `hideRefusedSql()` on
+cap stays and the card says *"the first 25 are listed"* beside the whole count rather than letting
+a short list stand for a long one. Each listed work carries `sitelinks`, the number of Wikipedia
+editions writing about it (ADR-0082), which is the number the works pool's line held it to. `hideRefusedSql()` on
 the container is what keeps a refused museum's newly-arrived paintings from raising a card here
 too — the museum already has its own card in `refused`, and its contents are not a second
 question.
@@ -4521,11 +4522,29 @@ heading, one sentence (nothing here has reached a visitor), and one card per exp
 mix of `arrival` / `held` / `contents` named it. `groupGated()` does the joining, because the API
 answers `held` and `contents` separately so each query stays simple while a museum whose label is
 held *and* which gained twelve paintings is one object and one decision to the person looking at it.
-Inside a card the rows follow ADR-0025 § 4.2 — `fields` with both versions, and `points` and `works`
-in `curation/GatedContents.tsx`, their own file since each gained a way in: counts over listed rows
-(`shared/ContentsList.tsx`), an unread point's name opening `PointPreviewDialog` where it can be
-corrected (#583), an unread work's row carrying a *Correct* action into `WorkPreviewDialog` (#731).
-That component is mounted **keyed on the object**, which is what stops a dialog opened on one card
+Inside a card the rows follow ADR-0025 § 4.2 in two tables laid out alike (#524): `changes`, the
+held fields of the object and its parts with both versions, and `arrived`
+(`curation/ArrivedTable.tsx`), one row per unread work and per new point, each with its own
+**publish this** / **not this** (`publishExperience(id, { treasureIds | locationIds })`,
+`refuseContents(id, { … })`). A work's row says in its stripe whether it is new to the catalogue
+or already on show in another museum's list (`shownElsewhere`, from `venues`), and its name is its
+one door — into `WorkPreviewDialog`, where it is corrected (#731); its Wikipedia article comes
+first and the Wikidata item is the small id beside it (`SourceId`). A point's name opens
+`PointPreviewDialog` where it can be corrected (#583). The heading counts what arrived and says
+when the list is capped, and from five rows (`TURN_ALL_DOWN_FROM`) offers *turn all N down* for
+exactly those N (`turnAllDownBody`): `refuseContents(id, {})`, every unread row under the object,
+only where no point moved, since a body naming nothing refuses a moved point too and takes its
+stored pin off the map; where one did, the rows' ids, which needs the whole list on the card — a
+capped list with a moved point gets no such link and is answered row by row. A point that replaces a stored pin is
+not in this table: it is a change to what readers see, so `movedPointGroups.ts` makes it a group of
+the `changes` table, headed by the place, with one `coordinates` row (`MoveFact`, the distance and
+the map) answered by the point's id — except the point the object's own held coordinate takes
+along (`coordinates_move_point_id`), which that row already asks about. Its no is the one on the
+card that changes what readers see: refusing the point releases the withdrawal it was holding
+(`releaseDeferredWithdrawals`), so the stored pin leaves the map and asks under *lost places*
+(ADR-0053), and the row says so under its buttons until #1233 decides what a no to a move does. A part's name in the
+`changes` table is likewise the button that opens it.
+`ArrivedTable` is mounted **keyed on the object**, which is what stops a dialog opened on one card
 from standing on the next: `ReviewBench` mounts `GatedCard` unkeyed on purpose, so the object
 preview survives a move down the queue (`ObjectPreview`), and without the key a point or a work
 held open would be paired with the next card's id and name. The card resets `openPart` by hand for
@@ -4541,8 +4560,10 @@ What the card does that is not a free choice:
 
 - **One button for the object, and two answers per held row.** The object-level publish is one act
   at the endpoint: naming no contents applies the held fields, marks the row read *and* releases
-  every unread point and work under it, and the label says what the click covers ("Publish the
-  change and what arrived with it"). Beside it, since #722, each fact on the held table carries
+  every unread point and work under it, and the label says what the click covers ("Publish
+  everything on this card"; an arrival's reads "Publish — readers may see it"). It is the card's
+  only publish: a "change only" button and a card-level no to the contents went with #524, since
+  every row now answers on its own. Beside it, since #722, each fact on the held table carries
   its own answer in its own column — **publish this** and **not this**, the conflict card's shape.
   A key inside the source's data is a fact and carries its own pair of buttons (ADR-0039), and so
   is one language of the local names (#728) — a curator who wants Getbol's corrected Korean name
@@ -4551,9 +4572,9 @@ What the card does that is not a free choice:
   because a changeset is never rewritten. It says how
   many it answers there, which is the only thing on screen that says so. `HeldAnswer` builds the selection from the row's subject: the object's group names the
   field, a part's carries the pair the record identifies it by. Neither button is a primary — the
-  card's premise is that readers keep what they can see until somebody says otherwise. The
-  contents rows still have no per-row control: this queue counts them rather than listing ids on
-  each, so a third button there would promise a precision the screen cannot express (#524).
+  card's premise is that readers keep what they can see until somebody says otherwise. What the
+  two answers differ in is folded under *How answers work*: read once, and five lines under every
+  table were most of what a curator scrolled past.
 - **`expectedSyncLogId` is sent for a `held` card only.** An arrival's `sync_log_id` is the run that
   first saw it, not a pointer — a `pending` row holds no proposal — so sending it would be compared
   against `NULL` and refused every time.
@@ -4746,11 +4767,14 @@ for (`moveView`, `utils/moveDescription.ts`) rather than the zoom a region is fr
 **The contents half says what a row is.** An unread point that replaces a stored one
 (`withdrawal_deferred_for_location_id`) is a point that moved: the queue carries the point it
 replaces (`pending_points[].replaces`) and counts them (`pending_moved_locations`), the card
-says "1 point moved" with the distance on the row (`pointsSentence`, `GatedContents.tsx`), and
+asks it as a change of the place, with the distance on the row (`movedPointGroups.ts`), and
 `offered_locations` does not count the replacement, so a one-point object does not read "made
 of 2 places" while its move waits. An unread link to a work readers already see in another
 museum is new to this list and not to the catalogue: `pending_treasures_on_show` counts them
-and the row names where (`worksSentence`).
+and the row names where (`shownElsewhere`, `ArrivedTable.tsx`). The queue's line counts the
+same way (`contentsLabels`, `rowSpecific.ts`) — "12 works arrived, 3 new points, 1 point moved",
+nothing for a count of nothing, and no moved point where the held coordinate takes it along,
+since the line already says `coordinates`.
 
 **Publishing an object's coordinate publishes the point that is the same move.** A gated run
 says an object moved twice: the held `location` field and the unread point replacing the
@@ -4794,7 +4818,7 @@ where run 68 proposes a photograph and a credit for it in one changeset.
 
 Two kinds of row survive on a card that keeps its pointer and nothing on it can clear — a field
 the curator has claimed since the run, and a part the record names that no offered row answers to
-— and the object-level "Publish the change" reports both and clears the pointer, which is the way
+— and the card's "Publish everything on this card" reports both and clears the pointer, which is the way
 out.
 
 **`contentsOnly` exists because "absent means the object" was a defect, not a convenience.**
