@@ -70,7 +70,7 @@ what goes stale when a route is added to the row below (it has already happened 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
 | `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch`, `GET /api/admin/data-assertions`, `POST /api/admin/sync/sources/:sourceId/fix-images` |
-| `authenticatedLimiter` | 1 min | 60 | `POST /api/admin/data-assertions/accept`, `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/sources/:sourceId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source`, `PUT`/`DELETE /api/experiences/review/set-aside/:syncLogId`, `POST /api/experiences/review/answer`, `POST /api/experiences/:id/refuse-contents`, `POST /api/experiences/:id/unrefuse-contents` |
+| `authenticatedLimiter` | 1 min | 60 | `POST /api/admin/data-assertions/accept`, `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/sources/:sourceId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source`, `POST /api/experiences/:id/decline-held`, `PUT`/`DELETE /api/experiences/review/set-aside/:syncLogId`, `POST /api/experiences/review/answer`, `POST /api/experiences/:id/refuse-contents`, `POST /api/experiences/:id/unrefuse-contents` |
 
 The catalogue checks split across both buckets on the same rule, and the split is
 the point. `GET /api/admin/data-assertions` runs a statement per assertion over
@@ -125,18 +125,17 @@ of this section said the siblings it then listed — `/:id/state`, `/:id/admissi
 `/:id/accept-source` and `/review/queue` — had "no post-commit work"; that was true of
 all but `/:id/admission` and the criterion decides per branch, not per endpoint.
 
-The ones that remain — `/:id/state`, `/:id/decline-source`, `/:id/decline-held`,
+`/:id/decline-held` carries it for the same reason since ADR-0083: refusing an
+object's held coordinate turns down the unread point that is the same move, and a
+refused point is re-placed through `placeAfterRelease` after the client is
+released, on `movedPointRefused` being set.
+
+The ones that remain — `/:id/state`, `/:id/decline-source`,
 `/:id/works/:treasureId/edit`, `/review/queue` — stay exempt, checked rather than
 assumed: nothing follows any of their `client.release()`.
 `/:id/decline-source` is the plainest of
 them: it writes one small row per field and does not touch the experience at all,
-because the value it refuses had already won every run. `/:id/decline-held` (#722)
-is the same shape one gate over and joined the list on the same check rather than
-on the resemblance: a handful of small rows, one `UPDATE experiences` that only ever
-clears a pointer, an audit row, and nothing after the commit. Its opposite,
-`/:id/publish`, is in the table above because publishing can reach
-`placeAfterRelease`; refusing cannot, because it writes nothing that could move a
-pin. `/:id/works/:treasureId/edit` (#720) is the newest and is the one worth reading
+because the value it refuses had already won every run. `/:id/works/:treasureId/edit` (#720) is the newest and is the one worth reading
 against its own sibling: `/locations/:locationId/edit` is in the table above
 because a corrected coordinate always re-places the object, and a work has no
 coordinate — one locked object, one locked row, an audit row, and nothing after
@@ -254,10 +253,8 @@ one transaction, touching nothing a reader sees — the row was hidden already �
 with nothing after its `client.release()`. `POST
 /:id/refuse-contents` carries `authenticatedLimiter`, for the branch
 `/:id/publish` is limited for: a refused point counts toward no region any more
-(placement's insert carries `refused_at IS NULL`, ADR-0053) and releases the
-withdrawal it was holding, which takes an old pin off the map (`missing_since`
-on a row readers could see) — so the object is re-placed into every world view
-with geometry after the commit, through the same `placeAfterRelease`. `POST
+(placement's insert carries `refused_at IS NULL`, ADR-0053) — so the object is
+re-placed into every world view with geometry after the commit, through the same `placeAfterRelease`. `POST
 /:id/unrefuse-contents` (#859) is limited for the same branch read backwards: a
 point asked about again counts toward its regions once more, so it re-places the
 object after its commit exactly as its opposite does.
