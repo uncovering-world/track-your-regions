@@ -27,6 +27,7 @@ import { isCommonsPictureUrl } from '../../../types/urlSafety.js';
 import { reconcileLinks } from './linkWithdrawal.js';
 import { publishedContentSql } from '../../../db/readerPredicates.js';
 import { lockExperience } from '../../../db/experienceWriter.js';
+import { MEMBERSHIPS } from '../../../db/membership.js';
 
 /**
  * The hold, as one SQL expression over the stored row: a gated source may not
@@ -437,7 +438,7 @@ export async function upsertVenueTreasures(
   const iconicEnter = run.iconicLine?.enterSitelinks ?? ICONIC_SITELINKS;
   const iconicStay = run.iconicLine?.staySitelinks ?? ICONIC_RELEASE;
   // Every work the run offers here, by the id the upsert answered with: what
-  // the two arms after the loop compare the museum's links against.
+  // `reconcileLinks` compares the museum's links against after the loop.
   const offeredIds: number[] = [];
 
   // What the run is about to write over, read once for the whole museum rather
@@ -628,21 +629,40 @@ export async function upsertVenueTreasures(
     const rewrite = was && rewriteOf(was, artwork, patch, Boolean(stored.was_held));
     if (rewrite) changed.push(rewrite);
 
-    // Step 2: Link treasure to experience via junction table. Unlike the
-    // treasure above, a link does have an experience to read the gate through,
-    // so it is reached the same way the location insert reaches it. Links are
-    // never deleted (ADR-0023), so a link a curator already passed must keep
-    // that state when a later run finds it again — insert-only, same as above.
+    // Step 2: Link treasure to experience via junction table. The gate is the
+    // run's own source (`run.sourceId`), as for the treasure above: a place two
+    // sources fill is gated per source, and the place's first source says
+    // nothing about this one's (ADR-0084). Links are never deleted (ADR-0023),
+    // so a link a curator already passed must keep that state when a later run
+    // finds it again — insert-only, same as above.
+    //
+    // The run's placement is recorded in the same statement, on the link it
+    // inserted or the one already there (ADR-0084): a museum whose write throws
+    // after this line never reaches `reconcileLinks`, and a link born there
+    // without its placement would be one no run of this source answers for.
     const link = await pool.query(
-      `INSERT INTO experience_treasures (experience_id, treasure_id, curation_state)
-       VALUES ($1, $2,
-         CASE WHEN (SELECT c.requires_curation
-                      FROM experiences e JOIN experience_sources c ON c.id = e.source_id
-                     WHERE e.id = $1)
-              THEN 'pending' ELSE 'auto' END)
-       ON CONFLICT (experience_id, treasure_id) DO NOTHING
-       RETURNING treasure_id`,
-      [experienceId, treasureId]
+      `WITH ins AS (
+         INSERT INTO experience_treasures (experience_id, treasure_id, curation_state)
+         VALUES ($1, $2,
+           CASE WHEN (SELECT requires_curation FROM experience_sources WHERE id = $3)
+                THEN 'pending' ELSE 'auto' END)
+         ON CONFLICT (experience_id, treasure_id) DO NOTHING
+         RETURNING id, treasure_id
+       ), this_link AS (
+         SELECT id FROM ins
+         UNION ALL
+         SELECT et.id FROM experience_treasures et
+          WHERE et.experience_id = $1 AND et.treasure_id = $2
+            AND NOT EXISTS (SELECT 1 FROM ins)
+       ), placed AS (
+         INSERT INTO experience_treasure_placements (link_id, membership_id)
+         SELECT this_link.id, m.id
+           FROM this_link
+           JOIN ${MEMBERSHIPS} m ON m.experience_id = $1 AND m.source_id = $3
+         ON CONFLICT DO NOTHING
+       )
+       SELECT treasure_id FROM ins`,
+      [experienceId, treasureId, run.sourceId]
     );
     // `DO NOTHING` returns no row when the link was already there, so this is
     // "the museum gained a work", not "the run mentioned one".
@@ -656,11 +676,12 @@ export async function upsertVenueTreasures(
   }
 
   // The museum's other links, once every work is written and not before: a
-  // throw above leaves both arms unreached, so nothing is marked on the
+  // throw above leaves `reconcileLinks` unreached, so nothing is marked on the
   // strength of a list the run did not finish. Restoring is unconditional;
   // marking waits on the floor the collector measured the whole run against
   // (ADR-0044) — floor first, withdrawal second, never the reverse.
   const { returned, withdrawn } = await reconcileLinks(experienceId, {
+    sourceId: run.sourceId,
     offered: offeredIds,
     placedElsewhere,
     withdraw: run.withdrawalSkippedReason === null,

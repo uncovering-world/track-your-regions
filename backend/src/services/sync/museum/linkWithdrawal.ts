@@ -3,15 +3,29 @@
  * source places here again get their place back, and the ones it no longer
  * places here are marked (ADR-0044).
  *
- * Its own file rather than two more statements in `treasureWriter.ts`, which
- * was approaching the development guide's line, and because the two arms are a
- * responsibility of their own — they act on the museum's *other* links, the
- * ones the loop never touched — with a rule about visibility that has to be
- * read on its own to be believed.
+ * Its own file rather than more statements in `treasureWriter.ts`, which was
+ * approaching the development guide's line, and because `place`, `restore`
+ * and `mark` are a responsibility of their own — they act on the museum's
+ * links as a set once the loop is done, the ones it never touched included —
+ * with a rule about visibility that has to be read on its own to be believed.
  *
- * Both are set-based, once per museum after every work is written, and in one
+ * **Each run answers for its own placements** (ADR-0084, #1252). A place two
+ * sources fill holds what each source places there — the Louvre's paintings
+ * through Art Museums, its finds through Archaeology — and a work both place is
+ * one link. So a run records its own placement on every link it offers
+ * (`experience_treasure_placements`; the link insert in `treasureWriter.ts`
+ * records it as the link is born, so a museum whose write throws part-way
+ * leaves no link it wrote unplaced, and `place` here records it on every link
+ * offered, whoever inserted it). The mark takes away only the run's own
+ * placement from a link it no longer offers, and a link is marked missing only
+ * once no placement is left: the Art Museums run never marks the finds, and the
+ * Archaeology run never the paintings. A link no membership places at all —
+ * written by code that predates the placements — is any run's to mark, as every
+ * link was before them.
+ *
+ * All three are set-based, once per museum after every work is written, and in one
  * transaction. The order is the safety: a museum whose write throws part-way
- * never reaches either arm, so nothing is marked on the strength of a list the
+ * never reaches `reconcileLinks`, so nothing is marked on the strength of a list the
  * run did not finish. The transaction is the other half of it: a restore that
  * landed while the mark failed would be a return the run's record never
  * carries, and a retry could not tell it had happened. The writer's own promise
@@ -20,13 +34,15 @@
 
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../../db/index.js';
-import { placeOfferedSql } from '../../../db/membership.js';
+import { MEMBERSHIPS, placeOfferedSql } from '../../../db/membership.js';
 import type { ContentItem } from '../types.js';
 import { publishedContentSql } from '../../../db/readerPredicates.js';
 import { lockExperience } from '../../../db/experienceWriter.js';
 
-/** What the two arms compare the museum's links against. */
+/** What `place`, `restore` and `mark` compare the museum's links against. */
 export interface LinkReconciliation {
+  /** The run's source, whose membership of this place the placements are. */
+  sourceId: number;
   /** Every work the run offers here, by the id the upsert answered with. */
   offered: number[];
   /**
@@ -53,6 +69,32 @@ export interface LinkDelta {
 /** A row as both statements return it: the work's name and reference. */
 function named(rows: { name: string | null; external_id: string | null }[]): ContentItem[] {
   return rows.map(row => ({ name: row.name, ref: row.external_id }));
+}
+
+/**
+ * The run's membership of this place, as a scalar subquery: the one its source
+ * brought (`$1` the place, the given placeholder the source).
+ */
+const runMembershipSql = (sourceParam: string) =>
+  `(SELECT id FROM ${MEMBERSHIPS} WHERE experience_id = $1 AND source_id = ${sourceParam})`;
+
+/**
+ * Record the run's placement on every link it offers here, the work both
+ * sources place included. Before `restore` and `mark`, which read it.
+ */
+async function place(
+  client: PoolClient, experienceId: number, sourceId: number, offered: number[],
+): Promise<void> {
+  await client.query(
+    `INSERT INTO experience_treasure_placements (link_id, membership_id)
+     SELECT et.id, ${runMembershipSql('$3')}
+       FROM experience_treasures et
+      WHERE et.experience_id = $1
+        AND et.treasure_id = ANY($2::int[])
+        AND ${runMembershipSql('$3')} IS NOT NULL
+     ON CONFLICT DO NOTHING`,
+    [experienceId, offered, sourceId],
+  );
 }
 
 /**
@@ -84,6 +126,12 @@ async function restore(
 /**
  * Mark the links of works the run no longer places here. Marked, never
  * deleted: the row is what a person's viewed record points at (ADR-0022).
+ *
+ * Only a link the run's own membership places, and only its own placement
+ * goes: the link itself is marked once no other membership places it, so a
+ * work another source still places here stays on show (ADR-0084). A held link
+ * keeps the run's placement too, since the hold below is the run declining to
+ * withdraw it yet.
  *
  * `missing_since IS NULL` restricts this to links going missing *now* — a link
  * unoffered for the fifth run running was first observed missing once, and
@@ -124,17 +172,23 @@ async function restore(
  * layers read.
  */
 async function mark(
-  client: PoolClient, experienceId: number, offered: number[], placedElsewhere: string[],
+  client: PoolClient, experienceId: number, sourceId: number, offered: number[], placedElsewhere: string[],
 ): Promise<ContentItem[]> {
   const result = await client.query(
-    `UPDATE experience_treasures et
-        SET missing_since = NOW()
-       FROM treasures t
-      WHERE et.experience_id = $1
-        AND t.id = et.treasure_id
-        AND et.missing_since IS NULL
-        AND NOT (et.treasure_id = ANY($2::int[]))
-        AND NOT (
+    `WITH candidate AS (
+       SELECT et.id
+         FROM experience_treasures et
+         JOIN treasures t ON t.id = et.treasure_id
+        WHERE et.experience_id = $1
+          AND et.missing_since IS NULL
+          AND NOT (et.treasure_id = ANY($2::int[]))
+          -- The run's own, or nobody's: a link no membership places is any
+          -- run's to withdraw, as every link was before the placements.
+          AND (EXISTS (SELECT 1 FROM experience_treasure_placements mine
+                        WHERE mine.link_id = et.id AND mine.membership_id = ${runMembershipSql('$4')})
+               OR NOT EXISTS (SELECT 1 FROM experience_treasure_placements any_placement
+                               WHERE any_placement.link_id = et.id))
+          AND NOT (
           -- A link a reader can see: the museum, the link and the work, all
           -- past the gate (linkedForReaderSql, plus the work's own state)...
           ${publishedContentSql('et')}
@@ -157,8 +211,27 @@ async function mark(
                AND ${placeOfferedSql('te')}
           )
         )
+     ), unplaced AS (
+       DELETE FROM experience_treasure_placements pl
+        USING candidate c
+        WHERE pl.link_id = c.id
+          AND pl.membership_id = ${runMembershipSql('$4')}
+       RETURNING pl.link_id, pl.membership_id
+     )
+     -- The statement's snapshot still holds the placements the CTE deleted, so
+     -- "no placement left" excludes them by name.
+     UPDATE experience_treasures et
+        SET missing_since = NOW()
+       FROM treasures t
+      WHERE et.id IN (SELECT id FROM candidate)
+        AND t.id = et.treasure_id
+        AND NOT EXISTS (
+          SELECT 1 FROM experience_treasure_placements other
+           WHERE other.link_id = et.id
+             AND (other.link_id, other.membership_id) NOT IN (SELECT link_id, membership_id FROM unplaced)
+        )
       RETURNING t.name, t.external_id`,
-    [experienceId, offered, placedElsewhere],
+    [experienceId, offered, placedElsewhere, sourceId],
   );
   return named(result.rows);
 }
@@ -180,7 +253,7 @@ async function mark(
  */
 export async function reconcileLinks(
   experienceId: number,
-  { offered, placedElsewhere, withdraw }: LinkReconciliation,
+  { sourceId, offered, placedElsewhere, withdraw }: LinkReconciliation,
 ): Promise<LinkDelta> {
   const client = await pool.connect();
   let unusable: Error | undefined;
@@ -195,8 +268,9 @@ export async function reconcileLinks(
     // outside the rule for the reason `locks.ts` gives — each of its
     // statements is its own transaction.
     await lockExperience(client, experienceId);
+    await place(client, experienceId, sourceId, offered);
     const returned = await restore(client, experienceId, offered);
-    const withdrawn = withdraw ? await mark(client, experienceId, offered, placedElsewhere) : [];
+    const withdrawn = withdraw ? await mark(client, experienceId, sourceId, offered, placedElsewhere) : [];
     await client.query('COMMIT');
     return { returned, withdrawn };
   } catch (error) {
