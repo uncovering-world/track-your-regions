@@ -297,9 +297,13 @@ describe('publishing a held proposal', () => {
     expect(update.sql).toContain('country_names = ');
     expect(update.sql).toContain('metadata = ');
     // And the five it can, so the writer is a superset rather than an alternative.
-    for (const column of ['name = ', 'short_description = ', 'description = ', 'type = ', 'image_url = ']) {
+    for (const column of ['name = ', 'short_description = ', 'description = ', 'image_url = ']) {
       expect(update.sql).toContain(column);
     }
+    // The type within the kind is the membership's (ADR-0084): published onto
+    // the membership being published, never onto the place.
+    expect(update.sql).not.toContain(' type = ');
+    expect(only(queries, 'UPDATE experience_kind_memberships SET type = $3').sql).toContain('WHERE id = $2 AND experience_id = $1');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedFields: expect.arrayContaining(['nameLocal', 'tags', 'location', 'countryCodes', 'countryNames', 'metadata']),
     }));

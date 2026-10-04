@@ -348,8 +348,12 @@ describe('the schema as read', () => {
   it('yields every CREATE TABLE block, with the columns its ADD COLUMN clauses add', () => {
     const headers = schema.match(/^CREATE TABLE\b/gm) ?? [];
     expect(tables.size).toBe(headers.length);
-    expect(tables.get('experiences')).toContain('type');
+    expect(tables.get('experiences')).toContain('short_description');
     expect(tables.get('experiences')).not.toContain('category');
+    // The type within a kind is the membership's since ADR-0084, declared in
+    // that CREATE TABLE and added again by its ALTER.
+    expect(tables.get('experiences')).not.toContain('type');
+    expect(tables.get('experience_kind_memberships')).toContain('type');
     // `ALTER TABLE world_views ADD COLUMN IF NOT EXISTS is_public …`
     expect(tables.get('world_views')).toContain('is_public');
     // The guarded form: `ALTER TABLE experience_sources` on one line and

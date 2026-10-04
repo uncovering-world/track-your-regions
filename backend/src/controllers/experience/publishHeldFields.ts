@@ -491,6 +491,12 @@ function nextNameLocal(
 /** What writing the held proposal comes to: the SQL, and what it decided. */
 export interface HeldFieldWrites {
   assignments: string[];
+  /**
+   * The held type, where this call publishes it: written on the membership
+   * being published rather than among the place's assignments, since the type
+   * within a kind is the membership's (ADR-0084).
+   */
+  membershipType?: { value: unknown };
   /** `$1` is the experience id; the rest is whatever the assignments bound. */
   params: unknown[];
   applied: string[];
@@ -649,6 +655,13 @@ export async function heldFieldWrites(
 
   for (const field of writable) {
     if (isMergedColumn(field.field)) continue;
+    // The type within the kind is the membership's (ADR-0084): it rides out
+    // beside the place's assignments, for the membership being published.
+    if (field.field === 'type') {
+      writes.membershipType = { value: field.new ?? null };
+      writes.applied.push(field.field);
+      continue;
+    }
     const assignment = assignmentFor(field.field, field.new, bind);
     if (assignment === null) writes.unwritable.push(field.field);
     else {

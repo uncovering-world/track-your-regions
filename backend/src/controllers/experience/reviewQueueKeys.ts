@@ -53,7 +53,7 @@ import { pool } from '../../db/index.js';
 import type { QueueFacets, QueueOrderEntry } from '../../api/responses/reviewQueue.js';
 import { EMPTY_FACETS, FACETS_JSON_SQL, facetsSql, regionRootsCte } from './reviewQueueFacets.js';
 import { QUEUE_KINDS, WAITING_SUBS, type QueueKind, type WaitingSub } from './reviewQueueVocabulary.js';
-import { MEMBERSHIPS } from '../../db/membership.js';
+import { MEMBERSHIPS, claimsFacingSql } from '../../db/membership.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { unreadLinkSql, unreadPointSql } from './waitingCounts.js';
@@ -154,7 +154,7 @@ function conflictKeysSql(scopeFilter: string, claimKey: (field: string) => strin
            q.source_id AS source_id, q.sync_log_id AS run_id, q.completed_at AS asked_at,
            ARRAY[]::text[] AS subs
     FROM (
-      SELECT DISTINCT ON (e.id) e.id, e.name, e.source_id, e.curated_fields,
+      SELECT DISTINCT ON (e.id) e.id, e.name, e.source_id, ${claimsFacingSql('e', 'l.source_id')} AS curated_fields,
              ch.changed_fields, ch.sync_log_id, l.completed_at
       FROM experience_sync_changes ch
       JOIN experiences e ON e.id = ch.experience_id

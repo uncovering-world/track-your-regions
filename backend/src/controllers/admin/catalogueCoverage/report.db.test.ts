@@ -50,9 +50,9 @@ async function place(
   admission: 'admitted' | 'refused', state: 'verified' | 'pending',
 ): Promise<void> {
   await pool.query(
-    `INSERT INTO experiences (id, source_id, external_id, name, type, location)
-     VALUES ($1, $2, $3, $4, $5, ST_SetSRID(ST_MakePoint($6, $7), 4326))`,
-    [id, kind.source, externalId, `Place ${id}`, kind.type, lon, AT.lat],
+    `INSERT INTO experiences (id, source_id, external_id, name, location)
+     VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326))`,
+    [id, kind.source, externalId, `Place ${id}`, lon, AT.lat],
   );
   await pool.query(
     `INSERT INTO experience_locations (experience_id, name, ordinal, location)
@@ -60,9 +60,9 @@ async function place(
     [id, `Point of ${id}`, lon, AT.lat],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, curation_state)
-     VALUES ($1, $2, $3, (SELECT external_id FROM experiences WHERE id = $1), $4, $5)`,
-    [id, kind.kind, kind.source, admission, state],
+    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, type, admission, curation_state)
+     VALUES ($1, $2, $3, (SELECT external_id FROM experiences WHERE id = $1), $6, $4, $5)`,
+    [id, kind.kind, kind.source, admission, state, kind.type],
   );
 }
 

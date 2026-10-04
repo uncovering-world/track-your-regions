@@ -82,8 +82,8 @@ describe('the other curator writes', () => {
 
   it('inserts the manual create\'s membership for the place whose token it spends', async () => {
     const { client, queries } = fakeClient();
-    await insertManualMembership(client, KUNSTHALLE, 2);
+    await insertManualMembership(client, KUNSTHALLE, 2, null);
     expect(collapse(queries[0].sql)).toContain('INSERT INTO experience_kind_memberships');
-    expect(queries[0].params).toEqual([412, 2]);
+    expect(queries[0].params).toEqual([412, 2, null]);
   });
 });

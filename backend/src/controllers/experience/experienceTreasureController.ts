@@ -9,7 +9,7 @@ import type { ExperienceTreasuresResponse } from '../../api/responses/experience
 import type { TreasureViewMarked, TreasureViewUnmarked, ViewedTreasureIds } from '../../api/responses/visited.js';
 import { pool } from '../../db/index.js';
 import type { TreasuresRow, UserViewedTreasuresRow } from '../../db/schema.generated.js';
-import { rowKindJoinSql } from '../../db/membership.js';
+import { MEMBERSHIPS, membershipOfferedSql, rowKindJoinSql } from '../../db/membership.js';
 import {
   experienceOfferedToReaderSql,
   hideLostSql,
@@ -89,8 +89,12 @@ export async function getExperienceTreasures(
                 'regions', ${readerRegionsJsonSql('site.id')})
          FROM experiences site
          ${rowKindJoinSql('site', 'sm', 'sk')}
-        WHERE site.type = 'site'
-          AND site.external_id = t.metadata->'foundAt'->>'qid'
+        -- The Archaeology membership's type and id (ADR-0084).
+        WHERE EXISTS (SELECT 1 FROM ${MEMBERSHIPS} site_member
+                       WHERE site_member.experience_id = site.id
+                         AND site_member.type = 'site'
+                         AND site_member.external_id = t.metadata->'foundAt'->>'qid'
+                         AND ${membershipOfferedSql('site_member')})
           AND ${experienceOfferedToReaderSql('site')}
           AND ${hideLostSql('site')}
         ORDER BY site.id

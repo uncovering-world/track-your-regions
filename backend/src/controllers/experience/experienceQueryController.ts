@@ -67,7 +67,8 @@ export async function getExperience(
       e.name_local,
       e.description,
       e.short_description,
-      e.type,
+      -- The type within the kind the row is shown under: the membership's (ADR-0084).
+      m.type,
       -- No tags: labels the import derives from facts the row already carries by
       -- name, rendered by nothing, and since #570 written past the curation gate
       -- -- which they can be only while no reader-facing read returns them.
@@ -285,7 +286,7 @@ export async function searchExperiences(
         e.id,
         e.name,
         e.short_description,
-        e.type,
+        em.type,
         -- The kind, off the row's membership (#819). Its own aliases, since
         -- m outside is this CTE.
         ${rowKindSelectSql('em', 'ek')},

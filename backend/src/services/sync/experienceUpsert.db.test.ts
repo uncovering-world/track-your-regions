@@ -146,6 +146,36 @@ describe('a run reaches its places through its own membership (ADR-0084)', () =>
     expect(place.rows[0]).toEqual({ source_id: artMuseums, external_id: LOUVRE_QID });
   });
 
+  it('holds and claims each source\'s type on its own membership', async () => {
+    // The Pantheon's shape: a type in one kind is no answer for another
+    // (ADR-0084). Archaeology is gated and the place is visible, so its
+    // proposal is held on its own membership; Art Museums' is untouched.
+    const types = async () => (await pool.query(
+      `SELECT source_id, type FROM experience_kind_memberships WHERE experience_id = $1 ORDER BY source_id`,
+      [LOUVRE],
+    )).rows;
+    const held = await upsertExperienceRecord({ ...params(archaeology, LOUVRE_QID, 'Louvre Museum'), type: 'museum' });
+    expect(held.changeSet.heldFields.map(field => field.field)).toContain('type');
+    expect(await types()).toEqual([
+      { source_id: artMuseums, type: null },
+      { source_id: archaeology, type: null },
+    ]);
+
+    // A curator's claim on that membership's type meets the next proposal as a
+    // conflict, and leaves the other membership alone.
+    await pool.query(
+      `UPDATE experience_kind_memberships SET type = 'site', curated_fields = '["type"]'::jsonb
+        WHERE experience_id = $1 AND source_id = $2`,
+      [LOUVRE, archaeology],
+    );
+    const claimed = await upsertExperienceRecord({ ...params(archaeology, LOUVRE_QID, 'Louvre Museum'), type: 'museum' });
+    expect(claimed.changeSet.curatedConflicts.map(field => field.field)).toContain('type');
+    expect(await types()).toEqual([
+      { source_id: artMuseums, type: null },
+      { source_id: archaeology, type: 'site' },
+    ]);
+  });
+
   it('keeps admitted the membership the sweep\'s run still names, on that place', async () => {
     await markNotAdmitted(archaeology, [LOUVRE_QID], 'not in the admitted set', false);
 

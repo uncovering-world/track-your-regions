@@ -22,6 +22,8 @@ import type { ContentItemChange } from '../../services/sync/types.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { conflictChangeOpenSql } from './reviewQueuePredicates.js';
+import { withTypeClaim } from '../../db/membership.js';
+import { acceptTypeOnSourceMembership, typeClaimedBy } from './membershipWriter.js';
 import { lockExperience, updateExperienceColumns } from '../../db/experienceWriter.js';
 import { releaseAnchorPointClaim, movePointTo } from './experienceLocationWriter.js';
 import { releaseConflictRefusals } from './conflictDecisions.js';
@@ -168,7 +170,7 @@ async function applyProposedFields(
     const locked = await lockExperience<{ curated_fields: string[] | null; image_credit: unknown }>(
       client, experienceId, "curated_fields, metadata->'imageCredit' AS image_credit",
     );
-    const claimed: string[] = locked?.row.curated_fields ?? [];
+    const placeClaims: string[] = locked?.row.curated_fields ?? [];
     const hadCredit = locked?.row.image_credit != null;
 
     // Same predicate as the queue, withdrawal check included: a conflict a
@@ -176,7 +178,7 @@ async function applyProposedFields(
     // guard below would refuse a newer proposal while letting a retracted one
     // through.
     const proposal = await client.query(`
-      SELECT ch.sync_log_id, ch.changed_fields, ch.contents
+      SELECT ch.sync_log_id, l.source_id, ch.changed_fields, ch.contents
       FROM experience_sync_changes ch
       JOIN experience_sync_logs l ON l.id = ch.sync_log_id
       JOIN experiences e ON e.id = ch.experience_id
@@ -207,6 +209,10 @@ async function applyProposedFields(
     if (fromSyncLogId !== expectedSyncLogId) {
       return await refuse('A newer run has proposed something else — reload to see it', fromSyncLogId);
     }
+    // The type within the kind is the proposing source's membership's, and so is
+    // a curator's claim on it (ADR-0084): the claims this proposal meets.
+    const proposingSource = proposal.rows[0].source_id as number;
+    const claimed = withTypeClaim(placeClaims, await typeClaimedBy(client, locked.lock, proposingSource));
 
     const proposed = (proposal.rows[0].changed_fields as Array<{ field: string; new: unknown; curatedConflict?: boolean }>)
       .filter(f => f.curatedConflict && (fields === 'all' || fields.includes(f.field)));
@@ -222,13 +228,16 @@ async function applyProposedFields(
     }
 
     const writable = open.filter(p => columnFor(p.field) !== null);
-    const assignments = writable.map((p, i) => `${columnFor(p.field)} = $${i + 2}`);
+    // The type is written on the membership, its claim released there.
+    const typeAccepted = writable.find(p => p.field === 'type');
+    const onPlace = writable.filter(p => p.field !== 'type');
+    const assignments = onPlace.map((p, i) => `${columnFor(p.field)} = $${i + 2}`);
     // A name-carrying value as the catalogue stores a name (`tidyNameValue`,
     // #835): a proposal recorded before the writers tidied carries the run of
     // spaces the run saw, and accepting it must not put back into `name` what
     // migration 047 took out.
-    const values = writable.map(p => tidyNameValue(p.field, p.new));
-    let remaining = claimed.filter(k => !open.some(p => claimKeyFor(p.field) === k));
+    const values = onPlace.map(p => tidyNameValue(p.field, p.new));
+    let remaining = placeClaims.filter(k => !open.some(p => claimKeyFor(p.field) === k));
 
     // **A picture's credit goes with the picture.**
     //
@@ -261,8 +270,9 @@ async function applyProposedFields(
     await updateExperienceColumns(client, locked.lock, [
       ...assignments,
       ...creditDrop,
-      `curated_fields = $${writable.length + 2}::jsonb`,
+      `curated_fields = $${onPlace.length + 2}::jsonb`,
     ], [...values, JSON.stringify(remaining)]);
+    await acceptTypeOnSourceMembership(client, locked.lock, proposingSource, typeAccepted);
     // **A point's claim on the coordinate goes with the object's.**
     //
     // The object's coordinate and its points' are one fact seen at two levels:

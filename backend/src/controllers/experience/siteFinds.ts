@@ -14,7 +14,7 @@
  * see, and is neither listed nor counted.
  */
 
-import { rowKindJoinSql } from '../../db/membership.js';
+import { MEMBERSHIPS, membershipOfferedSql, rowKindJoinSql } from '../../db/membership.js';
 import {
   experienceOfferedToReaderSql, hideLostSql, offeredLinkSql, publishedContentSql,
 } from '../../db/readerPredicates.js';
@@ -43,11 +43,18 @@ export function venuesShowingSql(find: string): string {
  * The finds of the site `site`, as the conditions on a treasure `find`:
  * named by the site's item, passed, and shown somewhere a reader may go. A
  * site by the type only the Archaeology kind has — the item a find names is a
- * place somebody dug in, never a museum — so every other row has none.
+ * place somebody dug in, never a museum — so every other row has none. Both are
+ * the Archaeology membership's: its type within the kind and the id its source
+ * knows the place by, so a site another source wrote first keeps its finds
+ * (ADR-0084). And that membership is offered itself: a place shown through
+ * another kind is not a site a reader may be sent to for its finds.
  */
 export function findOfSiteSql(site: string, find: string): string {
-  return `${find}.metadata->'foundAt'->>'qid' = ${site}.external_id
-        AND ${site}.type = 'site'
+  return `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} site_member
+                 WHERE site_member.experience_id = ${site}.id
+                   AND site_member.type = 'site'
+                   AND site_member.external_id = ${find}.metadata->'foundAt'->>'qid'
+                   AND ${membershipOfferedSql('site_member')})
         AND ${publishedContentSql(find)}
         AND EXISTS (SELECT 1 ${venuesShowingSql(find)})`;
 }

@@ -112,14 +112,14 @@ describe('createManualExperience curation state', () => {
     const [, membershipParams] = mockClientQuery.mock.calls.find(
       ([callSql]) => typeof callSql === 'string' && /INSERT INTO experience_kind_memberships/.test(callSql),
     ) as [string, unknown[]];
-    expect(membershipParams).toEqual([EXPERIENCE_ID, SOURCE_ID]);
+    expect(membershipParams).toEqual([EXPERIENCE_ID, SOURCE_ID, null]);
 
-    // The state values are literals, not new bound parameters - the place's
-    // params array is unchanged from before the split.
+    // The state values are literals, not new bound parameters; the type within
+    // the kind went to the membership (ADR-0084), so the place binds twelve.
     const [, params] = mockClientQuery.mock.calls.find(
       ([callSql]) => typeof callSql === 'string' && /INSERT INTO experiences/.test(callSql),
     ) as [string, unknown[]];
-    expect(params).toHaveLength(13);
+    expect(params).toHaveLength(12);
 
     expect(res.status).toHaveBeenCalledWith(201);
   });

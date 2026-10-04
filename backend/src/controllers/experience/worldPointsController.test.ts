@@ -140,7 +140,7 @@ describe('getWorldPoints', () => {
       const { sql } = await ask();
       expect(sql).not.toContain('e.name');
       expect(sql).not.toContain('m.kind_id,');
-      expect(sql).not.toContain('e.type');
+      expect(sql).not.toContain('m.type');
     });
 
     it('rounds an overview coordinate to two decimals and a marker to five', async () => {
@@ -156,7 +156,7 @@ describe('getWorldPoints', () => {
     it('sends a marker what a pin needs: its identity, its name, its colour', async () => {
       const { sql } = await ask({ detail: 'markers' });
       for (const column of ['id AS location_id', 'experience_id', 'name AS location_name',
-        'e.name AS experience_name', 'm.kind_id', 'e.type']) {
+        'e.name AS experience_name', 'm.kind_id', 'm.type']) {
         expect(sql).toContain(column);
       }
     });

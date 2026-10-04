@@ -426,13 +426,25 @@ describe('editExperience and an emptied field', () => {
   });
 
   it('stores a cleared description and type as NULL', async () => {
-    queueQueries({ lockedCurated: [], lockedRow: { short_description: 'A valley', type: 'cultural' } });
+    queueQueries({ lockedCurated: [], lockedRow: { short_description: 'A valley' } });
+    // The membership's own type, which the write answers as the value it replaced.
+    const base = mockClientQuery.getMockImplementation()!;
+    mockClientQuery.mockImplementation(async (sql: string, ...rest: unknown[]) => (
+      typeof sql === 'string' && sql.includes('WITH old AS')
+        ? { rows: [{ old_type: 'cultural' }] } : base(sql, ...rest)));
 
     await editWith({ shortDescription: '', type: '' }).done;
 
     expect(stored('short_description')).toBeNull();
-    expect(stored('type')).toBeNull();
-    expect(claims()).toEqual(expect.arrayContaining(['short_description', 'type']));
+    expect(claims()).toEqual(expect.arrayContaining(['short_description']));
+    // The type within the kind is the membership's (ADR-0084): written there,
+    // claimed there, the place's own column untouched.
+    const membership = mockClientQuery.mock.calls.find(
+      ([sql]) => typeof sql === 'string' && sql.includes('UPDATE experience_kind_memberships'),
+    ) as [string, unknown[]];
+    expect(membership[0]).toContain(`m.curated_fields || '["type"]'::jsonb`);
+    expect(membership[1]).toEqual([EXPERIENCE_ID, SOURCE_ID, null]);
+    expect(update()[0]).not.toContain(' type = $');
     expect(audited().type).toEqual({ old: 'cultural', new: null });
   });
 
@@ -477,7 +489,10 @@ describe('editExperience and the column the type rename removed', () => {
     const projection = /SELECT([\s\S]*?)FROM experiences/.exec(firstSql)?.[1];
     expect(projection, 'expected a SELECT … FROM experiences').toBeDefined();
     const columns = projection!.split(',').map((c) => c.trim());
-    expect(columns).toContain('type');
+    // The type within a kind is the membership's since ADR-0084, and the place
+    // carries neither name for it.
+    expect(columns).toContain('short_description');
+    expect(columns).not.toContain('type');
     expect(columns).not.toContain('category');
   });
 

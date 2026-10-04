@@ -174,7 +174,7 @@ export async function admittedExternalIds(sourceId: number, type?: string): Prom
      WHERE m.source_id = $1
        AND m.admission = 'admitted'
        AND e.is_manual = FALSE
-       AND ($2::text IS NULL OR e.type = $2)`,
+       AND ($2::text IS NULL OR m.type = $2)`,
     [sourceId, type ?? null]
   );
   return new Set(result.rows.map((row: { external_id: string }) => row.external_id));

@@ -118,6 +118,28 @@ export function placeOfSourceSql(alias = 'e', sourceParam = '$1'): string {
 }
 
 /**
+ * The claims a source's proposal about a place meets, as a `jsonb` array: the
+ * place's own `curated_fields`, and the claim on the type held by the
+ * membership of the proposing source — the type within a kind is the
+ * membership's (ADR-0084), and so is a curator's pin on it. `source` is an SQL
+ * expression naming the proposing source, such as the run log's `source_id`.
+ */
+export function claimsFacingSql(experience: string, source: string): string {
+  return `(COALESCE(${experience}.curated_fields, '[]'::jsonb) || COALESCE((
+          SELECT CASE WHEN cm.curated_fields ? 'type' THEN '["type"]'::jsonb END
+            FROM ${MEMBERSHIPS} cm
+           WHERE cm.experience_id = ${experience}.id AND cm.source_id = ${source}), '[]'::jsonb))`;
+}
+
+/**
+ * The same claims in TypeScript, where a caller has read them: the place's own,
+ * and `type` where the membership a proposal comes through claims it.
+ */
+export function withTypeClaim(placeClaims: string[] | null | undefined, typeClaimed: unknown): string[] {
+  return [...(placeClaims ?? []), ...(typeClaimed ? ['type'] : [])];
+}
+
+/**
  * The membership a curator's click on `/:id/…` answers, as a scalar subquery
  * over the place's id.
  *

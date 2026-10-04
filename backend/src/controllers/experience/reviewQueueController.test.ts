@@ -381,7 +381,10 @@ describe('getReviewQueue', () => {
     // Accepting the source releases the claim but leaves the changeset row as
     // the record of what the run did — the claim is what makes it a question
     const [conflictSql] = callMatching("'conflict' AS kind");
-    expect(conflictSql).toContain('e.curated_fields ?');
+    // The claims the proposal meets: the place's, and the proposing source's
+    // membership's claim on the type (ADR-0084).
+    expect(conflictSql).toContain("COALESCE(e.curated_fields, '[]'::jsonb) || COALESCE((");
+    expect(conflictSql).toContain('cm.source_id = l.source_id');
     expect(conflictSql).toContain('q.proposed IS NOT NULL');
   });
 

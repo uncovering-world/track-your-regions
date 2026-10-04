@@ -196,6 +196,7 @@ export interface ExperienceKindMembershipsRow {
   kind_id: number;
   source_id: number;
   external_id: string;
+  type: string | null;
   admission: string;
   admission_reason: string | null;
   admission_answered_at: Date | null;
@@ -363,7 +364,6 @@ export interface ExperiencesRow {
   name_local: unknown | null;
   description: string | null;
   short_description: string | null;
-  type: string | null;
   tags: unknown | null;
   location: string;
   boundary: string | null;
@@ -728,6 +728,7 @@ export const COLUMN_WIDTHS = {
   },
   experience_kind_memberships: {
     external_id: 255,
+    type: 100,
     admission: 10,
     curation_state: 10,
     source_membership: 10,
@@ -769,7 +770,6 @@ export const COLUMN_WIDTHS = {
   experiences: {
     external_id: 255,
     name: 500,
-    type: 100,
     country_codes: 10,
     country_names: 255,
     image_url: 1000,

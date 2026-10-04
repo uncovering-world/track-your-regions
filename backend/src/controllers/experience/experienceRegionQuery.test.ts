@@ -126,3 +126,16 @@ describe('the count statements carry no per-object columns', () => {
     expect(countQuery).not.toContain('treasure_count');
   });
 });
+
+describe('the type a row is shown with', () => {
+  it('is its membership\'s, and grouped with it where children are included', () => {
+    // The type within a kind is the membership's (ADR-0084), so it is no longer
+    // functionally dependent on the place's key: the grouped statement names it
+    // or Postgres refuses the whole read.
+    const { query } = buildRegionQueries({
+      regionId: 7, includeChildren: true, showRejected: false, includeLostRows: false, limit: 20, offset: 0,
+    });
+    expect(query).toContain('m.type,');
+    expect(query).toContain('GROUP BY e.id, m.kind_id, m.type,');
+  });
+});

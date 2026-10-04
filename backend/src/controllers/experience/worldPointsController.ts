@@ -136,7 +136,7 @@ function selectSql(detail: PointsDetail, folded: boolean, location: string, loca
       `${locationRow}.name AS location_name`,
       'e.name AS experience_name',
       'm.kind_id',
-      'e.type',
+      'm.type',
     );
   }
   return columns.join(',\n        ');
