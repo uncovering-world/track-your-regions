@@ -372,6 +372,15 @@ Treasures are independently trackable things inside venue experiences. Currently
   `offeredLinkSql` (`missing_since IS NULL`), including both publish statements; the two lookups
   that merely locate a global work through any link (`recordedTreasureSql`, the credit-waiting
   assertion) deliberately do not
+- `experience_treasure_placements`: which memberships place a link (ADR-0084, #1252). A place two
+  sources fill holds what each source places there — the Louvre's paintings through Art Museums,
+  its finds through Archaeology — and a work both place is one link with two placements. A run
+  records its own placement on every link it offers and, past the coverage floor, takes away its
+  own from a link it no longer offers; the link is marked missing only once no placement is left,
+  so the Art Museums run never marks a find and the Archaeology run never a painting. Deleted
+  rather than marked, unlike the link: a placement is the run's bookkeeping. The catalogue check
+  `link-placed-by-another-places-membership` holds every placement to a membership of the link's
+  own place
 - `user_viewed_treasures`: per-user treasure tracking
 
 **Which venue a work belongs to is decided, not read.** A source names whatever holds the work —
@@ -1282,11 +1291,12 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   before a single museum is written the run measures the **works coverage floor** — of the works
   the catalogue offers at the museums it admits, the share it places at an admitted museum, which
   must reach 90 % (`worksCoverage.ts`) — and only a run that clears it marks the links of works it
-  no longer places here (`linkWithdrawal.ts`, once per museum, after every work is written). A
+  no longer places here (`linkWithdrawal.ts`, once per museum, after every work is written) —
+  taking away the run's own placement and marking a link only once no membership places it. A
   run below the floor marks nothing, is `partial`, and says why in
   `experience_sync_logs.withdrawal_skipped_reason` — the treasures analogue of
   `detection_skipped_reason`, shown on the run card as "Withdrawals skipped". A marked link is
-  restored on any run that places the work here again, floor or no floor — the two arms run in
+  restored on any run that places the work here again, floor or no floor — the restore and the mark run in
   one transaction. A visible link is held while this run places the same work at another admitted
   museum and no readable link of it stands anywhere yet, so a work that moved under the gate does
   not vanish from every reader until the new link is published; decided from the run's proposal
@@ -3887,8 +3897,9 @@ sharing two works and publishing at the same moment then meet the first shared w
 order, and the second waits for the first instead of holding a work the first needs.
 `publishSharedWorks.db.test.ts` holds that against PostgreSQL, with the two records listing the works
 in opposite orders. The tables' writers are a closed list the backend lint names
-(`WORK_WRITE_RULES`): that module; the run's `museum/treasureWriter.ts` and
-`museum/linkWithdrawal.ts`; and the seed.
+(`WORK_WRITE_RULES`, `experience_treasure_placements` included): that module; the run's
+`museum/treasureWriter.ts` and `museum/linkWithdrawal.ts`; and the seed. A link's gate is the
+run's own source (`run.sourceId`), as a work's is: a place two sources fill is gated per source.
 
 **The curation gate's tables are closed lists too** (ADR-0077 decision 4, #1148). Each has a
 family of its own in the backend lint, which refuses an `INSERT`, `UPDATE` or `DELETE` of the
