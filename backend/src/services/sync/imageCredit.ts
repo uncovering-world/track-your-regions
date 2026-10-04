@@ -40,6 +40,7 @@ import {
   type SourceWait,
 } from './sourceRetry.js';
 import { pool } from '../../db/index.js';
+import { sourcePlacesSql } from '../../db/membership.js';
 import { isCommonsPictureUrl, isStorableHttpUrl } from '../../types/urlSafety.js';
 
 const LOG_PREFIX = '[Image Credit]';
@@ -429,9 +430,13 @@ function creditsByExternalId(rows: StoredCreditRow[]): Map<string, StoredCredit>
  */
 export async function readStoredCredits(sourceId: number): Promise<Map<string, StoredCredit>> {
   const result = await pool.query(
+    // Keyed by the id the source knows each place by — its membership's, not
+    // the place's own, which on a place another source wrote first is that
+    // source's (ADR-0084).
     `${STORED_CREDIT_COLUMNS}
-       FROM experiences
-      WHERE source_id = $1`,
+       FROM (SELECT sm.external_id, e.image_url, e.metadata, e.curated_fields
+               FROM ${sourcePlacesSql('e', 'sm')}
+              WHERE sm.source_id = $1) AS stored`,
     [sourceId],
   );
   return creditsByExternalId(result.rows as StoredCreditRow[]);

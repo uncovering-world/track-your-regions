@@ -31,6 +31,7 @@ import {
   type SiteFacts, type WorldHeritageIndex,
 } from './unescoWikidata.js';
 import { pool } from '../../db/index.js';
+import { sourcePlacesSql } from '../../db/membership.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { WaitBudget } from './sourceRetry.js';
 import { longitudeDelta } from './longitude.js';
@@ -154,8 +155,8 @@ async function creditsForNewPictures(
  */
 export async function indexOfWhatIsStored(): Promise<WorldHeritageIndex> {
   const stored = await pool.query(
-    `SELECT external_id, image_url, metadata->>'wikipediaUrl' AS article
-       FROM experiences WHERE source_id = $1`,
+    `SELECT sm.external_id, e.image_url, e.metadata->>'wikipediaUrl' AS article
+       FROM ${sourcePlacesSql('e', 'sm')} WHERE sm.source_id = $1`,
     [UNESCO_SOURCE_ID],
   );
   return indexWorldHeritageFacts(stored.rows.map((row: { external_id: string; image_url: string | null; article: string | null }) => ({

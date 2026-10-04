@@ -187,7 +187,7 @@ describe('restoreAdmission', () => {
     await restoreAdmission(2, ['Q19675'], false);
 
     expect(lastSql()).toContain("m.admission = 'refused'");
-    expect(lastSql()).toContain('e.external_id = ANY($2::text[])');
+    expect(lastSql()).toContain('m.external_id = ANY($2::text[])');
   });
 
   it('respects the curator pin, so an override is not undone by a run', async () => {
@@ -212,7 +212,7 @@ describe('markNotAdmitted', () => {
     // Scoped to `admitted`, so a row refused by name earlier in the same run
     // keeps its specific reason instead of this generic one.
     expect(lastSql()).toContain("m.admission = 'admitted'");
-    expect(lastSql()).toContain('e.external_id <> ALL($2::text[])');
+    expect(lastSql()).toContain('m.external_id <> ALL($2::text[])');
   });
 
   it('never sweeps a curator-created row out of the source', async () => {
@@ -255,7 +255,7 @@ describe('markIconic', () => {
     const badged = await markIconic(2, ['Q19675', 'Q160236'], false);
 
     expect(lastSql()).toContain('UPDATE experience_kind_memberships m SET is_iconic = true');
-    expect(lastSql()).toContain('e.external_id = ANY($2::text[])');
+    expect(lastSql()).toContain('m.external_id = ANY($2::text[])');
     expect(lastSql()).toContain('AND NOT m.is_iconic');
     expect(lastParams()).toEqual([2, ['Q19675', 'Q160236']]);
     expect(badged).toEqual([{ id: 6184, externalId: 'Q19675', name: 'Louvre Museum' }]);
@@ -304,7 +304,7 @@ describe('unmarkIconic', () => {
     const cleared = await unmarkIconic(5, ['Q6373'], false);
 
     expect(lastSql()).toContain('UPDATE experience_kind_memberships m SET is_iconic = false');
-    expect(lastSql()).toContain('AND NOT (e.external_id = ANY($2::text[]))');
+    expect(lastSql()).toContain('AND NOT (m.external_id = ANY($2::text[]))');
     expect(lastSql()).toContain("AND m.admission = 'admitted'");
     expect(lastSql()).toContain('AND m.is_iconic');
     expect(lastParams()).toEqual([5, ['Q6373']]);

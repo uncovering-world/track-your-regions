@@ -223,24 +223,29 @@ describe('a place that belongs to no kind', () => {
   });
 });
 
-describe('a membership brought by a source other than the one its row is keyed on', () => {
+describe('a place none of whose memberships carries the source and id it was brought under', () => {
   const assertion = byId('membership-source-disagrees-with-row');
   const sql = collapse(assertion.sql);
 
-  it('compares the membership\'s source with the row\'s identity column', () => {
-    // `experiences.source_id` is the identity arbiter until #755, and the
-    // lists read it while the counts read the membership; a row where the two
-    // disagree is shown in one kind and counted in another.
-    expect(sql).toContain('WHERE m.source_id <> e.source_id');
+  it('asks for a membership carrying the place\'s own pair, source and id alike', () => {
+    // A run finds its places by the pair on the membership (ADR-0084); a place
+    // whose first source has no membership carrying it is one that source's
+    // next run creates again beside it.
+    expect(sql).toContain('m.source_id = e.source_id AND m.external_id = e.external_id');
+    expect(sql).toContain('AND NOT EXISTS');
     expect(assertion.kind).toBe('invariant');
   });
 
-  it('names both sources, since the remedy is choosing between them', () => {
+  it('leaves a place with no membership at all to the check that names that', () => {
+    expect(sql).toContain(`WHERE EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id)`);
+  });
+
+  it('names the source and the id, since those are what the run looks for', () => {
     expect(assertion.describe({
       experience_id: 382, experience_name: 'Statue of Liberty',
-      row_source_name: 'UNESCO World Heritage Sites', membership_source_name: 'Public Art & Monuments',
-    })).toBe('Statue of Liberty: keyed on UNESCO World Heritage Sites, its membership brought by '
-      + 'Public Art & Monuments (experience 382)');
+      row_source_name: 'UNESCO World Heritage Sites', external_id: '307',
+    })).toBe('Statue of Liberty: brought by UNESCO World Heritage Sites as 307, and no membership '
+      + 'of it carries that pair (experience 382)');
   });
 });
 

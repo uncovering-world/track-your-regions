@@ -2666,7 +2666,7 @@ CREATE TABLE IF NOT EXISTS experiences (
 );
 
 COMMENT ON TABLE experiences IS 'Location-based experiences from various sources (UNESCO sites, museums, etc.)';
-COMMENT ON COLUMN experiences.external_id IS 'ID from the source''s own system (e.g., UNESCO id_no)';
+COMMENT ON COLUMN experiences.external_id IS 'The id the source that first brought this row knows it by (e.g., a UNESCO id_no). Provenance only since ADR-0084: a run finds a place through its membership''s external_id, never through this.';
 COMMENT ON COLUMN experiences.name_local IS 'Multilingual names: {"en": "...", "fr": "...", ...}';
 COMMENT ON COLUMN experiences.type IS
   'The type within the kind, where a kind has types a traveller still browses together '
@@ -2865,15 +2865,18 @@ CREATE INDEX IF NOT EXISTS idx_experiences_first_seen ON experiences(first_seen_
 --               what a source observes about the row (missing_since,
 --               source_membership) and what the world says of it (existence),
 --               the visit
---   membership  kind, source, admission and its reason, admitted_for,
+--   membership  kind, source and the id the source knows the place by
+--               (external_id), admission and its reason, admitted_for,
 --               is_iconic, the curator's pins on those, curation_state,
 --               published_at, pending_change_sync_log_id
 --
--- `experiences.source_id` stays: it is the arbiter of the row's identity
--- (UNIQUE(source_id, external_id)) until the identity work of ADR-0046
--- decision 1 moves a source's id onto the membership (#755). Every row's
--- membership names that same source today, and the admin panel's catalogue
--- checks say so (`membership-source-disagrees-with-row`).
+-- A place belongs to no source and no kind (ADR-0084): a run finds its places
+-- through its own memberships, by (source_id, external_id) here.
+-- `experiences.source_id` and `experiences.external_id` stay as provenance --
+-- the source that first brought the row and the id it brought it under -- and
+-- nothing arbitrates on them. Every row's membership names that same pair
+-- today, and the admin panel's catalogue checks say so
+-- (`membership-source-disagrees-with-row`).
 --
 -- Four columns can take a row off a reader's screen, and they compose rather
 -- than collapse (ADR-0025): `existence` answers is it still standing,
@@ -2902,6 +2905,7 @@ CREATE TABLE IF NOT EXISTS experience_kind_memberships (
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     kind_id INTEGER NOT NULL REFERENCES experience_kinds(id),
     source_id INTEGER NOT NULL REFERENCES experience_sources(id) ON DELETE CASCADE,
+    external_id VARCHAR(255) NOT NULL,
     admission VARCHAR(10) NOT NULL DEFAULT 'admitted' CHECK (admission IN ('admitted', 'refused')),
     admission_reason TEXT,
     admission_answered_at TIMESTAMPTZ,
@@ -2918,11 +2922,22 @@ CREATE TABLE IF NOT EXISTS experience_kind_memberships (
     pending_change_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE (experience_id, kind_id)
+    UNIQUE (experience_id, kind_id),
+    CONSTRAINT experience_kind_memberships_source_external_key UNIQUE (source_id, external_id)
 );
+
+-- Declared in the CREATE TABLE above and added again here: CREATE TABLE IF NOT
+-- EXISTS is a no-op on a database that already holds the table. NOT NULL makes
+-- this fail on one whose memberships carry no id yet, which is migration 070's
+-- to backfill first.
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS external_id VARCHAR(255) NOT NULL;
+ALTER TABLE experience_kind_memberships DROP CONSTRAINT IF EXISTS experience_kind_memberships_source_external_key;
+ALTER TABLE experience_kind_memberships ADD CONSTRAINT experience_kind_memberships_source_external_key
+    UNIQUE (source_id, external_id);
 
 COMMENT ON TABLE experience_kind_memberships IS 'A place''s membership in a kind (ADR-0045 decision 4): one row per (place, kind), carrying what the kind says about the place -- the source that brought it, the admission verdict, the badge, and whether a curator has passed the arrival. The place itself is the experiences row.';
 COMMENT ON COLUMN experience_kind_memberships.source_id IS 'The source that brought this membership (ADR-0045 decision 3): a kind may have several, and a run writes, refuses and badges only the memberships its own source brought.';
+COMMENT ON COLUMN experience_kind_memberships.external_id IS 'The id the source knows the place by -- a World Heritage id, a Wikidata item -- unique per source (ADR-0084 decision 2). A run finds, admits and marks its places through it; the place''s own source_id and external_id only say which source first brought the row.';
 COMMENT ON COLUMN experience_kind_memberships.admission IS 'admitted or refused. Whether this kind accepts the place, independent of whether the source still lists it (ADR-0024). The machine sets this one: a refusal is our own rule applied to an object the run named, not an observation. A place with no admitted membership is hidden from every read that offers somewhere to go, and from none that records a visit.';
 COMMENT ON COLUMN experience_kind_memberships.admission_reason IS 'Why the kind refused it, stated verbatim to the curator. Here rather than in experience_sync_changes because a changeset is keyed by the external id the run named, which is not always this row''s.';
 COMMENT ON COLUMN experience_kind_memberships.admission_answered_at IS 'When a batch answer confirmed this refusal without pinning it (ADR-0067): the question is closed, and the next run applies the rule again. A run that refuses a row it had admitted clears it, so a refusal that comes back is asked again.';

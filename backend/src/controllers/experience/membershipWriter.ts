@@ -153,7 +153,8 @@ export async function clearHeldPointer(
  * source the curator chose (ADR-0045 decision 4, #822): `verified` and
  * published from the moment it exists, since a person's judgement does not
  * depend on the source's gate. Under the token the manual create's own insert
- * hands back (`insertCuratedExperience`).
+ * hands back (`insertCuratedExperience`). Its id within the source is the
+ * place's own `curator-<id>-<ts>` key, which no source listing can ever name.
  */
 export async function insertManualMembership(
   client: PoolClient,
@@ -161,9 +162,10 @@ export async function insertManualMembership(
   sourceId: number,
 ): Promise<void> {
   await client.query(`
-    INSERT INTO ${MEMBERSHIPS} (experience_id, kind_id, source_id, curation_state, published_at)
+    INSERT INTO ${MEMBERSHIPS} (experience_id, kind_id, source_id, external_id, curation_state, published_at)
     VALUES (
       $1, (SELECT kind_id FROM experience_sources WHERE id = $2), $2,
+      (SELECT external_id FROM experiences WHERE id = $1),
       'verified', NOW()
     )
   `, [lock.id, sourceId]);

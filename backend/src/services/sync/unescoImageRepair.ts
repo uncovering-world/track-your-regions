@@ -21,6 +21,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { sourcePlacesSql } from '../../db/membership.js';
 import { ReaderFacingError, sentenceFor } from '../../api/readerFacingError.js';
 import { isDisplayablePictureUrl } from '../../types/urlSafety.js';
 import {
@@ -84,10 +85,10 @@ export function sitesNeedingAPicture(rows: SiteRow[]): SiteRow[] {
  */
 async function readSites(): Promise<SiteRow[]> {
   const result = await pool.query(
-    `SELECT id, external_id, name, image_url
-       FROM experiences
-      WHERE source_id = $1
-      ORDER BY name`,
+    `SELECT e.id, sm.external_id, e.name, e.image_url
+       FROM ${sourcePlacesSql('e', 'sm')}
+      WHERE sm.source_id = $1
+      ORDER BY e.name`,
     [UNESCO_SOURCE_ID],
   );
   return result.rows as SiteRow[];

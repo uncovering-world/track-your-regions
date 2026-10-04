@@ -108,6 +108,11 @@ const client = { query: vi.fn(), release: vi.fn() };
 function given(stored: Record<string, unknown> | null, written: Record<string, unknown> = writtenRow()) {
   client.query.mockImplementation(async (sql: string) => {
     if (/INSERT INTO experiences/.test(sql)) return { rows: [written] };
+    // The membership names the place the run's source knows by its id, before
+    // the lock and again after it (`lockSourcedExperience`, ADR-0084).
+    if (/SELECT experience_id FROM experience_kind_memberships/.test(sql)) {
+      return { rows: stored ? [{ experience_id: stored.id }] : [] };
+    }
     // The lock, in a statement of its own, answers with the id or nothing;
     // the read after it answers with the row (`db/locks.ts`).
     if (/FOR NO KEY UPDATE/.test(sql)) return { rows: stored ? [{ id: stored.id }] : [] };
@@ -440,9 +445,12 @@ describe('a dry run', () => {
     const sql = String(mockedQuery.mock.calls[0][0]);
     expect(sql).toContain(
       '((SELECT requires_curation FROM experience_sources WHERE id = $1)'
-      + ` AND ${placeVisibleSql('experiences')}) AS was_held`,
+      + ` AND ${placeVisibleSql('e')}) AS was_held`,
     );
     expect(sql).not.toMatch(/experiences\.curation_state/);
+    // And it finds the place the way the run does: through the source's own
+    // membership and the id the source knows it by (ADR-0084).
+    expect(sql).toContain('WHERE sm.source_id = $1 AND sm.external_id = $2');
   });
 
   it('previews a rename with the name the real run would store', async () => {
@@ -528,13 +536,24 @@ describe('one transaction per object, the row locked first', () => {
     // the memberships read in the locking statement would still be the ones
     // from before a publish that committed during the wait (`db/locks.ts`).
     const [locked, params] = lockedRead();
-    expect(locked).toBe('SELECT id FROM experiences WHERE source_id = $1 AND external_id = $2 FOR NO KEY UPDATE');
-    expect(params).toEqual([PARAMS.sourceId, PARAMS.externalId]);
+    expect(locked).toBe('SELECT id FROM experiences WHERE id = $1 FOR NO KEY UPDATE');
+    expect(params).toEqual([501]);
+    // The place is found through the source's membership (ADR-0084), before
+    // the lock and again once it is held.
+    const lookups = sql.filter(s => /SELECT experience_id FROM experience_kind_memberships/.test(s));
+    expect(lookups).toHaveLength(2);
+    expect(lookups[0]).toContain('WHERE source_id = $1 AND external_id = $2');
+    expect(sql.indexOf(lookups[0])).toBeLessThan(sql.indexOf(locked));
+    // The source's name for the object is locked before anything is looked
+    // up, so two writers of the same new object cannot both find nothing.
+    const named = sql.findIndex(s => /pg_advisory_xact_lock\(\$1::integer, hashtext\(\$2\)\)/.test(s));
+    expect(named).toBeGreaterThan(0);
+    expect(named).toBeLessThan(sql.indexOf(lookups[0]));
     // The read after it, on the same row, with no lock of its own.
     const [snapshot, snapshotParams] = snapshotRead();
     expect(snapshot).not.toContain('FOR NO KEY UPDATE');
-    expect(snapshot).toContain('WHERE e.source_id = $1 AND e.external_id = $2');
-    expect(snapshotParams).toEqual([PARAMS.sourceId, PARAMS.externalId]);
+    expect(snapshot).toContain('WHERE e.id = $2');
+    expect(snapshotParams).toEqual([PARAMS.sourceId, 501]);
     expect(sql.indexOf(locked)).toBeLessThan(sql.indexOf(snapshot));
     expect(sql.indexOf(snapshot)).toBeLessThan(sql.findIndex(s => /INSERT INTO experiences/.test(s)));
     expect(client.release).toHaveBeenCalledWith(undefined);
@@ -647,8 +666,9 @@ describe('the keys a run computes about its own pass go past both guards', () =>
     // just written or freeze a value nothing reports.
     expect(params[15]).toEqual([...SYNC_OWNED_METADATA_KEYS]);
     // $16, which is what both metadata arms read it as; then the hold, the
-    // membership's work and the site's extent, which are this statement's own.
-    expect(params).toHaveLength(19);
+    // membership's work, the site's extent and the place the lock found, which
+    // are this statement's own.
+    expect(params).toHaveLength(20);
     expect(sql).not.toContain("'artworkCount'");
   });
 
@@ -692,7 +712,10 @@ describe('the membership the run writes beside the place', () => {
     // second source of truth that could disagree with the column.
     expect(cte).toContain('INSERT INTO experience_kind_memberships');
     expect(cte).toContain('(SELECT kind_id FROM experience_sources WHERE id = $1)');
-    expect(cte).toContain('ON CONFLICT (experience_id, kind_id) DO UPDATE SET');
+    // Found again by the id its source knows the place by (ADR-0084), which
+    // the membership carries from the statement that creates it.
+    expect(cte).toContain('ON CONFLICT (source_id, external_id) DO UPDATE SET');
+    expect(cte).toMatch(/source_id, external_id, admitted_for/);
     expect(cte).toContain('FROM ins');
   });
 
@@ -729,7 +752,7 @@ describe('the membership the run writes beside the place', () => {
     expect(cte).toMatch(/CASE WHEN \(SELECT requires_curation FROM gate\) THEN 'pending' ELSE 'auto' END/);
     expect(cte).toMatch(/CASE WHEN \(SELECT requires_curation FROM gate\) THEN NULL ELSE NOW\(\) END/);
     // And on the membership alone: the place no longer carries a state.
-    const placeInsert = upsert()[0].slice(0, upsert()[0].indexOf('ON CONFLICT (source_id'));
+    const placeInsert = upsert()[0].slice(0, upsert()[0].indexOf('ON CONFLICT (id)'));
     expect(placeInsert).not.toContain('curation_state');
     expect(placeInsert).not.toContain('published_at');
   });
@@ -1241,6 +1264,9 @@ describe('the extent a run writes', () => {
     const stored = storedRow({ boundary_hash: 'a-first-tracing', area_km2: '0.0568', was_held: true });
     client.query.mockImplementation(async (sql: string) => {
       if (/INSERT INTO experiences/.test(sql)) return { rows: [writtenRow()] };
+      if (/SELECT experience_id FROM experience_kind_memberships/.test(sql)) {
+        return { rows: [{ experience_id: stored.id }] };
+      }
       if (/FOR NO KEY UPDATE/.test(sql)) return { rows: [{ id: stored.id }] };
       if (/AS was_held/.test(sql)) return { rows: [stored] };
       if (/md5\(ST_AsBinary\(geom\)\)/.test(sql)) {

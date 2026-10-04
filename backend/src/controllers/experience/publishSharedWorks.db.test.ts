@@ -74,8 +74,8 @@ beforeEach(async () => {
       [venue, sourceId, `Q-venue-${venue}`, name],
     );
     await pool.query(
-      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, admission, curation_state)
-       VALUES ($1, $2, $3, 'admitted', 'verified')`,
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, curation_state)
+       VALUES ($1, $2, $3, (SELECT external_id FROM experiences WHERE id = $1), 'admitted', 'verified')`,
       [venue, source.rows[0].kind_id, sourceId],
     );
   }

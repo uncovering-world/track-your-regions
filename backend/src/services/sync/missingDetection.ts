@@ -16,9 +16,38 @@
  */
 
 import { pool } from '../../db/index.js';
-import { placeAdmittedSql } from '../../db/membership.js';
+import { MEMBERSHIPS, membershipAdmittedSql, sourcePlacesSql } from '../../db/membership.js';
 import type { ChangeRecord } from './changeRecorder.js';
 import { hideLostSql } from '../../db/readerPredicates.js';
+
+/**
+ * The places a run is expected to see again, as `e` with the run's membership
+ * as `sm` ($1 the source): listed, unmarked, not a curator's own, not lost,
+ * and not refused by the source's own rule. Reached through the membership,
+ * and matched by its `external_id`, never the place's (ADR-0084).
+ *
+ * A refused row is not among them (ADR-0024). The source has already turned
+ * it down, so it is neither something the source owes us nor something whose
+ * absence says anything; counting it would drag every source that refuses
+ * anything toward the 90 % floor that disables detection.
+ *
+ * is_manual rows are excluded on both counts. A curator can add an experience
+ * straight into any source, UNESCO included; its `curator-<id>-<ts>` key can
+ * never appear in a source listing, so measuring it against one would report
+ * every clean run as having delisted the curator's own work.
+ *
+ * A row judged `lost` is answered, whatever the source still says. Asking
+ * again every run would put it back in the review queue for good — the only
+ * way out would be to answer a different question — and leaving it in the
+ * denominator counts a row that can never be seen against the coverage guard,
+ * dragging the source toward the 90 % floor that disables detection.
+ */
+const EXPECTED = `sm.source_id = $1
+       AND e.source_membership = 'present'
+       AND e.missing_since IS NULL
+       AND e.is_manual = FALSE
+       AND ${hideLostSql('e')}
+       AND ${membershipAdmittedSql('sm')}`;
 
 export type SourceCompleteness = 'authoritative' | 'ranked';
 
@@ -61,24 +90,12 @@ export function missingDetectionSkipReason(input: MissingDetectionInput): string
   return null;
 }
 
-/**
- * Count the rows a run is expected to see again.
- *
- * A refused row is not among them (ADR-0024). The source has already turned
- * it down, so it is neither something the source owes us nor something whose
- * absence says anything; counting it would drag every source that refuses
- * anything toward the 90 % floor that disables detection.
- */
+/** Count the rows a run is expected to see again (`EXPECTED`). */
 export async function countActiveExperiences(sourceId: number): Promise<number> {
   const result = await pool.query(
     `SELECT COUNT(*)::int AS count
-     FROM experiences
-     WHERE source_id = $1
-       AND source_membership = 'present'
-       AND missing_since IS NULL
-       AND is_manual = FALSE
-       AND ${hideLostSql('experiences')}
-       AND ${placeAdmittedSql('experiences')}`,
+     FROM ${sourcePlacesSql('e', 'sm')}
+     WHERE ${EXPECTED}`,
     [sourceId]
   );
   return Number(result.rows[0]?.count ?? 0);
@@ -100,14 +117,9 @@ export async function countSeenAmongActive(
 ): Promise<number> {
   const result = await pool.query(
     `SELECT COUNT(*)::int AS count
-     FROM experiences
-     WHERE source_id = $1
-       AND source_membership = 'present'
-       AND missing_since IS NULL
-       AND is_manual = FALSE
-       AND ${hideLostSql('experiences')}
-       AND ${placeAdmittedSql('experiences')}
-       AND external_id = ANY($2::text[])`,
+     FROM ${sourcePlacesSql('e', 'sm')}
+     WHERE ${EXPECTED}
+       AND sm.external_id = ANY($2::text[])`,
     [sourceId, seenExternalIds]
   );
   return Number(result.rows[0]?.count ?? 0);
@@ -132,32 +144,22 @@ export async function flagMissingExperiences(
   dryRun: boolean,
   seenExternalIds: string[],
 ): Promise<ChangeRecord[]> {
-  // is_manual rows are excluded on both counts. A curator can add an experience
-  // straight into any source, UNESCO included; its `curator-<id>-<ts>` key
-  // can never appear in a source listing, so measuring it against one would
-  // report every clean run as having delisted the curator's own work.
-  // A row judged `lost` is answered, whatever the source still says. Asking
-  // again every run would put it back in the review queue for good — the only
-  // way out would be to answer a different question — and leaving it in the
-  // denominator counts a row that can never be seen against the coverage
-  // guard, dragging the source toward the 90 % floor that disables detection.
-  const predicate = `source_id = $1
-      AND source_membership = 'present'
-      AND missing_since IS NULL
-      AND is_manual = FALSE
-      AND ${hideLostSql('experiences')}
-      AND ${placeAdmittedSql('experiences')}
-      AND external_id <> ALL($2::text[])`;
+  // The mark is the place's until #1251 moves it onto the membership: today
+  // every place has one membership, so its source's silence is the place's.
+  const predicate = `${EXPECTED}
+      AND sm.external_id <> ALL($2::text[])`;
 
   const result = dryRun
     ? await pool.query(
-        `SELECT id, external_id, name FROM experiences WHERE ${predicate}`,
+        `SELECT e.id, sm.external_id, e.name FROM ${sourcePlacesSql('e', 'sm')} WHERE ${predicate}`,
         [sourceId, seenExternalIds]
       )
     : await pool.query(
-        `UPDATE experiences SET missing_since = NOW()
-         WHERE ${predicate}
-         RETURNING id, external_id, name`,
+        `UPDATE experiences e SET missing_since = NOW()
+           FROM ${MEMBERSHIPS} sm
+          WHERE sm.experience_id = e.id
+            AND ${predicate}
+         RETURNING e.id, sm.external_id, e.name`,
         [sourceId, seenExternalIds]
       );
 

@@ -41,7 +41,7 @@ import { lockExperience } from '../../../db/experienceWriter.js';
  * source (`run.sourceId`), bound as the same parameter the insert reads it
  * from, so the two cannot disagree. Evaluated inside `DO UPDATE` on the row
  * the statement locked and again in its RETURNING, so the record cannot
- * disagree with the write (`heldSql` in experienceUpsert.ts, and #519 for why
+ * disagree with the write (`PLACE_HELD` in experienceUpsert.ts, and #519 for why
  * the answer has to come back).
  *
  * `treasures.` is not decoration: inside `ON CONFLICT DO UPDATE` both the table

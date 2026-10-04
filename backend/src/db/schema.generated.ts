@@ -195,6 +195,7 @@ export interface ExperienceKindMembershipsRow {
   experience_id: number;
   kind_id: number;
   source_id: number;
+  external_id: string;
   admission: string;
   admission_reason: string | null;
   admission_answered_at: Date | null;
@@ -717,6 +718,7 @@ export const COLUMN_WIDTHS = {
     answer: 10,
   },
   experience_kind_memberships: {
+    external_id: 255,
     admission: 10,
     curation_state: 10,
   },

@@ -174,7 +174,7 @@ export async function writeExperienceLocations(
    * would be a second source of truth that could disagree with the column
    * between the check and the write. Evaluated inside the keeping arm on the
    * row it locked, and again in that arm's RETURNING, so the report cannot
-   * disagree with the write about whether the write happened (`heldSql` in
+   * disagree with the write about whether the write happened (`PLACE_HELD` in
    * experienceUpsert.ts, and the reason it answers for itself: #519).
    *
    * One column only. `location` is deliberately outside it: a kept row is

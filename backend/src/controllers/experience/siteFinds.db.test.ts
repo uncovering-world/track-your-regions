@@ -42,8 +42,8 @@ async function place(id: number, type: string, state: string): Promise<void> {
     [id, id === DIG ? DIG_QID : `Q-venue-${id}`, `Place ${id}`, type],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, admission, curation_state)
-     VALUES ($1, 5, 5, 'admitted', $2)`,
+    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, admission, curation_state)
+     VALUES ($1, 5, 5, (SELECT external_id FROM experiences WHERE id = $1), 'admitted', $2)`,
     [id, state],
   );
 }

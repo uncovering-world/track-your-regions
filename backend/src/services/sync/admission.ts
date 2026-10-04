@@ -64,13 +64,14 @@
  * and matching by external id can never reach the stale row.
  *
  * Every statement joins the membership to its place: the run names rows by
- * the source's own id, which is the place's `external_id` until #755 moves it
- * onto the membership, and what it returns is the place — the id the
- * changeset keys on and the name a curator reads.
+ * the source's own id, which is the membership's `external_id` — never the
+ * place's, which on a place another source wrote first is that source's
+ * (ADR-0084) — and what it returns is the place: the id the changeset keys
+ * on and the name a curator reads.
  */
 
 import { pool } from '../../db/index.js';
-import { MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql } from '../../db/membership.js';
+import { MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql, sourcePlacesSql } from '../../db/membership.js';
 
 // The pins are the membership's since #822 and are spelled in db/membership.ts,
 // where every reader of them can reach them; re-exported here so the writers
@@ -135,7 +136,7 @@ export function admissionSweepSkipReason(input: AdmissionSweepInput): string | n
 }
 
 /** The membership the run's source brought, joined to its place. */
-const SOURCE_MEMBERSHIPS = `${MEMBERSHIPS} m JOIN experiences e ON e.id = m.experience_id`;
+const SOURCE_MEMBERSHIPS = sourcePlacesSql('e', 'm');
 
 /**
  * How many rows the source currently admits. Read before the run writes, so
@@ -168,7 +169,7 @@ export async function admittedExternalIds(sourceId: number, type?: string): Prom
   // entered through, and the museum the museum door stopped admitting would
   // be written as a site on its fame alone.
   const result = await pool.query(
-    `SELECT e.external_id
+    `SELECT m.external_id
      FROM ${SOURCE_MEMBERSHIPS}
      WHERE m.source_id = $1
        AND m.admission = 'admitted'
@@ -194,7 +195,7 @@ export async function admittedExternalIds(sourceId: number, type?: string): Prom
 const UNPROTECTED = `e.is_manual = FALSE
       AND NOT ${admissionPinnedSql('m')}`;
 
-const RETURNING = 'e.id, e.external_id, e.name';
+const RETURNING = 'e.id, m.external_id, e.name';
 
 function rowsFrom(result: { rows: { id: number; external_id: string; name: string }[] }): AdmissionRow[] {
   return result.rows.map((row) => ({ id: row.id, externalId: row.external_id, name: row.name }));
@@ -275,7 +276,7 @@ export async function markIconic(
        FROM experiences e
       WHERE e.id = m.experience_id
         AND m.source_id = $1
-        AND e.external_id = ANY($2::text[])
+        AND m.external_id = ANY($2::text[])
         AND m.admission = 'admitted'
         AND NOT m.is_iconic
         AND NOT ${iconicPinnedSql('m')}
@@ -330,7 +331,7 @@ export async function unmarkIconic(
        FROM experiences e
       WHERE e.id = m.experience_id
         AND m.source_id = $1
-        AND NOT (e.external_id = ANY($2::text[]))
+        AND NOT (m.external_id = ANY($2::text[]))
         AND m.admission = 'admitted'
         AND m.is_iconic
         AND NOT ${iconicPinnedSql('m')}
@@ -359,7 +360,7 @@ export async function markRefused(
   const reasons = refusals.map((r) => r.reason);
   const named = `(SELECT UNNEST($2::text[]) AS external_id, UNNEST($3::text[]) AS reason) v`;
   const predicate = `m.source_id = $1
-      AND e.external_id = v.external_id
+      AND m.external_id = v.external_id
       AND ${UNPROTECTED}`;
 
   const result = dryRun
@@ -407,7 +408,7 @@ export async function restoreAdmission(
   const predicate = `m.source_id = $1
       AND m.admission = 'refused'
       AND ${UNPROTECTED}
-      AND e.external_id = ANY($2::text[])`;
+      AND m.external_id = ANY($2::text[])`;
 
   const result = dryRun
     ? await pool.query(
@@ -451,7 +452,7 @@ export async function markNotAdmitted(
   const predicate = `m.source_id = $1
       AND m.admission = 'admitted'
       AND ${UNPROTECTED}
-      AND e.external_id <> ALL($2::text[])`;
+      AND m.external_id <> ALL($2::text[])`;
 
   const result = dryRun
     ? await pool.query(
