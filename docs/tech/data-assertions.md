@@ -456,13 +456,18 @@ Migration 046 refuses to commit with such a row and every writer that
 creates a place — the run's `experienceUpsert.ts`, a curator's
 `insertManualExperience` and the `e2eFixture.ts` seed — writes the membership
 with it; a row here came in by a path that
-did not. The second rule is about the two halves of the catalogue agreeing:
-`experiences.source_id` stays the row's identity arbiter until #755, and every
-reader-facing row reads its kind through that equality — the membership with
-`source_id = e.source_id` is the row's own (`rowKindJoinSql`, #819) — while the
-counts read the memberships. A row where the two disagree has no kind to be
-shown under: it comes back with none, which no group, pin colour or chip can
-draw, while the counts file it under the kind its membership names.
+did not. The second rule is about the two halves of the catalogue agreeing: a
+run finds its places by the `(source_id, external_id)` its membership carries
+(ADR-0084), and the place's own pair names the source that first brought it
+and the id it brought it under. Some membership of the place has to carry that
+pair. One that none carries is a place its first source's next run does not
+find: the run tries to create the place and fails on that item on every run,
+since the place's own pair is still unique among places. Every reader-facing
+row still reads its kind off the membership with `source_id = e.source_id`
+(`rowKindJoinSql`, #819), so where no membership names the place's own source
+at all, the row also comes back with no kind, which no group, pin colour or
+chip can draw; a membership naming that source under another id still gives
+the row its kind, and only the run fails.
 
 **The name rule** (`name-carries-whitespace-nobody-typed`) asks of every column
 a person types into a filter — a place's name, each language of its local
