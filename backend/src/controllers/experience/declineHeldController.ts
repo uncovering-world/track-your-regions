@@ -37,6 +37,10 @@ import {
 import type { ContentsByKind } from '../../services/sync/types.js';
 import { lockExperience } from '../../db/experienceWriter.js';
 import { clearHeldPointer } from './membershipWriter.js';
+import { markUnreadPointsRefused } from './experienceLocationWriter.js';
+import { pointMovedToProposed } from './movedPoint.js';
+import { placeAfterRelease } from './publishContents.js';
+import { placementReport } from './placementReport.js';
 
 export interface DeclineRefusal {
   status: number;
@@ -131,6 +135,7 @@ export async function refuseUnderLock(
 ): Promise<{ result?: DeclineHeldResult; refusal?: DeclineRefusal }> {
   const client = await pool.connect();
   let unusable: Error | undefined;
+  let result: Omit<DeclineHeldResult, 'placementFailed' | 'placementFailedWorldViews'>;
   try {
     await client.query('BEGIN');
 
@@ -205,6 +210,14 @@ export async function refuseUnderLock(
     await recordHeldAnswers(client, experienceId, userId, 'refused',
       selected.map(row => ({ row: row.ref, value: row.proposed })));
 
+    // ADR-0083: the object's coordinate and the unread point that is the same move are
+    // one question (#1233): publishing the coordinate takes the point along, so
+    // a no to it turns the point down too — which keeps the stored pin where
+    // readers see it, the move's withdrawal held on the refused point.
+    const location = selected.find(row => row.ref.kind === null && row.ref.field === 'location');
+    const movedPointRefused = location ? await pointMovedToProposed(client, locked.lock, location.proposed) : null;
+    if (movedPointRefused !== null) await markUnreadPointsRefused(client, locked.lock, [movedPointRefused]);
+
     // The pointer is what the card is keyed on, so it goes only once nothing is
     // left open — the same rule publishing follows, for the same reason: a card
     // cleared with rows still on it would take them off every screen there is,
@@ -242,13 +255,12 @@ export async function refuseUnderLock(
         })),
       fromSyncLogId: pointer,
       heldLeftOpen,
+      movedPointRefused,
     })]);
 
     await client.query('COMMIT');
-    return {
-      result: {
-        experienceId, declinedFields, declinedParts, fromSyncLogId: pointer, heldLeftOpen,
-      },
+    result = {
+      experienceId, declinedFields, declinedParts, fromSyncLogId: pointer, heldLeftOpen, movedPointRefused,
     };
   } catch (error) {
     // A client whose ROLLBACK also failed must be destroyed, not pooled: it
@@ -258,4 +270,11 @@ export async function refuseUnderLock(
   } finally {
     client.release(unusable);
   }
+
+  // A refused point is a placement event (`refuseContentsUnderLock` says why),
+  // re-placed after the COMMIT with this request's client back in the pool.
+  const placementFailures = result.movedPointRefused !== null
+    ? await placeAfterRelease(experienceId, 'A curator turned down a point of experience %d')
+    : [];
+  return { result: { ...result, ...placementReport(placementFailures) } };
 }

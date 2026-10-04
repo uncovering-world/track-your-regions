@@ -77,7 +77,7 @@ export async function publishContents(
   // two swap, in this transaction (`releaseDeferredWithdrawals` says why).
   let withdrawalsReleased = 0;
   if (locationsPublished > 0) {
-    withdrawalsReleased = await releaseDeferredWithdrawals(client, lock, 'published');
+    withdrawalsReleased = await releaseDeferredWithdrawals(client, lock);
   }
 
   let treasureLinksPublished = 0;

@@ -102,7 +102,9 @@ beforeEach(() => {
   mockedPublish.mockResolvedValue(PUBLISHED);
   mockedRefuseArrival.mockResolvedValue({ result: { experienceId: 5, admission: 'refused' } });
   mockedRefuseContents.mockResolvedValue({ result: { locationsRefused: 4, treasureLinksRefused: 0 } });
-  mockedRefuseHeld.mockResolvedValue({ result: { declinedFields: ['name', 'year'], declinedParts: [{ fields: ['artists'] }] } });
+  mockedRefuseHeld.mockResolvedValue({
+    result: { declinedFields: ['name', 'year'], declinedParts: [{ fields: ['artists'] }], movedPointRefused: null },
+  });
   mockedAcceptSource.mockResolvedValue({ result: { applied: ['name'], released: ['location'] } });
   mockedDeclineSource.mockResolvedValue({ result: { declined: ['name'] } });
   mockedAdmission.mockResolvedValue({
@@ -162,12 +164,31 @@ describe('the dispatch table', () => {
 
     expect(mockedRefuseHeld).toHaveBeenCalledWith(5, 7, 12, null, 105);
     expect(mockedRefuseContents).toHaveBeenCalledWith(5, 7, 12, {});
-    // Two object fields and the one part's field, counted together; the
-    // withdrawal count comes from the contents refusal, the one answer that
-    // records it.
+    // Two object fields and the one part's field, counted together.
     expect(res.json.mock.calls[0][0].answered[0].did).toEqual({
-      fields: 3, locations: 4, treasureLinks: 0, withdrawalsReleased: 0,
+      fields: 3, locations: 4, treasureLinks: 0,
     });
+  });
+
+  it('counts the point a refused coordinate took with it among the points, and its failed re-placement', async () => {
+    // Ephesus: the coordinate's no turns its moved point down too (#1233), so
+    // the contents refusal that follows finds nothing left under the object.
+    poolAnswers({ subs: { arrival: false, held: true, contents: true } });
+    mockedRefuseHeld.mockResolvedValueOnce({
+      result: {
+        declinedFields: ['location'], declinedParts: [], movedPointRefused: 15624,
+        placementFailed: true, placementFailedWorldViews: [{ id: 5, name: 'Administrative' }],
+      },
+    });
+    mockedRefuseContents.mockResolvedValueOnce({ refusal: { status: 409, error: 'Nothing unread is left' } });
+    const res = makeRes();
+    await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5, runId: 105 }], 'reject'), res as never);
+
+    const result = res.json.mock.calls[0][0];
+    expect(result.answered[0].did).toEqual({ fields: 1, locations: 1, treasureLinks: 0 });
+    expect(result.placementFailed).toEqual([
+      expect.objectContaining({ id: 5, worldViews: [{ id: 5, name: 'Administrative' }] }),
+    ]);
   });
 
   it('reads the sub-kinds from the membership and refuses a row waiting on nothing', async () => {

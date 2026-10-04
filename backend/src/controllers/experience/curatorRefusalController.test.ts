@@ -184,41 +184,33 @@ describe('refuseContents', () => {
     const log = client.queries.find(q => q.sql.includes('experience_curation_log'));
     expect(log?.sql).toContain("'contents_refused'");
     expect(JSON.parse(log?.params?.[3] as string)).toEqual({
-      locations: 1, treasureLinks: 1, withdrawalsReleased: 1, note: null,
+      locations: 1, treasureLinks: 1, note: null,
     });
     expect(res.json).toHaveBeenCalledWith({
-      experienceId: 5, locationsRefused: 1, treasureLinksRefused: 1, withdrawalsReleased: 1,
+      experienceId: 5, locationsRefused: 1, treasureLinksRefused: 1,
     });
   });
 
-  it('releases the withdrawal a refused arrival was holding, so the old pin asks its own question', async () => {
+  it('keeps the withdrawal a refused arrival was holding, so the old pin stays where readers see it', async () => {
     // A moved point: the arrival is pending and names the old row it replaces,
-    // and the old row stays on the map until the arrival is answered. Refusing
-    // the arrival must withdraw the old row the way publishing it would, or
-    // readers keep a pin the source dropped, with no card anywhere about it.
+    // and the old row stays on the map until the arrival is answered. A no to
+    // the move is an answer that the old position stands (#1233): nothing is
+    // withdrawn and the pairing stays, which is what keeps the location writer
+    // from withdrawing the old row on the next run.
     const client = makeClient(VISIBLE);
     await answerRoute(postRefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, makeRes() as never);
 
     const updates = client.queries.filter(q => q.sql.includes('UPDATE experience_locations')).map(q => q.sql);
-    const mark = updates.findIndex(sql => sql.includes('SET refused_at = NOW()'));
-    const release = updates.findIndex(sql => sql.includes('SET missing_since = NOW(), ordinal = NULL'));
-    const clear = updates.findIndex(sql => sql.includes('SET withdrawal_deferred_for_location_id = NULL')
-      && !sql.includes('missing_since'));
-    expect(mark).toBeGreaterThanOrEqual(0);
-    expect(release).toBeGreaterThan(mark);
-    expect(clear).toBeGreaterThan(release);
-    // Through the refused arrivals of this object, both sides scoped to it — the
-    // publish's release, answered by a refusal (`releaseDeferredWithdrawals`).
-    expect(updates[release]).toContain('arrived.withdrawal_deferred_for_location_id = old.id');
-    expect(updates[release]).toContain('arrived.refused_at IS NOT NULL');
-    expect(updates[release]).toContain('old.missing_since IS NULL');
-    expect(updates[clear]).toContain('refused_at IS NOT NULL');
+    expect(updates).toHaveLength(1);
+    expect(updates[0]).toContain('SET refused_at = NOW()');
+    expect(updates[0]).not.toContain('missing_since = NOW()');
+    expect(updates[0]).not.toContain('withdrawal_deferred_for_location_id');
   });
 
-  it('re-places the object after a released withdrawal, and carries a failed world view', async () => {
-    // Placement's insert takes offered points only while its clear is
-    // unfiltered, so the old point's region rows have to go and the union be
-    // recomputed — after the COMMIT, as every other release does it.
+  it('re-places the object after a refused point, and carries a failed world view', async () => {
+    // Placement's insert takes no point a curator turned down while its clear
+    // is unfiltered, so the refused point's region rows have to go and the union
+    // be recomputed — after the COMMIT, as every other re-place does it.
     const mockedPlace = placeAfterRelease as unknown as ReturnType<typeof vi.fn>;
     mockedPlace.mockResolvedValueOnce([{ worldViewId: 5, worldViewName: 'Administrative' }]);
     const client = makeClient(VISIBLE);
@@ -234,17 +226,15 @@ describe('refuseContents', () => {
     // would be where a curator's answer could exhaust the pool.
     expect(client.release.mock.invocationCallOrder[0]).toBeLessThan(mockedPlace.mock.invocationCallOrder[0]);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-      withdrawalsReleased: 1,
       placementFailed: true,
       placementFailedWorldViews: [{ id: 5, name: 'Administrative' }],
     }));
   });
 
-  it('releases nothing when no point was refused', async () => {
-    const client = makeClient(VISIBLE);
+  it('re-places nothing when no point was refused', async () => {
+    makeClient(VISIBLE);
     await answerRoute(postRefuseContents, 
       { params: { id: '5' }, user: CURATOR, body: { treasureIds: [88] } } as never, makeRes() as never);
-    expect(client.queries.some(q => q.sql.includes('SET missing_since = NOW()'))).toBe(false);
     // And no re-place: a refused link moves no pin and counts toward no region.
     expect(placeAfterRelease).not.toHaveBeenCalled();
   });
