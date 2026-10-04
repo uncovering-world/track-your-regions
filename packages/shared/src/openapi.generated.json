@@ -23603,6 +23603,19 @@
                 "type": "null"
               }
             ]
+          },
+          "sitelinks": {
+            "description": "How many Wikipedia language editions write about the work (ADR-0082).",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [

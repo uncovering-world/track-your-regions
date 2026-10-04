@@ -336,6 +336,9 @@ export async function queryContents(
                'curatedFields', curated_fields,
                'venueCount', venue_count,
                'venues', venues,
+               -- How many Wikipedia editions write about it (ADR-0082): the
+               -- number the pool's line held it to, said on its row.
+               'sitelinks', sitelinks_count,
                'iconic', is_iconic,
                -- The source's own id, so the row can open the work where it came
                -- from and at its article: a curator deciding about twelve unread
