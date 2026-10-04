@@ -201,7 +201,7 @@ describe('publishOutcomeFor', () => {
 describe('heldRefusalOutcomeFor', () => {
   const refusal = {
     experienceId: 1, declinedFields: ['metadata'], declinedParts: [],
-    fromSyncLogId: 68, heldLeftOpen: 0,
+    fromSyncLogId: 68, heldLeftOpen: 0, movedPointRefused: null,
   };
 
   it('names what was refused and the run that has to ask again', () => {
@@ -237,5 +237,19 @@ describe('heldRefusalOutcomeFor', () => {
 
   it('says nothing more when that was the last of it', () => {
     expect(heldRefusalOutcomeFor(item, refusal)).not.toContain('still waiting');
+  });
+
+  it('says the moved point went with the coordinate, and a re-placement that failed', () => {
+    // Ephesus: a no to its coordinate turns its moved point down too (ADR-0083),
+    // and a refused point is re-placed, which can fail in a world view.
+    const line = heldRefusalOutcomeFor(item, {
+      ...refusal, declinedFields: ['location'], movedPointRefused: 15624,
+      placementFailed: true, placementFailedWorldViews: [{ id: 5, name: 'Administrative' }],
+    });
+
+    expect(line).toContain('refused, and the moved point with it — readers keep what they see');
+    expect(line).toContain('could not be re-placed into');
+    expect(line).toContain('Administrative');
+    expect(heldRefusalOutcomeFor(item, refusal)).not.toContain('moved point');
   });
 });

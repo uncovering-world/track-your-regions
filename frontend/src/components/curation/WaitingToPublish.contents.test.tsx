@@ -198,9 +198,8 @@ describe('the heading of what arrived', () => {
   });
 
   it('names the rows it turns down where a point moved, so the moved point is left alone', async () => {
-    // A body naming nothing refuses every unread row, the moved point included,
-    // and refusing that takes its stored pin off the map — a row this section
-    // neither lists nor counts.
+    // A body naming nothing refuses every unread row, the moved point included —
+    // a row this section neither lists nor counts, asked beside the held changes.
     const five = Array.from({ length: 5 }, (_, i) => ({ ...HOLZSCHUHER, id: 4000 + i, name: `Work ${i + 1}` }));
     renderCard({
       ...contents(...five),
@@ -271,8 +270,6 @@ describe('the new points that arrived', () => {
     ));
 
     expect(screen.getByText('2 new points')).toBeInTheDocument();
-    // A new point's no takes nothing away: nobody has seen it.
-    expect(screen.queryByText(/takes the old pin off the map/)).toBeNull();
     fireEvent.click(within(rowOf('Avenue de Champagne')).getByRole('button', { name: 'not this' }));
     await waitFor(() => expect(mockedRefuse).toHaveBeenCalledWith(1345, { locationIds: [6004] }));
   });
@@ -323,9 +320,6 @@ describe('a point the source moved', () => {
     expect(screen.getByText(/Moved 158 m north-west/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'see the move on the map' })).toBeInTheDocument();
     expect(screen.queryByText('Arrived, not shown to readers yet')).toBeNull();
-    // The one no on the card that changes what readers see: refusing the move
-    // releases the stored pin as withdrawn (ADR-0053), and the row says so.
-    expect(screen.getByText('A no also takes the old pin off the map, and it asks under lost places.')).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole('button', { name: 'publish this' }));
     await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(14724, { locationIds: [15624] }));

@@ -184,9 +184,8 @@ const TAKE_BACK_HELP = 'These are answered, so they are not waiting on you. They
   + 'counts its object into a region and a turned-down one does not — unless the source has '
   + 'stopped listing the part since, which its own row says: then the question comes back and '
   + 'nothing else does, because neither the contents card nor the publish nor the placement '
-  + 'reaches a part the source no longer offers. What it will not undo is '
-  + 'a pin the refusal took off the map: where the point was replacing another, that other one '
-  + 'is a lost-places question of its own now, with its own two answers, and it stays one.';
+  + 'reaches a part the source no longer offers. A point that moved comes back as the same '
+  + 'move, beside the pin it would replace, which readers have kept seeing all along.';
 
 /** One turned-down point, its place, and the one answer that undoes the refusal. */
 function RefusedPointRow({ item, point, onDone }: {

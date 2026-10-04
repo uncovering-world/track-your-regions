@@ -345,6 +345,16 @@ describe('an answer to what a source proposed', () => {
     }))).toContain('Picture credit dropped with it');
   });
 
+  it('says a refused coordinate took its moved point with it', () => {
+    // Ephesus, run 146: the coordinate and its one point are one move (ADR-0083).
+    const fields = [{ field: 'location', declined: { lon: 27.33939, lat: 37.94058 } }];
+    expect(formatLogDetails(entry('declined_held', { fields, heldLeftOpen: 0, movedPointRefused: 15624 })))
+      .toContain('the moved point turned down with it');
+    // An entry written before the rule, or a coordinate no point was the move of.
+    expect(formatLogDetails(entry('declined_held', { fields, heldLeftOpen: 0, movedPointRefused: null })))
+      .not.toContain('moved point');
+  });
+
   it('keeps the proposal a curator refused, which is what they stood against', () => {
     expect(formatLogDetails(entry('declined_source', {
       fields: [{ field: 'shortDescription', declined: 'A museum in Paris' }],
