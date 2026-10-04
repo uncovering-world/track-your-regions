@@ -371,7 +371,7 @@ export async function getReviewQueue(
   const arrivalIds = waitingIds('arrival');
   const arrivals = await hydrate(arrivalIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.source_id, m.kind_id, kd.name AS kind_name,
-           m.curation_state, e.first_seen_sync_log_id AS sync_log_id,
+           m.curation_state, m.first_seen_sync_log_id AS sync_log_id,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'arrival' AS kind, NULL::jsonb AS proposed
     FROM experiences e
@@ -380,7 +380,7 @@ export async function getReviewQueue(
     WHERE ${arrivalOpenSql('e', 'm')}
       AND ${scopeFilter} ${sourceFilter}
       AND e.id = ANY($${params.length + 1}::int[])
-    ORDER BY e.first_seen_sync_log_id DESC NULLS LAST, e.id
+    ORDER BY m.first_seen_sync_log_id DESC NULLS LAST, e.id
   `, [...params, arrivalIds]));
 
   // held: an already-visible row whose newest content proposal was kept out

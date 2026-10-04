@@ -2813,10 +2813,13 @@ CREATE INDEX IF NOT EXISTS idx_experience_sync_logs_latest
 -- machine both observes, via missing_since, and writes in one direction: a sync
 -- that lists a 'former' row again restores 'present'. Only that direction, so
 -- an outage still cannot hide anything; 'former' itself stays curator-only. See ADR-0020.
+--
+-- Axis 1 is a statement about one source, so it is each membership's since
+-- ADR-0084 (#1251), with the run's own record of when its source first and last
+-- saw the place. The place's missing_since and source_membership are derived
+-- from its memberships by derive_place_listing() below: missing only when every
+-- membership is, former only when every membership is.
 
-ALTER TABLE experiences ADD COLUMN IF NOT EXISTS last_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
-ALTER TABLE experiences ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
-ALTER TABLE experiences ADD COLUMN IF NOT EXISTS first_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
 ALTER TABLE experiences ADD COLUMN IF NOT EXISTS missing_since TIMESTAMPTZ;
 ALTER TABLE experiences ADD COLUMN IF NOT EXISTS source_membership VARCHAR(10) NOT NULL DEFAULT 'present';
 ALTER TABLE experiences ADD COLUMN IF NOT EXISTS existence VARCHAR(10) NOT NULL DEFAULT 'extant';
@@ -2836,14 +2839,13 @@ BEGIN
     END IF;
 END $$;
 
-COMMENT ON COLUMN experiences.missing_since IS 'When a clean run of an authoritative source first failed to list this object. A machine observation, not a verdict.';
-COMMENT ON COLUMN experiences.source_membership IS 'present or former. Only a curator sets former: a source outage must never change what users see. A sync that lists the row again sets it back to present, which only ever restores visibility.';
+COMMENT ON COLUMN experiences.missing_since IS 'Derived from the place''s memberships by derive_place_listing(): when the last of them was flagged, once every membership''s source has stopped listing the place; NULL while any source still lists it. Written only by that trigger (ADR-0084).';
+COMMENT ON COLUMN experiences.source_membership IS 'Derived from the place''s memberships by derive_place_listing(): former once every membership is former, present otherwise. Written only by that trigger (ADR-0084).';
 COMMENT ON COLUMN experiences.existence IS 'extant or lost. Whether the object still physically exists — independent of whether the source lists it.';
 
 CREATE INDEX IF NOT EXISTS idx_experiences_missing ON experiences(source_id) WHERE missing_since IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_experiences_membership ON experiences(source_membership) WHERE source_membership <> 'present';
 CREATE INDEX IF NOT EXISTS idx_experiences_existence ON experiences(existence) WHERE existence <> 'extant';
-CREATE INDEX IF NOT EXISTS idx_experiences_first_seen ON experiences(first_seen_sync_log_id);
 
 -- =============================================================================
 -- A place's membership in a kind (ADR-0045 decision 4; #822)
@@ -2920,6 +2922,13 @@ CREATE TABLE IF NOT EXISTS experience_kind_memberships (
     -- curation_state, so losing the pointer loses the way to find the
     -- proposal, not the hold.
     pending_change_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL,
+    -- Whether this membership's source still lists the place, and when it first
+    -- and last saw it (ADR-0020's axis 1, per source since ADR-0084).
+    missing_since TIMESTAMPTZ,
+    source_membership VARCHAR(10) NOT NULL DEFAULT 'present' CHECK (source_membership IN ('present', 'former')),
+    first_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL,
+    last_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL,
+    last_seen_at TIMESTAMPTZ,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (experience_id, kind_id),
@@ -2931,6 +2940,12 @@ CREATE TABLE IF NOT EXISTS experience_kind_memberships (
 -- this fail on one whose memberships carry no id yet, which is migration 070's
 -- to backfill first.
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS external_id VARCHAR(255) NOT NULL;
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS missing_since TIMESTAMPTZ;
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS source_membership VARCHAR(10) NOT NULL DEFAULT 'present'
+    CHECK (source_membership IN ('present', 'former'));
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS first_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS last_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
 ALTER TABLE experience_kind_memberships DROP CONSTRAINT IF EXISTS experience_kind_memberships_source_external_key;
 ALTER TABLE experience_kind_memberships ADD CONSTRAINT experience_kind_memberships_source_external_key
     UNIQUE (source_id, external_id);
@@ -2938,6 +2953,10 @@ ALTER TABLE experience_kind_memberships ADD CONSTRAINT experience_kind_membershi
 COMMENT ON TABLE experience_kind_memberships IS 'A place''s membership in a kind (ADR-0045 decision 4): one row per (place, kind), carrying what the kind says about the place -- the source that brought it, the admission verdict, the badge, and whether a curator has passed the arrival. The place itself is the experiences row.';
 COMMENT ON COLUMN experience_kind_memberships.source_id IS 'The source that brought this membership (ADR-0045 decision 3): a kind may have several, and a run writes, refuses and badges only the memberships its own source brought.';
 COMMENT ON COLUMN experience_kind_memberships.external_id IS 'The id the source knows the place by -- a World Heritage id, a Wikidata item -- unique per source (ADR-0084 decision 2). A run finds, admits and marks its places through it; the place''s own source_id and external_id only say which source first brought the row.';
+COMMENT ON COLUMN experience_kind_memberships.missing_since IS 'When a clean run of this membership''s source, an authoritative one, first failed to list the place. A machine observation, not a verdict (ADR-0020); the source''s own, since another source may still list the place (ADR-0084).';
+COMMENT ON COLUMN experience_kind_memberships.source_membership IS 'present or former: whether this membership''s source still lists the place. Only a curator sets former; a run that lists the place again sets present, which only ever restores visibility (ADR-0020).';
+COMMENT ON COLUMN experience_kind_memberships.first_seen_sync_log_id IS 'The run of this membership''s source that first brought the place into this kind.';
+COMMENT ON COLUMN experience_kind_memberships.last_seen_sync_log_id IS 'The newest run of this membership''s source that listed the place. A conflict this source proposed in an earlier run is withdrawn once a later landed run of the same source saw the place and proposed nothing.';
 COMMENT ON COLUMN experience_kind_memberships.admission IS 'admitted or refused. Whether this kind accepts the place, independent of whether the source still lists it (ADR-0024). The machine sets this one: a refusal is our own rule applied to an object the run named, not an observation. A place with no admitted membership is hidden from every read that offers somewhere to go, and from none that records a visit.';
 COMMENT ON COLUMN experience_kind_memberships.admission_reason IS 'Why the kind refused it, stated verbatim to the curator. Here rather than in experience_sync_changes because a changeset is keyed by the external id the run named, which is not always this row''s.';
 COMMENT ON COLUMN experience_kind_memberships.admission_answered_at IS 'When a batch answer confirmed this refusal without pinning it (ADR-0067): the question is closed, and the next run applies the rule again. A run that refuses a row it had admitted clears it, so a refusal that comes back is asked again.';
@@ -2953,6 +2972,49 @@ CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_source ON experience_
 CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_pending ON experience_kind_memberships(experience_id) WHERE curation_state = 'pending';
 CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_held ON experience_kind_memberships(experience_id) WHERE pending_change_sync_log_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_iconic ON experience_kind_memberships(kind_id) WHERE is_iconic;
+CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_missing ON experience_kind_memberships(source_id) WHERE missing_since IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_first_seen ON experience_kind_memberships(first_seen_sync_log_id);
+
+-- The place's own missing_since and source_membership, derived from its
+-- memberships (ADR-0084, #1251): missing only once every membership's source
+-- has stopped listing it, the latest flag standing for when; former only once
+-- every membership is. One owner, the way invalidate_member_regions_geometry()
+-- owns a region's geometry for every member writer (ADR-0068): the run, missing
+-- detection and a curator's verdict write the membership, and none of them
+-- writes the place's copy. A membership moving between places (a merge, #1247)
+-- recomputes both. A place with no membership reads as listed.
+CREATE OR REPLACE FUNCTION recompute_place_listing(place_id INTEGER) RETURNS void AS $$
+BEGIN
+    UPDATE experiences e
+       SET missing_since = d.missing_since,
+           source_membership = d.source_membership
+      FROM (SELECT CASE WHEN bool_and(m.missing_since IS NOT NULL) THEN max(m.missing_since) END AS missing_since,
+                   CASE WHEN bool_and(m.source_membership = 'former') THEN 'former' ELSE 'present' END AS source_membership
+              FROM experience_kind_memberships m
+             WHERE m.experience_id = place_id) d
+     WHERE e.id = place_id
+       AND (e.missing_since IS DISTINCT FROM d.missing_since
+            OR e.source_membership IS DISTINCT FROM d.source_membership);
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION derive_place_listing() RETURNS trigger AS $$
+BEGIN
+    IF TG_OP <> 'INSERT' THEN
+        PERFORM recompute_place_listing(OLD.experience_id);
+    END IF;
+    IF TG_OP <> 'DELETE' AND (TG_OP = 'INSERT' OR NEW.experience_id <> OLD.experience_id) THEN
+        PERFORM recompute_place_listing(NEW.experience_id);
+    END IF;
+    RETURN NULL;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS trg_derive_place_listing ON experience_kind_memberships;
+CREATE TRIGGER trg_derive_place_listing
+    AFTER INSERT OR DELETE OR UPDATE OF missing_since, source_membership, experience_id
+    ON experience_kind_memberships
+    FOR EACH ROW EXECUTE FUNCTION derive_place_listing();
 
 -- Per-object record of what a run did. 'unchanged' is deliberately NOT stored;
 -- it is only counted, or every UNESCO run would write 1247 rows of noise.

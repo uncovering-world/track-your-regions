@@ -10,7 +10,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../db/index.js', () => ({
-  pool: { query: vi.fn() },
+  pool: { query: vi.fn(), connect: vi.fn() },
+  rollbackQuietly: vi.fn(async () => undefined),
 }));
 
 import { pool } from '../../db/index.js';
@@ -24,6 +25,24 @@ import {
 } from './missingDetection.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
+const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
+
+/**
+ * The connection a real run marks on: what each statement sent, the places the
+ * lock statement answers with, and the rows the mark returns.
+ */
+function markingClient(marked: Record<string, unknown>[] = [], locked: number[] = []) {
+  const client = {
+    query: vi.fn(async (sql: string, _params?: unknown[]) => {
+      if (/^UPDATE/.test(sql.trim())) return { rows: marked };
+      if (/FOR NO KEY UPDATE/.test(sql)) return { rows: locked.map(id => ({ id })) };
+      return { rows: [] };
+    }),
+    release: vi.fn(),
+  };
+  mockedConnect.mockResolvedValue(client);
+  return { client, sent: () => client.query.mock.calls.map(c => String(c[0])) };
+}
 
 function input(overrides: Partial<MissingDetectionInput> = {}): MissingDetectionInput {
   return {
@@ -120,31 +139,44 @@ describe('flagMissingExperiences', () => {
   });
 
   it('does not ask again about an object already judged lost', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [] });
+    const { sent } = markingClient();
 
     await flagMissingExperiences(1, 9, false, ['200']);
 
     // Re-stamping missing_since would return it to the review queue after every
     // run, and the only way out would be answering a different question
-    const sql = String(mockedQuery.mock.calls[0][0]);
-    expect(sql).toContain("existence <> 'lost'");
+    const mark = sent().find(sql => /^UPDATE/.test(sql.trim()));
+    expect(mark).toContain("existence <> 'lost'");
   });
 
-  it('stamps missing_since and returns one record per row', async () => {
-    mockedQuery.mockResolvedValueOnce({
-      rows: [
-        { id: 77, external_id: '1234', name: 'Dresden Elbe Valley' },
-        { id: 78, external_id: '1235', name: 'Arabian Oryx Sanctuary' },
-      ],
-    });
+  it('stamps missing_since on the membership and returns one record per row', async () => {
+    const { client, sent } = markingClient([
+      { id: 77, external_id: '1234', name: 'Dresden Elbe Valley' },
+      { id: 78, external_id: '1235', name: 'Arabian Oryx Sanctuary' },
+    ], [77, 78]);
 
     const records = await flagMissingExperiences(1, 9, false, ['200', '201']);
 
-    expect(String(mockedQuery.mock.calls[0][0])).toContain('UPDATE experiences');
+    // The source's silence is about its own membership (ADR-0084); the place's
+    // flag follows from its memberships, so the run writes none of it there.
+    const statements = sent();
+    const mark = statements.find(sql => /^UPDATE/.test(sql.trim())) as string;
+    expect(mark).toContain('UPDATE experience_kind_memberships m SET missing_since = NOW()');
+    expect(statements.some(sql => /UPDATE experiences/.test(sql))).toBe(false);
+    // The places are locked first, in id order, the order a curator's write
+    // takes them before their memberships.
+    const lock = statements.findIndex(sql => /ORDER BY id FOR NO KEY UPDATE/.test(sql));
+    expect(statements[0]).toBe('BEGIN');
+    expect(lock).toBeGreaterThan(0);
+    expect(lock).toBeLessThan(statements.indexOf(mark));
+    expect(statements.at(-1)).toBe('COMMIT');
+    expect(client.release).toHaveBeenCalledWith(undefined);
     // Absence is judged against what the run saw, never against a column a dry
     // run does not write
-    expect(String(mockedQuery.mock.calls[0][0])).toContain('external_id <> ALL');
-    expect(mockedQuery.mock.calls[0][1]).toEqual([1, ['200', '201']]);
+    expect(mark).toContain('sm.external_id <> ALL');
+    // The mark reaches only the places the lock statement returned.
+    expect(mark).toContain('m.experience_id = ANY($3::int[])');
+    expect(client.query.mock.calls.find(c => /^UPDATE/.test(String(c[0]).trim()))?.[1]).toEqual([1, ['200', '201'], [77, 78]]);
     expect(records).toHaveLength(2);
     expect(records[0]).toMatchObject({
       syncLogId: 9,
@@ -156,14 +188,14 @@ describe('flagMissingExperiences', () => {
   });
 
   it('leaves curator-created rows alone — they were never in the source to leave it', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [] });
+    const { sent } = markingClient();
 
     await flagMissingExperiences(1, 9, false, ['200']);
 
     // A manual row's `curator-<id>-<ts>` key can never appear in a source
     // listing, so measuring it against one reports the curator's own work as
     // delisted on every clean run
-    expect(String(mockedQuery.mock.calls[0][0])).toContain('is_manual = FALSE');
+    expect(sent().find(sql => /^UPDATE/.test(sql.trim()))).toContain('is_manual = FALSE');
   });
 
   it('only reads in dry-run mode', async () => {

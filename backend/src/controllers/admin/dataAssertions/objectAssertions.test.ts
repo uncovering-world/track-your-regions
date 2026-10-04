@@ -249,6 +249,29 @@ describe('a place none of whose memberships carries the source and id it was bro
   });
 });
 
+describe('a place whose listing flags are not what its memberships say', () => {
+  const assertion = byId('place-listing-disagrees-with-memberships');
+  const sql = collapse(assertion.sql);
+
+  it('derives the flags from the memberships the way the trigger does', () => {
+    // derive_place_listing() is the one writer of the place's copy (ADR-0084):
+    // missing once every membership is, at the latest flag; former once every
+    // membership is.
+    expect(sql).toContain('CASE WHEN bool_and(m.missing_since IS NOT NULL) THEN max(m.missing_since) END');
+    expect(sql).toContain("CASE WHEN bool_and(m.source_membership = 'former') THEN 'former' ELSE 'present' END");
+    expect(sql).toContain('WHERE e.missing_since IS DISTINCT FROM d.missing OR e.source_membership IS DISTINCT FROM d.listing');
+    expect(assertion.kind).toBe('invariant');
+  });
+
+  it('says what the place reads and what its memberships say', () => {
+    expect(assertion.describe({
+      experience_id: 6184, experience_name: 'Louvre Museum',
+      place_missing: true, place_listing: 'present', memberships_missing: false, memberships_listing: 'present',
+    })).toBe('Louvre Museum: the place reads missing, present; its memberships say listed, present '
+      + '(experience 6184)');
+  });
+});
+
 describe('the name a filter cannot find', () => {
   const assertion = byId('name-carries-whitespace-nobody-typed');
   const sql = collapse(assertion.sql);

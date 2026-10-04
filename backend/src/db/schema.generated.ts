@@ -205,6 +205,11 @@ export interface ExperienceKindMembershipsRow {
   curation_state: string;
   published_at: Date | null;
   pending_change_sync_log_id: number | null;
+  missing_since: Date | null;
+  source_membership: string;
+  first_seen_sync_log_id: number | null;
+  last_seen_sync_log_id: number | null;
+  last_seen_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -366,9 +371,6 @@ export interface ExperiencesRow {
   status: string;
   created_at: Date | null;
   updated_at: Date | null;
-  last_seen_sync_log_id: number | null;
-  last_seen_at: Date | null;
-  first_seen_sync_log_id: number | null;
   missing_since: Date | null;
   source_membership: string;
   existence: string;
@@ -721,6 +723,7 @@ export const COLUMN_WIDTHS = {
     external_id: 255,
     admission: 10,
     curation_state: 10,
+    source_membership: 10,
   },
   experience_kinds: {
     name: 255,
@@ -844,6 +847,7 @@ export const CHECK_VALUES = {
   experience_kind_memberships: {
     admission: ["admitted", "refused"],
     curation_state: ["pending", "auto", "verified"],
+    source_membership: ["present", "former"],
   },
   experience_locations: {
     curation_state: ["pending", "auto", "verified"],

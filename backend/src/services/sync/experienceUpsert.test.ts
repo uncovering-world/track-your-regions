@@ -167,6 +167,11 @@ function membershipSetListOf(sql: string): string {
  * outside the slice entirely.
  */
 function assignmentsOf(sql: string): Map<string, string> {
+  return assignmentsIn(setListOf(sql));
+}
+
+/** The same, over any set list — the membership's included. */
+function assignmentsIn(setList: string): Map<string, string> {
   const assignments = new Map<string, string>();
   let column: string | null = null;
   let expression: string[] = [];
@@ -174,7 +179,7 @@ function assignmentsOf(sql: string): Map<string, string> {
     if (column) assignments.set(column, expression.join('\n').trim());
   };
 
-  for (const line of setListOf(sql).split('\n')) {
+  for (const line of setList.split('\n')) {
     const trimmed = line.trim();
     if (trimmed.startsWith('--')) continue;
     // A digit is part of a column name — `area_km2` is one — and a pattern of
@@ -552,8 +557,10 @@ describe('one transaction per object, the row locked first', () => {
     // The read after it, on the same row, with no lock of its own.
     const [snapshot, snapshotParams] = snapshotRead();
     expect(snapshot).not.toContain('FOR NO KEY UPDATE');
-    expect(snapshot).toContain('WHERE e.id = $2');
-    expect(snapshotParams).toEqual([PARAMS.sourceId, 501]);
+    expect(snapshot).toContain('WHERE e.id = $2 AND sm.source_id = $1 AND sm.external_id = $3');
+    // Whether the source had stopped listing the place is its own membership's.
+    expect(snapshot).toContain('sm.missing_since, sm.source_membership');
+    expect(snapshotParams).toEqual([PARAMS.sourceId, 501, PARAMS.externalId]);
     expect(sql.indexOf(locked)).toBeLessThan(sql.indexOf(snapshot));
     expect(sql.indexOf(snapshot)).toBeLessThan(sql.findIndex(s => /INSERT INTO experiences/.test(s)));
     expect(client.release).toHaveBeenCalledWith(undefined);
@@ -992,27 +999,33 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     expect(sentSql().some(sql => /SET pending_change_sync_log_id/.test(sql))).toBe(false);
   });
 
-  it('leaves the provenance columns outside every guard', async () => {
+  it('leaves the provenance columns outside every guard, on the membership', async () => {
     await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
 
-    const assigned = assignmentsOf(upsert()[0]);
     // A gated run still records that the source listed the object,
     // or missing detection starts flagging everything the gate holds and one
     // gated source manufactures a source-wide false alarm.
-    // Every one of the five named individually: naming three of them and
-    // calling it "the provenance columns" would pass while a guard sat on
-    // either of the other two.
-    for (const column of [
-      'last_seen_sync_log_id', 'last_seen_at', 'missing_since', 'source_membership', 'updated_at',
-    ]) {
-      const assignment = assigned.get(column);
+    // Every one named individually: naming three of them and calling it "the
+    // provenance columns" would pass while a guard sat on another.
+    // Whether the source lists the place is its membership's (ADR-0084).
+    const onMembership = assignmentsIn(membershipSetListOf(upsert()[0]));
+    for (const column of ['last_seen_sync_log_id', 'last_seen_at', 'missing_since', 'source_membership']) {
+      const assignment = onMembership.get(column);
       expect(assignment, `${column} is not assigned at all`).toBeDefined();
       expect(assignment, `${column} is guarded`).not.toMatch(/^CASE/);
     }
     // What those assignments have to say, not merely that they are unguarded.
-    expect(assigned.get('last_seen_at')).toBe('NOW(),');
-    expect(assigned.get('missing_since')).toBe('NULL,');
-    expect(assigned.get('source_membership')).toBe("'present',");
+    expect(onMembership.get('last_seen_at')).toBe('NOW(),');
+    expect(onMembership.get('missing_since')).toBe('NULL,');
+    expect(onMembership.get('source_membership')).toBe("'present',");
+
+    // The place's own copy is derived from its memberships by a trigger, so
+    // the run writes none of it there.
+    const onPlace = assignmentsOf(upsert()[0]);
+    expect(onPlace.get('updated_at')).toBe('NOW()');
+    for (const column of ['last_seen_sync_log_id', 'last_seen_at', 'missing_since', 'source_membership']) {
+      expect(onPlace.has(column), `${column} is written on the place`).toBe(false);
+    }
   });
 });
 

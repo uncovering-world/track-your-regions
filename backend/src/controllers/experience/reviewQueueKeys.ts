@@ -19,7 +19,7 @@
  *
  * **How a kind is dated** (ADR-0051 decision 1): every open question was asked
  * by a run, and a run has `completed_at`. `held` reads it through the
- * membership's `pending_change_sync_log_id`, `arrival` through the row's
+ * membership's `pending_change_sync_log_id`, `arrival` through the membership's
  * `first_seen_sync_log_id`, `conflict` through the changeset row's own
  * `sync_log_id`; `contents` has no run pointer and is dated by the newest
  * pending part it holds, `withdrawn` by the newest point a run marked,
@@ -175,11 +175,11 @@ function conflictKeysSql(scopeFilter: string, claimKey: (field: string) => strin
 /** An arrival: a membership from a gated source nobody has passed (ADR-0025). */
 function arrivalKeysSql(scopeFilter: string): string {
   return `
-        SELECT e.id, e.name, e.source_id, e.first_seen_sync_log_id AS run_id,
+        SELECT e.id, e.name, e.source_id, m.first_seen_sync_log_id AS run_id,
                l.completed_at AS asked_at, 'arrival'::text AS sub
         FROM experiences e
         JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
-        LEFT JOIN experience_sync_logs l ON l.id = e.first_seen_sync_log_id
+        LEFT JOIN experience_sync_logs l ON l.id = m.first_seen_sync_log_id
         WHERE ${arrivalOpenSql('e', 'm')}
           AND ${scopeFilter}`;
 }
@@ -284,10 +284,10 @@ function withdrawnKeysSql(scopeFilter: string): string {
 function refusedKeysSql(scopeFilter: string): string {
   return `
     SELECT 'refused', ${KIND_RANK.refused}, e.id, e.name, e.source_id,
-           e.first_seen_sync_log_id, COALESCE(l.completed_at, m.updated_at), ARRAY[]::text[]
+           m.first_seen_sync_log_id, COALESCE(l.completed_at, m.updated_at), ARRAY[]::text[]
     FROM experiences e
     JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
-    LEFT JOIN experience_sync_logs l ON l.id = e.first_seen_sync_log_id
+    LEFT JOIN experience_sync_logs l ON l.id = m.first_seen_sync_log_id
     WHERE ${refusedOpenSql('m')}
       AND ${scopeFilter}`;
 }

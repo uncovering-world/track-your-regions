@@ -57,6 +57,9 @@ describe('the catalogue lint rules', () => {
   it.each([
     ['an update in a controller', 'export const q = `UPDATE experiences SET name = $2 WHERE id = $1`;\n', 'src/controllers/lint-fixture.ts'],
     ['a lower-case insert in a sync service', 'export const q = "insert into experiences (name) values ($1)";\n', 'src/services/sync/lint-fixture.ts'],
+    // Missing detection marks a membership since ADR-0084; the place's flag is
+    // derived from it, so a write of its own there would be a second writer.
+    ['missing detection', 'export const q = `UPDATE experiences SET missing_since = NOW()`;\n', 'src/services/sync/missingDetection.ts'],
   ])('refuses a write to experiences outside its writers: %s', async (_, code, file) => {
     expect((await reported(code, file)).some(m => WRITE.test(m))).toBe(true);
   });
@@ -66,7 +69,6 @@ describe('the catalogue lint rules', () => {
     ['a read', 'export const q = `SELECT id FROM experiences WHERE id = $1`;\n', 'src/controllers/lint-fixture.ts'],
     ['the curator writer', 'export const q = `UPDATE experiences SET name = $2 WHERE id = $1`;\n', 'src/db/experienceWriter.ts'],
     ['the run\'s upsert', 'export const q = `INSERT INTO experiences (name) VALUES ($1)`;\n', 'src/services/sync/experienceUpsert.ts'],
-    ['missing detection', 'export const q = `UPDATE experiences SET missing_since = NOW()`;\n', 'src/services/sync/missingDetection.ts'],
     ['the picture repair', 'export const q = `UPDATE experiences SET image_url = NULL`;\n', 'src/services/sync/pictureRepair.ts'],
   ])('lets a write stand where it belongs, or a statement that is no write: %s', async (_, code, file) => {
     expect((await reported(code, file)).some(m => WRITE.test(m))).toBe(false);

@@ -159,8 +159,13 @@ describe('setExperienceState', () => {
       makeRes() as never,
     );
 
-    const update = queries.find(q => q.sql.includes('UPDATE experiences'));
+    // The flag is each membership's (ADR-0084), so the verdict clears it on
+    // every membership of the place; the place's own copy follows from them.
+    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'));
     expect(update?.sql).toContain('missing_since = NULL');
+    expect(update?.sql).toContain('WHERE experience_id = $1');
+    expect(update?.params).toEqual([5, 'present']);
+    expect(queries.find(q => q.sql.includes('UPDATE experiences'))?.sql).not.toContain('missing_since');
   });
 
   it('records both decisions when one call carries both axes', async () => {
