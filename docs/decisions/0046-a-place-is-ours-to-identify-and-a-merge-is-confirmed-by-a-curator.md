@@ -1,7 +1,9 @@
 # ADR-0046: A place is ours to identify, and two rows become one place by a merge a curator confirms
 
 **Date:** 2026-09-03
-**Status:** Accepted
+**Status:** Accepted — the wording of decision 5 narrowed by
+[ADR-0084](0084-a-place-belongs-to-no-source-and-no-kind.md): the "surviving place" is the row
+that stays physically, with no kind or source of its own; every decision stands
 
 ---
 
