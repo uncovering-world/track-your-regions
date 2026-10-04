@@ -154,8 +154,14 @@ export function heldRefusalOutcomeFor(
     ...data.declinedParts.flatMap(part => part.fields.map(f => `${fieldLabel(f)} of ${part.name}`)),
   ];
   if (named.length === 0) return undefined;
-  const settled = `${item.name}: ${named.join(', ')} refused — readers keep what they see, `
+  // The moved point that was the same move goes with the coordinate (ADR-0083),
+  // and this line is the one place that says it did.
+  const moved = typeof data.movedPointRefused === 'number' ? ', and the moved point with it' : '';
+  const settled = `${item.name}: ${named.join(', ')} refused${moved} — readers keep what they see, `
     + `and run ${data.fromSyncLogId} has to propose something different to ask again.`;
-  if (data.heldLeftOpen === 0) return settled;
-  return `${settled} The rest of the card is still waiting.`;
+  const stale = data.placementFailed
+    ? ` ${item.name} could not be re-placed into ${worldViewList(data.placementFailedWorldViews)} — tell an admin.`
+    : '';
+  if (data.heldLeftOpen === 0) return `${settled}${stale}`;
+  return `${settled} The rest of the card is still waiting.${stale}`;
 }

@@ -215,9 +215,8 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
   });
   // A no to unread rows — one work, one point, or the arrived section's all —
   // which stay hidden and stop being asked about. Refusing a point re-places
-  // the object, since the point counts toward no region now, and a pin a moved
-  // point was holding on the map is withdrawn: the one no here that changes
-  // what a reader sees, said on that point's row.
+  // the object, since the point counts toward no region now; a moved point's
+  // pin stays where readers see it (ADR-0083).
   const turnDown = useMutation({
     mutationFn: (body: RefuseContentsBody) => refuseContents(group.id, body),
     onSettled: (data, error) => {
@@ -292,16 +291,12 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
                 // in one museum both have an attribution row.
                 answer={(field, _fieldRows, subject) => (subject.movedPointId !== undefined ? (
                   // A moved point is answered by its id: published, it replaces the
-                  // pin readers see; turned down, it stays hidden and the pin it
-                  // would replace is released as withdrawn and asks its own
-                  // question (ADR-0053, `releaseDeferredWithdrawals`) — the one no
-                  // on this card that changes what readers see, so its row says so
-                  // until #1233 decides what a no to a move should do.
+                  // pin readers see; turned down, it stays hidden and readers keep
+                  // the pin it would have replaced (ADR-0083).
                   <RowAnswer
                     busy={answering}
                     onPublish={() => publish.mutate({ locationIds: [subject.movedPointId!] })}
                     onRefuse={() => turnDown.mutate({ locationIds: [subject.movedPointId!] })}
-                    refuseNote="A no also takes the old pin off the map, and it asks under lost places."
                   />
                 ) : (
                   <HeldAnswer
@@ -329,8 +324,8 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
                 <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 0.5, maxWidth: '80ch' }}>
                   Publishing one of these leaves the rest waiting. A picture is answered with its
                   credit, shown under it on each side. “Not this” settles the question — the run has to
-                  propose something different to ask again — and changes nothing readers see, except
-                  on a moved point, whose row says what it takes away. On
+                  propose something different to ask again — and changes nothing readers see: a moved
+                  point turned down leaves its pin where it was. On
                   a card raised before facts were asked one at a time, one combination still reaches
                   readers: say no to source data and then publish a new picture, and the picture goes
                   out with nobody credited, since the refused credit may not be written and the stored
@@ -494,22 +489,16 @@ function keptOutOutcomeFor(
     points > 0 ? plural(points, 'unread point') : null,
     works > 0 ? plural(works, 'unread work') : null,
   ].filter(Boolean).join(' and ');
-  // A refused point may have been holding the pin it replaced on the map; that
-  // pin is withdrawn now and asks its own question, and only this line says so.
-  const released = data?.withdrawalsReleased ?? 0;
-  const tail = released > 0
-    ? ` ${plural(released, 'replaced point')} no longer shown, now asking under lost places.`
-    : '';
   // The re-placement a refused point calls for — it counts toward no region
-  // now, and any pin it released is gone — where it failed: named for an
-  // admin, through the same helper every other placement line uses.
+  // now — where it failed: named for an admin, through the same helper every
+  // other placement line uses.
   const stale = data?.placementFailed
     ? ` ${name} could not be re-placed into ${worldViewList(data.placementFailedWorldViews)} — tell an admin.`
     : '';
   // Where they come back from, said in the line that put them there (#859): the
   // list is collapsed at the foot of this page and nothing else shows them.
   return `${parts || 'Nothing'} under ${name} turned down. They stay hidden and are no longer `
-    + `asked about — and come back from the turned-down list at the foot of this page.${tail}${stale}`;
+    + `asked about — and come back from the turned-down list at the foot of this page.${stale}`;
 }
 
 /** What doing nothing means here — the answer that needs no call. */

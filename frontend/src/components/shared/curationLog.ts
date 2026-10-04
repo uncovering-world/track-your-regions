@@ -367,6 +367,9 @@ function formatDeclinedHeld(d: Record<string, unknown>): string | null {
     lines.push(`${String(named.name ?? 'a part')} — ${fieldLabel(String(named.field))}: `
       + `run proposed "${truncate40(named.declined)}"`);
   }
+  // The moved point that was the same move as a refused coordinate (ADR-0083):
+  // turned down with it, the stored pin kept. Absent from entries written before.
+  if (typeof d.movedPointRefused === 'number') lines.push('the moved point turned down with it');
   if (typeof d.heldLeftOpen === 'number' && d.heldLeftOpen > 0) {
     lines.push(`${d.heldLeftOpen} still waiting on this card`);
   }

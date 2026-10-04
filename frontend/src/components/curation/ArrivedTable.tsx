@@ -75,13 +75,7 @@ function Mark({ tone, children }: { tone: keyof typeof STRIPE; children: string 
   );
 }
 
-export function RowAnswer({ busy, onPublish, onRefuse, refuseNote }: {
-  busy: boolean;
-  onPublish: () => void;
-  onRefuse: () => void;
-  /** What the no does beyond settling the question, where it changes what readers see. */
-  refuseNote?: string;
-}) {
+export function RowAnswer({ busy, onPublish, onRefuse }: { busy: boolean; onPublish: () => void; onRefuse: () => void }) {
   return (
     <Stack spacing={0.5}>
       <Button size="small" variant="outlined" disabled={busy} onClick={onPublish}>publish this</Button>
@@ -89,7 +83,6 @@ export function RowAnswer({ busy, onPublish, onRefuse, refuseNote }: {
           that way and stops the asking — it comes back from the turned-down
           list at the foot of the page. */}
       <Button size="small" variant="outlined" color="inherit" disabled={busy} onClick={onRefuse}>not this</Button>
-      {refuseNote && <Typography variant="caption" color="text.secondary">{refuseNote}</Typography>}
     </Stack>
   );
 }
@@ -113,9 +106,9 @@ function Thumb({ work }: { work: PendingWork }) {
  * What "turn all N down" sends, or null where it cannot say only those N.
  *
  * A body naming nothing refuses every unread row under the object, and that
- * includes a point the source moved, whose refusal takes the stored pin off the
- * map (`releaseDeferredWithdrawals`, ADR-0053) — a row this table neither lists
- * nor counts. So the bare body goes only where no point moved; where one did,
+ * includes a point the source moved — a row this table neither lists nor
+ * counts, asked beside the held changes, where a curator may well want it
+ * published. So the bare body goes only where no point moved; where one did,
  * the rows are named, which needs the whole list on the card, and a capped list
  * gets no such link: its rows are still answered one by one.
  */

@@ -16,6 +16,7 @@ import {
   setExperienceState, setExperienceAdmission, setLocationState, acceptSourceValue,
   declineSourceValue, declineHeld, publishExperience, unrefuseContents,
   type AdmissionResult,
+  type DeclineHeldResult,
   type PublishResult,
 } from '../../api/curation';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
@@ -68,8 +69,8 @@ export function resetCardMocks(mockedFetch: ReturnType<typeof vi.fn>): void {
   mockedPublish.mockReset().mockResolvedValue(PUBLISHED);
   mockedDeclineHeld.mockReset().mockResolvedValue({
     experienceId: 7, declinedFields: ['name'], declinedParts: [], fromSyncLogId: 47,
-    heldLeftOpen: 0,
-  });
+    heldLeftOpen: 0, movedPointRefused: null,
+  } satisfies DeclineHeldResult);
   mockedInvalidate.mockReset();
   mockedUnrefuse.mockReset().mockResolvedValue({
     experienceId: 6188, locationsRestored: 0, treasureLinksRestored: 0,
