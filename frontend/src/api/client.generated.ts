@@ -5783,6 +5783,8 @@ export interface PendingWork {
   venueCount?: number | null;
   /** The museums that hang the work, named. */
   venues?: WorkVenue[] | null;
+  /** How many Wikipedia language editions write about the work (ADR-0082). */
+  sitelinks?: number | null;
 }
 
 /**
