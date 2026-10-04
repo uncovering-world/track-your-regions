@@ -480,6 +480,15 @@ the two disagree is asked about, or labelled, by a state no source is in. A row
 here means a write reached the place's columns past the trigger, or a database
 is missing it, which re-applying the schema restores.
 
+**The placement rule** (`link-placed-by-another-places-membership`) holds each
+of a work link's placements (`experience_treasure_placements`, ADR-0084, #1252)
+to a membership of the link's own place. A run takes away only its own
+placement and the link goes once none is left, so a placement naming another
+place's membership is one no run of this place will ever take away: the work
+would stay on show after every source of the place had dropped it. A merge that
+moved a link without its placement, or a placement written by hand, is what
+leaves one.
+
 **The name rule** (`name-carries-whitespace-nobody-typed`) asks of every column
 a person types into a filter — a place's name, each language of its local
 names, a monument's makers, a point's name, a work's title and its makers —
