@@ -26,7 +26,12 @@ vi.mock('../../db/index.js', () => ({
   },
 }));
 
+// The re-place after a refused point takes its own connections per world view;
+// what it is asked, and when, is what these specs pin.
+vi.mock('./publishContents.js', () => ({ placeAfterRelease: vi.fn() }));
+
 import { pool } from '../../db/index.js';
+import { placeAfterRelease } from './publishContents.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
@@ -48,6 +53,8 @@ interface ClientOptions {
   pointer?: number | null;
   proposal?: { changed_fields?: unknown[]; contents?: unknown } | null;
   answered?: Array<{ kind: string | null; ref: string | null; name: string | null; field: string }>;
+  /** The unread point the proposed coordinate is the move of (`pointMovedToSql`), or none. */
+  movedPoint?: number | null;
 }
 
 function makeClient(opts: ClientOptions = {}) {
@@ -67,6 +74,7 @@ function makeClient(opts: ClientOptions = {}) {
         }
         // The lock, in a statement of its own, then the read (`db/locks.ts`).
         if (sql.includes(OBJECT_LOCK)) return { rows: [{ id: 5 }] };
+        if (sql.includes('arrival.withdrawal_deferred_for_location_id')) return { rows: [{ id: opts.movedPoint ?? null }] };
         if (sql.includes('m.id AS membership_id')) {
           // The pointer is the membership's (#822), read in the statement after
           // the place's lock; the id is what the clear is written against.
@@ -108,10 +116,20 @@ function decline(body: unknown, client: unknown, user: { id: number; role: 'admi
   ).then(() => res);
 }
 
+/** Ephesus after run 146: its one point moved 158 m, held as the object's coordinate. */
+const EPHESUS = {
+  changed_fields: [
+    { field: 'location', old: { lon: 27.340833, lat: 37.939722 }, new: { lon: 27.33939, lat: 37.94058 }, held: true },
+    { field: 'name', old: 'Ephesus', new: 'Ancient Ephesus', held: true },
+  ],
+  contents: null,
+};
+
 describe('declineHeldValue', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
     mockedConnect.mockReset();
+    vi.mocked(placeAfterRelease).mockReset().mockResolvedValue([]);
     mockedQuery.mockResolvedValue({ rows: [{ id: 1138, source_id: 1 }] });
   });
 
@@ -347,5 +365,45 @@ describe('declineHeldValue', () => {
       kind: 'treasures', name: 'The Wine Glass', field: 'artist',
       declined: 'Jan Vermeer van Haarlem the Elder',
     }]);
+  });
+  it('turns down the moved point with the coordinate, being the same move, and keeps the old pin', async () => {
+    // #1233: publishing the coordinate takes the point along, so a no to it
+    // turns the point down too — marked refused and nothing more, so the stored
+    // pin stays where readers see it.
+    const { client, queries } = makeClient({ proposal: EPHESUS, movedPoint: 15624 });
+    mockedConnect.mockResolvedValue(client);
+
+    const res = await decline({ fields: ['location'], expectedSyncLogId: 68 }, client);
+
+    const find = queries.find(q => q.sql.includes('arrival.withdrawal_deferred_for_location_id'));
+    expect(find?.params).toEqual([1138, 27.33939, 37.94058]);
+    const marks = queries.filter(q => q.sql.includes('UPDATE experience_locations'));
+    expect(marks).toHaveLength(1);
+    expect(marks[0].sql).toContain('SET refused_at = NOW()');
+    expect(marks[0].params).toEqual([1138, [15624]]);
+    const log = queries.find(q => q.sql.includes("'declined_held'"));
+    expect(JSON.parse(log?.params?.[3] as string)).toMatchObject({ movedPointRefused: 15624 });
+    // Re-placed after the COMMIT, with the client back in the pool.
+    expect(placeAfterRelease).toHaveBeenCalledWith(1138, expect.stringContaining('turned down'));
+    expect(client.release.mock.invocationCallOrder[0])
+      .toBeLessThan(vi.mocked(placeAfterRelease).mock.invocationCallOrder[0]);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      declinedFields: ['location'], movedPointRefused: 15624,
+    }));
+  });
+
+  it('turns down no point for a field that is not the coordinate, nor where no point is the move', async () => {
+    const first = makeClient({ proposal: EPHESUS, movedPoint: 15624 });
+    mockedConnect.mockResolvedValue(first.client);
+    const named = await decline({ fields: ['name'], expectedSyncLogId: 68 }, first.client);
+    expect(first.queries.some(q => q.sql.includes('arrival.withdrawal_deferred_for_location_id'))).toBe(false);
+    expect(named.json).toHaveBeenCalledWith(expect.objectContaining({ movedPointRefused: null }));
+
+    // A serial site whose own coordinate moved while no component did.
+    const second = makeClient({ proposal: EPHESUS, movedPoint: null });
+    mockedConnect.mockResolvedValue(second.client);
+    await decline({ fields: ['location'], expectedSyncLogId: 68 }, second.client);
+    expect(second.queries.some(q => q.sql.includes('UPDATE experience_locations'))).toBe(false);
+    expect(placeAfterRelease).not.toHaveBeenCalled();
   });
 });

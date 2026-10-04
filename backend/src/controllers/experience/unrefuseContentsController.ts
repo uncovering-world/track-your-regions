@@ -25,13 +25,13 @@
  * (ADR-0025 decision 2's second axis); putting `auto` back would silently pass
  * a work a curator had turned down, which is the opposite of asking again.
  *
- * A refused *point* released the withdrawal it had been holding — the old pin
- * it replaced was written `missing_since` and the pairing cleared — and that
- * pairing is gone for good. The old point is a withdrawn point asking its own
- * question now (ADR-0026), on its own card, with its own two answers; a
- * take-back that re-acquired it would answer that card on the curator's behalf
- * and put a pin back on the map from a screen that never mentioned it. The
- * take-back restores the question, never the pairing.
+ * A refused *point* that was a move keeps the pairing it held (ADR-0083): the
+ * stored pin it would replace stayed where readers see it, and taking the no
+ * back asks the move again as it was asked, with that pin. Nothing here touches
+ * the pairing. A refusal recorded before ADR-0083 released its pairing — the
+ * old pin withdrawn and asking its own question (ADR-0026) — and a take-back
+ * does not re-acquire it: that would answer the old pin's card on the curator's
+ * behalf, from a screen that never mentioned it.
  *
  * What it *does* restore beyond the question is region membership: placement's
  * insert carries `refused_at IS NULL` (ADR-0053), so a turned-down point counts

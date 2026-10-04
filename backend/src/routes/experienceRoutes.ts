@@ -404,7 +404,7 @@ export const experienceCurationRoutes = [
   // puts a curator route in the limited table is post-commit placement, and
   // nothing follows this handler's `client.release()` — a work
   // has no coordinate, so nothing it writes can move a pin. That puts it beside
-  // `/:id/decline-source` and `/:id/decline-held` rather than beside its own
+  // `/:id/decline-source` rather than beside its own
   // sibling `/locations/:locationId/edit`, which is limited precisely because a
   // corrected coordinate always re-places the object.
   defineRoute({
@@ -457,14 +457,12 @@ export const experienceCurationRoutes = [
     handler: declineSourceValue,
   }),
   // The same answer one gate over (#722): "not this" to a value the source's gate
-  // held, rather than to one a curator had claimed. Exempt on the same criterion as
-  // the line above and for the same reason — it writes a handful of small rows
-  // inside one transaction, touches no column a reader sees, and schedules nothing
-  // after the commit. Its opposite, `/:id/publish`, is limited because publishing
-  // can reach `placeAfterRelease`; refusing cannot, because refusing writes nothing
-  // that could move a pin.
+  // held, rather than to one a curator had claimed. Limited on the criterion the
+  // line above states, since ADR-0083: refusing the object's held coordinate turns
+  // down the unread point that is the same move, and a refused point is re-placed
+  // through `placeAfterRelease` after the commit, as `/:id/publish` re-places.
   defineRoute({
-    method: 'post', path: '/:id/decline-held', access: 'curator', cache: 'no-store',
+    method: 'post', path: '/:id/decline-held', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
     summary: 'Refuse named fields or parts of a change a gated run held back, writing none of it',
     params: idParamSchema,
     body: declineHeldBodySchema,
@@ -479,8 +477,8 @@ export const experienceCurationRoutes = [
   // touches nothing a reader sees — the row was hidden already — and schedules
   // nothing after the commit, so it is exempt. Refusing contents is limited, for
   // the branch `/:id/publish` is limited for: a refused point counts toward no
-  // region any more and takes off the map any pin it was holding, so the object
-  // is re-placed into every world view with geometry after the commit.
+  // region any more, so the object is re-placed into every world view with
+  // geometry after the commit.
   defineRoute({
     method: 'post', path: '/:id/refuse-arrival', access: 'curator', cache: 'no-store',
     summary: 'Keep out an unread arrival from a gated source, so readers never see it',

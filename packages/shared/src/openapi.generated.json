@@ -17637,6 +17637,19 @@
       "DeclineHeldResult": {
         "type": "object",
         "properties": {
+          "placementFailed": {
+            "description": "Set when the publication landed and re-placing the object into its regions did not.",
+            "type": "boolean",
+            "const": true
+          },
+          "placementFailedWorldViews": {
+            "description": "Where the regions are stale now. Present exactly when `placementFailed` is, and never empty.",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlacementFailure"
+            }
+          },
           "experienceId": {
             "type": "integer",
             "minimum": -9007199254740991,
@@ -17666,6 +17679,19 @@
             "minimum": -9007199254740991,
             "maximum": 9007199254740991,
             "description": "Held rows still open. Zero means the card is gone and the pointer with it."
+          },
+          "movedPointRefused": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The unread point turned down with the object's coordinate, being the same move (#1233), or null."
           }
         },
         "required": [
@@ -17673,7 +17699,8 @@
           "declinedFields",
           "declinedParts",
           "fromSyncLogId",
-          "heldLeftOpen"
+          "heldLeftOpen",
+          "movedPointRefused"
         ],
         "additionalProperties": false,
         "description": "What refusing held rows of a gated proposal settled."
@@ -24632,19 +24659,12 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
-          },
-          "withdrawalsReleased": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991,
-            "description": "Old pins a refused arrival had been holding on the map, now withdrawn and asking their own question."
           }
         },
         "required": [
           "experienceId",
           "locationsRefused",
-          "treasureLinksRefused",
-          "withdrawalsReleased"
+          "treasureLinksRefused"
         ],
         "additionalProperties": false,
         "description": "What turning down the unread points and works of an object did."

@@ -33,7 +33,6 @@
 
 import type { z } from 'zod/v4';
 import type { RefuseArrivalResult, RefuseContentsResult } from '../../api/responses/curation.js';
-import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
@@ -44,8 +43,8 @@ import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import { contentsAnswerableSql } from './waitingCounts.js';
-import { lockExperience, recordDecisionOnExperience, type LockedExperience } from '../../db/experienceWriter.js';
-import { markUnreadPointsRefused, releaseDeferredWithdrawals } from './experienceLocationWriter.js';
+import { lockExperience, recordDecisionOnExperience } from '../../db/experienceWriter.js';
+import { markUnreadPointsRefused } from './experienceLocationWriter.js';
 import { markUnreadLinksRefused } from './workWriter.js';
 
 /** The reason a curator's refusal carries, in the words the kept-out list shows. */
@@ -225,7 +224,7 @@ export async function refuseContentsUnderLock(
   let unusable: Error | undefined;
   // Read by the placement and the reply after the transaction settles, so
   // they have to be hoisted out of the `try` block that assigns them.
-  let points = { refused: 0, withdrawalsReleased: 0 };
+  let pointsRefused = 0;
   let treasureLinksRefused = 0;
   try {
     await client.query('BEGIN');
@@ -265,10 +264,13 @@ export async function refuseContentsUnderLock(
 
     // Named ids narrow each kind the way `publishContents` narrows its
     // statements: a caller naming works alone touches no point.
+    // ADR-0083: a refused point keeps the withdrawal a move deferred onto it: a no
+    // to a move leaves the stored pin where readers see it, and the location
+    // writer goes on holding that pin while the refused point names it.
     if (locationIds !== undefined || !anyNamed) {
-      points = await markPointsRefused(client, locked.lock, locationIds);
+      pointsRefused = await markUnreadPointsRefused(client, locked.lock, locationIds);
     }
-    const locationsRefused = points.refused;
+    const locationsRefused = pointsRefused;
     if (treasureIds !== undefined || !anyNamed) {
       treasureLinksRefused = await markUnreadLinksRefused(client, locked.lock, treasureIds);
     }
@@ -286,9 +288,6 @@ export async function refuseContentsUnderLock(
     `, [experienceId, userId, logRegionId, JSON.stringify({
       locations: locationsRefused,
       treasureLinks: treasureLinksRefused,
-      // The old pins a refused arrival had been holding on the map, now
-      // withdrawn and asking their own question — nowhere else records when.
-      withdrawalsReleased: points.withdrawalsReleased,
       // The ids where the caller named them, so the trail says which twelve
       // paintings rather than "twelve": a refused part is invisible everywhere
       // else, and this row is where a person finds it again.
@@ -305,45 +304,25 @@ export async function refuseContentsUnderLock(
     client.release(unusable);
   }
 
-  // A refused point is a placement event, twice over. Placement's insert
-  // takes offered points and, since ADR-0053, none a curator turned down — a
-  // pending point is placed on purpose because it is about to be published,
-  // and a refused one never will be, so its region rows have to go or the
-  // object keeps counting toward a region it will never show a pin in. And
-  // where the point was holding a withdrawal, the old point's rows have to go
-  // for the reason the publish re-places (`publishContents.ts`). The clear is
-  // unfiltered and the insert is not, so one re-place does both. After the
+  // A refused point is a placement event. Placement's insert takes offered
+  // points and, since ADR-0053, none a curator turned down — a pending point
+  // is placed on purpose because it is about to be published, and a refused
+  // one never will be, so its region rows have to go or the object keeps
+  // counting toward a region it will never show a pin in. The clear is
+  // unfiltered and the insert is not, so one re-place does it. After the
   // COMMIT and after this request's client is back in the pool — placement
   // takes its own connections per world view, and holding this one across
   // the sweep would be the one place a curator's answer could exhaust the
   // pool — which is the reason the route carries `authenticatedLimiter`.
-  const placementFailures = points.refused > 0
+  const placementFailures = pointsRefused > 0
     ? await placeAfterRelease(experienceId, 'A curator turned down a point of experience %d')
     : [];
 
   return { result: {
     experienceId,
-    locationsRefused: points.refused,
+    locationsRefused: pointsRefused,
     treasureLinksRefused,
-    withdrawalsReleased: points.withdrawalsReleased,
     ...placementReport(placementFailures),
   } };
 }
 
-/**
- * The mark on the unread offered points — the named ones, or all of them —
- * and the withdrawal a refused point may have been holding back.
- *
- * A gated source that *moves* a point defers the old one's withdrawal onto the
- * new one, and only an answer to the arrival releases it; refusing the arrival
- * is an answer, so the old point becomes a withdrawn point asking its own
- * question (ADR-0026), through the same release the publish uses
- * (`releaseDeferredWithdrawals`), in this transaction.
- */
-async function markPointsRefused(
-  client: PoolClient, lock: LockedExperience, locationIds?: number[],
-): Promise<{ refused: number; withdrawalsReleased: number }> {
-  const refused = await markUnreadPointsRefused(client, lock, locationIds);
-  if (refused === 0) return { refused, withdrawalsReleased: 0 };
-  return { refused, withdrawalsReleased: await releaseDeferredWithdrawals(client, lock, 'refused') };
-}

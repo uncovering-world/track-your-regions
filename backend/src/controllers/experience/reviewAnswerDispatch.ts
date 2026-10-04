@@ -174,28 +174,29 @@ async function rejectWaiting(who: Answerer, subs: WaitingSubs): Promise<Outcome>
     return outcome.refusal ? refusedBy(outcome.refusal) : { did: { published: 0 } };
   }
   const did: Did = {};
+  let placement: Placement | undefined;
   if (subs.held) {
     const outcome = await refuseUnderLock(experienceId, userId, logRegionId, null, runId as number);
     if (outcome.refusal) return refusedBy(outcome.refusal);
     // Every held row refused, the object's own fields and the parts' alike —
-    // one count, as the accept side counts what it applied.
+    // one count, as the accept side counts what it applied. The point that is
+    // the coordinate's own move is turned down with it (#1233) and counted with
+    // the points, and its re-placement reported where it failed.
     did.fields = outcome.result!.declinedFields.length
       + outcome.result!.declinedParts.reduce((n, part) => n + part.fields.length, 0);
+    if (outcome.result!.movedPointRefused !== null) did.locations = 1;
+    placement = placementOf(outcome.result!);
   }
   if (subs.contents) {
     const outcome = await refuseContentsUnderLock(experienceId, userId, logRegionId, {});
     // A held refusal that landed is an answer even where the contents moved
     // in between; only a row with nothing else to answer reports the miss.
     if (outcome.refusal && !subs.held) return refusedBy(outcome.refusal);
-    did.locations = outcome.result?.locationsRefused ?? 0;
+    did.locations = (did.locations ?? 0) + (outcome.result?.locationsRefused ?? 0);
     did.treasureLinks = outcome.result?.treasureLinksRefused ?? 0;
-    // The one fact only this answer records: the old pins a refused arrival
-    // had been holding on the map, withdrawn now — and the re-placement that
-    // follows, where it failed, carried as every accept arm carries it.
-    did.withdrawalsReleased = outcome.result?.withdrawalsReleased ?? 0;
-    return { did, placement: outcome.result ? placementOf(outcome.result) : undefined };
+    if (outcome.result) placement = placementOf(outcome.result) ?? placement;
   }
-  return { did };
+  return { did, placement };
 }
 
 async function answerConflict(who: Answerer, answer: Answer): Promise<Outcome> {

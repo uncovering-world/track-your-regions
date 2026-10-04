@@ -8,10 +8,14 @@
  * To a curator that is one move (#1233). The publish takes the point along when
  * it writes the coordinate (`pointMovedWithObject`, `publishContents.ts`), and
  * the queue names the same point on the card (`queryContents`,
- * `reviewQueueContents.ts`) — so the row the card marks is the row the publish
- * takes, by construction rather than by two copies of a rule agreeing.
+ * `reviewQueueContents.ts`), and a no to the coordinate turns the same point
+ * down (`pointMovedToProposed`, `declineHeldController.ts`) — so the row the card
+ * marks is the row either answer takes, by construction rather than by copies of
+ * a rule agreeing.
  */
 
+import type { PoolClient } from 'pg';
+import type { LockedExperience } from '../../db/experienceWriter.js';
 import { offeredLocationSql } from '../../db/readerPredicates.js';
 import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
 import { unreadPointSql } from './waitingCounts.js';
@@ -41,4 +45,23 @@ export function pointMovedToSql(experienceId: string, point: string): string {
               AND ST_DWithin(arrival.location::geography, (${point})::geography, ${LOCATION_UNCHANGED_METERS})
             ORDER BY ST_Distance(arrival.location::geography, (${point})::geography), arrival.id
             LIMIT 1)`;
+}
+
+/**
+ * The unread point that is the move a held `location` proposes, or null: the
+ * rule above, asked of the proposed coordinate rather than of one already
+ * written. A refusal of the coordinate refuses this point with it, so a no to
+ * the move is one answer as a yes is (#1233). `proposed` is the changeset's
+ * `new` for the field; anything that is not a coordinate answers null.
+ */
+export async function pointMovedToProposed(
+  client: PoolClient, lock: LockedExperience, proposed: unknown,
+): Promise<number | null> {
+  const at = proposed as { lon?: unknown; lat?: unknown } | null;
+  if (typeof at?.lon !== 'number' || typeof at?.lat !== 'number') return null;
+  const found = await client.query<{ id: number | null }>(
+    `SELECT ${pointMovedToSql('$1::int', 'ST_SetSRID(ST_MakePoint($2::float8, $3::float8), 4326)')} AS id`,
+    [lock.id, at.lon, at.lat],
+  );
+  return found.rows[0]?.id ?? null;
 }

@@ -2,10 +2,14 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { publishUnderLock } from './publishController.js';
 import { queryContents } from './reviewQueueContents.js';
+import { refuseUnderLock } from './declineHeldController.js';
+import { refuseContentsUnderLock } from './curatorRefusalController.js';
+import { writeExperienceLocations } from '../../services/sync/locationWriter.js';
 
 /**
  * Publishing an object's held coordinate publishes the point that is the same
- * move (#1233), executed against PostgreSQL: the pairing is a join over three
+ * move, and a no to it turns that point down and keeps the stored pin (#1233),
+ * executed against PostgreSQL: the pairing is a join over three
  * rows and a distance, and the release that follows is the location writer's
  * own statement, so only real rows can show the two halves landing together.
  *
@@ -195,5 +199,66 @@ describe('publishing an object\'s held coordinate', () => {
     expect(result).toMatchObject({ appliedFields: ['location'], locationsPublished: 0, withdrawalsReleased: 0 });
     expect(await point(elsewhere)).toEqual({ curation_state: 'pending', missing: false });
     expect((await point(storedPoint)).missing).toBe(false);
+  });
+});
+
+/** Whether the moved point still names the pin it replaces, and whether it is turned down. */
+async function pairing(id: number): Promise<{ replaces: number | null; refused: boolean }> {
+  const row = await pool.query<{ replaces: number | null; refused: boolean }>(
+    `SELECT withdrawal_deferred_for_location_id AS replaces, refused_at IS NOT NULL AS refused
+       FROM experience_locations WHERE id = $1`, [id],
+  );
+  return row.rows[0];
+}
+
+/** The source offers the object's one point at `at`, as the next run would. */
+const nextRun = (at: { lon: number; lat: number }) => writeExperienceLocations(
+  SITE, [{ name: null, externalRef: 'Q47611', lon: at.lon, lat: at.lat }], { syncLogId: null },
+);
+
+describe('a no to an object\'s moved point', () => {
+  it('turns the moved point down with the coordinate, and readers keep the stored pin', async () => {
+    const moved = await arrival(MOVED);
+    const logId = await heldRun([{ field: 'location', old: STORED, new: MOVED }]);
+
+    const { result, refusal } = await refuseUnderLock(SITE, userId, null, { fields: ['location'] }, logId);
+
+    expect(refusal).toBeUndefined();
+    expect(result).toMatchObject({ declinedFields: ['location'], movedPointRefused: moved, heldLeftOpen: 0 });
+    expect(await pairing(moved)).toEqual({ replaces: storedPoint, refused: true });
+    expect(await point(storedPoint)).toEqual({ curation_state: 'verified', missing: false });
+  });
+
+  it('keeps the stored pin through the next run that offers the same move, and asks nothing again', async () => {
+    const moved = await arrival(MOVED);
+    await refuseContentsUnderLock(SITE, userId, null, { locationIds: [moved] });
+
+    await nextRun(MOVED);
+
+    expect(await point(storedPoint)).toEqual({ curation_state: 'verified', missing: false });
+    expect(await pairing(moved)).toEqual({ replaces: storedPoint, refused: true });
+    const unread = await pool.query(
+      `SELECT 1 FROM experience_locations
+        WHERE experience_id = $1 AND curation_state = 'pending' AND refused_at IS NULL AND missing_since IS NULL`,
+      [SITE],
+    );
+    expect(unread.rows).toHaveLength(0);
+  });
+
+  it('asks again when the source moves the point somewhere else, the stored pin still shown', async () => {
+    const moved = await arrival(MOVED);
+    await refuseContentsUnderLock(SITE, userId, null, { locationIds: [moved] });
+
+    const elsewhere = { lon: 27.3412, lat: 37.9420 };
+    await nextRun(elsewhere);
+
+    expect(await point(storedPoint)).toEqual({ curation_state: 'verified', missing: false });
+    const asked = await pool.query<{ id: number; replaces: number | null }>(
+      `SELECT id, withdrawal_deferred_for_location_id AS replaces FROM experience_locations
+        WHERE experience_id = $1 AND curation_state = 'pending' AND refused_at IS NULL AND missing_since IS NULL`,
+      [SITE],
+    );
+    expect(asked.rows).toEqual([{ id: expect.any(Number), replaces: storedPoint }]);
+    expect(asked.rows[0].id).not.toBe(moved);
   });
 });

@@ -141,24 +141,23 @@ export async function restoreRefusedPoints(
 
 /**
  * Release the withdrawals a moved point held back, once its replacement is
- * answered — published or refused — and clear the pairings that did their work.
- * Answers how many old points were withdrawn.
+ * published, and clear the pairings that did their work. Answers how many old
+ * points were withdrawn.
  *
  * A gated source that *moves* a point writes the new one `pending` and defers
  * the old one's withdrawal onto it (`locationWriter`), so readers keep the old
  * pin until the arrival is answered and never watch it vanish while its
- * replacement is invisible. Both answers end the pairing, and in the answer's own
- * transaction, since on either side of a COMMIT the place exists twice or not at
- * all:
+ * replacement is invisible. The publish ends the pairing in its own transaction,
+ * since on either side of a COMMIT the place exists twice or not at all: the
+ * arrival is what a reader sees now, so the old point goes. Driven off the
+ * arrival's own column, which names the old row, rather than off the ids just
+ * published.
  *
- * - **published**: the arrival is what a reader sees now, so the old point
- *   goes. Driven off the arrival's own column, which names the old row, rather
- *   than off the ids just published.
- * - **refused**: a curator turned the replacement down, so the old point becomes
- *   what it is — a withdrawn point asking its own question (ADR-0026) — rather
- *   than staying on the map for ever with no question anywhere. Every pairing a
- *   refused point of this object holds, not only this call's: one left standing
- *   by an earlier refusal is the same stranded pin.
+ * A refusal ends nothing (#1233): a curator's no to a move keeps the stored pin
+ * where readers see it, and the refused arrival goes on naming it, which is what
+ * keeps the location writer from withdrawing it. The question is settled for
+ * that value — a different coordinate from the source is asked about again, and
+ * the source offering the old point again clears the pairing (`locationWriter`).
  *
  * `old.missing_since IS NULL` so nothing is withdrawn twice: a second answer must
  * not restamp the date a predecessor stopped being offered. Both sides are scoped
@@ -180,11 +179,7 @@ export async function restoreRefusedPoints(
 export async function releaseDeferredWithdrawals(
   client: PoolClient,
   lock: LockedExperience,
-  answeredBy: 'published' | 'refused',
 ): Promise<number> {
-  const answered = (alias: string) => (answeredBy === 'published'
-    ? publishedContentSql(alias)
-    : `${alias}.refused_at IS NOT NULL`);
   const released = await client.query(
     `UPDATE experience_locations old
         SET missing_since = NOW(), ordinal = NULL,
@@ -193,7 +188,7 @@ export async function releaseDeferredWithdrawals(
       WHERE arrived.experience_id = $1
         AND old.experience_id = $1
         AND arrived.withdrawal_deferred_for_location_id = old.id
-        AND ${answered('arrived')}
+        AND ${publishedContentSql('arrived')}
         AND old.missing_since IS NULL`,
     [lock.id],
   );
@@ -202,7 +197,7 @@ export async function releaseDeferredWithdrawals(
         SET withdrawal_deferred_for_location_id = NULL
       WHERE experience_id = $1
         AND withdrawal_deferred_for_location_id IS NOT NULL
-        AND ${answered('experience_locations')}`,
+        AND ${publishedContentSql('experience_locations')}`,
     [lock.id],
   );
   return released.rowCount ?? 0;

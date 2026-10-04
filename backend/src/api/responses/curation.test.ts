@@ -30,7 +30,7 @@ const acceptSource = {
   experienceId: 6205, applied: ['location'], released: [], releasedPoints: [13211], movedPoints: [13211],
   releasedCredit: false, fromSyncLogId: 53,
 };
-const refuseContents = { experienceId: 6205, locationsRefused: 2, treasureLinksRefused: 0, withdrawalsReleased: 1 };
+const refuseContents = { experienceId: 6205, locationsRefused: 2, treasureLinksRefused: 0 };
 const unrefuseContents = {
   experienceId: 6205, locationsRestored: 1, treasureLinksRestored: 0, locationIds: [13211], treasureIds: [],
 };

@@ -2816,6 +2816,13 @@ export interface DeclinedPart {
  * What refusing held rows of a gated proposal settled.
  */
 export interface DeclineHeldResult {
+  /** Set when the publication landed and re-placing the object into its regions did not. */
+  placementFailed?: true;
+  /**
+     * Where the regions are stale now. Present exactly when `placementFailed` is, and never empty.
+     * @minItems 1
+     */
+  placementFailedWorldViews?: PlacementFailure[];
   /**
      * @minimum -9007199254740991
      * @maximum 9007199254740991
@@ -2836,6 +2843,8 @@ export interface DeclineHeldResult {
      * @maximum 9007199254740991
      */
   heldLeftOpen: number;
+  /** The unread point turned down with the object's coordinate, being the same move (#1233), or null. */
+  movedPointRefused: number | null;
 }
 
 export interface DeclineSourceBody {
@@ -6340,12 +6349,6 @@ export interface RefuseContentsResult {
      * @maximum 9007199254740991
      */
   treasureLinksRefused: number;
-  /**
-     * Old pins a refused arrival had been holding on the map, now withdrawn and asking their own question.
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  withdrawalsReleased: number;
 }
 
 /**

@@ -216,14 +216,16 @@ export const DeclinedPart = z.strictObject({
 }).describe('One part a refusal of held rows reached.');
 export type DeclinedPart = z.infer<typeof DeclinedPart>;
 
-export const DeclineHeldResult = z.strictObject({
+export const DeclineHeldResult = placement.extend({
   experienceId: z.number().int(),
   declinedFields: z.array(z.string()).describe("The object's own fields refused now."),
   declinedParts: z.array(DeclinedPart).describe('The parts refused now, grouped as the card grouped them.'),
   fromSyncLogId: z.number().int(),
   heldLeftOpen: z.number().int()
     .describe('Held rows still open. Zero means the card is gone and the pointer with it.'),
-}).describe('What refusing held rows of a gated proposal settled.');
+  movedPointRefused: z.number().int().nullable()
+    .describe("The unread point turned down with the object's coordinate, being the same move (#1233), or null."),
+}).superRefine(placementTogether).describe('What refusing held rows of a gated proposal settled.');
 export type DeclineHeldResult = z.infer<typeof DeclineHeldResult>;
 
 export const RefuseArrivalResult = z.strictObject({
@@ -237,8 +239,6 @@ export const RefuseContentsResult = placement.extend({
   experienceId: z.number().int(),
   locationsRefused: z.number().int(),
   treasureLinksRefused: z.number().int(),
-  withdrawalsReleased: z.number().int()
-    .describe('Old pins a refused arrival had been holding on the map, now withdrawn and asking their own question.'),
 }).superRefine(placementTogether).describe('What turning down the unread points and works of an object did.');
 export type RefuseContentsResult = z.infer<typeof RefuseContentsResult>;
 

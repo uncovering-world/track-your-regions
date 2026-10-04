@@ -639,7 +639,10 @@ export async function writeExperienceLocations(
                   -- place on the map twice. And only a point a reader will see
                   -- *at all*: a point a curator turned down (ADR-0053) is still
                   -- pending, but nothing publishes it and no card offers it, so
-                  -- a withdrawal held on it would never be released.
+                  -- a withdrawal newly held on it would hide a departure nobody
+                  -- was asked about. A pairing a refused point already holds is
+                  -- different: that refusal was the curator's no to the move, and
+                  -- the pin it keeps is the answer (#1233).
                   AND el.curation_state = 'pending'
                   AND el.refused_at IS NULL
               ),
