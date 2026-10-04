@@ -61,6 +61,7 @@ const FIELD_LABEL: Record<string, string> = {
   'metadata.imageCredit': 'picture credit',
   'metadata.foundAt': 'find spot',
   imageUrl: 'picture',
+  location: 'coordinates',
   'metadata.creators': 'makers',
   shortDescription: 'short description',
   countryNames: 'countries',
@@ -88,6 +89,25 @@ function partsLabels(parts: HeldPart[]): string[] {
 }
 
 /**
+ * The unread contents in the card's own words, so the line and the card count
+ * alike (#524): what arrived, the new points apart from the moved ones, and
+ * nothing for a count of nothing. The point the object's held coordinate takes
+ * along (`coordinates_move_point_id`) is that coordinate, already named among
+ * the fields, so it is not counted twice.
+ */
+function contentsLabels(contents: ReviewQueueItem): string[] {
+  const works = Number(contents.pending_treasures ?? 0);
+  const moved = Number(contents.pending_moved_locations ?? 0);
+  const newPoints = Number(contents.pending_locations ?? 0) - moved;
+  const movedAsked = moved - (contents.coordinates_move_point_id != null ? 1 : 0);
+  const labels: string[] = [];
+  if (works > 0) labels.push(`${countLabel(works, 'work', 'works')} arrived`);
+  if (newPoints > 0) labels.push(countLabel(newPoints, 'new point', 'new points'));
+  if (movedAsked > 0) labels.push(`${countLabel(movedAsked, 'point', 'points')} moved`);
+  return labels;
+}
+
+/**
  * A `waiting` group's specific: the held fields, then its parts, then its unread contents
  * — every piece of it that is actually open, comma-joined. An arrival is always alone
  * (`groupGated`'s own comment: `held` fires only off a non-`pending` row and `contents`
@@ -105,11 +125,7 @@ function waitingSpecific(group: GatedGroup): string {
     .filter(f => !(folded && f.field === HELD_CREDIT_FIELD))
     .map(f => humaniseField(f.field)));
   pieces.push(...partsLabels(group.held?.proposed_parts ?? []));
-  if (group.contents) {
-    const works = group.contents.pending_treasures ?? 0;
-    const places = group.contents.pending_locations ?? 0;
-    pieces.push(`unread: ${countLabel(works, 'work', 'works')}, ${countLabel(places, 'place', 'places')}`);
-  }
+  if (group.contents) pieces.push(...contentsLabels(group.contents));
   return pieces.join(', ');
 }
 
