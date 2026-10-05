@@ -1,7 +1,7 @@
 # ADR-0084: A place belongs to no source and no kind
 
 **Date:** 2026-10-04
-**Status:** Accepted
+**Status:** Accepted — decision 4 narrowed by [ADR-0085](0085-one-wikidata-item-is-one-reading-whichever-source-reads-it.md)
 **Issue:** [#1244](https://github.com/uncovering-world/track-your-regions/issues/1244), Epic [#755](https://github.com/uncovering-world/track-your-regions/issues/755)
 **Narrows:** [ADR-0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) decision 4, the wording of [ADR-0046](0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md) decision 5
 
