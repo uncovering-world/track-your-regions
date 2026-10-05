@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { kindToOpenIn, shownInKind } from './placeKinds';
+import { kindToOpenIn, placeKindNames, shownInKind } from './placeKinds';
 
 /** The Capitoline Museums once merged: one place, offered in Art Museums and Archaeology. */
 const CAPITOLINE = {
@@ -41,5 +41,20 @@ describe('the kind a card opens under when the address names none', () => {
 
   it('is none where the place is offered in no kind', () => {
     expect(kindToOpenIn({ ...CAPITOLINE, kinds: [] })).toBeNull();
+  });
+});
+
+describe('the names a hover card gives a place (#1262)', () => {
+  it('names every kind it is offered in, in display order', () => {
+    expect(placeKindNames(CAPITOLINE)).toBe('Art Museums · Archaeology');
+  });
+
+  it('names its own kind where it carries no kinds', () => {
+    expect(placeKindNames({ kind_name: 'Art Museums', kinds: [] })).toBe('Art Museums');
+    expect(placeKindNames({ kind_name: 'Art Museums' })).toBe('Art Museums');
+  });
+
+  it('names nothing where there is no name at all', () => {
+    expect(placeKindNames({ kind_name: '', kinds: [] })).toBeNull();
   });
 });

@@ -53,3 +53,14 @@ export function shownInKind<T extends WithKinds>(row: T, kindId: number): T | nu
     type: kind.type,
   };
 }
+
+/**
+ * The names of every kind the place is offered in, for a hover card (#1262):
+ * the Capitoline Museums read "Art Museums · Archaeology". The row's own kind
+ * where it carries no `kinds` — a row cached from an answer older than the
+ * field, or a listed row no offered membership names (#1275).
+ */
+export function placeKindNames(row: Pick<WithKinds, 'kind_name'> & { kinds?: PlaceKind[] }): string | null {
+  const names = row.kinds?.length ? row.kinds.map(kind => kind.kind_name) : [row.kind_name];
+  return names.filter(Boolean).join(' · ') || null;
+}

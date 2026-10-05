@@ -37,10 +37,11 @@ import type * as maplibregl from 'maplibre-gl';
 import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   SOURCE_WORLD_POINTS, SOURCE_WORLD_HOVER,
-  worldLayersFor,
+  worldLayersFor, worldSplitIconFor,
   worldHoverGlowLayer, worldHoverRingLayer,
 } from './experienceMarkers/worldPointLayers';
 import { EMPTY_FC } from './experienceMarkers/layers';
+import { addSplitPinImages } from './experienceMarkers/scene';
 import {
   queryForView, sameQuestion, type ViewportBounds,
 } from './experienceMarkers/worldPointsView';
@@ -146,10 +147,15 @@ export function WorldExperiencePoints({ kindId, folded, kindNameOf }: WorldExper
    * draws are true places either way, which is the same reason the box is not
    * compared.
    */
-  const collection = useMemo(
-    () => (answer ? worldPointsCollection(answer) : EMPTY_FC),
-    [answer],
-  );
+  const collection = useMemo(() => {
+    if (!answer) return EMPTY_FC;
+    // A map of one kind draws every pin in that kind's colour: no split disc.
+    return worldPointsCollection(answer, kindId === null ? worldSplitIconFor : undefined);
+  }, [answer, kindId]);
+
+  // The split discs' images, drawn the first time the map asks for one; the
+  // region layer registers its own, and neither is mounted with the other.
+  useEffect(() => (mapRef ? addSplitPinImages(mapRef.getMap()) : undefined), [mapRef]);
 
   // The ring, written straight to its source rather than held as state — see
   // `ExperienceMarkers`, where the same ref exists for the same reason: this

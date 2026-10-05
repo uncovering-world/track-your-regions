@@ -29,6 +29,7 @@ import {
   buildPointHoverData, buildPointsHoverData, buildSizedRing,
 } from '../experienceMarkers/scene';
 import { pointInView } from '../../utils/viewBounds';
+import { placeKindNames } from '../../utils/placeKinds';
 
 /**
  * Rings for the places of an object that the map is currently drawing as pins.
@@ -100,7 +101,7 @@ function previewOf(exp: Experience): HoverPreview {
     experienceName: exp.name,
     locationId: null,
     locationName: null,
-    kindName: exp.kind_name || '',
+    kindName: placeKindNames(exp),
     kindId: exp.kind_id,
     treasureCount: exp.treasure_count,
     findsCount: exp.finds_count,

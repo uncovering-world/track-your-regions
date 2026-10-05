@@ -24,12 +24,13 @@
  */
 
 import type { LayerProps } from 'react-map-gl/maplibre';
-import type { WorldPointsResponse } from '../../api/worldPoints';
+import type { WorldPointKinds, WorldPointsResponse } from '../../api/worldPoints';
 import {
   HEATMAP_MAX_ZOOM, heatmapLayer, hoverGlowLayer, hoverRingLayer,
-  markerLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer,
+  markerLayer, markerSplitLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer,
 } from './layers';
-import { kindColorExpression } from '../../utils/kindColors';
+import { splitPinIconFor } from './scene';
+import { experienceColor, kindColorExpression } from '../../utils/kindColors';
 
 /** The map source the world layer's points are attached as. */
 export const SOURCE_WORLD_POINTS = 'world-points';
@@ -54,6 +55,7 @@ export const worldHoverRingLayer: LayerProps = {
 
 const LAYER_WORLD_HEAT = 'world-points-heat';
 const LAYER_WORLD_MARKERS = 'world-points-markers';
+const LAYER_WORLD_SPLIT = 'world-points-split';
 const LAYER_WORLD_CAPPED = 'world-points-capped';
 const LAYER_WORLD_BADGE_BG = 'world-points-badge-bg';
 const LAYER_WORLD_BADGE_TEXT = 'world-points-badge-text';
@@ -78,7 +80,7 @@ const LAYER_WORLD_BADGE_TEXT = 'world-points-badge-text';
  * module can produce, drawn or not.
  */
 export const WORLD_MARKER_LAYERS = [
-  LAYER_WORLD_MARKERS, LAYER_WORLD_CAPPED, LAYER_WORLD_BADGE_BG, LAYER_WORLD_BADGE_TEXT,
+  LAYER_WORLD_MARKERS, LAYER_WORLD_SPLIT, LAYER_WORLD_CAPPED, LAYER_WORLD_BADGE_BG, LAYER_WORLD_BADGE_TEXT,
 ] as const;
 
 /** What a layer of this source needs beyond the region layer's own definition. */
@@ -132,6 +134,27 @@ export const worldMarkerLayer: LayerProps = {
   ...onSource,
   paint: { ...markerLayer.paint, 'circle-color': kindColorExpression() },
 };
+
+/**
+ * The split disc of a place in several kinds, over its plain pin (#1262): the
+ * region layer's, on this source. Its image is named by the feature's `icon`,
+ * which only a map of every kind gives a point (`worldSplitIconFor`).
+ */
+export const worldSplitMarkerLayer: LayerProps = {
+  ...markerSplitLayer,
+  id: LAYER_WORLD_SPLIT,
+  ...onSource,
+};
+
+/**
+ * The split disc a point is drawn with on a map of every kind: one slice per
+ * kind of the place, in the kinds' display order, each in its kind's colour for
+ * the place's type there (`splitPinIconFor`, the region layer's rule).
+ * A map of one kind passes none, so every pin there is that kind's colour.
+ */
+export function worldSplitIconFor(kinds: NonNullable<WorldPointKinds>): string | undefined {
+  return splitPinIconFor(kinds.map(kind => experienceColor(kind.kindId, kind.type)));
+}
 
 /**
  * The pins, at every zoom, for a read the endpoint had to cap.
@@ -242,7 +265,7 @@ export function worldLayersFor(answer: DrawableAnswer | undefined): LayerProps[]
     answer.truncated ? worldCappedMarkerLayer : worldHeatmapLayer,
   ];
   if (answer.detail === 'markers') {
-    layers.push(worldMarkerLayer, ...worldBadgeLayers(answer.folded));
+    layers.push(worldMarkerLayer, worldSplitMarkerLayer, ...worldBadgeLayers(answer.folded));
   }
   return layers;
 }

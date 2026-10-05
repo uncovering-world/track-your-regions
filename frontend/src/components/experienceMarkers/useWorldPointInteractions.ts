@@ -48,6 +48,8 @@ export interface WorldPoint {
   experienceName: string;
   locationName: string | null;
   kindId: number | null;
+  /** Every kind of a place in more than one; the pin's own kind alone otherwise. */
+  kindIds: number[];
   coordinates: [number, number];
 }
 
@@ -65,7 +67,7 @@ function hoverKey(point: WorldPoint): string {
 
 export interface WorldPointInteractionsParams {
   mapRef: MapRef | undefined;
-  /** The kind's own name, for the card's second line; a feature carries only its id. */
+  /** A kind's own name, for the card's second line; a feature carries only ids. */
   kindNameOf: (kindId: number | null) => string | null;
   setHoverPreview: (preview: HoverPreview | null) => void;
   /** Writes the ring straight to the map's source, without a re-render. */
@@ -79,6 +81,13 @@ function popupContent(name: string): HTMLElement {
   const strong = document.createElement('strong');
   strong.textContent = name;
   return strong;
+}
+
+/** A point's kinds, off the text its feature carries them as (`WorldPointProperties.kindIds`). */
+function kindIdsOf(properties: maplibregl.MapGeoJSONFeature['properties']): number[] {
+  const listed = typeof properties?.kindIds === 'string' ? properties.kindIds.split(',').map(Number) : [];
+  if (listed.length > 0) return listed;
+  return typeof properties?.kindId === 'number' ? [properties.kindId] : [];
 }
 
 function pointOf(feature: maplibregl.MapGeoJSONFeature): WorldPoint | null {
@@ -98,6 +107,7 @@ function pointOf(feature: maplibregl.MapGeoJSONFeature): WorldPoint | null {
     experienceName: String(feature.properties?.experienceName ?? ''),
     locationName: (feature.properties?.name as string | undefined) ?? null,
     kindId: (feature.properties?.kindId as number | undefined) ?? null,
+    kindIds: kindIdsOf(feature.properties),
     coordinates: (feature.geometry as GeoJSON.Point).coordinates as [number, number],
   };
 }
@@ -179,7 +189,7 @@ export function useWorldPointInteractions({
         experienceName: point.experienceName,
         locationId: point.locationId,
         locationName: point.locationName,
-        kindName: kindNameOfRef.current(point.kindId),
+        kindName: point.kindIds.map(id => kindNameOfRef.current(id)).filter(Boolean).join(' · ') || null,
         // The card reads this only to decide whether to draw the treasures
         // chip, which is silent without a count — and this read carries none.
         // A row whose membership names another source has no kind at all here,

@@ -23,7 +23,7 @@ import {
   sceneMarkerLayer, sceneBadgeBgLayer, sceneBadgeTextLayer,
   sceneHoverGlowLayer, sceneHoverRingLayer, sceneHighlightRingLayer, sceneHighlightPointLayer,
   EMPTY_FC, buildPointHoverData, buildPointsHoverData, buildSizedRing,
-  buildHighlightData, buildMarkerFeatures, splitPinIcon, addSplitPinImages,
+  buildHighlightData, buildMarkerFeatures, splitPinIcon, splitPinIconFor, addSplitPinImages,
 } from './scene';
 import { experienceColor } from '../../utils/kindColors';
 
@@ -208,6 +208,12 @@ describe('a pin that shows several kinds', () => {
 
     expect(properties.color).toBe(archaeology);
     expect(properties).not.toHaveProperty('icon');
+  });
+
+  it('keeps one slice per kind, and splits nothing where every slice is one colour', () => {
+    expect(splitPinIconFor([art, art, archaeology])).toBe(splitPinIcon([art, art, archaeology]));
+    expect(splitPinIconFor([archaeology, archaeology])).toBeUndefined();
+    expect(splitPinIconFor([archaeology])).toBeUndefined();
   });
 
   it('asks for no image the map has, and none that is not a split pin', () => {
