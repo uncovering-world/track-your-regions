@@ -190,9 +190,12 @@ export function flattenGroups(
  * selection (#917), and the re-aim after a click only inside that click's
  * flight (#553).
  */
-export function rowIndexByExperienceId(rows: FlatRow[]): Map<number, number> {
+export function rowIndexByExperienceId(rows: FlatRow[], echoes?: ReadonlySet<unknown>): Map<number, number> {
   const m = new Map<number, number>();
-  rows.forEach((row, i) => { if (row.kind === 'experience') m.set(row.exp.id, i); });
+  rows.forEach((row, i) => {
+    // A place in several kinds is aimed at by its home row, never an echo (#1245).
+    if (row.kind === 'experience' && !echoes?.has(row.exp)) m.set(row.exp.id, i);
+  });
   return m;
 }
 

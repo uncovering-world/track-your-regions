@@ -159,8 +159,9 @@ export function buildExperienceMarkers(
   // scan of this array either way — it resolves markers directly rather than
   // searching what the map currently draws.
   for (const exp of experiences) {
-    const kindName = exp.kind_name || 'Experiences';
-    if (expandedKindNames.size > 0 && !expandedKindNames.has(kindName)) continue;
+    // One pin per place, drawn while any of its kinds' groups is open (#1245).
+    const kindNames = exp.kinds?.length ? exp.kinds.map(kind => kind.kind_name) : [exp.kind_name || 'Experiences'];
+    if (expandedKindNames.size > 0 && !kindNames.some(name => expandedKindNames.has(name))) continue;
 
     const locations = locationsByExperience[exp.id];
     if (!locations || locations.length === 0) {

@@ -30,8 +30,9 @@ interface WithKinds {
  * so the kind written into the address is one whose list holds the card.
  */
 export function kindToOpenIn(row: Pick<WithKinds, 'kind_id' | 'kinds'>): number | null {
-  if (row.kinds.some(entry => entry.kind_id === row.kind_id)) return row.kind_id;
-  return row.kinds[0]?.kind_id ?? null;
+  const kinds = row.kinds ?? [];
+  if (kinds.some(entry => entry.kind_id === row.kind_id)) return row.kind_id;
+  return kinds[0]?.kind_id ?? null;
 }
 
 /**
@@ -41,7 +42,8 @@ export function kindToOpenIn(row: Pick<WithKinds, 'kind_id' | 'kinds'>): number 
  * reader is looking at.
  */
 export function shownInKind<T extends WithKinds>(row: T, kindId: number): T | null {
-  const kind = row.kinds.find(entry => entry.kind_id === kindId);
+  // `?? []`: a row cached from an answer older than the field carries none.
+  const kind = (row.kinds ?? []).find(entry => entry.kind_id === kindId);
   if (!kind) return null;
   return {
     ...row,
