@@ -12,11 +12,14 @@ import {
   SOURCE_WORLD_POINTS, WORLD_MARKER_LAYERS,
   worldBadgeLayers, worldCappedMarkerLayer, worldHeatmapLayer, worldLayersFor,
   worldMarkerLayer, worldHoverGlowLayer, worldHoverRingLayer,
+  worldSplitMarkerLayer, worldSplitIconFor,
 } from './worldPointLayers';
 import {
   MARKER_FADE_START,
-  heatmapLayer, markerLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer,
+  heatmapLayer, markerLayer, markerSplitLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer,
 } from './layers';
+import { splitPinIcon } from './scene';
+import { experienceColor } from '../../utils/kindColors';
 
 /**
  * A layer read as a plain record.
@@ -110,7 +113,7 @@ describe('the layer ids', () => {
     // layer, so every pin would have fallen through to the region under it.
     // `useMapInteractions` returns false when nothing listed here is drawn,
     // which is what lets a click reach the map.
-    const pinLayers = [worldMarkerLayer, worldCappedMarkerLayer, ...worldBadgeLayers(true)]
+    const pinLayers = [worldMarkerLayer, worldSplitMarkerLayer, worldCappedMarkerLayer, ...worldBadgeLayers(true)]
       .map(layer => String(asRecord(layer).id));
     expect([...WORLD_MARKER_LAYERS].sort()).toEqual(pinLayers.sort());
   });
@@ -165,6 +168,7 @@ describe('worldLayersFor', () => {
     worldLayersFor(answer).map(layer => String(asRecord(layer).id));
   const heat = String(asRecord(worldHeatmapLayer).id);
   const pins = String(asRecord(worldMarkerLayer).id);
+  const split = String(asRecord(worldSplitMarkerLayer).id);
   const capped = String(asRecord(worldCappedMarkerLayer).id);
   const badges = worldBadgeLayers(true).map(layer => String(asRecord(layer).id));
 
@@ -175,17 +179,17 @@ describe('worldLayersFor', () => {
   it('draws a markers answer through the heat and the pins, so the band cross-fades', () => {
     // Both span MARKER_FADE_START → HEATMAP_MAX_ZOOM on purpose; dropping either
     // inside the band makes the handover a cutoff instead of a fade.
-    expect(ids({ detail: 'markers', folded: false })).toEqual([heat, pins]);
+    expect(ids({ detail: 'markers', folded: false })).toEqual([heat, pins, split]);
   });
 
   it('adds the badges only when the answer itself is folded, not when the control is', () => {
-    expect(ids({ detail: 'markers', folded: true })).toEqual([heat, pins, ...badges]);
+    expect(ids({ detail: 'markers', folded: true })).toEqual([heat, pins, split, ...badges]);
     expect(ids({ detail: 'overview', folded: true })).toEqual([heat]);
   });
 
   it('replaces the heat with the capped pins when the read was capped', () => {
     expect(ids({ detail: 'overview', folded: false, truncated: true })).toEqual([capped]);
-    expect(ids({ detail: 'markers', folded: false, truncated: true })).toEqual([capped, pins]);
+    expect(ids({ detail: 'markers', folded: false, truncated: true })).toEqual([capped, pins, split]);
   });
 
   it('draws nothing at all without an answer, so the style stays empty until there is one', () => {
@@ -207,5 +211,25 @@ describe('worldLayersFor', () => {
         for (const badge of badges) expect(drawn).not.toContain(badge);
       }
     }
+  });
+});
+
+describe('a place in several kinds on the world map (#1262)', () => {
+  it("draws its split disc with the region layer's own layer, on this source", () => {
+    const { id, source, ...rest } = asRecord(worldSplitMarkerLayer);
+    const { id: regionId, source: regionSource, ...regionRest } = asRecord(markerSplitLayer);
+    expect(source).toBe(SOURCE_WORLD_POINTS);
+    expect(id).not.toBe(regionId);
+    expect(regionSource).not.toBe(SOURCE_WORLD_POINTS);
+    expect(rest).toEqual(regionRest);
+  });
+
+  it('splits the Capitoline Museums by their kinds, each in its colour for the type there', () => {
+    const icon = worldSplitIconFor([{ kindId: 2, type: null }, { kindId: 5, type: 'museum' }]);
+    expect(icon).toBe(splitPinIcon([experienceColor(2, null), experienceColor(5, 'museum')]));
+  });
+
+  it('draws no split where every slice would be one colour', () => {
+    expect(worldSplitIconFor([{ kindId: 5, type: 'museum' }, { kindId: 5, type: 'museum' }])).toBeUndefined();
   });
 });

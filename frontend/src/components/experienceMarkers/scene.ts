@@ -202,6 +202,15 @@ export function splitPinIcon(colors: readonly string[]): string {
   return `${SPLIT_PIN_PREFIX}${colors.join(',')}`;
 }
 
+/**
+ * The split disc of a pin whose kinds have these colours, one slice per kind,
+ * on both maps; undefined where every slice would be one colour, so the plain
+ * disc is drawn.
+ */
+export function splitPinIconFor(colors: readonly string[]): string | undefined {
+  return new Set(colors).size > 1 ? splitPinIcon(colors) : undefined;
+}
+
 /** The disc's radius and stroke, the plain pin's (`sceneMarkerLayer`). */
 const PIN_RADIUS = 6;
 const PIN_STROKE = 2;
@@ -347,6 +356,12 @@ export function buildHighlightData(places: ReadonlyArray<HighlightPlace>): GeoJS
   };
 }
 
+/** A marker's `icon` property, present only where its kinds split the disc. */
+function splitIconProperty(colors: readonly string[] | undefined): { icon?: string } {
+  const icon = colors ? splitPinIconFor(colors) : undefined;
+  return icon ? { icon } : {};
+}
+
 /**
  * The markers source's payload: one feature per pin the builder made
  * (`buildExperienceMarkers`).
@@ -379,7 +394,7 @@ export function buildMarkerFeatures(
         // the kind's, refined by the type where the types are told apart.
         color: m.kindColors?.[0] ?? experienceColor(m.experience.kind_id, m.experience.type),
         // A pin that shows several kinds of the place draws them as a split disc (#1262).
-        ...(m.kindColors && m.kindColors.length > 1 ? { icon: splitPinIcon(m.kindColors) } : {}),
+        ...splitIconProperty(m.kindColors),
         // 1 for a place drawn as itself, the count only for a pin standing in
         // for places it does not draw — which is what the badge means.
         locationCount: m.locationCount,

@@ -74,6 +74,22 @@ describe('worldPointsCollection', () => {
     const features = worldPointsCollection(folded).features;
     expect(features[0].properties.locationCount).toBe(28);
   });
+
+  it("carries every kind of a place in several as text, and the icon the layer names (#1262)", () => {
+    const merged = { ...markers, kinds: [[{ kindId: 2, type: null }, { kindId: 5, type: 'museum' }], null] };
+    const features = worldPointsCollection(merged, kinds => `split:${kinds.length}`).features;
+    expect(features[0].properties.kindIds).toBe('2,5');
+    expect(features[0].properties.icon).toBe('split:2');
+    expect(features[1].properties).not.toHaveProperty('kindIds');
+    expect(features[1].properties).not.toHaveProperty('icon');
+  });
+
+  it('draws no split disc where the layer names none — a map of one kind', () => {
+    const merged = { ...markers, kinds: [[{ kindId: 2, type: null }, { kindId: 5, type: 'museum' }], null] };
+    const features = worldPointsCollection(merged).features;
+    expect(features[0].properties.kindIds).toBe('2,5');
+    expect(features[0].properties).not.toHaveProperty('icon');
+  });
 });
 
 describe('isAnswerablePin', () => {

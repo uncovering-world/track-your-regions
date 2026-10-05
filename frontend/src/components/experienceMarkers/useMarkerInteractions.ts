@@ -25,6 +25,7 @@ import {
 import type { MarkerData } from './buildMarkers';
 import type { HoverPreview } from '../../hooks/useHoverContext';
 import type { Experience } from '../../api/experiences';
+import { placeKindNames } from '../../utils/placeKinds';
 
 /**
  * Popup body for a marker: the name as text, never as markup.
@@ -176,7 +177,7 @@ export function useMarkerInteractions({
               experienceName: marker.experience.name,
               locationId: marker.locationId,
               locationName: marker.locationName,
-              kindName: marker.experience.kind_name ?? null,
+              kindName: placeKindNames(marker.experience),
               kindId: marker.experience.kind_id,
               treasureCount: marker.experience.treasure_count,
               findsCount: marker.experience.finds_count,
@@ -270,7 +271,7 @@ export function useMarkerInteractions({
                 experienceName: exp.name,
                 locationId: locationId ?? null,
                 locationName: (feature.properties?.name as string | null | undefined) ?? null,
-                kindName: exp.kind_name ?? null,
+                kindName: placeKindNames(exp),
                 kindId: exp.kind_id,
                 treasureCount: exp.treasure_count,
                 findsCount: exp.finds_count,

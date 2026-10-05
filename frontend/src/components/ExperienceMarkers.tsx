@@ -44,6 +44,7 @@ import { useRegionLocations } from '../hooks/useRegionLocations';
 import type { Experience, ExperienceLocation } from '../api/experiences';
 import { locationLabel } from '../utils/locationLabel';
 import { frameGeoJson } from '../utils/mapUtils';
+import { placeKindNames } from '../utils/placeKinds';
 
 
 function tryHoverSpecificLocation(
@@ -63,7 +64,7 @@ function tryHoverSpecificLocation(
       experienceName: exp.name,
       locationId: loc.id,
       locationName: locationLabel(loc),
-      kindName: exp.kind_name ?? null,
+      kindName: placeKindNames(exp),
       kindId: exp.kind_id,
       treasureCount: exp.treasure_count,
       findsCount: exp.finds_count,
@@ -276,7 +277,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       experienceName: marker.experience.name,
       locationId: marker.locationId,
       locationName: marker.locationName,
-      kindName: marker.experience.kind_name ?? null,
+      kindName: placeKindNames(marker.experience),
       kindId: marker.experience.kind_id,
       treasureCount: marker.experience.treasure_count,
       findsCount: marker.experience.finds_count,

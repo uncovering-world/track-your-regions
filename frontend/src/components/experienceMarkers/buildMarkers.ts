@@ -79,10 +79,10 @@ export interface MarkerData {
    */
   folded?: boolean;
   /**
-   * The colours of the kinds this pin shows, in the kinds' display order: the
+   * The colour of each kind this pin shows, in the kinds' display order: the
    * place's kinds among those the surface is showing (#1262). One colour is a
-   * plain pin; two or more draw a disc split into one slice per kind
-   * (`scene.ts`, `splitPinIcon`).
+   * plain pin; two or more different ones draw a disc split into one slice per
+   * kind (`scene.ts`, `splitPinIconFor`).
    */
   kindColors?: string[];
 }
@@ -191,7 +191,7 @@ export function buildExperienceMarkers(
     // of the kinds it shows (#1245, #1262).
     const kinds = shownKinds(exp, expandedKindNames, onlyKindId);
     if (kinds.length === 0) continue;
-    const kindColors = [...new Set(kinds.map(kind => experienceColor(kind.kind_id, kind.type)))];
+    const kindColors = kinds.map(kind => experienceColor(kind.kind_id, kind.type));
 
     const locations = locationsByExperience[exp.id];
     const representable = locations?.length ? representablePlaces(locations) : [];

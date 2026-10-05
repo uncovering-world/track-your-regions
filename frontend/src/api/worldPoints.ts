@@ -51,7 +51,18 @@ export interface WorldPointProperties {
    * (`markerCountBadgeBgLayer`) is reused rather than restated.
    */
   locationCount: number;
+  /**
+   * Every kind of a place in more than one, comma-joined: a feature's property
+   * comes back from `queryRenderedFeatures` as a scalar, so a list travels as
+   * text (#1262). Absent for a place in one kind.
+   */
+  kindIds?: string;
+  /** The split disc's image, for a place drawn in several kinds (`worldSplitMarkerLayer`). */
+  icon?: string;
 }
+
+/** One point's kinds as the answer carries them: every kind of a place in more than one, else null. */
+export type WorldPointKinds = NonNullable<WorldPointsResponse['kinds']>[number];
 
 /**
  * Whether a feature of this source is a pin that can answer a pointer.
@@ -112,15 +123,22 @@ export async function fetchWorldPoints(query: WorldPointsQuery): Promise<WorldPo
  *
  * Overview features each have an empty properties object. Names and identity
  * are populated only for the markers tier.
+ *
+ * `iconFor` names the split disc of a place in several kinds; the layer that
+ * draws it decides when there is one (`worldSplitIconFor`), since a map of one
+ * kind draws every pin in that kind's colour.
  */
 export function worldPointsCollection(
   answer: WorldPointsResponse,
+  iconFor?: (kinds: NonNullable<WorldPointKinds>) => string | undefined,
 ): GeoJSON.FeatureCollection<GeoJSON.Point, Partial<WorldPointProperties>> {
   const { count, lng, lat } = answer;
   const features = new Array<GeoJSON.Feature<GeoJSON.Point, Partial<WorldPointProperties>>>(count);
   const labelled = answer.detail === 'markers' && answer.locationId !== undefined;
   for (let index = 0; index < count; index += 1) {
     const geometry: GeoJSON.Point = { type: 'Point', coordinates: [lng[index], lat[index]] };
+    const kinds = answer.kinds?.[index] ?? null;
+    const icon = kinds ? iconFor?.(kinds) : undefined;
     features[index] = labelled
       ? {
         type: 'Feature',
@@ -134,6 +152,8 @@ export function worldPointsCollection(
           kindId: answer.kindId![index],
           type: answer.type![index],
           locationCount: answer.locationCount?.[index] ?? 1,
+          ...(kinds ? { kindIds: kinds.map(kind => kind.kindId).join(',') } : {}),
+          ...(icon ? { icon } : {}),
         },
       }
       : { type: 'Feature', geometry, properties: {} };
