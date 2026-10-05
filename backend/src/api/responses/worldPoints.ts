@@ -33,6 +33,12 @@ export const WorldPointsResponse = z.strictObject({
   kindId: z.array(z.number().int().nullable()).optional()
     .describe('Markers only: what the pin is coloured by (`kindColors.ts` owns the palette).'),
   type: z.array(z.string().nullable()).optional(),
+  kinds: z.array(z.array(z.strictObject({
+    kindId: z.number().int(),
+    type: z.string().nullable(),
+  })).nullable()).optional()
+    .describe('Markers only: every kind a place in more than one is offered in, in the kinds\' display order;'
+      + ' null for a place in one kind, which `kindId` names.'),
   locationCount: z.array(z.number().int()).optional()
     .describe("Folded only: how many places the pin stands for, which is the badge's number."),
 }).describe('The map\'s points, one array per field, all of them the same length.');

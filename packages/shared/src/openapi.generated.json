@@ -30073,6 +30073,41 @@
               ]
             }
           },
+          "kinds": {
+            "description": "Markers only: every kind a place in more than one is offered in, in the kinds' display order; null for a place in one kind, which `kindId` names.",
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "kindId": {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      "type": {
+                        "type": [
+                          "string",
+                          "null"
+                        ]
+                      }
+                    },
+                    "required": [
+                      "kindId",
+                      "type"
+                    ],
+                    "additionalProperties": false
+                  }
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
           "locationCount": {
             "description": "Folded only: how many places the pin stands for, which is the badge's number.",
             "type": "array",
