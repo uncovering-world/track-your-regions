@@ -58,7 +58,7 @@ What follows from the split, in the code as it stands:
 
 - **A reader-facing read asks admission and the gate of the place through its memberships.** `db/membership.ts` is the one spelling: `placeAdmittedSql` (some membership admitted), `placeVisibleSql` (some membership passed) and `placeOfferedSql` (both, of *one* membership — the composition matters the day a place has two, since one membership admitted and another passed is offered by no single kind). `hideRefusedSql`, `hidePendingSql` and `experienceOfferedToReaderSql` in `db/readerPredicates.ts` delegate to them, so every list, count, search and map feed reads as it did — a place has exactly one membership today, and migration 046 refuses a database where it does not.
 - **A run writes the membership beside the place** (`experienceUpsert.ts`): the kind read off the source, the source and the id it knows the place by, `admitted_for`, and the gate state of the arrival — `pending` with no `published_at` under a gate, `auto` and now otherwise. The hold (a gated source may not overwrite what a reader can see) is a question about the memberships now, which is why the upsert became one transaction per object that locks the place in a statement of its own and reads the hold in the next — see § Change provenance. The admission writes (`admission.ts`), the held-proposal pointer and the curator-pass decay target the membership the run's own source brought.
-- **A run finds its place through its own membership** (ADR-0084, #1244). A place belongs to no source, so the id a source knows a place by is the membership's `external_id`, unique per source, and the place's own `source_id` / `external_id` only say which source first brought the row. `lockSourcedExperience` (`db/experienceWriter.ts`) looks the membership up, locks the place it names and reads the membership again once the lock is held, so a merge that moved it during the wait is followed rather than missed; the upsert's conflict target is the place's `id` the lock found, and the membership's is `(source_id, external_id)`. The admission sweep (`admission.ts`) and missing detection (`missingDetection.ts`) match the membership's id, and every enumeration a run makes of its own places — the museum run's previous placements, the picture repairs, the stored credits, the World Heritage run's index of what it holds, a region rebuild narrowed to one source — goes through `sourcePlacesSql` / `placeOfSourceSql` (`db/membership.ts`). On a place a second source's membership is folded onto (#1247), each run therefore finds the place, admits and refuses only its own membership, and names the place by its own id. A work link records the memberships that place it (#1252) and the type within a kind is the membership's (#1253); the points a run withdraws are still every one of the place's, which #1256 moves onto placements.
+- **A run finds its place through its own membership** (ADR-0084, #1244). A place belongs to no source, so the id a source knows a place by is the membership's `external_id`, unique per source, and the place's own `source_id` / `external_id` only say which source first brought the row. `lockSourcedExperience` (`db/experienceWriter.ts`) looks the membership up, locks the place it names and reads the membership again once the lock is held, so a merge that moved it during the wait is followed rather than missed; the upsert's conflict target is the place's `id` the lock found, and the membership's is `(source_id, external_id)`. The admission sweep (`admission.ts`) and missing detection (`missingDetection.ts`) match the membership's id, and every enumeration a run makes of its own places — the museum run's previous placements, the picture repairs, the stored credits, the World Heritage run's index of what it holds, a region rebuild narrowed to one source — goes through `sourcePlacesSql` / `placeOfSourceSql` (`db/membership.ts`). On a place a second source's membership is folded onto (#1247), each run therefore finds the place, admits and refuses only its own membership, and names the place by its own id. A work link records the memberships that place it (#1252) and the type within a kind is the membership's (#1253); and a point records the memberships that place it (#1256).
 - **Whether a source still lists the place is its membership's** (ADR-0084, #1251). A membership carries ADR-0020's first axis — `missing_since` (a clean run of an authoritative source did not list it) and `source_membership` (`former` once a curator says the source stopped listing it) — and the run's record of when its source first and last saw the place (`first_seen_sync_log_id`, `last_seen_sync_log_id`, `last_seen_at`). Missing detection marks the run's own membership, and the upsert clears its own mark and its own `former` when the source lists the place again. The place keeps `missing_since` and `source_membership` as a derivation, written only by the trigger `derive_place_listing()` (`db/init/01-schema.sql`): missing once every membership is, at the latest of their flags, and `former` once every membership is. A curator's lifecycle verdict is still asked of the place and answers every membership of it (`setListingVerdict`, `membershipWriter.ts`), while `existence` stays the place's own (`setLifecycleVerdict`). A conflict a source proposed is withdrawn only by a later landed run of that same source (`conflictChangeOpenSql`, which the queue, accept-source and decline-source all compose), and an arrival is dated by its membership's `first_seen_sync_log_id`. The missing card and the verdict per membership are #1245's; until a merge makes a place with two memberships, the place's flags are its one membership's. The catalogue check `place-listing-disagrees-with-memberships` states the derivation.
 - **The type within a kind is the membership's** (ADR-0084, #1253): the Pantheon is a church as a place of worship and a site as archaeology. A run writes its own membership's `type` behind the membership's own claim (`curated_fields ? 'type'` on the membership) and behind the gate, as it writes the place's content; the diff honours that claim beside the place's (`withTypeClaim`, `db/membership.ts`). A curator's edit writes the type, and claims it, on the membership the row is shown under (`setTypeOnSourceMembership`, `membershipWriter.ts`); accepting a source's conflicting type writes it on the proposing source's membership and releases the claim there; publishing a held type writes it on the membership being published (`publishTypeOnMembership`); and the conflict queue, accept-source and decline-source read the claims a proposal meets through `claimsFacingSql` (`db/membership.ts`). Every reader reads `m.type` off the membership it shows the row under, and a find is matched to its site through the Archaeology membership's `type = 'site'` and `external_id` (`findOfSiteSql`, `siteFinds.ts`), so a site another source wrote first keeps its finds.
 - **A curator answers the membership** where the endpoint is keyed on the place — `/:id/publish`, `/:id/decline-held`, `/:id/admission` — through `membershipToAnswerSql`: the one waiting for a publish or a decline, the refused one for a verdict, the place's only one until #755 makes a second and its API names it. The publication and the verdict land on the membership; the content, and who decided and when, on the place.
@@ -90,6 +90,21 @@ The inventory this section held — every reader of `category_id` on both stacks
 An experience can have zero, one, or many locations. Location-bound experiences (museums, monuments) have physical coordinates; non-location-bound ones (books, films) are tied to regions conceptually. Multi-location experiences (UNESCO serial nominations) have independently trackable child locations.
 
 - `experience_locations`: locations per experience (0..N)
+- `experience_location_placements`: which memberships place a point (ADR-0084, #1256). A place two
+  sources fill holds the points each source places there, and a point both place — the same
+  reference within ADR-0027's ten metres — is one point with two placements, the row a visit is
+  recorded on. A run records its own placement on every point it pairs or inserts, and withdraws,
+  holds and defers only the points it answers for: the ones its membership places, or the ones no
+  membership places at all. Withdrawing takes its own placement away, and the point is marked
+  missing only once none is left, so the Cave of Altamira's two points — the cave for Public Art,
+  the replica's museum 752 m away for Archaeology — each stay while their source offers them. A
+  curator's point (`insertCuratedPoint`) is placed by its place's manual membership, which no run
+  brings. `ordinal` stays the order a reader sees, written by the runs that place the points; it
+  is not unique per place, since two sources' lists may both start at 1, so the writer renumbers
+  in place. Publishing an arrival that held a withdrawal (`releaseDeferredWithdrawals`) takes away
+  the placement of the membership that brought the arrival, by the same rule. The catalogue check
+  `point-placed-by-another-places-membership` holds every placement to a membership of the point's
+  own place
 - `experience_location_regions`: region assignment per location
 - `user_visited_locations`: per-user location visits
 
@@ -141,8 +156,9 @@ answered "no longer exists" on, offered again by the source, comes back with `mi
 and that verdict deliberately untouched.
 So a point cannot match for one statement and not another. The pairing is decided once per run and
 materialised, not restated as a CTE by each arm: the keeping arm's own write moves a row off the
-points it was near, so a re-decided pairing would change under the arms that follow it and leave a
-row on the negative ordinal the parking step gave it, to collide with the next run. Because
+points it was near, so a re-decided pairing would change under the arms that follow it, and the
+arms would no longer agree on which rows the run kept — one numbering a row the next withdraws, or a
+row no arm reaches left as a second pin beside the one that won. Because
 the tolerance gave away the injectivity the exact comparison had for free, the arms read a pairing
 made one row per point and one point per row, preferring the row that is not marked and then the
 nearer one — which under a gate is not the same as preferring the row a reader can see, since a
@@ -174,12 +190,9 @@ list with nothing on the map.
 So `locationWriter` writes the pairing instead: `experience_locations.withdrawal_deferred_for_location_id`
 sits on the **arrival** and names the point it replaces, so publishing the arrival reads the
 pairing off the row it is publishing rather than searching for a partner. The held point keeps
-`missing_since` NULL — every reader still sees it — and loses its `ordinal`, which is not
-cosmetic: ordinals are unique per experience and every later run parks the positives at their
-negatives before renumbering, so a held row that kept its number collides with its replacement's
-the moment anything else about the object changes, and the whole write for that experience dies
-on the unique key. NULL is also what that column already means for a row the source no longer
-lists.
+`missing_since` NULL — every reader still sees it — and loses its `ordinal`: NULL is what that
+column means for a row the source no longer lists, and a held row left at its old position would
+sit in the list beside its own replacement until a curator answers.
 
 **Only a point a reader can actually see is a candidate to be held.** An unread point costs a
 reader nothing when it goes, so it is withdrawn at once — and letting one compete to *be* the held
