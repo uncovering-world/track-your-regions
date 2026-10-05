@@ -18,7 +18,10 @@ vi.mock('../../db/index.js', () => ({
   rollbackQuietly: vi.fn(async () => undefined),
 }));
 
-vi.mock('./experienceScope.js', () => ({
+// The scope decision is the spec's to answer; which source it is asked of is
+// the module's own, read through the mocked pool (#1264).
+vi.mock('./experienceScope.js', async importOriginal => ({
+  ...await importOriginal<typeof import('./experienceScope.js')>(),
   resolveExperienceScope: vi.fn(),
 }));
 

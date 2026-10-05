@@ -58,6 +58,8 @@ export interface AnswerRow {
   id: number;
   /** The run the curator saw the question asked by — the key's own `runId`. */
   runId: number | null;
+  /** The membership the row is about (#1264), or null for the one each writer picks. */
+  membershipId: number | null;
 }
 
 /** What one answer did, counted: the answer's schema, `ReviewAnswerDid` (ADR-0066). */
@@ -74,6 +76,8 @@ export type Outcome =
 
 type Answerer = {
   experienceId: number; userId: number; logRegionId: number | null; runId: number | null;
+  /** The membership the row named (#1264), or null for the one each writer picks. */
+  membershipId: number | null;
 };
 
 /** Answer one row; the caller has resolved the scope and catches what throws. */
@@ -109,21 +113,26 @@ function placementOf(
 
 const RELOAD_RUN = 'This row names no run — reload to see which run proposed it';
 
+/** The membership a row named, as a writer's input takes it: absent where it named none (#1264). */
+function named(membershipId: number | null): { membershipId?: number } {
+  return membershipId === null ? {} : { membershipId };
+}
+
 /**
  * The three gated sub-kinds, read from the membership rather than taken from
  * the client: an object is one row in the feed however many it holds
  * (ADR-0051 decision 2), and the answer reaches all of them.
  */
 async function answerWaiting(who: Answerer, answer: Answer): Promise<Outcome> {
-  const { experienceId, runId } = who;
+  const { experienceId, runId, membershipId } = who;
   const read = await pool.query(
     `SELECT (${arrivalWaitingSql()}) AS arrival,
             (${heldWaitingSql()}) AS held,
             (${contentsWaitingSql()}) AS contents
        FROM experiences e
-       JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting')}
+       JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting', '$2::int')}
       WHERE e.id = $1`,
-    [experienceId],
+    [experienceId, membershipId],
   );
   const subs = read.rows[0] as WaitingSubs | undefined;
   if (!subs || (!subs.arrival && !subs.held && !subs.contents)) {
@@ -148,8 +157,10 @@ function publishBodyFor(subs: WaitingSubs, runId: number | null) {
 }
 
 async function acceptWaiting(who: Answerer, subs: WaitingSubs): Promise<Outcome> {
-  const { experienceId, userId, logRegionId, runId } = who;
-  const outcome = await publishUnderLock(experienceId, userId, logRegionId, publishBodyFor(subs, runId));
+  const { experienceId, userId, logRegionId, runId, membershipId } = who;
+  const outcome = await publishUnderLock(experienceId, userId, logRegionId, {
+    ...publishBodyFor(subs, runId), ...named(membershipId),
+  });
   if (outcome.refusal) return refusedBy(outcome.refusal);
   const r = outcome.result!;
   // `fields` only where the row held a proposal: the report tells an arrival,
@@ -168,15 +179,15 @@ async function acceptWaiting(who: Answerer, subs: WaitingSubs): Promise<Outcome>
 }
 
 async function rejectWaiting(who: Answerer, subs: WaitingSubs): Promise<Outcome> {
-  const { experienceId, userId, logRegionId, runId } = who;
+  const { experienceId, userId, logRegionId, runId, membershipId } = who;
   if (subs.arrival) {
-    const outcome = await refuseArrivalUnderLock(experienceId, userId, logRegionId, {});
+    const outcome = await refuseArrivalUnderLock(experienceId, userId, logRegionId, named(membershipId));
     return outcome.refusal ? refusedBy(outcome.refusal) : { did: { published: 0 } };
   }
   const did: Did = {};
   let placement: Placement | undefined;
   if (subs.held) {
-    const outcome = await refuseUnderLock(experienceId, userId, logRegionId, null, runId as number);
+    const outcome = await refuseUnderLock(experienceId, userId, logRegionId, null, runId as number, membershipId);
     if (outcome.refusal) return refusedBy(outcome.refusal);
     // Every held row refused, the object's own fields and the parts' alike —
     // one count, as the accept side counts what it applied. The point that is
@@ -223,11 +234,11 @@ async function answerConflict(who: Answerer, answer: Answer): Promise<Outcome> {
  * only what keeps a batch from answering a row that is not refused at all.
  */
 async function answerRefused(who: Answerer, answer: Answer): Promise<Outcome> {
-  const { experienceId, userId, logRegionId } = who;
+  const { experienceId, userId, logRegionId, membershipId } = who;
   const open = await pool.query(
     `SELECT 1 FROM ${MEMBERSHIPS} m
-      WHERE m.id = ${membershipToAnswerSql('$1::int', 'refused')} AND ${refusedOpenSql('m')}`,
-    [experienceId],
+      WHERE m.id = ${membershipToAnswerSql('$1::int', 'refused', '$2::int')} AND ${refusedOpenSql('m')}`,
+    [experienceId, membershipId],
   );
   if (open.rows.length === 0) {
     return refused(409, 'Already answered: this row is not waiting on a refusal decision');
@@ -238,6 +249,7 @@ async function answerRefused(who: Answerer, answer: Answer): Promise<Outcome> {
   const outcome = await answerAdmissionUnderLock(experienceId, userId, logRegionId, {
     decision: answer === 'accept' ? 'confirm' : 'override',
     pin: false,
+    ...named(membershipId),
   });
   if (outcome.refusal) return refusedBy(outcome.refusal);
   const r = outcome.result!;

@@ -162,7 +162,8 @@ describe('the dispatch table', () => {
     const res = makeRes();
     await answerRoute(postReviewAnswer, req([{ kind: 'waiting', id: 5, runId: 105 }], 'reject'), res as never);
 
-    expect(mockedRefuseHeld).toHaveBeenCalledWith(5, 7, 12, null, 105);
+    // The membership the row named, null where it named none (#1264).
+    expect(mockedRefuseHeld).toHaveBeenCalledWith(5, 7, 12, null, 105, null);
     expect(mockedRefuseContents).toHaveBeenCalledWith(5, 7, 12, {});
     // Two object fields and the one part's field, counted together.
     expect(res.json.mock.calls[0][0].answered[0].did).toEqual({

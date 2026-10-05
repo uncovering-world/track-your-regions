@@ -492,6 +492,16 @@ export const lifecycleStateBodySchema = z.object({
   message: 'Pass membership, existence, or both',
 });
 
+/**
+ * The membership a curator's answer is about (#1264, ADR-0084): a place in two
+ * kinds can have an arrival in one and a refusal or a held proposal in the
+ * other, and the card the curator answered names which. Optional — absent, the
+ * endpoint answers the membership `membershipToAnswerSql` picks, which is the
+ * place's only one until a merge (#1247). A membership of another place is no
+ * question this place has, and is refused as one already answered.
+ */
+const answeredMembershipSchema = bodyRowIdSchema.optional();
+
 export const experienceAdmissionBodySchema = z.object({
   /**
    * `confirm` keeps the refusal, `override` undoes it.
@@ -504,6 +514,7 @@ export const experienceAdmissionBodySchema = z.object({
    */
   decision: z.enum(['confirm', 'override']),
   note: z.string().max(1000).optional(),
+  membershipId: answeredMembershipSchema,
 });
 
 /**
@@ -520,6 +531,7 @@ export const reviewAnswerBodySchema = z.object({
     kind: z.enum(['conflict', 'waiting', 'withdrawn', 'refused', 'missing']),
     id: bodyRowIdSchema,
     runId: bodyRowIdSchema.nullable().optional(),
+    membershipId: answeredMembershipSchema,
   })).min(1).max(100),
   answer: z.enum(['accept', 'reject', 'lost']),
 });
@@ -527,6 +539,7 @@ export const reviewAnswerBodySchema = z.object({
 /** A curator keeping out an arrival (#852, ADR-0053): the note is all there is to send. */
 export const refuseArrivalBodySchema = z.object({
   note: z.string().max(1000).optional(),
+  membershipId: answeredMembershipSchema,
 });
 
 /**
@@ -612,6 +625,7 @@ export const declineHeldBodySchema = z.object({
   fields: z.array(z.string().min(1).max(100)).min(1).max(50).optional(),
   parts: z.array(heldPartSelectionSchema).min(1).max(50).optional(),
   expectedSyncLogId: bodyRowIdSchema,
+  membershipId: answeredMembershipSchema,
 }).refine(
   b => b.fields !== undefined || b.parts !== undefined,
   { message: 'name at least one held field or part to refuse' },
@@ -749,6 +763,7 @@ export const publishExperienceBodySchema = z.object({
    * `.refine` below forbids sending it alongside either.
    */
   expectedSyncLogId: bodyRowIdSchema.optional(),
+  membershipId: answeredMembershipSchema,
 }).refine(
   b => !((b.heldFields !== undefined || b.heldParts !== undefined)
     && (b.contentsOnly === true || b.locationIds !== undefined || b.treasureIds !== undefined)),

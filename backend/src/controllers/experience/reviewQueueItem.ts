@@ -33,6 +33,8 @@ export interface QueueRow {
   source_membership: CheckValue<'experiences', 'source_membership'>;
   existence: CheckValue<'experiences', 'existence'>;
   kind: QueueItemKind;
+  /** Selected by the four membership cards (#1264). */
+  membership_id?: number | null;
   proposed: StoredProposal[] | null;
   image_url?: string | null;
   image_credit?: ImageCredit | null;
@@ -145,6 +147,7 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     source_membership: row.source_membership,
     existence: row.existence,
     kind: row.kind,
+    membership_id: row.membership_id,
     image_url: row.image_url,
     image_credit: row.image_credit,
     latitude: row.latitude,

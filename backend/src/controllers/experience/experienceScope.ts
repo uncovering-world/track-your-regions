@@ -8,6 +8,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { MEMBERSHIPS } from '../../db/membership.js';
 import type { UserRole } from '../../types/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, CURATOR_UNRESTRICTED_SCOPE_EXISTS } from '../../middleware/auth.js';
 
@@ -54,6 +55,30 @@ export async function resolveExperienceScope(
   const row = result.rows[0] as { unrestricted: boolean; scoped_region_id: number | null };
   if (row.unrestricted === true) return { permitted: true, logRegionId: null };
   return { permitted: row.scoped_region_id !== null, logRegionId: row.scoped_region_id };
+}
+
+/**
+ * The source whose curators may answer a question about this place, or null
+ * where there is no such place (#1264).
+ *
+ * The place's own source, unless the answer names a membership of the place:
+ * then that membership's source, since an answer about the Capitoline Museums'
+ * Archaeology arrival is Archaeology's to give, and a curator scoped to Art
+ * Museums alone must not reach it by naming it. A named membership the place
+ * does not hold leaves the place's source, and the writer refuses the answer.
+ */
+export async function answeredSourceId(
+  experienceId: number,
+  membershipId?: number | null,
+): Promise<number | null> {
+  const result = await pool.query<{ source_id: number }>(
+    `SELECT COALESCE(
+              (SELECT m.source_id FROM ${MEMBERSHIPS} m WHERE m.id = $2 AND m.experience_id = e.id),
+              e.source_id) AS source_id
+       FROM experiences e WHERE e.id = $1`,
+    [experienceId, membershipId ?? null],
+  );
+  return result.rows[0]?.source_id ?? null;
 }
 
 /**

@@ -149,12 +149,17 @@ export function withTypeClaim(placeClaims: string[] | null | undefined, typeClai
  * the one there is; the order is what it means the day there are two: for a
  * publish or a decline, the one *waiting* — unread first, then one holding a
  * proposal; for an admission verdict, the *refused* one. Then the kind's
- * order, then the id, so the answer is total. #755's API names the
- * membership outright, and this helper is what it replaces.
+ * order, then the id, so the answer is total.
+ *
+ * `namedExpr` is the membership the caller's card named (#1264), bound as an
+ * `int` parameter or NULL: named, it is the answer when it belongs to the place
+ * and there is none when it does not, which every caller already refuses as a
+ * question no longer open.
  */
 export function membershipToAnswerSql(
   experienceIdExpr: string,
   prefer: 'waiting' | 'refused',
+  namedExpr = 'NULL::int',
 ): string {
   const first = prefer === 'refused'
     ? `(${INNER}.admission = 'refused') DESC`
@@ -162,6 +167,7 @@ export function membershipToAnswerSql(
   return `(SELECT ${INNER}.id FROM ${MEMBERSHIPS} ${INNER}
         JOIN ${KINDS} k ON k.id = ${INNER}.kind_id
         WHERE ${INNER}.experience_id = ${experienceIdExpr}
+          AND (${namedExpr} IS NULL OR ${INNER}.id = ${namedExpr})
         ORDER BY ${first}, k.display_priority, ${INNER}.id
         LIMIT 1)`;
 }

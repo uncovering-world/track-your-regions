@@ -24,7 +24,7 @@ import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { experienceAdmissionBodySchema, idParamSchema, lifecycleStateBodySchema } from '../../types/index.js';
-import { resolveExperienceScope } from './experienceScope.js';
+import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { answerAdmissionOnMembership, setListingVerdict } from './membershipWriter.js';
@@ -309,16 +309,14 @@ export async function setExperienceAdmission(
   const userId = caller.id;
   const userRole = caller.role;
 
-  const expResult = await pool.query(
-    `SELECT id, source_id FROM experiences WHERE id = $1`,
-    [experienceId],
-  );
-  if (expResult.rows.length === 0) {
+  // The answered membership's source decides the scope where the body names one (#1264).
+  const sourceId = await answeredSourceId(experienceId, body.membershipId);
+  if (sourceId === null) {
     throw notFound('Experience not found');
   }
 
   const { permitted, logRegionId } = await resolveExperienceScope(
-    userId, userRole, experienceId, expResult.rows[0].source_id as number,
+    userId, userRole, experienceId, sourceId,
   );
   if (!permitted) {
     throw createError('You do not have curator permissions for this experience', 403);
@@ -327,7 +325,7 @@ export async function setExperienceAdmission(
   // Named field by field: `pin` is the batch's to set, never a request's, and a
   // card's answer always claims `admission` (ADR-0067).
   const outcome = await answerAdmissionUnderLock(experienceId, userId, logRegionId, {
-    decision: body.decision, note: body.note,
+    decision: body.decision, note: body.note, membershipId: body.membershipId,
   });
   if (outcome.refusal) {
     const { status, ...body } = outcome.refusal;
@@ -340,6 +338,8 @@ export async function setExperienceAdmission(
 export interface AdmissionAnswer {
   decision: 'confirm' | 'override';
   note?: string;
+  /** The membership the card named (#1264); absent, the refused one is picked. */
+  membershipId?: number;
   /**
    * Whether the answer claims `admission`, so every later run keeps it. A
    * card's answer does: a person read one row and said why. A batch's does
@@ -370,7 +370,7 @@ export async function answerAdmissionUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
-  { decision, note, pin = true }: AdmissionAnswer,
+  { decision, note, pin = true, membershipId: namedMembershipId }: AdmissionAnswer,
 ): Promise<{ result?: AdmissionResult; refusal?: AnswerRefusal }> {
   const admitted = decision === 'override';
   const client = await pool.connect();
@@ -406,15 +406,15 @@ export async function answerAdmissionUnderLock(
     // (#822), read in the statement after the place's lock — the one every
     // writer of the membership takes. Its own statement because a statement's
     // snapshot is taken before it waits for the lock, and only the locked row
-    // is re-read once it is granted (`db/locks.ts`). Which membership: the
-    // refused one, the place's only one until #755.
+    // is re-read once it is granted (`db/locks.ts`). Which membership: the one
+    // the card named (#1264), or the refused one where it named none.
     const read = await client.query(
       `SELECT m.id AS membership_id, m.admission, m.admission_reason, m.curated_fields,
               m.curation_state, m.admission_answered_at IS NOT NULL AS batch_answered
          FROM experiences e
-         LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'refused')}
+         LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'refused', '$2::int')}
         WHERE e.id = $1`,
-      [experienceId],
+      [experienceId, namedMembershipId ?? null],
     );
     // Present: a DELETE of the row waits on the lock this transaction holds.
     const before = read.rows[0];

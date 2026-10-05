@@ -283,7 +283,7 @@ export async function getReviewQueue(
   // source's refusal under another's heading, or the same held proposal twice.
   const refusedIds = idsOf('refused');
   const refused = await hydrate(refusedIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.source_id, m.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
            m.admission_reason,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'refused' AS kind, ${countedWorksSelectSql()},
@@ -318,7 +318,7 @@ export async function getReviewQueue(
   // to it looking for a row they answered a moment ago, having noticed the
   // mis-click, and the row they want is the last one they touched.
   const keptOut = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.source_id, m.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
            m.admission_reason, e.state_decided_at, e.state_note,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'kept-out' AS kind, ${countedWorksSelectSql()},
@@ -370,7 +370,7 @@ export async function getReviewQueue(
   // admission are the membership's, the source's observation is the row's.
   const arrivalIds = waitingIds('arrival');
   const arrivals = await hydrate(arrivalIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.source_id, m.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
            m.curation_state, m.first_seen_sync_log_id AS sync_log_id,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'arrival' AS kind, NULL::jsonb AS proposed
@@ -440,7 +440,7 @@ export async function getReviewQueue(
   const heldIds = waitingIds('held');
   const held = await hydrate(heldIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT * FROM (
-      SELECT e.id, e.external_id, e.name, e.source_id, m.kind_id, kd.name AS kind_name,
+      SELECT e.id, e.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
              ${lifecycleSelectSql()}, ${objectContextSelectSql()},
              ch.sync_log_id, 'held' AS kind,
              (SELECT jsonb_agg(f) FROM jsonb_array_elements(ch.changed_fields) AS f
