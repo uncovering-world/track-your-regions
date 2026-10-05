@@ -167,7 +167,7 @@ async function seedPlace(
 /**
  * A second point under an already-published place, unread and already turned down.
  *
- * `ordinal` 1 because the place's own point took 0 and the pair is unique;
+ * `ordinal` 1 because the place's own point took 0, so the list reads in order;
  * `curation_state` 'pending' beside `refused_at` because that is exactly what the
  * refusal writes — the mark never replaces the state (ADR-0053), and a fixture
  * that wrote one without the other would be a row the product cannot produce.

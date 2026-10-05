@@ -295,7 +295,7 @@ describe('a visible point under a gated source', () => {
     // The same guard the object's upsert puts on its columns: the claim, or the
     // gate over a row a reader can see — read through the experience, as the
     // insert arm reads the gate, so the two cannot disagree.
-    expect(kept).toMatch(/name = CASE WHEN el\.curated_fields \? 'name'\s+OR \(\(SELECT c\.requires_curation[\s\S]*el\.curation_state <> 'pending'\)\s+THEN el\.name ELSE i\.name END/);
+    expect(kept).toMatch(/name = CASE WHEN el\.curated_fields \? 'name'\s+OR \(\(SELECT requires_curation FROM experience_sources WHERE id = \$\d+\)[\s\S]*el\.curation_state <> 'pending'\)\s+THEN el\.name ELSE i\.name END/);
     // The guard's own expression answers for the report, on the row the
     // statement locked — the arrangement that keeps the write and the record
     // from disagreeing about one run (experienceUpsert.ts, #519).
@@ -335,7 +335,7 @@ describe('a visible point under a gated source', () => {
     const { client, statements } = fakeClient([[KEEP, { rows: [held(MONTSEGUR, true)] }]]);
     mockedConnect.mockResolvedValue(client);
 
-    await writeExperienceLocations(1, [A], { syncLogId: null });
+    await writeExperienceLocations(1, [A], { syncLogId: null, sourceId: 1 });
 
     // The proposal is still recorded as held; only the pointer is withheld,
     // because NULL there means "nothing is held" and would be a lie.

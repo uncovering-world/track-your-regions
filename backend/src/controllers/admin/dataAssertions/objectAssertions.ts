@@ -552,6 +552,40 @@ const placementOfAnotherPlace: CatalogueAssertion = {
     + `${count(row, 'experience_id')}) is placed by a membership of experience ${count(row, 'other_experience_id')}`,
 };
 
+/**
+ * A point placed by a membership of another place: the points' counterpart of
+ * `link-placed-by-another-places-membership`. A run takes away only its own
+ * placement and the point is marked missing once none is left (ADR-0084), so a
+ * placement naming another place's membership is one no run of this place will
+ * ever take away — the pin stays on the map after every source of its place
+ * has dropped it.
+ */
+const pointPlacementOfAnotherPlace: CatalogueAssertion = {
+  id: 'point-placed-by-another-places-membership',
+  area: 'objects',
+  title: 'A point placed by a membership of another place',
+  kind: 'invariant',
+  meaning:
+    'A point of a place is recorded as placed by a membership that belongs to a different place. No run '
+    + 'of this place can take that placement away, so the pin stays on the map after every source of the '
+    + 'place has stopped offering it. A merge that moved the point without its placement, or a placement '
+    + 'written by hand, leaves this; the placement belongs to a membership of the point\'s own place.',
+  sql: `SELECT e.id AS experience_id,
+               e.name AS experience_name,
+               el.id AS location_id,
+               other.id AS other_experience_id
+          FROM experience_location_placements p
+          JOIN experience_locations el ON el.id = p.location_id
+          JOIN experiences e ON e.id = el.experience_id
+          JOIN ${MEMBERSHIPS} m ON m.id = p.membership_id
+          JOIN experiences other ON other.id = m.experience_id
+         WHERE m.experience_id <> el.experience_id
+         ORDER BY e.name, el.id`,
+  describe: row =>
+    `Point ${count(row, 'location_id')} of ${text(row, 'experience_name')} (experience `
+    + `${count(row, 'experience_id')}) is placed by a membership of experience ${count(row, 'other_experience_id')}`,
+};
+
 /** `column <> tidy(column)`: the stored value is not what the writers would store. */
 const untidy = (column: string) => `${column} IS NOT NULL AND ${column} <> ${tidyLabelSql(column)}`;
 
@@ -721,5 +755,6 @@ export const objectAssertions: CatalogueAssertion[] = [
   membershipSourceDisagreesWithRow,
   placeListingDisagreesWithMemberships,
   placementOfAnotherPlace,
+  pointPlacementOfAnotherPlace,
   nameCarriesWhitespaceNobodyTyped,
 ];

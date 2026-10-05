@@ -109,6 +109,7 @@ import {
 } from './locationPairing.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { lockExperience } from '../../db/experienceWriter.js';
+import { MEMBERSHIPS } from '../../db/membership.js';
 
 
 /** Which rows the write touched, so assignment can be limited to them. */
@@ -136,8 +137,11 @@ export interface LocationWriteResult {
   delta: ContentsDelta;
 }
 
-/** The run this write belongs to — `WriteRun`, under the name this writer's callers use. */
-export type LocationWriteRun = WriteRun;
+/**
+ * The run this write belongs to — `WriteRun`, and the source it is a run of:
+ * whose gate a point passes through and whose membership places it (ADR-0084).
+ */
+export type LocationWriteRun = WriteRun & { sourceId: number };
 
 /**
  * Make `experience_locations` for one experience match `incoming`, keeping the
@@ -160,6 +164,25 @@ export async function writeExperienceLocations(
     point.name === null ? point : { ...point, name: tidyLabel(point.name) }
   )));
   const cte = incomingCte(incoming.length);
+  const params = bindParams(experienceId, incoming);
+  // The run's source, bound after the incoming list by the statements that name
+  // it (`withSource`) — a statement binding a parameter it never names is refused
+  // by Postgres — and its membership of this place is the one whose placements
+  // this run reads and writes (ADR-0084).
+  const sourceParam = `$${params.length + 1}`;
+  const withSource = [...params, run.sourceId];
+  const runMembership = `(SELECT id FROM ${MEMBERSHIPS} WHERE experience_id = $1 AND source_id = ${sourceParam})`;
+  /**
+   * A stored point this run answers for: one its membership places, or one no
+   * membership places at all, as every point was before the placements. A point
+   * only another source places is that source's to keep or withdraw, so the
+   * Archaeology run never withdraws the Louvre's point the Art Museums run
+   * still offers.
+   */
+  const runsPoint = (alias: string) => `(EXISTS (SELECT 1 FROM experience_location_placements mine
+                    WHERE mine.location_id = ${alias}.id AND mine.membership_id = ${runMembership})
+               OR NOT EXISTS (SELECT 1 FROM experience_location_placements any_placement
+                    WHERE any_placement.location_id = ${alias}.id))`;
 
   /**
    * The hold, as one SQL expression over the stored row: a gated source may not
@@ -169,10 +192,8 @@ export async function writeExperienceLocations(
    * place, so the curator reviews the newest state rather than whatever
    * arrived first.
    *
-   * The gate is read through the experience, exactly as the insert arm reads
-   * it: this writer has an experience id and no source id, and a parameter
-   * would be a second source of truth that could disagree with the column
-   * between the check and the write. Evaluated inside the keeping arm on the
+   * The gate is the run's own source, as the insert arm reads it: a place two
+   * sources fill is gated per source (ADR-0084). Evaluated inside the keeping arm on the
    * row it locked, and again in that arm's RETURNING, so the report cannot
    * disagree with the write about whether the write happened (`PLACE_HELD` in
    * experienceUpsert.ts, and the reason it answers for itself: #519).
@@ -182,9 +203,7 @@ export async function writeExperienceLocations(
    * more precisely (ADR-0027 decision 4) and nothing a reader can see — and a
    * claimed coordinate is the claim's to refuse, never the gate's.
    */
-  const heldPoint = `((SELECT c.requires_curation
-                        FROM experiences e JOIN experience_sources c ON c.id = e.source_id
-                       WHERE e.id = $1)
+  const heldPoint = `((SELECT requires_curation FROM experience_sources WHERE id = ${sourceParam})
                      AND ${publishedContentSql('el')})`;
 
   /**
@@ -195,9 +214,9 @@ export async function writeExperienceLocations(
    * what it costs is not cosmetic. Two rows within ten metres under one reference —
    * a marked row and its offered replacement, or the two an ungated run inserts —
    * both satisfy the predicate for one incoming point, so the keeping and
-   * resurrection arms would each write `ordinal = i.ordinal` on a different row and
-   * `UNIQUE(experience_id, ordinal)` would abort the write. Not once: on every run
-   * after, for that experience, until someone repairs the rows by hand.
+   * resurrection arms would each adopt the one incoming point on a different row —
+   * two pins for one place, the second one a duplicate no later run could tell
+   * apart from the first.
    *
    * So the arms stop asking the predicate and read a decided pairing instead.
    * `DISTINCT ON` twice makes it one-to-one from both directions, and the order
@@ -215,7 +234,7 @@ export async function writeExperienceLocations(
    * own. The withdrawal and hold arms ask membership of this relation for the reason
    * a nearness test cannot serve them: a row that lost the pairing is by
    * construction near the incoming point, so nearness would exclude it from every
-   * arm at once and strand it with the negative ordinal the parking step gave it. An
+   * arm at once and strand it, offered and unwithdrawable, beside its winner. An
    * unmatched marked row stays marked; an unmatched offered row reaches the
    * withdrawal arm. Degrading to "the point stays where it was" is the only failure
    * mode that keeps a reader's map and a curator's queue answering the same
@@ -247,8 +266,6 @@ export async function writeExperienceLocations(
        FROM best_row
        ORDER BY location_id, ordinal
      )`;
-  const params = bindParams(experienceId, incoming);
-
   // Fast path, and the reason this is cheap to call on every object of every
   // run: ask in one round trip whether the stored rows already say exactly
   // this. Most objects in most runs are unchanged — 1235 of 1272 UNESCO rows
@@ -258,15 +275,18 @@ export async function writeExperienceLocations(
   // All three subqueries ask about the *offered* rows only. Counting marked
   // ones as stored would fail this comparison on every later run for any
   // experience that ever lost a point, which is the slow path forever over an
-  // object nothing is changing.
+  // object nothing is changing. And only about the points this run answers
+  // for: a place another source also fills holds that source's points too,
+  // and counting them would put this run on the slow path for ever.
   const same = await pool.query(
     `WITH ${cte}
-     SELECT (SELECT count(*) FROM experience_locations
-               WHERE experience_id = $1 AND missing_since IS NULL) AS stored,
+     SELECT (SELECT count(*) FROM experience_locations el
+               WHERE el.experience_id = $1 AND el.missing_since IS NULL AND ${runsPoint('el')}) AS stored,
             (SELECT count(*) FROM incoming i
                JOIN experience_locations el
                  ON el.experience_id = $1
                 AND el.missing_since IS NULL
+                AND ${runsPoint('el')}
                 AND ${samePointSql('el')}
                 AND el.ordinal = i.ordinal
                 -- A claimed name against a source that offers none is matched, and
@@ -294,9 +314,9 @@ export async function writeExperienceLocations(
                 -- permanent, and such a point can never be asked about again, since
                 -- the queue reads the axes as nobody having answered.
                 AND el.source_membership = 'present') AS matched,
-            (SELECT array_agg(id) FROM experience_locations
-               WHERE experience_id = $1 AND missing_since IS NULL) AS ids`,
-    params,
+            (SELECT array_agg(el.id) FROM experience_locations el
+               WHERE el.experience_id = $1 AND el.missing_since IS NULL AND ${runsPoint('el')}) AS ids`,
+    withSource,
   );
   const { stored, matched, ids } = same.rows[0] as
     { stored: string; matched: string; ids: number[] | null };
@@ -324,20 +344,14 @@ export async function writeExperienceLocations(
     // this transaction's own insert needs.
     await lockExperience(client, experienceId);
 
-    // `ordinal` is unique per experience, so renumbering in place would collide
-    // with a row that has not been renumbered yet. Park every positive ordinal on
-    // the negative side first — only reached when the set really changed, since
-    // the fast path returned otherwise.
+    // `ordinal` is the order a reader sees the points in, written by every run
+    // that places them; two sources' lists may both start at 1, so it is not
+    // unique per place (ADR-0084), and a renumbering is written in place.
     //
-    // Rows the source has stopped offering are parked too, and their ordinals go
-    // to NULL at the end of the transaction rather than at the start. That order
-    // is what lets the withdrawal read the pairing: the column lives on the
-    // arrival, so nothing can be paired until the insert has run.
-    await client.query(
-      `UPDATE experience_locations SET ordinal = -ordinal
-       WHERE experience_id = $1 AND ordinal > 0`,
-      [experienceId],
-    );
+    // Rows the source has stopped offering keep their ordinal until the
+    // withdrawal below nulls it, which is what lets the withdrawal read the
+    // pairing: the column lives on the arrival, so nothing can be paired until
+    // the insert has run.
 
     // **Decided once, here, and read as a table by every arm below.**
     //
@@ -347,8 +361,8 @@ export async function writeExperienceLocations(
     // near, so an ordinal that lost the pairing to that row can win it back from a second
     // row afterwards. Every later arm then agrees the pair exists and skips it: nothing
     // inserts the point, nothing withdraws the row, and nothing writes the row's ordinal —
-    // leaving it visible on the negative ordinal the parking step gave it, which collides
-    // with the parking of the next run and aborts that experience's write for good.
+    // leaving it visible in a list position the source no longer gives it, on every run
+    // after, with nothing to settle it.
     //
     // Only reachable in the shape ADR-0027 decision 5a-i already describes, two points of
     // one reference between ten and twenty metres apart. But 5a-i was accepted on a cost —
@@ -440,7 +454,7 @@ export async function writeExperienceLocations(
                  -- The guard's own expression, so the record cannot disagree
                  -- with the write about whether the name was written.
                  ${heldPoint} AS was_held`,
-      params,
+      withSource,
     );
 
     // A point the source is offering again. Same row, same id, so the visit
@@ -497,13 +511,9 @@ export async function writeExperienceLocations(
               -- reason to withhold the row. Withholding it would leave a region
               -- curator nothing to review for an arrival.
               --
-              -- Read from the experience rather than passed in: this writer has
-              -- an experience id and no source id, and a parameter would be a
-              -- second source of truth that could disagree with the column
-              -- between the check and the write.
-              CASE WHEN (SELECT c.requires_curation
-                           FROM experiences e JOIN experience_sources c ON c.id = e.source_id
-                          WHERE e.id = $1)
+              -- The run's own source: a place two sources fill is gated per
+              -- source (ADR-0084).
+              CASE WHEN (SELECT requires_curation FROM experience_sources WHERE id = ${sourceParam})
                    THEN 'pending' ELSE 'auto' END
        FROM incoming i
        -- Read from the same decided pairing the keeping arms use, not from the
@@ -531,7 +541,20 @@ export async function writeExperienceLocations(
          SELECT ordinal, id, 0 FROM ins
        )
        SELECT id, curation_state, name, external_ref FROM ins`,
-      params,
+      withSource,
+    );
+
+    // **The run places every point it paired or inserted** (ADR-0084): its
+    // membership's placement on each, the point another source places beside
+    // it included. The withdrawals below read it, so it is written first.
+    await client.query(
+      `WITH ${cte}
+       INSERT INTO experience_location_placements (location_id, membership_id)
+       SELECT p.location_id, ${runMembership}
+         FROM paired_rows p
+        WHERE ${runMembership} IS NOT NULL
+       ON CONFLICT DO NOTHING`,
+      withSource,
     );
 
     // Each arrival a reader cannot see yet names the point it replaces, so the
@@ -599,6 +622,9 @@ export async function writeExperienceLocations(
                   -- from a point a reader really can see.
                   AND ${offeredLocationSql('el')}
                   AND ${publishedContentSql('el')}
+                  -- A point this run answers for: another source's is not this
+                  -- run's to withdraw, and so not its to hold either.
+                  AND ${runsPoint('el')}
                   AND NOT EXISTS (
                     SELECT 1 FROM paired_rows p WHERE p.location_id = el.id
                   )
@@ -631,7 +657,7 @@ export async function writeExperienceLocations(
               arrived AS (
                 SELECT el.id, el.external_ref
                 FROM experience_locations el
-                WHERE el.id = ANY($${params.length + 1}::int[])
+                WHERE el.id = ANY($${withSource.length + 1}::int[])
                   -- The rule, in the one place the database enforces it: only a
                   -- point a reader cannot see yet is worth waiting for. An
                   -- arrival a reader can already see replaces the old pin the
@@ -694,7 +720,7 @@ export async function writeExperienceLocations(
                UNION ALL
                SELECT old_id, new_id FROM left_over) m
          WHERE n.id = m.new_id`,
-        [...params, unreadArrivals],
+        [...withSource, unreadArrivals],
       );
     }
 
@@ -733,35 +759,54 @@ export async function writeExperienceLocations(
     // published it — so it can never be published (the publish statement carries
     // `missing_since IS NULL`) and a pairing left standing on it would hold the
     // point it named visible for ever, with nothing able to release it.
+    //
+    // **Only a point this run answers for, and only its own placement goes**
+    // (ADR-0084): the point is marked once no other membership places it, so a
+    // point another source still offers stays on the map with its ordinal.
+    // The statement's snapshot still holds the placements its CTE deleted, so
+    // "no placement left" excludes them by name.
     const marked = await client.query(
-      `WITH ${cte}
+      `WITH ${cte},
+       gone AS (
+         SELECT el.id FROM experience_locations el
+          WHERE el.experience_id = $1
+            AND el.missing_since IS NULL
+            AND ${runsPoint('el')}
+            AND NOT EXISTS (
+              SELECT 1 FROM paired_rows p WHERE p.location_id = el.id
+            )
+            AND NOT EXISTS (
+              SELECT 1 FROM experience_locations waiting
+              WHERE waiting.experience_id = $1
+              AND waiting.withdrawal_deferred_for_location_id = el.id
+            )
+       ),
+       unplaced AS (
+         DELETE FROM experience_location_placements pl
+          USING gone
+          WHERE pl.location_id = gone.id AND pl.membership_id = ${runMembership}
+         RETURNING pl.location_id, pl.membership_id
+       )
        UPDATE experience_locations el
        SET ordinal = NULL, missing_since = NOW(),
            withdrawal_deferred_for_location_id = NULL
-       WHERE el.experience_id = $1
-         AND el.missing_since IS NULL
+       WHERE el.id IN (SELECT id FROM gone)
          AND NOT EXISTS (
-           SELECT 1 FROM paired_rows p WHERE p.location_id = el.id
-         )
-         AND NOT EXISTS (
-           SELECT 1 FROM experience_locations waiting
-           WHERE waiting.experience_id = $1
-           AND waiting.withdrawal_deferred_for_location_id = el.id
+           SELECT 1 FROM experience_location_placements other
+            WHERE other.location_id = el.id
+              AND (other.location_id, other.membership_id) NOT IN (SELECT location_id, membership_id FROM unplaced)
          )
        RETURNING el.id, el.name, el.external_ref`,
-      params,
+      withSource,
     );
 
     // The other half of a held withdrawal: the point keeps its `missing_since`
     // NULL, so every reader still sees it, and loses its place in a list it is no
     // longer in.
     //
-    // Not cosmetic. `ordinal` is unique per experience and every later run parks
-    // the positives at their negatives before renumbering, so a held row left at
-    // -3 collides with its replacement's 3 the moment anything else about the
-    // object changes — and the whole write for that experience dies on the unique
-    // key, on every run, until a curator answers. NULL is also what the column
-    // already means for a row the source no longer lists.
+    // NULL is what the column means for a row the source no longer lists, and a
+    // held row left at its old position would sit in the list beside its own
+    // replacement until a curator answers.
     //
     // `el.ordinal IS NOT NULL` because a held row keeps failing the fast path
     // until it is answered, so every run reaches this statement; without the guard
@@ -773,6 +818,7 @@ export async function writeExperienceLocations(
        WHERE el.experience_id = $1
          AND el.missing_since IS NULL
          AND el.ordinal IS NOT NULL
+         AND ${runsPoint('el')}
          AND NOT EXISTS (
            SELECT 1 FROM paired_rows p WHERE p.location_id = el.id
          )
@@ -781,7 +827,7 @@ export async function writeExperienceLocations(
            WHERE waiting.experience_id = $1
            AND waiting.withdrawal_deferred_for_location_id = el.id
          )`,
-      params,
+      withSource,
     );
 
     // A point the curator has never seen is content their pass did not cover,

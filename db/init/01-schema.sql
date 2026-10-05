@@ -3070,14 +3070,35 @@ CREATE TABLE IF NOT EXISTS experience_locations (
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     name VARCHAR(500),                    -- Component name (e.g., "Raigad Fort")
     external_ref VARCHAR(255),            -- Source reference (e.g., "1739-005")
-    ordinal INTEGER DEFAULT 0,            -- Display order; NULL once unoffered
+    -- Display order; NULL once unoffered. Not unique per place: two sources'
+    -- lists may both start at 1 (ADR-0084), and a run renumbers in place.
+    ordinal INTEGER DEFAULT 0,
     location GEOMETRY(Point, 4326) NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
-    missing_since TIMESTAMPTZ,            -- NULL = the source still offers this point
-    UNIQUE(experience_id, ordinal)
+    missing_since TIMESTAMPTZ             -- NULL = the source still offers this point
 );
+-- Dropped on a database that still has it: see the column comment above.
+ALTER TABLE experience_locations DROP CONSTRAINT IF EXISTS experience_locations_experience_id_ordinal_key;
 
 COMMENT ON TABLE experience_locations IS 'Individual locations for multi-location experiences (UNESCO serial nominations, etc.)';
+
+-- Which memberships place a point (ADR-0084, #1256). A place two sources fill
+-- holds the points each source places there, and a point both place is one
+-- point -- the row a visit is recorded on. A run adds its own placement on
+-- every point it pairs or inserts and, when it stops offering one, takes its
+-- own away; the point is marked missing only once no placement is left
+-- (services/sync/locationWriter.ts). A curator's point is placed by its
+-- place's manual membership, which no run brings. Deleted rather than marked,
+-- unlike the point: a placement is the run's bookkeeping.
+CREATE TABLE IF NOT EXISTS experience_location_placements (
+    location_id INTEGER NOT NULL REFERENCES experience_locations(id) ON DELETE CASCADE,
+    membership_id INTEGER NOT NULL REFERENCES experience_kind_memberships(id) ON DELETE CASCADE,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (location_id, membership_id)
+);
+COMMENT ON TABLE experience_location_placements IS 'Which memberships place a point (ADR-0084): a run adds and takes away only its own, and the point is marked missing once none is left.';
+CREATE INDEX IF NOT EXISTS idx_experience_location_placements_membership
+    ON experience_location_placements(membership_id);
 COMMENT ON COLUMN experience_locations.name IS 'Component name (e.g., individual fort name within a serial nomination)';
 COMMENT ON COLUMN experience_locations.external_ref IS 'Source-specific reference (e.g., "1739-005" for UNESCO)';
 

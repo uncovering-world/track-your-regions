@@ -21,6 +21,7 @@
 
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../db/experienceWriter.js';
+import { MEMBERSHIPS } from '../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { unreadPointSql } from './waitingCounts.js';
 
@@ -51,7 +52,15 @@ export async function insertCuratedPoint(
     )
     RETURNING id
   `, [lock.id, name, longitude, latitude]);
-  return inserted.rows[0].id as number;
+  const id = inserted.rows[0].id as number;
+  // Placed by the place's manual membership (ADR-0084), written just before by
+  // the manual create: a membership no run brings, so no run withdraws the point.
+  await client.query(`
+    INSERT INTO experience_location_placements (location_id, membership_id)
+    SELECT $2, m.id FROM ${MEMBERSHIPS} m WHERE m.experience_id = $1
+    ON CONFLICT DO NOTHING
+  `, [lock.id, id]);
+  return id;
 }
 
 /**
@@ -180,16 +189,38 @@ export async function releaseDeferredWithdrawals(
   client: PoolClient,
   lock: LockedExperience,
 ): Promise<number> {
+  // The old point loses the placement of the membership whose run brought the
+  // arrival, and is marked missing only once no placement is left (ADR-0084):
+  // another source that still places it keeps it on the map. The statement's
+  // snapshot still holds the placements its CTE deleted, so "none left"
+  // excludes them by name.
   const released = await client.query(
-    `UPDATE experience_locations old
+    `WITH pairs AS (
+       SELECT old.id AS old_id, arrived.id AS new_id
+         FROM experience_locations arrived
+         JOIN experience_locations old ON old.id = arrived.withdrawal_deferred_for_location_id
+        WHERE arrived.experience_id = $1
+          AND old.experience_id = $1
+          AND ${publishedContentSql('arrived')}
+          AND old.missing_since IS NULL
+     ), unplaced AS (
+       DELETE FROM experience_location_placements pl
+        USING pairs
+        WHERE pl.location_id = pairs.old_id
+          AND pl.membership_id IN (SELECT membership_id FROM experience_location_placements
+                                    WHERE location_id = pairs.new_id)
+       RETURNING pl.location_id, pl.membership_id
+     )
+     UPDATE experience_locations old
         SET missing_since = NOW(), ordinal = NULL,
             withdrawal_deferred_for_location_id = NULL
-       FROM experience_locations arrived
-      WHERE arrived.experience_id = $1
-        AND old.experience_id = $1
-        AND arrived.withdrawal_deferred_for_location_id = old.id
-        AND ${publishedContentSql('arrived')}
-        AND old.missing_since IS NULL`,
+       FROM pairs
+      WHERE old.id = pairs.old_id
+        AND NOT EXISTS (
+          SELECT 1 FROM experience_location_placements other
+           WHERE other.location_id = old.id
+             AND (other.location_id, other.membership_id) NOT IN (SELECT location_id, membership_id FROM unplaced)
+        )`,
     [lock.id],
   );
   await client.query(

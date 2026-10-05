@@ -135,6 +135,19 @@ describe('reads that show a point', () => {
     expect(locationRead()).toMatch(/el\.curation_state <> 'pending'/);
   });
 
+  it('orders a place\'s points the same way on every request, on the object read and on both shapes of the batch', async () => {
+    // Two sources' lists on one place both number from 1 (ADR-0084), so the
+    // ordinal alone ties; the id decides between them.
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), { params: { id: '42' }, query: {} } as never, makeRes() as never);
+    expect(locationRead()).toMatch(/ORDER BY el\.ordinal, el\.id/);
+
+    for (const query of [{}, { includeChildren: 'false' }]) {
+      mockedQuery.mockClear();
+      await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), { params: { regionId: '7' }, query } as never, makeRes() as never);
+      expect(locationRead()).toMatch(/ORDER BY el\.experience_id, el\.ordinal, el\.id/);
+    }
+  });
+
   it('carries each place\'s claims, on the object read and on both shapes of the batch', async () => {
     // A corrected place can be corrected from every row that shows it (#583), and
     // the row has to say when one stands (migration 027) — the object screen reads

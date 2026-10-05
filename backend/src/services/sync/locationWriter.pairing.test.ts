@@ -241,20 +241,17 @@ describe('a withdrawal the run replaced waits for the point that replaces it', (
 
     await writeExperienceLocations(1, [A]);
 
-    // Not cosmetic, and not optional. `ordinal` is unique per experience and the
-    // next run parks every positive ordinal at its negative before renumbering:
-    // a held row left at -3 collides with the arrival's 3 the moment anything
-    // else about the object changes, and the whole write for that experience
-    // dies on the unique key. NULL is also what the column already means for a
-    // row the source no longer lists.
+    // NULL is what the column means for a row the source no longer lists, and a
+    // held row left at its old position would sit in the list beside its own
+    // replacement until a curator answers.
     const hold = only(statements, HOLD);
     expect(hold).toMatch(/SET ordinal = NULL/);
     expect(hold).not.toMatch(/missing_since = NOW/);
     expect(hold).toMatch(/(?<!NOT )EXISTS \(\s*SELECT 1 FROM experience_locations waiting\s*WHERE waiting\.experience_id = \$1/);
     // And it says nothing about a row the pairing kept. Membership of `paired`, not
     // nearness: a row that lost the pairing to a nearer one is *near* the incoming point
-    // and must still lose its place, or it keeps the negative ordinal the parking step
-    // gave it and the next run collides on `(experience_id, ordinal)`.
+    // and must still lose its place, or it stays in the list as a second pin beside
+    // the row that won.
     expect(hold).toMatch(/NOT EXISTS \(\s*SELECT 1 FROM paired_rows p WHERE p\.location_id = el\.id\s*\)/);
   });
 

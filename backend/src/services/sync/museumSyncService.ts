@@ -368,7 +368,7 @@ async function upsertMuseumExperience(
     // restore step (`markIconic`, admission.ts), so a cancelled run never badges a row it did
     // not re-admit (#760).
     const written = await upsertSingleLocation(
-      experienceId, museum.qid, details.lon!, details.lat!, { syncLogId: context.syncLogId },
+      experienceId, museum.qid, details.lon!, details.lat!, { syncLogId: context.syncLogId, sourceId: MUSEUM_SOURCE_ID },
     );
     // Registered here rather than returned: `upsertVenueTreasures` runs after
     // this and can throw, and a returned field would be lost with it while the

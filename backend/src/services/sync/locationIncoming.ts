@@ -52,9 +52,8 @@ export function incomingCte(count: number): string {
  * separate rows, however close they sit.
  *
  * It matters because a repeated pair would make the writer's join many-to-many —
- * both stored rows could take the same incoming ordinal, and the write would die
- * on the `(experience_id, ordinal)` unique key, rolling that experience back on
- * every subsequent sync. Deduping here keeps every claim the writer makes true at
+ * both stored rows could take the same incoming ordinal, two rows for one place
+ * on every subsequent sync. Deduping here keeps every claim the writer makes true at
  * once: the CTE is one row per identity, the UPDATE matches at most one entry
  * per stored row, and the fast path compares two counts that mean the same
  * thing.

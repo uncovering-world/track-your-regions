@@ -120,9 +120,12 @@ const EXPERIENCE_WRITE_RULES = [
  * (`src/services/sync/locationWriter.ts`), which takes the same lock; and the
  * seed.
  */
-const EXPERIENCE_LOCATION_WRITE = 'experience_locations is written by its writer modules only (ADR-0069): add a named '
-  + 'write to src/controllers/experience/experienceLocationWriter.ts, taking the object\'s LockedExperience token.';
-const EXPERIENCE_LOCATION_WRITE_TEXT = '/\\b(INSERT\\s+INTO|UPDATE)\\s+experience_locations(?!\\w)/i';
+const EXPERIENCE_LOCATION_WRITE = 'experience_locations and experience_location_placements are written by their writer '
+  + 'modules only (ADR-0069): add a named write to src/controllers/experience/experienceLocationWriter.ts, taking the '
+  + 'object\'s LockedExperience token.';
+// A placement is deleted when a run stops placing a point (ADR-0084), so a
+// delete is a write to it too.
+const EXPERIENCE_LOCATION_WRITE_TEXT = '/\\b((INSERT\\s+INTO|UPDATE)\\s+experience_locations|(INSERT\\s+INTO|UPDATE|DELETE\\s+FROM)\\s+experience_location_placements)(?!\\w)/i';
 const EXPERIENCE_LOCATION_WRITE_RULES = [
   { selector: `TemplateElement[value.raw=${EXPERIENCE_LOCATION_WRITE_TEXT}]`, message: EXPERIENCE_LOCATION_WRITE },
   { selector: `Literal[value=${EXPERIENCE_LOCATION_WRITE_TEXT}]`, message: EXPERIENCE_LOCATION_WRITE },

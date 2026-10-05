@@ -27,7 +27,7 @@
  *   as one row would discard 336 named components across the catalogue.
  *
  * The pair is unique across all 6677 stored rows, with no collisions. The
- * remaining candidate, the `(experience_id, ordinal)` unique key, is positional:
+ * remaining candidate, the list position (`ordinal`), is positional:
  * if the source reorders `components_list`, ordinal 3 becomes a different place
  * and keeping its assignment would be worse than rebuilding it.
  *

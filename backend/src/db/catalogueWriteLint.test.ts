@@ -28,7 +28,7 @@ async function reported(code: string, filePath: string): Promise<string[]> {
 
 const PREDICATE = /reader predicate is composed/;
 const WRITE = /^experiences is written by its writer modules only/;
-const POINT_WRITE = /^experience_locations is written by its writer modules only/;
+const POINT_WRITE = /^experience_locations and experience_location_placements are written by their writer modules only/;
 const WORK_WRITE = /^treasures, experience_treasures and experience_treasure_placements are written by their writer modules only/;
 const REGION_WRITE = /^regions is written by its writer modules only/;
 
@@ -77,6 +77,7 @@ describe('the catalogue lint rules', () => {
   it.each([
     ['an update in a controller', 'export const q = `UPDATE experience_locations SET name = $2 WHERE id = $1`;\n', 'src/controllers/experience/lint-fixture.ts'],
     ['a lower-case insert in a service', 'export const q = "insert into experience_locations (name) values ($1)";\n', 'src/services/lint-fixture.ts'],
+    ['a placement taken away in a controller', 'export const q = `DELETE FROM experience_location_placements WHERE location_id = $1`;\n', 'src/controllers/experience/lint-fixture.ts'],
   ])('refuses a write to experience_locations outside its writers: %s', async (_, code, file) => {
     expect((await reported(code, file)).some(m => POINT_WRITE.test(m))).toBe(true);
   });
@@ -85,6 +86,7 @@ describe('the catalogue lint rules', () => {
     ['another table whose name starts the same', 'export const q = `UPDATE experience_location_regions SET region_id = $2`;\n', 'src/controllers/lint-fixture.ts'],
     ['the curator writer', 'export const q = `UPDATE experience_locations SET name = $2 WHERE id = $1`;\n', 'src/controllers/experience/experienceLocationWriter.ts'],
     ['the run\'s location writer', 'export const q = `INSERT INTO experience_locations (name) VALUES ($1)`;\n', 'src/services/sync/locationWriter.ts'],
+    ['the run\'s placements', 'export const q = `DELETE FROM experience_location_placements WHERE location_id = $1`;\n', 'src/services/sync/locationWriter.ts'],
     ['the seed', 'export const q = `INSERT INTO experience_locations (name) VALUES ($1)`;\n', 'src/db/seed/lint-fixture.ts'],
   ])('lets a point write stand where it belongs, or a statement that is no write: %s', async (_, code, file) => {
     expect((await reported(code, file)).some(m => POINT_WRITE.test(m))).toBe(false);

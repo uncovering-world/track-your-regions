@@ -289,6 +289,23 @@ describe('a work link placed by a membership of another place', () => {
   });
 });
 
+describe('a point placed by a membership of another place', () => {
+  const assertion = byId('point-placed-by-another-places-membership');
+  const sql = collapse(assertion.sql);
+
+  it('compares the placing membership\'s place with the point\'s own', () => {
+    expect(sql).toContain('FROM experience_location_placements p');
+    expect(sql).toContain('WHERE m.experience_id <> el.experience_id');
+    expect(assertion.kind).toBe('invariant');
+  });
+
+  it('names the point, its place and the place the membership belongs to', () => {
+    expect(assertion.describe({
+      location_id: 31, experience_id: 1420, experience_name: 'Cave of Altamira', other_experience_id: 14757,
+    })).toBe('Point 31 of Cave of Altamira (experience 1420) is placed by a membership of experience 14757');
+  });
+});
+
 describe('the name a filter cannot find', () => {
   const assertion = byId('name-carries-whitespace-nobody-typed');
   const sql = collapse(assertion.sql);

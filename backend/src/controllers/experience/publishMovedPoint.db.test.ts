@@ -213,7 +213,7 @@ async function pairing(id: number): Promise<{ replaces: number | null; refused: 
 
 /** The source offers the object's one point at `at`, as the next run would. */
 const nextRun = (at: { lon: number; lat: number }) => writeExperienceLocations(
-  SITE, [{ name: null, externalRef: 'Q47611', lon: at.lon, lat: at.lat }], { syncLogId: null },
+  SITE, [{ name: null, externalRef: 'Q47611', lon: at.lon, lat: at.lat }], { syncLogId: null, sourceId },
 );
 
 describe('a no to an object\'s moved point', () => {
