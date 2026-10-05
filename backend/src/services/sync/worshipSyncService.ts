@@ -317,7 +317,7 @@ async function processPlace(
     // run's restore step (`markIconic`, admission.ts), so a cancelled run never
     // badges a row it did not re-admit (#760).
     const written = await upsertSingleLocation(
-      experienceId, place.qid, place.lon, place.lat, { syncLogId: context.syncLogId },
+      experienceId, place.qid, place.lon, place.lat, { syncLogId: context.syncLogId, sourceId: WORSHIP_SOURCE_ID },
     );
     // Registered here rather than returned: `upsertVenueTreasures` runs after
     // this and can throw, and a returned field would be lost with it while the

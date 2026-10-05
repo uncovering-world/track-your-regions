@@ -11,7 +11,7 @@
 
 import { vi } from 'vitest';
 import { pool } from '../../db/index.js';
-import { writeExperienceLocations as write } from './locationWriter.js';
+import { writeExperienceLocations as write, type LocationWriteRun } from './locationWriter.js';
 import type { IncomingLocation } from './locationIncoming.js';
 
 export const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -23,7 +23,7 @@ export const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>
  * signature takes the run with no default at all: a writer that forgot it would
  * hold a field and never point the object at the run that held it.
  */
-export const RUN: { syncLogId: number | null } = { syncLogId: 42 };
+export const RUN: LocationWriteRun = { syncLogId: 42, sourceId: 1 };
 export const writeExperienceLocations = (
   experienceId: number, offered: IncomingLocation[], run = RUN,
 ) => write(experienceId, offered, run);

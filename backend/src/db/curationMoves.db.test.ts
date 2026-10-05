@@ -59,7 +59,7 @@ async function rowIn(table: CuratedTable, from: CurationState, n: number): Promi
       return { where: 'id = $2', params: [inserted.rows[0].id] };
     }
     case 'experience_locations': {
-      // One point at a time: a point's ordinal is unique within its object.
+      // One point at a time, so each case reads the row it wrote.
       await pool.query('DELETE FROM experience_locations WHERE experience_id = $1', [experienceId]);
       const inserted = await pool.query<{ id: number }>(
         `INSERT INTO experience_locations (experience_id, location, curation_state)

@@ -419,7 +419,7 @@ async function upsertExperience(
   let contents: ContentsByKind | undefined;
   if (!context.dryRun) {
     const written = await upsertExperienceLocations(
-      experienceId, exp, { syncLogId: context.syncLogId },
+      experienceId, exp, { syncLogId: context.syncLogId, sourceId: UNESCO_SOURCE_ID },
     );
     if (written.needsAssignment.length > 0 || written.unoffered > 0) {
       context.onLocationsChanged(experienceId);

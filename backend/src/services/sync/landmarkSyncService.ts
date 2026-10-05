@@ -133,7 +133,7 @@ async function upsertLandmarkExperience(
   let contents: ContentsByKind | undefined;
   if (!context.dryRun) {
     const written = await upsertSingleLocation(
-      experienceId, landmark.qid, landmark.lon, landmark.lat, { syncLogId: context.syncLogId },
+      experienceId, landmark.qid, landmark.lon, landmark.lat, { syncLogId: context.syncLogId, sourceId: LANDMARK_SOURCE_ID },
     );
     if (written.needsAssignment.length > 0 || written.unoffered > 0) {
       context.onLocationsChanged(experienceId);

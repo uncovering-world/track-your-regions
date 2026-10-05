@@ -284,9 +284,8 @@ describe('writeExperienceLocations — when a stored point is the incoming one',
     // As a CTE the pairing was *decided per statement*, so the keeping arm's own write —
     // moving a row onto the source's coordinate, and thereby off every other incoming
     // point — could hand an ordinal to a second row after every arm that would have
-    // written it had run. That row keeps its parked negative ordinal, and the next run's
-    // parking collides with it on `(experience_id, ordinal)`, aborting that experience's
-    // write from then on. Materialised once, every statement after it agrees about it —
+    // written it had run, so the arms disagree about which rows the run kept and one
+    // numbers a row the next withdraws. Materialised once, every statement after it agrees about it —
     // stated as a class rather than counted, so a statement moving onto the pairing
     // cannot falsify it.
     //
@@ -354,9 +353,8 @@ describe('writeExperienceLocations — when a stored point is the incoming one',
     // Two visible rows within the tolerance of one incoming point: one wins the pairing,
     // and the other is a second row for a place the run has already kept. Asking "is
     // anything in the incoming list near it" excludes it from every arm — it is near —
-    // so it keeps the negative ordinal the parking step gave it, and the next run's
-    // parking collides on `(experience_id, ordinal)` and aborts that experience's write
-    // for good. Membership of `paired` is the question that makes the loser withdrawable.
+    // so it stays offered beside the row that won, a second pin for one place no run
+    // ever withdraws. Membership of `paired` is the question that makes the loser withdrawable.
     const mark = only(statements, MARK);
     expect(mark).toMatch(/NOT EXISTS \(\s*SELECT 1 FROM paired_rows p WHERE p\.location_id = el\.id\s*\)/);
     expect(mark).not.toMatch(/SELECT 1 FROM incoming i/);
@@ -371,9 +369,8 @@ describe('writeExperienceLocations — when a stored point is the incoming one',
 
     // The tolerance gave away what the exact match had for free: two rows within ten
     // metres under one reference both satisfy the predicate for one incoming point, and
-    // the keeping and resurrection arms would then write the same ordinal onto two rows
-    // — `UNIQUE(experience_id, ordinal)` aborting that experience's write on every run
-    // after. So the arms read a decided pairing, made one-to-one from both directions,
+    // the keeping and resurrection arms would then keep both rows for one point, two
+    // pins where the source lists one. So the arms read a decided pairing, made one-to-one from both directions,
     // preferring the row that is not marked (ADR-0027 decision 5a — not the row a reader
     // can see, which under a gate is a different row).
     //

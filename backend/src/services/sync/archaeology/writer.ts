@@ -236,7 +236,7 @@ async function processMuseum(
     // admission.ts), so a cancelled run never badges a row it did not re-admit
     // (#760).
     const written = await upsertSingleLocation(
-      experienceId, item.qid, item.lon, item.lat, { syncLogId: context.syncLogId },
+      experienceId, item.qid, item.lon, item.lat, { syncLogId: context.syncLogId, sourceId: ARCHAEOLOGY_SOURCE_ID },
     );
     // Registered here rather than returned: `upsertVenueTreasures` runs after
     // this and can throw, and a returned field would be lost with it while the
@@ -345,7 +345,7 @@ async function processSite(
   let locations: ContentsDelta | undefined;
   if (!context.dryRun) {
     const written = await upsertSingleLocation(
-      experienceId, item.qid, item.lon, item.lat, { syncLogId: context.syncLogId },
+      experienceId, item.qid, item.lon, item.lat, { syncLogId: context.syncLogId, sourceId: ARCHAEOLOGY_SOURCE_ID },
     );
     if (written.needsAssignment.length > 0 || written.unoffered > 0) {
       context.onLocationsChanged(experienceId);

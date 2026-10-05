@@ -165,7 +165,7 @@ export async function getRegionExperienceLocations(
         AND ${offeredLocationSql()}
         AND ${publishedContentSql('el')}
         ${lifecycleFilter}
-      ORDER BY el.experience_id, el.ordinal
+      ORDER BY el.experience_id, el.ordinal, el.id
     `;
   } else {
     query = `
@@ -215,7 +215,7 @@ export async function getRegionExperienceLocations(
         AND ${offeredLocationSql()}
         AND ${publishedContentSql('el')}
         ${lifecycleFilter}
-      ORDER BY el.experience_id, el.ordinal
+      ORDER BY el.experience_id, el.ordinal, el.id
     `;
   }
 
@@ -310,7 +310,7 @@ export async function getExperienceLocations(
     WHERE el.experience_id = $1
       AND ${offeredLocationSql()}
       AND ($${maySeeUnreadIdx}::boolean OR ${publishedContentSql('el')})
-    ORDER BY el.ordinal
+    ORDER BY el.ordinal, el.id
   `, params);
 
   const locations: ExperienceLocationWithState[] = result.rows.map((row) => ({
@@ -760,7 +760,7 @@ export async function getExperienceVisitedStatus(
       -- an art museum.
       AND ${offeredLocationSql()}
       AND ${publishedContentSql('el')}
-    ORDER BY el.ordinal
+    ORDER BY el.ordinal, el.id
   `, [experienceId, userId]);
 
   if (result.rows.length === 0) throw notFound('Experience not found or has no locations');

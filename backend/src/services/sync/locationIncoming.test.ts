@@ -35,9 +35,8 @@ describe('dedupeByIdentity', () => {
 
   it('collapses entries that agree on both, which carry nothing to tell apart', () => {
     // Left in, these make the update's join many-to-many: both stored rows can
-    // take the same incoming ordinal, and the write dies on the
-    // (experience_id, ordinal) unique key — rolling that experience back on
-    // every later sync.
+    // take the same incoming point, and the place shows two pins where the
+    // source lists one.
     const repeated = [
       { name: 'A', externalRef: 'r1', lon: 5, lat: 5 },
       { name: 'B', externalRef: 'r1', lon: 5, lat: 5 },

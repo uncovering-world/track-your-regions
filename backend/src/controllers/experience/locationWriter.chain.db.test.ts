@@ -26,7 +26,8 @@ import { lockExperience } from '../../db/experienceWriter.js';
  */
 
 const EXPERIENCE_ID = 9100;
-const RUN = { syncLogId: null };
+/** The run, of the gated source the fixture's place is under: its gate is the run's own (ADR-0084). */
+const RUN = { syncLogId: null, sourceId: 0 };
 const REF = 'X';
 
 interface LocationRow {
@@ -105,6 +106,7 @@ describe('a point moved twice under a gated source, with no publish in between',
       `SELECT id FROM experience_sources WHERE name = 'Places of worship' AND requires_curation`,
     );
     expect(source.rowCount).toBe(1);
+    RUN.sourceId = source.rows[0].id;
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
        VALUES ($1, $2, 'chain-9100', 'Chain chapel', ST_SetSRID(ST_MakePoint(10.5, 50.5), 4326))`,

@@ -143,7 +143,7 @@ describe('writeExperienceLocations', () => {
     expect(String(sql)).toMatch(/el\.name IS NOT DISTINCT FROM i\.name/);
   });
 
-  it('locks the object before parking a single ordinal, as every curator write does', async () => {
+  it('locks the object before writing a single point, as every curator write does', async () => {
     mockedQuery.mockResolvedValue({ rows: [{ stored: '0', matched: '0', ids: null }] });
     const { client, statements } = fakeClient();
     mockedConnect.mockResolvedValue(client);
@@ -156,9 +156,9 @@ describe('writeExperienceLocations', () => {
     // curator holding the object and waiting for that point, is a cycle Postgres
     // resolves by failing one of them.
     const object = statements.findIndex(s => s.includes(`FROM experiences WHERE id = $1 ${OBJECT_LOCK}`));
-    const park = statements.findIndex(s => /SET ordinal = -ordinal/.test(s));
+    const firstPointWrite = statements.findIndex(s => /(UPDATE|INSERT INTO) experience_locations/.test(s));
     expect(object).toBeGreaterThan(-1);
-    expect(park).toBeGreaterThan(object);
+    expect(firstPointWrite).toBeGreaterThan(object);
   });
 
   it('takes back a curator’s delisting when the source offers a withdrawn point again', async () => {
@@ -257,19 +257,49 @@ describe('writeExperienceLocations', () => {
     for (const part of subqueries) expect(part).toContain('missing_since IS NULL');
   });
 
-  it('renumbers out of the way before renumbering into place', async () => {
+  it('renumbers in place, parking nothing', async () => {
     mockedQuery.mockResolvedValue({ rows: [{ stored: '2', matched: '0', ids: [7, 8] }] });
     const { client, statements } = fakeClient();
     mockedConnect.mockResolvedValue(client);
 
     await writeExperienceLocations(1, [B, A]);
 
-    // `ordinal` is unique per experience, so assigning final ordinals directly
-    // collides with a row that has not been renumbered yet.
-    const park = statements.findIndex(s => /SET ordinal = -ordinal/.test(s));
-    const final = statements.findIndex(s => /SET ordinal = i\.ordinal/.test(s));
-    expect(park).toBeGreaterThanOrEqual(0);
-    expect(park).toBeLessThan(final);
+    // `ordinal` is not unique per place since ADR-0084 — two sources' lists may
+    // both start at 1 — so the final ordinals are written directly, and no step
+    // parks another source's points on the negative side where they would stay.
+    expect(statements.some(s => /SET ordinal = -ordinal/.test(s))).toBe(false);
+    expect(statements.some(s => /SET ordinal = i\.ordinal/.test(s))).toBe(true);
+  });
+
+  it('records the run\'s placement on every point it paired or inserted, before any withdrawal', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
+    const { client, statements } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A]);
+
+    const place = statements.findIndex(s => /INSERT INTO experience_location_placements/.test(s));
+    const mark = statements.findIndex(s => MARK.test(s));
+    expect(place).toBeGreaterThan(-1);
+    expect(place).toBeLessThan(mark);
+    expect(statements[place]).toContain('FROM paired_rows p');
+    expect(statements[place]).toContain('ON CONFLICT DO NOTHING');
+  });
+
+  it('withdraws only a point the run answers for, and marks it once no placement is left', async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
+    const { client, statements } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A]);
+
+    // The run's own or nobody's (ADR-0084): a point only another source places
+    // is that source's to withdraw, and a shared point stays while it is placed.
+    const mark = statements.find(s => MARK.test(s))!.replace(/\s+/g, ' ');
+    expect(mark).toContain('mine.membership_id = (SELECT id FROM experience_kind_memberships WHERE experience_id = $1 AND source_id = $6)');
+    expect(mark).toContain('OR NOT EXISTS (SELECT 1 FROM experience_location_placements any_placement');
+    expect(mark).toContain('unplaced AS ( DELETE FROM experience_location_placements pl USING gone');
+    expect(mark).toContain('(other.location_id, other.membership_id) NOT IN (SELECT location_id, membership_id FROM unplaced)');
   });
 
   it('rolls back and releases the client when a statement fails', async () => {
@@ -296,8 +326,8 @@ describe('writeExperienceLocations', () => {
 
     // Parameter numbering is where this file's neighbours have been bitten
     // twice: an unreferenced placeholder has no inferable type and Postgres
-    // refuses the whole statement.
-    expect(mockedQuery.mock.calls[0][1]).toEqual([42, 'r1', 'A', 10, 20, 'r2', 'B', 11, 21]);
+    // refuses the whole statement. The run's source comes last (ADR-0084).
+    expect(mockedQuery.mock.calls[0][1]).toEqual([42, 'r1', 'A', 10, 20, 'r2', 'B', 11, 21, 1]);
   });
 
   it('asks a well-typed question even with no locations at all', async () => {
@@ -328,10 +358,10 @@ describe('a new point arrives stamped', () => {
     const insert = statements.find(s => /INSERT INTO experience_locations/.test(s));
     expect(insert).toBeDefined();
     expect(insert).toMatch(/curation_state/);
-    // The gate is reached through the experience, because this writer has an
-    // experienceId and no sourceId — one subselect rather than a parameter
-    // threaded through every sync service.
-    expect(insert).toMatch(/FROM experiences[\s\S]*JOIN experience_sources/);
+    // The gate is the run's own source, bound last (ADR-0084): a place two
+    // sources fill is gated per source, never by the place's first one.
+    expect(insert).toMatch(/SELECT requires_curation FROM experience_sources WHERE id = \$6/);
+    expect(insert).not.toMatch(/e\.source_id/);
     // Both branches named, so an edit that stamped every row 'auto' (or every
     // row 'pending') fails this test instead of passing on column presence alone.
     expect(insert).toMatch(/THEN 'pending' ELSE 'auto' END/);

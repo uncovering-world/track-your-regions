@@ -223,6 +223,13 @@ export interface ExperienceKindsRow {
   created_at: Date | null;
 }
 
+/** The table `experience_location_placements`. */
+export interface ExperienceLocationPlacementsRow {
+  location_id: number;
+  membership_id: number;
+  created_at: Date;
+}
+
 /** The table `experience_location_regions`. */
 export interface ExperienceLocationRegionsRow {
   id: number;

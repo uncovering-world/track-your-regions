@@ -84,7 +84,11 @@ describe('publishing releases the withdrawal that was waiting on it', () => {
     // Read off the arrival rather than searched for: the column is on the new
     // row and names the old one, so publishing reads the pairing from the row it
     // is publishing.
-    expect(release.sql).toContain('arrived.withdrawal_deferred_for_location_id = old.id');
+    expect(release.sql).toContain('JOIN experience_locations old ON old.id = arrived.withdrawal_deferred_for_location_id');
+    // And only the placement of the membership that brought the arrival goes:
+    // another source still placing the old point keeps it (ADR-0084).
+    expect(release.sql).toContain('DELETE FROM experience_location_placements pl');
+    expect(release.sql).toContain('(other.location_id, other.membership_id) NOT IN (SELECT location_id, membership_id FROM unplaced)');
     // Only a pairing whose arrival a reader can now see. Before the statement
     // above ran, this one would match nothing.
     expect(release.sql).toContain(`arrived.curation_state <> 'pending'`);
