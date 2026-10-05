@@ -40,7 +40,7 @@ import { MEMBERSHIPS, membershipToAnswerSql, withTypeClaim } from '../../db/memb
 import type { CheckValue } from '../../db/schema.generated.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { idParamSchema, publishExperienceBodySchema } from '../../types/index.js';
-import { resolveExperienceScope } from './experienceScope.js';
+import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease, pointMovedWithObject, worksPublished } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { heldFieldWrites, publicationAssignments, type HeldFieldWrites } from './publishHeldFields.js';
@@ -67,6 +67,8 @@ import { publishMembership, publishTypeOnMembership } from './membershipWriter.j
  * proposal (#722).
  */
 interface PublishRequest {
+  /** The membership the card named (#1264); absent, the waiting one is picked. */
+  membershipId?: number;
   locationIds?: number[];
   treasureIds?: number[];
   contentsOnly?: true;
@@ -206,16 +208,14 @@ export async function publishExperience(
   const userId = caller.id;
   const userRole = caller.role;
 
-  const expResult = await pool.query(
-    `SELECT id, source_id FROM experiences WHERE id = $1`,
-    [experienceId],
-  );
-  if (expResult.rows.length === 0) {
+  // The answered membership's source decides the scope where the body names one (#1264).
+  const sourceId = await answeredSourceId(experienceId, body.membershipId);
+  if (sourceId === null) {
     throw notFound('Experience not found');
   }
 
   const { permitted, logRegionId } = await resolveExperienceScope(
-    userId, userRole, experienceId, expResult.rows[0].source_id as number,
+    userId, userRole, experienceId, sourceId,
   );
   if (!permitted) {
     throw createError('You do not have curator permissions for this experience', 403);
@@ -495,24 +495,28 @@ export async function publishUnderLock(
       // The state, the verdict and the pointer are the membership's (#822),
       // read beside the place in the statement after the place's lock — the
       // lock every writer of the membership takes, so nothing moves it between
-      // this read and the write below. Which membership: the one this click
-      // answers (`membershipToAnswerSql`), the place's only one until #755.
+      // this read and the write below. Which membership: the one the card
+      // named (#1264), or the one `membershipToAnswerSql` picks where it named
+      // none.
       `SELECT e.curated_fields, e.metadata, e.name_local, e.image_url,
               m.id AS membership_id, m.curation_state, m.admission,
               m.pending_change_sync_log_id, m.curated_fields ? 'type' AS type_claimed
          FROM experiences e
-         LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting')}
+         LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting', '$2::int')}
         WHERE e.id = $1`,
-      [experienceId],
+      [experienceId, body.membershipId ?? null],
     );
     // Present: a DELETE of the row waits on the lock this transaction holds.
     const before = read.rows[0];
     // A place no kind holds is on no screen and in no queue; the catalogue
     // check `place-without-membership` names it, and publishing has nothing
-    // to write a state on.
+    // to write a state on. A membership the card named and the place does not
+    // hold is the card being stale, as the other answers say (#1264).
     const membershipId = (before.membership_id as number | null) ?? null;
     if (membershipId === null) {
-      return await refuse(409, 'This place belongs to no kind — see the Catalogue Checks');
+      return await refuse(409, body.membershipId === undefined
+        ? 'This place belongs to no kind — see the Catalogue Checks'
+        : 'Already answered: this place no longer holds the membership the card named — reload');
     }
 
     // The two refusals this row earns before anything is written, in one place

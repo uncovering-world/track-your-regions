@@ -28,7 +28,7 @@ import type { z } from 'zod/v4';
 import type { ReviewAnswerResult } from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
 import type { reviewAnswerBodySchema } from '../../types/index.js';
-import { resolveExperienceScope } from './experienceScope.js';
+import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import {
   answerRow, type AnswerRow,
 } from './reviewAnswerDispatch.js';
@@ -75,14 +75,19 @@ export async function answerReviewRows(
     // included: `resolveExperienceScope` throwing must land in `refused` and
     // not in a 500 that abandons the rest, exactly as `publishWaiting` reasons.
     try {
+      // A row naming a membership is scoped by that membership's source (#1264).
+      const sourceId = row.membershipId === null
+        ? object.sourceId
+        : (await answeredSourceId(row.id, row.membershipId)) ?? object.sourceId;
       const { permitted, logRegionId } = await resolveExperienceScope(
-        userId, userRole, row.id, object.sourceId);
+        userId, userRole, row.id, sourceId);
       if (!permitted) {
         result.outOfScope += 1;
         continue;
       }
       const outcome = await answerRow(
-        { experienceId: row.id, userId, logRegionId, runId: row.runId }, row.kind, answer);
+        { experienceId: row.id, userId, logRegionId, runId: row.runId, membershipId: row.membershipId },
+        row.kind, answer);
       if ('refusal' in outcome) {
         result.refused.push({ kind: row.kind, id: row.id, name: object.name, error: outcome.refusal.error });
         continue;
@@ -110,10 +115,12 @@ function dedupe(rows: z.output<typeof reviewAnswerBodySchema>['rows']): AnswerRo
   const seen = new Set<string>();
   const distinct: AnswerRow[] = [];
   for (const row of rows) {
-    const key = `${row.kind}:${row.id}`;
+    // A place may be asked about once per membership (#1264), so the
+    // membership is part of what makes a row this one.
+    const key = `${row.kind}:${row.id}:${row.membershipId ?? ''}`;
     if (seen.has(key)) continue;
     seen.add(key);
-    distinct.push({ ...row, runId: row.runId ?? null });
+    distinct.push({ ...row, runId: row.runId ?? null, membershipId: row.membershipId ?? null });
   }
   return distinct;
 }

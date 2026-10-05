@@ -66,7 +66,7 @@ export async function publishWaiting(
   // place is reached through them: the same set as the rows keyed on the
   // source today, and the right set the day a place has two.
   const waiting = await pool.query(
-    `SELECT e.id, e.name,
+    `SELECT e.id, e.name, m.id AS membership_id,
             CASE WHEN ${arrivalWaitingSql()} THEN 'arrival' ELSE 'contents' END AS kind
        FROM ${MEMBERSHIPS} m
        JOIN experiences e ON e.id = m.experience_id
@@ -114,7 +114,10 @@ export async function publishWaiting(
       // releases everything that arrived under it. A visible row is published
       // `contentsOnly`, which releases its unread points and works and leaves its
       // own state, and any proposal it is holding, exactly as they were.
-      const body = row.kind === 'arrival' ? {} : { contentsOnly: true as const };
+      // The membership this source brought is the one published (#1264), not
+      // whichever of the place's the single-card picker would choose.
+      const membershipId = row.membership_id as number;
+      const body = row.kind === 'arrival' ? { membershipId } : { contentsOnly: true as const, membershipId };
       outcome = await publishUnderLock(experienceId, userId, logRegionId, body);
     } catch (error) {
       // Logged here because nothing else will: on the single-object path the throw

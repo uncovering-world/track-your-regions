@@ -262,7 +262,8 @@ describe('publishing a held proposal', () => {
     expect(queries[locked].sql).toBe(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`);
     expect(queries[locked + 1].sql).toContain('m.id AS membership_id');
     expect(queries[locked + 1].sql).not.toContain(OBJECT_LOCK);
-    expect(queries[locked + 1].params).toEqual([5]);
+    // The place, and the membership the card named — none here (#1264).
+    expect(queries[locked + 1].params).toEqual([5, null]);
   });
 
   it('writes all eleven content fields, not the five accept-source can', async () => {

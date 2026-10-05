@@ -38,7 +38,7 @@ import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { idParamSchema, refuseArrivalBodySchema, refuseContentsBodySchema } from '../../types/index.js';
 import { refuseOnMembership } from './membershipWriter.js';
-import { resolveExperienceScope } from './experienceScope.js';
+import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import type { AnswerRefusal } from './lifecycleController.js';
@@ -61,7 +61,7 @@ export async function refuseArrival(
   },
 ): Promise<RefuseArrivalResult> {
   return answerThroughScope(id, caller, (experienceId, userId, logRegionId) =>
-    refuseArrivalUnderLock(experienceId, userId, logRegionId, body));
+    refuseArrivalUnderLock(experienceId, userId, logRegionId, body), body.membershipId);
 }
 
 /**
@@ -94,20 +94,19 @@ export async function answerThroughScope<T>(
   caller: Express.User,
   write: (experienceId: number, userId: number, logRegionId: number | null)
     => Promise<{ result?: T; refusal?: AnswerRefusal }>,
+  membershipId?: number,
 ): Promise<T> {
   const userId = caller.id;
   const userRole = caller.role;
 
-  const expResult = await pool.query(
-    `SELECT id, source_id FROM experiences WHERE id = $1`,
-    [experienceId],
-  );
-  if (expResult.rows.length === 0) {
+  // The answered membership's source decides the scope where the body names one (#1264).
+  const sourceId = await answeredSourceId(experienceId, membershipId);
+  if (sourceId === null) {
     throw notFound('Experience not found');
   }
 
   const { permitted, logRegionId } = await resolveExperienceScope(
-    userId, userRole, experienceId, expResult.rows[0].source_id as number,
+    userId, userRole, experienceId, sourceId,
   );
   if (!permitted) {
     throw createError('You do not have curator permissions for this experience', 403);
@@ -134,7 +133,7 @@ export async function refuseArrivalUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
-  { note }: { note?: string },
+  { note, membershipId: namedMembershipId }: { note?: string; membershipId?: number },
 ): Promise<{ result?: RefuseArrivalResult; refusal?: AnswerRefusal }> {
   const client = await pool.connect();
   let unusable: Error | undefined;
@@ -156,9 +155,9 @@ export async function refuseArrivalUnderLock(
     const read = await client.query(
       `SELECT m.id AS membership_id, m.admission, m.curation_state, m.curated_fields
          FROM experiences e
-         LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting')}
+         LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting', '$2::int')}
         WHERE e.id = $1`,
-      [experienceId],
+      [experienceId, namedMembershipId ?? null],
     );
     const before = read.rows[0] ?? {};
     const membershipId = (before.membership_id as number | null) ?? null;

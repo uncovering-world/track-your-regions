@@ -17628,6 +17628,11 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 2147483647
+          },
+          "membershipId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
           }
         },
         "required": [
@@ -18727,6 +18732,11 @@
           "note": {
             "type": "string",
             "maxLength": 1000
+          },
+          "membershipId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
           }
         },
         "required": [
@@ -24168,6 +24178,11 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 2147483647
+          },
+          "membershipId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
           }
         }
       },
@@ -24642,6 +24657,11 @@
           "note": {
             "type": "string",
             "maxLength": 1000
+          },
+          "membershipId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
           }
         }
       },
@@ -25979,6 +25999,11 @@
                       "type": "null"
                     }
                   ]
+                },
+                "membershipId": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
                 }
               },
               "required": [
@@ -26449,6 +26474,19 @@
               "withdrawn",
               "withdrawn-answered",
               "contents-refused"
+            ]
+          },
+          "membership_id": {
+            "description": "The membership this card asks about (#1264): an arrival, a held proposal or a refusal is one kind's, and an answer sends it back as `membershipId`. Absent on a card about the place as a whole.",
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
             ]
           },
           "image_url": {

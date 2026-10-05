@@ -231,6 +231,10 @@ export const ReviewQueueItem = z.strictObject({
   source_membership: SourceMembership,
   existence: Existence,
   kind: z.enum(QUEUE_ITEM_KINDS),
+  membership_id: z.number().int().nullable().optional().describe(
+    'The membership this card asks about (#1264): an arrival, a held proposal or a refusal is one kind\'s, and an answer'
+    + ' sends it back as `membershipId`. Absent on a card about the place as a whole.',
+  ),
   image_url: z.string().nullable().optional(),
   image_credit: ImageCredit.nullable().optional(),
   latitude: z.number().nullable().optional(),

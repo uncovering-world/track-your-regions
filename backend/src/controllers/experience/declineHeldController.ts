@@ -28,7 +28,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { declineHeldBodySchema, idParamSchema } from '../../types/index.js';
-import { resolveExperienceScope } from './experienceScope.js';
+import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import { answeredHeldRows, recordHeldAnswers } from './heldDecisions.js';
 import {
   heldObjectRows, heldPartRows, resolveHeldSelection,
@@ -61,30 +61,28 @@ export interface DeclineRefusal {
  * read, which is the mirror of publishing one nobody read.
  */
 export async function declineHeldValue(
-  { params: { id: experienceId }, body: { fields, parts, expectedSyncLogId }, caller }: {
+  { params: { id: experienceId }, body: { fields, parts, expectedSyncLogId, membershipId }, caller }: {
     params: z.output<typeof idParamSchema>; body: z.output<typeof declineHeldBodySchema>; caller: Express.User;
   },
 ): Promise<DeclineHeldResult> {
   const userId = caller.id;
   const userRole = caller.role;
 
-  const expResult = await pool.query(
-    `SELECT id, source_id FROM experiences WHERE id = $1`,
-    [experienceId],
-  );
-  if (expResult.rows.length === 0) {
+  // The answered membership's source decides the scope where the body names one (#1264).
+  const sourceId = await answeredSourceId(experienceId, membershipId);
+  if (sourceId === null) {
     throw notFound('Experience not found');
   }
 
   const { permitted, logRegionId } = await resolveExperienceScope(
-    userId, userRole, experienceId, expResult.rows[0].source_id as number,
+    userId, userRole, experienceId, sourceId,
   );
   if (!permitted) {
     throw createError('You do not have curator permissions for this experience', 403);
   }
 
   const outcome = await refuseUnderLock(
-    experienceId, userId, logRegionId, { fields, parts }, expectedSyncLogId,
+    experienceId, userId, logRegionId, { fields, parts }, expectedSyncLogId, membershipId ?? null,
   );
   if (outcome.refusal) {
     const { status, ...body } = outcome.refusal;
@@ -132,6 +130,7 @@ export async function refuseUnderLock(
   logRegionId: number | null,
   selection: { fields?: string[]; parts?: SelectedPart[] } | null,
   expectedSyncLogId: number,
+  namedMembershipId: number | null = null,
 ): Promise<{ result?: DeclineHeldResult; refusal?: DeclineRefusal }> {
   const client = await pool.connect();
   let unusable: Error | undefined;
@@ -159,14 +158,14 @@ export async function refuseUnderLock(
     // statement because a statement's snapshot is taken before it waits for
     // the lock, and only the locked row is re-read once it is granted: a run
     // that moved the pointer during the wait would be invisible to the check
-    // below (`db/locks.ts`). Which membership: the one holding a proposal, the
-    // place's only one until #755.
+    // below (`db/locks.ts`). Which membership: the one the card named (#1264),
+    // or the one holding a proposal where it named none.
     const read = await client.query(
       `SELECT m.id AS membership_id, m.pending_change_sync_log_id
          FROM experiences e
-         LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting')}
+         LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting', '$2::int')}
         WHERE e.id = $1`,
-      [experienceId],
+      [experienceId, namedMembershipId],
     );
     const membershipId = (read.rows[0]?.membership_id as number | null) ?? null;
     const pointer = (read.rows[0]?.pending_change_sync_log_id as number | null) ?? null;
