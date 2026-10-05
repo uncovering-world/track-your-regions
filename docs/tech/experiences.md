@@ -97,8 +97,9 @@ An experience can have zero, one, or many locations. Location-bound experiences 
   recorded on. A run records its own placement on every point it pairs or inserts, and withdraws,
   holds and defers only the points it answers for: the ones its membership places, or the ones no
   membership places at all. Withdrawing takes its own placement away, and the point is marked
-  missing only once none is left, so the Cave of Altamira's two points — the cave for Public Art,
-  the replica's museum 752 m away for Archaeology — each stay while their source offers them. A
+  missing only once none is left, so the Cave of Altamira's two points 752 m apart — Wikidata holds
+  two coordinates for the cave, one rounded to the arc-minute, and Public Art and Archaeology each
+  read a different one — each stay while their source offers them. A
   curator's point (`insertCuratedPoint`) is placed by its place's manual membership, which no run
   brings. `ordinal` stays the order a reader sees, written by the runs that place the points; it
   is not unique per place, since two sources' lists may both start at 1, so the writer renumbers
