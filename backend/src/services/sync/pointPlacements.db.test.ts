@@ -9,15 +9,16 @@ import { writeExperienceLocations } from './locationWriter.js';
  *
  * The fixture is the Cave of Altamira as Epic #755 will leave it: one place
  * that Public Art & Monuments and Archaeology both fill, each with a point of
- * its own 752 m apart (the cave, and the replica's museum), as the two rows
- * stand on the development catalogue today. Ids and references are the
- * fixture's own, deleted before and after.
+ * its own 752 m apart, as the two rows stand on the development catalogue
+ * today. Wikidata holds two coordinates for the cave, one of them rounded to
+ * the arc-minute, and each source reads a different one. Ids and references
+ * are the fixture's own, deleted before and after.
  */
 
 const ALTAMIRA = 9470;
 const QID = 'Q9470-altamira-fixture';
-const CAVE = { name: null, externalRef: 'Q9470-cave', lon: -4.1192, lat: 43.3772 };
-const MUSEUM = { name: null, externalRef: 'Q9470-museum', lon: -4.1103, lat: 43.3772 };
+const PRECISE = { name: null, externalRef: 'Q9470-precise', lon: -4.11975, lat: 43.376944 };
+const ROUNDED = { name: null, externalRef: 'Q9470-rounded', lon: -4.11667, lat: 43.38333 };
 
 let publicArt = 0;
 let archaeology = 0;
@@ -61,7 +62,7 @@ beforeEach(async () => {
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
      VALUES ($1, $2, $3, 'Cave of Altamira', ST_SetSRID(ST_MakePoint($4, $5), 4326))`,
-    [ALTAMIRA, publicArt, QID, CAVE.lon, CAVE.lat],
+    [ALTAMIRA, publicArt, QID, ROUNDED.lon, ROUNDED.lat],
   );
   await pool.query(
     `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id)
@@ -69,8 +70,8 @@ beforeEach(async () => {
     [ALTAMIRA, art.kind_id, publicArt, QID, arch.kind_id, archaeology],
   );
   // Each source has written its own point once.
-  await writeExperienceLocations(ALTAMIRA, [CAVE], run(publicArt));
-  await writeExperienceLocations(ALTAMIRA, [MUSEUM], run(archaeology));
+  await writeExperienceLocations(ALTAMIRA, [ROUNDED], run(publicArt));
+  await writeExperienceLocations(ALTAMIRA, [PRECISE], run(archaeology));
 });
 
 afterAll(async () => {
@@ -80,30 +81,30 @@ afterAll(async () => {
 
 describe('a point and the memberships that place it (ADR-0084)', () => {
   it('records each source on its own point, and neither run withdraws the other\'s', async () => {
-    expect(await placers(CAVE.externalRef)).toEqual([publicArt]);
-    expect(await placers(MUSEUM.externalRef)).toEqual([archaeology]);
+    expect(await placers(ROUNDED.externalRef)).toEqual([publicArt]);
+    expect(await placers(PRECISE.externalRef)).toEqual([archaeology]);
 
-    await writeExperienceLocations(ALTAMIRA, [CAVE], run(publicArt));
-    await writeExperienceLocations(ALTAMIRA, [MUSEUM], run(archaeology));
+    await writeExperienceLocations(ALTAMIRA, [ROUNDED], run(publicArt));
+    await writeExperienceLocations(ALTAMIRA, [PRECISE], run(archaeology));
 
-    expect(await offered()).toEqual({ [CAVE.externalRef]: true, [MUSEUM.externalRef]: true });
+    expect(await offered()).toEqual({ [ROUNDED.externalRef]: true, [PRECISE.externalRef]: true });
   });
 
   it('withdraws a source\'s own point when it stops offering it, and only that one', async () => {
     const result = await writeExperienceLocations(ALTAMIRA, [], run(archaeology));
 
-    expect(result.delta.withdrawn.map(point => point.ref)).toEqual([MUSEUM.externalRef]);
-    expect(await offered()).toEqual({ [CAVE.externalRef]: true, [MUSEUM.externalRef]: false });
+    expect(result.delta.withdrawn.map(point => point.ref)).toEqual([PRECISE.externalRef]);
+    expect(await offered()).toEqual({ [ROUNDED.externalRef]: true, [PRECISE.externalRef]: false });
   });
 
   it('keeps a point both sources place while one of them still does', async () => {
-    await writeExperienceLocations(ALTAMIRA, [MUSEUM, CAVE], run(archaeology));
-    expect(await placers(CAVE.externalRef)).toEqual([publicArt, archaeology].sort((a, b) => a - b));
+    await writeExperienceLocations(ALTAMIRA, [PRECISE, ROUNDED], run(archaeology));
+    expect(await placers(ROUNDED.externalRef)).toEqual([publicArt, archaeology].sort((a, b) => a - b));
 
     await writeExperienceLocations(ALTAMIRA, [], run(publicArt));
 
-    expect(await placers(CAVE.externalRef)).toEqual([archaeology]);
-    expect(await offered()).toEqual({ [CAVE.externalRef]: true, [MUSEUM.externalRef]: true });
+    expect(await placers(ROUNDED.externalRef)).toEqual([archaeology]);
+    expect(await offered()).toEqual({ [ROUNDED.externalRef]: true, [PRECISE.externalRef]: true });
   });
 
   it('lets two sources number their lists from 1 on one place', async () => {
@@ -112,8 +113,8 @@ describe('a point and the memberships that place it (ADR-0084)', () => {
       [ALTAMIRA],
     );
     expect(ordinals.rows).toEqual([
-      { external_ref: CAVE.externalRef, ordinal: 1 },
-      { external_ref: MUSEUM.externalRef, ordinal: 1 },
+      { external_ref: PRECISE.externalRef, ordinal: 1 },
+      { external_ref: ROUNDED.externalRef, ordinal: 1 },
     ]);
   });
 });
