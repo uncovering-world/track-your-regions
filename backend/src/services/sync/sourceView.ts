@@ -53,6 +53,14 @@ export interface StoredView {
  * The fields of the run's record that some other standing view of the place
  * contradicts, or that the run leaves empty where another view reports a value
  * (`viewSilencesSql`): either way the run's value is not the place's to take.
+ *
+ * Only views under another id ask (ADR-0085). Two sources that know the place by one
+ * Wikidata item read one item, and every reader keeps one picture and one
+ * coordinate of it (`preferredPicture`, `preferredCoordinate`), so where their
+ * views differ one of them read the item before an edit the other has seen:
+ * the newer reading is written, and nobody is asked (#1246). The question is
+ * for sources that are different data — a World Heritage id beside a Wikidata
+ * item.
  * `placeId` is the place the run's lock found; a place the run is creating has
  * no other view and is not asked.
  */
@@ -62,10 +70,10 @@ export async function contestedFields(
   params: ViewRecord,
 ): Promise<ViewField[]> {
   const incoming = {
-    name: '$4::text',
-    description: '$5::text',
-    imageUrl: '$6::text',
-    location: 'ST_SetSRID(ST_MakePoint($7::float8, $8::float8), 4326)',
+    name: '$3::text',
+    description: '$4::text',
+    imageUrl: '$5::text',
+    location: 'ST_SetSRID(ST_MakePoint($6::float8, $7::float8), 4326)',
   };
   const result = await query.query<{ field: ViewField }>(
     `SELECT DISTINCT unnest(
@@ -73,9 +81,9 @@ export async function contestedFields(
               || ${viewSilencesSql(incoming, membershipViewSql('m'))}) AS field
        FROM ${MEMBERSHIPS} m
       WHERE m.experience_id = $1
-        AND NOT (m.source_id = $2 AND m.external_id = $3)
+        AND m.external_id <> $2
         AND ${viewStandsSql('m')}`,
-    [placeId, params.sourceId, params.externalId, params.name, params.description, params.imageUrl, params.lon, params.lat],
+    [placeId, params.externalId, params.name, params.description, params.imageUrl, params.lon, params.lat],
   );
   const contested = new Set(result.rows.map(row => row.field));
   return VIEW_FIELDS.filter(field => contested.has(field));

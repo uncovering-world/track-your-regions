@@ -13,7 +13,9 @@
  * instead, grouped by entity.
  */
 
-import { extractQid, isQid, parseWktPoint, LABEL_LANGS, type SparqlBinding } from '../wikidataUtils.js';
+import {
+  applyPreferred, extractQid, foldPreferred, isQid, parseWktPoint, LABEL_LANGS, type PreferredValues, type SparqlBinding,
+} from '../wikidataUtils.js';
 import { foldLabel } from '@tyr/shared/labels';
 import {
   ENTITY_PREFIX,
@@ -122,9 +124,12 @@ function classPoolQuery(classQids: string[], limit: number): string {
 /**
  * The entities one answer names, one entry each.
  *
- * The first row of an entity fixes everything: the OPTIONALs cross-multiply
- * when an entity carries two images or two countries, and any of those rows
- * answers the questions asked here. A row whose coordinate does not parse is
+ * The OPTIONALs cross-multiply when an entity carries two images, two
+ * coordinates or two countries. The picture and the coordinate are folded over
+ * every row by the one rule every Wikidata reader keeps (`preferredPicture`,
+ * `preferredCoordinate`, #1246), so a place two sources read is one picture and
+ * one point whichever query asked; the rest is the first row's, since any row
+ * answers it. A row whose coordinate does not parse is
  * dropped where the query asked for `P625` — that is a malformed literal, not
  * a missing fact — and kept placeless where it did not (`placeless`), so an
  * admitted row Wikidata still answers for but no longer places is refused by
@@ -132,20 +137,24 @@ function classPoolQuery(classQids: string[], limit: number): string {
  */
 function parsePool(rows: SparqlBinding[], options: { placeless?: boolean } = {}): PoolEntity[] {
   const out = new Map<string, PoolEntity>();
+  const kept = new Map<string, PreferredValues>();
   for (const row of rows) {
     const qid = extractQid(row.e?.value ?? '');
-    if (!isQid(qid) || out.has(qid)) continue;
+    if (!isQid(qid)) continue;
     const wkt = row.coord?.value ?? '';
     const coord = parseWktPoint(wkt);
     if (!coord && !options.placeless) continue;
+    kept.set(qid, foldPreferred(kept.get(qid), row.img?.value || null, coord ? wkt : null));
+    if (out.has(qid)) continue;
     out.set(qid, {
       qid,
       label: row.eLabel?.value || qid,
       description: row.eDescription?.value || null,
-      lat: coord ? coord.lat : null,
-      lon: coord ? coord.lon : null,
-      onEarth: !wkt.startsWith('<'),
-      imageUrl: row.img?.value || null,
+      // The picture and the point are the item's kept ones, written below.
+      lat: null,
+      lon: null,
+      onEarth: true,
+      imageUrl: null,
       sitelinks: parseInt(row.sl?.value || '0', 10),
       countryLabel: row.countryLabel?.value || null,
       articleUrl: row.article?.value || null,
@@ -153,6 +162,7 @@ function parsePool(rows: SparqlBinding[], options: { placeless?: boolean } = {})
       year: row.year?.value ? parseInt(row.year.value, 10) : null,
     });
   }
+  applyPreferred(out, kept);
   return [...out.values()];
 }
 

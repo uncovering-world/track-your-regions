@@ -59,6 +59,15 @@ describe('the pool parse', () => {
     expect(pool[0].creators).toEqual(['Ivan Shishkin', 'Konstantin Savitsky']);
   });
 
+  it('keeps one picture of a work whatever order its rows arrive in (#1246)', async () => {
+    for (const images of [['b.jpg', 'a.jpg'], ['a.jpg', 'b.jpg']]) {
+      const pool = await fetchClassPool(answering(
+        images.map(img => row('Q12418', 'Mona Lisa', { qid: 'Q762', label: 'Leonardo da Vinci' }, img)),
+      ), ['Q3305213']);
+      expect(pool[0].imageUrl).toBe('a.jpg');
+    }
+  });
+
   it('keeps the six of the Moon Museum rather than the first of them', async () => {
     const makers = [
       'Andy Warhol', 'Claes Oldenburg', 'Robert Rauschenberg',

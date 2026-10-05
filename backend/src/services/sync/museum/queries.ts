@@ -21,7 +21,10 @@
  * else to batch is the pipeline's decision, since only it knows how long a run may take.
  */
 
-import { extractQid, isQid, parseWktPoint, LABEL_LANGS, type SparqlBinding } from '../wikidataUtils.js';
+import {
+  applyPreferred, extractQid, foldPreferred, isQid, parseWktPoint, preferredPicture, LABEL_LANGS,
+  type PreferredValues, type SparqlBinding,
+} from '../wikidataUtils.js';
 import { foldLabel } from '@tyr/shared/labels';
 import {
   ENTITY_PREFIX,
@@ -242,7 +245,8 @@ function addCreator(into: PoolWork, seen: Set<string>, row: SparqlBinding): void
 /**
  * The works one answer describes, one entry per work.
  *
- * The first row of a work fixes everything single-valued about it and every row
+ * The first row of a work fixes everything single-valued about it but its picture,
+ * which every row may offer and `preferredPicture` chooses (#1246), and every row
  * contributes its creator, which is the asymmetry worth naming: the other
  * OPTIONALs cross-multiply and any of their rows answers the question asked,
  * while `P170` is the one column where a second row is a second fact rather
@@ -273,6 +277,9 @@ export function parsePool(rows: SparqlBinding[], fallbackType: string, fallbackQ
       };
       works.set(qid, work);
       seenCreators.set(qid, new Set());
+    } else {
+      // One picture per work whichever query asked (#1246).
+      work.imageUrl = preferredPicture(work.imageUrl, row.img?.value || null);
     }
     addCreator(work, seenCreators.get(qid)!, row);
   }
@@ -463,26 +470,33 @@ export async function fetchEntityDetails(
       SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }
     }`, { kind: 'entities', label: `details for ${qids.length} entities` });
 
-  // First row per entity wins: the OPTIONALs still cross-multiply when an entity carries two
-  // images or two countries, and any of those rows answers the questions asked here.
+  // The OPTIONALs cross-multiply when an entity carries two images, two coordinates or two
+  // countries. The picture and the coordinate are folded over every row by the rule every
+  // Wikidata reader keeps (`preferredPicture`, `preferredCoordinate`, #1246); the rest is the
+  // first row's, since any row answers it.
+  const kept = new Map<string, PreferredValues>();
   for (const row of rows) {
     const qid = extractQid(row.e?.value ?? '');
-    if (!isQid(qid) || out.has(qid)) continue;
+    if (!isQid(qid)) continue;
     const coord = row.coord?.value ? parseWktPoint(row.coord.value) : null;
+    kept.set(qid, foldPreferred(kept.get(qid), row.img?.value || null, coord ? row.coord!.value : null));
+    if (out.has(qid)) continue;
     out.set(qid, {
       qid,
       label: row.eLabel?.value || qid,
       description: row.eDescription?.value || null,
-      lat: coord ? coord.lat : null,
-      lon: coord ? coord.lon : null,
+      // The picture and the point are the item's kept ones, written below.
+      lat: null,
+      lon: null,
       countryLabel: row.countryLabel?.value || null,
-      imageUrl: row.img?.value || null,
+      imageUrl: null,
       website: row.site?.value || null,
       articleUrl: row.article?.value || null,
       sitelinks: parseInt(row.sl?.value || '0', 10),
       dissolved: row.dissolved?.value || null,
     });
   }
+  applyPreferred(out, kept);
   // A venue's own fame decides folds and, where it is a row of its own, its
   // line: the same count the works are held to (ADR-0082). A caller that reads
   // no fame — the picture repair — says so and is not asked the second question.
