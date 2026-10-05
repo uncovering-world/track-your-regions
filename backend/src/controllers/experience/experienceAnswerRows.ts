@@ -12,7 +12,7 @@
 
 import type {
   Experience, ExperienceDetail, ExperienceRegionRef, ExperienceSearchResult, ExperienceTreasure, ImageCredit,
-  LinkedPlace, SiteFind, WorkVenue,
+  LinkedPlace, PlaceKind, SiteFind, WorkVenue,
 } from '../../api/responses/experiences.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 
@@ -43,6 +43,21 @@ function foundAtOf(found: TreasureRow['found_at']): TreasureRow['found_at'] {
   return found === null ? null : { qid: found.qid, label: found.label };
 }
 
+/**
+ * The kinds a place is offered in, as `placeKindsSql` builds them, key by key:
+ * stored JSON reaches a reader only through the keys its schema names.
+ */
+function kindsOf(kinds: PlaceKind[] | null): PlaceKind[] {
+  return (kinds ?? []).map(kind => ({
+    kind_id: kind.kind_id,
+    kind_name: kind.kind_name,
+    kind_priority: kind.kind_priority,
+    type: kind.type ?? null,
+    source_id: kind.source_id,
+    external_id: kind.external_id,
+  }));
+}
+
 /** A region list row, after `withDangerFields`. */
 export interface ExperienceListRow {
   id: number;
@@ -53,6 +68,7 @@ export interface ExperienceListRow {
   kind_id: number;
   kind_name: string;
   kind_priority: number;
+  kinds: PlaceKind[] | null;
   country_codes: string[] | null;
   country_names: string[] | null;
   image_url: string | null;
@@ -92,6 +108,7 @@ export function experienceOf(row: ExperienceListRow): Experience {
     latitude: row.latitude,
     kind_name: row.kind_name,
     kind_priority: row.kind_priority,
+    kinds: kindsOf(row.kinds),
     location_count: row.location_count,
     treasure_count: row.treasure_count,
     finds_count: row.finds_count,
@@ -131,6 +148,7 @@ export interface ExperienceDetailRow {
   kind_id: number;
   kind_name: string;
   kind_priority: number;
+  kinds: PlaceKind[] | null;
   source_name: string;
   source_description: string | null;
 }
@@ -161,6 +179,7 @@ export function experienceDetailOf(row: ExperienceDetailRow, regions: Experience
     kind_id: row.kind_id,
     kind_name: row.kind_name,
     kind_priority: row.kind_priority,
+    kinds: kindsOf(row.kinds),
     source_name: row.source_name,
     source_description: row.source_description,
     regions,
@@ -176,6 +195,7 @@ export interface SearchRow {
   kind_id: number;
   kind_name: string;
   kind_priority: number;
+  kinds: PlaceKind[] | null;
   country_names: string[] | null;
   image_url: string | null;
   image_credit: ImageCredit | null;
@@ -197,6 +217,7 @@ export function searchResultOf(row: SearchRow): ExperienceSearchResult {
     kind_id: row.kind_id,
     kind_name: row.kind_name,
     kind_priority: row.kind_priority,
+    kinds: kindsOf(row.kinds),
     country_names: row.country_names,
     image_url: row.image_url,
     image_credit: creditOf(row.image_credit),

@@ -53,7 +53,7 @@ import type { WorldPointsResponse } from '../../api/responses/worldPoints.js';
 import type { worldPointsQuerySchema } from '../../types/index.js';
 import type { PointsDetail } from './worldPointsVocabulary.js';
 import { pool } from '../../db/index.js';
-import { placeOfferedSql, rowKindJoinSql } from '../../db/membership.js';
+import { kindMembershipJoinSql, placeOfferedSql, rowKindJoinSql } from '../../db/membership.js';
 import { bboxIntersectsSql, parseBbox } from '../../db/bboxEnvelopes.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 
@@ -183,14 +183,19 @@ export async function getWorldPoints(
   const params: number[] = [];
   const conditions = [readerGuardsSql()];
 
+  // Optional, and absent means every kind rather than none: naming no kind is a
+  // picture of the whole catalogue, not a missing scope. Nothing here is scoped
+  // by a parameter — a place belongs to the catalogue, not to a lens — so there
+  // is no id whose absence could widen the answer past what a reader may see.
+  //
+  // A place is in the kind by any of its offered memberships, and its pin then
+  // carries that kind and that membership's type (ADR-0084, #1245): the
+  // Capitoline Museums are an archaeology pin on the Archaeology map. Without a
+  // kind the pin is the row's own membership's.
+  let kindJoin = rowKindJoinSql();
   if (kindId !== null) {
-    // Optional, and absent means every kind rather than none: naming no kind is
-    // a picture of the whole catalogue, not a missing scope. Nothing here is
-    // scoped by a parameter — a place belongs to the catalogue, not to a lens —
-    // so there is no id whose absence could widen the answer past what a reader
-    // may see.
     params.push(kindId);
-    conditions.push(`m.kind_id = $${params.length}`);
+    kindJoin = kindMembershipJoinSql('e', 'm', 'k', `$${params.length}`);
   }
   if (box) {
     const at = {
@@ -204,12 +209,12 @@ export async function getWorldPoints(
 
   const where = conditions.join('\n        AND ');
   const query = folded
-    ? foldedQuery(detail, where)
+    ? foldedQuery(detail, where, kindJoin)
     : `SELECT
         ${selectSql(detail, false, 'el', 'el')}
       FROM experience_locations el
       JOIN experiences e ON e.id = el.experience_id
-      ${rowKindJoinSql()}
+      ${kindJoin}
       WHERE ${where}
       LIMIT ${MAX_POINTS + 1}`;
 
@@ -240,20 +245,22 @@ export async function getWorldPoints(
  * the answer is total.
  *
  * The count is a window over the same un-joined set rather than an aggregate:
- * the kind's LEFT JOIN is one row per place today, and a count that reads
- * through it would start counting memberships the day it is not (#755).
+ * the kind's join is one row per place, the row's own membership or the
+ * filtered kind's, and a count that read through a join of every membership
+ * would count memberships. The final join is the same one, so a folded pin
+ * carries the kind it was selected by.
  * DISTINCT ON then keeps the nearest row of each object, the window having
  * already seen all of them.
  *
  * The second pass asks only the two location-level questions: the object-level
  * ones and the kind are what the first pass selected the objects by.
  */
-function foldedQuery(detail: PointsDetail, where: string): string {
+function foldedQuery(detail: PointsDetail, where: string, kindJoin: string): string {
   return `WITH matched AS (
         SELECT DISTINCT el.experience_id
         FROM experience_locations el
         JOIN experiences e ON e.id = el.experience_id
-        ${rowKindJoinSql()}
+        ${kindJoin}
         WHERE ${where}
       ), folded AS (
         SELECT DISTINCT ON (el.experience_id)
@@ -272,7 +279,7 @@ function foldedQuery(detail: PointsDetail, where: string): string {
         ${selectSql(detail, true, 'folded', 'folded')}
       FROM folded
       JOIN experiences e ON e.id = folded.experience_id
-      ${rowKindJoinSql()}
+      ${kindJoin}
       LIMIT ${MAX_POINTS + 1}`;
 }
 

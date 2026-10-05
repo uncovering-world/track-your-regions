@@ -20,7 +20,7 @@ import {
   readerRegionMembershipSql,
 } from '../../db/readerPredicates.js';
 import { includeLost } from './includeLost.js';
-import { KINDS, MEMBERSHIPS, rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS, placeKindsSql, rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
 import { countedMembershipSql, countedMembershipsSql, kindCountSql } from './experienceCounts.js';
 import { buildRegionQueries } from './experienceRegionQuery.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
@@ -102,6 +102,8 @@ export async function getExperience(
                         ELSE e.boundary END)::json as boundary_geojson,
       e.area_km2,
       ${rowKindSelectSql()},
+      -- Every kind the place is offered in, none the primary one (#1245).
+      ${placeKindsSql('e')} AS kinds,
       -- The source that brought the row, beside the kind it is shown under:
       -- a curator's screen names both (#819).
       s.name as source_name,
@@ -327,6 +329,7 @@ export async function searchExperiences(
       m.kind_id,
       m.kind_name,
       m.kind_priority,
+      ${placeKindsSql('m')} AS kinds,
       m.country_names,
       m.image_url,
       m.image_credit,

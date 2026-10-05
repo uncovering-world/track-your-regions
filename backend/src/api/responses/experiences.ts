@@ -116,6 +116,19 @@ export const ExperienceRegionRef = z.strictObject({
 }).describe('A region an object can be opened at, in a world view the caller may see.');
 export type ExperienceRegionRef = z.infer<typeof ExperienceRegionRef>;
 
+export const PlaceKind = z.strictObject({
+  kind_id: z.number().int(),
+  kind_name: z.string(),
+  kind_priority: z.number().int().describe("The kind's display order."),
+  type: z.string().nullable().describe('The type within this kind, which is the membership\'s (#1253). Null where the kind has no types.'),
+  source_id: z.number().int().describe('The source that brought the place into this kind.'),
+  external_id: z.string().describe('The id that source knows the place by, such as a Wikidata item (ADR-0084).'),
+}).describe('One kind a place is offered in. A place belongs to no kind, and none of its kinds is the primary one (ADR-0084).');
+export type PlaceKind = z.infer<typeof PlaceKind>;
+
+const placeKinds = z.array(PlaceKind)
+  .describe('Every kind the place is offered in, in display order (#1245). Empty where none is offered to this caller.');
+
 export const Experience = z.strictObject({
   id: z.number().int(),
   external_id: z.string(),
@@ -139,6 +152,7 @@ export const Experience = z.strictObject({
   latitude: z.number(),
   kind_name: z.string(),
   kind_priority: z.number().int().describe("The kind's display order, which the list orders by."),
+  kinds: placeKinds,
   location_count: z.number().int(),
   treasure_count: z.number().int().describe('Offered and published links to works.'),
   finds_count: z.number().int()
@@ -204,6 +218,7 @@ export const ExperienceDetail = z.strictObject({
   kind_id: z.number().int(),
   kind_name: z.string(),
   kind_priority: z.number().int(),
+  kinds: placeKinds,
   source_name: z.string(),
   source_description: z.string().nullable(),
   regions: z.array(ExperienceRegionRef)
@@ -219,6 +234,7 @@ export const ExperienceSearchResult = z.strictObject({
   kind_id: z.number().int(),
   kind_name: z.string(),
   kind_priority: z.number().int(),
+  kinds: placeKinds,
   country_names: z.array(z.string()).nullable(),
   image_url: z.string().nullable(),
   image_credit: ImageCredit.nullable(),

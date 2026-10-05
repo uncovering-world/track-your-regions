@@ -18615,6 +18615,13 @@
             "maximum": 9007199254740991,
             "description": "The kind's display order, which the list orders by."
           },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaceKind"
+            },
+            "description": "Every kind the place is offered in, in display order (#1245). Empty where none is offered to this caller."
+          },
           "location_count": {
             "type": "integer",
             "minimum": -9007199254740991,
@@ -18695,6 +18702,7 @@
           "latitude",
           "kind_name",
           "kind_priority",
+          "kinds",
           "location_count",
           "treasure_count",
           "finds_count",
@@ -18913,6 +18921,13 @@
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
           },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaceKind"
+            },
+            "description": "Every kind the place is offered in, in display order (#1245). Empty where none is offered to this caller."
+          },
           "source_name": {
             "type": "string"
           },
@@ -18955,6 +18970,7 @@
           "kind_id",
           "kind_name",
           "kind_priority",
+          "kinds",
           "source_name",
           "source_description",
           "regions"
@@ -19268,6 +19284,13 @@
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
           },
+          "kinds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaceKind"
+            },
+            "description": "Every kind the place is offered in, in display order (#1245). Empty where none is offered to this caller."
+          },
           "country_names": {
             "anyOf": [
               {
@@ -19348,6 +19371,7 @@
           "kind_id",
           "kind_name",
           "kind_priority",
+          "kinds",
           "country_names",
           "image_url",
           "image_credit",
@@ -23674,6 +23698,52 @@
         ],
         "additionalProperties": false,
         "description": "A repair of one source's pictures, started in the background and followed through the sync status."
+      },
+      "PlaceKind": {
+        "type": "object",
+        "properties": {
+          "kind_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "kind_name": {
+            "type": "string"
+          },
+          "kind_priority": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The kind's display order."
+          },
+          "type": {
+            "description": "The type within this kind, which is the membership's (#1253). Null where the kind has no types.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The source that brought the place into this kind."
+          },
+          "external_id": {
+            "type": "string",
+            "description": "The id that source knows the place by, such as a Wikidata item (ADR-0084)."
+          }
+        },
+        "required": [
+          "kind_id",
+          "kind_name",
+          "kind_priority",
+          "type",
+          "source_id",
+          "external_id"
+        ],
+        "additionalProperties": false,
+        "description": "One kind a place is offered in. A place belongs to no kind, and none of its kinds is the primary one (ADR-0084)."
       },
       "PlaceResult": {
         "type": "object",
