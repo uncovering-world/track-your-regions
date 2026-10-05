@@ -285,7 +285,7 @@ export interface HeldSelectionPart {
  */
 export async function publishExperience(
   experienceId: number,
-  body: PublishRequest = {},
+  body: PublishRequest & { membershipId?: number } = {},
 ): Promise<PublishResult> {
   return postExperiencesByIdPublish(experienceId, body);
 }
@@ -296,9 +296,9 @@ export async function publishExperience(
  */
 export async function refuseArrival(
   experienceId: number,
-  note?: string,
+  body: { note?: string; membershipId?: number } = {},
 ): Promise<RefuseArrivalResult> {
-  return postExperiencesByIdRefuseArrival(experienceId, { note });
+  return postExperiencesByIdRefuseArrival(experienceId, body);
 }
 
 /**
