@@ -67,11 +67,12 @@ describe('the fields another source contradicts', () => {
 
     expect(contested).toEqual(['imageUrl', 'location']);
     const [sql, params] = query.mock.calls[0] as [string, unknown[]];
-    // Not the run's own membership, and not a source that stopped listing the place.
-    expect(sql).toMatch(/NOT \(m\.source_id = \$2 AND m\.external_id = \$3\)/);
+    // Not a view of the same item, the run's own included (#1246), and not a
+    // source that stopped listing the place.
+    expect(sql).toMatch(/m\.external_id <> \$2/);
     expect(sql).toMatch(/m\.missing_since IS NULL AND m\.source_membership = 'present'/);
     // A field the run leaves empty where another view has one is kept too.
-    expect(sql).toMatch(/NULLIF\(\$6::text, ''\) IS NULL AND NULLIF\(m\.reported_image_url, ''\) IS NOT NULL/);
-    expect(params).toEqual([9480, 5, 'Q9480', RECORD.name, RECORD.description, RECORD.imageUrl, RECORD.lon, RECORD.lat]);
+    expect(sql).toMatch(/NULLIF\(\$5::text, ''\) IS NULL AND NULLIF\(m\.reported_image_url, ''\) IS NOT NULL/);
+    expect(params).toEqual([9480, 'Q9480', RECORD.name, RECORD.description, RECORD.imageUrl, RECORD.lon, RECORD.lat]);
   });
 });

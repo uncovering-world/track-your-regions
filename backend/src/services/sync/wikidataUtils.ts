@@ -123,6 +123,96 @@ export function isQid(value: string): boolean {
 }
 
 /**
+ * Of two pictures an item carries at its best rank, the one every reader keeps
+ * (ADR-0085): the first by its Commons URL, which is what UNESCO's lookup takes
+ * with `MIN(?img)` (`unescoWikidata.ts`).
+ *
+ * Wikidata often holds several pictures at equal rank — three for the Dome of
+ * the Rock, a summer and a winter photograph of the Gol Stave Church — and a
+ * reader that kept the first row SPARQL returned kept a different one per
+ * query, so two sources reading one item reported two pictures. The rule is
+ * arbitrary in what it prefers and fixed in what it answers, which is the
+ * point: one item, one picture, whichever source asks. A null is no picture.
+ */
+export function preferredPicture(a: string | null, b: string | null): string | null {
+  if (a === null || a === '') return b || null;
+  if (b === null || b === '') return a;
+  return b < a ? b : a;
+}
+
+/** Decimal places of the coordinate's more finely written axis, the precision Wikidata stored it at. */
+function decimalsOf(wkt: string): number {
+  const match = /Point\(([-\d.]+)\s+([-\d.]+)\)/i.exec(wkt);
+  if (!match) return -1;
+  return Math.max(...[match[1], match[2]].map(axis => (axis.split('.')[1] ?? '').length));
+}
+
+/**
+ * Of two coordinates an item carries at its best rank (as WKT), the one every
+ * reader keeps (ADR-0085): the more precisely written, then the smaller latitude
+ * and longitude, so the answer does not depend on the order rows arrive in.
+ *
+ * The Cave of Altamira holds two: one to the arc-second and one rounded to the
+ * arc-minute, 752 m away, and two sources each kept a different one. A WKT that
+ * does not parse loses to one that does.
+ */
+export function preferredCoordinate(a: string | null, b: string | null): string | null {
+  if (!a) return b || null;
+  if (!b) return a;
+  const [pa, pb] = [parseWktPoint(a), parseWktPoint(b)];
+  if (!pb) return a;
+  if (!pa) return b;
+  const [da, db] = [decimalsOf(a), decimalsOf(b)];
+  if (da !== db) return da > db ? a : b;
+  if (pa.lat !== pb.lat) return pa.lat < pb.lat ? a : b;
+  if (pa.lon !== pb.lon) return pa.lon < pb.lon ? a : b;
+  // One point written on two globes: the text decides, so whether it is on
+  // Earth does not depend on the rows' order either.
+  return a <= b ? a : b;
+}
+
+/** The picture and the coordinate (as WKT) a reader keeps of one item so far. */
+export interface PreferredValues {
+  imageUrl: string | null;
+  wkt: string | null;
+}
+
+/**
+ * Fold one more row of an item into what is kept of it, by the two rules
+ * above. A reader keeps this per item over every row it is answered with, and
+ * applies it once the rows are read, so the order they arrived in is no part
+ * of the answer (#1246).
+ */
+export function foldPreferred(
+  kept: PreferredValues | undefined,
+  imageUrl: string | null,
+  wkt: string | null,
+): PreferredValues {
+  return {
+    imageUrl: preferredPicture(kept?.imageUrl ?? null, imageUrl),
+    wkt: preferredCoordinate(kept?.wkt ?? null, wkt),
+  };
+}
+
+/**
+ * Write what was kept of each item onto its entry, once every row is read: the
+ * picture, the point, and — for an entry that records it — whether the point is
+ * on this planet (Wikidata writes a point on another globe with the globe's IRI
+ * in front of it).
+ */
+export function applyPreferred<T extends { imageUrl: string | null; lat: number | null; lon: number | null }>(
+  entries: Map<string, T>,
+  kept: Map<string, PreferredValues>,
+): void {
+  for (const [qid, entry] of entries) {
+    const { imageUrl, wkt } = kept.get(qid) ?? { imageUrl: null, wkt: null };
+    const at = wkt ? parseWktPoint(wkt) : null;
+    Object.assign(entry, { imageUrl, lat: at?.lat ?? null, lon: at?.lon ?? null });
+    if ('onEarth' in entry) Object.assign(entry, { onEarth: !wkt?.startsWith('<') });
+  }
+}
+
+/**
  * Parse WKT Point coordinates: "Point(lon lat)" -> { lat, lon }
  */
 export function parseWktPoint(wkt: string): { lat: number; lon: number } | null {

@@ -24,7 +24,7 @@ const ref = (qid: string) => ({ value: `${ENTITY}${qid}` });
 const answer = (rows: SparqlBinding[]): SparqlFn => answeringWith(rows);
 
 describe('fetchClassPool', () => {
-  it('makes one entity of the rows an answer repeats, the first row fixing its fields', async () => {
+  it('makes one entity of the rows an answer repeats', async () => {
     const rows: SparqlBinding[] = [
       { e: ref('Q185382'), eLabel: { value: 'Trevi Fountain' }, coord: { value: 'Point(12.4833 41.9009)' },
         sl: { value: '68' }, img: { value: 'a.jpg' }, countryLabel: { value: 'Italy' } },
@@ -37,6 +37,20 @@ describe('fetchClassPool', () => {
       qid: 'Q185382', label: 'Trevi Fountain', lat: 41.9009, lon: 12.4833, sitelinks: 68,
       imageUrl: 'a.jpg', countryLabel: 'Italy', onEarth: true,
     });
+  });
+
+  it('keeps one picture and one point of an item whatever order its rows arrive in (#1246)', async () => {
+    // Wikidata holds two coordinates for the Cave of Altamira (Q133575), one to
+    // the arc-second and one rounded to the arc-minute 752 m away, and the
+    // pictures are the fixture's own.
+    const precise = { e: ref('Q133575'), eLabel: { value: 'Cave of Altamira' },
+      coord: { value: 'Point(-4.11975 43.376944444444)' }, sl: { value: '40' }, img: { value: 'b.jpg' } };
+    const rounded = { ...precise, coord: { value: 'Point(-4.11667 43.38333)' }, img: { value: 'a.jpg' } };
+
+    for (const rows of [[precise, rounded], [rounded, precise]]) {
+      const [entity] = await fetchClassPool(answer(rows), ['Q35509']);
+      expect(entity).toMatchObject({ lat: 43.376944444444, lon: -4.11975, imageUrl: 'a.jpg' });
+    }
   });
 
   it('reads a coordinate on another globe as not on Earth', async () => {
