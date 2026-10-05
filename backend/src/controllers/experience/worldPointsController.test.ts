@@ -31,7 +31,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
-import { placeOfferedSql } from '../../db/membership.js';
+import { placeKindsSql, placeOfferedSql } from '../../db/membership.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 
@@ -159,6 +159,12 @@ describe('getWorldPoints', () => {
         'e.name AS experience_name', 'm.kind_id', 'm.type']) {
         expect(sql).toContain(column);
       }
+    });
+
+    it("reads a marker's every kind, and the overview none (#1262)", async () => {
+      expect((await ask({ detail: 'markers' })).sql).toContain(placeKindsSql('e'));
+      expect((await ask({ detail: 'markers', folded: 'true' })).sql).toContain(placeKindsSql('e'));
+      expect((await ask()).sql).not.toContain(placeKindsSql('e'));
     });
   });
 
@@ -293,6 +299,23 @@ describe('getWorldPoints', () => {
       expect(body.name).toEqual([null]);
       expect(body.locationId).toEqual([9]);
       expect(body.experienceName).toEqual(['Victory Arch']);
+    });
+
+    it('names every kind of a place in several, and null for a place in one (#1262)', async () => {
+      // The Capitoline Museums, once merged, in Art Museums and Archaeology;
+      // the Victory Arch in Public Art & Monuments alone.
+      const body = await answer([
+        { lng: 12.48, lat: 41.89, location_id: 1, experience_id: 6214, location_name: null,
+          experience_name: 'Capitoline Museums', kind_id: 2, type: null,
+          kinds: [{ kind_id: 2, kind_name: 'Art Museums', type: null }, { kind_id: 5, kind_name: 'Archaeology', type: 'museum' }] },
+        { lng: 1, lat: 2, location_id: 9, experience_id: 4, location_name: null,
+          experience_name: 'Victory Arch', kind_id: 3, type: 'arch',
+          kinds: [{ kind_id: 3, kind_name: 'Public Art & Monuments', type: 'arch' }] },
+      ], { detail: 'markers' });
+      expect(body.kinds).toEqual([
+        [{ kindId: 2, type: null }, { kindId: 5, type: 'museum' }],
+        null,
+      ]);
     });
   });
 });

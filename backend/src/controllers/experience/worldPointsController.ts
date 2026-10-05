@@ -53,7 +53,7 @@ import type { WorldPointsResponse } from '../../api/responses/worldPoints.js';
 import type { worldPointsQuerySchema } from '../../types/index.js';
 import type { PointsDetail } from './worldPointsVocabulary.js';
 import { pool } from '../../db/index.js';
-import { kindMembershipJoinSql, placeOfferedSql, rowKindJoinSql } from '../../db/membership.js';
+import { kindMembershipJoinSql, placeKindsSql, placeOfferedSql, rowKindJoinSql } from '../../db/membership.js';
 import { bboxIntersectsSql, parseBbox } from '../../db/bboxEnvelopes.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 
@@ -113,6 +113,7 @@ interface PointRow {
   experience_name?: string;
   kind_id?: number | null;
   type?: string | null;
+  kinds?: Array<{ kind_id: number; type: string | null }>;
   location_count?: number;
 }
 
@@ -137,6 +138,7 @@ function selectSql(detail: PointsDetail, folded: boolean, location: string, loca
       'e.name AS experience_name',
       'm.kind_id',
       'm.type',
+      `${placeKindsSql('e')} AS kinds`,
     );
   }
   return columns.join(',\n        ');
@@ -283,6 +285,21 @@ function foldedQuery(detail: PointsDetail, where: string, kindJoin: string): str
       LIMIT ${MAX_POINTS + 1}`;
 }
 
+/** One point's entry of `kinds`. */
+type WorldPointKinds = NonNullable<WorldPointsResponse['kinds']>[number];
+
+/**
+ * Every kind a place is offered in, for a place in more than one, and null for
+ * the rest (#1262): the pin of a place in several kinds is split by them and
+ * its hover card names them all, while a place in one kind needs nothing past
+ * `kindId`, which is every place until a merge (#1247) — so the field is a run
+ * of nulls, which costs next to nothing on the wire.
+ */
+function pointKinds(kinds: PointRow['kinds']): WorldPointKinds {
+  if (!kinds || kinds.length < 2) return null;
+  return kinds.map(kind => ({ kindId: kind.kind_id, type: kind.type }));
+}
+
 /**
  * The rows as arrays.
  *
@@ -314,6 +331,7 @@ function toColumns(
     answer.experienceName = new Array<string>(count);
     answer.kindId = new Array<number | null>(count);
     answer.type = new Array<string | null>(count);
+    answer.kinds = new Array<WorldPointKinds>(count);
   }
   for (let index = 0; index < count; index += 1) {
     const row = rows[index];
@@ -327,6 +345,7 @@ function toColumns(
       (answer.experienceName as string[])[index] = row.experience_name as string;
       (answer.kindId as (number | null)[])[index] = row.kind_id ?? null;
       (answer.type as (string | null)[])[index] = row.type ?? null;
+      (answer.kinds as WorldPointKinds[])[index] = pointKinds(row.kinds);
     }
   }
   return answer;

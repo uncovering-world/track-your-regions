@@ -8805,6 +8805,16 @@ export interface WorkEditResult {
   imageCredit?: ImageCredit | null;
 }
 
+export type WorldPointsResponseKindsItem = ({
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  kindId: number;
+  /** @nullable */
+  type: string | null;
+})[] | null;
+
 /**
  * The map's points, one array per field, all of them the same length.
  */
@@ -8837,6 +8847,8 @@ export interface WorldPointsResponse {
   /** Markers only: what the pin is coloured by (`kindColors.ts` owns the palette). */
   kindId?: (number | null)[];
   type?: (string | null)[];
+  /** Markers only: every kind a place in more than one is offered in, in the kinds' display order; null for a place in one kind, which `kindId` names. */
+  kinds?: WorldPointsResponseKindsItem[];
   /**
      * Folded only: how many places the pin stands for, which is the badge's number.
      * @items.minimum -9007199254740991
