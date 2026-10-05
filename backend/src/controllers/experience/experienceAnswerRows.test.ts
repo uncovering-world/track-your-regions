@@ -4,6 +4,11 @@ import {
   experienceDetailOf, experienceOf, treasureOf, type ExperienceDetailRow, type ExperienceListRow, type TreasureRow,
 } from './experienceAnswerRows.js';
 
+/** The Acropolis's one kind, as `placeKindsSql` builds it. */
+const ACROPOLIS_IN_ARCHAEOLOGY = {
+  kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, type: 'site', source_id: 5, external_id: 'Q131013',
+};
+
 /** The Acropolis of Athens as the by-id read's driver hands it over. */
 const ACROPOLIS: ExperienceDetailRow = {
   id: 14723, source_id: 5, external_id: 'Q131013', name: 'Acropolis of Athens', name_local: { el: 'Ακρόπολη Αθηνών' },
@@ -13,7 +18,7 @@ const ACROPOLIS: ExperienceDetailRow = {
   source_membership: 'present', existence: 'extant', missing_since: null, longitude: 23.7263, latitude: 37.9715,
   boundary_geojson: { type: 'MultiPolygon', coordinates: [[[[23.72, 37.97], [23.73, 37.97], [23.73, 37.98], [23.72, 37.97]]]] },
   area_km2: 0.03, kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, source_name: 'Archaeology',
-  source_description: null,
+  source_description: null, kinds: [ACROPOLIS_IN_ARCHAEOLOGY],
 };
 
 describe('experienceDetailOf', () => {
@@ -27,13 +32,20 @@ describe('experienceDetailOf', () => {
     const detail = experienceDetailOf({ ...ACROPOLIS, tags: ['acropolis'] } as ExperienceDetailRow, []);
     expect(detail).not.toHaveProperty('tags');
   });
+
+  it('serves each kind of the place by its declared keys only', () => {
+    const detail = experienceDetailOf({
+      ...ACROPOLIS, kinds: [{ ...ACROPOLIS_IN_ARCHAEOLOGY, admission: 'admitted' } as typeof ACROPOLIS_IN_ARCHAEOLOGY],
+    }, []);
+    expect(detail.kinds).toEqual([ACROPOLIS_IN_ARCHAEOLOGY]);
+  });
 });
 
 describe('experienceOf', () => {
   it('writes the curator-only rejection keys as absent for a reader', () => {
     const row: ExperienceListRow = {
       id: 14723, external_id: 'Q131013', name: 'Acropolis of Athens', short_description: null, type: 'site',
-      kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, country_codes: ['GR'], country_names: ['Greece'],
+      kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, kinds: null, country_codes: ['GR'], country_names: ['Greece'],
       image_url: null, image_credit: null, created_at: null, latitude: 37.9715, longitude: 23.7263,
       in_danger: false, danger_since: null, location_count: 1, treasure_count: 0, finds_count: 6,
       source_membership: 'present', existence: 'extant', missing_since: null, is_new: false,
@@ -41,6 +53,8 @@ describe('experienceOf', () => {
     const wire = JSON.parse(JSON.stringify(experienceOf(row)));
     expect(wire).not.toHaveProperty('is_rejected');
     expect(wire).not.toHaveProperty('created_at');
+    // No kind offered to this caller is an empty list, never a missing key.
+    expect(wire.kinds).toEqual([]);
     expect(Experience.safeParse(wire).success).toBe(true);
   });
 });

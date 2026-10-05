@@ -23,6 +23,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { experienceOfferedToReaderSql } from '../../db/readerPredicates.js';
+import { placeHasKindSql } from '../../db/membership.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { userRoutes } from '../../routes/userRoutes.js';
 
@@ -94,5 +95,25 @@ describe('markVisited — #520', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       success: true, experienceId: 281, experienceName: 'Published Site',
     }));
+  });
+});
+
+describe('the visited ids of one kind', () => {
+  beforeEach(() => mockedQuery.mockReset());
+
+  it('finds a visited place by any of its memberships, not only the one its first source brought', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ experience_id: 6214 }] });
+
+    await answerRoute(routeAt(userRoutes, '/me/visited-experiences/ids'),
+      { query: { kindId: '5' }, user: { id: 5 } } as never,
+      makeRes() as never,
+    );
+
+    const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
+    // ADR-0084: the Capitoline Museums, brought by Art Museums, are visited in
+    // Archaeology too.
+    expect(sql).toContain(placeHasKindSql('e', '$2'));
+    expect(sql).not.toMatch(/\bm\.kind_id = \$2/);
+    expect(params).toEqual([5, 5]);
   });
 });

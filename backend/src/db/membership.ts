@@ -236,3 +236,56 @@ export function rowKindJoinSql(experience = 'e', membership = 'm', kind = 'k'): 
 export function rowKindSelectSql(membership = 'm', kind = 'k'): string {
   return `${membership}.kind_id, ${kind}.name AS kind_name, ${kind}.display_priority AS kind_priority`;
 }
+
+/**
+ * Every kind the place is offered in, as a `json` array of `{ kind_id,
+ * kind_name, kind_priority, type, source_id, external_id }` in the kinds'
+ * display order (ADR-0084, #1245).
+ *
+ * A place belongs to no kind; kinds are properties hung on it, and none is the
+ * primary one. So a reader that shows the place shows it in each of these: the
+ * Capitoline Museums in Art Museums and in Archaeology, each with its own type
+ * and the id its own source knows it by. Only offered memberships — admitted
+ * and passed — since a kind that refused the place or has not shown it yet is
+ * not one a reader finds it in.
+ *
+ * `json` rather than `jsonb`: nothing compares or indexes the array, and on the
+ * region list of Europe (661 places) building it as `jsonb` cost 9 ms more.
+ */
+export function placeKindsSql(experience = 'e'): string {
+  return `(SELECT COALESCE(json_agg(json_build_object(
+             'kind_id', pk.kind_id, 'kind_name', pkk.name, 'kind_priority', pkk.display_priority,
+             'type', pk.type, 'source_id', pk.source_id, 'external_id', pk.external_id)
+           ORDER BY pkk.display_priority, pk.kind_id), '[]'::json)
+         FROM ${MEMBERSHIPS} pk JOIN ${KINDS} pkk ON pkk.id = pk.kind_id
+        WHERE pk.experience_id = ${experience}.id AND ${membershipOfferedSql('pk')})`;
+}
+
+/**
+ * The place's offered membership in one kind, joined as `membership` with its
+ * kind as `kind`: the place in that kind, or no row at all (ADR-0084, #1245).
+ *
+ * What a kind filter is: a place is in a kind by any of its memberships, not by
+ * the one its first source brought, and the row it answers with carries that
+ * kind's type and colour. `(experience_id, kind_id)` is unique, so the join
+ * adds no rows.
+ */
+export function kindMembershipJoinSql(
+  experience: string, membership: string, kind: string, kindExpr: string,
+): string {
+  return `JOIN ${MEMBERSHIPS} ${membership} ON ${membership}.experience_id = ${experience}.id
+                                          AND ${membership}.kind_id = ${kindExpr}
+                                          AND ${membershipOfferedSql(membership)}
+      JOIN ${KINDS} ${kind} ON ${kind}.id = ${membership}.kind_id`;
+}
+
+/**
+ * The place has a membership in this kind, offered or not. For a person's own
+ * record — the places they visited — which stays theirs whatever a kind's rule
+ * or the gate later says (ADR-0024); a reader-facing set asks
+ * `kindMembershipJoinSql` instead.
+ */
+export function placeHasKindSql(experience: string, kindExpr: string): string {
+  return `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} ${INNER}
+        WHERE ${INNER}.experience_id = ${experience}.id AND ${INNER}.kind_id = ${kindExpr})`;
+}

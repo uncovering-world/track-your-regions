@@ -9,7 +9,7 @@ import type { ExperienceVisitMarked, ExperienceVisitUnmarked, VisitedExperienceI
 import { pool } from '../../db/index.js';
 import type { ExperiencesRow, UserVisitedExperiencesRow } from '../../db/schema.generated.js';
 import { experienceOfferedToReaderSql } from '../../db/readerPredicates.js';
-import { rowKindJoinSql } from '../../db/membership.js';
+import { placeHasKindSql } from '../../db/membership.js';
 import { notFound } from '../../middleware/errorHandler.js';
 import type { experienceIdParamSchema, markVisitedBodySchema, visitedIdsQuerySchema } from '../../types/index.js';
 
@@ -108,8 +108,9 @@ export async function getVisitedIds(
   if (kindId) {
     query += `
       JOIN experiences e ON uve.experience_id = e.id
-      ${rowKindJoinSql('e')}
-      WHERE uve.user_id = $1 AND m.kind_id = $2
+      -- In the kind by any of its memberships, not only the one its first
+      -- source brought (ADR-0084, #1245).
+      WHERE uve.user_id = $1 AND ${placeHasKindSql('e', '$2')}
     `;
     params.push(kindId);
   } else {
