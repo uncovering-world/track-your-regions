@@ -32,6 +32,7 @@ import type { Region } from '../types';
 import { useNavigation } from './useNavigation';
 import { useAppAddress } from './useAppAddress';
 import { queryKeys } from '../api/queryKeys';
+import { kindToOpenIn, shownInKind } from '../utils/placeKinds';
 
 /** The active experience view: region + kind selection */
 export interface ActiveView {
@@ -166,11 +167,15 @@ export function useDiscoverExperiences() {
     enabled: selectedRegion !== null && (listOpen || addressedExperienceId !== null),
     staleTime: 120000,
     select: (data) => {
-      // Filter to only the selected kind
       if (!activeView) return data;
+      // The places offered in the selected kind, by any of their memberships,
+      // each shown as that kind sees it (ADR-0084, #1245).
       return {
         ...data,
-        experiences: data.experiences.filter(e => e.kind_id === activeView.kindId),
+        experiences: data.experiences.flatMap(e => {
+          const shown = shownInKind(e, activeView.kindId);
+          return shown ? [shown] : [];
+        }),
       };
     },
   });
@@ -189,7 +194,9 @@ export function useDiscoverExperiences() {
     if (address === null || addressedExperienceId === null || kindId !== null) return;
     if (kinds.length === 0 || !experiencesData) return;
     const object = experiencesData?.experiences.find(e => e.id === addressedExperienceId);
-    const kind = object ? kinds.find(c => c.id === object.kind_id) : undefined;
+    // A kind that offers the card, read off `kinds` as the list filter is (#1245).
+    const openIn = object ? kindToOpenIn(object) : null;
+    const kind = openIn === null ? undefined : kinds.find(c => c.id === openIn);
     go(
       kind ? { ...address, kindId: kind.id } : { ...address, experienceId: null },
       { replace: true, names: { experience: object?.name } },

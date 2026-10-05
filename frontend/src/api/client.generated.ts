@@ -3308,6 +3308,37 @@ export const ExperienceExistence = {
 } as const;
 
 /**
+ * One kind a place is offered in. A place belongs to no kind, and none of its kinds is the primary one (ADR-0084).
+ */
+export interface PlaceKind {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  kind_id: number;
+  kind_name: string;
+  /**
+     * The kind's display order.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  kind_priority: number;
+  /**
+     * The type within this kind, which is the membership's (#1253). Null where the kind has no types.
+     * @nullable
+     */
+  type: string | null;
+  /**
+     * The source that brought the place into this kind.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  source_id: number;
+  /** The id that source knows the place by, such as a Wikidata item (ADR-0084). */
+  external_id: string;
+}
+
+/**
  * One object in a region's list.
  */
 export interface Experience {
@@ -3350,6 +3381,8 @@ export interface Experience {
      * @maximum 9007199254740991
      */
   kind_priority: number;
+  /** Every kind the place is offered in, in display order (#1245). Empty where none is offered to this caller. */
+  kinds: PlaceKind[];
   /**
      * @minimum -9007199254740991
      * @maximum 9007199254740991
@@ -3488,6 +3521,8 @@ export interface ExperienceDetail {
      * @maximum 9007199254740991
      */
   kind_priority: number;
+  /** Every kind the place is offered in, in display order (#1245). Empty where none is offered to this caller. */
+  kinds: PlaceKind[];
   source_name: string;
   /** @nullable */
   source_description: string | null;
@@ -3645,6 +3680,8 @@ export interface ExperienceSearchResult {
      * @maximum 9007199254740991
      */
   kind_priority: number;
+  /** Every kind the place is offered in, in display order (#1245). Empty where none is offered to this caller. */
+  kinds: PlaceKind[];
   country_names: string[] | null;
   /** @nullable */
   image_url: string | null;
