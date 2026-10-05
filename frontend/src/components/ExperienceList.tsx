@@ -17,6 +17,8 @@ import {
 } from './ExperienceList/utils';
 import { useInViewFilter } from './ExperienceList/useInViewFilter';
 import { useListScrollAnchor } from './ExperienceList/useListScrollAnchor';
+import { echoRows, groupByEveryKind } from './ExperienceList/kindRows';
+import { useOpenedKind } from './ExperienceList/useOpenedKind';
 import { GroupHeader } from './ExperienceList/GroupHeader';
 import { NoticeLink } from './ExperienceList/NoticeLink';
 import { RejectedSection } from './ExperienceList/RejectedSection';
@@ -54,12 +56,6 @@ import { VirtualRow } from './shared/VirtualRow';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useSeenWindowIds } from '../hooks/useSeenWindowIds';
 import { queryKeys } from '../api/queryKeys';
-
-interface ExperienceGroup {
-  kindName: string;
-  kindPriority: number;
-  experiences: Experience[];
-}
 
 interface ExperienceListProps {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -182,26 +178,32 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
 
   // Refs for scrolling to items (experiences and locations)
   const itemRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  // Where an echo row's element would be registered, read by nothing: the list
+  // aims only at a place's home row (`kindRows.ts`).
+  const echoRefs = useRef<Map<number, HTMLDivElement>>(new Map());
   // `HTMLElement`, not `HTMLDivElement`: a place row is the `li` its `List`
   // parent expects — see `LocationRow`.
   const locationRefs = useRef<Map<number, HTMLElement>>(new Map());
 
-  // Group active experiences by kind_name, sorted by display_priority
-  const groups = useMemo<ExperienceGroup[]>(() => {
-    const groupMap = new Map<string, { experiences: Experience[]; priority: number }>();
+  // The kind the selected card was opened from, for a place in several kinds:
+  // its card opens in that kind's row (#1245, `useOpenedKind`).
+  const { openedKindId, openFrom } = useOpenedKind(selectedExperienceId);
 
-    for (const exp of listedExperiences) {
-      const kindName = exp.kind_name || 'Experiences';
-      if (!groupMap.has(kindName)) {
-        groupMap.set(kindName, { experiences: [], priority: exp.kind_priority ?? 100 });
-      }
-      groupMap.get(kindName)!.experiences.push(exp);
-    }
-
-    return Array.from(groupMap.entries())
-      .map(([kindName, { experiences: exps, priority }]) => ({ kindName, kindPriority: priority, experiences: exps }))
-      .sort((a, b) => a.kindPriority - b.kindPriority);
-  }, [listedExperiences]);
+  // Every place under each of its kinds, sorted by the kinds' display order, the
+  // rows rebuilt only when the listed places change; one of a place's rows is the
+  // home its card opens in, the rest are echoes (`kindRows.ts`).
+  const groups = useMemo(() => groupByEveryKind(listedExperiences), [listedExperiences]);
+  const echoes = useMemo(
+    () => echoRows(groups, selectedExperienceId, openedKindId),
+    [groups, selectedExperienceId, openedKindId],
+  );
+  const echoesRef = useRef(echoes);
+  echoesRef.current = echoes;
+  // What the list opens by itself and scrolls to is a place's home row, never an echo.
+  const homeGroups = useMemo(
+    () => groups.map(group => ({ ...group, experiences: group.experiences.filter(exp => !echoes.has(exp)) })),
+    [groups, echoes],
+  );
 
   // Reset when the region changes, during render rather than in an effect:
   // `shownExperiences` below pairs `expandedGroups` with `groups`, and an
@@ -255,7 +257,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // render.
   useEffect(() => {
     const decision = expansionForSelection({
-      groups,
+      groups: homeGroups,
       selectedExperienceId,
       expanded: expandedGroups,
       openedForRegion: hasAutoExpanded.current,
@@ -267,7 +269,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     if (!decision.open) return;
     setExpandedGroups(decision.open);
     setExpandedKindNames(decision.open);
-  }, [groups, selectedExperienceId, expandedGroups, setExpandedKindNames]);
+  }, [homeGroups, selectedExperienceId, expandedGroups, setExpandedKindNames]);
 
   // ── One flat list, so the rows can be windowed ──
   //
@@ -285,7 +287,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // row that has no element yet — the whole point of windowing is that most rows
   // do not. How it reads this map, and why most of its movements deliberately do
   // not depend on it, is `useListScrollAnchor`'s own business.
-  const rowIndexByExperience = useMemo(() => rowIndexByExperienceId(flatRows), [flatRows]);
+  const rowIndexByExperience = useMemo(() => rowIndexByExperienceId(flatRows, echoes), [flatRows, echoes]);
 
   // A row's identity, not its position. Measured heights are cached under this
   // key, and the default key is the index — which is exactly what is unstable
@@ -296,7 +298,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     (index: number) => {
       const row = flatRows[index];
       if (!row) return index;
-      return row.kind === 'header' ? `h:${row.group.kindName}` : `e:${row.exp.id}`;
+      return row.kind === 'header' ? `h:${row.group.kindName}` : `e:${row.exp.id}:${row.exp.kind_id}`;
     },
     [flatRows],
   );
@@ -383,7 +385,14 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   selectedIdRef.current = selectedExperienceId;
 
   const handleClick = useCallback((exp: Experience) => {
+    // A click on an echo of the open card moves the card to that kind's row,
+    // rather than closing it (#1245).
+    if (selectedIdRef.current === exp.id && echoesRef.current.has(exp)) {
+      openFrom(exp.id, exp.kind_id);
+      return;
+    }
     const isClosing = selectedIdRef.current === exp.id;
+    if (!isClosing) openFrom(exp.id, exp.kind_id);
     toggleSelectedExperience(exp.id);
     // Closing a card moves no camera. Flying back to the whole region would
     // throw away the pan or zoom the reader has usually made by then, which is
@@ -397,7 +406,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       expectFlight(exp.id);
       triggerFlyTo(exp.id);
     }
-  }, [toggleSelectedExperience, triggerFlyTo, expectFlight]);
+  }, [toggleSelectedExperience, triggerFlyTo, expectFlight, openFrom]);
 
   const handleLocationVisitedToggle = useCallback((locationId: number, isVisited: boolean) => {
     if (isVisited) {
@@ -419,7 +428,13 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     setHoveredFromList(locationId === null ? null : experienceId, locationId);
   }, [setHoveredFromList]);
 
-  const handleCurate = useCallback((exp: Experience) => setCurationTarget(exp), []);
+  // The place's own row, not the row as one of its kinds shows it: the edit is
+  // the place's, and a type it writes belongs to the place's own membership.
+  const ownRowsRef = useRef(new Map<number, Experience>());
+  ownRowsRef.current = useMemo(() => new Map(experiences.map(exp => [exp.id, exp])), [experiences]);
+  const handleCurate = useCallback(
+    (exp: Experience) => setCurationTarget(ownRowsRef.current.get(exp.id) ?? exp), [],
+  );
   // Stable for the same reason as `handleCurate`: it reaches every memoised
   // place row through the card, and a fresh function here re-renders them all.
   const handleCorrectPlace = useCallback(
@@ -528,9 +543,13 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     />
   );
 
-  const renderExperienceItem = (exp: Experience, rejected = false) => (
+  const renderExperienceItem = (exp: Experience, rejected = false) => {
+    // An echo of a place stays folded and keeps no reference: the list aims at,
+    // and opens the card in, the place's home row (`kindRows.ts`).
+    const echo = echoes.has(exp);
+    return (
     <ExperienceListItem
-      key={exp.id}
+      key={`${exp.id}:${exp.kind_id}`}
       experience={exp}
       locations={locationsByExperience[exp.id]}
       locationsResolved={locationsResolved}
@@ -538,9 +557,9 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       // Hover is not passed down. It arrives at the row and at the place from
       // the store, each subscribing to its own boolean, so a mouse move does not
       // re-render this list to hand a new prop to every row it holds.
-      isSelected={selectedExperienceId === exp.id}
+      isSelected={selectedExperienceId === exp.id && !echo}
       locationRefs={locationRefs}
-      itemRefs={itemRefs}
+      itemRefs={echo ? echoRefs : itemRefs}
       isCollapsed={collapsedExperienceIds.has(exp.id)}
       onToggleCollapse={toggleCollapsedExperience}
       showCheckbox={isAuthenticated}
@@ -562,7 +581,8 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       // so there is nothing for it to measure them against.
       onCardLayout={rejected ? undefined : measureRow}
     />
-  );
+    );
+  };
 
   return (
     <Box>

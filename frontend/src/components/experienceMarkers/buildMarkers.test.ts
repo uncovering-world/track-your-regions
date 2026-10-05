@@ -296,3 +296,20 @@ describe('buildExperienceMarkers', () => {
     expect(filtered.map(m => m.experienceId)).toEqual([1]);
   });
 });
+
+describe('a place in several kinds', () => {
+  it('draws one pin while any of its kinds\' groups is open (#1245)', () => {
+    const capitoline = makeExperience(6214, {
+      kind_name: 'Art Museums',
+      kinds: [
+        { kind_id: 2, kind_name: 'Art Museums', kind_priority: 2, type: null, source_id: 2, external_id: 'Q333906' },
+        { kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, type: 'museum', source_id: 5, external_id: 'Q333906' },
+      ],
+    });
+
+    const markers = buildExperienceMarkers([capitoline], {}, new Set(['Archaeology']));
+
+    expect(markers.map(m => m.experienceId)).toEqual([6214]);
+    expect(buildExperienceMarkers([capitoline], {}, new Set(['Public Art & Monuments']))).toEqual([]);
+  });
+});

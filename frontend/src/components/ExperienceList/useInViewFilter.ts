@@ -12,6 +12,7 @@ import { useMemo, useState } from 'react';
 import type { Experience, ExperienceLocation } from '../../api/experiences';
 import { experienceIdsInView } from './inView';
 import type { ViewBounds } from '../../utils/viewBounds';
+import { rowsByKindName } from './kindRows';
 
 export interface InViewFilter {
   /** The rows to render: the view's, or the region's when the reader asked. */
@@ -58,14 +59,8 @@ export function useInViewFilter(
     [viewBounds, activeExperiences, locationsByExperience, collapsedExperienceIds],
   );
 
-  const totalByKind = useMemo(() => {
-    const totals = new Map<string, number>();
-    for (const exp of activeExperiences) {
-      const name = exp.kind_name || 'Experiences';
-      totals.set(name, (totals.get(name) ?? 0) + 1);
-    }
-    return totals;
-  }, [activeExperiences]);
+  // A place counts once in each of its kinds, as its rows do (#1245).
+  const totalByKind = useMemo(() => rowsByKindName(activeExperiences), [activeExperiences]);
 
   const isFiltered = idsInView !== null && !showWholeRegion;
   const listedExperiences = useMemo(
