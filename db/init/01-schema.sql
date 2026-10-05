@@ -2923,6 +2923,12 @@ CREATE TABLE IF NOT EXISTS experience_kind_memberships (
     first_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL,
     last_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL,
     last_seen_at TIMESTAMPTZ,
+    -- The source's view of the place: what it last reported, whatever the
+    -- place keeps (ADR-0084, #1246).
+    reported_name TEXT,
+    reported_description TEXT,
+    reported_image_url TEXT,
+    reported_location geometry(Point, 4326),
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (experience_id, kind_id),
@@ -2941,6 +2947,10 @@ ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS source_membersh
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS first_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS last_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_name TEXT;
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_description TEXT;
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_image_url TEXT;
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_location geometry(Point, 4326);
 ALTER TABLE experience_kind_memberships DROP CONSTRAINT IF EXISTS experience_kind_memberships_source_external_key;
 ALTER TABLE experience_kind_memberships ADD CONSTRAINT experience_kind_memberships_source_external_key
     UNIQUE (source_id, external_id);
@@ -2959,6 +2969,10 @@ COMMENT ON COLUMN experience_kind_memberships.missing_since IS 'When a clean run
 COMMENT ON COLUMN experience_kind_memberships.source_membership IS 'present or former: whether this membership''s source still lists the place. Only a curator sets former; a run that lists the place again sets present, which only ever restores visibility (ADR-0020).';
 COMMENT ON COLUMN experience_kind_memberships.first_seen_sync_log_id IS 'The run of this membership''s source that first brought the place into this kind.';
 COMMENT ON COLUMN experience_kind_memberships.last_seen_sync_log_id IS 'The newest run of this membership''s source that listed the place. A conflict this source proposed in an earlier run is withdrawn once a later landed run of the same source saw the place and proposed nothing.';
+COMMENT ON COLUMN experience_kind_memberships.reported_name IS 'The name this membership''s source last reported for the place, tidied as the place stores a name. With the three columns beside it, the source''s view of the place (ADR-0084): written by every run of the source whatever the place keeps, and read to tell whether the sources of one place disagree (#1246). NULL where the source reports nothing, which contradicts no other view.';
+COMMENT ON COLUMN experience_kind_memberships.reported_description IS 'The description this membership''s source last reported for the place (its view, #1246).';
+COMMENT ON COLUMN experience_kind_memberships.reported_image_url IS 'The picture this membership''s source last reported for the place, after the run''s picture rule (its view, #1246). Its credit is fetched when a curator chooses it, as for any picture a curator names.';
+COMMENT ON COLUMN experience_kind_memberships.reported_location IS 'The coordinate this membership''s source last reported for the place (its view, #1246). Two views within ten metres agree (ADR-0027).';
 COMMENT ON COLUMN experience_kind_memberships.admission IS 'admitted or refused. Whether this kind accepts the place, independent of whether the source still lists it (ADR-0024). The machine sets this one: a refusal is our own rule applied to an object the run named, not an observation. A place with no admitted membership is hidden from every read that offers somewhere to go, and from none that records a visit.';
 COMMENT ON COLUMN experience_kind_memberships.admission_reason IS 'Why the kind refused it, stated verbatim to the curator. Here rather than in experience_sync_changes because a changeset is keyed by the external id the run named, which is not always this row''s.';
 COMMENT ON COLUMN experience_kind_memberships.admission_answered_at IS 'When a batch answer confirmed this refusal without pinning it (ADR-0067): the question is closed, and the next run applies the rule again. A run that refuses a row it had admitted clears it, so a refusal that comes back is asked again.';

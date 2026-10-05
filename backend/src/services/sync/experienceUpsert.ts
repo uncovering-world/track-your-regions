@@ -38,6 +38,13 @@
  * source of one kind meeting the first's membership is #628's design, not
  * this statement's.
  *
+ * **No source owns the name, description, picture or coordinate**
+ * (ADR-0084, #1246). The membership records the run's view of them as the
+ * source reported them, and a field another source of the place contradicts is
+ * bound as the place already holds it (`sourceView.ts`), so the arms below, the
+ * diff and the hold never see it as a proposal: neither source overwrites the
+ * other.
+ *
  * **And the extent rides with the point.** `boundary` and `area_km2` are
  * written from one expression in one statement — the shape repaired, the
  * polygonal parts extracted, an empty result stored as no extent at all — so
@@ -77,6 +84,7 @@ import {
 import { tidyLabel } from '@tyr/shared/labels';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { lockSourcedExperience } from '../../db/experienceWriter.js';
+import { contestedFields, keptAsStored } from './sourceView.js';
 
 export interface ExperienceUpsertParams {
   sourceId: number;
@@ -285,9 +293,8 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
     [params.sourceId, params.externalId]
   );
 
-  const incoming = snapshotFromParams(params, await measureExtent(pool, params.boundaryWkt));
-
   if (result.rows.length === 0) {
+    const incoming = snapshotFromParams(params, await measureExtent(pool, params.boundaryWkt));
     return {
       experienceId: 0,
       // No stored row, so nothing to hold: the insert writes every column, and
@@ -300,6 +307,10 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
 
   const row = result.rows[0];
   const curatedFields = withTypeClaim(row.curated_fields, row.type_claimed);
+  // What another source of the place contradicts is no proposal of this run's,
+  // asked of the same views the run would ask (`sourceView.ts`).
+  const written = keptAsStored(params, row, await contestedFields(pool, row.id, params));
+  const incoming = snapshotFromParams(written, await measureExtent(pool, params.boundaryWkt));
 
   // What the run this preview stands in for would refuse to write, asked of the
   // same expression that run's own guards are built from. Asked at all because
@@ -317,7 +328,7 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
     changeSet: computeChangeSet(snapshotFromRow(row), incoming, curatedFields, heldFromView),
     nameSnapshot: curatedFields.includes('name') || heldFromView
       ? (row.name as string)
-      : params.name,
+      : written.name,
     returnedFromMissing: row.missing_since !== null || row.source_membership === 'former',
   };
 }
@@ -449,6 +460,12 @@ async function writeUnderLock(
     [params.sourceId, locked.id, params.externalId],
   )).rows[0] ?? null;
   const held = Boolean(stored?.was_held);
+  // The run's record as the place will take it: a field another source of the
+  // place contradicts is kept as the place holds it (`sourceView.ts`). The run's
+  // own view of it is still recorded on its membership, from `params`.
+  const written = locked === null || stored === null
+    ? params
+    : keptAsStored(params, stored, await contestedFields(client, locked.id, params));
 
   const result = await client.query(
     `WITH gate AS (
@@ -606,9 +623,13 @@ async function writeUnderLock(
       -- it, are this membership's too (ADR-0084): another source's run says
       -- nothing about them, and the place's own copy is derived from its
       -- memberships by derive_place_listing().
+      --
+      -- So is the source's view of the place: what it reported, written every
+      -- run whatever the place itself kept (ADR-0084, #1246).
       INSERT INTO ${MEMBERSHIPS} (
         experience_id, kind_id, source_id, external_id, type, admitted_for, curation_state, published_at,
-        first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at
+        first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at,
+        reported_name, reported_description, reported_image_url, reported_location
       )
       SELECT ins.id,
              (SELECT kind_id FROM experience_sources WHERE id = $1),
@@ -618,7 +639,8 @@ async function writeUnderLock(
              $18::jsonb,
              CASE WHEN (SELECT requires_curation FROM gate) THEN 'pending' ELSE 'auto' END,
              CASE WHEN (SELECT requires_curation FROM gate) THEN NULL ELSE NOW() END,
-             $15, $15, NOW()
+             $15, $15, NOW(),
+             $21, $22, $23, ST_SetSRID(ST_MakePoint($24, $25), 4326)
         FROM ins
       ON CONFLICT (source_id, external_id) DO UPDATE SET
         admitted_for = EXCLUDED.admitted_for,
@@ -641,6 +663,10 @@ async function writeUnderLock(
         -- toward more visibility, so a source outage still cannot hide
         -- anything (ADR-0020).
         source_membership = 'present',
+        reported_name = EXCLUDED.reported_name,
+        reported_description = EXCLUDED.reported_description,
+        reported_image_url = EXCLUDED.reported_image_url,
+        reported_location = EXCLUDED.reported_location,
         updated_at = NOW()
       RETURNING pending_change_sync_log_id
     )
@@ -649,18 +675,18 @@ async function writeUnderLock(
     [
       params.sourceId,
       params.externalId,
-      params.name,
-      JSON.stringify(params.nameLocal),
-      params.description,
-      params.shortDescription,
-      params.type,
-      JSON.stringify(params.tags),
-      params.lon,
-      params.lat,
-      params.countryCodes,
-      params.countryNames,
-      params.imageUrl,
-      JSON.stringify(params.metadata),
+      written.name,
+      JSON.stringify(written.nameLocal),
+      written.description,
+      written.shortDescription,
+      written.type,
+      JSON.stringify(written.tags),
+      written.lon,
+      written.lat,
+      written.countryCodes,
+      written.countryNames,
+      written.imageUrl,
+      JSON.stringify(written.metadata),
       syncLogId,
       // The key list the metadata arms read twice, bound once. A text[] rather
       // than a literal built into the statement, so the constant in
@@ -670,12 +696,19 @@ async function writeUnderLock(
       params.admittedFor ? JSON.stringify(params.admittedFor) : null,
       params.boundaryWkt ?? null,
       locked?.id ?? null,
+      // The run's own view of the place, as it reported it rather than as the
+      // place took it (ADR-0084, #1246).
+      params.name,
+      params.description,
+      params.imageUrl,
+      params.lon,
+      params.lat,
     ]
   );
 
   const row = result.rows[0];
   const before = stored && !row.inserted ? snapshotFromRow(stored) : null;
-  const incoming = snapshotFromParams(params, await measureExtent(client, params.boundaryWkt));
+  const incoming = snapshotFromParams(written, await measureExtent(client, params.boundaryWkt));
   const changeSet = computeChangeSet(before, incoming, withTypeClaim(row.curated_fields, stored?.type_claimed), held);
 
   // A curator's pass covered the object that was there; a changed object has not
@@ -773,7 +806,7 @@ async function writeUnderLock(
     changeSet,
     // RETURNING carries the name after the curated_fields guards, so a
     // protected name labels the changeset row with what is actually stored.
-    nameSnapshot: (row.name as string) ?? params.name,
+    nameSnapshot: (row.name as string) ?? written.name,
     // A curator's verdict takes the row out of `missing_since`, so the flag
     // alone would miss the return of an object someone had already called
     // former — which is the only reason it stopped being flagged.
