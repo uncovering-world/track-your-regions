@@ -56,10 +56,16 @@ export class AnswerStopped extends Error {
 
 /** The server's kind word for a row: the row's own, except the one the row renames. */
 export function toAnswerRow(row: QueueRow): ReviewAnswerRow {
+  // The membership the row's card asks about (#1264): a refusal's, or a waiting
+  // group's arrival or held proposal. A row about the place as a whole names none.
+  const membershipId = row.item?.membership_id
+    ?? (row.group?.arrival ?? row.group?.held)?.membership_id
+    ?? null;
   return {
     kind: row.kind === 'conflicts' ? 'conflict' : row.kind,
     id: row.id,
     runId: row.runId,
+    ...(membershipId === null ? {} : { membershipId }),
   };
 }
 

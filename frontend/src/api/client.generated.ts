@@ -2800,6 +2800,11 @@ export interface DeclineHeldBody {
      * @exclusiveMinimum 0
      */
   expectedSyncLogId: number;
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  membershipId?: number;
 }
 
 /**
@@ -3425,6 +3430,11 @@ export interface ExperienceAdmissionBody {
   decision: ExperienceAdmissionBodyDecision;
   /** @maxLength 1000 */
   note?: string;
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  membershipId?: number;
 }
 
 export type ExperienceDetailNameLocal = {[key: string]: string} | null;
@@ -6042,6 +6052,11 @@ export interface PublishExperienceBody {
      * @exclusiveMinimum 0
      */
   expectedSyncLogId?: number;
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  membershipId?: number;
 }
 
 /**
@@ -6325,6 +6340,11 @@ export interface QueueOrderEntry {
 export interface RefuseArrivalBody {
   /** @maxLength 1000 */
   note?: string;
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  membershipId?: number;
 }
 
 /**
@@ -6953,6 +6973,11 @@ export type ReviewAnswerBodyRowsItem = {
      */
   id: number;
   runId?: number | null;
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  membershipId?: number;
 };
 
 export type ReviewAnswerBodyAnswer = typeof ReviewAnswerBodyAnswer[keyof typeof ReviewAnswerBodyAnswer];
@@ -7217,6 +7242,8 @@ export interface ReviewQueueItem {
   source_membership: ReviewQueueItemSourceMembership;
   existence: ReviewQueueItemExistence;
   kind: ReviewQueueItemKind;
+  /** The membership this card asks about (#1264): an arrival, a held proposal or a refusal is one kind's, and an answer sends it back as `membershipId`. Absent on a card about the place as a whole. */
+  membership_id?: number | null;
   /** @nullable */
   image_url?: string | null;
   image_credit?: ImageCredit | null;

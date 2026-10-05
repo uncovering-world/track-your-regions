@@ -33,6 +33,7 @@ import {
   type PublishRequest,
   type RefuseContentsBody,
 } from '../../api/curation';
+import { namedMembership } from '../../utils/namedMembership';
 import type { HeldPart, ReviewQueueItem } from '../../api/reviewQueue';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { plural } from '../../utils/plural';
@@ -159,7 +160,14 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
   const [showHow, setShowHow] = useState(false);
 
   const publish = useMutation({
-    mutationFn: (body?: PublishRequest) => publishExperience(group.id, body ?? publishBodyFor(group)),
+    // The membership the card is about (#1264): a held field's answer is the
+    // held proposal's, anything else the arrival's where there is one.
+    mutationFn: (body?: PublishRequest) => publishExperience(group.id, {
+      ...(body ?? publishBodyFor(group)),
+      ...namedMembership(body?.heldFields !== undefined || body?.heldParts !== undefined
+        ? held?.membership_id
+        : (arrival ?? held)?.membership_id),
+    }),
     // Say what landed. The refetch takes the card away, so this is the only
     // place a released withdrawal or a failed re-placement can be reported —
     // and a publication whose regions went stale must not read as an
@@ -184,7 +192,7 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
   // question for that value alone.
   const refuse = useMutation({
     mutationFn: (selection: HeldSelection) =>
-      declineHeld(group.id, selection, held?.sync_log_id ?? 0),
+      declineHeld(group.id, { ...selection, ...namedMembership(held?.membership_id) }, held?.sync_log_id ?? 0),
     onSettled: (data, error) => {
       // Refusing writes nothing, so nothing about the object needs re-reading —
       // the one gap it opens is a later publish's to make, not this call's (the
@@ -207,7 +215,7 @@ export function GatedCard({ group, onDone }: { group: GatedGroup; onDone: (messa
   // is, so the kept-out list is where it comes back from. Its own mutation for
   // the reason the held refusal is: it writes the membership and nothing else.
   const keepOut = useMutation({
-    mutationFn: () => refuseArrival(group.id),
+    mutationFn: () => refuseArrival(group.id, namedMembership(arrival?.membership_id)),
     onSettled: (_data, error) => {
       invalidateExperiences(queryClient, { experienceId: group.id });
       onDone(error ? messageFor(item, error) : keptOutOutcomeFor(item.name, true, {}));

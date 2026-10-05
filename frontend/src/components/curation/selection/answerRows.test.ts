@@ -54,6 +54,17 @@ describe('toAnswerRow', () => {
     expect(toAnswerRow(row('conflicts:7', { runId: 98 }))).toEqual({ kind: 'conflict', id: 7, runId: 98 });
     expect(toAnswerRow(row('waiting:9'))).toEqual({ kind: 'waiting', id: 9, runId: 105 });
   });
+
+  it('names the membership the row\'s card asks about, where it carries one (#1264)', () => {
+    const refusal = { id: 6214, membership_id: 14546 } as QueueRow['item'];
+    expect(toAnswerRow(row('refused:6214', { item: refusal })))
+      .toEqual({ kind: 'refused', id: 6214, runId: 105, membershipId: 14546 });
+
+    // A waiting group's arrival answers for it, or its held proposal where none arrived.
+    const held = { id: 6214, membership_id: 14547 } as NonNullable<QueueRow['group']>['held'];
+    expect(toAnswerRow(row('waiting:6214', { group: { id: 6214, name: 'Capitoline Museums', held } })))
+      .toEqual({ kind: 'waiting', id: 6214, runId: 105, membershipId: 14547 });
+  });
 });
 
 describe('answerRows', () => {

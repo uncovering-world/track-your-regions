@@ -33,6 +33,7 @@ import {
   type AcceptSourceResult,
   type AdmissionResult,
 } from '../../api/curation';
+import { namedMembership } from '../../utils/namedMembership';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { publishOutcomeFor } from './publishOutcome';
 import { formatDateTime } from '../../utils/dateFormat';
@@ -138,7 +139,9 @@ export function RefusedCard({ item, onDone }: { item: ReviewQueueItem; onDone: (
   const [note, setNote] = useState('');
   const decide = useMutation({
     mutationFn: (decision: 'confirm' | 'override') =>
-      setExperienceAdmission(item.id, { decision, note: note || undefined }),
+      setExperienceAdmission(item.id, {
+        decision, note: note || undefined, ...namedMembership(item.membership_id),
+      }),
     // "Put it back" on a row nobody had passed publishes it as well, and a
     // curator watching an object stay invisible after un-refusing it would go
     // looking for a second button that does not exist.
@@ -201,7 +204,9 @@ export function RefusedCard({ item, onDone }: { item: ReviewQueueItem; onDone: (
  */
 export function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
   const putBack = useMutation({
-    mutationFn: () => setExperienceAdmission(item.id, { decision: 'override' }),
+    mutationFn: () => setExperienceAdmission(item.id, {
+      decision: 'override', ...namedMembership(item.membership_id),
+    }),
     onSettled: (data, error) => onDone(
       error ? messageFor(item, error) : admissionOutcomeFor(item, data), item.id),
   });
