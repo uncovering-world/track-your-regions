@@ -326,7 +326,9 @@ export function DiscoverExperienceView({
       // (ADR-0028 decision 1, #558). Clusters of places are the honest thing to
       // cluster: a cluster of property locators counted sites nobody could visit.
       const markers = buildExperienceMarkers(
-        visibleExperiences, locationsByExperience, NO_KIND_FILTER, collapsedExperienceIds);
+        visibleExperiences, locationsByExperience, NO_KIND_FILTER, collapsedExperienceIds,
+        // A kind's view draws every pin in that kind's colour (#1262).
+        activeView?.kindId ?? null);
 
       // The features Map mode builds from the same markers: the handlers
       // resolve an object through `properties.experienceId`, and the layer
@@ -380,7 +382,7 @@ export function DiscoverExperienceView({
     // own snapshot and each evaluating the fit.
     map.on('load', updateData);
     return () => { map.off('load', updateData); };
-  }, [experiences, selectedExperienceId, locationsByExperience, collapsedExperienceIds, locationsResolved]);
+  }, [experiences, selectedExperienceId, locationsByExperience, collapsedExperienceIds, locationsResolved, activeView?.kindId]);
 
   // ── Update highlight markers + delayed flyTo ──
   useEffect(() => {

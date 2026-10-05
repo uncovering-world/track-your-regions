@@ -32,15 +32,18 @@ export const SCENE_SOURCES = {
 
 // Layer ids
 export const LAYER_MARKERS = 'exp-markers-points';
+/** The split disc drawn over a pin that shows several kinds (#1262). */
+export const LAYER_MARKERS_SPLIT = 'exp-markers-split';
 export const LAYER_MARKER_COUNT_BADGE_BG = 'exp-marker-count-badge-bg';
 export const LAYER_MARKER_COUNT_BADGE_TEXT = 'exp-marker-count-badge-text';
 /**
- * The three layers one pin is drawn with: its point, and the badge that says how
- * many places it stands for. Queried together, because a pointer over any of
- * them is a pointer over the same pin.
+ * The layers one pin is drawn with: its point, the split disc over a pin that
+ * shows several kinds, and the badge that says how many places it stands for.
+ * Queried together, because a pointer over any of them is a pointer over the
+ * same pin.
  */
 export const MARKER_LAYERS = [
-  LAYER_MARKERS, LAYER_MARKER_COUNT_BADGE_BG, LAYER_MARKER_COUNT_BADGE_TEXT,
+  LAYER_MARKERS, LAYER_MARKERS_SPLIT, LAYER_MARKER_COUNT_BADGE_BG, LAYER_MARKER_COUNT_BADGE_TEXT,
 ] as const;
 export const LAYER_HOVER_GLOW = 'exp-hover-glow';
 export const LAYER_HOVER_RING = 'exp-hover-ring';
@@ -168,10 +171,96 @@ export const sceneHoverRingLayer: CircleLayerSpecification = {
   },
 };
 
-/** A pin's layers, bottom to top: the point, then its badge over it. */
+/**
+ * A pin that shows several kinds of a place, drawn over its plain disc as a disc
+ * split into one slice per kind (#1262): the Capitoline Museums half blue for
+ * Art Museums and half brown for Archaeology. The image is drawn on first use
+ * from the colours its name carries (`addSplitPinImages`). The split disc is one
+ * of the pin's interactive layers (`MARKER_LAYERS`); the plain disc under it is
+ * what shows if the image cannot be drawn.
+ */
+export const sceneSplitMarkerLayer: SymbolLayerSpecification = {
+  id: LAYER_MARKERS_SPLIT,
+  type: 'symbol',
+  source: SCENE_SOURCES.markers,
+  filter: ['has', 'icon'],
+  layout: {
+    'icon-image': ['get', 'icon'],
+    'icon-allow-overlap': true,
+    'icon-ignore-placement': true,
+  },
+};
+
+/** A pin's layers, bottom to top: the point, its split disc, then its badge over it. */
 export const SCENE_MARKER_ORDER = [
-  sceneMarkerLayer, sceneBadgeBgLayer, sceneBadgeTextLayer,
+  sceneMarkerLayer, sceneSplitMarkerLayer, sceneBadgeBgLayer, sceneBadgeTextLayer,
 ] as const;
+
+/** The image name of a split pin: its colours, in the kinds' display order. */
+const SPLIT_PIN_PREFIX = 'pin-split:';
+export function splitPinIcon(colors: readonly string[]): string {
+  return `${SPLIT_PIN_PREFIX}${colors.join(',')}`;
+}
+
+/** The disc's radius and stroke, the plain pin's (`sceneMarkerLayer`). */
+const PIN_RADIUS = 6;
+const PIN_STROKE = 2;
+const PIXEL_RATIO = 2;
+
+/**
+ * A split disc as MapLibre takes an image, or null where no canvas can be had
+ * (a test's DOM, a browser that refuses one): the plain disc under it stays.
+ */
+export function drawSplitPin(colors: readonly string[]): { width: number; height: number; data: Uint8ClampedArray } | null {
+  const size = (PIN_RADIUS + PIN_STROKE) * 2 * PIXEL_RATIO;
+  const canvas = typeof document === 'undefined' ? null : document.createElement('canvas');
+  const ctx = canvas?.getContext('2d');
+  if (!canvas || !ctx) return null;
+  canvas.width = size;
+  canvas.height = size;
+  const centre = size / 2;
+  const radius = PIN_RADIUS * PIXEL_RATIO;
+  colors.forEach((color, i) => {
+    const from = -Math.PI / 2 + (2 * Math.PI * i) / colors.length;
+    const to = -Math.PI / 2 + (2 * Math.PI * (i + 1)) / colors.length;
+    ctx.beginPath();
+    ctx.moveTo(centre, centre);
+    ctx.arc(centre, centre, radius, from, to);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+  });
+  // MapLibre draws a circle's stroke outside its radius, so the ring is centred
+  // half a stroke out: a split pin is the plain pin's size, not a smaller disc.
+  ctx.beginPath();
+  ctx.arc(centre, centre, (PIN_RADIUS + PIN_STROKE / 2) * PIXEL_RATIO, 0, 2 * Math.PI);
+  ctx.lineWidth = PIN_STROKE * PIXEL_RATIO;
+  ctx.strokeStyle = '#ffffff';
+  ctx.stroke();
+  return { width: size, height: size, data: ctx.getImageData(0, 0, size, size).data };
+}
+
+/** The part of a map this needs, so a test can hand in a stand-in. */
+interface ImageHost {
+  on(type: 'styleimagemissing', listener: (e: { id: string }) => void): unknown;
+  off(type: 'styleimagemissing', listener: (e: { id: string }) => void): unknown;
+  hasImage(id: string): boolean;
+  addImage(id: string, image: { width: number; height: number; data: Uint8ClampedArray }, options: { pixelRatio: number }): unknown;
+}
+
+/**
+ * Draw a split pin's image the first time the map asks for it, on either map
+ * (#1262). Returns the way to stop.
+ */
+export function addSplitPinImages(map: ImageHost): () => void {
+  const onMissing = (e: { id: string }) => {
+    if (!e.id.startsWith(SPLIT_PIN_PREFIX) || map.hasImage(e.id)) return;
+    const image = drawSplitPin(e.id.slice(SPLIT_PIN_PREFIX.length).split(','));
+    if (image) map.addImage(e.id, image, { pixelRatio: PIXEL_RATIO });
+  };
+  map.on('styleimagemissing', onMissing);
+  return () => { map.off('styleimagemissing', onMissing); };
+}
 
 /**
  * What is painted over the pins, bottom to top: the selection, then the hover.
@@ -288,7 +377,9 @@ export function buildMarkerFeatures(
         experienceName: m.experience.name,
         // The pin's colour, decided once for every surface (`experienceColor`):
         // the kind's, refined by the type where the types are told apart.
-        color: experienceColor(m.experience.kind_id, m.experience.type),
+        color: m.kindColors?.[0] ?? experienceColor(m.experience.kind_id, m.experience.type),
+        // A pin that shows several kinds of the place draws them as a split disc (#1262).
+        ...(m.kindColors && m.kindColors.length > 1 ? { icon: splitPinIcon(m.kindColors) } : {}),
         // 1 for a place drawn as itself, the count only for a pin standing in
         // for places it does not draw — which is what the badge means.
         locationCount: m.locationCount,

@@ -24,7 +24,7 @@ import { isWebGLAvailable } from '../../utils/webgl';
 import { MAP_STYLE } from '../../constants/mapStyles';
 import { addDiscoverMapLayers, LAYER_CLUSTERS } from './discoverMapLayers';
 import {
-  SCENE_SOURCES, LAYER_MARKERS, LAYER_HIGHLIGHT_POINT, MARKER_LAYERS,
+  SCENE_SOURCES, LAYER_MARKERS, LAYER_HIGHLIGHT_POINT, MARKER_LAYERS, addSplitPinImages,
   EMPTY_FC, buildPointHoverData,
 } from '../experienceMarkers/scene';
 
@@ -84,6 +84,8 @@ export function useDiscoverMap({
     map.on('load', () => {
       // ── Sources ──
       addDiscoverMapLayers(map);
+      // The split disc of a place that shows several kinds, drawn on first use (#1262).
+      addSplitPinImages(map);
 
       // ── Cluster click → zoom ──
       map.on('click', LAYER_CLUSTERS, async (e) => {
@@ -132,7 +134,7 @@ export function useDiscoverMap({
       // Once, not once per layer: maplibre creates a delegated listener per
       // registration, so a click on the badge — whose circle and glyph occupy the
       // same 8 px — ran this twice and undid itself, which on a folded pin meant
-      // its badge click did nothing. The handler queries the three layers itself.
+      // its badge click did nothing. The handler queries `MARKER_LAYERS` itself.
       // See `docs/tech/maplibre-patterns.md` § One listener per registration.
       map.on('click', onMarkerClick);
 

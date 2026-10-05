@@ -14,7 +14,7 @@ import type { Experience } from '../../api/experiences';
 import type { MarkerData } from './buildMarkers';
 import {
   HEATMAP_MAX_ZOOM, MARKER_FADE_START,
-  markerLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer,
+  markerLayer, markerSplitLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer,
   hoverGlowLayer, hoverRingLayer, highlightRingLayer, highlightPointLayer,
   SOURCE_MARKERS, SOURCE_HIGHLIGHT, SOURCE_HOVER,
 } from './layers';
@@ -23,7 +23,7 @@ import {
   sceneMarkerLayer, sceneBadgeBgLayer, sceneBadgeTextLayer,
   sceneHoverGlowLayer, sceneHoverRingLayer, sceneHighlightRingLayer, sceneHighlightPointLayer,
   EMPTY_FC, buildPointHoverData, buildPointsHoverData, buildSizedRing,
-  buildHighlightData, buildMarkerFeatures,
+  buildHighlightData, buildMarkerFeatures, splitPinIcon, addSplitPinImages,
 } from './scene';
 import { experienceColor } from '../../utils/kindColors';
 
@@ -75,7 +75,7 @@ describe("Map mode's pin layers", () => {
   });
 
   it('are the scene pin layers, in the scene order', () => {
-    expect([markerLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer].map(l => spec(l).id))
+    expect([markerLayer, markerSplitLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer].map(l => spec(l).id))
       .toEqual(SCENE_MARKER_ORDER.map(l => l.id));
     expect(SCENE_MARKER_ORDER.map(l => l.id)).toEqual([...MARKER_LAYERS]);
   });
@@ -180,5 +180,54 @@ describe('buildMarkerFeatures', () => {
     expect(feature.properties).toMatchObject({
       name: 'Aalto Works', locationId: null, locationCount: 13, folded: true,
     });
+  });
+});
+
+describe('a pin that shows several kinds', () => {
+  const capitoline = { id: 6214, name: 'Capitoline Museums', kind_id: 2, type: null, longitude: 12.48, latitude: 41.89 } as unknown as Experience;
+  const art = experienceColor(2, null);
+  const archaeology = experienceColor(5, 'museum');
+
+  it('draws a split disc named by its colours over a plain disc of the first (#1262)', () => {
+    const pin: MarkerData = {
+      id: '6214-1', experienceId: 6214, locationId: 1, experience: capitoline,
+      longitude: 12.48, latitude: 41.89, locationName: null, locationCount: 1, kindColors: [art, archaeology],
+    };
+    const properties = buildMarkerFeatures([pin]).features[0].properties!;
+
+    expect(properties.color).toBe(art);
+    expect(properties.icon).toBe(splitPinIcon([art, archaeology]));
+  });
+
+  it('draws a plain disc, with no split image, where it shows one kind', () => {
+    const pin: MarkerData = {
+      id: '6214-1', experienceId: 6214, locationId: 1, experience: capitoline,
+      longitude: 12.48, latitude: 41.89, locationName: null, locationCount: 1, kindColors: [archaeology],
+    };
+    const properties = buildMarkerFeatures([pin]).features[0].properties!;
+
+    expect(properties.color).toBe(archaeology);
+    expect(properties).not.toHaveProperty('icon');
+  });
+
+  it('asks for no image the map has, and none that is not a split pin', () => {
+    const listeners: Array<(e: { id: string }) => void> = [];
+    const added: string[] = [];
+    const map = {
+      on: (_type: 'styleimagemissing', listener: (e: { id: string }) => void) => { listeners.push(listener); },
+      off: (_type: 'styleimagemissing', listener: (e: { id: string }) => void) => {
+        listeners.splice(listeners.indexOf(listener), 1);
+      },
+      hasImage: (id: string) => id === splitPinIcon(['#000', '#fff']),
+      addImage: (id: string) => { added.push(id); },
+    };
+
+    const stop = addSplitPinImages(map);
+    listeners[0]({ id: 'some-other-icon' });
+    listeners[0]({ id: splitPinIcon(['#000', '#fff']) });
+    stop();
+
+    expect(added).toEqual([]);
+    expect(listeners).toHaveLength(0);
   });
 });
