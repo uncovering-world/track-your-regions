@@ -12,6 +12,7 @@
  */
 
 import type { Experience, ExperienceLocation } from '../../api/experiences';
+import { experienceColor } from '../../utils/kindColors';
 
 /** Shared empty set, so a caller with nothing collapsed allocates nothing. */
 const EMPTY_COLLAPSED: ReadonlySet<number> = new Set<number>();
@@ -77,6 +78,32 @@ export interface MarkerData {
    * the fold drops, nothing is selected, and the click visibly does nothing.
    */
   folded?: boolean;
+  /**
+   * The colours of the kinds this pin shows, in the kinds' display order: the
+   * place's kinds among those the surface is showing (#1262). One colour is a
+   * plain pin; two or more draw a disc split into one slice per kind
+   * (`scene.ts`, `splitPinIcon`).
+   */
+  kindColors?: string[];
+}
+
+/**
+ * The kinds of a place a pin shows, in display order: those among the kinds the
+ * surface is showing — one kind where it shows one (Discover's `?kind=`), the
+ * open groups' where some are open (Map mode), and every kind of the place
+ * otherwise. A row with no `kinds`, cached from before the field, shows its own.
+ */
+function shownKinds(
+  exp: Experience,
+  shownKindNames: Set<string>,
+  onlyKindId: number | null,
+): Array<{ kind_id: number; type: string | null }> {
+  const kinds = exp.kinds?.length
+    ? exp.kinds
+    : [{ kind_id: exp.kind_id, kind_name: exp.kind_name || 'Experiences', type: exp.type }];
+  if (onlyKindId !== null) return kinds.filter(kind => kind.kind_id === onlyKindId);
+  if (shownKindNames.size > 0) return kinds.filter(kind => shownKindNames.has(kind.kind_name));
+  return kinds;
 }
 
 /**
@@ -146,6 +173,7 @@ export function buildExperienceMarkers(
   locationsByExperience: Record<number, ExperienceLocation[]>,
   expandedKindNames: Set<string>,
   collapsedExperienceIds: ReadonlySet<number> = EMPTY_COLLAPSED,
+  onlyKindId: number | null = null,
 ): MarkerData[] {
   const result: MarkerData[] = [];
 
@@ -159,23 +187,19 @@ export function buildExperienceMarkers(
   // scan of this array either way — it resolves markers directly rather than
   // searching what the map currently draws.
   for (const exp of experiences) {
-    // One pin per place, drawn while any of its kinds' groups is open (#1245).
-    const kindNames = exp.kinds?.length ? exp.kinds.map(kind => kind.kind_name) : [exp.kind_name || 'Experiences'];
-    if (expandedKindNames.size > 0 && !kindNames.some(name => expandedKindNames.has(name))) continue;
+    // One pin per place, drawn while any of its kinds is shown, in the colours
+    // of the kinds it shows (#1245, #1262).
+    const kinds = shownKinds(exp, expandedKindNames, onlyKindId);
+    if (kinds.length === 0) continue;
+    const kindColors = [...new Set(kinds.map(kind => experienceColor(kind.kind_id, kind.type)))];
 
     const locations = locationsByExperience[exp.id];
-    if (!locations || locations.length === 0) {
-      result.push(standInMarker(exp));
-      continue;
-    }
-
-    const representable = representablePlaces(locations);
-
-    if (collapsedExperienceIds.has(exp.id) && representable.length > 1) {
-      result.push(collapsedMarker(exp, representable.length));
-    } else {
-      result.push(...placeMarkers(exp, representable));
-    }
+    const representable = locations?.length ? representablePlaces(locations) : [];
+    let pins: MarkerData[];
+    if (!locations || locations.length === 0) pins = [standInMarker(exp)];
+    else if (collapsedExperienceIds.has(exp.id) && representable.length > 1) pins = [collapsedMarker(exp, representable.length)];
+    else pins = placeMarkers(exp, representable);
+    for (const pin of pins) result.push({ ...pin, kindColors });
   }
 
   return result;

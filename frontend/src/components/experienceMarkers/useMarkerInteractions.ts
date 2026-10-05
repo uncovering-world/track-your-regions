@@ -206,7 +206,7 @@ export function useMarkerInteractions({
       return `${props?.experienceId}:${props?.locationId ?? ''}`;
     };
 
-    // One leave handler for every layer here, because all four overlap and a
+    // One leave handler for every layer here, because they all overlap and a
     // leave from any of them can be a move onto another. A pin and its badge are
     // two layers over one place — the badge is drawn `circle-translate: [8, -8]`
     // from the point it belongs to — and the highlight dots of the selected
@@ -294,7 +294,7 @@ export function useMarkerInteractions({
       // does, its circle and its glyph sitting on the same 8 px — ran this body
       // twice and undid itself. On a folded pin that meant toggling the fold off
       // and on again, so clicking the badge that says "folded" did nothing at
-      // all. The handler queries the three layers itself and returns when none
+      // all. The handler queries `MARKER_LAYERS` itself and returns when none
       // answers, which is what makes one registration enough. `mousemove` stays
       // per layer because painting a ring twice is painting it once; `mouseleave`
       // stays per layer only because of the same-target check in

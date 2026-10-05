@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildExperienceMarkers, isFoldable } from './buildMarkers';
 import type { Experience, ExperienceLocation } from '../../api/experiences';
+import { experienceColor } from '../../utils/kindColors';
 
 /**
  * The marker set is what the list-to-map hover resolves an experience against:
@@ -311,5 +312,23 @@ describe('a place in several kinds', () => {
 
     expect(markers.map(m => m.experienceId)).toEqual([6214]);
     expect(buildExperienceMarkers([capitoline], {}, new Set(['Public Art & Monuments']))).toEqual([]);
+  });
+
+  it('shows the colours of the kinds the surface is showing (#1262)', () => {
+    const capitoline = makeExperience(6214, {
+      kind_id: 2, kind_name: 'Art Museums', type: null,
+      kinds: [
+        { kind_id: 2, kind_name: 'Art Museums', kind_priority: 2, type: null, source_id: 2, external_id: 'Q333906' },
+        { kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, type: 'museum', source_id: 5, external_id: 'Q333906' },
+      ],
+    });
+    const art = experienceColor(2, null);
+    const archaeology = experienceColor(5, 'museum');
+
+    // Every kind shown: a split pin.
+    expect(buildExperienceMarkers([capitoline], {}, new Set())[0].kindColors).toEqual([art, archaeology]);
+    // Map mode with only Archaeology open, and Discover's Archaeology view: that kind's colour.
+    expect(buildExperienceMarkers([capitoline], {}, new Set(['Archaeology']))[0].kindColors).toEqual([archaeology]);
+    expect(buildExperienceMarkers([capitoline], {}, new Set(), undefined, 5)[0].kindColors).toEqual([archaeology]);
   });
 });

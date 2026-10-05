@@ -17,7 +17,7 @@ import type { LayerProps } from 'react-map-gl/maplibre';
 import type { ExpressionSpecification } from 'maplibre-gl';
 import {
   SCENE_SOURCES, EMPTY_FC,
-  sceneMarkerLayer, sceneBadgeBgLayer, sceneBadgeTextLayer,
+  sceneMarkerLayer, sceneSplitMarkerLayer, sceneBadgeBgLayer, sceneBadgeTextLayer,
   sceneHoverGlowLayer, sceneHoverRingLayer, sceneHighlightRingLayer, sceneHighlightPointLayer,
 } from './scene';
 
@@ -194,6 +194,13 @@ export const markerLayer: CircleLayerProps = {
     'circle-opacity': FADE_IN,
     'circle-stroke-opacity': FADE_IN,
   },
+};
+
+/** The split disc of a pin that shows several kinds (#1262), fading in with the pin under it. */
+export const markerSplitLayer: SymbolLayerProps = {
+  ...sceneSplitMarkerLayer,
+  minzoom: MARKER_FADE_START,
+  paint: { 'icon-opacity': FADE_IN },
 };
 
 export const markerCountBadgeBgLayer: CircleLayerProps = {

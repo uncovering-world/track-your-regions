@@ -31,11 +31,11 @@ import { buildExperienceMarkers, representablePlaces } from './experienceMarkers
 import {
   SOURCE_MARKERS, SOURCE_HIGHLIGHT, SOURCE_HOVER, SOURCE_EXTENT,
   EMPTY_FC, buildPointHoverData, buildPointsHoverData,
-  heatmapLayer, markerLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer,
+  heatmapLayer, markerLayer, markerSplitLayer, markerCountBadgeBgLayer, markerCountBadgeTextLayer,
   hoverGlowLayer, hoverRingLayer, highlightRingLayer, highlightPointLayer,
   extentFillLayer, extentLineLayer,
 } from './experienceMarkers/layers';
-import { buildHighlightData, buildMarkerFeatures } from './experienceMarkers/scene';
+import { addSplitPinImages, buildHighlightData, buildMarkerFeatures } from './experienceMarkers/scene';
 import { useMarkerInteractions } from './experienceMarkers/useMarkerInteractions';
 import { useExtentLayer } from './experienceMarkers/useExtentLayer';
 import { useExperienceContext } from '../hooks/useExperienceContext';
@@ -83,6 +83,10 @@ interface ExperienceMarkersProps {
 
 export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   const { current: mapRef } = useMap();
+
+  // The split disc of a place that shows several kinds is drawn when the map
+  // first asks for it (#1262).
+  useEffect(() => (mapRef ? addSplitPinImages(mapRef.getMap()) : undefined), [mapRef]);
   const {
     experiences,
     experiencesLoading,
@@ -382,6 +386,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       >
         <Layer {...heatmapLayer} />
         <Layer {...markerLayer} />
+        <Layer {...markerSplitLayer} />
         <Layer {...markerCountBadgeBgLayer} />
         <Layer {...markerCountBadgeTextLayer} />
       </Source>
