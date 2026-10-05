@@ -211,6 +211,10 @@ export interface ExperienceKindMembershipsRow {
   first_seen_sync_log_id: number | null;
   last_seen_sync_log_id: number | null;
   last_seen_at: Date | null;
+  reported_name: string | null;
+  reported_description: string | null;
+  reported_image_url: string | null;
+  reported_location: string | null;
   created_at: Date;
   updated_at: Date;
 }

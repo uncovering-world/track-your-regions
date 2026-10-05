@@ -207,6 +207,8 @@ function membershipCteOf(sql: string): string {
 
 beforeEach(() => {
   mockedQuery.mockReset();
+  // What a preview reads after its row: no other source's view of the place.
+  mockedQuery.mockResolvedValue({ rows: [] });
   mockedConnect.mockReset();
   mockedRollback.mockReset();
   client.query.mockReset();
@@ -674,8 +676,8 @@ describe('the keys a run computes about its own pass go past both guards', () =>
     expect(params[15]).toEqual([...SYNC_OWNED_METADATA_KEYS]);
     // $16, which is what both metadata arms read it as; then the hold, the
     // membership's work, the site's extent and the place the lock found, which
-    // are this statement's own.
-    expect(params).toHaveLength(20);
+    // are this statement's own, and the run's view of the place (#1246).
+    expect(params).toHaveLength(25);
     expect(sql).not.toContain("'artworkCount'");
   });
 
