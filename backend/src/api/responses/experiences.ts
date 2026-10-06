@@ -57,8 +57,9 @@ export const ExperienceLocation = z.strictObject({
   name: z.string().nullable().describe('The component the source names, such as one fort of a serial nomination.'),
   external_ref: z.string().nullable().describe("The source's own reference, such as `1739-005` for UNESCO."),
   ordinal: z.number().int().nullable().describe(
-    "The point's place in the source's list. Null for a point waiting on its replacement to be published,"
-    + ' and sorted last. Read it through `locationLabel` rather than doing arithmetic on it.',
+    "The point's place in the source's list, which orders the points and labels none of them (#528):"
+    + " two sources' lists on one place both start at 1. Null for a point waiting on its replacement to be"
+    + ' published, and sorted last.',
   ),
   longitude: z.number(),
   latitude: z.number(),

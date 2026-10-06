@@ -3614,7 +3614,7 @@ export interface ExperienceLocationWithState {
      * @nullable
      */
   external_ref: string | null;
-  /** The point's place in the source's list. Null for a point waiting on its replacement to be published, and sorted last. Read it through `locationLabel` rather than doing arithmetic on it. */
+  /** The point's place in the source's list, which orders the points and labels none of them (#528): two sources' lists on one place both start at 1. Null for a point waiting on its replacement to be published, and sorted last. */
   ordinal: number | null;
   longitude: number;
   latitude: number;
@@ -6569,7 +6569,7 @@ export interface RegionExperienceLocation {
      * @nullable
      */
   external_ref: string | null;
-  /** The point's place in the source's list. Null for a point waiting on its replacement to be published, and sorted last. Read it through `locationLabel` rather than doing arithmetic on it. */
+  /** The point's place in the source's list, which orders the points and labels none of them (#528): two sources' lists on one place both start at 1. Null for a point waiting on its replacement to be published, and sorted last. */
   ordinal: number | null;
   longitude: number;
   latitude: number;
