@@ -249,6 +249,7 @@ export interface TreasureRow {
   image_credit: ImageCredit | null;
   found_at: { qid: string; label: string } | null;
   found_at_site: LinkedPlace | null;
+  kind_ids: number[];
 }
 
 export function treasureOf(row: TreasureRow): ExperienceTreasure {
@@ -269,6 +270,7 @@ export function treasureOf(row: TreasureRow): ExperienceTreasure {
     found_at: foundAtOf(row.found_at),
     found_at_site: row.found_at_site,
     sitelinks_count: row.sitelinks_count,
+    kind_ids: row.kind_ids,
   };
 }
 

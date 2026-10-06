@@ -3917,6 +3917,12 @@ export interface ExperienceTreasure {
      * @maximum 9007199254740991
      */
   sitelinks_count: number;
+  /**
+     * The kinds that hold the work here, by the memberships that place it, in display order (#1263). Empty where no offered membership places it: the work is the place's, whichever kind is chosen.
+     * @items.minimum -9007199254740991
+     * @items.maximum 9007199254740991
+     */
+  kind_ids: number[];
 }
 
 /**

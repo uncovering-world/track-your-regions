@@ -68,6 +68,7 @@ describe('treasureOf', () => {
       image_credit: { author: 'A photographer', license: 'CC BY 2.0', licenseUrl: null, detailsUrl: null, fetchedAt: '2026-09-13' },
       found_at: { qid: 'Q131594', label: 'Mycenae', source: 'P189' },
       found_at_site: null,
+      kind_ids: [5],
     } as TreasureRow);
     expect(work.image_credit).toEqual({ author: 'A photographer', license: 'CC BY 2.0', licenseUrl: null, detailsUrl: null });
     expect(work.found_at).toEqual({ qid: 'Q131594', label: 'Mycenae' });

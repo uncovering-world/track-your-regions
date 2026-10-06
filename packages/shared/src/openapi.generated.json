@@ -19722,6 +19722,15 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "kind_ids": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            "description": "The kinds that hold the work here, by the memberships that place it, in display order (#1263). Empty where no offered membership places it: the work is the place's, whichever kind is chosen."
           }
         },
         "required": [
@@ -19740,7 +19749,8 @@
           "is_iconic",
           "found_at",
           "found_at_site",
-          "sitelinks_count"
+          "sitelinks_count",
+          "kind_ids"
         ],
         "additionalProperties": false,
         "description": "A work inside an object: an artwork, an artifact."

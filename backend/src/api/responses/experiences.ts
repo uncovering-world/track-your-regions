@@ -297,6 +297,9 @@ export const ExperienceTreasure = z.strictObject({
   found_at_site: LinkedPlace.nullable()
     .describe('The site row that spot names, where the catalogue holds one a reader may open (#894).'),
   sitelinks_count: z.number().int(),
+  kind_ids: z.array(z.number().int())
+    .describe('The kinds that hold the work here, by the memberships that place it, in display order (#1263).'
+      + ' Empty where no offered membership places it: the work is the place\'s, whichever kind is chosen.'),
 }).describe('A work inside an object: an artwork, an artifact.');
 export type ExperienceTreasure = z.infer<typeof ExperienceTreasure>;
 
