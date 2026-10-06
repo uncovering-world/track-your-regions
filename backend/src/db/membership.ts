@@ -268,6 +268,22 @@ export function placeKindsSql(experience = 'e'): string {
 }
 
 /**
+ * The kinds that hold a work a place shows, by the memberships that place its
+ * link (`experience_treasure_placements`, #1252), in the kinds' display order
+ * (#1263): of the Capitoline Museums' finds, the Capitoline Wolf is held by Art
+ * Museums and Archaeology both. Only offered memberships, as `placeKindsSql`
+ * reads them. A link no offered membership places reads as none, and the card
+ * shows it whichever kind is chosen. `link` is the `experience_treasures` alias.
+ */
+export function linkKindsSql(link: string): string {
+  return `(SELECT COALESCE(array_agg(lm.kind_id ORDER BY lk.display_priority, lm.kind_id), '{}')
+         FROM experience_treasure_placements lp
+         JOIN ${MEMBERSHIPS} lm ON lm.id = lp.membership_id
+         JOIN ${KINDS} lk ON lk.id = lm.kind_id
+        WHERE lp.link_id = ${link}.id AND ${membershipOfferedSql('lm')})`;
+}
+
+/**
  * The place's offered membership in one kind, joined as `membership` with its
  * kind as `kind`: the place in that kind, or no row at all (ADR-0084, #1245).
  *

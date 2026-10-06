@@ -9,7 +9,7 @@ import type { ExperienceTreasuresResponse } from '../../api/responses/experience
 import type { TreasureViewMarked, TreasureViewUnmarked, ViewedTreasureIds } from '../../api/responses/visited.js';
 import { pool } from '../../db/index.js';
 import type { TreasuresRow, UserViewedTreasuresRow } from '../../db/schema.generated.js';
-import { MEMBERSHIPS, membershipOfferedSql, rowKindJoinSql } from '../../db/membership.js';
+import { MEMBERSHIPS, linkKindsSql, membershipOfferedSql, rowKindJoinSql } from '../../db/membership.js';
 import {
   experienceOfferedToReaderSql,
   hideLostSql,
@@ -65,6 +65,9 @@ export async function getExperienceTreasures(
       -- the work needs and a reader must not be served (venuesSql).
       CASE WHEN $2::boolean THEN ${venuesSql('t')} END AS venues,
       t.image_url, t.sitelinks_count, t.is_iconic,
+      -- The kinds that hold the work here, so a place in several lists each
+      -- work once and marks it with its kinds (#1263).
+      ${linkKindsSql('et')} AS kind_ids,
       -- Beside the picture, as it is on the object itself: these files are
       -- served from Wikimedia Commons and a share of them are CC BY or CC BY-SA,
       -- which of a screen that shows a picture ask one thing -- that whoever

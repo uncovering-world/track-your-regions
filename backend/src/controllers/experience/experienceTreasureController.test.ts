@@ -32,7 +32,7 @@ import {
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 import { userRoutes } from '../../routes/userRoutes.js';
-import { membershipOfferedSql } from '../../db/membership.js';
+import { linkKindsSql, membershipOfferedSql } from '../../db/membership.js';
 
 /** The user routes these specs answer through (ADR-0071). */
 const postViewedTreasure = routeAt(userRoutes, '/me/viewed-treasures/:treasureId', 'post');
@@ -52,6 +52,7 @@ function workRow(over: Record<string, unknown>): Record<string, unknown> {
   return {
     treasure_type: 'painting', artists: [], artists_curated: false, year: null, curated_fields: [], venue_count: 1,
     venues: null, image_url: null, sitelinks_count: 0, is_iconic: false, image_credit: null, found_at: null, found_at_site: null,
+    kind_ids: [],
     ...over,
   };
 }
@@ -98,6 +99,21 @@ describe('getExperienceTreasures gate', () => {
     expect(res.json.mock.calls[0][0].treasures[0]).toMatchObject({
       curated_fields: ['name'], venue_count: 11,
     });
+  });
+
+  it('marks each work with the kinds that hold it here, once per work (#1263)', async () => {
+    // The Capitoline Museums once merged: the Capitoline Wolf is held by Art
+    // Museums and by Archaeology, and is still one row.
+    const wolf = { id: 9001, external_id: 'Q622713', name: 'Capitoline Wolf', kind_ids: [2, 5] };
+    mockedQuery.mockResolvedValueOnce({ rows: [workRow(wolf)] });
+    const res = makeRes();
+
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'), { params: { id: '6214' } } as never, res as never);
+
+    expect(String(mockedQuery.mock.calls[0][0])).toContain(`${linkKindsSql('et')} AS kind_ids`);
+    const body = res.json.mock.calls[0][0];
+    expect(body.treasures).toHaveLength(1);
+    expect(body.treasures[0].kind_ids).toEqual([2, 5]);
   });
 
   it('names the museums a work hangs in only to a caller who may correct it', async () => {
