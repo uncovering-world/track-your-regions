@@ -9,6 +9,8 @@ import { PlaceLink } from '../shared/PlaceLink';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { VISITED_GREEN } from '../../utils/kindColors';
+import type { WorkKind } from '../../utils/worksByKind';
+import { WorkKindDots } from '../shared/WorkKindChips';
 
 /**
  * One work in the grid: its picture, whether this reader has seen it, and whose photograph it is.
@@ -17,8 +19,10 @@ import { VISITED_GREEN } from '../../utils/kindColors';
  * each cell a second child, and a tile is a thing rather than a shape the loop
  * happens to make.
  */
-export function ContentTile({ content, isViewed, isAuthenticated, onToggleViewed, onCorrect }: {
+export function ContentTile({ content, placeKinds, isViewed, isAuthenticated, onToggleViewed, onCorrect }: {
   content: ExperienceTreasure;
+  /** The place's kinds, where it has several: the tile is marked with those that hold the work (#1263). */
+  placeKinds?: WorkKind[];
   isViewed: boolean;
   isAuthenticated: boolean;
   onToggleViewed: () => void;
@@ -119,6 +123,7 @@ export function ContentTile({ content, isViewed, isAuthenticated, onToggleViewed
         }}
       >
         <Typography variant="caption" sx={{ color: 'white', fontSize: '0.55rem', lineHeight: 1.2 }} noWrap>
+          {placeKinds && <WorkKindDots kindIds={content.kind_ids} placeKinds={placeKinds} />}
           {content.name}
         </Typography>
       </Box>
