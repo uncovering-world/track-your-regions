@@ -19091,7 +19091,7 @@
                 "type": "null"
               }
             ],
-            "description": "The point's place in the source's list. Null for a point waiting on its replacement to be published, and sorted last. Read it through `locationLabel` rather than doing arithmetic on it."
+            "description": "The point's place in the source's list, which orders the points and labels none of them (#528): two sources' lists on one place both start at 1. Null for a point waiting on its replacement to be published, and sorted last."
           },
           "longitude": {
             "type": "number"
@@ -25236,7 +25236,7 @@
                 "type": "null"
               }
             ],
-            "description": "The point's place in the source's list. Null for a point waiting on its replacement to be published, and sorted last. Read it through `locationLabel` rather than doing arithmetic on it."
+            "description": "The point's place in the source's list, which orders the points and labels none of them (#528): two sources' lists on one place both start at 1. Null for a point waiting on its replacement to be published, and sorted last."
           },
           "longitude": {
             "type": "number"
