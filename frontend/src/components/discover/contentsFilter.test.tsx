@@ -80,15 +80,19 @@ function filter() {
 
 /** A serial site's places, as the World Heritage Centre names them, padded past the threshold. */
 function renderPlaces() {
-  const names = ['marmalo  IV', 'Geoagiu  / Drumul Romanilor', 'Boma–Badingilo',
-    ...Array.from({ length: 14 }, (_, i) => `Shelter ${i + 1}`)];
+  const names: (string | null)[] = ['marmalo  IV', 'Geoagiu  / Drumul Romanilor', 'Boma–Badingilo',
+    ...Array.from({ length: 14 }, (_, i) => `Shelter ${i + 1}`), null];
   return render(
     <HoverProvider>
       <LocationsSection
         experienceId={1184}
+        objectName="Rock Art of the Mediterranean Basin on the Iberian Peninsula"
         locations={names.map((name, i) => ({
           id: i + 1, name, latitude: 0, longitude: 0, ordinal: i,
           isVisited: false, visitedAt: null, notes: null, curatedFields: undefined,
+          // The last one stands for a part its source left unnamed: Rillo II's real
+          // reference with its name left out, read by the reference (#1268).
+          externalRef: name === null ? '874-758' : null,
         }))}
         totalCount={names.length}
         isAuthenticated
@@ -143,6 +147,16 @@ describe('the places filter of a serial site', () => {
 
     fireEvent.change(box, { target: { value: 'boma-badingilo' } });
     expect(shown('Boma–Badingilo')).toBe(true);
+    expect(shown('marmalo IV')).toBe(false);
+  });
+
+  it('finds a part the source left unnamed by the reference the row reads (#1268)', () => {
+    renderPlaces();
+    fireEvent.keyDown(screen.getByRole('button', { name: /Locations/ }), { key: 'Enter' });
+
+    fireEvent.change(screen.getByPlaceholderText('Filter locations...'), { target: { value: '874-758' } });
+
+    expect(shown('874-758')).toBe(true);
     expect(shown('marmalo IV')).toBe(false);
   });
 });

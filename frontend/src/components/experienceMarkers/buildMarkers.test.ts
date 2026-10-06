@@ -332,3 +332,30 @@ describe('a place in several kinds', () => {
     expect(buildExperienceMarkers([capitoline], {}, new Set(), undefined, 5)[0].kindColors).toEqual([archaeology]);
   });
 });
+
+
+describe("a place marker's name (#1268)", () => {
+  // Two of the Via Appia's parts, which UNESCO leaves unnamed, and a museum's one point.
+  const appia = { id: 1045, name: 'Via Appia. Regina Viarum', kind_id: 1, kind_name: 'World Heritage Sites',
+    kind_priority: 1, type: 'cultural', longitude: 12.5, latitude: 41.8 } as unknown as Experience;
+  const part = (id: number, ref: string) => ({
+    id, experience_id: 1045, name: null, external_ref: ref, ordinal: 1, longitude: 12.7273, latitude: 41.6718,
+    created_at: '2026-08-04T00:00:00Z', curated_fields: [], in_region: true, region_path: null,
+  });
+
+  it('names an unnamed part by its reference, and two parts apart', () => {
+    const markers = buildExperienceMarkers([appia], { 1045: [part(11562, '1708-003'), part(11563, '1708-004')] }, new Set());
+    expect(markers.map(marker => marker.locationName)).toEqual(['1708-003', '1708-004']);
+  });
+
+  it('names a part even where it is the only one of its object the region draws', () => {
+    const outside = { ...part(11563, '1708-004'), in_region: false };
+    const markers = buildExperienceMarkers([appia], { 1045: [part(11562, '1708-003'), outside] }, new Set());
+    expect(markers.map(marker => marker.locationName)).toEqual(['1708-003']);
+  });
+
+  it("leaves a museum's one unnamed point to the museum's own name", () => {
+    const markers = buildExperienceMarkers([appia], { 1045: [{ ...part(11562, 'Q185382') }] }, new Set());
+    expect(markers[0].locationName).toBeNull();
+  });
+});

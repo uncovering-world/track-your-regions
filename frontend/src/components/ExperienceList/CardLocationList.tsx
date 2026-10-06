@@ -56,6 +56,8 @@ function ShowMoreRow({ label, tone, onClick }: {
 }
 
 export interface CardLocationListProps {
+  /** The object these places belong to, which each one's copied full name begins with. */
+  objectName: string;
   inRegionLocs: LocationRowData[];
   outOfRegionLocs: (LocationRowData & { regionPath: string | null })[];
   showCheckbox: boolean;
@@ -74,6 +76,7 @@ export interface CardLocationListProps {
 }
 
 export function CardLocationList({
+  objectName,
   inRegionLocs,
   outOfRegionLocs,
   showCheckbox,
@@ -179,6 +182,7 @@ export function CardLocationList({
           <LocationRow
             key={loc.id}
             location={loc}
+            objectName={objectName}
             showCheckbox={isAuthenticated && showCheckbox}
             onHover={onLocationHover}
             onVisitedToggle={onLocationVisitedToggle}
@@ -220,6 +224,7 @@ export function CardLocationList({
               <LocationRow
                 key={loc.id}
                 location={loc}
+                objectName={objectName}
                 showCheckbox={false}
                 outOfRegion
                 regionPath={outOfRegionDisplayPaths.get(loc.id)}

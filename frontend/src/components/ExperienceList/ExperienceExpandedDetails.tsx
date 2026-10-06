@@ -139,6 +139,7 @@ function ExperienceExpandedDetailsComponent({
     return locations.map(loc => ({
       id: loc.id,
       name: loc.name,
+      externalRef: loc.external_ref,
       ordinal: loc.ordinal,
       longitude: loc.longitude,
       latitude: loc.latitude,
@@ -376,6 +377,7 @@ function ExperienceExpandedDetailsComponent({
       {/* Multi-location list */}
       {isMultiLocation && locationsWithRegionInfo.length > 0 && (
         <CardLocationList
+          objectName={experience.name}
           inRegionLocs={inRegionLocs}
           outOfRegionLocs={outOfRegionLocs}
           showCheckbox={showCheckbox}

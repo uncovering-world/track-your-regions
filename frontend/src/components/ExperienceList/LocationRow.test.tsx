@@ -16,7 +16,7 @@ import { LocationRow, type LocationRowData } from './LocationRow';
 
 /** One of the pile dwellings around the Alps, as the card lists it. */
 const see: LocationRowData = {
-  id: 4418, name: 'See', ordinal: 0, isVisited: false, latitude: 47.5, longitude: 9.4,
+  id: 4418, name: 'See', externalRef: '1363-061', ordinal: 0, isVisited: false, latitude: 47.5, longitude: 9.4,
 };
 
 function renderRow(over: Partial<Parameters<typeof LocationRow>[0]> = {}) {
@@ -26,6 +26,7 @@ function renderRow(over: Partial<Parameters<typeof LocationRow>[0]> = {}) {
       <ul>
         <LocationRow
           location={see}
+          objectName="Prehistoric Pile Dwellings around the Alps"
           showCheckbox={false}
           onHover={() => {}}
           onVisitedToggle={() => {}}
@@ -68,6 +69,33 @@ describe('LocationRow', () => {
     renderRow({ location: { ...see, curatedFields: ['location'] } });
 
     expect(screen.getByText('pin corrected')).toBeInTheDocument();
+  });
+
+  it('copies the full name, object and reference included, in one action (#1268)', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+    renderRow();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy the name Prehistoric Pile Dwellings around the Alps — See (1363-061)' }));
+
+    expect(writeText).toHaveBeenCalledWith('Prehistoric Pile Dwellings around the Alps — See (1363-061)');
+  });
+
+  it('says so when the browser refuses the clipboard', async () => {
+    Object.defineProperty(navigator, 'clipboard', { value: undefined, configurable: true });
+    renderRow();
+
+    fireEvent.click(screen.getByRole('button', { name: /^Copy the name/ }));
+
+    expect(await screen.findByTestId('ErrorOutlineIcon')).toBeInTheDocument();
+  });
+
+  it('names a part its source left unnamed by its reference', () => {
+    // The Via Appia's parts, which UNESCO leaves unnamed.
+    renderRow({ location: { ...see, name: null, externalRef: '1708-003' }, objectName: 'Via Appia' });
+
+    expect(screen.getByText('1708-003')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Fix 1708-003' })).toBeInTheDocument();
   });
 
   it('keeps the visited checkbox beside it', () => {

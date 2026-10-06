@@ -33,7 +33,8 @@ import EditLocationAltIcon from '@mui/icons-material/EditLocationAlt';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { subscribeToHoverTarget, useHoverActions, useHoverSelector } from '../../hooks/useHoverContext';
 import { EmptyState } from '../shared/EmptyState';
-import { locationLabel } from '../../utils/locationLabel';
+import { locationLabel, pointFullName, pointOfRow } from '../../utils/locationLabel';
+import { CopyNameButton } from '../shared/CopyNameButton';
 import { claimLabel } from '../../utils/placeClaims';
 import { foldLabel } from '@tyr/shared/labels';
 import type { LocationWithVisitedStatus } from '../../api/visited';
@@ -47,11 +48,13 @@ const LOCATIONS_COLLAPSE_THRESHOLD = 15;
  */
 export type PanelLocation = Pick<
   LocationWithVisitedStatus, 'id' | 'name' | 'ordinal' | 'longitude' | 'latitude' | 'isVisited'
-> & { curatedFields?: string[] };
+> & { curatedFields?: string[]; externalRef?: string | null };
 
 interface LocationsSectionProps {
   /** Whose places these are — a row hover names the object and the place. */
   experienceId: number;
+  /** The object's name, which each place's copied full name begins with (#1268). */
+  objectName: string;
   locations: PanelLocation[];
   totalCount: number;
   isAuthenticated: boolean;
@@ -70,6 +73,7 @@ interface LocationsSectionProps {
  */
 export function LocationsSection({
   experienceId,
+  objectName,
   locations,
   totalCount,
   isAuthenticated,
@@ -92,7 +96,8 @@ export function LocationsSection({
   const filteredLocations = useMemo(() => {
     const needle = foldLabel(searchText);
     if (!needle) return locations;
-    return locations.filter((l) => foldLabel(l.name).includes(needle));
+    // What the row reads, so a part named by its reference is found by it.
+    return locations.filter((l) => foldLabel(locationLabel(pointOfRow(l))).includes(needle));
   }, [locations, searchText]);
 
   const virtualizer = useVirtualizer({
@@ -229,6 +234,7 @@ export function LocationsSection({
                   <PanelLocationRow
                     key={loc.id}
                     experienceId={experienceId}
+                    objectName={objectName}
                     loc={loc}
                     size={virtualRow.size}
                     start={virtualRow.start}
@@ -251,6 +257,7 @@ export function LocationsSection({
 
 interface PanelLocationRowProps {
   experienceId: number;
+  objectName: string;
   loc: PanelLocation;
   size: number;
   start: number;
@@ -270,6 +277,7 @@ interface PanelLocationRowProps {
  */
 function PanelLocationRow({
   experienceId,
+  objectName,
   loc,
   size,
   start,
@@ -282,6 +290,8 @@ function PanelLocationRow({
   const isHovered = useHoverSelector(
     s => s.hoverSource === 'marker' && s.hoveredLocationId === loc.id);
   const claim = claimLabel(loc.curatedFields);
+  const point = pointOfRow(loc);
+  const label = locationLabel(point);
   return (
     <Box
       onMouseEnter={() => setHoveredFromList(experienceId, loc.id)}
@@ -303,8 +313,8 @@ function PanelLocationRow({
         cursor: 'default',
         // The curator's action shows for the row under the pointer, holding
         // keyboard focus, or lit from the map — the same rule as Map mode's row.
-        '& .place-fix': { opacity: isHovered ? 1 : 0, transition: 'opacity 0.15s ease' },
-        '&:hover .place-fix, &:focus-within .place-fix': { opacity: 1 },
+        '& .place-fix, & .place-copy': { opacity: isHovered ? 1 : 0, transition: 'opacity 0.15s ease' },
+        '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy': { opacity: 1 },
         ...(isHovered && {
           bgcolor: 'action.selected',
           borderLeft: '3px solid',
@@ -322,7 +332,7 @@ function PanelLocationRow({
           color: loc.isVisited ? 'text.secondary' : 'text.primary',
         }}
       >
-        {locationLabel(loc)}
+        {label}
       </Typography>
       {/* "pin corrected" beside the name where a curator has moved it: without the
           word, a pin somebody put there reads as the source's. */}
@@ -331,11 +341,12 @@ function PanelLocationRow({
           {claim}
         </Typography>
       )}
+      <CopyNameButton fullName={pointFullName(objectName, point)} className="place-copy" />
       {onCorrect && (
         <Tooltip title="Move or rename this place">
           {/* Named for the place, as the checkbox beside it is: a list of thirty bare
               pencils is a list a screen reader cannot use. */}
-          <IconButton className="place-fix" size="small" aria-label={`Fix ${locationLabel(loc)}`} onClick={() => onCorrect(loc)}>
+          <IconButton className="place-fix" size="small" aria-label={`Fix ${label}`} onClick={() => onCorrect(loc)}>
             <EditLocationAltIcon fontSize="small" />
           </IconButton>
         </Tooltip>
@@ -349,8 +360,8 @@ function PanelLocationRow({
           // A row of thirty of those is a list a screen reader cannot use at all.
           inputProps={{
             'aria-label': loc.isVisited
-              ? `${locationLabel(loc)} — mark as not visited`
-              : `${locationLabel(loc)} — mark as visited`,
+              ? `${label} — mark as not visited`
+              : `${label} — mark as visited`,
           }}
           onChange={() => loc.isVisited ? onUnmarkLocation(loc.id) : onMarkLocation(loc.id)}
           sx={{ p: 0.5, '&.Mui-checked': { color: '#22c55e' } }}
