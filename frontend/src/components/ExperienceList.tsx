@@ -17,7 +17,7 @@ import {
 } from './ExperienceList/utils';
 import { useInViewFilter } from './ExperienceList/useInViewFilter';
 import { useListScrollAnchor } from './ExperienceList/useListScrollAnchor';
-import { echoRows, groupByEveryKind } from './ExperienceList/kindRows';
+import { cardAboveGroups, echoRows, groupByEveryKind } from './ExperienceList/kindRows';
 import { useOpenedKind } from './ExperienceList/useOpenedKind';
 import { GroupHeader } from './ExperienceList/GroupHeader';
 import { NoticeLink } from './ExperienceList/NoticeLink';
@@ -193,9 +193,17 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // rows rebuilt only when the listed places change; one of a place's rows is the
   // home its card opens in, the rest are echoes (`kindRows.ts`).
   const groups = useMemo(() => groupByEveryKind(listedExperiences), [listedExperiences]);
+  // A place in several kinds opened from its pin or an address has its card
+  // above the groups, and every row of it is an echo (#1262). The card is a row
+  // object of its own, so a click on it is told from a click on its echoes.
+  const placeAbove = useMemo(
+    () => cardAboveGroups(listedExperiences, selectedExperienceId, openedKindId),
+    [listedExperiences, selectedExperienceId, openedKindId],
+  );
+  const cardAbove = useMemo(() => (placeAbove ? { ...placeAbove } : null), [placeAbove]);
   const echoes = useMemo(
-    () => echoRows(groups, selectedExperienceId, openedKindId),
-    [groups, selectedExperienceId, openedKindId],
+    () => echoRows(groups, selectedExperienceId, openedKindId, cardAbove !== null),
+    [groups, selectedExperienceId, openedKindId, cardAbove],
   );
   const echoesRef = useRef(echoes);
   echoesRef.current = echoes;
@@ -281,7 +289,10 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // Measured on Europe, where the largest kind holds 467: rendering them all
   // blocked the main thread for 2.5 s in one task, and 2.9 s of the 3.8 s that
   // opening a region cost was these rows (#552).
-  const flatRows = useMemo(() => flattenGroups(groups, expandedGroups), [groups, expandedGroups]);
+  const flatRows = useMemo(
+    () => flattenGroups(groups, expandedGroups, cardAbove),
+    [groups, expandedGroups, cardAbove],
+  );
 
   // Where each experience sits, so the scroll hook can ask the virtualiser for a
   // row that has no element yet — the whole point of windowing is that most rows
@@ -298,7 +309,8 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     (index: number) => {
       const row = flatRows[index];
       if (!row) return index;
-      return row.kind === 'header' ? `h:${row.group.kindName}` : `e:${row.exp.id}:${row.exp.kind_id}`;
+      if (row.kind === 'header') return `h:${row.group.kindName}`;
+      return row.kind === 'card' ? `c:${row.exp.id}` : `e:${row.exp.id}:${row.exp.kind_id}`;
     },
     [flatRows],
   );
@@ -336,7 +348,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
 
   // Every movement of this list, and the reasons each one is narrower than it
   // looks, live in one place — see the hook.
-  const { handleCardOpened, measureRow, expectFlight } = useListScrollAnchor({
+  const { handleCardOpened, measureRow, expectFlight, expectCardMove } = useListScrollAnchor({
     hoverStore, selectedExperienceId,
     scrollContainerRef, itemRefs, locationRefs, virtualizer, rowIndexByExperience,
   });
@@ -386,8 +398,9 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
 
   const handleClick = useCallback((exp: Experience) => {
     // A click on an echo of the open card moves the card to that kind's row,
-    // rather than closing it (#1245).
+    // rather than closing it (#1245), and the list aims at it there.
     if (selectedIdRef.current === exp.id && echoesRef.current.has(exp)) {
+      expectCardMove(exp.id);
       openFrom(exp.id, exp.kind_id);
       return;
     }
@@ -406,7 +419,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       expectFlight(exp.id);
       triggerFlyTo(exp.id);
     }
-  }, [toggleSelectedExperience, triggerFlyTo, expectFlight, openFrom]);
+  }, [toggleSelectedExperience, triggerFlyTo, expectFlight, expectCardMove, openFrom]);
 
   const handleLocationVisitedToggle = useCallback((locationId: number, isVisited: boolean) => {
     if (isVisited) {
@@ -543,9 +556,10 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     />
   );
 
-  const renderExperienceItem = (exp: Experience, rejected = false) => {
+  const renderExperienceItem = (exp: Experience, rejected = false, aboveGroups = false) => {
     // An echo of a place stays folded and keeps no reference: the list aims at,
-    // and opens the card in, the place's home row (`kindRows.ts`).
+    // and opens the card in, the place's home row or the card above the groups
+    // (`kindRows.ts`). An echo of the open card says it is selected.
     const echo = echoes.has(exp);
     return (
     <ExperienceListItem
@@ -558,6 +572,8 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       // the store, each subscribing to its own boolean, so a mouse move does not
       // re-render this list to hand a new prop to every row it holds.
       isSelected={selectedExperienceId === exp.id && !echo}
+      isMarked={selectedExperienceId === exp.id && echo}
+      isAboveGroups={aboveGroups}
       locationRefs={locationRefs}
       itemRefs={echo ? echoRefs : itemRefs}
       isCollapsed={collapsedExperienceIds.has(exp.id)}
@@ -634,7 +650,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
             >
               {row.kind === 'header'
                 ? renderGroupHeader(row.group)
-                : renderExperienceItem(row.exp)}
+                : renderExperienceItem(row.exp, false, row.kind === 'card')}
             </VirtualRow>
           );
         })}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { Experience } from '../../api/experiences';
-import { echoRows, groupByEveryKind, homeKindOf, rowsByKindName } from './kindRows';
+import { cardAboveGroups, echoRows, groupByEveryKind, homeKindOf, rowsByKindName } from './kindRows';
 
 /** The Capitoline Museums once merged, beside a museum in one kind. */
 const CAPITOLINE = {
@@ -43,6 +43,25 @@ describe('a place in the group of every kind it is offered in', () => {
 
     // Another place is open: the Capitoline Museums keep their first kind as home.
     expect(echoRows(groups, 6229, 5).has(groups[0].experiences[0])).toBe(false);
+  });
+
+  it('opens the card above the groups for a place in several kinds opened from its pin (#1262)', () => {
+    expect(cardAboveGroups([CAPITOLINE, DORIA], 6214, null)).toBe(CAPITOLINE);
+    // Opened from a row: the card is in that kind's row instead.
+    expect(cardAboveGroups([CAPITOLINE, DORIA], 6214, 5)).toBeNull();
+    // A place in one kind opens in its row, as it always has.
+    expect(cardAboveGroups([CAPITOLINE, DORIA], 6229, null)).toBeNull();
+    expect(cardAboveGroups([CAPITOLINE, DORIA], null, null)).toBeNull();
+  });
+
+  it('makes every row of that place an echo, and leaves the other places alone', () => {
+    const groups = groupByEveryKind([CAPITOLINE, DORIA]);
+    const echoes = echoRows(groups, 6214, null, true);
+    const capitolineRows = groups.flatMap(group => group.experiences).filter(row => row.id === 6214);
+
+    expect(capitolineRows).toHaveLength(2);
+    for (const row of capitolineRows) expect(echoes.has(row)).toBe(true);
+    expect(echoes.has(groups[0].experiences[1])).toBe(false);
   });
 
   it('opens in the first kind where the place is not offered in the one asked for', () => {

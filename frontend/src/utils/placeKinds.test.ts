@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { kindToOpenIn, placeKindNames, shownInKind } from './placeKinds';
+import { kindToOpenIn, placeHasExtent, placeKindNames, shownInKind } from './placeKinds';
 
 /** The Capitoline Museums once merged: one place, offered in Art Museums and Archaeology. */
 const CAPITOLINE = {
@@ -56,5 +56,25 @@ describe('the names a hover card gives a place (#1262)', () => {
 
   it('names nothing where there is no name at all', () => {
     expect(placeKindNames({ kind_name: '', kinds: [] })).toBeNull();
+  });
+});
+
+describe("whether a place's card reads a site's finds (#1262)", () => {
+  // The Pantheon once merged: a church first, and a site in Archaeology.
+  const PANTHEON = {
+    kind_id: 4, type: 'church',
+    kinds: [
+      { kind_id: 4, kind_name: 'Places of worship', kind_priority: 4, type: 'church' },
+      { kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, type: 'site' },
+    ],
+  };
+
+  it('reads them above the groups, where the card stands over every kind', () => {
+    expect(placeHasExtent(PANTHEON, true)).toBe(true);
+  });
+
+  it("reads only the row's own kind in a kind's row", () => {
+    expect(placeHasExtent(PANTHEON, false)).toBe(false);
+    expect(placeHasExtent({ ...PANTHEON, kind_id: 5, type: 'site' }, false)).toBe(true);
   });
 });

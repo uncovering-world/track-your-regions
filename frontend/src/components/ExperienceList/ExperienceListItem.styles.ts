@@ -30,7 +30,7 @@ import { VISITED_GREEN, PARTIAL_AMBER } from '../../utils/kindColors';
  * the `.Mui-checked` rule that turns a ticked box green.
  *
  * What varies per *state* goes through data attributes, so the class stays one
- * class: `data-selected`, `data-visited`, `data-partial`, and the `data-hovered`
+ * class: `data-selected`, `data-marked`, `data-visited`, `data-partial`, and the `data-hovered`
  * the row writes on itself.
  */
 // The generic re-declares `component`, which `styled()` drops from MUI's
@@ -49,6 +49,9 @@ export const RowItem = styled(ListItem)<{ component?: React.ElementType }>(({ th
   // nothing and the selected row was already transparent. Kept as it looks
   // today rather than quietly given a colour it never had.
   '&[data-selected="true"]': { borderLeftWidth: 4, borderBottom: 0 },
+  // An echo of the selected place, whose card is open elsewhere: the same mark,
+  // with its divider kept, since no card opens under it (#1262).
+  '&[data-marked="true"]': { borderLeftWidth: 4 },
 }));
 
 export const VisitIcon = styled(ListItemIcon)({

@@ -22,7 +22,7 @@ import { LifecycleChip } from '../shared/LifecycleChip';
 import { TreasuresInsideChip } from '../shared/TreasuresInsideChip';
 import { FindsOnViewChip } from '../shared/FindsOnViewChip';
 import { experienceColor } from '../../utils/kindColors';
-import { hasExtent } from '../../utils/experienceTypes';
+import { placeHasExtent } from '../../utils/placeKinds';
 import { preloadCardImage } from '../../utils/imagePreload';
 import { useExperienceCardReady } from '../../hooks/useExperienceCardReady';
 import { subscribeToHoverTarget, useHoverActions } from '../../hooks/useHoverContext';
@@ -51,6 +51,14 @@ export interface ExperienceListItemProps {
   locationsResolved: boolean;
   isLocationVisited: (locationId: number) => boolean;
   isSelected: boolean;
+  /**
+   * The row is one of the selected place's echoes: its card is open elsewhere —
+   * above the groups, or in another kind's row — so this row is marked as the
+   * selected one and stays folded (#1262).
+   */
+  isMarked?: boolean;
+  /** The row is the card above the groups, over every kind of its place (#1262). */
+  isAboveGroups?: boolean;
   locationRefs: React.MutableRefObject<Map<number, HTMLElement>>;
   /**
    * Registered by the row itself: a parent wrapping each row in a `<Box>`
@@ -122,6 +130,8 @@ function ExperienceListItemComponent({
   locationsResolved,
   isLocationVisited,
   isSelected,
+  isMarked = false,
+  isAboveGroups = false,
   locationRefs,
   itemRefs,
   showCheckbox,
@@ -174,7 +184,7 @@ function ExperienceListItemComponent({
   // whatever its two queries take, having already fetched the picture below.
   const cardReady = useExperienceCardReady(
     experience.id, experience.image_url, isSelected, locationsResolved,
-    hasExtent(experience.kind_id, experience.type),
+    placeHasExtent(experience, isAboveGroups),
   );
 
   const cardOpen = isSelected && cardReady;
@@ -317,6 +327,7 @@ function ExperienceListItemComponent({
         // renders a `div` (see the note below), which is what the cast says.
         ref={rowElRef as React.RefObject<HTMLLIElement>}
         data-selected={isSelected}
+        data-marked={isMarked}
         // Reachable by script and not by Tab: the list puts the focus in the
         // card a link named once it has opened, and nowhere else.
         tabIndex={-1}
@@ -416,7 +427,7 @@ function ExperienceListItemComponent({
             <TitleRow>
               <TitleText
                 variant="body2"
-                data-selected={isSelected}
+                data-selected={isSelected || isMarked}
                 data-visited={isFullyVisited}
               >
                 {experience.name}
@@ -484,6 +495,7 @@ function ExperienceListItemComponent({
       {cardOpen && (
         <ExperienceExpandedDetails
           experience={experience}
+          everyKind={isAboveGroups}
           locations={locations}
           locationsResolved={locationsResolved}
           isLocationVisited={isLocationVisited}

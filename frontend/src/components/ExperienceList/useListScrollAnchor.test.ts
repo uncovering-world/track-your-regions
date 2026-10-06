@@ -110,3 +110,42 @@ describe('useListScrollAnchor: a selection the window does not hold', () => {
     expect(scrollToIndex).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('useListScrollAnchor: a card that moves between rows of its place (#1262)', () => {
+  const nextFrame = () => new Promise(resolve => requestAnimationFrame(resolve));
+
+  it('aims at the card once per selection, and again where a click moved it', async () => {
+    // The Pantheon's card above the groups, moved into its Archaeology row by a
+    // click there: the selection is the same, the row is another.
+    const { props, scrollToIndex } = wiring({ rowIndexByExperience: new Map([[BANDIAGARA, BANDIAGARA_ROW]]) });
+    const { result } = renderHook((p: ListScrollWiring) => useListScrollAnchor(p), { initialProps: props });
+    scrollToIndex.mockClear();
+
+    result.current.handleCardOpened(BANDIAGARA);
+    await nextFrame();
+    expect(scrollToIndex).toHaveBeenCalledTimes(1);
+
+    // The row remounting with its card open is not a reason to move the list.
+    result.current.handleCardOpened(BANDIAGARA);
+    await nextFrame();
+    expect(scrollToIndex).toHaveBeenCalledTimes(1);
+
+    result.current.expectCardMove(BANDIAGARA);
+    result.current.handleCardOpened(BANDIAGARA);
+    await nextFrame();
+    expect(scrollToIndex).toHaveBeenCalledTimes(2);
+  });
+
+  it('leaves another selection\'s aim alone', async () => {
+    const { props, scrollToIndex } = wiring({ rowIndexByExperience: new Map([[BANDIAGARA, BANDIAGARA_ROW]]) });
+    const { result } = renderHook((p: ListScrollWiring) => useListScrollAnchor(p), { initialProps: props });
+    result.current.handleCardOpened(BANDIAGARA);
+    await nextFrame();
+    scrollToIndex.mockClear();
+
+    result.current.expectCardMove(AAPRAVASI);
+    result.current.handleCardOpened(BANDIAGARA);
+    await nextFrame();
+    expect(scrollToIndex).not.toHaveBeenCalled();
+  });
+});
