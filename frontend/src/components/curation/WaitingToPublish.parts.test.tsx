@@ -70,7 +70,7 @@ function renderCard(item: ReviewQueueItem) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <GatedCard group={{ id: item.id, name: item.name, held: item }} onDone={() => {}} />
+      <GatedCard sections={[{ id: item.id, name: item.name, held: item }]} onDone={() => {}} />
     </QueryClientProvider>,
   );
 }

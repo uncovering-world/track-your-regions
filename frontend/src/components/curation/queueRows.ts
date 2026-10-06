@@ -12,7 +12,8 @@
  */
 
 import type { QueueOrderEntry, ReviewQueue, ReviewQueueItem } from '../../api/reviewQueue';
-import { groupGated, type GatedGroup } from './WaitingToPublish';
+import { groupGated } from './WaitingToPublish';
+import { sectionKind, type GatedGroup } from './gatedGroup';
 import type { RowKind } from './queueRowTypes';
 import {
   KIND_COLOR, KIND_SHORT, rowSpecific, rowQuestionWord,
@@ -39,7 +40,8 @@ export interface QueueRow {
   /** The gated sub-kinds a `waiting` row groups (ADR-0025); `[]` for every other kind. */
   subs: string[];
   item?: ReviewQueueItem;
-  group?: GatedGroup;
+  /** A `waiting` row's questions, a section per kind that asks about the place (#1264). */
+  sections?: GatedGroup[];
 }
 
 const QUESTION: Record<RowKind, string> = {
@@ -71,21 +73,20 @@ function warnSkipped(entry: QueueOrderEntry): void {
   console.warn(`queueRows: no hydrated row for ${key} — skipped`);
 }
 
-function waitingRow(entry: QueueOrderEntry, group: GatedGroup): QueueRow {
+function waitingRow(entry: QueueOrderEntry, sections: GatedGroup[]): QueueRow {
   return {
     key: `waiting:${entry.id}`,
     kind: 'waiting',
     id: entry.id,
-    name: group.name,
-    // The group carries no kind of its own — it is three kinds about one object, and
-    // whichever of them is present names the same kind.
-    placeKind: (group.arrival ?? group.held ?? group.contents)?.kind_name ?? '',
+    name: sections[0].name,
+    // Every kind that asks, since the row is one place however many of its kinds do.
+    placeKind: sections.map(sectionKind).join(', '),
     question: QUESTION.waiting,
     askedAt: entry.askedAt,
     runId: entry.runId,
-    specific: rowSpecific({ kind: 'waiting', group }),
+    specific: rowSpecific({ kind: 'waiting', sections }),
     subs: entry.subs,
-    group,
+    sections,
   };
 }
 
@@ -115,8 +116,7 @@ function itemRow(kind: Exclude<RowKind, 'waiting'>, entry: QueueOrderEntry, item
  */
 export function queueRows(data: ReviewQueue | undefined): QueueRow[] {
   if (!data) return [];
-  const gated = groupGated(data.arrivals ?? [], data.held ?? [], data.contents ?? []);
-  const groupsById = new Map(gated.map(group => [group.id, group]));
+  const sectionsById = groupGated(data.arrivals ?? [], data.held ?? [], data.contents ?? []);
   const itemsByKind: Record<Exclude<RowKind, 'waiting'>, Map<number, ReviewQueueItem>> = {
     conflicts: new Map((data.conflicts ?? []).map(item => [item.id, item])),
     withdrawn: new Map((data.withdrawn ?? []).map(item => [item.id, item])),
@@ -128,9 +128,9 @@ export function queueRows(data: ReviewQueue | undefined): QueueRow[] {
   for (const entry of data.order ?? []) {
     const kind = ROW_KIND[entry.kind];
     if (kind === 'waiting') {
-      const group = groupsById.get(entry.id);
-      if (!group) { warnSkipped(entry); continue; }
-      rows.push(waitingRow(entry, group));
+      const sections = sectionsById.get(entry.id);
+      if (!sections) { warnSkipped(entry); continue; }
+      rows.push(waitingRow(entry, sections));
       continue;
     }
     const item = itemsByKind[kind].get(entry.id);

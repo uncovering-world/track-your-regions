@@ -14,7 +14,7 @@ function contents(extra: Partial<ReviewQueueItem>): ReviewQueueItem {
 }
 
 function line(item: ReviewQueueItem, held?: ReviewQueueItem): string {
-  return rowSpecific({ kind: 'waiting', group: { id: item.id, name: item.name, contents: item, held } });
+  return rowSpecific({ kind: 'waiting', sections: [{ id: item.id, name: item.name, contents: item, held }] });
 }
 
 describe('a waiting row counts its contents as the card does', () => {
@@ -33,5 +33,24 @@ describe('a waiting row counts its contents as the card does', () => {
     const item = contents({ pending_locations: 1, pending_moved_locations: 1, coordinates_move_point_id: 15624 });
     const held = { ...item, kind: 'held' as const, proposed: [{ field: 'location', old: null, new: null }] };
     expect(line(item, held)).toBe('coordinates');
+  });
+});
+
+describe('a waiting row two kinds ask about (#1264)', () => {
+  it('names each kind with its own question', () => {
+    // The Capitoline Museums: an Archaeology run has just brought them, while
+    // their Art Museums membership holds a new picture.
+    const arrival = contents({ name: 'Capitoline Museums', kind: 'arrival', kind_name: 'Archaeology' });
+    const held = contents({
+      name: 'Capitoline Museums', kind: 'held', kind_name: 'Art Museums',
+      proposed: [{ field: 'imageUrl', old: null, new: null }],
+    });
+    expect(rowSpecific({
+      kind: 'waiting',
+      sections: [
+        { id: 6214, name: 'Capitoline Museums', membershipId: 1, arrival },
+        { id: 6214, name: 'Capitoline Museums', membershipId: 2, held },
+      ],
+    })).toBe('Archaeology: new arrival; Art Museums: picture');
   });
 });

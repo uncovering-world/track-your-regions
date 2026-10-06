@@ -29,6 +29,7 @@ import {
   type ReviewAnswer, type ReviewAnswerResult, type ReviewAnswerRow,
 } from '../../../api/reviewQueue';
 import type { ReviewAddress } from '../../../utils/appUrl';
+import { namedMembership } from '../../../utils/namedMembership';
 import { queueRows, type QueueRow } from '../queueRows';
 
 /** The report so far, and how far "so far" is. */
@@ -54,19 +55,30 @@ export class AnswerStopped extends Error {
   }
 }
 
-/** The server's kind word for a row: the row's own, except the one the row renames. */
-export function toAnswerRow(row: QueueRow): ReviewAnswerRow {
-  // The membership the row's card asks about (#1264): a refusal's, or a waiting
-  // group's arrival or held proposal. A row about the place as a whole names none.
-  const membershipId = row.item?.membership_id
-    ?? (row.group?.arrival ?? row.group?.held)?.membership_id
-    ?? null;
-  return {
-    kind: row.kind === 'conflicts' ? 'conflict' : row.kind,
-    id: row.id,
-    runId: row.runId,
-    ...(membershipId === null ? {} : { membershipId }),
-  };
+/**
+ * The questions a row answers, in the server's words: the row's own kind word,
+ * except the one the row renames, and the membership its card asks about
+ * (#1264) — a refusal's, or one per section of a `waiting` row, since a place
+ * two kinds ask about is two questions, each answered under its own kind. A
+ * held section names its own run, which is what its answer is checked
+ * against; the row's run is the newest of its sections'.
+ */
+export function toAnswerRows(row: QueueRow): ReviewAnswerRow[] {
+  const kind = row.kind === 'conflicts' ? 'conflict' : row.kind;
+  if (row.sections) {
+    return row.sections.map(group => ({
+      kind,
+      id: row.id,
+      runId: group.held ? group.held.sync_log_id ?? null : row.runId,
+      ...namedMembership(group.membershipId),
+    }));
+  }
+  return [{ kind, id: row.id, runId: row.runId, ...namedMembership(row.item?.membership_id) }];
+}
+
+/** Every question a set of rows holds, in the rows' order. */
+export function answerRowsFor(rows: QueueRow[]): ReviewAnswerRow[] {
+  return rows.flatMap(toAnswerRows);
 }
 
 function empty(answer: ReviewAnswer): ReviewAnswerResult {
@@ -83,9 +95,16 @@ function merge(into: ReviewAnswerResult, from: ReviewAnswerResult): ReviewAnswer
   };
 }
 
+/**
+ * Counted in questions, as the server reports them. `of` is never under what
+ * is done: the filtered total counts places, and a place two kinds ask about
+ * is two questions (#1264).
+ */
 function progressOf(report: ReviewAnswerResult, of: number): AnswerProgress {
+  const answered = report.answered.length;
+  const refused = report.refused.length;
   return {
-    answered: report.answered.length, refused: report.refused.length, outOfScope: report.outOfScope, of,
+    answered, refused, outOfScope: report.outOfScope, of: Math.max(of, answered + refused + report.outOfScope),
   };
 }
 
@@ -106,15 +125,16 @@ export async function answerRows(
   onProgress: (p: AnswerProgress) => void,
 ): Promise<ReviewAnswerResult> {
   let report = empty(answer);
-  for (const chunk of chunks(rows, REVIEW_ANSWER_ROWS_MAX)) {
+  const questions = answerRowsFor(rows);
+  for (const chunk of chunks(questions, REVIEW_ANSWER_ROWS_MAX)) {
     let page: ReviewAnswerResult;
     try {
-      page = await answerReviewRows(chunk.map(toAnswerRow), answer);
+      page = await answerReviewRows(chunk, answer);
     } catch (error) {
       throw stopped(error, report, chunk.length);
     }
     report = merge(report, page);
-    onProgress(progressOf(report, rows.length));
+    onProgress(progressOf(report, questions.length));
   }
   return report;
 }
@@ -156,14 +176,18 @@ export async function answerAllMatching(
       continue;
     }
     for (const row of rows) tried.add(row.key);
-    let result: ReviewAnswerResult;
-    try {
-      result = await answerReviewRows(rows.map(toAnswerRow), answer);
-    } catch (error) {
-      throw stopped(error, report, rows.length);
+    // A page of rows can hold more questions than one request takes, where
+    // two kinds ask about a place (#1264).
+    for (const chunk of chunks(answerRowsFor(rows), REVIEW_ANSWER_ROWS_MAX)) {
+      let result: ReviewAnswerResult;
+      try {
+        result = await answerReviewRows(chunk, answer);
+      } catch (error) {
+        throw stopped(error, report, chunk.length);
+      }
+      report = merge(report, result);
+      onProgress(progressOf(report, total));
     }
-    report = merge(report, result);
-    onProgress(progressOf(report, total));
     cursor = undefined;
   }
 }

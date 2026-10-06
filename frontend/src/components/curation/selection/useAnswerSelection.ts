@@ -16,7 +16,7 @@ import { invalidateAfterBatchPublication } from '../../../utils/queryInvalidatio
 import type { QueueRow } from '../queueRows';
 import { answerNoticeFor, stoppedNoticeFor } from './answerNotice';
 import {
-  answerAllMatching, answerRows, AnswerStopped, type AnswerProgress,
+  answerAllMatching, answerRows, answerRowsFor, AnswerStopped, type AnswerProgress,
 } from './answerRows';
 import {
   ANSWER_WORDS, countByKind, gatedKindsAlsoReached, KIND_NOUN, matchingKindCounts, type AnswerableKind,
@@ -99,7 +99,9 @@ export function useAnswerSelection({
   const run = async (answer: ReviewAnswer) => {
     setConfirming(null);
     setNotice(null);
-    setProgress({ answered: 0, refused: 0, outOfScope: 0, of: selection.allMatching ? total : rows.length });
+    setProgress({
+      answered: 0, refused: 0, outOfScope: 0, of: selection.allMatching ? total : answerRowsFor(rows).length,
+    });
     try {
       const report = selection.allMatching
         ? await answerAllMatching(address, total, answer, setProgress)

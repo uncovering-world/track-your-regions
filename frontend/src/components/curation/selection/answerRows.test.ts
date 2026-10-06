@@ -17,7 +17,7 @@ vi.mock('../../../api/reviewQueue', () => ({
 }));
 
 import { answerReviewRows, fetchReviewQueue, type ReviewAnswerResult } from '../../../api/reviewQueue';
-import { answerAllMatching, answerRows, AnswerStopped, toAnswerRow } from './answerRows';
+import { answerAllMatching, answerRows, AnswerStopped, toAnswerRows } from './answerRows';
 import type { QueueRow } from '../queueRows';
 
 const mockedAnswer = answerReviewRows as unknown as ReturnType<typeof vi.fn>;
@@ -49,21 +49,30 @@ beforeEach(() => {
   mockedFetch.mockReset();
 });
 
-describe('toAnswerRow', () => {
+describe('toAnswerRows', () => {
   it('sends the server’s kind word, and the run the row was asked by', () => {
-    expect(toAnswerRow(row('conflicts:7', { runId: 98 }))).toEqual({ kind: 'conflict', id: 7, runId: 98 });
-    expect(toAnswerRow(row('waiting:9'))).toEqual({ kind: 'waiting', id: 9, runId: 105 });
+    expect(toAnswerRows(row('conflicts:7', { runId: 98 }))).toEqual([{ kind: 'conflict', id: 7, runId: 98 }]);
+    expect(toAnswerRows(row('waiting:9'))).toEqual([{ kind: 'waiting', id: 9, runId: 105 }]);
   });
 
   it('names the membership the row\'s card asks about, where it carries one (#1264)', () => {
     const refusal = { id: 6214, membership_id: 14546 } as QueueRow['item'];
-    expect(toAnswerRow(row('refused:6214', { item: refusal })))
-      .toEqual({ kind: 'refused', id: 6214, runId: 105, membershipId: 14546 });
+    expect(toAnswerRows(row('refused:6214', { item: refusal })))
+      .toEqual([{ kind: 'refused', id: 6214, runId: 105, membershipId: 14546 }]);
+  });
 
-    // A waiting group's arrival answers for it, or its held proposal where none arrived.
-    const held = { id: 6214, membership_id: 14547 } as NonNullable<QueueRow['group']>['held'];
-    expect(toAnswerRow(row('waiting:6214', { group: { id: 6214, name: 'Capitoline Museums', held } })))
-      .toEqual({ kind: 'waiting', id: 6214, runId: 105, membershipId: 14547 });
+  it('answers each kind a waiting row asks for, a held one against its own run (#1264)', () => {
+    // The Capitoline Museums: an Archaeology arrival first seen by run 105, and
+    // an Art Museums picture held by run 98.
+    const held = { id: 6214, membership_id: 14547, sync_log_id: 98 } as NonNullable<QueueRow['item']>;
+    const sections = [
+      { id: 6214, name: 'Capitoline Museums', membershipId: 14548, arrival: {} as NonNullable<QueueRow['item']> },
+      { id: 6214, name: 'Capitoline Museums', membershipId: 14547, held },
+    ];
+    expect(toAnswerRows(row('waiting:6214', { sections }))).toEqual([
+      { kind: 'waiting', id: 6214, runId: 105, membershipId: 14548 },
+      { kind: 'waiting', id: 6214, runId: 98, membershipId: 14547 },
+    ]);
   });
 });
 
