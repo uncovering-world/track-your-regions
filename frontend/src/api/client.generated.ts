@@ -7248,7 +7248,7 @@ export interface ReviewQueueItem {
   source_membership: ReviewQueueItemSourceMembership;
   existence: ReviewQueueItemExistence;
   kind: ReviewQueueItemKind;
-  /** The membership this card asks about (#1264): an arrival, a held proposal or a refusal is one kind's, and an answer sends it back as `membershipId`. Absent on a card about the place as a whole. */
+  /** The membership this card asks about (#1264): an arrival, a held proposal or a refusal is one kind's, and an answer sends it back as `membershipId`. Unread contents name the membership readers see the place through, which their answer is written under. Absent on a card about the place as a whole. */
   membership_id?: number | null;
   /** @nullable */
   image_url?: string | null;
@@ -7262,6 +7262,8 @@ export interface ReviewQueueItem {
   /** @nullable */
   wikipedia_url?: string | null;
   region_names?: string[] | null;
+  /** On an arrival: the kinds readers already see the place in, through another membership (#1264). Empty where the arrival is the whole place. */
+  seen_in?: string[];
   /**
      * The run's own question about a row it could not settle by its rule (ADR-0058).
      * @nullable

@@ -35,7 +35,7 @@
  */
 
 import { pool } from '../../db/index.js';
-import { MEMBERSHIPS, membershipAdmittedSql, membershipOfferedSql } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS, membershipAdmittedSql, membershipOfferedSql } from '../../db/membership.js';
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 
@@ -144,6 +144,42 @@ export function contentsWaitingSql(alias = 'e', membership = 'm'): string {
 }
 
 /**
+ * The membership a place's unread contents are asked and answered through, as
+ * a scalar subquery over the place's id (#1264).
+ *
+ * Unread points and works are the place's, and readers see the place through
+ * an offered membership, so the contents belong to one of those: first one
+ * that placed an unread point or work itself (`experience_location_placements`,
+ * `experience_treasure_placements`, ADR-0084) — the Capitoline Museums'
+ * paintings stay an Art Museums question even while an Archaeology run holds a
+ * proposal on the place — then one holding a proposal, so they share that
+ * kind's question on the card, then the kind's order, then the id. NULL where
+ * no membership is offered: the contents then go out with the arrival that
+ * makes the place visible. Contents two kinds both placed are still one
+ * question, under the first of them.
+ *
+ * One owner, read by every act on the contents: the queue's key, card and
+ * scope, `contentsAnswerableSql` below, the refusal and its take-back, an
+ * object publish (`contentsReleased`, `publishController.ts`) and *Publish all
+ * waiting*. `om`, `ok` and the placement aliases are the subquery's own.
+ */
+export function contentsMembershipSql(experienceIdExpr: string): string {
+  return `(SELECT om.id FROM ${MEMBERSHIPS} om JOIN ${KINDS} ok ON ok.id = om.kind_id
+        WHERE om.experience_id = ${experienceIdExpr} AND ${membershipOfferedSql('om')}
+        ORDER BY (EXISTS (
+                    SELECT 1 FROM experience_locations oel
+                    JOIN experience_location_placements olp ON olp.location_id = oel.id
+                   WHERE olp.membership_id = om.id AND ${offeredLocationSql('oel')} AND ${unreadPointSql('oel')})
+                  OR EXISTS (
+                    SELECT 1 FROM experience_treasures oet
+                    JOIN experience_treasure_placements otp ON otp.link_id = oet.id
+                    JOIN treasures ot ON ot.id = oet.treasure_id
+                   WHERE otp.membership_id = om.id AND ${offeredLinkSql('oet')} AND ${unreadLinkSql('oet', 'ot')})) DESC,
+                 (om.pending_change_sync_log_id IS NOT NULL) DESC, ok.display_priority, om.id
+        LIMIT 1)`;
+}
+
+/**
  * Whose unread contents may be answered at all — the object half of
  * `contentsWaitingSql`, on its own.
  *
@@ -162,9 +198,15 @@ export function contentsWaitingSql(alias = 'e', membership = 'm'): string {
  *
  * `${membership}.id IS NOT NULL` because the writers reach the membership by
  * LEFT JOIN, an object with none at all being neither admitted nor refused.
+ *
+ * Answerable through one membership: the one the contents belong to
+ * (`contentsMembershipSql`, #1264). Every other offered membership of the
+ * place answers no to it, so a held question of another kind, a count by
+ * source and *Publish all waiting* never reach the contents a second time.
  */
 export function contentsAnswerableSql(alias = 'e', membership = 'm'): string {
   return `${membership}.id IS NOT NULL AND ${membershipOfferedSql(membership)}
+    AND ${membership}.id = ${contentsMembershipSql(`${alias}.id`)}
     AND ${alias}.missing_since IS NULL`;
 }
 

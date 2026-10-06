@@ -678,10 +678,13 @@ describe('getReviewQueue', () => {
   }
 
   it('offers an arrival only where it is answerable', async () => {
-    const sql = await capturedQueueSql('arrival');
+    const sql = await capturedQueueSql('arrival', CURATOR);
     // An arrival is a membership arriving (#822): its state and its
-    // admission are read off the membership, joined to the place.
-    expect(sql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.source_id');
+    // admission are read off the membership, joined to the place — any
+    // membership, one card each, in scope by its own source (#1264).
+    expect(sql).toMatch(/JOIN experience_kind_memberships m ON m\.experience_id = e\.id\s/);
+    expect(sql).not.toContain('m.source_id = e.source_id');
+    expect(sql).toContain('ca.source_id = m.source_id');
     expect(sql).toContain("m.curation_state = 'pending'");
     // A refused row is already invisible for a reason with its own card
     // (§ 2.3): asking "may readers see this?" about it asks the second
@@ -700,12 +703,15 @@ describe('getReviewQueue', () => {
   });
 
   it('names the run whose proposal is held, and drops a card with nothing in it', async () => {
-    const sql = await capturedQueueSql('held');
+    const sql = await capturedQueueSql('held', CURATOR);
     expect(sql).toContain('m.pending_change_sync_log_id IS NOT NULL');
     expect(sql).toContain('ch.sync_log_id = m.pending_change_sync_log_id');
-    // One membership per place in the join — the row's own source's — so a
-    // place with two (#755) cannot raise the same held proposal twice.
-    expect(sql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.source_id');
+    // Every membership of the place, one card each (#1264): a proposal is held
+    // on the membership whose source's run made it, so two memberships hold two
+    // runs' proposals and never one proposal twice.
+    expect(sql).toMatch(/JOIN experience_kind_memberships m ON m\.experience_id = e\.id\s/);
+    expect(sql).not.toContain('m.source_id = e.source_id');
+    expect(sql).toContain('ca.source_id = m.source_id');
     // jsonb_agg over an empty set returns NULL, and an empty card is worse than
     // none — on either half: the object's own held fields, or its parts'.
     expect(sql).toMatch(/WHERE \(q\.proposed IS NOT NULL OR q\.proposed_parts IS NOT NULL\)/);

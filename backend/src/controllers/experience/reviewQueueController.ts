@@ -14,7 +14,7 @@ import type { ReviewQueue, ReviewQueueItem } from '../../api/responses/reviewQue
 import { queueItemOf, type QueueRow } from './reviewQueueItem.js';
 import type { QueryResult } from 'pg';
 import { pool } from '../../db/index.js';
-import { KINDS, MEMBERSHIPS, admissionAnsweredSql, rowKindJoinSql } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS, admissionAnsweredSql, membershipOfferedSql, rowKindJoinSql } from '../../db/membership.js';
 import type { reviewQueueQuerySchema } from '../../types/index.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
@@ -27,7 +27,7 @@ import {
 import { queryRefusedParts } from './reviewQueueRefusedParts.js';
 import { queryConflicts } from './reviewQueueConflicts.js';
 import {
-  QUEUE_KINDS, WAITING_SUBS, likeParam, queryQueueKeys,
+  QUEUE_KINDS, WAITING_SUBS, likeParam, queryQueueKeys, queueScopeSql,
 } from './reviewQueueKeys.js';
 import type { QueueFilters, QueueKind, WaitingSub } from './reviewQueueKeys.js';
 import {
@@ -178,13 +178,9 @@ export async function getReviewQueue(
 
   // The rows span sources, so the unrestricted check correlates on each
   // row's own source rather than on the optional request filter.
-  const scopeFilter = isAdmin
-    ? 'TRUE'
-    : `(${curatorUnrestrictedScopeExists('e.source_id')} OR EXISTS (
-         SELECT 1 FROM experience_regions er
-         JOIN curator_scoped_regions s ON s.id = er.region_id
-         WHERE er.experience_id = e.id
-       ))`;
+  const scopeFilter = queueScopeSql(isAdmin, 'e.source_id');
+  // A question a membership asks is in scope by that membership's source (#1264).
+  const membershipScopeFilter = queueScopeSql(isAdmin, 'm.source_id');
 
   // The source chip, as a predicate on the row's own source. Redundant on the
   // seven kinds below — their ids come from the keys phase, which applied it
@@ -197,9 +193,11 @@ export async function getReviewQueue(
   // refuses the whole statement with "could not determine data type".
   const params: unknown[] = [userId];
   let sourceFilter = '';
+  let membershipSourceFilter = '';
   if (filters.sourceIds?.length) {
     params.push(filters.sourceIds);
     sourceFilter = `AND e.source_id = ANY($${params.length}::int[])`;
+    membershipSourceFilter = `AND m.source_id = ANY($${params.length}::int[])`;
   }
 
   // The search, on the same two lists and for the same reason: a curator looking
@@ -274,13 +272,12 @@ export async function getReviewQueue(
   // What counts as `refused` and why an answered row leaves it: the reasoning
   // is on `refusedOpenSql` (`reviewQueuePredicates.ts`).
   //
-  // Each of the four membership queues joins the membership the row's own
-  // source brought — `m.source_id = e.source_id`, the equality the catalogue
-  // check `membership-source-disagrees-with-row` asserts — rather than any
-  // membership of the place. Today a place has one; the day #755 gives it two,
-  // a card is per membership (ADR-0045 decision 7) and the queue is keyed on
-  // it rather than on the place. Said in the join so that day cannot show one
-  // source's refusal under another's heading, or the same held proposal twice.
+  // The refusal and kept-out queues join the membership the row's own source
+  // brought — `m.source_id = e.source_id`, the equality the catalogue check
+  // `membership-source-disagrees-with-row` asserts — rather than any
+  // membership of the place, so a place in two kinds cannot show one source's
+  // refusal under another's heading. The arrival and held queues ask every
+  // membership already (#1264, below); these two are the rest of that issue.
   const refusedIds = idsOf('refused');
   const refused = await hydrate(refusedIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
@@ -368,19 +365,27 @@ export async function getReviewQueue(
   //
   // An arrival is a membership arriving (#822): the gate state and the
   // admission are the membership's, the source's observation is the row's.
+  // One card per membership (#1264): a place two gated sources brought is two
+  // arrivals, each answered for its own kind, and the page groups them.
   const arrivalIds = waitingIds('arrival');
   const arrivals = await hydrate(arrivalIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
            m.curation_state, m.first_seen_sync_log_id AS sync_log_id,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
-           'arrival' AS kind, NULL::jsonb AS proposed
+           'arrival' AS kind, NULL::jsonb AS proposed,
+           -- The kinds readers already see the place in: a place an Art Museums
+           -- run published and an Archaeology run has just brought is on every
+           -- map already, and the card must not say nobody can see it (#1264).
+           (SELECT COALESCE(array_agg(sk.name ORDER BY sk.display_priority, sk.id), '{}')
+              FROM ${MEMBERSHIPS} sm JOIN ${KINDS} sk ON sk.id = sm.kind_id
+             WHERE sm.experience_id = e.id AND ${membershipOfferedSql('sm')}) AS seen_in
     FROM experiences e
-    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
     JOIN ${KINDS} kd ON kd.id = m.kind_id
     WHERE ${arrivalOpenSql('e', 'm')}
-      AND ${scopeFilter} ${sourceFilter}
+      AND ${membershipScopeFilter} ${membershipSourceFilter}
       AND e.id = ANY($${params.length + 1}::int[])
-    ORDER BY m.first_seen_sync_log_id DESC NULLS LAST, e.id
+    ORDER BY m.first_seen_sync_log_id DESC NULLS LAST, e.id, kd.display_priority
   `, [...params, arrivalIds]));
 
   // held: an already-visible row whose newest content proposal was kept out
@@ -449,14 +454,15 @@ export async function getReviewQueue(
              ${heldPartsSelectSql('ch', 'e')}
       FROM experiences e
       -- The pointer is the membership's (#822): the proposal was held for the
-      -- source that made it, on the membership that source brought.
-      JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
+      -- source that made it, on the membership that source brought — any
+      -- membership of the place, one card each (#1264).
+      JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
       JOIN ${KINDS} kd ON kd.id = m.kind_id
       JOIN experience_sync_changes ch ON ch.experience_id = e.id
                                      AND ch.sync_log_id = m.pending_change_sync_log_id
       WHERE m.pending_change_sync_log_id IS NOT NULL
         AND ${heldOpenSql('e', 'm', 'ch')}
-        AND ${scopeFilter} ${sourceFilter}
+        AND ${membershipScopeFilter} ${membershipSourceFilter}
         AND e.id = ANY($${params.length + 1}::int[])
     ) q WHERE (q.proposed IS NOT NULL OR q.proposed_parts IS NOT NULL)
     ORDER BY q.sync_log_id DESC, q.id
@@ -464,7 +470,11 @@ export async function getReviewQueue(
 
   const contentsIds = waitingIds('contents');
   const contents = await hydrate(
-    contentsIds, () => queryContents({ ...queryContext, ids: contentsIds }),
+    // Scoped and filtered by the source of the membership the contents are
+    // answered through (#1264), as the arrival and held reads are by theirs.
+    contentsIds, () => queryContents({
+      ...queryContext, scopeFilter: membershipScopeFilter, sourceFilter: membershipSourceFilter, ids: contentsIds,
+    }),
   );
   const withdrawnIds = idsOf('withdrawn');
   const withdrawn = await hydrate(

@@ -33,9 +33,10 @@ import { pool } from '../../db/index.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import type { PublishWaitingResult, PublishedWaitingObject, RefusedWaitingObject } from '../../api/responses/admin.js';
 import type { sourceIdParamSchema } from '../../types/index.js';
-import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
+import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishUnderLock } from './publishController.js';
+import { queueScopeSql } from './reviewQueueKeys.js';
 import { arrivalWaitingSql, contentsWaitingSql, heldWaitingSql } from './waitingCounts.js';
 
 /**
@@ -173,13 +174,8 @@ export async function publishWaiting(
   // "forty" — an admin's view of the source — but this reply is the answer to *their*
   // click. Same predicate the queue qualifies its rows with, so the number and the
   // cards agree.
-  const scopeFilter = userRole === 'admin'
-    ? 'TRUE'
-    : `(${curatorUnrestrictedScopeExists('e.source_id')} OR EXISTS (
-         SELECT 1 FROM experience_regions er
-         JOIN curator_scoped_regions s ON s.id = er.region_id
-         WHERE er.experience_id = e.id
-       ))`;
+  // In scope by the membership's own source, as the queue's held keys are (#1264).
+  const scopeFilter = queueScopeSql(userRole === 'admin', 'm.source_id');
   // The count itself goes inside a `try`, for the same reason the loop's body does, and
   // the last statement is where it matters most: another `pool.query` running another
   // recursive CTE, issued after a loop that may have run for minutes. A throw here

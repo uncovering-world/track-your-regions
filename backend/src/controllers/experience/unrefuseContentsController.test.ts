@@ -102,7 +102,8 @@ beforeEach(() => {
 
 describe('unrefuseContents', () => {
   it('404s an experience that does not exist and 403s a curator out of scope', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [] });
+    // No owner of the contents, then no place to read a source from.
+    mockedQuery.mockResolvedValueOnce({ rows: [] }).mockResolvedValueOnce({ rows: [] });
     const missing = makeRes();
     await answerRoute(postUnrefuseContents, { params: { id: '5' }, user: CURATOR, body: {} } as never, missing as never);
     expect(missing.status).toHaveBeenCalledWith(404);

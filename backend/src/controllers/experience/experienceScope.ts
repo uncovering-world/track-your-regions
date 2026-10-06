@@ -9,6 +9,7 @@
 
 import { pool } from '../../db/index.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
+import { contentsMembershipSql } from './waitingCounts.js';
 import type { UserRole } from '../../types/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, CURATOR_UNRESTRICTED_SCOPE_EXISTS } from '../../middleware/auth.js';
 
@@ -79,6 +80,19 @@ export async function answeredSourceId(
     [experienceId, membershipId ?? null],
   );
   return result.rows[0]?.source_id ?? null;
+}
+
+/**
+ * The membership a place's unread contents are answered through
+ * (`contentsMembershipSql`, #1264), so the scope of a refusal of them, or of
+ * its take-back, is that membership's source's; undefined where none is
+ * offered, and the place's own source decides.
+ */
+export async function contentsMembershipId(experienceId: number): Promise<number | undefined> {
+  const result = await pool.query<{ id: number | null }>(
+    `SELECT ${contentsMembershipSql('$1::int')} AS id`, [experienceId],
+  );
+  return result.rows[0]?.id ?? undefined;
 }
 
 /**
