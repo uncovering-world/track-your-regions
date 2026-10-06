@@ -265,3 +265,45 @@ describe('the row a record becomes', () => {
     expect(garamba?.metadata.inDanger).toBe(false);
   });
 });
+
+describe("a component's name (#1279)", () => {
+  it('is read whole, commas included, rather than up to its first comma', () => {
+    // Two of Aalto Works' components and one of Tashkent Modernist
+    // Architecture's, copied from the dataset as it writes them: the town after the comma is what tells two of Aalto's
+    // works apart, and the bracket closes after one.
+    const site = transformRecord(record({
+      id_no: '1752',
+      name_en: 'Aalto Works',
+      components_list: '{name: Villa Mairea, Pori, ref: 1752-013, latitude: 61.5974091666, longitude: 21.8745822223}\n'
+        + '{name: Experimental House, Muuratsalo, Jyväskylä, ref: 1752-009, latitude: 62.1147980556, longitude: 25.7450022222}\n'
+        + '{name: Zhemchug Residential Building (Zhemchug, the “Pearl”), ref: 1766-001, latitude: 41.3026833333, longitude: 69.2672222223}',
+    }));
+
+    expect(site?.locations.map(location => location.name)).toEqual([
+      'Villa Mairea, Pori',
+      'Experimental House, Muuratsalo, Jyväskylä',
+      'Zhemchug Residential Building (Zhemchug, the “Pearl”)',
+    ]);
+    expect(site?.locations.map(location => location.externalRef)).toEqual(['1752-013', '1752-009', '1766-001']);
+  });
+
+  it('cuts a name with a dotted capital I where the original has its ref', () => {
+    // Hyrcanian Forests' component, as the dataset writes it: lowercasing "İ"
+    // makes two code units of one, so positions found in a lowercased copy
+    // cut the original one character late.
+    const site = transformRecord(record({
+      components_list: '{name: İstisuchay Valley (Southern HNP), ref: 1584bis-017, latitude: 38.4549666667, longitude: 48.6793027778}',
+    }));
+
+    expect(site?.locations[0]).toMatchObject({ name: 'İstisuchay Valley (Southern HNP)', externalRef: '1584bis-017' });
+  });
+
+  it('keeps a name the source left empty as empty', () => {
+    // Via Appia's component 1708-003 is written `{name: , ref: 1708-003, …}`.
+    const site = transformRecord(record({
+      components_list: '{name: , ref: 1708-003, latitude: 41.6718, longitude: 12.7273}',
+    }));
+
+    expect(site?.locations[0]).toMatchObject({ name: '', externalRef: '1708-003' });
+  });
+});

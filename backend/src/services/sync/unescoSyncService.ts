@@ -56,6 +56,26 @@ const UNESCO_SOURCE_ID = 1; // Seeded in migration
 let storedCredits = new Map<string, StoredCredit>();
 
 /**
+ * A component's name: everything between `name:` and the `ref:` that follows
+ * it, commas included — "Villa Mairea, Pori", "Experimental House, Muuratsalo,
+ * Jyväskylä" (#1279). Null where the entry has no `ref:` after its `name:`
+ * — no ref at all, or the ref written first — and the component is skipped;
+ * every entry of the dataset writes the name first and the ref after it.
+ */
+function componentName(entry: string): string | null {
+  // Searched in the entry itself rather than in a lowercased copy: lowercasing
+  // "İ" makes two code units of one, so a copy's positions would cut the
+  // original one character late for every such letter before the ref.
+  const name = /name:/i.exec(entry);
+  if (!name) return null;
+  const ref = /ref:/gi;
+  ref.lastIndex = name.index + name[0].length;
+  const refFound = ref.exec(entry);
+  if (!refFound) return null;
+  return entry.slice(name.index + name[0].length, refFound.index).trim().replace(/,$/, '').trim();
+}
+
+/**
  * Parse UNESCO components_list field to extract individual locations
  * Format: "{name: Fort Name, ref: 1739-005, latitude: 18.236, longitude: 73.444}"
  * Multiple components are separated by newlines or commas between braces
@@ -72,24 +92,23 @@ function parseComponentsList(componentsList: string | undefined): ParsedLocation
   // so each individual regex is bounded and not catastrophic.
   // eslint-disable-next-line sonarjs/slow-regex -- negated class `[^}]+` cannot match past `}`, so the `+` quantifier is committed and there's no backtracking across object boundaries
   const objectRegex = /\{[^}]+\}/g;
-  const fieldName = /name:\s*([^,}]+)/i;
   const fieldRef = /ref:\s*([^,}]+)/i;
   const fieldLat = /latitude:\s*([\d.-]+)/i;
   const fieldLon = /longitude:\s*([\d.-]+)/i;
 
   for (const objMatch of componentsList.matchAll(objectRegex)) {
     const obj = objMatch[0];
-    const nameMatch = obj.match(fieldName);
+    const name = componentName(obj);
     const refMatch = obj.match(fieldRef);
     const latMatch = obj.match(fieldLat);
     const lonMatch = obj.match(fieldLon);
-    if (!nameMatch || !refMatch || !latMatch || !lonMatch) continue;
+    if (name === null || !refMatch || !latMatch || !lonMatch) continue;
 
     const lat = parseFloat(latMatch[1]);
     const lon = parseFloat(lonMatch[1]);
     if (!isNaN(lat) && !isNaN(lon) && lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
       locations.push({
-        name: nameMatch[1].trim(),
+        name,
         externalRef: refMatch[1].trim(),
         lat,
         lon,
