@@ -233,7 +233,8 @@ export const ReviewQueueItem = z.strictObject({
   kind: z.enum(QUEUE_ITEM_KINDS),
   membership_id: z.number().int().nullable().optional().describe(
     'The membership this card asks about (#1264): an arrival, a held proposal or a refusal is one kind\'s, and an answer'
-    + ' sends it back as `membershipId`. Absent on a card about the place as a whole.',
+    + ' sends it back as `membershipId`. Unread contents name the membership readers see the place through, which their'
+    + ' answer is written under. Absent on a card about the place as a whole.',
   ),
   image_url: z.string().nullable().optional(),
   image_credit: ImageCredit.nullable().optional(),
@@ -242,6 +243,10 @@ export const ReviewQueueItem = z.strictObject({
   website_url: z.string().nullable().optional(),
   wikipedia_url: z.string().nullable().optional(),
   region_names: z.array(z.string()).nullable().optional(),
+  seen_in: z.array(z.string()).optional().describe(
+    'On an arrival: the kinds readers already see the place in, through another membership (#1264). Empty where the'
+    + ' arrival is the whole place.',
+  ),
   admission_note: z.string().nullable().optional()
     .describe("The run's own question about a row it could not settle by its rule (ADR-0058)."),
   in_danger: z.boolean().optional(),

@@ -23,13 +23,13 @@
 
 import { POINT_VERDICT_ACTIONS } from '@tyr/shared/curationLog';
 import { pool } from '../../db/index.js';
-import { rowKindJoinSql } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS, rowKindJoinSql } from '../../db/membership.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import type { QueryResult } from 'pg';
 import {
   lifecycleSelectSql, linkedForReaderSql, offeredLinkSql, offeredLocationSql, publishedContentSql, venueCountSql, venuesSql,
 } from '../../db/readerPredicates.js';
-import { unreadLinkSql, unreadPointSql } from './waitingCounts.js';
+import { contentsMembershipSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 import { objectContextSelectSql, QUEUE_PAGE_SIZE } from './reviewQueueContext.js';
 import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
@@ -233,9 +233,10 @@ export async function queryContents(
   // works" over a list of 25 of 93 points is telling the truth twice rather than
   // once, and a list without its total is a silent cap.
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, e.source_id, m.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'contents' AS kind,
+           m.id AS membership_id,
            points.total AS pending_locations,
            points.moved AS pending_moved_locations,
            works.total AS pending_treasures,
@@ -245,7 +246,11 @@ export async function queryContents(
            pair.id AS coordinates_move_point_id,
            NULL::jsonb AS proposed
     FROM experiences e
-    ${rowKindJoinSql('e', 'mk', 'kd')}
+    -- The membership the contents are asked and answered through, which the
+    -- card names back (#1264, contentsMembershipSql). Its source is the one
+    -- the scope and the source chip read, as for every other waiting question.
+    LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${contentsMembershipSql('e.id')}
+    LEFT JOIN ${KINDS} kd ON kd.id = m.kind_id
     -- The unread point the object's held coordinate would take along, by the
     -- rule the publish asks (pointMovedToSql): the card marks this row and no
     -- other, and it leads the capped list below so it is always among the rows
@@ -259,7 +264,7 @@ export async function queryContents(
         FROM (SELECT (
           SELECT ST_SetSRID(ST_MakePoint((f->'new'->>'lon')::float8, (f->'new'->>'lat')::float8), 4326)
             FROM (SELECT changed_fields FROM experience_sync_changes
-                   WHERE sync_log_id = mk.pending_change_sync_log_id AND experience_id = e.id
+                   WHERE sync_log_id = m.pending_change_sync_log_id AND experience_id = e.id
                    ORDER BY id DESC LIMIT 1) AS held,
                  jsonb_array_elements(held.changed_fields) AS f
            WHERE f->>'field' = 'location' AND (f->>'held')::boolean

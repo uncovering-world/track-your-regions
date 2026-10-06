@@ -265,7 +265,7 @@ describe('publishWaiting', () => {
     // against the publishing.
     const order: string[] = [];
     mockedQuery.mockImplementation(async (sql: string) => {
-      if (String(sql).includes('pending_change_sync_log_id IS NOT NULL')) {
+      if (String(sql).includes('count(*)::int AS n')) {
         order.push('count-held');
         return { rows: [{ n: 2 }] };
       }

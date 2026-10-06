@@ -35,6 +35,7 @@ export interface QueueRow {
   kind: QueueItemKind;
   /** Selected by the four membership cards (#1264). */
   membership_id?: number | null;
+  seen_in?: string[];
   proposed: StoredProposal[] | null;
   image_url?: string | null;
   image_credit?: ImageCredit | null;
@@ -156,6 +157,7 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     wikipedia_url: row.wikipedia_url,
     region_names: row.region_names,
     admission_note: row.admission_note,
+    seen_in: row.seen_in,
     in_danger: row.in_danger,
     danger_since: row.danger_since,
     admission_reason: row.admission_reason,

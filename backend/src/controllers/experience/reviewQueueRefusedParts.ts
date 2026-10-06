@@ -33,7 +33,7 @@ import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import type { QueryResult } from 'pg';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
-import { contentsAnswerableSql } from './waitingCounts.js';
+import { contentsAnswerableSql, contentsMembershipSql } from './waitingCounts.js';
 import { MEMBERSHIPS, membershipToAnswerSql, rowKindJoinSql } from '../../db/membership.js';
 import { type AnsweredQueryContext, CONTENTS_ROWS_SHOWN } from './reviewQueueContents.js';
 
@@ -122,9 +122,10 @@ export async function queryRefusedParts(
     JOIN experiences e ON e.id = h.id
     ${rowKindJoinSql('e', 'mk', 'kd')}
     -- The membership the take-back answers through, joined the way the writer
-    -- reads it, so the two ask about the same row.
+    -- reads it so the two ask about the same row (#1264): the one the contents
+    -- belong to, else the waiting one.
     LEFT JOIN ${MEMBERSHIPS} answerable_m
-      ON answerable_m.id = ${membershipToAnswerSql('e.id', 'waiting')}
+      ON answerable_m.id = COALESCE(${contentsMembershipSql('e.id')}, ${membershipToAnswerSql('e.id', 'waiting')})
     CROSS JOIN LATERAL (
       SELECT COUNT(*)::int AS total, MAX(refused_at) AS newest,
              COALESCE(jsonb_agg(jsonb_build_object(

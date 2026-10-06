@@ -56,7 +56,7 @@ import { QUEUE_KINDS, WAITING_SUBS, type QueueKind, type WaitingSub } from './re
 import { MEMBERSHIPS, claimsFacingSql } from '../../db/membership.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
-import { unreadLinkSql, unreadPointSql } from './waitingCounts.js';
+import { contentsMembershipSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import {
   arrivalOpenSql, claimKeySql, conflictChangeOpenSql, contentsOpenSql, heldOpenSql,
@@ -151,7 +151,7 @@ export function decodeCursor(s: string): Cursor | null {
 function conflictKeysSql(scopeFilter: string, claimKey: (field: string) => string): string {
   return `
     SELECT 'conflict'::text AS kind, ${KIND_RANK.conflict} AS rank, q.id, q.name,
-           q.source_id AS source_id, q.sync_log_id AS run_id, q.completed_at AS asked_at,
+           ARRAY[q.source_id] AS source_ids, q.sync_log_id AS run_id, q.completed_at AS asked_at,
            ARRAY[]::text[] AS subs
     FROM (
       SELECT DISTINCT ON (e.id) e.id, e.name, e.source_id, ${claimsFacingSql('e', 'l.source_id')} AS curated_fields,
@@ -172,13 +172,17 @@ function conflictKeysSql(scopeFilter: string, claimKey: (field: string) => strin
                           AND d.declined = COALESCE(f->'new', 'null'::jsonb)))`;
 }
 
-/** An arrival: a membership from a gated source nobody has passed (ADR-0025). */
+/**
+ * An arrival: a membership from a gated source nobody has passed (ADR-0025),
+ * any membership of the place (#1264) — the Capitoline Museums' Archaeology
+ * arrival is asked about whichever source brought the place first.
+ */
 function arrivalKeysSql(scopeFilter: string): string {
   return `
-        SELECT e.id, e.name, e.source_id, m.first_seen_sync_log_id AS run_id,
+        SELECT e.id, e.name, m.source_id, m.first_seen_sync_log_id AS run_id,
                l.completed_at AS asked_at, 'arrival'::text AS sub
         FROM experiences e
-        JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
+        JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
         LEFT JOIN experience_sync_logs l ON l.id = m.first_seen_sync_log_id
         WHERE ${arrivalOpenSql('e', 'm')}
           AND ${scopeFilter}`;
@@ -191,10 +195,10 @@ function arrivalKeysSql(scopeFilter: string): string {
  */
 function heldKeysSql(scopeFilter: string): string {
   return `
-        SELECT e.id, e.name, e.source_id, m.pending_change_sync_log_id,
+        SELECT e.id, e.name, m.source_id, m.pending_change_sync_log_id,
                l.completed_at, 'held'
         FROM experiences e
-        JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
+        JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
         JOIN experience_sync_logs l ON l.id = m.pending_change_sync_log_id
         JOIN experience_sync_changes ch ON ch.experience_id = e.id
                                        AND ch.sync_log_id = m.pending_change_sync_log_id
@@ -209,9 +213,9 @@ function heldKeysSql(scopeFilter: string): string {
  * it. `GREATEST` skips a NULL, so a card holding only works is dated by the
  * works.
  */
-function contentsKeysSql(scopeFilter: string): string {
+function contentsKeysSql(membershipScopeFilter: string): string {
   return `
-        SELECT e.id, e.name, e.source_id, NULL, GREATEST(
+        SELECT e.id, e.name, m.source_id, NULL, GREATEST(
                  (SELECT max(el.created_at) FROM experience_locations el
                    WHERE el.experience_id = e.id AND ${unreadPointSql('el')}
                      AND ${offeredLocationSql('el')}),
@@ -221,8 +225,11 @@ function contentsKeysSql(scopeFilter: string): string {
                      AND ${unreadLinkSql('et', 't')})
                ), 'contents'
         FROM experiences e
+        -- Asked through the membership the contents belong to (#1264), whose
+        -- source the scope and the source chip read.
+        JOIN ${MEMBERSHIPS} m ON m.id = ${contentsMembershipSql('e.id')}
         WHERE ${contentsOpenSql('e')}
-          AND ${scopeFilter}`;
+          AND ${membershipScopeFilter}`;
 }
 
 /**
@@ -232,9 +239,9 @@ function contentsKeysSql(scopeFilter: string): string {
  * refetch. `subs` says which of the three it holds, which is what the sub-kind
  * chips filter on and what the card's headings are drawn from.
  */
-function waitingKeysSql(scopeFilter: string): string {
+function waitingKeysSql(membershipScopeFilter: string): string {
   return `
-    SELECT 'waiting', ${KIND_RANK.waiting}, g.id, g.name, g.source_id,
+    SELECT 'waiting', ${KIND_RANK.waiting}, g.id, g.name, g.source_ids,
            g.run_id, g.asked_at, g.subs
     FROM (
       -- The newest sub-kind's run, preferring one that names a run at all:
@@ -243,18 +250,20 @@ function waitingKeysSql(scopeFilter: string): string {
       -- no run, dropping it out of the run chip that its held half belongs to.
       -- DISTINCT because two changeset rows under one run would otherwise put
       -- 'held' in the list twice, and the sub-kinds are a set.
-      SELECT id, name, source_id,
+      -- One row per place, whichever of its memberships ask (#1264): the
+      -- sources are every one that asks, which the source chip matches.
+      SELECT id, name, array_agg(DISTINCT source_id) AS source_ids,
              (array_agg(run_id ORDER BY (run_id IS NULL), asked_at DESC NULLS LAST))[1] AS run_id,
              max(asked_at) AS asked_at,
              array_agg(DISTINCT sub) AS subs
       FROM (
-        ${arrivalKeysSql(scopeFilter)}
+        ${arrivalKeysSql(membershipScopeFilter)}
         UNION ALL
-        ${heldKeysSql(scopeFilter)}
+        ${heldKeysSql(membershipScopeFilter)}
         UNION ALL
-        ${contentsKeysSql(scopeFilter)}
+        ${contentsKeysSql(membershipScopeFilter)}
       ) gated
-      GROUP BY id, name, source_id
+      GROUP BY id, name
     ) g`;
 }
 
@@ -265,7 +274,7 @@ function waitingKeysSql(scopeFilter: string): string {
  */
 function withdrawnKeysSql(scopeFilter: string): string {
   return `
-    SELECT 'withdrawn', ${KIND_RANK.withdrawn}, e.id, e.name, e.source_id, NULL,
+    SELECT 'withdrawn', ${KIND_RANK.withdrawn}, e.id, e.name, ARRAY[e.source_id], NULL,
            max(el.missing_since), ARRAY[]::text[]
     FROM experience_locations el
     JOIN experiences e ON e.id = el.experience_id
@@ -283,7 +292,7 @@ function withdrawnKeysSql(scopeFilter: string): string {
  */
 function refusedKeysSql(scopeFilter: string): string {
   return `
-    SELECT 'refused', ${KIND_RANK.refused}, e.id, e.name, e.source_id,
+    SELECT 'refused', ${KIND_RANK.refused}, e.id, e.name, ARRAY[e.source_id],
            m.first_seen_sync_log_id, COALESCE(l.completed_at, m.updated_at), ARRAY[]::text[]
     FROM experiences e
     JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
@@ -294,7 +303,7 @@ function refusedKeysSql(scopeFilter: string): string {
 
 function missingKeysSql(scopeFilter: string): string {
   return `
-    SELECT 'missing', ${KIND_RANK.missing}, e.id, e.name, e.source_id, NULL,
+    SELECT 'missing', ${KIND_RANK.missing}, e.id, e.name, ARRAY[e.source_id], NULL,
            e.missing_since, ARRAY[]::text[]
     FROM experiences e
     WHERE ${missingOpenSql('e')}
@@ -368,7 +377,7 @@ function boundFilters(filters: QueueFilters, bind: (value: unknown) => string): 
   const region = regionFilter(filters.regionId, bind);
   return {
     source: filters.sourceIds?.length
-      ? `k.source_id = ANY(${bind(filters.sourceIds)}::int[])` : 'TRUE',
+      ? `k.source_ids && ${bind(filters.sourceIds)}::int[]` : 'TRUE',
     // Both arrays, always, when a kind chip is set: the five top kinds are
     // matched by name and the three sub-kinds against a waiting row's `subs`,
     // and either list may be empty without the other losing its meaning.
@@ -487,6 +496,23 @@ function toKey(row: KeyRow): QueueKey {
 }
 
 /**
+ * The curator's scope over a queue row: an unrestricted scope on the source
+ * the question belongs to, or a region the place lies in. Correlated on the
+ * row's own source rather than on a request filter, since the union spans
+ * sources; `sourceExpr` is that source — the place's for a question about
+ * the place, the membership's for one a membership asks.
+ */
+export function queueScopeSql(isAdmin: boolean, sourceExpr: 'e.source_id' | 'm.source_id'): string {
+  return isAdmin
+    ? 'TRUE'
+    : `(${curatorUnrestrictedScopeExists(sourceExpr)} OR EXISTS (
+         SELECT 1 FROM experience_regions er
+         JOIN curator_scoped_regions s ON s.id = er.region_id
+         WHERE er.experience_id = e.id
+       ))`;
+}
+
+/**
  * The keys of every open question this curator may be asked, filtered, ordered
  * and paged, with the count each chip would leave.
  */
@@ -501,13 +527,9 @@ export async function queryQueueKeys(
 
   // The same scope the seven statements carry, correlated on each row's own
   // source rather than on a request filter: the union spans sources.
-  const scopeFilter = isAdmin
-    ? 'TRUE'
-    : `(${curatorUnrestrictedScopeExists('e.source_id')} OR EXISTS (
-         SELECT 1 FROM experience_regions er
-         JOIN curator_scoped_regions s ON s.id = er.region_id
-         WHERE er.experience_id = e.id
-       ))`;
+  const scopeFilter = queueScopeSql(isAdmin, 'e.source_id');
+  // A question a membership asks is in scope by that membership's source (#1264).
+  const membershipScopeFilter = queueScopeSql(isAdmin, 'm.source_id');
   const keyMap = bind(JSON.stringify(CURATED_KEY_BY_FIELD));
   const family = bind(JSON.stringify(CLAIM_KEY_BY_FAMILY));
   const claimKey = (field: string) => claimKeySql(field, keyMap, family);
@@ -515,13 +537,13 @@ export async function queryQueueKeys(
 
   const sql = `${CURATOR_SCOPED_REGIONS_CTE}
 , keys AS (${conflictKeysSql(scopeFilter, claimKey)}
-    UNION ALL${waitingKeysSql(scopeFilter)}
+    UNION ALL${waitingKeysSql(membershipScopeFilter)}
     UNION ALL${withdrawnKeysSql(scopeFilter)}
     UNION ALL${refusedKeysSql(scopeFilter)}
     UNION ALL${missingKeysSql(scopeFilter)}
   )
 , searched AS (
-    SELECT k.kind, k.rank, k.id, k.name, k.source_id, k.run_id, k.asked_at, k.subs
+    SELECT k.kind, k.rank, k.id, k.name, k.source_ids, k.run_id, k.asked_at, k.subs
     FROM keys k
     WHERE ${f.search}
   )

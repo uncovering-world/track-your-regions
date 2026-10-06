@@ -26487,7 +26487,7 @@
             ]
           },
           "membership_id": {
-            "description": "The membership this card asks about (#1264): an arrival, a held proposal or a refusal is one kind's, and an answer sends it back as `membershipId`. Absent on a card about the place as a whole.",
+            "description": "The membership this card asks about (#1264): an arrival, a held proposal or a refusal is one kind's, and an answer sends it back as `membershipId`. Unread contents name the membership readers see the place through, which their answer is written under. Absent on a card about the place as a whole.",
             "anyOf": [
               {
                 "type": "integer",
@@ -26551,6 +26551,13 @@
                 "type": "null"
               }
             ]
+          },
+          "seen_in": {
+            "description": "On an arrival: the kinds readers already see the place in, through another membership (#1264). Empty where the arrival is the whole place.",
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           },
           "admission_note": {
             "description": "The run's own question about a row it could not settle by its rule (ADR-0058).",

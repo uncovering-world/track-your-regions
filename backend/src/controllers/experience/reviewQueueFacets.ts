@@ -68,10 +68,12 @@ export function facetsSql(f: FacetFilters, userId: string): string {
     SELECT cat.id, cat.name, COALESCE(counted.n, 0) AS count
     FROM experience_sources cat
     LEFT JOIN (
-      SELECT k.source_id, count(*)::int AS n
+      -- A place two sources ask about counts under each of them (#1264).
+      SELECT s.source_id, count(*)::int AS n
       FROM scoped k
+      CROSS JOIN LATERAL unnest(k.source_ids) AS s(source_id)
       WHERE ${f.kind} AND ${f.region} AND ${f.run}
-      GROUP BY k.source_id
+      GROUP BY s.source_id
     ) counted ON counted.source_id = cat.id
   )
 , facet_region AS (

@@ -289,9 +289,11 @@ export const CURATOR_SCOPED_REGIONS_CTE = `
  * has a different source per row and must correlate on the column instead.
  * Passing `$3` there would compare every row against one request parameter, and
  * a source curator who did not happen to filter by their own source would
- * silently lose the scope they hold.
+ * silently lose the scope they hold. `m.source_id` is the column for a row a
+ * membership asks about (#1264): the review queue's arrivals and held proposals
+ * belong to the membership's source, not to the source that brought the place.
  */
-export function curatorUnrestrictedScopeExists(source: '$3' | 'e.source_id' = '$3'): string {
+export function curatorUnrestrictedScopeExists(source: '$3' | 'e.source_id' | 'm.source_id' = '$3'): string {
   return `
     EXISTS (
       SELECT 1 FROM curator_assignments ca

@@ -38,11 +38,11 @@ import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { idParamSchema, refuseArrivalBodySchema, refuseContentsBodySchema } from '../../types/index.js';
 import { refuseOnMembership } from './membershipWriter.js';
-import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
+import { answeredSourceId, contentsMembershipId, resolveExperienceScope } from './experienceScope.js';
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import type { AnswerRefusal } from './lifecycleController.js';
-import { contentsAnswerableSql } from './waitingCounts.js';
+import { contentsAnswerableSql, contentsMembershipSql } from './waitingCounts.js';
 import { lockExperience, recordDecisionOnExperience } from '../../db/experienceWriter.js';
 import { markUnreadPointsRefused } from './experienceLocationWriter.js';
 import { markUnreadLinksRefused } from './workWriter.js';
@@ -75,8 +75,9 @@ export async function refuseContents(
     params: z.output<typeof idParamSchema>; body: z.output<typeof refuseContentsBodySchema>; caller: Express.User;
   },
 ): Promise<RefuseContentsResult> {
+  // In the scope of the source whose membership the contents belong to (#1264).
   return answerThroughScope(id, caller, (experienceId, userId, logRegionId) =>
-    refuseContentsUnderLock(experienceId, userId, logRegionId, body));
+    refuseContentsUnderLock(experienceId, userId, logRegionId, body), await contentsMembershipId(id));
 }
 
 /**
@@ -245,7 +246,10 @@ export async function refuseContentsUnderLock(
       `SELECT m.id AS membership_id, m.admission, m.curation_state,
               (${contentsAnswerableSql()}) AS answerable
          FROM experiences e
-         LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting')}
+         -- Through the membership the contents belong to (#1264); with none
+         -- offered, the waiting one, whose state says what to answer instead.
+         LEFT JOIN ${MEMBERSHIPS} m ON m.id = COALESCE(
+           ${contentsMembershipSql('e.id')}, ${membershipToAnswerSql('e.id', 'waiting')})
         WHERE e.id = $1`,
       [experienceId],
     );

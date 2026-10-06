@@ -97,6 +97,20 @@ describe('queryQueueKeys', () => {
       .toHaveLength(7);
   });
 
+  it('asks a waiting question of every membership of a place, in scope by its own source (#1264)', async () => {
+    await queryQueueKeys(base);
+    const [sql] = lastCall();
+    const waiting = sql.slice(sql.indexOf("SELECT 'waiting'"), sql.indexOf("SELECT 'withdrawn'"));
+    // The Capitoline Museums' Archaeology arrival is asked about whichever
+    // source brought the place first: no join pins the place's own source.
+    expect(waiting).not.toContain('m.source_id = e.source_id');
+    // A curator holding the Archaeology source sees it, by the membership's source.
+    expect(waiting).toContain('ca.source_id = m.source_id');
+    // One row per place, carrying every source that asks.
+    expect(waiting).toContain('array_agg(DISTINCT source_id) AS source_ids');
+    expect(waiting).toMatch(/GROUP BY id, name\s/);
+  });
+
   it('asks whether a conflict is still open of the newest changeset row, not of any row', async () => {
     await queryQueueKeys(base);
     const [sql] = lastCall();
@@ -252,17 +266,19 @@ describe('queryQueueKeys', () => {
     // Each facet drops its own chip's filter and keeps the other three, so a
     // chip states what picking it would leave rather than what is on screen.
     const source = between(sql, ', facet_source AS (', ', facet_region AS (');
-    expect(source).not.toContain('k.source_id = ANY');
+    expect(source).not.toContain('k.source_ids &&');
+    // A place two sources ask about counts under each of them (#1264).
+    expect(source).toContain('unnest(k.source_ids)');
     expect(source).toContain('k.subs &&');
     expect(source).toContain('k.run_id =');
     expect(source).toContain('region_subtree');
 
     const kind = between(sql, ', facet_kind AS (', ', facet_source AS (');
-    expect(kind).toContain('k.source_id = ANY');
+    expect(kind).toContain('k.source_ids &&');
     expect(kind).not.toContain('k.subs &&');
 
     const region = between(sql, ', facet_region AS (', ', facet_run AS (');
-    expect(region).toContain('k.source_id = ANY');
+    expect(region).toContain('k.source_ids &&');
     expect(region).not.toContain('JOIN region_subtree rs ON');
 
     const run = between(sql, ', facet_run AS (', ', aside_counts AS (');
