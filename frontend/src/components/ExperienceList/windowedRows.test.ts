@@ -69,6 +69,14 @@ describe('the windowed experience list', () => {
       expect(index.get(9)).toBe(3);
     });
 
+    it('finds a place whose card stands above the groups at the top, collapsed groups or not (#1262)', () => {
+      const card = exp(6214, 'Capitoline Museums');
+      const rows = flattenGroups([group('Art Museums', [6214, 6229])], new Set(), card);
+      expect(rows[0]).toEqual({ kind: 'card', exp: card });
+      expect(rowIndexByExperienceId(rows).get(6214)).toBe(0);
+      expect(experienceIdsAtIndices(rows, [0, 1])).toEqual([6214]);
+    });
+
     it('knows nothing of an experience whose group is collapsed', () => {
       // Correct rather than unfortunate: a collapsed row has no position to
       // scroll to, and the caller falls back to the element path.

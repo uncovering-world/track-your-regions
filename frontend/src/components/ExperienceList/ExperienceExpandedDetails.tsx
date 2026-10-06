@@ -49,10 +49,16 @@ import { computeVisitedStatus } from './utils';
 import { CardLocationList } from './CardLocationList';
 import type { LocationRowData } from './LocationRow';
 import { experienceColors } from '../../utils/kindColors';
-import { hasExtent } from '../../utils/experienceTypes';
+import { placeHasExtent } from '../../utils/placeKinds';
 
 export interface ExperienceExpandedDetailsProps {
   experience: Experience;
+  /**
+   * The card stands above the list's groups, over every kind of its place, so
+   * it names each of them — its type there, or the kind where it has none —
+   * rather than the one kind a row shows (#1262).
+   */
+  everyKind?: boolean;
   locations?: RegionExperienceLocation[];
   /** The batch settled — an in-region count derived from `locations` is meaningful. */
   locationsResolved: boolean;
@@ -83,6 +89,7 @@ export interface ExperienceExpandedDetailsProps {
 
 function ExperienceExpandedDetailsComponent({
   experience,
+  everyKind = false,
   locations,
   locationsResolved,
   isLocationVisited,
@@ -113,7 +120,7 @@ function ExperienceExpandedDetailsComponent({
   // gate, so the list is in the card the frame it opens.
   const { data: findsData } = useQuery({
     ...siteFindsQuery(experience.id),
-    enabled: hasExtent(experience.kind_id, experience.type),
+    enabled: placeHasExtent(experience, everyKind),
   });
 
   // Use batch locations from parent + global isLocationVisited
@@ -208,9 +215,18 @@ function ExperienceExpandedDetailsComponent({
 
   const isMultiLocation = totalLocations > 1;
 
-  // The type chip in the colour every other surface draws this object in —
-  // one rule, `experienceColors`, rather than a third copy of the palette (#814).
-  const typeStyle = experienceColors(experience.kind_id, experience.type);
+  // The type chips in the colour every other surface draws this object in —
+  // one rule, `experienceColors`, rather than a third copy of the palette (#814):
+  // the row's own kind, or every kind of the place on the card above the groups.
+  const typeChips = everyKind && experience.kinds?.length
+    ? experience.kinds.map(kind => ({
+      key: kind.kind_id, label: kind.type ?? kind.kind_name, isType: kind.type !== null,
+      style: experienceColors(kind.kind_id, kind.type),
+    }))
+    : [{
+      key: experience.kind_id, label: experience.type, isType: true,
+      style: experienceColors(experience.kind_id, experience.type),
+    }];
 
   return (
     <Box
@@ -278,18 +294,21 @@ function ExperienceExpandedDetailsComponent({
 
       {/* Kind & Country chips */}
       <Box sx={{ display: 'flex', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-        {experience.type && (
+        {typeChips.map(chip => chip.label && (
           <Chip
-            label={experience.type}
+            key={chip.key}
+            label={chip.label}
             size="small"
             sx={{
-              bgcolor: typeStyle.bg,
-              color: typeStyle.text,
+              bgcolor: chip.style.bg,
+              color: chip.style.text,
               fontWeight: 500,
-              textTransform: 'capitalize',
+              // A type is a lower-case value; a kind's name is written as its
+              // group header writes it, "Places of worship".
+              textTransform: chip.isType ? 'capitalize' : 'none',
             }}
           />
-        )}
+        ))}
         {experience.country_names?.[0] && (
           <Chip label={experience.country_names[0]} size="small" variant="outlined" />
         )}

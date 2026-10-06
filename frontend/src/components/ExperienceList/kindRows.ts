@@ -89,23 +89,49 @@ export function groupByEveryKind(listed: Experience[]): KindGroup[] {
 }
 
 /**
+ * The selected place's card when it opens above the groups (#1262): a place in
+ * several kinds whose card was not opened from one of its rows — a click on its
+ * pin, or an address naming it. No kind of it is the primary one, so its card
+ * stands over all of them, and each group's row of it says it is selected. A
+ * click on one of those rows moves the card into that kind (`openFrom`). Null
+ * for a place in one kind, whose card opens in its row as it always has, and
+ * for a card opened from a row.
+ */
+export function cardAboveGroups(
+  listed: Experience[],
+  selectedExperienceId: number | null,
+  openedKindId: number | null,
+): Experience | null {
+  if (selectedExperienceId === null || openedKindId !== null) return null;
+  const place = listed.find(exp => exp.id === selectedExperienceId);
+  return place && (place.kinds?.length ?? 0) >= 2 ? place : null;
+}
+
+/**
  * The rows that are echoes rather than homes. `openedKindId` is the kind the
- * selected place was opened from, and moves only that place's home.
+ * selected place was opened from, and moves only that place's home; with its
+ * card above the groups (`cardAbove`), every row of it is an echo.
  */
 export function echoRows(
   groups: KindGroup[],
   selectedExperienceId: number | null,
   openedKindId: number | null,
+  cardAbove = false,
 ): Set<Experience> {
   const echoes = new Set<Experience>();
   for (const group of groups) {
     for (const row of group.experiences) {
-      if (!row.kinds?.length || row.kinds.length < 2) continue;
-      const home = homeKindOf(row, row.id === selectedExperienceId ? openedKindId : null);
-      if (row.kind_id !== home) echoes.add(row);
+      if (isEcho(row, row.id === selectedExperienceId, openedKindId, cardAbove)) echoes.add(row);
     }
   }
   return echoes;
+}
+
+/** Whether one row of a place is an echo rather than its home; see `echoRows`. */
+function isEcho(row: Experience, selected: boolean, openedKindId: number | null, cardAbove: boolean): boolean {
+  if (!row.kinds?.length || row.kinds.length < 2) return false;
+  if (selected && cardAbove) return true;
+  return row.kind_id !== homeKindOf(row, selected ? openedKindId : null);
 }
 
 /** How many rows each kind holds, by its name: a place counts once in each of its kinds. */

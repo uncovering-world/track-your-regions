@@ -8,6 +8,8 @@
  * are a museum in Archaeology and have no type in Art Museums.
  */
 
+import { hasExtent } from './experienceTypes';
+
 interface PlaceKind {
   kind_id: number;
   kind_name: string;
@@ -63,4 +65,18 @@ export function shownInKind<T extends WithKinds>(row: T, kindId: number): T | nu
 export function placeKindNames(row: Pick<WithKinds, 'kind_name'> & { kinds?: PlaceKind[] }): string | null {
   const names = row.kinds?.length ? row.kinds.map(kind => kind.kind_name) : [row.kind_name];
   return names.filter(Boolean).join(' · ') || null;
+}
+
+/**
+ * Whether the place's card reads a site's finds (#894): the row's own kind
+ * where the card is one kind's row, any kind of the place where the card
+ * stands above the groups over all of them (#1262) — the Pantheon, a site in
+ * Archaeology, shows its finds there whichever kind its row is first listed in.
+ */
+export function placeHasExtent(
+  row: Pick<WithKinds, 'kind_id' | 'type'> & { kinds?: PlaceKind[] },
+  everyKind: boolean,
+): boolean {
+  if (everyKind && row.kinds?.length) return row.kinds.some(kind => hasExtent(kind.kind_id, kind.type));
+  return hasExtent(row.kind_id, row.type);
 }

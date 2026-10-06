@@ -87,7 +87,9 @@ export function outsideViewLabel(count: number): string {
  */
 export type FlatRow =
   | { kind: 'header'; group: ExperienceGroupLike }
-  | { kind: 'experience'; exp: Experience };
+  | { kind: 'experience'; exp: Experience }
+  /** The selected place's card, above the groups (`kindRows.ts` `cardAboveGroups`). */
+  | { kind: 'card'; exp: Experience };
 
 /** Only what flattening needs, so the caller's fuller group type still fits. */
 export interface ExperienceGroupLike {
@@ -167,8 +169,9 @@ export function expansionForSelection<T extends ExperienceGroupLike>(opts: {
 export function flattenGroups(
   groups: ExperienceGroupLike[],
   expandedGroups: Set<string>,
+  cardAbove: Experience | null = null,
 ): FlatRow[] {
-  const rows: FlatRow[] = [];
+  const rows: FlatRow[] = cardAbove ? [{ kind: 'card', exp: cardAbove }] : [];
   for (const group of groups) {
     rows.push({ kind: 'header', group });
     if (expandedGroups.has(group.kindName)) {
@@ -193,8 +196,9 @@ export function flattenGroups(
 export function rowIndexByExperienceId(rows: FlatRow[], echoes?: ReadonlySet<unknown>): Map<number, number> {
   const m = new Map<number, number>();
   rows.forEach((row, i) => {
-    // A place in several kinds is aimed at by its home row, never an echo (#1245).
-    if (row.kind === 'experience' && !echoes?.has(row.exp)) m.set(row.exp.id, i);
+    // A place in several kinds is aimed at by its home row, never an echo (#1245),
+    // and by its card where that stands above the groups (#1262).
+    if (row.kind === 'card' || (row.kind === 'experience' && !echoes?.has(row.exp))) m.set(row.exp.id, i);
   });
   return m;
 }
@@ -210,7 +214,7 @@ export function experienceIdsAtIndices(rows: FlatRow[], indices: number[]): numb
   const ids: number[] = [];
   for (const i of indices) {
     const row = rows[i];
-    if (row?.kind === 'experience') ids.push(row.exp.id);
+    if (row && row.kind !== 'header') ids.push(row.exp.id);
   }
   return ids;
 }

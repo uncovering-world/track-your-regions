@@ -44,6 +44,13 @@ export interface ListScroll {
   measureRow: (experienceId: number) => void;
   /** Said by the list where it asks the map to fly, naming the row it flew for. */
   expectFlight: (experienceId: number) => void;
+  /**
+   * Said by the list where a click moves the open card into another of its
+   * place's rows (#1245, #1262), so the card is aimed at once more where it
+   * opens: the selection has not changed, but the row has — and leaving the card
+   * above the groups takes its whole height out from over the clicked row.
+   */
+  expectCardMove: (experienceId: number) => void;
 }
 
 export function useListScrollAnchor({
@@ -402,5 +409,9 @@ export function useListScrollAnchor({
     if (flightTimerRef.current) clearTimeout(flightTimerRef.current);
   }, []);
 
-  return { handleCardOpened, measureRow, expectFlight };
+  const expectCardMove = useCallback((experienceId: number) => {
+    if (scrolledForSelection.current === experienceId) scrolledForSelection.current = null;
+  }, []);
+
+  return { handleCardOpened, measureRow, expectFlight, expectCardMove };
 }
