@@ -10,7 +10,7 @@
  */
 
 import type { HeldPart, ReviewQueueItem } from '../../../api/reviewQueue';
-import type { GatedGroup } from '../WaitingToPublish';
+import { sectionKind, type GatedGroup } from '../gatedGroup';
 import type { RowKind } from '../queueRowTypes';
 import { creditFoldsIntoPicture } from '../factRows';
 import { HELD_CREDIT_FIELD } from '@tyr/shared/pictures';
@@ -108,13 +108,13 @@ function contentsLabels(contents: ReviewQueueItem): string[] {
 }
 
 /**
- * A `waiting` group's specific: the held fields, then its parts, then its unread contents
- * — every piece of it that is actually open, comma-joined. An arrival is always alone
- * (`groupGated`'s own comment: `held` fires only off a non-`pending` row and `contents`
- * hides a `pending` container outright), so nothing else on the group can be open when it
- * is present, and the row reads *new arrival* with nothing after it.
+ * One section's specific: the held fields, then its parts, then its unread contents —
+ * every piece of it that is actually open, comma-joined. An arrival is always alone in
+ * its section (`groupGated`'s own comment: `held` fires only off a non-`pending`
+ * membership), so nothing else in the section can be open when it is present, and it
+ * reads *new arrival* with nothing after it.
  */
-function waitingSpecific(group: GatedGroup): string {
+function sectionSpecific(group: GatedGroup): string {
   if (group.arrival) return '';
   const pieces: string[] = [];
   const proposed = group.held?.proposed ?? [];
@@ -130,12 +130,25 @@ function waitingSpecific(group: GatedGroup): string {
 }
 
 /**
+ * A `waiting` row's specific: its one section's, or — where two kinds ask about the
+ * place (#1264) — each kind's, named, since the question word then counts them.
+ */
+function waitingSpecific(sections: readonly GatedGroup[]): string {
+  if (sections.length === 1) return sectionSpecific(sections[0]);
+  return sections
+    .map(group => `${sectionKind(group)}: ${sectionSpecific(group) || KIND_SHORT.arrival}`)
+    .join('; ');
+}
+
+/**
  * The text after a row's question word — the word already says what kind of question this
  * is, so this says which one: which fields, how many places, why refused. `''` for a kind
  * whose question needs nothing after it (`missing`), or whose group has nothing open beyond
  * the word itself (a bare arrival).
  */
-export function rowSpecific(row: { kind: RowKind; item?: ReviewQueueItem; group?: GatedGroup }): string {
+export function rowSpecific(row: {
+  kind: RowKind; item?: ReviewQueueItem; sections?: readonly GatedGroup[];
+}): string {
   switch (row.kind) {
     case 'missing':
       return '';
@@ -146,7 +159,7 @@ export function rowSpecific(row: { kind: RowKind; item?: ReviewQueueItem; group?
     case 'withdrawn':
       return countLabel(row.item?.withdrawn_points?.length ?? 0, 'place', 'places');
     case 'waiting':
-      return row.group ? waitingSpecific(row.group) : '';
+      return row.sections ? waitingSpecific(row.sections) : '';
     default:
       return '';
   }
@@ -155,10 +168,15 @@ export function rowSpecific(row: { kind: RowKind; item?: ReviewQueueItem; group?
 /**
  * The bold word a row prints ahead of its specific — `KIND_SHORT[row.kind]`, except a
  * `waiting` row grouping an arrival, which asks the arrival's own question rather than
- * `waiting`'s (an arrival is always alone, so there is never a second sub-kind competing
- * with it). Kept here so the list that draws the row does not repeat this one rule itself.
+ * `waiting`'s (an arrival is always alone in its section, so there is never a second
+ * sub-kind competing with it), and a `waiting` row two kinds ask about (#1264), which
+ * counts its questions and lets the specific name each. Kept here so the list that draws
+ * the row does not repeat this one rule itself.
  */
-export function rowQuestionWord(row: { kind: RowKind; subs?: readonly string[] }): string {
+export function rowQuestionWord(row: {
+  kind: RowKind; subs?: readonly string[]; sections?: readonly GatedGroup[];
+}): string {
+  if (row.kind === 'waiting' && (row.sections?.length ?? 0) > 1) return `${row.sections!.length} questions`;
   if (row.kind === 'waiting' && row.subs?.includes('arrival')) return KIND_SHORT.arrival;
   return KIND_SHORT[row.kind];
 }

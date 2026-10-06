@@ -93,8 +93,27 @@ describe('queueRows', () => {
     }));
 
     expect(rows).toHaveLength(1);
-    expect(rows[0].group?.held).toBeDefined();
-    expect(rows[0].group?.contents).toBeDefined();
+    expect(rows[0].sections).toHaveLength(1);
+    expect(rows[0].sections?.[0].held).toBeDefined();
+    expect(rows[0].sections?.[0].contents).toBeDefined();
+  });
+
+  it('gives a place two kinds ask about one row, with a section per kind (#1264)', () => {
+    // The Capitoline Museums: an Archaeology arrival, and a picture their Art
+    // Museums membership holds beside the work that arrived under it.
+    const rows = queueRows(queue({
+      arrivals: [item({ id: 6214, name: 'Capitoline Museums', kind: 'arrival', kind_name: 'Archaeology', membership_id: 21 })],
+      held: [item({ id: 6214, name: 'Capitoline Museums', kind: 'held', kind_name: 'Art Museums', membership_id: 20 })],
+      contents: [item({ id: 6214, name: 'Capitoline Museums', kind: 'contents', kind_name: 'Art Museums', membership_id: 20 })],
+      order: [orderEntry({ kind: 'waiting', id: 6214, subs: ['arrival', 'contents', 'held'] })],
+    }));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].placeKind).toBe('Archaeology, Art Museums');
+    expect(rows[0].sections?.map(section => section.membershipId)).toEqual([21, 20]);
+    expect(rows[0].sections?.[0].arrival).toBeDefined();
+    expect(rows[0].sections?.[1]).toMatchObject({ held: expect.anything(), contents: expect.anything() });
+    expect(rowQuestionWord(rows[0])).toBe('2 questions');
   });
 
   it('leaves the answered work out of the list of questions', () => {

@@ -26,13 +26,17 @@ import { SourceId } from './SourceId';
  * the place, the page it came from. Both live here so every kind of card carries the
  * same amount, which is the property that made this module worth having.
  */
-export function ItemHeader({ item }: { item: ReviewQueueItem }) {
+export function ItemHeader({ item, kinds = [item.kind_name] }: {
+  item: ReviewQueueItem;
+  /** Every kind the card asks for, one chip each — the item's own when omitted (#1264). */
+  kinds?: string[];
+}) {
   return (
     <>
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }} flexWrap="wrap">
         <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{item.name}</Typography>
         <SourceId id={item.external_id} kind={item.kind_name} sourcePage={item.website_url} />
-        <Chip label={item.kind_name} size="small" variant="outlined" />
+        {kinds.map(kind => <Chip key={kind} label={kind} size="small" variant="outlined" />)}
       </Stack>
       <ObjectContext item={item} />
     </>

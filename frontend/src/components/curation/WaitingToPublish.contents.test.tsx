@@ -88,7 +88,7 @@ function points(...rows: Point[]): ReviewQueueItem {
 function cardFor(item: ReviewQueueItem, onDone: (message?: string) => void, client: QueryClient) {
   return (
     <QueryClientProvider client={client}>
-      <GatedCard group={{ id: item.id, name: item.name, contents: item }} onDone={onDone} />
+      <GatedCard sections={[{ id: item.id, name: item.name, contents: item }]} onDone={onDone} />
     </QueryClientProvider>
   );
 }
@@ -416,7 +416,7 @@ describe('the question the run wrote down', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     return render(
       <QueryClientProvider client={client}>
-        <GatedCard group={{ id: item.id, name: item.name, arrival: item }} onDone={() => {}} />
+        <GatedCard sections={[{ id: item.id, name: item.name, arrival: item }]} onDone={() => {}} />
       </QueryClientProvider>,
     );
   }

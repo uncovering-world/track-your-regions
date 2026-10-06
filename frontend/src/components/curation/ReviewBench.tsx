@@ -70,11 +70,11 @@ export function ReviewBench({ row, onDone }: {
       {row.kind === 'refused' && row.item && <RefusedCard item={row.item} onDone={onDone} />}
       {row.kind === 'missing' && row.item && <MissingCard item={row.item} onDone={onDone} />}
       {row.kind === 'withdrawn' && row.item && <WithdrawnCard item={row.item} onDone={onDone} />}
-      {row.kind === 'waiting' && row.group && <GatedCard group={row.group} onDone={onDone} />}
+      {row.kind === 'waiting' && row.sections && <GatedCard sections={row.sections} onDone={onDone} />}
       {/* A row whose payload is missing is a bug in the row builder rather than a state a
           curator can be in — but silence here would read as "nothing to decide", which is
           the one answer this screen must never give by accident. */}
-      {!row.item && !row.group && (
+      {!row.item && !row.sections && (
         <Alert severity="warning">
           This question could not be opened. Reload the page; if it persists, the queue and
           the screen disagree about what {row.name} is asking.
