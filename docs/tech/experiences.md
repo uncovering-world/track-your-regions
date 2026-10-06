@@ -1003,6 +1003,14 @@ scattered like the Roças of São Tomé it can fall in open water). The dry run 
 28 records of this shape, 25 of them new inscriptions that would never have entered the
 catalogue.
 
+**A component's name is everything between `name:` and `ref:`** (`componentName`,
+`unescoSyncService.ts`, #1279). The dataset writes each part as `{name: Villa Mairea, Pori, ref:
+1752-013, latitude: …, longitude: …}`, so a name has commas of its own: read up to the first
+comma, Aalto Works' parts lost the town that tells two of them apart and Tashkent's "Zhemchug
+Residential Building (Zhemchug, the “Pearl”)" lost half its bracket. A name the source leaves
+empty, as it does for parts of the Via Appia, stays empty; one it writes wrong, as "The " for two
+parts of Tarraco, is kept as written and is a suspicious-data heuristic's to flag (#497).
+
 **Fixture source** — setting `SYNC_SOURCE_FIXTURE` to a directory makes UNESCO sync read
 `unesco.json` from it instead of the live API. Development only — the switch is refused
 outright when `NODE_ENV=production`, which is the guard that matters; the directory itself is
