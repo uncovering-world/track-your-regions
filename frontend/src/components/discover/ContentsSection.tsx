@@ -15,7 +15,9 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import SearchIcon from '@mui/icons-material/Search';
 import type { ExperienceTreasure } from '../../api/experiences';
 import { foldLabel } from '@tyr/shared/labels';
-import { holdingsNoun } from '../../utils/experienceTypes';
+import type { WorkKind } from '../../utils/worksByKind';
+import { useWorkKinds } from '../../hooks/useWorkKinds';
+import { WorkKindChips } from '../shared/WorkKindChips';
 import { ContentTile } from './ContentTile';
 
 /** Shut by default past this many, which is most museums. */
@@ -23,6 +25,8 @@ const CONTENTS_COLLAPSE_THRESHOLD = 15;
 const CONTENTS_INITIAL_SHOW = 20;
 
 interface ContentsSectionProps {
+  /** The place these works are in. */
+  experienceId: number;
   contents: ExperienceTreasure[];
   totalCount: number;
   isAuthenticated: boolean;
@@ -31,8 +35,14 @@ interface ContentsSectionProps {
   onUnmarkViewed: (id: number) => void;
   /** A curator's way into correcting one of these works (#731). */
   onCorrect?: (work: ExperienceTreasure) => void;
-  /** Which kind's object this panel is showing, which decides what its holdings are called. */
+  /**
+   * Which kind's object this panel is showing, which decides what its holdings
+   * are called and, for a place in several kinds, which kinds' works are
+   * listed (#1263).
+   */
   kindId?: number | null;
+  /** Every kind of the place; with two or more, the works are chosen by kind. */
+  placeKinds?: WorkKind[];
 }
 
 /**
@@ -41,6 +51,7 @@ interface ContentsSectionProps {
  * caller of the panel can drive.
  */
 export function ContentsSection({
+  experienceId,
   contents,
   totalCount,
   isAuthenticated,
@@ -49,13 +60,19 @@ export function ContentsSection({
   onUnmarkViewed,
   onCorrect,
   kindId,
+  placeKinds,
 }: ContentsSectionProps) {
+  // The works of the chosen kinds, each once, for a place in several (#1263),
+  // by the rule Map mode's card reads.
+  const { severalKinds, chips, shown, noun, toggle } = useWorkKinds(experienceId, contents, placeKinds, kindId ?? null);
+  const listedCount = severalKinds ? shown.length : totalCount;
   const shouldCollapse = totalCount > CONTENTS_COLLAPSE_THRESHOLD;
   const [expanded, setExpanded] = useState(!shouldCollapse);
   const [showAll, setShowAll] = useState(false);
   const [searchText, setSearchText] = useState('');
 
-  const viewedCount = contents.filter((c) => viewedIds.has(c.id)).length;
+  // What was seen of what is listed, so the line never says more seen than shown.
+  const viewedCount = shown.filter((c) => viewedIds.has(c.id)).length;
   // Both sides folded, so a search finds what the screen shows whatever the
   // row holds: HTML collapses a run of spaces and folds nothing else, and a
   // reader types the collapsed form (#835). The fold also meets a dash typed
@@ -63,7 +80,7 @@ export function ContentsSection({
   // spaces folds to nothing and reads as no filter, here and for "Show all".
   const needle = foldLabel(searchText);
   const displayContents = useMemo(() => {
-    let filtered = contents;
+    let filtered = shown;
     if (needle) {
       filtered = filtered.filter((c) =>
         foldLabel(c.name).includes(needle) ||
@@ -76,7 +93,7 @@ export function ContentsSection({
       filtered = filtered.slice(0, CONTENTS_INITIAL_SHOW);
     }
     return filtered;
-  }, [contents, showAll, needle]);
+  }, [shown, showAll, needle]);
 
   return (
     <Box sx={{ mb: 2 }}>
@@ -102,10 +119,10 @@ export function ContentsSection({
               same British Museum is not headed "Notable finds" there and
               "Notable Works" here — the drift the shared-patterns inventory
               exists to prevent (#885). */}
-          Notable {holdingsNoun(kindId)} ({totalCount})
+          Notable {noun} ({listedCount})
         </Typography>
         {isAuthenticated && viewedCount > 0 && (
-          <Typography variant="caption" color={viewedCount === totalCount ? 'success.main' : 'text.secondary'}>
+          <Typography variant="caption" color={viewedCount === listedCount ? 'success.main' : 'text.secondary'}>
             {viewedCount} seen
           </Typography>
         )}
@@ -113,11 +130,12 @@ export function ContentsSection({
       </ButtonBase>
 
       <Collapse in={expanded} timeout="auto">
+        {severalKinds && <WorkKindChips chips={chips} onToggle={toggle} />}
         {/* Search for large lists */}
         {totalCount > CONTENTS_COLLAPSE_THRESHOLD && (
           <TextField
             size="small"
-            placeholder={`Filter ${holdingsNoun(kindId)}...`}
+            placeholder={`Filter ${noun}...`}
             value={searchText}
             onChange={(e) => setSearchText(e.target.value)}
             fullWidth
@@ -153,6 +171,7 @@ export function ContentsSection({
             <ContentTile
               key={content.id}
               content={content}
+              placeKinds={severalKinds ? placeKinds : undefined}
               isViewed={viewedIds.has(content.id)}
               isAuthenticated={isAuthenticated}
               onToggleViewed={() => (viewedIds.has(content.id)
@@ -164,9 +183,9 @@ export function ContentsSection({
         </Box>
 
         {/* Show more button */}
-        {!showAll && !needle && totalCount > CONTENTS_INITIAL_SHOW && (
+        {!showAll && !needle && listedCount > CONTENTS_INITIAL_SHOW && (
           <Button size="small" variant="text" onClick={() => setShowAll(true)} sx={{ mt: 0.5 }}>
-            Show all {totalCount} {holdingsNoun(kindId)}
+            Show all {listedCount} {noun}
           </Button>
         )}
       </Collapse>

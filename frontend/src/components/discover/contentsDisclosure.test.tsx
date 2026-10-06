@@ -40,6 +40,7 @@ afterAll(() => {
 function works(n: number): ExperienceTreasure[] {
   return Array.from({ length: n }, (_, i) => ({
     id: i + 1,
+    kind_ids: [2],
     external_id: `Q${i + 1}`,
     name: `Work ${i + 1}`,
     treasure_type: 'painting',
@@ -62,6 +63,7 @@ function works(n: number): ExperienceTreasure[] {
 function renderSection(count = 20, kindId?: number) {
   return render(
     <ContentsSection
+      experienceId={1}
       contents={works(count)}
       totalCount={count}
       isAuthenticated

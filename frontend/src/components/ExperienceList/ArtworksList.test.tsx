@@ -63,6 +63,7 @@ function work(overrides: Partial<ExperienceTreasure> = {}): ExperienceTreasure {
   return {
     id: 1,
     external_id: 'Q724954',
+    kind_ids: [2],
     name: 'Mesha Stele',
     treasure_type: 'stele',
     artists: [],
@@ -358,5 +359,71 @@ describe('what the box of holdings is called', () => {
     renderList();
 
     expect(screen.getByText(/Notable works \(1\)/)).toBeInTheDocument();
+  });
+});
+
+describe('a place in several kinds lists its works once, chosen by kind (#1263)', () => {
+  const ART = { kind_id: 2, kind_name: 'Art Museums', type: null };
+  const ARCHAEOLOGY = { kind_id: 5, kind_name: 'Archaeology', type: 'museum' };
+  // The Capitoline Museums once merged: the Wolf held by both kinds, a painting by one.
+  const wolf = work({ id: 11, name: 'Capitoline Wolf', kind_ids: [2, 5], image_url: null, image_credit: null });
+  const painting = work({ id: 12, name: 'The Fortune Teller', kind_ids: [2], image_url: null, image_credit: null });
+
+  function renderPlace(kindId: number | null) {
+    return render(
+      <ArtworksList
+        contents={[wolf, painting]} total={2} experienceId={6214}
+        kindId={kindId} placeKinds={[ART, ARCHAEOLOGY]}
+      />,
+    );
+  }
+
+  it('opened from Archaeology, lists its finds and says what Art Museums would add', () => {
+    renderPlace(5);
+
+    expect(screen.getByText('Capitoline Wolf')).toBeInTheDocument();
+    expect(screen.queryByText('The Fortune Teller')).toBeNull();
+    expect(screen.getByText('Notable finds (1)')).toBeInTheDocument();
+    expect(screen.getByText('Art Museums +1')).toBeInTheDocument();
+    expect(screen.getByLabelText('Held by Art Museums and Archaeology')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByText('Art Museums +1'));
+
+    expect(screen.getByText('The Fortune Teller')).toBeInTheDocument();
+    expect(screen.getByText('Notable works (2)')).toBeInTheDocument();
+    expect(screen.getByText('Art Museums · 2')).toBeInTheDocument();
+  });
+
+  it('opened from the pin, lists every work under every kind', () => {
+    renderPlace(null);
+
+    expect(screen.getByText('Capitoline Wolf')).toBeInTheDocument();
+    expect(screen.getByText('The Fortune Teller')).toBeInTheDocument();
+    expect(screen.getByText('Archaeology · 1')).toBeInTheDocument();
+  });
+
+  it('keeps the last chosen kind chosen', () => {
+    renderPlace(5);
+    fireEvent.click(screen.getByText('Archaeology · 1'));
+    expect(screen.getByText('Archaeology · 1')).toBeInTheDocument();
+    expect(screen.queryByText('The Fortune Teller')).toBeNull();
+  });
+
+  it('counts what was seen of what is listed, not of the whole place', () => {
+    signedIn = true;
+    viewed.add(11).add(12);
+    try {
+      renderPlace(5);
+      expect(screen.getByText('Notable finds (1) · 1 seen')).toBeInTheDocument();
+    } finally {
+      signedIn = false;
+      viewed.clear();
+    }
+  });
+
+  it('draws no chip and no mark for a place in one kind', () => {
+    render(<ArtworksList contents={[painting]} total={1} experienceId={6229} kindId={2} placeKinds={[ART]} />);
+    expect(screen.queryByText(/Art Museums/)).toBeNull();
+    expect(screen.queryByLabelText(/Held by/)).toBeNull();
   });
 });

@@ -12,8 +12,10 @@ import { PlaceLink } from '../shared/PlaceLink';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { claimLabel } from '../../utils/workClaims';
-import { holdingsNoun } from '../../utils/experienceTypes';
 import { VISITED_GREEN } from '../../utils/kindColors';
+import type { WorkKind } from '../../utils/worksByKind';
+import { useWorkKinds } from '../../hooks/useWorkKinds';
+import { WorkKindChips, WorkKindDots } from '../shared/WorkKindChips';
 import { ARTWORKS_INITIAL_LIMIT } from './utils';
 
 /**
@@ -25,8 +27,10 @@ import { ARTWORKS_INITIAL_LIMIT } from './utils';
  * nothing — and on some sources a picture failing to load is the common case
  * rather than the edge one (#557).
  */
-function ArtworkRow({ content, isViewed, isAuthenticated, onToggleViewed, setArtworkPreview, onCorrect }: {
+function ArtworkRow({ content, placeKinds, isViewed, isAuthenticated, onToggleViewed, setArtworkPreview, onCorrect }: {
   content: ExperienceTreasure;
+  /** The place's kinds, where it has several: the work is marked with those that hold it (#1263). */
+  placeKinds?: WorkKind[];
   isViewed: boolean;
   isAuthenticated: boolean;
   onToggleViewed: (e: React.MouseEvent) => void;
@@ -98,6 +102,7 @@ function ArtworkRow({ content, isViewed, isAuthenticated, onToggleViewed, setArt
           }}
           noWrap
         >
+          {placeKinds && <WorkKindDots kindIds={content.kind_ids} placeKinds={placeKinds} />}
           {content.name}
         </Typography>
         <Typography variant="caption" color="text.secondary" noWrap>
@@ -162,13 +167,19 @@ interface ArtworksListProps {
   contents: ExperienceTreasure[];
   total: number;
   experienceId: number;
-  /** Which kind's row this box sits on, which decides what its holdings are called. */
+  /**
+   * The kind of the list the card was opened from, which decides what its
+   * holdings are called and, for a place in several kinds, which kinds' works
+   * are listed; null on the card above the groups, which lists them all.
+   */
   kindId?: number | null;
+  /** Every kind of the place; with two or more, the works are chosen by kind (#1263). */
+  placeKinds?: WorkKind[];
   /** A curator's way into correcting one of these works (#731); absent for everyone else. */
   onCorrect?: (work: ExperienceTreasure) => void;
 }
 
-export function ArtworksList({ contents, total, experienceId, kindId, onCorrect }: ArtworksListProps) {
+export function ArtworksList({ contents, total, experienceId, kindId, placeKinds, onCorrect }: ArtworksListProps) {
   const { setArtworkPreview } = useExperienceContext();
   const { isAuthenticated } = useAuth();
   const { viewedIds, viewedCount, markViewed, unmarkViewed } = useViewedTreasures(experienceId);
@@ -177,13 +188,16 @@ export function ArtworksList({ contents, total, experienceId, kindId, onCorrect 
   // once there are more than ten of them — which already overflows it. The box is
   // at its cap before the click and at its cap after.
   const [showAll, setShowAll] = useState(false);
-  const displayContents = showAll ? contents : contents.slice(0, ARTWORKS_INITIAL_LIMIT);
-  const hasMore = total > ARTWORKS_INITIAL_LIMIT;
-  // What this box calls what it holds, decided once and shared with Discover:
-  // the heading and the control that opens the rest of the list name the same
-  // things, and the same museum opened on the other surface names them that way
-  // too (`holdingsNoun`, #885).
-  const holdings = holdingsNoun(kindId);
+  // The works of the chosen kinds, each once, for a place in several (#1263).
+  // What this box calls what it holds is decided by the same rule Discover
+  // reads, so the heading and the control that opens the rest of the list name
+  // the same things on both surfaces (`holdingsNoun`, #885).
+  const { severalKinds, chips, shown, noun: holdings, toggle } = useWorkKinds(experienceId, contents, placeKinds, kindId ?? null);
+  const listed = severalKinds ? shown.length : total;
+  // What was seen of what is listed, so the heading never says more seen than shown.
+  const seenCount = severalKinds ? shown.filter(work => viewedIds.has(work.id)).length : viewedCount;
+  const displayContents = showAll ? shown : shown.slice(0, ARTWORKS_INITIAL_LIMIT);
+  const hasMore = listed > ARTWORKS_INITIAL_LIMIT;
 
   const handleToggleViewed = (treasureId: number, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -197,9 +211,10 @@ export function ArtworksList({ contents, total, experienceId, kindId, onCorrect 
   return (
     <Box sx={{ mb: 2 }}>
       <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block', fontWeight: 600 }}>
-        Notable {holdings} ({total})
-        {isAuthenticated && viewedCount > 0 && ` · ${viewedCount} seen`}
+        Notable {holdings} ({listed})
+        {isAuthenticated && seenCount > 0 && ` · ${seenCount} seen`}
       </Typography>
+      {severalKinds && <WorkKindChips chips={chips} onToggle={toggle} />}
       <Box
         sx={{
           bgcolor: 'white',
@@ -214,6 +229,7 @@ export function ArtworksList({ contents, total, experienceId, kindId, onCorrect 
           <ArtworkRow
             key={content.id}
             content={content}
+            placeKinds={severalKinds ? placeKinds : undefined}
             isViewed={viewedIds.has(content.id)}
             isAuthenticated={isAuthenticated}
             onToggleViewed={(e) => handleToggleViewed(content.id, e)}
@@ -240,7 +256,7 @@ export function ArtworksList({ contents, total, experienceId, kindId, onCorrect 
             }}
           >
             <Typography variant="caption" color="primary">
-              Show all {total} {holdings}
+              Show all {listed} {holdings}
             </Typography>
           </ButtonBase>
         )}

@@ -34,6 +34,7 @@ function work(over: Partial<ExperienceTreasure> = {}): ExperienceTreasure {
   return {
     id: 1,
     external_id: 'Q724954',
+    kind_ids: [2],
     name: 'Mesha Stele',
     treasure_type: 'stele',
     artists: [],

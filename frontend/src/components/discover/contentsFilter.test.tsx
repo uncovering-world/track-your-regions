@@ -37,7 +37,7 @@ function work(id: number, name: string, artists: string[] = []): ExperienceTreas
   return {
     id, external_id: `Q${id}`, name, treasure_type: 'painting', artists, artists_curated: false,
     year: null, image_url: null, sitelinks_count: 0, is_iconic: false, curated_fields: [], venue_count: 1, venues: null,
-    image_credit: null, found_at: null, found_at_site: null,
+    image_credit: null, found_at: null, found_at_site: null, kind_ids: [2],
   };
 }
 
@@ -57,6 +57,7 @@ function renderSection(contents = WORKS) {
   return render(
     <HoverProvider>
       <ContentsSection
+        experienceId={1}
         contents={contents}
         totalCount={contents.length}
         isAuthenticated
