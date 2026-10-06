@@ -43,7 +43,7 @@ import { useRegionLocations } from '../hooks/useRegionLocations';
 import { fetchExperienceKinds, type Experience, type ExperienceTreasure } from '../api/experiences';
 import { unrejectExperience, removeExperienceFromRegion } from '../api/curation';
 import { useNavigation } from '../hooks/useNavigation';
-import { locationLabel } from '../utils/locationLabel';
+import { locationLabel, pointOfRow } from '../utils/locationLabel';
 import { LazyAddExperienceDialog, LazyCurationDialog } from './shared/lazyCurationDialogs';
 import { PointPreviewDialog } from './shared/PointPreviewDialog';
 import { WorkPreviewDialog } from './shared/WorkPreviewDialog';
@@ -681,7 +681,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
         <PointPreviewDialog
           open
           onClose={closeCorrection}
-          name={locationLabel(correctionTarget.location)}
+          name={locationLabel(pointOfRow(correctionTarget.location))}
           latitude={correctionTarget.location.latitude}
           longitude={correctionTarget.location.longitude}
           correction={{

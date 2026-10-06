@@ -120,6 +120,7 @@ describe('the way into a serial site\'s places', () => {
       <HoverProvider>
       <LocationsSection
         experienceId={1}
+        objectName="Object"
         locations={Array.from({ length: count }, (_, i) => ({
           id: i + 1, name: `Place ${i + 1}`, latitude: 0, longitude: 0,
           ordinal: i,

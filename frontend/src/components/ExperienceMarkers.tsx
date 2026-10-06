@@ -42,7 +42,7 @@ import { useExperienceContext } from '../hooks/useExperienceContext';
 import { subscribeToHoverTarget, useHoverActions, type HoverPreview } from '../hooks/useHoverContext';
 import { useRegionLocations } from '../hooks/useRegionLocations';
 import type { Experience, ExperienceLocation } from '../api/experiences';
-import { locationLabel } from '../utils/locationLabel';
+import { locationLabelWithRef, pinLabel } from '../utils/locationLabel';
 import { frameGeoJson } from '../utils/mapUtils';
 import { placeKindNames } from '../utils/placeKinds';
 
@@ -63,7 +63,7 @@ function tryHoverSpecificLocation(
       experienceId: exp.id,
       experienceName: exp.name,
       locationId: loc.id,
-      locationName: locationLabel(loc),
+      locationName: locationLabelWithRef(loc),
       kindName: placeKindNames(exp),
       kindId: exp.kind_id,
       treasureCount: exp.treasure_count,
@@ -209,12 +209,15 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
       ]);
     }
 
+    // Named as the pin is: the one point of a museum reads the museum (#1268).
+    const objectPoints = locationsByExperience[selectedExperienceId]?.length ?? shown.length;
+    const objectName = getExperienceById(selectedExperienceId)?.name ?? '';
     return buildHighlightData(shown.map(loc => ({
       coordinates: [loc.longitude, loc.latitude],
       locationId: loc.id,
-      name: locationLabel(loc),
+      name: pinLabel(loc, objectPoints) ?? objectName,
     })));
-  }, [selectedExperienceId, shownPlacesFor, getExperienceById]);
+  }, [selectedExperienceId, shownPlacesFor, getExperienceById, locationsByExperience]);
 
   // ── Imperative event handlers (registered on the map, not rendered) ──
   useMarkerInteractions({

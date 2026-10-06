@@ -157,7 +157,7 @@ export function CurationPlaces({
 
   const single = places.length === 1 ? places[0] : null;
   // The one place of a museum or a monument is the object: its row reads the
-  // object's name, not "Location 2" off an ordinal the source happened to give.
+  // object's name, not its coordinate or a reference the source happened to give.
   // A serial site's parts keep the map's own labels, since telling them apart
   // is the point.
   const label = (place: ExperienceLocationWithState) =>

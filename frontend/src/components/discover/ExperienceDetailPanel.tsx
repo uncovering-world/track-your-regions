@@ -47,7 +47,7 @@ import { experienceColors } from '../../utils/kindColors';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';
 import { ContentsSection } from './ContentsSection';
-import { locationLabel } from '../../utils/locationLabel';
+import { locationLabel, pointOfRow } from '../../utils/locationLabel';
 import { inDangerLabel } from '../../utils/dangerLabel';
 import { queryKeys } from '../../api/queryKeys';
 
@@ -141,9 +141,14 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
     // is about the visit. Joined by id here, so a corrected pin says so on a
     // signed-in reader's row as on anyone else's.
     const claimsById = new Map(publicLocs.map(loc => [loc.id, loc.curated_fields]));
+    // And the source's reference, which names a part the source left unnamed
+    // (#1268): the public read carries it, the visited-status read does not.
+    const refsById = new Map(publicLocs.map(loc => [loc.id, loc.external_ref]));
     if (locationsWithVisitedStatus.length > 0) {
       // Auth data available — use it (has isVisited field)
-      return locationsWithVisitedStatus.map(loc => ({ ...loc, curatedFields: claimsById.get(loc.id) }));
+      return locationsWithVisitedStatus.map(loc => ({
+        ...loc, curatedFields: claimsById.get(loc.id), externalRef: refsById.get(loc.id) ?? null,
+      }));
     }
     // Not authenticated or auth data not yet loaded — map public locations
     return publicLocs.map(loc => ({
@@ -154,6 +159,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
       latitude: loc.latitude,
       isVisited: false,
       curatedFields: loc.curated_fields,
+      externalRef: loc.external_ref,
     }));
   }, [locationsData?.locations, locationsWithVisitedStatus]);
 
@@ -293,6 +299,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
         {isMultiLocation && (
           <LocationsSection
             experienceId={experience.id}
+            objectName={experience.name}
             locations={displayLocations}
             totalCount={totalLocations}
             isAuthenticated={isAuthenticated}
@@ -309,7 +316,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
           <PointPreviewDialog
             open
             onClose={() => setCorrecting(null)}
-            name={locationLabel(correcting)}
+            name={locationLabel(pointOfRow(correcting))}
             latitude={correcting.latitude}
             longitude={correcting.longitude}
             correction={{

@@ -13,6 +13,7 @@
 
 import type { Experience, ExperienceLocation } from '../../api/experiences';
 import { experienceColor } from '../../utils/kindColors';
+import { pinLabel } from '../../utils/locationLabel';
 
 /** Shared empty set, so a caller with nothing collapsed allocates nothing. */
 const EMPTY_COLLAPSED: ReadonlySet<number> = new Set<number>();
@@ -155,7 +156,7 @@ function collapsedMarker(exp: Experience, places: number): MarkerData {
  * place — was a question the builder had to answer and nobody could see. Each
  * pin stands for itself alone, so none carries a count.
  */
-function placeMarkers(exp: Experience, places: ExperienceLocation[]): MarkerData[] {
+function placeMarkers(exp: Experience, places: ExperienceLocation[], objectPoints: number): MarkerData[] {
   return places.map(loc => ({
     id: `${exp.id}-${loc.id}`,
     experienceId: exp.id,
@@ -163,7 +164,8 @@ function placeMarkers(exp: Experience, places: ExperienceLocation[]): MarkerData
     experience: exp,
     longitude: loc.longitude,
     latitude: loc.latitude,
-    locationName: loc.name,
+    // The one rule a pin and a highlight dot share (#1268).
+    locationName: pinLabel(loc, objectPoints),
     locationCount: 1,
   }));
 }
@@ -198,7 +200,7 @@ export function buildExperienceMarkers(
     let pins: MarkerData[];
     if (!locations || locations.length === 0) pins = [standInMarker(exp)];
     else if (collapsedExperienceIds.has(exp.id) && representable.length > 1) pins = [collapsedMarker(exp, representable.length)];
-    else pins = placeMarkers(exp, representable);
+    else pins = placeMarkers(exp, representable, locations.length);
     for (const pin of pins) result.push({ ...pin, kindColors });
   }
 

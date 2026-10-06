@@ -21,7 +21,8 @@ import { memo } from 'react';
 import { useHoverSelector } from '../../hooks/useHoverContext';
 import { Box, ListItem, ListItemIcon, ListItemText, Checkbox, IconButton, Tooltip } from '@mui/material';
 import { LocationOn as LocationIcon, EditLocationAlt as FixPlaceIcon } from '@mui/icons-material';
-import { locationLabel } from '../../utils/locationLabel';
+import { locationLabel, pointFullName, pointOfRow } from '../../utils/locationLabel';
+import { CopyNameButton } from '../shared/CopyNameButton';
 import { claimLabel } from '../../utils/placeClaims';
 import { resolveLocationColor } from './utils';
 import { VISITED_GREEN } from '../../utils/kindColors';
@@ -30,6 +31,8 @@ import { VISITED_GREEN } from '../../utils/kindColors';
 export interface LocationRowData {
   id: number;
   name: string | null;
+  /** The source's reference, which names a part the source left unnamed (#1268). */
+  externalRef: string | null;
   ordinal: number | null;
   isVisited: boolean;
   /** Where it is, for the dialog a curator corrects it in. */
@@ -41,6 +44,8 @@ export interface LocationRowData {
 
 interface LocationRowProps {
   location: LocationRowData;
+  /** The object the place belongs to, which its copied full name begins with (#1268). */
+  objectName: string;
   showCheckbox: boolean;
   /** Out-of-region places are shown dimmed, are not hoverable, and carry a path. */
   outOfRegion?: boolean;
@@ -57,9 +62,12 @@ interface LocationRowProps {
 }
 
 function LocationRowComponent({
-  location, showCheckbox, outOfRegion, regionPath,
+  location, objectName, showCheckbox, outOfRegion, regionPath,
   onHover, onVisitedToggle, registerRef, onCorrect,
 }: LocationRowProps) {
+  const point = pointOfRow(location);
+  const fullName = pointFullName(objectName, point);
+  const label = locationLabel(point);
   // One boolean, so this row re-renders only when the pointer arrives at or
   // leaves it. An out-of-region place is not hoverable and is drawn dimmed, so it
   // selects a constant false and never re-renders for a hover at all.
@@ -77,17 +85,23 @@ function LocationRowComponent({
           dense
           sx={{
             py: 0.5, opacity: 0.4, bgcolor: 'grey.100', cursor: 'default',
-            '& .place-fix': { opacity: 0, transition: 'opacity 0.15s ease' },
-            '&:hover .place-fix, &:focus-within .place-fix': { opacity: 1 },
+            '& .place-fix, & .place-copy': { opacity: 0, transition: 'opacity 0.15s ease' },
+            '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy': { opacity: 1 },
           }}
-          // A place outside the region is still a place a curator is looking at.
-          secondaryAction={onCorrect ? <FixPlaceButton location={location} onCorrect={onCorrect} /> : undefined}
+          // A place outside the region is still a place a curator is looking at,
+          // and a place a reader may want the name of.
+          secondaryAction={(
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <CopyNameButton fullName={fullName} className="place-copy" />
+              {onCorrect && <FixPlaceButton location={location} onCorrect={onCorrect} />}
+            </Box>
+          )}
         >
           <ListItemIcon sx={{ minWidth: 28 }}>
             <LocationIcon fontSize="small" color="disabled" />
           </ListItemIcon>
           <ListItemText
-            primary={locationLabel(location)}
+            primary={label}
             secondary={regionPath || 'Outside region'}
             slotProps={{
               primary: { variant: 'body2', sx: { color: 'text.disabled' } },
@@ -126,13 +140,14 @@ function LocationRowComponent({
           // row under the pointer, the one holding keyboard focus, or the one lit
           // from the map — thirty rows do not carry thirty pencils. Opacity, not
           // display: the button stays in the tab order, which is what reveals it.
-          '& .place-fix': { opacity: hovered ? 1 : 0, transition: 'opacity 0.15s ease' },
-          '&:hover .place-fix, &:focus-within .place-fix': { opacity: 1 },
+          '& .place-fix, & .place-copy': { opacity: hovered ? 1 : 0, transition: 'opacity 0.15s ease' },
+          '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy': { opacity: 1 },
         }}
         onMouseEnter={() => onHover(location.id)}
         secondaryAction={
-          showCheckbox || onCorrect ? (
+          (
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <CopyNameButton fullName={fullName} className="place-copy" />
               {onCorrect && <FixPlaceButton location={location} onCorrect={onCorrect} />}
               {showCheckbox && (
                 <Checkbox
@@ -144,14 +159,14 @@ function LocationRowComponent({
                 />
               )}
             </Box>
-          ) : undefined
+          )
         }
       >
         <ListItemIcon sx={{ minWidth: 28 }}>
           <LocationIcon fontSize="small" color={hovered ? 'primary' : 'action'} />
         </ListItemIcon>
         <ListItemText
-          primary={locationLabel(location)}
+          primary={label}
           // "pin corrected" under the name where a curator has moved it: without
           // the word, a pin somebody put there reads as the source's.
           secondary={claimLabel(location.curatedFields) ?? undefined}
@@ -183,7 +198,7 @@ function FixPlaceButton({ location, onCorrect }: {
   location: LocationRowData;
   onCorrect: (location: LocationRowData) => void;
 }) {
-  const label = `Fix ${locationLabel(location)}`;
+  const label = `Fix ${locationLabel(pointOfRow(location))}`;
   return (
     <Tooltip title="Move or rename this place">
       <IconButton className="place-fix" size="small" aria-label={label} onClick={() => onCorrect(location)}>
