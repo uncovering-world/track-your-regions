@@ -81,6 +81,22 @@ describe('a place in several kinds (ADR-0084)', () => {
     ]);
   });
 
+  it('carries each kind\'s own listing, so a kind its source delisted reads former alone (#1289)', async () => {
+    await pool.query(
+      `UPDATE experience_kind_memberships SET source_membership = 'former', missing_since = NOW()
+        WHERE experience_id = $1 AND source_id = $2`,
+      [CAPITOLINE, archaeology.id],
+    );
+
+    const result = await pool.query(
+      `SELECT e.source_membership, ${placeKindsSql('e')} AS kinds FROM experiences e WHERE e.id = $1`, [CAPITOLINE],
+    );
+
+    expect(result.rows[0].source_membership).toBe('present');
+    expect(result.rows[0].kinds.map((kind: { source_membership: string }) => kind.source_membership))
+      .toEqual(['present', 'former']);
+  });
+
   it('leaves out a kind that has not been shown to readers yet', async () => {
     // An arrival nobody has passed: a membership cannot move back to pending
     // (ADR-0070), so the fixture brings it that way.

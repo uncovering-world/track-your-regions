@@ -7,6 +7,7 @@ import {
 /** The Acropolis's one kind, as `placeKindsSql` builds it. */
 const ACROPOLIS_IN_ARCHAEOLOGY = {
   kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, type: 'site', source_id: 5, external_id: 'Q131013',
+  source_membership: 'present' as const,
 };
 
 /** The Acropolis of Athens as the by-id read's driver hands it over. */

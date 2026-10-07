@@ -3313,6 +3313,17 @@ export const ExperienceExistence = {
 } as const;
 
 /**
+ * Whether this kind's source still lists the place (#1289): `former` where a curator recorded it as delisted in this kind — a World Heritage Site UNESCO delisted — while the place itself may still be listed by another kind.
+ */
+export type PlaceKindSourceMembership = typeof PlaceKindSourceMembership[keyof typeof PlaceKindSourceMembership];
+
+
+export const PlaceKindSourceMembership = {
+  present: 'present',
+  former: 'former',
+} as const;
+
+/**
  * One kind a place is offered in. A place belongs to no kind, and none of its kinds is the primary one (ADR-0084).
  */
 export interface PlaceKind {
@@ -3341,6 +3352,8 @@ export interface PlaceKind {
   source_id: number;
   /** The id that source knows the place by, such as a Wikidata item (ADR-0084). */
   external_id: string;
+  /** Whether this kind's source still lists the place (#1289): `former` where a curator recorded it as delisted in this kind — a World Heritage Site UNESCO delisted — while the place itself may still be listed by another kind. */
+  source_membership: PlaceKindSourceMembership;
 }
 
 /**
