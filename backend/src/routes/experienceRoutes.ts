@@ -182,14 +182,16 @@ export const experienceReadRoutes = [
     handler: getRegionExperienceLocations,
   }),
   // One experience (`optional`: 404s on a refused row (ADR-0024) and on an
-  // unread `pending` row outside a curator/admin's scope (ADR-0025); its
+  // unread `pending` row outside a curator/admin's scope (ADR-0025); the id of
+  // a place a merge folded into another answers with the surviving place, under
+  // its own id (ADR-0046 decision 5, ADR-0086); its
   // regions[] are filtered in the handler on two axes — the world view's own
   // visibility, which only an admin bypasses, and whether the region holds a
   // point of this object that this caller may see (#521), which a curator whose
   // scope reaches the object bypasses too, a manual assignment being exempt)
   defineRoute({
     method: 'get', path: '/:id', access: 'optional', cache: 'revalidate', limiter: publicReadLimiter,
-    summary: 'Get one experience and its regions; a curator in scope also gets an unread arrival',
+    summary: 'Get one experience and its regions; a merged place\'s id answers with the place it went into, under that place\'s id; a curator in scope also gets an unread arrival',
     params: idParamSchema,
     response: ExperienceDetail,
     handler: getExperience,

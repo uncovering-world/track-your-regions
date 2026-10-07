@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { mergePlaces, undoMerge } from './placeMerge.js';
 import { mergeEqualItems } from './equalItemMerges.js';
+import { getExperience } from './experienceQueryController.js';
 
 /**
  * A merge of two places and its undo (#1247, ADR-0046, ADR-0086), executed
@@ -219,6 +220,28 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
 
     const kept = await pool.query('SELECT notes FROM user_visited_experiences WHERE user_id = $1 AND experience_id = $2', [onceId, WORSHIP]);
     expect(kept.rows).toEqual([{ notes: 'Went back for the dome at dusk' }]);
+  });
+
+  it("answers the folded place's address with the surviving place's card, down a chain of merges", async () => {
+    await pool.query(
+      `INSERT INTO experiences (id, source_id, external_id, name, location)
+       SELECT $1, s.id, 'Q9699-merge-fixture', 'Pantheon (merge fixture museum)', ST_SetSRID(ST_MakePoint(12.4768, 41.8986), 4326)
+         FROM experience_sources s WHERE s.name = 'Art Museums'`,
+      [MUSEUM],
+    );
+    await pool.query(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, 'Q9699-merge-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
+      [MUSEUM],
+    );
+    const read = (id: number) => getExperience({ params: { id }, caller: undefined });
+
+    await mergePlaces({ survivorId: WORSHIP, foldedId: SITE, mergedBy: null, reason: 'equal_wikidata_item' });
+    expect((await read(SITE)).id).toBe(WORSHIP);
+
+    await mergePlaces({ survivorId: MUSEUM, foldedId: WORSHIP, mergedBy: curatorId, reason: 'curator' });
+    expect((await read(SITE)).id).toBe(MUSEUM);
+    expect((await read(WORSHIP)).id).toBe(MUSEUM);
   });
 
   it('refuses to undo a merge whose survivor has since been merged into another place', async () => {

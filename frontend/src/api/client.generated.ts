@@ -16933,7 +16933,7 @@ export const getGetExperiencesByIdUrl = (id: number,) => {
 
 /**
  * A signed-in caller may get a different answer.
- * @summary Get one experience and its regions; a curator in scope also gets an unread arrival
+ * @summary Get one experience and its regions; a merged place's id answers with the place it went into, under that place's id; a curator in scope also gets an unread arrival
  */
 export const getExperiencesById = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<ExperienceDetail> => {
 
