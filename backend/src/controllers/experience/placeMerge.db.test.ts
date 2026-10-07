@@ -35,6 +35,7 @@ async function clear(): Promise<void> {
   await pool.query('UPDATE experience_locations SET merged_into_id = NULL WHERE experience_id = ANY($1)', [places]);
   await pool.query('UPDATE experiences SET merged_into_id = NULL WHERE id = ANY($1)', [places]);
   await pool.query('DELETE FROM experience_curation_log WHERE experience_id = ANY($1)', [places]);
+  await pool.query('DELETE FROM experience_regions WHERE experience_id = ANY($1)', [places]);
   await pool.query('DELETE FROM experiences WHERE id = ANY($1)', [places]);
   await pool.query('DELETE FROM treasures WHERE external_id = $1', [WORK_QID]);
   await pool.query('DELETE FROM users WHERE uuid = ANY($1::text[])', [[TWICE, ONCE, CURATOR]]);
@@ -184,6 +185,33 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
 
     const again = await undoMerge(merged.result!.mergeId, curatorId);
     expect(again.refusal).toMatchObject({ status: 409 });
+  });
+
+  it("moves a curator's assignment of the folded place to a region, and moves it back", async () => {
+    // A region the survivor is not in: the curator's word is the only thing
+    // that lists the folded place there, and no point of the survivor repeats it.
+    const region = await pool.query<{ id: number }>(
+      `SELECT r.id FROM regions r
+        WHERE NOT EXISTS (SELECT 1 FROM experience_regions er WHERE er.region_id = r.id AND er.experience_id = ANY($1))
+        ORDER BY r.id LIMIT 1`,
+      [[WORSHIP, SITE]],
+    );
+    expect(region.rows).toHaveLength(1);
+    const regionId = region.rows[0].id;
+    await pool.query(
+      `INSERT INTO experience_regions (experience_id, region_id, assignment_type, assigned_by) VALUES ($1, $2, 'manual', $3)`,
+      [SITE, regionId, curatorId],
+    );
+    const holder = async () => (await pool.query<{ experience_id: number }>(
+      `SELECT experience_id FROM experience_regions WHERE region_id = $1 AND assignment_type = 'manual' AND experience_id = ANY($2)`,
+      [regionId, [WORSHIP, SITE]],
+    )).rows.map(row => row.experience_id);
+
+    const merged = await mergePlaces({ survivorId: WORSHIP, foldedId: SITE, mergedBy: null, reason: 'equal_wikidata_item' });
+    expect(await holder()).toEqual([WORSHIP]);
+
+    await undoMerge(merged.result!.mergeId, curatorId);
+    expect(await holder()).toEqual([SITE]);
   });
 
   it('refuses two places of one kind, and changes nothing', async () => {
