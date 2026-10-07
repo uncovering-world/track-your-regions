@@ -290,15 +290,26 @@ function withdrawnKeysSql(scopeFilter: string): string {
  * `missingOpenSql`); the refusal's date is the one loose one in the list, and
  * ADR-0051 names it rather than leaving the kind out of the order.
  */
-function refusedKeysSql(scopeFilter: string): string {
+function refusedKeysSql(membershipScopeFilter: string): string {
+  // One row per place, whichever of its memberships a rule refused (#1264):
+  // the sources are every one that refused it, the run and date the newest.
   return `
-    SELECT 'refused', ${KIND_RANK.refused}, e.id, e.name, ARRAY[e.source_id],
-           m.first_seen_sync_log_id, COALESCE(l.completed_at, m.updated_at), ARRAY[]::text[]
-    FROM experiences e
-    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
-    LEFT JOIN experience_sync_logs l ON l.id = m.first_seen_sync_log_id
-    WHERE ${refusedOpenSql('m')}
-      AND ${scopeFilter}`;
+    SELECT 'refused', ${KIND_RANK.refused}, g.id, g.name, g.source_ids, g.run_id, g.asked_at, ARRAY[]::text[]
+    FROM (
+      SELECT e.id, e.name, array_agg(DISTINCT m.source_id) AS source_ids,
+             -- Preferring a refusal that names a run, as the waiting keys do, so a
+             -- place stays under the run chip of the membership a run refused.
+             (array_agg(m.first_seen_sync_log_id
+                        ORDER BY (m.first_seen_sync_log_id IS NULL),
+                                 COALESCE(l.completed_at, m.updated_at) DESC NULLS LAST))[1] AS run_id,
+             max(COALESCE(l.completed_at, m.updated_at)) AS asked_at
+      FROM experiences e
+      JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
+      LEFT JOIN experience_sync_logs l ON l.id = m.first_seen_sync_log_id
+      WHERE ${refusedOpenSql('m')}
+        AND ${membershipScopeFilter}
+      GROUP BY e.id, e.name
+    ) g`;
 }
 
 function missingKeysSql(scopeFilter: string): string {
@@ -539,7 +550,7 @@ export async function queryQueueKeys(
 , keys AS (${conflictKeysSql(scopeFilter, claimKey)}
     UNION ALL${waitingKeysSql(membershipScopeFilter)}
     UNION ALL${withdrawnKeysSql(scopeFilter)}
-    UNION ALL${refusedKeysSql(scopeFilter)}
+    UNION ALL${refusedKeysSql(membershipScopeFilter)}
     UNION ALL${missingKeysSql(scopeFilter)}
   )
 , searched AS (

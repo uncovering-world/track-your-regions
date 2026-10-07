@@ -4,6 +4,7 @@ import { queryQueueKeys } from './reviewQueueKeys.js';
 import { getReviewQueue } from './reviewQueueController.js';
 import { publishUnderLock } from './publishController.js';
 import { refuseContentsUnderLock } from './curatorRefusalController.js';
+import { answerAdmissionUnderLock } from './lifecycleController.js';
 import { reviewQueueQuerySchema } from '../../types/index.js';
 
 /**
@@ -229,5 +230,76 @@ describe('a waiting question of each membership (#1264)', () => {
     const stateOf = Object.fromEntries(states.rows.map(row => [row.id, row.curation_state]));
     expect(stateOf[own.rows[0].id]).not.toBe('pending');
     expect(stateOf[artPoint]).toBe('pending');
+  });
+});
+
+describe('a refusal of each membership (#1264)', () => {
+  /** The Archaeology rule refuses the museums, which readers see as an art museum. */
+  async function refuseArchaeology(): Promise<number> {
+    const archaeology = await membershipOf(archaeologySource);
+    await pool.query(
+      `UPDATE experience_kind_memberships SET admission = 'refused', admission_reason = 'not an archaeological site'
+        WHERE id = $1`,
+      [archaeology],
+    );
+    return archaeology;
+  }
+
+  it('asks it under the kind whose rule refused, saying where readers still see the place', async () => {
+    const archaeology = await refuseArchaeology();
+
+    const archaeologyKeys = await queryQueueKeys({
+      userId: adminId, isAdmin: true, filters: filters({ sourceIds: [archaeologySource] }),
+    });
+    const artKeys = await queryQueueKeys({ userId: adminId, isAdmin: true, filters: filters({ sourceIds: [artSource] }) });
+    expect(archaeologyKeys.keys).toEqual([expect.objectContaining({ kind: 'refused', id: PLACE })]);
+    expect(artKeys.total).toBe(0);
+
+    const queue = await getReviewQueue({
+      query: reviewQueueQuerySchema.parse({ q: NAME }),
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    });
+    expect(queue.refused).toEqual([expect.objectContaining({
+      id: PLACE, membership_id: archaeology, kind_name: 'Archaeology', seen_in: ['Art Museums'],
+    })]);
+  });
+
+  it('keeps a confirmed refusal in the kept-out list under its own kind', async () => {
+    const archaeology = await refuseArchaeology();
+    await pool.query('UPDATE experience_kind_memberships SET admission_answered_at = NOW() WHERE id = $1', [archaeology]);
+
+    const queue = await getReviewQueue({
+      query: reviewQueueQuerySchema.parse({ q: NAME }),
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    });
+
+    expect(queue.refused).toEqual([]);
+    expect(queue.keptOut).toEqual([expect.objectContaining({
+      id: PLACE, membership_id: archaeology, kind_name: 'Archaeology', seen_in: ['Art Museums'],
+    })]);
+  });
+
+  it('dates and notes each kept-out kind by its own answer', async () => {
+    // Both kinds' rules refused the place, and a curator kept it out of each
+    // with a different note: neither card may show the other's.
+    const archaeology = await refuseArchaeology();
+    const art = await membershipOf(artSource);
+    await pool.query(
+      `UPDATE experience_kind_memberships SET admission = 'refused', admission_reason = 'not an art museum'
+        WHERE id = $1`,
+      [art],
+    );
+    for (const [membershipId, note] of [[archaeology, 'no excavated holdings'], [art, 'antiquities only']] as const) {
+      const outcome = await answerAdmissionUnderLock(PLACE, adminId, null, { decision: 'confirm', note, membershipId });
+      expect(outcome.refusal).toBeUndefined();
+    }
+
+    const queue = await getReviewQueue({
+      query: reviewQueueQuerySchema.parse({ q: NAME }),
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    });
+
+    const noteOf = Object.fromEntries(queue.keptOut.map(item => [item.membership_id, item.state_note]));
+    expect(noteOf).toEqual({ [archaeology]: 'no excavated holdings', [art]: 'antiquities only' });
   });
 });

@@ -26553,7 +26553,7 @@
             ]
           },
           "seen_in": {
-            "description": "On an arrival: the kinds readers already see the place in, through another membership (#1264). Empty where the arrival is the whole place.",
+            "description": "On an arrival or a refusal: the kinds readers already see the place in, through another membership (#1264). Empty where the membership asked about is the whole place.",
             "type": "array",
             "items": {
               "type": "string"

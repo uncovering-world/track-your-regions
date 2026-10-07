@@ -244,8 +244,8 @@ export const ReviewQueueItem = z.strictObject({
   wikipedia_url: z.string().nullable().optional(),
   region_names: z.array(z.string()).nullable().optional(),
   seen_in: z.array(z.string()).optional().describe(
-    'On an arrival: the kinds readers already see the place in, through another membership (#1264). Empty where the'
-    + ' arrival is the whole place.',
+    'On an arrival or a refusal: the kinds readers already see the place in, through another membership (#1264).'
+    + ' Empty where the membership asked about is the whole place.',
   ),
   admission_note: z.string().nullable().optional()
     .describe("The run's own question about a row it could not settle by its rule (ADR-0058)."),

@@ -74,6 +74,19 @@ function queueFilters(query: ReviewQueueQuery, limit: number): QueueFilters {
 }
 
 /**
+ * The kinds readers already see a place in, through its offered memberships
+ * (#1264): a place an Art Museums run published and an Archaeology run has
+ * just brought, or whose Archaeology membership a rule refused, is on every
+ * map already, and its card must not say nobody can see it. A pending or
+ * refused membership is not offered, so the card's own kind is never listed.
+ */
+function seenInSql(): string {
+  return `(SELECT COALESCE(array_agg(sk.name ORDER BY sk.display_priority, sk.id), '{}')
+             FROM ${MEMBERSHIPS} sm JOIN ${KINDS} sk ON sk.id = sm.kind_id
+            WHERE sm.experience_id = e.id AND ${membershipOfferedSql('sm')})`;
+}
+
+/**
  * The decisions waiting for a curator, scoped to what they cover.
  * GET /api/experiences/review/queue
  *   ?q=&source=&kind=&region=&run=&aside=&sort=&cursor=&limit=
@@ -272,27 +285,25 @@ export async function getReviewQueue(
   // What counts as `refused` and why an answered row leaves it: the reasoning
   // is on `refusedOpenSql` (`reviewQueuePredicates.ts`).
   //
-  // The refusal and kept-out queues join the membership the row's own source
-  // brought — `m.source_id = e.source_id`, the equality the catalogue check
-  // `membership-source-disagrees-with-row` asserts — rather than any
-  // membership of the place, so a place in two kinds cannot show one source's
-  // refusal under another's heading. The arrival and held queues ask every
-  // membership already (#1264, below); these two are the rest of that issue.
+  // A refusal is a kind's rule refusing that kind's membership, so the
+  // refusal and kept-out queues ask every membership of a place (#1264): one
+  // item per refused membership, each in scope by its own source and carrying
+  // the kinds readers still see the place in. The page groups them by place.
   const refusedIds = idsOf('refused');
   const refused = await hydrate(refusedIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
-           m.admission_reason,
+    SELECT e.id, m.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
+           m.admission_reason, ${seenInSql()} AS seen_in,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'refused' AS kind, ${countedWorksSelectSql()},
            NULL::jsonb AS proposed
     FROM experiences e
-    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
     JOIN ${KINDS} kd ON kd.id = m.kind_id
     WHERE ${refusedOpenSql('m')}
-      ${sourceFilter}
-      AND ${scopeFilter}
+      ${membershipSourceFilter}
+      AND ${membershipScopeFilter}
       AND e.id = ANY($${params.length + 1}::int[])
-    ORDER BY e.id
+    ORDER BY e.id, kd.display_priority
   `, [...params, refusedIds]));
 
   // The rows a curator confirmed, and the only place they can be seen.
@@ -315,20 +326,35 @@ export async function getReviewQueue(
   // to it looking for a row they answered a moment ago, having noticed the
   // mis-click, and the row they want is the last one they touched.
   const keptOut = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
-           m.admission_reason, e.state_decided_at, e.state_note,
+    SELECT e.id, m.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
+           m.admission_reason, ${seenInSql()} AS seen_in,
+           -- When this membership's refusal was answered, and the note given
+           -- (#1264): the latest confirmation or kept-out arrival the log
+           -- records for it, else a
+           -- batch's answer, else the place's own decision, which is the only
+           -- one an answer logged before memberships were named carries.
+           COALESCE(answer.at, m.admission_answered_at, e.state_decided_at) AS state_decided_at,
+           CASE WHEN answer.at IS NOT NULL THEN answer.note ELSE e.state_note END AS state_note,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'kept-out' AS kind, ${countedWorksSelectSql()},
            NULL::jsonb AS proposed
     FROM experiences e
-    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = e.source_id
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
     JOIN ${KINDS} kd ON kd.id = m.kind_id
+    LEFT JOIN LATERAL (
+      SELECT cl.created_at AS at, cl.details->>'note' AS note
+        FROM experience_curation_log cl
+       WHERE cl.experience_id = e.id AND cl.action IN ('admission_confirmed', 'arrival_refused')
+         AND (cl.details->>'membershipId')::int = m.id
+       ORDER BY cl.created_at DESC
+       LIMIT 1
+    ) answer ON TRUE
     WHERE m.admission = 'refused'
       AND ${admissionAnsweredSql('m')}
-      ${sourceFilter}
+      ${membershipSourceFilter}
       ${nameFilter}
-      AND ${scopeFilter}
-    ORDER BY e.state_decided_at DESC NULLS LAST, e.id
+      AND ${membershipScopeFilter}
+    ORDER BY COALESCE(answer.at, m.admission_answered_at, e.state_decided_at) DESC NULLS LAST, e.id, m.id
     LIMIT $${answeredParams.length + 1} OFFSET $${answeredParams.length + 2}
   `, [...answeredParams, pageSize, offsets.keptOut]);
 
@@ -369,16 +395,10 @@ export async function getReviewQueue(
   // arrivals, each answered for its own kind, and the page groups them.
   const arrivalIds = waitingIds('arrival');
   const arrivals = await hydrate(arrivalIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
+    SELECT e.id, m.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
            m.curation_state, m.first_seen_sync_log_id AS sync_log_id,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
-           'arrival' AS kind, NULL::jsonb AS proposed,
-           -- The kinds readers already see the place in: a place an Art Museums
-           -- run published and an Archaeology run has just brought is on every
-           -- map already, and the card must not say nobody can see it (#1264).
-           (SELECT COALESCE(array_agg(sk.name ORDER BY sk.display_priority, sk.id), '{}')
-              FROM ${MEMBERSHIPS} sm JOIN ${KINDS} sk ON sk.id = sm.kind_id
-             WHERE sm.experience_id = e.id AND ${membershipOfferedSql('sm')}) AS seen_in
+           'arrival' AS kind, NULL::jsonb AS proposed, ${seenInSql()} AS seen_in
     FROM experiences e
     JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
     JOIN ${KINDS} kd ON kd.id = m.kind_id
@@ -445,7 +465,7 @@ export async function getReviewQueue(
   const heldIds = waitingIds('held');
   const held = await hydrate(heldIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT * FROM (
-      SELECT e.id, e.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
+      SELECT e.id, m.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
              ${lifecycleSelectSql()}, ${objectContextSelectSql()},
              ch.sync_log_id, 'held' AS kind,
              (SELECT jsonb_agg(f) FROM jsonb_array_elements(ch.changed_fields) AS f
