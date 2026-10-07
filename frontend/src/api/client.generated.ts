@@ -7262,7 +7262,7 @@ export interface ReviewQueueItem {
   /** @nullable */
   wikipedia_url?: string | null;
   region_names?: string[] | null;
-  /** On an arrival: the kinds readers already see the place in, through another membership (#1264). Empty where the arrival is the whole place. */
+  /** On an arrival or a refusal: the kinds readers already see the place in, through another membership (#1264). Empty where the membership asked about is the whole place. */
   seen_in?: string[];
   /**
      * The run's own question about a row it could not settle by its rule (ADR-0058).

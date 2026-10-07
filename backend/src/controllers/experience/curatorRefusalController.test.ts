@@ -131,7 +131,9 @@ describe('refuseArrival', () => {
     const log = client.queries.find(q => q.sql.includes('experience_curation_log'));
     expect(log?.sql).toContain("'arrival_refused'");
     expect(log?.params?.[2]).toBe(12);
-    expect(JSON.parse(log?.params?.[3] as string)).toEqual({ reason: CURATOR_REFUSAL_REASON, note: 'a parish church' });
+    // The membership kept out rides in the details, which the kept-out card reads (#1264).
+    expect(JSON.parse(log?.params?.[3] as string))
+      .toEqual({ membershipId: 40, reason: CURATOR_REFUSAL_REASON, note: 'a parish church' });
 
     expect(client.query).toHaveBeenCalledWith('COMMIT');
     expect(res.json).toHaveBeenCalledWith({ experienceId: 5, admission: 'refused', reason: CURATOR_REFUSAL_REASON });

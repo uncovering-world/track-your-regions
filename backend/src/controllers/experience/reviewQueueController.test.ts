@@ -116,7 +116,9 @@ describe('getReviewQueue', () => {
     // membership's (#822), through the one spelling the writers honour.
     const [refusedSql] = callMatching(`NOT ${admissionAnsweredSql('m')}`);
     expect(refusedSql).toContain("m.admission = 'refused'");
-    expect(refusedSql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.source_id');
+    // Every membership a rule refused, each in scope by its own source (#1264).
+    expect(refusedSql).toMatch(/JOIN experience_kind_memberships m ON m\.experience_id = e\.id\s/);
+    expect(refusedSql).not.toContain('m.source_id = e.source_id');
     expect(refusedSql).toContain('m.admission_reason');
   });
 
@@ -143,10 +145,11 @@ describe('getReviewQueue', () => {
     // A batch-confirmed refusal is kept out too, though it carries no pin.
     expect(keptOutSql).toContain(admissionAnsweredSql('m'));
     expect(keptOutSql).not.toContain(`NOT ${admissionAnsweredSql('m')}`);
-    // The membership the row's own source brought, not any membership of the
-    // place: the day a place has two (#755), another source's refusal must
-    // not surface under this source's heading.
-    expect(keptOutSql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = e.source_id');
+    // Every kept-out membership of a place, one card each under its own kind
+    // and narrowed by its own source (#1264), so another source's refusal does
+    // not surface under this source's chip.
+    expect(keptOutSql).toMatch(/JOIN experience_kind_memberships m ON m\.experience_id = e\.id\s/);
+    expect(keptOutSql).not.toContain('m.source_id = e.source_id');
   });
 
   it('returns the confirmed refusals under their own key', async () => {
@@ -256,14 +259,15 @@ describe('getReviewQueue', () => {
       user: ADMIN, query: { q: '100%', source: '1', region: 6737, run: 98 },
     } as never, makeRes() as never);
 
-    for (const anchor of ["'kept-out' AS kind", "'withdrawn-answered' AS kind"]) {
+    for (const [anchor, source] of [["'kept-out' AS kind", 'm'], ["'withdrawn-answered' AS kind", 'e']]) {
       const [sql, params] = callMatching(anchor);
       expect(sql).toContain('e.name ILIKE $');
       expect(sql).toContain("ESCAPE '\\'");
       // The union's own escaping (`likeParam`), not a second spelling of it: a
       // curator typing `100%` wants a per-cent sign, not every name there is.
       expect(params).toContain('%100\\%%');
-      expect(sql).toContain('e.source_id = ANY($');
+      // A kept-out row is a membership's, narrowed by its own source (#1264).
+      expect(sql).toContain(`${source}.source_id = ANY($`);
       // The region does not reach them, and neither does the run: these rows are
       // answers rather than questions, and a run is what a question was asked by.
       expect(sql).not.toContain('region_subtree');
@@ -899,10 +903,11 @@ describe('getReviewQueue', () => {
     // An arrival names an object without naming what it is or which gated
     // source it arrived from, and "which kind is this" is most of the
     // judgement. The kind is the membership's (#819); the source id rides
-    // beside it for the feed's filter.
+    // beside it for the feed's filter. The external id is the membership's,
+    // the id its own source knows the place by (#1264).
     for (const kind of ['arrival', 'held', 'contents'] as const) {
       const sql = await capturedQueueSql(kind);
-      expect(sql).toContain('e.external_id');
+      expect(sql).toContain('m.external_id');
       expect(sql).toContain('e.source_id');
       expect(sql).toContain('kd.name AS kind_name');
     }

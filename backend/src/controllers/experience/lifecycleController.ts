@@ -516,7 +516,10 @@ export async function answerAdmissionUnderLock(
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
       VALUES ($1, $2, $3, $4, $5)
     `, [experienceId, userId, admitted ? 'admission_overridden' : 'admission_confirmed', logRegionId,
+      // The membership answered (#1264), so a kept-out card reads its own
+      // decision and note rather than the place's latest.
       JSON.stringify({
+        membershipId,
         reason: before.admission_reason, note: note ?? null, published: publishes, pinned: pin,
         locations: locationsPublished, treasureLinks: treasureLinksPublished,
         treasures: treasuresPublished, withdrawalsReleased,

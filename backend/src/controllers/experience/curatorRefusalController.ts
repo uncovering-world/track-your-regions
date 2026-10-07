@@ -185,7 +185,8 @@ export async function refuseArrivalUnderLock(
       INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
       VALUES ($1, $2, 'arrival_refused', $3, $4)
     `, [experienceId, userId, logRegionId, JSON.stringify({
-      reason: CURATOR_REFUSAL_REASON, note: note ?? null,
+      // The membership kept out (#1264), which the kept-out card reads.
+      membershipId, reason: CURATOR_REFUSAL_REASON, note: note ?? null,
     })]);
 
     await client.query('COMMIT');
