@@ -12,22 +12,36 @@
  */
 
 import { pool } from '../../db/index.js';
-import { MEMBERSHIPS } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS } from '../../db/membership.js';
 import type { EqualItemMerges } from '../../api/responses/admin.js';
 import { mergePlaces } from './placeMerge.js';
 
-/** The memberships' Wikidata items held by more than one place, each with its places in id order. */
-async function sharedItems(only?: string[]): Promise<{ qid: string; place_ids: number[]; names: string[] }[]> {
-  const result = await pool.query<{ qid: string; place_ids: number[]; names: string[] }>(
-    `SELECT m.external_id AS qid,
+/**
+ * The memberships' Wikidata items held by more than one place, one row each:
+ * `qid`, its places in id order (`place_ids`), their names in that order
+ * (`names`) and the kinds that hold them (`kinds`). Narrowed to the items
+ * named by `onlyParam` — a placeholder bound to a `text[]`, or `NULL` for
+ * every item. The pass merges what this finds, and the catalogue check
+ * `places-sharing-a-wikidata-item` counts what it still finds, so the two ask
+ * one question.
+ */
+export function sharedItemsSql(onlyParam: string): string {
+  return `SELECT m.external_id AS qid,
             array_agg(DISTINCT e.id ORDER BY e.id) AS place_ids,
-            array_agg(e.name ORDER BY e.id) AS names
+            array_agg(e.name ORDER BY e.id) AS names,
+            array_agg(DISTINCT k.name ORDER BY k.name) AS kinds
        FROM ${MEMBERSHIPS} m
        JOIN experiences e ON e.id = m.experience_id AND e.merged_into_id IS NULL
-      WHERE m.external_id ~ '^Q[0-9]+$' AND ($1::text[] IS NULL OR m.external_id = ANY($1::text[]))
+       JOIN ${KINDS} k ON k.id = m.kind_id
+      WHERE m.external_id ~ '^Q[0-9]+$' AND (${onlyParam}::text[] IS NULL OR m.external_id = ANY(${onlyParam}::text[]))
       GROUP BY m.external_id
-     HAVING count(DISTINCT e.id) > 1
-      ORDER BY m.external_id`,
+     HAVING count(DISTINCT e.id) > 1`;
+}
+
+/** The items `sharedItemsSql` finds, in item order. */
+async function sharedItems(only?: string[]): Promise<{ qid: string; place_ids: number[]; names: string[] }[]> {
+  const result = await pool.query<{ qid: string; place_ids: number[]; names: string[] }>(
+    `${sharedItemsSql('$1')} ORDER BY m.external_id`,
     [only ?? null],
   );
   return result.rows;
