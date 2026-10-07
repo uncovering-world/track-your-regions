@@ -14,7 +14,9 @@ import type { ReviewQueue, ReviewQueueItem } from '../../api/responses/reviewQue
 import { queueItemOf, type QueueRow } from './reviewQueueItem.js';
 import type { QueryResult } from 'pg';
 import { pool } from '../../db/index.js';
-import { KINDS, MEMBERSHIPS, admissionAnsweredSql, membershipOfferedSql, rowKindJoinSql } from '../../db/membership.js';
+import {
+  KINDS, MEMBERSHIPS, admissionAnsweredSql, keptAsFormerSql, membershipOfferedSql, rowKindJoinSql,
+} from '../../db/membership.js';
 import type { reviewQueueQuerySchema } from '../../types/index.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
@@ -31,7 +33,7 @@ import {
 } from './reviewQueueKeys.js';
 import type { QueueFilters, QueueKind, WaitingSub } from './reviewQueueKeys.js';
 import {
-  arrivalOpenSql, heldOpenSql, missingOpenSql, refusedOpenSql,
+  arrivalOpenSql, heldOpenSql, membershipMissingOpenSql, missingOpenSql, refusedOpenSql,
 } from './reviewQueuePredicates.js';
 import { heldFieldAnsweredSql } from './heldDecisions.js';
 import { withDangerFields } from './experienceDanger.js';
@@ -75,15 +77,16 @@ function queueFilters(query: ReviewQueueQuery, limit: number): QueueFilters {
 
 /**
  * The kinds readers already see a place in, through its offered memberships
- * (#1264): a place an Art Museums run published and an Archaeology run has
- * just brought, or whose Archaeology membership a rule refused, is on every
- * map already, and its card must not say nobody can see it. A pending or
- * refused membership is not offered, so the card's own kind is never listed.
+ * other than the one the card asks about (#1264): a place an Art Museums run
+ * published and an Archaeology run has just brought, whose Archaeology
+ * membership a rule refused, or whose Archaeology source stopped listing it,
+ * is on every map already, and its card must not say nobody can see it.
+ * `membership` is the alias of the membership the card asks about.
  */
-function seenInSql(): string {
+function seenInSql(membership = 'm'): string {
   return `(SELECT COALESCE(array_agg(sk.name ORDER BY sk.display_priority, sk.id), '{}')
              FROM ${MEMBERSHIPS} sm JOIN ${KINDS} sk ON sk.id = sm.kind_id
-            WHERE sm.experience_id = e.id AND ${membershipOfferedSql('sm')})`;
+            WHERE sm.experience_id = e.id AND sm.id <> ${membership}.id AND ${membershipOfferedSql('sm')})`;
 }
 
 /**
@@ -264,7 +267,12 @@ export async function getReviewQueue(
   // What counts as `missing`, and why refused and unread rows are excluded:
   // the reasoning is on `missingOpenSql` (`reviewQueuePredicates.ts`).
   const missingIds = idsOf('missing');
-  const missing = await hydrate(missingIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+  // The place every source stopped listing, then one item per kind whose
+  // source stopped listing a place another still lists (#1264): the
+  // membership's own flag and listing, the kinds readers still see the place
+  // in, and whether that kind keeps a delisted place as former.
+  const missing = await hydrate(missingIds, async () => {
+    const places = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'missing' AS kind, NULL::jsonb AS proposed
@@ -275,7 +283,23 @@ export async function getReviewQueue(
       AND ${scopeFilter}
       AND e.id = ANY($${params.length + 1}::int[])
     ORDER BY e.missing_since DESC, e.id
-  `, [...params, missingIds]));
+  `, [...params, missingIds]);
+    const kinds = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+    SELECT e.id, m.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
+           m.source_membership, e.existence, m.missing_since, ${seenInSql()} AS seen_in,
+           ${keptAsFormerSql('m')} AS kept_as_former, ${objectContextSelectSql()},
+           'missing' AS kind, NULL::jsonb AS proposed
+    FROM experiences e
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
+    JOIN ${KINDS} kd ON kd.id = m.kind_id
+    WHERE ${membershipMissingOpenSql('m', 'e')}
+      ${membershipSourceFilter}
+      AND ${membershipScopeFilter}
+      AND e.id = ANY($${params.length + 1}::int[])
+    ORDER BY e.id, kd.display_priority
+  `, [...params, missingIds]);
+    return { ...places, rows: [...places.rows, ...kinds.rows] };
+  });
 
   // Ordered by id rather than by time: admission carries no date of its own,
   // and `updated_at` moves for every unrelated edit, so ordering by it would
@@ -344,7 +368,7 @@ export async function getReviewQueue(
     LEFT JOIN LATERAL (
       SELECT cl.created_at AS at, cl.details->>'note' AS note
         FROM experience_curation_log cl
-       WHERE cl.experience_id = e.id AND cl.action IN ('admission_confirmed', 'arrival_refused')
+       WHERE cl.experience_id = e.id AND cl.action IN ('admission_confirmed', 'arrival_refused', 'marked_former')
          AND (cl.details->>'membershipId')::int = m.id
        ORDER BY cl.created_at DESC
        LIMIT 1

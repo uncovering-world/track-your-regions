@@ -488,6 +488,13 @@ export const lifecycleStateBodySchema = z.object({
     existence: z.enum(CHECK_VALUES.experiences.existence),
     flagged: z.boolean(),
   }),
+  /**
+   * One kind whose source stopped listing the place while another still lists
+   * it (#1264): the verdict is that membership's, and `expected` is its own
+   * listing and flag beside the place's existence. Absent, the verdict is the
+   * place's.
+   */
+  membershipId: bodyRowIdSchema.optional(),
 }).refine(b => b.membership !== undefined || b.existence !== undefined, {
   message: 'Pass membership, existence, or both',
 });

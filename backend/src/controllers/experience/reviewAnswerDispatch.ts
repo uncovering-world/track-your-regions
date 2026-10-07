@@ -18,6 +18,7 @@
  * | conflict | take the source's value for every open field | keep ours for every open field | — |
  * | refused | keep it out (confirm, unpinned) | put it back for now (override, unpinned; publishes an arrival) | — |
  * | missing | former: delisted, still there | the object stays: false alarm | no longer exists |
+ * | missing, one kind (#1264) | no longer that kind (former, or out of the kind) | it stays in the kind | — |
  * | withdrawn | every open point: former | every open point: stays | every open point: lost |
  *
  * **What is asked is re-asked under the lock, never trusted from the row.** A
@@ -40,7 +41,7 @@ import {
 import { answerLocationStateUnderLock } from './locationStateController.js';
 import { publishUnderLock } from './publishController.js';
 import {
-  missingOpenSql, refusedOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql,
+  membershipMissingOpenSql, missingOpenSql, refusedOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql,
 } from './reviewQueuePredicates.js';
 import { arrivalWaitingSql, contentsWaitingSql, heldWaitingSql } from './waitingCounts.js';
 
@@ -279,7 +280,8 @@ function expectedOf(row: Axes) {
 }
 
 async function answerMissing(who: Answerer, answer: Answer): Promise<Outcome> {
-  const { experienceId, userId, logRegionId } = who;
+  const { experienceId, userId, logRegionId, membershipId } = who;
+  if (membershipId !== null) return answerKindMissing(who, answer, membershipId);
   const open = await pool.query(
     `SELECT e.source_membership, e.existence, e.missing_since
        FROM experiences e
@@ -290,6 +292,30 @@ async function answerMissing(who: Answerer, answer: Answer): Promise<Outcome> {
   if (!row) return refused(409, 'Already answered: this object is not waiting on a decision');
   const outcome = await answerStateUnderLock(experienceId, userId, logRegionId, {
     ...verdictFor(answer), expected: expectedOf(row),
+  });
+  return outcome.refusal ? refusedBy(outcome.refusal) : { did: {} };
+}
+
+/**
+ * One kind whose source stopped listing a place another source still lists
+ * (#1264), through the same writer as its card. "Lost" is not an answer here:
+ * other sources still list the place.
+ */
+async function answerKindMissing(who: Answerer, answer: Answer, membershipId: number): Promise<Outcome> {
+  const { experienceId, userId, logRegionId } = who;
+  if (answer === 'lost') {
+    return refused(409, 'Other sources still list this place, so it is not answered as lost here');
+  }
+  const open = await pool.query(
+    `SELECT m.source_membership, e.existence, m.missing_since
+       FROM experiences e JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
+      WHERE e.id = $1 AND m.id = $2 AND ${membershipMissingOpenSql('m', 'e')}`,
+    [experienceId, membershipId],
+  );
+  const row = open.rows[0] as Axes | undefined;
+  if (!row) return refused(409, 'Already answered: this kind is not waiting on a decision');
+  const outcome = await answerStateUnderLock(experienceId, userId, logRegionId, {
+    ...verdictFor(answer), expected: expectedOf(row), membershipId,
   });
   return outcome.refusal ? refusedBy(outcome.refusal) : { did: {} };
 }

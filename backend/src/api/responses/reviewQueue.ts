@@ -247,6 +247,10 @@ export const ReviewQueueItem = z.strictObject({
     'On an arrival or a refusal: the kinds readers already see the place in, through another membership (#1264).'
     + ' Empty where the membership asked about is the whole place.',
   ),
+  kept_as_former: z.boolean().optional().describe(
+    'On a kind its source stopped listing (#1264): whether that kind keeps a delisted place, marked former, rather than'
+    + ' letting it go. Absent on every other card.',
+  ),
   admission_note: z.string().nullable().optional()
     .describe("The run's own question about a row it could not settle by its rule (ADR-0058)."),
   in_danger: z.boolean().optional(),

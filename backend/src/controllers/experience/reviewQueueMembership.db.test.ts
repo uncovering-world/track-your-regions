@@ -4,7 +4,7 @@ import { queryQueueKeys } from './reviewQueueKeys.js';
 import { getReviewQueue } from './reviewQueueController.js';
 import { publishUnderLock } from './publishController.js';
 import { refuseContentsUnderLock } from './curatorRefusalController.js';
-import { answerAdmissionUnderLock } from './lifecycleController.js';
+import { answerAdmissionUnderLock, answerStateUnderLock } from './lifecycleController.js';
 import { reviewQueueQuerySchema } from '../../types/index.js';
 
 /**
@@ -301,5 +301,154 @@ describe('a refusal of each membership (#1264)', () => {
 
     const noteOf = Object.fromEntries(queue.keptOut.map(item => [item.membership_id, item.state_note]));
     expect(noteOf).toEqual({ [archaeology]: 'no excavated holdings', [art]: 'antiquities only' });
+  });
+});
+
+describe('a kind whose source stopped listing the place (#1264)', () => {
+  /** Archaeology passed, and its source no longer lists the museums; the art-museum source still does. */
+  async function archaeologyDropped(): Promise<number> {
+    const archaeology = await membershipOf(archaeologySource);
+    await pool.query(
+      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW(),
+              missing_since = NOW() WHERE id = $1`,
+      [archaeology],
+    );
+    return archaeology;
+  }
+
+  const queueFor = () => getReviewQueue({
+    query: reviewQueueQuerySchema.parse({ q: NAME }),
+    caller: { id: adminId, role: 'admin' } as Express.User,
+  });
+
+  it('asks it of that kind, saying where readers still see the place', async () => {
+    const archaeology = await archaeologyDropped();
+
+    const keys = await queryQueueKeys({
+      userId: adminId, isAdmin: true, filters: filters({ sourceIds: [archaeologySource] }),
+    });
+    expect(keys.keys).toEqual([expect.objectContaining({ kind: 'missing', id: PLACE })]);
+    const place = await pool.query('SELECT missing_since FROM experiences WHERE id = $1', [PLACE]);
+    expect(place.rows[0].missing_since).toBeNull();
+
+    const queue = await queueFor();
+    expect(queue.missing).toEqual([expect.objectContaining({
+      id: PLACE, membership_id: archaeology, kind_name: 'Archaeology', seen_in: ['Art Museums'], kept_as_former: false,
+    })]);
+  });
+
+  it('takes the place out of that kind, and only that kind, on "no longer this kind"', async () => {
+    const archaeology = await archaeologyDropped();
+    const expected = { membership: 'present' as const, existence: 'extant' as const, flagged: true };
+
+    const outcome = await answerStateUnderLock(PLACE, adminId, null, {
+      membership: 'former', note: 'reclassified as a museum building', expected, membershipId: archaeology,
+    });
+
+    expect(outcome.refusal).toBeUndefined();
+    const rows = await pool.query<{ id: number; admission: string; source_membership: string; missing_since: Date | null }>(
+      'SELECT id, admission, source_membership, missing_since FROM experience_kind_memberships WHERE experience_id = $1',
+      [PLACE],
+    );
+    const byId = Object.fromEntries(rows.rows.map(row => [row.id, row]));
+    // Former keeps the flag: the source still does not list the place.
+    expect(byId[archaeology]).toMatchObject({ admission: 'refused', source_membership: 'former' });
+    expect(byId[archaeology].missing_since).not.toBeNull();
+    expect(byId[await membershipOf(artSource)]).toMatchObject({ admission: 'admitted', source_membership: 'present' });
+
+    const queue = await queueFor();
+    expect(queue.missing).toEqual([]);
+    expect(queue.keptOut).toEqual([expect.objectContaining({
+      membership_id: archaeology, state_note: 'reclassified as a museum building',
+    })]);
+  });
+
+  it('keeps it in the kind on a false alarm', async () => {
+    const archaeology = await archaeologyDropped();
+
+    const outcome = await answerStateUnderLock(PLACE, adminId, null, {
+      membership: 'present', expected: { membership: 'present', existence: 'extant', flagged: true }, membershipId: archaeology,
+    });
+
+    expect(outcome.refusal).toBeUndefined();
+    const row = await pool.query(
+      'SELECT admission, missing_since FROM experience_kind_memberships WHERE id = $1', [archaeology],
+    );
+    expect(row.rows[0]).toMatchObject({ admission: 'admitted', missing_since: null });
+  });
+
+  it('keeps a delisted World Heritage Site, marked former, in its kind', async () => {
+    const heritage = await sourceId('UNESCO World Heritage Sites');
+    const added = await pool.query<{ id: number }>(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state,
+              published_at, missing_since)
+       SELECT $1, s.kind_id, s.id, '9600-whs', 'verified', NOW(), NOW() FROM experience_sources s WHERE s.id = $2
+       RETURNING id`,
+      [PLACE, heritage],
+    );
+    const membershipId = added.rows[0].id;
+    const queue = await queueFor();
+    expect(queue.missing).toEqual([expect.objectContaining({ membership_id: membershipId, kept_as_former: true })]);
+
+    const outcome = await answerStateUnderLock(PLACE, adminId, null, {
+      membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true }, membershipId,
+    });
+
+    expect(outcome.refusal).toBeUndefined();
+    const row = await pool.query(
+      'SELECT admission, source_membership FROM experience_kind_memberships WHERE id = $1', [membershipId],
+    );
+    expect(row.rows[0]).toEqual({ admission: 'admitted', source_membership: 'former' });
+  });
+
+  it('asks the place itself once the last source drops it too', async () => {
+    // Archaeology answered "no longer this kind"; then the art-museum source
+    // stops listing the museums as well. Whether they still stand is now the
+    // place's own question, not a kind's.
+    const archaeology = await archaeologyDropped();
+    await answerStateUnderLock(PLACE, adminId, null, {
+      membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true }, membershipId: archaeology,
+    });
+    await pool.query('UPDATE experience_kind_memberships SET missing_since = NOW() WHERE id = $1', [await membershipOf(artSource)]);
+
+    const place = await pool.query('SELECT missing_since FROM experiences WHERE id = $1', [PLACE]);
+    expect(place.rows[0].missing_since).not.toBeNull();
+    const queue = await queueFor();
+    expect(queue.missing).toEqual([expect.objectContaining({ id: PLACE })]);
+    expect(queue.missing[0].membership_id).toBeUndefined();
+  });
+
+  it('leaves a kind\'s question to the place once every source has dropped it', async () => {
+    const archaeology = await archaeologyDropped();
+    await pool.query('UPDATE experience_kind_memberships SET missing_since = NOW() WHERE id = $1', [await membershipOf(artSource)]);
+
+    const outcome = await answerStateUnderLock(PLACE, adminId, null, {
+      membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true }, membershipId: archaeology,
+    });
+
+    expect(outcome.refusal).toMatchObject({ status: 409 });
+  });
+
+  it('keeps a kind answered former when the place\'s own question turns out a false alarm', async () => {
+    // Archaeology answered "no longer this kind"; then every source seemed to
+    // drop the place, and the place's card was answered as a false alarm. The
+    // Archaeology answer stands.
+    const archaeology = await archaeologyDropped();
+    await answerStateUnderLock(PLACE, adminId, null, {
+      membership: 'former', expected: { membership: 'present', existence: 'extant', flagged: true }, membershipId: archaeology,
+    });
+    const art = await membershipOf(artSource);
+    await pool.query('UPDATE experience_kind_memberships SET missing_since = NOW() WHERE id = $1', [art]);
+
+    const outcome = await answerStateUnderLock(PLACE, adminId, null, {
+      membership: 'present', expected: { membership: 'present', existence: 'extant', flagged: true },
+    });
+
+    expect(outcome.refusal).toBeUndefined();
+    const rows = await pool.query<{ id: number; source_membership: string }>(
+      'SELECT id, source_membership FROM experience_kind_memberships WHERE experience_id = $1', [PLACE],
+    );
+    const listing = Object.fromEntries(rows.rows.map(row => [row.id, row.source_membership]));
+    expect(listing).toEqual({ [archaeology]: 'former', [art]: 'present' });
   });
 });

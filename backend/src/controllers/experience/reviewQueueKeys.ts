@@ -60,7 +60,7 @@ import { contentsMembershipSql, unreadLinkSql, unreadPointSql } from './waitingC
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import {
   arrivalOpenSql, claimKeySql, conflictChangeOpenSql, contentsOpenSql, heldOpenSql,
-  missingOpenSql, refusedOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql,
+  membershipMissingOpenSql, missingOpenSql, refusedOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql,
 } from './reviewQueuePredicates.js';
 
 /**
@@ -312,13 +312,25 @@ function refusedKeysSql(membershipScopeFilter: string): string {
     ) g`;
 }
 
-function missingKeysSql(scopeFilter: string): string {
+function missingKeysSql(scopeFilter: string, membershipScopeFilter: string): string {
+  // The place every source stopped listing, or — never both, since the place's
+  // flag reads missing only once every membership is — the kinds whose source
+  // stopped listing a place another source still lists, one row per place in
+  // scope by each of those sources (#1264).
   return `
     SELECT 'missing', ${KIND_RANK.missing}, e.id, e.name, ARRAY[e.source_id], NULL,
            e.missing_since, ARRAY[]::text[]
     FROM experiences e
     WHERE ${missingOpenSql('e')}
-      AND ${scopeFilter}`;
+      AND ${scopeFilter}
+    UNION ALL
+    SELECT 'missing', ${KIND_RANK.missing}, e.id, e.name, array_agg(DISTINCT m.source_id), NULL,
+           max(m.missing_since), ARRAY[]::text[]
+    FROM experiences e
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
+    WHERE ${membershipMissingOpenSql('m', 'e')}
+      AND ${membershipScopeFilter}
+    GROUP BY e.id, e.name`;
 }
 
 /** The order, over the union's own columns. `prefix` qualifies them for `json_agg`. */
@@ -551,7 +563,7 @@ export async function queryQueueKeys(
     UNION ALL${waitingKeysSql(membershipScopeFilter)}
     UNION ALL${withdrawnKeysSql(scopeFilter)}
     UNION ALL${refusedKeysSql(membershipScopeFilter)}
-    UNION ALL${missingKeysSql(scopeFilter)}
+    UNION ALL${missingKeysSql(scopeFilter, membershipScopeFilter)}
   )
 , searched AS (
     SELECT k.kind, k.rank, k.id, k.name, k.source_ids, k.run_id, k.asked_at, k.subs
