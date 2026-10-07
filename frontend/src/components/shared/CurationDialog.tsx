@@ -5,19 +5,15 @@
  * unrejecting an experience within a region, and lists the places the object
  * is made of with the way to correct each (`CurationPlaces`). The edit's
  * fields are held by the form layer (`useEditForm`, ADR-0076), which decides
- * what changed, what is sent and which field a refusal names. Includes a
- * collapsible curation history log. Self-contained mutations that invalidate
- * the relevant query caches on success.
+ * what changed, what is sent and which field a refusal names. Ends with the
+ * object's curation history (`CurationHistory`). Self-contained mutations that
+ * invalidate the relevant query caches on success.
  *
  * Used from both Map mode (ExperienceList) and Discover mode
  * (ExperienceCard, ExperienceDetailPanel).
- *
- * What the history's entries read as — the chip naming each act and the line under it —
- * is `curationLog.ts`, which is presentation this dialog happens to be the first caller
- * of rather than anything of the dialog's own.
  */
 
-import { memo, useId, useState } from 'react';
+import { memo, useId } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -35,14 +31,10 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  Collapse,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import BlockIcon from '@mui/icons-material/Block';
 import UndoIcon from '@mui/icons-material/Undo';
-import HistoryIcon from '@mui/icons-material/History';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import LinkOffIcon from '@mui/icons-material/LinkOff';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -55,19 +47,15 @@ import {
   rejectExperience,
   unrejectExperience,
   removeExperienceFromRegion,
-  fetchCurationLog,
   setExperienceState,
 } from '../../api/curation';
 import { useEditForm } from '../../hooks/useEditForm';
-import { formatRelativeTime } from '../../utils/dateFormat';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
-import { LoadingSpinner } from './LoadingSpinner';
 import { PictureWithCredit } from './PictureWithCredit';
 import { CurationPlaces } from './CurationPlaces';
 import { verdictOf } from './LifecycleChip';
-import { actionLabel, catalogueMerge, formatLogDetails } from './curationLog';
+import { CurationHistory } from './CurationHistory';
 import { typeOptionsFor } from '../../utils/experienceTypes';
-import { displayNameOf } from '../../utils/displayName';
 import { tidyLabel } from '@tyr/shared/labels';
 import { queryKeys } from '../../api/queryKeys';
 
@@ -104,12 +92,8 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
   const queryClient = useQueryClient();
   const typeOptions = typeOptionsFor(experience?.kind_id);
 
-  // Open for the object it was opened on: the dialog outlives the object it
-  // shows, and the next one opens with its history folded.
-  const [historyFor, setHistoryFor] = useState<number | null>(null);
   // A select's refusal is read out with it, as a text field's helper text is.
   const typeErrorId = useId();
-  const historyOpen = historyFor === experience?.id;
 
   // Fetch full experience detail to get metadata.website
   const detailQuery = useQuery({
@@ -138,14 +122,6 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
     required: ['name'],
   });
   const rejectForm = useEditForm({ initial: { reason: '' }, resetKey: experience?.id ?? null });
-
-  // Fetch curation log when history is opened
-  const logQuery = useQuery({
-    queryKey: queryKeys.experience.curationLog(experience?.id),
-    queryFn: () => fetchCurationLog(experience!.id),
-    enabled: !!experience && historyOpen,
-    staleTime: 30_000,
-  });
 
   const invalidateCaches = () => {
     invalidateExperiences(queryClient, {
@@ -490,102 +466,8 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
           </>
         )}
 
-        {/* Curation History */}
-        <Divider sx={{ my: 2 }} />
-        <Button
-          size="small"
-          startIcon={<HistoryIcon />}
-          endIcon={historyOpen ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-          onClick={() => setHistoryFor(historyOpen ? null : experience.id)}
-          sx={{ mb: 1, textTransform: 'none', color: 'text.secondary' }}
-        >
-          Curation History
-          {logQuery.data && logQuery.data.length > 0 && (
-            <Chip
-              label={logQuery.data.length}
-              size="small"
-              sx={{ ml: 0.75, height: 18, fontSize: '0.65rem', '& .MuiChip-label': { px: 0.5 } }}
-            />
-          )}
-        </Button>
-
-        <Collapse in={historyOpen}>
-          <Box sx={{ maxHeight: 240, overflowY: 'auto' }}>
-            {logQuery.isLoading && (
-              <LoadingSpinner size={20} padding="8px 0" />
-            )}
-            {logQuery.isError && (
-              <Alert severity="error" sx={{ py: 0 }}>
-                Failed to load history
-              </Alert>
-            )}
-            {logQuery.data && logQuery.data.length === 0 && (
-              <Typography variant="caption" color="text.secondary" sx={{ display: 'block', py: 1 }}>
-                No curation history yet.
-              </Typography>
-            )}
-            {logQuery.data?.map((entry) => {
-              const actionInfo = actionLabel(entry.action) || { label: entry.action, color: '#6B7280' };
-              const details = formatLogDetails(entry);
-              return (
-                <Box
-                  key={entry.id}
-                  sx={{
-                    display: 'flex',
-                    gap: 1,
-                    py: 0.75,
-                    borderBottom: '1px solid',
-                    borderColor: 'divider',
-                    alignItems: 'flex-start',
-                  }}
-                >
-                  <Chip
-                    label={actionInfo.label}
-                    size="small"
-                    sx={{
-                      height: 20,
-                      fontSize: '0.6rem',
-                      fontWeight: 600,
-                      color: actionInfo.color,
-                      bgcolor: `${actionInfo.color}14`,
-                      border: `1px solid ${actionInfo.color}30`,
-                      flexShrink: 0,
-                      '& .MuiChip-label': { px: 0.5 },
-                    }}
-                  />
-                  <Box sx={{ flex: 1, minWidth: 0 }}>
-                    <Typography variant="caption" sx={{ fontWeight: 500 }}>
-                      {/* A curator who set no display name, or a blank one, is still somebody; the
-                          catalogue's own merge of two places on one Wikidata item is nobody's (ADR-0086). */}
-                      {catalogueMerge(entry) ? 'The catalogue — one Wikidata item' : displayNameOf(entry.curator_name) ?? 'A curator'}
-                    </Typography>
-                    {entry.region_name && (
-                      <Typography variant="caption" color="text.secondary">
-                        {' '}in {entry.region_name}
-                      </Typography>
-                    )}
-                    {details && (
-                      <Typography
-                        variant="caption"
-                        color="text.secondary"
-                        sx={{ display: 'block', mt: 0.25, whiteSpace: 'pre-line', lineHeight: 1.3 }}
-                      >
-                        {details}
-                      </Typography>
-                    )}
-                  </Box>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    sx={{ flexShrink: 0, fontSize: '0.65rem' }}
-                  >
-                    {entry.created_at && formatRelativeTime(entry.created_at)}
-                  </Typography>
-                </Box>
-              );
-            })}
-          </Box>
-        </Collapse>
+        {/* Keyed by the place: the next one opens with its history folded. */}
+        <CurationHistory key={experience.id} experienceId={experience.id} regionId={regionId} />
       </DialogContent>
 
       <DialogActions>

@@ -10,13 +10,14 @@
 import type {
   AcceptSourceResult, AdmissionResult, ContentKind, CurationLog, DeclineHeldResult,
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
-  LocationStateResult, ManualExperienceCreated, PublishResult, RefuseArrivalResult,
+  LocationStateResult, ManualExperienceCreated, MergeUndone, PublishResult, RefuseArrivalResult,
   RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
 import {
   deleteExperiencesByIdAssignByRegionId, deleteExperiencesByIdRemoveFromRegionByRegionId,
   getExperiencesByIdCurationLog, patchExperiencesByIdEdit, patchExperiencesByIdWorksByTreasureIdEdit,
   patchExperiencesLocationsByLocationIdEdit, postExperiences, postExperiencesByIdAcceptSource,
+  postExperiencesMergesByMergeIdUndo,
   postExperiencesByIdAdmission, postExperiencesByIdAssign, postExperiencesByIdDeclineHeld,
   postExperiencesByIdDeclineSource, postExperiencesByIdPublish, postExperiencesByIdRefuseArrival,
   postExperiencesByIdRefuseContents, postExperiencesByIdReject, postExperiencesByIdState,
@@ -31,7 +32,7 @@ import {
 export type {
   AcceptSourceResult, AdmissionResult, AppliedPart, ContentKind, CurationLog, CurationLogEntry,
   DeclineHeldResult, DeclineSourceResult, DeclinedPart, ExperienceEditResult,
-  ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated,
+  ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MergeUndone,
   PartNotFound, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody, RefuseContentsResult,
   RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
@@ -362,6 +363,15 @@ export async function editExperience(
   data: EditExperienceBody,
 ): Promise<ExperienceEditResult> {
   return patchExperiencesByIdEdit(experienceId, data);
+}
+
+/**
+ * Undo a merge of two places (ADR-0046 decision 5, ADR-0086): the folded place
+ * is a place again, with what the merge moved. Merges into one place are undone
+ * last first, and the refusal says which to undo first.
+ */
+export async function undoPlaceMerge(mergeId: number): Promise<MergeUndone> {
+  return postExperiencesMergesByMergeIdUndo(mergeId);
 }
 
 /**

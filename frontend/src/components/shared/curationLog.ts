@@ -472,10 +472,52 @@ export function formatLogDetails(entry: CurationLogEntry): string | null {
   if (entry.action === 'declined_source') return formatDeclinedSource(d);
   if (entry.action === 'declined_held') return formatDeclinedHeld(d);
   if (KEEP_OUT_ACTIONS.has(entry.action)) return formatKeepOut(entry.action, d);
+  if (entry.action === 'merged' || entry.action === 'merge_undone') return formatMerge(entry.action, d);
   // `unrejected`, `added_to_region` and `removed_from_region` never reach this line:
   // their writers insert no `details` at all, and the region their act was about is
   // already rendered beside the curator's name from the entry's own `region_name`.
   return null;
+}
+
+/** A place a merge row names: by the name it had at the act, and its id, which tells two of one name apart. */
+function mergedPlace(name: unknown, id: unknown): string {
+  return typeof name === 'string' && name !== '' ? `${name} (#${id})` : `Place #${id}`;
+}
+
+/**
+ * A merge and its undo (ADR-0086): which place went into which, and the kinds
+ * that moved with it — the Pantheon as an archaeological site folded into the
+ * Pantheon as a place of worship reads "Pantheon (#14749) merged into Pantheon
+ * (#13198), bringing Archaeology".
+ */
+function formatMerge(action: 'merged' | 'merge_undone', d: Record<string, unknown>): string {
+  const folded = mergedPlace(d.foldedName, d.foldedId);
+  const kinds = Array.isArray(d.kinds) && d.kinds.length > 0 ? d.kinds.join(', ') : null;
+  if (action === 'merge_undone') return [`${folded} is its own place again`, kinds && `with ${kinds}`].filter(Boolean).join(', ');
+  const into = `${folded} merged into ${mergedPlace(d.survivorName, d.survivorId)}`;
+  return [into, kinds && `bringing ${kinds}`].filter(Boolean).join(', ');
+}
+
+/**
+ * The merge a history row can still undo: a `merged` row of the place that
+ * stayed, with no `merge_undone` row for the same merge after it. Whether the
+ * undo may run now — merges into one place are undone last first — is the
+ * server's answer, given when it is asked. So is one case the history cannot
+ * see: an undo is logged in the region its curator's authority came from, so a
+ * curator scoped to another region is not shown it and is offered the undo
+ * again, which the server answers as already done.
+ */
+export function undoableMerge(
+  entry: { action: string; details?: unknown },
+  log: readonly { action: string; details?: unknown }[],
+  placeId: number,
+): number | null {
+  const details = entry.details as { mergeId?: unknown; survivorId?: unknown } | null | undefined;
+  if (entry.action !== 'merged' || typeof details?.mergeId !== 'number' || details.survivorId !== placeId) return null;
+  const mergeId = details.mergeId;
+  const undone = log.some(other => other.action === 'merge_undone'
+    && (other.details as { mergeId?: unknown } | null | undefined)?.mergeId === mergeId);
+  return undone ? null : mergeId;
 }
 
 /** Whether a history row is the catalogue's own merge of two places sharing a Wikidata item (ADR-0086). */
