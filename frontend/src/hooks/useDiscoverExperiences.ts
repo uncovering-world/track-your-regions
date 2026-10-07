@@ -32,6 +32,8 @@ import {
 import type { Region } from '../types';
 import { useNavigation } from './useNavigation';
 import { useAppAddress } from './useAppAddress';
+import { useFoldedCard, type FoldedInto } from './useFoldedCard';
+import type { AppAddress } from '../utils/appUrl';
 import { queryKeys } from '../api/queryKeys';
 import { kindToOpenIn, shownInKind } from '../utils/placeKinds';
 
@@ -215,30 +217,49 @@ export function useDiscoverExperiences() {
   // does not hold is dropped the same way. Not before the kinds and the
   // region have answered — until then every object is unknown — and a read that
   // failed is not an answer: it must not spend a shared link on a hiccup.
+  //
+  // Both this and the open list's own drop below first ask whether a merge
+  // folded the card into another place (#1247): its address then moves to the
+  // surviving place's card instead of being dropped, and the next pass finds
+  // that place in the list.
+  const selectedExperienceId = activeView ? addressedExperienceId : null;
+  const addressedObject = addressedExperienceId === null
+    ? undefined
+    : experiencesData?.experiences.find(e => e.id === addressedExperienceId);
+  const unkindedMissing = address !== null && addressedExperienceId !== null && kindId === null
+    && kinds.length > 0 && experiencesData !== undefined && addressedObject === undefined;
+  const listMissing = address !== null && selectedExperienceId !== null && experiencesData !== undefined
+    && !experiences.some(e => e.id === selectedExperienceId);
+  const foldedInto = useFoldedCard(addressedExperienceId, unkindedMissing || listMissing);
+  const moveOrDrop = useCallback((at: AppAddress, into: FoldedInto | null) => go(
+    { ...at, experienceId: into?.id ?? null },
+    { replace: true, names: { experience: into?.name } },
+  ), [go]);
+
   useEffect(() => {
     if (address === null || addressedExperienceId === null || kindId !== null) return;
     if (kinds.length === 0 || !experiencesData) return;
-    const object = experiencesData?.experiences.find(e => e.id === addressedExperienceId);
+    if (addressedObject === undefined) {
+      if (foldedInto !== undefined) moveOrDrop(address, foldedInto);
+      return;
+    }
     // A kind that offers the card, read off `kinds` as the list filter is (#1245).
-    const openIn = object ? kindToOpenIn(object) : null;
+    const openIn = kindToOpenIn(addressedObject);
     const kind = openIn === null ? undefined : kinds.find(c => c.id === openIn);
     go(
       kind ? { ...address, kindId: kind.id } : { ...address, experienceId: null },
-      { replace: true, names: { experience: object?.name } },
+      { replace: true, names: { experience: addressedObject.name } },
     );
-  }, [address, addressedExperienceId, kindId, kinds, experiencesData, go]);
-
-  const selectedExperienceId = activeView ? addressedExperienceId : null;
+  }, [address, addressedExperienceId, addressedObject, kindId, kinds, experiencesData, foldedInto, moveOrDrop, go]);
 
   // A card the open list does not hold — hidden, rejected, elsewhere, of
   // another kind, or not there at all — is dropped from the address once
   // the list has answered, in place and in silence: one answer for all of them.
   // A *successful* answer, for the reason above.
   useEffect(() => {
-    if (address === null || selectedExperienceId === null || !experiencesData) return;
-    if (experiences.some(e => e.id === selectedExperienceId)) return;
-    go({ ...address, experienceId: null }, { replace: true });
-  }, [address, selectedExperienceId, experiencesData, experiences, go]);
+    if (address === null || !listMissing || foldedInto === undefined) return;
+    moveOrDrop(address, foldedInto);
+  }, [address, listMissing, foldedInto, moveOrDrop]);
 
   // Bring the card's slug up to date once the list names it, the way the region
   // brings its own: a deep link carries whatever slug it was made with, or none.

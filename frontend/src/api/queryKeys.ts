@@ -70,6 +70,8 @@ export const queryKeys = {
   experience: {
     all: ['experience'] as const,
     one: (id: Id) => ['experience', id] as const,
+    /** Where a card id leads now, which a merge may have moved (#1247): never the card's own detail. */
+    survivor: (id: Id) => ['experience', 'survivor', id] as const,
     locationsAll: ['experience-locations'] as const,
     locations: (id: Id) => ['experience-locations', id] as const,
     contentsAll: ['experience-contents'] as const,

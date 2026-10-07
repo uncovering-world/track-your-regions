@@ -20,11 +20,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation, useNavigationType } from 'react-router';
 import type { Experience, ExperienceLocationsResponse } from '../api/experiences';
 
-const { mockFetchWorldViews, mockFetchRegionAncestors, countsSpy, mockFetchByRegion, authState } = vi.hoisted(() => ({
+const { mockFetchWorldViews, mockFetchRegionAncestors, countsSpy, mockFetchByRegion, mockFetchOne, authState } = vi.hoisted(() => ({
   mockFetchWorldViews: vi.fn(),
   mockFetchRegionAncestors: vi.fn(),
   countsSpy: vi.fn(),
   mockFetchByRegion: vi.fn(),
+  mockFetchOne: vi.fn(),
   authState: { isLoading: false, isAdmin: false, user: null as { id: number } | null },
 }));
 
@@ -47,6 +48,7 @@ vi.mock('../api/experiences', async (importOriginal) => {
       { id: 2, name: 'Art Museums', is_active: true },
     ]),
     fetchExperiencesByRegion: mockFetchByRegion,
+    fetchExperience: mockFetchOne,
     fetchExperienceLocations: vi.fn().mockResolvedValue({
       experienceId: 0, experienceName: '', locations: [], totalLocations: 0, regionId: null,
     } satisfies ExperienceLocationsResponse),
@@ -56,6 +58,7 @@ vi.mock('./useAuth', () => ({ useAuth: () => authState }));
 
 import { NavigationProvider } from './useNavigation';
 import { useDiscoverExperiences } from './useDiscoverExperiences';
+import { ApiError } from '../api/fetchUtils';
 
 const WV5 = { id: 5, name: 'Administrative', isDefault: false, isPublic: true };
 const WV2 = { id: 2, name: 'Wikivoyage Regions', isDefault: false, isPublic: true };
@@ -98,6 +101,8 @@ beforeEach(() => {
   countsSpy.mockResolvedValue([]);
   mockFetchByRegion.mockReset();
   mockFetchByRegion.mockResolvedValue({ experiences: [STONEHENGE], total: 1, lostHidden: 0 });
+  mockFetchOne.mockReset();
+  mockFetchOne.mockRejectedValue(new ApiError('Experience not found', 404, 'Experience not found', undefined));
   authState.isLoading = false;
   authState.user = null;
 });
@@ -239,6 +244,24 @@ describe('useDiscoverExperiences — the place is in the address', () => {
     await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta?kind=1'));
     expect(result.current.type).toBe('REPLACE');
     expect(result.current.discover.selectedExperienceId).toBeNull();
+  });
+
+  it('moves the address of a place a merge folded to the surviving place\'s card, in its list', async () => {
+    // #1247: the by-id read follows the merge and answers with the survivor.
+    mockFetchOne.mockResolvedValue({ id: 1234, name: 'Stonehenge' });
+    const { result } = renderAt('/discover/wv/5/r/7100/e/4321?kind=1');
+
+    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta/e/1234-stonehenge?kind=1'));
+    expect(result.current.type).toBe('REPLACE');
+    expect(result.current.discover.selectedExperienceId).toBe(1234);
+  });
+
+  it('moves a folded card the address names without a kind, then finds the survivor\'s kind', async () => {
+    mockFetchOne.mockResolvedValue({ id: 1234, name: 'Stonehenge' });
+    const { result } = renderAt('/discover/wv/5/r/7100/e/4321');
+
+    await waitFor(() => expect(result.current.at).toBe('/discover/wv/5/r/7100-malta/e/1234-stonehenge?kind=1'));
+    expect(result.current.discover.selectedExperienceId).toBe(1234);
   });
 
   it('drops a kind nobody knows, in place', async () => {
