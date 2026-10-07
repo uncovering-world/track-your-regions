@@ -52,6 +52,7 @@ import {
   type DataAssertionReport,
 } from '../../api/admin/dataAssertions';
 import { EmptyState } from '../shared/EmptyState';
+import { EqualItemMergeCard } from './EqualItemMergeCard';
 import { formatDateTime } from '../../utils/dateFormat';
 import { plural } from '../../utils/plural';
 import { displayNameOf } from '../../utils/displayName';
@@ -287,6 +288,8 @@ export function CatalogueChecksPanel() {
         somebody has accepted is debt this catalogue is knowingly carrying; a number that has grown
         past it means something is writing those rows now.
       </Typography>
+
+      <EqualItemMergeCard />
 
       {data?.acceptancesUnavailable && (
         <Alert severity="warning" sx={{ mb: 2 }}>{data.acceptancesUnavailable}</Alert>
