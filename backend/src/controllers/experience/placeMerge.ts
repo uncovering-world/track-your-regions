@@ -57,6 +57,8 @@ export interface MergeRecord {
   heldDecisions: number[];
   conflictDecisions: number[];
   rejections: number[];
+  /** A curator's assignments of the folded place to a region, moved where the survivor had none there. */
+  assignments?: number[];
   /**
    * The visits a folded visit was copied in as, and the survivor's visits it
    * reconciled, before and after: the undo takes back only what nobody has
@@ -143,11 +145,12 @@ async function moveEverything(client: PoolClient, folded: LockedExperience, surv
   const heldDecisions = await moveHeldDecisions(client, folded, survivor);
   const conflictDecisions = await moveConflictDecisions(client, folded, survivor);
   const rejections = await moveRejections(client, folded.id, survivor.id);
+  const assignments = await moveManualAssignments(client, folded.id, survivor.id);
   const visits = await reconcileVisits(client, folded.id, survivor.id);
   const pointVisits = await reconcilePointVisits(client, foldedPoints);
   return {
     memberships, points, foldedPoints, links, foldedLinks, changes, heldDecisions, conflictDecisions, rejections,
-    visits, pointVisits,
+    assignments, visits, pointVisits,
   };
 }
 
@@ -157,6 +160,24 @@ async function moveRejections(client: PoolClient, from: number, to: number, only
     `UPDATE experience_rejections f SET experience_id = $2
       WHERE f.experience_id = $1 AND ($3::int[] IS NULL OR f.id = ANY($3::int[]))
         AND NOT EXISTS (SELECT 1 FROM experience_rejections s WHERE s.experience_id = $2 AND s.region_id = f.region_id)
+      RETURNING f.id`,
+    [from, to, only ?? null],
+  );
+  return result.rows.map(row => row.id);
+}
+
+/**
+ * A curator's assignment of the folded place to a region, where the survivor
+ * is in none of that region's rows: the placement the run recomputes after the
+ * merge derives the automatic rows from the points, and a manual one is a
+ * curator's word no point repeats, so without the move the folded place's
+ * address would lead to a place that region does not list.
+ */
+async function moveManualAssignments(client: PoolClient, from: number, to: number, only?: number[]): Promise<number[]> {
+  const result = await client.query<{ id: number }>(
+    `UPDATE experience_regions f SET experience_id = $2
+      WHERE f.experience_id = $1 AND f.assignment_type = 'manual' AND ($3::int[] IS NULL OR f.id = ANY($3::int[]))
+        AND NOT EXISTS (SELECT 1 FROM experience_regions s WHERE s.experience_id = $2 AND s.region_id = f.region_id)
       RETURNING f.id`,
     [from, to, only ?? null],
   );
@@ -366,6 +387,8 @@ async function moveEverythingBack(
   await moveHeldDecisions(client, survivor, folded, record.heldDecisions);
   await moveConflictDecisions(client, survivor, folded, record.conflictDecisions);
   await moveRejections(client, survivor.id, folded.id, record.rejections);
+  // A merge recorded before assignments moved recorded none, and moves none back.
+  await moveManualAssignments(client, survivor.id, folded.id, record.assignments ?? []);
 }
 
 /**
