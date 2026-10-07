@@ -48,6 +48,35 @@ async function sharedItems(only?: string[]): Promise<{ qid: string; place_ids: n
 }
 
 /**
+ * What a run does with the places it created (#1247): one that another source
+ * already holds as the same Wikidata item is that place, and merges into it —
+ * the older row, so the place readers know keeps its id. Read off the run's
+ * own changeset, once the run is over: its `created` rows name what it
+ * created, and a source id that is no Wikidata item (a World Heritage id)
+ * names nothing to share. A failure is logged and leaves the two apart for the
+ * admin's pass and the catalogue check to find.
+ */
+export async function mergeArrivalsOfRun(syncLogId: number): Promise<EqualItemMerges | null> {
+  try {
+    const created = await pool.query<{ external_id: string }>(
+      `SELECT DISTINCT c.external_id FROM experience_sync_changes c
+         JOIN experience_sync_logs run ON run.id = c.sync_log_id AND NOT run.is_dry_run
+        WHERE c.sync_log_id = $1 AND c.change_type = 'created' AND c.external_id ~ '^Q[0-9]+$'`,
+      [syncLogId],
+    );
+    if (created.rows.length === 0) return null;
+    const report = await mergeEqualItems(created.rows.map(row => row.external_id));
+    for (const refused of report.refused) {
+      console.log('[merge] places %s (%s) left apart: %s', refused.placeIds.join(' and '), refused.qid, refused.error);
+    }
+    return report;
+  } catch (error) {
+    console.error('[merge] merging the places run %d created failed:', syncLogId, error);
+    return null;
+  }
+}
+
+/**
  * Merge every place that shares a Wikidata item with another into the one
  * with the lowest id — every such item, or the ones named. The catalogue's own
  * merge: it names no curator.
