@@ -196,6 +196,27 @@ export async function setMembershipListingVerdict(
 }
 
 /**
+ * Move memberships from one place to another (ADR-0086): every membership of
+ * `from` on a merge, or the ones a merge moved, named, on its undo. The place's
+ * own listing follows through `derive_place_listing()`, which recomputes both
+ * places. The ids moved are the merge's record of them.
+ */
+export async function moveMemberships(
+  client: PoolClient,
+  from: LockedExperience,
+  to: LockedExperience,
+  only?: number[],
+): Promise<number[]> {
+  const result = await client.query<{ id: number }>(
+    `UPDATE ${MEMBERSHIPS} SET experience_id = $2, updated_at = NOW()
+      WHERE experience_id = $1 AND ($3::int[] IS NULL OR id = ANY($3::int[]))
+      RETURNING id`,
+    [from.id, to.id, only ?? null],
+  );
+  return result.rows.map(row => row.id);
+}
+
+/**
  * Whether the membership `sourceId` brought to the place claims its type — the
  * claim a proposal of that source's run meets (ADR-0084: the type within a
  * kind is the membership's, and so is a curator's pin on it).

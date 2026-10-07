@@ -62,6 +62,36 @@ export async function lockExperience<Row extends Record<string, unknown> = { id:
 }
 
 /**
+ * Two places' object locks for a merge or its undo (ADR-0086 decision 6): the
+ * lower id first, so two merges over the same pair cannot each hold one and
+ * wait for the other, then the contents, as `db/locks.ts` orders one object.
+ * Null where either place is gone. Each row carries `merged_into_id`, which a
+ * merge and its undo both check under the lock.
+ */
+export async function lockTwoExperiences(
+  client: PoolClient,
+  first: number,
+  second: number,
+): Promise<Map<number, { lock: LockedExperience; mergedInto: number | null }> | null> {
+  const locked = new Map<number, { lock: LockedExperience; mergedInto: number | null }>();
+  for (const id of [Math.min(first, second), Math.max(first, second)]) {
+    const result = await lockExperience<{ merged_into_id: number | null }>(client, id, 'merged_into_id');
+    if (!result) return null;
+    locked.set(id, { lock: result.lock, mergedInto: result.row.merged_into_id });
+  }
+  return locked;
+}
+
+/**
+ * Mark a place folded into another (ADR-0086 decision 1), or, with null, take
+ * the mark back on an undo. The place is kept: its history, its visits and its
+ * address stay, and it offers nothing because it keeps no membership.
+ */
+export async function markFolded(client: PoolClient, folded: LockedExperience, into: number | null): Promise<void> {
+  await client.query('UPDATE experiences SET merged_into_id = $2, updated_at = NOW() WHERE id = $1', [folded.id, into]);
+}
+
+/**
  * The same lock, found by the source's own name for the object — what a run
  * knows before it knows the id — through the source's membership (ADR-0084:
  * a place belongs to no source, so the place's own `source_id` is not the

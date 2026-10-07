@@ -7,7 +7,9 @@
  * preserve the few dozen that carry information.
  */
 
+import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
+import type { LockedExperience } from '../../db/experienceWriter.js';
 import { COLUMN_WIDTHS, type CheckValue } from '../../db/schema.generated.js';
 import type { FieldChange } from './changeSet.js';
 import type { ContentsByKind } from './types.js';
@@ -92,4 +94,25 @@ export async function recordSyncChanges(records: ChangeRecord[]): Promise<void> 
   for (let i = 0; i < records.length; i += CHANGE_INSERT_BATCH_SIZE) {
     await insertBatch(records.slice(i, i + CHANGE_INSERT_BATCH_SIZE));
   }
+}
+
+/**
+ * Move a place's changeset rows to another place on a merge, or the ones a
+ * merge moved back on its undo (ADR-0086): a membership's held proposal is
+ * read from its run's row on the place it hangs on, so the rows go where the
+ * membership goes. Two runs never share a row, so nothing collides.
+ */
+export async function moveChangesOfPlace(
+  client: PoolClient,
+  from: LockedExperience,
+  to: LockedExperience,
+  only?: number[],
+): Promise<number[]> {
+  const result = await client.query<{ id: string }>(
+    `UPDATE experience_sync_changes SET experience_id = $2
+      WHERE experience_id = $1 AND ($3::bigint[] IS NULL OR id = ANY($3::bigint[]))
+      RETURNING id`,
+    [from.id, to.id, only ?? null],
+  );
+  return result.rows.map(row => Number(row.id));
 }

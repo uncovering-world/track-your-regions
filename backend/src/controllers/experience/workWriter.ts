@@ -346,3 +346,85 @@ export async function writeHeldWorkFields(
     params,
   );
 }
+
+/** A link folded into the survivor's link to the same work on a merge, and the placements that moved. */
+export interface FoldedLinks {
+  links: { link: number; target: number }[];
+  added: { link: number; membership: number }[];
+  removed: { link: number; membership: number }[];
+}
+
+/**
+ * Fold the folded place's links into the survivor's where both link one work
+ * (ADR-0086 decision 4): the folded link's placements move onto the survivor's
+ * link, whose state stands; the folded link stays on the folded place.
+ */
+export async function foldLinks(
+  client: PoolClient,
+  folded: LockedExperience,
+  survivor: LockedExperience,
+): Promise<FoldedLinks> {
+  const pairs = await client.query<{ link: number; target: number }>(
+    `SELECT f.id AS link, s.id AS target
+       FROM experience_treasures f
+       JOIN experience_treasures s ON s.experience_id = $2 AND s.treasure_id = f.treasure_id
+      WHERE f.experience_id = $1
+      ORDER BY f.id`,
+    [folded.id, survivor.id],
+  );
+  const links = pairs.rows;
+  if (links.length === 0) return { links, added: [], removed: [] };
+  const from = links.map(pair => pair.link);
+  const added = await client.query<{ link: number; membership: number }>(
+    `INSERT INTO experience_treasure_placements (link_id, membership_id)
+     SELECT pair.target, p.membership_id
+       FROM unnest($1::int[], $2::int[]) AS pair(link, target)
+       JOIN experience_treasure_placements p ON p.link_id = pair.link
+     ON CONFLICT DO NOTHING
+     RETURNING link_id AS link, membership_id AS membership`,
+    [from, links.map(pair => pair.target)],
+  );
+  const removed = await client.query<{ link: number; membership: number }>(
+    `DELETE FROM experience_treasure_placements WHERE link_id = ANY($1::int[])
+     RETURNING link_id AS link, membership_id AS membership`,
+    [from],
+  );
+  return { links, added: added.rows, removed: removed.rows };
+}
+
+/** Undo `foldLinks`: the folded links get their own placements back. */
+export async function unfoldLinks(client: PoolClient, record: FoldedLinks): Promise<void> {
+  if (record.links.length === 0) return;
+  await client.query(
+    `DELETE FROM experience_treasure_placements p
+      USING unnest($1::int[], $2::int[]) AS gained(link, membership)
+      WHERE p.link_id = gained.link AND p.membership_id = gained.membership`,
+    [record.added.map(row => row.link), record.added.map(row => row.membership)],
+  );
+  await client.query(
+    `INSERT INTO experience_treasure_placements (link_id, membership_id)
+     SELECT * FROM unnest($1::int[], $2::int[]) ON CONFLICT DO NOTHING`,
+    [record.removed.map(row => row.link), record.removed.map(row => row.membership)],
+  );
+}
+
+/**
+ * Move work links from one place to another (ADR-0086): every link of the
+ * folded place whose work the survivor does not link already, on a merge, or
+ * the ones a merge moved, named, on its undo.
+ */
+export async function moveLinks(
+  client: PoolClient,
+  from: LockedExperience,
+  to: LockedExperience,
+  only?: number[],
+): Promise<number[]> {
+  const result = await client.query<{ id: number }>(
+    `UPDATE experience_treasures f SET experience_id = $2
+      WHERE f.experience_id = $1 AND ($3::int[] IS NULL OR f.id = ANY($3::int[]))
+        AND NOT EXISTS (SELECT 1 FROM experience_treasures s WHERE s.experience_id = $2 AND s.treasure_id = f.treasure_id)
+      RETURNING f.id`,
+    [from.id, to.id, only ?? null],
+  );
+  return result.rows.map(row => row.id);
+}

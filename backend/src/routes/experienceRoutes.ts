@@ -17,6 +17,7 @@ import {
   LocationEditResult,
   LocationStateResult,
   ManualExperienceCreated,
+  MergeUndone,
   PublishResult,
   RefuseArrivalResult,
   RefuseContentsResult,
@@ -25,6 +26,7 @@ import {
   WorkEditResult,
 } from '../api/responses/curation.js';
 import { PublishWaitingResult } from '../api/responses/admin.js';
+import { undoPlaceMerge } from '../controllers/experience/placeMergeController.js';
 import { ReviewAnswerResult, ReviewQueue, RunSetAside } from '../api/responses/reviewQueue.js';
 import {
   ExperienceDetail,
@@ -87,6 +89,7 @@ import {
   regionLocationsQuerySchema,
   idParamSchema,
   sourceIdParamSchema,
+  mergeIdParamSchema,
   reviewQueueQuerySchema,
   syncLogIdParamSchema,
   experienceAdmissionBodySchema,
@@ -526,6 +529,15 @@ export const experienceCurationRoutes = [
   // `POST /:id/assign/:regionId` would not: its middle segment is a literal, and
   // `publish-waiting` is not `assign`. What would collide is a `POST /:id/:action/:x`
   // with a parameter in the middle, and there is none.
+  // Undo a merge of two places (ADR-0086), from the place that stayed. Under
+  // `merges/` for the reason `sources/` is above: no `:id` route reads it.
+  defineRoute({
+    method: 'post', path: '/merges/:mergeId/undo', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Undo a merge of two places: what it moved goes back, and the folded place is a place again',
+    params: mergeIdParamSchema,
+    response: MergeUndone,
+    handler: undoPlaceMerge,
+  }),
   defineRoute({
     method: 'post', path: '/sources/:sourceId/publish-waiting', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
     summary: 'Publish everything one source has waiting, per experience, within the caller\'s scope',

@@ -1015,7 +1015,7 @@ describe('getReviewQueue', () => {
       // And a point is counted once while it moves: the unread replacement of a
       // stored pin is the same place, not a second one (Ephesus, run 146).
       expect(sql, `${kind} counts a moved point twice`)
-        .toMatch(/replaced\.id = off\.withdrawal_deferred_for_location_id\s+AND replaced\.missing_since IS NULL AND replaced\.existence <> 'lost'\)\)::int\s+AS offered_locations/);
+        .toMatch(/replaced\.id = off\.withdrawal_deferred_for_location_id\s+AND replaced\.missing_since IS NULL AND replaced\.existence <> 'lost' AND replaced\.merged_into_id IS NULL\)\)::int\s+AS offered_locations/);
       expect(sql, `${kind} lost the works count`).toContain('AS counted_works_total');
       // The works count is what "N famous works" reads, and a link the source
       // has stopped placing here is not one the museum holds (ADR-0044).
@@ -1036,7 +1036,7 @@ describe('getReviewQueue', () => {
     const sql = await capturedQueueSql('contents');
     // A pin a curator has declared gone is replaced by nothing: the arrival is
     // then the object's point, and both the row and the count of places say so.
-    expect(sql).toMatch(/WHERE old\.id = el\.withdrawal_deferred_for_location_id\s+AND old\.missing_since IS NULL AND old\.existence <> 'lost'\) AS replaces/);
+    expect(sql).toMatch(/WHERE old\.id = el\.withdrawal_deferred_for_location_id\s+AND old\.missing_since IS NULL AND old\.existence <> 'lost' AND old\.merged_into_id IS NULL\) AS replaces/);
     expect(sql).toContain('COUNT(*) FILTER (WHERE replaces IS NOT NULL)::int AS moved');
     expect(sql).toContain('points.moved AS pending_moved_locations');
     // And a move leads the capped list, so the card is sent the row it pairs

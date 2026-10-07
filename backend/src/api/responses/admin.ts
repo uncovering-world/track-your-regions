@@ -438,3 +438,23 @@ export type UserSearchResult = z.infer<typeof UserSearchResult>;
 export const UserSearchResults = z.array(UserSearchResult)
   .describe('Up to twenty accounts, by display name.');
 export type UserSearchResults = z.infer<typeof UserSearchResults>;
+
+// ---------------------------------------------------------------------------
+// Places that are one place (ADR-0046, ADR-0086)
+// ---------------------------------------------------------------------------
+
+export const EqualItemMerges = z.strictObject({
+  merged: z.array(z.strictObject({
+    qid: z.string().describe('The Wikidata item the places share.'),
+    survivorId: z.number().int(),
+    foldedId: z.number().int(),
+    mergeId: z.number().int(),
+    name: z.string().describe('The place that stayed.'),
+  })),
+  refused: z.array(z.strictObject({
+    qid: z.string(),
+    placeIds: z.array(z.number().int()),
+    error: z.string().describe('Why these places were not made one, such as both belonging to the same kind.'),
+  })).describe('Items whose places were left apart, each with its reason.'),
+}).describe('Places that share a Wikidata item, merged into one place each (ADR-0046 decision 2).');
+export type EqualItemMerges = z.infer<typeof EqualItemMerges>;

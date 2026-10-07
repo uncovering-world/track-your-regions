@@ -280,10 +280,20 @@ export const CurationLogEntry = z.strictObject({
   details: z.record(z.string(), z.unknown()).nullable()
     .describe('What the act changed, in the shape its action writes.'),
   created_at: z.iso.datetime({ offset: true }).nullable(),
-  curator_name: z.string().nullable().describe('The curator as they chose to be named, null where they chose nothing.'),
+  curator_name: z.string().nullable().describe(
+    'The curator as they chose to be named, null where they chose nothing — or where no curator acted: the catalogue\'s'
+    + ' own merge of two places sharing a Wikidata item (ADR-0086).',
+  ),
 }).describe("One act of the object's curation log.");
 export type CurationLogEntry = z.infer<typeof CurationLogEntry>;
 
 export const CurationLog = z.array(CurationLogEntry)
   .describe('The newest fifty acts on the object that the curator may see, newest first.');
 export type CurationLog = z.infer<typeof CurationLog>;
+
+export const MergeUndone = z.strictObject({
+  mergeId: z.number().int(),
+  survivorId: z.number().int().describe('The place that stayed, which keeps what was written to it after the merge.'),
+  foldedId: z.number().int().describe('The place that is a place of its own again.'),
+}).describe('A merge of two places undone (ADR-0086): what it moved is back where it came from.');
+export type MergeUndone = z.infer<typeof MergeUndone>;

@@ -9,7 +9,7 @@
 
 import { defineRoute, IMAGE } from '../api/route.js';
 import {
-  AssignmentCancelled, AssignmentStarted, AssignmentStatus, CuratorActivity, CuratorAssignmentCreated,
+  AssignmentCancelled, AssignmentStarted, AssignmentStatus, CuratorActivity, CuratorAssignmentCreated, EqualItemMerges,
   CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, PictureRepairStarted, PlacementCounts,
   SourceLineSet, SourcesReordered, SyncCancelled, SyncChanges, SyncLogDetail, SyncLogs, SyncStarted, SyncStatus,
   UserSearchResults, WikidataCache, WikidataCacheCleared, WikidataCacheTtlSet,
@@ -26,6 +26,7 @@ import {
 } from '../controllers/admin/syncController.js';
 import { setCurationGate } from '../controllers/admin/curationGateController.js';
 import { setSourceLine } from '../controllers/admin/sourceLineController.js';
+import { mergePlacesSharingAnItem } from '../controllers/admin/equalItemMergeController.js';
 import { acceptDataAssertion, getDataAssertions } from '../controllers/admin/dataAssertionsController.js';
 import {
   listCurators, createCuratorAssignment, revokeCuratorAssignment, getCuratorActivity,
@@ -225,6 +226,18 @@ export const adminDeclaredRoutes = [
     handler: getExperienceCounts,
   }),
 
+  // ===========================================================================
+  // Places that are one place (ADR-0046, ADR-0086)
+  // ===========================================================================
+  // The one pass over the catalogue as it stands: every place sharing a
+  // Wikidata item with another merged into one. Rate-limited with the other
+  // expensive admin work: it walks every shared item, one transaction each.
+  defineRoute({
+    ...ADMIN, method: 'post', path: '/places/merge-equal-items', limiter: expensiveAdminLimiter,
+    summary: 'Merge every place that shares a Wikidata item with another into one place',
+    response: EqualItemMerges,
+    handler: mergePlacesSharingAnItem,
+  }),
   // ===========================================================================
   // Catalogue Data Assertions
   // ===========================================================================
