@@ -309,3 +309,30 @@ describe('useDiscoverExperiences — the world view underneath it', () => {
     }
   });
 });
+
+describe('useDiscoverExperiences — a place former in one of its kinds (#1289)', () => {
+  /** Dresden Elbe Valley, delisted by UNESCO in 2009, as it would read were a second kind also to list it. */
+  const SAXONY = { id: 7200, worldViewId: 5, name: 'Saxony', parentRegionId: 6737, color: null, hasSubregions: false };
+  const DRESDEN = {
+    id: 1156, name: 'Dresden Elbe Valley', type: 'cultural', kind_id: 1, kind_name: 'World Heritage Sites',
+    kind_priority: 1, source_membership: 'present',
+    kinds: [
+      { kind_id: 1, kind_name: 'World Heritage Sites', kind_priority: 1, type: 'cultural', source_id: 1,
+        external_id: '1156', source_membership: 'former' },
+      { kind_id: 2, kind_name: 'Art Museums', kind_priority: 2, type: null, source_id: 2,
+        external_id: 'dresden-elbe-valley', source_membership: 'present' },
+    ],
+  } as Experience;
+
+  it('lists it former under that kind, and hands a curator the place itself', async () => {
+    mockFetchRegionAncestors.mockImplementation(async (id: number) => (id === 6737 ? [EUROPE] : [EUROPE, SAXONY]));
+    mockFetchByRegion.mockResolvedValue({ experiences: [DRESDEN], total: 1, lostHidden: 0 });
+    const { result } = renderAt('/discover/wv/5/r/7200?kind=1');
+
+    await waitFor(() => expect(result.current.discover.experiences).toHaveLength(1));
+    const shown = result.current.discover.experiences[0];
+    expect(shown.source_membership).toBe('former');
+    // The dialog answers the place, whose own listing is present.
+    expect(result.current.discover.placeRowOf(shown).source_membership).toBe('present');
+  });
+});

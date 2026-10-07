@@ -27,6 +27,7 @@ import {
   fetchExperienceKinds,
   fetchExperiencesByRegion,
   fetchExperienceLocations,
+  type Experience,
 } from '../api/experiences';
 import type { Region } from '../types';
 import { useNavigation } from './useNavigation';
@@ -185,6 +186,30 @@ export function useDiscoverExperiences() {
     [experiencesData?.experiences],
   );
 
+  // The places themselves, as the region answered them: a row above is the place
+  // as one kind shows it, which a curator's dialog must not be handed — a site
+  // former under World Heritage Sites and listed elsewhere is not former itself,
+  // and its verdict is the place's (#1289). Same key, so the same cache entry
+  // and no second request; no `select`, so the rows are the answer's own.
+  const { data: placesData } = useQuery({
+    queryKey: queryKeys.discover.experiences(selectedRegion?.id),
+    queryFn: () => fetchExperiencesByRegion(selectedRegion!.id, {
+      includeChildren: true,
+      limit: WHOLE_REGION_LIMIT,
+    }),
+    enabled: selectedRegion !== null && (listOpen || addressedExperienceId !== null),
+    staleTime: 120000,
+  });
+  const placeRows = useMemo(
+    () => new Map((placesData?.experiences ?? []).map(place => [place.id, place])),
+    [placesData?.experiences],
+  );
+  /** The place's own row for a row shown in one kind, which is what a curator answers about. */
+  const placeRowOf = useCallback(
+    (row: Experience): Experience => placeRows.get(row.id) ?? row,
+    [placeRows],
+  );
+
   // A card without a kind: the kind is the object's own, so it is read
   // off the object and written into the address in place; an object the region
   // does not hold is dropped the same way. Not before the kinds and the
@@ -326,6 +351,7 @@ export function useDiscoverExperiences() {
     openExperienceView,
     closeExperienceView,
     experiences,
+    placeRowOf,
     experiencesLoading,
 
     // Detail panel

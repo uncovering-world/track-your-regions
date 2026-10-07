@@ -59,6 +59,8 @@ const NO_KIND_FILTER: Set<string> = new Set();
 interface DiscoverExperienceViewProps {
   activeView: ActiveView | null;
   experiences: Experience[];
+  /** The place's own row for a row shown in one kind — what the curation dialog answers about (#1289). */
+  placeRowOf: (row: Experience) => Experience;
   isLoading: boolean;
   onBack: () => void;
   onSelectExperience: (id: number) => void;
@@ -72,6 +74,7 @@ interface DiscoverExperienceViewProps {
 export function DiscoverExperienceView({
   activeView,
   experiences,
+  placeRowOf,
   isLoading,
   onBack,
   onSelectExperience,
@@ -197,6 +200,8 @@ export function DiscoverExperienceView({
 
   // Curator state
   const [curationTarget, setCurationTarget] = useState<Experience | null>(null);
+  // The place's own row, not the row as this kind shows it (#1289).
+  const curate = useCallback((row: Experience) => setCurationTarget(placeRowOf(row)), [placeRowOf]);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
   // Check if any experiences have is_rejected field (indicates curator has scope)
@@ -575,7 +580,7 @@ export function DiscoverExperienceView({
           onCardMouseEnter={onCardMouseEnter}
           onCardMouseLeave={onCardMouseLeave}
           onVisitedToggle={handleVisitedToggle}
-          onCurate={setCurationTarget}
+          onCurate={curate}
           onAdd={() => setAddDialogOpen(true)}
         />
       )}

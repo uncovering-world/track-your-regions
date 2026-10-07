@@ -79,8 +79,7 @@ const bamiyan: Experience = {
   kind_name: 'UNESCO World Heritage',
   kind_priority: 1,
   kinds: [{
-    kind_id: 1, kind_name: 'UNESCO World Heritage', kind_priority: 1, type: 'cultural', source_id: 1, external_id: '208',
-  }],
+    kind_id: 1, kind_name: 'UNESCO World Heritage', kind_priority: 1, type: 'cultural', source_id: 1, external_id: '208', source_membership: 'present' }],
   location_count: 1,
   treasure_count: 0,
   finds_count: 0,

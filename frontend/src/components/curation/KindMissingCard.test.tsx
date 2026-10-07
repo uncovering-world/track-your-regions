@@ -62,7 +62,7 @@ describe('a kind whose source stopped listing a place', () => {
       .toBeInTheDocument();
     // A delisted World Heritage Site stays, marked former.
     expect(within(sectionOf('World Heritage Sites'))
-      .getByRole('button', { name: 'Delisted — keep it under World Heritage Sites, recorded as former' })).toBeInTheDocument();
+      .getByRole('button', { name: 'Delisted — keep it under World Heritage Sites, marked former' })).toBeInTheDocument();
     // Whether the place still stands is the place's card, not a kind's.
     expect(screen.queryByRole('button', { name: /no longer exists/i })).toBeNull();
   });
