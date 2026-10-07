@@ -725,7 +725,7 @@ unchanged, since only the overview tier was cut. They belong in the next full ru
 |--------|-------|-------|----------|
 | entry chunk, gzip (`size-limit`) | error | 190 kB | 181.0 kB baseline + ~5 % (was 920 kB, the whole application in one chunk, until #643) |
 | map library chunk, gzip (`size-limit`) | error | 285 kB | 271.2 kB baseline + ~5 % |
-| admin panel, world-view editor and review queue chunks, gzip (`size-limit`) | error | 148 / 139 / 32 kB | 140.5 / 132.1 / 30.1 kB baseline + ~5 %: a screen growing, or its code moving back into the entry chunk, fails visibly |
+| admin panel, world-view editor and review queue chunks, gzip (`size-limit`) | error | 148 / 139 / 34 kB | 140.5 / 132.1 / 32.2 kB baseline + ~5 %: a screen growing, or its code moving back into the entry chunk, fails visibly. The review queue's was 32 kB over a 30.1 kB baseline until #1264 gave the queue a question per kind of a place — a card per place with a section per kind for arrivals, held changes, refusals and a kind its source dropped — and it measured 32.16 kB |
 | map worker chunk, gzip (`size-limit`) | error | 142 kB | 135.2 kB baseline + ~5 % — the one payload Lighthouse's resource summary does not see |
 | stylesheet, gzip (`size-limit`) | error | 11.5 kB | 10.6 kB baseline + ~9 % |
 | `resource-summary:script:size` | error | 590 000 B | 562 066 B transferred — every script the page loads at startup, whatever its chunks are called (+ ~5 %; was 925 000 B until #643) |
