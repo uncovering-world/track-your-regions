@@ -95,6 +95,7 @@ what exists, and nothing personal goes in a URL.
 | A world view that is hidden or gone | The existing world-view reconciliation replaces it; the region and card go with it |
 | A region that 404s, or belongs to another world view | → the world view alone (`/wv/5`) |
 | A card the region's list does not hold — hidden, rejected, elsewhere, of another kind | The `e` segment is dropped, once the list has answered |
+| A card a merge folded into another place (#1247, ADR-0086) | The `e` segment moves to the surviving place, in place — once the list has answered without it and the by-id read has named the survivor |
 | A kind nobody knows | `?kind=` is dropped, once the kinds have answered — in Discover by `useDiscoverExperiences`, on the map by `useWorldLayer` |
 | A segment that does not parse | Read as absent, and canonicalised away |
 
@@ -112,6 +113,17 @@ to map mode by the header, is not in that region's list and is dropped by the ro
 above. The card closes and the region stays. Carrying it is still the right
 default — it is the common case that works — and the alternative, dropping the
 card on every mode switch, would lose the card that *would* have opened.
+
+**A folded card is asked about, not dropped.** A link shared before a merge
+names the place that was folded, and that place is in no list. So before the
+`e` segment is dropped, the card the list answered without is read by id —
+`useFoldedCard` (`hooks/useFoldedCard.ts`), from map mode's
+`useExperienceContext` and Discover's `useDiscoverExperiences` alike — and
+`GET /api/experiences/:id` follows `merged_into_id` to the place that stands:
+an answer under another id moves the address there, with that place's slug; a
+404 drops the card as before; a read that failed leaves the address alone, for
+the reason above. A card the list holds is never asked about, so the read costs
+only a miss.
 
 Every id in an address reaches only reads that are already bounded by
 visibility, so the client learns nothing the API would not have said.
