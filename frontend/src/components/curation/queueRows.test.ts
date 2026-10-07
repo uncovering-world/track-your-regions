@@ -116,6 +116,24 @@ describe('queueRows', () => {
     expect(rowQuestionWord(rows[0])).toBe('2 questions');
   });
 
+  it('gives a place two kinds\' rules refused one row, naming each reason (#1264)', () => {
+    const rows = queueRows(queue({
+      refused: [
+        item({ id: 6214, name: 'Capitoline Museums', kind: 'refused', kind_name: 'Archaeology', membership_id: 21,
+          admission_reason: 'not an archaeological site' }),
+        item({ id: 6214, name: 'Capitoline Museums', kind: 'refused', kind_name: 'Places of worship', membership_id: 22,
+          admission_reason: 'not a place of worship' }),
+      ],
+      order: [orderEntry({ kind: 'refused', id: 6214 })],
+    }));
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].items?.map(one => one.membership_id)).toEqual([21, 22]);
+    expect(rows[0].placeKind).toBe('Archaeology, Places of worship');
+    expect(rows[0].specific)
+      .toBe('Archaeology: not an archaeological site; Places of worship: not a place of worship');
+  });
+
   it('leaves the answered work out of the list of questions', () => {
     // `keptOut` is answered, and the page keeps it collapsed at the foot where a mis-click
     // can be undone — it is not a question, so it can never appear in `order` at all.

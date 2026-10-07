@@ -41,7 +41,7 @@ import { dayOf } from './feed/rowDate';
 import { ReviewBench } from './ReviewBench';
 import { AnsweredSection } from './AnsweredSection';
 import { RefusedPartsCard } from './RefusedPartsCard';
-import { KeptOutCard } from './ReviewQueue';
+import { KeptOutCard } from './RefusedCards';
 import { AnsweredWithdrawalCard } from './WithdrawnPoints';
 import { useRowSelection } from './selection/useRowSelection';
 import { useAnswerSelection } from './selection/useAnswerSelection';
@@ -292,12 +292,12 @@ export function ReviewPage() {
       kind: 'keptOut',
       label: 'what you have kept out',
       explanation: 'Answered, so not waiting on you — listed because this page is the only '
-        + 'place they appear at all. A kept-out row is hidden from every list and gives '
-        + 'nothing back at its own address, so if one of these was a mis-click, this is '
-        + 'where it comes back.',
+        + 'place they appear in that kind at all. A kept-out row is hidden from that kind’s list, '
+        + 'and where it is in no other kind, from every list and from its own address; if one of '
+        + 'these was a mis-click, this is where it comes back.',
       items: queue.keptOut,
       count: queue.keptOut.length,
-      card: item => <KeptOutCard key={item.id} item={item} onDone={refresh} />,
+      card: item => <KeptOutCard key={`${item.id}:${item.membership_id ?? ''}`} item={item} onDone={refresh} />,
     },
     {
       kind: 'answeredWithdrawals',

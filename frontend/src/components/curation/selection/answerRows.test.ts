@@ -61,6 +61,16 @@ describe('toAnswerRows', () => {
       .toEqual([{ kind: 'refused', id: 6214, runId: 105, membershipId: 14546 }]);
   });
 
+  it('answers each kind\'s refusal of a refused row under its own membership (#1264)', () => {
+    const items = [
+      { id: 6214, membership_id: 21 }, { id: 6214, membership_id: 22 },
+    ] as NonNullable<QueueRow['items']>;
+    expect(toAnswerRows(row('refused:6214', { item: items[0], items }))).toEqual([
+      { kind: 'refused', id: 6214, runId: 105, membershipId: 21 },
+      { kind: 'refused', id: 6214, runId: 105, membershipId: 22 },
+    ]);
+  });
+
   it('answers each kind a waiting row asks for, a held one against its own run (#1264)', () => {
     // The Capitoline Museums: an Archaeology arrival first seen by run 105, and
     // an Art Museums picture held by run 98.

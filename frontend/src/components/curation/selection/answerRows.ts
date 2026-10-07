@@ -58,8 +58,9 @@ export class AnswerStopped extends Error {
 /**
  * The questions a row answers, in the server's words: the row's own kind word,
  * except the one the row renames, and the membership its card asks about
- * (#1264) — a refusal's, or one per section of a `waiting` row, since a place
- * two kinds ask about is two questions, each answered under its own kind. A
+ * (#1264) — one per refusal of a `refused` row, or one per section of a
+ * `waiting` row, since a place two kinds ask about is two questions, each
+ * answered under its own kind. A
  * held section names its own run, which is what its answer is checked
  * against; the row's run is the newest of its sections'.
  */
@@ -73,7 +74,10 @@ export function toAnswerRows(row: QueueRow): ReviewAnswerRow[] {
       ...namedMembership(group.membershipId),
     }));
   }
-  return [{ kind, id: row.id, runId: row.runId, ...namedMembership(row.item?.membership_id) }];
+  // A refused row answers each kind's refusal under its own membership.
+  return (row.items ?? [row.item]).map(item => ({
+    kind, id: row.id, runId: row.runId, ...namedMembership(item?.membership_id),
+  }));
 }
 
 /** Every question a set of rows holds, in the rows' order. */

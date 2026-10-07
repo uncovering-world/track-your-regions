@@ -1,22 +1,12 @@
 /**
- * What a sync run could not decide for itself, and the one thing it could.
+ * What a sync run could not decide for itself.
  *
- * Three kinds of question, kept apart because they are answered differently. A
+ * Two kinds of question, kept apart because they are answered differently. A
  * site the source stopped listing needs a verdict on what that means —
  * delisted, destroyed, or never gone. A field the source wants to change but a
  * curator has claimed needs a choice between two versions. Neither has changed
- * anything for users yet; that is the point of asking.
- *
- * A row this kind refused is the exception, and the page says so rather
- * than hiding it. The run did not fail to see it — it named it and applied our
- * own rule, so the row is already hidden (ADR-0024). None of the three verdicts
- * above is true of it, which is exactly why it needs a section and two answers
- * of its own: the rule was right, or the rule was wrong.
- *
- * The confirmed ones come back at the foot of the page, collapsed. They are not
- * work — they are answered — but a row kept out is hidden from every list and
- * unreachable by its own address, so this page is the only place a mis-click
- * can be undone. Leaving them off it would make one button permanent.
+ * anything for users yet; that is the point of asking. A kind's rule refusing
+ * a place is the third, answered in `RefusedCards.tsx`.
  */
 
 import { useState } from 'react';
@@ -27,22 +17,17 @@ import {
 import { useMutation } from '@tanstack/react-query';
 import {
   setExperienceState,
-  setExperienceAdmission,
   acceptSourceValue,
   declineSourceValue,
   type AcceptSourceResult,
-  type AdmissionResult,
 } from '../../api/curation';
-import { namedMembership } from '../../utils/namedMembership';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
-import { publishOutcomeFor } from './publishOutcome';
 import { formatDateTime } from '../../utils/dateFormat';
 import { worldViewList } from '../../utils/worldViewList';
 import { ItemHeader, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
 import { rowsFor } from './factRows';
 import { fieldLabel } from './fieldMeaning';
-import { RefusalLine } from './RefusalLine';
 import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
 
 
@@ -120,123 +105,6 @@ export function MissingCard({ item, onDone }: { item: ReviewQueueItem; onDone: (
             False alarm
           </Button>
         </Stack>
-      </CardContent>
-    </Card>
-  );
-}
-
-/**
- * A row this kind's own rule refused, with that objection on it.
- *
- * The reason is the whole point of the card. "Refused" alone leaves a curator
- * guessing, and the rule's own note — `not a museum class — named by Column of
- * Phocas (36 sitelinks)` — names internal tests and states no threshold, so
- * `RefusalLine` says what was found in ordinary words and keeps the recorded
- * wording behind the question mark beside it. Either way a bad rule shows up
- * here as a run of near-identical cards rather than as a mystery.
- */
-export function RefusedCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
-  const [note, setNote] = useState('');
-  const decide = useMutation({
-    mutationFn: (decision: 'confirm' | 'override') =>
-      setExperienceAdmission(item.id, {
-        decision, note: note || undefined, ...namedMembership(item.membership_id),
-      }),
-    // "Put it back" on a row nobody had passed publishes it as well, and a
-    // curator watching an object stay invisible after un-refusing it would go
-    // looking for a second button that does not exist.
-    onSettled: (data, error) => onDone(
-      error ? messageFor(item, error) : admissionOutcomeFor(item, data), item.id),
-  });
-
-  return (
-    <Card variant="outlined">
-      <CardContent>
-        <ItemHeader item={item} />
-        <RefusalLine
-          reason={item.admission_reason}
-          works={item.counted_works}
-          held={item.counted_works_total}
-          name={item.name}
-        />
-
-        {/* This one really is read again, and soon: a kept-out row shows its note in the
-            list at the foot of the page, which is where someone decides whether the
-            refusal was a mis-click. Saying so is what makes writing one worth the time. */}
-        <TextField
-          size="small"
-          fullWidth
-          label="Note (optional)"
-          helperText="Shown beside this row in the kept-out list, and in its curation history."
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-          sx={{ mb: 2 }}
-        />
-
-        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-          <Button
-            variant="outlined"
-            disabled={decide.isPending}
-            onClick={() => decide.mutate('confirm')}
-          >
-            The rule was right — keep it out
-          </Button>
-          <Button
-            variant="outlined"
-            color="warning"
-            disabled={decide.isPending}
-            onClick={() => decide.mutate('override')}
-          >
-            The rule was wrong — put it back
-          </Button>
-        </Stack>
-      </CardContent>
-    </Card>
-  );
-}
-
-/**
- * A refusal a curator confirmed, and the one way back from it.
- *
- * Deliberately not the two-button card above: the question has been answered,
- * and re-asking it would invite a second answer to a settled thing. What this
- * offers is a correction — one button, in the direction that reveals.
- */
-export function KeptOutCard({ item, onDone }: { item: ReviewQueueItem; onDone: (message?: string, experienceId?: number) => void }) {
-  const putBack = useMutation({
-    mutationFn: () => setExperienceAdmission(item.id, {
-      decision: 'override', ...namedMembership(item.membership_id),
-    }),
-    onSettled: (data, error) => onDone(
-      error ? messageFor(item, error) : admissionOutcomeFor(item, data), item.id),
-  });
-
-  return (
-    <Card variant="outlined">
-      <CardContent>
-        <ItemHeader item={item} />
-        {/* The same sentence and the same evidence as the open card above. This is the
-            list a mis-click is undone from, so it is the last place to make someone
-            re-read the rule's own wording to work out what they are putting back. */}
-        <RefusalLine
-          reason={item.admission_reason}
-          works={item.counted_works}
-          held={item.counted_works_total}
-          name={item.name}
-        />
-        <Typography variant="caption" color="text.secondary" display="block" sx={{ mb: 2 }}>
-          Kept out{item.state_decided_at ? ` on ${formatDateTime(item.state_decided_at)}` : ''}
-          {item.state_note ? ` — “${item.state_note}”` : ''}
-        </Typography>
-        <Button
-          size="small"
-          variant="outlined"
-          color="warning"
-          disabled={putBack.isPending}
-          onClick={() => putBack.mutate()}
-        >
-          Put it back
-        </Button>
       </CardContent>
     </Card>
   );
@@ -467,27 +335,4 @@ export function outcomeFor(
     : '';
   if (parts.length === 0) return stale === '' ? undefined : `${item.name}:${stale}`;
   return `${item.name}: ${parts.join('; ')} — from run ${data.fromSyncLogId}.${stale}`;
-}
-
-/**
- * Whether putting a row back also put it in front of readers, and if so,
- * everything that came with it.
- *
- * An override on a row nobody had passed publishes it in the same transaction
- * (ADR-0025 § 4.5) — otherwise the button says "Put it back" and puts nothing
- * anywhere. It publishes the arrival's contents too, not only the object —
- * "Put it back" does considerably more than it says, and a curator who clicks
- * it deserves to be told what happened, in the same sentence shape the publish
- * card already uses (`publishOutcomeFor`): a curator who clicks "Put it back"
- * and quietly gets twelve paintings published as a side effect deserves the
- * same sentence a curator who clicks "Publish" gets, not a vaguer one because
- * the button had a different label. Never a held field or a run id — an
- * override does not answer a proposal, so `publishOutcomeFor`'s clauses for
- * those two simply have nothing to say and are silent on their own.
- */
-export function admissionOutcomeFor(
-  item: { name: string }, data?: AdmissionResult,
-): string | undefined {
-  if (!data?.published) return undefined;
-  return publishOutcomeFor(item, data);
 }

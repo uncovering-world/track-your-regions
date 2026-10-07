@@ -10,7 +10,8 @@
 
 import { Alert, Box, Typography } from '@mui/material';
 import type { QueueRow, RowKind } from './queueRows';
-import { MissingCard, RefusedCard, ConflictCard } from './ReviewQueue';
+import { MissingCard, ConflictCard } from './ReviewQueue';
+import { RefusedCard } from './RefusedCards';
 import { GatedCard } from './WaitingToPublish';
 import { WithdrawnCard } from './WithdrawnPoints';
 
@@ -32,7 +33,7 @@ const KIND_NOTE: Record<RowKind, string> = {
     + 'points and works under a row that is visible. '
     + 'Publishing is what lets it out, and nothing else does.',
   refused: 'Every list here has a rule of ours for what belongs in it, and this failed it — so '
-    + 'visitors have never seen it. The source may well still list it. The question is not '
+    + 'visitors have never seen it in that list. The source may well still list it. The question is not '
     + 'whether the object is interesting, but whether our rule was right about it.',
   missing: 'A run that finished without errors stopped finding this. That can mean the source '
     + 'delisted it, that it no longer exists, or that the source was simply wrong — and only '
@@ -67,7 +68,7 @@ export function ReviewBench({ row, onDone }: {
         {KIND_NOTE[row.kind]}
       </Typography>
       {row.kind === 'conflicts' && row.item && <ConflictCard item={row.item} onDone={onDone} />}
-      {row.kind === 'refused' && row.item && <RefusedCard item={row.item} onDone={onDone} />}
+      {row.kind === 'refused' && row.items && <RefusedCard items={row.items} onDone={onDone} />}
       {row.kind === 'missing' && row.item && <MissingCard item={row.item} onDone={onDone} />}
       {row.kind === 'withdrawn' && row.item && <WithdrawnCard item={row.item} onDone={onDone} />}
       {row.kind === 'waiting' && row.sections && <GatedCard sections={row.sections} onDone={onDone} />}
