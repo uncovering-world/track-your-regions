@@ -168,7 +168,7 @@ export interface ExperienceConflictDecisionsRow {
 export interface ExperienceCurationLogRow {
   id: number;
   experience_id: number;
-  curator_id: number;
+  curator_id: number | null;
   action: string;
   region_id: number | null;
   details: unknown | null;
@@ -262,6 +262,20 @@ export interface ExperienceLocationsRow {
   state_decided_by: number | null;
   state_decided_at: Date | null;
   state_note: string | null;
+  merged_into_id: number | null;
+}
+
+/** The table `experience_merges`. */
+export interface ExperienceMergesRow {
+  id: number;
+  survivor_id: number;
+  folded_id: number;
+  merged_by: number | null;
+  reason: string;
+  moved: unknown;
+  created_at: Date;
+  undone_at: Date | null;
+  undone_by: number | null;
 }
 
 /** The table `experience_regions`. */
@@ -395,6 +409,7 @@ export interface ExperiencesRow {
   state_decided_by: number | null;
   state_decided_at: Date | null;
   state_note: string | null;
+  merged_into_id: number | null;
 }
 
 /** The table `import_runs`. */
@@ -757,6 +772,9 @@ export const COLUMN_WIDTHS = {
     source_membership: 10,
     existence: 10,
   },
+  experience_merges: {
+    reason: 30,
+  },
   experience_regions: {
     assignment_type: 20,
   },
@@ -856,7 +874,7 @@ export const CHECK_VALUES = {
     scope_type: ["region", "source", "global"],
   },
   experience_curation_log: {
-    action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused"],
+    action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone"],
   },
   experience_held_decisions: {
     answer: ["published", "refused"],
@@ -871,6 +889,9 @@ export const CHECK_VALUES = {
     curation_state: ["pending", "auto", "verified"],
     existence: ["extant", "lost"],
     source_membership: ["present", "former"],
+  },
+  experience_merges: {
+    reason: ["equal_wikidata_item", "curator"],
   },
   experience_sources: {
     last_sync_status: ["success", "partial", "failed", "cancelled"],

@@ -65,7 +65,7 @@ import { LoadingSpinner } from './LoadingSpinner';
 import { PictureWithCredit } from './PictureWithCredit';
 import { CurationPlaces } from './CurationPlaces';
 import { verdictOf } from './LifecycleChip';
-import { actionLabel, formatLogDetails } from './curationLog';
+import { actionLabel, catalogueMerge, formatLogDetails } from './curationLog';
 import { typeOptionsFor } from '../../utils/experienceTypes';
 import { displayNameOf } from '../../utils/displayName';
 import { tidyLabel } from '@tyr/shared/labels';
@@ -555,8 +555,9 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
                   />
                   <Box sx={{ flex: 1, minWidth: 0 }}>
                     <Typography variant="caption" sx={{ fontWeight: 500 }}>
-                      {/* A curator who set no display name, or a blank one, is still somebody. */}
-                      {displayNameOf(entry.curator_name) ?? 'A curator'}
+                      {/* A curator who set no display name, or a blank one, is still somebody; the
+                          catalogue's own merge of two places on one Wikidata item is nobody's (ADR-0086). */}
+                      {catalogueMerge(entry) ? 'The catalogue — one Wikidata item' : displayNameOf(entry.curator_name) ?? 'A curator'}
                     </Typography>
                     {entry.region_name && (
                       <Typography variant="caption" color="text.secondary">

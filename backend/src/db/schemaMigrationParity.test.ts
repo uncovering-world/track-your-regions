@@ -482,6 +482,10 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // source stopped offering and read as "a reader sees it now" — this one
     // only puts the question back.
     'contents_unrefused',
+    // Two rows that are one place made one, and that taken back (#1247,
+    // ADR-0086): written on both places' histories, the first with no curator
+    // where the catalogue merged two places sharing a Wikidata item.
+    'merged', 'merge_undone',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;
