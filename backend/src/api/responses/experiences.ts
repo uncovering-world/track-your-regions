@@ -124,6 +124,10 @@ export const PlaceKind = z.strictObject({
   type: z.string().nullable().describe('The type within this kind, which is the membership\'s (#1253). Null where the kind has no types.'),
   source_id: z.number().int().describe('The source that brought the place into this kind.'),
   external_id: z.string().describe('The id that source knows the place by, such as a Wikidata item (ADR-0084).'),
+  source_membership: SourceMembership.describe(
+    "Whether this kind's source still lists the place (#1289): `former` where a curator recorded it as delisted in this"
+    + ' kind — a World Heritage Site UNESCO delisted — while the place itself may still be listed by another kind.',
+  ),
 }).describe('One kind a place is offered in. A place belongs to no kind, and none of its kinds is the primary one (ADR-0084).');
 export type PlaceKind = z.infer<typeof PlaceKind>;
 

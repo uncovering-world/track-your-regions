@@ -261,8 +261,10 @@ export function rowKindSelectSql(membership = 'm', kind = 'k'): string {
 
 /**
  * Every kind the place is offered in, as a `json` array of `{ kind_id,
- * kind_name, kind_priority, type, source_id, external_id }` in the kinds'
- * display order (ADR-0084, #1245).
+ * kind_name, kind_priority, type, source_id, external_id, source_membership }`
+ * in the kinds' display order (ADR-0084, #1245). `source_membership` is the
+ * kind's own listing (#1289): a World Heritage Site UNESCO delisted is former
+ * in that kind while another kind still lists the place.
  *
  * A place belongs to no kind; kinds are properties hung on it, and none is the
  * primary one. So a reader that shows the place shows it in each of these: the
@@ -277,7 +279,8 @@ export function rowKindSelectSql(membership = 'm', kind = 'k'): string {
 export function placeKindsSql(experience = 'e'): string {
   return `(SELECT COALESCE(json_agg(json_build_object(
              'kind_id', pk.kind_id, 'kind_name', pkk.name, 'kind_priority', pkk.display_priority,
-             'type', pk.type, 'source_id', pk.source_id, 'external_id', pk.external_id)
+             'type', pk.type, 'source_id', pk.source_id, 'external_id', pk.external_id,
+             'source_membership', pk.source_membership)
            ORDER BY pkk.display_priority, pk.kind_id), '[]'::json)
          FROM ${MEMBERSHIPS} pk JOIN ${KINDS} pkk ON pkk.id = pk.kind_id
         WHERE pk.experience_id = ${experience}.id AND ${membershipOfferedSql('pk')})`;

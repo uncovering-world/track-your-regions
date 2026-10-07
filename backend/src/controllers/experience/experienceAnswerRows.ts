@@ -55,6 +55,7 @@ function kindsOf(kinds: PlaceKind[] | null): PlaceKind[] {
     type: kind.type ?? null,
     source_id: kind.source_id,
     external_id: kind.external_id,
+    source_membership: kind.source_membership,
   }));
 }
 
