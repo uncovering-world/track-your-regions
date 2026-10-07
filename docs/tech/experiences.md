@@ -3201,9 +3201,11 @@ the moment it is answered, and a `lost` verdict then hides it from lists, map, s
 counts. `CurationDialog` is therefore the one surface a curator can still reach it from, and it
 carries the control, sending `POST /:id/state` with the row as the dialog is showing it. The
 two halves are not reached the same way: **"It does still exist"** needs the reveal first,
-since a `lost` row is not otherwise on screen, while **"It is still listed"** sits on a
-`former` row wherever it already is — which is both card surfaces, Discover included, because
-`former` is never hidden. Without that, a mis-clicked verdict
+since a `lost` row is not otherwise on screen, while **"It is still listed"** sits on a row
+whose *place* is `former` wherever it already is — which is both card surfaces, Discover
+included, because `former` is never hidden. A row former only in its kind (Dresden Elbe Valley
+under World Heritage Sites, #1289) offers no such button: the dialog is handed the place's own
+row, and a kind's former is taken back through that kind's listing. Without that, a mis-clicked verdict
 had no remedy short of SQL, which is why `missing_since` travels in `lifecycleSelectSql()`:
 the correction has to send the flag as seen rather than infer it from the verdict.
 
@@ -4461,10 +4463,12 @@ a false alarm clears its flag; "no longer this kind" marks it former and keeps i
 source still does not list the place, so the place reads missing, and its own card asks whether it
 still stands, once the last source drops it too — and, unless its kind keeps a delisted place
 (`KINDS_KEPT_AS_FORMER`, `db/membership.ts` — World Heritage Sites, so a site UNESCO delisted
-stays in that list, recorded as former), takes it out of the kind as a curator's refusal
-(`NO_LONGER_LISTED_REASON`), which the kept-out list takes back. Readers draw the **Former** mark
-from the place's own listing, which reads former only once every membership is, so a kind kept as
-former under a place another kind still lists shows no mark yet (#1289). The writer refuses a
+stays in that list, marked former), takes it out of the kind as a curator's refusal
+(`NO_LONGER_LISTED_REASON`), which the kept-out list takes back. A place's `kinds` carry each
+kind's own listing (`source_membership`, `placeKindsSql`), and a reader showing the place under a
+kind draws that kind's **Former** mark (`shownInKind`, `formerIn`; #1289): Dresden Elbe Valley is
+former under World Heritage Sites and current under a kind that still lists it, while the place's
+own mark, read where no kind is in view, means every source has dropped it. The writer refuses a
 kind's verdict once the place itself reads missing: that question is the place's card then. "Lost" is not asked of a
 kind, the card and a batch alike: other sources still list the place, and whether it still
 stands is the place's card, once every source has dropped it. The batch's words for `missing`
