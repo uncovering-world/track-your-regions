@@ -40,6 +40,8 @@ export interface QueueRow {
   /** The gated sub-kinds a `waiting` row groups (ADR-0025); `[]` for every other kind. */
   subs: string[];
   item?: ReviewQueueItem;
+  /** A `refused` row's refusals, one per kind whose rule refused the place (#1264); `item` is the first. */
+  items?: ReviewQueueItem[];
   /** A `waiting` row's questions, a section per kind that asks about the place (#1264). */
   sections?: GatedGroup[];
 }
@@ -90,20 +92,31 @@ function waitingRow(entry: QueueOrderEntry, sections: GatedGroup[]): QueueRow {
   };
 }
 
-function itemRow(kind: Exclude<RowKind, 'waiting'>, entry: QueueOrderEntry, item: ReviewQueueItem): QueueRow {
+function itemRow(kind: Exclude<RowKind, 'waiting'>, entry: QueueOrderEntry, items: ReviewQueueItem[]): QueueRow {
+  const [item] = items;
   return {
     key: `${kind}:${entry.id}`,
     kind,
     id: entry.id,
     name: item.name,
-    placeKind: item.kind_name,
+    // Every kind the row asks for: a refusal is a kind's, and a place two rules
+    // refused is one row with both (#1264).
+    placeKind: items.map(one => one.kind_name).join(', '),
     question: QUESTION[kind],
     askedAt: entry.askedAt,
     runId: entry.runId,
-    specific: rowSpecific({ kind, item }),
+    specific: rowSpecific({ kind, item, items }),
     subs: entry.subs,
     item,
+    ...(kind === 'refused' ? { items } : {}),
   };
+}
+
+/** The items of one kind of question, by place — several where several memberships ask (#1264). */
+function byPlace(items: ReviewQueueItem[] | undefined): Map<number, ReviewQueueItem[]> {
+  const map = new Map<number, ReviewQueueItem[]>();
+  for (const item of items ?? []) map.set(item.id, [...(map.get(item.id) ?? []), item]);
+  return map;
 }
 
 /**
@@ -117,11 +130,11 @@ function itemRow(kind: Exclude<RowKind, 'waiting'>, entry: QueueOrderEntry, item
 export function queueRows(data: ReviewQueue | undefined): QueueRow[] {
   if (!data) return [];
   const sectionsById = groupGated(data.arrivals ?? [], data.held ?? [], data.contents ?? []);
-  const itemsByKind: Record<Exclude<RowKind, 'waiting'>, Map<number, ReviewQueueItem>> = {
-    conflicts: new Map((data.conflicts ?? []).map(item => [item.id, item])),
-    withdrawn: new Map((data.withdrawn ?? []).map(item => [item.id, item])),
-    refused: new Map((data.refused ?? []).map(item => [item.id, item])),
-    missing: new Map((data.missing ?? []).map(item => [item.id, item])),
+  const itemsByKind: Record<Exclude<RowKind, 'waiting'>, Map<number, ReviewQueueItem[]>> = {
+    conflicts: byPlace(data.conflicts),
+    withdrawn: byPlace(data.withdrawn),
+    refused: byPlace(data.refused),
+    missing: byPlace(data.missing),
   };
 
   const rows: QueueRow[] = [];
@@ -133,9 +146,9 @@ export function queueRows(data: ReviewQueue | undefined): QueueRow[] {
       rows.push(waitingRow(entry, sections));
       continue;
     }
-    const item = itemsByKind[kind].get(entry.id);
-    if (!item) { warnSkipped(entry); continue; }
-    rows.push(itemRow(kind, entry, item));
+    const items = itemsByKind[kind].get(entry.id);
+    if (!items) { warnSkipped(entry); continue; }
+    rows.push(itemRow(kind, entry, items));
   }
   return rows;
 }

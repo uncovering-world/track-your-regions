@@ -147,12 +147,16 @@ function waitingSpecific(sections: readonly GatedGroup[]): string {
  * the word itself (a bare arrival).
  */
 export function rowSpecific(row: {
-  kind: RowKind; item?: ReviewQueueItem; sections?: readonly GatedGroup[];
+  kind: RowKind; item?: ReviewQueueItem; items?: readonly ReviewQueueItem[]; sections?: readonly GatedGroup[];
 }): string {
   switch (row.kind) {
     case 'missing':
       return '';
     case 'refused':
+      // Each kind's reason, named, where two kinds' rules refused the place (#1264).
+      if (row.items && row.items.length > 1) {
+        return row.items.map(item => `${item.kind_name}: ${item.admission_reason ?? ''}`).join('; ');
+      }
       return row.item?.admission_reason ?? '';
     case 'conflicts':
       return (row.item?.proposed ?? []).map(f => humaniseField(f.field)).join(', ');
