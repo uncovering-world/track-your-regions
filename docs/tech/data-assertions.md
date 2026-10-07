@@ -469,6 +469,17 @@ at all, the row also comes back with no kind, which no group, pin colour or
 chip can draw; a membership naming that source under another id still gives
 the row its kind, and only the run fails.
 
+**The merge rule** (`places-sharing-a-wikidata-item`) lists every Wikidata item
+more than one place still carries on a membership (#1247). Two sources that read
+one item read one place (ADR-0046 decision 2, ADR-0085), so such a pair is one
+place shown twice — two pins on one spot. A run merges what it creates into the
+place that already holds its item, and the *Places that are one place* card at
+the top of the panel merges what was there before; what this then finds is a
+pair the merge refused, both rows in one kind (ADR-0086 decision 4), which wants
+a person. The question is the pass's own (`sharedItemsSql`,
+`controllers/experience/equalItemMerges.ts`), so the check never counts a pair
+the button would not merge, nor misses one it would.
+
 **The listing rule** (`place-listing-disagrees-with-memberships`) states the
 derivation ADR-0084 put on a place's own `missing_since` and
 `source_membership` (#1251): whether a source still lists a place is each
