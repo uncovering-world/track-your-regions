@@ -109,6 +109,10 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // take-backs: the mark comes off and the part is asked about again. Named for
   // what a reader needs to see beside "Turned down" a line above it.
   contents_unrefused: { label: 'Asked again', color: GREEN },
+  // Two rows that are one place made one, and that taken back (ADR-0086): the
+  // place each history belongs to says which side of the merge it was on.
+  merged: { label: 'Merged', color: VIOLET },
+  merge_undone: { label: 'Merge undone', color: GREEN },
 };
 
 /**
@@ -472,4 +476,10 @@ export function formatLogDetails(entry: CurationLogEntry): string | null {
   // their writers insert no `details` at all, and the region their act was about is
   // already rendered beside the curator's name from the entry's own `region_name`.
   return null;
+}
+
+/** Whether a history row is the catalogue's own merge of two places sharing a Wikidata item (ADR-0086). */
+export function catalogueMerge(entry: { action: string; details?: unknown }): boolean {
+  const details = entry.details as { reason?: unknown } | null | undefined;
+  return entry.action === 'merged' && details?.reason === 'equal_wikidata_item';
 }

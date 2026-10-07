@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { CURATION_LOG_ACTIONS } from '@tyr/shared/curationLog';
-import { ACTION_LABELS, actionLabel, formatLogDetails } from './curationLog';
+import { ACTION_LABELS, actionLabel, catalogueMerge, formatLogDetails } from './curationLog';
 
 /** An entry as the controllers write it. */
 function entry(action: string, details: Record<string, unknown>) {
@@ -383,5 +383,13 @@ describe('an answer to what a source proposed', () => {
     expect(formatLogDetails(entry('accepted_source', {
       fields: [{ field: 'shortDescription', applied: '' }],
     }))).toBe('short description: "(empty)"');
+  });
+});
+
+describe('the catalogue\'s own merge (ADR-0086)', () => {
+  it('is told from a curator\'s by its reason, not by a missing name', () => {
+    expect(catalogueMerge({ action: 'merged', details: { reason: 'equal_wikidata_item', mergeId: 1 } })).toBe(true);
+    expect(catalogueMerge({ action: 'merged', details: { reason: 'curator', mergeId: 2 } })).toBe(false);
+    expect(catalogueMerge({ action: 'merge_undone', details: { mergeId: 1 } })).toBe(false);
   });
 });

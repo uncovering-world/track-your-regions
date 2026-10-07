@@ -3643,8 +3643,9 @@ COMMENT ON COLUMN curator_assignments.scope_type IS 'Permission scope: global (a
 CREATE TABLE IF NOT EXISTS experience_curation_log (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
-    curator_id INTEGER NOT NULL REFERENCES users(id),
-    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused')),
+    -- Null on the catalogue's own merge alone (ADR-0086): the check below.
+    curator_id INTEGER REFERENCES users(id),
+    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone')),
     region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -3664,13 +3665,44 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
 -- schema change and not a code-only one.
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check
-    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused'));
+    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone'));
 
+-- An existing database's NOT NULL goes with migration 076; a fresh one never had it.
+ALTER TABLE experience_curation_log ALTER COLUMN curator_id DROP NOT NULL;
+ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_curator_check;
+ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_curator_check
+    CHECK (curator_id IS NOT NULL OR action = 'merged');
 CREATE INDEX IF NOT EXISTS idx_curation_log_experience ON experience_curation_log(experience_id);
 CREATE INDEX IF NOT EXISTS idx_curation_log_curator ON experience_curation_log(curator_id);
 CREATE INDEX IF NOT EXISTS idx_curation_log_created ON experience_curation_log(created_at DESC);
 
 COMMENT ON TABLE experience_curation_log IS 'Audit trail of all curator actions on experiences';
+
+-- Two rows that are one place become one place by a merge that can be undone
+-- (#1247, ADR-0046, ADR-0086). A merge is a row here recording what it moved,
+-- which the undo moves back; merged_by is null on the catalogue's own merge
+-- (an equal Wikidata item). The folded place and a point folded into one of
+-- the survivor's are marked merged_into_id and kept, never deleted.
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS merged_into_id INTEGER REFERENCES experiences(id);
+CREATE INDEX IF NOT EXISTS idx_experiences_merged_into ON experiences(merged_into_id) WHERE merged_into_id IS NOT NULL;
+ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS merged_into_id INTEGER REFERENCES experience_locations(id);
+CREATE INDEX IF NOT EXISTS idx_experience_locations_merged_into
+  ON experience_locations(merged_into_id) WHERE merged_into_id IS NOT NULL;
+CREATE TABLE IF NOT EXISTS experience_merges (
+    id SERIAL PRIMARY KEY,
+    survivor_id INTEGER NOT NULL REFERENCES experiences(id),
+    folded_id INTEGER NOT NULL REFERENCES experiences(id),
+    merged_by INTEGER REFERENCES users(id),
+    reason VARCHAR(30) NOT NULL CHECK (reason IN ('equal_wikidata_item', 'curator')),
+    moved JSONB NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    undone_at TIMESTAMPTZ,
+    undone_by INTEGER REFERENCES users(id),
+    CHECK (survivor_id <> folded_id)
+);
+CREATE INDEX IF NOT EXISTS idx_experience_merges_survivor ON experience_merges(survivor_id);
+CREATE INDEX IF NOT EXISTS idx_experience_merges_folded ON experience_merges(folded_id);
+COMMENT ON TABLE experience_merges IS 'A merge of one place into another (ADR-0086): what moved, for the undo; merged_by null on the catalogue''s own.';
 
 -- The proposals a curator has refused, so the queue stops asking about them.
 --
