@@ -52,6 +52,40 @@ import type {
 export async function getExperience(
   { params: { id }, caller }: { params: z.output<typeof idParamSchema>; caller: Express.User | undefined },
 ): Promise<ExperienceDetail> {
+  const detail = await readExperience(id, caller);
+  if (detail) return detail;
+  // The address of a place a merge folded into another answers with the
+  // surviving place's card (ADR-0046 decision 5, ADR-0086): the folded row
+  // keeps no membership, so it is never a row of its own here, and the
+  // answer's id tells the client which place it now is. Asked only on a miss,
+  // so a place nobody merged costs nothing more.
+  const survivor = await survivorOf(id);
+  const merged = survivor === null ? null : await readExperience(survivor, caller);
+  if (merged) return merged;
+  throw notFound('Experience not found');
+}
+
+/**
+ * The place a merge folded `id` into, followed down a chain of merges to the
+ * one that stands; null for a place no merge folded. A merge refuses a place
+ * already folded (`lockTwoExperiences`), so the chain has no cycle; the depth
+ * bound is there so a row written by hand cannot make one spin.
+ */
+async function survivorOf(id: number): Promise<number | null> {
+  const result = await pool.query<{ id: number }>(`
+    WITH RECURSIVE chain AS (
+      SELECT id, merged_into_id, 0 AS depth FROM experiences WHERE id = $1
+      UNION ALL
+      SELECT e.id, e.merged_into_id, chain.depth + 1
+      FROM experiences e JOIN chain ON e.id = chain.merged_into_id
+      WHERE chain.depth < 16
+    )
+    SELECT id FROM chain WHERE merged_into_id IS NULL AND depth > 0
+  `, [id]);
+  return result.rows[0]?.id ?? null;
+}
+
+async function readExperience(id: number, caller: Express.User | undefined): Promise<ExperienceDetail | null> {
   const isAdmin = caller?.role === 'admin';
   // Resolved before the row is fetched, because it has to be a parameter
   // inside that query's WHERE — see `maySeeUnreadExperience` for why this is
@@ -128,7 +162,7 @@ export async function getExperience(
       AND ($2::boolean OR ${hidePendingSql()})
   `, [id, maySeeUnread]);
 
-  if (result.rows.length === 0) throw notFound('Experience not found');
+  if (result.rows.length === 0) return null;
 
   // Get assigned regions, filtered to world views visible to this caller.
   const regionsResult = await pool.query<ExperienceRegionRef>(`

@@ -11123,7 +11123,7 @@
     "/api/experiences/{id}": {
       "get": {
         "operationId": "getExperiencesById",
-        "summary": "Get one experience and its regions; a curator in scope also gets an unread arrival",
+        "summary": "Get one experience and its regions; a merged place's id answers with the place it went into, under that place's id; a curator in scope also gets an unread arrival",
         "tags": [
           "experiences"
         ],

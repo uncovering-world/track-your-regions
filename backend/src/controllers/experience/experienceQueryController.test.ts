@@ -339,9 +339,12 @@ describe('lifecycle visibility across the read paths', () => {
       // that sends a list and a count has to carry the predicate in each, and
       // a joined string passes while one of them forgot it. Held to it: every
       // statement that reads the catalogue — the places, or the memberships a
-      // count is of.
+      // count is of. The one statement left out follows a merge (#1247): it
+      // reads where a folded place's id leads, not a place to offer, and the
+      // place it leads to is read again through the gate.
       const reads = mockedQuery.mock.calls
         .map(c => String(c[0]))
+        .filter(sql => !/WITH RECURSIVE chain AS \(\s*SELECT id, merged_into_id/.test(sql))
         .filter(sql => /\b(FROM|JOIN) experiences\b/.test(sql) || sql.includes('FROM experience_kind_memberships'));
       expect(reads.length).toBeGreaterThan(0);
       for (const sql of reads) {
