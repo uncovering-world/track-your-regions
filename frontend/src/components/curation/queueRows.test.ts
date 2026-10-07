@@ -134,6 +134,20 @@ describe('queueRows', () => {
       .toBe('Archaeology: not an archaeological site; Places of worship: not a place of worship');
   });
 
+  it('says where readers still see a place one kind\'s source stopped listing (#1264)', () => {
+    const rows = queueRows(queue({
+      missing: [item({
+        id: 6214, name: 'Capitoline Museums', kind: 'missing', kind_name: 'Archaeology', membership_id: 21,
+        seen_in: ['Art Museums'],
+      })],
+      order: [orderEntry({ kind: 'missing', id: 6214 })],
+    }));
+
+    expect(rows[0].items?.map(one => one.membership_id)).toEqual([21]);
+    expect(rows[0].placeKind).toBe('Archaeology');
+    expect(rows[0].specific).toBe('still under Art Museums');
+  });
+
   it('leaves the answered work out of the list of questions', () => {
     // `keptOut` is answered, and the page keeps it collapsed at the foot where a mis-click
     // can be undone — it is not a question, so it can never appear in `order` at all.

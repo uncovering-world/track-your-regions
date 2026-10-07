@@ -61,7 +61,7 @@
       "name": "review queue chunk (gzip)",
       "path": "dist/assets/ReviewPage-*.js",
       "gzip": true,
-      "limit": "32 kB"
+      "limit": "34 kB"
     },
     {
       "name": "stylesheet (gzip)",

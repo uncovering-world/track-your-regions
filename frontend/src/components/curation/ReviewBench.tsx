@@ -12,6 +12,8 @@ import { Alert, Box, Typography } from '@mui/material';
 import type { QueueRow, RowKind } from './queueRows';
 import { MissingCard, ConflictCard } from './ReviewQueue';
 import { RefusedCard } from './RefusedCards';
+import { KindMissingCard } from './KindMissingCard';
+import { asksOfKinds } from './kindQuestions';
 import { GatedCard } from './WaitingToPublish';
 import { WithdrawnCard } from './WithdrawnPoints';
 
@@ -44,6 +46,10 @@ const KIND_NOTE: Record<RowKind, string> = {
     + 'keeps that.',
 };
 
+/** The note above a kind whose source stopped listing a place other sources still list (#1264). */
+const KIND_MISSING_NOTE = 'One of the sources that list this place stopped finding it, while the others still '
+  + 'list it. So the question is not whether the place still stands — it is whether it is still of that kind.';
+
 export function ReviewBench({ row, onDone }: {
   row: QueueRow | undefined;
   onDone: (message?: string, experienceId?: number) => void;
@@ -62,14 +68,19 @@ export function ReviewBench({ row, onDone }: {
     );
   }
 
+  // A kind whose source stopped listing a place others still list asks something
+  // narrower than the place's own card, and its note must not offer what it does not.
+  const note = row.kind === 'missing' && asksOfKinds(row.items) ? KIND_MISSING_NOTE : KIND_NOTE[row.kind];
+
   return (
     <Box sx={{ p: 3 }}>
       <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        {KIND_NOTE[row.kind]}
+        {note}
       </Typography>
       {row.kind === 'conflicts' && row.item && <ConflictCard item={row.item} onDone={onDone} />}
       {row.kind === 'refused' && row.items && <RefusedCard items={row.items} onDone={onDone} />}
-      {row.kind === 'missing' && row.item && <MissingCard item={row.item} onDone={onDone} />}
+      {row.kind === 'missing' && row.items && asksOfKinds(row.items) && <KindMissingCard items={row.items} onDone={onDone} />}
+      {row.kind === 'missing' && row.item && !asksOfKinds(row.items) && <MissingCard item={row.item} onDone={onDone} />}
       {row.kind === 'withdrawn' && row.item && <WithdrawnCard item={row.item} onDone={onDone} />}
       {row.kind === 'waiting' && row.sections && <GatedCard sections={row.sections} onDone={onDone} />}
       {/* A row whose payload is missing is a bug in the row builder rather than a state a

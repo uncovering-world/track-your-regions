@@ -40,7 +40,11 @@ export interface QueueRow {
   /** The gated sub-kinds a `waiting` row groups (ADR-0025); `[]` for every other kind. */
   subs: string[];
   item?: ReviewQueueItem;
-  /** A `refused` row's refusals, one per kind whose rule refused the place (#1264); `item` is the first. */
+  /**
+   * A `refused` row's refusals, one per kind whose rule refused the place, or a `missing`
+   * row's kinds whose source stopped listing a place another still lists (#1264); `item` is
+   * the first.
+   */
   items?: ReviewQueueItem[];
   /** A `waiting` row's questions, a section per kind that asks about the place (#1264). */
   sections?: GatedGroup[];
@@ -108,7 +112,7 @@ function itemRow(kind: Exclude<RowKind, 'waiting'>, entry: QueueOrderEntry, item
     specific: rowSpecific({ kind, item, items }),
     subs: entry.subs,
     item,
-    ...(kind === 'refused' ? { items } : {}),
+    ...(kind === 'refused' || kind === 'missing' ? { items } : {}),
   };
 }
 
