@@ -4,6 +4,7 @@
  * Handles sync operations for experience sources (UNESCO, etc.)
  */
 
+import { mergeArrivalsOfRun } from '../experience/equalItemMerges.js';
 import type { z } from 'zod/v4';
 import type {
   AssignmentCancelled,
@@ -137,9 +138,22 @@ export async function startSync(
   const syncFn = syncRegistry[sourceId];
   if (!syncFn) throw badRequest(`Sync not implemented for source: ${source.rows[0].name}`);
 
-  syncFn(triggeredBy, { dryRun, refreshCache }).catch((err) => {
-    console.error('[Sync Controller] Sync error for source %s:', sourceId, err);
-  });
+  syncFn(triggeredBy, { dryRun, refreshCache })
+    .catch((err) => {
+      console.error('[Sync Controller] Sync error for source %s:', sourceId, err);
+    })
+    // A place the run created that another source already holds as the same
+    // Wikidata item is that place (ADR-0046 decision 2, #1247), merged once
+    // the run is over — here rather than inside it, since the merge is a
+    // curation write the sync layer sits below. However the run ended: a run
+    // cancelled or failed half-way still wrote the places it created and
+    // recorded them, and a merge on one item is right whatever the run's
+    // status. The run's progress is still the source's entry: nothing else
+    // starts before this callback runs.
+    .then(async () => {
+      const run = runningSyncs.get(sourceId);
+      if (run && !run.dryRun && run.logId) await mergeArrivalsOfRun(run.logId);
+    });
 
   return {
     started: true,
