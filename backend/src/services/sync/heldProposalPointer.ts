@@ -29,9 +29,11 @@
  * log rather than passed in, since the content writers have an experience id
  * and no source id. A pending membership never carries a pointer — an
  * arrival is refreshed in place rather than held. A gated second membership of
- * a place another source made visible is held by the upsert (the hold asks
- * whether a reader can see the place) and gets no pointer and no card here;
- * that shape arrives with #755, whose design it is.
+ * a place another source made visible — a merged place (#1247) — is an arrival
+ * whose run is held by the upsert (the hold asks whether a reader can see the
+ * place) and gets no pointer and no card here: the question about that source
+ * is its arrival, and once that is published the next run proposes the field
+ * again, with a card.
  */
 
 import { MEMBERSHIPS, membershipVisibleSql } from '../../db/membership.js';

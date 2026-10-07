@@ -17,9 +17,8 @@
  *
  * The place-level forms ask "some membership of this place" with an `EXISTS`,
  * so a query written `FROM experiences e` reads exactly as it did when the
- * columns were the row's own; a place has one membership today (migration 046
- * refuses a database where it does not), so the answer is the same row for
- * row. The day a place has two (#755) the composition matters: a place with
+ * columns were the row's own. A merged place holds a membership per kind
+ * (#1247), and there the composition matters: a place with
  * one membership admitted and another passed is not offered by either alone,
  * which is why `placeOfferedSql` asks both of *one* membership and is what
  * every write that records a reader's claim composes
@@ -145,11 +144,10 @@ export function withTypeClaim(placeClaims: string[] | null | undefined, typeClai
  *
  * A curator's endpoints are keyed on the place — `/:id/publish`,
  * `/:id/decline-held`, `/:id/admission` — and the row they act on is the
- * membership. Exactly one per place until #755 makes a second, so this picks
- * the one there is; the order is what it means the day there are two: for a
- * publish or a decline, the one *waiting* — unread first, then one holding a
- * proposal; for an admission verdict, the *refused* one. Then the kind's
- * order, then the id, so the answer is total.
+ * membership, of which a merged place holds one per kind (#1247). Unnamed, the
+ * order says which: for a publish or a decline, the one *waiting* — unread
+ * first, then one holding a proposal; for an admission verdict, the *refused*
+ * one. Then the kind's order, then the id, so the answer is total.
  *
  * `namedExpr` is the membership the caller's card named (#1264), bound as an
  * `int` parameter or NULL: named, it is the answer when it belongs to the place

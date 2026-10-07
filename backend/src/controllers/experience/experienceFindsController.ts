@@ -54,9 +54,10 @@ import { findOfSiteSql, venuesShowingSql } from './siteFinds.js';
  * address whose card the list cannot open — while a lost dig's own card is
  * reached only by a reader who has already asked.
  *
- * A museum in two kinds is two rows today (#755) — the Naples museum holds the
- * Farnese Hercules as an art museum and as an archaeology museum — and a find
- * shown at one building must not name it twice: the venues are one per
+ * A museum in two kinds can be two rows until the catalogue merges them
+ * (#1247) — the Naples museum holds the Farnese Hercules as an art museum and
+ * as an archaeology museum — and a find shown at one building must not name it
+ * twice: the venues are one per
  * `external_id`, the row of the site's own kind preferred, since that is the
  * list a traveller collecting archaeology is reading.
  */
