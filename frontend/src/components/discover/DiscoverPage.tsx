@@ -53,6 +53,7 @@ export function DiscoverPage() {
     closeExperienceView,
     experiences,
     experiencesLoading,
+    placeRowOf,
     selectedExperienceId,
     setSelectedExperienceId,
     selectedExperienceLocations,
@@ -264,6 +265,7 @@ export function DiscoverPage() {
         <DiscoverExperienceView
           activeView={activeView}
           experiences={experiences}
+          placeRowOf={placeRowOf}
           isLoading={experiencesLoading}
           onBack={closeExperienceView}
           onSelectExperience={setSelectedExperienceId}
@@ -305,7 +307,7 @@ export function DiscoverPage() {
             key={selectedExperience.id}
             experience={selectedExperience}
             onClose={() => setSelectedExperienceId(null)}
-            onCurate={isCurator ? () => setDetailCurationTarget(selectedExperience) : undefined}
+            onCurate={isCurator ? () => setDetailCurationTarget(placeRowOf(selectedExperience)) : undefined}
           />
         )}
       </Box>

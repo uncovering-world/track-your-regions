@@ -17,6 +17,22 @@ const DORIA = {
 
 const names = (rows: Experience[]) => rows.map(row => `${row.name}:${row.kind_id}`);
 
+/**
+ * Dresden Elbe Valley, delisted by UNESCO in 2009, as it would read were a
+ * second kind also to list it (#1289): former as a World Heritage Site, current
+ * in the other kind.
+ */
+const DRESDEN = {
+  id: 1156, name: 'Dresden Elbe Valley', kind_id: 1, kind_name: 'World Heritage Sites', kind_priority: 1,
+  type: 'cultural', source_membership: 'present',
+  kinds: [
+    { kind_id: 1, kind_name: 'World Heritage Sites', kind_priority: 1, type: 'cultural', source_id: 1,
+      external_id: '1156', source_membership: 'former' },
+    { kind_id: 3, kind_name: 'Public Art & Monuments', kind_priority: 3, type: null, source_id: 3,
+      external_id: 'dresden-elbe-valley', source_membership: 'present' },
+  ],
+} as Experience;
+
 describe('a place in the group of every kind it is offered in', () => {
   it('lists the place under each of its kinds, as that kind shows it, and counts it in each', () => {
     const groups = groupByEveryKind([CAPITOLINE, DORIA]);
@@ -25,6 +41,15 @@ describe('a place in the group of every kind it is offered in', () => {
     expect(names(groups[0].experiences)).toEqual(['Capitoline Museums:2', 'Galleria Doria Pamphilj:2']);
     expect(groups[1].experiences).toEqual([expect.objectContaining({ id: 6214, kind_id: 5, type: 'museum' })]);
     expect(rowsByKindName([CAPITOLINE, DORIA])).toEqual(new Map([['Art Museums', 2], ['Archaeology', 1]]));
+  });
+
+  it('marks the place former under the kind whose source delisted it, and only there (#1289)', () => {
+    const groups = groupByEveryKind([DRESDEN]);
+
+    expect(groups.map(group => [group.kindName, group.experiences[0].source_membership])).toEqual([
+      ['World Heritage Sites', 'former'],
+      ['Public Art & Monuments', 'present'],
+    ]);
   });
 
   it('opens the card in the first kind, and keeps the other row folded', () => {

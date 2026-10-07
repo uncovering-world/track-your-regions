@@ -22,7 +22,7 @@
  */
 
 import type { Experience } from '../../api/experiences';
-import { shownInKind } from '../../utils/placeKinds';
+import { formerIn, shownInKind } from '../../utils/placeKinds';
 
 export interface KindGroup {
   kindName: string;
@@ -46,8 +46,11 @@ const shownRows = new WeakMap<Experience, Map<number, Experience>>();
 /** The place as one of its kinds shows it, the same object every time it is asked. */
 function rowIn(exp: Experience, kindId: number): Experience {
   const kind = exp.kinds?.find(entry => entry.kind_id === kindId);
+  // A kind former while the place is still listed elsewhere draws its own row,
+  // with the mark the place's own fields do not carry (#1289).
   const isOwn = kind !== undefined && kind.kind_id === exp.kind_id && kind.kind_name === exp.kind_name
-    && kind.kind_priority === exp.kind_priority && kind.type === exp.type;
+    && kind.kind_priority === exp.kind_priority && kind.type === exp.type
+    && (!formerIn(kind) || exp.source_membership === 'former');
   if (kind === undefined || isOwn) return exp;
   let rows = shownRows.get(exp);
   if (!rows) {

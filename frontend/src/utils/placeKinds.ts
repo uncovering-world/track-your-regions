@@ -15,6 +15,8 @@ interface PlaceKind {
   kind_name: string;
   kind_priority: number;
   type: string | null;
+  /** The kind's own listing (#1289); absent on a row cached from an answer older than the field. */
+  source_membership?: 'present' | 'former';
 }
 
 interface WithKinds {
@@ -40,8 +42,9 @@ export function kindToOpenIn(row: Pick<WithKinds, 'kind_id' | 'kinds'>): number 
 /**
  * The row as `kindId` shows it, or null where the place is not offered in that
  * kind. The row's own kind fields are replaced by that kind's, so everything
- * that reads them — the colour, the type chip, the group — reads the kind the
- * reader is looking at.
+ * that reads them — the colour, the type chip, the group, the **Former** mark —
+ * reads the kind the reader is looking at: a site UNESCO delisted is former under
+ * World Heritage Sites and current under a kind that still lists it (#1289).
  */
 export function shownInKind<T extends WithKinds>(row: T, kindId: number): T | null {
   // `?? []`: a row cached from an answer older than the field carries none.
@@ -53,7 +56,13 @@ export function shownInKind<T extends WithKinds>(row: T, kindId: number): T | nu
     kind_name: kind.kind_name,
     kind_priority: kind.kind_priority,
     type: kind.type,
+    ...(formerIn(kind) ? { source_membership: 'former' as const } : {}),
   };
+}
+
+/** Whether readers see the place as former in this kind: its source no longer lists it there. */
+export function formerIn(kind: Pick<PlaceKind, 'source_membership'>): boolean {
+  return kind.source_membership === 'former';
 }
 
 /**

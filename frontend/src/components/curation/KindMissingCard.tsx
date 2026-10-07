@@ -76,7 +76,7 @@ function KindSection({ item, onDone }: { item: ReviewQueueItem; onDone: OnDone }
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
         <Button variant="outlined" disabled={decide.isPending} onClick={() => decide.mutate('former')}>
           {item.kept_as_former
-            ? `Delisted — keep it under ${kind}, recorded as former`
+            ? `Delisted — keep it under ${kind}, marked former`
             : `No longer ${kind} — take it out of that list`}
         </Button>
         <Button variant="text" disabled={decide.isPending} onClick={() => decide.mutate('present')}>

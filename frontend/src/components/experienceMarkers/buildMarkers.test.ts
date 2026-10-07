@@ -303,8 +303,8 @@ describe('a place in several kinds', () => {
     const capitoline = makeExperience(6214, {
       kind_name: 'Art Museums',
       kinds: [
-        { kind_id: 2, kind_name: 'Art Museums', kind_priority: 2, type: null, source_id: 2, external_id: 'Q333906' },
-        { kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, type: 'museum', source_id: 5, external_id: 'Q333906' },
+        { kind_id: 2, kind_name: 'Art Museums', kind_priority: 2, type: null, source_id: 2, external_id: 'Q333906', source_membership: 'present' },
+        { kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, type: 'museum', source_id: 5, external_id: 'Q333906', source_membership: 'present' },
       ],
     });
 
@@ -318,8 +318,8 @@ describe('a place in several kinds', () => {
     const capitoline = makeExperience(6214, {
       kind_id: 2, kind_name: 'Art Museums', type: null,
       kinds: [
-        { kind_id: 2, kind_name: 'Art Museums', kind_priority: 2, type: null, source_id: 2, external_id: 'Q333906' },
-        { kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, type: 'museum', source_id: 5, external_id: 'Q333906' },
+        { kind_id: 2, kind_name: 'Art Museums', kind_priority: 2, type: null, source_id: 2, external_id: 'Q333906', source_membership: 'present' },
+        { kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, type: 'museum', source_id: 5, external_id: 'Q333906', source_membership: 'present' },
       ],
     });
     const art = experienceColor(2, null);
