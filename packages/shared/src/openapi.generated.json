@@ -21785,6 +21785,11 @@
               "existence",
               "flagged"
             ]
+          },
+          "membershipId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
           }
         },
         "required": [
@@ -26558,6 +26563,10 @@
             "items": {
               "type": "string"
             }
+          },
+          "kept_as_former": {
+            "description": "On a kind its source stopped listing (#1264): whether that kind keeps a delisted place, marked former, rather than letting it go. Absent on every other card.",
+            "type": "boolean"
           },
           "admission_note": {
             "description": "The run's own question about a row it could not settle by its rule (ADR-0058).",

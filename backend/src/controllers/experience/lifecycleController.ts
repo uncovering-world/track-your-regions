@@ -28,6 +28,7 @@ import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import { publishContents, placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { answerAdmissionOnMembership, setListingVerdict } from './membershipWriter.js';
+import { answerKindListingUnderLock } from './kindListingController.js';
 import {
   lockExperience, setLifecycleVerdict, recordDecisionOnExperience, type LockedExperience,
 } from '../../db/experienceWriter.js';
@@ -42,6 +43,8 @@ export interface StateAnswer {
   existence?: Existence;
   note?: string;
   expected: { membership: Membership; existence: Existence; flagged: boolean };
+  /** One kind whose source stopped listing the place (#1264); the place as a whole where absent. */
+  membershipId?: number;
 }
 
 /**
@@ -87,9 +90,11 @@ export async function setExperienceState(
   }
   const existing = expResult.rows[0];
 
-  const { permitted, logRegionId } = await resolveExperienceScope(
-    userId, userRole, experienceId, existing.source_id as number,
-  );
+  // A verdict on one kind is that kind's source's curators' to give (#1264).
+  const sourceId = body.membershipId === undefined
+    ? existing.source_id as number
+    : (await answeredSourceId(experienceId, body.membershipId)) ?? existing.source_id as number;
+  const { permitted, logRegionId } = await resolveExperienceScope(userId, userRole, experienceId, sourceId);
   if (!permitted) {
     throw createError('You do not have curator permissions for this experience', 403);
   }
@@ -112,11 +117,16 @@ export async function answerStateUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
-  { membership, existence, note, expected }: StateAnswer,
+  answer: StateAnswer,
 ): Promise<{
   result?: ExperienceStateResult;
   refusal?: AnswerRefusal;
 }> {
+  // One kind of a place other sources still list (#1264): a verdict of its own.
+  if (answer.membershipId !== undefined) {
+    return answerKindListingUnderLock(experienceId, userId, logRegionId, { ...answer, membershipId: answer.membershipId });
+  }
+  const { membership, existence, note, expected } = answer;
   // One client, not pool.query('BEGIN') — see the note in curationController:
   // pg.Pool hands out an arbitrary idle client per call, so a transaction has
   // to be pinned or its statements land on different connections.

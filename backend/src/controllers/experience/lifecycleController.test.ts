@@ -164,7 +164,9 @@ describe('setExperienceState', () => {
     const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'));
     expect(update?.sql).toContain('missing_since = NULL');
     expect(update?.sql).toContain('WHERE experience_id = $1');
-    expect(update?.params).toEqual([5, 'present']);
+    // A false alarm leaves a kind a curator already answered former alone (#1264).
+    expect(update?.params).toEqual([5, 'present', true]);
+    expect(update?.sql).toContain("NOT $3 OR source_membership = 'present'");
     expect(queries.find(q => q.sql.includes('UPDATE experiences'))?.sql).not.toContain('missing_since');
   });
 

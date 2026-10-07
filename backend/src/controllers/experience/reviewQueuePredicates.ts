@@ -17,7 +17,7 @@
  * the other (`db/readerPredicates.ts` sets the same rule).
  */
 
-import { MEMBERSHIPS, admissionAnsweredSql, membershipAdmittedSql } from '../../db/membership.js';
+import { MEMBERSHIPS, admissionAnsweredSql, membershipAdmittedSql, membershipOfferedSql } from '../../db/membership.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import {
   hidePendingSql,
@@ -44,6 +44,22 @@ export function missingOpenSql(e = 'e'): string {
     AND ${e}.source_membership = 'present'
     AND ${hideRefusedSql(e)}
     AND ${hidePendingSql(e)}`;
+}
+
+/**
+ * `missing` of one kind (#1264): a clean run of this membership's source
+ * stopped listing the place while another source still lists it, and nobody
+ * has answered. The place itself is not missing — its flag reads missing only
+ * once every membership is (`derive_place_listing()`), and that case is the
+ * place's own card above — so this asks whether the place is still of this
+ * kind. Only an offered membership: a pending one withdraws instead (ADR-0025
+ * § 3.6), and a refused one is already out of its kind.
+ */
+export function membershipMissingOpenSql(m = 'm', e = 'e'): string {
+  return `${m}.missing_since IS NOT NULL
+    AND ${m}.source_membership = 'present'
+    AND ${e}.missing_since IS NULL
+    AND ${membershipOfferedSql(m)}`;
 }
 
 /**

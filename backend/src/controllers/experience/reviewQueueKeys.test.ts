@@ -90,11 +90,12 @@ describe('queryQueueKeys', () => {
 
   it('carries the scope filter into every branch of the union', async () => {
     await queryQueueKeys(base);
-    // Seven: conflict, arrival, held, contents, withdrawn, refused, missing.
-    // The scope CTE's own join reads `r.parent_region_id = s.id`, so it is not
-    // counted here, and dropping the predicate from one branch fails this.
+    // Eight: conflict, arrival, held, contents, withdrawn, refused, and the
+    // two missing branches — the place's, and one kind's (#1264). The scope
+    // CTE's own join reads `r.parent_region_id = s.id`, so it is not counted
+    // here, and dropping the predicate from one branch fails this.
     expect(lastCall()[0].match(/JOIN curator_scoped_regions s ON s\.id = er\.region_id/g))
-      .toHaveLength(7);
+      .toHaveLength(8);
   });
 
   it('asks a waiting question of every membership of a place, in scope by its own source (#1264)', async () => {

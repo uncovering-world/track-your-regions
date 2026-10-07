@@ -150,12 +150,14 @@ export async function clearHeldPointer(
 
 /**
  * A curator's verdict on whether the place's sources still list it (ADR-0020),
- * on every membership of the place: the verdict is asked of the place, whose
+ * on the memberships of the place: the verdict is asked of the place, whose
  * own flag reads missing only once every source has stopped listing it
  * (`derive_place_listing()`), so it answers each of them. Clears
- * `missing_since` whatever the verdict, because a verdict answers the flag:
- * the flag is a question, and a curator has now said what it meant. A verdict
- * on one membership is #1245's, when the queue asks per membership.
+ * `missing_since`, because a verdict answers the flag: the flag is a question,
+ * and a curator has now said what it meant. A false alarm leaves alone a kind
+ * a curator already answered former (`setMembershipListingVerdict`, #1264):
+ * the place's sources hiccupped, but that kind's source had dropped it before,
+ * and the answer given then stands.
  */
 export async function setListingVerdict(
   client: PoolClient,
@@ -165,8 +167,32 @@ export async function setListingVerdict(
   await client.query(`
     UPDATE ${MEMBERSHIPS}
     SET source_membership = $2, missing_since = NULL, updated_at = NOW()
-    WHERE experience_id = $1
-  `, [lock.id, sourceMembership]);
+    WHERE experience_id = $1 AND (NOT $3 OR source_membership = 'present')
+  `, [lock.id, sourceMembership, sourceMembership === 'present']);
+}
+
+/**
+ * A curator's verdict on whether one kind's source still lists the place
+ * (#1264), on that membership alone: the place's other sources still list it,
+ * so the place's own flag never read missing. A false alarm clears the
+ * membership's `missing_since`; `former` keeps it, because the source still
+ * does not list the place: the place reads missing once every membership's
+ * flag is set (`derive_place_listing()`), so when the last source drops it too
+ * the place's own card — whether it still stands — is asked.
+ */
+export async function setMembershipListingVerdict(
+  client: PoolClient,
+  lock: LockedExperience,
+  membershipId: number,
+  sourceMembership: string,
+): Promise<void> {
+  await client.query(`
+    UPDATE ${MEMBERSHIPS}
+    SET source_membership = $2,
+        missing_since = CASE WHEN $4 THEN NULL ELSE missing_since END,
+        updated_at = NOW()
+    WHERE id = $1 AND experience_id = $3
+  `, [membershipId, sourceMembership, lock.id, sourceMembership === 'present']);
 }
 
 /**

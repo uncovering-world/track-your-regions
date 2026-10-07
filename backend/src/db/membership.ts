@@ -173,6 +173,22 @@ export function membershipToAnswerSql(
 }
 
 /**
+ * The kinds that keep a place their source stopped listing, marked former,
+ * rather than letting it go (#1264): a site UNESCO delisted is still a former
+ * World Heritage Site — Dresden's Elbe Valley, delisted in 2009, is worth
+ * knowing as one — while a place Wikidata no longer classes as archaeology is
+ * simply not archaeology any more. Read wherever a curator's "no longer this
+ * kind" is written or offered, so the card's button and the write agree.
+ * World Heritage Sites is kind 1, under the id of the source that fills it.
+ */
+export const KINDS_KEPT_AS_FORMER: readonly number[] = [1];
+
+/** Whether the membership `alias` is of a kind that keeps a delisted place as former. */
+export function keptAsFormerSql(alias = 'm'): string {
+  return `${alias}.kind_id = ANY('{${KINDS_KEPT_AS_FORMER.join(',')}}'::int[])`;
+}
+
+/**
  * A curator's pin on the admission axis: the answer a confirmation or an
  * override leaves behind, which every run's admission write honours.
  * `alias` is the membership alias.

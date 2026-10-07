@@ -5014,6 +5014,11 @@ export interface LifecycleStateBody {
   /** @maxLength 1000 */
   note?: string;
   expected: LifecycleStateBodyExpected;
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  membershipId?: number;
 }
 
 /**
@@ -7264,6 +7269,8 @@ export interface ReviewQueueItem {
   region_names?: string[] | null;
   /** On an arrival or a refusal: the kinds readers already see the place in, through another membership (#1264). Empty where the membership asked about is the whole place. */
   seen_in?: string[];
+  /** On a kind its source stopped listing (#1264): whether that kind keeps a delisted place, marked former, rather than letting it go. Absent on every other card. */
+  kept_as_former?: boolean;
   /**
      * The run's own question about a row it could not settle by its rule (ADR-0058).
      * @nullable
