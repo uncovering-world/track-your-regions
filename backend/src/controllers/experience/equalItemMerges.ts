@@ -56,7 +56,9 @@ export async function mergeEqualItems(only?: string[]): Promise<EqualItemMerges>
         outcome = { refusal: { status: 500, error: 'The merge failed and changed nothing; run the pass again' } };
       }
       if (outcome.refusal) {
-        report.refused.push({ qid: item.qid, placeIds: [survivorId, foldedId], error: outcome.refusal.error });
+        report.refused.push({
+          qid: item.qid, placeIds: [survivorId, foldedId], name: item.names[0], error: outcome.refusal.error,
+        });
       } else {
         report.merged.push({
           qid: item.qid, survivorId, foldedId, mergeId: outcome.result!.mergeId, name: item.names[0],
