@@ -41,14 +41,18 @@ describe('answer words', () => {
     expect(lostOffered([row('withdrawn')])).toBe(true);
     expect(lostOffered([row('missing'), row('withdrawn')])).toBe(false);
     expect(lostOffered([])).toBe(false);
+    // A kind whose source dropped a place others still list is not asked whether
+    // the place stands (#1264), so it cannot carry Lost.
+    expect(lostOffered([row('missing'), { ...row('missing'), items: [{ membership_id: 21 }] }])).toBe(false);
   });
 
-  it('withholds Lost from an all-matching selection unless the kind filter pins the list to that kind', () => {
+  it('withholds Lost from an all-matching selection unless the kind filter pins the list to withdrawn', () => {
     const missing = [row('missing'), row('missing')];
     expect(lostOfferedFor(missing, false, [])).toBe(true);
     // The ticks are all missing, but the filters match arrivals and conflicts too.
     expect(lostOfferedFor(missing, true, [])).toBe(false);
-    expect(lostOfferedFor(missing, true, ['missing'])).toBe(true);
+    // Pinned to missing, the walk would still reach a kind a source alone dropped (#1264).
+    expect(lostOfferedFor(missing, true, ['missing'])).toBe(false);
     expect(lostOfferedFor(missing, true, ['missing', 'withdrawn'])).toBe(false);
     expect(lostOfferedFor([row('withdrawn')], true, ['withdrawn'])).toBe(true);
   });

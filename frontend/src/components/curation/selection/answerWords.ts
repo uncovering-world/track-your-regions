@@ -19,7 +19,9 @@
  * different proposals under one row (ADR-0025).
  */
 
+import type { ReviewQueueItem } from '../../../api/reviewQueue';
 import type { RowKind } from '../queueRowTypes';
+import { asksOfKinds } from '../kindQuestions';
 
 /**
  * What this module reads off a row: its kind and, for `waiting`, the
@@ -29,6 +31,8 @@ import type { RowKind } from '../queueRowTypes';
 export interface AnswerableRow {
   kind: RowKind;
   subs: string[];
+  /** A `missing` row's items, which say whether it asks of a kind (#1264). */
+  items?: readonly Pick<ReviewQueueItem, 'membership_id'>[];
 }
 
 export type AnswerableKind =
@@ -73,8 +77,8 @@ export const ANSWER_WORDS: Record<AnswerableKind, AnswerWords> = {
     reject: 'The rule was wrong — put it back until the next run',
   },
   missing: {
-    proposes: 'delist this object',
-    accept: 'Former — delisted, still there',
+    proposes: 'delist this object, or take it out of the kind whose source dropped it',
+    accept: 'Former — delisted, or no longer of the kind whose source dropped it',
     reject: 'False alarm — it stays',
     lost: 'Lost — no longer exists',
   },
@@ -126,7 +130,9 @@ export function countByKind(rows: AnswerableRow[]): Array<{ kind: AnswerableKind
  */
 export function lostOffered(rows: AnswerableRow[]): boolean {
   if (rows.length === 0) return false;
-  return rows.every(r => r.kind === 'missing') || rows.every(r => r.kind === 'withdrawn');
+  // A kind whose source dropped a place others still list is not asked whether
+  // the place stands (#1264), so a selection holding one cannot carry *Lost*.
+  return rows.every(r => r.kind === 'missing' && !asksOfKinds(r.items)) || rows.every(r => r.kind === 'withdrawn');
 }
 
 /**
@@ -142,7 +148,9 @@ export function lostOfferedFor(
 ): boolean {
   if (!lostOffered(rows)) return false;
   if (!allMatching) return true;
-  return kinds.length === 1 && (kinds[0] === 'missing' || kinds[0] === 'withdrawn');
+  // Not for `missing`: the walk would reach rows asking of a kind a source alone
+  // dropped (#1264), which the ticks do not show and which do not take *Lost*.
+  return kinds.length === 1 && kinds[0] === 'withdrawn';
 }
 
 /**

@@ -150,8 +150,13 @@ export function rowSpecific(row: {
   kind: RowKind; item?: ReviewQueueItem; items?: readonly ReviewQueueItem[]; sections?: readonly GatedGroup[];
 }): string {
   switch (row.kind) {
-    case 'missing':
-      return '';
+    case 'missing': {
+      // Where readers still see a place one kind's source stopped listing (#1264) —
+      // the row's kind chip already names the kind that lost it; nothing after the
+      // word where the place itself is gone.
+      const seen = (row.items ?? []).find(item => item.membership_id != null)?.seen_in ?? [];
+      return seen.length > 0 ? `still under ${seen.join(', ')}` : '';
+    }
     case 'refused':
       // Each kind's reason, named, where two kinds' rules refused the place (#1264).
       if (row.items && row.items.length > 1) {
