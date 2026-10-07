@@ -13,11 +13,10 @@
  *   cards it offers — a place, or a serial site counted once in every region
  *   that holds one of its locations — and Cologne Cathedral is in it once.
  *
- * The two are equal today, since every place has one membership (migration
- * 046 refuses a database where it does not), and they part company with the
- * first merge (#755): the Statue of Liberty as one place with a World Heritage
- * membership and a public-art one counts once in each kind and once in New
- * York. Spelled here rather than at each count so that day changes no reader;
+ * The two are equal for a place with one membership and part company on a
+ * merged one (#1247): the Pantheon as one place with a place-of-worship
+ * membership and an archaeology one counts once in each kind and once in
+ * Rome. Spelled here rather than at each count so that day changes no reader;
  * the counts are pinned as text in `experienceCounts.test.ts`, and the
  * semantics were checked live by adding a second membership to a place inside
  * a transaction and rolling it back.
