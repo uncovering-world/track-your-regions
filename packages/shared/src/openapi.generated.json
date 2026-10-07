@@ -5142,6 +5142,45 @@
         }
       }
     },
+    "/api/admin/places/merge-equal-items": {
+      "post": {
+        "operationId": "postAdminPlacesMergeEqualItems",
+        "summary": "Merge every place that shares a Wikidata item with another into one place",
+        "tags": [
+          "admin"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EqualItemMerges"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/data-assertions": {
       "get": {
         "operationId": "getAdminDataAssertions",
@@ -12655,6 +12694,56 @@
         }
       }
     },
+    "/api/experiences/merges/{mergeId}/undo": {
+      "post": {
+        "operationId": "postExperiencesMergesByMergeIdUndo",
+        "summary": "Undo a merge of two places: what it moved goes back, and the folded place is a place again",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "mergeId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeUndone"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/sources/{sourceId}/publish-waiting": {
       "post": {
         "operationId": "postExperiencesSourcesBySourceIdPublishWaiting",
@@ -16830,7 +16919,9 @@
               "work_edited",
               "arrival_refused",
               "contents_refused",
-              "contents_unrefused"
+              "contents_unrefused",
+              "merged",
+              "merge_undone"
             ]
           },
           "region_id": {
@@ -16879,7 +16970,7 @@
             ]
           },
           "curator_name": {
-            "description": "The curator as they chose to be named, null where they chose nothing.",
+            "description": "The curator as they chose to be named, null where they chose nothing — or where no curator acted: the catalogue's own merge of two places sharing a Wikidata item (ADR-0086).",
             "type": [
               "string",
               "null"
@@ -16968,7 +17059,9 @@
               "work_edited",
               "arrival_refused",
               "contents_refused",
-              "contents_unrefused"
+              "contents_unrefused",
+              "merged",
+              "merge_undone"
             ]
           },
           "created_at": {
@@ -18463,6 +18556,86 @@
             "type": "string"
           }
         }
+      },
+      "EqualItemMerges": {
+        "type": "object",
+        "properties": {
+          "merged": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "qid": {
+                  "type": "string",
+                  "description": "The Wikidata item the places share."
+                },
+                "survivorId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "foldedId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "mergeId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "name": {
+                  "type": "string",
+                  "description": "The place that stayed."
+                }
+              },
+              "required": [
+                "qid",
+                "survivorId",
+                "foldedId",
+                "mergeId",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "refused": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "qid": {
+                  "type": "string"
+                },
+                "placeIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "error": {
+                  "type": "string",
+                  "description": "Why these places were not made one, such as both belonging to the same kind."
+                }
+              },
+              "required": [
+                "qid",
+                "placeIds",
+                "error"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Items whose places were left apart, each with its reason."
+          }
+        },
+        "required": [
+          "merged",
+          "refused"
+        ],
+        "additionalProperties": false,
+        "description": "Places that share a Wikidata item, merged into one place each (ADR-0046 decision 2)."
       },
       "Error": {
         "type": "object",
@@ -23086,6 +23259,35 @@
           "verified"
         ],
         "description": "Where the object stands at the curation gate of its kind. `pending` is shown to nobody but a curator. `auto` and `verified` are shown to readers, `verified` because a person passed it."
+      },
+      "MergeUndone": {
+        "type": "object",
+        "properties": {
+          "mergeId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "survivorId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The place that stayed, which keeps what was written to it after the merge."
+          },
+          "foldedId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The place that is a place of its own again."
+          }
+        },
+        "required": [
+          "mergeId",
+          "survivorId",
+          "foldedId"
+        ],
+        "additionalProperties": false,
+        "description": "A merge of two places undone (ADR-0086): what it moved is back where it came from."
       },
       "ModelSet": {
         "type": "object",

@@ -2442,6 +2442,8 @@ export const CurationLogEntryAction = {
   arrival_refused: 'arrival_refused',
   contents_refused: 'contents_refused',
   contents_unrefused: 'contents_unrefused',
+  merged: 'merged',
+  merge_undone: 'merge_undone',
 } as const;
 
 /**
@@ -2466,7 +2468,7 @@ export interface CurationLogEntry {
   details: CurationLogEntryDetails;
   created_at: string | null;
   /**
-     * The curator as they chose to be named, null where they chose nothing.
+     * The curator as they chose to be named, null where they chose nothing — or where no curator acted: the catalogue's own merge of two places sharing a Wikidata item (ADR-0086).
      * @nullable
      */
   curator_name: string | null;
@@ -2506,6 +2508,8 @@ export const CuratorActivityEntryAction = {
   arrival_refused: 'arrival_refused',
   contents_refused: 'contents_refused',
   contents_unrefused: 'contents_unrefused',
+  merged: 'merged',
+  merge_undone: 'merge_undone',
 } as const;
 
 /**
@@ -3262,6 +3266,48 @@ export interface EditWorkBody {
   artists?: string[];
   year?: number | null;
   imageUrl?: string;
+}
+
+export type EqualItemMergesMergedItem = {
+  /** The Wikidata item the places share. */
+  qid: string;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  survivorId: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  foldedId: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  mergeId: number;
+  /** The place that stayed. */
+  name: string;
+};
+
+export type EqualItemMergesRefusedItem = {
+  qid: string;
+  /**
+     * @items.minimum -9007199254740991
+     * @items.maximum 9007199254740991
+     */
+  placeIds: number[];
+  /** Why these places were not made one, such as both belonging to the same kind. */
+  error: string;
+};
+
+/**
+ * Places that share a Wikidata item, merged into one place each (ADR-0046 decision 2).
+ */
+export interface EqualItemMerges {
+  merged: EqualItemMergesMergedItem[];
+  /** Items whose places were left apart, each with its reason. */
+  refused: EqualItemMergesRefusedItem[];
 }
 
 export interface Error {
@@ -5626,6 +5672,29 @@ export interface MembersCleared {
      * @maximum 9007199254740991
      */
   cleared: number;
+}
+
+/**
+ * A merge of two places undone (ADR-0086): what it moved is back where it came from.
+ */
+export interface MergeUndone {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  mergeId: number;
+  /**
+     * The place that stayed, which keeps what was written to it after the merge.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  survivorId: number;
+  /**
+     * The place that is a place of its own again.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  foldedId: number;
 }
 
 /**
@@ -13129,6 +13198,31 @@ export const getAdminExperiencesCountsByRegion = async (params: GetAdminExperien
 
 
 
+export const getPostAdminPlacesMergeEqualItemsUrl = () => {
+
+
+
+
+  return `/api/admin/places/merge-equal-items`
+}
+
+/**
+ * Requires an admin.
+ * @summary Merge every place that shares a Wikidata item with another into one place
+ */
+export const postAdminPlacesMergeEqualItems = async ( options?: Parameters<typeof apiFetch>[1]): Promise<EqualItemMerges> => {
+
+  return apiFetch<EqualItemMerges>(getPostAdminPlacesMergeEqualItemsUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
 export const getGetAdminDataAssertionsUrl = () => {
 
 
@@ -17758,6 +17852,31 @@ return apiFetch<UnrefuseContentsResult>(getPostExperiencesByIdUnrefuseContentsUr
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(refuseContentsBody)
+  }
+);}
+
+
+
+export const getPostExperiencesMergesByMergeIdUndoUrl = (mergeId: number,) => {
+
+
+
+
+  return `/api/experiences/merges/${encodeURIComponent(String(mergeId))}/undo`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Undo a merge of two places: what it moved goes back, and the folded place is a place again
+ */
+export const postExperiencesMergesByMergeIdUndo = async (mergeId: number, options?: Parameters<typeof apiFetch>[1]): Promise<MergeUndone> => {
+
+  return apiFetch<MergeUndone>(getPostExperiencesMergesByMergeIdUndoUrl(mergeId),
+  {
+    ...options,
+    method: 'POST'
+
+
   }
 );}
 

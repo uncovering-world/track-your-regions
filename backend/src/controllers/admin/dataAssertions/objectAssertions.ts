@@ -412,6 +412,8 @@ const placeWithoutMembership: CatalogueAssertion = {
          WHERE NOT EXISTS (
            SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id
          )
+           -- A place folded into another by a merge keeps none, by design (ADR-0086).
+           AND e.merged_into_id IS NULL
          ORDER BY e.name`,
   describe: row =>
     `${text(row, 'experience_name')}: keyed on ${text(row, 'source_name')} and a member of no `

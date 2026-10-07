@@ -349,3 +349,104 @@ export async function renamePoint(
     [locationId, name, lock.id],
   );
 }
+
+/** A point folded into one of the survivor's on a merge, and the placements that moved with it. */
+export interface FoldedPoints {
+  points: { point: number; target: number }[];
+  /** Placements the survivor's points gained, which the undo takes away again. */
+  added: { location: number; membership: number }[];
+  /** The folded points' own placements, which the undo puts back. */
+  removed: { location: number; membership: number }[];
+}
+
+/**
+ * Fold the folded place's points into the survivor's where they are one point
+ * (ADR-0086 decision 3): the same `external_ref`, which both sources read off
+ * one Wikidata item. The folded point's placements move onto the survivor's
+ * point, and the folded point is marked `merged_into_id` and kept, hidden by
+ * `offeredLocationSql` like a point the source withdrew.
+ */
+export async function foldPoints(
+  client: PoolClient,
+  folded: LockedExperience,
+  survivor: LockedExperience,
+): Promise<FoldedPoints> {
+  const pairs = await client.query<{ point: number; target: number }>(
+    `SELECT DISTINCT ON (f.id) f.id AS point, s.id AS target
+       FROM experience_locations f
+       JOIN experience_locations s
+         ON s.experience_id = $2 AND s.external_ref = f.external_ref AND s.merged_into_id IS NULL
+      WHERE f.experience_id = $1 AND f.merged_into_id IS NULL AND f.external_ref IS NOT NULL
+      ORDER BY f.id, s.id`,
+    [folded.id, survivor.id],
+  );
+  const points = pairs.rows;
+  if (points.length === 0) return { points, added: [], removed: [] };
+  const from = points.map(pair => pair.point);
+  const into = points.map(pair => pair.target);
+  const added = await client.query<{ location: number; membership: number }>(
+    `INSERT INTO experience_location_placements (location_id, membership_id)
+     SELECT pair.target, p.membership_id
+       FROM unnest($1::int[], $2::int[]) AS pair(point, target)
+       JOIN experience_location_placements p ON p.location_id = pair.point
+     ON CONFLICT DO NOTHING
+     RETURNING location_id AS location, membership_id AS membership`,
+    [from, into],
+  );
+  const removed = await client.query<{ location: number; membership: number }>(
+    `DELETE FROM experience_location_placements WHERE location_id = ANY($1::int[])
+     RETURNING location_id AS location, membership_id AS membership`,
+    [from],
+  );
+  await client.query(
+    `UPDATE experience_locations el SET merged_into_id = pair.target
+       FROM unnest($1::int[], $2::int[]) AS pair(point, target)
+      WHERE el.id = pair.point AND el.experience_id = $3`,
+    [from, into, folded.id],
+  );
+  return { points, added: added.rows, removed: removed.rows };
+}
+
+/** Undo `foldPoints`: the folded points come back with their own placements. */
+export async function unfoldPoints(
+  client: PoolClient,
+  folded: LockedExperience,
+  record: FoldedPoints,
+): Promise<void> {
+  if (record.points.length === 0) return;
+  await client.query(
+    `DELETE FROM experience_location_placements p
+      USING unnest($1::int[], $2::int[]) AS gained(location, membership)
+      WHERE p.location_id = gained.location AND p.membership_id = gained.membership`,
+    [record.added.map(row => row.location), record.added.map(row => row.membership)],
+  );
+  await client.query(
+    `INSERT INTO experience_location_placements (location_id, membership_id)
+     SELECT * FROM unnest($1::int[], $2::int[]) ON CONFLICT DO NOTHING`,
+    [record.removed.map(row => row.location), record.removed.map(row => row.membership)],
+  );
+  await client.query(
+    'UPDATE experience_locations SET merged_into_id = NULL WHERE id = ANY($1::int[]) AND experience_id = $2',
+    [record.points.map(pair => pair.point), folded.id],
+  );
+}
+
+/**
+ * Move points from one place to another (ADR-0086): every point of the folded
+ * place not folded into one of the survivor's on a merge, or the ones a merge
+ * moved, named, on its undo.
+ */
+export async function movePoints(
+  client: PoolClient,
+  from: LockedExperience,
+  to: LockedExperience,
+  only?: number[],
+): Promise<number[]> {
+  const result = await client.query<{ id: number }>(
+    `UPDATE experience_locations SET experience_id = $2
+      WHERE experience_id = $1 AND merged_into_id IS NULL AND ($3::int[] IS NULL OR id = ANY($3::int[]))
+      RETURNING id`,
+    [from.id, to.id, only ?? null],
+  );
+  return result.rows.map(row => row.id);
+}

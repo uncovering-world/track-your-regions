@@ -690,7 +690,8 @@ export async function getCurationLog(
       cl.created_at,
       u.display_name as curator_name
     FROM experience_curation_log cl
-    JOIN users u ON cl.curator_id = u.id
+    -- LEFT: the catalogue's own merge names no curator (ADR-0086).
+    LEFT JOIN users u ON cl.curator_id = u.id
     LEFT JOIN regions r ON cl.region_id = r.id
     WHERE cl.experience_id = $2
       AND ($3::boolean OR cl.region_id IS NULL OR cl.region_id IN (SELECT id FROM curator_scoped_regions))

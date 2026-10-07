@@ -152,9 +152,12 @@ export function hideRefusedSql(alias = 'e'): string {
  * that would let a curator's reading of a list remove a place that is still there.
  * What keeps a `former` point off the map is its `missing_since`, which the verdict
  * leaves standing.
+ *
+ * A point folded into another place's point by a merge (`merged_into_id`, ADR-0086)
+ * is that point now, and is offered once, as it.
  */
 export function offeredLocationSql(alias = 'el'): string {
-  return `${alias}.missing_since IS NULL AND ${alias}.existence <> 'lost'`;
+  return `${alias}.missing_since IS NULL AND ${alias}.existence <> 'lost' AND ${alias}.merged_into_id IS NULL`;
 }
 
 /**

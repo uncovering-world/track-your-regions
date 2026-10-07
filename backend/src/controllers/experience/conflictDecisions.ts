@@ -71,3 +71,24 @@ export async function releaseConflictRefusals(
     [lock.id, fields],
   );
 }
+
+/**
+ * Move a place's refusals of a source's value to another place on a merge, or
+ * the ones a merge moved back on its undo (ADR-0086 decision 4). Where the
+ * survivor already holds one for the field, the survivor's stands.
+ */
+export async function moveConflictDecisions(
+  client: PoolClient,
+  from: LockedExperience,
+  to: LockedExperience,
+  only?: number[],
+): Promise<number[]> {
+  const result = await client.query<{ id: number }>(
+    `UPDATE experience_conflict_decisions f SET experience_id = $2
+      WHERE f.experience_id = $1 AND ($3::int[] IS NULL OR f.id = ANY($3::int[]))
+        AND NOT EXISTS (SELECT 1 FROM experience_conflict_decisions s WHERE s.experience_id = $2 AND s.field = f.field)
+      RETURNING f.id`,
+    [from.id, to.id, only ?? null],
+  );
+  return result.rows.map(row => row.id);
+}

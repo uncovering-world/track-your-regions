@@ -44,6 +44,7 @@
  */
 
 import type { PoolClient } from 'pg';
+import type { LockedExperience } from '../../db/experienceWriter.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import type { ContentKind } from '../../services/sync/types.js';
 import { tidyLabel } from '@tyr/shared/labels';
@@ -313,4 +314,30 @@ export async function recordHeldAnswers(
         JSON.stringify(tidyNameValue(row.field, value ?? null)), userId],
     );
   }
+}
+
+/**
+ * Move a place's answers to held fields to another place on a merge, or the
+ * ones a merge moved back on its undo (ADR-0086 decision 4): an answer goes
+ * with the proposals it answers. Where the survivor already holds an answer to
+ * the same field, the survivor's stands and the folded one stays where it is.
+ */
+export async function moveHeldDecisions(
+  client: PoolClient,
+  from: LockedExperience,
+  to: LockedExperience,
+  only?: number[],
+): Promise<number[]> {
+  const result = await client.query<{ id: number }>(
+    `UPDATE experience_held_decisions f SET experience_id = $2
+      WHERE f.experience_id = $1 AND ($3::int[] IS NULL OR f.id = ANY($3::int[]))
+        AND NOT EXISTS (
+          SELECT 1 FROM experience_held_decisions s
+           WHERE s.experience_id = $2 AND s.field = f.field
+             AND s.part_kind IS NOT DISTINCT FROM f.part_kind AND s.part_ref IS NOT DISTINCT FROM f.part_ref
+             AND s.part_name IS NOT DISTINCT FROM f.part_name)
+      RETURNING f.id`,
+    [from.id, to.id, only ?? null],
+  );
+  return result.rows.map(row => row.id);
 }

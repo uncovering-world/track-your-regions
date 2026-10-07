@@ -356,6 +356,11 @@ export const sourceIdParamSchema = z.object({
   sourceId: rowIdSchema,
 });
 
+/** `/api/experiences/merges/:mergeId…` — a merge of two places (ADR-0086). */
+export const mergeIdParamSchema = z.object({
+  mergeId: rowIdSchema,
+});
+
 export const logIdParamSchema = z.object({
   logId: rowIdSchema,
 });

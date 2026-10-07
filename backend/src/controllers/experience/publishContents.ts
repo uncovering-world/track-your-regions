@@ -151,22 +151,20 @@ export async function pointMovedWithObject(client: PoolClient, lock: LockedExper
  */
 export async function placeAfterRelease(
   experienceId: number,
-  // What sent it here, in the log's own words. Seven callers now, and the default
-  // line is true of the first two: a publication that released a deferred
-  // withdrawal, and an admission that published an arrival's contents and released
-  // one — which is why `placeAfterAdmissionRelease` deliberately passes no trigger,
-  // having done both. The other five send their own: a curator's verdict on a
-  // point, a curator's correction to one, accepting the source's coordinate,
-  // which puts a corrected pin back where the source has it, turning down
-  // any point, which stops it counting toward a region and withdraws any pin it
-  // was holding (ADR-0053), and asking again about a point that was turned down,
-  // which is that one read backwards — the mark comes off and the point counts
-  // toward its regions again (#859). Nothing is published on any of those five,
-  // so the hardcoded line
-  // would be false in every clause — and a log line naming the wrong cause is worse
-  // than a vague one, because it sends whoever reads it to the wrong code. A count
-  // is written here rather than "several" because it has to be re-read when a caller
-  // joins, which is the only thing that keeps the list beside it true.
+  // What sent it here, in the log's own words. The default line is true of a
+  // publication that released a deferred withdrawal, and of an admission that
+  // published an arrival's contents and released one — which is why
+  // `placeAfterAdmissionRelease` deliberately passes no trigger, having done both.
+  // Every other caller sends its own: a curator's verdict on a point, a curator's
+  // correction to one, accepting the source's coordinate, which puts a corrected
+  // pin back where the source has it, turning down any point, which stops it
+  // counting toward a region and withdraws any pin it was holding (ADR-0053),
+  // asking again about a point that was turned down, which is that one read
+  // backwards (#859), and a merge of two places or its undo, which moves points
+  // between them (ADR-0086). Nothing is published on any of those, so the
+  // hardcoded line would be false in every clause — and a log line naming the
+  // wrong cause is worse than a vague one, because it sends whoever reads it to
+  // the wrong code.
   trigger = 'Publishing experience %d released a withdrawal',
 ): Promise<Array<{ worldViewId: number | null; worldViewName: string | null }>> {
   const failed: number[] = [];
