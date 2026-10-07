@@ -20,7 +20,7 @@
 import type { PoolClient } from 'pg';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockTwoExperiences, markFolded, type LockedExperience } from '../../db/experienceWriter.js';
-import { MEMBERSHIPS } from '../../db/membership.js';
+import { KINDS, MEMBERSHIPS } from '../../db/membership.js';
 import { moveChangesOfPlace } from '../../services/sync/changeRecorder.js';
 import { moveConflictDecisions } from './conflictDecisions.js';
 import { foldPoints, movePoints, unfoldPoints, type FoldedPoints } from './experienceLocationWriter.js';
@@ -117,7 +117,9 @@ export async function mergePlaces(
       [survivorId, foldedId, mergedBy, reason, JSON.stringify(record)],
     );
     mergeId = inserted.rows[0].id;
-    await logOnBoth(client, 'merged', { survivorId, foldedId, mergeId, userId: mergedBy, reason, detail });
+    await logOnBoth(client, 'merged', {
+      survivorId, foldedId, mergeId, userId: mergedBy, reason, detail, memberships: record.memberships,
+    });
     await client.query('COMMIT');
   } catch (error) {
     unusable = await rollbackQuietly(client);
@@ -250,12 +252,24 @@ function joinedNotesSql(survivor: string, folded: string): string {
 async function logOnBoth(
   client: PoolClient,
   action: 'merged' | 'merge_undone',
-  { survivorId, foldedId, mergeId, userId, regionId = null, reason, detail }: {
+  { survivorId, foldedId, mergeId, userId, regionId = null, reason, detail, memberships }: {
     survivorId: number; foldedId: number; mergeId: number; userId: number | null; regionId?: number | null;
-    reason?: MergeReason; detail?: Record<string, unknown>;
+    reason?: MergeReason; detail?: Record<string, unknown>; memberships: number[];
   },
 ): Promise<void> {
-  const details = { mergeId, survivorId, foldedId, ...(reason ? { reason } : {}), ...(detail ?? {}) };
+  // The two places by name and the kinds that moved, as they stood at the act:
+  // what a curator reads in the history is the place, not its id.
+  const named = await client.query<{ survivor_name: string; folded_name: string; kinds: string[] }>(
+    `SELECT (SELECT name FROM experiences WHERE id = $1) AS survivor_name,
+            (SELECT name FROM experiences WHERE id = $2) AS folded_name,
+            array(SELECT k.name FROM ${MEMBERSHIPS} m JOIN ${KINDS} k ON k.id = m.kind_id
+                   WHERE m.id = ANY($3::int[]) ORDER BY k.display_priority, k.id) AS kinds`,
+    [survivorId, foldedId, memberships],
+  );
+  const { survivor_name: survivorName, folded_name: foldedName, kinds } = named.rows[0];
+  const details = {
+    mergeId, survivorId, foldedId, survivorName, foldedName, kinds, ...(reason ? { reason } : {}), ...(detail ?? {}),
+  };
   await client.query(
     `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
      VALUES ($1, $3, $4, $6, $5), ($2, $3, $4, $6, $5)`,
@@ -325,6 +339,7 @@ export async function undoMerge(
     );
     await logOnBoth(client, 'merge_undone', {
       survivorId: merge.survivor_id, foldedId: merge.folded_id, mergeId, userId, regionId: logRegionId,
+      memberships: merge.moved.memberships,
     });
     await client.query('COMMIT');
   } catch (error) {

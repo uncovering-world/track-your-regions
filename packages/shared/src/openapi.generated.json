@@ -18615,6 +18615,10 @@
                     "maximum": 9007199254740991
                   }
                 },
+                "name": {
+                  "type": "string",
+                  "description": "The place that would have stayed."
+                },
                 "error": {
                   "type": "string",
                   "description": "Why these places were not made one, such as both belonging to the same kind."
@@ -18623,6 +18627,7 @@
               "required": [
                 "qid",
                 "placeIds",
+                "name",
                 "error"
               ],
               "additionalProperties": false

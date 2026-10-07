@@ -454,6 +454,7 @@ export const EqualItemMerges = z.strictObject({
   refused: z.array(z.strictObject({
     qid: z.string(),
     placeIds: z.array(z.number().int()),
+    name: z.string().describe('The place that would have stayed.'),
     error: z.string().describe('Why these places were not made one, such as both belonging to the same kind.'),
   })).describe('Items whose places were left apart, each with its reason.'),
 }).describe('Places that share a Wikidata item, merged into one place each (ADR-0046 decision 2).');

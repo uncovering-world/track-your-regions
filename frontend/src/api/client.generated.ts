@@ -3297,6 +3297,8 @@ export type EqualItemMergesRefusedItem = {
      * @items.maximum 9007199254740991
      */
   placeIds: number[];
+  /** The place that would have stayed. */
+  name: string;
   /** Why these places were not made one, such as both belonging to the same kind. */
   error: string;
 };
