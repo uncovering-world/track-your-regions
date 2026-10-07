@@ -14,11 +14,12 @@ import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, useLocation, useNavigationType } from 'react-router';
 import type { Experience } from '../api/experiences';
+import { ApiError } from '../api/fetchUtils';
 
-const { mockFetchByRegion } = vi.hoisted(() => ({ mockFetchByRegion: vi.fn() }));
+const { mockFetchByRegion, mockFetchOne } = vi.hoisted(() => ({ mockFetchByRegion: vi.fn(), mockFetchOne: vi.fn() }));
 vi.mock('../api/experiences', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../api/experiences')>();
-  return { ...actual, fetchExperiencesByRegion: mockFetchByRegion };
+  return { ...actual, fetchExperiencesByRegion: mockFetchByRegion, fetchExperience: mockFetchOne };
 });
 
 import { ExperienceProvider, useExperienceContext } from './useExperienceContext';
@@ -48,6 +49,8 @@ describe('the open card is in the address', () => {
   beforeEach(() => {
     mockFetchByRegion.mockReset();
     mockFetchByRegion.mockResolvedValue({ experiences: [STONEHENGE], total: 1, lostHidden: 0 });
+    mockFetchOne.mockReset();
+    mockFetchOne.mockRejectedValue(new ApiError('Experience not found', 404, 'Experience not found', undefined));
   });
 
   it('reads the open card from the address', () => {
@@ -99,6 +102,33 @@ describe('the open card is in the address', () => {
     await waitFor(() => expect(result.current.at).toBe('/wv/5/r/6737-europe'));
     expect(result.current.type).toBe('REPLACE');
     expect(result.current.ctx.selectedExperienceId).toBeNull();
+  });
+
+  it('moves the address of a place a merge folded to the surviving place\'s card, in place', async () => {
+    // #1247: the by-id read follows the merge and answers with the survivor.
+    mockFetchOne.mockResolvedValue({ id: 1234, name: 'Stonehenge' });
+    const { result } = renderHook(useUnderTest, { wrapper: wrapperAt('/wv/5/r/6737-europe/e/4321-stonehenge-avebury') });
+
+    await waitFor(() => expect(result.current.at).toBe('/wv/5/r/6737-europe/e/1234-stonehenge'));
+    expect(result.current.type).toBe('REPLACE');
+    expect(result.current.ctx.selectedExperienceId).toBe(1234);
+    expect(mockFetchOne).toHaveBeenCalledWith(4321);
+  });
+
+  it('asks nothing about a card the list holds', async () => {
+    const { result } = renderHook(useUnderTest, { wrapper: wrapperAt('/wv/5/r/6737-europe/e/1234') });
+
+    await waitFor(() => expect(result.current.at).toBe('/wv/5/r/6737-europe/e/1234-stonehenge'));
+    expect(mockFetchOne).not.toHaveBeenCalled();
+  });
+
+  it('keeps a missing card while the read of it fails, rather than spending the link on a hiccup', async () => {
+    mockFetchOne.mockRejectedValue(new ApiError('HTTP 500', 500, undefined, undefined));
+    const { result } = renderHook(useUnderTest, { wrapper: wrapperAt('/wv/5/r/6737-europe/e/4321') });
+
+    await waitFor(() => expect(mockFetchOne).toHaveBeenCalled());
+    await new Promise(resolve => setTimeout(resolve, 60));
+    expect(result.current.at).toBe('/wv/5/r/6737-europe/e/4321');
   });
 
   it('keeps the card when the list fails, rather than spending the link on a hiccup', async () => {

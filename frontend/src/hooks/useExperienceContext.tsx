@@ -22,6 +22,7 @@ import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
 import { fetchExperiencesByRegion, type Experience, type ImageCredit } from '../api/experiences';
 import { useAppAddress } from './useAppAddress';
 import { useCollapsedExperiences } from './useCollapsedExperiences';
+import { useFoldedCard } from './useFoldedCard';
 import { HoverProvider } from './useHoverContext';
 import type { ViewBounds } from '../utils/viewBounds';
 import { queryKeys } from '../api/queryKeys';
@@ -175,11 +176,20 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   // such card" would let one 500 rewrite a link somebody shared — and not give
   // it back when the API recovered, since the card would be gone from the
   // address the retry reads.
+  //
+  // Except a card a merge folded into another place (#1247): its address opens
+  // the surviving place's card, which the list holds where it held the folded
+  // one, so the `e` segment moves to the survivor rather than being dropped.
+  const cardMissing = address !== null && onAddressedRegion && data !== undefined
+    && selectedExperienceId !== null && !experiences.some(e => e.id === selectedExperienceId);
+  const foldedInto = useFoldedCard(selectedExperienceId, cardMissing);
   useEffect(() => {
-    if (address === null || !onAddressedRegion || selectedExperienceId === null || data === undefined) return;
-    if (experiences.some(e => e.id === selectedExperienceId)) return;
-    go({ ...address, experienceId: null }, { replace: true });
-  }, [address, onAddressedRegion, selectedExperienceId, data, experiences, go]);
+    if (address === null || !cardMissing || foldedInto === undefined) return;
+    go(
+      { ...address, experienceId: foldedInto?.id ?? null },
+      { replace: true, names: { experience: foldedInto?.name } },
+    );
+  }, [address, cardMissing, foldedInto, go]);
 
   // Bring the card's slug up to date once the list names it. A deep link
   // carries whatever slug it was made with, or none — which is the shape the
