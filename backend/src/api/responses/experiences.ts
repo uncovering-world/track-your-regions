@@ -68,6 +68,11 @@ export const ExperienceLocation = z.strictObject({
     'The fields a curator has claimed on the point, such as `name` and `location`, so a row can say it is corrected.',
   ),
   in_region: z.boolean().describe('Whether the point lies in the region the read was asked about. True where none was named.'),
+  image_url: z.string().nullable().describe(
+    "The point's own picture, a Wikimedia Commons file: a World Heritage component's Wikidata picture (#1270)."
+    + " Null where the point has none, and it then shows its object's picture.",
+  ),
+  image_credit: ImageCredit.nullable().describe("Who took the point's own picture. Null where there is no picture or no credit."),
 }).describe('One point of an object.');
 export type ExperienceLocation = z.infer<typeof ExperienceLocation>;
 
@@ -87,6 +92,10 @@ export const ExperienceLocationWithState = ExperienceLocation.extend({
   refused_at: timestamp.describe(
     'Set where a curator turned this unread point down. The state cannot say so, because a refused point stays'
     + ' `pending`: publishing shows an unread point and refuses a turned-down one.',
+  ),
+  description: z.string().nullable().describe(
+    "The point's own short description: a World Heritage component's Wikidata description (#1270). Served by the"
+    + " object's own read only, to keep the region feed light.",
   ),
 }).describe("One point as its object's own read serves it, with where it stands at the gate.");
 export type ExperienceLocationWithState = z.infer<typeof ExperienceLocationWithState>;

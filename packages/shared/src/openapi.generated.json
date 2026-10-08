@@ -19584,6 +19584,24 @@
             "type": "boolean",
             "description": "Whether the point lies in the region the read was asked about. True where none was named."
           },
+          "image_url": {
+            "description": "The point's own picture, a Wikimedia Commons file: a World Heritage component's Wikidata picture (#1270). Null where the point has none, and it then shows its object's picture.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_credit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCredit"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who took the point's own picture. Null where there is no picture or no credit."
+          },
           "curation_state": {
             "$ref": "#/components/schemas/LocationCurationState"
           },
@@ -19599,6 +19617,13 @@
               }
             ],
             "description": "Set where a curator turned this unread point down. The state cannot say so, because a refused point stays `pending`: publishing shows an unread point and refuses a turned-down one."
+          },
+          "description": {
+            "description": "The point's own short description: a World Heritage component's Wikidata description (#1270). Served by the object's own read only, to keep the region feed light.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -19612,8 +19637,11 @@
           "created_at",
           "curated_fields",
           "in_region",
+          "image_url",
+          "image_credit",
           "curation_state",
-          "refused_at"
+          "refused_at",
+          "description"
         ],
         "additionalProperties": false,
         "description": "One point as its object's own read serves it, with where it stands at the gate."
@@ -25861,6 +25889,24 @@
             "type": "boolean",
             "description": "Whether the point lies in the region the read was asked about. True where none was named."
           },
+          "image_url": {
+            "description": "The point's own picture, a Wikimedia Commons file: a World Heritage component's Wikidata picture (#1270). Null where the point has none, and it then shows its object's picture.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_credit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCredit"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who took the point's own picture. Null where there is no picture or no credit."
+          },
           "region_path": {
             "description": "The leaf region the point lies in, with its ancestors, such as `Europe > France > Paris`. It is shown for a point outside the region on screen. Null where the point lies in no region of that world view.",
             "type": [
@@ -25880,6 +25926,8 @@
           "created_at",
           "curated_fields",
           "in_region",
+          "image_url",
+          "image_credit",
           "region_path"
         ],
         "additionalProperties": false,
