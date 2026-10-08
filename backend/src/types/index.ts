@@ -5,6 +5,7 @@
 
 import { z } from 'zod/v4';
 import { bodyRowIdSchema, rowIdSchema } from './rowId.js';
+import { VIEW_FIELDS } from '../db/sourceViews.js';
 import { parseBbox } from '../db/bboxEnvelopes.js';
 import { CHECK_VALUES, COLUMN_WIDTHS } from '../db/schema.generated.js';
 import { foldLabel, tidyLabel } from '@tyr/shared/labels';
@@ -356,6 +357,16 @@ export const sourceIdParamSchema = z.object({
   sourceId: rowIdSchema,
 });
 
+/** A curator's choice between two sources' views of a place (#1246): per field, a membership or none to keep. */
+export const chooseViewsBodySchema = z.object({
+  choices: z.array(z.object({
+    field: z.enum(VIEW_FIELDS),
+    membershipId: bodyRowIdSchema.nullable(),
+  })).min(1).max(4).refine(choices => new Set(choices.map(choice => choice.field)).size === choices.length, {
+    message: 'Each field is answered once',
+  }),
+});
+
 /** `/api/experiences/merges/:mergeId…` — a merge of two places (ADR-0086). */
 export const mergeIdParamSchema = z.object({
   mergeId: rowIdSchema,
@@ -540,7 +551,7 @@ export const experienceAdmissionBodySchema = z.object({
  */
 export const reviewAnswerBodySchema = z.object({
   rows: z.array(z.object({
-    kind: z.enum(['conflict', 'waiting', 'withdrawn', 'refused', 'missing']),
+    kind: z.enum(['conflict', 'sources', 'waiting', 'withdrawn', 'refused', 'missing']),
     id: bodyRowIdSchema,
     runId: bodyRowIdSchema.nullable().optional(),
     membershipId: answeredMembershipSchema,

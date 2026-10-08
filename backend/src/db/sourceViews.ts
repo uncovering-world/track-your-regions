@@ -14,6 +14,7 @@
  */
 
 import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
+import { MEMBERSHIPS } from './membership.js';
 
 /**
  * The fields a view holds, in the words a run's change set and the review
@@ -92,4 +93,75 @@ export function viewSilencesSql(a: ViewSql, b: ViewSql): string {
       ${text('imageUrl', a.imageUrl, b.imageUrl)},
       CASE WHEN ${a.location} IS NULL AND ${b.location} IS NOT NULL THEN 'location' END
     ]::text[], NULL)`;
+}
+
+/**
+ * One field of a membership's view as a comparable text value, the field
+ * named by an SQL expression yielding a `VIEW_FIELDS` word. A coordinate
+ * compares as its WKT: a run that reports the same point writes the same text.
+ */
+export function viewValueSql(fieldExpr: string, alias = 'm'): string {
+  return `CASE ${fieldExpr}
+            WHEN 'name' THEN ${alias}.reported_name
+            WHEN 'description' THEN ${alias}.reported_description
+            WHEN 'imageUrl' THEN ${alias}.reported_image_url
+            WHEN 'location' THEN ST_AsText(${alias}.reported_location)
+          END`;
+}
+
+/**
+ * The standing views of one field of a place, as a `jsonb` object from
+ * membership id to value, empty views left out. What a curator's choice
+ * records (`experience_view_choices.views`) and what the open question
+ * compares it with: the same expression on both sides, so an answer stands
+ * exactly while every source keeps sending what it sent.
+ */
+export function viewsOfFieldSql(placeExpr: string, fieldExpr: string): string {
+  return `(SELECT COALESCE(jsonb_object_agg(v.id::text, ${viewValueSql(fieldExpr, 'v')}), '{}'::jsonb)
+             FROM ${MEMBERSHIPS} v
+            WHERE v.experience_id = ${placeExpr} AND ${viewStandsSql('v')}
+              AND NULLIF(${viewValueSql(fieldExpr, 'v')}, '') IS NOT NULL)`;
+}
+
+/**
+ * The fields two standing views of the place under different ids disagree on
+ * (ADR-0085: under one id they read one item and are never asked), as a
+ * `text[]` of `VIEW_FIELDS` words in that order.
+ */
+export function contestedViewFieldsSql(placeExpr: string): string {
+  return `(SELECT COALESCE(array_agg(DISTINCT field), '{}'::text[])
+             FROM ${MEMBERSHIPS} a
+             JOIN ${MEMBERSHIPS} b ON b.experience_id = a.experience_id AND a.id < b.id
+                                  AND a.external_id <> b.external_id AND ${viewStandsSql('b')}
+            CROSS JOIN LATERAL unnest(${viewDisagreementsSql(membershipViewSql('a'), membershipViewSql('b'))}) AS field
+            WHERE a.experience_id = ${placeExpr} AND ${viewStandsSql('a')})`;
+}
+
+/**
+ * The contested fields of a place a curator has not answered for the views as
+ * they stand (#1246), as a `text[]` in `VIEW_FIELDS` order. Empty once every
+ * one is answered; a field whose views change after the answer is open again.
+ */
+export function openViewFieldsSql(placeExpr: string): string {
+  const words = VIEW_FIELDS.map(field => "'" + field + "'").join(', ');
+  const order = `ARRAY[${words}]::text[]`;
+  return `(SELECT COALESCE(array_agg(f ORDER BY array_position(${order}, f)), '{}'::text[])
+             FROM unnest(${contestedViewFieldsSql(placeExpr)}) AS f
+            WHERE NOT EXISTS (
+              SELECT 1 FROM experience_view_choices c
+               WHERE c.experience_id = ${placeExpr} AND c.field = f
+                 AND c.views = ${viewsOfFieldSql(placeExpr, 'f')}))`;
+}
+
+/**
+ * The place's own value of a field named by an SQL expression, comparable with
+ * `viewValueSql`: which view, if any, readers are shown now.
+ */
+export function placeViewValueSql(fieldExpr: string, alias = 'e'): string {
+  return `CASE ${fieldExpr}
+            WHEN 'name' THEN ${alias}.name
+            WHEN 'description' THEN ${alias}.description
+            WHEN 'imageUrl' THEN ${alias}.image_url
+            WHEN 'location' THEN ST_AsText(${alias}.location)
+          END`;
 }

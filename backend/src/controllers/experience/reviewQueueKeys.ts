@@ -60,17 +60,19 @@ import { contentsMembershipSql, unreadLinkSql, unreadPointSql } from './waitingC
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import {
   arrivalOpenSql, claimKeySql, conflictChangeOpenSql, contentsOpenSql, heldOpenSql,
-  membershipMissingOpenSql, missingOpenSql, refusedOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql,
+  membershipMissingOpenSql, missingOpenSql, refusedOpenSql, sourcesOpenSql, withdrawnContainerOpenSql,
+  withdrawnPointOpenSql,
 } from './reviewQueuePredicates.js';
 
 /**
  * The class order: what a curator works down when they sort by question rather
- * than by date. A disagreement first, because it is the only kind where the
- * catalogue is actively saying two things; then what is waiting to be seen,
- * then what has left, then the two verdicts a rule already took.
+ * than by date. The two disagreements first, because they are the kinds where
+ * the catalogue is actively saying two things — a source against a curator,
+ * then two sources against each other; then what is waiting to be seen, then
+ * what has left, then the two verdicts a rule already took.
  */
 export const KIND_RANK: Record<QueueKind, number> = {
-  conflict: 1, waiting: 2, withdrawn: 3, refused: 4, missing: 5,
+  conflict: 1, sources: 2, waiting: 3, withdrawn: 4, refused: 5, missing: 6,
 };
 
 // The words a `kind` chip may carry, and the only ones, are `QUEUE_KINDS` and
@@ -333,6 +335,29 @@ function missingKeysSql(scopeFilter: string, membershipScopeFilter: string): str
     GROUP BY e.id, e.name`;
 }
 
+/**
+ * A place two data sources describe differently, with a field nobody has
+ * answered as the views stand (#1246, `sourcesOpenSql`). A question about every
+ * source the place's views come from, so it is in a curator's scope only where
+ * every membership of the place is. Dated by the newest first run among its
+ * memberships — the merge or the arrival that made the disagreement possible —
+ * and by no run of its own, so it cannot be set aside with a run's batch.
+ */
+function sourcesKeysSql(membershipScopeFilter: string): string {
+  return `
+    SELECT 'sources', ${KIND_RANK.sources}, e.id, e.name, g.source_ids, NULL, g.asked_at, ARRAY[]::text[]
+    FROM experiences e
+    CROSS JOIN LATERAL (
+      SELECT array_agg(DISTINCT m.source_id) AS source_ids,
+             max(COALESCE(l.completed_at, m.created_at)) AS asked_at
+      FROM ${MEMBERSHIPS} m
+      LEFT JOIN experience_sync_logs l ON l.id = m.first_seen_sync_log_id
+      WHERE m.experience_id = e.id
+    ) g
+    WHERE ${sourcesOpenSql('e')}
+      AND NOT EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id AND NOT ${membershipScopeFilter})`;
+}
+
 /** The order, over the union's own columns. `prefix` qualifies them for `json_agg`. */
 function orderSql(sort: 'date' | 'question', prefix = ''): string {
   const date = `COALESCE(${prefix}asked_at, '-infinity') DESC`;
@@ -560,6 +585,7 @@ export async function queryQueueKeys(
 
   const sql = `${CURATOR_SCOPED_REGIONS_CTE}
 , keys AS (${conflictKeysSql(scopeFilter, claimKey)}
+    UNION ALL${sourcesKeysSql(membershipScopeFilter)}
     UNION ALL${waitingKeysSql(membershipScopeFilter)}
     UNION ALL${withdrawnKeysSql(scopeFilter)}
     UNION ALL${refusedKeysSql(membershipScopeFilter)}

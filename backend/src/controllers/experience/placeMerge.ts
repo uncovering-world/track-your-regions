@@ -27,6 +27,7 @@ import { foldPoints, movePoints, unfoldPoints, type FoldedPoints } from './exper
 import { moveHeldDecisions } from './heldDecisions.js';
 import { moveMemberships } from './membershipWriter.js';
 import { placeAfterRelease } from './publishContents.js';
+import { moveViewChoices } from './viewChoices.js';
 import { foldLinks, moveLinks, unfoldLinks, type FoldedLinks } from './workWriter.js';
 
 export type MergeReason = 'equal_wikidata_item' | 'curator';
@@ -59,6 +60,8 @@ export interface MergeRecord {
   rejections: number[];
   /** A curator's assignments of the folded place to a region, moved where the survivor had none there. */
   assignments?: number[];
+  /** A curator's choices between two sources' views of the folded place (#1246). */
+  viewChoices?: number[];
   /**
    * The visits a folded visit was copied in as, and the survivor's visits it
    * reconciled, before and after: the undo takes back only what nobody has
@@ -146,11 +149,12 @@ async function moveEverything(client: PoolClient, folded: LockedExperience, surv
   const conflictDecisions = await moveConflictDecisions(client, folded, survivor);
   const rejections = await moveRejections(client, folded.id, survivor.id);
   const assignments = await moveManualAssignments(client, folded.id, survivor.id);
+  const viewChoices = await moveViewChoices(client, folded, survivor);
   const visits = await reconcileVisits(client, folded.id, survivor.id);
   const pointVisits = await reconcilePointVisits(client, foldedPoints);
   return {
     memberships, points, foldedPoints, links, foldedLinks, changes, heldDecisions, conflictDecisions, rejections,
-    assignments, visits, pointVisits,
+    assignments, viewChoices, visits, pointVisits,
   };
 }
 
@@ -389,6 +393,7 @@ async function moveEverythingBack(
   await moveRejections(client, survivor.id, folded.id, record.rejections);
   // A merge recorded before assignments moved recorded none, and moves none back.
   await moveManualAssignments(client, survivor.id, folded.id, record.assignments ?? []);
+  await moveViewChoices(client, survivor, folded, record.viewChoices ?? []);
 }
 
 /**

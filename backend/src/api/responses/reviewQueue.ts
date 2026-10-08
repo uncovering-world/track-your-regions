@@ -15,6 +15,7 @@
  * less than the server sends.
  */
 
+import { VIEW_FIELDS } from '../../db/sourceViews.js';
 import { z } from 'zod/v4';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
 import {
@@ -221,6 +222,35 @@ export const RefusedWork = z.strictObject({
 }).describe('A work link a curator turned down (#859).');
 export type RefusedWork = z.infer<typeof RefusedWork>;
 
+const ViewFieldWord = z.enum(VIEW_FIELDS);
+
+export const SourceView = z.strictObject({
+  membership_id: z.number().int(),
+  kind_name: z.string(),
+  source_name: z.string(),
+  value: z.string().nullable().describe('The name or description as the source reports it; null for a picture or a point.'),
+  image_url: z.string().nullable(),
+  image_credit: ImageCredit.nullable(),
+  latitude: z.number().nullable(),
+  longitude: z.number().nullable(),
+  shown: z.boolean().describe('Whether this is the value readers see now.'),
+}).describe("One source's view of one field of a place (#1246).");
+
+export const SourceViewField = z.strictObject({
+  field: ViewFieldWord,
+  views: z.array(SourceView),
+}).describe('A field two data sources contradict, with every standing view of it.');
+export type SourceViewField = z.infer<typeof SourceViewField>;
+
+export const QuietField = z.strictObject({
+  field: ViewFieldWord,
+  why: z.enum(['agree', 'one_source', 'answered']).describe(
+    'Why the field is not asked: the sources agree, only one reports it, or a curator already chose.',
+  ),
+  metres: z.number().int().nullable().describe('For the point: how far apart the farthest two views stand.'),
+});
+export type QuietField = z.infer<typeof QuietField>;
+
 export const ReviewQueueItem = z.strictObject({
   id: z.number().int(),
   external_id: z.string(),
@@ -293,6 +323,9 @@ export const ReviewQueueItem = z.strictObject({
   takeable: z.boolean().optional().describe('Whether the take-back would be accepted at all. `contents-refused` items only.'),
   object_admission: z.string().nullable().optional(),
   object_curation_state: z.string().nullable().optional(),
+  source_views: z.array(SourceViewField).nullable().optional()
+    .describe('The fields two data sources describe differently, each with every view of it. `sources` items only.'),
+  quiet_fields: z.array(QuietField).optional().describe('The fields the `sources` card is not asking about, and why.'),
 }).describe('An object waiting on a curator, or one a curator can take a verdict back from.');
 export type ReviewQueueItem = z.infer<typeof ReviewQueueItem>;
 
@@ -339,6 +372,7 @@ export const ReviewQueue = z.strictObject({
   refused: z.array(ReviewQueueItem).describe('Rows a rule turned down and nobody has answered yet.'),
   keptOut: z.array(ReviewQueueItem).describe('Refusals a curator confirmed, carried because no other surface shows them.'),
   conflicts: z.array(ReviewQueueItem),
+  sources: z.array(ReviewQueueItem).describe('Places two data sources describe differently (#1246).'),
   arrivals: z.array(ReviewQueueItem),
   held: z.array(ReviewQueueItem),
   contents: z.array(ReviewQueueItem),

@@ -27,6 +27,7 @@ import {
   heldPartsSelectSql, queryAnsweredWithdrawals, queryContents, queryWithdrawn,
 } from './reviewQueueContents.js';
 import { queryRefusedParts } from './reviewQueueRefusedParts.js';
+import { querySources } from './reviewQueueSources.js';
 import { queryConflicts } from './reviewQueueConflicts.js';
 import {
   QUEUE_KINDS, WAITING_SUBS, likeParam, queryQueueKeys, queueScopeSql,
@@ -42,7 +43,7 @@ import { PG_INTEGER_MAX } from '../../types/rowId.js';
 /** The request as `reviewQueueQuerySchema` leaves it. */
 type ReviewQueueQuery = z.output<typeof reviewQueueQuerySchema>;
 
-/** The words a `kind` chip may carry: the five classes and the three sub-kinds. */
+/** The words a `kind` chip may carry: the classes of open question and the three sub-kinds. */
 const KIND_WORDS = new Set<string>([...QUEUE_KINDS, ...WAITING_SUBS]);
 
 /**
@@ -409,6 +410,10 @@ export async function getReviewQueue(
   const conflicts = await hydrate(
     conflictIds, () => queryConflicts({ ...queryContext, ids: conflictIds, logScopeFilter }),
   );
+  // Two data sources describing a place differently (#1246), hydrated by the
+  // page's ids: the keys phase is where its scope, every source of the place, was asked.
+  const sourcesIds = idsOf('sources');
+  const sources = await hydrate(sourcesIds, () => querySources(sourcesIds));
 
   // What counts as `arrival`: the reasoning is on `arrivalOpenSql`
   // (`reviewQueuePredicates.ts`).
@@ -565,6 +570,7 @@ export async function getReviewQueue(
     refused: cards(refused),
     keptOut: cards(keptOutPage.items),
     conflicts: cards(conflicts),
+    sources: cards(sources),
     arrivals: cards(arrivals),
     held: cards(held),
     contents: cards(contents),
