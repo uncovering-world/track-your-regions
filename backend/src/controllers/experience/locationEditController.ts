@@ -1,5 +1,6 @@
 /**
- * A curator's correction to one point: what it is called, or where it is.
+ * A curator's correction to one point: what it is called, where it is, its own
+ * picture and its description (#1270).
  *
  * The gate's third answer. Holding a coordinate for review while offering only
  * "take the source's point" and "keep the source's point" leaves a curator who
@@ -23,9 +24,11 @@ import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { lockExperience, anchorToItsPoint } from '../../db/experienceWriter.js';
 import { correctPoint } from './experienceLocationWriter.js';
+import { userAgent } from '../../config/userAgent.js';
+import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
 
-/** What a curator may claim on a point — see `db/migrations/027`. */
-type Claim = 'name' | 'location';
+/** What a curator may claim on a point — see `db/migrations/027`, and #1270 for the picture and description. */
+type Claim = 'name' | 'location' | 'image_url' | 'description';
 
 /** The claims this edit adds, kept in the order the column already holds. */
 function withClaims(stored: string[], added: Claim[]): string[] {
@@ -34,14 +37,58 @@ function withClaims(stored: string[], added: Claim[]): string[] {
   return [...next];
 }
 
+/** What one edit changes, `undefined` for a field it leaves alone. */
+interface PointEdit {
+  name: string | undefined;
+  move: { lon: number; lat: number } | undefined;
+  picture: string | null | undefined;
+  text: string | null | undefined;
+}
+
+/** The claims one edit takes, one per field it changes. */
+function claimsOf(edit: PointEdit): Claim[] {
+  const claims: Claim[] = [];
+  if (edit.name !== undefined) claims.push('name');
+  if (edit.move) claims.push('location');
+  if (edit.picture !== undefined) claims.push('image_url');
+  if (edit.text !== undefined) claims.push('description');
+  return claims;
+}
+
+/**
+ * The log entry's changes: only the keys this edit actually changed, each under
+ * its column's name. The queue's claim attribution asks `details ? '<column>'`
+ * to find who claimed a field, so a key present and null would make a rename
+ * answer for the coordinate — the attribution would name a curator who never
+ * touched it.
+ */
+function editDetails(
+  before: { name: string | null; lon: number; lat: number; image_url: string | null; description: string | null },
+  edit: PointEdit,
+): Record<string, unknown> {
+  return {
+    ...(edit.name === undefined ? {} : { name: { old: before.name, new: edit.name } }),
+    ...(edit.move ? { location: { old: { lon: before.lon, lat: before.lat }, new: edit.move } } : {}),
+    ...(edit.picture === undefined ? {} : { image_url: { old: before.image_url, new: edit.picture } }),
+    ...(edit.text === undefined ? {} : { description: { old: before.description, new: edit.text } }),
+  };
+}
+
 export async function editLocation(
-  { params: { locationId }, body: { name, latitude, longitude }, caller }: {
+  { params: { locationId }, body: { name, latitude, longitude, imageUrl, description }, caller }: {
     params: z.output<typeof locationIdParamSchema>; body: z.output<typeof editLocationBodySchema>; caller: Express.User;
   },
 ): Promise<LocationEditResult> {
   const userId = caller.id;
   const userRole = caller.role;
   const movesPoint = latitude !== undefined && longitude !== undefined;
+  // `''` is how a form says "none", as on a work: the point then shows its
+  // object's picture. `undefined` leaves the field alone.
+  const picture = imageUrl === undefined ? undefined : (imageUrl || null);
+  const text = description === undefined ? undefined : (description || null);
+  const pointEdit: PointEdit = {
+    name, picture, text, move: movesPoint ? { lon: longitude, lat: latitude } : undefined,
+  };
 
   // The point carries no scope of its own: it is judged through the object
   // holding it, which is where the regions and the source live.
@@ -63,6 +110,14 @@ export async function editLocation(
   if (!permitted) {
     throw createError('You do not have curator permissions for this experience', 403);
   }
+
+  // Whose photograph the new one is, asked before the transaction opens, as a
+  // work's edit asks: a request to Commons is not something to hold a lock
+  // across. Null for a picture removed, one not on Commons, or one Commons did
+  // not answer for in time — and a null written is the point: the credit of the
+  // photograph this replaces must not stay under it.
+  // A curator's save, not a run: no bot marker on this one (#864).
+  const credit: ImageCredit | null = picture === undefined ? null : await creditForOneImage(picture, userAgent());
 
   const client = await pool.connect();
   let unusable: Error | undefined;
@@ -92,23 +147,24 @@ export async function editLocation(
     // whose curator had just handed it back. Everything else that writes these
     // columns only adds.
     const locked = await client.query(
-      `SELECT name, curated_fields,
+      `SELECT name, curated_fields, image_url, description,
               ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lon
          FROM experience_locations WHERE id = $1 FOR UPDATE`,
       [locationId],
     );
-    const before = locked.rows[0] as
-      { name: string | null; curated_fields: string[]; lat: number; lon: number } | undefined;
+    const before = locked.rows[0] as {
+      name: string | null; curated_fields: string[]; lat: number; lon: number;
+      image_url: string | null; description: string | null;
+    } | undefined;
     // The object going takes its points with it, so a missing object is the
     // same 404 as a missing point. The catch below rolls the transaction back.
     if (!before || !object) throw notFound('Location not found');
 
-    const claims: Claim[] = [];
-    if (name !== undefined) claims.push('name');
-    if (movesPoint) claims.push('location');
+    const claims = claimsOf(pointEdit);
 
     await correctPoint(client, object.lock, locationId, {
       name: name ?? null, movesPoint, longitude: longitude ?? null, latitude: latitude ?? null,
+      picture, credit, description: text,
       curatedFields: withClaims(before.curated_fields ?? [], claims),
     });
 
@@ -147,21 +203,10 @@ export async function editLocation(
     await client.query(
       `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
        VALUES ($1, $2, 'location_edited', $3, $4)`,
-      // Only the keys this edit actually changed. The queue's claim attribution
-      // asks `details ? '<column>'` to find who claimed a field, so a key present
-      // and null would make a rename answer for the coordinate — the attribution
-      // would name a curator who never touched it.
+      // Only the keys this edit actually changed (`editDetails`).
       [experienceId, userId, logRegionId, JSON.stringify({
         locationId,
-        ...(name === undefined ? {} : { name: { old: before.name, new: name } }),
-        ...(movesPoint
-          ? {
-            location: {
-              old: { lon: before.lon, lat: before.lat },
-              new: { lon: longitude, lat: latitude },
-            },
-          }
-          : {}),
+        ...editDetails(before, pointEdit),
         anchorMoved,
       })],
     );
@@ -188,6 +233,9 @@ export async function editLocation(
     success: true,
     locationId,
     anchorMoved,
+    // Who is named under the new picture, answered rather than promised: a
+    // Commons file whose credit request timed out is stored with none.
+    ...(picture === undefined ? {} : { imageCredit: credit }),
     // Named the way every other caller names them, and here the placement is
     // unconditional rather than one branch of a verdict: a corrected pin whose
     // region rows did not follow is a place on the map and absent from the

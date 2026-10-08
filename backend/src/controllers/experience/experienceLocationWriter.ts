@@ -21,6 +21,7 @@
 
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../db/experienceWriter.js';
+import type { ImageCredit } from '../../services/sync/imageCredit.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { unreadPointSql } from './waitingCounts.js';
@@ -268,9 +269,13 @@ export async function setPointVerdict(
 }
 
 /**
- * A curator's correction to one point (#583): its name, its coordinate or both,
+ * A curator's correction to one point (#583): its name, its coordinate, its own
+ * picture with the credit fetched for it, its description (#1270), any of them,
  * and the claim set that makes the correction survive the next run. The caller
- * builds the claim set from the one it re-read under the lock.
+ * builds the claim set from the one it re-read under the lock. `picture` and
+ * `description` are `undefined` where the edit leaves them alone and `null`
+ * where it clears them; a credit belongs to one photograph, so a new picture
+ * with no credit drops the old one's.
  */
 export async function correctPoint(
   client: PoolClient,
@@ -281,6 +286,9 @@ export async function correctPoint(
     movesPoint: boolean;
     longitude: number | null;
     latitude: number | null;
+    picture?: string | null;
+    credit?: ImageCredit | null;
+    description?: string | null;
     curatedFields: readonly string[];
   },
 ): Promise<void> {
@@ -290,10 +298,18 @@ export async function correctPoint(
             location = CASE WHEN $3::boolean
                             THEN ST_SetSRID(ST_MakePoint($4, $5), 4326)
                             ELSE location END,
+            image_url = CASE WHEN $8::boolean THEN $9 ELSE image_url END,
+            metadata = CASE WHEN NOT $8::boolean THEN metadata
+                            WHEN $10::jsonb IS NULL THEN metadata - 'imageCredit'
+                            ELSE metadata || jsonb_build_object('imageCredit', $10::jsonb) END,
+            description = CASE WHEN $11::boolean THEN $12 ELSE description END,
             curated_fields = $6::jsonb
       WHERE id = $1 AND experience_id = $7`,
     [locationId, correction.name, correction.movesPoint, correction.longitude, correction.latitude,
-      JSON.stringify(correction.curatedFields), lock.id],
+      JSON.stringify(correction.curatedFields), lock.id,
+      correction.picture !== undefined, correction.picture ?? null,
+      correction.picture && correction.credit ? JSON.stringify(correction.credit) : null,
+      correction.description !== undefined, correction.description ?? null],
   );
 }
 

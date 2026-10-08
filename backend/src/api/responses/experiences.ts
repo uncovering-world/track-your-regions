@@ -69,8 +69,8 @@ export const ExperienceLocation = z.strictObject({
   ),
   in_region: z.boolean().describe('Whether the point lies in the region the read was asked about. True where none was named.'),
   image_url: z.string().nullable().describe(
-    "The point's own picture, a Wikimedia Commons file: a World Heritage component's Wikidata picture (#1270)."
-    + " Null where the point has none, and it then shows its object's picture.",
+    "The point's own picture: a World Heritage component's Wikidata picture, a Commons file (#1270), or one a curator"
+    + " chose, which may be an /images/ path we host. Null where the point has none, and it then shows its object's picture.",
   ),
   image_credit: ImageCredit.nullable().describe("Who took the point's own picture. Null where there is no picture or no credit."),
 }).describe('One point of an object.');

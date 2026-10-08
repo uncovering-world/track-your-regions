@@ -3131,7 +3131,7 @@ COMMENT ON COLUMN experience_locations.wikidata_item IS 'The Wikidata item this 
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS image_url TEXT;
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS description TEXT;
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
-COMMENT ON COLUMN experience_locations.image_url IS 'The point''s own picture, a Wikimedia Commons file (ADR-0043): for a World Heritage component, its Wikidata item''s P18, written by the run through the gate as a field of a part (ADR-0037) unless a curator claimed it. NULL = the point shows its object''s picture, and says so (#1270).';
+COMMENT ON COLUMN experience_locations.image_url IS 'The point''s own picture, a Wikimedia Commons file or, where a curator chose one, an /images/ path we host (ADR-0043): for a World Heritage component, its Wikidata item''s P18, written by the run through the gate as a field of a part (ADR-0037, ADR-0089) unless a curator claimed it. NULL = the point shows its object''s picture, and says so (#1270).';
 COMMENT ON COLUMN experience_locations.description IS 'The point''s own short description: for a World Heritage component, its Wikidata item''s English description, written like image_url (#1270).';
 COMMENT ON COLUMN experience_locations.metadata IS 'Facts about the point that are not columns: imageCredit, the credit of image_url, captured from Commons when the picture is written (#1270).';
 
@@ -3193,7 +3193,7 @@ CREATE INDEX IF NOT EXISTS idx_experience_locations_refused ON experience_locati
 -- (#488), NOT NULL for the reason given on `treasures.curated_fields`. See
 -- db/migrations/027.
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS curated_fields JSONB NOT NULL DEFAULT '[]'::jsonb;
-COMMENT ON COLUMN experience_locations.curated_fields IS 'Column names a curator has claimed on this point: name, location (and wikidata_item, which a run respects though no screen claims it yet). Never external_ref or ordinal — those are the source''s handle on the row and its place in the source''s list, and a claim on them would break the pairing that decides whether a point moved or was replaced.';
+COMMENT ON COLUMN experience_locations.curated_fields IS 'Column names a curator has claimed on this point: name, location, image_url and description (#1270), and wikidata_item, which a run respects though no screen claims it yet. Never external_ref or ordinal — those are the source''s handle on the row and its place in the source''s list, and a claim on them would break the pairing that decides whether a point moved or was replaced.';
 
 -- A moved point is a withdrawal plus an insert, and under a gated source the two
 -- halves become visible at different moments: the insert lands `pending`, so

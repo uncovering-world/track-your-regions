@@ -18808,6 +18808,13 @@
             "type": "number",
             "minimum": -180,
             "maximum": 180
+          },
+          "imageUrl": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 2000
           }
         }
       },
@@ -19585,7 +19592,7 @@
             "description": "Whether the point lies in the region the read was asked about. True where none was named."
           },
           "image_url": {
-            "description": "The point's own picture, a Wikimedia Commons file: a World Heritage component's Wikidata picture (#1270). Null where the point has none, and it then shows its object's picture.",
+            "description": "The point's own picture: a World Heritage component's Wikidata picture, a Commons file (#1270), or one a curator chose, which may be an /images/ path we host. Null where the point has none, and it then shows its object's picture.",
             "type": [
               "string",
               "null"
@@ -22408,6 +22415,17 @@
           "anchorMoved": {
             "type": "boolean",
             "description": "Whether the object's own coordinate moved with the place. True only where the object holds exactly one visible, published place and this is it."
+          },
+          "imageCredit": {
+            "description": "Who is named under the place's new picture (#1270). Present only where the picture changed. Null where the picture was taken off, where it is an /images/ path we host, and where Commons did not answer in time; a credit whose author is null is Commons answering with a licence and nobody named.",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCredit"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -22416,7 +22434,7 @@
           "anchorMoved"
         ],
         "additionalProperties": false,
-        "description": "What a curator's correction to a place's name or position did."
+        "description": "What a curator's correction to a place's name, position, picture or description did."
       },
       "LocationStateResult": {
         "type": "object",
@@ -25890,7 +25908,7 @@
             "description": "Whether the point lies in the region the read was asked about. True where none was named."
           },
           "image_url": {
-            "description": "The point's own picture, a Wikimedia Commons file: a World Heritage component's Wikidata picture (#1270). Null where the point has none, and it then shows its object's picture.",
+            "description": "The point's own picture: a World Heritage component's Wikidata picture, a Commons file (#1270), or one a curator chose, which may be an /images/ path we host. Null where the point has none, and it then shows its object's picture.",
             "type": [
               "string",
               "null"
