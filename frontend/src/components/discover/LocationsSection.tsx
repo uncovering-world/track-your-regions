@@ -18,6 +18,7 @@ import {
   IconButton,
   Button,
   Checkbox,
+  Chip,
   Collapse,
   TextField,
   InputAdornment,
@@ -37,9 +38,18 @@ import { locationLabel, pointFullName, pointOfRow } from '../../utils/locationLa
 import { CopyNameButton } from '../shared/CopyNameButton';
 import { claimLabel } from '../../utils/placeClaims';
 import { foldLabel } from '@tyr/shared/labels';
+import { filterParts, groupParts } from '../../utils/partGroups';
 import type { LocationWithVisitedStatus } from '../../api/visited';
 
 const LOCATIONS_COLLAPSE_THRESHOLD = 15;
+
+/** The group of the parts in the region the list is about, which opens first (#1271). */
+const IN_REGION_GROUP = 'In this region';
+
+/** One row of the windowed list: a group's header, or a place. */
+type ListRow =
+  | { kind: 'group'; label: string; count: number; withPicture: number; open: boolean }
+  | { kind: 'place'; loc: PanelLocation };
 
 /**
  * One place the object has, as a row in the section's location list: the visit
@@ -48,7 +58,16 @@ const LOCATIONS_COLLAPSE_THRESHOLD = 15;
  */
 export type PanelLocation = Pick<
   LocationWithVisitedStatus, 'id' | 'name' | 'ordinal' | 'longitude' | 'latitude' | 'isVisited'
-> & { curatedFields?: string[]; externalRef?: string | null };
+> & {
+  curatedFields?: string[];
+  externalRef?: string | null;
+  /** Where the part lies, `Europe > Switzerland > Aargau`, for the groups of a long list (#1271). */
+  regionPath?: string | null;
+  /** Whether it lies in the region the list is about; the parts there come first. */
+  inRegion?: boolean;
+  /** It has a picture of its own, which the "with a photo" filter keeps. */
+  hasPicture?: boolean;
+};
 
 interface LocationsSectionProps {
   /** Whose places these are — a row hover names the object and the place. */
@@ -94,17 +113,57 @@ export function LocationsSection({
 
   const visitedCount = locations.filter((l) => l.isVisited).length;
 
+  const [photoOnly, setPhotoOnly] = useState(false);
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set([IN_REGION_GROUP]));
+  const withPhotoCount = useMemo(() => locations.filter(l => l.hasPicture).length, [locations]);
+
   // Both sides folded, as the works filter is (#835): a search finds what the
-  // screen shows whatever the row holds, and a dash typed as a hyphen.
-  const filteredLocations = useMemo(() => {
-    const needle = foldLabel(searchText);
-    if (!needle) return locations;
-    // What the row reads, so a part named by its reference is found by it.
-    return locations.filter((l) => foldLabel(locationLabel(pointOfRow(l))).includes(needle));
-  }, [locations, searchText]);
+  // screen shows whatever the row holds, and a dash typed as a hyphen. What the
+  // row reads, so a part named by its reference is found by it.
+  const filteredLocations = useMemo(
+    () => filterParts(locations, searchText, photoOnly, foldLabel, l => locationLabel(pointOfRow(l))),
+    [locations, searchText, photoOnly],
+  );
+
+  // A long list in groups (#1271): the parts in the region first, open, then
+  // the rest by the first level of their region path at which they part ways —
+  // the countries of the pile dwellings, the communities of the rock art. A
+  // search or the photo filter opens every group, since what it left is what the
+  // reader asked for.
+  const { rows, groupOf } = useMemo(() => {
+    const flat = (locs: PanelLocation[]) => ({
+      rows: locs.map((loc): ListRow => ({ kind: 'place', loc })), groupOf: new Map<number, string>(),
+    });
+    if (totalCount <= LOCATIONS_COLLAPSE_THRESHOLD) return flat(filteredLocations);
+    const inRegion = filteredLocations.filter(l => l.inRegion !== false);
+    const groups = [
+      ...(inRegion.length > 0
+        ? [{ label: IN_REGION_GROUP, parts: inRegion, withPicture: inRegion.filter(l => l.hasPicture).length }]
+        : []),
+      ...groupParts(filteredLocations.filter(l => l.inRegion === false).map(l => ({ ...l, regionPath: l.regionPath ?? null }))),
+    ];
+    if (groups.length <= 1) return flat(filteredLocations);
+    const filtering = searchText.trim() !== '' || photoOnly;
+    const of = new Map<number, string>();
+    const listed = groups.flatMap((group): ListRow[] => {
+      group.parts.forEach(loc => of.set(loc.id, group.label));
+      const open = filtering || openGroups.has(group.label);
+      return [
+        { kind: 'group', label: group.label, count: group.parts.length, withPicture: group.withPicture, open },
+        ...(open ? group.parts.map((loc): ListRow => ({ kind: 'place', loc })) : []),
+      ];
+    });
+    return { rows: listed, groupOf: of };
+  }, [filteredLocations, totalCount, searchText, photoOnly, openGroups]);
+
+  const toggleGroup = (label: string) => setOpenGroups(current => {
+    const next = new Set(current);
+    if (next.has(label)) next.delete(label); else next.add(label);
+    return next;
+  });
 
   const virtualizer = useVirtualizer({
-    count: filteredLocations.length,
+    count: rows.length,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => 40,
     overscan: 5,
@@ -117,13 +176,19 @@ export function LocationsSection({
   // already on the page. Through refs, because the subscription is registered
   // once and a hover is not the moment to re-register it because the rows or
   // the fold changed.
-  const filteredRef = useRef(filteredLocations);
-  filteredRef.current = filteredLocations;
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+  const groupOfRef = useRef(groupOf);
+  groupOfRef.current = groupOf;
   const expandedRef = useRef(expanded);
   expandedRef.current = expanded;
   useEffect(() => subscribeToHoverTarget(store, ({ hoveredLocationId, hoverSource }) => {
     if (hoverSource !== 'marker' || hoveredLocationId == null) return;
-    const idx = filteredRef.current.findIndex(l => l.id === hoveredLocationId);
+    const idx = rowsRef.current.findIndex(row => row.kind === 'place' && row.loc.id === hoveredLocationId);
+    // A dot whose part sits in a closed group opens the group; the next hover
+    // finds its row.
+    const closedIn = idx < 0 ? groupOfRef.current.get(hoveredLocationId) : undefined;
+    if (closedIn) setOpenGroups(current => new Set(current).add(closedIn));
     if (idx >= 0) {
       if (!expandedRef.current) setExpanded(true);
       // Smooth stays: these rows are fixed-height estimates with no
@@ -168,7 +233,7 @@ export function LocationsSection({
           <Box sx={{ display: 'flex', gap: 1, mb: 1, alignItems: 'center' }}>
             <TextField
               size="small"
-              placeholder="Filter locations..."
+              placeholder="Find a place"
               value={searchText}
               onChange={(e) => setSearchText(e.target.value)}
               sx={{ flex: 1 }}
@@ -182,6 +247,16 @@ export function LocationsSection({
                 },
               }}
             />
+            {withPhotoCount > 0 && (
+              <Chip
+                size="small"
+                label={`With a photo · ${withPhotoCount}`}
+                color={photoOnly ? 'primary' : 'default'}
+                variant={photoOnly ? 'filled' : 'outlined'}
+                onClick={() => setPhotoOnly(!photoOnly)}
+                aria-pressed={photoOnly}
+              />
+            )}
             {isAuthenticated && (
               <>
                 <Tooltip title="Mark all visited">
@@ -223,7 +298,7 @@ export function LocationsSection({
             borderColor: 'divider',
           }}
         >
-          {filteredLocations.length > 0 ? (
+          {rows.length > 0 ? (
             <Box
               sx={{
                 height: `${virtualizer.getTotalSize()}px`,
@@ -232,7 +307,19 @@ export function LocationsSection({
               }}
             >
               {virtualizer.getVirtualItems().map((virtualRow) => {
-                const loc = filteredLocations[virtualRow.index];
+                const row = rows[virtualRow.index];
+                if (row.kind === 'group') {
+                  return (
+                    <GroupHeaderRow
+                      key={`group:${row.label}`}
+                      row={row}
+                      size={virtualRow.size}
+                      start={virtualRow.start}
+                      onToggle={toggleGroup}
+                    />
+                  );
+                }
+                const loc = row.loc;
                 return (
                   <PanelLocationRow
                     key={loc.id}
@@ -256,6 +343,32 @@ export function LocationsSection({
         </Box>
       </Collapse>
     </Box>
+  );
+}
+
+/** A group's header in the windowed list: its name, how many parts and how many with a photo, and its fold. */
+function GroupHeaderRow({ row, size, start, onToggle }: {
+  row: Extract<ListRow, { kind: 'group' }>;
+  size: number;
+  start: number;
+  onToggle: (label: string) => void;
+}) {
+  return (
+    <ButtonBase
+      aria-expanded={row.open}
+      onClick={() => onToggle(row.label)}
+      sx={{
+        position: 'absolute', top: 0, left: 0, width: '100%', height: `${size}px`,
+        transform: `translateY(${start}px)`, display: 'flex', alignItems: 'center', gap: 0.5, px: 1,
+        justifyContent: 'flex-start', bgcolor: 'grey.100', borderBottom: '1px solid', borderColor: 'divider',
+      }}
+    >
+      {row.open ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
+      <Typography variant="body2" sx={{ fontWeight: 600, flex: 1, textAlign: 'left' }} noWrap>{row.label}</Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ fontVariantNumeric: 'tabular-nums' }}>
+        {row.count}{row.withPicture > 0 ? ` · ${row.withPicture} with a photo` : ''}
+      </Typography>
+    </ButtonBase>
   );
 }
 

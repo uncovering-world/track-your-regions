@@ -139,7 +139,7 @@ describe('the places filter of a serial site', () => {
   it('finds a place by the name the screen shows, and a dash typed as a hyphen', () => {
     renderPlaces();
     fireEvent.keyDown(screen.getByRole('button', { name: /Locations/ }), { key: 'Enter' });
-    const box = screen.getByPlaceholderText('Filter locations...');
+    const box = screen.getByPlaceholderText('Find a place');
 
     fireEvent.change(box, { target: { value: 'marmalo IV' } });
     expect(shown('marmalo IV')).toBe(true);
@@ -154,9 +154,62 @@ describe('the places filter of a serial site', () => {
     renderPlaces();
     fireEvent.keyDown(screen.getByRole('button', { name: /Locations/ }), { key: 'Enter' });
 
-    fireEvent.change(screen.getByPlaceholderText('Filter locations...'), { target: { value: '874-758' } });
+    fireEvent.change(screen.getByPlaceholderText('Find a place'), { target: { value: '874-758' } });
 
     expect(shown('874-758')).toBe(true);
     expect(shown('marmalo IV')).toBe(false);
+  });
+});
+
+describe('the places of a long serial site in groups (#1271)', () => {
+  // Rock Art of the Mediterranean Basin, as the list in Comunidad Valenciana
+  // reads it: four parts there, the rest in Aragón and Murcia.
+  function renderGrouped() {
+    const part = (id: number, name: string, regionPath: string, inRegion: boolean, hasPicture = false) => ({
+      id, name, latitude: 0, longitude: 0, ordinal: id, isVisited: false, visitedAt: null, notes: null,
+      curatedFields: undefined, externalRef: null, regionPath, inRegion, hasPicture,
+    });
+    const locations = [
+      part(1, 'Pinós', 'Europe > Spain > Comunidad Valenciana', true, true),
+      part(2, "L'Arc", 'Europe > Spain > Comunidad Valenciana', true),
+      part(3, 'Cova dels Cavalls', 'Europe > Spain > Comunidad Valenciana', true, true),
+      part(4, 'Coves de la Saltadora', 'Europe > Spain > Comunidad Valenciana', true),
+      ...Array.from({ length: 10 }, (_, i) => part(10 + i, `Aragón shelter ${i + 1}`, 'Europe > Spain > Aragón', false, i === 0)),
+      ...Array.from({ length: 4 }, (_, i) => part(30 + i, `Murcia shelter ${i + 1}`, 'Europe > Spain > Región de Murcia', false)),
+    ];
+    render(
+      <HoverProvider>
+        <LocationsSection
+          experienceId={1184}
+          objectName="Rock Art of the Mediterranean Basin on the Iberian Peninsula"
+          locations={locations}
+          totalCount={locations.length}
+          isAuthenticated={false}
+          onMarkLocation={vi.fn()}
+          onUnmarkLocation={vi.fn()}
+          onMarkAll={vi.fn()}
+          onUnmarkAll={vi.fn()}
+        />
+      </HoverProvider>,
+    );
+    fireEvent.keyDown(screen.getByRole('button', { name: /Locations/ }), { key: 'Enter' });
+  }
+
+  it('opens the parts in the region and folds the rest by community, with counts', () => {
+    renderGrouped();
+    expect(shown('Pinós')).toBe(true);
+    expect(screen.getByRole('button', { name: /Aragón\s*10 · 1 with a photo/ })).toHaveAttribute('aria-expanded', 'false');
+    expect(shown('Aragón shelter 1')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: /Aragón/ }));
+    expect(shown('Aragón shelter 1')).toBe(true);
+  });
+
+  it('keeps only the parts with a photo of their own, in every group, when asked', () => {
+    renderGrouped();
+    fireEvent.click(screen.getByRole('button', { name: 'With a photo · 3' }));
+    expect(shown('Pinós')).toBe(true);
+    expect(shown('Aragón shelter 1')).toBe(true);
+    expect(shown("L'Arc")).toBe(false);
+    expect(shown('Murcia shelter 1')).toBe(false);
   });
 });

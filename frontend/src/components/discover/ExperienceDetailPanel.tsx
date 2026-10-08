@@ -3,6 +3,8 @@
  * Handles large location/content lists with collapse + search.
  */
 
+import { useAppAddress } from '../../hooks/useAppAddress';
+import { useRegionLocations } from '../../hooks/useRegionLocations';
 import { useState, useMemo } from 'react';
 import {
   Box,
@@ -136,9 +138,26 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
   const totalLocations = locationsData?.totalLocations || 0;
   const isMultiLocation = totalLocations > 1;
 
+  // The region's batch, as Discover's map reads it (the same key, so no second
+  // request): the region path and whether each part lies in the region.
+  const { address } = useAppAddress();
+  const { locationsByExperience } = useRegionLocations(address?.regionId ?? null, false, true);
+  const regionPlaces = locationsByExperience[experience.id];
+
   // Build location list: use public locations as base, overlay visited status when authenticated
   const displayLocations = useMemo((): PanelLocation[] => {
     const publicLocs = locationsData?.locations || [];
+    // Where each part lies and whether it has a picture of its own, for the
+    // groups and the photo filter of a long list (#1271): the region path off the
+    // region's batch the map already holds, the picture off the public read.
+    const where = new Map((regionPlaces ?? []).map(loc => [loc.id, { regionPath: loc.region_path, inRegion: loc.in_region }]));
+    const picturedIds = new Set(publicLocs.filter(loc => loc.image_url).map(loc => loc.id));
+    const placed = (loc: PanelLocation): PanelLocation => ({
+      ...loc,
+      regionPath: where.get(loc.id)?.regionPath ?? null,
+      inRegion: where.get(loc.id)?.inRegion ?? true,
+      hasPicture: picturedIds.has(loc.id),
+    });
     // The place's claims travel on the public read only; the visited-status read
     // is about the visit. Joined by id here, so a corrected pin says so on a
     // signed-in reader's row as on anyone else's.
@@ -148,12 +167,12 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
     const refsById = new Map(publicLocs.map(loc => [loc.id, loc.external_ref]));
     if (locationsWithVisitedStatus.length > 0) {
       // Auth data available — use it (has isVisited field)
-      return locationsWithVisitedStatus.map(loc => ({
+      return locationsWithVisitedStatus.map(loc => placed({
         ...loc, curatedFields: claimsById.get(loc.id), externalRef: refsById.get(loc.id) ?? null,
       }));
     }
     // Not authenticated or auth data not yet loaded — map public locations
-    return publicLocs.map(loc => ({
+    return publicLocs.map(loc => placed({
       id: loc.id,
       name: loc.name,
       ordinal: loc.ordinal,
@@ -163,7 +182,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
       curatedFields: loc.curated_fields,
       externalRef: loc.external_ref,
     }));
-  }, [locationsData?.locations, locationsWithVisitedStatus]);
+  }, [locationsData?.locations, locationsWithVisitedStatus, regionPlaces]);
 
   // Regions from detail
   const regions = details?.regions || [];

@@ -147,6 +147,7 @@ function ExperienceExpandedDetailsComponent({
       longitude: loc.longitude,
       latitude: loc.latitude,
       curatedFields: loc.curated_fields,
+      hasPicture: Boolean(loc.image_url),
       isVisited: isLocationVisited(loc.id),
       inRegion: loc.in_region,
       regionPath: loc.region_path,
