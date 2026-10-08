@@ -1065,7 +1065,7 @@ path needs.
   the one the run fetched from Commons for that file — asked together with the sites' own pictures,
   only for files no point holds a credit for (`componentPicturesToCredit`) — or one a point already
   holds for the same file, since a credit is the file's, never one of another photograph. The reads serve the point's
-  `image_url` and `image_credit` on every point and its `description` on the object's own read
+  `image_url` and `image_credit` on every point and its `description` and `wikidata_item` (#1271, the part's card links to it) on the object's own read
   only, which keeps the region feed light; the map's hover card shows a point's own picture and,
   for a part without one, its site's, saying so beside the credit (`pointPicture`,
   `docs/tech/experience-map-ui.md`).
