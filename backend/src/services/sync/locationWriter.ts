@@ -90,7 +90,7 @@
  * offered while the statement withdrawing it is deciding what to pass over.
  */
 
-import { pool } from '../../db/index.js';
+import { pool, rollbackQuietly } from '../../db/index.js';
 import { retirePassAfterNewContent } from './curationDecay.js';
 import { pointHeldProposalAt, type WriteRun } from './heldProposalPointer.js';
 import { tidyLabel } from '@tyr/shared/labels';
@@ -899,5 +899,56 @@ export async function writeExperienceLocations(
     throw err;
   } finally {
     client.release();
+  }
+}
+
+/** A component's reference and the Wikidata item it resolved to, or null for none. */
+export interface ComponentItem {
+  ref: string;
+  item: string | null;
+}
+
+/**
+ * Record each component point's Wikidata item (#1269), every run: the item
+ * whose World Heritage Site ID equals the point's reference, or none where no
+ * item or more than one carries it. A point is matched by its reference, case
+ * folded, among the points this run answers for; a claim on the item
+ * ('wikidata_item' in the point's `curated_fields`), which no screen writes
+ * yet, is never overridden.
+ * Answers how many points changed.
+ */
+export async function recordComponentItems(
+  experienceId: number,
+  items: readonly ComponentItem[],
+  sourceId: number,
+): Promise<number> {
+  if (items.length === 0) return 0;
+  const client = await pool.connect();
+  let unusable: Error | undefined;
+  try {
+    await client.query('BEGIN');
+    await lockExperience(client, experienceId);
+    const updated = await client.query(
+      `UPDATE experience_locations el
+          SET wikidata_item = r.item
+         FROM unnest($2::text[], $3::text[]) AS r(ref, item)
+        WHERE el.experience_id = $1
+          AND lower(el.external_ref) = lower(r.ref)
+          AND NOT (COALESCE(el.curated_fields, '[]'::jsonb) ? 'wikidata_item')
+          AND el.wikidata_item IS DISTINCT FROM r.item
+          AND (EXISTS (SELECT 1 FROM experience_location_placements mine
+                         JOIN ${MEMBERSHIPS} m ON m.id = mine.membership_id
+                        WHERE mine.location_id = el.id AND m.experience_id = $1 AND m.source_id = $4)
+               OR NOT EXISTS (SELECT 1 FROM experience_location_placements any_placement
+                               WHERE any_placement.location_id = el.id))`,
+      [experienceId, items.map(one => one.ref), items.map(one => one.item), sourceId],
+    );
+    await client.query('COMMIT');
+    return updated.rowCount ?? 0;
+  } catch (error) {
+    unusable = await rollbackQuietly(client);
+    throw error;
+  } finally {
+    client.release(unusable);
   }
 }

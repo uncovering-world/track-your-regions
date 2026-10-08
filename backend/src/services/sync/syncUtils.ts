@@ -8,6 +8,7 @@
  */
 
 // ADR-0064: raw parameterized SQL on the pool, typed by the generated rows.
+import type { ComponentItems } from '../../api/responses/admin.js';
 import type { ClosedSyncStatus } from '@tyr/shared/runStatuses';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import type { CheckValue, ExperienceSyncLogsRow } from '../../db/schema.generated.js';
@@ -452,4 +453,12 @@ export async function annotateClosedSyncLog(
   } finally {
     client.release(unusable);
   }
+}
+
+/** How a World Heritage run's components resolved to Wikidata items (#1269): the shape the run's details answer. */
+export type ComponentItemsReport = ComponentItems;
+
+/** Record the run's resolution of components on its own log row. */
+export async function recordComponentItemsReport(logId: number, report: ComponentItemsReport): Promise<void> {
+  await pool.query('UPDATE experience_sync_logs SET component_items = $2 WHERE id = $1', [logId, JSON.stringify(report)]);
 }

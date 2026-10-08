@@ -16096,6 +16096,96 @@
         "additionalProperties": false,
         "description": "What a colour-match run matched: each cluster's divisions and region, and the map of it."
       },
+      "ComponentItems": {
+        "type": "object",
+        "properties": {
+          "resolved": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Component points: two points sharing a reference count twice."
+          },
+          "failedSites": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Sites whose components could not be recorded this run; their points keep what they held."
+          },
+          "ambiguous": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "site": {
+                  "type": "string"
+                },
+                "ref": {
+                  "type": "string"
+                },
+                "items": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "site",
+                "ref",
+                "items"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Component references more than one Wikidata item carries: resolved to none."
+          },
+          "unresolvedSites": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "site": {
+                  "type": "string"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "resolved": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "total": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": [
+                "site",
+                "name",
+                "resolved",
+                "total"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The sites with a component left without an item, most left first, at most fifty."
+          }
+        },
+        "required": [
+          "resolved",
+          "total",
+          "failedSites",
+          "ambiguous",
+          "unresolvedSites"
+        ],
+        "additionalProperties": false,
+        "description": "How a World Heritage run's components resolved to Wikidata items (#1269)."
+      },
       "ComputationCancelled": {
         "type": "object",
         "properties": {
@@ -29203,6 +29293,16 @@
                 "type": "null"
               }
             ]
+          },
+          "component_items": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComponentItems"
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [
@@ -29229,7 +29329,8 @@
           "has_changeset",
           "changeset_lost",
           "stopped_by_restart",
-          "error_details"
+          "error_details",
+          "component_items"
         ],
         "additionalProperties": false,
         "description": "One run of a source, with the errors it recorded."

@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { SparqlBinding } from './wikidataUtils.js';
-import { indexWorldHeritageFacts, factsForSite } from './unescoWikidata.js';
+import { indexWorldHeritageFacts, factsForSite, resolveComponents } from './unescoWikidata.js';
 
 const COMMONS = 'http://commons.wikimedia.org/wiki/Special:FilePath/';
 
@@ -330,5 +330,39 @@ describe('fetchWorldHeritageFacts', () => {
 
     await expect(fetchWorldHeritageFacts(progress, new WaitBudget(1000))).rejects.toThrow('Sync cancelled');
     vi.doUnmock('./wikidataUtils.js');
+  });
+});
+
+/**
+ * A serial site's components resolved to their own Wikidata items (#1269), on
+ * Prehistoric Pile Dwellings around the Alps (1363): one item a component's
+ * reference names, a reference no item carries, and one two items carry.
+ */
+describe('resolving components to their items', () => {
+  const binding = (whc: string, item: string) => ({
+    whc: { type: 'literal', value: whc }, item: { type: 'uri', value: `http://www.wikidata.org/entity/${item}` },
+  });
+  const index = indexWorldHeritageFacts([
+    binding('1363', 'Q1137099'),
+    binding('1363-061', 'Q2108010'),
+    binding('1363-070', 'Q31828921'),
+    binding('1363-070', 'Q31828922'),
+  ] as never);
+
+  it('takes the one item a reference names, folding case and blanks', () => {
+    const resolution = resolveComponents(index, '1363', ['1363-061', ' 1363-061 ', '1363-099', '1363-070']);
+    expect(resolution.items).toEqual([
+      { ref: '1363-061', item: 'Q2108010' },
+      { ref: ' 1363-061 ', item: 'Q2108010' },
+      { ref: '1363-099', item: null },
+      { ref: '1363-070', item: null },
+    ]);
+    expect(resolution.points).toBe(4);
+    expect(resolution.resolved).toBe(2);
+    expect(resolution.ambiguous).toEqual([{ ref: '1363-070', items: ['Q31828921', 'Q31828922'] }]);
+  });
+
+  it('resolves nothing for a site Wikidata names no component of', () => {
+    expect(resolveComponents(index, '1428', ['1428-001']).items).toEqual([{ ref: '1428-001', item: null }]);
   });
 });

@@ -413,8 +413,8 @@ type LogParams = z.output<typeof logIdParamSchema>;
 
 export async function getSyncLogDetails({ params: { logId } }: { params: LogParams }): Promise<SyncLogDetail> {
 
-  const result = await pool.query<SyncLogRow & { error_details: unknown }>(
-    `SELECT ${SYNC_LOG_COLUMNS_SQL}, l.error_details
+  const result = await pool.query<SyncLogRow & { error_details: unknown; component_items: unknown }>(
+    `SELECT ${SYNC_LOG_COLUMNS_SQL}, l.error_details, l.component_items
      FROM experience_sync_logs l
      JOIN experience_sources s ON l.source_id = s.id
      LEFT JOIN users u ON l.triggered_by = u.id

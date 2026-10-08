@@ -282,8 +282,21 @@ export const SyncErrorDetail = z.strictObject({
 }).describe('One error a run recorded.');
 export type SyncErrorDetail = z.infer<typeof SyncErrorDetail>;
 
+export const ComponentItems = z.strictObject({
+  resolved: z.number().int(),
+  total: z.number().int().describe('Component points: two points sharing a reference count twice.'),
+  failedSites: z.number().int().describe('Sites whose components could not be recorded this run; their points keep what they held.'),
+  ambiguous: z.array(z.strictObject({ site: z.string(), ref: z.string(), items: z.array(z.string()) }))
+    .describe('Component references more than one Wikidata item carries: resolved to none.'),
+  unresolvedSites: z.array(z.strictObject({
+    site: z.string(), name: z.string(), resolved: z.number().int(), total: z.number().int(),
+  })).describe('The sites with a component left without an item, most left first, at most fifty.'),
+}).describe("How a World Heritage run's components resolved to Wikidata items (#1269).");
+export type ComponentItems = z.infer<typeof ComponentItems>;
+
 export const SyncLogDetail = SyncLog.extend({
   error_details: z.array(SyncErrorDetail).nullable(),
+  component_items: ComponentItems.nullable(),
 }).describe('One run of a source, with the errors it recorded.');
 export type SyncLogDetail = z.infer<typeof SyncLogDetail>;
 

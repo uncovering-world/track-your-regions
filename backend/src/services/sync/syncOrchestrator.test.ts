@@ -155,6 +155,17 @@ describe('orchestrateSync', () => {
     expect(runningSyncs.get(TEST_SOURCE_ID)?.statusMessage).toBe('the server log has the cause.');
   });
 
+  it('goes on past an after-items step that fails, to the changeset and a closed run', async () => {
+    // The step is a summary of what the items did (#1269); their writes have
+    // landed, so the rest of the run must not be abandoned over it.
+    const config = makeConfig({ afterItems: vi.fn().mockRejectedValue(new Error('log row locked')) });
+
+    await orchestrateSync(config, null);
+
+    expect(config.afterItems).toHaveBeenCalledOnce();
+    expect(updateSyncLog).toHaveBeenCalledWith(TEST_SOURCE_ID, 42, 'success', expect.anything(), undefined);
+  });
+
   it('should clean up runningSyncs after 30s delay', async () => {
     const config = makeConfig();
     await orchestrateSync(config, null);
