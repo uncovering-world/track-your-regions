@@ -30,9 +30,14 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 vi.mock('./publishContents.js', () => ({ placeAfterRelease: vi.fn(async () => []) }));
+// Commons is somebody else's server: the credit a picture is named by is
+// answered here, and a test that cares says which.
+vi.mock('../../services/sync/imageCredit.js', () => ({ creditForOneImage: vi.fn(async () => null) }));
 
 import { pool } from '../../db/index.js';
 import { placeAfterRelease } from './publishContents.js';
+import { creditForOneImage } from '../../services/sync/imageCredit.js';
+import { editLocationBodySchema } from '../../types/index.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
 
@@ -283,6 +288,55 @@ describe('editLocation', () => {
       name: { old: 'Wing B', new: 'East wing' },
       location: { old: { lon: -6.25, lat: 53.34 }, new: { lon: 10.5, lat: 45.25 } },
       anchorMoved: true,
+    });
+  });
+
+  describe("a part's own picture and description (#1270)", () => {
+    const RIESI = 'https://commons.wikimedia.org/wiki/Special:FilePath/Riesi_Pfahlbau.jpg';
+    const CREDIT = { author: 'A photographer', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null };
+
+    it('claims both, writes the picture with the credit Commons names, and moves nothing', async () => {
+      foundAndPermitted();
+      (creditForOneImage as unknown as ReturnType<typeof vi.fn>).mockResolvedValueOnce(CREDIT);
+      const { client, queries } = makeClient({ image_url: null, description: 'lake-dwelling site' });
+      mockedConnect.mockResolvedValue(client);
+      const res = makeRes();
+
+      await answerRoute(patchLocationsEdit,
+        { params: { locationId: '31' }, body: { imageUrl: RIESI, description: 'Pile dwelling on the shore of Lake Riesi' }, user: CURATOR } as never,
+        res as never,
+      );
+
+      const write = only(queries, 'UPDATE experience_locations');
+      expect(JSON.parse(String(write.params[5]))).toEqual(['image_url', 'description']);
+      expect(write.params.slice(7)).toEqual([true, RIESI, JSON.stringify(CREDIT), true, 'Pile dwelling on the shore of Lake Riesi']);
+      expect(JSON.parse(String(only(queries, 'experience_curation_log').params[3]))).toMatchObject({
+        image_url: { old: null, new: RIESI },
+        description: { old: 'lake-dwelling site', new: 'Pile dwelling on the shore of Lake Riesi' },
+      });
+      expect(mockedPlace).not.toHaveBeenCalled();
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ imageCredit: CREDIT }));
+    });
+
+    it('clears both on an empty value, the picture taking its credit with it, and still claims them', async () => {
+      foundAndPermitted();
+      const { client, queries } = makeClient({ image_url: RIESI, description: 'lake-dwelling site' });
+      mockedConnect.mockResolvedValue(client);
+
+      await answerRoute(patchLocationsEdit,
+        { params: { locationId: '31' }, body: { imageUrl: '', description: '' }, user: CURATOR } as never,
+        makeRes() as never,
+      );
+
+      const write = only(queries, 'UPDATE experience_locations');
+      expect(JSON.parse(String(write.params[5]))).toEqual(['image_url', 'description']);
+      expect(write.params.slice(7)).toEqual([true, null, null, true, null]);
+    });
+
+    it('refuses a picture the product may not show, and takes a description alone', () => {
+      expect(editLocationBodySchema.safeParse({ imageUrl: 'https://whc.unesco.org/uploads/sites/gallery/site_1363.jpg' }).success)
+        .toBe(false);
+      expect(editLocationBodySchema.safeParse({ description: 'Pile dwelling' }).success).toBe(true);
     });
   });
 });

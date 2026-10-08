@@ -39,6 +39,7 @@ import {
   WaitBudget,
   type SourceWait,
 } from './sourceRetry.js';
+import { commonsUploadFileName } from '@tyr/shared/pictures';
 import { pool } from '../../db/index.js';
 import { sourcePlacesSql } from '../../db/membership.js';
 import { isCommonsPictureUrl, isStorableHttpUrl } from '../../types/urlSafety.js';
@@ -51,6 +52,7 @@ const FILE_PATH_PATH = '/wiki/Special:FilePath/';
 
 /** The hosts that actually serve Commons files; anything else is somebody else's server. */
 const COMMONS_HOSTS = new Set(['commons.wikimedia.org', 'commons.m.wikimedia.org']);
+
 
 /** Their documented ceiling for a titles list, and the first of a batch's two limits. */
 const TITLE_BATCH = 50;
@@ -109,10 +111,13 @@ export interface ImageCredit {
 }
 
 /**
- * The Commons file name inside a `Special:FilePath` URL, or null for anything else.
+ * The Commons file name inside a `Special:FilePath` URL or the media host's
+ * address of a Commons file (`upload.wikimedia.org/wikipedia/commons/…`, a
+ * thumbnail's included), or null for anything else.
  *
- * That is the shape `wdt:P18` answers with, and the file page is the same name
- * under a different prefix — so a credit link needs no second question.
+ * `Special:FilePath` is the shape `wdt:P18` answers with; the media host's is
+ * what a browser's "copy image address" gives a curator. The file page is the
+ * same name under a different prefix — so a credit link needs no second question.
  */
 export function commonsFileName(url: string | null | undefined): string | null {
   if (!url) return null;
@@ -129,9 +134,17 @@ export function commonsFileName(url: string | null | undefined): string | null {
   // otherwise be asked about on Commons and credited to the photographer of a
   // picture nobody is looking at — the one thing this feature promises never to
   // do.
-  if (!COMMONS_HOSTS.has(parsed.hostname)) return null;
-  if (!parsed.pathname.startsWith(FILE_PATH_PATH)) return null;
-  const encoded = parsed.pathname.slice(FILE_PATH_PATH.length);
+  // The media host's address of a Commons file, a thumbnail's included — the
+  // rule the drawing side reads it by (`@tyr/shared/pictures`).
+  let encoded: string;
+  const uploaded = commonsUploadFileName(parsed.hostname, parsed.pathname);
+  if (uploaded !== null) {
+    encoded = uploaded;
+  } else {
+    if (!COMMONS_HOSTS.has(parsed.hostname)) return null;
+    if (!parsed.pathname.startsWith(FILE_PATH_PATH)) return null;
+    encoded = parsed.pathname.slice(FILE_PATH_PATH.length);
+  }
   if (!encoded) return null;
   try {
     return decodeURIComponent(encoded).replace(/_/g, ' ');

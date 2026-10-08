@@ -172,7 +172,14 @@ export const LocationEditResult = placement.extend({
     "Whether the object's own coordinate moved with the place. True only where the object holds exactly one visible,"
     + ' published place and this is it.',
   ),
-}).superRefine(placementTogether).describe("What a curator's correction to a place's name or position did.");
+  imageCredit: ImageCredit.nullable().optional().describe(
+    "Who is named under the place's new picture (#1270). Present only where the picture changed. Null where the"
+    + ' picture was taken off, where it is an /images/ path we host, and where Commons did not answer in time; a'
+    + ' credit whose author is null is Commons answering with a licence and nobody named.',
+  ),
+}).superRefine(placementTogether).describe(
+  "What a curator's correction to a place's name, position, picture or description did.",
+);
 export type LocationEditResult = z.infer<typeof LocationEditResult>;
 
 export const WorkEditResult = z.strictObject({

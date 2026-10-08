@@ -81,6 +81,15 @@ describe('reading a Commons URL', () => {
     expect(commonsFilePage(null)).toBeNull();
   });
 
+  it("reads the media host's address of a Commons file, a thumbnail's included", () => {
+    // What a browser's "copy image address" gives, and the picture field takes it.
+    expect(commonsFileName('https://upload.wikimedia.org/wikipedia/commons/6/6a/Mona_Lisa.jpg')).toBe('Mona Lisa.jpg');
+    expect(commonsFileName('https://upload.wikimedia.org/wikipedia/commons/thumb/6/6a/Mona_Lisa.jpg/330px-Mona_Lisa.jpg'))
+      .toBe('Mona Lisa.jpg');
+    // Another wiki's own upload is not a Commons file.
+    expect(commonsFileName('https://upload.wikimedia.org/wikipedia/en/6/6a/Mona_Lisa.jpg')).toBeNull();
+  });
+
   it('checks the host, not just the path', () => {
     // A curator may type this URL now. Matching the path anywhere in the string
     // would have `my-blog.example` asked about on Commons and a real

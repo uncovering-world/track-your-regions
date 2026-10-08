@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   PICTURE_HOSTS, isPictureHost, namesAPictureFile, isCommonsPath, isUploadHost, isDescriptionPage,
-  HELD_CREDIT_FIELD, pictureCreditPartner,
+  HELD_CREDIT_FIELD, pictureCreditPartner, commonsUploadFileName,
 } from './pictures.js';
 
 describe('the picture hosts', () => {
@@ -59,5 +59,19 @@ describe('a held picture and its credit are one answer', () => {
     expect(pictureCreditPartner('image_url', 'object')).toBeUndefined();
     expect(pictureCreditPartner('imageUrl', 'part')).toBeUndefined();
     expect(pictureCreditPartner('name', 'object')).toBeUndefined();
+  });
+});
+
+describe('the file name of a Commons file on the upload host (#1270)', () => {
+  it('reads a file and a thumbnail of it, on the host or a subdomain', () => {
+    expect(commonsUploadFileName('upload.wikimedia.org', '/wikipedia/commons/6/6a/Mona_Lisa.jpg')).toBe('Mona_Lisa.jpg');
+    expect(commonsUploadFileName('upload.wikimedia.org', '/wikipedia/commons/thumb/6/6a/Mona_Lisa.jpg/330px-Mona_Lisa.jpg'))
+      .toBe('Mona_Lisa.jpg');
+    expect(commonsUploadFileName('x.upload.wikimedia.org', '/wikipedia/commons/a/a7/Louvre.jpg')).toBe('Louvre.jpg');
+  });
+
+  it("reads nothing off another wiki's upload or another host", () => {
+    expect(commonsUploadFileName('upload.wikimedia.org', '/wikipedia/en/6/6a/Mona_Lisa.jpg')).toBeNull();
+    expect(commonsUploadFileName('commons.wikimedia.org', '/wikipedia/commons/6/6a/Mona_Lisa.jpg')).toBeNull();
   });
 });

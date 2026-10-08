@@ -77,6 +77,20 @@ export function isUploadHost(hostname: string): boolean {
 }
 
 /**
+ * The file name, as the path spells it, of a Commons file on the upload host —
+ * `/wikipedia/commons/a/ab/Name.jpg`, or a thumbnail of it,
+ * `/wikipedia/commons/thumb/a/ab/Name.jpg/330px-Name.jpg` — or null for any
+ * other host or path. Read once for both sides: the drawing side sizes the
+ * file through `Special:FilePath`, and a run or a curator's save asks Commons
+ * who took it (#1270). A browser's "copy image address" gives this shape.
+ */
+export function commonsUploadFileName(hostname: string, pathname: string): string | null {
+  if (!isUploadHost(hostname)) return null;
+  const stored = /^\/wikipedia\/commons\/(?:thumb\/)?[0-9a-f]\/[0-9a-f]{2}\/([^/]+)/.exec(pathname);
+  return stored ? stored[1] : null;
+}
+
+/**
  * Is this the page *about* a file rather than the file?
  *
  * `commons.wikimedia.org/wiki/File:Louvre.jpg` ends the way a picture ends and

@@ -121,22 +121,30 @@ export const syncLogIdParamSchema = z.object({
 });
 
 /**
- * A curator's correction to one point: what it is called, or where it is.
+ * A curator's correction to one point: what it is called, where it is, which
+ * picture it is shown by and what it says about itself (#1270).
  *
  * The coordinate arrives as a pair or not at all. Half a move is not a place —
  * a latitude written against the old longitude names somewhere nobody chose,
  * and on a single-point object that is where the object itself would go.
+ * `imageUrl` is `safeImageUrlSchema`, as on a work: a Commons file or an
+ * `/images/` path we host, and `''` clears it, after which the point shows its
+ * object's picture. The credit is fetched for the file, never sent. `''` clears
+ * the description too.
  */
 export const editLocationBodySchema = z.object({
   name: storedName(COLUMN_WIDTHS.experience_locations.name).optional(),
   latitude: z.number().min(-90).max(90).optional(),
   longitude: z.number().min(-180).max(180).optional(),
+  imageUrl: safeImageUrlSchema,
+  description: z.string().trim().max(2000).optional(),
 }).refine(
   body => (body.latitude === undefined) === (body.longitude === undefined),
   { message: 'Pass latitude and longitude together, or neither' },
 ).refine(
-  body => body.name !== undefined || body.latitude !== undefined,
-  { message: 'Nothing to change: pass a name, a coordinate, or both' },
+  body => body.name !== undefined || body.latitude !== undefined
+    || body.imageUrl !== undefined || body.description !== undefined,
+  { message: 'Nothing to change: pass a name, a coordinate, a picture, a description, or any of them' },
 );
 
 /** One work of one experience: the museum a curator is acting from, and the work in it. */
