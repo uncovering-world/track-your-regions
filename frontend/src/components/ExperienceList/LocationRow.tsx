@@ -40,6 +40,8 @@ export interface LocationRowData {
   longitude: number;
   /** The fields a curator has claimed on the place, so the row can say it is corrected. */
   curatedFields?: string[];
+  /** The place has a picture of its own (#1270), which the "with a photo" filter keeps (#1271). */
+  hasPicture?: boolean;
 }
 
 interface LocationRowProps {
@@ -141,7 +143,8 @@ function LocationRowComponent({
           </ListItemIcon>
           <ListItemText
             primary={label}
-            secondary={regionPath || 'Outside region'}
+            // An empty path is a place whose group already says where it is (#1271).
+            secondary={regionPath ?? 'Outside region'}
             slotProps={{
               primary: { variant: 'body2', sx: { color: 'text.disabled' }, ...opener.name },
               secondary: { variant: 'caption', sx: { fontSize: '0.65rem' } },

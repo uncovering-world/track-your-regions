@@ -56,6 +56,8 @@ import { VirtualRow } from './shared/VirtualRow';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useSeenWindowIds } from '../hooks/useSeenWindowIds';
 import { queryKeys } from '../api/queryKeys';
+import { groupParts } from '../utils/partGroups';
+import { CARD_BROWSE_THRESHOLD } from './ExperienceList/CardLocationList';
 
 interface ExperienceListProps {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
@@ -108,10 +110,21 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
 
   // The open part's steps go through its object's parts in this region — what
   // the map is showing — rather than across the whole object (#1271).
+  // A part outside the region steps within its group of the card's list —
+  // Italy's pile dwellings, from one of them — where the list is long enough to
+  // draw groups. The groups are of every part, not of what a search left: a
+  // search narrows the list to read, and the steps still walk the group.
   const pointSteps = useMemo(() => {
     if (selectedPointId === null || selectedExperienceId === null) return null;
-    const inRegion = (locationsByExperience[selectedExperienceId] ?? []).filter(loc => loc.in_region);
-    return { ids: inRegion.map(loc => loc.id), within: `in ${selectedRegion?.name ?? 'this region'}` };
+    const places = locationsByExperience[selectedExperienceId] ?? [];
+    const inRegion = places.filter(loc => loc.in_region);
+    if (inRegion.some(loc => loc.id === selectedPointId)) {
+      return { ids: inRegion.map(loc => loc.id), within: `in ${selectedRegion?.name ?? 'this region'}` };
+    }
+    if (places.length <= CARD_BROWSE_THRESHOLD) return null;
+    const outside = places.filter(loc => !loc.in_region).map(loc => ({ ...loc, regionPath: loc.region_path }));
+    const group = groupParts(outside).find(g => g.parts.some(loc => loc.id === selectedPointId));
+    return group ? { ids: group.parts.map(loc => loc.id), within: `in ${group.label}` } : null;
   }, [selectedPointId, selectedExperienceId, locationsByExperience, selectedRegion?.name]);
 
 
