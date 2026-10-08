@@ -97,6 +97,9 @@ export const ExperienceLocationWithState = ExperienceLocation.extend({
     "The point's own short description: a World Heritage component's Wikidata description (#1270). Served by the"
     + " object's own read only, to keep the region feed light.",
   ),
+  wikidata_item: z.string().nullable().describe(
+    'The Wikidata item this point is, where one is known (#1269), such as `Q3477679`; the point\'s card links to it (#1271).',
+  ),
 }).describe("One point as its object's own read serves it, with where it stands at the gate.");
 export type ExperienceLocationWithState = z.infer<typeof ExperienceLocationWithState>;
 

@@ -19631,6 +19631,13 @@
               "string",
               "null"
             ]
+          },
+          "wikidata_item": {
+            "description": "The Wikidata item this point is, where one is known (#1269), such as `Q3477679`; the point's card links to it (#1271).",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -19648,7 +19655,8 @@
           "image_credit",
           "curation_state",
           "refused_at",
-          "description"
+          "description",
+          "wikidata_item"
         ],
         "additionalProperties": false,
         "description": "One point as its object's own read serves it, with where it stands at the gate."

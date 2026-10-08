@@ -68,7 +68,7 @@ function placeRow(over: Record<string, unknown> = {}) {
     id: 9, experience_id: 42, name: 'See', external_ref: '1363-061', ordinal: 0,
     longitude: 9.4, latitude: 47.5, created_at: new Date('2026-08-04T15:01:24.341Z'),
     curated_fields: [], in_region: true, region_path: null, curation_state: 'auto', refused_at: null,
-    image_url: null, image_credit: null, description: null,
+    image_url: null, image_credit: null, description: null, wikidata_item: null,
     ...over,
   };
 }
