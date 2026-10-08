@@ -430,7 +430,8 @@ const offeredPlaceInNoRegion: CatalogueAssertion = {
  * which of a page that merely shows a photograph ask that its author be named
  * wherever it appears — and every picture the product draws is a Commons file
  * (ADR-0043), so that is the only term in play. `imageCredit.ts` captures the
- * credit at sync time into `metadata.imageCredit` on both tables and
+ * credit at sync time into `metadata.imageCredit` on every table that holds a
+ * picture — objects, works and, since #1270, a component's own — and
  * `ImageCreditLine` renders it — so a row holding a picture the product draws
  * and no credit is a picture displayed with nobody named. A picture on a host
  * the drawing side refuses is not drawn, so it is not this check's: it is
@@ -596,6 +597,30 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
          WHERE t.image_url IS NOT NULL AND t.image_url <> ''
            AND ${drawableHostSql('t.image_url')}
            AND t.metadata->>'imageCredit' IS NULL
+         UNION ALL
+        -- A component's own picture (#1270), whose held credit rides in its
+        -- object's contents record the way a work's does in its museum's.
+        SELECT 'point', el.id, COALESCE(el.name, el.external_ref),
+               split_part(split_part(el.image_url, '//', 2), '/', 1),
+               EXISTS (SELECT 1
+                         FROM experiences e
+                         JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
+                         JOIN experience_sync_changes ch ON ch.experience_id = e.id
+                                                        AND ch.sync_log_id = m.pending_change_sync_log_id
+                         CROSS JOIN LATERAL jsonb_array_elements(
+                           COALESCE(ch.contents -> 'locations' -> 'changed', '[]'::jsonb)) AS c
+                         CROSS JOIN LATERAL jsonb_array_elements(c -> 'fields') AS f
+                        WHERE e.id = el.experience_id
+                          AND ${heldWaitingSql('e', 'm')}
+                          AND c -> 'item' ->> 'ref' = el.external_ref
+                          AND f ->> 'field' = 'metadata.imageCredit'
+                          AND (f->>'held')::boolean
+                          AND NOT ${heldPartRefusedSql('e.id', "'locations'")}
+                          AND jsonb_typeof(f -> 'new') = 'object') AS credit_waiting
+          FROM experience_locations el
+         WHERE el.image_url IS NOT NULL AND el.image_url <> '' AND el.merged_into_id IS NULL
+           AND ${drawableHostSql('el.image_url')}
+           AND el.metadata->>'imageCredit' IS NULL
          ORDER BY 1, 3`,
   describe: row => {
     const waiting = row.credit_waiting === true
@@ -649,8 +674,8 @@ function drawableHostSql(column: string): string {
  * ever draw. The remedy is one button, *Fix pictures* on the source's card in
  * the sync panel, which is why the sentence names it rather than a run.
  *
- * Both tables, because both are shown: a work's photograph is drawn on the
- * same terms as the object's.
+ * Every table that holds one, because each is shown: a work's photograph and a
+ * component's own (#1270) are drawn on the same terms as the object's.
  */
 const pictureTheProductMayNotShow: CatalogueAssertion = {
   id: 'picture-the-product-may-not-show',
@@ -675,6 +700,12 @@ const pictureTheProductMayNotShow: CatalogueAssertion = {
           FROM treasures t
          WHERE t.image_url IS NOT NULL AND t.image_url <> ''
            AND NOT ${drawableHostSql('t.image_url')}
+         UNION ALL
+        SELECT 'point', el.id, COALESCE(el.name, el.external_ref),
+               split_part(split_part(el.image_url, '//', 2), '/', 1)
+          FROM experience_locations el
+         WHERE el.image_url IS NOT NULL AND el.image_url <> '' AND el.merged_into_id IS NULL
+           AND NOT ${drawableHostSql('el.image_url')}
          ORDER BY 1, 3`,
   describe: row =>
     `${text(row, 'row_name')}: a picture stored from ${text(row, 'host') || 'an unnamed host'}, `

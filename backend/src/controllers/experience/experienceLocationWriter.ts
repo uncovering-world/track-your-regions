@@ -337,16 +337,50 @@ export async function movePointTo(
   );
 }
 
-/** Write a held name onto one point: a published part (ADR-0037). */
-export async function renamePoint(
+/** A point field a held proposal can carry, and so the only ones a published held point writes. */
+export type HeldPointField = 'name' | 'image_url' | 'metadata.imageCredit' | 'description';
+
+/**
+ * The same list as a set: what the held-part plan accepts on a point
+ * (`publishHeldParts.ts`) is what this writer can write, stated once. The
+ * picture, its credit and the description are a component's own (#1270).
+ */
+export const HELD_POINT_FIELDS: ReadonlySet<string> = new Set<HeldPointField>(
+  ['name', 'image_url', 'metadata.imageCredit', 'description'],
+);
+
+export function isHeldPointField(field: string): field is HeldPointField {
+  return HELD_POINT_FIELDS.has(field);
+}
+
+/**
+ * Write the held fields of one point a gated run recorded rather than wrote
+ * (ADR-0037), as `publishHeldParts.ts` planned them. The values arrive as
+ * data; the assignments are built from the closed list, and anything else is
+ * refused rather than put into the statement.
+ */
+export async function writeHeldPointFields(
   client: PoolClient,
   lock: LockedExperience,
   locationId: number,
-  name: string | null,
+  fields: ReadonlyArray<{ field: HeldPointField; value: unknown }>,
 ): Promise<void> {
+  if (fields.length === 0) return;
+  const params: unknown[] = [locationId, lock.id];
+  const bind = (value: unknown) => `$${params.push(value)}`;
+  const assignments = fields.map(({ field, value }) => {
+    if (field === 'metadata.imageCredit') {
+      // Absent and null are one case, as for a work's credit: the key goes.
+      return value == null
+        ? `metadata = metadata - 'imageCredit'`
+        : `metadata = metadata || jsonb_build_object('imageCredit', ${bind(JSON.stringify(value))}::jsonb)`;
+    }
+    if (!isHeldPointField(field)) throw new Error(`A held point field this writer does not know: ${String(field)}`);
+    return `${field} = ${bind(value)}`;
+  });
   await client.query(
-    'UPDATE experience_locations SET name = $2 WHERE id = $1 AND experience_id = $3',
-    [locationId, name, lock.id],
+    `UPDATE experience_locations SET ${assignments.join(', ')} WHERE id = $1 AND experience_id = $2`,
+    params,
   );
 }
 

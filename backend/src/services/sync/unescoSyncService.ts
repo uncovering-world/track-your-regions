@@ -12,7 +12,9 @@ import {
 } from './locationWriter.js';
 import type { IncomingLocation } from './locationIncoming.js';
 import { recordComponentItemsReport, upsertExperienceRecord } from './syncUtils.js';
-import { finishComponentReport, newComponentReport, resolveSiteComponents } from './unescoComponents.js';
+import {
+  componentPicturesToCredit, finishComponentReport, newComponentReport, resolveSiteComponents,
+} from './unescoComponents.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { ProcessItemResult, SyncRunContext } from './syncContract.js';
 import { readFixtureRecords } from './fixtureSource.js';
@@ -141,7 +143,9 @@ async function creditsForNewPictures(
   progress: SyncProgress,
   budget: WaitBudget,
 ): Promise<Map<string, ImageCredit>> {
-  const wanted = new Set<string>();
+  // The components' own pictures too (#1270), the ones no point holds a credit
+  // for: one batch of questions to Commons for the run.
+  const wanted = new Set<string>(await componentPicturesToCredit(facts, records.map(record => record.id_no)));
   for (const record of records) {
     const picture = factsForSite(facts, String(record.id_no), record.name_en).picture;
     if (!picture) continue;
@@ -572,7 +576,16 @@ export function syncUnescoSites(
       const items = factsAnswered ? siteItems(facts, String(record.id_no)) : null;
       const result = await upsertExperience(processed, context, items);
       if (!context.dryRun && factsAnswered && result.experienceId) {
-        await resolveSiteComponents(facts, record, processed, result.experienceId, components);
+        const changed = await resolveSiteComponents(
+          facts, record, processed, result.experienceId, components,
+          { syncLogId: context.syncLogId, sourceId: UNESCO_SOURCE_ID }, credits,
+        );
+        // A component's new picture or description is a change to a point the
+        // run already holds, reported with the points it wrote (ADR-0026).
+        const locations = result.contents?.locations;
+        if (changed.length > 0 && locations) {
+          return { ...result, contents: { ...result.contents, locations: { ...locations, changed: [...locations.changed, ...changed] } } };
+        }
       }
       return result;
     },

@@ -288,9 +288,10 @@ describe('a picture with nobody credited', () => {
   const assertion = byId('picture-with-nobody-credited');
   const sql = collapse(assertion.sql);
 
-  it('covers both tables that hold a picture', () => {
+  it('covers every table that holds a picture', () => {
     expect(sql).toMatch(/FROM experiences e/);
     expect(sql).toMatch(/FROM treasures t/);
+    expect(sql).toMatch(/FROM experience_locations el/);
   });
 
   it('selects nothing on lifecycle, because the obligation follows the picture', () => {
@@ -300,8 +301,8 @@ describe('a picture with nobody credited', () => {
     // is the queue's own predicate and carries the queue's own conditions.
     // `[\s\S]*?` rather than `[^)]*?`: the drawable-host predicate the
     // selection carries since ADR-0043 has parentheses of its own.
-    const selections = sql.match(/WHERE [a-z]\.image_url[\s\S]*?(?= UNION| ORDER)/g);
-    expect(selections).toHaveLength(2);
+    const selections = sql.match(/WHERE [a-z]+\.image_url[\s\S]*?(?= UNION| ORDER)/g);
+    expect(selections).toHaveLength(3);
     for (const clause of selections ?? []) {
       expect(clause).not.toMatch(/admission|curation_state|missing_since/);
     }
@@ -327,6 +328,15 @@ describe('a picture with nobody credited', () => {
     // on the pointer the report would say "waiting on a curator" about a change
     // no screen offers to publish (the review of #717, round two).
     expect(workArm).toContain(collapse(heldWaitingSql('e', 'm')));
+  });
+
+  it("asks it of a component's own picture, through its object's contents record (#1270)", () => {
+    const pointArm = sql.slice(sql.lastIndexOf('UNION ALL'), sql.indexOf('FROM experience_locations el'));
+    expect(pointArm).toContain("'point'");
+    expect(pointArm).toMatch(/contents.*'locations'.*'changed'/);
+    expect(pointArm).toContain("c -> 'item' ->> 'ref' = el.external_ref");
+    expect(pointArm).toContain("(f->>'held')::boolean");
+    expect(pointArm).toContain(collapse(heldWaitingSql('e', 'm')));
   });
 
   it('says when the author is already fetched and waiting on a curator', () => {

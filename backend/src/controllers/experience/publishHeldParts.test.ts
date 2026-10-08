@@ -90,8 +90,8 @@ describe('publishing the held fields of an object\'s parts', () => {
     expect(lock.sql).toContain('el.experience_id = $1');
     expect(lock.params).toEqual([5, '1755-004', 'Château de Montésgur']);
     const write = only(queries, 'UPDATE experience_locations SET name');
-    // The point, its name, and the object it has to belong to (the lock's).
-    expect(write.params).toEqual([88, 'Château de Montségur', 5]);
+    // The point, the object it has to belong to (the lock's), and its name.
+    expect(write.params).toEqual([88, 5, 'Château de Montségur']);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedParts: [{ kind: 'locations', name: 'Château de Montésgur', fields: ['name'], claimedFieldsSkipped: [] }],
     }));
@@ -116,7 +116,37 @@ describe('publishing the held fields of an object\'s parts', () => {
     await publish({ expectedSyncLogId: 64 }, client);
 
     const write = only(queries, 'UPDATE experience_locations SET name');
-    expect(write.params).toEqual([9972, 'Geoagiu / Drumul Romanilor (Germisara)', 5]);
+    expect(write.params).toEqual([9972, 5, 'Geoagiu / Drumul Romanilor (Germisara)']);
+  });
+
+  it("writes a held component's own picture, its credit and its description (#1270)", async () => {
+    grantScope();
+    const riesi = 'http://commons.wikimedia.org/wiki/Special:FilePath/Riesi%20Pfahlbau.jpg';
+    const credit = { author: 'A photographer', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null };
+    const { client, queries } = makeClient({
+      row: HELD_ROW,
+      contents: { locations: { changed: [{
+        item: { name: 'Riesi', ref: '1363-002' },
+        fields: [
+          { field: 'image_url', old: null, new: riesi, held: true },
+          { field: 'metadata.imageCredit', old: null, new: credit, held: true },
+          { field: 'description', old: null, new: 'prehistoric pile dwelling in Switzerland', held: true },
+        ],
+      }] } },
+      parts: { location: { ...MONTSEGUR_ROW, id: 9203, name: 'Riesi' } },
+    });
+
+    const res = await publish({ expectedSyncLogId: 64 }, client);
+
+    const write = only(queries, 'UPDATE experience_locations SET image_url');
+    expect(write.sql).toContain("metadata = metadata || jsonb_build_object('imageCredit'");
+    expect(write.sql).toContain('description = $5');
+    expect(write.params).toEqual([9203, 5, riesi, JSON.stringify(credit), 'prehistoric pile dwelling in Switzerland']);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      appliedParts: [{
+        kind: 'locations', name: 'Riesi', fields: ['image_url', 'metadata.imageCredit', 'description'], claimedFieldsSkipped: [],
+      }],
+    }));
   });
 
   it('writes a held work\'s title and makers as a person would type them', async () => {
@@ -390,7 +420,7 @@ describe('publishing the held fields of an object\'s parts', () => {
       row: HELD_ROW, contents: { locations: { changed: [MONTSEGUR] } }, parts: { location: MONTSEGUR_ROW },
     });
     await publish({ fieldsOnly: true, expectedSyncLogId: 64 }, fields.client);
-    expect(only(fields.queries, 'UPDATE experience_locations SET name').params).toEqual([88, 'Château de Montségur', 5]);
+    expect(only(fields.queries, 'UPDATE experience_locations SET name').params).toEqual([88, 5, 'Château de Montségur']);
     expect(none(fields.queries, 'UPDATE experience_locations SET curation_state')).toBe(true);
 
     grantScope();
