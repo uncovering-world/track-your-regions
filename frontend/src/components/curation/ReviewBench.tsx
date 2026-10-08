@@ -12,6 +12,7 @@ import { Alert, Box, Typography } from '@mui/material';
 import type { QueueRow, RowKind } from './queueRows';
 import { MissingCard, ConflictCard } from './ReviewQueue';
 import { RefusedCard } from './RefusedCards';
+import { SourcesCard } from './SourcesCard';
 import { KindMissingCard } from './KindMissingCard';
 import { asksOfKinds } from './kindQuestions';
 import { GatedCard } from './WaitingToPublish';
@@ -29,6 +30,9 @@ import { WithdrawnCard } from './WithdrawnPoints';
 const KIND_NOTE: Record<RowKind, string> = {
   conflicts: 'Your version is the one visitors see. The source has been proposing something '
     + 'else, and will keep proposing it until you answer.',
+  sources: 'Two sources that each describe this place — say UNESCO and Wikidata — disagree about '
+    + 'what it is called, how it looks or where it stands. Visitors see one of the two; pick the one '
+    + 'that serves them, fact by fact.',
   waiting: 'This came from a source held back until a person looks, so none of it has reached '
     + 'a visitor: an object nobody has passed yet, a change kept off a page readers can '
     + 'already see — or off one of the places or works it is made of — or newly-arrived '
@@ -78,6 +82,7 @@ export function ReviewBench({ row, onDone }: {
         {note}
       </Typography>
       {row.kind === 'conflicts' && row.item && <ConflictCard item={row.item} onDone={onDone} />}
+      {row.kind === 'sources' && row.item && <SourcesCard item={row.item} onDone={onDone} />}
       {row.kind === 'refused' && row.items && <RefusedCard items={row.items} onDone={onDone} />}
       {row.kind === 'missing' && row.items && asksOfKinds(row.items) && <KindMissingCard items={row.items} onDone={onDone} />}
       {row.kind === 'missing' && row.item && !asksOfKinds(row.items) && <MissingCard item={row.item} onDone={onDone} />}

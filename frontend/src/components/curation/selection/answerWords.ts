@@ -36,7 +36,7 @@ export interface AnswerableRow {
 }
 
 export type AnswerableKind =
-  | 'arrival' | 'held' | 'contents' | 'conflicts' | 'refused' | 'missing' | 'withdrawn';
+  | 'arrival' | 'held' | 'contents' | 'conflicts' | 'sources' | 'refused' | 'missing' | 'withdrawn';
 
 export interface AnswerWords {
   /** What the row proposes, as the bar's expansion states it. */
@@ -68,6 +68,13 @@ export const ANSWER_WORDS: Record<AnswerableKind, AnswerWords> = {
     accept: 'Take the source’s',
     reject: 'Keep ours',
   },
+  // Which source to take is a choice per field, made on the card (#1246); a
+  // batch can only keep what readers see, and the server refuses a batch take.
+  sources: {
+    proposes: 'show another source’s name, picture or point',
+    accept: 'Choose on each card',
+    reject: 'Keep what readers see',
+  },
   // A refusal card proposes the refusal, so accepting it keeps the row out
   // (ADR-0067). A batch pins neither answer: a row put back is back for now,
   // and the next run applies the rule to it again.
@@ -96,6 +103,7 @@ export const KIND_NOUN: Record<AnswerableKind, [string, string]> = {
   held: ['held change', 'held changes'],
   contents: ['object with unread contents', 'objects with unread contents'],
   conflicts: ['disagreement', 'disagreements'],
+  sources: ['place two sources describe differently', 'places two sources describe differently'],
   refused: ['refusal', 'refusals'],
   missing: ['object gone from the source', 'objects gone from the source'],
   withdrawn: ['object with lost places', 'objects with lost places'],

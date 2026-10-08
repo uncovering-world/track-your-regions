@@ -10,14 +10,14 @@
 import type {
   AcceptSourceResult, AdmissionResult, ContentKind, CurationLog, DeclineHeldResult,
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
-  LocationStateResult, ManualExperienceCreated, MergeUndone, PublishResult, RefuseArrivalResult,
+  LocationStateResult, ManualExperienceCreated, MergeUndone, PublishResult, ViewsChosen, RefuseArrivalResult,
   RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
 import {
   deleteExperiencesByIdAssignByRegionId, deleteExperiencesByIdRemoveFromRegionByRegionId,
   getExperiencesByIdCurationLog, patchExperiencesByIdEdit, patchExperiencesByIdWorksByTreasureIdEdit,
   patchExperiencesLocationsByLocationIdEdit, postExperiences, postExperiencesByIdAcceptSource,
-  postExperiencesMergesByMergeIdUndo,
+  postExperiencesMergesByMergeIdUndo, postExperiencesByIdChooseViews, type ChooseViewsBody,
   postExperiencesByIdAdmission, postExperiencesByIdAssign, postExperiencesByIdDeclineHeld,
   postExperiencesByIdDeclineSource, postExperiencesByIdPublish, postExperiencesByIdRefuseArrival,
   postExperiencesByIdRefuseContents, postExperiencesByIdReject, postExperiencesByIdState,
@@ -33,7 +33,7 @@ export type {
   AcceptSourceResult, AdmissionResult, AppliedPart, ContentKind, CurationLog, CurationLogEntry,
   DeclineHeldResult, DeclineSourceResult, DeclinedPart, ExperienceEditResult,
   ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MergeUndone,
-  PartNotFound, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody, RefuseContentsResult,
+  PartNotFound, ViewsChosen, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody, RefuseContentsResult,
   RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
 
@@ -363,6 +363,15 @@ export async function editExperience(
   data: EditExperienceBody,
 ): Promise<ExperienceEditResult> {
   return patchExperiencesByIdEdit(experienceId, data);
+}
+
+/**
+ * Which source's name, description, picture or point a place shows, where two
+ * data sources describe it differently (#1246): per field, a membership, or
+ * null to keep what the place shows.
+ */
+export async function chooseSourceViews(experienceId: number, choices: ChooseViewsBody['choices']): Promise<ViewsChosen> {
+  return postExperiencesByIdChooseViews(experienceId, { choices });
 }
 
 /**

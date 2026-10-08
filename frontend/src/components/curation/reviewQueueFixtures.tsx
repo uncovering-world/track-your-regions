@@ -104,6 +104,7 @@ export function shaped(over: QueuePatch = {}) {
     missing: [],
     refused: [],
     conflicts: [],
+    sources: [],
     keptOut: [],
     arrivals: [],
     held: [],
