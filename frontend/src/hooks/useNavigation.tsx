@@ -207,6 +207,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       worldViewId: !worldView || worldView.isDefault ? null : worldView.id,
       regionId: null,
       experienceId: null,
+      pointId: null,
       kindId: null,
     }, { replace });
   }, [mode, go]);

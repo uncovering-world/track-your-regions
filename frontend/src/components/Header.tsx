@@ -39,6 +39,7 @@ export function Header() {
         worldViewId: selectedWorldView && !selectedWorldView.isDefault ? selectedWorldView.id : null,
         regionId: null,
         experienceId: null,
+        pointId: null,
         kindId: null,
       });
       return;

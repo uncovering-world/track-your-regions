@@ -13,7 +13,7 @@ import {
   type ReviewAddress,
 } from './appUrl';
 
-const MAP_ROOT: AppAddress = { mode: 'map', worldViewId: null, regionId: null, experienceId: null, kindId: null };
+const MAP_ROOT: AppAddress = { mode: 'map', worldViewId: null, regionId: null, experienceId: null, pointId: null, kindId: null };
 
 /**
  * One grammar for every address the app writes and reads (#644). The path
@@ -29,17 +29,25 @@ describe('parseAppUrl', () => {
 
   it('reads world view, region and experience from the path, ignoring the slugs', () => {
     expect(parseAppUrl('/wv/5/r/6737-europe/e/1234-historic-centre-of-saint-petersburg', '')).toEqual({
-      mode: 'map', worldViewId: 5, regionId: 6737, experienceId: 1234, kindId: null,
+      mode: 'map', worldViewId: 5, regionId: 6737, experienceId: 1234, pointId: null, kindId: null,
     });
+  });
+
+  it("reads one part of the open card's object (#1271), and no part without a card", () => {
+    expect(parseAppUrl('/wv/2/r/7200-aargau/e/418-prehistoric-pile-dwellings-around-the-alps/p/8189-riesi', '')).toEqual({
+      mode: 'map', worldViewId: 2, regionId: 7200, experienceId: 418, pointId: 8189, kindId: null,
+    });
+    expect(parseAppUrl('/wv/2/r/7200-aargau/p/8189-riesi', '')?.pointId).toBeNull();
+    expect(parseAppUrl('/wv/2/r/7200/e/418/p/riesi', '')?.pointId).toBeNull();
   });
 
   it('reads Discover with its kind', () => {
     expect(parseAppUrl('/discover/wv/5/r/7120-france', '?kind=1')).toEqual({
-      mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: null, kindId: 1,
+      mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: null, pointId: null, kindId: 1,
     });
     // The parameter was spelled `cat` until #819; a link shared before it still opens the list.
     expect(parseAppUrl('/discover/wv/5/r/7120-france', '?cat=1')).toEqual({
-      mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: null, kindId: 1,
+      mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: null, pointId: null, kindId: 1,
     });
   });
 
@@ -106,18 +114,18 @@ describe('parseAppUrl', () => {
 
 describe('buildAppUrl', () => {
   it('writes bare ids when no names are given', () => {
-    expect(buildAppUrl({ mode: 'map', worldViewId: 5, regionId: 6737, experienceId: 1234, kindId: null })).toBe('/wv/5/r/6737/e/1234');
+    expect(buildAppUrl({ mode: 'map', worldViewId: 5, regionId: 6737, experienceId: 1234, pointId: null, kindId: null })).toBe('/wv/5/r/6737/e/1234');
   });
 
   it('decorates the ids with slugs when the names are known', () => {
     expect(buildAppUrl(
-      { mode: 'map', worldViewId: 5, regionId: 6737, experienceId: 1234, kindId: null },
+      { mode: 'map', worldViewId: 5, regionId: 6737, experienceId: 1234, pointId: null, kindId: null },
       { region: 'Europe', experience: 'Historic Centre of Saint Petersburg and Related Groups of Monuments' },
     )).toBe('/wv/5/r/6737-europe/e/1234-historic-centre-of-saint-petersburg-and-related-groups-of-mo');
   });
 
   it('writes Discover with its kind', () => {
-    expect(buildAppUrl({ mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: null, kindId: 1 })).toBe('/discover/wv/5/r/7120?kind=1');
+    expect(buildAppUrl({ mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: null, pointId: null, kindId: 1 })).toBe('/discover/wv/5/r/7120?kind=1');
   });
 
   it('writes the default world view as the bare root', () => {
@@ -148,15 +156,17 @@ describe('an address survives the round trip', () => {
     { ...MAP_ROOT, worldViewId: 5 },
     { ...MAP_ROOT, worldViewId: 5, regionId: 6737 },
     { ...MAP_ROOT, worldViewId: 5, regionId: 6737, experienceId: 1234 },
+    { ...MAP_ROOT, worldViewId: 2, regionId: 7200, experienceId: 418, pointId: 8189 },
     { ...MAP_ROOT, kindId: 5 },
     { ...MAP_ROOT, worldViewId: 5, kindId: 5 },
     { ...MAP_ROOT, mode: 'discover', worldViewId: 5, regionId: 7120 },
     { ...MAP_ROOT, mode: 'discover', worldViewId: 5, regionId: 7120, kindId: 1 },
-    { ...MAP_ROOT, mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: 1234, kindId: 1 },
+    { ...MAP_ROOT, mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: 1234, pointId: null, kindId: 1 },
+    { ...MAP_ROOT, mode: 'discover', worldViewId: 5, regionId: 7120, experienceId: 1234, pointId: 8189, kindId: 1 },
   ];
 
   it.each(addresses)('%j', (address) => {
-    const url = new URL(buildAppUrl(address, { region: 'Europe', experience: 'Stonehenge' }), 'http://x');
+    const url = new URL(buildAppUrl(address, { region: 'Europe', experience: 'Stonehenge', point: 'Riesi' }), 'http://x');
     expect(parseAppUrl(url.pathname, url.search)).toEqual(address);
   });
 });
@@ -184,10 +194,11 @@ describe('legacyRedirect', () => {
 
 describe('slugsOf', () => {
   it('reads the slugs an address carries', () => {
-    expect(slugsOf('/wv/5/r/6737-europe/e/1234-stonehenge')).toEqual({ region: 'europe', experience: 'stonehenge' });
-    expect(slugsOf('/discover/wv/5/r/6737-europe-old-name')).toEqual({ region: 'europe-old-name', experience: '' });
-    expect(slugsOf('/wv/5/r/6737')).toEqual({ region: '', experience: '' });
-    expect(slugsOf('/account')).toEqual({ region: '', experience: '' });
+    expect(slugsOf('/wv/5/r/6737-europe/e/1234-stonehenge')).toEqual({ region: 'europe', experience: 'stonehenge', point: '' });
+    expect(slugsOf('/discover/wv/5/r/6737-europe-old-name')).toEqual({ region: 'europe-old-name', experience: '', point: '' });
+    expect(slugsOf('/wv/5/r/6737')).toEqual({ region: '', experience: '', point: '' });
+    expect(slugsOf('/account')).toEqual({ region: '', experience: '', point: '' });
+    expect(slugsOf('/wv/2/r/7200-aargau/e/418-pile-dwellings/p/8189-riesi').point).toBe('riesi');
   });
 });
 

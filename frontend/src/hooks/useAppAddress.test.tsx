@@ -20,7 +20,7 @@ function useUnderTest() {
 describe('useAppAddress', () => {
   it('reads the address of the page', () => {
     const { result } = renderHook(useUnderTest, { wrapper: makeWrapper('/wv/5/r/6737-europe') });
-    expect(result.current.address).toEqual({ mode: 'map', worldViewId: 5, regionId: 6737, experienceId: null, kindId: null });
+    expect(result.current.address).toEqual({ mode: 'map', worldViewId: 5, regionId: 6737, experienceId: null, pointId: null, kindId: null });
   });
 
   it('answers null on a page that is not a place', () => {
@@ -69,6 +69,18 @@ describe('useAppAddress', () => {
     await waitFor(() => expect(result.current.at).toBe('/wv/5/r/6737-europe/e/1-stonehenge'));
   });
 
+  it("drops the open part when a write changes the card without naming a part (#1271)", async () => {
+    const { result } = renderHook(useUnderTest, { wrapper: makeWrapper('/wv/2/r/7200-aargau/e/418-pile-dwellings/p/8189-riesi') });
+    act(() => { result.current.go({ ...result.current.address!, experienceId: 1 }); });
+    await waitFor(() => expect(result.current.at).toBe('/wv/2/r/7200-aargau/e/1'));
+  });
+
+  it("keeps the part's slug for a write that leaves the part as it is", async () => {
+    const { result } = renderHook(useUnderTest, { wrapper: makeWrapper('/wv/2/r/7200-aargau/e/418/p/8189-riesi') });
+    act(() => { result.current.go(at => at, { names: { experience: 'Pile Dwellings' } }); });
+    await waitFor(() => expect(result.current.at).toBe('/wv/2/r/7200-aargau/e/418-pile-dwellings/p/8189-riesi'));
+  });
+
   it('drops a slug whose id changed', async () => {
     const { result } = renderHook(useUnderTest, { wrapper: makeWrapper('/wv/5/r/6737-europe') });
     act(() => { result.current.go({ ...result.current.address!, regionId: 9 }); });
@@ -85,7 +97,7 @@ describe('useAppAddress', () => {
     const { result } = renderHook(useUnderTest, { wrapper: makeWrapper('/') });
 
     act(() => {
-      result.current.go({ mode: 'map', worldViewId: 5, regionId: null, experienceId: null, kindId: null }, { replace: true });
+      result.current.go({ mode: 'map', worldViewId: 5, regionId: null, experienceId: null, pointId: null, kindId: null }, { replace: true });
       result.current.go(at => ({ ...at, mode: 'discover' }));
     });
 
