@@ -50,6 +50,7 @@ skip it entirely.
 |----------|--------------------|-------|
 | Google login | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | redirect URI `http://localhost:3001/api/auth/google/callback` |
 | AI features | `OPENAI_API_KEY` | enables AI grouping / descriptions / geocoding / image matching |
+| Review suggestions | `JEV_API_KEY` | Jev's suggested answer on the review card for two disagreeing sources (ADR-0087) |
 | Map data (GADM) | runs `npm run db:load-gadm` | offered only when `administrative_divisions` is empty; takes tens of minutes |
 
 **Not** prompted (configure manually in `.env`): **SMTP email** and **Apple

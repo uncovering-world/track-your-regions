@@ -3997,6 +3997,26 @@ nothing to pin. The batch answer can only keep (`answerSources`); which source t
 on the card. The curator answers for every source of the place, in the keys phase and on the
 endpoint; a merge moves the folded place's choices with it.
 
+**Jev's suggestion on the sources card** (#1260, Epic #929, [ADR-0087](../decisions/0087-jev-suggests-an-answer-on-a-curator-card-and-a-curator-decides.md)). Where `JEV_API_KEY` is set, the
+card asks `POST /api/experiences/:id/view-suggestions` (`viewSuggestionController.ts`) when it
+opens: for each field it asks about, the newest stored suggestion made for the views as they
+stand (`viewsOfFieldSql`), or a new one — one `choice` over the views (`jevClient.ts`), its
+instructions written per field from a traveller's judgement (the name a place is known and
+signposted by, the photograph that shows the place itself, the point on the place rather than
+beside it), stored with its confidence, probabilities and input tokens in
+`experience_view_suggestions`, one row per call, written only by `viewSuggestions.ts` for the
+views it was asked about: an answer about views a run changed during the call is recorded and
+never shown, and an answer the client refused (an option it was not given, a confidence that is
+no probability) is recorded with no pick, so every paid call is counted and the same views are
+not paid for twice. The card
+shows "Jev suggests this · N %" on the view picked and chooses nothing; a curator decides.
+Unset, the endpoint answers `configured: false` and the card shows no suggestion. Admin → AI
+Settings shows what the calls cost (input tokens at Jev's published $0.042 per million, output
+free) and how often curators chose the view Jev suggested, comparing each choice with the
+suggestion made for the same views (`jevUsageController.ts`). On Rila Monastery Jev picked
+UNESCO's "Rila Monastery" over "Monastery of Saint John of Rila" at 0.96, for about 430 input
+tokens.
+
 **Conflicts** — fields where `curated_fields` refused the source's value and the two now
 disagree. The queue reads them out of `changed_fields` (`curatedConflict: true`) on the
 latest **non-dry** run, because a preview proposes values that were never applied and never
