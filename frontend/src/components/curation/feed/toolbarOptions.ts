@@ -33,6 +33,12 @@ const KIND_OPTIONS: Array<{ key: string; label: string; short: string; swatch: s
     swatch: KIND_COLOR.conflicts,
   },
   {
+    key: 'sources',
+    label: 'Two sources describe a place differently',
+    short: 'sources disagree',
+    swatch: KIND_COLOR.sources,
+  },
+  {
     key: 'arrival',
     label: 'New arrivals, nobody has looked',
     short: 'new arrivals',

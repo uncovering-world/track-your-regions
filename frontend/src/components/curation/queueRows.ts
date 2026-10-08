@@ -54,6 +54,7 @@ const QUESTION: Record<RowKind, string> = {
   missing: 'gone from the source',
   refused: 'our rule turned it down',
   conflicts: 'the source disagrees with an edit',
+  sources: 'two sources disagree',
   waiting: 'waiting to be published',
   withdrawn: 'lost places it is made of',
 };
@@ -61,6 +62,7 @@ const QUESTION: Record<RowKind, string> = {
 /** The server's word for a question kind, mapped to this file's own — only `conflict` differs. */
 const ROW_KIND: Record<QueueOrderEntry['kind'], RowKind> = {
   conflict: 'conflicts',
+  sources: 'sources',
   waiting: 'waiting',
   withdrawn: 'withdrawn',
   refused: 'refused',
@@ -136,6 +138,7 @@ export function queueRows(data: ReviewQueue | undefined): QueueRow[] {
   const sectionsById = groupGated(data.arrivals ?? [], data.held ?? [], data.contents ?? []);
   const itemsByKind: Record<Exclude<RowKind, 'waiting'>, Map<number, ReviewQueueItem[]>> = {
     conflicts: byPlace(data.conflicts),
+    sources: byPlace(data.sources),
     withdrawn: byPlace(data.withdrawn),
     refused: byPlace(data.refused),
     missing: byPlace(data.missing),

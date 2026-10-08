@@ -33,6 +33,7 @@ const SELECTION_HEADER_HEIGHT = 40;
 /** The heading each group of rows sits under, in question order — the question, as the page states it. */
 const KIND_HEADING: Record<RowKind, string> = {
   conflicts: 'The source disagrees with an edit',
+  sources: 'Two sources describe a place differently',
   waiting: 'Waiting to be published',
   withdrawn: 'Places these objects are made of are gone',
   refused: 'Our own rule for this list turned these down',

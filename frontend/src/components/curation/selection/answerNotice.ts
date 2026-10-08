@@ -81,6 +81,7 @@ const ACT: Record<Kind, (answer: ReviewAnswer, rows: Rows) => string> = {
   conflict: (answer, rows) => (answer === 'accept'
     ? `the source’s value taken on ${plural(rows.length, 'object')}`
     : `ours kept on ${plural(rows.length, 'object')}`),
+  sources: (_answer, rows) => `what readers see kept on ${plural(rows.length, 'place')}`,
   refused: (answer, rows) => `${plural(rows.length, 'refusal')} ${answer === 'accept' ? 'put back' : 'kept out'}`,
   missing: (answer, rows) => missingAct(answer, rows.length),
   // A withdrawn row is answered point by point, and a point that moved under

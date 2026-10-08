@@ -29,6 +29,7 @@ import { HELD_CREDIT_FIELD } from '@tyr/shared/pictures';
  */
 export const KIND_COLOR: Record<RowKind | 'arrival' | 'contents', string> = {
   conflicts: '#C62828',
+  sources: '#AD1457',
   waiting: '#1565C0',
   arrival: '#2E7D32',
   contents: '#00838F',
@@ -40,12 +41,21 @@ export const KIND_COLOR: Record<RowKind | 'arrival' | 'contents', string> = {
 /** The question word a row prints in bold, ahead of its specific text. */
 export const KIND_SHORT: Record<RowKind | 'arrival' | 'contents', string> = {
   conflicts: 'disagrees on',
+  sources: 'sources disagree on',
   waiting: 'holds a change',
   arrival: 'new arrival',
   contents: 'unread',
   withdrawn: 'lost places',
   refused: 'refused',
   missing: 'gone from the source',
+};
+
+/** A field two sources disagree on (#1246), in the words the card's rows use. */
+export const VIEW_FIELD_WORD: Record<'name' | 'description' | 'imageUrl' | 'location', string> = {
+  name: 'name',
+  description: 'description',
+  imageUrl: 'picture',
+  location: 'where it is',
 };
 
 /**
@@ -165,6 +175,8 @@ export function rowSpecific(row: {
       return row.item?.admission_reason ?? '';
     case 'conflicts':
       return (row.item?.proposed ?? []).map(f => humaniseField(f.field)).join(', ');
+    case 'sources':
+      return (row.item?.source_views ?? []).map(f => VIEW_FIELD_WORD[f.field]).join(', ');
     case 'withdrawn':
       return countLabel(row.item?.withdrawn_points?.length ?? 0, 'place', 'places');
     case 'waiting':
