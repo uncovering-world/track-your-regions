@@ -1428,6 +1428,29 @@ export interface ChildrenSimplified {
   totalSimplified: number;
 }
 
+export type ChooseViewsBodyChoicesItemField = typeof ChooseViewsBodyChoicesItemField[keyof typeof ChooseViewsBodyChoicesItemField];
+
+
+export const ChooseViewsBodyChoicesItemField = {
+  name: 'name',
+  description: 'description',
+  imageUrl: 'imageUrl',
+  location: 'location',
+} as const;
+
+export type ChooseViewsBodyChoicesItem = {
+  field: ChooseViewsBodyChoicesItemField;
+  membershipId: number | null;
+};
+
+export interface ChooseViewsBody {
+  /**
+     * @minItems 1
+     * @maxItems 4
+     */
+  choices: ChooseViewsBodyChoicesItem[];
+}
+
 /**
  * One colour group on the preview map and the child region it stands for.
  */
@@ -2444,6 +2467,7 @@ export const CurationLogEntryAction = {
   contents_unrefused: 'contents_unrefused',
   merged: 'merged',
   merge_undone: 'merge_undone',
+  views_chosen: 'views_chosen',
 } as const;
 
 /**
@@ -2510,6 +2534,7 @@ export const CuratorActivityEntryAction = {
   contents_unrefused: 'contents_unrefused',
   merged: 'merged',
   merge_undone: 'merge_undone',
+  views_chosen: 'views_chosen',
 } as const;
 
 /**
@@ -6295,6 +6320,7 @@ export type QueueFacetsKindItemKind = typeof QueueFacetsKindItemKind[keyof typeo
 
 export const QueueFacetsKindItemKind = {
   conflict: 'conflict',
+  sources: 'sources',
   waiting: 'waiting',
   withdrawn: 'withdrawn',
   refused: 'refused',
@@ -6397,6 +6423,7 @@ export type QueueKind = typeof QueueKind[keyof typeof QueueKind];
 
 export const QueueKind = {
   conflict: 'conflict',
+  sources: 'sources',
   waiting: 'waiting',
   withdrawn: 'withdrawn',
   refused: 'refused',
@@ -6430,6 +6457,36 @@ export interface QueueOrderEntry {
   runId: number | null;
   /** The gated sub-kinds a `waiting` row groups. An arrival is always alone. */
   subs: WaitingSub[];
+}
+
+export type QuietFieldField = typeof QuietFieldField[keyof typeof QuietFieldField];
+
+
+export const QuietFieldField = {
+  name: 'name',
+  description: 'description',
+  imageUrl: 'imageUrl',
+  location: 'location',
+} as const;
+
+/**
+ * Why the field is not asked: the sources agree, only one reports it, or a curator already chose.
+ */
+export type QuietFieldWhy = typeof QuietFieldWhy[keyof typeof QuietFieldWhy];
+
+
+export const QuietFieldWhy = {
+  agree: 'agree',
+  one_source: 'one_source',
+  answered: 'answered',
+} as const;
+
+export interface QuietField {
+  field: QuietFieldField;
+  /** Why the field is not asked: the sources agree, only one reports it, or a curator already chose. */
+  why: QuietFieldWhy;
+  /** For the point: how far apart the farthest two views stand. */
+  metres: number | null;
 }
 
 export interface RefuseArrivalBody {
@@ -7054,6 +7111,7 @@ export type ReviewAnswerBodyRowsItemKind = typeof ReviewAnswerBodyRowsItemKind[k
 
 export const ReviewAnswerBodyRowsItemKind = {
   conflict: 'conflict',
+  sources: 'sources',
   waiting: 'waiting',
   withdrawn: 'withdrawn',
   refused: 'refused',
@@ -7277,6 +7335,7 @@ export type ReviewQueueItemKind = typeof ReviewQueueItemKind[keyof typeof Review
 export const ReviewQueueItemKind = {
   missing: 'missing',
   conflict: 'conflict',
+  sources: 'sources',
   refused: 'refused',
   'kept-out': 'kept-out',
   arrival: 'arrival',
@@ -7314,6 +7373,51 @@ export interface WithdrawnPoint {
      */
   replacedMetres: number | null;
   curatedFields?: string[];
+}
+
+export type SourceViewFieldField = typeof SourceViewFieldField[keyof typeof SourceViewFieldField];
+
+
+export const SourceViewFieldField = {
+  name: 'name',
+  description: 'description',
+  imageUrl: 'imageUrl',
+  location: 'location',
+} as const;
+
+/**
+ * One source's view of one field of a place (#1246).
+ */
+export interface SourceView {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  membership_id: number;
+  kind_name: string;
+  source_name: string;
+  /**
+     * The name or description as the source reports it; null for a picture or a point.
+     * @nullable
+     */
+  value: string | null;
+  /** @nullable */
+  image_url: string | null;
+  image_credit: ImageCredit | null;
+  /** @nullable */
+  latitude: number | null;
+  /** @nullable */
+  longitude: number | null;
+  /** Whether this is the value readers see now. */
+  shown: boolean;
+}
+
+/**
+ * A field two data sources contradict, with every standing view of it.
+ */
+export interface SourceViewField {
+  field: SourceViewFieldField;
+  views: SourceView[];
 }
 
 /**
@@ -7443,6 +7547,10 @@ export interface ReviewQueueItem {
   object_admission?: string | null;
   /** @nullable */
   object_curation_state?: string | null;
+  /** The fields two data sources describe differently, each with every view of it. `sources` items only. */
+  source_views?: SourceViewField[] | null;
+  /** The fields the `sources` card is not asking about, and why. */
+  quiet_fields?: QuietField[];
 }
 
 /**
@@ -7455,6 +7563,8 @@ export interface ReviewQueue {
   /** Refusals a curator confirmed, carried because no other surface shows them. */
   keptOut: ReviewQueueItem[];
   conflicts: ReviewQueueItem[];
+  /** Places two data sources describe differently (#1246). */
+  sources: ReviewQueueItem[];
   arrivals: ReviewQueueItem[];
   held: ReviewQueueItem[];
   contents: ReviewQueueItem[];
@@ -8674,6 +8784,41 @@ export interface ViewedTreasureIds {
      * @items.maximum 9007199254740991
      */
   viewedTreasureIds: number[];
+}
+
+export type ViewsChosenFieldsItem = typeof ViewsChosenFieldsItem[keyof typeof ViewsChosenFieldsItem];
+
+
+export const ViewsChosenFieldsItem = {
+  name: 'name',
+  description: 'description',
+  imageUrl: 'imageUrl',
+  location: 'location',
+} as const;
+
+export type ViewsChosenChangedItem = typeof ViewsChosenChangedItem[keyof typeof ViewsChosenChangedItem];
+
+
+export const ViewsChosenChangedItem = {
+  name: 'name',
+  description: 'description',
+  imageUrl: 'imageUrl',
+  location: 'location',
+} as const;
+
+/**
+ * A curator's choice between two sources' views of a place (#1246): the place shows the chosen source's value of each field, and the question stays answered until a source sends something different.
+ */
+export interface ViewsChosen {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  /** The fields answered. */
+  fields: ViewsChosenFieldsItem[];
+  /** The fields whose value the place now shows differently. */
+  changed: ViewsChosenChangedItem[];
 }
 
 export type VisionMatchResultDebugImages = {
@@ -17734,6 +17879,46 @@ return apiFetch<DeclineHeldResult>(getPostExperiencesByIdDeclineHeldUrl(id),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(declineHeldBody)
+  }
+);}
+
+
+
+export const getPostExperiencesByIdChooseViewsUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/choose-views`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Choose which source's view of each disputed field a place shows, or keep what it shows
+ */
+export const postExperiencesByIdChooseViews = async (id: number,
+    chooseViewsBody: ChooseViewsBody, options?: Parameters<typeof apiFetch>[1]): Promise<ViewsChosen> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<ViewsChosen>(getPostExperiencesByIdChooseViewsUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(chooseViewsBody)
   }
 );}
 

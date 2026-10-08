@@ -193,6 +193,11 @@ const CONFLICT_DECISION_WRITE = 'experience_conflict_decisions is written by its
   + 'write to src/controllers/experience/conflictDecisions.ts, taking the place\'s LockedExperience token.';
 const CONFLICT_DECISION_WRITE_RULES = spelledWriteRules('experience_conflict_decisions', CONFLICT_DECISION_WRITE);
 
+/** A curator's choice between two sources' views of a place (#1246): `viewChoices.ts`. */
+const VIEW_CHOICE_WRITE = 'experience_view_choices is written by its writer module only (ADR-0077): add a named write to '
+  + 'src/controllers/experience/viewChoices.ts, taking the place\'s LockedExperience token.';
+const VIEW_CHOICE_WRITE_RULES = spelledWriteRules('experience_view_choices', VIEW_CHOICE_WRITE);
+
 /** A curator's answer to one row of a held proposal: `recordHeldAnswers` in `heldDecisions.ts`. */
 const HELD_DECISION_WRITE = 'experience_held_decisions is written by its writer module only (ADR-0077): record an answer '
   + 'through recordHeldAnswers in src/controllers/experience/heldDecisions.ts.';
@@ -344,6 +349,7 @@ const SOURCE_RULE_FAMILIES = [
   TRANSACTION_RULES, RESPONSE_SHAPE_RULES, ERROR_TEXT_RULES, READER_PREDICATE_RULES,
   EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
+  VIEW_CHOICE_WRITE_RULES,
   ROUTE_REGISTRY_RULES,
 ];
 
@@ -351,6 +357,7 @@ const SOURCE_RULE_FAMILIES = [
 const TABLE_WRITE_FAMILIES = [
   EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
+  VIEW_CHOICE_WRITE_RULES,
 ];
 
 /** The `no-restricted-syntax` setting of every family but the ones named. */
@@ -504,6 +511,12 @@ export default [
     files: ['src/controllers/experience/heldDecisions.ts'],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(HELD_DECISION_WRITE_RULES),
+    },
+  },
+  {
+    files: ['src/controllers/experience/viewChoices.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(VIEW_CHOICE_WRITE_RULES),
     },
   },
   {

@@ -12514,6 +12514,66 @@
         }
       }
     },
+    "/api/experiences/{id}/choose-views": {
+      "post": {
+        "operationId": "postExperiencesByIdChooseViews",
+        "summary": "Choose which source's view of each disputed field a place shows, or keep what it shows",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChooseViewsBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewsChosen"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/refuse-arrival": {
       "post": {
         "operationId": "postExperiencesByIdRefuseArrival",
@@ -15288,6 +15348,49 @@
         "additionalProperties": false,
         "description": "The members of each child of a region simplified, one child at a time."
       },
+      "ChooseViewsBody": {
+        "type": "object",
+        "properties": {
+          "choices": {
+            "minItems": 1,
+            "maxItems": 4,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string",
+                  "enum": [
+                    "name",
+                    "description",
+                    "imageUrl",
+                    "location"
+                  ]
+                },
+                "membershipId": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 2147483647
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "field",
+                "membershipId"
+              ]
+            }
+          }
+        },
+        "required": [
+          "choices"
+        ]
+      },
       "ClusterGeoInfo": {
         "type": "object",
         "properties": {
@@ -16921,7 +17024,8 @@
               "contents_refused",
               "contents_unrefused",
               "merged",
-              "merge_undone"
+              "merge_undone",
+              "views_chosen"
             ]
           },
           "region_id": {
@@ -17061,7 +17165,8 @@
               "contents_refused",
               "contents_unrefused",
               "merged",
-              "merge_undone"
+              "merge_undone",
+              "views_chosen"
             ]
           },
           "created_at": {
@@ -24650,6 +24755,7 @@
                   "type": "string",
                   "enum": [
                     "conflict",
+                    "sources",
                     "waiting",
                     "withdrawn",
                     "refused",
@@ -24821,6 +24927,7 @@
         "type": "string",
         "enum": [
           "conflict",
+          "sources",
           "waiting",
           "withdrawn",
           "refused",
@@ -24881,6 +24988,48 @@
         ],
         "additionalProperties": false,
         "description": "One open question, in the order the page draws them (ADR-0051)."
+      },
+      "QuietField": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "name",
+              "description",
+              "imageUrl",
+              "location"
+            ]
+          },
+          "why": {
+            "type": "string",
+            "enum": [
+              "agree",
+              "one_source",
+              "answered"
+            ],
+            "description": "Why the field is not asked: the sources agree, only one reports it, or a curator already chose."
+          },
+          "metres": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "For the point: how far apart the farthest two views stand."
+          }
+        },
+        "required": [
+          "field",
+          "why",
+          "metres"
+        ],
+        "additionalProperties": false
       },
       "RefuseArrivalBody": {
         "type": "object",
@@ -26208,6 +26357,7 @@
                   "type": "string",
                   "enum": [
                     "conflict",
+                    "sources",
                     "waiting",
                     "withdrawn",
                     "refused",
@@ -26487,6 +26637,13 @@
               "$ref": "#/components/schemas/ReviewQueueItem"
             }
           },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueItem"
+            },
+            "description": "Places two data sources describe differently (#1246)."
+          },
           "arrivals": {
             "type": "array",
             "items": {
@@ -26629,6 +26786,7 @@
           "refused",
           "keptOut",
           "conflicts",
+          "sources",
           "arrivals",
           "held",
           "contents",
@@ -26697,6 +26855,7 @@
             "enum": [
               "missing",
               "conflict",
+              "sources",
               "refused",
               "kept-out",
               "arrival",
@@ -27053,6 +27212,27 @@
               "string",
               "null"
             ]
+          },
+          "source_views": {
+            "description": "The fields two data sources describe differently, each with every view of it. `sources` items only.",
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SourceViewField"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "quiet_fields": {
+            "description": "The fields the `sources` card is not asking about, and why.",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuietField"
+            }
           }
         },
         "required": [
@@ -27626,6 +27806,100 @@
         ],
         "additionalProperties": false,
         "description": "The fame line a source's next run reads, written: the keys the request wrote."
+      },
+      "SourceView": {
+        "type": "object",
+        "properties": {
+          "membership_id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "kind_name": {
+            "type": "string"
+          },
+          "source_name": {
+            "type": "string"
+          },
+          "value": {
+            "description": "The name or description as the source reports it; null for a picture or a point.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "image_credit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCredit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "latitude": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "longitude": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "shown": {
+            "type": "boolean",
+            "description": "Whether this is the value readers see now."
+          }
+        },
+        "required": [
+          "membership_id",
+          "kind_name",
+          "source_name",
+          "value",
+          "image_url",
+          "image_credit",
+          "latitude",
+          "longitude",
+          "shown"
+        ],
+        "additionalProperties": false,
+        "description": "One source's view of one field of a place (#1246)."
+      },
+      "SourceViewField": {
+        "type": "object",
+        "properties": {
+          "field": {
+            "type": "string",
+            "enum": [
+              "name",
+              "description",
+              "imageUrl",
+              "location"
+            ]
+          },
+          "views": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SourceView"
+            }
+          }
+        },
+        "required": [
+          "field",
+          "views"
+        ],
+        "additionalProperties": false,
+        "description": "A field two data sources contradict, with every standing view of it."
       },
       "SourcesReordered": {
         "type": "object",
@@ -29507,6 +29781,49 @@
         ],
         "additionalProperties": false,
         "description": "The works the reader has marked seen."
+      },
+      "ViewsChosen": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "fields": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "name",
+                "description",
+                "imageUrl",
+                "location"
+              ]
+            },
+            "description": "The fields answered."
+          },
+          "changed": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "name",
+                "description",
+                "imageUrl",
+                "location"
+              ]
+            },
+            "description": "The fields whose value the place now shows differently."
+          }
+        },
+        "required": [
+          "experienceId",
+          "fields",
+          "changed"
+        ],
+        "additionalProperties": false,
+        "description": "A curator's choice between two sources' views of a place (#1246): the place shows the chosen source's value of each field, and the question stays answered until a source sends something different."
       },
       "VisionMatchResult": {
         "type": "object",

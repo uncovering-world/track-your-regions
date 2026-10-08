@@ -28,7 +28,7 @@ import type { z } from 'zod/v4';
 import type { ReviewAnswerResult } from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
 import type { reviewAnswerBodySchema } from '../../types/index.js';
-import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
+import { answeredSourceId, resolveEverySourceScope, resolveExperienceScope } from './experienceScope.js';
 import {
   answerRow, type AnswerRow,
 } from './reviewAnswerDispatch.js';
@@ -37,6 +37,18 @@ import {
 // bound where it is enforced, `reviewAnswerBodySchema` in `types/index.ts`;
 // the client's `REVIEW_ANSWER_ROWS_MAX` mirrors it, and `docs/tech/experiences.md`
 // names it beside the route.
+
+/** The scope a row is answered in: its membership's source, the place's own, or every source of the place. */
+async function scopeOfRow(
+  userId: number, userRole: Parameters<typeof resolveExperienceScope>[1],
+  row: { id: number; kind: string; membershipId: number | null }, placeSourceId: number,
+): Promise<{ permitted: boolean; logRegionId: number | null; sourceIds?: number[] }> {
+  if (row.kind === 'sources') return resolveEverySourceScope(userId, userRole, row.id);
+  const sourceId = row.membershipId === null
+    ? placeSourceId
+    : (await answeredSourceId(row.id, row.membershipId)) ?? placeSourceId;
+  return resolveExperienceScope(userId, userRole, row.id, sourceId);
+}
 
 /**
  * Answer a selection of review rows with one answer.
@@ -75,18 +87,18 @@ export async function answerReviewRows(
     // included: `resolveExperienceScope` throwing must land in `refused` and
     // not in a 500 that abandons the rest, exactly as `publishWaiting` reasons.
     try {
-      // A row naming a membership is scoped by that membership's source (#1264).
-      const sourceId = row.membershipId === null
-        ? object.sourceId
-        : (await answeredSourceId(row.id, row.membershipId)) ?? object.sourceId;
-      const { permitted, logRegionId } = await resolveExperienceScope(
-        userId, userRole, row.id, sourceId);
+      // A row naming a membership is scoped by that membership's source (#1264);
+      // a choice between two sources' views by every source of the place (#1246).
+      const { permitted, logRegionId, sourceIds } = await scopeOfRow(userId, userRole, row, object.sourceId);
       if (!permitted) {
         result.outOfScope += 1;
         continue;
       }
       const outcome = await answerRow(
-        { experienceId: row.id, userId, logRegionId, runId: row.runId, membershipId: row.membershipId },
+        {
+          experienceId: row.id, userId, logRegionId, runId: row.runId, membershipId: row.membershipId,
+          scopedSourceIds: sourceIds,
+        },
         row.kind, answer);
       if ('refusal' in outcome) {
         result.refused.push({ kind: row.kind, id: row.id, name: object.name, error: outcome.refusal.error });

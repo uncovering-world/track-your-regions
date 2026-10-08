@@ -13,6 +13,7 @@
  * rendered.
  */
 
+import { VIEW_FIELDS } from '../../db/sourceViews.js';
 import { CURATION_LOG_ACTIONS } from '@tyr/shared/curationLog';
 import { z } from 'zod/v4';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
@@ -297,3 +298,12 @@ export const MergeUndone = z.strictObject({
   foldedId: z.number().int().describe('The place that is a place of its own again.'),
 }).describe('A merge of two places undone (ADR-0086): what it moved is back where it came from.');
 export type MergeUndone = z.infer<typeof MergeUndone>;
+
+const ViewFieldWord = z.enum(VIEW_FIELDS);
+
+export const ViewsChosen = z.strictObject({
+  experienceId: z.number().int(),
+  fields: z.array(ViewFieldWord).describe('The fields answered.'),
+  changed: z.array(ViewFieldWord).describe('The fields whose value the place now shows differently.'),
+}).describe('A curator\'s choice between two sources\' views of a place (#1246): the place shows the chosen source\'s value of each field, and the question stays answered until a source sends something different.');
+export type ViewsChosen = z.infer<typeof ViewsChosen>;

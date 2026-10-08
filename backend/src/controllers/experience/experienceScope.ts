@@ -131,3 +131,30 @@ export async function maySeeUnreadExperience(
   return permitted;
 }
 
+
+/**
+ * Scope over every source a place holds a membership of: a question about all
+ * of them — which of two sources' views the place shows (#1246) — is answered
+ * only by a curator who answers for each. The audit row names the first region
+ * the authority came from. A place with no membership is out of scope. The
+ * sources it was resolved over come back with it, so a writer can refuse once
+ * the place holds another (a merge between the check and its lock).
+ */
+export async function resolveEverySourceScope(
+  userId: number,
+  userRole: UserRole,
+  experienceId: number,
+): Promise<{ permitted: boolean; logRegionId: number | null; sourceIds: number[] }> {
+  const sources = await pool.query<{ source_id: number }>(
+    `SELECT DISTINCT source_id FROM ${MEMBERSHIPS} WHERE experience_id = $1 ORDER BY source_id`, [experienceId],
+  );
+  const sourceIds = sources.rows.map(row => row.source_id);
+  if (sourceIds.length === 0) return { permitted: false, logRegionId: null, sourceIds };
+  let logRegionId: number | null = null;
+  for (const sourceId of sourceIds) {
+    const scope = await resolveExperienceScope(userId, userRole, experienceId, sourceId);
+    if (!scope.permitted) return { permitted: false, logRegionId: null, sourceIds };
+    logRegionId ??= scope.logRegionId;
+  }
+  return { permitted: true, logRegionId, sourceIds };
+}

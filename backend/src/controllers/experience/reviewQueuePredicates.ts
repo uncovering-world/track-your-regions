@@ -18,6 +18,7 @@
  */
 
 import { MEMBERSHIPS, admissionAnsweredSql, membershipAdmittedSql, membershipOfferedSql } from '../../db/membership.js';
+import { openViewFieldsSql } from '../../db/sourceViews.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import {
   hidePendingSql,
@@ -193,4 +194,19 @@ export function conflictChangeOpenSql(e = 'e', ch = 'ch', l = 'l'): string {
 export function claimKeySql(field: string, keyMapParam: string, familyParam: string): string {
   return `COALESCE(${keyMapParam}::jsonb->>(${field}),`
     + ` ${familyParam}::jsonb->>split_part(${field}, '.', 1), ${field})`;
+}
+
+/**
+ * Two data sources describe the place differently and a curator has not
+ * answered as their views stand (#1246): some field two standing views under
+ * different ids contradict (`openViewFieldsSql`). The pair test first, which an
+ * index on the membership's place answers, so the field comparison runs only
+ * for a place two sources hold. A place a merge folded holds no membership and
+ * is never asked.
+ */
+export function sourcesOpenSql(e = 'e'): string {
+  return `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} a JOIN ${MEMBERSHIPS} b
+                    ON b.experience_id = a.experience_id AND a.external_id <> b.external_id
+                   WHERE a.experience_id = ${e}.id)
+          AND cardinality(${openViewFieldsSql(e + '.id')}) > 0`;
 }

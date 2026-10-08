@@ -18,6 +18,7 @@ import {
   LocationStateResult,
   ManualExperienceCreated,
   MergeUndone,
+  ViewsChosen,
   PublishResult,
   RefuseArrivalResult,
   RefuseContentsResult,
@@ -27,6 +28,7 @@ import {
 } from '../api/responses/curation.js';
 import { PublishWaitingResult } from '../api/responses/admin.js';
 import { undoPlaceMerge } from '../controllers/experience/placeMergeController.js';
+import { chooseViews } from '../controllers/experience/viewChoiceController.js';
 import { ReviewAnswerResult, ReviewQueue, RunSetAside } from '../api/responses/reviewQueue.js';
 import {
   ExperienceDetail,
@@ -90,6 +92,7 @@ import {
   idParamSchema,
   sourceIdParamSchema,
   mergeIdParamSchema,
+  chooseViewsBodySchema,
   reviewQueueQuerySchema,
   syncLogIdParamSchema,
   experienceAdmissionBodySchema,
@@ -473,6 +476,18 @@ export const experienceCurationRoutes = [
     body: declineHeldBodySchema,
     response: DeclineHeldResult,
     handler: declineHeldValue,
+  }),
+
+  // Which source's name, description, picture or point a place shows where two
+  // data sources describe it differently (#1246), in the scope of every source
+  // the place's views come from.
+  defineRoute({
+    method: 'post', path: '/:id/choose-views', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Choose which source\'s view of each disputed field a place shows, or keep what it shows',
+    params: idParamSchema,
+    body: chooseViewsBodySchema,
+    response: ViewsChosen,
+    handler: chooseViews,
   }),
 
   // The no that the two gated kinds without one lacked (#852, ADR-0053): keeping

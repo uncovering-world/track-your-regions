@@ -1,5 +1,5 @@
 /**
- * The review queue's words, as lists: the five classes a question belongs to,
+ * The review queue's words, as lists: the classes a question belongs to,
  * the three sub-kinds a waiting row groups, the kind word each card carries, and
  * the three answers a batch gives.
  *
@@ -9,8 +9,8 @@
  * schema may import only what opens no pool.
  */
 
-/** The five classes of open question, in no order: `KIND_RANK` gives theirs. */
-export const QUEUE_KINDS = ['conflict', 'waiting', 'withdrawn', 'refused', 'missing'] as const;
+/** The classes of open question, in no order: `KIND_RANK` gives theirs. */
+export const QUEUE_KINDS = ['conflict', 'sources', 'waiting', 'withdrawn', 'refused', 'missing'] as const;
 export type QueueKind = (typeof QUEUE_KINDS)[number];
 
 /** The gated sub-kinds a `waiting` question groups (ADR-0025). */
@@ -22,7 +22,7 @@ export type WaitingSub = (typeof WAITING_SUBS)[number];
  * kinds, and the three answered lists a curator can take a verdict back from.
  */
 export const QUEUE_ITEM_KINDS = [
-  'missing', 'conflict', 'refused', 'kept-out', 'arrival', 'held', 'contents',
+  'missing', 'conflict', 'sources', 'refused', 'kept-out', 'arrival', 'held', 'contents',
   'withdrawn', 'withdrawn-answered', 'contents-refused',
 ] as const;
 export type QueueItemKind = (typeof QUEUE_ITEM_KINDS)[number];

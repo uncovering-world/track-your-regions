@@ -11,7 +11,7 @@
 
 import type {
   ChangedField, CountedWork, AnsweredPoint, HeldPart, PendingPoint, PendingWork, ProposedField,
-  RefusedPoint, RefusedWork, ReviewQueueItem, WithdrawnPoint,
+  QuietField, RefusedPoint, RefusedWork, ReviewQueueItem, SourceViewField, WithdrawnPoint,
 } from '../../api/responses/reviewQueue.js';
 import type { ImageCredit } from '../../api/responses/experiences.js';
 import type { CheckValue } from '../../db/schema.generated.js';
@@ -75,6 +75,8 @@ export interface QueueRow {
   takeable?: boolean;
   object_admission?: string | null;
   object_curation_state?: string | null;
+  source_views?: SourceViewField[] | null;
+  quiet_fields?: QuietField[];
 }
 
 /**
@@ -190,5 +192,7 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     takeable: row.takeable,
     object_admission: row.object_admission,
     object_curation_state: row.object_curation_state,
+    source_views: row.source_views,
+    quiet_fields: row.quiet_fields,
   };
 }

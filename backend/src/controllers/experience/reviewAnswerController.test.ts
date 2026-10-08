@@ -14,7 +14,8 @@ vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn(), connect: vi.fn() },
   rollbackQuietly: vi.fn(),
 }));
-vi.mock('./experienceScope.js', () => ({ resolveExperienceScope: vi.fn() }));
+vi.mock('./experienceScope.js', () => ({ resolveExperienceScope: vi.fn(), resolveEverySourceScope: vi.fn() }));
+vi.mock('./viewChoiceController.js', () => ({ chooseViews: vi.fn(), chooseViewsUnderLock: vi.fn(), keepingChoices: vi.fn() }));
 vi.mock('./publishController.js', () => ({ publishUnderLock: vi.fn() }));
 vi.mock('./curatorRefusalController.js', () => ({
   refuseArrivalUnderLock: vi.fn(), refuseContentsUnderLock: vi.fn(),
@@ -28,7 +29,8 @@ vi.mock('./lifecycleController.js', () => ({
 vi.mock('./locationStateController.js', () => ({ answerLocationStateUnderLock: vi.fn() }));
 
 import { pool } from '../../db/index.js';
-import { resolveExperienceScope } from './experienceScope.js';
+import { resolveEverySourceScope, resolveExperienceScope } from './experienceScope.js';
+import { chooseViewsUnderLock, keepingChoices } from './viewChoiceController.js';
 import { publishUnderLock } from './publishController.js';
 import { refuseArrivalUnderLock, refuseContentsUnderLock } from './curatorRefusalController.js';
 import { refuseUnderLock } from './declineHeldController.js';
@@ -47,6 +49,9 @@ const postReviewAnswer = routeAt(experienceCurationRoutes, '/review/answer', 'po
 type Mock = ReturnType<typeof vi.fn>;
 const mockedQuery = pool.query as unknown as Mock;
 const mockedScope = resolveExperienceScope as unknown as Mock;
+const mockedEverySource = resolveEverySourceScope as unknown as Mock;
+const mockedChoose = chooseViewsUnderLock as unknown as Mock;
+const mockedKeeping = keepingChoices as unknown as Mock;
 const mockedPublish = publishUnderLock as unknown as Mock;
 const mockedRefuseArrival = refuseArrivalUnderLock as unknown as Mock;
 const mockedRefuseContents = refuseContentsUnderLock as unknown as Mock;
@@ -340,3 +345,37 @@ describe('each object is its own act', () => {
     expect(res.json.mock.calls[0][0].refused[0].error).toBe('This row was turned down by its source');
   });
 });
+
+/**
+ * A choice between two sources' views of Rila Monastery (#1246) is about both
+ * sources, so a batch answers it only for a curator in scope for each.
+ */
+describe('a place two sources describe differently', () => {
+  beforeEach(() => {
+    poolAnswers({ names: [{ id: 450, name: 'Rila Monastery', source_id: 1 }] });
+    mockedKeeping.mockResolvedValue([{ field: 'name', membershipId: 379 }]);
+    mockedChoose.mockResolvedValue({ result: { fields: ['name'], changed: [] } });
+  });
+
+  it('is scoped by every source of the place, not by the place\'s first one', async () => {
+    mockedEverySource.mockResolvedValue({ permitted: false, logRegionId: null });
+    const res = makeRes();
+
+    await answerRoute(postReviewAnswer, req([{ kind: 'sources', id: 450 }], 'reject'), res as never);
+
+    expect(mockedEverySource).toHaveBeenCalledWith(7, 'curator', 450);
+    expect(mockedScope).not.toHaveBeenCalled();
+    expect(mockedChoose).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ outOfScope: 1 }));
+  });
+
+  it('keeps what readers see for a curator of both sources', async () => {
+    mockedEverySource.mockResolvedValue({ permitted: true, logRegionId: 12, sourceIds: [1, 4] });
+    const res = makeRes();
+
+    await answerRoute(postReviewAnswer, req([{ kind: 'sources', id: 450 }], 'reject'), res as never);
+
+    expect(mockedChoose).toHaveBeenCalledWith(450, 7, 12, [{ field: 'name', membershipId: 379 }], [1, 4]);
+  });
+});
+

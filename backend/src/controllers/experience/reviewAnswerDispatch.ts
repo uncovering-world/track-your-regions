@@ -16,6 +16,7 @@
  * | waiting, held | publish every open held field and part, and the unread contents | refuse every open held row, and the unread contents | — |
  * | waiting, contents only | release the unread points and works | refuse them | — |
  * | conflict | take the source's value for every open field | keep ours for every open field | — |
+ * | sources | refused: which source is chosen on the card | keep what the place shows for every open field | — |
  * | refused | keep it out (confirm, unpinned) | put it back for now (override, unpinned; publishes an arrival) | — |
  * | missing | former: delisted, still there | the object stays: false alarm | no longer exists |
  * | missing, one kind (#1264) | no longer that kind (former, or out of the kind) | it stays in the kind | — |
@@ -29,6 +30,7 @@
  * is which row and which answer — the same two things a click sends.
  */
 
+import { chooseViewsUnderLock, keepingChoices } from './viewChoiceController.js';
 import { pool } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import { acceptSourceUnderLock } from './acceptSourceController.js';
@@ -77,6 +79,8 @@ export type Outcome =
 
 type Answerer = {
   experienceId: number; userId: number; logRegionId: number | null; runId: number | null;
+  /** For a `sources` row, the sources its scope was resolved over (`resolveEverySourceScope`). */
+  scopedSourceIds?: readonly number[];
   /** The membership the row named (#1264), or null for the one each writer picks. */
   membershipId: number | null;
 };
@@ -91,6 +95,7 @@ export async function answerRow(
   switch (kind) {
     case 'waiting': return answerWaiting(who, answer);
     case 'conflict': return answerConflict(who, answer);
+    case 'sources': return answerSources(who, answer);
     case 'refused': return answerRefused(who, answer);
     case 'missing': return answerMissing(who, answer);
     case 'withdrawn': return answerWithdrawn(who, answer);
@@ -226,6 +231,24 @@ async function answerConflict(who: Answerer, answer: Answer): Promise<Outcome> {
   const outcome = await declineSourceUnderLock(experienceId, userId, logRegionId, 'all', runId);
   if (outcome.refusal) return refusedBy(outcome.refusal);
   return { did: { fields: outcome.result!.declined.length } };
+}
+
+/**
+ * A place two data sources describe differently (#1246). Keeping is one answer
+ * for every open field: the place goes on showing what it shows. Taking a
+ * source's value is a choice between sources, which a row of a batch cannot
+ * name, so it is made on the card.
+ */
+async function answerSources(who: Answerer, answer: Answer): Promise<Outcome> {
+  if (answer === 'accept') {
+    return refused(409, 'Which source to take is chosen on the place\'s card, field by field');
+  }
+  const { experienceId, userId, logRegionId, scopedSourceIds = [] } = who;
+  const choices = await keepingChoices(experienceId);
+  if (choices.length === 0) return refused(409, 'The sources no longer disagree about this place — reload to see where it stands');
+  const outcome = await chooseViewsUnderLock(experienceId, userId, logRegionId, choices, scopedSourceIds);
+  if (outcome.refusal) return refusedBy(outcome.refusal);
+  return { did: { fields: outcome.result!.fields.length } };
 }
 
 /**
