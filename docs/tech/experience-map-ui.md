@@ -220,7 +220,7 @@ becomes the `FeatureCollection` MapLibre is handed.
 | what decides the colour | `experienceColor`, per marker, as a property | `kindColorExpression`, the same rule as a MapLibre expression |
 | a place in several kinds | a split disc over the open groups' kinds (`kindColors`) | a split disc over every kind on the map of every kind (`worldSplitIconFor`), its plain pin's colour on a map of one |
 | the fold | per object, held per region (`useCollapsedExperiences`) | the whole map at once, and the server's answer rather than a filter |
-| the hover card | name, place, every kind, picture and credit | name, place, every kind — no picture, so no credit |
+| the hover card | name, place, every kind, picture and credit — a part's own picture where it has one, else its site's, said beside the credit (`pointPicture`, #1270) | name, place, every kind — no picture, so no credit |
 | a click | selects the object in the list | opens it where this world view holds it (ADR-0042) |
 
 **What is shared is the paint**, spread from `layers.ts` rather than restated
