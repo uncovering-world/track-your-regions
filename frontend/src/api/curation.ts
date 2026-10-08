@@ -10,7 +10,7 @@
 import type {
   AcceptSourceResult, AdmissionResult, ContentKind, CurationLog, DeclineHeldResult,
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
-  LocationStateResult, ManualExperienceCreated, MergeUndone, PublishResult, ViewsChosen, RefuseArrivalResult,
+  LocationStateResult, ManualExperienceCreated, MergeUndone, PublishResult, ViewsChosen, ViewSuggestions, RefuseArrivalResult,
   RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
 import {
@@ -18,6 +18,7 @@ import {
   getExperiencesByIdCurationLog, patchExperiencesByIdEdit, patchExperiencesByIdWorksByTreasureIdEdit,
   patchExperiencesLocationsByLocationIdEdit, postExperiences, postExperiencesByIdAcceptSource,
   postExperiencesMergesByMergeIdUndo, postExperiencesByIdChooseViews, type ChooseViewsBody,
+  postExperiencesByIdViewSuggestions,
   postExperiencesByIdAdmission, postExperiencesByIdAssign, postExperiencesByIdDeclineHeld,
   postExperiencesByIdDeclineSource, postExperiencesByIdPublish, postExperiencesByIdRefuseArrival,
   postExperiencesByIdRefuseContents, postExperiencesByIdReject, postExperiencesByIdState,
@@ -33,7 +34,7 @@ export type {
   AcceptSourceResult, AdmissionResult, AppliedPart, ContentKind, CurationLog, CurationLogEntry,
   DeclineHeldResult, DeclineSourceResult, DeclinedPart, ExperienceEditResult,
   ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MergeUndone,
-  PartNotFound, ViewsChosen, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody, RefuseContentsResult,
+  PartNotFound, ViewsChosen, ViewSuggestions, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody, RefuseContentsResult,
   RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
 
@@ -372,6 +373,15 @@ export async function editExperience(
  */
 export async function chooseSourceViews(experienceId: number, choices: ChooseViewsBody['choices']): Promise<ViewsChosen> {
   return postExperiencesByIdChooseViews(experienceId, { choices });
+}
+
+/**
+ * Jev's suggestion for the sources card (#1260): which view of each disputed
+ * field it would show, with its confidence. A suggestion only; a POST since
+ * the server may ask Jev, which is paid for per call.
+ */
+export async function suggestSourceViews(experienceId: number): Promise<ViewSuggestions> {
+  return postExperiencesByIdViewSuggestions(experienceId);
 }
 
 /**

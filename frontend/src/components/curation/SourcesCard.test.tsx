@@ -10,12 +10,13 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 
-vi.mock('../../api/curation', () => ({ chooseSourceViews: vi.fn() }));
+vi.mock('../../api/curation', () => ({ chooseSourceViews: vi.fn(), suggestSourceViews: vi.fn() }));
 
-import { chooseSourceViews } from '../../api/curation';
+import { chooseSourceViews, suggestSourceViews } from '../../api/curation';
 import { SourcesCard } from './SourcesCard';
 
 const mockedChoose = chooseSourceViews as unknown as ReturnType<typeof vi.fn>;
+const mockedSuggest = suggestSourceViews as unknown as ReturnType<typeof vi.fn>;
 
 const UNESCO = { kind_name: 'World Heritage Sites', source_name: 'UNESCO World Heritage Sites', latitude: null, longitude: null };
 const WIKIDATA = { kind_name: 'Places of worship', source_name: 'Places of worship', latitude: null, longitude: null };
@@ -55,7 +56,11 @@ function renderCard(onDone = vi.fn()) {
 }
 
 describe('a place two sources describe differently', () => {
-  beforeEach(() => mockedChoose.mockReset());
+  beforeEach(() => {
+    mockedChoose.mockReset();
+    mockedSuggest.mockReset();
+    mockedSuggest.mockResolvedValue({ configured: false, suggestions: [] });
+  });
 
   it("shows each source's view side by side, readers' one chosen, and says what it does not ask", () => {
     renderCard();
@@ -79,5 +84,14 @@ describe('a place two sources describe differently', () => {
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(
       'Rila Monastery: now shows name from the source you chose', 450,
     ));
+  });
+
+  it("shows Jev's suggestion beside the view it picks, and chooses nothing for the curator", async () => {
+    mockedSuggest.mockResolvedValue({ configured: true, suggestions: [{ field: 'name', membershipId: 379, confidence: 0.96 }] });
+    renderCard();
+
+    expect(await screen.findByText('Jev suggests this · 96 %')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Monastery of Saint John of Rila/ }).getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: 'Keep what readers see' })).toBeTruthy();
   });
 });
