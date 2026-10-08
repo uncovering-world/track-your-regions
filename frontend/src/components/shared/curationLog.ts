@@ -113,6 +113,9 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // place each history belongs to says which side of the merge it was on.
   merged: { label: 'Merged', color: VIOLET },
   merge_undone: { label: 'Merge undone', color: GREEN },
+  // Which of two sources' names, pictures or points a place shows, where the
+  // two describe it differently (#1246).
+  views_chosen: { label: 'Source chosen', color: BLUE },
 };
 
 /**
@@ -455,6 +458,13 @@ function formatPartEdit(
   ].filter(Boolean).join(' — ') || null;
 }
 
+/** The acts about the place as a whole across sources: a merge, its undo, and a choice between two sources' views. */
+const PLACE_ACT_DETAILS: Record<string, (d: Record<string, unknown>) => string | null> = {
+  merged: d => formatMerge('merged', d),
+  merge_undone: d => formatMerge('merge_undone', d),
+  views_chosen: d => formatViewsChosen(d),
+};
+
 export function formatLogDetails(entry: CurationLogEntry): string | null {
   if (!entry.details) return null;
   const d = entry.details as Record<string, unknown>;
@@ -472,11 +482,32 @@ export function formatLogDetails(entry: CurationLogEntry): string | null {
   if (entry.action === 'declined_source') return formatDeclinedSource(d);
   if (entry.action === 'declined_held') return formatDeclinedHeld(d);
   if (KEEP_OUT_ACTIONS.has(entry.action)) return formatKeepOut(entry.action, d);
-  if (entry.action === 'merged' || entry.action === 'merge_undone') return formatMerge(entry.action, d);
+  const ofPlaces = PLACE_ACT_DETAILS[entry.action];
+  if (ofPlaces) return ofPlaces(d);
   // `unrejected`, `added_to_region` and `removed_from_region` never reach this line:
   // their writers insert no `details` at all, and the region their act was about is
   // already rendered beside the curator's name from the entry's own `region_name`.
   return null;
+}
+
+const VIEW_FIELD_LABEL: Record<string, string> = {
+  name: 'Name', description: 'Description', imageUrl: 'Picture', location: 'Where it is',
+};
+
+/**
+ * A curator's choice between two sources' views of a place (#1246), a line per
+ * field: "Name: Monastery of Saint John of Rila, from Places of worship", or
+ * "Picture: kept what readers saw".
+ */
+function formatViewsChosen(d: Record<string, unknown>): string | null {
+  const choices = Array.isArray(d.choices) ? d.choices as Record<string, unknown>[] : [];
+  const lines = choices.map(choice => {
+    const label = VIEW_FIELD_LABEL[String(choice.field)] ?? String(choice.field);
+    if (choice.membershipId == null || choice.changed === false) return `${label}: kept what readers saw`;
+    const value = typeof choice.value === 'string' ? `${choice.value}, ` : '';
+    return `${label}: ${value}from ${String(choice.kind)}`;
+  });
+  return lines.length > 0 ? lines.join('\n') : null;
 }
 
 /** A place a merge row names: by the name it had at the act, and its id, which tells two of one name apart. */

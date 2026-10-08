@@ -2929,6 +2929,7 @@ CREATE TABLE IF NOT EXISTS experience_kind_memberships (
     reported_description TEXT,
     reported_image_url TEXT,
     reported_location geometry(Point, 4326),
+    reported_image_credit JSONB,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     UNIQUE (experience_id, kind_id),
@@ -2951,6 +2952,7 @@ ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_name T
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_description TEXT;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_image_url TEXT;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_location geometry(Point, 4326);
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_image_credit JSONB;
 ALTER TABLE experience_kind_memberships DROP CONSTRAINT IF EXISTS experience_kind_memberships_source_external_key;
 ALTER TABLE experience_kind_memberships ADD CONSTRAINT experience_kind_memberships_source_external_key
     UNIQUE (source_id, external_id);
@@ -2971,7 +2973,8 @@ COMMENT ON COLUMN experience_kind_memberships.first_seen_sync_log_id IS 'The run
 COMMENT ON COLUMN experience_kind_memberships.last_seen_sync_log_id IS 'The newest run of this membership''s source that listed the place. A conflict this source proposed in an earlier run is withdrawn once a later landed run of the same source saw the place and proposed nothing.';
 COMMENT ON COLUMN experience_kind_memberships.reported_name IS 'The name this membership''s source last reported for the place, tidied as the place stores a name. With the three columns beside it, the source''s view of the place (ADR-0084): written by every run of the source whatever the place keeps, and read to tell whether the sources of one place disagree (#1246). NULL where the source reports nothing, which contradicts no other view.';
 COMMENT ON COLUMN experience_kind_memberships.reported_description IS 'The description this membership''s source last reported for the place (its view, #1246).';
-COMMENT ON COLUMN experience_kind_memberships.reported_image_url IS 'The picture this membership''s source last reported for the place, after the run''s picture rule (its view, #1246). Its credit is fetched when a curator chooses it, as for any picture a curator names.';
+COMMENT ON COLUMN experience_kind_memberships.reported_image_url IS 'The picture this membership''s source last reported for the place, after the run''s picture rule (its view, #1246). Its credit is reported_image_credit.';
+COMMENT ON COLUMN experience_kind_memberships.reported_image_credit IS 'The credit of reported_image_url as the run resolved it from Commons ({author, license, licenseUrl, detailsUrl}, the shape of metadata.imageCredit): shown beside the picture wherever a curator is asked to choose it, and written with it to the place when chosen (#1246).';
 COMMENT ON COLUMN experience_kind_memberships.reported_location IS 'The coordinate this membership''s source last reported for the place (its view, #1246). Two views within ten metres agree (ADR-0027).';
 COMMENT ON COLUMN experience_kind_memberships.admission IS 'admitted or refused. Whether this kind accepts the place, independent of whether the source still lists it (ADR-0024). The machine sets this one: a refusal is our own rule applied to an object the run named, not an observation. A place with no admitted membership is hidden from every read that offers somewhere to go, and from none that records a visit.';
 COMMENT ON COLUMN experience_kind_memberships.admission_reason IS 'Why the kind refused it, stated verbatim to the curator. Here rather than in experience_sync_changes because a changeset is keyed by the external id the run named, which is not always this row''s.';
@@ -3645,7 +3648,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     -- Null on the catalogue's own merge alone (ADR-0086): the check below.
     curator_id INTEGER REFERENCES users(id),
-    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone')),
+    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen')),
     region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -3665,7 +3668,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
 -- schema change and not a code-only one.
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check
-    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone'));
+    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen'));
 
 -- An existing database's NOT NULL goes with migration 076; a fresh one never had it.
 ALTER TABLE experience_curation_log ALTER COLUMN curator_id DROP NOT NULL;
@@ -3734,6 +3737,28 @@ CREATE TABLE IF NOT EXISTS experience_conflict_decisions (
 -- single-column index would) and accept-source's delete by experience and field list.
 
 COMMENT ON TABLE experience_conflict_decisions IS 'Source proposals a curator refused; suppresses the queue card while the proposal is unchanged';
+
+-- Two data sources' views of one place, and the one a curator chose (#1246).
+--
+-- Where two standing memberships of a place under different ids report
+-- different values of a field (db/sourceViews.ts), the place keeps its value
+-- and the review queue asks which source's value it should show. The answer is
+-- a row here: the membership chosen and the views of the field as they stood,
+-- by membership id, so the card stays answered while the sources keep sending
+-- what they sent and comes back when one of them sends something different.
+CREATE TABLE IF NOT EXISTS experience_view_choices (
+    id SERIAL PRIMARY KEY,
+    experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+    field VARCHAR(20) NOT NULL CHECK (field IN ('name', 'description', 'imageUrl', 'location')),
+    chosen_membership_id INTEGER REFERENCES experience_kind_memberships(id) ON DELETE SET NULL,
+    views JSONB NOT NULL,
+    decided_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    decided_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (experience_id, field)
+);
+
+COMMENT ON TABLE experience_view_choices IS 'A curator''s choice between two sources'' views of one field of a place (#1246); answers the queue card while the views stay as recorded in views';
+COMMENT ON COLUMN experience_view_choices.views IS 'The standing views of the field when the choice was made, as viewsOfFieldSql (db/sourceViews.ts) states them: membership id to value. A different value from either source opens the question again.';
 
 -- One gate over: how a curator answers a single field of a held proposal (#722).
 --

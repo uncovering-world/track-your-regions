@@ -486,6 +486,8 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // ADR-0086): written on both places' histories, the first with no curator
     // where the catalogue merged two places sharing a Wikidata item.
     'merged', 'merge_undone',
+    // A curator's choice between two data sources' views of a place (#1246).
+    'views_chosen',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;

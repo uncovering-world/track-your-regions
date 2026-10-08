@@ -215,6 +215,7 @@ export interface ExperienceKindMembershipsRow {
   reported_description: string | null;
   reported_image_url: string | null;
   reported_location: string | null;
+  reported_image_credit: unknown | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -378,6 +379,17 @@ export interface ExperienceTreasuresRow {
   curation_state: string;
   refused_at: Date | null;
   missing_since: Date | null;
+}
+
+/** The table `experience_view_choices`. */
+export interface ExperienceViewChoicesRow {
+  id: number;
+  experience_id: number;
+  field: string;
+  chosen_membership_id: number | null;
+  views: unknown;
+  decided_by: number | null;
+  decided_at: Date;
 }
 
 /** The table `experiences`. */
@@ -796,6 +808,9 @@ export const COLUMN_WIDTHS = {
   experience_treasures: {
     curation_state: 10,
   },
+  experience_view_choices: {
+    field: 20,
+  },
   experiences: {
     external_id: 255,
     name: 500,
@@ -874,7 +889,7 @@ export const CHECK_VALUES = {
     scope_type: ["region", "source", "global"],
   },
   experience_curation_log: {
-    action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone"],
+    action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone", "views_chosen"],
   },
   experience_held_decisions: {
     answer: ["published", "refused"],
@@ -906,6 +921,9 @@ export const CHECK_VALUES = {
   },
   experience_treasures: {
     curation_state: ["pending", "auto", "verified"],
+  },
+  experience_view_choices: {
+    field: ["name", "description", "imageUrl", "location"],
   },
   experiences: {
     existence: ["extant", "lost"],
