@@ -5009,6 +5009,38 @@ export interface InstancesSynced {
 }
 
 /**
+ * What Jev has cost, and how often curators chose what it suggested (#1260).
+ */
+export interface JevUsage {
+  configured: boolean;
+  /**
+     * Suggestions asked for, one call each.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  calls: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  inputTokens: number;
+  /** What the calls cost: Jev is priced per input token, output free. */
+  usd: number;
+  /**
+     * A curator's choices of a source for which Jev had suggested an answer for the same views.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  compared: number;
+  /**
+     * Of those, the choices that took the view Jev suggested.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  agreed: number;
+}
+
+/**
  * A rule an admin's answer taught the AI features.
  */
 export interface LearnedRule {
@@ -8773,6 +8805,37 @@ export type UserSearchResults = UserSearchResult[];
 export interface VerifyEmailBody {
   /** @minLength 1 */
   token: string;
+}
+
+export type ViewSuggestionsSuggestionsItemField = typeof ViewSuggestionsSuggestionsItemField[keyof typeof ViewSuggestionsSuggestionsItemField];
+
+
+export const ViewSuggestionsSuggestionsItemField = {
+  name: 'name',
+  description: 'description',
+  imageUrl: 'imageUrl',
+  location: 'location',
+} as const;
+
+export type ViewSuggestionsSuggestionsItem = {
+  field: ViewSuggestionsSuggestionsItemField;
+  /**
+     * The view Jev would show.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  membershipId: number;
+  /** Its confidence, 0 to 1. */
+  confidence: number;
+};
+
+/**
+ * Jev's suggested answer to the sources card (#1260), per field it could answer; never applied.
+ */
+export interface ViewSuggestions {
+  /** Whether this deployment asks Jev at all. False: no suggestion, nothing else changes. */
+  configured: boolean;
+  suggestions: ViewSuggestionsSuggestionsItem[];
 }
 
 /**
@@ -13370,6 +13433,31 @@ export const postAdminPlacesMergeEqualItems = async ( options?: Parameters<typeo
 
 
 
+export const getGetAdminJevUsageUrl = () => {
+
+
+
+
+  return `/api/admin/jev/usage`
+}
+
+/**
+ * Requires an admin.
+ * @summary What Jev has cost, and how often curators chose the view it suggested
+ */
+export const getAdminJevUsage = async ( options?: Parameters<typeof apiFetch>[1]): Promise<JevUsage> => {
+
+  return apiFetch<JevUsage>(getGetAdminJevUsageUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
 export const getGetAdminDataAssertionsUrl = () => {
 
 
@@ -17919,6 +18007,31 @@ return apiFetch<ViewsChosen>(getPostExperiencesByIdChooseViewsUrl(id),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(chooseViewsBody)
+  }
+);}
+
+
+
+export const getPostExperiencesByIdViewSuggestionsUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/view-suggestions`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Ask Jev which source's view of each disputed field a place should show; a suggestion, never applied
+ */
+export const postExperiencesByIdViewSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<ViewSuggestions> => {
+
+  return apiFetch<ViewSuggestions>(getPostExperiencesByIdViewSuggestionsUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
   }
 );}
 

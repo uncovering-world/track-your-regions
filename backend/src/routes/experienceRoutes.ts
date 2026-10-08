@@ -19,6 +19,7 @@ import {
   ManualExperienceCreated,
   MergeUndone,
   ViewsChosen,
+  ViewSuggestions,
   PublishResult,
   RefuseArrivalResult,
   RefuseContentsResult,
@@ -29,6 +30,7 @@ import {
 import { PublishWaitingResult } from '../api/responses/admin.js';
 import { undoPlaceMerge } from '../controllers/experience/placeMergeController.js';
 import { chooseViews } from '../controllers/experience/viewChoiceController.js';
+import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
 import { ReviewAnswerResult, ReviewQueue, RunSetAside } from '../api/responses/reviewQueue.js';
 import {
   ExperienceDetail,
@@ -488,6 +490,15 @@ export const experienceCurationRoutes = [
     body: chooseViewsBodySchema,
     response: ViewsChosen,
     handler: chooseViews,
+  }),
+  // Jev's suggestion for that card (#1260): the stored one for the views as
+  // they stand, or a new one asked for — a POST, since a call may be paid for.
+  defineRoute({
+    method: 'post', path: '/:id/view-suggestions', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Ask Jev which source\'s view of each disputed field a place should show; a suggestion, never applied',
+    params: idParamSchema,
+    response: ViewSuggestions,
+    handler: suggestViews,
   }),
 
   // The no that the two gated kinds without one lacked (#852, ADR-0053): keeping

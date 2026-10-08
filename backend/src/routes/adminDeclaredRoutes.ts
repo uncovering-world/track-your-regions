@@ -10,6 +10,7 @@
 import { defineRoute, IMAGE } from '../api/route.js';
 import {
   AssignmentCancelled, AssignmentStarted, AssignmentStatus, CuratorActivity, CuratorAssignmentCreated, EqualItemMerges,
+  JevUsage,
   CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, PictureRepairStarted, PlacementCounts,
   SourceLineSet, SourcesReordered, SyncCancelled, SyncChanges, SyncLogDetail, SyncLogs, SyncStarted, SyncStatus,
   UserSearchResults, WikidataCache, WikidataCacheCleared, WikidataCacheTtlSet,
@@ -27,6 +28,7 @@ import {
 import { setCurationGate } from '../controllers/admin/curationGateController.js';
 import { setSourceLine } from '../controllers/admin/sourceLineController.js';
 import { mergePlacesSharingAnItem } from '../controllers/admin/equalItemMergeController.js';
+import { getJevUsage } from '../controllers/admin/jevUsageController.js';
 import { acceptDataAssertion, getDataAssertions } from '../controllers/admin/dataAssertionsController.js';
 import {
   listCurators, createCuratorAssignment, revokeCuratorAssignment, getCuratorActivity,
@@ -237,6 +239,13 @@ export const adminDeclaredRoutes = [
     summary: 'Merge every place that shares a Wikidata item with another into one place',
     response: EqualItemMerges,
     handler: mergePlacesSharingAnItem,
+  }),
+  // What Jev has cost and how often curators took its suggestion (#1260).
+  defineRoute({
+    ...ADMIN, method: 'get', path: '/jev/usage',
+    summary: 'What Jev has cost, and how often curators chose the view it suggested',
+    response: JevUsage,
+    handler: getJevUsage,
   }),
   // ===========================================================================
   // Catalogue Data Assertions
