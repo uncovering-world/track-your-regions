@@ -79,6 +79,8 @@ export const queryKeys = {
     siteFinds: (id: Id) => ['site-finds', id] as const,
     curationLogAll: ['curation-log'] as const,
     curationLog: (id: Id) => ['curation-log', id] as const,
+    /** Jev's suggestion for the sources card (#1260), for the views the card shows (serialised). */
+    viewSuggestions: (id: Id, views: string) => ['experience', 'view-suggestions', id, views] as const,
   },
 
   /** The lists objects appear in, and the points that place them. */
@@ -136,6 +138,7 @@ export const queryKeys = {
     settings: ['ai-settings'] as const,
     usage: ['ai-usage'] as const,
     rules: ['ai-rules'] as const,
+    jevUsage: ['ai-jev-usage'] as const,
   },
 
   admin: {

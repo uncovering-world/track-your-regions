@@ -14,8 +14,9 @@
 
 import { useState } from 'react';
 import { Box, Button, Card, CardContent, Link, Stack, Typography } from '@mui/material';
-import { useMutation } from '@tanstack/react-query';
-import { chooseSourceViews } from '../../api/curation';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { chooseSourceViews, suggestSourceViews } from '../../api/curation';
+import { queryKeys } from '../../api/queryKeys';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { PictureWithCredit } from '../shared/PictureWithCredit';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
@@ -102,8 +103,10 @@ function saveLabel(changes: number): string {
 }
 
 /** One source's value of one fact, as a choice. */
-function ViewTile({ field, view, on, onPick }: {
+function ViewTile({ field, view, on, onPick, suggested }: {
   field: SourceViewField['field']; view: SourceView; on: boolean; onPick: () => void;
+  /** Jev's confidence where it suggests this view (#1260); a suggestion, never a choice. */
+  suggested?: number;
 }) {
   return (
     <Box
@@ -119,6 +122,12 @@ function ViewTile({ field, view, on, onPick }: {
       }}
     >
       <ViewValue field={field} view={view} />
+      {suggested !== undefined && (
+        // In grey, apart from the marks about readers: a suggestion is not a state of the place.
+        <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600 }}>
+          Jev suggests this · {Math.round(suggested * 100)} %
+        </Typography>
+      )}
       <Typography variant="caption" sx={{ color: 'primary.main', fontWeight: 600, minHeight: 18 }}>
         {on && view.shown && 'Readers see this · keeping it'}
         {on && !view.shown && 'Chosen · readers will see this'}
@@ -150,6 +159,18 @@ export function SourcesCard({ item, onDone }: {
     onSettled: (data, error) => onDone(error ? messageFor(item, error) : outcomeOf(item.name, data?.changed ?? []), item.id),
   });
 
+  // Jev's suggestion, where this deployment asks Jev (#1260): shown beside the
+  // views, never chosen for the curator. A failed read shows none.
+  const { data: suggestions } = useQuery({
+    // Keyed by the views too: a suggestion is about the views it was asked
+    // for, and a card showing new ones asks again.
+    queryKey: queryKeys.experience.viewSuggestions(item.id, JSON.stringify(fields)),
+    queryFn: () => suggestSourceViews(item.id),
+    staleTime: 300_000,
+    retry: false,
+  });
+  const suggestedFor = (field: string, membershipId: number) => suggestions?.suggestions
+    .find(one => one.field === field && one.membershipId === membershipId)?.confidence;
   const pick = (field: string, membershipId: number) => setChosen(previous => ({ ...previous, [field]: membershipId }));
   const quiet = item.quiet_fields ?? [];
   const grid = `120px repeat(${Math.max(columns.length, 1)}, minmax(0, 1fr))`;
@@ -188,6 +209,7 @@ export function SourcesCard({ item, onDone }: {
                     view={view}
                     on={chosen[field.field] === view.membership_id}
                     onPick={() => pick(field.field, view.membership_id)}
+                    suggested={suggestedFor(field.field, view.membership_id)}
                   />
                 );
               })}

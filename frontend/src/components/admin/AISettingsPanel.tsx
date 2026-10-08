@@ -38,6 +38,7 @@ import {
   type AIModelOption,
 } from '../../api/admin/ai';
 import { queryKeys } from '../../api/queryKeys';
+import { JevUsageCard } from './JevUsageCard';
 
 const FEATURE_LABELS: Record<string, { label: string; description: string }> = {
   'model.matching': { label: 'AI Matching', description: 'Matches imported regions to GADM administrative divisions. Used when clicking the AI match button on individual regions or running batch AI matching.' },
@@ -352,6 +353,8 @@ export function AISettingsPanel() {
           )}
         </CardContent>
       </Card>
+
+      <JevUsageCard />
 
       <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={() => setSnackbar(s => ({ ...s, open: false }))}>
         <Alert severity={snackbar.severity} onClose={() => setSnackbar(s => ({ ...s, open: false }))}>
