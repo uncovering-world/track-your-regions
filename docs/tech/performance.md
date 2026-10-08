@@ -723,7 +723,7 @@ unchanged, since only the overview tier was cut. They belong in the next full ru
 
 | Budget | Level | Value | Set from |
 |--------|-------|-------|----------|
-| entry chunk, gzip (`size-limit`) | error | 190 kB | 181.0 kB baseline + ~5 % (was 920 kB, the whole application in one chunk, until #643) |
+| entry chunk, gzip (`size-limit`) | error | 200 kB | 191.7 kB baseline + ~4 %, measured on #1271's grouped browsing of a serial site's parts (was 190 kB over a 181.0 kB baseline: by then `main` stood at 189.94 kB, the headroom spent by the features since #643, and the part cards' groups, search and photo filter added 1.72 kB; and 920 kB, the whole application in one chunk, until #643). A lazy chunk was measured before raising and is no saving here: splitting the part card or Discover out moved shared code into this chunk and grew it, to 204.8 and 200.0 kB |
 | map library chunk, gzip (`size-limit`) | error | 285 kB | 271.2 kB baseline + ~5 % |
 | admin panel, world-view editor and review queue chunks, gzip (`size-limit`) | error | 148 / 139 / 34 kB | 140.5 / 132.1 / 32.2 kB baseline + ~5 %: a screen growing, or its code moving back into the entry chunk, fails visibly. The review queue's was 32 kB over a 30.1 kB baseline until #1264 gave the queue a question per kind of a place — a card per place with a section per kind for arrivals, held changes, refusals and a kind its source dropped — and it measured 32.16 kB |
 | map worker chunk, gzip (`size-limit`) | error | 142 kB | 135.2 kB baseline + ~5 % — the one payload Lighthouse's resource summary does not see |
