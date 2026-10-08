@@ -5181,6 +5181,45 @@
         }
       }
     },
+    "/api/admin/jev/usage": {
+      "get": {
+        "operationId": "getAdminJevUsage",
+        "summary": "What Jev has cost, and how often curators chose the view it suggested",
+        "tags": [
+          "admin"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JevUsage"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/data-assertions": {
       "get": {
         "operationId": "getAdminDataAssertions",
@@ -12557,6 +12596,56 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ViewsChosen"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/{id}/view-suggestions": {
+      "post": {
+        "operationId": "postExperiencesByIdViewSuggestions",
+        "summary": "Ask Jev which source's view of each disputed field a place should show; a suggestion, never applied",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ViewSuggestions"
                 }
               }
             }
@@ -21945,6 +22034,51 @@
         "additionalProperties": false,
         "description": "A question a model asks the admin about a page, with options to click."
       },
+      "JevUsage": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean"
+          },
+          "calls": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Suggestions asked for, one call each."
+          },
+          "inputTokens": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "usd": {
+            "type": "number",
+            "description": "What the calls cost: Jev is priced per input token, output free."
+          },
+          "compared": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "A curator's choices of a source for which Jev had suggested an answer for the same views."
+          },
+          "agreed": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Of those, the choices that took the view Jev suggested."
+          }
+        },
+        "required": [
+          "configured",
+          "calls",
+          "inputTokens",
+          "usd",
+          "compared",
+          "agreed"
+        ],
+        "additionalProperties": false,
+        "description": "What Jev has cost, and how often curators chose what it suggested (#1260)."
+      },
       "LearnedRule": {
         "type": "object",
         "properties": {
@@ -29763,6 +29897,54 @@
         "required": [
           "token"
         ]
+      },
+      "ViewSuggestions": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "description": "Whether this deployment asks Jev at all. False: no suggestion, nothing else changes."
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "field": {
+                  "type": "string",
+                  "enum": [
+                    "name",
+                    "description",
+                    "imageUrl",
+                    "location"
+                  ]
+                },
+                "membershipId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "The view Jev would show."
+                },
+                "confidence": {
+                  "type": "number",
+                  "description": "Its confidence, 0 to 1."
+                }
+              },
+              "required": [
+                "field",
+                "membershipId",
+                "confidence"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "configured",
+          "suggestions"
+        ],
+        "additionalProperties": false,
+        "description": "Jev's suggested answer to the sources card (#1260), per field it could answer; never applied."
       },
       "ViewedTreasureIds": {
         "type": "object",

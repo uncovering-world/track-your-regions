@@ -459,3 +459,13 @@ export const EqualItemMerges = z.strictObject({
   })).describe('Items whose places were left apart, each with its reason.'),
 }).describe('Places that share a Wikidata item, merged into one place each (ADR-0046 decision 2).');
 export type EqualItemMerges = z.infer<typeof EqualItemMerges>;
+
+export const JevUsage = z.strictObject({
+  configured: z.boolean(),
+  calls: z.number().int().describe('Suggestions asked for, one call each.'),
+  inputTokens: z.number().int(),
+  usd: z.number().describe('What the calls cost: Jev is priced per input token, output free.'),
+  compared: z.number().int().describe("A curator's choices of a source for which Jev had suggested an answer for the same views."),
+  agreed: z.number().int().describe('Of those, the choices that took the view Jev suggested.'),
+}).describe('What Jev has cost, and how often curators chose what it suggested (#1260).');
+export type JevUsage = z.infer<typeof JevUsage>;
