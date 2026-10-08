@@ -39,7 +39,7 @@ vi.mock('../../api/experiences', () => ({
       id: 100 + experienceId, experience_id: experienceId, name: null, external_ref: null,
       ordinal: 0, latitude: 34.84, longitude: 67.82, created_at: '2026-08-01T00:00:00Z',
       curated_fields: [], in_region: true, curation_state: 'auto', refused_at: null,
-      image_url: null, image_credit: null, description: null,
+      image_url: null, image_credit: null, description: null, wikidata_item: null,
     }],
   }) satisfies ExperienceLocationsResponse),
 }));

@@ -72,6 +72,10 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     viewBounds,
     selectedExperienceId,
     toggleSelectedExperience,
+    selectedPointId,
+    openPoint,
+    closePoint,
+    dropPoint,
     arrivedAtExperienceId,
     settleArrival,
     triggerFlyTo,
@@ -101,6 +105,15 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
 
   // Batch-fetch all locations for all experiences in the region (single request)
   const { locationsByExperience, locationsResolved } = useRegionLocations(regionId, showLost);
+
+  // The open part's steps go through its object's parts in this region — what
+  // the map is showing — rather than across the whole object (#1271).
+  const pointSteps = useMemo(() => {
+    if (selectedPointId === null || selectedExperienceId === null) return null;
+    const inRegion = (locationsByExperience[selectedExperienceId] ?? []).filter(loc => loc.in_region);
+    return { ids: inRegion.map(loc => loc.id), within: `in ${selectedRegion?.name ?? 'this region'}` };
+  }, [selectedPointId, selectedExperienceId, locationsByExperience, selectedRegion?.name]);
+
 
   // Curator state
   const [curationTarget, setCurationTarget] = useState<Experience | null>(null);
@@ -588,6 +601,13 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       onLocationHover={handleLocationHover}
       isRejected={rejected}
       onCurate={hasCuratorScope ? handleCurate : undefined}
+      // Only the open card's row is told which part is open: every other row's
+      // props stay as they were, and so does its memo.
+      selectedPointId={selectedExperienceId === exp.id && !echo ? selectedPointId : null}
+      pointSteps={selectedExperienceId === exp.id && !echo ? pointSteps : null}
+      onOpenPoint={openPoint}
+      onClosePoint={closePoint}
+      onDropPoint={dropPoint}
       onCorrectPlace={hasCuratorScope ? handleCorrectPlace : undefined}
       onCorrectWork={hasCuratorScope ? handleCorrectWork : undefined}
       onUnreject={hasCuratorScope && rejected && regionId ? handleUnreject : undefined}

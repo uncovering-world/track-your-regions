@@ -70,6 +70,8 @@ export interface ExperienceExpandedDetailsProps {
   onLocationVisitedToggle: (locationId: number, isVisited: boolean) => void;
   onLocationHover: (locationId: number | null) => void;
   onCurate?: () => void;
+  /** Open one of the places listed below on a card of its own (#1271). */
+  onOpenPlace?: (pointId: number, pointName: string) => void;
   /** A curator's way into correcting one of the places listed below. */
   onCorrectPlace?: (location: LocationRowData) => void;
   /** And into correcting one of the works, which is the same rule one level over (#731). */
@@ -100,6 +102,7 @@ function ExperienceExpandedDetailsComponent({
   onLocationVisitedToggle,
   onLocationHover,
   onCurate,
+  onOpenPlace,
   onCorrectPlace,
   onCorrectWork,
   onUnreject,
@@ -387,6 +390,7 @@ function ExperienceExpandedDetailsComponent({
           onLocationVisitedToggle={onLocationVisitedToggle}
           registerRef={registerLocationRef}
           onHeightChange={onHeightChange}
+          onOpen={onOpenPlace}
           onCorrect={onCorrectPlace}
         />
       )}

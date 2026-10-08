@@ -3775,6 +3775,11 @@ export interface ExperienceLocationWithState {
      * @nullable
      */
   description: string | null;
+  /**
+     * The Wikidata item this point is, where one is known (#1269), such as `Q3477679`; the point's card links to it (#1271).
+     * @nullable
+     */
+  wikidata_item: string | null;
 }
 
 /**

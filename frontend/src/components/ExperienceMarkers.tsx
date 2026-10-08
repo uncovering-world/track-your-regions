@@ -42,7 +42,7 @@ import { useExperienceContext } from '../hooks/useExperienceContext';
 import { subscribeToHoverTarget, useHoverActions, type HoverPreview } from '../hooks/useHoverContext';
 import { useRegionLocations } from '../hooks/useRegionLocations';
 import type { Experience, ExperienceLocation } from '../api/experiences';
-import { locationLabelWithRef, pinLabel } from '../utils/locationLabel';
+import { locationLabel, locationLabelWithRef, pinLabel, pointOfRow } from '../utils/locationLabel';
 import { frameGeoJson } from '../utils/mapUtils';
 import { placeKindNames } from '../utils/placeKinds';
 import { pointPicture } from '../utils/pointPicture';
@@ -93,6 +93,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     experiencesLoading,
     selectedExperienceId,
     toggleSelectedExperience,
+    openPoint,
     flyToExperienceId,
     clearFlyTo,
     getExperienceById,
@@ -226,6 +227,17 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     (experienceId: number, locationId: number) => locationsByExpRef.current[experienceId]?.find(loc => loc.id === locationId),
     [],
   );
+  // A part is one of several places of its object; the only point of a museum
+  // is the museum, and its pin selects the museum as it always has.
+  const openPart = useCallback((experienceId: number, locationId: number) => {
+    const places = locationsByExpRef.current[experienceId] ?? [];
+    const place = places.find(loc => loc.id === locationId);
+    if (!place || places.length < 2) return false;
+    openPoint(experienceId, locationId, locationLabel(pointOfRow({
+      name: place.name, externalRef: place.external_ref, latitude: place.latitude, longitude: place.longitude,
+    })));
+    return true;
+  }, [openPoint]);
 
   useMarkerInteractions({
     mapRef,
@@ -233,6 +245,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     selectedExperienceId,
     getExperienceById,
     getLocation,
+    openPart,
     toggleSelectedExperience,
     toggleCollapsedExperience,
     setHoveredFromMarker,

@@ -51,6 +51,11 @@ export interface MarkerInteractionsParams {
   getExperienceById: (id: number) => Experience | undefined;
   /** One of an object's points as the region's batch holds it, for its own picture (#1270). */
   getLocation: (experienceId: number, locationId: number) => ExperienceLocation | undefined;
+  /**
+   * Open one part of a serial object on its own card (#1271), answering whether
+   * it did: a museum's one point is the museum, and its pin selects the museum.
+   */
+  openPart: (experienceId: number, locationId: number) => boolean;
   toggleSelectedExperience: (id: number) => void;
   toggleCollapsedExperience: (id: number) => void;
   setHoveredFromMarker: (experienceId: number | null, locationId: number | null) => void;
@@ -65,6 +70,7 @@ export function useMarkerInteractions({
   selectedExperienceId,
   getExperienceById,
   getLocation,
+  openPart,
   toggleSelectedExperience,
   toggleCollapsedExperience,
   setHoveredFromMarker,
@@ -73,6 +79,8 @@ export function useMarkerInteractions({
 }: MarkerInteractionsParams) {
   const getLocationRef = useRef(getLocation);
   getLocationRef.current = getLocation;
+  const openPartRef = useRef(openPart);
+  openPartRef.current = openPart;
   // Refs for accessing latest values in long-lived map callbacks
   const toggleSelectedRef = useRef(toggleSelectedExperience);
   toggleSelectedRef.current = toggleSelectedExperience;
@@ -125,7 +133,16 @@ export function useMarkerInteractions({
       // ErrorEvent and log, on the ordinary path of clicking the map mid-load.
       if (!map.getLayer(LAYER_MARKERS)) return;
       const features = map.queryRenderedFeatures(e.point, { layers: [...MARKER_LAYERS] });
-      if (features.length === 0) return;
+      if (features.length === 0) {
+        // A dot of the open object's places, which the markers source does not
+        // hold: a part's dot opens that part's card (#1271).
+        if (!map.getLayer(LAYER_HIGHLIGHT_POINT)) return;
+        const dot = map.queryRenderedFeatures(e.point, { layers: [LAYER_HIGHLIGHT_POINT] })[0];
+        const dotLocation = dot?.properties?.locationId as number | null | undefined;
+        const selected = selectedExpIdRef.current;
+        if (dotLocation != null && selected != null) openPartRef.current(selected, dotLocation);
+        return;
+      }
       const experienceId = features[0].properties?.experienceId;
       if (experienceId == null) return;
 
@@ -145,6 +162,11 @@ export function useMarkerInteractions({
         toggleCollapsedRef.current(experienceId);
         return;
       }
+
+      // A part's pin opens the part's card with its object's (#1271); a
+      // museum's one pin selects the museum, as before.
+      const locationId = features[0].properties?.locationId as number | null | undefined;
+      if (locationId != null && openPartRef.current(experienceId, locationId)) return;
 
       toggleSelectedRef.current(experienceId);
     };

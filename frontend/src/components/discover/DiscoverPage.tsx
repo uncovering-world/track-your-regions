@@ -29,6 +29,8 @@ import { HoverProvider } from '../../hooks/useHoverContext';
 import { DiscoverRegionList } from './DiscoverRegionList';
 import { DiscoverExperienceView } from './DiscoverExperienceView';
 import { ExperienceDetailPanel } from './ExperienceDetailPanel';
+import { DiscoverPointCard } from './DiscoverPointCard';
+import { locationLabel, pointOfRow } from '../../utils/locationLabel';
 import { kindColor, shortKindName } from '../../utils/kindColors';
 import { queryKeys } from '../../api/queryKeys';
 
@@ -56,6 +58,10 @@ export function DiscoverPage() {
     placeRowOf,
     selectedExperienceId,
     setSelectedExperienceId,
+    selectedPointId,
+    openPoint,
+    closePoint,
+    dropPoint,
     selectedExperienceLocations,
     selectedLocationsResolved,
   } = useDiscoverExperiences();
@@ -103,6 +109,26 @@ export function DiscoverPage() {
     if (selectedExperienceId == null) return null;
     return experiences.find(e => e.id === selectedExperienceId) ?? null;
   }, [selectedExperienceId, experiences]);
+
+  // A dot on the map opens one part of the open object on its own card
+  // (#1271), and only where the object has several: a museum's one point is
+  // the museum.
+  const openPointByDot = useMemo(() => {
+    const places: { id?: number; name?: string; externalRef?: string; lng: number; lat: number }[] =
+      selectedExperienceLocations ?? [];
+    if (places.length < 2) return undefined;
+    return (locationId: number) => {
+      const place = places.find(p => p.id === locationId);
+      // Named as the row and the steps name it, so a part opened from its dot
+      // gets the address it gets from its row: an unnamed Via Appia part reads
+      // by its reference.
+      if (place) {
+        openPoint(locationId, locationLabel(pointOfRow({
+          name: place.name ?? null, externalRef: place.externalRef ?? null, latitude: place.lat, longitude: place.lng,
+        })));
+      }
+    };
+  }, [selectedExperienceLocations, openPoint]);
 
   // The tab names the place: the open card, then the region in question — the
   // list's region when one is open, otherwise the level the tree stands at.
@@ -269,6 +295,7 @@ export function DiscoverPage() {
           isLoading={experiencesLoading}
           onBack={closeExperienceView}
           onSelectExperience={setSelectedExperienceId}
+          onOpenPoint={openPointByDot}
           selectedExperienceId={selectedExperienceId}
           selectedExperienceLocations={selectedExperienceLocations}
           selectedLocationsResolved={selectedLocationsResolved}
@@ -293,7 +320,18 @@ export function DiscoverPage() {
           overflowY: 'auto',
         }}
       >
-        {selectedExperience && (
+        {selectedExperience && selectedPointId !== null && (
+          // One part of the object on its own card, in the object's place (#1271).
+          <DiscoverPointCard
+            key={`${selectedExperience.id}:point`}
+            experience={selectedExperience}
+            pointId={selectedPointId}
+            onBack={closePoint}
+            onOpenPoint={openPoint}
+            onPointGone={dropPoint}
+          />
+        )}
+        {selectedExperience && selectedPointId === null && (
           // Keyed on the object, because a panel for a different museum is a
           // different panel: unkeyed, everything the last one held reconciled
           // into this one — the works filter (the Prado's list showing only what
@@ -307,6 +345,7 @@ export function DiscoverPage() {
             key={selectedExperience.id}
             experience={selectedExperience}
             onClose={() => setSelectedExperienceId(null)}
+            onOpenPoint={openPoint}
             onCurate={isCurator ? () => setDetailCurationTarget(placeRowOf(selectedExperience)) : undefined}
           />
         )}

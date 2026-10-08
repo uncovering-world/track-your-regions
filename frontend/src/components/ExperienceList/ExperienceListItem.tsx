@@ -31,6 +31,7 @@ import {
 } from './ExperienceListItem.styles';
 import { PlacesCountChip, foldLabel } from './PlacesCountChip';
 import { ExperienceExpandedDetails } from './ExperienceExpandedDetails';
+import { PointCard } from '../shared/PointCard';
 import type { LocationRowData } from './LocationRow';
 import { isFoldable } from '../experienceMarkers/buildMarkers';
 import type { VisitedStatus } from '../../api/visited';
@@ -87,6 +88,16 @@ export interface ExperienceListItemProps {
    */
   onToggleCollapse: (experienceId: number) => void;
   onCurate?: (experience: Experience) => void;
+  /** The part of this object whose own card is open in place of the object's (#1271), or null. */
+  selectedPointId?: number | null;
+  /** Open one part's own card, from its row or a step on another part's card. */
+  onOpenPoint?: (experienceId: number, pointId: number, pointName: string) => void;
+  /** Back from a part's card to the object's. */
+  onClosePoint?: () => void;
+  /** The parts the open part's steps go through, and where they are (`PointCard`'s `steps`). */
+  pointSteps?: { ids: readonly number[]; within: string } | null;
+  /** A part this object does not hold, dropped from the address. */
+  onDropPoint?: () => void;
   /** A curator's way into correcting one place of this object. */
   onCorrectPlace?: (experience: Experience, location: LocationRowData) => void;
   /** And one of its works, which is the same rule one level over (#731). */
@@ -145,6 +156,11 @@ function ExperienceListItemComponent({
   isCollapsed,
   onToggleCollapse,
   onCurate,
+  selectedPointId = null,
+  pointSteps = null,
+  onOpenPoint,
+  onClosePoint,
+  onDropPoint,
   onCorrectPlace,
   onCorrectWork,
   onUnreject,
@@ -261,6 +277,14 @@ function ExperienceListItemComponent({
   const handleCurate = useMemo(
     () => (onCurate ? () => onCurate(experience) : undefined),
     [onCurate, experience],
+  );
+  // A part's own card (#1271), opened from its row and stepped through on the
+  // part's card; bound once per object, like the curator's handler below.
+  const handleOpenPoint = useMemo(
+    () => (onOpenPoint
+      ? (pointId: number, pointName: string) => onOpenPoint(experience.id, pointId, pointName)
+      : () => {}),
+    [onOpenPoint, experience.id],
   );
   // Bound once per object for the same reason, and handed down unchanged to
   // every place row — which is memoised too, and would re-render on a fresh
@@ -492,7 +516,22 @@ function ExperienceListItemComponent({
           height and the layout effect that reports it in one commit.
           Mounted only once everything that decides its size is here — see
           `useExperienceCardReady`. */}
-      {cardOpen && (
+      {cardOpen && selectedPointId != null && onClosePoint && onDropPoint && (
+        <PointCard
+          object={experience}
+          pointId={selectedPointId}
+          onBack={onClosePoint}
+          onOpenPoint={handleOpenPoint}
+          onPointGone={onDropPoint}
+          steps={pointSteps}
+          visited={showCheckbox ? {
+            isVisited: isLocationVisited(selectedPointId),
+            onToggle: () => onLocationVisitedToggle(selectedPointId, isLocationVisited(selectedPointId)),
+          } : null}
+          onHeightChange={reportHeightChange}
+        />
+      )}
+      {cardOpen && selectedPointId == null && (
         <ExperienceExpandedDetails
           experience={experience}
           everyKind={isAboveGroups}
@@ -506,6 +545,7 @@ function ExperienceListItemComponent({
           onLocationVisitedToggle={onLocationVisitedToggle}
           onLocationHover={handleLocationHover}
           onCurate={handleCurate}
+          onOpenPlace={onOpenPoint ? handleOpenPoint : undefined}
           onCorrectPlace={handleCorrectPlace}
           onCorrectWork={handleCorrectWork}
           onUnreject={handleUnreject}

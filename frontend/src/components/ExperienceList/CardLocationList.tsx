@@ -71,6 +71,8 @@ export interface CardLocationListProps {
    * hears about the card's new height before the browser paints it.
    */
   onHeightChange?: () => void;
+  /** Open a place on a card of its own (#1271), handed to every row unchanged. */
+  onOpen?: (pointId: number, pointName: string) => void;
   /** A curator's way into correcting a place, handed to every row unchanged. */
   onCorrect?: (location: LocationRowData) => void;
 }
@@ -86,6 +88,7 @@ export function CardLocationList({
   onLocationVisitedToggle,
   registerRef,
   onHeightChange,
+  onOpen,
   onCorrect,
 }: CardLocationListProps) {
   const { store: hoverStore } = useHoverActions();
@@ -187,6 +190,7 @@ export function CardLocationList({
             onHover={onLocationHover}
             onVisitedToggle={onLocationVisitedToggle}
             registerRef={registerRef}
+            onOpen={onOpen}
             onCorrect={onCorrect}
           />
         ))}
@@ -231,6 +235,7 @@ export function CardLocationList({
                 onHover={onLocationHover}
                 onVisitedToggle={onLocationVisitedToggle}
                 registerRef={registerRef}
+                onOpen={onOpen}
                 onCorrect={onCorrect}
               />
             ))}
