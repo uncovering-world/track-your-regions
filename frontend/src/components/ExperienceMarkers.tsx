@@ -45,6 +45,7 @@ import type { Experience, ExperienceLocation } from '../api/experiences';
 import { locationLabelWithRef, pinLabel } from '../utils/locationLabel';
 import { frameGeoJson } from '../utils/mapUtils';
 import { placeKindNames } from '../utils/placeKinds';
+import { pointPicture } from '../utils/pointPicture';
 
 
 function tryHoverSpecificLocation(
@@ -68,8 +69,7 @@ function tryHoverSpecificLocation(
       kindId: exp.kind_id,
       treasureCount: exp.treasure_count,
       findsCount: exp.finds_count,
-      imageUrl: exp.image_url,
-      imageCredit: exp.image_credit ?? null,
+      ...pointPicture(exp, loc),
       longitude: loc.longitude,
       latitude: loc.latitude,
     });
@@ -220,11 +220,19 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   }, [selectedExperienceId, shownPlacesFor, getExperienceById, locationsByExperience]);
 
   // ── Imperative event handlers (registered on the map, not rendered) ──
+  const locationsByExpRef = useRef(locationsByExperience);
+  locationsByExpRef.current = locationsByExperience;
+  const getLocation = useCallback(
+    (experienceId: number, locationId: number) => locationsByExpRef.current[experienceId]?.find(loc => loc.id === locationId),
+    [],
+  );
+
   useMarkerInteractions({
     mapRef,
     markersRef,
     selectedExperienceId,
     getExperienceById,
+    getLocation,
     toggleSelectedExperience,
     toggleCollapsedExperience,
     setHoveredFromMarker,
@@ -233,8 +241,6 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   });
 
   // ── List hover → hover ring on map ──
-  const locationsByExpRef = useRef(locationsByExperience);
-  locationsByExpRef.current = locationsByExperience;
 
   // Takes no map. Every branch below resolves against `markersRef` and the hover
   // state now that the cluster scan is gone — and the guard that fetched the map

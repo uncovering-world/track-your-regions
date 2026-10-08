@@ -341,6 +341,7 @@ describe("a place marker's name (#1268)", () => {
   const part = (id: number, ref: string) => ({
     id, experience_id: 1045, name: null, external_ref: ref, ordinal: 1, longitude: 12.7273, latitude: 41.6718,
     created_at: '2026-08-04T00:00:00Z', curated_fields: [], in_region: true, region_path: null,
+    image_url: null, image_credit: null,
   });
 
   it('names an unnamed part by its reference, and two parts apart', () => {

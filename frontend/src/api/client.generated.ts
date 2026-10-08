@@ -3757,9 +3757,21 @@ export interface ExperienceLocationWithState {
   curated_fields: string[];
   /** Whether the point lies in the region the read was asked about. True where none was named. */
   in_region: boolean;
+  /**
+     * The point's own picture, a Wikimedia Commons file: a World Heritage component's Wikidata picture (#1270). Null where the point has none, and it then shows its object's picture.
+     * @nullable
+     */
+  image_url: string | null;
+  /** Who took the point's own picture. Null where there is no picture or no credit. */
+  image_credit: ImageCredit | null;
   curation_state: LocationCurationState;
   /** Set where a curator turned this unread point down. The state cannot say so, because a refused point stays `pending`: publishing shows an unread point and refuses a turned-down one. */
   refused_at: string | null;
+  /**
+     * The point's own short description: a World Heritage component's Wikidata description (#1270). Served by the object's own read only, to keep the region feed light.
+     * @nullable
+     */
+  description: string | null;
 }
 
 /**
@@ -6804,6 +6816,13 @@ export interface RegionExperienceLocation {
   curated_fields: string[];
   /** Whether the point lies in the region the read was asked about. True where none was named. */
   in_region: boolean;
+  /**
+     * The point's own picture, a Wikimedia Commons file: a World Heritage component's Wikidata picture (#1270). Null where the point has none, and it then shows its object's picture.
+     * @nullable
+     */
+  image_url: string | null;
+  /** Who took the point's own picture. Null where there is no picture or no credit. */
+  image_credit: ImageCredit | null;
   /**
      * The leaf region the point lies in, with its ancestors, such as `Europe > France > Paris`. It is shown for a point outside the region on screen. Null where the point lies in no region of that world view.
      * @nullable

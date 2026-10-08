@@ -116,6 +116,14 @@ export function HoverPreviewCard({ mapRef, mapLoaded }: HoverPreviewCardProps) {
         {/* The largest picture the map ever shows, so the licence condition
             applies here as much as on the detail panel: the author is named
             wherever the work appears. */}
+        {image && hoverPreview.pictureOfObject && hoverPreview.locationName && (
+          // A part with no picture of its own shows the whole site's, and says
+          // so where the credit is read (#1270): one pile dwelling's photograph
+          // standing for another's is the claim this would otherwise make.
+          <Typography variant="caption" sx={{ color: 'text.secondary', lineHeight: 1.2 }}>
+            The whole site's picture; this part has none of its own
+          </Typography>
+        )}
         {image && <ImageCreditLine credit={hoverPreview.imageCredit} />}
         <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
           {hoverPreview.experienceName}
