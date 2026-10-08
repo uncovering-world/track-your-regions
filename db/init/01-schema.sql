@@ -3125,7 +3125,15 @@ COMMENT ON COLUMN experience_locations.name IS 'Component name (e.g., individual
 COMMENT ON COLUMN experience_locations.external_ref IS 'Source-specific reference (e.g., "1739-005" for UNESCO)';
 -- The point's own Wikidata item, where Wikidata has one (#1269).
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS wikidata_item VARCHAR(20);
-COMMENT ON COLUMN experience_locations.wikidata_item IS 'The Wikidata item this point is, where one is known: for a World Heritage component, the item whose World Heritage Site ID (P757, at any rank) equals external_ref, recorded by every run; null where no item or more than one carries the reference. A claim on it (''wikidata_item'' in curated_fields), which no screen writes yet, is never overridden by a run (#1269).';
+COMMENT ON COLUMN experience_locations.wikidata_item IS 'The Wikidata item this point is, where one is known: for a World Heritage component, the item whose World Heritage Site ID (P757, any rank but a deprecated-only statement) equals external_ref, recorded by every run; null where no item or more than one carries the reference. A claim on it (''wikidata_item'' in curated_fields), which no screen writes yet, is never overridden by a run (#1269).';
+-- The point's own picture, its credit and its description, from its Wikidata
+-- item (#1270). See db/migrations/081.
+ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS image_url TEXT;
+ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+COMMENT ON COLUMN experience_locations.image_url IS 'The point''s own picture, a Wikimedia Commons file (ADR-0043): for a World Heritage component, its Wikidata item''s P18, written by the run through the gate as a field of a part (ADR-0037) unless a curator claimed it. NULL = the point shows its object''s picture, and says so (#1270).';
+COMMENT ON COLUMN experience_locations.description IS 'The point''s own short description: for a World Heritage component, its Wikidata item''s English description, written like image_url (#1270).';
+COMMENT ON COLUMN experience_locations.metadata IS 'Facts about the point that are not columns: imageCredit, the credit of image_url, captured from Commons when the picture is written (#1270).';
 
 -- A location the source stopped offering is marked, not deleted: both
 -- `user_visited_locations.location_id` and

@@ -256,6 +256,9 @@ export interface ExperienceLocationsRow {
   created_at: Date | null;
   missing_since: Date | null;
   wikidata_item: string | null;
+  image_url: string | null;
+  description: string | null;
+  metadata: unknown;
   curation_state: string;
   refused_at: Date | null;
   curated_fields: unknown;
