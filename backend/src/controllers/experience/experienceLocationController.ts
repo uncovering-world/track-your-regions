@@ -284,7 +284,7 @@ export async function getExperienceLocations(
   const maySeeUnreadIdx = params.length + 1;
   params.push(maySeeUnread);
 
-  const result = await pool.query<LocationRow & Pick<ExperienceLocationsRow, 'refused_at' | 'description'> & {
+  const result = await pool.query<LocationRow & Pick<ExperienceLocationsRow, 'refused_at' | 'description' | 'wikidata_item'> & {
     curation_state: CheckValue<'experience_locations', 'curation_state'>;
   }>(`
     SELECT
@@ -312,6 +312,7 @@ export async function getExperienceLocations(
       el.image_url,
       el.metadata -> 'imageCredit' AS image_credit,
       el.description,
+      el.wikidata_item,
       ${regionId ? `EXISTS(
         SELECT 1 FROM experience_location_regions elr
         WHERE elr.location_id = el.id AND elr.region_id = $2
@@ -328,6 +329,7 @@ export async function getExperienceLocations(
     curation_state: row.curation_state,
     refused_at: row.refused_at?.toISOString() ?? null,
     description: row.description,
+    wikidata_item: row.wikidata_item,
   }));
 
   return {
