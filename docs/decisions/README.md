@@ -105,8 +105,9 @@ and accepted by it.
 | [0083](0083-a-no-to-a-moved-point-keeps-the-stored-pin.md) | A no to a moved point keeps the stored pin | Accepted | 2026-10-04 |
 | [0084](0084-a-place-belongs-to-no-source-and-no-kind.md) | A place belongs to no source and no kind | Accepted — decision 4 narrowed by [0085](0085-one-wikidata-item-is-one-reading-whichever-source-reads-it.md) | 2026-10-04 |
 | [0085](0085-one-wikidata-item-is-one-reading-whichever-source-reads-it.md) | One Wikidata item is one reading, whichever source reads it | Accepted | 2026-10-05 |
-| [0086](0086-a-merge-is-a-record-that-moves-a-place-into-another-and-back.md) | A merge is a record that moves one place into another, and can move it back | Accepted | 2026-10-07 |
+| [0086](0086-a-merge-is-a-record-that-moves-a-place-into-another-and-back.md) | A merge is a record that moves one place into another, and can move it back | Accepted — decision 3 narrowed by ADR-0088 | 2026-10-07 |
 | [0087](0087-jev-suggests-an-answer-on-a-curator-card-and-a-curator-decides.md) | Jev suggests an answer on a curator's card, and a curator decides | Accepted | 2026-10-08 |
+| [0088](0088-a-world-heritage-site-of-one-point-is-its-one-item-and-one-point.md) | A World Heritage site of one point is its one Wikidata item, and merges to one point | Accepted | 2026-10-08 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
