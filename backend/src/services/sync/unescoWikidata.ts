@@ -384,3 +384,52 @@ export async function fetchWorldHeritageFacts(
     return null;
   }
 }
+
+/** A Wikidata entity URI, or a bare id, as the id: `http://www.wikidata.org/entity/Q42` → `Q42`. */
+function itemId(value: string | null): string | null {
+  const id = value?.split('/').pop() ?? null;
+  return id && /^Q\d+$/.test(id) ? id : null;
+}
+
+/** A component reference as compared: case and runs of blanks folded, `1363-061` as `1363-061`. */
+const comparableRef = (value: string): string => value.trim().toLowerCase().replace(/\s+/g, ' ');
+
+/** How a site's components resolved to their Wikidata items (#1269). */
+export interface ComponentResolution {
+  /** Every distinct component reference of the site, with its item or none. */
+  items: Array<{ ref: string; item: string | null }>;
+  /** Component points: one per reference given, two points sharing a reference counted twice. */
+  points: number;
+  /** Of those, the points whose reference resolved. */
+  resolved: number;
+  /** References more than one item carries: resolved to none, and named. */
+  ambiguous: Array<{ ref: string; items: string[] }>;
+}
+
+/**
+ * Each component of a serial site, resolved to the Wikidata item whose World
+ * Heritage Site ID (P757, at any rank — the index reads `p:P757/ps:P757`)
+ * equals its reference. One item resolves it; none leaves it without one; more
+ * than one is ambiguous, resolved to none and reported, since choosing would
+ * be guessing which place is meant. Only from an index Wikidata answered: one
+ * read back from stored rows knows no items, and resolving against it would
+ * clear every item the points hold.
+ */
+export function resolveComponents(index: WorldHeritageIndex, site: string, refs: readonly string[]): ComponentResolution {
+  const byRef = new Map<string, Set<string>>();
+  for (const candidate of index.bySite.get(site)?.component ?? []) {
+    const item = itemId(candidate.item);
+    if (!item) continue;
+    const key = comparableRef(candidate.ref.raw);
+    byRef.set(key, (byRef.get(key) ?? new Set()).add(item));
+  }
+  const items: ComponentResolution['items'] = [];
+  const ambiguous: ComponentResolution['ambiguous'] = [];
+  for (const ref of new Set(refs)) {
+    const found = [...(byRef.get(comparableRef(ref)) ?? [])].sort();
+    if (found.length > 1) ambiguous.push({ ref, items: found });
+    items.push({ ref, item: found.length === 1 ? found[0] : null });
+  }
+  const itemOf = new Map(items.map(one => [one.ref, one.item]));
+  return { items, points: refs.length, resolved: refs.filter(ref => itemOf.get(ref) != null).length, ambiguous };
+}

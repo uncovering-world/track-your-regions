@@ -247,6 +247,12 @@ export async function orchestrateSync<T>(
     // would otherwise go unread. Later windows are closed at the other end:
     // `cancelSync` refuses once there is no item left to interrupt.
     if (progress.cancel) throw new Error('Sync cancelled');
+    // A summary the whole pass makes is the run's own record, not its work:
+    // a failure is logged, and missing detection, the sweep and the changeset
+    // still run on writes that have already landed.
+    await config.afterItems?.(progress, context).catch((error: unknown) => {
+      console.error('%s The run\'s after-items step failed:', logPrefix, error);
+    });
 
     detectionSkippedReason = await detectMissing(
       config, progress, previousActiveCount, seenCount, changes, seenExternalIds,

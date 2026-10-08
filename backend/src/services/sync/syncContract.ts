@@ -135,6 +135,14 @@ export interface SyncServiceConfig<T> {
   fetchItems: (progress: SyncProgress, errorDetails: ErrorDetail[]) => Promise<FetchResult<T>>;
   /** Process a single item and describe what happened to it. Throw to count as error. */
   processItem: (item: T, progress: SyncProgress, context: SyncRunContext) => Promise<ProcessItemResult>;
+  /**
+   * What the run does once every item is processed and before missing
+   * detection: a summary only the whole pass can make — the World Heritage
+   * run's record of how its components resolved to Wikidata items (#1269).
+   * A preview is told so by `context.dryRun`; a failure is logged and the run
+   * goes on, since the items' writes have landed.
+   */
+  afterItems?: (progress: SyncProgress, context: SyncRunContext) => Promise<void>;
   /** Display name for progress messages. */
   getItemName: (item: T) => string;
   /** External ID for error reporting. */

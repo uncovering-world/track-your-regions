@@ -11,7 +11,8 @@ import {
   type LocationWriteRun,
 } from './locationWriter.js';
 import type { IncomingLocation } from './locationIncoming.js';
-import { upsertExperienceRecord } from './syncUtils.js';
+import { recordComponentItemsReport, upsertExperienceRecord } from './syncUtils.js';
+import { finishComponentReport, newComponentReport, resolveSiteComponents } from './unescoComponents.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { ProcessItemResult, SyncRunContext } from './syncContract.js';
 import { readFixtureRecords } from './fixtureSource.js';
@@ -506,6 +507,10 @@ export function syncUnescoSites(
   // Shared state between fetchItems and processItem via closure
   let facts: WorldHeritageIndex;
   let credits: Map<string, ImageCredit>;
+  // Components are resolved to their items only from an index Wikidata
+  // answered: one read back from the rows knows none (#1269).
+  let factsAnswered = false;
+  const components = newComponentReport();
 
   return orchestrateSync<UnescoApiRecord>({
     sourceId: UNESCO_SOURCE_ID,
@@ -547,6 +552,7 @@ export function syncUnescoSites(
       progress.statusMessage = 'Asking Wikidata about the properties...';
       const answered = await fetchWorldHeritageFacts(progress, budget);
       facts = answered ?? await indexOfWhatIsStored();
+      factsAnswered = answered !== null;
       if (!answered) console.warn('[UNESCO Sync] Keeping the stored pictures and articles for this run');
 
       credits = answered
@@ -560,7 +566,18 @@ export function syncUnescoSites(
       if (!processed) {
         throw new Error('No valid coordinates');
       }
-      return upsertExperience(processed, context);
+      const result = await upsertExperience(processed, context);
+      if (!context.dryRun && factsAnswered && result.experienceId) {
+        await resolveSiteComponents(facts, record, processed, result.experienceId, components);
+      }
+      return result;
+    },
+    afterItems: async (_progress, context) => {
+      // Written where anything was counted, the failures included: a run whose
+      // every site failed to record is the one the failure count is for.
+      if (!context.dryRun && context.syncLogId !== null && (components.total > 0 || components.failedSites > 0)) {
+        await recordComponentItemsReport(context.syncLogId, finishComponentReport(components));
+      }
     },
     getItemName: (record) => record.name_en || `Site ${record.id_no}`,
     getItemId: (record) => String(record.id_no),

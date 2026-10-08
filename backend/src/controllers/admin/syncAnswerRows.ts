@@ -134,10 +134,15 @@ function errorDetailOf(entry: unknown): SyncErrorDetail {
   };
 }
 
-export function syncLogDetailOf(row: SyncLogRow & Pick<ExperienceSyncLogsRow, 'error_details'>): SyncLogDetail {
+export function syncLogDetailOf(
+  row: SyncLogRow & Pick<ExperienceSyncLogsRow, 'error_details' | 'component_items'>,
+): SyncLogDetail {
   return {
     ...syncLogOf(row),
     error_details: Array.isArray(row.error_details) ? row.error_details.map(errorDetailOf) : null,
+    // Written by the World Heritage run alone, in the shape it declares (#1269).
+    // The column holds what `recordComponentItemsReport` wrote, typed from this schema.
+    component_items: isRecord(row.component_items) ? row.component_items as SyncLogDetail['component_items'] : null,
   };
 }
 

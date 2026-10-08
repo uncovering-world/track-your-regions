@@ -1907,6 +1907,54 @@ export interface ColorMatchFailed {
  */
 export type ColorMatchEvent = ColorMatchProgress | ColorMatchDebugImage | WaterReviewRequested | ClusterReviewRequested | IcpAdjustmentOffered | ColorMatchComplete | ColorMatchFailed;
 
+export type ComponentItemsAmbiguousItem = {
+  site: string;
+  ref: string;
+  items: string[];
+};
+
+export type ComponentItemsUnresolvedSitesItem = {
+  site: string;
+  name: string;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  resolved: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  total: number;
+};
+
+/**
+ * How a World Heritage run's components resolved to Wikidata items (#1269).
+ */
+export interface ComponentItems {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  resolved: number;
+  /**
+     * Component points: two points sharing a reference count twice.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  total: number;
+  /**
+     * Sites whose components could not be recorded this run; their points keep what they held.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  failedSites: number;
+  /** Component references more than one Wikidata item carries: resolved to none. */
+  ambiguous: ComponentItemsAmbiguousItem[];
+  /** The sites with a component left without an item, most left first, at most fifty. */
+  unresolvedSites: ComponentItemsUnresolvedSitesItem[];
+}
+
 /**
  * A stop asked of a world view's computation; a run in flight ends at its next region.
  */
@@ -8454,6 +8502,7 @@ export interface SyncLogDetail {
   /** The server was restarted under the run: its figures are how far it got, and its per-object record never left memory. */
   stopped_by_restart: boolean;
   error_details: SyncErrorDetail[] | null;
+  component_items: ComponentItems | null;
 }
 
 /**
