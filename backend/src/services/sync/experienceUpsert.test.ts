@@ -676,8 +676,9 @@ describe('the keys a run computes about its own pass go past both guards', () =>
     expect(params[15]).toEqual([...SYNC_OWNED_METADATA_KEYS]);
     // $16, which is what both metadata arms read it as; then the hold, the
     // membership's work, the site's extent and the place the lock found, which
-    // are this statement's own, and the run's view of the place (#1246).
-    expect(params).toHaveLength(25);
+    // are this statement's own, and the run's view of the place with its
+    // picture's credit (#1246).
+    expect(params).toHaveLength(26);
     expect(sql).not.toContain("'artworkCount'");
   });
 
@@ -1317,5 +1318,29 @@ describe('the extent a run writes', () => {
   it('measures nothing where the run sends no extent', async () => {
     await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
     expect(sentSql().some(sql => /md5\(ST_AsBinary\(geom\)\)/.test(sql))).toBe(false);
+  });
+});
+
+/**
+ * A source's view of a place carries its picture's credit (#1246), and only
+ * that picture's: where a curator owns the place's picture the run carries the
+ * curator's photograph's credit (`creditToWrite`), which is not the source's.
+ */
+describe("the credit recorded with a source's picture", () => {
+  const CREDIT = { author: 'Daniel Dimitrov', license: 'CC BY-SA 4.0' };
+  const withCredit = { ...PARAMS, metadata: { ...PARAMS.metadata, imageCredit: CREDIT } };
+
+  it("records the run's credit beside the picture it reports", async () => {
+    given(storedRow());
+    await upsertExperienceRecord(withCredit, { syncLogId: 42 });
+
+    expect(upsert()[1][25]).toBe(JSON.stringify(CREDIT));
+  });
+
+  it("records none where a curator claims the place's picture", async () => {
+    given(storedRow({ curated_fields: ['image_url'] }));
+    await upsertExperienceRecord(withCredit, { syncLogId: 42 });
+
+    expect(upsert()[1][25]).toBeNull();
   });
 });

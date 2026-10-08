@@ -400,6 +400,19 @@ function withTidyNames(params: ExperienceUpsertParams): ExperienceUpsertParams {
 }
 
 /**
+ * The credit of the picture a run reports, as its view records it: the run's
+ * credit where it is that picture's, and none where a curator claims the
+ * place's picture, since the run then carries the curator's photograph's
+ * credit (`creditToWrite`) and naming that photographer under the source's
+ * picture would credit the wrong person.
+ */
+function reportedCreditOf(params: ExperienceUpsertParams, curatedFields: unknown): string | null {
+  const claimed = Array.isArray(curatedFields) && curatedFields.includes('image_url');
+  if (claimed || !params.imageUrl || !params.metadata.imageCredit) return null;
+  return JSON.stringify(params.metadata.imageCredit);
+}
+
+/**
  * Upsert an experience record and its membership with curated_fields-aware
  * conflict handling, returning both the prior and resulting state.
  *
@@ -629,7 +642,7 @@ async function writeUnderLock(
       INSERT INTO ${MEMBERSHIPS} (
         experience_id, kind_id, source_id, external_id, type, admitted_for, curation_state, published_at,
         first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at,
-        reported_name, reported_description, reported_image_url, reported_location
+        reported_name, reported_description, reported_image_url, reported_location, reported_image_credit
       )
       SELECT ins.id,
              (SELECT kind_id FROM experience_sources WHERE id = $1),
@@ -640,7 +653,7 @@ async function writeUnderLock(
              CASE WHEN (SELECT requires_curation FROM gate) THEN 'pending' ELSE 'auto' END,
              CASE WHEN (SELECT requires_curation FROM gate) THEN NULL ELSE NOW() END,
              $15, $15, NOW(),
-             $21, $22, $23, ST_SetSRID(ST_MakePoint($24, $25), 4326)
+             $21, $22, $23, ST_SetSRID(ST_MakePoint($24, $25), 4326), $26::jsonb
         FROM ins
       ON CONFLICT (source_id, external_id) DO UPDATE SET
         admitted_for = EXCLUDED.admitted_for,
@@ -667,6 +680,7 @@ async function writeUnderLock(
         reported_description = EXCLUDED.reported_description,
         reported_image_url = EXCLUDED.reported_image_url,
         reported_location = EXCLUDED.reported_location,
+        reported_image_credit = EXCLUDED.reported_image_credit,
         updated_at = NOW()
       RETURNING pending_change_sync_log_id
     )
@@ -703,6 +717,11 @@ async function writeUnderLock(
       params.imageUrl,
       params.lon,
       params.lat,
+      // The credit of that picture, which a curator is shown beside it when
+      // asked to choose between two sources' pictures — but not where a curator
+      // owns the place's picture: the run then carries their photograph's credit
+      // (`creditToWrite`), which is not this picture's.
+      reportedCreditOf(params, stored?.curated_fields),
     ]
   );
 
