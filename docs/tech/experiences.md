@@ -728,7 +728,8 @@ visible work's attribution or a visible place's name on the spot — 73 such cha
 22 of them attributions, *The Wine Glass* moved from Johannes Vermeer to a namesake with nobody asked —
 while the same run's change to the museum's own name waited on a card. The location writer's keeping
 arm and the treasures upsert now carry the object's guard one level down: a visible point keeps its
-`name`, a visible work keeps `name`, `artists`, `year`, `image_url` and, with the picture, its credit.
+`name` — and its own picture, credit and description once they hold a value, which the point content
+writer holds the same way, filling an empty one ([ADR-0089](../decisions/0089-a-parts-empty-field-is-filled-without-a-hold.md), #1270) — a visible work keeps `name`, `artists`, `year`, `image_url` and, with the picture, its credit.
 Each statement reads the gate as it already read it for the row it inserts, evaluates the guard on the
 row it locked, and returns the guard's own answer (`was_held`) so the record cannot disagree with the
 write; `pointChanges` and `workChanges` take that answer as their fourth argument and file each
@@ -1048,6 +1049,26 @@ path needs.
   from the `afterItems` hook of the sync contract): how many component points resolved, counted
   per point, the ambiguous references, the sites whose components could not be recorded this run,
   and the fifty sites with most left without an item, which the run's details in the admin panel show (`ComponentItemsSummary`).
+- **A component carries its own picture, credit and description** (#1270, `pointContentWriter.ts`).
+  The item a component resolves to gives the point its picture (P18, the first by its Commons URL,
+  ADR-0085's rule) and its English description (`componentContents`, read off the same query); a
+  component with no item gets neither, so a point that lost its item loses what the item gave it.
+  The run writes them after the points (`writePointContents`, called from `resolveSiteComponents`),
+  under the object's lock, on the points it answers for, through the gate as a field of a part
+  (ADR-0037, narrowed by ADR-0089): on a point a reader can see, under a gated source, a value a
+  reader sees stands and the run records its change to `image_url`, `metadata.imageCredit` or
+  `description` as held in its contents record, for the card to publish (`writeHeldPointFields`),
+  while a field that held nothing is filled — measured on 2026-10-08, holding the first fill too
+  would have put 3 828 visible points on 353 cards; the credit is held with its picture, and on
+  its own only where it replaces one; a claim (`image_url` or `description` in the
+  point's `curated_fields`) is never written over. Only a Commons file is written. The credit is
+  the one the run fetched from Commons for that file — asked together with the sites' own pictures,
+  only for files no point holds a credit for (`componentPicturesToCredit`) — or one a point already
+  holds for the same file, since a credit is the file's, never one of another photograph. The reads serve the point's
+  `image_url` and `image_credit` on every point and its `description` on the object's own read
+  only, which keeps the region feed light; the map's hover card shows a point's own picture and,
+  for a part without one, its site's, saying so beside the credit (`pointPicture`,
+  `docs/tech/experience-map-ui.md`).
 - **A site names its own Wikidata items, and a site of one point merges on them** (#1248,
   [ADR-0088](../decisions/0088-a-world-heritage-site-of-one-point-is-its-one-item-and-one-point.md)).
   From the same index the run records on the site's membership the items carrying the property's
@@ -3935,7 +3956,7 @@ they compose:
 - `releaseDeferredWithdrawals`, the release a published arrival makes of the point it moved
   from — a refused one releases nothing (ADR-0083);
 - `setPointVerdict`, `correctPoint`, `releaseAnchorPointClaim`, `movePointTo`,
-  `renamePoint`, `insertCuratedPoint`.
+  `writeHeldPointFields` (a held name, picture, credit or description, #1270), `insertCuratedPoint`.
 
 The manual create's `insertCuratedExperience` hands back the token, since its insert's own row
 lock is the object lock. So *the object first, then its points* (`db/locks.ts`) is a type error
