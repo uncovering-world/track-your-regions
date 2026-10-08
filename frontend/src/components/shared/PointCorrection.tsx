@@ -1,5 +1,7 @@
 /**
- * A curator's correction to one place: what it is called, or where it is.
+ * A curator's correction to one place: what it is called, where it is, and —
+ * where the surface that opened it knows them — its own picture and description
+ * (#1270), which a World Heritage run fills from the part's Wikidata item.
  *
  * The body of `PointPreviewDialog` wherever a curator may correct the place it
  * shows, and only the body: the dialog decides where a place can be looked at,
@@ -36,6 +38,8 @@ import { placementNotice } from '../../utils/placementNotice';
 import { describeMove, moveLabel } from '../../utils/moveDescription';
 import { tidyLabel } from '@tyr/shared/labels';
 import { LocationPicker } from './LocationPicker';
+import { PictureWithCredit } from './PictureWithCredit';
+import type { ImageCredit } from '../../api/experiences';
 
 /**
  * Why readers do not see the place, where they do not — two causes with two
@@ -59,9 +63,18 @@ export interface PlaceToCorrect {
   unseen?: UnseenReason;
   /** The region whose batch drew the pin, where the caller is looking at a region's map. */
   regionId?: number | null;
+  /**
+   * The place's own picture, where the caller knows it: absent hides the field,
+   * since a field opened empty over a stored picture would read as none.
+   */
+  imageUrl?: string | null;
+  /** Whose photograph the stored picture is, shown under it in the preview and never under an unsaved one. */
+  imageCredit?: ImageCredit | null;
+  /** The place's own description, where the caller's read carries it (the object's own read does). */
+  description?: string | null;
 }
 
-type Correction = { name?: string; latitude?: number; longitude?: number };
+type Correction = { name?: string; latitude?: number; longitude?: number; imageUrl?: string; description?: string };
 
 /** A building fills the frame at this zoom; a country does at the picker's default. */
 const PLACE_ZOOM = 15;
@@ -110,23 +123,50 @@ export function correctionOutcome(place: PlaceToCorrect, correction: Correction,
     );
     changes.push(by ? `moved ${by}` : 'moved');
   }
-  const sentences = [`${place.objectName}: ${label} ${changes.join(' and ')}.`];
+  if (correction.imageUrl !== undefined) changes.push(pictureChange(correction.imageUrl, reply));
+  if (correction.description !== undefined) {
+    changes.push(correction.description ? 'given a new description' : 'left without a description');
+  }
+  const sentences = [`${place.objectName}: ${label} ${joinChanges(changes)}.`];
   if (reply.anchorMoved) {
     sentences.push('The object’s own position moved with it.');
   } else if (place.unseen) {
     sentences.push(`Readers still do not see this place; ${REMEDY[place.unseen]}.`);
   }
-  sentences.push(`The source will no longer overwrite ${claimedFields(renamed, moved)}.`);
+  sentences.push(`The source will no longer overwrite ${claimedFields(correction)}.`);
   const placement = placementNotice({ name: place.objectName }, reply);
   if (placement) sentences.push(placement);
   return sentences.join(' ');
 }
 
+/** "a", "a and b", "a, b and c". */
+function joinChanges(parts: string[]): string {
+  return parts.length <= 1 ? parts.join('') : `${parts.slice(0, -1).join(', ')} and ${parts[parts.length - 1]}`;
+}
+
+/**
+ * What happened to the picture, with whom it is now credited to — answered by
+ * the server rather than promised, since Commons may name nobody in time.
+ */
+function pictureChange(imageUrl: string, reply: LocationEditResult): string {
+  if (!imageUrl) return 'left to show its object’s picture';
+  // A picture we host is not Commons', so Commons was never asked about it.
+  if (imageUrl.startsWith('/images/')) return 'given a picture we host';
+  // No credit at all is Commons not answering in time; a credit with no author
+  // is Commons answering with a licence and nobody named.
+  if (!reply.imageCredit) return 'given a picture Commons named no photographer for in time';
+  const author = reply.imageCredit.author;
+  return author ? `given a picture credited to ${author}` : 'given a picture Commons credits to no one by name';
+}
+
 /** The fields a correction claimed, as the outcome names them. */
-function claimedFields(renamed: boolean, moved: boolean): string {
-  if (renamed && moved) return 'its name or where it is';
-  if (renamed) return 'its name';
-  return 'where it is';
+function claimedFields(correction: Correction): string {
+  const fields: string[] = [];
+  if (correction.name !== undefined) fields.push('its name');
+  if (correction.latitude !== undefined) fields.push('where it is');
+  if (correction.imageUrl !== undefined) fields.push('its picture');
+  if (correction.description !== undefined) fields.push('its description');
+  return fields.length <= 1 ? fields.join('') : `${fields.slice(0, -1).join(', ')} or ${fields[fields.length - 1]}`;
 }
 
 export function PointCorrection({ place, onDone, onCancel }: {
@@ -140,6 +180,8 @@ export function PointCorrection({ place, onDone, onCancel }: {
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(
     { lat: place.latitude, lng: place.longitude },
   );
+  const [picture, setPicture] = useState(place.imageUrl ?? '');
+  const [description, setDescription] = useState(place.description ?? '');
 
   // Tidied on both sides, as the endpoint stores a name (`tidyLabel`, #835):
   // a name that differs from the stored one only by whitespace is the same
@@ -147,10 +189,17 @@ export function PointCorrection({ place, onDone, onCancel }: {
   const trimmed = tidyLabel(name);
   const renamed = trimmed.length > 0 && trimmed !== tidyLabel(place.name ?? '');
   const moved = coords !== null && (coords.lat !== place.latitude || coords.lng !== place.longitude);
+  // Sent only where the caller knew the stored value: '' clears it, which is a
+  // claim too — "this part has no picture of its own" — so it must be meant.
+  const repictured = place.imageUrl !== undefined && picture.trim() !== (place.imageUrl ?? '');
+  const redescribed = place.description !== undefined && description.trim() !== (place.description ?? '');
   const correction: Correction = {
     ...(renamed ? { name: trimmed } : {}),
     ...(moved && coords ? { latitude: coords.lat, longitude: coords.lng } : {}),
+    ...(repictured ? { imageUrl: picture.trim() } : {}),
+    ...(redescribed ? { description: description.trim() } : {}),
   };
+  const changed = renamed || moved || repictured || redescribed;
 
   const save = useMutation({
     mutationFn: () => editLocation(place.locationId, correction),
@@ -193,6 +242,39 @@ export function PointCorrection({ place, onDone, onCancel }: {
         fullWidth
         slotProps={{ htmlInput: { maxLength: 500 } }}
       />
+      {place.imageUrl !== undefined && (
+        <TextField
+          label="Picture"
+          value={picture}
+          onChange={(e) => setPicture(e.target.value)}
+          size="small"
+          fullWidth
+          helperText={`A Wikimedia Commons file, or a picture we host (/images/…). Empty shows ${place.objectName}’s own picture; a Commons photographer is looked up on save.`}
+        />
+      )}
+      {/* The file the field names, drawn before it is claimed: a curator must see
+          the photograph they are about to give this part. The stored credit only
+          under the stored picture — none exists for an address not yet saved. */}
+      {place.imageUrl !== undefined && picture.trim() !== '' && (
+        <PictureWithCredit
+          url={picture.trim()}
+          credit={repictured ? undefined : place.imageCredit}
+          alt={place.name ?? place.objectName}
+          width={250}
+        />
+      )}
+      {place.description !== undefined && (
+        <TextField
+          label="Description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          size="small"
+          fullWidth
+          multiline
+          minRows={2}
+          slotProps={{ htmlInput: { maxLength: 2000 } }}
+        />
+      )}
       {save.isError && (
         <Alert severity="error">
           {save.error instanceof Error ? save.error.message : 'The correction could not be saved.'}
@@ -207,7 +289,7 @@ export function PointCorrection({ place, onDone, onCancel }: {
         <Button
           variant="contained"
           onClick={() => save.mutate()}
-          disabled={save.isPending || (!renamed && !moved)}
+          disabled={save.isPending || !changed}
         >
           Save
         </Button>

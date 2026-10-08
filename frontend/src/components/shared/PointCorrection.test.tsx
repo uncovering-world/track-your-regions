@@ -57,6 +57,66 @@ beforeEach(() => {
   mockedEdit.mockResolvedValue({ success: true, locationId: 6001, anchorMoved: false });
 });
 
+describe("PointCorrection: a part's own picture and description (#1270)", () => {
+  const RIESI = 'https://commons.wikimedia.org/wiki/Special:FilePath/Riesi_Pfahlbau.jpg';
+  const pile = (over: Partial<PlaceToCorrect> = {}) => place({
+    objectName: 'Prehistoric Pile Dwellings around the Alps', name: 'Riesi', imageUrl: null, description: 'lake-dwelling site', ...over,
+  });
+
+  it('offers neither field where the caller does not know the stored value', () => {
+    renderForm();
+    expect(screen.queryByLabelText('Picture')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Description')).not.toBeInTheDocument();
+  });
+
+  it('sends a new picture and description, and names whom Commons credited', async () => {
+    mockedEdit.mockResolvedValue({
+      success: true, locationId: 6001, anchorMoved: false,
+      imageCredit: { author: 'A photographer', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null },
+    });
+    const { onDone } = renderForm(pile());
+    fireEvent.change(screen.getByLabelText('Picture'), { target: { value: RIESI } });
+    fireEvent.change(screen.getByLabelText('Description'), { target: { value: 'Pile dwelling on the shore at Riesi' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(6001, {
+      imageUrl: RIESI, description: 'Pile dwelling on the shore at Riesi',
+    }));
+    await waitFor(() => expect(onDone).toHaveBeenCalled());
+    expect(onDone.mock.calls[0][0]).toContain('given a picture credited to A photographer and given a new description');
+    expect(onDone.mock.calls[0][0]).toContain('no longer overwrite its picture or its description');
+  });
+
+  it('does not blame Commons for a picture we host, which Commons was never asked about', () => {
+    const reply = { success: true as const, locationId: 6001, anchorMoved: false, imageCredit: null };
+    expect(correctionOutcome(pile(), { imageUrl: '/images/riesi.jpg' }, reply)).toContain('given a picture we host');
+    expect(correctionOutcome(pile(), { imageUrl: RIESI }, reply))
+      .toContain('given a picture Commons named no photographer for in time');
+    const licenceOnly = { ...reply, imageCredit: { author: null, license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null } };
+    expect(correctionOutcome(pile(), { imageUrl: RIESI }, licenceOnly as never))
+      .toContain('given a picture Commons credits to no one by name');
+  });
+
+  it('draws the picture before it is claimed, with no credit under an unsaved address', () => {
+    const credit = { author: 'An earlier photographer', license: 'CC BY 4.0', licenseUrl: null, detailsUrl: null };
+    renderForm(pile({ imageUrl: RIESI, imageCredit: credit }));
+    expect(screen.getByRole('img', { name: 'Riesi' })).toBeInTheDocument();
+    expect(screen.getByText(/An earlier photographer/)).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Picture'), {
+      target: { value: 'https://commons.wikimedia.org/wiki/Special:FilePath/Another.jpg' },
+    });
+    expect(screen.getByRole('img', { name: 'Riesi' })).toBeInTheDocument();
+    expect(screen.queryByText(/An earlier photographer/)).not.toBeInTheDocument();
+  });
+
+  it('sends an emptied picture as a clear, which is a claim too', async () => {
+    renderForm(pile({ imageUrl: RIESI }));
+    fireEvent.change(screen.getByLabelText('Picture'), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(6001, { imageUrl: '' }));
+  });
+});
+
 describe('PointCorrection', () => {
   it('offers nothing to save until something changed', () => {
     renderForm();

@@ -3331,6 +3331,9 @@ export interface EditLocationBody {
      * @maximum 180
      */
   longitude?: number;
+  imageUrl?: string;
+  /** @maxLength 2000 */
+  description?: string;
 }
 
 export interface EditWorkBody {
@@ -3758,7 +3761,7 @@ export interface ExperienceLocationWithState {
   /** Whether the point lies in the region the read was asked about. True where none was named. */
   in_region: boolean;
   /**
-     * The point's own picture, a Wikimedia Commons file: a World Heritage component's Wikidata picture (#1270). Null where the point has none, and it then shows its object's picture.
+     * The point's own picture: a World Heritage component's Wikidata picture, a Commons file (#1270), or one a curator chose, which may be an /images/ path we host. Null where the point has none, and it then shows its object's picture.
      * @nullable
      */
   image_url: string | null;
@@ -5200,7 +5203,7 @@ export interface LifecycleStateBody {
 }
 
 /**
- * What a curator's correction to a place's name or position did.
+ * What a curator's correction to a place's name, position, picture or description did.
  */
 export interface LocationEditResult {
   /** Set when the publication landed and re-placing the object into its regions did not. */
@@ -5218,6 +5221,8 @@ export interface LocationEditResult {
   locationId: number;
   /** Whether the object's own coordinate moved with the place. True only where the object holds exactly one visible, published place and this is it. */
   anchorMoved: boolean;
+  /** Who is named under the place's new picture (#1270). Present only where the picture changed. Null where the picture was taken off, where it is an /images/ path we host, and where Commons did not answer in time; a credit whose author is null is Commons answering with a licence and nobody named. */
+  imageCredit?: ImageCredit | null;
 }
 
 export type LocationStateResultSourceMembership = typeof LocationStateResultSourceMembership[keyof typeof LocationStateResultSourceMembership];
@@ -6817,7 +6822,7 @@ export interface RegionExperienceLocation {
   /** Whether the point lies in the region the read was asked about. True where none was named. */
   in_region: boolean;
   /**
-     * The point's own picture, a Wikimedia Commons file: a World Heritage component's Wikidata picture (#1270). Null where the point has none, and it then shows its object's picture.
+     * The point's own picture: a World Heritage component's Wikidata picture, a Commons file (#1270), or one a curator chose, which may be an /images/ path we host. Null where the point has none, and it then shows its object's picture.
      * @nullable
      */
   image_url: string | null;

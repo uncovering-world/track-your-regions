@@ -7,7 +7,7 @@
  */
 
 import {
-  isPictureHost, isUploadHost, isCommonsPath, isDescriptionPage, namesAPictureFile,
+  commonsUploadFileName, isPictureHost, isCommonsPath, isDescriptionPage, namesAPictureFile,
 } from '@tyr/shared/pictures';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001';
@@ -103,12 +103,9 @@ function isTrustedImageUrl(url: string): boolean {
 function commonsFilePathUrl(url: string): string | null {
   try {
     const parsed = new URL(url);
-    // The same host test the trust gate applies: a subdomain of the upload host
-    // is the upload host, and a file there is sized through Commons like any other.
-    if (!isUploadHost(parsed.hostname)) return null;
-    if (!parsed.pathname.includes('/wikipedia/commons/')) return null;
-    const segments = parsed.pathname.split('/').filter(Boolean);
-    const name = segments[segments.length - (parsed.pathname.includes('/thumb/') ? 2 : 1)];
+    // The rule both sides read a Commons file off the upload host by, the
+    // credit lookup included: a subdomain of the upload host is the upload host.
+    const name = commonsUploadFileName(parsed.hostname, parsed.pathname);
     return name ? `https://commons.wikimedia.org/wiki/Special:FilePath/${name}` : null;
   } catch {
     return null;
