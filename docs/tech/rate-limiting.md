@@ -176,8 +176,11 @@ criterion because there is no branch to decide. Its sibling above has an answer 
 costs one locked row; this one does not: a coordinate a curator moved may fall in a
 different region, so every correction that touches the coordinate calls
 `placeAfterRelease` after committing, which is the same post-commit placement
-`/:id/publish` is limited for. A rename is the one shape that places nothing — a label
-is not a place — and it is not worth a second limiter to separate them.
+`/:id/publish` is limited for. A correction that leaves the coordinate alone — a name,
+a picture, a description (#1270) — places nothing, and it is not worth a second limiter
+to separate them. A new picture costs one outbound request instead: the photographer is
+asked of Commons with a five-second deadline before the transaction opens
+(`creditForOneImage`), which the same limiter bounds.
 
 `POST /api/experiences/:id/accept-source` joined them when accepting a coordinate
 stopped being a pure claim release. Handing the object's `location` back also hands
