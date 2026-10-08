@@ -39,6 +39,7 @@ import { getSyncLogs, getSyncLogDetails, type SyncLog } from '../../api/admin';
 import { formatDateTime, formatDuration } from '../../utils/dateFormat';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { SyncChangeList } from './SyncChangeList';
+import { ComponentItemsSummary } from './ComponentItemsSummary';
 import { displayNameOf } from '../../utils/displayName';
 import { queryKeys } from '../../api/queryKeys';
 
@@ -395,6 +396,8 @@ function SyncLogDialog({ logId, onClose }: SyncLogDialogProps) {
                 {label}: {reason}
               </Typography>
             ))}
+
+            {log.component_items && <ComponentItemsSummary items={log.component_items} />}
 
             {log.has_changeset && <SyncChangeList logId={log.id} />}
 
