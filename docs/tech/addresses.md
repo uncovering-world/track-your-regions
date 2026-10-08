@@ -13,6 +13,7 @@ implemented, and the rules that keep it honest. The decision behind it is
 | `/wv/5` | Map, world view 5 |
 | `/wv/5/r/6737-europe` | Map, region 6737 selected |
 | `/wv/5/r/6737-europe/e/1234-stonehenge` | Map, that region, card 1234 open in the explore panel |
+| `/wv/2/r/7200-aargau/e/418-prehistoric-pile-dwellings-around-the-alps/p/8189-riesi` | …that object's part 8189, Riesi, open on its own card in the object's place (#1271) |
 | `/wv/5?kind=5` | Map, no region: that kind's places across the whole world |
 | `/discover` | Discover, the default world view |
 | `/discover/wv/5` | Discover, world view 5, the tree at its root |
@@ -41,6 +42,8 @@ every place of one kind across the whole world — and that layer exists only wh
 is selected: choosing one hands the map back to that region's own markers. So
 `/discover/wv/5/r/7100-malta?kind=1` and `/wv/5?kind=5` are both canonical, and
 `/wv/5/r/6737-europe?kind=5` is not: the kind is dropped there, in both directions.
+
+**A part belongs to its card** (#1271). `p` is read only under an `e`, and `go` drops it from any write that changes the card without naming a part — opening another card, closing one, a folded card moving to its survivor — so one object's part is never named under another's address. Opening and closing a part's card are pushes; a part the object's own points do not hold (withdrawn, unread, or another object's) is dropped with a replace once that read has answered, in silence like a missing card.
 
 `r` is *the region in question*. In Discover with a kind's list open it is the
 region whose list it is, and the tree stands at its parent — which is exactly
@@ -95,6 +98,7 @@ what exists, and nothing personal goes in a URL.
 | A world view that is hidden or gone | The existing world-view reconciliation replaces it; the region and card go with it |
 | A region that 404s, or belongs to another world view | → the world view alone (`/wv/5`) |
 | A card the region's list does not hold — hidden, rejected, elsewhere, of another kind | The `e` segment is dropped, once the list has answered |
+| A part its card's object does not hold — withdrawn, unread, another object's (#1271) | The `p` segment is dropped, once the object's own points have answered (`PointCard`'s `onPointGone`) |
 | A card a merge folded into another place (#1247, ADR-0086) | The `e` segment moves to the surviving place, in place — once the list has answered without it and the by-id read has named the survivor |
 | A kind nobody knows | `?kind=` is dropped, once the kinds have answered — in Discover by `useDiscoverExperiences`, on the map by `useWorldLayer` |
 | A segment that does not parse | Read as absent, and canonicalised away |
@@ -239,8 +243,8 @@ open the page a named `row` is *on* is issue #843.
 | `frontend/src/hooks/useReviewAddress.ts` | The second door, for `/review`: the same `{ address, go }` over the review grammar, with the same ref discipline, pushing what the curator did and replacing what the page corrected |
 | `frontend/src/hooks/useAddressedRegion.ts` | The selected region: the object, the ancestors read that restores and completes it, the follow, the degradation, the canonical rewrite |
 | `frontend/src/hooks/useNavigation.tsx` | The world view: reads it from the address, writes it with `push` / `replace` / `none` per case |
-| `frontend/src/hooks/useExperienceContext.tsx` | Map mode's open card, derived from the address, and the arrival the list focuses |
-| `frontend/src/hooks/useDiscoverExperiences.ts` | Discover's level, kind and card, all derived from the shared region and the address |
+| `frontend/src/hooks/useExperienceContext.tsx` | Map mode's open card and open part, derived from the address, and the arrival the list focuses |
+| `frontend/src/hooks/useDiscoverExperiences.ts` | Discover's level, kind, card and part, all derived from the shared region and the address |
 | `frontend/src/components/regionMap/useWorldLayer.ts` | The map's world layer: whether it is drawn, the kind it draws (from the address, degraded there), and the fold, which is deliberately not in the address |
 | `frontend/src/components/Header.tsx` | Carries the place across Map ↔ Discover |
 
