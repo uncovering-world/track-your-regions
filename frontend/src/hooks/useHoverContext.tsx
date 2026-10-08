@@ -43,6 +43,11 @@ export interface HoverPreview {
   imageUrl: string | null;
   /** Whose photograph it is. Carried with the picture, because the card shows one. */
   imageCredit: ImageCredit | null;
+  /**
+   * The picture is the object's, shown for a point with none of its own
+   * (`pointPicture`, #1270), so the card says so beside the credit.
+   */
+  pictureOfObject?: boolean;
   longitude: number;
   latitude: number;
 }

@@ -60,6 +60,8 @@ export interface MarkerData {
   longitude: number;
   latitude: number;
   locationName: string | null;
+  /** The point a pin draws as itself, for its own picture (#1270); null for a pin standing in for an object. */
+  location?: ExperienceLocation | null;
   /**
    * How many places this pin stands for — 1 for a place drawn as itself, and the
    * whole count only for a pin standing in for places it does not draw. That is
@@ -166,6 +168,7 @@ function placeMarkers(exp: Experience, places: ExperienceLocation[], objectPoint
     latitude: loc.latitude,
     // The one rule a pin and a highlight dot share (#1268).
     locationName: pinLabel(loc, objectPoints),
+    location: loc,
     locationCount: 1,
   }));
 }

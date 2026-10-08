@@ -24,8 +24,9 @@ import {
 } from './layers';
 import type { MarkerData } from './buildMarkers';
 import type { HoverPreview } from '../../hooks/useHoverContext';
-import type { Experience } from '../../api/experiences';
+import type { Experience, ExperienceLocation } from '../../api/experiences';
 import { placeKindNames } from '../../utils/placeKinds';
+import { pointPicture } from '../../utils/pointPicture';
 
 /**
  * Popup body for a marker: the name as text, never as markup.
@@ -48,6 +49,8 @@ export interface MarkerInteractionsParams {
   markersRef: React.MutableRefObject<MarkerData[]>;
   selectedExperienceId: number | null;
   getExperienceById: (id: number) => Experience | undefined;
+  /** One of an object's points as the region's batch holds it, for its own picture (#1270). */
+  getLocation: (experienceId: number, locationId: number) => ExperienceLocation | undefined;
   toggleSelectedExperience: (id: number) => void;
   toggleCollapsedExperience: (id: number) => void;
   setHoveredFromMarker: (experienceId: number | null, locationId: number | null) => void;
@@ -61,12 +64,15 @@ export function useMarkerInteractions({
   markersRef,
   selectedExperienceId,
   getExperienceById,
+  getLocation,
   toggleSelectedExperience,
   toggleCollapsedExperience,
   setHoveredFromMarker,
   setHoverPreview,
   setHoverData,
 }: MarkerInteractionsParams) {
+  const getLocationRef = useRef(getLocation);
+  getLocationRef.current = getLocation;
   // Refs for accessing latest values in long-lived map callbacks
   const toggleSelectedRef = useRef(toggleSelectedExperience);
   toggleSelectedRef.current = toggleSelectedExperience;
@@ -181,8 +187,7 @@ export function useMarkerInteractions({
               kindId: marker.experience.kind_id,
               treasureCount: marker.experience.treasure_count,
               findsCount: marker.experience.finds_count,
-              imageUrl: marker.experience.image_url,
-              imageCredit: marker.experience.image_credit ?? null,
+              ...pointPicture(marker.experience, marker.location),
               longitude: marker.longitude,
               latitude: marker.latitude,
             });
@@ -275,8 +280,10 @@ export function useMarkerInteractions({
                 kindId: exp.kind_id,
                 treasureCount: exp.treasure_count,
                 findsCount: exp.finds_count,
-                imageUrl: exp.image_url,
-                imageCredit: exp.image_credit ?? null,
+                // The point as the region's batch holds it, whether or not a
+                // pin draws it: the highlight shows the selected object's
+                // places, out-of-region ones included.
+                ...pointPicture(exp, locationId == null ? null : getLocationRef.current(selExpId, locationId)),
                 longitude: coords[0],
                 latitude: coords[1],
               });
