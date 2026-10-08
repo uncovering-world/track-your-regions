@@ -203,6 +203,9 @@ export function CurationPlaces({
               longitude: open.longitude,
               unseen: unseenReason(open, objectMissingSince),
               regionId,
+              imageUrl: open.image_url,
+              imageCredit: open.image_credit,
+              description: open.description,
             },
             onDone: setNotice,
           }}
