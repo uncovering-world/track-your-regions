@@ -38,6 +38,11 @@ export interface AppAddress {
   /** Only meaningful under a region; dropped by `buildAppUrl` without one. */
   experienceId: number | null;
   /**
+   * One part of the open card's object, whose own card replaces the object's
+   * (#1271). Only meaningful under a card; dropped by `buildAppUrl` without one.
+   */
+  pointId: number | null;
+  /**
    * Discover's open kind list, under a region; on the map, what the world
    * layer draws while no region is selected (#910). `namesAKind` is the rule,
    * and the kind is dropped wherever it does not hold.
@@ -115,8 +120,6 @@ export function parseAppUrl(pathname: string, search: string): AppAddress | null
   if (mode === 'discover') i += 1;
 
   let worldViewId: number | null = null;
-  let regionId: number | null = null;
-  let experienceId: number | null = null;
 
   if (segments[i] === 'wv') {
     worldViewId = readId(segments[i + 1]);
@@ -127,13 +130,9 @@ export function parseAppUrl(pathname: string, search: string): AppAddress | null
     worldViewId = readId(params.get('wv'));
   }
 
-  if (worldViewId !== null && segments[i] === 'r') {
-    regionId = readId(segments[i + 1]);
-    i += 2;
-    if (regionId !== null && segments[i] === 'e') {
-      experienceId = readId(segments[i + 1]);
-    }
-  }
+  const { regionId, experienceId, pointId } = worldViewId === null
+    ? { regionId: null, experienceId: null, pointId: null }
+    : readPlace(segments, i);
 
   // `cat` is Discover's spelling of the parameter until #819; a link shared
   // before it still opens the list. The map's world layer is younger than the
@@ -141,7 +140,20 @@ export function parseAppUrl(pathname: string, search: string): AppAddress | null
   const legacyKind = mode === 'discover' ? params.get('cat') : null;
   const kindId = namesAKind(mode, regionId) ? readId(params.get('kind') ?? legacyKind) : null;
 
-  return { mode, worldViewId, regionId, experienceId, kindId };
+  return { mode, worldViewId, regionId, experienceId, pointId, kindId };
+}
+
+/**
+ * The region, the card and the part a path names after its world view, each
+ * only under the one before it: `r/<id>`, then `e/<id>`, then `p/<id>`.
+ */
+function readPlace(segments: string[], from: number): Pick<AppAddress, 'regionId' | 'experienceId' | 'pointId'> {
+  const under = (key: string, at: number, parent: number | null): number | null =>
+    parent !== null && segments[at] === key ? readId(segments[at + 1]) : null;
+  const regionId = under('r', from, 0);
+  const experienceId = under('e', from + 2, regionId);
+  const pointId = under('p', from + 4, experienceId);
+  return { regionId, experienceId, pointId };
 }
 
 /**
@@ -150,7 +162,7 @@ export function parseAppUrl(pathname: string, search: string): AppAddress | null
  */
 export function buildAppUrl(
   address: AppAddress,
-  names?: { region?: string | null; experience?: string | null },
+  names?: { region?: string | null; experience?: string | null; point?: string | null },
 ): string {
   const parts: string[] = [];
   if (address.mode === 'discover') parts.push('discover');
@@ -163,6 +175,9 @@ export function buildAppUrl(
       parts.push('r', withSlug(address.regionId, names?.region));
       if (address.experienceId !== null) {
         parts.push('e', withSlug(address.experienceId, names?.experience));
+        if (address.pointId !== null) {
+          parts.push('p', withSlug(address.pointId, names?.point));
+        }
       }
     }
   }
@@ -186,7 +201,7 @@ function withSlug(id: number, name: string | null | undefined): string {
  * The slugs an address carries, '' where a segment has none. What `go` reads
  * so that a write naming only the card does not strip the region's slug.
  */
-export function slugsOf(pathname: string): { region: string; experience: string } {
+export function slugsOf(pathname: string): { region: string; experience: string; point: string } {
   const segments = pathname.split('/').filter(Boolean);
   const after = (key: string): string => {
     const at = segments.indexOf(key);
@@ -195,7 +210,7 @@ export function slugsOf(pathname: string): { region: string; experience: string 
     const dash = segment.indexOf('-');
     return dash === -1 ? '' : segment.slice(dash + 1);
   };
-  return { region: after('r'), experience: after('e') };
+  return { region: after('r'), experience: after('e'), point: after('p') };
 }
 
 /**

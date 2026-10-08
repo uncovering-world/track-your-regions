@@ -22,6 +22,7 @@ import { buildAppUrl, legacyRedirect, parseAppUrl, slugsOf, type AppAddress } fr
 export interface AddressNames {
   region?: string | null;
   experience?: string | null;
+  point?: string | null;
 }
 
 export interface GoOptions {
@@ -89,7 +90,13 @@ export function useAppAddress() {
     // Off the map there is no address to change relatively; a caller passing a
     // function there is asking about a place on a page that has none.
     if (typeof target === 'function' && current === null) return;
-    const next = typeof target === 'function' ? target(current!) : target;
+    const asked = typeof target === 'function' ? target(current!) : target;
+    // A part belongs to its card (#1271): a write that changes the card and
+    // leaves the part as it found it is not about that part, and carrying it
+    // over would name a part of one object under another's address.
+    const next = current && asked.experienceId !== current.experienceId && asked.pointId === current.pointId
+      ? { ...asked, pointId: null }
+      : asked;
     // A write names what it knows. For an id it leaves as it is, the slug
     // already in the address stands: opening a card must not strip the
     // region's, and a region brought up to date must not strip the card's.
@@ -97,6 +104,7 @@ export function useAppAddress() {
     const names = {
       region: options?.names?.region ?? (current?.regionId === next.regionId ? kept.region : ''),
       experience: options?.names?.experience ?? (current?.experienceId === next.experienceId ? kept.experience : ''),
+      point: options?.names?.point ?? (current?.pointId === next.pointId ? kept.point : ''),
     };
     const url = buildAppUrl(next, names);
     if (url === currentRef.current) return;

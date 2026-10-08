@@ -31,7 +31,7 @@ vi.mock('../../hooks/useAppAddress', () => ({
 import { useWorldLayer } from './useWorldLayer';
 
 const MAP_ROOT: AppAddress = {
-  mode: 'map', worldViewId: 5, regionId: null, experienceId: null, kindId: null,
+  mode: 'map', worldViewId: 5, regionId: null, experienceId: null, pointId: null, kindId: null,
 };
 
 const KINDS = [

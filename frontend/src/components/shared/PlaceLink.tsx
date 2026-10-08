@@ -43,6 +43,7 @@ export function PlaceLink({ place }: { place: LinkedPlace }) {
           worldViewId: region.world_view_id,
           regionId: region.id,
           experienceId: place.id,
+          pointId: null,
           kindId: mode === 'discover' ? place.kind_id : null,
         }, { names: { region: region.name, experience: place.name } });
       }}
