@@ -45,7 +45,8 @@ import type {
  * column is JSONB, which the generated row types leave `unknown`: it is an array
  * of column names by its NOT NULL default and by every writer.
  */
-type LocationRow = Pick<ExperienceLocationsRow, 'id' | 'experience_id' | 'name' | 'external_ref' | 'ordinal' | 'created_at'> & {
+type LocationRow = Pick<ExperienceLocationsRow, 'id' | 'experience_id' | 'name' | 'external_ref' | 'ordinal' | 'created_at' | 'image_url'> & {
+  image_credit: ExperienceLocation['image_credit'];
   longitude: number;
   latitude: number;
   in_region: boolean;
@@ -71,6 +72,8 @@ function locationOf(row: LocationRow): ExperienceLocation {
     created_at: row.created_at?.toISOString() ?? null,
     curated_fields: row.curated_fields,
     in_region: row.in_region,
+    image_url: row.image_url,
+    image_credit: row.image_credit ?? null,
   };
 }
 
@@ -126,6 +129,8 @@ export async function getRegionExperienceLocations(
         ST_Y(el.location) as latitude,
         el.created_at,
         el.curated_fields,
+        el.image_url,
+        el.metadata -> 'imageCredit' AS image_credit,
         EXISTS(
           SELECT 1 FROM experience_location_regions elr
           WHERE elr.location_id = el.id AND elr.region_id IN (SELECT id FROM descendant_regions)
@@ -179,6 +184,8 @@ export async function getRegionExperienceLocations(
         ST_Y(el.location) as latitude,
         el.created_at,
         el.curated_fields,
+        el.image_url,
+        el.metadata -> 'imageCredit' AS image_credit,
         EXISTS(
           SELECT 1 FROM experience_location_regions elr
           WHERE elr.location_id = el.id AND elr.region_id = $1
@@ -277,7 +284,7 @@ export async function getExperienceLocations(
   const maySeeUnreadIdx = params.length + 1;
   params.push(maySeeUnread);
 
-  const result = await pool.query<LocationRow & Pick<ExperienceLocationsRow, 'refused_at'> & {
+  const result = await pool.query<LocationRow & Pick<ExperienceLocationsRow, 'refused_at' | 'description'> & {
     curation_state: CheckValue<'experience_locations', 'curation_state'>;
   }>(`
     SELECT
@@ -302,6 +309,9 @@ export async function getExperienceLocations(
       -- which the publish refuses, since it composes unreadPointSql and that
       -- carries the mark. The mark is what tells the two apart (#859).
       el.refused_at,
+      el.image_url,
+      el.metadata -> 'imageCredit' AS image_credit,
+      el.description,
       ${regionId ? `EXISTS(
         SELECT 1 FROM experience_location_regions elr
         WHERE elr.location_id = el.id AND elr.region_id = $2
@@ -317,6 +327,7 @@ export async function getExperienceLocations(
     ...locationOf(row),
     curation_state: row.curation_state,
     refused_at: row.refused_at?.toISOString() ?? null,
+    description: row.description,
   }));
 
   return {
