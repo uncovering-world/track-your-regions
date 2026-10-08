@@ -2743,6 +2743,8 @@ ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS total_missing INTEGER 
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS total_curated_conflicts INTEGER DEFAULT 0;
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS is_dry_run BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS detection_skipped_reason TEXT;
+ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS component_items JSONB;
+COMMENT ON COLUMN experience_sync_logs.component_items IS 'A World Heritage run''s account of its components'' Wikidata items (#1269), in the shape of ComponentItems (backend/src/api/responses/admin.ts). NULL for every other source, for a preview, and for a run that counted no component.';
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS total_filtered INTEGER DEFAULT 0;
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS total_held INTEGER DEFAULT 0;
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS withdrawal_skipped_reason TEXT;
@@ -3118,6 +3120,9 @@ CREATE INDEX IF NOT EXISTS idx_experience_location_placements_membership
     ON experience_location_placements(membership_id);
 COMMENT ON COLUMN experience_locations.name IS 'Component name (e.g., individual fort name within a serial nomination)';
 COMMENT ON COLUMN experience_locations.external_ref IS 'Source-specific reference (e.g., "1739-005" for UNESCO)';
+-- The point's own Wikidata item, where Wikidata has one (#1269).
+ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS wikidata_item VARCHAR(20);
+COMMENT ON COLUMN experience_locations.wikidata_item IS 'The Wikidata item this point is, where one is known: for a World Heritage component, the item whose World Heritage Site ID (P757, at any rank) equals external_ref, recorded by every run; null where no item or more than one carries the reference. A claim on it (''wikidata_item'' in curated_fields), which no screen writes yet, is never overridden by a run (#1269).';
 
 -- A location the source stopped offering is marked, not deleted: both
 -- `user_visited_locations.location_id` and
@@ -3177,7 +3182,7 @@ CREATE INDEX IF NOT EXISTS idx_experience_locations_refused ON experience_locati
 -- (#488), NOT NULL for the reason given on `treasures.curated_fields`. See
 -- db/migrations/027.
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS curated_fields JSONB NOT NULL DEFAULT '[]'::jsonb;
-COMMENT ON COLUMN experience_locations.curated_fields IS 'Column names a curator has claimed on this point: name, location. Never external_ref or ordinal — those are the source''s handle on the row and its place in the source''s list, and a claim on them would break the pairing that decides whether a point moved or was replaced.';
+COMMENT ON COLUMN experience_locations.curated_fields IS 'Column names a curator has claimed on this point: name, location (and wikidata_item, which a run respects though no screen claims it yet). Never external_ref or ordinal — those are the source''s handle on the row and its place in the source''s list, and a claim on them would break the pairing that decides whether a point moved or was replaced.';
 
 -- A moved point is a withdrawal plus an insert, and under a gated source the two
 -- halves become visible at different moments: the insert lands `pending`, so

@@ -254,6 +254,7 @@ export interface ExperienceLocationsRow {
   location: string;
   created_at: Date | null;
   missing_since: Date | null;
+  wikidata_item: string | null;
   curation_state: string;
   refused_at: Date | null;
   curated_fields: unknown;
@@ -351,6 +352,7 @@ export interface ExperienceSyncLogsRow {
   total_curated_conflicts: number | null;
   is_dry_run: boolean;
   detection_skipped_reason: string | null;
+  component_items: unknown | null;
   total_filtered: number | null;
   total_held: number | null;
   withdrawal_skipped_reason: string | null;
@@ -794,6 +796,7 @@ export const COLUMN_WIDTHS = {
   experience_locations: {
     name: 500,
     external_ref: 255,
+    wikidata_item: 20,
     curation_state: 10,
     source_membership: 10,
     existence: 10,
