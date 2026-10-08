@@ -131,6 +131,14 @@ export interface ExperienceUpsertParams {
    * kinds of writer are one statement and this parameter has a comment.
    */
   boundaryWkt?: string | null;
+  /**
+   * The Wikidata items a source that knows the place by another id resolves it
+   * to (#1248): a World Heritage site's items through P757. Recorded on the
+   * membership; absent or null keeps what it holds, so a run whose Wikidata
+   * query failed clears nothing, and a Wikidata source, whose id is the item,
+   * sends none.
+   */
+  wikidataItems?: string[] | null;
 }
 
 export interface UpsertOutcome {
@@ -642,7 +650,8 @@ async function writeUnderLock(
       INSERT INTO ${MEMBERSHIPS} (
         experience_id, kind_id, source_id, external_id, type, admitted_for, curation_state, published_at,
         first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at,
-        reported_name, reported_description, reported_image_url, reported_location, reported_image_credit
+        reported_name, reported_description, reported_image_url, reported_location, reported_image_credit,
+        wikidata_items
       )
       SELECT ins.id,
              (SELECT kind_id FROM experience_sources WHERE id = $1),
@@ -653,7 +662,7 @@ async function writeUnderLock(
              CASE WHEN (SELECT requires_curation FROM gate) THEN 'pending' ELSE 'auto' END,
              CASE WHEN (SELECT requires_curation FROM gate) THEN NULL ELSE NOW() END,
              $15, $15, NOW(),
-             $21, $22, $23, ST_SetSRID(ST_MakePoint($24, $25), 4326), $26::jsonb
+             $21, $22, $23, ST_SetSRID(ST_MakePoint($24, $25), 4326), $26::jsonb, $27::text[]
         FROM ins
       ON CONFLICT (source_id, external_id) DO UPDATE SET
         admitted_for = EXCLUDED.admitted_for,
@@ -681,6 +690,7 @@ async function writeUnderLock(
         reported_image_url = EXCLUDED.reported_image_url,
         reported_location = EXCLUDED.reported_location,
         reported_image_credit = EXCLUDED.reported_image_credit,
+        wikidata_items = COALESCE(EXCLUDED.wikidata_items, ${MEMBERSHIPS}.wikidata_items),
         updated_at = NOW()
       RETURNING pending_change_sync_log_id
     )
@@ -722,6 +732,7 @@ async function writeUnderLock(
       // owns the place's picture: the run then carries their photograph's credit
       // (`creditToWrite`), which is not this picture's.
       reportedCreditOf(params, stored?.curated_fields),
+      params.wikidataItems ?? null,
     ]
   );
 

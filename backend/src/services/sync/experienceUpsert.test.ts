@@ -677,8 +677,8 @@ describe('the keys a run computes about its own pass go past both guards', () =>
     // $16, which is what both metadata arms read it as; then the hold, the
     // membership's work, the site's extent and the place the lock found, which
     // are this statement's own, and the run's view of the place with its
-    // picture's credit (#1246).
-    expect(params).toHaveLength(26);
+    // picture's credit (#1246), and the items another id resolves to (#1248).
+    expect(params).toHaveLength(27);
     expect(sql).not.toContain("'artworkCount'");
   });
 
