@@ -1,7 +1,7 @@
 # ADR-0086: A merge is a record that moves one place into another, and can move it back
 
 **Date:** 2026-10-07
-**Status:** Accepted
+**Status:** Accepted — decision 3 narrowed by ADR-0088
 
 ---
 
