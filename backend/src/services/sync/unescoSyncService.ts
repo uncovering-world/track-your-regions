@@ -28,7 +28,7 @@ import {
   delay, waitMessage, SPARQL_DELAY_MS, SPARQL_WAIT_BUDGET_MS, WIKIDATA_USER_AGENT,
 } from './wikidataUtils.js';
 import {
-  factsForSite, fetchWorldHeritageFacts, indexWorldHeritageFacts,
+  factsForSite, fetchWorldHeritageFacts, indexWorldHeritageFacts, siteItems,
   type SiteFacts, type WorldHeritageIndex,
 } from './unescoWikidata.js';
 import { pool } from '../../db/index.js';
@@ -416,6 +416,7 @@ export function transformRecord(
 async function upsertExperience(
   exp: ProcessedExperience,
   context: SyncRunContext,
+  wikidataItems: string[] | null = null,
 ): Promise<ProcessItemResult> {
   const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({
     sourceId: exp.sourceId,
@@ -432,6 +433,7 @@ async function upsertExperience(
     countryNames: exp.countryNames,
     imageUrl: exp.imageUrl,
     metadata: exp.metadata,
+    wikidataItems,
   }, { dryRun: context.dryRun, syncLogId: context.syncLogId });
 
   // A preview writes nothing downstream either: locations would belong to a row
@@ -566,7 +568,9 @@ export function syncUnescoSites(
       if (!processed) {
         throw new Error('No valid coordinates');
       }
-      const result = await upsertExperience(processed, context);
+      // The site's Wikidata items (#1248), only from an index Wikidata answered.
+      const items = factsAnswered ? siteItems(facts, String(record.id_no)) : null;
+      const result = await upsertExperience(processed, context, items);
       if (!context.dryRun && factsAnswered && result.experienceId) {
         await resolveSiteComponents(facts, record, processed, result.experienceId, components);
       }

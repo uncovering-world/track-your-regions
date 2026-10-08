@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { SparqlBinding } from './wikidataUtils.js';
-import { indexWorldHeritageFacts, factsForSite, resolveComponents } from './unescoWikidata.js';
+import { indexWorldHeritageFacts, factsForSite, resolveComponents, siteItems } from './unescoWikidata.js';
 
 const COMMONS = 'http://commons.wikimedia.org/wiki/Special:FilePath/';
 
@@ -364,5 +364,48 @@ describe('resolving components to their items', () => {
 
   it('resolves nothing for a site Wikidata names no component of', () => {
     expect(resolveComponents(index, '1428', ['1428-001']).items).toEqual([{ ref: '1428-001', item: null }]);
+  });
+
+  it('takes no item from a statement that is only deprecated, and leaves the other carrier unambiguous', () => {
+    const deprecated = { ...binding('1363-070', 'Q31828922'), rank: { type: 'literal', value: 'http://wikiba.se/ontology#DeprecatedRank' } };
+    const ranked = indexWorldHeritageFacts([binding('1363-070', 'Q31828921'), deprecated] as never);
+    expect(resolveComponents(ranked, '1363', ['1363-070']).items).toEqual([{ ref: '1363-070', item: 'Q31828921' }]);
+    expect(resolveComponents(indexWorldHeritageFacts([deprecated] as never), '1363', ['1363-070']).items)
+      .toEqual([{ ref: '1363-070', item: null }]);
+  });
+});
+
+/** A site's own items (#1248, ADR-0088): the property tier, else a later numbering, never a component's. */
+describe("a World Heritage site's items", () => {
+  const binding = (whc: string, item: string) => ({
+    whc: { type: 'literal', value: whc }, item: { type: 'uri', value: `http://www.wikidata.org/entity/${item}` },
+  });
+
+  it('reads the property tier, and a component never', () => {
+    const index = indexWorldHeritageFacts([binding('81', 'Q180274'), binding('81-001', 'Q999')] as never);
+    expect(siteItems(index, '81')).toEqual(['Q180274']);
+  });
+
+  it('falls back to a later numbering where no item carries the property number', () => {
+    const index = indexWorldHeritageFacts([binding('292bis', 'Q4176')] as never);
+    expect(siteItems(index, '292')).toEqual(['Q4176']);
+  });
+
+  it('names every item where several carry the number', () => {
+    const index = indexWorldHeritageFacts([binding('394', 'Q641'), binding('394', 'Q2366479')] as never);
+    expect(siteItems(index, '394')).toEqual(['Q2366479', 'Q641']);
+  });
+
+  it('leaves out an item that carries the number only in deprecated statements', () => {
+    const deprecated = { ...binding('896', 'Q157043'), rank: { type: 'literal', value: 'http://wikiba.se/ontology#DeprecatedRank' } };
+    const index = indexWorldHeritageFacts([binding('896', 'Q4176'), deprecated] as never);
+    expect(siteItems(index, '896')).toEqual(['Q4176']);
+    expect(siteItems(indexWorldHeritageFacts([deprecated] as never), '896')).toEqual([]);
+  });
+
+  it('falls back to a later numbering where every item of the property tier is deprecated', () => {
+    const deprecated = { ...binding('292', 'Q999'), rank: { type: 'literal', value: 'http://wikiba.se/ontology#DeprecatedRank' } };
+    const index = indexWorldHeritageFacts([deprecated, binding('292bis', 'Q4176')] as never);
+    expect(siteItems(index, '292')).toEqual(['Q4176']);
   });
 });

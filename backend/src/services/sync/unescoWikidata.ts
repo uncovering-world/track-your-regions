@@ -96,6 +96,12 @@ interface Candidate {
   sitelinks: number;
   article: string | null;
   image: string | null;
+  /**
+   * Whether every statement by which the item carries the id is deprecated:
+   * Wikidata's way of keeping a value it holds to be wrong. Read for a picture,
+   * which any rank may lend (ADR-0043), never for identity (ADR-0088).
+   */
+  deprecated: boolean;
 }
 
 /** Which of the three things an id is, said once for filing and for the report. */
@@ -140,6 +146,9 @@ function byRef(a: Candidate, b: Candidate): number {
   return number(a) - number(b) || a.ref.raw.localeCompare(b.ref.raw);
 }
 
+/** The rank Wikidata gives a statement it keeps as wrong. */
+const DEPRECATED_RANK = 'http://wikiba.se/ontology#DeprecatedRank';
+
 /**
  * Every P757 statement, filed under the property it is about.
  *
@@ -167,6 +176,7 @@ export function indexWorldHeritageFacts(bindings: SparqlBinding[]): WorldHeritag
       sitelinks: Number(binding.links?.value ?? 0) || 0,
       article: binding.article?.value ?? null,
       image: binding.image?.value ?? null,
+      deprecated: binding.rank?.value === DEPRECATED_RANK,
     });
   }
 
@@ -339,6 +349,10 @@ export function factsForSite(index: WorldHeritageIndex, idNo: string, name?: str
  * carry several pictures, and an arbitrary one of them would change between
  * runs.
  *
+ * The rank is the highest of the statements carrying the id (`MAX`, and the
+ * three rank names sort Deprecated, Normal, Preferred), so an item reads as
+ * deprecated only where every one of them is.
+ *
  * Answers `null` when Wikidata did not answer, and that is not the same as an
  * index with nothing in it. An empty answer says the properties have no
  * pictures; no answer says nothing about them at all — and a caller that read
@@ -352,9 +366,11 @@ export async function fetchWorldHeritageFacts(
   budget: WaitBudget,
 ): Promise<WorldHeritageIndex | null> {
   const query = `
-    SELECT ?item ?whc ?label ?links (MIN(?a) AS ?article) (MIN(?img) AS ?image) WHERE {
-      ?item p:P757/ps:P757 ?whc ;
+    SELECT ?item ?whc ?label ?links (MIN(?a) AS ?article) (MIN(?img) AS ?image) (MAX(STR(?r)) AS ?rank) WHERE {
+      ?item p:P757 ?statement ;
             wikibase:sitelinks ?links .
+      ?statement ps:P757 ?whc ;
+                 wikibase:rank ?r .
       OPTIONAL { ?item rdfs:label ?label . FILTER(LANG(?label) = "en") }
       OPTIONAL { ?a schema:about ?item ; schema:isPartOf <https://en.wikipedia.org/> . }
       OPTIONAL { ?item wdt:P18 ?img . }
@@ -408,8 +424,10 @@ export interface ComponentResolution {
 
 /**
  * Each component of a serial site, resolved to the Wikidata item whose World
- * Heritage Site ID (P757, at any rank — the index reads `p:P757/ps:P757`)
- * equals its reference. One item resolves it; none leaves it without one; more
+ * Heritage Site ID (P757) equals its reference, read through every statement
+ * but one that is only deprecated: the item becomes the point's identity, which
+ * #1250 merges on, and Wikidata keeps a deprecated value as wrong (ADR-0088
+ * decision 1). One item resolves it; none leaves it without one; more
  * than one is ambiguous, resolved to none and reported, since choosing would
  * be guessing which place is meant. Only from an index Wikidata answered: one
  * read back from stored rows knows no items, and resolving against it would
@@ -419,7 +437,7 @@ export function resolveComponents(index: WorldHeritageIndex, site: string, refs:
   const byRef = new Map<string, Set<string>>();
   for (const candidate of index.bySite.get(site)?.component ?? []) {
     const item = itemId(candidate.item);
-    if (!item) continue;
+    if (!item || candidate.deprecated) continue;
     const key = comparableRef(candidate.ref.raw);
     byRef.set(key, (byRef.get(key) ?? new Set()).add(item));
   }
@@ -433,3 +451,22 @@ export function resolveComponents(index: WorldHeritageIndex, site: string, refs:
   const itemOf = new Map(items.map(one => [one.ref, one.item]));
   return { items, points: refs.length, resolved: refs.filter(ref => itemOf.get(ref) != null).length, ambiguous };
 }
+
+/**
+ * The Wikidata items a World Heritage site's id resolves to (#1248): every item
+ * carrying the property's own number, or, where none does, a later numbering
+ * of it (`292bis` for Cologne Cathedral's `292`) — never a component's, which
+ * names a part. One item is the site's; several (Venice beside "Venice and its
+ * Lagoon") name more than one thing, and the catalogue merges on none of them.
+ * An item that carries the number only in deprecated statements is not counted:
+ * Wikidata keeps those as wrong, and here they would decide identity.
+ */
+export function siteItems(index: WorldHeritageIndex, site: string): string[] {
+  const candidates = index.bySite.get(String(site).trim());
+  if (!candidates) return [];
+  const current = (tier: Candidate[]) => tier.filter(candidate => !candidate.deprecated);
+  const exact = current(candidates.exact);
+  const tier = exact.length > 0 ? exact : current(candidates.variant);
+  return [...new Set(tier.map(candidate => itemId(candidate.item)).filter((item): item is string => item !== null))].sort();
+}
+
