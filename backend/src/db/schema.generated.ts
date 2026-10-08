@@ -392,6 +392,20 @@ export interface ExperienceViewChoicesRow {
   decided_at: Date;
 }
 
+/** The table `experience_view_suggestions`. */
+export interface ExperienceViewSuggestionsRow {
+  id: number;
+  experience_id: number;
+  field: string;
+  views: unknown;
+  suggested_membership_id: number | null;
+  confidence: string;
+  probabilities: unknown;
+  model: string;
+  input_tokens: number;
+  asked_at: Date;
+}
+
 /** The table `experiences`. */
 export interface ExperiencesRow {
   id: number;
@@ -811,6 +825,10 @@ export const COLUMN_WIDTHS = {
   experience_view_choices: {
     field: 20,
   },
+  experience_view_suggestions: {
+    field: 20,
+    model: 40,
+  },
   experiences: {
     external_id: 255,
     name: 500,
@@ -923,6 +941,9 @@ export const CHECK_VALUES = {
     curation_state: ["pending", "auto", "verified"],
   },
   experience_view_choices: {
+    field: ["name", "description", "imageUrl", "location"],
+  },
+  experience_view_suggestions: {
     field: ["name", "description", "imageUrl", "location"],
   },
   experiences: {

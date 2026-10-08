@@ -104,6 +104,25 @@ run_integrations_wizard() {
     fi
   fi
 
+  # --- Jev (TypeSafe) ---
+  if [ -n "$(env_value JEV_API_KEY)" ]; then
+    echo -e "  ${GREEN}\xe2\x9c\x93${NC} Jev (review suggestions) already configured."
+  else
+    echo ""
+    echo "  Jev — suggests which source's name, picture or point a place shows, on the review page."
+    echo "    Get an API key: https://typesafe.ai"
+    if confirm "  Configure Jev now?"; then
+      local jev
+      jev="$(prompt_value 'JEV_API_KEY' 1)"
+      if [ -n "$jev" ]; then
+        set_kv JEV_API_KEY "$jev"
+        echo -e "  ${GREEN}\xe2\x9c\x93 Saved Jev key.${NC}"
+      else
+        echo -e "    ${YELLOW}Skipped — no key entered.${NC}"
+      fi
+    fi
+  fi
+
   # --- GADM map data ---
   offer_gadm
 

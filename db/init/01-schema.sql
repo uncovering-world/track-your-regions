@@ -3760,6 +3760,28 @@ CREATE TABLE IF NOT EXISTS experience_view_choices (
 COMMENT ON TABLE experience_view_choices IS 'A curator''s choice between two sources'' views of one field of a place (#1246); answers the queue card while the views stay as recorded in views';
 COMMENT ON COLUMN experience_view_choices.views IS 'The standing views of the field when the choice was made, as viewsOfFieldSql (db/sourceViews.ts) states them: membership id to value. A different value from either source opens the question again.';
 
+-- Jev's suggestion for the same question (#1260): which view it would show,
+-- with its confidence, for the views as they stood when it was asked. Never
+-- applied; a curator decides. One row per call: the newest for the views as
+-- they stand is the card's, and the rows added up are what Jev cost.
+CREATE TABLE IF NOT EXISTS experience_view_suggestions (
+    id SERIAL PRIMARY KEY,
+    experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+    field VARCHAR(20) NOT NULL CHECK (field IN ('name', 'description', 'imageUrl', 'location')),
+    views JSONB NOT NULL,
+    suggested_membership_id INTEGER REFERENCES experience_kind_memberships(id) ON DELETE SET NULL,
+    confidence NUMERIC(4, 3) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+    probabilities JSONB NOT NULL,
+    model VARCHAR(40) NOT NULL,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    asked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+-- One row per call, never replaced: the rows are also what the calls cost.
+CREATE INDEX IF NOT EXISTS idx_experience_view_suggestions_place ON experience_view_suggestions(experience_id, field, asked_at DESC);
+
+COMMENT ON TABLE experience_view_suggestions IS 'Jev''s suggested answers to the sources card (#1260), one row per call, each for the views recorded in views and stale once they change. Never applied.';
+COMMENT ON COLUMN experience_view_suggestions.input_tokens IS 'What the call cost: Jev is priced per input token, output free.';
+
 -- One gate over: how a curator answers a single field of a held proposal (#722).
 --
 -- A held field is one nobody claimed and the gate kept out of the columns

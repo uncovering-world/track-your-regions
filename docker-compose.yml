@@ -44,6 +44,8 @@ services:
       NODE_ENV: ${NODE_ENV:-development}
       CV_PYTHON_URL: http://cv-python:8000
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Jev (TypeSafe), optional: a suggested answer on the sources card (#1260)
+      JEV_API_KEY: ${JEV_API_KEY:-}
       # Authentication
       JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
