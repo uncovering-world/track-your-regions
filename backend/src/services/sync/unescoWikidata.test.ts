@@ -9,7 +9,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 import type { SparqlBinding } from './wikidataUtils.js';
-import { indexWorldHeritageFacts, factsForSite, resolveComponents, siteItems } from './unescoWikidata.js';
+import { componentContents, indexWorldHeritageFacts, factsForSite, resolveComponents, siteItems } from './unescoWikidata.js';
 
 const COMMONS = 'http://commons.wikimedia.org/wiki/Special:FilePath/';
 
@@ -372,6 +372,29 @@ describe('resolving components to their items', () => {
     expect(resolveComponents(ranked, '1363', ['1363-070']).items).toEqual([{ ref: '1363-070', item: 'Q31828921' }]);
     expect(resolveComponents(indexWorldHeritageFacts([deprecated] as never), '1363', ['1363-070']).items)
       .toEqual([{ ref: '1363-070', item: null }]);
+  });
+});
+
+/** What a component's item says about it (#1270): its picture and its description. */
+describe("a component's picture and description", () => {
+  const binding = (whc: string, item: string, image: string | null, description: string | null) => ({
+    whc: { type: 'literal', value: whc }, item: { type: 'uri', value: `http://www.wikidata.org/entity/${item}` },
+    ...(image ? { image: { type: 'uri', value: image } } : {}),
+    ...(description ? { description: { type: 'literal', value: description } } : {}),
+  });
+  const RIESI = 'http://commons.wikimedia.org/wiki/Special:FilePath/Riesi.jpg';
+  const index = indexWorldHeritageFacts([
+    binding('1363-002', 'Q2108011', RIESI, 'prehistoric pile dwelling in Switzerland'),
+    binding('1363-061', 'Q2108010', null, null),
+  ] as never);
+
+  it("gives a resolved component its item's picture and description, and an unresolved one neither", () => {
+    const resolution = resolveComponents(index, '1363', ['1363-002', '1363-061', '1363-099']);
+    expect(componentContents(index, '1363', resolution.items)).toEqual([
+      { ref: '1363-002', image: RIESI, description: 'prehistoric pile dwelling in Switzerland' },
+      { ref: '1363-061', image: null, description: null },
+      { ref: '1363-099', image: null, description: null },
+    ]);
   });
 });
 

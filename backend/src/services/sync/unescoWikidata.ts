@@ -96,6 +96,8 @@ interface Candidate {
   sitelinks: number;
   article: string | null;
   image: string | null;
+  /** The item's English description: what a component's own card says it is (#1270). */
+  description: string | null;
   /**
    * Whether every statement by which the item carries the id is deprecated:
    * Wikidata's way of keeping a value it holds to be wrong. Read for a picture,
@@ -176,6 +178,7 @@ export function indexWorldHeritageFacts(bindings: SparqlBinding[]): WorldHeritag
       sitelinks: Number(binding.links?.value ?? 0) || 0,
       article: binding.article?.value ?? null,
       image: binding.image?.value ?? null,
+      description: binding.description?.value ?? null,
       deprecated: binding.rank?.value === DEPRECATED_RANK,
     });
   }
@@ -366,7 +369,7 @@ export async function fetchWorldHeritageFacts(
   budget: WaitBudget,
 ): Promise<WorldHeritageIndex | null> {
   const query = `
-    SELECT ?item ?whc ?label ?links (MIN(?a) AS ?article) (MIN(?img) AS ?image) (MAX(STR(?r)) AS ?rank) WHERE {
+    SELECT ?item ?whc ?label ?links (MIN(?a) AS ?article) (MIN(?img) AS ?image) (MIN(?d) AS ?description) (MAX(STR(?r)) AS ?rank) WHERE {
       ?item p:P757 ?statement ;
             wikibase:sitelinks ?links .
       ?statement ps:P757 ?whc ;
@@ -374,6 +377,7 @@ export async function fetchWorldHeritageFacts(
       OPTIONAL { ?item rdfs:label ?label . FILTER(LANG(?label) = "en") }
       OPTIONAL { ?a schema:about ?item ; schema:isPartOf <https://en.wikipedia.org/> . }
       OPTIONAL { ?item wdt:P18 ?img . }
+      OPTIONAL { ?item schema:description ?d . FILTER(LANG(?d) = "en") }
     }
     GROUP BY ?item ?whc ?label ?links
   `;
@@ -450,6 +454,36 @@ export function resolveComponents(index: WorldHeritageIndex, site: string, refs:
   }
   const itemOf = new Map(items.map(one => [one.ref, one.item]));
   return { items, points: refs.length, resolved: refs.filter(ref => itemOf.get(ref) != null).length, ambiguous };
+}
+
+/** What a resolved component's item says about it: its picture and its description (#1270). */
+export interface ComponentContent {
+  ref: string;
+  /** The item's picture, a Commons file, or null where it states none. */
+  image: string | null;
+  description: string | null;
+}
+
+/**
+ * The picture and the description each component's item gives it (#1270): the
+ * item a reference resolved to (`resolveComponents`), read off the same index.
+ * One picture per item, the first by its Commons URL (`MIN(?img)`), which is
+ * ADR-0085's rule for a value Wikidata states several times at one rank. A
+ * reference that resolved to no item gets neither, so a point that lost its
+ * item loses what the item gave it.
+ */
+export function componentContents(
+  index: WorldHeritageIndex, site: string, items: ComponentResolution['items'],
+): ComponentContent[] {
+  const byItem = new Map<string, Candidate>();
+  for (const candidate of index.bySite.get(site)?.component ?? []) {
+    const item = itemId(candidate.item);
+    if (item && !candidate.deprecated && !byItem.has(item)) byItem.set(item, candidate);
+  }
+  return items.map(({ ref, item }) => {
+    const candidate = item ? byItem.get(item) : undefined;
+    return { ref, image: candidate?.image ?? null, description: candidate?.description ?? null };
+  });
 }
 
 /**

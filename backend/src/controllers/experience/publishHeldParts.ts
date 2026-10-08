@@ -31,19 +31,19 @@ import type { ContentKind, ContentsByKind, ContentItemChange } from '../../servi
 // The part a publish wrote to and the part it could not reach are the response's
 // own shapes, and the audit row records the same ones (ADR-0066).
 import type { AppliedPart, PartNotFound } from '../../api/responses/curation.js';
-import { renamePoint } from './experienceLocationWriter.js';
+import { isHeldPointField, writeHeldPointFields, HELD_POINT_FIELDS, type HeldPointField } from './experienceLocationWriter.js';
 import { HELD_WORK_FIELDS, isHeldWorkField, writeHeldWorkFields, type HeldWorkField } from './workWriter.js';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 
 /**
- * One write the plan will make, with the part it is about: a point's held name,
- * or a work's held fields as data. Each goes through its writer under the
+ * One write the plan will make, with the part it is about: a point's held
+ * fields or a work's, as data. Each goes through its writer under the
  * object's token (`experienceLocationWriter.ts`, `workWriter.ts`). Empty where
  * every held field was claimed since.
  */
 interface PlannedWrite {
   part: AppliedPart;
-  point?: { id: number; name: string | null };
+  point?: { id: number; fields: Array<{ field: HeldPointField; value: unknown }> };
   work?: { id: number; fields: Array<{ field: HeldWorkField; value: unknown }> };
 }
 
@@ -76,7 +76,7 @@ const WRITABLE: Record<ContentKind, ReadonlySet<string>> = {
   // row is within ten metres of the source's point, and a claimed one is the
   // claim's to refuse — so a record carrying one is a shape this code has never
   // seen, and refusing it is the safety net the object's own writer has.
-  locations: new Set(['name']),
+  locations: HELD_POINT_FIELDS,
   treasures: HELD_WORK_FIELDS,
 };
 
@@ -160,12 +160,21 @@ function writeFor(
   if (writable.length === 0) return null;
 
   if (kind === 'locations') {
-    // `name` is the one writable column, so this is one assignment. Tidied at
-    // the write (#835): a rename recorded before the writers tidied carries
-    // the run of spaces the run saw, and publishing it verbatim would put back
-    // into the column what migration 047 took out.
-    const name = writable[0].new;
-    return { point: { id: rowId, name: typeof name === 'string' ? tidyLabel(name) : null } };
+    // A name tidied at the write (#835): a rename recorded before the writers
+    // tidied carries the run of spaces the run saw, and publishing it verbatim
+    // would put back into the column what migration 047 took out. The picture,
+    // its credit and the description are values as recorded (#1270).
+    return {
+      point: {
+        id: rowId,
+        fields: writable.flatMap(field => (isHeldPointField(field.field)
+          ? [{
+            field: field.field,
+            value: field.field === 'name' && typeof field.new === 'string' ? tidyLabel(field.new) : field.new ?? null,
+          }]
+          : [])),
+      },
+    };
   }
 
   // A title and the makers as a person would type them (`tidyNameValue`,
@@ -376,7 +385,7 @@ export async function applyHeldPartWrites(
 ): Promise<AppliedPart[]> {
   const applied: AppliedPart[] = [];
   for (const write of plan.writes) {
-    if (write.point) await renamePoint(client, lock, write.point.id, write.point.name);
+    if (write.point) await writeHeldPointFields(client, lock, write.point.id, write.point.fields);
     else if (write.work) await writeHeldWorkFields(client, lock, write.work.id, write.work.fields);
     applied.push(write.part);
   }
