@@ -44,6 +44,11 @@ export interface DiscoverMapWiring {
   /** Hover on a highlight dot, reported with the location it belongs to. */
   highlightHoverCallbackRef: React.MutableRefObject<(locationId: number | null) => void>;
   onSelectExperience: (id: number) => void;
+  /**
+   * A click on one of the open object's places, which opens that place's own
+   * card (#1271); null where the open object is one place, the place itself.
+   */
+  openPointRef: React.MutableRefObject<((locationId: number) => void) | null>;
 }
 
 export function useDiscoverMap({
@@ -55,6 +60,7 @@ export function useDiscoverMap({
   mapHoverCallbackRef,
   highlightHoverCallbackRef,
   onSelectExperience,
+  openPointRef,
 }: DiscoverMapWiring): void {
   useEffect(() => {
     if (!mapContainerRef.current) return;
@@ -113,7 +119,14 @@ export function useDiscoverMap({
         // hold makes `queryRenderedFeatures` fire an ErrorEvent and log.
         if (!map.getLayer(LAYER_MARKERS)) return;
         const features = map.queryRenderedFeatures(e.point, { layers: interactiveMarkerLayers });
-        if (features.length === 0) return;
+        if (features.length === 0) {
+          // A dot of the open object's places opens that place's own card (#1271).
+          if (!map.getLayer(LAYER_HIGHLIGHT_POINT)) return;
+          const dot = map.queryRenderedFeatures(e.point, { layers: [LAYER_HIGHLIGHT_POINT] })[0];
+          const locationId = dot?.properties?.locationId as number | null | undefined;
+          if (locationId != null) openPointRef.current?.(locationId);
+          return;
+        }
         const id = features[0].properties?.experienceId as number | undefined;
         if (id == null) return;
 

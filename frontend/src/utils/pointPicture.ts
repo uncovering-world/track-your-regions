@@ -9,7 +9,7 @@
  * card names no part, so the flag says nothing there.
  */
 
-import type { Experience, ExperienceLocation, ImageCredit } from '../api/experiences';
+import type { ExperienceLocation, ImageCredit } from '../api/experiences';
 
 export interface PointPicture {
   imageUrl: string | null;
@@ -19,7 +19,7 @@ export interface PointPicture {
 }
 
 export function pointPicture(
-  object: Pick<Experience, 'image_url' | 'image_credit'>,
+  object: { image_url: string | null; image_credit?: ImageCredit | null },
   point: Pick<ExperienceLocation, 'image_url' | 'image_credit'> | null | undefined,
 ): PointPicture {
   if (point?.image_url) {

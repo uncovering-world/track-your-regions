@@ -65,6 +65,16 @@ interface ExperienceContextType {
   toggleSelectedExperience: (id: number) => void;
 
   /**
+   * The part of the open card's object whose own card replaces the object's
+   * (#1271), from the address like the card itself. Opening and closing one are
+   * steps; dropping one the object does not hold is a correction.
+   */
+  selectedPointId: number | null;
+  openPoint: (experienceId: number, pointId: number, pointName: string) => void;
+  closePoint: () => void;
+  dropPoint: () => void;
+
+  /**
    * The card the page arrived with, until its row has settled it: the list
    * puts the focus in that card once it opens, so a reader who followed a link
    * with a keyboard or a screen reader lands in what the link named.
@@ -123,6 +133,7 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   // its list must not be asked about a card of the region that is on its way.
   const onAddressedRegion = address !== null && address.regionId === regionId;
   const selectedExperienceId = onAddressedRegion ? address.experienceId : null;
+  const selectedPointId = selectedExperienceId !== null ? (address?.pointId ?? null) : null;
   const [flyToExperienceId, setFlyToExperienceId] = useState<number | null>(null);
   const [expandedKindNames, setExpandedKindNames] = useState<Set<string>>(new Set());
   const [artworkPreview, setArtworkPreview] = useState<ArtworkPreview | null>(null);
@@ -233,6 +244,24 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     const name = id === null ? undefined : experiencesRef.current.find(e => e.id === id)?.name;
     go(at2 => ({ ...at2, experienceId: id }), { names: { experience: name } });
   }, [go]);
+  // A part's card is a step too (#1271): opened from its row or its pin, it
+  // opens its object's card with it, and Back returns to the object's card.
+  const openPoint = useCallback((experienceId: number, pointId: number, pointName: string) => {
+    if (addressRef.current === null) return;
+    const name = experiencesRef.current.find(e => e.id === experienceId)?.name;
+    go(at2 => ({ ...at2, experienceId, pointId }), { names: { experience: name, point: pointName } });
+  }, [go]);
+  const closePoint = useCallback(() => {
+    if (addressRef.current === null) return;
+    go(at2 => ({ ...at2, pointId: null }));
+  }, [go]);
+  // A part the object does not hold — withdrawn, hidden, or another object's —
+  // leaves the address in place and in silence, as a missing card does.
+  const dropPoint = useCallback(() => {
+    if (addressRef.current === null) return;
+    go(at2 => ({ ...at2, pointId: null }), { replace: true });
+  }, [go]);
+
   // Zero for almost every region; the list offers the toggle only above zero.
   const lostHidden = data?.lostHidden ?? 0;
 
@@ -278,6 +307,10 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     selectedExperienceId,
     setSelectedExperienceId,
     toggleSelectedExperience,
+    selectedPointId,
+    openPoint,
+    closePoint,
+    dropPoint,
     arrivedAtExperienceId,
     settleArrival,
     flyToExperienceId,
@@ -290,7 +323,7 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     toggleCollapsedExperience,
     artworkPreview,
     setArtworkPreview,
-  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, setSelectedExperienceId, toggleSelectedExperience, arrivedAtExperienceId, settleArrival, flyToExperienceId, triggerFlyTo, clearFlyTo, getExperienceById, expandedKindNames, collapsedExperienceIds, toggleCollapsedExperience, artworkPreview]);
+  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, setSelectedExperienceId, toggleSelectedExperience, selectedPointId, openPoint, closePoint, dropPoint, arrivedAtExperienceId, settleArrival, flyToExperienceId, triggerFlyTo, clearFlyTo, getExperienceById, expandedKindNames, collapsedExperienceIds, toggleCollapsedExperience, artworkPreview]);
 
   return (
     <ExperienceContext.Provider value={value}>

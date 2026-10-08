@@ -288,6 +288,8 @@ export function useDiscoverExperiences() {
         lng: l.longitude,
         lat: l.latitude,
         name: l.name || undefined,
+        // The source's reference, which names a part the source left unnamed (#1268).
+        externalRef: l.external_ref ?? undefined,
       }));
     }
     // Fallback to experience's main coordinates
@@ -339,6 +341,22 @@ export function useDiscoverExperiences() {
     go(at => ({ ...at, experienceId: id }), { names: { experience: name } });
   }, [address, experiences, go]);
 
+  // A part of the open card's object on a card of its own (#1271): opening and
+  // closing one are steps, dropping one its object does not hold a correction.
+  const selectedPointId = selectedExperienceId !== null ? (address?.pointId ?? null) : null;
+  const openPoint = useCallback((pointId: number, pointName: string) => {
+    if (address === null) return;
+    go(at => ({ ...at, pointId }), { names: { point: pointName } });
+  }, [address, go]);
+  const closePoint = useCallback(() => {
+    if (address === null) return;
+    go(at => ({ ...at, pointId: null }));
+  }, [address, go]);
+  const dropPoint = useCallback(() => {
+    if (address === null) return;
+    go(at => ({ ...at, pointId: null }), { replace: true });
+  }, [address, go]);
+
   // Switching from the Discover picker. The reset of everything above is not
   // Discover's to do: it derives from the region `useNavigation` clears on a
   // switch, in the same commit, so no render escapes with the new world view
@@ -378,6 +396,10 @@ export function useDiscoverExperiences() {
     // Detail panel
     selectedExperienceId,
     setSelectedExperienceId,
+    selectedPointId,
+    openPoint,
+    closePoint,
+    dropPoint,
     selectedExperienceLocations,
     /**
      * The selected object's own location fetch has *settled* — so

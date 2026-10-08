@@ -64,6 +64,8 @@ interface DiscoverExperienceViewProps {
   isLoading: boolean;
   onBack: () => void;
   onSelectExperience: (id: number) => void;
+  /** Open one of the open object's places on its own card, from its dot (#1271); absent for a one-place object. */
+  onOpenPoint?: (locationId: number) => void;
   selectedExperienceId: number | null;
   /** Locations of the selected experience, for map fly-to */
   selectedExperienceLocations: { id?: number; lng: number; lat: number; name?: string }[] | null;
@@ -78,6 +80,7 @@ export function DiscoverExperienceView({
   isLoading,
   onBack,
   onSelectExperience,
+  onOpenPoint,
   selectedExperienceId,
   selectedExperienceLocations,
   selectedLocationsResolved,
@@ -260,6 +263,9 @@ export function DiscoverExperienceView({
     setSearch('');
   }, [activeView?.regionId, activeView?.kindId]);
 
+  const openPointRef = useRef<((locationId: number) => void) | null>(null);
+  openPointRef.current = onOpenPoint ?? null;
+
   // ── Map init (once) ──
   useDiscoverMap({
     mapContainerRef,
@@ -270,6 +276,7 @@ export function DiscoverExperienceView({
     mapHoverCallbackRef,
     highlightHoverCallbackRef,
     onSelectExperience,
+    openPointRef,
   });
 
 

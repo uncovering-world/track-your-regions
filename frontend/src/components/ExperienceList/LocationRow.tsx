@@ -59,15 +59,53 @@ interface LocationRowProps {
    * prop on every render is the re-render this file exists to stop.
    */
   onCorrect?: (location: LocationRowData) => void;
+  /** Opens this place on a card of its own (#1271): one stable function per card, like `onCorrect`. */
+  onOpen?: (pointId: number, pointName: string) => void;
+}
+
+/**
+ * What opening a row needs. The mouse may click anywhere on the row but on a
+ * control in its secondary action — the copy, the correction and the visited
+ * box answer for their own press. The keyboard and assistive technology reach
+ * it through the place's name alone, which is the button: a row that were the
+ * button would hold those three controls inside it, and a button's children
+ * are presentational, so they would stop being announced.
+ */
+function openHandlers(open: (() => void) | null) {
+  if (!open) return { row: {}, name: {} };
+  return {
+    row: {
+      onClick: (event: React.MouseEvent) => {
+        if ((event.target as HTMLElement).closest('.MuiListItemSecondaryAction-root')) return;
+        open();
+      },
+    },
+    name: {
+      role: 'button',
+      tabIndex: 0,
+      onKeyDown: (event: React.KeyboardEvent) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          open();
+        }
+      },
+    },
+  };
+}
+
+/** A dimmed row is pointed at only where it opens. */
+function dimmedCursor(opener: ReturnType<typeof openHandlers>): 'pointer' | 'default' {
+  return 'onClick' in opener.row ? 'pointer' : 'default';
 }
 
 function LocationRowComponent({
   location, objectName, showCheckbox, outOfRegion, regionPath,
-  onHover, onVisitedToggle, registerRef, onCorrect,
+  onHover, onVisitedToggle, registerRef, onCorrect, onOpen,
 }: LocationRowProps) {
   const point = pointOfRow(location);
   const fullName = pointFullName(objectName, point);
   const label = locationLabel(point);
+  const opener = openHandlers(onOpen ? () => onOpen(location.id, label) : null);
   // One boolean, so this row re-renders only when the pointer arrives at or
   // leaves it. An out-of-region place is not hoverable and is drawn dimmed, so it
   // selects a constant false and never re-renders for a hover at all.
@@ -83,8 +121,9 @@ function LocationRowComponent({
         <ListItem
           component="div"
           dense
+          {...opener.row}
           sx={{
-            py: 0.5, opacity: 0.4, bgcolor: 'grey.100', cursor: 'default',
+            py: 0.5, opacity: 0.4, bgcolor: 'grey.100', cursor: dimmedCursor(opener),
             '& .place-fix, & .place-copy': { opacity: 0, transition: 'opacity 0.15s ease' },
             '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy': { opacity: 1 },
           }}
@@ -104,7 +143,7 @@ function LocationRowComponent({
             primary={label}
             secondary={regionPath || 'Outside region'}
             slotProps={{
-              primary: { variant: 'body2', sx: { color: 'text.disabled' } },
+              primary: { variant: 'body2', sx: { color: 'text.disabled' }, ...opener.name },
               secondary: { variant: 'caption', sx: { fontSize: '0.65rem' } },
             }}
           />
@@ -144,6 +183,7 @@ function LocationRowComponent({
           '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy': { opacity: 1 },
         }}
         onMouseEnter={() => onHover(location.id)}
+        {...opener.row}
         secondaryAction={
           (
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -172,6 +212,7 @@ function LocationRowComponent({
           secondary={claimLabel(location.curatedFields) ?? undefined}
           slotProps={{
             primary: {
+              ...opener.name,
               variant: 'body2',
               sx: {
                 textDecoration: location.isVisited ? 'line-through' : 'none',

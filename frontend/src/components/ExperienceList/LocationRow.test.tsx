@@ -104,4 +104,21 @@ describe('LocationRow', () => {
     expect(screen.getByRole('button', { name: 'Fix See' })).toBeInTheDocument();
     expect(screen.getByRole('checkbox')).toBeInTheDocument();
   });
+
+  it("opens the place's own card from the row or its name, and never from its controls (#1271)", () => {
+    const onOpen = vi.fn();
+    const { onCorrect } = renderRow({ onOpen });
+
+    // The name is the button a keyboard and a screen reader reach.
+    const name = screen.getByRole('button', { name: 'See' });
+    fireEvent.keyDown(name, { key: 'Enter' });
+    expect(onOpen).toHaveBeenCalledWith(4418, 'See');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Fix See' }));
+    expect(onCorrect).toHaveBeenCalled();
+    expect(onOpen).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(name);
+    expect(onOpen).toHaveBeenCalledTimes(2);
+  });
 });

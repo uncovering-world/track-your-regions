@@ -64,6 +64,8 @@ interface LocationsSectionProps {
   onUnmarkAll: () => void;
   /** A curator's way into correcting a place, handed to every row unchanged. */
   onCorrect?: (location: PanelLocation) => void;
+  /** Open a place on a card of its own (#1271), handed to every row unchanged. */
+  onOpen?: (pointId: number, pointName: string) => void;
 }
 
 /**
@@ -82,6 +84,7 @@ export function LocationsSection({
   onMarkAll,
   onUnmarkAll,
   onCorrect,
+  onOpen,
 }: LocationsSectionProps) {
   const shouldCollapse = totalCount > LOCATIONS_COLLAPSE_THRESHOLD;
   const [expanded, setExpanded] = useState(!shouldCollapse);
@@ -242,6 +245,7 @@ export function LocationsSection({
                     onMarkLocation={onMarkLocation}
                     onUnmarkLocation={onUnmarkLocation}
                     onCorrect={onCorrect}
+                    onOpen={onOpen}
                   />
                 );
               })}
@@ -265,6 +269,7 @@ interface PanelLocationRowProps {
   onMarkLocation: (id: number) => void;
   onUnmarkLocation: (id: number) => void;
   onCorrect?: (location: PanelLocation) => void;
+  onOpen?: (pointId: number, pointName: string) => void;
 }
 
 /**
@@ -285,6 +290,7 @@ function PanelLocationRow({
   onMarkLocation,
   onUnmarkLocation,
   onCorrect,
+  onOpen,
 }: PanelLocationRowProps) {
   const { setHoveredFromList } = useHoverActions();
   const isHovered = useHoverSelector(
@@ -323,13 +329,28 @@ function PanelLocationRow({
       }}
     >
       <LocationOnIcon fontSize="small" color={loc.isVisited ? 'success' : 'action'} sx={{ flexShrink: 0 }} />
+      {/* The name opens the place's own card (#1271), and nothing else on the row
+          does: the copy, the correction and the visited box answer for themselves. */}
       <Typography
         variant="body2"
         noWrap
+        {...(onOpen ? {
+          role: 'button',
+          tabIndex: 0,
+          onClick: () => onOpen(loc.id, label),
+          onKeyDown: (event: React.KeyboardEvent) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault();
+              onOpen(loc.id, label);
+            }
+          },
+        } : {})}
         sx={{
           flex: 1,
           textDecoration: loc.isVisited ? 'line-through' : 'none',
           color: loc.isVisited ? 'text.secondary' : 'text.primary',
+          cursor: onOpen ? 'pointer' : 'default',
+          '&:hover': onOpen ? { textDecoration: 'underline' } : undefined,
         }}
       >
         {label}

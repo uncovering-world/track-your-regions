@@ -56,9 +56,11 @@ interface ExperienceDetailPanelProps {
   onClose: () => void;
   /** Curator: opens curation dialog */
   onCurate?: () => void;
+  /** Open one of the object's places on a card of its own (#1271). */
+  onOpenPoint?: (pointId: number, pointName: string) => void;
 }
 
-export function ExperienceDetailPanel({ experience, onClose, onCurate }: ExperienceDetailPanelProps) {
+export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoint }: ExperienceDetailPanelProps) {
   const { isAuthenticated, isCurator } = useAuth();
   // The place a curator opened from the list below, held as the place; and what
   // the last correction did, said here because the panel has no other line for it.
@@ -310,6 +312,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate }: Experie
             // A place is corrected wherever a curator is looking at one (#583); the
             // single place has no row here and is reached through the object screen.
             onCorrect={isCurator ? setCorrecting : undefined}
+            onOpen={onOpenPoint}
           />
         )}
         {correcting && (
