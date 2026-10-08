@@ -80,6 +80,7 @@ logs each integration's status at startup.
 | **Map data (GADM)** | — | `npm run db:load-gadm` (offers to download) | Map is empty |
 | **Google login** | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | [Google Cloud Console](https://console.cloud.google.com/apis/credentials) — redirect URI `http://localhost:3001/api/auth/google/callback` | Google button disabled |
 | **AI features** | `OPENAI_API_KEY` | [platform.openai.com/api-keys](https://platform.openai.com/api-keys) | AI-assisted grouping/descriptions disabled |
+| **Review suggestions** | `JEV_API_KEY` | [typesafe.ai](https://typesafe.ai) | No Jev suggestion on the review card for two disagreeing sources |
 | **Email (SMTP)** | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS` | any SMTP provider | Verification links print to the backend logs |
 | **Apple Sign-In** | `APPLE_CLIENT_ID`, `APPLE_TEAM_ID`, `APPLE_KEY_ID`, `APPLE_PRIVATE_KEY` | Apple Developer Console (see `docs/tech/authentication.md`) | Apple button disabled (untested) |
 
