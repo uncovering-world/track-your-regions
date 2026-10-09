@@ -11,6 +11,7 @@ import type {
   AssignmentStarted,
   AssignmentStatus,
   ExperienceSources,
+  ComponentItemSearchStarted,
   PictureRepairStarted,
   PlacementCounts,
   SourcesReordered,
@@ -38,6 +39,7 @@ import { isTerminalSyncStatus } from '../../services/sync/types.js';
 import { heldRunStatusOf, idleStatusOf, rowRunStatusOf } from './syncStatusAnswer.js';
 import { CHANGESET_LOST_MARKER, stoppedByRestartSql } from '../../services/sync/syncLogMarkers.js';
 import { readLatestSyncLog } from '../../services/sync/syncUtils.js';
+import { findUnescoComponentItems } from '../../services/sync/componentItemJob.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { waitingCountsBySource } from '../experience/waitingCounts.js';
 import {
@@ -85,6 +87,14 @@ const PICTURE_REPAIRS: Record<number, (triggeredBy: number | null) => Promise<vo
   [MUSEUM_SOURCE_ID]: fixMuseumImages,
   [WORSHIP_SOURCE_ID]: fixWorshipImages,
   [ARCHAEOLOGY_SOURCE_ID]: fixArchaeologyImages,
+};
+
+/**
+ * Which sources the panel can search Wikidata for their components' items
+ * (#1272): the one whose objects are serial, with components a reference names.
+ */
+const COMPONENT_ITEM_SEARCHES: Record<number, (triggeredBy: number | null) => Promise<void>> = {
+  [UNESCO_SOURCE_ID]: findUnescoComponentItems,
 };
 
 /** Registry mapping source IDs to their sync functions */
@@ -285,32 +295,52 @@ export async function cancelSync({ params: { sourceId } }: { params: SourceParam
 export async function fixImages(
   { params: { sourceId }, caller }: { params: SourceParams; caller: Express.User },
 ): Promise<PictureRepairStarted> {
-  const triggeredBy = caller.id;
+  await startBesideSync(sourceId, caller.id, PICTURE_REPAIRS[sourceId], 'Fix images');
+  return { started: true, message: 'Fixing pictures. Poll /status endpoint for progress.' };
+}
 
-  // The same three doors startSync stands at, answered in its order before
-  // anything starts: a source that does not exist, one switched off, and a run
-  // already in flight. The repair refuses that last case itself — by throwing
-  // before it registers — but a throw lands in the catch below after this
-  // handler has already answered, so without this check a press during a sync
-  // got `started: true`, the panel followed the *sync*, and it ended in a
-  // sync's sentence with no picture repaired and nothing saying so.
+/**
+ * Search Wikidata for the items of a source's components that no item records
+ * the reference of, and propose each to a curator (#1272)
+ * POST /api/admin/sync/sources/:sourceId/find-component-items
+ */
+export async function findComponentItems(
+  { params: { sourceId }, caller }: { params: SourceParams; caller: Express.User },
+): Promise<ComponentItemSearchStarted> {
+  await startBesideSync(sourceId, caller.id, COMPONENT_ITEM_SEARCHES[sourceId], 'Find component items');
+  return { started: true, message: 'Searching for component items. Poll /status endpoint for progress.' };
+}
+
+/**
+ * Starts a job that reports through a source's sync status, after the three
+ * doors `startSync` stands at, in its order: a source that does not exist, one
+ * switched off, and a run already in flight. The job refuses that last case
+ * itself — by throwing before it registers — but a throw lands in the catch
+ * below after the handler has already answered, so without this check a press
+ * during a sync got `started: true`, the panel followed the *sync*, and it ended
+ * in a sync's sentence with nothing done and nothing saying so.
+ */
+async function startBesideSync(
+  sourceId: number,
+  triggeredBy: number,
+  job: ((triggeredBy: number | null) => Promise<void>) | undefined,
+  name: string,
+): Promise<void> {
   const source = await pool.query(
     'SELECT id, is_active FROM experience_sources WHERE id = $1',
     [sourceId],
   );
   if (source.rows.length === 0) throw notFound('Source not found');
   if (!source.rows[0].is_active) throw badRequest('Source is not active');
-  const repair = PICTURE_REPAIRS[sourceId];
-  if (!repair) throw badRequest('Fix images not implemented for this source');
+  if (!job) throw badRequest(`${name} is not implemented for this source`);
   const existing = runningSyncs.get(sourceId);
   if (existing && !isTerminalSyncStatus(existing.status)) {
     throw createError('Sync already in progress for this source', 409);
   }
 
-  repair(triggeredBy).catch((err) => {
-    console.error('[Sync Controller] Fix images error for source %s:', sourceId, err);
+  job(triggeredBy).catch((err) => {
+    console.error('[Sync Controller] %s error for source %s:', name, sourceId, err);
   });
-  return { started: true, message: 'Fixing pictures. Poll /status endpoint for progress.' };
 }
 
 /**
@@ -619,6 +649,7 @@ export async function getSources(): Promise<ExperienceSources> {
     // same registry the route answers from — the museums' missing pictures, and
     // the World Heritage ones the Centre's terms do not let us show (ADR-0043).
     repairsPictures: source.id in PICTURE_REPAIRS,
+    findsComponentItems: source.id in COMPONENT_ITEM_SEARCHES,
   }));
 }
 

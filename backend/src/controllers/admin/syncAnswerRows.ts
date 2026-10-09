@@ -49,7 +49,7 @@ export type SourceRow = Pick<ExperienceSourcesRow,
 
 export function experienceSourceOf(
   row: SourceRow,
-  extra: { waiting: WaitingCounts | null; caches: boolean; repairsPictures: boolean },
+  extra: { waiting: WaitingCounts | null; caches: boolean; repairsPictures: boolean; findsComponentItems: boolean },
 ): ExperienceSource {
   return {
     id: row.id,
@@ -68,6 +68,7 @@ export function experienceSourceOf(
     waiting: extra.waiting,
     caches: extra.caches,
     repairsPictures: extra.repairsPictures,
+    findsComponentItems: extra.findsComponentItems,
   };
 }
 

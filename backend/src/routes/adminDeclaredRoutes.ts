@@ -11,7 +11,8 @@ import { defineRoute, IMAGE } from '../api/route.js';
 import {
   AssignmentCancelled, AssignmentStarted, AssignmentStatus, CuratorActivity, CuratorAssignmentCreated, EqualItemMerges,
   JevUsage,
-  CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, PictureRepairStarted, PlacementCounts,
+  ComponentItemSearchStarted, CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, PictureRepairStarted,
+  PlacementCounts,
   SourceLineSet, SourcesReordered, SyncCancelled, SyncChanges, SyncLogDetail, SyncLogs, SyncStarted, SyncStatus,
   UserSearchResults, WikidataCache, WikidataCacheCleared, WikidataCacheTtlSet,
 } from '../api/responses/admin.js';
@@ -21,7 +22,7 @@ import {
 } from '../api/responses/adminAi.js';
 import { DataAssertion, DataAssertionReport } from '../api/responses/dataAssertions.js';
 import {
-  startSync, getSyncStatus, cancelSync, fixImages, getSyncLogs, getWikidataCache, clearWikidataCache,
+  startSync, getSyncStatus, cancelSync, fixImages, findComponentItems, getSyncLogs, getWikidataCache, clearWikidataCache,
   setWikidataCacheTtl, getSyncLogDetails, getSyncLogChanges, getSources, reorderSources, startRegionAssignment,
   getRegionAssignmentStatus, cancelRegionAssignment, getExperienceCounts,
 } from '../controllers/admin/syncController.js';
@@ -136,6 +137,17 @@ export const adminDeclaredRoutes = [
     params: sourceIdParamSchema,
     response: PictureRepairStarted,
     handler: fixImages,
+  }),
+  // Search Wikidata for the items of World Heritage components no item records
+  // the reference of (#1272). Proposals only — a curator answers each — but a
+  // run asks Wikidata a few hundred questions, so it stands behind the same
+  // limiter as the repair above.
+  defineRoute({
+    ...ADMIN, method: 'post', path: '/sync/sources/:sourceId/find-component-items', limiter: expensiveAdminLimiter,
+    summary: 'Start a search for the Wikidata items of a source\'s components, proposed to a curator',
+    params: sourceIdParamSchema,
+    response: ComponentItemSearchStarted,
+    handler: findComponentItems,
   }),
   // What we are keeping from the source, per kind of question, with its age
   // and expiry — and the button that forgets it. Read and delete rather than a
