@@ -103,6 +103,9 @@ export async function searchPlaces(
 
 type SparqlBinding = Record<string, { value: string } | undefined>;
 
+/** The query service throttled this client: the layer that asked it finds nothing. */
+class WikidataThrottled extends Error {}
+
 /**
  * Execute a SPARQL query against Wikidata with retry for transient errors.
  *
@@ -132,11 +135,17 @@ async function sparqlQuery(query: string, signal: AbortSignal, retries = 2): Pro
     });
 
     if (!response.ok) {
-      if (attempt < retries && (response.status >= 500 || response.status === 429)) {
+      // A 429 is the query service throttling us, and it says when to come back
+      // in `Retry-After` — later than a dialog can wait. So it is not retried:
+      // the layer that asked finds nothing, rather than sending a retry the
+      // service asked us not to send (Wikidata Query Service User Manual,
+      // § Query limits).
+      if (attempt < retries && response.status >= 500) {
         const backoff = (attempt + 1) * 3000;
         await delay(backoff);
         continue;
       }
+      if (response.status === 429) throw new WikidataThrottled('Wikidata SPARQL error 429');
       throw new Error(`Wikidata SPARQL error ${response.status}`);
     }
 
@@ -281,7 +290,12 @@ async function suggestBySpatial(
   signal: AbortSignal,
 ): Promise<ImageSuggestion | null> {
   if (!isValidLatLng(lat, lng)) return null;
-  const result = await lookupBySpatial(lat, lng as number, signal);
+  // A throttled query service is a reason to skip this layer, not to give up:
+  // the name layer reads Wikidata's own API, which that throttle does not cover.
+  const result = await lookupBySpatial(lat, lng as number, signal).catch((err: unknown) => {
+    if (err instanceof WikidataThrottled) return null;
+    throw err;
+  });
   if (!result) return null;
   // Spatial search doesn't include sitelinks; fetch Wikipedia URL via QID follow-up.
   //
