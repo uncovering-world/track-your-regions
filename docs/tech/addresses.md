@@ -150,7 +150,7 @@ decision 5.
 | `sort=question` | The class-first order. `date` is the default and writes nothing |
 | `q=cologne` | The search, trimmed and capped at 100 characters — the API's own limit for it |
 | `source=1,3` | The sources, by id |
-| `kind=arrival,refused` | The questions: `conflict`, `sources`, `withdrawn`, `refused`, `missing`, and the three gated kinds: `arrival`, `held`, `contents` |
+| `kind=arrival,refused` | The questions: `conflict`, `sources`, `withdrawn`, `refused`, `missing`, `component-items`, and the three gated kinds: `arrival`, `held`, `contents` |
 | `region=6737`, `region=none` | A region and everything under it, or the objects in no region at all |
 | `run=98` | The run that asked |
 | `aside=show` | Show the batches this curator has set aside, which are otherwise out of the list. Picking a set-aside run in the Run chip turns it on with the filter, in one write: that chip counts its runs before the set-aside rows are dropped, so the batch it offers would otherwise be filtered to a list the page hides |
