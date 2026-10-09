@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { CURATION_LOG_ACTIONS } from '@tyr/shared/curationLog';
-import { ACTION_LABELS, actionLabel, catalogueMerge, formatLogDetails } from './curationLog';
+import { ACTION_LABELS, actionLabel, catalogueMerge, formatLogDetails, takeableItems } from './curationLog';
 
 /** An entry as the controllers write it. */
 function entry(action: string, details: Record<string, unknown>) {
@@ -391,5 +391,43 @@ describe('the catalogue\'s own merge (ADR-0086)', () => {
     expect(catalogueMerge({ action: 'merged', details: { reason: 'equal_wikidata_item', mergeId: 1 } })).toBe(true);
     expect(catalogueMerge({ action: 'merged', details: { reason: 'curator', mergeId: 2 } })).toBe(false);
     expect(catalogueMerge({ action: 'merge_undone', details: { mergeId: 1 } })).toBe(false);
+  });
+});
+
+describe('a confirmed component item taken back (#1317)', () => {
+  const confirmed = {
+    id: 3, action: 'component_items_answered', created_at: '2026-10-09T18:00:00Z',
+    details: {
+      accepted: [
+        { locationId: 501, point: 'Bologa', item: 'Q98501', label: 'Castrul Bologa', pictured: true },
+        { locationId: 503, point: 'Gilău', item: 'Q98505', label: 'Castrul Gilău', pictured: false },
+      ],
+      refused: [{ locationId: 502, point: 'Buciumi', item: 'Q98503', label: 'Castrul Buciumi' }],
+    },
+  };
+  const takenBack = {
+    id: 4, action: 'component_item_taken_back', created_at: '2026-10-10T09:00:00Z',
+    details: { locationId: 501, point: 'Bologa', item: 'Q98501', label: 'Castrul Bologa', cleared: ['image_url', 'description'] },
+  };
+
+  it('reads as the point, the item and what came off with it', () => {
+    expect(formatLogDetails(entry('component_item_taken_back', takenBack.details)))
+      .toBe('Bologa: Castrul Bologa (Q98501) taken back; the picture and the description came off with it');
+    expect(formatLogDetails(entry('component_item_taken_back', { ...takenBack.details, cleared: [] })))
+      .toBe('Bologa: Castrul Bologa (Q98501) taken back');
+  });
+
+  it('offers each confirmed item back until a later row took it back', () => {
+    expect(takeableItems(confirmed, [confirmed]).map(c => c.item)).toEqual(['Q98501', 'Q98505']);
+    expect(takeableItems(confirmed, [takenBack, confirmed]).map(c => c.item)).toEqual(['Q98505']);
+    // A turned-down candidate was never the point's; a take-back row offers nothing itself.
+    expect(takeableItems(takenBack, [takenBack, confirmed])).toEqual([]);
+  });
+
+  it('is not fooled by a take-back older than the confirmation, which took back an earlier confirmation', () => {
+    // Bologa confirmed, taken back, confirmed again: the second confirmation is still open.
+    // Ordered by the log's id, not the timestamp, which two rows can share.
+    const again = { ...confirmed, id: 5, created_at: '2026-10-10T09:00:00Z' };
+    expect(takeableItems(again, [again, takenBack, confirmed]).map(c => c.item)).toEqual(['Q98501', 'Q98505']);
   });
 });

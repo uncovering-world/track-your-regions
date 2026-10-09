@@ -492,6 +492,9 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // for a serial site's components (#1272): the ones confirmed and the ones
     // turned down, in one act.
     'component_items_answered',
+    // And one of them taken back (#1317): the item and the claim off the
+    // point, the candidate left turned down.
+    'component_item_taken_back',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;
