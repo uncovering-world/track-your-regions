@@ -171,6 +171,20 @@ export interface ExperienceComponentItemProposalsRow {
   item_location: string | null;
 }
 
+/** The table `experience_component_item_suggestions`. */
+export interface ExperienceComponentItemSuggestionsRow {
+  id: number;
+  location_id: number;
+  wikidata_item: string;
+  asked: unknown;
+  judgement: string | null;
+  confidence: string;
+  probabilities: unknown;
+  model: string;
+  input_tokens: number;
+  asked_at: Date;
+}
+
 /** The table `experience_conflict_decisions`. */
 export interface ExperienceConflictDecisionsRow {
   id: string;
@@ -793,6 +807,11 @@ export const COLUMN_WIDTHS = {
     basis: 10,
     answer: 10,
   },
+  experience_component_item_suggestions: {
+    wikidata_item: 20,
+    judgement: 10,
+    model: 40,
+  },
   experience_conflict_decisions: {
     field: 100,
   },
@@ -938,6 +957,9 @@ export const CHECK_VALUES = {
   experience_component_item_proposals: {
     answer: ["accepted", "refused"],
     basis: ["part_of", "near"],
+  },
+  experience_component_item_suggestions: {
+    judgement: ["same", "other"],
   },
   experience_curation_log: {
     action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone", "views_chosen", "component_items_answered"],
