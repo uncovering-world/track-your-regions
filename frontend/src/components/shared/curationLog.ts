@@ -120,6 +120,10 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // records their reference and the finder proposed candidates (#1272): the
   // ones a curator confirmed and the ones turned down, in one act.
   component_items_answered: { label: 'Items answered', color: BLUE },
+  // And the way back from one of those (#1317), green like the other
+  // take-backs: the item comes off the point, and the candidate stays turned
+  // down.
+  component_item_taken_back: { label: 'Item taken back', color: GREEN },
 };
 
 /**
@@ -471,6 +475,7 @@ const PLACE_ACT_DETAILS: Record<string, (d: Record<string, unknown>) => string |
   merge_undone: d => formatMerge('merge_undone', d),
   views_chosen: d => formatViewsChosen(d),
   component_items_answered: d => formatComponentItemsAnswered(d),
+  component_item_taken_back: d => formatComponentItemTakenBack(d),
 };
 
 export function formatLogDetails(entry: CurationLogEntry): string | null {
@@ -540,6 +545,20 @@ function formatComponentItemsAnswered(d: Record<string, unknown>): string | null
   return lines.length > 0 ? lines.join('\n') : null;
 }
 
+/**
+ * A confirmed item taken back off a component (#1317): "Bologa: Castra of
+ * Bologa (Q12345) taken back; picture and description came off with it".
+ */
+function formatComponentItemTakenBack(d: Record<string, unknown>): string | null {
+  if (typeof d.item !== 'string') return null;
+  const cleared = Array.isArray(d.cleared) ? d.cleared.filter((f): f is string => typeof f === 'string') : [];
+  const came = cleared.length === 0 ? '' : `; ${cleared.map(f => CLEARED_WORDS[f] ?? f).join(' and ')} came off with it`;
+  return `${candidateLine(d, 'taken back')}${came}`;
+}
+
+/** What a take-back can clear beside the item, in the history's words. */
+const CLEARED_WORDS: Record<string, string> = { image_url: 'the picture', description: 'the description' };
+
 /** A place a merge row names: by the name it had at the act, and its id, which tells two of one name apart. */
 function mergedPlace(name: unknown, id: unknown): string {
   return typeof name === 'string' && name !== '' ? `${name} (#${id})` : `Place #${id}`;
@@ -579,6 +598,45 @@ export function undoableMerge(
   const undone = log.some(other => other.action === 'merge_undone'
     && (other.details as { mergeId?: unknown } | null | undefined)?.mergeId === mergeId);
   return undone ? null : mergeId;
+}
+
+/** One confirmed component item a history row can still take back (#1317). */
+export interface TakeableItem {
+  locationId: number;
+  item: string;
+  point: string | null;
+  label: string | null;
+}
+
+/**
+ * The confirmed items a `component_items_answered` row can still take back:
+ * each candidate it confirmed with no later `component_item_taken_back` row
+ * for the same point and item — later by the log's id, since two rows can
+ * carry one timestamp. Whether the take-back may run now — the point still
+ * holding that item as a curator's choice — is the server's answer, as it is
+ * for a merge's undo.
+ */
+export function takeableItems(
+  entry: { id: number; action: string; details?: unknown },
+  log: readonly { id: number; action: string; details?: unknown }[],
+): TakeableItem[] {
+  if (entry.action !== 'component_items_answered') return [];
+  const details = entry.details as { accepted?: unknown } | null | undefined;
+  if (!Array.isArray(details?.accepted)) return [];
+  const takenBack = (locationId: number, item: string) => log.some(other => {
+    if (other.action !== 'component_item_taken_back') return false;
+    const d = other.details as { locationId?: unknown; item?: unknown } | null | undefined;
+    return d?.locationId === locationId && d?.item === item && other.id > entry.id;
+  });
+  return details.accepted
+    .filter((c): c is { locationId: number; item: string; point?: unknown; label?: unknown } =>
+      typeof c === 'object' && c !== null && typeof (c as { locationId?: unknown }).locationId === 'number'
+      && typeof (c as { item?: unknown }).item === 'string')
+    .filter(c => !takenBack(c.locationId, c.item))
+    .map(c => ({
+      locationId: c.locationId, item: c.item,
+      point: typeof c.point === 'string' ? c.point : null, label: typeof c.label === 'string' ? c.label : null,
+    }));
 }
 
 /** Whether a history row is the catalogue's own merge of two places sharing a Wikidata item (ADR-0086). */
