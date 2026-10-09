@@ -5,7 +5,7 @@
  */
 
 import type {
-  AssignmentCancelled, AssignmentStarted, AssignmentStatus, CuratorActivity, CuratorAssignmentCreated,
+  AssignmentCancelled, AssignmentStarted, AssignmentStatus, ComponentItemSearchStarted, CuratorActivity, CuratorAssignmentCreated,
   CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, PictureRepairStarted, PlacementCounts,
   PublishWaitingResult, SourceLineSet, SourcesReordered, SyncCancelled, SyncChanges, SyncLogDetail, SyncLogs,
   SyncStarted, SyncStatus, UserSearchResults, WikidataCache, WikidataCacheCleared, WikidataCacheTtlSet,
@@ -17,8 +17,8 @@ import {
   getAdminSyncLogs, getAdminSyncLogsByLogId, getAdminSyncLogsByLogIdChanges, getAdminSyncSources,
   getAdminSyncSourcesBySourceIdCache, getAdminSyncSourcesBySourceIdStatus, getAdminUsersSearch, postAdminCurators,
   postAdminExperiencesAssignRegions, postAdminExperiencesAssignRegionsCancel, postAdminSyncSourcesBySourceIdCancel,
-  postAdminSyncSourcesBySourceIdFixImages, postAdminSyncSourcesBySourceIdStart,
-  postExperiencesSourcesBySourceIdPublishWaiting, putAdminSyncSourcesBySourceIdCacheByKindTtl,
+  postAdminSyncSourcesBySourceIdFindComponentItems, postAdminSyncSourcesBySourceIdFixImages,
+  postAdminSyncSourcesBySourceIdStart, postExperiencesSourcesBySourceIdPublishWaiting, putAdminSyncSourcesBySourceIdCacheByKindTtl,
   putAdminSyncSourcesBySourceIdCurationGate, putAdminSyncSourcesBySourceIdLine, putAdminSyncSourcesReorder,
   type CreateCuratorAssignmentBody, type GetAdminSyncLogsByLogIdChangesParams, type SourceLineBody,
 } from '../client.generated';
@@ -27,7 +27,7 @@ import {
 // and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
 export type {
-  AssignmentCancelled, AssignmentStarted, AssignmentStatus, ChangedField, CuratorActivity, CuratorActivityEntry,
+  AssignmentCancelled, AssignmentStarted, AssignmentStatus, ChangedField, ComponentItemSearchStarted, CuratorActivity, CuratorActivityEntry,
   CuratorAssignmentCreated, CuratorAssignmentRevoked, CuratorInfo, Curators, CuratorScope, CurationGateSet,
   ExperienceSource, ExperienceSources, PictureRepairStarted, PlacementCount, PlacementCounts,
   PublishedWaitingObject, PublishWaitingResult, RefusedWaitingObject, SourceLineSet, SourcesReordered,
@@ -89,6 +89,15 @@ export async function startSync(
  */
 export async function fixPictures(sourceId: number): Promise<PictureRepairStarted> {
   return postAdminSyncSourcesBySourceIdFixImages(sourceId);
+}
+
+/**
+ * Search Wikidata for the items of a source's components that no item records
+ * the reference of (#1272). Writes proposals only: each waits for a curator's
+ * answer. Reports through the same status endpoint a sync does.
+ */
+export async function findComponentItems(sourceId: number): Promise<ComponentItemSearchStarted> {
+  return postAdminSyncSourcesBySourceIdFindComponentItems(sourceId);
 }
 
 /**

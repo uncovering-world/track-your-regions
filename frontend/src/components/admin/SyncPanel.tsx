@@ -31,6 +31,7 @@ import {
   getSources,
   startSync,
   fixPictures,
+  findComponentItems,
   cancelSync,
   reorderSources,
   type ExperienceSource,
@@ -43,6 +44,7 @@ import { SourceLineControls } from './SourceLineControls';
 import { WikidataCacheSection } from './WikidataCacheSection';
 import { SourceLastRunNote } from './SourceLastRunNote';
 import { useSyncStatusPolling } from './useSyncStatusPolling';
+import { RUN_WORDS, type RunKind } from './syncRunKinds';
 import { queryKeys } from '../../api/queryKeys';
 
 export function SyncPanel() {
@@ -140,15 +142,14 @@ function endedBadlySentence(
   kind: SyncStatus['kind'],
   ended: { status: string; message: string },
 ): string {
-  const subject = kind === 'repair' ? 'The picture repair' : 'The sync';
+  const subject = RUN_WORDS[kind ?? 'sync'].subject;
   if (ended.status !== 'failed') return `${subject} was cancelled.`;
   return ended.message ? `${subject} failed: ${ended.message}` : `${subject} failed.`;
 }
 
 /** What the chip says while a run is in flight: which kind, and whether it writes. */
 function runningLabel(status: SyncStatus | null): string {
-  if (status?.kind === 'repair') return 'Fixing pictures...';
-  return status?.dryRun ? 'Previewing...' : 'Syncing...';
+  return RUN_WORDS[status?.kind ?? 'sync'].running(status?.dryRun === true);
 }
 
 /** What the Cancel button should say for the phase the run is in. */
@@ -207,7 +208,7 @@ function SourceCard({ source }: SourceCardProps) {
    * repair read "Fixing pictures...". The server's word replaces it as soon
    * as there is one.
    */
-  const beginRun = (kind: 'sync' | 'repair') => () => {
+  const beginRun = (kind: RunKind) => () => {
     follow(kind);
     setCancelRefused(false);
     setEndedBadly(null);
@@ -244,8 +245,15 @@ function SourceCard({ source }: SourceCardProps) {
 
   // A preview is a run: while one is starting the panel must look busy, or the
   // gap between the click and the first poll reads as nothing having happened.
+  // Proposals only, so no review of its own: each candidate it finds waits for
+  // a curator. Reported through the same status as the two above.
+  const findComponentItemsMutation = useMutation({
+    mutationFn: () => findComponentItems(source.id),
+    onSuccess: beginRun('components'),
+  });
+
   const isStarting = startMutation.isPending || dryRunMutation.isPending
-    || refreshMutation.isPending || fixPicturesMutation.isPending;
+    || refreshMutation.isPending || fixPicturesMutation.isPending || findComponentItemsMutation.isPending;
 
   const cancelMutation = useMutation({
     mutationFn: () => cancelSync(source.id),
@@ -411,20 +419,12 @@ function SourceCard({ source }: SourceCardProps) {
             sx={{ mb: 2 }}
             onClose={() => setJustCompleted(false)}
           >
-            {/* A repair ends with its own count — how many rows were given a
-                picture, how many left without — and that sentence is the whole
-                of what an admin wants from it, so it is shown as the run said
-                it. Which kind ended is the server's word (`kind`), not a memory
-                of which button was pressed, so a reload mid-run cannot make a
-                repair end in a sync's sentence. A sync's says nothing about how
-                region assignment turned out: the run only reports itself finished once placement has
-                run, so by the time this shows, the source's status chip already
-                carries the verdict — and a placement failure shows there as
-                Partial. */}
-            {status?.kind === 'repair'
-              ? `Pictures repaired: ${status.statusMessage ?? 'done'}.`
-              : 'Sync completed. Region assignment runs as part of the run, so there is normally '
-                + 'nothing further to do — check the status chip if it reports Partial.'}
+            {/* A repair and a component search end with their own count, and
+                that sentence is the whole of what an admin wants from them.
+                Which kind ended is the server's word (`kind`), not a memory of
+                which button was pressed, so a reload mid-run cannot make one
+                end in a sync's sentence. */}
+            {RUN_WORDS[status?.kind ?? 'sync'].finished(status?.statusMessage)}
           </Alert>
         )}
         <CurationGateControls source={source} />
@@ -497,6 +497,19 @@ function SourceCard({ source }: SourceCardProps) {
                       disabled={!source.is_active || isStarting}
                     >
                       Fix pictures
+                    </Button>
+                  </span>
+                </Tooltip>
+              )}
+              {source.findsComponentItems && (
+                <Tooltip title="Looks in Wikidata for the item of each component no item records the UNESCO reference of: an item that says it is part of the site, or one of the site's kind near the point with a similar name. Writes nothing on the components — each candidate waits for a curator.">
+                  <span>
+                    <Button
+                      variant="outlined"
+                      onClick={() => findComponentItemsMutation.mutate()}
+                      disabled={!source.is_active || isStarting}
+                    >
+                      Find component items
                     </Button>
                   </span>
                 </Tooltip>

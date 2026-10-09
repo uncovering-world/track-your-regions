@@ -13,7 +13,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { SyncPanel } from './SyncPanel';
-import { getSources, getSyncStatus, fixPictures } from '../../api/admin';
+import { getSources, getSyncStatus, fixPictures, findComponentItems } from '../../api/admin';
 import type { ExperienceSource, SyncStatus } from '../../api/admin';
 
 vi.mock('../../api/admin', () => ({
@@ -21,6 +21,7 @@ vi.mock('../../api/admin', () => ({
   getSyncStatus: vi.fn(),
   startSync: vi.fn(),
   fixPictures: vi.fn(),
+  findComponentItems: vi.fn(),
   cancelSync: vi.fn(),
   reorderSources: vi.fn(),
 }));
@@ -32,6 +33,7 @@ vi.mock('./WikidataCacheSection', () => ({ WikidataCacheSection: () => null }));
 const mockedSources = getSources as unknown as ReturnType<typeof vi.fn>;
 const mockedStatus = getSyncStatus as unknown as ReturnType<typeof vi.fn>;
 const mockedFix = fixPictures as unknown as ReturnType<typeof vi.fn>;
+const mockedFind = findComponentItems as unknown as ReturnType<typeof vi.fn>;
 
 const UNESCO: ExperienceSource = {
   id: 1,
@@ -51,6 +53,7 @@ const UNESCO: ExperienceSource = {
   // The UNESCO run reads its own API and keeps nothing between runs.
   caches: false,
   repairsPictures: true,
+  findsComponentItems: true,
 };
 
 const inFlight: SyncStatus = {
@@ -156,11 +159,56 @@ describe('a picture repair found already in flight', () => {
 
   it('offers the repair only where the server says it acts', async () => {
     mockedStatus.mockResolvedValue({ running: false });
-    mockedSources.mockResolvedValue([UNESCO, { ...UNESCO, id: 3, name: 'Public Art & Monuments', repairsPictures: false }]);
+    mockedSources.mockResolvedValue([UNESCO, { ...UNESCO, id: 3, name: 'Public Art & Monuments', repairsPictures: false, findsComponentItems: false }]);
 
     renderPanel();
 
     await screen.findByText('Public Art & Monuments');
     expect(screen.getAllByRole('button', { name: 'Fix pictures' })).toHaveLength(1);
+  });
+});
+
+describe('a search for component items', () => {
+  beforeEach(() => {
+    mockedSources.mockReset();
+    mockedStatus.mockReset();
+    mockedFind.mockReset();
+    mockedSources.mockResolvedValue([UNESCO, { ...UNESCO, id: 2, name: 'Art Museums', findsComponentItems: false }]);
+  });
+
+  it('is offered only where the server says it acts, named from the press, and ends in its own count', async () => {
+    mockedStatus
+      .mockResolvedValueOnce({ running: false })
+      .mockResolvedValueOnce({ running: true, kind: 'components', status: 'fetching', statusMessage: 'Looking near the points' })
+      .mockResolvedValue({
+        running: false, kind: 'components', status: 'complete',
+        statusMessage: '412 of 2519 components without an item have a candidate for a curator',
+      });
+    mockedFind.mockResolvedValue({ started: true, message: '' });
+
+    renderPanel();
+    await screen.findByText('Art Museums');
+    expect(screen.getAllByRole('button', { name: 'Find component items' })).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Find component items' }));
+
+    expect(await screen.findByText('Finding component items...')).toBeInTheDocument();
+    await waitFor(
+      () => expect(screen.getByText(/Component items: 412 of 2519 components/)).toBeInTheDocument(),
+      { timeout: 4000 },
+    );
+    expect(screen.queryByText(/Sync completed|Pictures repaired/)).toBeNull();
+  });
+
+  it('says a failed search failed, in its own words', async () => {
+    mockedStatus
+      .mockResolvedValueOnce({ running: true, kind: 'components', status: 'fetching', statusMessage: '' })
+      .mockResolvedValue({ running: false, kind: 'components', status: 'failed', statusMessage: 'Wikidata did not answer' });
+
+    renderPanel();
+    await screen.findByText('Finding component items...');
+    await waitFor(
+      () => expect(screen.getByText('The component search failed: Wikidata did not answer')).toBeInTheDocument(),
+      { timeout: 4000 },
+    );
   });
 });

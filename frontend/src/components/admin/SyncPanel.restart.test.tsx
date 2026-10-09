@@ -49,6 +49,7 @@ const MUSEUMS: ExperienceSource = {
   find_stay_sitelinks: null,
   caches: true,
   repairsPictures: true,
+  findsComponentItems: true,
 };
 
 /** A museum run the restart stopped 412 of 1,083 objects in. */
