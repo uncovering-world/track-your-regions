@@ -75,3 +75,26 @@ export async function clearMootProposals(
   );
   return result.rowCount ?? 0;
 }
+
+/**
+ * A confirmed candidate taken back (#1317): its row is turned down, so the
+ * finder never proposes the item for the point again, and the curator's
+ * second answer is the one on record. Answers whether a row was found.
+ */
+export async function turnDownConfirmed(
+  client: PoolClient,
+  lock: LockedExperience,
+  userId: number,
+  locationId: number,
+  item: string,
+): Promise<boolean> {
+  const result = await client.query(
+    `UPDATE experience_component_item_proposals p
+        SET answer = 'refused', answered_by = $4, answered_at = NOW()
+       FROM experience_locations el
+      WHERE el.id = p.location_id AND el.experience_id = $1
+        AND p.location_id = $2 AND p.wikidata_item = $3`,
+    [lock.id, locationId, item, userId],
+  );
+  return (result.rowCount ?? 0) > 0;
+}

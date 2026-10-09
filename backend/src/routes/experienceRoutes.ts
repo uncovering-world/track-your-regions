@@ -12,6 +12,7 @@ import {
   ComponentItemsAnswered,
   ComponentItemSuggestions,
   CurationLog,
+  PointItemTakenBack,
   DeclineHeldResult,
   DeclineSourceResult,
   ExperienceEditResult,
@@ -34,6 +35,7 @@ import { undoPlaceMerge } from '../controllers/experience/placeMergeController.j
 import { chooseViews } from '../controllers/experience/viewChoiceController.js';
 import { answerComponentItems } from '../controllers/experience/componentItemController.js';
 import { suggestComponentItems } from '../controllers/experience/componentItemSuggestionController.js';
+import { takeBackPointItem } from '../controllers/experience/pointItemTakeBackController.js';
 import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
 import { ReviewAnswerResult, ReviewQueue, RunSetAside } from '../api/responses/reviewQueue.js';
 import {
@@ -112,6 +114,7 @@ import {
   editWorkBodySchema,
   workEditParamsSchema,
   locationIdParamSchema,
+  takeBackPointItemBodySchema,
   acceptSourceBodySchema,
   declineSourceBodySchema,
   declineHeldBodySchema,
@@ -409,6 +412,19 @@ export const experienceCurationRoutes = [
     body: editLocationBodySchema,
     response: LocationEditResult,
     handler: editLocation,
+  }),
+  // The way back from a confirmed component item (#1317): the item and its
+  // claim off the point, with what the confirmation wrote, the candidate left
+  // turned down. In the confirmation's scope — a source whose membership
+  // places the point — and rate-limited as the edit is.
+  defineRoute({
+    method: 'post', path: '/locations/:locationId/take-back-item', access: 'curator', cache: 'no-store',
+    limiter: authenticatedLimiter,
+    summary: 'Take back the Wikidata item a curator confirmed for a component',
+    params: locationIdParamSchema,
+    body: takeBackPointItemBodySchema,
+    response: PointItemTakenBack,
+    handler: takeBackPointItem,
   }),
 
   // A curator's correction to one work of one museum: what it is called, who made
