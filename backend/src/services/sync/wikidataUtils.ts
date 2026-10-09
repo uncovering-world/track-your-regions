@@ -9,6 +9,8 @@
 import {
   withRetries,
   abortOn,
+  interruptibleDelay,
+  CANCEL_POLL_MS,
   exponentialBackoff,
   backoffFromRetryAfter,
   RetrySignal,
@@ -330,20 +332,129 @@ function classifySparqlException(
   return new Error(`Wikidata SPARQL request failed: ${message}`);
 }
 
+/**
+ * The query service's processing-time rule, kept for the whole process.
+ *
+ * One client — our User-Agent from this address — is allowed 60 seconds of the
+ * service's processing time in every 60, and a client over it is throttled
+ * (Wikidata Query Service User Manual, § Query limits). Every query this
+ * process sends therefore takes its turn here: one at a time, whichever run
+ * sent it, and the next starts only after a pause at least as long as the last
+ * attempt took. That keeps a run near half the allowance however slow the
+ * service is that day. A query that ran into the deadline — 55 seconds asked,
+ * answered with a timeout or a gateway error — is the case it was written for:
+ * its retry waits out a minute of the service's time rather than the 5 seconds
+ * the backoff would have given it, so the retry never lands in the minute the
+ * failed attempt used up. A 429's `Retry-After` or a 5xx's backoff holds back
+ * every run's next query, not only the one that received it, up to the
+ * backoff's ceiling; a run that did not earn the hold has it reported and
+ * charged to its own wait budget (`heldByService`).
+ */
+let turn: Promise<void> = Promise.resolve();
+/** When the next query may start by the pacing rule: the last attempt's cost, mirrored. */
+let nextStartAt = 0;
+/** When the service said this client may ask again: a 429's `Retry-After` or a 5xx's backoff. */
+let throttledUntil = 0;
+
+/** What a run gives the turn, so a hold another run earned is reported and paid for like its own. */
+interface TurnWatch {
+  isCancelled?: () => boolean;
+  onWait?: (wait: SourceWait) => void;
+  budget: WaitBudget;
+}
+
+/**
+ * The hold the service put on this client, past the ordinary pacing pause, as
+ * a run about to send sees it. A run that did not earn it waits it out all the
+ * same, so it is said on that run's panel and charged to its patience: a wait
+ * nobody can see is the one this client exists to prevent.
+ */
+function heldByService(pace: number, watch: TurnWatch): number {
+  const hold = throttledUntil - Date.now();
+  const extra = hold - Math.max(pace, 0);
+  if (extra <= 0) return 0;
+  if (extra > watch.budget.remainingMs) {
+    throw new Error(
+      `Wikidata asked this server to wait, and this run's ${Math.round(watch.budget.totalMs / 60000)} min of waiting is spent`,
+    );
+  }
+  watch.onWait?.({
+    reason: 'Wikidata asked this server to wait',
+    attempt: 0,
+    backoffMs: hold,
+    waitedMs: watch.budget.totalMs - watch.budget.remainingMs,
+  });
+  watch.budget.spend(extra);
+  return hold;
+}
+
+/**
+ * Waits for the query ahead to finish, noticing a cancel within a second: the
+ * query ahead may be another run's, and its request and pause together can
+ * last two minutes. False when the run was cancelled before its turn came.
+ */
+async function turnArrives(previous: Promise<void>, isCancelled?: () => boolean): Promise<boolean> {
+  let arrived = false;
+  const arrival = previous.then(() => { arrived = true; });
+  while (!arrived) {
+    if (isCancelled?.()) return false;
+    await Promise.race([arrival, new Promise((resolve) => setTimeout(resolve, CANCEL_POLL_MS))]);
+  }
+  return true;
+}
+
+async function inTurn<T>(watch: TurnWatch, send: () => Promise<T>): Promise<T> {
+  const { isCancelled } = watch;
+  const previous = turn;
+  let done!: () => void;
+  const mine = new Promise<void>((resolve) => { done = resolve; });
+  // The next query waits for the one ahead of this as well as for this one, so
+  // a run cancelled while it queues can give up its place at once without the
+  // run behind it starting alongside the query still in flight.
+  turn = previous.then(() => mine);
+  try {
+    if (!(await turnArrives(previous, isCancelled))) throw new Error('Sync cancelled');
+    const pace = nextStartAt - Date.now();
+    await interruptibleDelay(Math.max(pace, heldByService(pace, watch)), isCancelled);
+    if (isCancelled?.()) throw new Error('Sync cancelled');
+    const startedAt = Date.now();
+    try {
+      return await send();
+    } catch (error) {
+      // An HTTP answer that asks us to wait — a 429's Retry-After, a 5xx's
+      // backoff — was said to this client, not to this one query, so every
+      // run's next query waits too, up to the ceiling a backoff has. (A
+      // timeout or a dropped connection is classified after the turn, and its
+      // cost is already in the pacing pause.)
+      if (error instanceof RetrySignal) {
+        throttledUntil = Math.max(throttledUntil, Date.now() + Math.min(error.backoffMs, SPARQL_BACKOFF_CEILING_MS));
+      }
+      throw error;
+    } finally {
+      const took = Date.now() - startedAt;
+      nextStartAt = Math.max(nextStartAt, Date.now() + Math.max(SPARQL_DELAY_MS, took));
+    }
+  } finally {
+    done();
+  }
+}
+
 async function attemptSparqlOnce(
   query: string,
   attempt: number,
   retries: number,
-  isCancelled?: () => boolean,
+  watch: TurnWatch,
 ): Promise<SparqlBinding[]> {
-  const { signal, release } = abortOn(SPARQL_TIMEOUT_MS, isCancelled);
-  try {
-    const response = await fetchSparqlResponse(query, signal);
-    if (!response.ok) await handleSparqlHttpError(response, attempt, retries);
-    return await readSparqlBindings(response);
-  } finally {
-    release();
-  }
+  return inTurn(watch, async () => {
+    const { signal, release } = abortOn(SPARQL_TIMEOUT_MS, watch.isCancelled);
+    try {
+      const response = await fetchSparqlResponse(query, signal);
+      if (!response.ok) await handleSparqlHttpError(response, attempt, retries);
+      return await readSparqlBindings(response);
+    } finally {
+      release();
+    }
+  });
 }
 
 /**
@@ -359,6 +470,11 @@ export function waitMessage(source: string, wait: SourceWait, budget: WaitBudget
   const next = Math.round(wait.backoffMs / 1000);
   const spent = Math.round((wait.waitedMs + wait.backoffMs) / 60000);
   const total = Math.round(budget.totalMs / 60000);
+  // Attempt 0 is a hold another run earned (`heldByService`): this run has
+  // sent nothing yet, so there is nothing to retry.
+  if (wait.attempt === 0) {
+    return `${wait.reason} — next query in ${next}s, about ${spent} of ${total} min of waiting spent`;
+  }
   return `${source} is not answering (${wait.reason}) — retrying in ${next}s, `
     + `attempt ${wait.attempt}, about ${spent} of ${total} min of waiting spent`;
 }
@@ -423,12 +539,13 @@ export async function sparqlQuery(
   options: SparqlOptions = {},
 ): Promise<SparqlBinding[]> {
   const { retries = SPARQL_MAX_RETRIES, onWait, isCancelled } = options;
+  const budget = options.budget ?? new WaitBudget(SPARQL_WAIT_BUDGET_MS);
   return withRetries(
-    (attempt) => attemptSparqlOnce(query, attempt, retries, isCancelled),
+    (attempt) => attemptSparqlOnce(query, attempt, retries, { isCancelled, onWait, budget }),
     {
       logPrefix,
       retries,
-      budget: options.budget ?? new WaitBudget(SPARQL_WAIT_BUDGET_MS),
+      budget,
       isCancelled,
       onWait,
       classify: classifySparqlException,
