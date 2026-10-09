@@ -377,6 +377,15 @@ export const chooseViewsBodySchema = z.object({
 });
 
 /**
+ * The take-back of a confirmed component item (#1317) names the item the
+ * history showed, so a history read before another curator changed the point
+ * cannot take a different item off it.
+ */
+export const takeBackPointItemBodySchema = z.object({
+  item: z.string().regex(/^Q\d+$/),
+});
+
+/**
  * A curator's answer to the candidate Wikidata items of a site's components
  * (#1272): per candidate, confirmed or turned down. Bounded by what one site
  * can hold open — the largest serial sites have a few hundred points.

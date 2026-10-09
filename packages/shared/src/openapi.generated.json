@@ -12293,6 +12293,66 @@
         }
       }
     },
+    "/api/experiences/locations/{locationId}/take-back-item": {
+      "post": {
+        "operationId": "postExperiencesLocationsByLocationIdTakeBackItem",
+        "summary": "Take back the Wikidata item a curator confirmed for a component",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "locationId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TakeBackPointItemBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PointItemTakenBack"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/works/{treasureId}/edit": {
       "patch": {
         "operationId": "patchExperiencesByIdWorksByTreasureIdEdit",
@@ -17608,7 +17668,8 @@
               "merged",
               "merge_undone",
               "views_chosen",
-              "component_items_answered"
+              "component_items_answered",
+              "component_item_taken_back"
             ]
           },
           "region_id": {
@@ -17750,7 +17811,8 @@
               "merged",
               "merge_undone",
               "views_chosen",
-              "component_items_answered"
+              "component_items_answered",
+              "component_item_taken_back"
             ]
           },
           "created_at": {
@@ -24946,6 +25008,38 @@
         "additionalProperties": false,
         "description": "A world view whose regions the publication could not recompute."
       },
+      "PointItemTakenBack": {
+        "type": "object",
+        "properties": {
+          "locationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "item": {
+            "type": "string",
+            "description": "The Wikidata item taken off the point."
+          },
+          "cleared": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "image_url",
+                "description"
+              ]
+            },
+            "description": "What the confirmation had written with the item and came off with it; a field a curator claimed since stays."
+          }
+        },
+        "required": [
+          "locationId",
+          "item",
+          "cleared"
+        ],
+        "additionalProperties": false,
+        "description": "A confirmed component item taken back (#1317): the point has no item again, and the candidate stays turned down."
+      },
       "PointsDetail": {
         "type": "string",
         "enum": [
@@ -30131,6 +30225,18 @@
         ],
         "additionalProperties": false,
         "description": "A source's run as it stands: the figures of the run this server holds, a run another holds as its log row says, or the last run the database recorded."
+      },
+      "TakeBackPointItemBody": {
+        "type": "object",
+        "properties": {
+          "item": {
+            "type": "string",
+            "pattern": "^Q\\d+$"
+          }
+        },
+        "required": [
+          "item"
+        ]
       },
       "TokenUsage": {
         "type": "object",

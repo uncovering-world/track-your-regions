@@ -913,8 +913,9 @@ export interface ComponentItem {
  * whose World Heritage Site ID equals the point's reference, or none where no
  * item or more than one carries it. A point is matched by its reference, case
  * folded, among the points this run answers for; a claim on the item
- * ('wikidata_item' in the point's `curated_fields`), which no screen writes
- * yet, is never overridden.
+ * ('wikidata_item' in the point's `curated_fields`), which the component-items
+ * card's confirmation writes and its take-back clears (#1317), is never
+ * overridden.
  * Answers how many points changed.
  */
 export async function recordComponentItems(

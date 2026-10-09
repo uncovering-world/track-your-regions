@@ -360,6 +360,45 @@ export async function claimPointItem(
   return { pictured: result.rows[0]?.pictured === true };
 }
 
+/** A field a take-back clears beside the item: what the confirmation wrote with it. */
+export type ReleasedField = 'image_url' | 'description';
+
+/**
+ * Take the confirmed item off a point (#1317): the item and the claim on it
+ * go, and the picture with its credit and the description go where no curator
+ * has claimed the field — a point with no item has no run-written picture or
+ * description, so an unclaimed one is what the confirmation wrote. Answers
+ * which of the two came off.
+ */
+export async function releasePointItem(
+  client: PoolClient,
+  lock: LockedExperience,
+  locationId: number,
+): Promise<ReleasedField[]> {
+  const result = await client.query<{ picture_cleared: boolean; description_cleared: boolean }>(
+    `WITH before AS (
+       SELECT id, image_url, description, curated_fields FROM experience_locations
+        WHERE id = $1 AND experience_id = $2
+     )
+     UPDATE experience_locations el
+        SET wikidata_item = NULL,
+            curated_fields = el.curated_fields - 'wikidata_item',
+            image_url = CASE WHEN el.curated_fields ? 'image_url' THEN el.image_url ELSE NULL END,
+            metadata = CASE WHEN el.curated_fields ? 'image_url' THEN el.metadata ELSE el.metadata - 'imageCredit' END,
+            description = CASE WHEN el.curated_fields ? 'description' THEN el.description ELSE NULL END
+       FROM before b
+      WHERE el.id = b.id
+      RETURNING (b.image_url IS NOT NULL AND NOT b.curated_fields ? 'image_url') AS picture_cleared,
+                (b.description IS NOT NULL AND NOT b.curated_fields ? 'description') AS description_cleared`,
+    [locationId, lock.id],
+  );
+  const row = result.rows[0];
+  const cleared: ReleasedField[] = [];
+  if (row?.picture_cleared) cleared.push('image_url');
+  if (row?.description_cleared) cleared.push('description');
+  return cleared;
+}
+
 /**
  * Release the coordinate claim on the point the object's anchor was taken from,
  * together with the object's own (`accept-source` on `location`), and say which

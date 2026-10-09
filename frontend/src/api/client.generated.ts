@@ -2676,6 +2676,7 @@ export const CurationLogEntryAction = {
   merge_undone: 'merge_undone',
   views_chosen: 'views_chosen',
   component_items_answered: 'component_items_answered',
+  component_item_taken_back: 'component_item_taken_back',
 } as const;
 
 /**
@@ -2744,6 +2745,7 @@ export const CuratorActivityEntryAction = {
   merge_undone: 'merge_undone',
   views_chosen: 'views_chosen',
   component_items_answered: 'component_items_answered',
+  component_item_taken_back: 'component_item_taken_back',
 } as const;
 
 /**
@@ -6325,6 +6327,29 @@ export interface PlacementCount {
  */
 export type PlacementCounts = PlacementCount[];
 
+export type PointItemTakenBackClearedItem = typeof PointItemTakenBackClearedItem[keyof typeof PointItemTakenBackClearedItem];
+
+
+export const PointItemTakenBackClearedItem = {
+  image_url: 'image_url',
+  description: 'description',
+} as const;
+
+/**
+ * A confirmed component item taken back (#1317): the point has no item again, and the candidate stays turned down.
+ */
+export interface PointItemTakenBack {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  locationId: number;
+  /** The Wikidata item taken off the point. */
+  item: string;
+  /** What the confirmation had written with the item and came off with it; a field a curator claimed since stays. */
+  cleared: PointItemTakenBackClearedItem[];
+}
+
 /**
  * The tier asked for: `overview` is the heatmap's read, `markers` the pins'.
  */
@@ -8913,6 +8938,11 @@ export interface SyncStatus {
   lastSyncStatus?: SyncStatusLastSyncStatus;
   /** Sent with `lastSyncAt` when the source has run at all. */
   lastRun?: SyncLastRun;
+}
+
+export interface TakeBackPointItemBody {
+  /** @pattern ^Q\d+$ */
+  item: string;
 }
 
 export type TransferAcceptedTransferType = typeof TransferAcceptedTransferType[keyof typeof TransferAcceptedTransferType];
@@ -18088,6 +18118,46 @@ return apiFetch<LocationEditResult>(getPatchExperiencesLocationsByLocationIdEdit
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(editLocationBody)
+  }
+);}
+
+
+
+export const getPostExperiencesLocationsByLocationIdTakeBackItemUrl = (locationId: number,) => {
+
+
+
+
+  return `/api/experiences/locations/${encodeURIComponent(String(locationId))}/take-back-item`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Take back the Wikidata item a curator confirmed for a component
+ */
+export const postExperiencesLocationsByLocationIdTakeBackItem = async (locationId: number,
+    takeBackPointItemBody: TakeBackPointItemBody, options?: Parameters<typeof apiFetch>[1]): Promise<PointItemTakenBack> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<PointItemTakenBack>(getPostExperiencesLocationsByLocationIdTakeBackItemUrl(locationId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(takeBackPointItemBody)
   }
 );}
 
