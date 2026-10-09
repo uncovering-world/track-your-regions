@@ -332,3 +332,14 @@ export const ViewSuggestions = z.strictObject({
   })),
 }).describe("Jev's suggested answer to the sources card (#1260), per field it could answer; never applied.");
 export type ViewSuggestions = z.infer<typeof ViewSuggestions>;
+
+export const ComponentItemSuggestions = z.strictObject({
+  configured: z.boolean().describe('Whether this deployment asks Jev at all. False: no judgement, nothing else changes.'),
+  suggestions: z.array(z.strictObject({
+    proposalId: z.number().int().describe('The candidate judged.'),
+    judgement: z.enum(CHECK_VALUES.experience_component_item_suggestions.judgement)
+      .describe('`same`: the item is the component; `other`: another place.'),
+    confidence: z.number().describe('Its confidence, 0 to 1.'),
+  })),
+}).describe("Jev's judgement of the candidate items of a site's components (#1272), per candidate it could judge; never applied.");
+export type ComponentItemSuggestions = z.infer<typeof ComponentItemSuggestions>;

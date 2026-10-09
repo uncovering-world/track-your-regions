@@ -482,12 +482,24 @@ export const EqualItemMerges = z.strictObject({
 }).describe('Places that share a Wikidata item, merged into one place each (ADR-0046 decision 2).');
 export type EqualItemMerges = z.infer<typeof EqualItemMerges>;
 
+const JevQuestionUsage = z.strictObject({
+  question: z.enum(['views', 'componentItems']).describe(
+    'Which card asked: the sources card (#1260), or the component-items card (#1272).',
+  ),
+  calls: z.number().int().describe('Suggestions asked for: one call each on the sources card, one question each on the component-items card.'),
+  inputTokens: z.number().int(),
+  usd: z.number(),
+  compared: z.number().int().describe("Curators' answers for which Jev had suggested one for the same question."),
+  agreed: z.number().int().describe('Of those, the answers that took what Jev suggested.'),
+});
+
 export const JevUsage = z.strictObject({
   configured: z.boolean(),
-  calls: z.number().int().describe('Suggestions asked for, one call each.'),
+  calls: z.number().int().describe('Suggestions asked for, over both cards.'),
   inputTokens: z.number().int(),
   usd: z.number().describe('What the calls cost: Jev is priced per input token, output free.'),
-  compared: z.number().int().describe("A curator's choices of a source for which Jev had suggested an answer for the same views."),
-  agreed: z.number().int().describe('Of those, the choices that took the view Jev suggested.'),
-}).describe('What Jev has cost, and how often curators chose what it suggested (#1260).');
+  compared: z.number().int().describe("Curators' answers for which Jev had suggested one for the same question, over both cards."),
+  agreed: z.number().int().describe('Of those, the answers that took what Jev suggested.'),
+  byQuestion: z.array(JevQuestionUsage).describe('The same figures per card.'),
+}).describe('What Jev has cost, and how often curators chose what it suggested (#1260, #1272).');
 export type JevUsage = z.infer<typeof JevUsage>;

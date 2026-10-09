@@ -33,6 +33,7 @@ const MEMBERSHIP = /^experience_kind_memberships is written by its writer module
 const EXPERIENCE = /^experiences is written by its writer modules only/;
 const REGION = /^regions is written by its writer modules only/;
 const COMPONENT_ITEM = /^experience_component_item_proposals is written by its writer modules only/;
+const COMPONENT_ITEM_SUGGESTION = /^experience_component_item_suggestions is written by its writer module only/;
 
 const draws = async (code: string, file: string, message: RegExp) =>
   (await reported(code, file)).some(m => message.test(m));
@@ -76,6 +77,9 @@ describe('the curation gate lint rules', () => {
     ['a candidate item answered by a handler', COMPONENT_ITEM,
       "export const q = `UPDATE experience_component_item_proposals SET answer = 'accepted' WHERE id = $1`;\n",
       'src/controllers/experience/componentItemController.ts'],
+    ["Jev's judgement of a candidate recorded by a handler", COMPONENT_ITEM_SUGGESTION,
+      'export const q = `INSERT INTO experience_component_item_suggestions (location_id) VALUES ($1)`;\n',
+      'src/controllers/experience/componentItemSuggestionController.ts'],
   ])('refuses a write to a gate table outside its writers: %s', async (_, message, code, file) => {
     expect(await draws(code, file, message)).toBe(true);
   });
@@ -96,6 +100,9 @@ describe('the curation gate lint rules', () => {
     ['the curator\'s answer to a candidate item', COMPONENT_ITEM,
       "export const q = `UPDATE experience_component_item_proposals SET answer = 'refused' WHERE id = $1`;\n",
       'src/controllers/experience/componentItemAnswers.ts'],
+    ["the writer of Jev's judgement of a candidate", COMPONENT_ITEM_SUGGESTION,
+      'export const q = `INSERT INTO experience_component_item_suggestions (location_id) VALUES ($1)`;\n',
+      'src/controllers/experience/componentItemSuggestions.ts'],
     ['the curator\'s membership writer', MEMBERSHIP,
       MEMBERSHIPS_IMPORT + 'export const q = `UPDATE ${MEMBERSHIPS} m SET admission = $2 WHERE m.id = $1`;\n',
       'src/controllers/experience/membershipWriter.ts'],
