@@ -35,14 +35,15 @@ describe('searchPlaces', () => {
   });
 
   it('answers 500 with its own message when Nominatim cannot be reached', async () => {
+    // Each spec asks its own question: the same one would be answered from the cache.
     fetchMock.mockRejectedValueOnce(new Error('socket hang up'));
-    await expect(search({ q: 'Kazan Kremlin' }))
+    await expect(search({ q: 'Söyembikä Tower' }))
       .rejects.toMatchObject({ statusCode: 500, message: 'Geocode search failed' });
   });
 
   it("passes Nominatim's refusal on with its status", async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 429, json: () => Promise.resolve([]) });
-    await expect(search({ q: 'Kazan Kremlin' }))
+    await expect(search({ q: 'Qolşärif Mosque' }))
       .rejects.toMatchObject({ statusCode: 429, message: 'Nominatim request failed' });
   });
 });

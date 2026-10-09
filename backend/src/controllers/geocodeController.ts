@@ -2,9 +2,10 @@
  * Geocode Controller — Proxies to Nominatim for place search,
  * and provides Wikidata image suggestion for experience creation.
  *
- * Nominatim usage policy requires:
- * - Custom User-Agent header
- * - Max 1 request per second
+ * Nominatim is asked through `services/nominatim.ts`, which holds its usage
+ * policy for the whole process: one request a second, answers cached, no
+ * retry after a refusal. The search is started by an explicit action on the
+ * screen, never as the curator types: the policy forbids auto-complete.
  */
 
 import type { z } from 'zod/v4';
@@ -12,6 +13,7 @@ import type { ImageSuggestion, PlaceSearch } from '../api/responses/geocode.js';
 import { badRequest, failure, notFound } from '../middleware/errorHandler.js';
 import type { geocodeSearchQuerySchema, suggestImageQuerySchema } from '../types/index.js';
 import { userAgent } from '../config/userAgent.js';
+import { NominatimError, searchNominatim } from '../services/nominatim.js';
 
 // No bot marker: both lookups here run while a curator waits on the dialog.
 const USER_AGENT = userAgent();
@@ -25,13 +27,10 @@ const WIKIDATA_ENDPOINT = 'https://query.wikidata.org/sparql';
  *
  * The image lookup gets the longer one because it is up to three layers deep and a
  * curator has asked for it and knows they are waiting; place search is one request
- * under someone's typing, where ten seconds is already past useful.
+ * a curator asked for and is waiting on, where ten seconds is already past useful.
  */
 const IMAGE_LOOKUP_TIMEOUT_MS = 20000;
 const PLACE_SEARCH_TIMEOUT_MS = 10000;
-
-// Simple in-memory rate limiter: track last request timestamp
-let lastRequestTime = 0;
 
 function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -40,61 +39,25 @@ function delay(ms: number): Promise<void> {
 export async function searchPlaces(
   { query: { q, limit } }: { query: z.output<typeof geocodeSearchQuerySchema> },
 ): Promise<PlaceSearch> {
-  // Enforce 1 request/second rate limit
-  const now = Date.now();
-  const elapsed = now - lastRequestTime;
-  if (elapsed < 1000) {
-    await new Promise((resolve) => setTimeout(resolve, 1000 - elapsed));
-  }
-  lastRequestTime = Date.now();
-
-  let response: globalThis.Response;
+  let places;
   try {
-    const url = new URL('https://nominatim.openstreetmap.org/search');
-    url.searchParams.set('q', q);
-    url.searchParams.set('format', 'json');
-    url.searchParams.set('limit', String(limit));
-    url.searchParams.set('addressdetails', '0');
-    url.searchParams.set('extratags', '1');
-
-    response = await fetch(url.toString(), {
-      headers: {
-        'User-Agent': USER_AGENT,
-        'Accept': 'application/json',
-      },
-      signal: AbortSignal.timeout(PLACE_SEARCH_TIMEOUT_MS),
+    places = await searchNominatim(q, {
+      limit, extratags: true, userAgent: USER_AGENT, signal: AbortSignal.timeout(PLACE_SEARCH_TIMEOUT_MS),
     });
   } catch (error) {
+    if (error instanceof NominatimError) throw failure('Nominatim request failed', error.status);
     console.error('Nominatim search error:', error);
     throw failure('Geocode search failed', 500);
   }
-
-  if (!response.ok) {
-    throw failure('Nominatim request failed', response.status);
-  }
-
-  try {
-    const data = await response.json() as Array<{
-      display_name: string;
-      lat: string;
-      lon: string;
-      type: string;
-      extratags?: Record<string, string>;
-    }>;
-
-    return {
-      results: data.map((item) => ({
-        display_name: item.display_name,
-        lat: parseFloat(item.lat),
-        lng: parseFloat(item.lon),
-        type: item.type,
-        wikidataId: item.extratags?.wikidata ?? null,
-      })),
-    };
-  } catch (error) {
-    console.error('Nominatim search error:', error);
-    throw failure('Geocode search failed', 500);
-  }
+  return {
+    results: places.map((item) => ({
+      display_name: item.display_name,
+      lat: parseFloat(item.lat),
+      lng: parseFloat(item.lon),
+      type: item.type ?? '',
+      wikidataId: item.extratags?.wikidata ?? null,
+    })),
+  };
 }
 
 // ---------------------------------------------------------------------------
