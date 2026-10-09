@@ -74,6 +74,12 @@ const KIND_OPTIONS: Array<{ key: string; label: string; short: string; swatch: s
     short: 'gone from the source',
     swatch: KIND_COLOR.missing,
   },
+  {
+    key: 'component-items',
+    label: 'Components with candidate Wikidata items',
+    short: 'candidate items',
+    swatch: KIND_COLOR['component-items'],
+  },
 ];
 
 /** What the question chip says once a kind is picked: its short word, never the API's. */
@@ -97,7 +103,7 @@ export function sourceOptions(facets: QueueFacets | undefined, picked: number[])
 }
 
 /**
- * The seven questions, counted. Empty until the facets arrive: a chip that
+ * The questions `KIND_OPTIONS` offers, counted. Empty until the facets arrive: a chip that
  * showed zeros before the first answer would be claiming a number nobody gave
  * it.
  */

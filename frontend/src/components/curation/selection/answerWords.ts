@@ -6,7 +6,7 @@
  * proposal has two answers — accept it or reject it — whatever the kind. The
  * cards keep the verbs they had, because each names the *consequence* ("The
  * rule was wrong — put it back"), and a batch offering two bare words over
- * seven kinds would be asking a curator to translate. So the bar and the
+ * every kind would be asking a curator to translate. So the bar and the
  * summary quote these, per kind. The single-row cards mostly say the same —
  * a refusal's put-back adds "until the next run", since the card's answer is
  * kept by every later run and a batch's is not (ADR-0067) — except the gated
@@ -36,7 +36,7 @@ export interface AnswerableRow {
 }
 
 export type AnswerableKind =
-  | 'arrival' | 'held' | 'contents' | 'conflicts' | 'sources' | 'refused' | 'missing' | 'withdrawn';
+  | 'arrival' | 'held' | 'contents' | 'conflicts' | 'sources' | 'refused' | 'missing' | 'withdrawn' | 'component-items';
 
 export interface AnswerWords {
   /** What the row proposes, as the bar's expansion states it. */
@@ -95,6 +95,13 @@ export const ANSWER_WORDS: Record<AnswerableKind, AnswerWords> = {
     reject: 'False alarm — they stay',
     lost: 'They no longer exist',
   },
+  // A batch confirms only the candidates that are the same name at the same
+  // spot (#1272); the rest is judged on the card, candidate by candidate.
+  'component-items': {
+    proposes: 'name the Wikidata item each component is',
+    accept: 'Confirm the exact matches — the same name at the same spot',
+    reject: 'Not these — turn every candidate down',
+  },
 };
 
 /** The plural noun the bar counts a kind by. */
@@ -107,6 +114,7 @@ export const KIND_NOUN: Record<AnswerableKind, [string, string]> = {
   refused: ['refusal', 'refusals'],
   missing: ['object gone from the source', 'objects gone from the source'],
   withdrawn: ['object with lost places', 'objects with lost places'],
+  'component-items': ['site with candidate items', 'sites with candidate items'],
 };
 
 /**

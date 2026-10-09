@@ -2,7 +2,7 @@
  * The review queue as the page reads it: one list, asked for under an address.
  *
  * Everything the endpoint answers arrives through here, and it is two paging models rather
- * than one (ADR-0051 decision 2). The seven open kinds are a single keyset-paged union —
+ * than one (ADR-0051 decision 2). The open kinds (`QUEUE_KINDS`) are a single keyset-paged union —
  * `useInfiniteQuery` over `paging.nextCursor`, the pages flattened through `queueRows` in
  * the order they arrived, so *Show more* appends rather than replaces. `keptOut` and
  * `answeredWithdrawals` are not open questions at all: they carry no date to order that
