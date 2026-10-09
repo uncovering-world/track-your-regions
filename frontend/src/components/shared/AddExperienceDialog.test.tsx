@@ -123,6 +123,7 @@ describe('AddExperienceDialog create', () => {
  */
 describe('a draft kept across a close', () => {
   const mockedSearch = searchPlaces as unknown as ReturnType<typeof vi.fn>;
+  beforeEach(() => { mockedSearch.mockClear(); });
   const JAM = { lat: 34.3964, lng: 64.5161, display_name: 'Minaret of Jam, Ghor, Afghanistan' };
   const BAMIYAN = { lat: 34.8318, lng: 67.8273, display_name: 'Buddhas of Bamiyan, Bamyan, Afghanistan' };
 
@@ -202,18 +203,68 @@ describe('a draft kept across a close', () => {
     expect(await typeSelect()).toHaveTextContent('Cultural');
   });
 
-  it('moves a pin auto-fill placed when the name is replaced after reopening', async () => {
+  it('looks a place up only when asked, never as the name is typed', async () => {
+    renderKept(1);
+
+    fireEvent.change(nameBox(), { target: { value: 'Minaret of Jam' } });
+    await new Promise((resolve) => { setTimeout(resolve, 1000); });
+    expect(mockedSearch).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(nameBox(), { key: 'Enter' });
+    await waitFor(() => expect(mockedSearch).toHaveBeenCalledTimes(1));
+  });
+
+  it('drops a lookup still running when the name changes under it', async () => {
+    let answer!: (places: typeof JAM[]) => void;
+    mockedSearch.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+    renderKept(1);
+
+    fireEvent.change(nameBox(), { target: { value: 'Minaret of Jam' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
+    await waitFor(() => expect(mockedSearch).toHaveBeenCalledTimes(1));
+    fireEvent.change(nameBox(), { target: { value: 'Buddhas of Bamiyan' } });
+    answer([JAM]);
+
+    await new Promise((resolve) => { setTimeout(resolve, 50); });
+    expect(screen.queryByText(/Minaret of Jam, Ghor/)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Look up' })).not.toBeDisabled();
+    mockedSearch.mockImplementation(async () => []);
+  });
+
+  it("looks up again without moving a pin the curator placed since", async () => {
+    mockedSearch.mockImplementation(async (query: string) => [query.startsWith('Minaret') ? JAM : BAMIYAN]);
+    mockedCreate.mockResolvedValue({ id: 902 });
+    pin = { lat: 34.3967, lng: 64.5158 };
+    renderKept(1);
+
+    fireEvent.change(nameBox(), { target: { value: 'Minaret of Jam' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
+    await waitFor(() => expect(mockedSearch).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Drop pin' }));
+    fireEvent.change(nameBox(), { target: { value: 'Buddhas of Bamiyan' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Look up again' }));
+    await waitFor(() => expect(mockedSearch).toHaveBeenCalledTimes(2));
+    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
+    expect(mockedCreate.mock.calls[0][0]).toMatchObject({ latitude: pin.lat, longitude: pin.lng });
+    mockedSearch.mockImplementation(async () => []);
+  });
+
+  it('moves a pin a lookup placed when the name is replaced after reopening', async () => {
     mockedSearch.mockImplementation(async (query: string) => [query.startsWith('Minaret') ? JAM : BAMIYAN]);
     mockedCreate.mockResolvedValue({ id: 901 });
     const { closeAndReopen } = renderKept(1);
 
     fireEvent.change(nameBox(), { target: { value: 'Minaret of Jam' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
     await waitFor(() => expect(mockedSearch).toHaveBeenCalledTimes(1));
     closeAndReopen();
 
-    // Replaced by clearing it first, which is what lets auto-fill run again.
+    // Replaced by clearing it first, which forgets the last lookup.
     fireEvent.change(nameBox(), { target: { value: '' } });
     fireEvent.change(nameBox(), { target: { value: 'Buddhas of Bamiyan' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
     await waitFor(() => expect(mockedSearch).toHaveBeenCalledTimes(2));
     fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
 

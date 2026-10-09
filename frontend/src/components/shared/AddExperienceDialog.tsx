@@ -5,11 +5,13 @@
  *   1. Create New — create a new manual experience with auto-fill from Wikidata
  *   2. Search & Add — search existing experiences by name, assign to region
  *
- * Auto-fill: when the curator types a name (3+ chars, debounced), the system
- * automatically looks up coordinates (Nominatim), image, and description
- * (Wikidata) — but only ONCE. After the first successful lookup, the name
- * can be freely edited without re-triggering. A "Re-lookup" link lets the
- * curator explicitly re-search when needed (e.g. typed the wrong name).
+ * Auto-fill: once the curator has typed a name (3+ chars), *Look up* (the
+ * button beside it, or Enter in the field) finds its coordinates (Nominatim),
+ * image and description (Wikidata), filling the fields that are empty. It
+ * never runs as the curator types: Nominatim's usage policy forbids
+ * auto-complete over its API, and a lookup fired by a pause in typing searched
+ * a half-typed name. Pressed again (*Look up again*), it overwrites what an
+ * earlier lookup filled in.
  *
  * Used from both Map mode (ExperienceList) and Discover mode
  * (DiscoverExperienceView).
@@ -95,9 +97,22 @@ function describedBy(error: string | undefined, id: string) {
   return { 'aria-describedby': error ? id : undefined };
 }
 
+/** The name field's *Look up*: a spinner while it runs, *Look up again* once it has. */
+function LookUpButton({ loading, looked, disabled, onClick }: {
+  loading: boolean; looked: boolean; disabled: boolean; onClick: () => void;
+}) {
+  let label: React.ReactNode = looked ? 'Look up again' : 'Look up';
+  if (loading) label = <CircularProgress size={16} />;
+  return (
+    <Button size="small" onClick={onClick} disabled={disabled} sx={{ whiteSpace: 'nowrap', flexShrink: 0 }}>
+      {label}
+    </Button>
+  );
+}
+
 function nameHelperText(loading: boolean, name: string): string | undefined {
   if (loading) return ' '; // Reserve space so layout doesn't jump
-  if (name.length >= 1 && name.length < 3) return 'Type 3+ characters to auto-fill';
+  if (name.length >= 1 && name.length < 3) return 'Type 3+ characters to look the place up';
   return undefined;
 }
 
@@ -242,7 +257,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
   const descAutoFilled = useRef(false);
   const linkAutoFilled = useRef(false);
   const autoFillGen = useRef(0); // Generation counter for race conditions
-  const autoFillDone = useRef(false); // Lock: once true, name edits don't re-trigger
+  const autoFillDone = useRef(false); // A lookup has run: the next one overwrites what it filled
 
   // Refs for reading current values inside async effects without stale closures
   const stateRef = useRef({ values: form.values, wikidataId, regionName });
@@ -278,7 +293,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     onSuccess: applySuggestion,
   });
 
-  // --- Core lookup logic (used by both auto-fill and Re-lookup) ---
+  // --- Core lookup logic, run by Look up ---
   // Reads from stateRef to always have current values regardless of closures.
 
   // Apply Nominatim geocode result to local state. Returns the *effective*
@@ -351,35 +366,25 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     }
   };
 
-  // Keep performLookup accessible via ref for the Re-lookup button
-  const performLookupRef = useRef(performLookup);
-  performLookupRef.current = performLookup;
-
-  // --- Auto-fill effect: fires once, then locks ---
+  // --- A changed name drops a lookup still running; a cleared one forgets the last ---
   useEffect(() => {
-    if (name.length < 3) {
-      setAutoFillInfo(null);
-      setAutoFillEntity(null);
-      autoFillDone.current = false; // Reset lock when name is cleared
-      return;
-    }
-
-    // Skip if auto-fill already ran — curator can use "Re-lookup" to re-trigger
-    if (autoFillDone.current) return;
-
-    const timer = setTimeout(() => performLookupRef.current(), 800);
-    return () => clearTimeout(timer);
+    // The answer on its way is about the name it was asked for, not this one.
+    autoFillGen.current++;
+    setAutoFillLoading(false);
+    if (name.length >= 3) return;
+    setAutoFillInfo(null);
+    setAutoFillEntity(null);
+    autoFillDone.current = false;
   }, [name]);
 
-  // --- Explicit re-lookup (for when curator changed the name after initial auto-fill) ---
-  const handleRelookup = () => {
-    autoFillDone.current = false;
-    // Allow auto-fill to overwrite all fields since curator explicitly requested
-    coordsAutoFilled.current = true;
-    imageAutoFilled.current = true;
-    descAutoFilled.current = true;
-    linkAutoFilled.current = true;
-    performLookupRef.current();
+  // --- Look up, on the button or Enter: never as the curator types ---
+  const canLookUp = name.trim().length >= 3 && !autoFillLoading;
+  const handleLookup = () => {
+    if (name.trim().length < 3 || autoFillLoading) return;
+    // Asked again, a lookup replaces only what an earlier one filled in: the
+    // *AutoFilled refs say which fields those are, and a field the curator set
+    // since — a pin moved, a picture pasted — stays theirs.
+    void performLookup();
   };
 
   // --- Manual change handlers (mark fields as manually set) ---
@@ -470,9 +475,14 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
                 required
                 fullWidth
                 autoFocus
+                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleLookup(); } }}
                 slotProps={{
                   input: {
-                    endAdornment: autoFillLoading ? <CircularProgress size={16} /> : null,
+                    endAdornment: (
+                      <LookUpButton
+                        loading={autoFillLoading} looked={autoFillDone.current} disabled={!canLookUp} onClick={handleLookup}
+                      />
+                    ),
                   },
                 }}
               />
@@ -494,24 +504,6 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
                       ? <>Matched: <strong>{autoFillEntity.label}</strong> ({autoFillEntity.wikidataId})</>
                       : <>Found: {autoFillInfo}</>
                     }
-                  </Typography>
-                  <Typography
-                    variant="caption"
-                    component="span"
-                    role="button"
-                    tabIndex={0}
-                    onClick={handleRelookup}
-                    onKeyDown={(e) => { if (e.key === 'Enter') handleRelookup(); }}
-                    sx={{
-                      cursor: 'pointer',
-                      textDecoration: 'underline',
-                      color: 'primary.main',
-                      fontWeight: 600,
-                      whiteSpace: 'nowrap',
-                      flexShrink: 0,
-                    }}
-                  >
-                    Re-lookup
                   </Typography>
                 </Box>
               )}
