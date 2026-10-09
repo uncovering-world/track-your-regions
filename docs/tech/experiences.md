@@ -1078,16 +1078,41 @@ path needs.
   asks Wikidata by two rules, each a reason the curator reads on the card:
   - **part of the site** (`part_of`) — an item that says it is part of one of the site's own items
     (P361) and carries no World Heritage reference of its own, within 2 km of the point with a
-    name trigram-similar at 0.3 or more, or within 150 m whatever its name;
+    name trigram-similar at 0.3 or more, or at the same spot — within 25 m — whatever its name
+    (`PART_SAME_SPOT_M`: Voislova's component is named after its railway halt and its item is
+    the fort of Pons Augusti at 0 m, while the 1901 exhibition grounds of Mathildenhöhe are not
+    their Wedding Tower 78 m off);
   - **near, of the site's kind** (`near`) — an item within 500 m with a similar name, of a class
     (P31) the site's resolved components are of, or for a site with none resolved, of a class the
     resolved components of at least five sites across the catalogue are of — counted by site, so
     one site of four hundred rock-art shelters does not decide it for the rest. A settlement is a candidate only
     for a site whose own components include settlements: a fort named after a village is not the
-    village.
+    village. Which items and classes are settlements is the class tree's answer, asked of QLever
+    (`settlementsAmong`): an item with a class under *human settlement* that is not itself under
+    *fortification* or *archaeological site*, judged class by class — a castrum is filed under all
+    three and is no settlement, while Tarentum is a *city* beside being a *polis*, which is a dig,
+    and a city is what the rule sets aside. A list of classes could not keep up: Passau's old town
+    is an *Altstadt*, a class no list named, and it was offered for Passau's fort until the tree
+    was asked. It is decided before the best candidate is chosen, so a town set aside gives way to
+    the next candidate; a settlement question QLever cannot answer leaves those points unanswered
+    rather than ending the pass — the one about the candidates leaves theirs, and the one about
+    the catalogue-wide classes leaves every point of a site with no resolved components, since
+    such a site has no classes to search by without it (`catalogueSettlementKinds`). The rule is as good as Wikidata's classes: measured on the 163
+    near proposals of 2026-10-09 it sets aside five, and beside Tarentum it loses the Temple of
+    Karnak, which somebody filed as a *city*, and the collegiate church of Ziortza, a *Trappist
+    monastery* — a class under *human settlement*. A component thereby left without a candidate
+    is where it was before the search; the cost is accepted over a rule that keeps Tarentum.
+
+  Not every point is searched. A component that stands for its whole site — the only standing
+  point of a site of one, or a point named exactly like its site, folded (`standsForWholeSite`;
+  "Historic Centre of Siena (Cathedral)" is a part, not the site) — is the site's own item
+  (ADR-0088), which carries the site's reference and is never a candidate, and anything near it
+  is a building inside; such points are skipped, counted, and their open proposals from an
+  earlier pass cleared. A label's trailing qualifier is dropped before names are compared
+  ("Dům čp. 7 (Žatec)" names a house, not the component named after the town).
 
   An item of the same name, folded, is taken farther off: one of the site's parts up to 5 km (a
-  beach, a road, a park), a near item up to 2 km. Within 50 m such a match is marked `exact`. The thresholds come from the components that
+  beach, a road, a park), a near item up to 1 km. Within 50 m such a match is marked `exact`. The thresholds come from the components that
   already resolve by their reference, measured on 2026-10-09: the item lies within 25 m of the
   point at the median and 1.8 km at the 90th percentile, and its best label is similar at 0.89 at
   the median and 0.22 at the 10th percentile. An item already recorded on any point is never
@@ -1098,12 +1123,17 @@ path needs.
   The query service is asked for identifiers, coordinates and classes only, and each query takes
   its turn like every other (§ SPARQL reliability). Asked for every label in every language as
   well, a site item with a few thousand parts made one query heavy enough to earn a 429 on
-  2026-10-09. The near rule asks about points in cells of 0.25°, four cells to a query joined by
-  `UNION`, with the optimizer told to keep the order as written, since left to itself it starts
-  from the classes and times out. The labels are read from Wikidata's own API (`wbgetentities`,
+  2026-10-09. The near rule is not asked of the query service at all: a pass paced at its own
+  published rate still drew a 429 by its 500th of 1,292 areas, so it asks Wikidata on QLever's
+  mirror instead (`qleverWikidata.ts`, register record `docs/sources/global/wikidata-qlever.md`),
+  one question at a time across the process, each held back as long as the last took. It groups
+  points in cells of 0.25°, 25 cells to a question, each cell a filter on the item's latitude and
+  longitude (`boxFilter`, which takes the other side of the antimeridian for a box that runs past
+  it); the mirror answers such a question in under a second. The lasting route is a local subset
+  of the Wikidata dump (#1312). The labels are read from Wikidata's own API (`wbgetentities`,
   `labelsOf`), fifty items a request, one request at a time, and only for the candidates within
-  reach: 5 km of a point for a part, 2 km for a near item. A part or box query the service cannot
-  answer in its minute is tried once more, then asked again smaller: a batch of sites in halves,
+  reach: 5 km of a point for a part, 1 km for a near item. A part or box question the service or
+  the mirror cannot answer is tried once more, then asked again smaller: a batch of sites in halves,
   a group of cells one cell at a time. A site or a cell it cannot answer even alone is left out
   and counted on the job's closing sentence, rather than ending the pass, and its points keep
   what an earlier pass proposed for them. Only a 5xx, a timeout or a dropped connection is split
