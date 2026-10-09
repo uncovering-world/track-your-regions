@@ -11,10 +11,12 @@ vi.mock('./wikidataUtils.js', async (importOriginal) => ({
   sparqlQuery: vi.fn(),
 }));
 vi.mock('./qleverWikidata.js', () => ({ qleverWikidataQuery: vi.fn() }));
+vi.mock('./wikipediaCategories.js', () => ({ askWikipediaOnce: vi.fn() }));
 
 const { sparqlQuery, SparqlUnanswered, WaitBudget } = await import('./wikidataUtils.js');
-const { boxFilter, itemsInBoxes, partsOfSites } = await import('./componentItemQueries.js');
+const { boxFilter, contentsOf, itemsInBoxes, partsOfSites } = await import('./componentItemQueries.js');
 const { qleverWikidataQuery } = await import('./qleverWikidata.js');
+const { askWikipediaOnce } = await import('./wikipediaCategories.js');
 
 const asked = vi.mocked(sparqlQuery);
 const hooks = () => ({ budget: new WaitBudget(1000) });
@@ -85,5 +87,38 @@ describe('boxFilter', () => {
   it('is one range for a box that does not', () => {
     expect(boxFilter({ south: 46.8, west: 22.8, north: 46.9, east: 22.9 }))
       .toBe('(?lat >= 46.8 && ?lat <= 46.9 && (?lon >= 22.8 && ?lon <= 22.9))');
+  });
+});
+
+describe('contentsOf', () => {
+  it("reads each confirmed item's first picture by its address and its English description, skipping a deprecated statement", async () => {
+    vi.mocked(askWikipediaOnce).mockResolvedValue({
+      entities: {
+        Q98501: {
+          descriptions: { en: { value: 'Roman fort in Cluj County, Romania' } },
+          claims: {
+            P18: [
+              { rank: 'normal', mainsnak: { datavalue: { value: 'Castrul roman (Bologa) 2.jpg' } } },
+              { rank: 'deprecated', mainsnak: { datavalue: { value: 'A wrong file.jpg' } } },
+              { rank: 'normal', mainsnak: { datavalue: { value: 'Castrul roman (Bologa) 1.jpg' } } },
+            ],
+          },
+        },
+        Q98502: { claims: {} },
+      },
+    } as never);
+
+    const contents = await contentsOf(['Q98501', 'Q98502'], hooks());
+
+    expect(vi.mocked(askWikipediaOnce).mock.calls[0][0]).toMatchObject({
+      action: 'wbgetentities', ids: 'Q98501|Q98502', props: 'claims|descriptions', languages: 'en',
+    });
+    // The query service's spelling of a file: a space as %20, a parenthesis as %28,
+    // so the picture is the same address the run stores for the same file.
+    expect(contents.get('Q98501')).toEqual({
+      image: 'http://commons.wikimedia.org/wiki/Special:FilePath/Castrul%20roman%20%28Bologa%29%201.jpg',
+      description: 'Roman fort in Cluj County, Romania',
+    });
+    expect(contents.get('Q98502')).toEqual({ image: null, description: null });
   });
 });

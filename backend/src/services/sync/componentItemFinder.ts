@@ -285,14 +285,21 @@ async function writeProposals(locationIds: readonly number[], matches: readonly 
       `DELETE FROM experience_component_item_proposals WHERE answer IS NULL AND location_id = ANY($1::int[])`,
       [locationIds],
     );
+    // With the item's coordinate nearest the point, so the card can show the
+    // candidate beside the component; none where the item states no coordinate.
     await client.query(
       `INSERT INTO experience_component_item_proposals
-              (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
-       SELECT * FROM unnest($1::int[], $2::text[], $3::text[], $4::int[], $5::real[], $6::bool[], $7::text[])
+              (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis, item_location)
+       SELECT m.location_id, m.item, m.label, m.distance_m, m.similarity, m.exact, m.basis,
+              CASE WHEN m.lon IS NULL THEN NULL ELSE ST_SetSRID(ST_MakePoint(m.lon, m.lat), 4326) END
+         FROM unnest($1::int[], $2::text[], $3::text[], $4::int[], $5::real[], $6::bool[], $7::text[],
+                     $8::float8[], $9::float8[])
+              AS m(location_id, item, label, distance_m, similarity, exact, basis, lon, lat)
        ON CONFLICT (location_id, wikidata_item) DO NOTHING`,
       [
         matches.map(m => m.locationId), matches.map(m => m.item), matches.map(m => m.label),
         matches.map(m => m.distanceM), matches.map(m => m.similarity), matches.map(m => m.exact), matches.map(m => m.basis),
+        matches.map(m => m.itemLon), matches.map(m => m.itemLat),
       ],
     );
     await client.query('COMMIT');

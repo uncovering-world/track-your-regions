@@ -90,12 +90,25 @@ describe('queryQueueKeys', () => {
 
   it('carries the scope filter into every branch of the union', async () => {
     await queryQueueKeys(base);
-    // Nine: conflict, two sources (#1246), arrival, held, contents, withdrawn,
-    // refused, and the two missing branches — the place's, and one kind's
-    // (#1264). The scope CTE's own join reads `r.parent_region_id = s.id`, so it
-    // is not counted here, and dropping the predicate from one branch fails this.
+    // Ten: conflict, two sources (#1246), arrival, held, contents, withdrawn,
+    // refused, the two missing branches — the place's, and one kind's
+    // (#1264) — and component items (#1272). The scope CTE's own join reads
+    // `r.parent_region_id = s.id`, so it is not counted here, and dropping the
+    // predicate from one branch fails this.
     expect(lastCall()[0].match(/JOIN curator_scoped_regions s ON s\.id = er\.region_id/g))
-      .toHaveLength(9);
+      .toHaveLength(10);
+  });
+
+  it('dates a site\'s candidate items by the newest proposal and files them under no run (#1272)', async () => {
+    await queryQueueKeys(base);
+    const [sql] = lastCall();
+    const items = between(sql, "SELECT 'component-items'", ', searched AS (');
+    expect(items).toContain('max(p.proposed_at)');
+    expect(items).toContain('array_agg(DISTINCT m.source_id), NULL');
+    // The site's own lifecycle guards and the open-candidate rule, both from
+    // the predicates module the card reads.
+    expect(items).toContain("NOT (el.curated_fields ? 'wikidata_item')");
+    expect(items).toContain('taken.wikidata_item = p.wikidata_item');
   });
 
   it('asks a waiting question of every membership of a place, in scope by its own source (#1264)', async () => {

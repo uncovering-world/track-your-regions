@@ -251,6 +251,26 @@ export const QuietField = z.strictObject({
 });
 export type QuietField = z.infer<typeof QuietField>;
 
+export const ComponentItemProposal = z.strictObject({
+  proposalId: z.number().int().describe('What an answer names.'),
+  locationId: z.number().int(),
+  pointName: z.string().nullable(),
+  pointRef: z.string().nullable().describe("The component's reference in the source's list, which no item records."),
+  latitude: z.number().nullable(),
+  longitude: z.number().nullable(),
+  item: z.string().describe('The candidate, a Wikidata item id.'),
+  label: z.string().describe("The item's label most like the component's name."),
+  distanceM: z.number().int().describe('Metres from the point to the nearest coordinate the item states; -1 where it states none.'),
+  similarity: z.number().describe('How alike the names are, 0 to 1.'),
+  exact: z.boolean().describe('The same name, folded, at the same spot: what a batch accept takes.'),
+  basis: z.enum(CHECK_VALUES.experience_component_item_proposals.basis)
+    .describe('The rule that found it: the item says it is part of the site, or lies near the point and is of its kind.'),
+  itemLatitude: z.number().nullable().describe('Where the item stands, nearest the point; null on a proposal that kept none.'),
+  itemLongitude: z.number().nullable(),
+  proposedAt: timestamp,
+}).describe('A candidate Wikidata item for a World Heritage component whose reference no item records (#1272).');
+export type ComponentItemProposal = z.infer<typeof ComponentItemProposal>;
+
 export const ReviewQueueItem = z.strictObject({
   id: z.number().int(),
   external_id: z.string(),
@@ -326,6 +346,10 @@ export const ReviewQueueItem = z.strictObject({
   source_views: z.array(SourceViewField).nullable().optional()
     .describe('The fields two data sources describe differently, each with every view of it. `sources` items only.'),
   quiet_fields: z.array(QuietField).optional().describe('The fields the `sources` card is not asking about, and why.'),
+  component_items: z.array(ComponentItemProposal).nullable().optional().describe(
+    "The candidate items of the site's components, the points in the source's order and the better candidate first"
+    + ' (#1272). `component-items` items only.',
+  ),
 }).describe('An object waiting on a curator, or one a curator can take a verdict back from.');
 export type ReviewQueueItem = z.infer<typeof ReviewQueueItem>;
 
@@ -373,6 +397,7 @@ export const ReviewQueue = z.strictObject({
   keptOut: z.array(ReviewQueueItem).describe('Refusals a curator confirmed, carried because no other surface shows them.'),
   conflicts: z.array(ReviewQueueItem),
   sources: z.array(ReviewQueueItem).describe('Places two data sources describe differently (#1246).'),
+  componentItems: z.array(ReviewQueueItem).describe('Serial sites whose components have candidate Wikidata items (#1272).'),
   arrivals: z.array(ReviewQueueItem),
   held: z.array(ReviewQueueItem),
   contents: z.array(ReviewQueueItem),
@@ -380,7 +405,7 @@ export const ReviewQueue = z.strictObject({
   answeredWithdrawals: z.array(ReviewQueueItem),
   refusedParts: z.array(ReviewQueueItem),
   limit: z.number().int(),
-  order: z.array(QueueOrderEntry).describe('The page, in the one order across all seven kinds. The arrays above are a lookup by id.'),
+  order: z.array(QueueOrderEntry).describe('The page, in the one order across every kind. The arrays above are a lookup by id.'),
   total: z.number().int(),
   facets: QueueFacets,
   paging: z.strictObject({
@@ -389,7 +414,7 @@ export const ReviewQueue = z.strictObject({
     keptOut: paged,
     answeredWithdrawals: paged,
     refusedParts: paged,
-  }).describe('The one cursor the seven open kinds share, beside the three offsets the answered lists page by.'),
+  }).describe('The one cursor the open kinds share, beside the three offsets the answered lists page by.'),
 }).describe("A page of the curator's review queue (ADR-0051).");
 export type ReviewQueue = z.infer<typeof ReviewQueue>;
 
@@ -410,6 +435,9 @@ export const ReviewAnswerDid = z.strictObject({
   ),
   points: z.number().int().optional().describe('Points answered, for a withdrawn row.'),
   pointsRefused: z.number().int().optional().describe('Points on the same row that refused the answer, for a withdrawn row.'),
+  items: z.number().int().optional().describe(
+    'Candidate items confirmed or turned down, for a component-items row (#1272): a batch accept takes the exact ones.',
+  ),
 }).describe('What one answer did, counted. The notice sums these per kind and answer.');
 export type ReviewAnswerDid = z.infer<typeof ReviewAnswerDid>;
 

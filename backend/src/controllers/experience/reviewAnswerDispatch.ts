@@ -17,6 +17,7 @@
  * | waiting, contents only | release the unread points and works | refuse them | — |
  * | conflict | take the source's value for every open field | keep ours for every open field | — |
  * | sources | refused: which source is chosen on the card | keep what the place shows for every open field | — |
+ * | component-items | confirm the exact candidates: the same name at the same spot | turn down every open candidate | — |
  * | refused | keep it out (confirm, unpinned) | put it back for now (override, unpinned; publishes an arrival) | — |
  * | missing | former: delisted, still there | the object stays: false alarm | no longer exists |
  * | missing, one kind (#1264) | no longer that kind (former, or out of the kind) | it stays in the kind | — |
@@ -31,6 +32,9 @@
  */
 
 import { chooseViewsUnderLock, keepingChoices } from './viewChoiceController.js';
+import {
+  answerComponentItemsUnderLock, candidateItems, openCandidates, readItemContents,
+} from './componentItemController.js';
 import { pool } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import { acceptSourceUnderLock } from './acceptSourceController.js';
@@ -96,6 +100,7 @@ export async function answerRow(
     case 'waiting': return answerWaiting(who, answer);
     case 'conflict': return answerConflict(who, answer);
     case 'sources': return answerSources(who, answer);
+    case 'component-items': return answerComponentItems(who, answer);
     case 'refused': return answerRefused(who, answer);
     case 'missing': return answerMissing(who, answer);
     case 'withdrawn': return answerWithdrawn(who, answer);
@@ -249,6 +254,32 @@ async function answerSources(who: Answerer, answer: Answer): Promise<Outcome> {
   const outcome = await chooseViewsUnderLock(experienceId, userId, logRegionId, choices, scopedSourceIds);
   if (outcome.refusal) return refusedBy(outcome.refusal);
   return { did: { fields: outcome.result!.fields.length } };
+}
+
+/**
+ * The candidate Wikidata items of a serial site's components (#1272). A batch
+ * confirms only the exact candidates — the same name at the same spot, which
+ * is what the product review allowed a batch to take — and turns every open
+ * one down; the rest is judged on the card, candidate by candidate. Through
+ * the card's own writer, with the items' contents read first as the card
+ * reads them.
+ */
+async function answerComponentItems(who: Answerer, answer: Answer): Promise<Outcome> {
+  const { experienceId, userId, logRegionId } = who;
+  const ids = await openCandidates(experienceId, answer === 'accept' ? 'exact' : 'all');
+  if (ids.length === 0) {
+    return answer === 'accept'
+      ? refused(409, 'No candidate here is the same name at the same spot — confirm on the site\'s card')
+      : refused(409, 'Already answered: this site has no candidate items waiting');
+  }
+  const verdict = answer === 'accept' ? 'accepted' : 'refused';
+  const answers = ids.map(proposalId => ({ proposalId, answer: verdict } as const));
+  const contents = answer === 'accept'
+    ? await readItemContents(await candidateItems(experienceId, ids))
+    : new Map();
+  const outcome = await answerComponentItemsUnderLock(experienceId, userId, logRegionId, answers, contents);
+  if (outcome.refusal) return refusedBy(outcome.refusal);
+  return { did: { items: outcome.result!.accepted + outcome.result!.refused } };
 }
 
 /**

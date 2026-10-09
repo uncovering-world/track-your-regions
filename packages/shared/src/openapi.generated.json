@@ -12663,6 +12663,66 @@
         }
       }
     },
+    "/api/experiences/{id}/component-items": {
+      "post": {
+        "operationId": "postExperiencesByIdComponentItems",
+        "summary": "Confirm or turn down the candidate Wikidata items proposed for a site's components",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerComponentItemsBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComponentItemsAnswered"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/view-suggestions": {
       "post": {
         "operationId": "postExperiencesByIdViewSuggestions",
@@ -14280,6 +14340,40 @@
         "minItems": 2,
         "maxItems": 2,
         "description": "The centre of the focus frame, [lng, lat]: where the camera goes for a frame that crosses the antimeridian."
+      },
+      "AnswerComponentItemsBody": {
+        "type": "object",
+        "properties": {
+          "answers": {
+            "minItems": 1,
+            "maxItems": 500,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "proposalId": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
+                },
+                "answer": {
+                  "type": "string",
+                  "enum": [
+                    "accepted",
+                    "refused"
+                  ]
+                }
+              },
+              "required": [
+                "proposalId",
+                "answer"
+              ]
+            }
+          }
+        },
+        "required": [
+          "answers"
+        ]
       },
       "AnsweredPoint": {
         "type": "object",
@@ -16146,6 +16240,114 @@
         "additionalProperties": false,
         "description": "What a colour-match run matched: each cluster's divisions and region, and the map of it."
       },
+      "ComponentItemProposal": {
+        "type": "object",
+        "properties": {
+          "proposalId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "What an answer names."
+          },
+          "locationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "pointName": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pointRef": {
+            "description": "The component's reference in the source's list, which no item records.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latitude": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "longitude": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "item": {
+            "type": "string",
+            "description": "The candidate, a Wikidata item id."
+          },
+          "label": {
+            "type": "string",
+            "description": "The item's label most like the component's name."
+          },
+          "distanceM": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Metres from the point to the nearest coordinate the item states; -1 where it states none."
+          },
+          "similarity": {
+            "type": "number",
+            "description": "How alike the names are, 0 to 1."
+          },
+          "exact": {
+            "type": "boolean",
+            "description": "The same name, folded, at the same spot: what a batch accept takes."
+          },
+          "basis": {
+            "type": "string",
+            "enum": [
+              "part_of",
+              "near"
+            ],
+            "description": "The rule that found it: the item says it is part of the site, or lies near the point and is of its kind."
+          },
+          "itemLatitude": {
+            "description": "Where the item stands, nearest the point; null on a proposal that kept none.",
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "itemLongitude": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "proposedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        },
+        "required": [
+          "proposalId",
+          "locationId",
+          "pointName",
+          "pointRef",
+          "latitude",
+          "longitude",
+          "item",
+          "label",
+          "distanceM",
+          "similarity",
+          "exact",
+          "basis",
+          "itemLatitude",
+          "itemLongitude",
+          "proposedAt"
+        ],
+        "additionalProperties": false,
+        "description": "A candidate Wikidata item for a World Heritage component whose reference no item records (#1272)."
+      },
       "ComponentItemSearchStarted": {
         "type": "object",
         "properties": {
@@ -16253,6 +16455,42 @@
         ],
         "additionalProperties": false,
         "description": "How a World Heritage run's components resolved to Wikidata items (#1269)."
+      },
+      "ComponentItemsAnswered": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "accepted": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Candidates confirmed: each point now carries its item as a curator's choice."
+          },
+          "refused": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Candidates turned down, never proposed again."
+          },
+          "pictured": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Of the confirmed, how many points took the item's picture, with its credit."
+          }
+        },
+        "required": [
+          "experienceId",
+          "accepted",
+          "refused",
+          "pictured"
+        ],
+        "additionalProperties": false,
+        "description": "A curator's answer to the candidate Wikidata items of a site's components (#1272)."
       },
       "ComputationCancelled": {
         "type": "object",
@@ -17272,7 +17510,8 @@
               "contents_unrefused",
               "merged",
               "merge_undone",
-              "views_chosen"
+              "views_chosen",
+              "component_items_answered"
             ]
           },
           "region_id": {
@@ -17413,7 +17652,8 @@
               "contents_unrefused",
               "merged",
               "merge_undone",
-              "views_chosen"
+              "views_chosen",
+              "component_items_answered"
             ]
           },
           "created_at": {
@@ -25111,6 +25351,7 @@
                     "withdrawn",
                     "refused",
                     "missing",
+                    "component-items",
                     "arrival",
                     "held",
                     "contents"
@@ -25282,7 +25523,8 @@
           "waiting",
           "withdrawn",
           "refused",
-          "missing"
+          "missing",
+          "component-items"
         ],
         "description": "The class of an open question, which a batch answer names a row by."
       },
@@ -26732,7 +26974,8 @@
                     "waiting",
                     "withdrawn",
                     "refused",
-                    "missing"
+                    "missing",
+                    "component-items"
                   ]
                 },
                 "id": {
@@ -26821,6 +27064,12 @@
           },
           "pointsRefused": {
             "description": "Points on the same row that refused the answer, for a withdrawn row.",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "items": {
+            "description": "Candidate items confirmed or turned down, for a component-items row (#1272): a batch accept takes the exact ones.",
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
@@ -27015,6 +27264,13 @@
             },
             "description": "Places two data sources describe differently (#1246)."
           },
+          "componentItems": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueItem"
+            },
+            "description": "Serial sites whose components have candidate Wikidata items (#1272)."
+          },
           "arrivals": {
             "type": "array",
             "items": {
@@ -27061,7 +27317,7 @@
             "items": {
               "$ref": "#/components/schemas/QueueOrderEntry"
             },
-            "description": "The page, in the one order across all seven kinds. The arrays above are a lookup by id."
+            "description": "The page, in the one order across every kind. The arrays above are a lookup by id."
           },
           "total": {
             "type": "integer",
@@ -27149,7 +27405,7 @@
               "refusedParts"
             ],
             "additionalProperties": false,
-            "description": "The one cursor the seven open kinds share, beside the three offsets the answered lists page by."
+            "description": "The one cursor the open kinds share, beside the three offsets the answered lists page by."
           }
         },
         "required": [
@@ -27158,6 +27414,7 @@
           "keptOut",
           "conflicts",
           "sources",
+          "componentItems",
           "arrivals",
           "held",
           "contents",
@@ -27234,7 +27491,8 @@
               "contents",
               "withdrawn",
               "withdrawn-answered",
-              "contents-refused"
+              "contents-refused",
+              "component-items"
             ]
           },
           "membership_id": {
@@ -27604,6 +27862,20 @@
             "items": {
               "$ref": "#/components/schemas/QuietField"
             }
+          },
+          "component_items": {
+            "description": "The candidate items of the site's components, the points in the source's order and the better candidate first (#1272). `component-items` items only.",
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ComponentItemProposal"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
           }
         },
         "required": [

@@ -27,8 +27,15 @@ vi.mock('./lifecycleController.js', () => ({
   answerAdmissionUnderLock: vi.fn(), answerStateUnderLock: vi.fn(),
 }));
 vi.mock('./locationStateController.js', () => ({ answerLocationStateUnderLock: vi.fn() }));
+vi.mock('./componentItemController.js', () => ({
+  answerComponentItems: vi.fn(), answerComponentItemsUnderLock: vi.fn(), candidateItems: vi.fn(),
+  componentItemsScope: vi.fn(), openCandidates: vi.fn(), readItemContents: vi.fn(),
+}));
 
 import { pool } from '../../db/index.js';
+import {
+  answerComponentItemsUnderLock, candidateItems, componentItemsScope, openCandidates, readItemContents,
+} from './componentItemController.js';
 import { resolveEverySourceScope, resolveExperienceScope } from './experienceScope.js';
 import { chooseViewsUnderLock, keepingChoices } from './viewChoiceController.js';
 import { publishUnderLock } from './publishController.js';
@@ -376,6 +383,87 @@ describe('a place two sources describe differently', () => {
     await answerRoute(postReviewAnswer, req([{ kind: 'sources', id: 450 }], 'reject'), res as never);
 
     expect(mockedChoose).toHaveBeenCalledWith(450, 7, 12, [{ field: 'name', membershipId: 379 }], [1, 4]);
+  });
+});
+
+/**
+ * The candidate items of a serial site's components (#1272): a batch confirms
+ * the exact candidates only and turns every open one down, both through the
+ * card's writer, with the confirmed items' contents read first.
+ */
+describe("a site's candidate component items", () => {
+  const mockedAnswerItems = answerComponentItemsUnderLock as unknown as Mock;
+  const mockedOpenCandidates = openCandidates as unknown as Mock;
+  const mockedCandidateItems = candidateItems as unknown as Mock;
+  const mockedContents = readItemContents as unknown as Mock;
+  const mockedItemsScope = componentItemsScope as unknown as Mock;
+  const contents = new Map([['Q98501', { imageUrl: null, credit: null, description: null }]]);
+
+  beforeEach(() => {
+    poolAnswers({ names: [{ id: 9850, name: 'Frontiers of the Roman Empire – Dacia', source_id: 1 }] });
+    mockedItemsScope.mockResolvedValue({ permitted: true, logRegionId: 12, found: true });
+    mockedAnswerItems.mockResolvedValue({ result: { experienceId: 9850, accepted: 2, refused: 0, pictured: 1 } });
+    mockedCandidateItems.mockResolvedValue(['Q98501']);
+    mockedContents.mockResolvedValue(contents);
+  });
+
+  it('is scoped by a source that places the points, never by the membership the client names', async () => {
+    // Pompeii's shape: a site that is also an Archaeology member. A curator of
+    // Archaeology naming that membership must not reach the UNESCO points' items.
+    mockedItemsScope.mockResolvedValue({ permitted: false, logRegionId: null, found: true });
+    mockedOpenCandidates.mockResolvedValue([31]);
+    const res = makeRes();
+
+    await answerRoute(postReviewAnswer, req([{ kind: 'component-items', id: 9850, membershipId: 777 } as never], 'accept'),
+      res as never);
+
+    expect(mockedItemsScope).toHaveBeenCalledWith(7, 'curator', 9850);
+    expect(mockedScope).not.toHaveBeenCalled();
+    expect(mockedAnswerItems).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ outOfScope: 1 }));
+  });
+
+  it('confirms the exact candidates with their contents read, and counts them', async () => {
+    mockedOpenCandidates.mockResolvedValue([31, 32]);
+    const res = makeRes();
+
+    await answerRoute(postReviewAnswer, req([{ kind: 'component-items', id: 9850 }], 'accept'), res as never);
+
+    expect(mockedOpenCandidates).toHaveBeenCalledWith(9850, 'exact');
+    expect(mockedCandidateItems).toHaveBeenCalledWith(9850, [31, 32]);
+    expect(mockedAnswerItems).toHaveBeenCalledWith(9850, 7, 12,
+      [{ proposalId: 31, answer: 'accepted' }, { proposalId: 32, answer: 'accepted' }], contents);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      answered: [expect.objectContaining({ kind: 'component-items', id: 9850, did: { items: 2 } })],
+    }));
+  });
+
+  it('refuses an accept where no candidate is the same name at the same spot, and writes nothing', async () => {
+    mockedOpenCandidates.mockResolvedValue([]);
+    const res = makeRes();
+
+    await answerRoute(postReviewAnswer, req([{ kind: 'component-items', id: 9850 }], 'accept'), res as never);
+
+    expect(mockedAnswerItems).not.toHaveBeenCalled();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      refused: [expect.objectContaining({ id: 9850, error: expect.stringContaining('same name at the same spot') })],
+    }));
+  });
+
+  it('turns every open candidate down on a reject, reading no contents', async () => {
+    mockedOpenCandidates.mockResolvedValue([31, 32, 33]);
+    mockedAnswerItems.mockResolvedValue({ result: { experienceId: 9850, accepted: 0, refused: 3, pictured: 0 } });
+    const res = makeRes();
+
+    await answerRoute(postReviewAnswer, req([{ kind: 'component-items', id: 9850 }], 'reject'), res as never);
+
+    expect(mockedOpenCandidates).toHaveBeenCalledWith(9850, 'all');
+    expect(mockedContents).not.toHaveBeenCalled();
+    expect(mockedAnswerItems).toHaveBeenCalledWith(9850, 7, 12,
+      [31, 32, 33].map(proposalId => ({ proposalId, answer: 'refused' })), new Map());
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      answered: [expect.objectContaining({ did: { items: 3 } })],
+    }));
   });
 });
 

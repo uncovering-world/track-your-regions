@@ -29,6 +29,7 @@ import type { ReviewAnswerResult } from '../../api/responses/reviewQueue.js';
 import { pool } from '../../db/index.js';
 import type { reviewAnswerBodySchema } from '../../types/index.js';
 import { answeredSourceId, resolveEverySourceScope, resolveExperienceScope } from './experienceScope.js';
+import { componentItemsScope } from './componentItemController.js';
 import {
   answerRow, type AnswerRow,
 } from './reviewAnswerDispatch.js';
@@ -38,12 +39,18 @@ import {
 // the client's `REVIEW_ANSWER_ROWS_MAX` mirrors it, and `docs/tech/experiences.md`
 // names it beside the route.
 
-/** The scope a row is answered in: its membership's source, the place's own, or every source of the place. */
+/**
+ * The scope a row is answered in: its membership's source, the place's own,
+ * every source of the place, or — for a site's candidate component items
+ * (#1272) — a source that places such a point, never the membership the
+ * client names, since the card's endpoint and the queue scope it that way.
+ */
 async function scopeOfRow(
   userId: number, userRole: Parameters<typeof resolveExperienceScope>[1],
   row: { id: number; kind: string; membershipId: number | null }, placeSourceId: number,
 ): Promise<{ permitted: boolean; logRegionId: number | null; sourceIds?: number[] }> {
   if (row.kind === 'sources') return resolveEverySourceScope(userId, userRole, row.id);
+  if (row.kind === 'component-items') return componentItemsScope(userId, userRole, row.id);
   const sourceId = row.membershipId === null
     ? placeSourceId
     : (await answeredSourceId(row.id, row.membershipId)) ?? placeSourceId;

@@ -32,6 +32,7 @@ const SYNC_CHANGE = /^experience_sync_changes is written by its writer module on
 const MEMBERSHIP = /^experience_kind_memberships is written by its writer modules only/;
 const EXPERIENCE = /^experiences is written by its writer modules only/;
 const REGION = /^regions is written by its writer modules only/;
+const COMPONENT_ITEM = /^experience_component_item_proposals is written by its writer modules only/;
 
 const draws = async (code: string, file: string, message: RegExp) =>
   (await reported(code, file)).some(m => message.test(m));
@@ -72,6 +73,9 @@ describe('the curation gate lint rules', () => {
     ['an interpolated membership delete in a service', MEMBERSHIP,
       MEMBERSHIPS_IMPORT + 'export const q = `DELETE FROM ${MEMBERSHIPS} WHERE experience_id = $1`;\n',
       'src/services/lint-fixture.ts'],
+    ['a candidate item answered by a handler', COMPONENT_ITEM,
+      "export const q = `UPDATE experience_component_item_proposals SET answer = 'accepted' WHERE id = $1`;\n",
+      'src/controllers/experience/componentItemController.ts'],
   ])('refuses a write to a gate table outside its writers: %s', async (_, message, code, file) => {
     expect(await draws(code, file, message)).toBe(true);
   });
@@ -86,6 +90,12 @@ describe('the curation gate lint rules', () => {
     ['the change recorder', SYNC_CHANGE,
       'export const q = `INSERT INTO experience_sync_changes (sync_log_id) VALUES ($1)`;\n',
       'src/services/sync/changeRecorder.ts'],
+    ['the component item finder', COMPONENT_ITEM,
+      'export const q = `INSERT INTO experience_component_item_proposals (location_id) VALUES ($1)`;\n',
+      'src/services/sync/componentItemFinder.ts'],
+    ['the curator\'s answer to a candidate item', COMPONENT_ITEM,
+      "export const q = `UPDATE experience_component_item_proposals SET answer = 'refused' WHERE id = $1`;\n",
+      'src/controllers/experience/componentItemAnswers.ts'],
     ['the curator\'s membership writer', MEMBERSHIP,
       MEMBERSHIPS_IMPORT + 'export const q = `UPDATE ${MEMBERSHIPS} m SET admission = $2 WHERE m.id = $1`;\n',
       'src/controllers/experience/membershipWriter.ts'],

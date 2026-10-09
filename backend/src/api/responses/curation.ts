@@ -315,6 +315,14 @@ export const ViewsChosen = z.strictObject({
 }).describe('A curator\'s choice between two sources\' views of a place (#1246): the place shows the chosen source\'s value of each field, and the question stays answered until a source sends something different.');
 export type ViewsChosen = z.infer<typeof ViewsChosen>;
 
+export const ComponentItemsAnswered = z.strictObject({
+  experienceId: z.number().int(),
+  accepted: z.number().int().describe("Candidates confirmed: each point now carries its item as a curator's choice."),
+  refused: z.number().int().describe('Candidates turned down, never proposed again.'),
+  pictured: z.number().int().describe("Of the confirmed, how many points took the item's picture, with its credit."),
+}).describe("A curator's answer to the candidate Wikidata items of a site's components (#1272).");
+export type ComponentItemsAnswered = z.infer<typeof ComponentItemsAnswered>;
+
 export const ViewSuggestions = z.strictObject({
   configured: z.boolean().describe('Whether this deployment asks Jev at all. False: no suggestion, nothing else changes.'),
   suggestions: z.array(z.strictObject({

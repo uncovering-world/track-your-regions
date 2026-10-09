@@ -10,7 +10,7 @@
  */
 
 import type {
-  ChangedField, CountedWork, AnsweredPoint, HeldPart, PendingPoint, PendingWork, ProposedField,
+  ChangedField, ComponentItemProposal, CountedWork, AnsweredPoint, HeldPart, PendingPoint, PendingWork, ProposedField,
   QuietField, RefusedPoint, RefusedWork, ReviewQueueItem, SourceViewField, WithdrawnPoint,
 } from '../../api/responses/reviewQueue.js';
 import type { ImageCredit } from '../../api/responses/experiences.js';
@@ -77,6 +77,7 @@ export interface QueueRow {
   object_curation_state?: string | null;
   source_views?: SourceViewField[] | null;
   quiet_fields?: QuietField[];
+  component_items?: ComponentItemProposal[] | null;
 }
 
 /**
@@ -194,5 +195,6 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     object_curation_state: row.object_curation_state,
     source_views: row.source_views,
     quiet_fields: row.quiet_fields,
+    component_items: row.component_items,
   };
 }

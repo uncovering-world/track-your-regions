@@ -210,3 +210,34 @@ export function sourcesOpenSql(e = 'e'): string {
                    WHERE a.experience_id = ${e}.id)
           AND cardinality(${openViewFieldsSql(e + '.id')}) > 0`;
 }
+
+/**
+ * One candidate Wikidata item for a component (#1272) still asked about: no
+ * curator has answered it, the point has no item yet and no claim on one, the
+ * point is one readers see — a withdrawn, lost, folded or unread point raises
+ * no question about its identity, by the reasoning `withdrawnPointOpenSql`
+ * gives — and the item is not already recorded on some point, since a
+ * component is one item and an item one component. `p` is the
+ * `experience_component_item_proposals` alias and `el` the point's.
+ */
+export function openProposalSql(p = 'p', el = 'el'): string {
+  return `${p}.answer IS NULL
+    AND ${el}.wikidata_item IS NULL
+    AND NOT (${el}.curated_fields ? 'wikidata_item')
+    AND ${offeredLocationSql(el)}
+    AND ${publishedContentSql(el)}
+    AND NOT EXISTS (SELECT 1 FROM experience_locations taken WHERE taken.wikidata_item = ${p}.wikidata_item)`;
+}
+
+/**
+ * `component-items`: a site some component of which has a candidate item
+ * nobody has answered (#1272, `openProposalSql`), under the object's own
+ * lifecycle guards — a refused, unread or missing site has a card of its own,
+ * and the identity of its parts waits on that.
+ */
+export function componentItemsOpenSql(e = 'e'): string {
+  return `${hidePendingSql(e)} AND ${hideRefusedSql(e)} AND ${e}.missing_since IS NULL
+    AND EXISTS (SELECT 1 FROM experience_component_item_proposals p
+                  JOIN experience_locations el ON el.id = p.location_id
+                 WHERE el.experience_id = ${e}.id AND ${openProposalSql('p', 'el')})`;
+}

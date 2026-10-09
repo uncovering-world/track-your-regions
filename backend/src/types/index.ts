@@ -13,6 +13,7 @@ import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
 import { safeImageUrlSchema, safeUrlSchema } from './urlSchemas.js';
 import { pictureFetchUrl, PICTURE_FETCH_URL_MESSAGE } from './urlSafety.js';
 import { POINTS_DETAILS } from '../controllers/experience/worldPointsVocabulary.js';
+import { QUEUE_KINDS } from '../controllers/experience/reviewQueueVocabulary.js';
 
 // The world-view import's request schemas live in their own module (#933) and
 // are part of this barrel, so a route imports them from here as before.
@@ -375,6 +376,20 @@ export const chooseViewsBodySchema = z.object({
   }),
 });
 
+/**
+ * A curator's answer to the candidate Wikidata items of a site's components
+ * (#1272): per candidate, confirmed or turned down. Bounded by what one site
+ * can hold open — the largest serial sites have a few hundred points.
+ */
+export const answerComponentItemsBodySchema = z.object({
+  answers: z.array(z.object({
+    proposalId: bodyRowIdSchema,
+    answer: z.enum(CHECK_VALUES.experience_component_item_proposals.answer),
+  })).min(1).max(500).refine(answers => new Set(answers.map(one => one.proposalId)).size === answers.length, {
+    message: 'Each candidate is answered once',
+  }),
+});
+
 /** `/api/experiences/merges/:mergeId…` — a merge of two places (ADR-0086). */
 export const mergeIdParamSchema = z.object({
   mergeId: rowIdSchema,
@@ -559,7 +574,7 @@ export const experienceAdmissionBodySchema = z.object({
  */
 export const reviewAnswerBodySchema = z.object({
   rows: z.array(z.object({
-    kind: z.enum(['conflict', 'sources', 'waiting', 'withdrawn', 'refused', 'missing']),
+    kind: z.enum(QUEUE_KINDS),
     id: bodyRowIdSchema,
     runId: bodyRowIdSchema.nullable().optional(),
     membershipId: answeredMembershipSchema,

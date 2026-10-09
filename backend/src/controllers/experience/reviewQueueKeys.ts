@@ -1,8 +1,9 @@
 /**
  * The review queue's open questions as one dated list of keys (ADR-0051).
  *
- * The queue is seven predicates over five tables, and until now it was also
- * seven statements, each with its own `LIMIT`/`OFFSET` and its own `ORDER BY`.
+ * The queue is one predicate per kind (`QUEUE_KINDS`) over the tables they read, and
+ * until now it was also one statement per kind, each with its own
+ * `LIMIT`/`OFFSET` and its own `ORDER BY`.
  * This is the other half of that shape: a `UNION ALL` of the same predicates
  * selecting nothing but the key of each question — its kind, the object it is
  * about, the run that asked it, the source, and, for the three gated kinds, the
@@ -10,7 +11,7 @@
  * `reviewQueueController.ts` then hydrates the page's ids with the statements
  * that already know how to draw a card.
  *
- * **One statement, not seven and a merge.** The order is over the union, so a
+ * **One statement, not one per kind and a merge.** The order is over the union, so a
  * page cannot be assembled from per-kind pages without reading all of them
  * whole — which is the read this replaces. The filters and the facet counts are
  * the same reason: a chip states what picking it would leave, which is a count
@@ -59,9 +60,9 @@ import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js
 import { contentsMembershipSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import {
-  arrivalOpenSql, claimKeySql, conflictChangeOpenSql, contentsOpenSql, heldOpenSql,
-  membershipMissingOpenSql, missingOpenSql, refusedOpenSql, sourcesOpenSql, withdrawnContainerOpenSql,
-  withdrawnPointOpenSql,
+  arrivalOpenSql, claimKeySql, componentItemsOpenSql, conflictChangeOpenSql, contentsOpenSql, heldOpenSql,
+  membershipMissingOpenSql, missingOpenSql, openProposalSql, refusedOpenSql, sourcesOpenSql,
+  withdrawnContainerOpenSql, withdrawnPointOpenSql,
 } from './reviewQueuePredicates.js';
 
 /**
@@ -69,10 +70,13 @@ import {
  * than by date. The two disagreements first, because they are the kinds where
  * the catalogue is actively saying two things — a source against a curator,
  * then two sources against each other; then what is waiting to be seen, then
- * what has left, then the two verdicts a rule already took.
+ * what has left, then the two verdicts a rule already took. Last, the
+ * candidate items of a site's components (#1272): every other question hides
+ * or misdescribes something readers see, and this one adds what a component's
+ * item would give it.
  */
 export const KIND_RANK: Record<QueueKind, number> = {
-  conflict: 1, sources: 2, waiting: 3, withdrawn: 4, refused: 5, missing: 6,
+  conflict: 1, sources: 2, waiting: 3, withdrawn: 4, refused: 5, missing: 6, 'component-items': 7,
 };
 
 // The words a `kind` chip may carry, and the only ones, are `QUEUE_KINDS` and
@@ -358,6 +362,28 @@ function sourcesKeysSql(membershipScopeFilter: string): string {
       AND NOT EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id AND NOT ${membershipScopeFilter})`;
 }
 
+/**
+ * A serial site some component of which has a candidate Wikidata item nobody
+ * has answered (#1272, `componentItemsOpenSql`): one row per site, in scope by
+ * the source of a membership that places such a point — the World Heritage
+ * source — and dated by the newest proposal, since the finder is an admin's
+ * pass and not a run; it names no run, so it is never set aside with a batch.
+ */
+function componentItemsKeysSql(membershipScopeFilter: string): string {
+  return `
+    SELECT 'component-items', ${KIND_RANK['component-items']}, e.id, e.name, array_agg(DISTINCT m.source_id), NULL,
+           max(p.proposed_at), ARRAY[]::text[]
+    FROM experiences e
+    JOIN experience_locations el ON el.experience_id = e.id
+    JOIN experience_component_item_proposals p ON p.location_id = el.id
+    JOIN experience_location_placements pl ON pl.location_id = el.id
+    JOIN ${MEMBERSHIPS} m ON m.id = pl.membership_id
+    WHERE ${openProposalSql('p', 'el')}
+      AND ${componentItemsOpenSql('e')}
+      AND ${membershipScopeFilter}
+    GROUP BY e.id, e.name`;
+}
+
 /** The order, over the union's own columns. `prefix` qualifies them for `json_agg`. */
 function orderSql(sort: 'date' | 'question', prefix = ''): string {
   const date = `COALESCE(${prefix}asked_at, '-infinity') DESC`;
@@ -573,7 +599,7 @@ export async function queryQueueKeys(
     return `$${params.length}`;
   };
 
-  // The same scope the seven statements carry, correlated on each row's own
+  // The same scope the card statements carry, correlated on each row's own
   // source rather than on a request filter: the union spans sources.
   const scopeFilter = queueScopeSql(isAdmin, 'e.source_id');
   // A question a membership asks is in scope by that membership's source (#1264).
@@ -590,6 +616,7 @@ export async function queryQueueKeys(
     UNION ALL${withdrawnKeysSql(scopeFilter)}
     UNION ALL${refusedKeysSql(membershipScopeFilter)}
     UNION ALL${missingKeysSql(scopeFilter, membershipScopeFilter)}
+    UNION ALL${componentItemsKeysSql(membershipScopeFilter)}
   )
 , searched AS (
     SELECT k.kind, k.rank, k.id, k.name, k.source_ids, k.run_id, k.asked_at, k.subs

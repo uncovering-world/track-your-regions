@@ -130,6 +130,12 @@ export async function writePointContents(
            FROM experience_locations el
            JOIN incoming i ON lower(el.external_ref) = lower(i.ref)
           WHERE el.experience_id = $1 AND el.missing_since IS NULL AND el.merged_into_id IS NULL
+            -- A point whose item a curator chose (#1272) shows what that item
+            -- gives it, written when it was chosen: the run's contents are read
+            -- off the items its index resolves, which never include that one,
+            -- and would take the picture away as a reference that resolved to
+            -- nothing.
+            AND NOT (el.curated_fields ? 'wikidata_item')
             AND (EXISTS (SELECT 1 FROM experience_location_placements mine
                            JOIN ${MEMBERSHIPS} m ON m.id = mine.membership_id
                           WHERE mine.location_id = el.id AND m.experience_id = $1 AND m.source_id = $6)
