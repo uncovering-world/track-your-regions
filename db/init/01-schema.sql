@@ -3827,6 +3827,29 @@ CREATE INDEX IF NOT EXISTS idx_experience_view_suggestions_place ON experience_v
 COMMENT ON TABLE experience_view_suggestions IS 'Jev''s suggested answers to the sources card (#1260), one row per call, each for the views recorded in views and stale once they change. Never applied.';
 COMMENT ON COLUMN experience_view_suggestions.input_tokens IS 'What the call cost: Jev is priced per input token, output free.';
 
+-- Jev's judgement of a candidate Wikidata item for a World Heritage component
+-- (#1272): the item is the component, or another place, with its confidence,
+-- for the candidate as it was asked about. Never applied; a curator decides.
+-- One row per question: a card's candidates are asked in one call, whose cost
+-- is shared out over its questions. See db/migrations/084.
+CREATE TABLE IF NOT EXISTS experience_component_item_suggestions (
+    id SERIAL PRIMARY KEY,
+    location_id INTEGER NOT NULL REFERENCES experience_locations(id) ON DELETE CASCADE,
+    wikidata_item VARCHAR(20) NOT NULL,
+    asked JSONB NOT NULL,
+    judgement VARCHAR(10) CHECK (judgement IN ('same', 'other')),
+    confidence NUMERIC(4, 3) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+    probabilities JSONB NOT NULL,
+    model VARCHAR(40) NOT NULL,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    asked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_experience_component_item_suggestions_candidate
+    ON experience_component_item_suggestions(location_id, wikidata_item, asked_at DESC);
+COMMENT ON TABLE experience_component_item_suggestions IS 'Jev''s judgement of a candidate Wikidata item for a World Heritage component (#1272): same, the item is the component; other, another place; null, an answer the client refused. One row per question, each for the candidate as recorded in asked and stale once the finder proposes it with other measures. Never applied.';
+COMMENT ON COLUMN experience_component_item_suggestions.asked IS 'The candidate as the question was built: the item''s label, the distance, the name similarity and the rule that found it, as askedSql states them.';
+COMMENT ON COLUMN experience_component_item_suggestions.input_tokens IS 'This question''s share of what its call cost: Jev is priced per input token, output free, and a card''s candidates are asked in one call.';
+
 -- One gate over: how a curator answers a single field of a held proposal (#722).
 --
 -- A held field is one nobody claimed and the gate kept out of the columns
