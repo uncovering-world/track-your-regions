@@ -258,6 +258,14 @@ async function fetchSparqlResponse(query: string, signal: AbortSignal): Promise<
 class MalformedSparqlBody extends Error {}
 
 /**
+ * The service could not answer in time or at capacity — a 5xx, a timeout, a
+ * dropped connection — after every retry. Named apart from every other failure
+ * because a caller may ask a smaller question then, and must not after a 4xx
+ * (a ban, a refusal, a malformed query) or a spent wait budget.
+ */
+export class SparqlUnanswered extends Error {}
+
+/**
  * How much of the body to quote when it will not parse — enough to see what
  * arrived, bounded so a megabyte of HTML never reaches a log.
  */
@@ -306,7 +314,8 @@ async function handleSparqlHttpError(
     const backoff = backoffFromRetryAfter(retryAfter, attempt, SPARQL_BACKOFF_CEILING_MS);
     throw new RetrySignal(backoff, `SPARQL ${response.status}`);
   }
-  throw new Error(`Wikidata SPARQL error ${response.status}: ${text.substring(0, 500)}`);
+  const message = `Wikidata SPARQL error ${response.status}: ${text.substring(0, 500)}`;
+  throw response.status >= 500 && response.status !== 429 ? new SparqlUnanswered(message) : new Error(message);
 }
 
 function classifySparqlException(
@@ -314,7 +323,7 @@ function classifySparqlException(
   attempt: number,
   retries: number,
 ): RetrySignal | Error {
-  if (error instanceof RetrySignal) return error;
+  if (error instanceof RetrySignal || error instanceof SparqlUnanswered) return error;
   const isAbort = error instanceof Error && error.name === 'AbortError';
   // A body that will not parse is retried like a 502, and for the same reason:
   // the endpoint answered, so the query is acceptable to it, and what arrived
@@ -329,7 +338,8 @@ function classifySparqlException(
     return new RetrySignal(backoffOf(attempt), label);
   }
   const message = error instanceof Error ? error.message : String(error);
-  return new Error(`Wikidata SPARQL request failed: ${message}`);
+  const failure = `Wikidata SPARQL request failed: ${message}`;
+  return isAbort || error instanceof TypeError ? new SparqlUnanswered(failure) : new Error(failure);
 }
 
 /**

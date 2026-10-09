@@ -16,6 +16,7 @@ import type * as WikidataUtils from './wikidataUtils.js';
 let sparqlQuery: typeof WikidataUtils.sparqlQuery;
 let WaitBudget: typeof WikidataUtils.WaitBudget;
 let waitMessage: typeof WikidataUtils.waitMessage;
+let SparqlUnanswered: typeof WikidataUtils.SparqlUnanswered;
 
 const GOOD_BODY = JSON.stringify({
   results: { bindings: [{ w: { type: 'uri', value: 'http://www.wikidata.org/entity/Q19675' } }] },
@@ -51,7 +52,7 @@ beforeEach(async () => {
   // without weakening what they assert.
   vi.useFakeTimers();
   vi.resetModules();
-  ({ sparqlQuery, WaitBudget, waitMessage } = await import('./wikidataUtils.js'));
+  ({ sparqlQuery, WaitBudget, waitMessage, SparqlUnanswered } = await import('./wikidataUtils.js'));
 });
 
 afterEach(() => {
@@ -348,5 +349,22 @@ describe('waitMessage', () => {
     const retry = { reason: 'SPARQL 503', attempt: 2, backoffMs: 10_000, waitedMs: 5_000 };
     expect(waitMessage('Wikidata', retry, new WaitBudget(900_000)))
       .toBe('Wikidata is not answering (SPARQL 503) — retrying in 10s, attempt 2, about 0 of 15 min of waiting spent');
+  });
+});
+
+describe('what a query that never got an answer is called', () => {
+  it('names a 5xx after every retry as unanswered, so a caller may ask a smaller question', async () => {
+    fetchMock.mockResolvedValue(httpError(504));
+    await expect(runWithTimers(sparqlQuery('SELECT * {}', '[Test]', { retries: 0 })))
+      .rejects.toBeInstanceOf(SparqlUnanswered);
+  });
+
+  it('never names a refusal so: a 403 or a 400 is not the service running out of time', async () => {
+    for (const status of [403, 400]) {
+      fetchMock.mockResolvedValueOnce(httpError(status));
+      const error = await runWithTimers(sparqlQuery('SELECT * {}', '[Test]', { retries: 0 })).catch((e: unknown) => e);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toBeInstanceOf(SparqlUnanswered);
+    }
   });
 });
