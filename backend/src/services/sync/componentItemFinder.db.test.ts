@@ -33,6 +33,8 @@ vi.mock('./componentItemQueries.js', async (importOriginal) => ({
   classesOfItems: vi.fn(async (items: string[]) => new Map(items.map(item => [item, item === RESOLVED_ITEM ? [CASTRUM] : []]))),
   partsOfSites: vi.fn(async () => ({ parts: new Map([[SITE_ITEM, parts.map(c => ({ ...c, labels: [] }))]]), unread: [] })),
   itemsInBoxes: vi.fn(async () => nearby.map(c => ({ ...c, labels: [] }))),
+  // The class tree is QLever's to walk, not the spec's: nothing here is a settlement unless a test says so.
+  settlementsAmong: vi.fn(async () => new Set<string>()),
   // The labels come from Wikidata's API, read only for the items the distance leaves.
   labelsOf: vi.fn(async (items: string[]) =>
     new Map(items.map(item => [item, [...parts, ...nearby].find(c => c.item === item)?.labels ?? []]))),
@@ -171,5 +173,70 @@ describe('findComponentItems', () => {
     expect(open).toContain('Q98405');
     expect(open).toContain(BOLOGA_ITEM);
     expect(open).not.toContain(STALE_ITEM);
+  });
+
+  it('sets a village aside before choosing, so the next candidate is taken, and counts it', async () => {
+    // The tree names Bologa's first candidate a village; the castrum beside it is taken instead.
+    const VILLAGE_ITEM = 'Q98406';
+    vi.mocked(queries.itemsInBoxes).mockImplementation(async () => [
+      { item: VILLAGE_ITEM, labels: [], coords: [[46.8852, 22.8753]], classes: [CASTRUM] },
+      ...nearby.map(c => ({ ...c, labels: [] })),
+    ]);
+    vi.mocked(queries.labelsOf).mockImplementation(async (items: readonly string[]) => new Map(items.map(item =>
+      [item, item === VILLAGE_ITEM ? ['Bologa'] : ([...parts, ...nearby].find(c => c.item === item)?.labels ?? [])])));
+    vi.mocked(queries.settlementsAmong).mockImplementation(async (ids: readonly string[], _hooks, asClasses) =>
+      new Set(asClasses ? [] : ids.filter(id => id === VILLAGE_ITEM)));
+
+    const { report, matches } = await findComponentItems({ write: false, hooks: { budget: new WaitBudget(1000) } });
+
+    expect(matches.find(m => m.locationId === points.bologa)?.item).toBe(BOLOGA_ITEM);
+    expect(report.settlements).toBe(1);
+  });
+
+  it("clears an earlier pass's open proposal for a point that stands for its whole site", async () => {
+    // A site of one standing point: its only component is the site itself.
+    await pool.query(`UPDATE experience_locations SET missing_since = NOW() WHERE id = ANY($1)`,
+      [[points.bologa, points.buciumi, points.resolved]]);
+    await pool.query(
+      `INSERT INTO experience_component_item_proposals (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
+       VALUES ($1, 'Q98407', 'A building inside', 30, 0.5, false, 'near')`,
+      [points.mairea],
+    );
+
+    const { report } = await run();
+
+    expect(report.wholeSites).toBe(1);
+    expect((await proposals()).filter(p => p.location_id === points.mairea && p.answer === null)).toHaveLength(0);
+  });
+
+  it('leaves a site with no resolved components unsearched when QLever cannot say which classes are settlements', async () => {
+    // Bologa's site has resolved components (its classes are its own); a site with none
+    // falls back on the catalogue's classes, which need the tree's answer to be usable.
+    await pool.query(`UPDATE experience_locations SET wikidata_item = NULL WHERE id = $1`, [points.resolved]);
+    await pool.query(
+      `INSERT INTO experience_component_item_proposals (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
+       VALUES ($1, 'Q98408', 'An earlier pass found this', 40, 0.5, false, 'near')`,
+      [points.bologa],
+    );
+    vi.mocked(queries.settlementsAmong).mockImplementation(async (_ids, _hooks, asClasses) => {
+      if (asClasses) throw new SparqlUnanswered('QLever error 503');
+      return new Set<string>();
+    });
+
+    vi.mocked(queries.itemsInBoxes).mockClear();
+    const { report } = await run();
+
+    // Not searched at all: no area question goes out for the site, rather than one
+    // with the settlement rule quietly off. (The fixture's one site is below the
+    // catalogue-wide class floor, so `near === 0` alone would hold either way.)
+    expect(vi.mocked(queries.itemsInBoxes)).not.toHaveBeenCalled();
+    // Every point the part rule left is one of this site's, and none of them was searched.
+    expect(report.unsearched).toBe(report.points - report.partOf);
+    expect(report.unsearched).toBeGreaterThan(0);
+    expect(report.near).toBe(0);
+    // Left unanswered, the point keeps every open proposal it had: the earlier pass's and the stale one from the fixture.
+    const open = (await proposals()).filter(p => p.location_id === points.bologa && p.answer === null).map(p => p.wikidata_item);
+    expect(open).toContain('Q98408');
+    expect(open).toContain(STALE_ITEM);
   });
 });

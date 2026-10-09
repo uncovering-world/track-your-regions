@@ -13,8 +13,9 @@
  * request, and only for the candidates the distance leaves.
  */
 
-import { SETTLEMENT_CLASSES, type CandidateItem } from './componentItemMatching.js';
+import type { CandidateItem } from './componentItemMatching.js';
 import { askWikipediaOnce } from './wikipediaCategories.js';
+import { qleverWikidataQuery } from './qleverWikidata.js';
 import {
   delay, sparqlQuery, SparqlUnanswered, SPARQL_DELAY_MS, WIKIDATA_USER_AGENT,
   type SourceWait, type SparqlBinding, type WaitBudget,
@@ -24,10 +25,10 @@ const LOG_PREFIX = '[Component items]';
 /** Items per `VALUES` block for the class read, which is light. */
 const BATCH = 200;
 /**
- * Attempts at one part or box query before it is made smaller. A query the
- * service could not answer in its minute will most likely not answer the next
- * time either, and every attempt spends a minute of its time; one retry rides
- * out a busy moment, then the question is split.
+ * Attempts at one part query before it is made smaller. A query the service
+ * could not answer in its minute will most likely not answer the next time
+ * either, and every attempt spends a minute of its time; one retry rides out
+ * a busy moment, then the question is split.
  */
 const HEAVY_RETRIES = 1;
 /** Site items per part query. */
@@ -48,7 +49,8 @@ export interface QueryHooks {
 const itemOf = (uri: string) => uri.slice(uri.lastIndexOf('/') + 1);
 
 function coordOf(wkt: string | undefined): [number, number] | null {
-  const m = wkt ? /Point\(([-\d.eE]+) ([-\d.eE]+)\)/.exec(wkt) : null;
+  // The query service writes `Point(…)`, QLever `POINT(…)`.
+  const m = wkt ? /Point\(([-\d.e]+) ([-\d.e]+)\)/i.exec(wkt) : null;
   return m ? [Number(m[2]), Number(m[1])] : null;
 }
 
@@ -70,11 +72,8 @@ function candidatesOf(rows: SparqlBinding[], key: 'item' | 'part'): Map<string, 
     byItem.set(item, candidate);
     const coord = coordOf(row.coord?.value);
     if (coord && !candidate.coords.some(([a, b]) => a === coord[0] && b === coord[1])) candidate.coords.push(coord);
-    for (const name of ['class', 'settlement'] as const) {
-      const value = row[name]?.value;
-      const cls = value ? itemOf(value) : null;
-      if (cls && !candidate.classes!.includes(cls)) candidate.classes!.push(cls);
-    }
+    const cls = row.class?.value ? itemOf(row.class.value) : null;
+    if (cls && !candidate.classes!.includes(cls)) candidate.classes!.push(cls);
   }
   return byItem;
 }
@@ -137,37 +136,50 @@ export async function partsOfSites(
 
 export interface Box { south: number; west: number; north: number; east: number }
 
-const boxPattern = (box: Box) => `{ SERVICE wikibase:box {
-        ?item wdt:P625 ?coord .
-        bd:serviceParam wikibase:cornerSouthWest "Point(${box.west} ${box.south})"^^geo:wktLiteral .
-        bd:serviceParam wikibase:cornerNorthEast "Point(${box.east} ${box.north})"^^geo:wktLiteral .
-      } }`;
+/** QLever declares no prefixes of its own, unlike the Wikidata Query Service. */
+const QLEVER_PREFIXES = `PREFIX wd: <http://www.wikidata.org/entity/>
+    PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+    PREFIX geof: <http://www.opengis.net/def/function/geosparql/>`;
+
+/**
+ * One box as a filter on an item's latitude and longitude. A box that runs past
+ * the antimeridian (a margin around Kiribati's or Fiji's points) takes its other
+ * side too, since longitudes there jump from 180 to -180.
+ */
+export function boxFilter(box: Box): string {
+  const lon = (west: number, east: number) => `?lon >= ${west} && ?lon <= ${east}`;
+  const sides = [lon(Math.max(box.west, -180), Math.min(box.east, 180))];
+  if (box.east > 180) sides.push(lon(-180, box.east - 360));
+  if (box.west < -180) sides.push(lon(box.west + 360, 180));
+  return `(?lat >= ${box.south} && ?lat <= ${box.north} && (${sides.join(' || ')}))`;
+}
 
 /**
  * Items inside any of the boxes that are of one of `classes`, less those that
- * carry a World Heritage reference. Several boxes go in one query, joined by
- * `UNION`: the points are scattered over a thousand places, and a query per
- * place spends most of its time waiting its turn. A settlement class an item
- * also has is returned with its classes, so the rule can refuse a village for a
- * site whose parts are not villages.
+ * carry a World Heritage reference, asked of Wikidata on QLever
+ * (`qleverWikidata.ts`): the near rule reads the coordinates of whole classes
+ * around a thousand places, which the Wikidata Query Service throttled even
+ * paced at its own published rate, and which the mirror answers in under a
+ * second. Many boxes go in one question, as one filter over the class's
+ * coordinates. Which of the answers are settlements is a second question
+ * (`settlementsAmong`), asked of the class tree rather than read off a list.
  */
 export async function itemsInBoxes(
-  boxes: readonly Box[], classes: readonly string[], hooks: QueryHooks, retries = HEAVY_RETRIES,
+  boxes: readonly Box[], classes: readonly string[], hooks: QueryHooks,
 ): Promise<CandidateItem[]> {
-  if (classes.length === 0 || boxes.length === 0) return [];
+  if (classes.length === 0 || boxes.length === 0 || hooks.isCancelled?.()) return [];
   const values = classes.map(c => `wd:${c}`).join(' ');
-  const settlements = [...SETTLEMENT_CLASSES].map(c => `wd:${c}`).join(' ');
-  // The order as written: the boxes first, then the classes. Left to itself the
-  // optimizer starts from the classes once the boxes are a UNION, which walks
-  // every archaeological site in the world and times out.
-  const rows = await ask(`SELECT ?item ?coord ?class ?settlement WHERE {
-      hint:Query hint:optimizer "None" .
-      ${boxes.map(boxPattern).join('\n      UNION ')}
+  const rows = await qleverWikidataQuery(`${QLEVER_PREFIXES}
+    SELECT ?item ?coord ?class WHERE {
       VALUES ?class { ${values} }
       ?item wdt:P31 ?class .
-      FILTER NOT EXISTS { ?item wdt:P757 [] }
-      OPTIONAL { VALUES ?settlement { ${settlements} } ?item wdt:P31 ?settlement . }
-    }`, hooks, retries);
+      ?item wdt:P625 ?coord .
+      BIND(geof:latitude(?coord) AS ?lat)
+      BIND(geof:longitude(?coord) AS ?lon)
+      FILTER(${boxes.map(boxFilter).join('\n        || ')})
+      FILTER NOT EXISTS { ?item wdt:P757 ?reference }
+    }`, hooks.isCancelled);
+  hooks.onQuery?.();
   return [...candidatesOf(rows, 'item').values()];
 }
 
@@ -213,4 +225,45 @@ export async function labelsOf(items: readonly string[], hooks: QueryHooks): Pro
     }
   }
   return labels;
+}
+
+/** Items or classes per settlement question. */
+const SETTLEMENT_BATCH = 400;
+
+/**
+ * Which of the given items are settlements — a town, a village, a commune —
+ * or, with `asClasses`, which of the given classes are kinds of settlement.
+ * Through the whole class tree (P31/P279*, P279*), which the query service
+ * cannot walk for a few hundred items within its limits and QLever answers in
+ * a second. A list of classes cannot keep up with Wikidata's: Passau's old
+ * town is an *Altstadt*, a class under *human settlement* no list named.
+ *
+ * A settlement is an item with a class that is a kind of human settlement
+ * (Q486972) and is not itself a kind of fortification (Q57821) or of
+ * archaeological site (Q839954). Judged class by class, not item by item:
+ * Wikidata files a castrum under all three, so a Roman fort is no settlement,
+ * while Tarentum is a *city* beside being a *polis* — a dig — and a city is
+ * what the near rule must set aside for a site whose parts are not towns.
+ */
+export async function settlementsAmong(
+  ids: readonly string[], hooks: QueryHooks, asClasses = false,
+): Promise<Set<string>> {
+  const found = new Set<string>();
+  for (let i = 0; i < ids.length; i += SETTLEMENT_BATCH) {
+    if (hooks.isCancelled?.()) break;
+    const values = ids.slice(i, i + SETTLEMENT_BATCH).map(id => `wd:${id}`).join(' ');
+    // For an item, the class is its own P31; for a class, the class itself.
+    const [bind, up] = asClasses ? ['BIND(?item AS ?class)', 'wdt:P279*'] : ['?item wdt:P31 ?class .', 'wdt:P279*'];
+    const rows = await qleverWikidataQuery(`${QLEVER_PREFIXES}
+      SELECT DISTINCT ?item WHERE {
+        VALUES ?item { ${values} }
+        ${bind}
+        ?class ${up} wd:Q486972 .
+        FILTER NOT EXISTS { ?class ${up} wd:Q57821 }
+        FILTER NOT EXISTS { ?class ${up} wd:Q839954 }
+      }`, hooks.isCancelled);
+    hooks.onQuery?.();
+    for (const row of rows) found.add(itemOf(row.item!.value));
+  }
+  return found;
 }
