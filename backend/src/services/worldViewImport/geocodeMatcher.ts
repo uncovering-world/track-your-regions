@@ -8,13 +8,14 @@
 import { pool } from '../../db/index.js';
 import type { MatchSuggestion, MatchStatus } from './types.js';
 import { userAgent } from '../../config/userAgent.js';
+import { searchNominatim } from '../nominatim.js';
 
 // Import machinery: geocoding a region's name as part of matching it, whether
 // the run is unattended or an admin asked for one region. Nominatim's usage
 // policy wants the application named, and this names itself as the bulk
-// matcher it is rather than as whoever started it.
+// matcher it is rather than as whoever started it. Its pace and its cache are
+// the process's (`services/nominatim.ts`), shared with the curator's search.
 const NOMINATIM_USER_AGENT = userAgent({ bot: true });
-let lastNominatimRequestTime = 0;
 
 interface GeocodeContext {
   regionName: string;
@@ -101,41 +102,9 @@ function buildNominatimQueries(regionName: string, ancestorPath: string): string
     : [regionName];
 }
 
-/** Enforce Nominatim's 1 req/s rate limit. */
-async function throttleNominatim(): Promise<void> {
-  const elapsed = Date.now() - lastNominatimRequestTime;
-  if (elapsed < 1000) {
-    await new Promise((resolve) => setTimeout(resolve, 1000 - elapsed));
-  }
-  lastNominatimRequestTime = Date.now();
-}
-
 /** Call Nominatim for one query. Returns location on success, null if no results. */
 async function queryNominatim(searchQuery: string): Promise<GeocodeLocation | null> {
-  await throttleNominatim();
-
-  const url = new URL('https://nominatim.openstreetmap.org/search');
-  url.searchParams.set('q', searchQuery);
-  url.searchParams.set('format', 'json');
-  url.searchParams.set('limit', '1');
-
-  const response = await fetch(url.toString(), {
-    headers: {
-      'User-Agent': NOMINATIM_USER_AGENT,
-      'Accept': 'application/json',
-    },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Nominatim request failed: ${response.status}`);
-  }
-
-  const data = await response.json() as Array<{
-    display_name: string;
-    lat: string;
-    lon: string;
-  }>;
-
+  const data = await searchNominatim(searchQuery, { limit: 1, userAgent: NOMINATIM_USER_AGENT });
   if (data.length === 0) return null;
   return {
     lat: parseFloat(data[0].lat),
