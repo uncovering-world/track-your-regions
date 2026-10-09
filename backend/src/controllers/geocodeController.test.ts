@@ -76,6 +76,31 @@ describe('suggestImage', () => {
       .rejects.toMatchObject({ statusCode: 404, message: 'No image found' });
   });
 
+  it('answers 404 without asking again when the query service throttles the only layer it has', async () => {
+    // The spatial layer around the Kazan Kremlin is the one that asks SPARQL.
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 429, text: () => Promise.resolve('slow down') });
+    await expect(suggest({ lat: '55.7987', lng: '49.1064' }))
+      .rejects.toMatchObject({ statusCode: 404, message: 'No image found' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips the throttled spatial layer and still finds the place by its name', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 429, text: () => Promise.resolve('slow down') });
+    reply({ search: [{ id: 'Q603622', label: 'Kazan Kremlin' }] });
+    reply({
+      entities: {
+        Q603622: {
+          labels: { en: { value: 'Qazan Kremlin' } },
+          claims: { P18: [{ mainsnak: { datavalue: { value: 'Kazan Kremlin.jpg' } } }] },
+        },
+      },
+    });
+
+    expect(await suggest({ name: 'Kazan Kremlin', lat: '55.7987', lng: '49.1064' }))
+      .toMatchObject({ source: 'wikidata_search', wikidataId: 'Q603622' });
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it('answers 400 when it is given nothing to look for', async () => {
     await expect(suggest({})).rejects.toMatchObject({ statusCode: 400 });
     expect(fetchMock).not.toHaveBeenCalled();
