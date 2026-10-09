@@ -10,6 +10,7 @@ import {
   AcceptSourceResult,
   AdmissionResult,
   ComponentItemsAnswered,
+  ComponentItemSuggestions,
   CurationLog,
   DeclineHeldResult,
   DeclineSourceResult,
@@ -32,6 +33,7 @@ import { PublishWaitingResult } from '../api/responses/admin.js';
 import { undoPlaceMerge } from '../controllers/experience/placeMergeController.js';
 import { chooseViews } from '../controllers/experience/viewChoiceController.js';
 import { answerComponentItems } from '../controllers/experience/componentItemController.js';
+import { suggestComponentItems } from '../controllers/experience/componentItemSuggestionController.js';
 import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
 import { ReviewAnswerResult, ReviewQueue, RunSetAside } from '../api/responses/reviewQueue.js';
 import {
@@ -514,6 +516,17 @@ export const experienceCurationRoutes = [
     params: idParamSchema,
     response: ViewSuggestions,
     handler: suggestViews,
+  }),
+  // Jev's judgement of a site's candidate component items (#1272): the stored
+  // one for each candidate as it stands, or a new one asked for — one call for
+  // the card's candidates, a POST since it may be paid for.
+  defineRoute({
+    method: 'post', path: '/:id/component-item-suggestions', access: 'curator', cache: 'no-store',
+    limiter: authenticatedLimiter,
+    summary: "Ask Jev whether each candidate item is the component it was proposed for; a suggestion, never applied",
+    params: idParamSchema,
+    response: ComponentItemSuggestions,
+    handler: suggestComponentItems,
   }),
 
   // The no that the two gated kinds without one lacked (#852, ADR-0053): keeping

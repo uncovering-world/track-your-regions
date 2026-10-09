@@ -12773,6 +12773,56 @@
         }
       }
     },
+    "/api/experiences/{id}/component-item-suggestions": {
+      "post": {
+        "operationId": "postExperiencesByIdComponentItemSuggestions",
+        "summary": "Ask Jev whether each candidate item is the component it was proposed for; a suggestion, never applied",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComponentItemSuggestions"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/refuse-arrival": {
       "post": {
         "operationId": "postExperiencesByIdRefuseArrival",
@@ -16365,6 +16415,53 @@
         ],
         "additionalProperties": false,
         "description": "A search for the Wikidata items of World Heritage components, started in the background and followed through the sync status (#1272)."
+      },
+      "ComponentItemSuggestions": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "description": "Whether this deployment asks Jev at all. False: no judgement, nothing else changes."
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "proposalId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "The candidate judged."
+                },
+                "judgement": {
+                  "type": "string",
+                  "enum": [
+                    "same",
+                    "other"
+                  ],
+                  "description": "`same`: the item is the component; `other`: another place."
+                },
+                "confidence": {
+                  "type": "number",
+                  "description": "Its confidence, 0 to 1."
+                }
+              },
+              "required": [
+                "proposalId",
+                "judgement",
+                "confidence"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "configured",
+          "suggestions"
+        ],
+        "additionalProperties": false,
+        "description": "Jev's judgement of the candidate items of a site's components (#1272), per candidate it could judge; never applied."
       },
       "ComponentItems": {
         "type": "object",
@@ -22490,7 +22587,7 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991,
-            "description": "Suggestions asked for, one call each."
+            "description": "Suggestions asked for, over both cards."
           },
           "inputTokens": {
             "type": "integer",
@@ -22505,13 +22602,65 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991,
-            "description": "A curator's choices of a source for which Jev had suggested an answer for the same views."
+            "description": "Curators' answers for which Jev had suggested one for the same question, over both cards."
           },
           "agreed": {
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991,
-            "description": "Of those, the choices that took the view Jev suggested."
+            "description": "Of those, the answers that took what Jev suggested."
+          },
+          "byQuestion": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "question": {
+                  "type": "string",
+                  "enum": [
+                    "views",
+                    "componentItems"
+                  ],
+                  "description": "Which card asked: the sources card (#1260), or the component-items card (#1272)."
+                },
+                "calls": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "Suggestions asked for: one call each on the sources card, one question each on the component-items card."
+                },
+                "inputTokens": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "usd": {
+                  "type": "number"
+                },
+                "compared": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "Curators' answers for which Jev had suggested one for the same question."
+                },
+                "agreed": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "Of those, the answers that took what Jev suggested."
+                }
+              },
+              "required": [
+                "question",
+                "calls",
+                "inputTokens",
+                "usd",
+                "compared",
+                "agreed"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The same figures per card."
           }
         },
         "required": [
@@ -22520,10 +22669,11 @@
           "inputTokens",
           "usd",
           "compared",
-          "agreed"
+          "agreed",
+          "byQuestion"
         ],
         "additionalProperties": false,
-        "description": "What Jev has cost, and how often curators chose what it suggested (#1260)."
+        "description": "What Jev has cost, and how often curators chose what it suggested (#1260, #1272)."
       },
       "LearnedRule": {
         "type": "object",

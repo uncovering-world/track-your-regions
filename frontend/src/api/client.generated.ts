@@ -2004,6 +2004,39 @@ export interface ComponentItemSearchStarted {
   message: string;
 }
 
+/**
+ * `same`: the item is the component; `other`: another place.
+ */
+export type ComponentItemSuggestionsSuggestionsItemJudgement = typeof ComponentItemSuggestionsSuggestionsItemJudgement[keyof typeof ComponentItemSuggestionsSuggestionsItemJudgement];
+
+
+export const ComponentItemSuggestionsSuggestionsItemJudgement = {
+  same: 'same',
+  other: 'other',
+} as const;
+
+export type ComponentItemSuggestionsSuggestionsItem = {
+  /**
+     * The candidate judged.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  proposalId: number;
+  /** `same`: the item is the component; `other`: another place. */
+  judgement: ComponentItemSuggestionsSuggestionsItemJudgement;
+  /** Its confidence, 0 to 1. */
+  confidence: number;
+};
+
+/**
+ * Jev's judgement of the candidate items of a site's components (#1272), per candidate it could judge; never applied.
+ */
+export interface ComponentItemSuggestions {
+  /** Whether this deployment asks Jev at all. False: no judgement, nothing else changes. */
+  configured: boolean;
+  suggestions: ComponentItemSuggestionsSuggestionsItem[];
+}
+
 export type ComponentItemsAmbiguousItem = {
   site: string;
   ref: string;
@@ -5207,12 +5240,52 @@ export interface InstancesSynced {
 }
 
 /**
- * What Jev has cost, and how often curators chose what it suggested (#1260).
+ * Which card asked: the sources card (#1260), or the component-items card (#1272).
+ */
+export type JevUsageByQuestionItemQuestion = typeof JevUsageByQuestionItemQuestion[keyof typeof JevUsageByQuestionItemQuestion];
+
+
+export const JevUsageByQuestionItemQuestion = {
+  views: 'views',
+  componentItems: 'componentItems',
+} as const;
+
+export type JevUsageByQuestionItem = {
+  /** Which card asked: the sources card (#1260), or the component-items card (#1272). */
+  question: JevUsageByQuestionItemQuestion;
+  /**
+     * Suggestions asked for: one call each on the sources card, one question each on the component-items card.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  calls: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  inputTokens: number;
+  usd: number;
+  /**
+     * Curators' answers for which Jev had suggested one for the same question.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  compared: number;
+  /**
+     * Of those, the answers that took what Jev suggested.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  agreed: number;
+};
+
+/**
+ * What Jev has cost, and how often curators chose what it suggested (#1260, #1272).
  */
 export interface JevUsage {
   configured: boolean;
   /**
-     * Suggestions asked for, one call each.
+     * Suggestions asked for, over both cards.
      * @minimum -9007199254740991
      * @maximum 9007199254740991
      */
@@ -5225,17 +5298,19 @@ export interface JevUsage {
   /** What the calls cost: Jev is priced per input token, output free. */
   usd: number;
   /**
-     * A curator's choices of a source for which Jev had suggested an answer for the same views.
+     * Curators' answers for which Jev had suggested one for the same question, over both cards.
      * @minimum -9007199254740991
      * @maximum 9007199254740991
      */
   compared: number;
   /**
-     * Of those, the choices that took the view Jev suggested.
+     * Of those, the answers that took what Jev suggested.
      * @minimum -9007199254740991
      * @maximum 9007199254740991
      */
   agreed: number;
+  /** The same figures per card. */
+  byQuestion: JevUsageByQuestionItem[];
 }
 
 /**
@@ -18315,6 +18390,31 @@ export const getPostExperiencesByIdViewSuggestionsUrl = (id: number,) => {
 export const postExperiencesByIdViewSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<ViewSuggestions> => {
 
   return apiFetch<ViewSuggestions>(getPostExperiencesByIdViewSuggestionsUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostExperiencesByIdComponentItemSuggestionsUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/component-item-suggestions`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Ask Jev whether each candidate item is the component it was proposed for; a suggestion, never applied
+ */
+export const postExperiencesByIdComponentItemSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<ComponentItemSuggestions> => {
+
+  return apiFetch<ComponentItemSuggestions>(getPostExperiencesByIdComponentItemSuggestionsUrl(id),
   {
     ...options,
     method: 'POST'

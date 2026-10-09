@@ -213,6 +213,14 @@ const VIEW_SUGGESTION_WRITE = 'experience_view_suggestions is written by its wri
   + 'write to src/controllers/experience/viewSuggestions.ts, taking the place\'s LockedExperience token.';
 const VIEW_SUGGESTION_WRITE_RULES = spelledWriteRules('experience_view_suggestions', VIEW_SUGGESTION_WRITE);
 
+/** Jev's judgement of a candidate component item (#1272): `componentItemSuggestions.ts`. */
+const COMPONENT_ITEM_SUGGESTION_WRITE = 'experience_component_item_suggestions is written by its writer module only '
+  + '(ADR-0077): add a named write to src/controllers/experience/componentItemSuggestions.ts, taking the site\'s '
+  + 'LockedExperience token.';
+const COMPONENT_ITEM_SUGGESTION_WRITE_RULES = spelledWriteRules(
+  'experience_component_item_suggestions', COMPONENT_ITEM_SUGGESTION_WRITE,
+);
+
 /** A curator's answer to one row of a held proposal: `recordHeldAnswers` in `heldDecisions.ts`. */
 const HELD_DECISION_WRITE = 'experience_held_decisions is written by its writer module only (ADR-0077): record an answer '
   + 'through recordHeldAnswers in src/controllers/experience/heldDecisions.ts.';
@@ -365,6 +373,7 @@ const SOURCE_RULE_FAMILIES = [
   EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
   VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES, COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
+  COMPONENT_ITEM_SUGGESTION_WRITE_RULES,
   ROUTE_REGISTRY_RULES,
 ];
 
@@ -373,6 +382,7 @@ const TABLE_WRITE_FAMILIES = [
   EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
   VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES, COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
+  COMPONENT_ITEM_SUGGESTION_WRITE_RULES,
 ];
 
 /** The `no-restricted-syntax` setting of every family but the ones named. */
@@ -545,6 +555,12 @@ export default [
     files: ['src/controllers/experience/componentItemAnswers.ts', 'src/services/sync/componentItemFinder.ts'],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(COMPONENT_ITEM_PROPOSAL_WRITE_RULES),
+    },
+  },
+  {
+    files: ['src/controllers/experience/componentItemSuggestions.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(COMPONENT_ITEM_SUGGESTION_WRITE_RULES),
     },
   },
   {
