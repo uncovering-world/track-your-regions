@@ -1069,6 +1069,47 @@ path needs.
   only, which keeps the region feed light; the map's hover card shows a point's own picture and,
   for a part without one, its site's, saying so beside the credit (`pointPicture`,
   `docs/tech/experience-map-ui.md`).
+- **A component no item records the reference of is proposed one** (#1272,
+  `componentItemFinder.ts`, rules in `componentItemMatching.ts`, queries in
+  `componentItemQueries.ts`). Started from the World Heritage source's card in the admin panel
+  (*Find component items*, `POST /api/admin/sync/sources/:sourceId/find-component-items`,
+  `findUnescoComponentItems` in `componentItemJob.ts`), not from the run, whose job is to record
+  what UNESCO states. It reads the standing component points with no item and no claim on one, and
+  asks Wikidata by two rules, each a reason the curator reads on the card:
+  - **part of the site** (`part_of`) — an item that says it is part of one of the site's own items
+    (P361) and carries no World Heritage reference of its own, within 2 km of the point with a
+    name trigram-similar at 0.3 or more, or within 150 m whatever its name;
+  - **near, of the site's kind** (`near`) — an item within 500 m with a similar name, of a class
+    (P31) the site's resolved components are of, or for a site with none resolved, of a class the
+    resolved components of at least five sites across the catalogue are of — counted by site, so
+    one site of four hundred rock-art shelters does not decide it for the rest. A settlement is a candidate only
+    for a site whose own components include settlements: a fort named after a village is not the
+    village.
+
+  An item of the same name, folded, is taken farther off: one of the site's parts up to 5 km (a
+  beach, a road, a park), a near item up to 2 km. Within 50 m such a match is marked `exact`. The thresholds come from the components that
+  already resolve by their reference, measured on 2026-10-09: the item lies within 25 m of the
+  point at the median and 1.8 km at the 90th percentile, and its best label is similar at 0.89 at
+  the median and 0.22 at the 10th percentile. An item already recorded on any point is never
+  proposed, and an item two components could be is offered for the one it matches better. Each
+  match is a row of `experience_component_item_proposals` (migration 082): the item, its label,
+  the distance, the similarity, `exact` and `basis`. A pass replaces the open proposals of the
+  points it answered for and keeps the answered ones, so a candidate a curator refused never comes back.
+  The query service is asked for identifiers, coordinates and classes only, and each query takes
+  its turn like every other (§ SPARQL reliability). Asked for every label in every language as
+  well, a site item with a few thousand parts made one query heavy enough to earn a 429 on
+  2026-10-09. The near rule asks about points in cells of 0.25°, four cells to a query joined by
+  `UNION`, with the optimizer told to keep the order as written, since left to itself it starts
+  from the classes and times out. The labels are read from Wikidata's own API (`wbgetentities`,
+  `labelsOf`), fifty items a request, one request at a time, and only for the candidates within
+  reach: 5 km of a point for a part, 2 km for a near item. A part or box query the service cannot
+  answer in its minute is tried once more, then asked again smaller: a batch of sites in halves,
+  a group of cells one cell at a time. A site or a cell it cannot answer even alone is left out
+  and counted on the job's closing sentence, rather than ending the pass, and its points keep
+  what an earlier pass proposed for them. Only a 5xx, a timeout or a dropped connection is split
+  this way (`SparqlUnanswered`, `tooHeavy`): a 429 or a 403 means the service asked this client
+  to stop, a 400 that the query is wrong, a spent wait budget that the run has no patience left,
+  and each of those ends the pass.
 - **A site names its own Wikidata items, and a site of one point merges on them** (#1248,
   [ADR-0088](../decisions/0088-a-world-heritage-site-of-one-point-is-its-one-item-and-one-point.md)).
   From the same index the run records on the site's membership the items carrying the property's
