@@ -10,7 +10,7 @@
 
 import { Card, CardContent, Stack, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
-import { getJevUsage } from '../../api/admin/jev';
+import { getJevUsage, type JevUsage } from '../../api/admin/jev';
 import { queryKeys } from '../../api/queryKeys';
 import { plural } from '../../utils/plural';
 
@@ -29,17 +29,26 @@ function Figure({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** The share of curators' answers that took what Jev suggested, or a dash where none compares. */
+const agreementOf = (compared: number, agreed: number) => (compared > 0 ? `${Math.round((agreed / compared) * 100)} %` : '—');
+
+/** The two questions Jev is asked, as the breakdown names them. */
+const QUESTION_WORDS: Record<JevUsage['byQuestion'][number]['question'], string> = {
+  views: 'which source’s view a place shows',
+  componentItems: 'whether a candidate item is the component',
+};
+
 export function JevUsageCard() {
   const { data } = useQuery({ queryKey: queryKeys.ai.jevUsage, queryFn: getJevUsage });
   if (!data) return null;
-  const agreement = data.compared > 0 ? `${Math.round((data.agreed / data.compared) * 100)} %` : '—';
   return (
     <Card sx={{ mb: 3 }}>
       <CardContent>
         <Typography variant="h6">Jev suggestions</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {data.configured
-            ? 'Jev suggests which of two sources’ name, picture or point a place should show, on the review page; a curator decides.'
+            ? 'Jev suggests which of two sources’ name, picture or point a place should show, and whether a candidate '
+              + 'Wikidata item is the component it was proposed for, on the review page; a curator decides.'
             : 'Not configured: set JEV_API_KEY to show Jev’s suggestion on the review page. Nothing else changes without it.'}
         </Typography>
         <Stack direction="row" spacing={4} flexWrap="wrap" useFlexGap>
@@ -47,9 +56,17 @@ export function JevUsageCard() {
           <Figure label="input tokens" value={data.inputTokens.toLocaleString()} />
           <Figure label="cost" value={costOf(data.usd)} />
           <Figure
-            label={`curators chose what Jev suggested, of ${plural(data.compared, 'choice')}`}
-            value={agreement}
+            label={`curators chose what Jev suggested, of ${plural(data.compared, 'answer')}`}
+            value={agreementOf(data.compared, data.agreed)}
           />
+        </Stack>
+        <Stack spacing={0.5} sx={{ mt: 2 }}>
+          {data.byQuestion.map(question => (
+            <Typography key={question.question} variant="body2" color="text.secondary">
+              {QUESTION_WORDS[question.question]}: {plural(question.calls, 'suggestion')}, {costOf(question.usd)},
+              {' '}curators agreed {agreementOf(question.compared, question.agreed)} of {plural(question.compared, 'answer')}
+            </Typography>
+          ))}
         </Stack>
       </CardContent>
     </Card>

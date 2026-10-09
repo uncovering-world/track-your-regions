@@ -6,7 +6,8 @@
  *
  * The Dacian frontier is the shape: the fort of Bologa stands 20 m from the
  * point named Bologa and carries the same name, so it is marked *exact* and a
- * button confirms every such candidate at once; a tower 400 m off with a name
+ * button confirms every such candidate at once — except two that compete for
+ * one point or one item, which the curator picks between; a tower 400 m off with a name
  * half alike is read and judged on its own. Every candidate says why it was
  * found — it states it is part of the site, or lies near the point and is of
  * the site's kind — how far off it stands and how alike the names are, and
@@ -14,12 +15,23 @@
  * the point. Nothing is written until the curator saves; a confirmed item
  * becomes the point's as the curator's choice, and its picture and description
  * follow where the item has them.
+ *
+ * Where the deployment asks Jev (#1272, ADR-0087), each candidate also says
+ * what Jev makes of it — the same place, or another — and how sure it is, in
+ * grey beside the facts and never chosen for the curator; one button confirms
+ * every candidate Jev calls the same place at `JEV_SURE` or more, under the
+ * same exception. The two buttons share it: a candidate that competes with any
+ * candidate either button would take is left to the curator, so neither button
+ * can undo the other's confirmation.
  */
 
 import { useState } from 'react';
 import { Box, Button, Card, CardContent, Chip, Link, Stack, Typography } from '@mui/material';
-import { useMutation } from '@tanstack/react-query';
-import { answerComponentItems, type AnswerComponentItemsBody } from '../../api/curation';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import {
+  answerComponentItems, suggestComponentItems, type AnswerComponentItemsBody, type ComponentItemSuggestions,
+} from '../../api/curation';
+import { queryKeys } from '../../api/queryKeys';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { plural } from '../../utils/plural';
 import { wikidataItemUrl } from '../../utils/wikidataLinks';
@@ -28,6 +40,32 @@ import { ItemHeader, messageFor } from './queueCard';
 
 type Candidate = NonNullable<ReviewQueueItem['component_items']>[number];
 type Answer = AnswerComponentItemsBody['answers'][number]['answer'];
+type Judgement = ComponentItemSuggestions['suggestions'][number];
+
+/**
+ * How sure Jev has to be for the one-button confirmation to take a candidate
+ * it calls the same place: at 0.9 or more its answers agreed with independent
+ * labels on 99 % of a thousand entries (#1249's measurement), against 92 %
+ * over all of them.
+ */
+export const JEV_SURE = 0.9;
+
+/** What Jev makes of a candidate, in the words the caption uses. */
+const JUDGEMENT_WORDS: Record<Judgement['judgement'], string> = {
+  same: 'the same place',
+  other: 'another place',
+};
+
+/**
+ * Jev's confidence is the margin between its two options, so a low one is a
+ * near coin toss rather than a weak yes: said as leaning, not as saying.
+ */
+function judgementWords(judgement: Judgement): string {
+  const percent = `${Math.round(judgement.confidence * 100)} %`;
+  return judgement.confidence < 0.5
+    ? `Jev is unsure, leans ${JUDGEMENT_WORDS[judgement.judgement]} · ${percent}`
+    : `Jev says ${JUDGEMENT_WORDS[judgement.judgement]} · ${percent}`;
+}
 
 /** The rule that found a candidate, in the words a curator reads. */
 const BASIS_WORDS: Record<Candidate['basis'], string> = {
@@ -46,6 +84,22 @@ function distanceWords(metres: number): string {
 function similarityWords(candidate: Candidate): string {
   if (candidate.similarity >= 1) return 'the same name';
   return `names ${Math.round(candidate.similarity * 100)} % alike`;
+}
+
+/**
+ * The candidates of a group a one-button confirmation may take: the ones that
+ * compete with another of the group for a point or for an item are left out,
+ * since a component is one item and an item one component, and which of two
+ * to confirm is the curator's call rather than the order's.
+ */
+export function uncontested(group: readonly Candidate[]): Candidate[] {
+  const points = new Map<number, number>();
+  const items = new Map<string, number>();
+  for (const candidate of group) {
+    points.set(candidate.locationId, (points.get(candidate.locationId) ?? 0) + 1);
+    items.set(candidate.item, (items.get(candidate.item) ?? 0) + 1);
+  }
+  return group.filter(candidate => points.get(candidate.locationId) === 1 && items.get(candidate.item) === 1);
 }
 
 /** The candidates by point, in the order the server gave them: the source's order of points, the better candidate first. */
@@ -82,9 +136,11 @@ function BesideOnMap({ candidate }: { candidate: Candidate }) {
   );
 }
 
-/** One candidate: what it is, why it was found, and the two answers. */
-function CandidateRow({ candidate, answer, onAnswer }: {
+/** One candidate: what it is, why it was found, what Jev makes of it, and the two answers. */
+function CandidateRow({ candidate, judgement, answer, onAnswer }: {
   candidate: Candidate;
+  /** Jev's judgement where this deployment asks it; a suggestion, never a choice. */
+  judgement: Judgement | undefined;
   answer: Answer | undefined;
   onAnswer: (answer: Answer | undefined) => void;
 }) {
@@ -103,6 +159,12 @@ function CandidateRow({ candidate, answer, onAnswer }: {
         <Typography variant="body2" color="text.secondary">
           {BASIS_WORDS[candidate.basis]} · {distanceWords(candidate.distanceM)} · {similarityWords(candidate)}
         </Typography>
+        {judgement && (
+          // In grey, apart from the facts: a judgement is not a state of the place.
+          <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, display: 'block' }}>
+            {judgementWords(judgement)}
+          </Typography>
+        )}
         <BesideOnMap candidate={candidate} />
       </Box>
       <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
@@ -148,14 +210,36 @@ export function ComponentItemsCard({ item, onDone }: {
   const candidates = item.component_items ?? [];
   const [answers, setAnswers] = useState<Record<number, Answer>>({});
   const answered = Object.entries(answers).map(([proposalId, answer]) => ({ proposalId: Number(proposalId), answer }));
-  const exact = candidates.filter(candidate => candidate.exact);
-  const exactLeft = exact.filter(candidate => answers[candidate.proposalId] !== 'accepted').length;
+  const exactAll = candidates.filter(candidate => candidate.exact);
   const points = byPoint(candidates);
 
   const save = useMutation({
     mutationFn: () => answerComponentItems(item.id, answered),
     onSettled: (data, error) => onDone(error ? messageFor(item, error) : outcomeOf(item.name, data!), item.id),
   });
+
+  // Jev's judgement, where this deployment asks Jev (#1272): shown beside each
+  // candidate, never chosen for the curator. A failed read shows none. Keyed
+  // by the candidates too: a judgement is about the candidates it was asked
+  // for, and a card showing new ones asks again.
+  const { data: judged } = useQuery({
+    queryKey: queryKeys.experience.componentItemSuggestions(item.id, JSON.stringify(candidates.map(c => c.proposalId))),
+    queryFn: () => suggestComponentItems(item.id),
+    staleTime: 300_000,
+    retry: false,
+  });
+  const judgementOf = (proposalId: number) => judged?.suggestions.find(one => one.proposalId === proposalId);
+  const sureAll = candidates.filter(candidate => {
+    const judgement = judgementOf(candidate.proposalId);
+    return judgement?.judgement === 'same' && judgement.confidence >= JEV_SURE;
+  });
+  // Contested over both buttons' candidates at once: an exact candidate and a
+  // sure one for the same point would otherwise undo each other, button by button.
+  const offered = new Set(uncontested([...new Set([...exactAll, ...sureAll])]).map(candidate => candidate.proposalId));
+  const exact = exactAll.filter(candidate => offered.has(candidate.proposalId));
+  const sure = sureAll.filter(candidate => offered.has(candidate.proposalId));
+  const exactLeft = exact.filter(candidate => answers[candidate.proposalId] !== 'accepted').length;
+  const sureLeft = sure.filter(candidate => answers[candidate.proposalId] !== 'accepted').length;
 
   const set = (proposalId: number, answer: Answer | undefined) => setAnswers(previous => {
     const next = { ...previous };
@@ -178,6 +262,7 @@ export function ComponentItemsCard({ item, onDone }: {
     next === 'accepted' ? confirm(candidate) : set(candidate.proposalId, next)
   );
   const confirmExact = () => { for (const candidate of exact) confirm(candidate); };
+  const confirmSure = () => { for (const candidate of sure) confirm(candidate); };
 
   return (
     <Card variant="outlined">
@@ -202,6 +287,7 @@ export function ComponentItemsCard({ item, onDone }: {
                   <CandidateRow
                     key={candidate.proposalId}
                     candidate={candidate}
+                    judgement={judgementOf(candidate.proposalId)}
                     answer={answers[candidate.proposalId]}
                     onAnswer={next => answer(candidate, next)}
                   />
@@ -218,6 +304,11 @@ export function ComponentItemsCard({ item, onDone }: {
           {exact.length > 0 && (
             <Button variant="outlined" disabled={exactLeft === 0 || save.isPending} onClick={confirmExact}>
               Confirm {exact.length === 1 ? 'the exact match' : `all ${exact.length} exact matches`}
+            </Button>
+          )}
+          {sure.length > 0 && (
+            <Button variant="outlined" disabled={sureLeft === 0 || save.isPending} onClick={confirmSure}>
+              Confirm {plural(sure.length, 'candidate')} Jev is sure of
             </Button>
           )}
         </Stack>
