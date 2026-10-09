@@ -88,6 +88,10 @@ export function LocationPicker({
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<PlaceResult[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
+  /** The query the shown results answer, so "no places found" is said about what was asked. */
+  const [searchedFor, setSearchedFor] = useState<string | null>(null);
+  /** The search did not get an answer — refused or unreachable — which is not "nothing found". */
+  const [searchFailed, setSearchFailed] = useState(false);
   const searchInitialized = useRef(false);
 
   // --- Coordinates state ---
@@ -249,27 +253,24 @@ export function LocationPicker({
     }
   }, [value, updateMarker]);
 
-  // --- Search with debounce ---
-  useEffect(() => {
-    if (searchQuery.length < 2) {
+  // --- Search, on Enter or Find ---
+  // Never as the curator types: Nominatim's usage policy forbids auto-complete
+  // over its API, and a search per keystroke is exactly that.
+  const runSearch = async () => {
+    const query = searchQuery.trim();
+    if (query.length < 2 || searchLoading) return;
+    setSearchLoading(true);
+    setSearchFailed(false);
+    try {
+      setSearchResults(await searchPlaces(query, 5));
+    } catch {
       setSearchResults([]);
-      return;
+      setSearchFailed(true);
+    } finally {
+      setSearchedFor(query);
+      setSearchLoading(false);
     }
-
-    const timer = setTimeout(async () => {
-      setSearchLoading(true);
-      try {
-        const results = await searchPlaces(searchQuery, 5);
-        setSearchResults(results);
-      } catch {
-        setSearchResults([]);
-      } finally {
-        setSearchLoading(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
+  };
 
   // --- Coordinate paste handler ---
   const handleCoordChange = (text: string) => {
@@ -368,20 +369,31 @@ export function LocationPicker({
 
       {mode === 'search' && (
         <Box>
-          <TextField
-            placeholder="Search for a place..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            fullWidth
-            size="small"
-            autoFocus
-            slotProps={{
-              input: {
-                startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />,
-                endAdornment: searchLoading ? <CircularProgress size={16} /> : null,
-              },
-            }}
-          />
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <TextField
+              placeholder="Search for a place..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void runSearch(); } }}
+              fullWidth
+              size="small"
+              autoFocus
+              slotProps={{
+                input: {
+                  startAdornment: <SearchIcon fontSize="small" sx={{ mr: 1, color: 'text.secondary' }} />,
+                },
+              }}
+            />
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={() => { void runSearch(); }}
+              disabled={searchLoading || searchQuery.trim().length < 2}
+              sx={{ minWidth: 80 }}
+            >
+              {searchLoading ? <CircularProgress size={16} /> : 'Find'}
+            </Button>
+          </Box>
           {searchResults.length > 0 && (
             <List dense disablePadding sx={{ maxHeight: 160, overflowY: 'auto', mt: 0.5 }}>
               {searchResults.map((place, i) => (
@@ -391,6 +403,7 @@ export function LocationPicker({
                   onClick={() => {
                     onChange({ lat: place.lat, lng: place.lng });
                     setSearchResults([]);
+                    setSearchedFor(null);
                     setSearchQuery(place.display_name.split(',')[0]);
                     onPlaceSelect?.({ wikidataId: place.wikidataId ?? undefined, displayName: place.display_name });
                   }}
@@ -403,6 +416,23 @@ export function LocationPicker({
                 </ListItemButton>
               ))}
             </List>
+          )}
+          {searchedFor !== null && !searchLoading && searchFailed && (
+            <Typography variant="caption" color="error" component="p" sx={{ mt: 0.5 }}>
+              The place search did not answer — try again in a moment.
+            </Typography>
+          )}
+          {searchedFor !== null && !searchLoading && !searchFailed && searchResults.length === 0 && (
+            <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 0.5 }}>
+              No places found for "{searchedFor}".
+            </Typography>
+          )}
+          {searchResults.length > 0 && (
+            // Nominatim's answers are OpenStreetMap data under the ODbL, which
+            // asks for the credit wherever they are shown — and only there.
+            <Typography variant="caption" color="text.secondary" component="p" sx={{ mt: 0.5 }}>
+              Search by Nominatim · © OpenStreetMap contributors
+            </Typography>
           )}
         </Box>
       )}
