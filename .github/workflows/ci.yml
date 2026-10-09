@@ -155,12 +155,31 @@ jobs:
       # failed there is no output to read, and the zero sha is what says so:
       # `npm run check` then runs every gate rather than none.
       GATES_BASE: ${{ needs.changes.outputs.base || '0000000000000000000000000000000000000000' }}
+      DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' && secrets.DOCKERHUB_USER != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
           # `npm run check` works out the change set for itself, and needs the
           # merge base with GATES_BASE to do it.
           fetch-depth: 0
+
+      # Anonymous pulls from Docker Hub count against a budget every
+      # GitHub-hosted runner behind one address shares, and a busy hour fails a
+      # gate before it reads anything (#1316: `lint:openapi`, `lint:links`, the
+      # Semgrep scan and the test stack's base images all drew `toomanyrequests`
+      # on 2026-10-09). Logged in, pulls count against the account's own budget.
+      # The step is skipped where either secret is absent - a fork's pull
+      # request, or Dependabot's, which runs with Dependabot's own secrets
+      # rather than the repository's - and the job pulls anonymously, as
+      # before; a token without a user would fail the login rather than fall
+      # back, so both are required. The token itself never enters the job's
+      # environment, only whether both are set does.
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -329,8 +348,18 @@ jobs:
     # a cv-python change pays for both — running both off a single key would
     # be the same waste one level down.
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_security == 'true') }}
+    env:
+      DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' && secrets.DOCKERHUB_USER != '' }}
     steps:
       - uses: actions/checkout@v4
+
+      # Logged in to Docker Hub for the reason the `check` job gives (#1316).
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       # Runs the same npm scripts as the local pre-push tier, rather than
       # restating the rulesets here, so "green locally" and "green in CI" cannot
@@ -373,8 +402,18 @@ jobs:
     # `build`, the scan would never run for it.
     needs: [changes]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_trivy == 'true') }}
+    env:
+      DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' && secrets.DOCKERHUB_USER != '' }}
     steps:
       - uses: actions/checkout@v4
+
+      # Logged in to Docker Hub for the reason the `check` job gives (#1316).
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Build cv-python image
         run: docker build -t track-your-regions/cv-python:scan ./cv-python
@@ -401,6 +440,8 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_smoke == 'true') }}
     timeout-minutes: 20
+    env:
+      DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' && secrets.DOCKERHUB_USER != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -408,6 +449,14 @@ jobs:
           # checkout straight to docker compose - so leave no token behind
           # in .git/config for the containers it starts.
           persist-credentials: false
+
+      # Logged in to Docker Hub for the reason the `check` job gives (#1316).
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -493,12 +542,22 @@ jobs:
     needs: [changes]
     if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.job_perf == 'true') }}
     timeout-minutes: 25
+    env:
+      DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' && secrets.DOCKERHUB_USER != '' }}
     steps:
       - uses: actions/checkout@v4
         with:
           # As for e2e-smoke: the checkout goes straight to docker compose,
           # so no token is left in .git/config for the containers to find.
           persist-credentials: false
+
+      # Logged in to Docker Hub for the reason the `check` job gives (#1316).
+      - name: Log in to Docker Hub
+        if: ${{ env.DOCKERHUB_LOGIN == 'true' }}
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USER }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
