@@ -10,9 +10,11 @@ vi.mock('./wikidataUtils.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('./wikidataUtils.js')>(),
   sparqlQuery: vi.fn(),
 }));
+vi.mock('./qleverWikidata.js', () => ({ qleverWikidataQuery: vi.fn() }));
 
 const { sparqlQuery, SparqlUnanswered, WaitBudget } = await import('./wikidataUtils.js');
-const { partsOfSites } = await import('./componentItemQueries.js');
+const { boxFilter, itemsInBoxes, partsOfSites } = await import('./componentItemQueries.js');
+const { qleverWikidataQuery } = await import('./qleverWikidata.js');
 
 const asked = vi.mocked(sparqlQuery);
 const hooks = () => ({ budget: new WaitBudget(1000) });
@@ -54,5 +56,34 @@ describe('partsOfSites', () => {
 
     await expect(partsOfSites(['Q1', 'Q2', 'Q3', 'Q4'], hooks())).rejects.toThrow(message);
     expect(asked).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('itemsInBoxes', () => {
+  it("reads QLever's coordinates, written POINT, as the query service's", async () => {
+    vi.mocked(qleverWikidataQuery).mockResolvedValue([{
+      item: { value: 'http://www.wikidata.org/entity/Q98402' },
+      coord: { value: 'POINT(22.8754 46.8851)' },
+      class: { value: 'http://www.wikidata.org/entity/Q88205' },
+    }]);
+
+    const items = await itemsInBoxes([{ south: 46.8, west: 22.8, north: 46.9, east: 22.9 }], ['Q88205'], hooks());
+
+    expect(items).toEqual([{ item: 'Q98402', labels: [], coords: [[46.8851, 22.8754]], classes: ['Q88205'] }]);
+  });
+});
+
+describe('boxFilter', () => {
+  it('takes the other side of the antimeridian for a box that runs past it', () => {
+    // A margin around a point on Taveuni, Fiji, at 179.98° east.
+    const filter = boxFilter({ south: -16.9, west: 179.9, north: -16.7, east: 180.05 });
+
+    expect(filter).toContain('?lon >= 179.9 && ?lon <= 180');
+    expect(filter).toContain('?lon >= -180 && ?lon <= -179.95');
+  });
+
+  it('is one range for a box that does not', () => {
+    expect(boxFilter({ south: 46.8, west: 22.8, north: 46.9, east: 22.9 }))
+      .toBe('(?lat >= 46.8 && ?lat <= 46.9 && (?lon >= 22.8 && ?lon <= 22.9))');
   });
 });
