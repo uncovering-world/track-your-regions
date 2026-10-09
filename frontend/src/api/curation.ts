@@ -11,8 +11,8 @@ import type {
   AcceptSourceResult, AdmissionResult, ComponentItemsAnswered, ComponentItemSuggestions, ContentKind, CurationLog,
   DeclineHeldResult,
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
-  LocationStateResult, ManualExperienceCreated, MergeUndone, PublishResult, ViewsChosen, ViewSuggestions, RefuseArrivalResult,
-  RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
+  LocationStateResult, ManualExperienceCreated, MergeUndone, PointItemTakenBack, PublishResult, ViewsChosen, ViewSuggestions,
+  RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
 import {
   deleteExperiencesByIdAssignByRegionId, deleteExperiencesByIdRemoveFromRegionByRegionId,
@@ -25,6 +25,7 @@ import {
   postExperiencesByIdDeclineSource, postExperiencesByIdPublish, postExperiencesByIdRefuseArrival,
   postExperiencesByIdRefuseContents, postExperiencesByIdReject, postExperiencesByIdState,
   postExperiencesByIdUnrefuseContents, postExperiencesByIdUnreject, postExperiencesLocationsByLocationIdState,
+  postExperiencesLocationsByLocationIdTakeBackItem,
   type CreateManualExperienceBody, type DeclineHeldBody, type EditExperienceBody, type EditLocationBody,
   type EditWorkBody, type ExperienceAdmissionBody, type LifecycleStateBody, type RefuseContentsBody,
 } from './client.generated';
@@ -37,7 +38,8 @@ export type {
   ComponentItemSuggestions, ContentKind, CurationLog, CurationLogEntry,
   DeclineHeldResult, DeclineSourceResult, DeclinedPart, ExperienceEditResult,
   ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MergeUndone,
-  PartNotFound, ViewsChosen, ViewSuggestions, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody, RefuseContentsResult,
+  PartNotFound, PointItemTakenBack, ViewsChosen, ViewSuggestions, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
+  RefuseContentsResult,
   RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
 
@@ -376,6 +378,15 @@ export async function editExperience(
  */
 export async function chooseSourceViews(experienceId: number, choices: ChooseViewsBody['choices']): Promise<ViewsChosen> {
   return postExperiencesByIdChooseViews(experienceId, { choices });
+}
+
+/**
+ * Take back the Wikidata item a curator confirmed for a component (#1317):
+ * the item and its claim come off the point, with what the confirmation wrote,
+ * and the candidate stays turned down.
+ */
+export async function takeBackPointItem(locationId: number, item: string): Promise<PointItemTakenBack> {
+  return postExperiencesLocationsByLocationIdTakeBackItem(locationId, { item });
 }
 
 /**

@@ -11,9 +11,9 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { CurationLogEntry } from '../../api/curation';
 
 vi.mock('../../utils/queryInvalidation', () => ({ invalidateExperiences: vi.fn() }));
-vi.mock('../../api/curation', () => ({ fetchCurationLog: vi.fn(), undoPlaceMerge: vi.fn() }));
+vi.mock('../../api/curation', () => ({ fetchCurationLog: vi.fn(), undoPlaceMerge: vi.fn(), takeBackPointItem: vi.fn() }));
 
-import { fetchCurationLog, undoPlaceMerge } from '../../api/curation';
+import { fetchCurationLog, takeBackPointItem, undoPlaceMerge } from '../../api/curation';
 import { CurationHistory } from './CurationHistory';
 
 const mockedLog = fetchCurationLog as unknown as ReturnType<typeof vi.fn>;
@@ -91,5 +91,51 @@ describe('a merge in the history of the place that stayed', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Undo this merge/ }));
     expect(await screen.findByText(/undo that merge first/)).toBeTruthy();
+  });
+});
+
+/**
+ * A confirmed component item is taken back from the history of its site
+ * (#1317): the row that confirmed the fort of Bologa for the point Bologa
+ * offers the take-back, and once taken back it offers nothing.
+ */
+describe('a confirmed component item in the history of its site', () => {
+  const CONFIRMED = {
+    id: 3, action: 'component_items_answered', curator_name: 'Ada', region_name: null, created_at: '2026-10-09T18:00:00Z',
+    details: {
+      accepted: [{ locationId: 501, point: 'Bologa', item: 'Q98501', label: 'Castrul Bologa', pictured: true }],
+      refused: [{ locationId: 502, point: 'Buciumi', item: 'Q98503', label: 'Castrul Buciumi' }],
+    },
+  } as unknown as CurationLogEntry;
+  const TAKEN_BACK = {
+    id: 4, action: 'component_item_taken_back', curator_name: 'Ada', region_name: null, created_at: '2026-10-10T09:00:00Z',
+    details: { locationId: 501, point: 'Bologa', item: 'Q98501', label: 'Castrul Bologa', cleared: ['image_url', 'description'] },
+  } as unknown as CurationLogEntry;
+  const mockedTakeBack = takeBackPointItem as unknown as ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    mockedLog.mockReset();
+    mockedTakeBack.mockReset();
+  });
+
+  it('offers the take-back for each item the row confirmed, and not for the ones it turned down', async () => {
+    mockedLog.mockResolvedValue([CONFIRMED]);
+    mockedTakeBack.mockResolvedValue({ locationId: 501, item: 'Q98501', cleared: ['image_url', 'description'] });
+    openHistory(9850);
+
+    // The line breaks the panel keeps (pre-line) are one space to the query's normaliser.
+    expect(await screen.findByText('Bologa: Castrul Bologa (Q98501) confirmed Buciumi: Castrul Buciumi (Q98503) not it')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Take back: Bologa ← Castrul Bologa' }));
+    // The point and the item the row showed, so a stale row cannot take a newer item off.
+    await waitFor(() => expect(mockedTakeBack).toHaveBeenCalledWith(501, 'Q98501'));
+    expect(screen.queryByRole('button', { name: /Buciumi/ })).toBeNull();
+  });
+
+  it('offers no take-back once the item was taken back, and says what came off with it', async () => {
+    mockedLog.mockResolvedValue([TAKEN_BACK, CONFIRMED]);
+    openHistory(9850);
+
+    expect(await screen.findByText('Bologa: Castrul Bologa (Q98501) taken back; the picture and the description came off with it')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Take back/ })).toBeNull();
   });
 });

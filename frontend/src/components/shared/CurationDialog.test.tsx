@@ -28,6 +28,7 @@ vi.mock('../../api/curation', () => ({
   fetchCurationLog: vi.fn(),
   setExperienceState: vi.fn(),
   undoPlaceMerge: vi.fn(),
+  takeBackPointItem: vi.fn(),
 }));
 vi.mock('../../api/experiences', () => ({
   fetchExperience: vi.fn(),

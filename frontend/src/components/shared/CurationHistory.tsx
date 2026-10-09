@@ -15,13 +15,15 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import UndoIcon from '@mui/icons-material/Undo';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchCurationLog, undoPlaceMerge, type CurationLogEntry } from '../../api/curation';
+import { fetchCurationLog, takeBackPointItem, undoPlaceMerge, type CurationLogEntry } from '../../api/curation';
 import { queryKeys } from '../../api/queryKeys';
 import { formatRelativeTime } from '../../utils/dateFormat';
 import { displayNameOf } from '../../utils/displayName';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { LoadingSpinner } from './LoadingSpinner';
-import { actionLabel, catalogueMerge, formatLogDetails, undoableMerge } from './curationLog';
+import {
+  actionLabel, catalogueMerge, formatLogDetails, takeableItems, undoableMerge, type TakeableItem,
+} from './curationLog';
 
 interface CurationHistoryProps {
   experienceId: number;
@@ -29,11 +31,22 @@ interface CurationHistoryProps {
   regionId: number | null;
 }
 
-function HistoryRow({ entry, onUndo, undoing }: {
+/** The words of a take-back button: the point, then the item it was confirmed as. */
+function takeBackLabel(item: TakeableItem): string {
+  const point = item.point ?? `point #${item.locationId}`;
+  return `Take back: ${point} ← ${item.label ?? item.item}`;
+}
+
+function HistoryRow({ entry, onUndo, undoing, takeBacks = [], onTakeBack, takingBack }: {
   entry: CurationLogEntry;
   /** Present on a merge this place can still undo. */
   onUndo?: () => void;
   undoing: boolean;
+  /** The confirmed component items this row can still take back (#1317). */
+  takeBacks?: TakeableItem[];
+  onTakeBack?: (item: TakeableItem) => void;
+  /** The point whose take-back is in flight, if any. */
+  takingBack?: number;
 }) {
   const actionInfo = actionLabel(entry.action) || { label: entry.action, color: '#6B7280' };
   const details = formatLogDetails(entry);
@@ -93,6 +106,18 @@ function HistoryRow({ entry, onUndo, undoing }: {
             {undoing ? 'Undoing…' : 'Undo this merge'}
           </Button>
         )}
+        {takeBacks.map(item => (
+          <Button
+            key={`${item.locationId}:${item.item}`}
+            size="small"
+            startIcon={<UndoIcon fontSize="small" />}
+            disabled={takingBack !== undefined}
+            onClick={() => onTakeBack?.(item)}
+            sx={{ mt: 0.25, py: 0, textTransform: 'none', fontSize: '0.7rem', display: 'flex' }}
+          >
+            {takingBack === item.locationId ? 'Taking back…' : takeBackLabel(item)}
+          </Button>
+        ))}
       </Box>
       <Typography
         variant="caption"
@@ -130,6 +155,20 @@ export function CurationHistory({ experienceId, regionId }: CurationHistoryProps
     },
   });
 
+  const takeBack = useMutation({
+    // The item the row showed goes with the point: a history read before
+    // another curator changed the point is refused rather than taking the
+    // newer item off.
+    mutationFn: ({ locationId, item }: TakeableItem) => takeBackPointItem(locationId, item),
+    onSuccess: () => {
+      // The point has no item again: its row on the place's card and the
+      // place's history are read afresh. The review queue has no question for
+      // it until the finder's next pass proposes something.
+      invalidateExperiences(queryClient, { regionId, experienceId });
+      queryClient.invalidateQueries({ queryKey: queryKeys.experience.curationLogAll });
+    },
+  });
+
   const log = logQuery.data ?? [];
   return (
     <>
@@ -155,6 +194,9 @@ export function CurationHistory({ experienceId, regionId }: CurationHistoryProps
         {undo.isError && (
           <Alert severity="error" sx={{ py: 0, mb: 1 }}>{(undo.error as Error).message}</Alert>
         )}
+        {takeBack.isError && (
+          <Alert severity="error" sx={{ py: 0, mb: 1 }}>{(takeBack.error as Error).message}</Alert>
+        )}
         <Box sx={{ maxHeight: 240, overflowY: 'auto' }}>
           {logQuery.isLoading && (
             <LoadingSpinner size={20} padding="8px 0" />
@@ -177,6 +219,9 @@ export function CurationHistory({ experienceId, regionId }: CurationHistoryProps
                 entry={entry}
                 onUndo={mergeId === null ? undefined : () => undo.mutate(mergeId)}
                 undoing={undo.isPending && undo.variables === mergeId}
+                takeBacks={takeableItems(entry, log)}
+                onTakeBack={item => takeBack.mutate(item)}
+                takingBack={takeBack.isPending ? takeBack.variables?.locationId : undefined}
               />
             );
           })}
