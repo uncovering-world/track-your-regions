@@ -259,6 +259,19 @@ Three things about that line are load-bearing.
   Pending and the merge button would never light up. A job skipped by its own `if:` reports Success and satisfies
   the same required check (ADR-0062 decision 2).
 
+**Every job that pulls or builds through Docker Hub logs in first** (`Lint & Type Check`, `Security
+Scan`, `Trivy Image Scan`, `E2E Smoke`, `Performance (Lighthouse)`; `docker/login-action`, pinned
+by commit). Anonymous pulls count against a budget every GitHub-hosted runner behind one address
+shares, and on 2026-10-09 a busy hour drew `toomanyrequests` on `redocly/cli`, `lycheeverse/lychee`,
+`semgrep/semgrep` and the test stack's `node:22-alpine` in one afternoon, failing four jobs on a
+clean branch (#1316). Logged in, pulls count against the account's own budget. The step reads two
+repository secrets, `DOCKERHUB_USER` and `DOCKERHUB_TOKEN` (a read-only access token), and is
+skipped where either is absent — a fork's pull request, or one Dependabot opens, which runs with
+Dependabot's own secrets rather than the repository's unless the two are set there as well — so
+such a run pulls anonymously, as every run did before; a token without a user would fail the
+login rather than fall back, which is why both are required. Only whether both are set reaches
+the job's environment, never the token.
+
 Inside the `check` job the setup steps have keys of their own: the root `npm ci`
 is unconditional, because `lint:md` needs markdownlint from there and is the one
 gate a prose-only change runs that needs an install at all; the backend and
