@@ -3433,6 +3433,7 @@ Every endpoint `frontend/src/api/curation.ts` calls answers through a schema in 
 | POST | `/api/experiences/:id/unrefuse-contents` | `{ locationIds?, treasureIds?, note? }` — the way back from the row above (#859, closing [ADR-0053](../decisions/0053-a-curators-no-is-a-verdict-on-an-arrival-and-a-mark-on-a-part.md)'s own recorded trade-off, *a refused part has no screen yet*): `refused_at = NULL` on the marked points and work links under the object — the named ones or all of them — under the place's lock, with the refusal's preconditions and its 409s — spelled once as `contentsAnswerableSql` and evaluated by the database, so the list that draws the button asks the same question this does — and nothing else written. The question comes back and no reader moves: the part was hidden before the refusal and is hidden still, and publishing it is what shows it. A link keeps `curation_state = 'pending'`, since that word says nobody passed the work *here* and `auto` would silently pass what a curator turned down; a refused moved point kept its pairing ([ADR-0083](../decisions/0083-a-no-to-a-moved-point-keeps-the-stored-pin.md)), so the take-back asks the move again beside the pin it would replace; a refusal recorded before ADR-0083 released its pairing, and that withdrawal is **not** re-acquired, the old pin being a withdrawn point with a card and two answers of its own (ADR-0026). A restored point counts toward its regions again, so the object is re-placed after the commit (`placementFailed` / `placementFailedWorldViews` where that failed), which is why the route carries `authenticatedLimiter`. Nothing turned down left to reach is 409 rather than an empty 200. Log action `contents_unrefused`, naming the ids the statements returned — always, where the refusal names them only when its caller did |
 | POST | `/api/experiences/review/answer` | `{ rows: [{ kind, id, runId }] (1–100), answer: 'accept' \| 'reject' \| 'lost' }` — one answer to a page of review rows (#852). `kind` is the queue's own word (`QUEUE_KINDS`: `conflict`, `sources`, `waiting`, `withdrawn`, `refused`, `missing`, `component-items`; a `sources` row is scoped by every source of the place and can only keep what readers see; a `component-items` row is scoped by a source that places the points, never by the membership the client names, confirms the exact candidates on *accept* and turns every open one down on *reject*), `runId` the run the curator saw the question asked by, which the held and conflict writers compare with the pointer under the lock. Each row goes to the `*UnderLock` writer its single-row card calls — `reviewAnswerDispatch.ts` is the table of what each answer does per kind, and a `waiting` row's sub-kinds are read from the membership rather than trusted from the client; `lost` is refused on any row but `missing` and `withdrawn` (every open point of the row, each through the point writer). On a `refused` row *accept* keeps the row out (`confirm`) and *reject* puts it back (`override`), and neither pins `admission` (ADR-0067): a batch confirmation closes the question with `admission_answered_at`, a batch put-back is admitted until the next run applies the rule again, and only the refusal card's own answer claims `admission`. Scope per object; one transaction and one audit row per object; a row that refuses, throws or is out of scope is one line in the report and the rest are answered. Answers `ReviewAnswerResult` (ADR-0066): `{ answer, answered: [{ kind, id, name, answer, did }], refused: [{ kind, id, name, error }], outOfScope, placementFailed: [{ id, name, worldViews }] }`, where `did` counts what the answer did (`published`, `locations`, `treasureLinks`, `treasures`, `withdrawalsReleased`, `fields` — the parts' rows counted with the object's — `points`, `pointsRefused`, `items`). Carries `authenticatedLimiter`: up to a hundred publishes, and a verdict on a withdrawn row re-places the object once per point |
 | POST | `/api/experiences/:id/component-items` | `{ answers: [{ proposalId, answer: 'accepted' \| 'refused' }] (1–500, each candidate once) }` — a curator's answer to the candidate Wikidata items the finder proposed for a serial site's components (#1272, `componentItemController.ts`). Scoped to a curator of any source whose membership places such a point (`componentItemsScope`), as the queue admits the site. A confirmed candidate's item is written on the point as the curator's choice with what the item gives it — its picture with the credit, only a Commons file and only credited, and its English description, read before the lock from Wikidata's API and from Commons — a turned-down one is kept so it is never proposed again, the confirmed point's other candidates and the item's other candidacies on the site are cleared, and the act is one log row (`component_items_answered`). Re-asked under the site's lock, with the confirmed items locked by name so two sites cannot confirm one item: a candidate answered meanwhile, a point that gained its item, an item recorded on another point since, or two confirmations for one point are 409 with nothing written. Answers `ComponentItemsAnswered`: `{ experienceId, accepted, refused, pictured }`. `authenticatedLimiter` |
+| POST | `/api/experiences/:id/component-item-suggestions` | Jev's judgement of the site's open candidate items (#1272, `componentItemSuggestionController.ts`), in the same scope as the answer. For each open candidate, the stored judgement made for the candidate as it stands (`askedSql`: label, distance, similarity, basis), or a new one: the candidates not yet judged go to Jev in **one call**, a `choice` question per candidate — *same*, the item is the component; *other*, another place — and every answer is recorded in `experience_component_item_suggestions` with its confidence, one row per question carrying its share of the call's input tokens, a refused answer with no judgement so the candidate is not paid for again. Answers `ComponentItemSuggestions`: `{ configured, suggestions: [{ proposalId, judgement, confidence }] }`; `configured: false` and no suggestions on a deployment without `JEV_API_KEY`; a failed call answers the stored judgements alone. Never applied: the card shows it beside the candidate and a curator decides. `authenticatedLimiter` |
 | POST | `/api/experiences/new-badges/seen` | `{ experienceIds: number[] }` — records that these chips were shown to the caller. Rate-limited (`authenticatedLimiter`), unlike the curator routes beside it: this is an ordinary authenticated action and the only one here a client sends on its own initiative. Only the first impression per experience is kept; a stale id is ignored rather than failing the call, and the response names what was actually recorded |
 
 ### Geocoding (public + admin)
@@ -4192,6 +4193,44 @@ recorded on another point since, or two confirmations for one point, are each re
 nothing written. The batch answer confirms the exact candidates only — the same name within
 50 m, which the product review allowed a batch to take — and turns every open one down
 (`answerComponentItems` in `reviewAnswerDispatch.ts`); the rest is judged on the card.
+
+**Jev's judgement on the component-items card** (#1272, ADR-0087). Where `JEV_API_KEY` is set,
+the card asks `POST /api/experiences/:id/component-item-suggestions`
+(`componentItemSuggestionController.ts`) when it opens: for each open candidate, the newest
+stored judgement made for the candidate as it stands — its label, distance, name similarity and
+the rule that found it, as `askedSql` states them, so a candidate the finder proposes again
+with other measures is asked about again — or a new one. The candidates not yet judged go to
+Jev in one call, a `choice` question per candidate (`askJevChoices`, `jevClient.ts`: the
+service's own guidance is to batch the questions of one decision, which is cheaper and faster
+than a call each; a 429 or 529 is backed off from once, for the delay the service names up to
+five seconds — a longer one gets no retry, since the call is inside a curator's request for a
+suggestion the card treats as optional), each
+question carrying the site's name and countries, the component's name, reference and
+coordinate, the candidate's item, label and coordinate, the distance, the similarity and the
+rule — for a part the site's own item names, that such an item's coordinate often stands a
+kilometre or two from the point, so the distance alone decides little: told nothing of it, the
+first reading on the Dacian frontier (2026-10-09) leaned *same* at 16–54 % on the forts of Olteni,
+Feldioara and Războieni, 1.3–2 km off their points; told, it said *same* at 70–78 % — and
+two options — *same*, the item is this component, the place a traveller would stand at; *other*,
+a neighbour, a part inside the component, the whole the component is one part of, the town or
+river it is named after, a record of finds.
+Every answer is recorded in `experience_component_item_suggestions` (migration 084, written
+only by `componentItemSuggestions.ts`), one row per question with its share of the call's input
+tokens, so the rows added up are what the calls cost; an answer the client refused is recorded
+with no judgement, so the same candidate is not paid for again. The card shows "Jev says the
+same place · N %" or "Jev says another place · N %" beside the candidate — "Jev is unsure, leans …"
+under 50 %, since the confidence is the margin between its two options and a low one is a near
+coin toss rather than a weak yes — and chooses nothing;
+one button confirms every candidate Jev calls the same place at `JEV_SURE` (0.9) or more — less
+the ones competing for a point or an item with any candidate either that button or the
+exact-match button would take, which the curator picks between: the contest is judged over both
+buttons' candidates at once (`uncontested` over `offered`), so neither button undoes the other's
+confirmation — the
+confidence at which Jev's answers agreed with independent labels on 99 % of a thousand entries
+in #1249's measurement, against 92 % over all of them — and the curator still saves. AI
+Settings counts both questions apart and together (`jevUsageController.ts`): for this card, a
+curator's answer is compared with the newest judgement of the candidate as it stood, confirmed
+against *same* and turned down against *other*.
 
 **Conflicts** — fields where `curated_fields` refused the source's value and the two now
 disagree. The queue reads them out of `changed_fields` (`curatedConflict: true`) on the
