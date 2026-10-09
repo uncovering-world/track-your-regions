@@ -3125,7 +3125,7 @@ COMMENT ON COLUMN experience_locations.name IS 'Component name (e.g., individual
 COMMENT ON COLUMN experience_locations.external_ref IS 'Source-specific reference (e.g., "1739-005" for UNESCO)';
 -- The point's own Wikidata item, where Wikidata has one (#1269).
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS wikidata_item VARCHAR(20);
-COMMENT ON COLUMN experience_locations.wikidata_item IS 'The Wikidata item this point is, where one is known: for a World Heritage component, the item whose World Heritage Site ID (P757, any rank but a deprecated-only statement) equals external_ref, recorded by every run; null where no item or more than one carries the reference. A claim on it (''wikidata_item'' in curated_fields), which no screen writes yet, is never overridden by a run (#1269).';
+COMMENT ON COLUMN experience_locations.wikidata_item IS 'The Wikidata item this point is, where one is known: for a World Heritage component, the item whose World Heritage Site ID (P757, any rank but a deprecated-only statement) equals external_ref, recorded by every run; null where no item or more than one carries the reference. A claim on it (''wikidata_item'' in curated_fields) is written when a curator accepts a proposed item on the review queue (#1272), and is never overridden by a run (#1269).';
 -- The point's own picture, its credit and its description, from its Wikidata
 -- item (#1270). See db/migrations/081.
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS image_url TEXT;
@@ -3151,11 +3151,18 @@ CREATE TABLE IF NOT EXISTS experience_component_item_proposals (
     answer VARCHAR(10) CHECK (answer IN ('accepted', 'refused')),
     answered_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     answered_at TIMESTAMPTZ,
+    item_location GEOMETRY(Point, 4326),
     UNIQUE (location_id, wikidata_item)
 );
 CREATE INDEX IF NOT EXISTS idx_component_item_proposals_open
     ON experience_component_item_proposals(location_id) WHERE answer IS NULL;
-COMMENT ON TABLE experience_component_item_proposals IS 'A candidate Wikidata item for a World Heritage component whose reference no item records (#1272), and what the match rests on: the item says it is part of the site (part_of), or it lies near the point and is of a class the site''s resolved components are of (near); the distance, the name similarity and whether the names are the same. A curator answers it: accepted records the item on the point as a curator''s choice; refused is kept so the candidate is never proposed again.';
+COMMENT ON TABLE experience_component_item_proposals IS 'A candidate Wikidata item for a World Heritage component whose reference no item records (#1272), and what the match rests on: the item says it is part of the site (part_of), or it lies near the point and is of a class the site''s resolved components are of (near); the distance, the name similarity and whether the names are the same. A curator answers it on the review queue: accepted records the item on the point as a curator''s choice; refused is kept so the candidate is never proposed again.';
+-- Where the candidate stands, for the card's map, and the index that answers
+-- whether a candidate's item is already some point's. See db/migrations/083.
+ALTER TABLE experience_component_item_proposals ADD COLUMN IF NOT EXISTS item_location GEOMETRY(Point, 4326);
+COMMENT ON COLUMN experience_component_item_proposals.item_location IS 'The coordinate of the item nearest the point, as the finder read it, so the card can show the candidate beside the point; null on a proposal recorded before it was kept.';
+CREATE INDEX IF NOT EXISTS idx_experience_locations_wikidata_item
+    ON experience_locations(wikidata_item) WHERE wikidata_item IS NOT NULL;
 
 -- A location the source stopped offering is marked, not deleted: both
 -- `user_visited_locations.location_id` and
@@ -3215,7 +3222,7 @@ CREATE INDEX IF NOT EXISTS idx_experience_locations_refused ON experience_locati
 -- (#488), NOT NULL for the reason given on `treasures.curated_fields`. See
 -- db/migrations/027.
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS curated_fields JSONB NOT NULL DEFAULT '[]'::jsonb;
-COMMENT ON COLUMN experience_locations.curated_fields IS 'Column names a curator has claimed on this point: name, location, image_url and description (#1270), and wikidata_item, which a run respects though no screen claims it yet. Never external_ref or ordinal — those are the source''s handle on the row and its place in the source''s list, and a claim on them would break the pairing that decides whether a point moved or was replaced.';
+COMMENT ON COLUMN experience_locations.curated_fields IS 'Column names a curator has claimed on this point: name, location, image_url and description (#1270), and wikidata_item, written when a curator confirms a proposed item on the review queue (#1272) and respected by every run. Never external_ref or ordinal — those are the source''s handle on the row and its place in the source''s list, and a claim on them would break the pairing that decides whether a point moved or was replaced.';
 
 -- A moved point is a withdrawal plus an insert, and under a gated source the two
 -- halves become visible at different moments: the insert lands `pending`, so
@@ -3686,7 +3693,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     -- Null on the catalogue's own merge alone (ADR-0086): the check below.
     curator_id INTEGER REFERENCES users(id),
-    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen')),
+    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered')),
     region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -3706,7 +3713,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
 -- schema change and not a code-only one.
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check
-    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen'));
+    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered'));
 
 -- An existing database's NOT NULL goes with migration 076; a fresh one never had it.
 ALTER TABLE experience_curation_log ALTER COLUMN curator_id DROP NOT NULL;

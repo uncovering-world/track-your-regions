@@ -41,6 +41,7 @@ export const CURATION_LOG_ACTIONS = [
   'merged',
   'merge_undone',
   'views_chosen',
+  'component_items_answered',
 ] as const;
 
 /** One act of the curation log. */
