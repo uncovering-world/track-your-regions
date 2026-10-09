@@ -488,6 +488,10 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     'merged', 'merge_undone',
     // A curator's choice between two data sources' views of a place (#1246).
     'views_chosen',
+    // A curator's answer to the candidate Wikidata items the finder proposed
+    // for a serial site's components (#1272): the ones confirmed and the ones
+    // turned down, in one act.
+    'component_items_answered',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;

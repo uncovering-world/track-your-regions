@@ -28,6 +28,7 @@ import {
 } from './reviewQueueContents.js';
 import { queryRefusedParts } from './reviewQueueRefusedParts.js';
 import { querySources } from './reviewQueueSources.js';
+import { queryComponentItems } from './reviewQueueComponentItems.js';
 import { queryConflicts } from './reviewQueueConflicts.js';
 import {
   QUEUE_KINDS, WAITING_SUBS, likeParam, queryQueueKeys, queueScopeSql,
@@ -96,7 +97,7 @@ function seenInSql(membership = 'm'): string {
  *   ?q=&source=&kind=&region=&run=&aside=&sort=&cursor=&limit=
  *   &keptOutOffset=&answeredWithdrawalsOffset=&refusedPartsOffset=
  *
- * Seven kinds of open question, and three lists that are not questions at all:
+ * The open kinds of question, and three lists that are not questions at all:
  *
  * - **gone from the source** — a run stamped `missing_since` and stopped there.
  *   Users still see the object exactly as before; nothing about it changes
@@ -146,7 +147,7 @@ function seenInSql(membership = 'm'): string {
  * at the level of a point a curator answered and thereby left on no screen (#544),
  * one at the level of a point or work a curator turned down (#859).
  *
- * **The page is chosen before it is drawn** (ADR-0051 decision 2). The seven
+ * **The page is chosen before it is drawn** (ADR-0051 decision 2). The open
  * questions are one list: `queryQueueKeys` orders every kind by the date of the
  * run that asked it, filters it, and takes one page of keys by keyset — so this
  * handler pages nothing and takes no per-kind offset. What is left here is drawing the cards: the
@@ -183,7 +184,7 @@ export async function getReviewQueue(
   };
 
   // Those three ask for one row more than the page, so "is there another page" is
-  // answered by the rows themselves rather than by a second count. The seven
+  // answered by the rows themselves rather than by a second count. The open
   // questions do not: the keys phase pages them, and counts them — `total` and
   // the facets are counted under the filter the curator set, which is what lets
   // the page state a number it has actually counted.
@@ -200,7 +201,7 @@ export async function getReviewQueue(
   const membershipScopeFilter = queueScopeSql(isAdmin, 'm.source_id');
 
   // The source chip, as a predicate on the row's own source. Redundant on the
-  // seven kinds below — their ids come from the keys phase, which applied it
+  // open kinds below — their ids come from the keys phase, which applied it
   // already — and load-bearing on the three lists that are not open questions and
   // are therefore not in that phase: without it a curator narrowing the queue to
   // one source would still be shown every other source's kept-out rows.
@@ -224,7 +225,7 @@ export async function getReviewQueue(
   // `100%` means the same thing in all three statements.
   //
   // Bound onto a list of its own rather than onto `params`, by the rule above:
-  // the seven card statements do not carry this predicate, and a parameter they
+  // the card statements do not carry this predicate, and a parameter they
   // are sent but do not reference is one Postgres can infer no type for. It
   // refuses the whole statement then — which the mocked lane cannot see, so the
   // property is asserted instead ("binds no parameter the SQL does not
@@ -414,6 +415,10 @@ export async function getReviewQueue(
   // page's ids: the keys phase is where its scope, every source of the place, was asked.
   const sourcesIds = idsOf('sources');
   const sources = await hydrate(sourcesIds, () => querySources(sourcesIds));
+  // The candidate Wikidata items of a serial site's components (#1272),
+  // hydrated by the page's ids as the sources card is.
+  const componentItemsIds = idsOf('component-items');
+  const componentItems = await hydrate(componentItemsIds, () => queryComponentItems(componentItemsIds));
 
   // What counts as `arrival`: the reasoning is on `arrivalOpenSql`
   // (`reviewQueuePredicates.ts`).
@@ -534,7 +539,7 @@ export async function getReviewQueue(
   const answeredWithdrawals = await queryAnsweredWithdrawals({
     ...queryContext,
     // Its own parameter list, carrying the search: `queryContext.params` is what
-    // the seven card statements are sent, and they do not reference it.
+    // the card statements are sent, and they do not reference it.
     params: answeredParams,
     nameFilter,
     logScopeFilter,
@@ -563,7 +568,7 @@ export async function getReviewQueue(
   // response indexes them by kind. What is new sits beside them: `order` is the page as
   // the keys phase chose it, which is the list the client actually draws (an array is
   // then a lookup by id, not an order of its own); `total` and `facets` are counted over
-  // the union under the filter; and `paging` is the one cursor the seven kinds share,
+  // the union under the filter; and `paging` is the one cursor the open kinds share,
   // beside the three offsets that are not part of it.
   return {
     missing: cards(missing),
@@ -571,6 +576,7 @@ export async function getReviewQueue(
     keptOut: cards(keptOutPage.items),
     conflicts: cards(conflicts),
     sources: cards(sources),
+    componentItems: cards(componentItems),
     arrivals: cards(arrivals),
     held: cards(held),
     contents: cards(contents),

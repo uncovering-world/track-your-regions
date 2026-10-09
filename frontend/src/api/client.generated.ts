@@ -640,6 +640,31 @@ export interface AllLocationsUnmarked {
   locationsUnmarked: number;
 }
 
+export type AnswerComponentItemsBodyAnswersItemAnswer = typeof AnswerComponentItemsBodyAnswersItemAnswer[keyof typeof AnswerComponentItemsBodyAnswersItemAnswer];
+
+
+export const AnswerComponentItemsBodyAnswersItemAnswer = {
+  accepted: 'accepted',
+  refused: 'refused',
+} as const;
+
+export type AnswerComponentItemsBodyAnswersItem = {
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  proposalId: number;
+  answer: AnswerComponentItemsBodyAnswersItemAnswer;
+};
+
+export interface AnswerComponentItemsBody {
+  /**
+     * @minItems 1
+     * @maxItems 500
+     */
+  answers: AnswerComponentItemsBodyAnswersItem[];
+}
+
 export type AnsweredPointSourceMembership = typeof AnsweredPointSourceMembership[keyof typeof AnsweredPointSourceMembership];
 
 
@@ -1908,6 +1933,70 @@ export interface ColorMatchFailed {
 export type ColorMatchEvent = ColorMatchProgress | ColorMatchDebugImage | WaterReviewRequested | ClusterReviewRequested | IcpAdjustmentOffered | ColorMatchComplete | ColorMatchFailed;
 
 /**
+ * The rule that found it: the item says it is part of the site, or lies near the point and is of its kind.
+ */
+export type ComponentItemProposalBasis = typeof ComponentItemProposalBasis[keyof typeof ComponentItemProposalBasis];
+
+
+export const ComponentItemProposalBasis = {
+  part_of: 'part_of',
+  near: 'near',
+} as const;
+
+/**
+ * A candidate Wikidata item for a World Heritage component whose reference no item records (#1272).
+ */
+export interface ComponentItemProposal {
+  /**
+     * What an answer names.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  proposalId: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  locationId: number;
+  /** @nullable */
+  pointName: string | null;
+  /**
+     * The component's reference in the source's list, which no item records.
+     * @nullable
+     */
+  pointRef: string | null;
+  /** @nullable */
+  latitude: number | null;
+  /** @nullable */
+  longitude: number | null;
+  /** The candidate, a Wikidata item id. */
+  item: string;
+  /** The item's label most like the component's name. */
+  label: string;
+  /**
+     * Metres from the point to the nearest coordinate the item states; -1 where it states none.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  distanceM: number;
+  /** How alike the names are, 0 to 1. */
+  similarity: number;
+  /** The same name, folded, at the same spot: what a batch accept takes. */
+  exact: boolean;
+  /** The rule that found it: the item says it is part of the site, or lies near the point and is of its kind. */
+  basis: ComponentItemProposalBasis;
+  /**
+     * Where the item stands, nearest the point; null on a proposal that kept none.
+     * @nullable
+     */
+  itemLatitude: number | null;
+  /** @nullable */
+  itemLongitude: number | null;
+  /** @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$ */
+  proposedAt: string;
+}
+
+/**
  * A search for the Wikidata items of World Heritage components, started in the background and followed through the sync status (#1272).
  */
 export interface ComponentItemSearchStarted {
@@ -1961,6 +2050,35 @@ export interface ComponentItems {
   ambiguous: ComponentItemsAmbiguousItem[];
   /** The sites with a component left without an item, most left first, at most fifty. */
   unresolvedSites: ComponentItemsUnresolvedSitesItem[];
+}
+
+/**
+ * A curator's answer to the candidate Wikidata items of a site's components (#1272).
+ */
+export interface ComponentItemsAnswered {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  /**
+     * Candidates confirmed: each point now carries its item as a curator's choice.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  accepted: number;
+  /**
+     * Candidates turned down, never proposed again.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  refused: number;
+  /**
+     * Of the confirmed, how many points took the item's picture, with its credit.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  pictured: number;
 }
 
 /**
@@ -2524,6 +2642,7 @@ export const CurationLogEntryAction = {
   merged: 'merged',
   merge_undone: 'merge_undone',
   views_chosen: 'views_chosen',
+  component_items_answered: 'component_items_answered',
 } as const;
 
 /**
@@ -2591,6 +2710,7 @@ export const CuratorActivityEntryAction = {
   merged: 'merged',
   merge_undone: 'merge_undone',
   views_chosen: 'views_chosen',
+  component_items_answered: 'component_items_answered',
 } as const;
 
 /**
@@ -6437,6 +6557,7 @@ export const QueueFacetsKindItemKind = {
   withdrawn: 'withdrawn',
   refused: 'refused',
   missing: 'missing',
+  'component-items': 'component-items',
   arrival: 'arrival',
   held: 'held',
   contents: 'contents',
@@ -6540,6 +6661,7 @@ export const QueueKind = {
   withdrawn: 'withdrawn',
   refused: 'refused',
   missing: 'missing',
+  'component-items': 'component-items',
 } as const;
 
 /**
@@ -7235,6 +7357,7 @@ export const ReviewAnswerBodyRowsItemKind = {
   withdrawn: 'withdrawn',
   refused: 'refused',
   missing: 'missing',
+  'component-items': 'component-items',
 } as const;
 
 export type ReviewAnswerBodyRowsItem = {
@@ -7318,6 +7441,12 @@ export interface ReviewAnswerDid {
      * @maximum 9007199254740991
      */
   pointsRefused?: number;
+  /**
+     * Candidate items confirmed or turned down, for a component-items row (#1272): a batch accept takes the exact ones.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  items?: number;
 }
 
 export type ReviewAnswerResultAnsweredItem = {
@@ -7420,7 +7549,7 @@ export type ReviewQueuePagingRefusedParts = {
 };
 
 /**
- * The one cursor the seven open kinds share, beside the three offsets the answered lists page by.
+ * The one cursor the open kinds share, beside the three offsets the answered lists page by.
  */
 export type ReviewQueuePaging = {
   /** @nullable */
@@ -7463,6 +7592,7 @@ export const ReviewQueueItemKind = {
   withdrawn: 'withdrawn',
   'withdrawn-answered': 'withdrawn-answered',
   'contents-refused': 'contents-refused',
+  'component-items': 'component-items',
 } as const;
 
 /**
@@ -7670,6 +7800,8 @@ export interface ReviewQueueItem {
   source_views?: SourceViewField[] | null;
   /** The fields the `sources` card is not asking about, and why. */
   quiet_fields?: QuietField[];
+  /** The candidate items of the site's components, the points in the source's order and the better candidate first (#1272). `component-items` items only. */
+  component_items?: ComponentItemProposal[] | null;
 }
 
 /**
@@ -7684,6 +7816,8 @@ export interface ReviewQueue {
   conflicts: ReviewQueueItem[];
   /** Places two data sources describe differently (#1246). */
   sources: ReviewQueueItem[];
+  /** Serial sites whose components have candidate Wikidata items (#1272). */
+  componentItems: ReviewQueueItem[];
   arrivals: ReviewQueueItem[];
   held: ReviewQueueItem[];
   contents: ReviewQueueItem[];
@@ -7695,7 +7829,7 @@ export interface ReviewQueue {
      * @maximum 9007199254740991
      */
   limit: number;
-  /** The page, in the one order across all seven kinds. The arrays above are a lookup by id. */
+  /** The page, in the one order across every kind. The arrays above are a lookup by id. */
   order: QueueOrderEntry[];
   /**
      * @minimum -9007199254740991
@@ -7703,7 +7837,7 @@ export interface ReviewQueue {
      */
   total: number;
   facets: QueueFacets;
-  /** The one cursor the seven open kinds share, beside the three offsets the answered lists page by. */
+  /** The one cursor the open kinds share, beside the three offsets the answered lists page by. */
   paging: ReviewQueuePaging;
 }
 
@@ -18121,6 +18255,46 @@ return apiFetch<ViewsChosen>(getPostExperiencesByIdChooseViewsUrl(id),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(chooseViewsBody)
+  }
+);}
+
+
+
+export const getPostExperiencesByIdComponentItemsUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/component-items`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Confirm or turn down the candidate Wikidata items proposed for a site's components
+ */
+export const postExperiencesByIdComponentItems = async (id: number,
+    answerComponentItemsBody: AnswerComponentItemsBody, options?: Parameters<typeof apiFetch>[1]): Promise<ComponentItemsAnswered> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<ComponentItemsAnswered>(getPostExperiencesByIdComponentItemsUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(answerComponentItemsBody)
   }
 );}
 

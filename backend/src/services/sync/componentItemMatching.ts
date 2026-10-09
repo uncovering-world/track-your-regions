@@ -54,6 +54,9 @@ export interface ComponentMatch {
   /** The same name, folded, within `EXACT_DISTANCE_M`: marked so a curator can accept them together. */
   exact: boolean;
   basis: MatchBasis;
+  /** The item's coordinate nearest the point, for the card's map; null where it states none. */
+  itemLat: number | null;
+  itemLon: number | null;
 }
 
 /** Within this, a component and an item of the same name are one place by every measure the catalogue has. */
@@ -159,16 +162,25 @@ export function standsForWholeSite(pointName: string | null, siteName: string, s
   return pointName !== null && sameName(pointName, withoutTags(siteName));
 }
 
+/** The candidate's coordinate nearest the point, with the distance; null where it states none. */
+function nearest(point: ComponentPoint, candidate: CandidateItem): { at: [lat: number, lon: number]; metres: number } | null {
+  let found: { at: [number, number]; metres: number } | null = null;
+  for (const [lat, lon] of candidate.coords) {
+    const metres = distanceM(point.lat, point.lon, lat, lon);
+    if (!found || metres < found.metres) found = { at: [lat, lon], metres };
+  }
+  return found;
+}
+
 /** Metres from the point to the nearest coordinate the candidate states; Infinity where it states none. */
 export function nearestM(point: ComponentPoint, candidate: CandidateItem): number {
-  return candidate.coords.length === 0
-    ? Infinity
-    : Math.min(...candidate.coords.map(([lat, lon]) => distanceM(point.lat, point.lon, lat, lon)));
+  return nearest(point, candidate)?.metres ?? Infinity;
 }
 
 /** How one candidate stands against one point: its nearest coordinate and its most similar label. */
 function measure(point: ComponentPoint, candidate: CandidateItem) {
-  const distance = nearestM(point, candidate);
+  const closest = nearest(point, candidate);
+  const distance = closest?.metres ?? Infinity;
   let label = candidate.labels[0] ?? candidate.item;
   let similarity = 0;
   let exactName = false;
@@ -177,7 +189,7 @@ function measure(point: ComponentPoint, candidate: CandidateItem) {
     if (s > similarity) { similarity = s; label = each; }
     if (point.name && sameName(point.name, each)) { exactName = true; label = each; similarity = 1; }
   }
-  return { distance, label, similarity, exactName };
+  return { distance, at: closest?.at ?? null, label, similarity, exactName };
 }
 
 /** Whether a candidate passes the rule its basis names. */
@@ -211,6 +223,8 @@ export function bestMatch(
       similarity: Math.round(m.similarity * 100) / 100,
       exact: m.exactName && m.distance <= EXACT_DISTANCE_M,
       basis,
+      itemLat: m.at?.[0] ?? null,
+      itemLon: m.at?.[1] ?? null,
     };
     if (!best || match.similarity > best.similarity
       || (match.similarity === best.similarity && match.distanceM < best.distanceM)) best = match;

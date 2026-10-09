@@ -24,6 +24,7 @@ import type { LockedExperience } from '../../db/experienceWriter.js';
 import type { ImageCredit } from '../../services/sync/imageCredit.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
+import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { unreadPointSql } from './waitingCounts.js';
 
 /** `AND id = ANY($2)` where the caller named points, nothing where it meant all of them. */
@@ -311,6 +312,52 @@ export async function correctPoint(
       correction.picture && correction.credit ? JSON.stringify(correction.credit) : null,
       correction.description !== undefined, correction.description ?? null],
   );
+}
+
+/** What a confirmed item gives its point: the item's picture with the credit read for it, and its description. */
+export interface ClaimedItemContent {
+  imageUrl: string | null;
+  credit: ImageCredit | null;
+  description: string | null;
+}
+
+/**
+ * Record the Wikidata item a curator confirmed a component is (#1272), as the
+ * curator's choice: the item, a claim on it — which a run respects and the
+ * finder reads as answered — and what the item gives the point, written where
+ * the point holds no claim on the field. The picture only with its credit, as a
+ * curator's own picture edit writes one (ADR-0043): an item whose photograph
+ * nobody could credit gives the point its identity and no picture — and only
+ * a Commons file, as every writer of a picture refuses anything else. Answers
+ * whether the picture was written.
+ */
+export async function claimPointItem(
+  client: PoolClient,
+  lock: LockedExperience,
+  locationId: number,
+  item: string,
+  content: ClaimedItemContent,
+): Promise<{ pictured: boolean }> {
+  const picture = content.imageUrl !== null && content.credit !== null && isCommonsPictureUrl(content.imageUrl);
+  const result = await client.query<{ pictured: boolean }>(
+    `UPDATE experience_locations
+        SET wikidata_item = $3,
+            curated_fields = CASE WHEN curated_fields ? 'wikidata_item' THEN curated_fields
+                                  ELSE curated_fields || '["wikidata_item"]'::jsonb END,
+            image_url = CASE WHEN $4::boolean AND NOT curated_fields ? 'image_url' THEN $5 ELSE image_url END,
+            metadata = CASE WHEN $4::boolean AND NOT curated_fields ? 'image_url'
+                            THEN metadata || jsonb_build_object('imageCredit', $6::jsonb)
+                            ELSE metadata END,
+            description = CASE WHEN $7::boolean AND NOT curated_fields ? 'description' THEN $8 ELSE description END
+      WHERE id = $1 AND experience_id = $2
+      RETURNING ($4::boolean AND image_url = $5) AS pictured`,
+    [
+      locationId, lock.id, item,
+      picture, content.imageUrl, picture ? JSON.stringify(content.credit) : null,
+      content.description !== null, content.description,
+    ],
+  );
+  return { pictured: result.rows[0]?.pictured === true };
 }
 
 /**

@@ -198,6 +198,16 @@ const VIEW_CHOICE_WRITE = 'experience_view_choices is written by its writer modu
   + 'src/controllers/experience/viewChoices.ts, taking the place\'s LockedExperience token.';
 const VIEW_CHOICE_WRITE_RULES = spelledWriteRules('experience_view_choices', VIEW_CHOICE_WRITE);
 
+/**
+ * A candidate Wikidata item for a World Heritage component (#1272): proposed
+ * by the finder (`services/sync/componentItemFinder.ts`), answered by the
+ * curator's writer (`componentItemAnswers.ts`) under the site's lock.
+ */
+const COMPONENT_ITEM_PROPOSAL_WRITE = 'experience_component_item_proposals is written by its writer modules only '
+  + '(ADR-0077): the finder in src/services/sync/componentItemFinder.ts proposes, and a curator answers through '
+  + 'src/controllers/experience/componentItemAnswers.ts, taking the site\'s LockedExperience token.';
+const COMPONENT_ITEM_PROPOSAL_WRITE_RULES = spelledWriteRules('experience_component_item_proposals', COMPONENT_ITEM_PROPOSAL_WRITE);
+
 /** Jev's suggestion for the sources card (#1260): `viewSuggestions.ts`. */
 const VIEW_SUGGESTION_WRITE = 'experience_view_suggestions is written by its writer module only (ADR-0077): add a named '
   + 'write to src/controllers/experience/viewSuggestions.ts, taking the place\'s LockedExperience token.';
@@ -354,7 +364,7 @@ const SOURCE_RULE_FAMILIES = [
   TRANSACTION_RULES, RESPONSE_SHAPE_RULES, ERROR_TEXT_RULES, READER_PREDICATE_RULES,
   EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
-  VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES,
+  VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES, COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
   ROUTE_REGISTRY_RULES,
 ];
 
@@ -362,7 +372,7 @@ const SOURCE_RULE_FAMILIES = [
 const TABLE_WRITE_FAMILIES = [
   EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
-  VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES,
+  VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES, COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
 ];
 
 /** The `no-restricted-syntax` setting of every family but the ones named. */
@@ -529,6 +539,12 @@ export default [
     files: ['src/controllers/experience/viewSuggestions.ts'],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(VIEW_SUGGESTION_WRITE_RULES),
+    },
+  },
+  {
+    files: ['src/controllers/experience/componentItemAnswers.ts', 'src/services/sync/componentItemFinder.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(COMPONENT_ITEM_PROPOSAL_WRITE_RULES),
     },
   },
   {

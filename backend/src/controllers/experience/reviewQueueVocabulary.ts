@@ -10,7 +10,9 @@
  */
 
 /** The classes of open question, in no order: `KIND_RANK` gives theirs. */
-export const QUEUE_KINDS = ['conflict', 'sources', 'waiting', 'withdrawn', 'refused', 'missing'] as const;
+export const QUEUE_KINDS = [
+  'conflict', 'sources', 'waiting', 'withdrawn', 'refused', 'missing', 'component-items',
+] as const;
 export type QueueKind = (typeof QUEUE_KINDS)[number];
 
 /** The gated sub-kinds a `waiting` question groups (ADR-0025). */
@@ -18,12 +20,13 @@ export const WAITING_SUBS = ['arrival', 'held', 'contents'] as const;
 export type WaitingSub = (typeof WAITING_SUBS)[number];
 
 /**
- * The word each card of the queue's answer carries in `kind`: the seven open
- * kinds, and the three answered lists a curator can take a verdict back from.
+ * The word each card of the queue's answer carries in `kind`: the open kinds,
+ * `waiting` split into its three, and the three answered lists a curator can
+ * take a verdict back from.
  */
 export const QUEUE_ITEM_KINDS = [
   'missing', 'conflict', 'sources', 'refused', 'kept-out', 'arrival', 'held', 'contents',
-  'withdrawn', 'withdrawn-answered', 'contents-refused',
+  'withdrawn', 'withdrawn-answered', 'contents-refused', 'component-items',
 ] as const;
 export type QueueItemKind = (typeof QUEUE_ITEM_KINDS)[number];
 

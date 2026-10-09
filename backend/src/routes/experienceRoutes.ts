@@ -9,6 +9,7 @@ import { defineRoute } from '../api/route.js';
 import {
   AcceptSourceResult,
   AdmissionResult,
+  ComponentItemsAnswered,
   CurationLog,
   DeclineHeldResult,
   DeclineSourceResult,
@@ -30,6 +31,7 @@ import {
 import { PublishWaitingResult } from '../api/responses/admin.js';
 import { undoPlaceMerge } from '../controllers/experience/placeMergeController.js';
 import { chooseViews } from '../controllers/experience/viewChoiceController.js';
+import { answerComponentItems } from '../controllers/experience/componentItemController.js';
 import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
 import { ReviewAnswerResult, ReviewQueue, RunSetAside } from '../api/responses/reviewQueue.js';
 import {
@@ -95,6 +97,7 @@ import {
   sourceIdParamSchema,
   mergeIdParamSchema,
   chooseViewsBodySchema,
+  answerComponentItemsBodySchema,
   reviewQueueQuerySchema,
   syncLogIdParamSchema,
   experienceAdmissionBodySchema,
@@ -490,6 +493,18 @@ export const experienceCurationRoutes = [
     body: chooseViewsBodySchema,
     response: ViewsChosen,
     handler: chooseViews,
+  }),
+  // Which Wikidata items a serial site's components are, where no item records
+  // their reference and the finder proposed candidates (#1272): confirmed ones
+  // are recorded on the points as the curator's choice, turned-down ones never
+  // come back.
+  defineRoute({
+    method: 'post', path: '/:id/component-items', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: "Confirm or turn down the candidate Wikidata items proposed for a site's components",
+    params: idParamSchema,
+    body: answerComponentItemsBodySchema,
+    response: ComponentItemsAnswered,
+    handler: answerComponentItems,
   }),
   // Jev's suggestion for that card (#1260): the stored one for the views as
   // they stand, or a new one asked for — a POST, since a call may be paid for.

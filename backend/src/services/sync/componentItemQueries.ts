@@ -227,6 +227,72 @@ export async function labelsOf(items: readonly string[], hooks: QueryHooks): Pro
   return labels;
 }
 
+/** What an item gives the component a curator confirms it is (#1272): its picture and its description. */
+export interface ItemContent {
+  /** The item's picture as a Commons file address, or null where it states none. */
+  image: string | null;
+  description: string | null;
+}
+
+interface EntityContents {
+  entities?: Record<string, {
+    descriptions?: Record<string, { value: string }>;
+    claims?: Record<string, Array<{ rank?: string; mainsnak?: { datavalue?: { value?: unknown } } }>>;
+  }>;
+}
+
+/**
+ * A Commons file name as the catalogue stores a picture: the `Special:FilePath`
+ * address the query service writes for P18, every character outside the
+ * unreserved set percent-encoded — a space as `%20`, a parenthesis as `%28` —
+ * so a file the run read through SPARQL and the same file read here are one
+ * address, which is how a point takes the credit another point holds for it.
+ */
+function commonsFilePath(name: string): string {
+  const encoded = encodeURIComponent(name).replace(/[!'()*]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `http://commons.wikimedia.org/wiki/Special:FilePath/${encoded}`;
+}
+
+/**
+ * The picture and the English description of each item, read when a curator
+ * confirms a candidate: the run's index knows only the items that carry a
+ * World Heritage reference, which a candidate by definition does not. One
+ * picture per item, the first by its address (ADR-0085's rule), from the
+ * statements that are not deprecated. Through the same API and at the same
+ * pace as the labels.
+ */
+export async function contentsOf(items: readonly string[], hooks: QueryHooks): Promise<Map<string, ItemContent>> {
+  const contents = new Map<string, ItemContent>();
+  for (let i = 0; i < items.length; i += ENTITY_BATCH) {
+    if (hooks.isCancelled?.()) break;
+    if (i > 0) await delay(SPARQL_DELAY_MS);
+    const ids = items.slice(i, i + ENTITY_BATCH);
+    const answer = await askWikipediaOnce(
+      {
+        action: 'wbgetentities', ids: ids.join('|'), props: 'claims|descriptions', languages: 'en',
+        format: 'json', formatversion: '2',
+      },
+      {
+        userAgent: WIKIDATA_USER_AGENT, endpoint: WIKIDATA_API,
+        isCancelled: hooks.isCancelled, onWait: hooks.onWait, budget: hooks.budget,
+      },
+      hooks.budget,
+      `the pictures and descriptions of ${ids.length} confirmed items`,
+    ) as unknown as EntityContents;
+    hooks.onQuery?.();
+    for (const [item, entity] of Object.entries(answer.entities ?? {})) {
+      const pictures = (entity.claims?.P18 ?? [])
+        .filter(claim => claim.rank !== 'deprecated')
+        .map(claim => claim.mainsnak?.datavalue?.value)
+        .filter((value): value is string => typeof value === 'string' && value !== '')
+        .map(commonsFilePath)
+        .sort();
+      contents.set(item, { image: pictures[0] ?? null, description: entity.descriptions?.en?.value ?? null });
+    }
+  }
+  return contents;
+}
+
 /** Items or classes per settlement question. */
 const SETTLEMENT_BATCH = 400;
 
