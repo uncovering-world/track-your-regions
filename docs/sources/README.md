@@ -27,6 +27,7 @@ docs/sources/
 │   └── …
 └── global/                  ← sources native to no unit: read per unit, or read for the world
     ├── openstreetmap-qlever.md
+    ├── wikidata-qlever.md
     ├── wikidata-by-class-per-unit.md
     ├── wikidata-places-of-worship.md
     ├── wikidata-archaeology.md
