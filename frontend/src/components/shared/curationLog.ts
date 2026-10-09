@@ -116,6 +116,10 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // Which of two sources' names, pictures or points a place shows, where the
   // two describe it differently (#1246).
   views_chosen: { label: 'Source chosen', color: BLUE },
+  // Which Wikidata items the components of a serial site are, where no item
+  // records their reference and the finder proposed candidates (#1272): the
+  // ones a curator confirmed and the ones turned down, in one act.
+  component_items_answered: { label: 'Items answered', color: BLUE },
 };
 
 /**
@@ -458,11 +462,15 @@ function formatPartEdit(
   ].filter(Boolean).join(' — ') || null;
 }
 
-/** The acts about the place as a whole across sources: a merge, its undo, and a choice between two sources' views. */
+/**
+ * The acts about the place as a whole across sources — a merge, its undo, a
+ * choice between two sources' views — and the one about its components' items.
+ */
 const PLACE_ACT_DETAILS: Record<string, (d: Record<string, unknown>) => string | null> = {
   merged: d => formatMerge('merged', d),
   merge_undone: d => formatMerge('merge_undone', d),
   views_chosen: d => formatViewsChosen(d),
+  component_items_answered: d => formatComponentItemsAnswered(d),
 };
 
 export function formatLogDetails(entry: CurationLogEntry): string | null {
@@ -507,6 +515,28 @@ function formatViewsChosen(d: Record<string, unknown>): string | null {
     const value = typeof choice.value === 'string' ? `${choice.value}, ` : '';
     return `${label}: ${value}from ${String(choice.kind)}`;
   });
+  return lines.length > 0 ? lines.join('\n') : null;
+}
+
+/** One candidate a component-items answer names: the point, then the item by its label and id. */
+function candidateLine(entry: Record<string, unknown>, verb: string): string {
+  const point = typeof entry.point === 'string' && entry.point !== '' ? entry.point : `Point #${entry.locationId}`;
+  const label = typeof entry.label === 'string' && entry.label !== '' ? `${entry.label} (${entry.item})` : String(entry.item);
+  return `${point}: ${label} ${verb}`;
+}
+
+/**
+ * A curator's answer to the candidate Wikidata items of a site's components
+ * (#1272), a line per candidate: "Bologa: Castra of Bologa (Q12345) confirmed",
+ * "Buciumi: Buciumi (Q67890) not it".
+ */
+function formatComponentItemsAnswered(d: Record<string, unknown>): string | null {
+  const accepted = Array.isArray(d.accepted) ? d.accepted as Record<string, unknown>[] : [];
+  const refused = Array.isArray(d.refused) ? d.refused as Record<string, unknown>[] : [];
+  const lines = [
+    ...accepted.map(entry => candidateLine(entry, 'confirmed')),
+    ...refused.map(entry => candidateLine(entry, 'not it')),
+  ];
   return lines.length > 0 ? lines.join('\n') : null;
 }
 

@@ -168,6 +168,7 @@ export interface ExperienceComponentItemProposalsRow {
   answer: string | null;
   answered_by: number | null;
   answered_at: Date | null;
+  item_location: string | null;
 }
 
 /** The table `experience_conflict_decisions`. */
@@ -939,7 +940,7 @@ export const CHECK_VALUES = {
     basis: ["part_of", "near"],
   },
   experience_curation_log: {
-    action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone", "views_chosen"],
+    action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone", "views_chosen", "component_items_answered"],
   },
   experience_held_decisions: {
     answer: ["published", "refused"],
