@@ -81,6 +81,8 @@ export const queryKeys = {
     curationLog: (id: Id) => ['curation-log', id] as const,
     /** Jev's suggestion for the sources card (#1260), for the views the card shows (serialised). */
     viewSuggestions: (id: Id, views: string) => ['experience', 'view-suggestions', id, views] as const,
+    /** Jev's judgement of a site's candidate component items (#1272), for the candidates the card shows (serialised). */
+    componentItemSuggestions: (id: Id, candidates: string) => ['experience', 'component-item-suggestions', id, candidates] as const,
   },
 
   /** The lists objects appear in, and the points that place them. */

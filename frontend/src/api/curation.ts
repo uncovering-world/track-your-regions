@@ -8,7 +8,8 @@
  */
 
 import type {
-  AcceptSourceResult, AdmissionResult, ComponentItemsAnswered, ContentKind, CurationLog, DeclineHeldResult,
+  AcceptSourceResult, AdmissionResult, ComponentItemsAnswered, ComponentItemSuggestions, ContentKind, CurationLog,
+  DeclineHeldResult,
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
   LocationStateResult, ManualExperienceCreated, MergeUndone, PublishResult, ViewsChosen, ViewSuggestions, RefuseArrivalResult,
   RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
@@ -19,6 +20,7 @@ import {
   patchExperiencesLocationsByLocationIdEdit, postExperiences, postExperiencesByIdAcceptSource,
   postExperiencesMergesByMergeIdUndo, postExperiencesByIdChooseViews, type ChooseViewsBody,
   postExperiencesByIdViewSuggestions, postExperiencesByIdComponentItems, type AnswerComponentItemsBody,
+  postExperiencesByIdComponentItemSuggestions,
   postExperiencesByIdAdmission, postExperiencesByIdAssign, postExperiencesByIdDeclineHeld,
   postExperiencesByIdDeclineSource, postExperiencesByIdPublish, postExperiencesByIdRefuseArrival,
   postExperiencesByIdRefuseContents, postExperiencesByIdReject, postExperiencesByIdState,
@@ -31,8 +33,8 @@ import {
 // and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
 export type {
-  AcceptSourceResult, AdmissionResult, AnswerComponentItemsBody, AppliedPart, ComponentItemsAnswered, ContentKind,
-  CurationLog, CurationLogEntry,
+  AcceptSourceResult, AdmissionResult, AnswerComponentItemsBody, AppliedPart, ComponentItemsAnswered,
+  ComponentItemSuggestions, ContentKind, CurationLog, CurationLogEntry,
   DeclineHeldResult, DeclineSourceResult, DeclinedPart, ExperienceEditResult,
   ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MergeUndone,
   PartNotFound, ViewsChosen, ViewSuggestions, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody, RefuseContentsResult,
@@ -394,6 +396,16 @@ export async function answerComponentItems(
  */
 export async function suggestSourceViews(experienceId: number): Promise<ViewSuggestions> {
   return postExperiencesByIdViewSuggestions(experienceId);
+}
+
+/**
+ * Jev's judgement of a site's candidate component items (#1272): per
+ * candidate, whether the item is the component or another place, with its
+ * confidence. A suggestion only; a POST since the server may ask Jev, which is
+ * paid for per call.
+ */
+export async function suggestComponentItems(experienceId: number): Promise<ComponentItemSuggestions> {
+  return postExperiencesByIdComponentItemSuggestions(experienceId);
 }
 
 /**
