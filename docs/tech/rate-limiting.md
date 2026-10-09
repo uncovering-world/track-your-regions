@@ -69,7 +69,7 @@ what goes stale when a route is added to the row below (it has already happened 
 
 | Limiter | Window | Max | Applied to |
 |---------|--------|-----|------------|
-| `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch`, `GET /api/admin/data-assertions`, `POST /api/admin/sync/sources/:sourceId/fix-images` |
+| `expensiveAdminLimiter` | 1 min | 5 | `POST /api/admin/wv-import/matches/:worldViewId/rematch`, `GET /api/admin/data-assertions`, `POST /api/admin/sync/sources/:sourceId/fix-images`, `POST /api/admin/sync/sources/:sourceId/find-component-items` |
 | `authenticatedLimiter` | 1 min | 60 | `POST /api/admin/data-assertions/accept`, `POST /api/experiences/:id/publish`, `POST /api/experiences/:id/admission`, `POST /api/experiences/sources/:sourceId/publish-waiting`, `POST /api/experiences/locations/:locationId/state`, `PATCH /api/experiences/locations/:locationId/edit`, `POST /api/experiences/:id/accept-source`, `POST /api/experiences/:id/decline-held`, `PUT`/`DELETE /api/experiences/review/set-aside/:syncLogId`, `POST /api/experiences/review/answer`, `POST /api/experiences/:id/refuse-contents`, `POST /api/experiences/:id/unrefuse-contents` |
 
 The catalogue checks split across both buckets on the same rule, and the split is
