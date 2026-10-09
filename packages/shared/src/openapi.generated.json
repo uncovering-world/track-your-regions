@@ -4529,6 +4529,56 @@
         }
       }
     },
+    "/api/admin/sync/sources/{sourceId}/find-component-items": {
+      "post": {
+        "operationId": "postAdminSyncSourcesBySourceIdFindComponentItems",
+        "summary": "Start a search for the Wikidata items of a source's components, proposed to a curator",
+        "tags": [
+          "admin"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sourceId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComponentItemSearchStarted"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/sync/sources/{sourceId}/cache": {
       "get": {
         "operationId": "getAdminSyncSourcesBySourceIdCache",
@@ -16096,6 +16146,24 @@
         "additionalProperties": false,
         "description": "What a colour-match run matched: each cluster's divisions and region, and the map of it."
       },
+      "ComponentItemSearchStarted": {
+        "type": "object",
+        "properties": {
+          "started": {
+            "type": "boolean",
+            "const": true
+          },
+          "message": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "started",
+          "message"
+        ],
+        "additionalProperties": false,
+        "description": "A search for the Wikidata items of World Heritage components, started in the background and followed through the sync status (#1272)."
+      },
       "ComponentItems": {
         "type": "object",
         "properties": {
@@ -20039,6 +20107,10 @@
           "repairsPictures": {
             "type": "boolean",
             "description": "Whether this source's pictures can be repaired from the panel (ADR-0043)."
+          },
+          "findsComponentItems": {
+            "type": "boolean",
+            "description": "Whether the panel can search Wikidata for the items of this source's components that no item records the reference of (#1272)."
           }
         },
         "required": [
@@ -20057,7 +20129,8 @@
           "find_stay_sitelinks",
           "waiting",
           "caches",
-          "repairsPictures"
+          "repairsPictures",
+          "findsComponentItems"
         ],
         "additionalProperties": false,
         "description": "One active source, with its gate, its line and what it is holding."
@@ -29493,11 +29566,12 @@
             "type": "boolean"
           },
           "kind": {
-            "description": "A sync, or a picture repair started from the same card.",
+            "description": "A sync, a picture repair, or a search for the items of World Heritage components (#1272), started from the same card.",
             "type": "string",
             "enum": [
               "sync",
-              "repair"
+              "repair",
+              "components"
             ]
           },
           "status": {

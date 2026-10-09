@@ -1907,6 +1907,14 @@ export interface ColorMatchFailed {
  */
 export type ColorMatchEvent = ColorMatchProgress | ColorMatchDebugImage | WaterReviewRequested | ClusterReviewRequested | IcpAdjustmentOffered | ColorMatchComplete | ColorMatchFailed;
 
+/**
+ * A search for the Wikidata items of World Heritage components, started in the background and followed through the sync status (#1272).
+ */
+export interface ComponentItemSearchStarted {
+  started: true;
+  message: string;
+}
+
 export type ComponentItemsAmbiguousItem = {
   site: string;
   ref: string;
@@ -3943,6 +3951,8 @@ export interface ExperienceSource {
   caches: boolean;
   /** Whether this source's pictures can be repaired from the panel (ADR-0043). */
   repairsPictures: boolean;
+  /** Whether the panel can search Wikidata for the items of this source's components that no item records the reference of (#1272). */
+  findsComponentItems: boolean;
 }
 
 /**
@@ -8576,7 +8586,7 @@ export interface SyncStarted {
 }
 
 /**
- * A sync, or a picture repair started from the same card.
+ * A sync, a picture repair, or a search for the items of World Heritage components (#1272), started from the same card.
  */
 export type SyncStatusKind = typeof SyncStatusKind[keyof typeof SyncStatusKind];
 
@@ -8584,6 +8594,7 @@ export type SyncStatusKind = typeof SyncStatusKind[keyof typeof SyncStatusKind];
 export const SyncStatusKind = {
   sync: 'sync',
   repair: 'repair',
+  components: 'components',
 } as const;
 
 /**
@@ -8619,7 +8630,7 @@ export interface SyncStatus {
   running: boolean;
   /** Whether a Cancel press would be acted on: the server's rule, not a copy. */
   cancellable?: boolean;
-  /** A sync, or a picture repair started from the same card. */
+  /** A sync, a picture repair, or a search for the items of World Heritage components (#1272), started from the same card. */
   kind?: SyncStatusKind;
   /** `partial` is terminal like `complete`: the run finished and placing what it moved did not. */
   status?: SyncStatusStatus;
@@ -13142,6 +13153,31 @@ export const getPostAdminSyncSourcesBySourceIdFixImagesUrl = (sourceId: number,)
 export const postAdminSyncSourcesBySourceIdFixImages = async (sourceId: number, options?: Parameters<typeof apiFetch>[1]): Promise<PictureRepairStarted> => {
 
   return apiFetch<PictureRepairStarted>(getPostAdminSyncSourcesBySourceIdFixImagesUrl(sourceId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostAdminSyncSourcesBySourceIdFindComponentItemsUrl = (sourceId: number,) => {
+
+
+
+
+  return `/api/admin/sync/sources/${encodeURIComponent(String(sourceId))}/find-component-items`
+}
+
+/**
+ * Requires an admin.
+ * @summary Start a search for the Wikidata items of a source's components, proposed to a curator
+ */
+export const postAdminSyncSourcesBySourceIdFindComponentItems = async (sourceId: number, options?: Parameters<typeof apiFetch>[1]): Promise<ComponentItemSearchStarted> => {
+
+  return apiFetch<ComponentItemSearchStarted>(getPostAdminSyncSourcesBySourceIdFindComponentItemsUrl(sourceId),
   {
     ...options,
     method: 'POST'

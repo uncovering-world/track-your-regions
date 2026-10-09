@@ -58,6 +58,8 @@ export const ExperienceSource = z.strictObject({
     .describe('Three zeros for a source holding nothing, and null when the server could not count, so a panel never shows a count nothing checked.'),
   caches: z.boolean().describe('Whether this source keeps answers between runs, which decides whether "Sync without cache" is offered.'),
   repairsPictures: z.boolean().describe('Whether this source\'s pictures can be repaired from the panel (ADR-0043).'),
+  findsComponentItems: z.boolean()
+    .describe('Whether the panel can search Wikidata for the items of this source\'s components that no item records the reference of (#1272).'),
 }).describe('One active source, with its gate, its line and what it is holding.');
 export type ExperienceSource = z.infer<typeof ExperienceSource>;
 
@@ -79,6 +81,12 @@ export const PictureRepairStarted = z.strictObject({
   message: z.string(),
 }).describe('A repair of one source\'s pictures, started in the background and followed through the sync status.');
 export type PictureRepairStarted = z.infer<typeof PictureRepairStarted>;
+
+export const ComponentItemSearchStarted = z.strictObject({
+  started: z.literal(true),
+  message: z.string(),
+}).describe('A search for the Wikidata items of World Heritage components, started in the background and followed through the sync status (#1272).');
+export type ComponentItemSearchStarted = z.infer<typeof ComponentItemSearchStarted>;
 
 export const SyncLastRun = z.strictObject({
   logId: z.number().int(),
@@ -106,7 +114,8 @@ export type SyncLastRun = z.infer<typeof SyncLastRun>;
 export const SyncStatus = z.strictObject({
   running: z.boolean(),
   cancellable: z.boolean().optional().describe('Whether a Cancel press would be acted on: the server\'s rule, not a copy.'),
-  kind: z.enum(['sync', 'repair']).optional().describe('A sync, or a picture repair started from the same card.'),
+  kind: z.enum(['sync', 'repair', 'components']).optional()
+    .describe('A sync, a picture repair, or a search for the items of World Heritage components (#1272), started from the same card.'),
   status: z.enum(['fetching', 'processing', 'assigning', 'complete', 'partial', 'failed', 'cancelled']).optional()
     .describe('`partial` is terminal like `complete`: the run finished and placing what it moved did not.'),
   statusMessage: z.string().optional(),
