@@ -9,7 +9,13 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { sparqlQuery, WaitBudget } from './wikidataUtils.js';
+import type * as WikidataUtils from './wikidataUtils.js';
+
+// The query turn is the process's (`inTurn`): a hold or a pause one spec earns
+// would carry into the next. Each spec loads the module afresh.
+let sparqlQuery: typeof WikidataUtils.sparqlQuery;
+let WaitBudget: typeof WikidataUtils.WaitBudget;
+let waitMessage: typeof WikidataUtils.waitMessage;
 
 const GOOD_BODY = JSON.stringify({
   results: { bindings: [{ w: { type: 'uri', value: 'http://www.wikidata.org/entity/Q19675' } }] },
@@ -38,12 +44,14 @@ function httpError(status: number): Response {
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
-beforeEach(() => {
+beforeEach(async () => {
   fetchMock = vi.fn();
   vi.stubGlobal('fetch', fetchMock);
   // The backoff is 5s and up. Faking timers keeps the retry paths instant
   // without weakening what they assert.
   vi.useFakeTimers();
+  vi.resetModules();
+  ({ sparqlQuery, WaitBudget, waitMessage } = await import('./wikidataUtils.js'));
 });
 
 afterEach(() => {
@@ -202,5 +210,143 @@ describe('a run that is stopped while it waits', () => {
     // The second question inherits what the first left, so it gives up sooner.
     // With a budget of its own it would have retried exactly as long again.
     expect(fetchMock.mock.calls.length - first).toBeLessThan(first);
+  });
+});
+
+describe("the query service's processing-time rule", () => {
+  /** A fetch that answers after `ms`, recording when each one started. */
+  function slowFetch(ms: number, answer: () => Response, starts: number[]) {
+    fetchMock.mockImplementation(() => {
+      starts.push(Date.now());
+      return new Promise((resolve) => setTimeout(() => resolve(answer()), ms));
+    });
+  }
+
+  it('starts the next query only after a pause as long as the last one took', async () => {
+    const starts: number[] = [];
+    slowFetch(20_000, () => ok(GOOD_BODY), starts);
+
+    await runWithTimers(sparqlQuery('SELECT * {}', '[Test]'));
+    await runWithTimers(sparqlQuery('SELECT * {}', '[Test]'));
+
+    expect(starts[1] - starts[0]).toBeGreaterThanOrEqual(40_000);
+  });
+
+  it('sends queries from two runs one at a time', async () => {
+    const starts: number[] = [];
+    slowFetch(10_000, () => ok(GOOD_BODY), starts);
+
+    await runWithTimers(Promise.all([
+      sparqlQuery('SELECT * {}', '[Museums]'),
+      sparqlQuery('SELECT * {}', '[Worship]'),
+    ]));
+
+    expect(starts).toHaveLength(2);
+    expect(starts[1] - starts[0]).toBeGreaterThanOrEqual(20_000);
+  });
+
+  it('retries a query that ran into the deadline only after the minute it used', async () => {
+    // Asked for 55 s, answered with the service's timeout: the whole minute's
+    // allowance is spent, and the 5 s backoff alone would land the retry in it.
+    const starts: number[] = [];
+    let calls = 0;
+    fetchMock.mockImplementation(() => {
+      starts.push(Date.now());
+      calls += 1;
+      const answer = calls === 1 ? httpError(500) : ok(GOOD_BODY);
+      return new Promise((resolve) => setTimeout(() => resolve(answer), calls === 1 ? 55_000 : 100));
+    });
+
+    await runWithTimers(sparqlQuery('SELECT * {}', '[Test]'));
+
+    expect(starts).toHaveLength(2);
+    expect(starts[1] - starts[0]).toBeGreaterThanOrEqual(110_000);
+  });
+
+  it("holds every run back on one query's Retry-After, not only the query that got it", async () => {
+    const starts: Array<[string, number]> = [];
+    fetchMock.mockImplementation((_url: string, init: { body: string }) => {
+      const who = String(init.body).includes('Museums') ? 'museums' : 'worship';
+      starts.push([who, Date.now()]);
+      if (who === 'museums' && starts.filter(([w]) => w === 'museums').length === 1) {
+        return Promise.resolve({
+          ok: false, status: 429, text: async () => 'slow down', headers: new Headers({ 'retry-after': '60' }),
+        } as unknown as Response);
+      }
+      return Promise.resolve(ok(GOOD_BODY));
+    });
+
+    await runWithTimers(Promise.all([
+      sparqlQuery('SELECT * { # Museums }', '[Museums]'),
+      sparqlQuery('SELECT * { # Worship }', '[Worship]'),
+    ]));
+
+    const throttledAt = starts[0][1];
+    const worship = starts.find(([who]) => who === 'worship')!;
+    expect(worship[1] - throttledAt).toBeGreaterThanOrEqual(60_000);
+  });
+
+  it("says a hold another run earned on this run's panel, charges its patience, and caps it at the backoff ceiling", async () => {
+    // A Retry-After of an hour: the run that got it gives up at once (its
+    // budget is fifteen minutes), and nobody else may sit out the hour.
+    const starts: Array<[string, number]> = [];
+    fetchMock.mockImplementation((_url: string, init: { body: string }) => {
+      const who = String(init.body).includes('Museums') ? 'museums' : 'worship';
+      starts.push([who, Date.now()]);
+      if (who === 'museums') {
+        return Promise.resolve({
+          ok: false, status: 429, text: async () => 'slow down', headers: new Headers({ 'retry-after': '3600' }),
+        } as unknown as Response);
+      }
+      return Promise.resolve(ok(GOOD_BODY));
+    });
+    const waits: string[] = [];
+    const budget = new WaitBudget(900_000);
+
+    const outcome = await runWithTimers(Promise.allSettled([
+      sparqlQuery('SELECT * { # Museums }', '[Museums]'),
+      sparqlQuery('SELECT * { # Worship }', '[Worship]', { budget, onWait: (w) => waits.push(w.reason) }),
+    ]));
+
+    expect(outcome[0].status).toBe('rejected');
+    expect(outcome[1].status).toBe('fulfilled');
+    const worship = starts.find(([who]) => who === 'worship')!;
+    expect(worship[1] - starts[0][1]).toBeLessThanOrEqual(181_000);
+    expect(waits).toEqual(['Wikidata asked this server to wait']);
+    expect(budget.remainingMs).toBeLessThan(900_000);
+  });
+
+  it('lets a run cancelled while it queues stop within a second, without the next run starting early', async () => {
+    const starts: number[] = [];
+    slowFetch(60_000, () => ok(GOOD_BODY), starts);
+    let cancelled = false;
+
+    const first = sparqlQuery('SELECT * {}', '[Museums]');
+    const second = sparqlQuery('SELECT * {}', '[Worship]', { isCancelled: () => cancelled }).catch((e: Error) => e);
+    const third = sparqlQuery('SELECT * {}', '[Landmarks]');
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(starts).toHaveLength(1);
+    cancelled = true;
+    await vi.advanceTimersByTimeAsync(1_500);
+
+    expect(await Promise.race([second, Promise.resolve('still waiting')])).toMatchObject({ message: 'Sync cancelled' });
+    expect(starts).toHaveLength(1);
+    await runWithTimers(Promise.all([first, third]));
+    expect(starts).toHaveLength(2);
+    expect(starts[1] - starts[0]).toBeGreaterThanOrEqual(120_000);
+  });
+});
+
+describe('waitMessage', () => {
+  it("says a hold another run earned as a hold, not as a retry of a query this run never sent", () => {
+    const hold = { reason: 'Wikidata asked this server to wait', attempt: 0, backoffMs: 59_000, waitedMs: 0 };
+    expect(waitMessage('Wikidata', hold, new WaitBudget(900_000)))
+      .toBe('Wikidata asked this server to wait — next query in 59s, about 1 of 15 min of waiting spent');
+  });
+
+  it('says a retry as a retry', () => {
+    const retry = { reason: 'SPARQL 503', attempt: 2, backoffMs: 10_000, waitedMs: 5_000 };
+    expect(waitMessage('Wikidata', retry, new WaitBudget(900_000)))
+      .toBe('Wikidata is not answering (SPARQL 503) — retrying in 10s, attempt 2, about 0 of 15 min of waiting spent');
   });
 });
