@@ -13,6 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { getSyncStatus, type SyncStatus } from '../../api/admin';
+import type { RunKind } from './syncRunKinds';
 
 const POLL_MS = 1000;
 const BACKOFF_MS = [1000, 2000, 4000, 8000, 10000];
@@ -27,7 +28,7 @@ export interface SyncStatusPolling {
   /** The asks failed for about two minutes while a run was being followed. */
   lostTouch: boolean;
   /** A run was started here: name it `kind` until the server answers, and follow it. */
-  follow: (kind: 'sync' | 'repair') => void;
+  follow: (kind: RunKind) => void;
   /** Ask once, now. */
   pollNow: () => void;
 }
@@ -121,7 +122,7 @@ export function useSyncStatusPolling(
     };
   }, [poll]);
 
-  const follow = useCallback((kind: 'sync' | 'repair') => {
+  const follow = useCallback((kind: RunKind) => {
     followGenerationRef.current += 1;
     setStatus({ running: true, kind });
     setIsPolling(true);
