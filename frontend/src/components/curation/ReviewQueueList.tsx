@@ -13,7 +13,7 @@
  * group it holds only part of. `date` groups by the day a question was asked (a row still
  * in flight has no day yet, and sits under *Still running* wherever it falls); `question`
  * groups by kind, coloured the way the kind's own chip is. One pager, not the old one per
- * kind, because the list is one keyset-paged union now rather than seven offset ones.
+ * kind, because the list is one keyset-paged union now rather than one offset list per kind.
  */
 
 import {
@@ -38,6 +38,7 @@ const KIND_HEADING: Record<RowKind, string> = {
   withdrawn: 'Places these objects are made of are gone',
   refused: 'Our own rule for this list turned these down',
   missing: 'Gone from the source',
+  'component-items': 'Components with candidate Wikidata items',
 };
 
 /** A group's heading a transition in `rows` opens — never computed for a row that continues its predecessor's group. */

@@ -4,5 +4,5 @@
  * writing `import type { RowKind } from './queueRows'`.
  */
 
-/** Which of the six questions a row asks. `waiting` is the three gated kinds, grouped. */
-export type RowKind = 'missing' | 'refused' | 'conflicts' | 'sources' | 'waiting' | 'withdrawn';
+/** Which question a row asks. `waiting` is the three gated kinds, grouped. */
+export type RowKind = 'missing' | 'refused' | 'conflicts' | 'sources' | 'waiting' | 'withdrawn' | 'component-items';

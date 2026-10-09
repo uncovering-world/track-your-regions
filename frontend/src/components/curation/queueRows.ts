@@ -57,6 +57,7 @@ const QUESTION: Record<RowKind, string> = {
   sources: 'two sources disagree',
   waiting: 'waiting to be published',
   withdrawn: 'lost places it is made of',
+  'component-items': 'candidate items for its components',
 };
 
 /** The server's word for a question kind, mapped to this file's own — only `conflict` differs. */
@@ -67,6 +68,7 @@ const ROW_KIND: Record<QueueOrderEntry['kind'], RowKind> = {
   withdrawn: 'withdrawn',
   refused: 'refused',
   missing: 'missing',
+  'component-items': 'component-items',
 };
 
 const warnedKeys = new Set<string>();
@@ -142,6 +144,7 @@ export function queueRows(data: ReviewQueue | undefined): QueueRow[] {
     withdrawn: byPlace(data.withdrawn),
     refused: byPlace(data.refused),
     missing: byPlace(data.missing),
+    'component-items': byPlace(data.componentItems),
   };
 
   const rows: QueueRow[] = [];

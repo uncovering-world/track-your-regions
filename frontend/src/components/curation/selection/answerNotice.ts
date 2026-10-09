@@ -82,6 +82,14 @@ const ACT: Record<Kind, (answer: ReviewAnswer, rows: Rows) => string> = {
     ? `the source’s value taken on ${plural(rows.length, 'object')}`
     : `ours kept on ${plural(rows.length, 'object')}`),
   sources: (_answer, rows) => `what readers see kept on ${plural(rows.length, 'place')}`,
+  // Counted by candidate, since that is what the writer counted (#1272): a
+  // batch accept confirms the exact ones, a reject turns every open one down.
+  'component-items': (answer, rows) => {
+    const items = rows.reduce((sum, r) => sum + (r.did.items ?? 0), 0);
+    return answer === 'accept'
+      ? `${plural(items, 'exact candidate item')} confirmed on ${plural(rows.length, 'site')}`
+      : `${plural(items, 'candidate item')} turned down on ${plural(rows.length, 'site')}`;
+  },
   refused: (answer, rows) => `${plural(rows.length, 'refusal')} ${answer === 'accept' ? 'put back' : 'kept out'}`,
   missing: (answer, rows) => missingAct(answer, rows.length),
   // A withdrawn row is answered point by point, and a point that moved under

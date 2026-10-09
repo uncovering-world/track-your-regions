@@ -33,6 +33,12 @@
  * for (`moveView`). Two pairs of numbers and "158 m north-west" say that something moved;
  * whether it moved onto the ruins or off them is read from the ground under the arrow.
  *
+ * **A neighbour is drawn as a neighbour.** Where a caller hands in `beside` — a candidate
+ * Wikidata item standing near a component (#1272), whose question is whether the two are
+ * one place — the map draws both pins at the zoom that holds them and the title says how
+ * far apart they stand, with no arrow and no talk of a move: confirming the item leaves
+ * the point where it is.
+ *
  * In `shared/` because the same look is asked for from three places — the review
  * page's cards, the object's own screen and the places list on a map — and the rule
  * for where a place may be corrected is the same on all of them: wherever a curator is
@@ -50,6 +56,8 @@ import { moveLabel, moveView, movedBy, shortWayLongitudeDelta } from '../../util
 /** The pin readers see today, where the map also draws the one proposed: present, and plainly not the news. */
 const STORED_PIN = '#757575';
 const MOVE_LINE = '#C62828';
+/** A neighbour drawn beside the place: another pin, in a colour that is neither readers' nor the news. */
+const BESIDE_PIN = '#5D4037';
 
 /**
  * The line a move is drawn along, and the arrowhead on it.
@@ -101,7 +109,36 @@ function MoveArrow({ from, to }: {
   );
 }
 
-export function PointPreviewDialog({ open, onClose, name, latitude, longitude, movedTo, correction }: {
+type Coordinate = { lon: number; lat: number };
+type Companion = { move: string | null; apart: string | null; other: Coordinate | null };
+
+/**
+ * What the map draws beside the place, if anything: the proposed move as the
+ * title says it, or the neighbour, each only where it stands a metre or more
+ * off — two points closer than that are one pin. Nothing under a correction,
+ * which has its own form.
+ */
+function companion(
+  stored: Coordinate,
+  movedTo: { latitude: number; longitude: number } | undefined,
+  beside: { latitude: number; longitude: number } | undefined,
+  correcting: boolean,
+): Companion {
+  const none: Companion = { move: null, apart: null, other: null };
+  if (correcting) return none;
+  const apartFrom = (place: { latitude: number; longitude: number } | undefined): [Coordinate, string] | null => {
+    if (!place) return null;
+    const at = { lon: place.longitude, lat: place.latitude };
+    const label = (movedBy(stored, at)?.meters ?? 0) >= 1 ? moveLabel(stored, at) : null;
+    return label ? [at, label] : null;
+  };
+  const proposed = apartFrom(movedTo);
+  if (proposed) return { move: proposed[1], apart: null, other: proposed[0] };
+  const neighbour = apartFrom(beside);
+  return neighbour ? { move: null, apart: neighbour[1], other: neighbour[0] } : none;
+}
+
+export function PointPreviewDialog({ open, onClose, name, latitude, longitude, movedTo, beside, correction }: {
   open: boolean;
   onClose: () => void;
   name: string;
@@ -114,17 +151,20 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
    */
   movedTo?: { latitude: number; longitude: number };
   /**
+   * A place standing beside this one, which is not a move (#1272): a candidate item
+   * near a component. With it the map draws both pins and the title says how far
+   * apart they stand. Read by the look alone, like `movedTo`.
+   */
+  beside?: { latitude: number; longitude: number; label: string };
+  /**
    * Offered where a curator may correct the place: what to correct, and where the
    * outcome line goes. Absent, the dialog is the look it always was.
    */
   correction?: { place: PlaceToCorrect; onDone: (message: string) => void };
 }) {
-  // The move as the title says it, and null where there is none to draw: a
-  // correction has its own form, and two points under a metre apart are one pin.
   const stored = { lon: longitude, lat: latitude };
-  const proposed = movedTo && !correction ? { lon: movedTo.longitude, lat: movedTo.latitude } : null;
-  const move = proposed && (movedBy(stored, proposed)?.meters ?? 0) >= 1 ? moveLabel(stored, proposed) : null;
-  const view = proposed && move ? moveView(stored, proposed) : { latitude, longitude, zoom: 11 };
+  const { move, apart, other } = companion(stored, movedTo, beside, Boolean(correction));
+  const view = other ? moveView(stored, other) : { latitude, longitude, zoom: 11 };
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>
       <DialogTitle sx={{ pr: 6 }}>
@@ -132,6 +172,7 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
         <Typography variant="body2" color="text.secondary">
           {latitude.toFixed(4)}, {longitude.toFixed(4)}
           {move && ` → ${movedTo?.latitude.toFixed(4)}, ${movedTo?.longitude.toFixed(4)} · a proposed move of ${move}`}
+          {apart && ` · ${beside?.label} stands ${apart}`}
           {/* Whose place this is — unless the place is named for the object already,
               as a museum's one place is, where the line would say the name twice. */}
           {correction && correction.place.objectName !== name ? ` · ${correction.place.objectName}` : ''}
@@ -178,7 +219,19 @@ export function PointPreviewDialog({ open, onClose, name, latitude, longitude, m
               ) : (
                 <Marker latitude={latitude} longitude={longitude} />
               )}
+              {beside && apart && <Marker latitude={beside.latitude} longitude={beside.longitude} color={BESIDE_PIN} />}
             </GuardedMap>
+          )}
+          {apart && beside && (
+            <Box
+              sx={{
+                position: 'absolute', left: 12, bottom: 12, px: 1, py: 0.5, borderRadius: 1,
+                bgcolor: 'background.paper', boxShadow: 1, fontSize: 12, lineHeight: 1.5,
+              }}
+            >
+              <Box><Box component="span" sx={{ color: 'primary.main', fontWeight: 700 }}>●</Box> {name}</Box>
+              <Box><Box component="span" sx={{ color: BESIDE_PIN, fontWeight: 700 }}>●</Box> {beside.label}</Box>
+            </Box>
           )}
           {move && (
             // Which pin is which, on the map and not only in the title: a legend a

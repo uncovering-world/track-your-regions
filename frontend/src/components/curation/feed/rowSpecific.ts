@@ -36,6 +36,7 @@ export const KIND_COLOR: Record<RowKind | 'arrival' | 'contents', string> = {
   withdrawn: '#EF6C00',
   refused: '#6A1B9A',
   missing: '#757575',
+  'component-items': '#5D4037',
 };
 
 /** The question word a row prints in bold, ahead of its specific text. */
@@ -48,6 +49,7 @@ export const KIND_SHORT: Record<RowKind | 'arrival' | 'contents', string> = {
   withdrawn: 'lost places',
   refused: 'refused',
   missing: 'gone from the source',
+  'component-items': 'candidate items',
 };
 
 /** A field two sources disagree on (#1246), in the words the card's rows use. */
@@ -179,6 +181,13 @@ export function rowSpecific(row: {
       return (row.item?.source_views ?? []).map(f => VIEW_FIELD_WORD[f.field]).join(', ');
     case 'withdrawn':
       return countLabel(row.item?.withdrawn_points?.length ?? 0, 'place', 'places');
+    case 'component-items': {
+      // "candidate items for 3 components, 4 candidates": how much of the site
+      // is asked about, and how much there is to read (#1272).
+      const candidates = row.item?.component_items ?? [];
+      const components = new Set(candidates.map(c => c.locationId)).size;
+      return `for ${countLabel(components, 'component', 'components')}, ${countLabel(candidates.length, 'candidate', 'candidates')}`;
+    }
     case 'waiting':
       return row.sections ? waitingSpecific(row.sections) : '';
     default:

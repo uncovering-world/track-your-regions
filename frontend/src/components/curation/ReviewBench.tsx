@@ -13,6 +13,7 @@ import type { QueueRow, RowKind } from './queueRows';
 import { MissingCard, ConflictCard } from './ReviewQueue';
 import { RefusedCard } from './RefusedCards';
 import { SourcesCard } from './SourcesCard';
+import { ComponentItemsCard } from './ComponentItemsCard';
 import { KindMissingCard } from './KindMissingCard';
 import { asksOfKinds } from './kindQuestions';
 import { GatedCard } from './WaitingToPublish';
@@ -48,6 +49,11 @@ const KIND_NOTE: Record<RowKind, string> = {
     + 'Visitors stopped seeing them the moment the run noticed, so this asks what to record '
     + 'about each — not whether to hide it. Nothing was deleted: anyone who had been there '
     + 'keeps that.',
+  'component-items': 'Some parts of this serial site have no Wikidata entry recording their UNESCO number, and '
+    + 'the search found entries that stand beside them or say they are part of the site. A match by place and '
+    + 'name is a guess until you say otherwise. Confirming one makes it the part’s entry — its picture and '
+    + 'description follow — and your choice is kept through every run; turning one down keeps it from being '
+    + 'offered again.',
 };
 
 /** The note above a kind whose source stopped listing a place other sources still list (#1264). */
@@ -83,6 +89,7 @@ export function ReviewBench({ row, onDone }: {
       </Typography>
       {row.kind === 'conflicts' && row.item && <ConflictCard item={row.item} onDone={onDone} />}
       {row.kind === 'sources' && row.item && <SourcesCard item={row.item} onDone={onDone} />}
+      {row.kind === 'component-items' && row.item && <ComponentItemsCard item={row.item} onDone={onDone} />}
       {row.kind === 'refused' && row.items && <RefusedCard items={row.items} onDone={onDone} />}
       {row.kind === 'missing' && row.items && asksOfKinds(row.items) && <KindMissingCard items={row.items} onDone={onDone} />}
       {row.kind === 'missing' && row.item && !asksOfKinds(row.items) && <MissingCard item={row.item} onDone={onDone} />}
