@@ -3135,6 +3135,28 @@ COMMENT ON COLUMN experience_locations.image_url IS 'The point''s own picture, a
 COMMENT ON COLUMN experience_locations.description IS 'The point''s own short description: for a World Heritage component, its Wikidata item''s English description, written like image_url (#1270).';
 COMMENT ON COLUMN experience_locations.metadata IS 'Facts about the point that are not columns: imageCredit, the credit of image_url, captured from Commons when the picture is written (#1270).';
 
+-- A candidate Wikidata item for a component no item records the reference of
+-- (#1272): a proposal for a curator, never a fact (ADR-0046). See
+-- db/migrations/082.
+CREATE TABLE IF NOT EXISTS experience_component_item_proposals (
+    id SERIAL PRIMARY KEY,
+    location_id INTEGER NOT NULL REFERENCES experience_locations(id) ON DELETE CASCADE,
+    wikidata_item VARCHAR(20) NOT NULL,
+    item_label TEXT NOT NULL,
+    distance_m INTEGER NOT NULL,
+    name_similarity REAL NOT NULL,
+    exact BOOLEAN NOT NULL DEFAULT false,
+    basis VARCHAR(10) NOT NULL CHECK (basis IN ('part_of', 'near')),
+    proposed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    answer VARCHAR(10) CHECK (answer IN ('accepted', 'refused')),
+    answered_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    answered_at TIMESTAMPTZ,
+    UNIQUE (location_id, wikidata_item)
+);
+CREATE INDEX IF NOT EXISTS idx_component_item_proposals_open
+    ON experience_component_item_proposals(location_id) WHERE answer IS NULL;
+COMMENT ON TABLE experience_component_item_proposals IS 'A candidate Wikidata item for a World Heritage component whose reference no item records (#1272), and what the match rests on: the item says it is part of the site (part_of), or it lies near the point and is of a class the site''s resolved components are of (near); the distance, the name similarity and whether the names are the same. A curator answers it: accepted records the item on the point as a curator''s choice; refused is kept so the candidate is never proposed again.';
+
 -- A location the source stopped offering is marked, not deleted: both
 -- `user_visited_locations.location_id` and
 -- `experience_location_regions.location_id` cascade on delete, so removing the

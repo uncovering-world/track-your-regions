@@ -154,6 +154,22 @@ export interface EmailVerificationTokensRow {
   created_at: Date | null;
 }
 
+/** The table `experience_component_item_proposals`. */
+export interface ExperienceComponentItemProposalsRow {
+  id: number;
+  location_id: number;
+  wikidata_item: string;
+  item_label: string;
+  distance_m: number;
+  name_similarity: number;
+  exact: boolean;
+  basis: string;
+  proposed_at: Date;
+  answer: string | null;
+  answered_by: number | null;
+  answered_at: Date | null;
+}
+
 /** The table `experience_conflict_decisions`. */
 export interface ExperienceConflictDecisionsRow {
   id: string;
@@ -771,6 +787,11 @@ export const COLUMN_WIDTHS = {
   email_verification_tokens: {
     token_hash: 255,
   },
+  experience_component_item_proposals: {
+    wikidata_item: 20,
+    basis: 10,
+    answer: 10,
+  },
   experience_conflict_decisions: {
     field: 100,
   },
@@ -912,6 +933,10 @@ export const CHECK_VALUES = {
   },
   curator_assignments: {
     scope_type: ["region", "source", "global"],
+  },
+  experience_component_item_proposals: {
+    answer: ["accepted", "refused"],
+    basis: ["part_of", "near"],
   },
   experience_curation_log: {
     action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone", "views_chosen"],
