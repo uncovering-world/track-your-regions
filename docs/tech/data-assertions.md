@@ -140,6 +140,10 @@ The first two are the detection half of
 repair to a standing assertion — the first is #543's shape exactly, the second
 is the floor under the writer ADR-0027 rewrote and the shape a gated source
 produces instead (an unread arrival beside the visible point, neither marked).
+The first counts only a **published** withdrawn point (`publishedContentSql`):
+the defect is a pin readers had and lost, and a point still `pending` was never
+on their map — the renumbered arrival ADR-0090 folds into the row it repeats is
+withdrawn beside that row on purpose (#1359).
 
 Both pair on the **reference as well as the distance**, which is ADR-0027's rule
 and not a detail: ten metres applied without a reference would be a
