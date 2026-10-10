@@ -3169,6 +3169,19 @@ COMMENT ON COLUMN experience_component_item_proposals.taken_back_at IS 'When a c
 CREATE INDEX IF NOT EXISTS idx_experience_locations_wikidata_item
     ON experience_locations(wikidata_item) WHERE wikidata_item IS NOT NULL;
 
+-- A World Heritage reference without the inscription's variant: `829ter-001`
+-- and `829bis-001` are both `829-001`, the property's number and the part. The
+-- pairing of a run's incoming points with the stored rows reads it, so a
+-- component the list renumbered at an extension is the same row where the
+-- geometry says the place is the same (ADR-0090). The grammar is parseWhcRef's
+-- in backend/src/services/sync/unescoWikidata.ts, and a parity spec holds the
+-- two to each other. Lower-cased and with runs of blanks folded, as the reader
+-- compares references. See db/migrations/087.
+CREATE OR REPLACE FUNCTION whc_ref_bare(ref TEXT) RETURNS TEXT
+LANGUAGE sql IMMUTABLE PARALLEL SAFE STRICT AS $$
+    SELECT regexp_replace(regexp_replace(lower(btrim(ref)), '\s+', ' ', 'g'), '^(\d+)[a-z]+', '\1')
+$$;
+
 -- A location the source stopped offering is marked, not deleted: both
 -- `user_visited_locations.location_id` and
 -- `experience_location_regions.location_id` cascade on delete, so removing the
