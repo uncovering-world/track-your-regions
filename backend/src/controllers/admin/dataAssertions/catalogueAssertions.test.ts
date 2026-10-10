@@ -114,6 +114,13 @@ describe('the two false-withdrawal assertions', () => {
     expect(held).toContain(collapse(offeredLocationSql('second')));
   });
 
+  it('counts only a ghost readers had, never a withdrawn arrival nobody published', () => {
+    // A pending point was never on a reader's map: the renumbered arrival
+    // ADR-0090 folds is withdrawn beside the row it repeats on purpose (#1359).
+    const sql = collapse(byId('withdrawn-beside-its-replacement').sql);
+    expect(sql).toContain(`WHERE ghost.missing_since IS NOT NULL AND ${collapse(publishedContentSql('ghost'))} ORDER BY`);
+  });
+
   it('leaves the marked row its own predicate, which is what it reports about', () => {
     // A ghost is by definition not offered, and a curator's verdict on it is
     // the thing being reported: #543 is a curator answering

@@ -137,6 +137,12 @@ function samePlaceSql(left: string, right: string): string {
  * reporting *about*: #543 is a curator answering `location_marked_former` on a
  * museum that never moved. A pair does not stop being a false withdrawal
  * because somebody answered the false question.
+ *
+ * What the ghost must be is **published** (`publishedContentSql`): the defect
+ * is a pin readers had and lost. A point still `pending` was never on a
+ * reader's map and the queue asks nothing about it once withdrawn — the
+ * renumbered arrival ADR-0090 folds into the row it repeats is withdrawn on
+ * purpose, beside that row, at that reference.
  */
 const withdrawnBesideItsReplacement: CatalogueAssertion = {
   id: 'withdrawn-beside-its-replacement',
@@ -145,7 +151,7 @@ const withdrawnBesideItsReplacement: CatalogueAssertion = {
   kind: 'invariant',
   meaning:
     'The source rewrote a coordinate rather than moving a place, and the run read it as a departure. '
-    + 'The pin left every reader-facing read and a curator is being asked a question with no true answer. '
+    + 'Only a point readers had is counted: the pin left every reader-facing read and a curator is being asked a question with no true answer. '
     + 'Repair with db/migrations/026-collapse-false-withdrawals.sql, which collapses the pairs it can '
     + 'and names the ones a curator has to settle.',
   sql: `SELECT ghost.id AS ghost_id,
@@ -162,6 +168,7 @@ const withdrawnBesideItsReplacement: CatalogueAssertion = {
            AND ${samePlaceSql('ghost', 'survivor')}
           JOIN experiences e ON e.id = ghost.experience_id
          WHERE ghost.missing_since IS NOT NULL
+           AND ${publishedContentSql('ghost')}
          ORDER BY e.name, ghost.id`,
   describe: row =>
     `${text(row, 'experience_name')}: a place marked as withdrawn on ${day(row, 'marked_at')} `
