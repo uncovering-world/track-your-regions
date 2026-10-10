@@ -169,6 +169,7 @@ export interface ExperienceComponentItemProposalsRow {
   answered_by: number | null;
   answered_at: Date | null;
   item_location: string | null;
+  taken_back_at: Date | null;
 }
 
 /** The table `experience_component_item_suggestions`. */
