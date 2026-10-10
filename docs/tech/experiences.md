@@ -1034,7 +1034,10 @@ path needs.
 - **Each component point names its own Wikidata item** (#1269, `unescoComponents.ts`). From the
   same P757 index, read at every rank but a statement that is only deprecated (an identity, ADR-0088
   decision 1), a component resolves to the item whose World Heritage Site
-  ID equals its reference (`resolveComponents`, case and blanks folded), and the run records it on
+  ID equals its reference (`resolveComponents`, case and blanks folded) — the inscription's variant
+  included, since an extension can renumber the parts: Wikidata's `1591-004` is Boseong's tidal
+  flat and the list's `1591bis-004` is Gochang's, so a reference under another variant is a
+  candidate for a curator through the finder's part-of door, never an identity (#1344) — and the run records it on
   the point (`experience_locations.wikidata_item`, written by `recordComponentItems` in the run's
   location writer, under the place's lock, on the points the run answers for). A reference no item
   carries leaves the point without one; one that more than one item carries — 39 on 2026-10-08,
@@ -1078,7 +1081,10 @@ path needs.
   what UNESCO states. It reads the standing component points with no item and no claim on one, and
   asks Wikidata by two rules, each a reason the curator reads on the card:
   - **part of the site** (`part_of`) — an item that says it is part of one of the site's own items
-    (P361) and carries no World Heritage reference of its own, within 2 km of the point with a
+    (P361), with or without a World Heritage reference of its own — one the reader matched is a
+    point's item already and is left as taken; one naming this property under another variant of
+    the inscription (Kyiv's Lavra, `527-002` on Wikidata, `527ter-002` on the list) stays a
+    candidate; one naming another property is left out (`claimsAnotherSite`, #1344) — within 2 km of the point with a
     name trigram-similar at 0.3 or more, or at the same spot — within 25 m — whatever its name
     (`PART_SAME_SPOT_M`: Voislova's component is named after its railway halt and its item is
     the fort of Pons Augusti at 0 m, while the 1901 exhibition grounds of Mathildenhöhe are not
