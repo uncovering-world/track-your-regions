@@ -26,12 +26,12 @@ const DACIA = {
   id: 9850, external_id: '1591', name: 'Frontiers of the Roman Empire – Dacia', kind_id: 1, kind_name: 'World Heritage Sites',
   missing_since: null, source_membership: 'present', existence: 'extant', kind: 'component-items', proposed: null,
   component_items: [
-    { ...BOLOGA, proposalId: 31, item: 'Q98501', label: 'Castrul Bologa', distanceM: 20, similarity: 1, exact: true, itemLatitude: 46.8855, itemLongitude: 22.8753 },
-    { ...BOLOGA, proposalId: 32, item: 'Q98502', label: 'Turnul Bologa', distanceM: 410, similarity: 0.52, exact: false, itemLatitude: null, itemLongitude: null },
-    { ...BUCIUMI, proposalId: 33, item: 'Q98503', label: 'Castrul Buciumi', distanceM: 35, similarity: 0.61, exact: false, itemLatitude: 47.0385, itemLongitude: 23.0583 },
+    { ...BOLOGA, proposalId: 31, item: 'Q98501', label: 'Castrul Bologa', distanceM: 20, similarity: 1, exact: true, takenBack: false, itemLatitude: 46.8855, itemLongitude: 22.8753 },
+    { ...BOLOGA, proposalId: 32, item: 'Q98502', label: 'Turnul Bologa', distanceM: 410, similarity: 0.52, exact: false, takenBack: false, itemLatitude: null, itemLongitude: null },
+    { ...BUCIUMI, proposalId: 33, item: 'Q98503', label: 'Castrul Buciumi', distanceM: 35, similarity: 0.61, exact: false, takenBack: false, itemLatitude: 47.0385, itemLongitude: 23.0583 },
     // The fort of Bologa proposed for Buciumi too, from an earlier pass.
-    { ...BUCIUMI, proposalId: 34, item: 'Q98501', label: 'Castrul Bologa', distanceM: 900, similarity: 0.3, exact: false, itemLatitude: null, itemLongitude: null },
-    { ...GILAU, proposalId: 35, item: 'Q98504', label: 'Kastell Gilău', distanceM: 1334, similarity: 0.36, exact: false, itemLatitude: null, itemLongitude: null },
+    { ...BUCIUMI, proposalId: 34, item: 'Q98501', label: 'Castrul Bologa', distanceM: 900, similarity: 0.3, exact: false, takenBack: false, itemLatitude: null, itemLongitude: null },
+    { ...GILAU, proposalId: 35, item: 'Q98504', label: 'Kastell Gilău', distanceM: 1334, similarity: 0.36, exact: false, takenBack: false, itemLatitude: null, itemLongitude: null },
   ],
 } as unknown as ReviewQueueItem;
 
@@ -195,5 +195,39 @@ describe('the two one-button confirmations together (#1272)', () => {
     expect(await screen.findByText('Jev says the same place · 91 %')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Jev is sure of/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Confirm the exact match/ })).toBeNull();
+  });
+});
+
+describe('a candidate a curator confirmed and took back (#1336)', () => {
+  beforeEach(() => {
+    mockedAnswer.mockReset();
+    mockedSuggest.mockReset();
+  });
+
+  it('is marked, is left out of both one-button confirmations, and can still be confirmed by hand', async () => {
+    // The fort of Bologa is the exact match for its point and Jev is sure of
+    // it, and a curator took its confirmation back: the hasty batch that
+    // confirmed it must not confirm it again, so neither button offers it.
+    mockedSuggest.mockResolvedValue({
+      configured: true,
+      suggestions: [{ proposalId: 31, judgement: 'same', confidence: 0.97 }],
+    });
+    const takenBack = {
+      ...DACIA,
+      component_items: (DACIA.component_items ?? []).map(candidate =>
+        candidate.proposalId === 31 ? { ...candidate, takenBack: true } : candidate),
+    } as ReviewQueueItem;
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ComponentItemsCard item={takenBack} onDone={vi.fn()} />
+      </QueryClientProvider>,
+    );
+
+    expect(await screen.findByText('taken back')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Confirm the exact match/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Jev is sure of/ })).toBeNull();
+    const [fortForBologa] = screen.getAllByRole('button', { name: 'Same place: Castrul Bologa' });
+    fireEvent.click(fortForBologa);
+    expect(fortForBologa.getAttribute('aria-pressed')).toBe('true');
   });
 });

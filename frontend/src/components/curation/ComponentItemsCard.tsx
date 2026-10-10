@@ -155,6 +155,7 @@ function CandidateRow({ candidate, judgement, answer, onAnswer }: {
           </Typography>
           <Typography variant="caption" color="text.secondary">{candidate.item}</Typography>
           {candidate.exact && <Chip label="same name, same spot" size="small" color="success" variant="outlined" />}
+          {candidate.takenBack && <Chip label="taken back" size="small" color="warning" variant="outlined" />}
         </Stack>
         <Typography variant="body2" color="text.secondary">
           {BASIS_WORDS[candidate.basis]} · {distanceWords(candidate.distanceM)} · {similarityWords(candidate)}
@@ -210,7 +211,9 @@ export function ComponentItemsCard({ item, onDone }: {
   const candidates = item.component_items ?? [];
   const [answers, setAnswers] = useState<Record<number, Answer>>({});
   const answered = Object.entries(answers).map(([proposalId, answer]) => ({ proposalId: Number(proposalId), answer }));
-  const exactAll = candidates.filter(candidate => candidate.exact);
+  // A candidate a curator confirmed and took back (#1336) is neither button's:
+  // the batch that confirmed it in haste must not confirm it again.
+  const exactAll = candidates.filter(candidate => candidate.exact && !candidate.takenBack);
   const points = byPoint(candidates);
 
   const save = useMutation({
@@ -230,6 +233,7 @@ export function ComponentItemsCard({ item, onDone }: {
   });
   const judgementOf = (proposalId: number) => judged?.suggestions.find(one => one.proposalId === proposalId);
   const sureAll = candidates.filter(candidate => {
+    if (candidate.takenBack) return false;
     const judgement = judgementOf(candidate.proposalId);
     return judgement?.judgement === 'same' && judgement.confidence >= JEV_SURE;
   });
