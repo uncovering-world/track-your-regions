@@ -3161,6 +3161,11 @@ COMMENT ON TABLE experience_component_item_proposals IS 'A candidate Wikidata it
 -- whether a candidate's item is already some point's. See db/migrations/083.
 ALTER TABLE experience_component_item_proposals ADD COLUMN IF NOT EXISTS item_location GEOMETRY(Point, 4326);
 COMMENT ON COLUMN experience_component_item_proposals.item_location IS 'The coordinate of the item nearest the point, as the finder read it, so the card can show the candidate beside the point; null on a proposal recorded before it was kept.';
+-- A candidate a curator confirmed and took back (#1336) is open again and
+-- marked, so neither batch confirmation takes it a second time. See
+-- db/migrations/086.
+ALTER TABLE experience_component_item_proposals ADD COLUMN IF NOT EXISTS taken_back_at TIMESTAMPTZ;
+COMMENT ON COLUMN experience_component_item_proposals.taken_back_at IS 'When a curator took this candidate back after confirming it (#1336): open again, and skipped by both batch confirmations until a curator confirms it by hand.';
 CREATE INDEX IF NOT EXISTS idx_experience_locations_wikidata_item
     ON experience_locations(wikidata_item) WHERE wikidata_item IS NOT NULL;
 
