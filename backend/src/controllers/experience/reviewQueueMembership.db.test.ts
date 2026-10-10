@@ -4,6 +4,8 @@ import { queryQueueKeys } from './reviewQueueKeys.js';
 import { getReviewQueue } from './reviewQueueController.js';
 import { publishUnderLock } from './publishController.js';
 import { refuseContentsUnderLock } from './curatorRefusalController.js';
+import { unrefuseContentsUnderLock } from './unrefuseContentsController.js';
+import { answerReviewRows } from './reviewAnswerController.js';
 import { answerAdmissionUnderLock, answerStateUnderLock } from './lifecycleController.js';
 import { reviewQueueQuerySchema } from '../../types/index.js';
 
@@ -230,6 +232,224 @@ describe('a waiting question of each membership (#1264)', () => {
     const stateOf = Object.fromEntries(states.rows.map(row => [row.id, row.curation_state]));
     expect(stateOf[own.rows[0].id]).not.toBe('pending');
     expect(stateOf[artPoint]).toBe('pending');
+  });
+});
+
+describe('unread contents of each membership that placed them (#1290)', () => {
+  /** Both kinds visible: the Archaeology arrival published, so each run's rows are its own question. */
+  async function bothVisible(): Promise<{ art: number; archaeology: number }> {
+    const art = await membershipOf(artSource);
+    const archaeology = await membershipOf(archaeologySource);
+    await pool.query(
+      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW() WHERE id = $1`,
+      [archaeology],
+    );
+    return { art, archaeology };
+  }
+
+  async function placedPoint(name: string, membership: number): Promise<number> {
+    const point = await pool.query<{ id: number }>(
+      `INSERT INTO experience_locations (experience_id, name, location, curation_state)
+       VALUES ($1, $2, ST_SetSRID(ST_MakePoint(12.48247, 41.89272), 4326), 'pending') RETURNING id`,
+      [PLACE, name],
+    );
+    await pool.query(
+      'INSERT INTO experience_location_placements (location_id, membership_id) VALUES ($1, $2)',
+      [point.rows[0].id, membership],
+    );
+    return point.rows[0].id;
+  }
+
+  const pointStates = async () => {
+    const rows = await pool.query<{ id: number; curation_state: string; refused_at: Date | null }>(
+      'SELECT id, curation_state, refused_at FROM experience_locations WHERE experience_id = $1', [PLACE],
+    );
+    return Object.fromEntries(rows.rows.map(row => [row.id, { state: row.curation_state, refused: row.refused_at !== null }]));
+  };
+
+  it('asks each kind about the points its own run placed, one card each', async () => {
+    // The Capitoline Museums' new painting gallery is the Art Museums run's,
+    // the new find the Archaeology run's: two questions, each listing its own.
+    const { art, archaeology } = await bothVisible();
+    const painting = await placedPoint('Pinacoteca Capitolina', art);
+    const find = await placedPoint('Palazzo dei Conservatori finds', archaeology);
+
+    const queue = await getReviewQueue({
+      query: reviewQueueQuerySchema.parse({ q: NAME }),
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    });
+
+    const cards = queue.contents.map(card => ({
+      membership: card.membership_id, points: (card.pending_points ?? []).map(point => point.id),
+    }));
+    expect(cards).toEqual(expect.arrayContaining([
+      { membership: art, points: [painting] },
+      { membership: archaeology, points: [find] },
+    ]));
+    expect(cards).toHaveLength(2);
+  });
+
+  it('turns down and takes back through one kind the rows that kind placed, and no other', async () => {
+    const { art, archaeology } = await bothVisible();
+    const painting = await placedPoint('Pinacoteca Capitolina', art);
+    const find = await placedPoint('Palazzo dei Conservatori finds', archaeology);
+
+    const refused = await refuseContentsUnderLock(PLACE, adminId, null, { membershipId: archaeology });
+    expect(refused.refusal).toBeUndefined();
+    expect(refused.result?.locationsRefused).toBe(1);
+    let states = await pointStates();
+    expect(states[find].refused).toBe(true);
+    expect(states[painting]).toEqual({ state: 'pending', refused: false });
+
+    // Art Museums has nothing turned down to ask about again; Archaeology has.
+    const notArt = await unrefuseContentsUnderLock(PLACE, adminId, null, { membershipId: art });
+    expect(notArt.refusal?.status).toBe(409);
+    const back = await unrefuseContentsUnderLock(PLACE, adminId, null, { membershipId: archaeology });
+    expect(back.refusal).toBeUndefined();
+    states = await pointStates();
+    expect(states[find]).toEqual({ state: 'pending', refused: false });
+  });
+
+  it('asks a point both runs placed once, under the first kind, and the other kind\'s answer leaves it', async () => {
+    // Both runs placed the Palazzo Nuovo: it is the Art Museums question (first
+    // by the kinds' order), and a no through Archaeology reaches nothing.
+    const { art, archaeology } = await bothVisible();
+    const shared = await placedPoint('Palazzo Nuovo', art);
+    await pool.query(
+      'INSERT INTO experience_location_placements (location_id, membership_id) VALUES ($1, $2)', [shared, archaeology],
+    );
+
+    const queue = await getReviewQueue({
+      query: reviewQueueQuerySchema.parse({ q: NAME }),
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    });
+    expect(queue.contents).toEqual([
+      expect.objectContaining({ membership_id: art, pending_points: [expect.objectContaining({ id: shared })] }),
+    ]);
+
+    const no = await refuseContentsUnderLock(PLACE, adminId, null, { membershipId: archaeology });
+    expect(no.refusal?.status).toBe(409);
+    expect((await pointStates())[shared]).toEqual({ state: 'pending', refused: false });
+  });
+
+  it('publishes through one kind the rows that kind placed, leaving the other kind its question', async () => {
+    const { art, archaeology } = await bothVisible();
+    const painting = await placedPoint('Pinacoteca Capitolina', art);
+    const find = await placedPoint('Palazzo dei Conservatori finds', archaeology);
+
+    const outcome = await publishUnderLock(PLACE, adminId, null, { contentsOnly: true, membershipId: art });
+
+    expect(outcome.refusal).toBeUndefined();
+    expect(outcome.result?.locationsPublished).toBe(1);
+    const states = await pointStates();
+    expect(states[painting].state).not.toBe('pending');
+    expect(states[find].state).toBe('pending');
+  });
+
+  it('draws a point an arrival placed under the arrival, and a yes to both sections answers both', async () => {
+    // Archaeology still an arrival: its find is not the Art Museums question,
+    // and answering the two sections together lands both — the owner's is
+    // never "already answered" by the arrival's publish (#1290).
+    const art = await membershipOf(artSource);
+    const archaeology = await membershipOf(archaeologySource);
+    const painting = await placedPoint('Pinacoteca Capitolina', art);
+    const find = await placedPoint('Palazzo dei Conservatori finds', archaeology);
+
+    const queue = await getReviewQueue({
+      query: reviewQueueQuerySchema.parse({ q: NAME }),
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    });
+    expect(queue.contents).toEqual([
+      expect.objectContaining({ membership_id: art, pending_points: [expect.objectContaining({ id: painting })] }),
+    ]);
+
+    const answered = await answerReviewRows({
+      body: {
+        answer: 'accept',
+        rows: [
+          { kind: 'waiting', id: PLACE, membershipId: archaeology },
+          { kind: 'waiting', id: PLACE, membershipId: art },
+        ],
+      },
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    } as never);
+
+    expect(answered.refused).toEqual([]);
+    expect(answered.answered).toHaveLength(2);
+    const states = await pointStates();
+    expect(states[painting].state).not.toBe('pending');
+    expect(states[find].state).not.toBe('pending');
+  });
+
+  it('releases with an arrival only what its section drew, read before the arrival is offered', async () => {
+    // The reverse of the fixture: Archaeology readers see, Art Museums arrives.
+    // A point nothing placed is the Archaeology question before the click; Art
+    // Museums sorts first among the kinds, so once offered it would be asked
+    // through Art — the publish reads its reach before that, and leaves it.
+    // Written afresh: a membership's state never moves back to pending (ADR-0070).
+    await pool.query('DELETE FROM experience_kind_memberships WHERE experience_id = $1', [PLACE]);
+    await pool.query(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, $2, v.state, CASE WHEN v.state = 'auto' THEN NOW() END
+         FROM (VALUES ('Art Museums', 'pending'), ('Archaeology', 'auto')) AS v(source, state)
+         JOIN experience_sources s ON s.name = v.source`,
+      [PLACE, QID],
+    );
+    const art = await membershipOf(artSource);
+    const legacy = await unreadPoint();
+    const own = await placedPoint('Pinacoteca Capitolina', art);
+
+    const outcome = await publishUnderLock(PLACE, adminId, null, { membershipId: art });
+
+    expect(outcome.refusal).toBeUndefined();
+    expect(outcome.result?.locationsPublished).toBe(1);
+    const states = await pointStates();
+    expect(states[own].state).not.toBe('pending');
+    expect(states[legacy].state).toBe('pending');
+  });
+
+  it('puts a refused arrival back with its own rows alone, leaving the other kind its question', async () => {
+    // Archaeology readers see the place; the Art Museums arrival was refused by
+    // its rule. Putting it back publishes what the arrival's section drew — its
+    // own point — and not the find the Archaeology run placed (#1290).
+    await pool.query('DELETE FROM experience_kind_memberships WHERE experience_id = $1', [PLACE]);
+    await pool.query(
+      `INSERT INTO experience_kind_memberships
+              (experience_id, kind_id, source_id, external_id, curation_state, published_at, admission, admission_reason)
+       SELECT $1, s.kind_id, s.id, $2, v.state, CASE WHEN v.state = 'auto' THEN NOW() END, v.admission, v.reason
+         FROM (VALUES ('Art Museums', 'pending', 'refused', 'not a museum'), ('Archaeology', 'auto', 'admitted', NULL))
+              AS v(source, state, admission, reason)
+         JOIN experience_sources s ON s.name = v.source`,
+      [PLACE, QID],
+    );
+    const art = await membershipOf(artSource);
+    const archaeology = await membershipOf(archaeologySource);
+    const own = await placedPoint('Pinacoteca Capitolina', art);
+    const find = await placedPoint('Palazzo dei Conservatori finds', archaeology);
+
+    const outcome = await answerAdmissionUnderLock(PLACE, adminId, null, { decision: 'override', membershipId: art });
+
+    expect(outcome.refusal).toBeUndefined();
+    expect(outcome.result?.locationsPublished).toBe(1);
+    const states = await pointStates();
+    expect(states[own].state).not.toBe('pending');
+    expect(states[find].state).toBe('pending');
+  });
+
+  it('keeps a point nothing placed with the kind that owned it before', async () => {
+    // A point from before placements were recorded: the first offered
+    // membership by the kinds' order, Art Museums, as before (#1264).
+    const { art } = await bothVisible();
+    const legacy = await unreadPoint();
+
+    const queue = await getReviewQueue({
+      query: reviewQueueQuerySchema.parse({ q: NAME }),
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    });
+
+    expect(queue.contents).toEqual([
+      expect.objectContaining({ membership_id: art, pending_points: [expect.objectContaining({ id: legacy })] }),
+    ]);
   });
 });
 

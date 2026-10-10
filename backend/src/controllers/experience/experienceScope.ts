@@ -9,7 +9,7 @@
 
 import { pool } from '../../db/index.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
-import { contentsMembershipSql } from './waitingCounts.js';
+import { contentsMembershipToAnswerSql } from './waitingCounts.js';
 import type { UserRole } from '../../types/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, CURATOR_UNRESTRICTED_SCOPE_EXISTS } from '../../middleware/auth.js';
 
@@ -83,14 +83,16 @@ export async function answeredSourceId(
 }
 
 /**
- * The membership a place's unread contents are answered through
- * (`contentsMembershipSql`, #1264), so the scope of a refusal of them, or of
- * its take-back, is that membership's source's; undefined where none is
- * offered, and the place's own source decides.
+ * The membership a refusal of unread contents, or its take-back, answers
+ * through (`contentsMembershipToAnswerSql`, #1264, #1290) — the one the body
+ * names, else the first holding such rows — so its scope is that membership's
+ * source's; undefined where none does, and the place's own source decides.
  */
-export async function contentsMembershipId(experienceId: number): Promise<number | undefined> {
+export async function contentsMembershipId(
+  experienceId: number, which: 'unread' | 'refused', named: number | undefined,
+): Promise<number | undefined> {
   const result = await pool.query<{ id: number | null }>(
-    `SELECT ${contentsMembershipSql('$1::int')} AS id`, [experienceId],
+    `SELECT ${contentsMembershipToAnswerSql('$1::int', '$2::int', which)} AS id`, [experienceId, named ?? null],
   );
   return result.rows[0]?.id ?? undefined;
 }

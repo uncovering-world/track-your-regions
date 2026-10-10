@@ -74,6 +74,8 @@ export interface ProposedPart {
 export interface ClientOptions {
   /** What the `FOR UPDATE` re-read returns; `null` is the row that vanished before the lock. */
   row?: Record<string, unknown> | null;
+  /** The unread rows the answering membership's section drew (#1290); two points and a work unless set. */
+  reached?: { points: number[]; works: number[] };
   proposal?: Proposed[];
   /** The contents record on the same changeset row, keyed by kind. */
   contents?: { locations?: { changed: ProposedPart[] }; treasures?: { changed: ProposedPart[] } };
@@ -174,7 +176,17 @@ function partStatement(sql: string, opts: ClientOptions): { rows: unknown[] } | 
  * match wins, and two `UPDATE experience_locations` statements run in one
  * publish.
  */
-function answer(sql: string, opts: ClientOptions): { rows: unknown[]; rowCount?: number } {
+function answer(sql: string, opts: ClientOptions, params: unknown[]): { rows: unknown[]; rowCount?: number } {
+  // The rows the answering membership's section drew, read before the publish
+  // writes (#1290, contentsReleased): two points and a work unless a test says.
+  if (sql.includes('array_agg(el.id)') && sql.includes('array_agg(DISTINCT et.treasure_id)')) {
+    // Named ids come back as named, as the database's filter would hand them back.
+    const reached = opts.reached ?? { points: [21, 22], works: [31] };
+    return { rows: [{
+      points: (params[2] as number[] | null) ?? reached.points,
+      works: (params[3] as number[] | null) ?? reached.works,
+    }] };
+  }
   if (sql.includes('experience_sync_changes') && sql.includes('SELECT changed_fields')) {
     return { rows: proposalRow(opts) };
   }
@@ -209,7 +221,7 @@ export function makeClient(opts: ClientOptions = {}) {
     client: {
       query: vi.fn(async (sql: string, params?: unknown[]) => {
         queries.push({ sql, params: params ?? [] });
-        return answer(sql, opts);
+        return answer(sql, opts, params ?? []);
       }),
       release: vi.fn(),
     },

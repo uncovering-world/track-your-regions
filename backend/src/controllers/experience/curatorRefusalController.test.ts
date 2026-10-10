@@ -175,7 +175,8 @@ describe('refuseContents', () => {
     expect(points?.sql).toContain(unreadPointSql('experience_locations'));
     expect(points?.sql).toContain(offeredLocationSql('experience_locations'));
     expect(points?.sql).not.toContain('SET curation_state');
-    expect(points?.params).toEqual([5]);
+    // The place, then the answering membership: the statement reaches its rows alone (#1290).
+    expect(points?.params).toEqual([5, 40]);
 
     const links = client.queries.find(q => q.sql.includes('UPDATE experience_treasures'));
     expect(links?.sql).toContain(unreadLinkSql('et', 't'));
@@ -253,7 +254,7 @@ describe('refuseContents', () => {
     expect(client.queries.some(q => q.sql.includes('UPDATE experience_locations'))).toBe(false);
     const links = client.queries.find(q => q.sql.includes('UPDATE experience_treasures'));
     expect(links?.sql).toContain('ANY($2::int[])');
-    expect(links?.params).toEqual([5, [88, 89]]);
+    expect(links?.params).toEqual([5, [88, 89], 40]);
     const log = client.queries.find(q => q.sql.includes('experience_curation_log'));
     expect(JSON.parse(log?.params?.[3] as string)).toMatchObject({ treasureIds: [88, 89], locations: 0 });
   });

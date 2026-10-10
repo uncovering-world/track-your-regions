@@ -25,7 +25,7 @@ import type { CheckValue } from '../../db/schema.generated.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { experienceAdmissionBodySchema, idParamSchema, lifecycleStateBodySchema } from '../../types/index.js';
 import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
-import { publishContents, placeAfterRelease } from './publishContents.js';
+import { contentsReached, publishContents, placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { answerAdmissionOnMembership, setListingVerdict } from './membershipWriter.js';
 import { answerKindListingUnderLock } from './kindListingController.js';
@@ -260,14 +260,14 @@ export async function answerStateUnderLock(
  * one of its pending rows.
  */
 async function publishArrivalContents(
-  client: PoolClient, lock: LockedExperience, publishes: boolean,
+  client: PoolClient, lock: LockedExperience, reach: { locationIds?: number[]; treasureIds?: number[] } | null,
 ): Promise<{
   locationsPublished: number;
   treasureLinksPublished: number;
   treasuresPublished: number;
   withdrawalsReleased: number;
 }> {
-  if (!publishes) {
+  if (reach === null) {
     return { locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0, withdrawalsReleased: 0 };
   }
   // Un-refusing an arrival is a publication (ADR-0025 § 4.5), and a publication
@@ -278,8 +278,10 @@ async function publishArrivalContents(
   // own answer to "which rows does a publish reach", shared rather than copied
   // so the two can never answer that question differently again: a
   // hand-written twin here would not have gained the `missing_since IS NULL`
-  // guard the shared one already carries.
-  return publishContents(client, lock);
+  // guard the shared one already carries. By id, the rows the arrival's
+  // section drew (`contentsReached`, #1290), read before the arrival was made
+  // offered: another kind's rows under the same place stay that kind's.
+  return publishContents(client, lock, reach.locationIds, reach.treasureIds);
 }
 
 /**
@@ -495,13 +497,16 @@ export async function answerAdmissionUnderLock(
     // who decided, when and the note on the place, beside the lifecycle
     // verdicts that share those columns. Two statements, one transaction, one
     // lock (#822).
+    // The rows a put-back arrival releases, read before the verdict below
+    // makes it offered (contentsReached).
+    const reach = publishes ? await contentsReached(client, experienceId, { membershipId }) : null;
     await answerAdmissionOnMembership(client, locked.lock, membershipId, {
       admitted, pin, publishes, reason: nextReason, curated,
     });
     await recordDecisionOnExperience(client, locked.lock, userId, note ?? null);
 
     ({ locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased } =
-      await publishArrivalContents(client, locked.lock, publishes));
+      await publishArrivalContents(client, locked.lock, reach));
 
     // No placement for the admission columns themselves. Placement's insert
     // predicate is the `offeredLocationSql` pair — still offered, and not gone

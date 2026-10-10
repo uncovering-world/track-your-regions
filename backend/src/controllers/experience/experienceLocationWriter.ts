@@ -25,11 +25,29 @@ import type { ImageCredit } from '../../services/sync/imageCredit.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
-import { unreadPointSql } from './waitingCounts.js';
+import { pointAnsweredBySql, unreadPointSql } from './waitingCounts.js';
 
 /** `AND id = ANY($2)` where the caller named points, nothing where it meant all of them. */
-function namedPoints(locationIds: readonly number[] | undefined): { sql: string; params: unknown[] } {
-  return locationIds === undefined ? { sql: '', params: [] } : { sql: 'AND id = ANY($2::int[])', params: [locationIds] };
+/**
+ * The rows a statement over a place's points reaches: the named ids, and the
+ * points one membership's answer reaches (`pointAnsweredBySql`, #1290) where
+ * the caller answers for one. `$1` is the place's id.
+ */
+function namedPoints(
+  locationIds: readonly number[] | undefined, membershipId?: number,
+): { sql: string; params: unknown[] } {
+  const params: unknown[] = [];
+  let sql = '';
+  if (locationIds !== undefined) {
+    params.push(locationIds);
+    sql += ` AND id = ANY($${params.length + 1}::int[])`;
+  }
+  if (membershipId !== undefined) {
+    params.push(membershipId);
+    const bound = `$${params.length + 1}::int`;
+    sql += ` AND ${pointAnsweredBySql('experience_locations', bound)}`;
+  }
+  return { sql, params };
 }
 
 /**
@@ -87,8 +105,9 @@ export async function publishUnreadPoints(
   client: PoolClient,
   lock: LockedExperience,
   locationIds?: readonly number[],
+  membershipId?: number,
 ): Promise<number> {
-  const named = namedPoints(locationIds);
+  const named = namedPoints(locationIds, membershipId);
   const result = await client.query(
     `UPDATE experience_locations SET curation_state = 'verified'
       WHERE experience_id = $1 AND ${unreadPointSql('experience_locations')}
@@ -109,8 +128,9 @@ export async function markUnreadPointsRefused(
   client: PoolClient,
   lock: LockedExperience,
   locationIds?: readonly number[],
+  membershipId?: number,
 ): Promise<number> {
-  const named = namedPoints(locationIds);
+  const named = namedPoints(locationIds, membershipId);
   const result = await client.query(
     `UPDATE experience_locations SET refused_at = NOW()
       WHERE experience_id = $1 AND ${unreadPointSql('experience_locations')}
@@ -138,8 +158,9 @@ export async function restoreRefusedPoints(
   client: PoolClient,
   lock: LockedExperience,
   locationIds?: readonly number[],
+  membershipId?: number,
 ): Promise<number[]> {
-  const named = namedPoints(locationIds);
+  const named = namedPoints(locationIds, membershipId);
   const result = await client.query<{ id: number }>(
     `UPDATE experience_locations SET refused_at = NULL
       WHERE experience_id = $1 AND refused_at IS NOT NULL

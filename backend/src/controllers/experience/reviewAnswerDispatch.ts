@@ -210,7 +210,7 @@ async function rejectWaiting(who: Answerer, subs: WaitingSubs): Promise<Outcome>
     placement = placementOf(outcome.result!);
   }
   if (subs.contents) {
-    const outcome = await refuseContentsUnderLock(experienceId, userId, logRegionId, {});
+    const outcome = await refuseContentsUnderLock(experienceId, userId, logRegionId, named(membershipId));
     // A held refusal that landed is an answer even where the contents moved
     // in between; only a row with nothing else to answer reports the miss.
     if (outcome.refusal && !subs.held) return refusedBy(outcome.refusal);

@@ -15,7 +15,8 @@ vi.mock('../../db/index.js', () => ({ pool: { query: vi.fn() } }));
 
 import { pool } from '../../db/index.js';
 import { queryQueueKeys, encodeCursor, decodeCursor, KIND_RANK } from './reviewQueueKeys.js';
-import { missingOpenSql, refusedOpenSql, arrivalOpenSql, heldOpenSql, contentsOpenSql, withdrawnPointOpenSql, withdrawnContainerOpenSql, conflictChangeOpenSql } from './reviewQueuePredicates.js';
+import { missingOpenSql, refusedOpenSql, arrivalOpenSql, heldOpenSql, withdrawnPointOpenSql, withdrawnContainerOpenSql, conflictChangeOpenSql } from './reviewQueuePredicates.js';
+import { contentsWaitingSql } from './waitingCounts.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
 
@@ -423,8 +424,8 @@ describe('queryQueueKeys', () => {
     expect(keysSql).toContain(heldOpenSql('e', 'm', 'ch'));
     expect(hydrationSql("'held' AS kind")).toContain(heldOpenSql('e', 'm', 'ch'));
 
-    expect(keysSql).toContain(contentsOpenSql('e'));
-    expect(hydrationSql("'contents' AS kind")).toContain(contentsOpenSql('e'));
+    expect(keysSql).toContain(contentsWaitingSql('e', 'm'));
+    expect(hydrationSql("'contents' AS kind")).toContain(contentsWaitingSql('e', 'm'));
 
     expect(keysSql).toContain(withdrawnPointOpenSql('el'));
     expect(keysSql).toContain(withdrawnContainerOpenSql('e'));

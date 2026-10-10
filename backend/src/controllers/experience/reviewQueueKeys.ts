@@ -31,7 +31,7 @@
  * **The predicates are the queue's, shared.** Every branch below composes the
  * same `reviewQueuePredicates.ts` function its hydration statement in
  * `reviewQueueController.ts` / `reviewQueueContents.ts` does — `missingOpenSql`,
- * `refusedOpenSql`, `arrivalOpenSql`, `heldOpenSql`, `contentsOpenSql`,
+ * `refusedOpenSql`, `arrivalOpenSql`, `heldOpenSql`, `contentsWaitingSql`,
  * `withdrawnPointOpenSql`/`withdrawnContainerOpenSql`, `conflictChangeOpenSql`
  * — plus the same claim-key formula, `claimKeySql`. ADR-0051 names the cost of
  * the design as what makes a question open having two places to land in one
@@ -57,10 +57,10 @@ import { QUEUE_KINDS, WAITING_SUBS, type QueueKind, type WaitingSub } from './re
 import { MEMBERSHIPS, claimsFacingSql } from '../../db/membership.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
-import { contentsMembershipSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
+import { contentsWaitingSql, linkMembershipSql, pointMembershipSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import {
-  arrivalOpenSql, claimKeySql, componentItemsOpenSql, conflictChangeOpenSql, contentsOpenSql, heldOpenSql,
+  arrivalOpenSql, claimKeySql, componentItemsOpenSql, conflictChangeOpenSql, heldOpenSql,
   membershipMissingOpenSql, missingOpenSql, openProposalSql, refusedOpenSql, sourcesOpenSql,
   withdrawnContainerOpenSql, withdrawnPointOpenSql,
 } from './reviewQueuePredicates.js';
@@ -224,17 +224,20 @@ function contentsKeysSql(membershipScopeFilter: string): string {
         SELECT e.id, e.name, m.source_id, NULL, GREATEST(
                  (SELECT max(el.created_at) FROM experience_locations el
                    WHERE el.experience_id = e.id AND ${unreadPointSql('el')}
-                     AND ${offeredLocationSql('el')}),
+                     AND ${offeredLocationSql('el')}
+                     AND ${pointMembershipSql('el')} = m.id),
                  (SELECT max(et.created_at) FROM experience_treasures et
                     JOIN treasures t ON t.id = et.treasure_id
                    WHERE et.experience_id = e.id AND ${offeredLinkSql('et')}
-                     AND ${unreadLinkSql('et', 't')})
+                     AND ${unreadLinkSql('et', 't')}
+                     AND ${linkMembershipSql('et')} = m.id)
                ), 'contents'
         FROM experiences e
-        -- Asked through the membership the contents belong to (#1264), whose
-        -- source the scope and the source chip read.
-        JOIN ${MEMBERSHIPS} m ON m.id = ${contentsMembershipSql('e.id')}
-        WHERE ${contentsOpenSql('e')}
+        -- One question per membership holding unread rows it placed (#1290),
+        -- whose source the scope and the source chip read; the waiting key
+        -- folds the place's memberships into one row.
+        JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
+        WHERE ${contentsWaitingSql('e', 'm')}
           AND ${membershipScopeFilter}`;
 }
 

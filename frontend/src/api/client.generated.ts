@@ -6864,6 +6864,11 @@ export interface RefuseContentsBody {
   treasureIds?: number[];
   /** @maxLength 1000 */
   note?: string;
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  membershipId?: number;
 }
 
 /**
@@ -6920,6 +6925,8 @@ export interface RefusedPoint {
   /** Set where the source has stopped listing the point since it was turned down. */
   missingSince: string | null;
   visited: boolean;
+  /** The membership the point is asked through — the first offered one whose run placed it (#1290); its take-back answers through it. */
+  membershipId: number | null;
 }
 
 /**
@@ -6945,6 +6952,8 @@ export interface RefusedWork {
   /** @nullable */
   note: string | null;
   missingSince: string | null;
+  /** The membership the link is asked through — the first offered one whose run placed it (#1290); its take-back answers through it. */
+  membershipId: number | null;
 }
 
 /**
@@ -7790,7 +7799,7 @@ export interface ReviewQueueItem {
   source_membership: ReviewQueueItemSourceMembership;
   existence: ReviewQueueItemExistence;
   kind: ReviewQueueItemKind;
-  /** The membership this card asks about (#1264): an arrival, a held proposal or a refusal is one kind's, and an answer sends it back as `membershipId`. Unread contents name the membership readers see the place through, which their answer is written under. Absent on a card about the place as a whole. */
+  /** The membership this card asks about (#1264): an arrival, a held proposal or a refusal is one kind's, and an answer sends it back as `membershipId`. Unread contents are asked per membership whose run placed them (#1290), one card each, which their answer is written under. Absent on a card about the place as a whole. */
   membership_id?: number | null;
   /** @nullable */
   image_url?: string | null;
@@ -7920,6 +7929,7 @@ export interface ReviewQueue {
   componentItems: ReviewQueueItem[];
   arrivals: ReviewQueueItem[];
   held: ReviewQueueItem[];
+  /** One per place and membership holding unread rows it placed (#1290). */
   contents: ReviewQueueItem[];
   withdrawn: ReviewQueueItem[];
   answeredWithdrawals: ReviewQueueItem[];

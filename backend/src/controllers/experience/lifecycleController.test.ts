@@ -84,6 +84,7 @@ function makeClient(state?: Record<string, unknown>) {
             ...(state ?? {}),
           }] };
         }
+        if (sql.includes('array_agg(el.id)')) return { rows: [{ points: [21, 22], works: [31] }] };
         return { rows: [] };
       }),
       release: vi.fn(),
@@ -458,6 +459,8 @@ describe('setExperienceAdmission', () => {
           queries.push({ sql, params: params ?? [] });
           // The lock, in a statement of its own, then the read (`db/locks.ts`).
           if (sql.includes(OBJECT_LOCK)) return { rows: [{ id: 5 }] };
+          // The rows the put-back arrival's section drew (#1290, contentsReached).
+          if (sql.includes('array_agg(el.id)')) return { rows: [{ points: [21, 22], works: [31] }] };
           if (sql.includes('m.id AS membership_id')) {
             return { rows: [{
               // The refused membership the click answers (#822); its id is

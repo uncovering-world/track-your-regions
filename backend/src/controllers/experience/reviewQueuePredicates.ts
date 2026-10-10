@@ -23,12 +23,11 @@ import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import {
   hidePendingSql,
   hideRefusedSql,
-  offeredLinkSql,
   offeredLocationSql,
   publishedContentSql,
 } from '../../db/readerPredicates.js';
 import {
-  heldFieldExistsSql, heldPartExistsSql, unreadLinkSql, unreadPointSql,
+  heldFieldExistsSql, heldPartExistsSql,
 } from './waitingCounts.js';
 
 /**
@@ -101,24 +100,6 @@ export function heldOpenSql(e = 'e', m = 'm', ch = 'ch'): string {
   return `${membershipAdmittedSql(m)}
     AND ${e}.missing_since IS NULL
     AND (${heldFieldExistsSql(ch)} OR ${heldPartExistsSql(ch)})`;
-}
-
-/**
- * `contents`: a visible row holding unread points or unread works of its own
- * (ADR-0025 decision 2 — the gate is on the content row, not only on its
- * container). Both `EXISTS` clauses carry the same terms `queryContents`
- * counts by, so a row this admits is exactly a row whose `points.total` or
- * `works.total` comes back positive.
- */
-export function contentsOpenSql(e = 'e'): string {
-  return `${hidePendingSql(e)} AND ${hideRefusedSql(e)} AND ${e}.missing_since IS NULL
-    AND (EXISTS (SELECT 1 FROM experience_locations el
-                  WHERE el.experience_id = ${e}.id AND ${unreadPointSql('el')}
-                    AND ${offeredLocationSql('el')})
-      OR EXISTS (SELECT 1 FROM experience_treasures et
-                   JOIN treasures t ON t.id = et.treasure_id
-                  WHERE et.experience_id = ${e}.id AND ${offeredLinkSql('et')}
-                    AND ${unreadLinkSql('et', 't')}))`;
 }
 
 /**

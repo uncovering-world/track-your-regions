@@ -38,19 +38,38 @@
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 import { offeredLinkSql } from '../../db/readerPredicates.js';
-import { linkNotRefusedSql, unreadLinkSql } from './waitingCounts.js';
+import { linkAnsweredBySql, linkNotRefusedSql, unreadLinkSql } from './waitingCounts.js';
 
 /** `AND <column> = ANY($2)` where the caller named works, nothing where it meant all of them. */
-function namedWorks(column: string, treasureIds: readonly number[] | undefined): { sql: string; params: unknown[] } {
-  return treasureIds === undefined ? { sql: '', params: [] } : { sql: `AND ${column} = ANY($2::int[])`, params: [treasureIds] };
+/**
+ * The links a statement over a venue's works reaches: the named works, and
+ * the links one membership's answer reaches (`linkAnsweredBySql`, #1290)
+ * where the caller answers for one. `$1` is the venue's id; `link` is the
+ * alias of `experience_treasures` in the statement.
+ */
+function namedWorks(
+  column: string, treasureIds: readonly number[] | undefined, membershipId?: number, link = 'et',
+): { sql: string; params: unknown[] } {
+  const params: unknown[] = [];
+  let sql = '';
+  if (treasureIds !== undefined) {
+    params.push(treasureIds);
+    sql += ` AND ${column} = ANY($${params.length + 1}::int[])`;
+  }
+  if (membershipId !== undefined) {
+    params.push(membershipId);
+    const bound = `$${params.length + 1}::int`;
+    sql += ` AND ${linkAnsweredBySql(link, bound)}`;
+  }
+  return { sql, params };
 }
 
 /** The works a publish at the venue will write, for `lockWorksToPublish`. */
 export interface WorksToPublish {
   /** The `external_id`s of the works the held record changes. */
   heldRefs: readonly string[];
-  /** The pending works behind the venue's offered links — the named ones, or all — or null where this publish leaves them. */
-  pending: { treasureIds?: readonly number[] } | null;
+  /** The pending works behind the venue's offered links — the named ones, or all, through one membership where the publish answers for one (#1290) — or null where this publish leaves them. */
+  pending: { treasureIds?: readonly number[]; membershipId?: number } | null;
 }
 
 /**
@@ -74,6 +93,11 @@ export async function lockWorksToPublish(
     if (works.pending.treasureIds !== undefined) {
       params.push(works.pending.treasureIds);
       named = `AND et.treasure_id = ANY($${params.length}::int[])`;
+    }
+    if (works.pending.membershipId !== undefined) {
+      params.push(works.pending.membershipId);
+      const bound = `$${params.length}::int`;
+      named += ` AND ${linkAnsweredBySql('et', bound)}`;
     }
     pendingSql = `t.curation_state = 'pending' AND EXISTS (
           SELECT 1 FROM experience_treasures et
@@ -104,9 +128,9 @@ export async function lockWorksToPublish(
  * card.
  */
 export async function publishUnreadLinks(
-  client: PoolClient, lock: LockedExperience, treasureIds?: readonly number[],
+  client: PoolClient, lock: LockedExperience, treasureIds?: readonly number[], membershipId?: number,
 ): Promise<number> {
-  const named = namedWorks('treasure_id', treasureIds);
+  const named = namedWorks('treasure_id', treasureIds, membershipId, 'experience_treasures');
   const links = await client.query(
     `UPDATE experience_treasures SET curation_state = 'verified'
       WHERE experience_id = $1 AND curation_state = 'pending'
@@ -129,9 +153,9 @@ export async function publishUnreadLinks(
  * that should pass it.
  */
 export async function publishUnreadWorks(
-  client: PoolClient, lock: LockedExperience, treasureIds?: readonly number[],
+  client: PoolClient, lock: LockedExperience, treasureIds?: readonly number[], membershipId?: number,
 ): Promise<number> {
-  const named = namedWorks('et.treasure_id', treasureIds);
+  const named = namedWorks('et.treasure_id', treasureIds, membershipId);
   const works = await client.query(
     `UPDATE treasures SET curation_state = 'verified', updated_at = NOW()
       WHERE curation_state = 'pending'
@@ -164,9 +188,9 @@ export async function publishUnreadWorks(
  * one reader word the mark relies on.
  */
 export async function markUnreadLinksRefused(
-  client: PoolClient, lock: LockedExperience, treasureIds?: readonly number[],
+  client: PoolClient, lock: LockedExperience, treasureIds?: readonly number[], membershipId?: number,
 ): Promise<number> {
-  const named = namedWorks('et.treasure_id', treasureIds);
+  const named = namedWorks('et.treasure_id', treasureIds, membershipId);
   const links = await client.query(
     `UPDATE experience_treasures et SET refused_at = NOW(), curation_state = 'pending'
        FROM treasures t
@@ -188,9 +212,9 @@ export async function markUnreadLinksRefused(
  * here" means. The work's own axis is not this act's to decide.
  */
 export async function restoreRefusedLinks(
-  client: PoolClient, lock: LockedExperience, treasureIds?: readonly number[],
+  client: PoolClient, lock: LockedExperience, treasureIds?: readonly number[], membershipId?: number,
 ): Promise<number[]> {
-  const named = namedWorks('et.treasure_id', treasureIds);
+  const named = namedWorks('et.treasure_id', treasureIds, membershipId);
   const links = await client.query<{ treasure_id: number }>(
     `UPDATE experience_treasures et SET refused_at = NULL
       WHERE et.experience_id = $1 AND et.refused_at IS NOT NULL
