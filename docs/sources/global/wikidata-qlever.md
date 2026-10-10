@@ -27,7 +27,7 @@ access:
   format: "SPARQL over QLever's index of a Wikidata dump, JSON results"
   cadence: "the mirror's index is rebuilt from Wikidata's dumps; it trails the live data by days"
   volume: "the component-item search's near rule: the coordinates of the classes a site's resolved components are of, around about 1,300 areas, 25 areas a question; then which of the candidates and of the classes are settlements, through the class tree, up to 400 items or classes a question (#1272)"
-  rate: "no published numeric limit; the usage page asks a heavy user to run their own endpoint. This connector asks one question at a time in the process, holds the next back for as long as the last took and never under a second, retries a timeout or a 5xx once, and never retries a refusal"
+  rate: "no published numeric limit; the usage page asks a heavy user to run their own endpoint. This connector asks one question at a time in the process, holds the next back for as long as the last took and never under a second, retries a timeout or a 5xx once, and never retries a refusal; the mirror's front refuses with an nginx 429 all the same, which ends the pass, and the working budget is one pass a day"
 scorecard:
   date: 2026-10-09
   completeness: 2
@@ -48,6 +48,8 @@ looked_at: 2026-10-09
 # Wikidata through the QLever wikidata mirror
 
 The near rule of the component-item search (#1272) asks Wikidata for every item of a class standing near a thousand World Heritage components. It finds an item for each component that no item records the UNESCO reference of. The Wikidata Query Service could not answer that question within its limits. On 2026-10-09 a pass paced at the service's own published rate drew 8 server or gateway errors, 3 timeouts and a 429 by its 500th of 1,292 areas, and a fresh run that morning drew a 429 on its first query (#1307). The same question about four areas took 18 s on the query service and 0.43 s on this mirror. The mirror found 27 items where the query service found 25.
+
+**The mirror refuses too.** On 2026-10-09 the finder's fourth pass of the day — three dry runs and one live — drew an nginx `429 Too Many Requests` from `qlever.dev` at its 425th of 729 areas, after 17 box questions in four and a half minutes, each answered in about 15 s where the morning's passes had taken under a second: the mirror was loaded, and the front counts. No limit is published, so the working budget is one pass a day, and a 429 ends the pass as it ends a pass on the query service (the refusal arm of `qleverWikidataQuery`; `tooHeavy` covers an unanswered question, `SparqlUnanswered`, not a refusal): what an earlier pass proposed stands, and the lasting route is a local subset of the dump (#1312).
 
 This record is for that question and for the one that follows it — which of the candidates, and which of the classes a site may search by, are settlements, asked of the class tree (P31/P279*, `settlementsAmong`) up to 400 items or classes a question, because a list of classes cannot keep up with Wikidata's — and is not a second door to Wikidata at large. The part rule's queries, the classes of resolved components and every sync still ask the query service. The labels of the candidates come from Wikidata's own API (`wbgetentities`). The lasting route for bulk reads of Wikidata is a local subset of the weekly dump (#1312), which would retire this connector too.
 

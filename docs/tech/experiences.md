@@ -1130,8 +1130,11 @@ path needs.
   one question at a time across the process, each held back as long as the last took. It groups
   points in cells of 0.25°, 25 cells to a question, each cell a filter on the item's latitude and
   longitude (`boxFilter`, which takes the other side of the antimeridian for a box that runs past
-  it); the mirror answers such a question in under a second. The lasting route is a local subset
-  of the Wikidata dump (#1312). The labels are read from Wikidata's own API (`wbgetentities`,
+  it); an unloaded mirror answers such a question in under a second, a loaded one in about 15 s
+  and then refuses the pass (measured 2026-10-09; the mirror's record,
+  `docs/sources/global/wikidata-qlever.md`, has the refusal), so the working budget is one pass a
+  day. The lasting route is a local
+  subset of the Wikidata dump (#1312). The labels are read from Wikidata's own API (`wbgetentities`,
   `labelsOf`), fifty items a request, one request at a time, and only for the candidates within
   reach: 5 km of a point for a part, 1 km for a near item. A part or box question the service or
   the mirror cannot answer is tried once more, then asked again smaller: a batch of sites in halves,

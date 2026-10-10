@@ -32,10 +32,11 @@ const CELL_DEG = 0.25;
 /** How far past its points a cell's box reaches, in degrees of latitude: the same-name radius. */
 const BOX_MARGIN_DEG = 0.05;
 /**
- * Cells asked about in one question. QLever answers a filter over a class's
- * coordinates in under a second however many boxes it holds, so the near rule
- * asks it about 52 questions for the 1,292 cells of 2026-10-09; a group it
- * cannot answer is asked one cell at a time.
+ * Cells asked about in one question. An unloaded QLever mirror answers a
+ * filter over a class's coordinates in under a second however many boxes it
+ * holds (a loaded one in about 15 s, `itemsInBoxes`), so the near rule asks
+ * it about 52 questions for the 1,292 cells of 2026-10-09; a group it cannot
+ * answer is asked one cell at a time.
  */
 const CELLS_PER_QUERY = 25;
 /**
