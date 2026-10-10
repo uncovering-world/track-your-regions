@@ -56,7 +56,7 @@ Three tables hold what one row held (ADR-0045 decision 4; the calls this slice t
 
 What follows from the split, in the code as it stands:
 
-- **A reader-facing read asks admission and the gate of the place through its memberships.** `db/membership.ts` is the one spelling: `placeAdmittedSql` (some membership admitted), `placeVisibleSql` (some membership passed) and `placeOfferedSql` (both, of *one* membership — the composition matters the day a place has two, since one membership admitted and another passed is offered by no single kind). `hideRefusedSql`, `hidePendingSql` and `experienceOfferedToReaderSql` in `db/readerPredicates.ts` delegate to them, so every list, count, search and map feed reads as it did — a place has exactly one membership today, and migration 046 refuses a database where it does not.
+- **A reader-facing read asks admission and the gate of the place through its memberships.** `db/membership.ts` is the one spelling: `placeAdmittedSql` (some membership admitted), `placeVisibleSql` (some membership passed) and `placeOfferedSql` (both, of *one* membership — the composition matters the day a place has two, since one membership admitted and another passed is offered by no single kind). `experienceOfferedToReaderSql` in `db/readerPredicates.ts` delegates to `placeOfferedSql`; every reader-facing list, count, search, map feed and review-queue guard on a place readers see composes it — one membership both admitted and passed (#1275) — and the three by-id reads `readableByIdSql`, which relaxes only the unread half for a curator whose scope reaches the place (ADR-0025). Since merges (#1247) a place may hold several memberships, and the Capitoline Museums with an Archaeology membership admitted but unread and an Art Museums one passed but refused is in no list, on no map and in no kind.
 - **A run writes the membership beside the place** (`experienceUpsert.ts`): the kind read off the source, the source and the id it knows the place by, `admitted_for`, and the gate state of the arrival — `pending` with no `published_at` under a gate, `auto` and now otherwise. The hold (a gated source may not overwrite what a reader can see) is a question about the memberships now, which is why the upsert became one transaction per object that locks the place in a statement of its own and reads the hold in the next — see § Change provenance. The admission writes (`admission.ts`), the held-proposal pointer and the curator-pass decay target the membership the run's own source brought.
 - **A run finds its place through its own membership** (ADR-0084, #1244). A place belongs to no source, so the id a source knows a place by is the membership's `external_id`, unique per source, and the place's own `source_id` / `external_id` only say which source first brought the row. `lockSourcedExperience` (`db/experienceWriter.ts`) looks the membership up, locks the place it names and reads the membership again once the lock is held, so a merge that moved it during the wait is followed rather than missed; the upsert's conflict target is the place's `id` the lock found, and the membership's is `(source_id, external_id)`. The admission sweep (`admission.ts`) and missing detection (`missingDetection.ts`) match the membership's id, and every enumeration a run makes of its own places — the museum run's previous placements, the picture repairs, the stored credits, the World Heritage run's index of what it holds, a region rebuild narrowed to one source — goes through `sourcePlacesSql` / `placeOfSourceSql` (`db/membership.ts`). On a place a second source's membership is folded onto (#1247), each run therefore finds the place, admits and refuses only its own membership, and names the place by its own id. A work link records the memberships that place it (#1252) and the type within a kind is the membership's (#1253); and a point records the memberships that place it (#1256).
 - **Whether a source still lists the place is its membership's** (ADR-0084, #1251). A membership carries ADR-0020's first axis — `missing_since` (a clean run of an authoritative source did not list it) and `source_membership` (`former` once a curator says the source stopped listing it) — and the run's record of when its source first and last saw the place (`first_seen_sync_log_id`, `last_seen_sync_log_id`, `last_seen_at`). Missing detection marks the run's own membership, and the upsert clears its own mark and its own `former` when the source lists the place again. The place keeps `missing_since` and `source_membership` as a derivation, written only by the trigger `derive_place_listing()` (`db/init/01-schema.sql`): missing once every membership is, at the latest of their flags, and `former` once every membership is. A curator's verdict on the place answers every membership of it (`setListingVerdict`, `membershipWriter.ts`), while `existence` stays the place's own (`setLifecycleVerdict`); a verdict on one kind whose source alone dropped the place is that membership's (`setMembershipListingVerdict`, § The gate's own three kinds), and a false alarm on the place leaves a kind already answered former as it was. A conflict a source proposed is withdrawn only by a later landed run of that same source (`conflictChangeOpenSql`, which the queue, accept-source and decline-source all compose), and an arrival is dated by its membership's `first_seen_sync_log_id`. Until a merge makes a place with two memberships, the place's flags are its one membership's. The catalogue check `place-listing-disagrees-with-memberships` states the derivation.
@@ -2531,7 +2531,7 @@ rather than a defect: the fold is a claim about the world — these two names ar
 curator who says the Hermitage is not an archaeology museum has said the collection folded into it
 does not belong to this kind either. The fold itself stands on the run's own verdict — neither fold
 filter reads what a curator decided — and what takes the finds off a reader's screen is the
-contents rule: a refused membership hides the museum and its works go with it (`hideRefusedSql`,
+contents rule: a refused membership hides the museum and its works go with it (`experienceOfferedToReaderSql`,
 ADR-0024), and an admission put back brings them back.
 
 **What a find is** (`archaeology/finds.ts`, ADR-0058 decision 3). A find is something that was **dug
@@ -3122,7 +3122,7 @@ answers a different question again: not whether the source still lists the objec
 whether it still exists, but whether *this kind* accepts it. The works-first museum
 importer refuses an archaeological collection, a natural history museum, a church or a painted
 wall — and Wikidata goes on listing every one of them, so neither of the other two axes can
-say it without asserting something false. `hideRefusedSql()` is a separate fragment from
+say it without asserting something false. The refusal's hiding is a separate question from
 `hideLostSql()` for the same reason they are separate columns, and because the two are toggled
 independently: `includeLost` is a reader asking to see what is gone, and it must leave
 admission alone. The verdict is the membership's since #822 (§ Kinds and sources), so the
@@ -3146,13 +3146,14 @@ unread" about something a person wrote.
 compose rather than collapse: merging any two into one column is forbidden, because it would make
 it impossible to ask about either again.
 
-Every reader-facing read now honours it. `hidePendingSql()` gates a place — some membership of it
-passed (`placeVisibleSql`), and `experienceOfferedToReaderSql()` asks both questions of *one*
-membership, which is what every writer of a reader's claim composes — and
+Every reader-facing read now honours it. `experienceOfferedToReaderSql()` gates a place — one
+membership of it both admitted and passed (`placeOfferedSql`), which every list, count, search,
+map feed, writer of a reader's claim and review-queue guard on a place readers see composes
+(#1275) — and
 `publishedContentSql()` gates a content row — a location, a treasure link, a treasure — because
 ADR-0025's split is load-bearing: a published museum may hold newly-written, unread paintings, and
 a predicate that only checked the experience would publish them the moment a run wrote them. Both
-live beside `hideLostSql`, `hideRefusedSql` and `offeredLocationSql` in `db/readerPredicates.ts`, unconditional everywhere a list,
+live beside `hideLostSql` and `offeredLocationSql` in `db/readerPredicates.ts`, unconditional everywhere a list,
 count, search or map feed applies them — there is no `?includeUnread=true`, unlike `?includeLost`,
 because a reader has no legitimate reason to ask for what nobody has checked. The by-region
 **count**'s two `FILTER` expressions both need it, or a row that is both `lost` and `pending` gets
@@ -3372,7 +3373,7 @@ Every read `frontend/src/api/experiences.ts` and `frontend/src/api/worldPoints.t
 | GET | `/api/experiences/kinds` | The active kinds (their source rows) ordered by priority. `experience_count` is a kind's count of ADR-0046 decision 8 — the memberships the kind offers, admitted and passed, of places not `lost`, each once (`kindCountSql`, #822) — unconditionally: it labels the kind, not a page, and no caller passes `includeLost` here |
 | GET | `/api/experiences/region-counts` | `worldViewId` required, optional `parentRegionId`. Per kind per region, of memberships — a kind's count, ADR-0046 decision 8 (`countedMembershipsSql`), returned under `kind_counts`, keyed by `kind_id`. One per place within a kind, because a place holds at most one membership per kind (`UNIQUE (experience_id, kind_id)`): a place in two kinds counts once under each and never twice under one; a region's total of *places* is the region list's own number (`countedPlacesSql`), not this endpoint's. Excludes `pending` and refused memberships and `lost` places unconditionally |
 | GET | `/api/experiences/:id/locations` | Multi-location list; optional `regionId` adds `in_region`, and the answer names the region it was asked about as `regionId`. The answer is `ExperienceLocationsResponse` (ADR-0066). 404s for a refused row, like `/:id`. Also 404s a `pending` container, and excludes a `pending` location from the list — both relaxed together for a curator/admin whose scope reaches the experience, so a queue item that is itself one pending location inside an otherwise-published experience is still visible once past the gate. Each row carries `curated_fields` — the fields a curator has claimed on the place (migration 027) — so the object screen's Location field can say a correction stands rather than showing a moved pin as the source's; `curation_state`, so the same field can say an unread place is one readers are not sent to until it is published (#583); and `refused_at`, so it can tell a place a curator *turned down* from an unread one (#859) — the state cannot, a refused point staying `pending`, and without the mark the field offered publishing as the way to show a place the publish refuses |
-| GET | `/api/experiences/:id/treasures` | Treasures list (artworks/artifacts). Carries `hideRefusedSql()` on the container, so a refused museum's works come back empty: the contents follow the container, and answering with them would put back on screen exactly what hiding the museum took off it. Three more predicates gate `curation_state` — on the experience, the `experience_treasures` link and the treasure itself — because any of the three can be `pending` independently; all three relax together for a curator/admin whose scope reaches the experience. Each row carries `found_at` (a find's discovery place, ADR-0058) and, since #894, `found_at_site`: the Archaeology site row by that Wikidata id, with its reader-named `regions[]`, where a reader may open one — `null` where the spot is not a site the catalogue holds. Beside `venue_count` a row carries `venues`, the museums that hang the work, named (`venuesSql`) — for the caller the gate relaxes for, and `null` for a reader, since the list names venues whatever their state |
+| GET | `/api/experiences/:id/treasures` | Treasures list (artworks/artifacts). Carries `readableByIdSql()` on the container — offered to a reader, admitted for a curator whose scope reaches the place (#1275) — so a refused museum's works come back empty: the contents follow the container, and answering with them would put back on screen exactly what hiding the museum took off it. Three more predicates gate `curation_state` — on the experience, the `experience_treasures` link and the treasure itself — because any of the three can be `pending` independently; all three relax together for a curator/admin whose scope reaches the experience. Each row carries `found_at` (a find's discovery place, ADR-0058) and, since #894, `found_at_site`: the Archaeology site row by that Wikidata id, with its reader-named `regions[]`, where a reader may open one — `null` where the spot is not a site the catalogue holds. Beside `venue_count` a row carries `venues`, the museums that hang the work, named (`venuesSql`) — for the caller the gate relaxes for, and `null` for a reader, since the list names venues whatever their state |
 | GET | `/api/experiences/points` | The catalogue's reader-visible **places**, for the map's world layer (#910, [ADR-0061](../decisions/0061-the-catalogues-world-map-is-a-read-of-the-api-not-a-tile-source.md)). Filters: `kindId` (absent is every kind at once), `bbox` (absent is the whole world), `detail` — `overview` sends coordinates alone, `markers` adds the place's and object's ids and names, the kind and the type — and `folded`, which answers one point per object at its reader position (ADR-0028 decision 2) instead of one per place, counting the places it stands for in `locationCount`. Stateless like `/search`: no `optionalAuth` and no curator widening, so there is nothing caller-shaped to keep out of a cache. Answers **places, not objects**, which is why it exists at all: a read of objects answers a serial site as one row where it has hundreds of places. Columnar, one array per field, because a `FeatureCollection` repeats its keys once per place: 37 kB brotli for the overview of every kind (measured 2026-09-16), 18 kB folded, against 267 kB for the same values as GeoJSON. `kindId` is bounded to int4 and a `bbox` that is not four numbers is a 400, not a dropped filter — an unparseable box must not widen a viewport to the whole catalogue, and a repeated `?bbox=` parameter is refused rather than composed out of its halves. Capped at 20 000 rows, more than twice the places the catalogue holds (8 842 on 2026-09-22), because `bbox` is optional on both tiers and the limiter bounds how often a stranger asks rather than what each ask costs; a read that hits the cap answers `truncated: true`, since a density picture built from a subset is wrong rather than incomplete |
 | GET | `/api/experiences/:id/finds` | The finds dug up at a site and the museums that show them (#894, § Archaeology). Stateless like `/search` — no `optionalAuth`, no curator widening: every row is a museum a reader may be sent to, through a link the source still places and a curator has passed, each with the same reader-named `regions[]` the search sends (`readerRegionsJsonSql`). A site nobody may see, a row that is not a site and an unknown id all answer `{ finds: [], total: 0 }` |
 
@@ -3863,7 +3864,7 @@ reconciles against the sentence's own number where there is one, and against
 **Kept out** — the refusals a curator confirmed, returned as `keptOut` and collapsed at the
 foot of the page. They are answered, so they are not work; they are here because this is the
 only surface they appear on at all. Every other verdict is taken back where the object is —
-`former` never hides it, `lost` has a reader toggle that reveals it — but `hideRefusedSql`
+`former` never hides it, `lost` has a reader toggle that reveals it — but `experienceOfferedToReaderSql`
 rides on no toggle, so a confirmed refusal answers 404 by id and shows up in no list. Without
 this list, one mis-click would put an object out of the product for good. `override` is
 therefore allowed on a confirmed row while `confirm` is not: the way back must not be
@@ -3908,7 +3909,7 @@ anything — which no card in the product sends, and which is therefore the docu
 endpoint's other clients.
 
 Unlike every kind that asks something, it carries **no object-level lifecycle guard**.
-`hidePendingSql`, `hideRefusedSql` and `e.missing_since IS NULL` are on the questions so
+`experienceOfferedToReaderSql` and `e.missing_since IS NULL` are on the questions so
 that one row never raises two cards whose answers contradict each other; this asks nothing,
 and each of those guards hides the *object* from readers, which makes the point inside it
 more unreachable rather than less. Scope stays, being about who may look.
@@ -3929,7 +3930,7 @@ would name a curator whose act the log endpoint would drop for this reader.
 
 **Missing objects** — rows the machine flagged `missing_since` and nobody has judged yet
 (`source_membership = 'present'`, and not refused, and — since ADR-0025 — not `pending` either:
-`hidePendingSql()` excludes a row no reader has ever seen, because there is no verdict to give
+`experienceOfferedToReaderSql()` excludes a row no reader has ever seen, because there is no verdict to give
 about whether it disappeared from in front of anyone. That row is not silently dropped: it
 raises no `missing` card and no `arrivals` card either, the latter guarded by
 `missing_since IS NULL` — the two predicates are what makes it raise the right number of cards,
@@ -4501,7 +4502,7 @@ change to an object readers can already see will not be published there.
 
 The four kinds above predate the per-source curation gate. These three are the open questions
 it leaves — a row a gated source wrote that nobody has passed, and the two ways an
-already-visible row can still be holding something unread. All three carry `hideRefusedSql()`:
+already-visible row can still be holding something unread. All three carry `experienceOfferedToReaderSql()`, the offered half of which is the refusal's:
 a refused row is already invisible for a reason with its own card above, and asking "may a
 reader see this?" about it would ask the second question before the first is settled — a refused
 row shaped like each of the three below raises no card in any of them. All three also
@@ -4613,7 +4614,7 @@ of which keeps the group and hands `jsonb_agg` an empty set). In the `conflict` 
 load-bearing, because there it wraps a correlated subquery that does return NULL for a row that exists
 — the two look alike and work differently, which is why both say so at the call site.
 
-**Contents** — a visible experience (`hidePendingSql()`) holding unread points or works of its
+**Contents** — a visible experience (`experienceOfferedToReaderSql()`) holding unread points or works of its
 own, each gated independently of the container (ADR-0025 decision 2): a published museum can
 hold newly-arrived paintings, and a published UNESCO site can hold a newly-arrived component.
 Counted **and** listed: `pending_locations`/`pending_treasures` carry the whole number, and
@@ -4624,7 +4625,7 @@ alone would be worse at the other end, since the largest serial nomination — t
 Mediterranean Basin on the Iberian Peninsula — holds hundreds of points, so the
 cap stays and the card says *"the first 25 are listed"* beside the whole count rather than letting
 a short list stand for a long one. Each listed work carries `sitelinks`, the number of Wikipedia
-editions writing about it (ADR-0082), which is the number the works pool's line held it to. `hideRefusedSql()` on
+editions writing about it (ADR-0082), which is the number the works pool's line held it to. `experienceOfferedToReaderSql()` on
 the container is what keeps a refused museum's newly-arrived paintings from raising a card here
 too — the museum already has its own card in `refused`, and its contents are not a second
 question.
@@ -5240,7 +5241,7 @@ marked `verified` — a coordinate no card ever showed a curator, recorded as on
 **A refused row cannot be published** — 409, naming the order to work in. ADR-0025 decision 4:
 admission is asked before publication, so whether anyone has looked at an object is a question asked
 only once its kind's own rule has answered yes (ADR-0024). All three of the gate's queue kinds
-carry `hideRefusedSql()` for the same reason, and the consequence of allowing it is not cosmetic:
+carry `experienceOfferedToReaderSql()` for the same reason, and the consequence of allowing it is not cosmetic:
 nothing returns a `verified` row to `pending`, so the row would leave `arrivals` for ever and a
 later `override` would put it in front of readers with nobody having reviewed its contents. The way
 through is `POST /:id/admission` with `override`, which publishes in the same transaction — see
