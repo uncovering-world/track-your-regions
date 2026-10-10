@@ -192,3 +192,28 @@ Overpass instead, with no way back to the mirror.
 
 \#581, PR 2. The dry run of record is in
 [`wikidata-archaeology`](wikidata-archaeology.md), which is where this kind's runs are tabled.
+
+## Read for a part's picture and description (2026-10-10, #1306)
+
+Asked whether OpenStreetMap names a World Heritage component that has no Wikidata item, on 401
+component points of three serial sites. The Dacian Limes and the Aalto Works were read through
+Overpass (one bounding-box question per site, `openstreetmap-overpass`); the Pile Dwellings
+around the Alps through this mirror, one question for every `historic=archaeological_site`
+object whose centroid (`geof:centroid` of `geo:hasGeometry/geo:asWKT`, filtered by
+`geof:latitude`/`geof:longitude`) lies in the Alpine box — 3,153 objects in 7 s, where a
+per-point Overpass pass had spent ninety minutes in 429/504 back-offs without an answer.
+
+| Site | Points | A historic object within 1 km | Name ≈ (≥ 0.5) | Top object with `wikidata` | …`wikimedia_commons`/`image` | …`description` |
+|---|---|---|---|---|---|---|
+| Frontiers of the Roman Empire – Dacia | 277 | 27 | 2 | 15 | 1 | 1 |
+| Aalto Works | 13 | 11 | 5 | 9 | 5 | 0 |
+| Prehistoric Pile Dwellings around the Alps | 111 | 48 | 8 | 29 (13 the point's own item) | 5 | 2 |
+
+What OSM gives a part is the `wikidata` tag — a second road to the item, which then carries the
+picture and description (#1270): Villa Mairea at 9 m (Q2706241), Paimion Parantolan
+päärakennus at 11 m (Q368706), Säynätsalon Kunnantalo at 6 m (Q2456080), Castrul roman Buridava
+at 324 m (Q612849); and of the three Swiss pile dwellings with no item on the catalogue, two
+have a tagged object — "Morges - Les Roseaux" at 31 m (Q3324041) and the "Village lacustre" at
+Les Grèves, 180 m (Q3558997). It gives almost no picture of its own (one `image` tag among the
+277 Dacian points) and no description. The product review of 2026-10-10 keeps OSM among the
+general sources a part is read from: the tag as a key, the outline as it is drawn already.

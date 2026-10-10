@@ -25,6 +25,9 @@ docs/sources/
 ├── sights/                  ← sources that recommend what to see and do in a place
 │   ├── it-touring-club.md
 │   └── …
+├── heritage/                ← national heritage registers: protected monuments, sites and areas
+│   ├── ch-kgs-inventar.md
+│   └── …
 └── global/                  ← sources native to no unit: read per unit, or read for the world
     ├── openstreetmap-qlever.md
     ├── wikidata-qlever.md
@@ -42,7 +45,9 @@ A directory per *what the source enumerates* — `museums/` for a register of mu
 serves the art, archaeology and history kinds alike; `sights/` for a tourism board, a guide
 or an association that recommends what a visitor should see, eat and do, which the
 catalogue-coverage surveys read ([`docs/tech/catalogue-coverage.md`](../tech/catalogue-coverage.md));
-`public-art/` when the first monument register arrives; `global/` for the sources native to no unit — one that answers for any kind
+`heritage/` for a national heritage register — the protected monuments, sites and areas a state
+lists, which answer for the World Heritage, archaeology and architecture kinds alike and give a
+World Heritage component its official record (#1306); `public-art/` when the first monument register arrives; `global/` for the sources native to no unit — one that answers for any kind
 read per unit, and one that answers for the whole world at once, which is what a world tier is
 read from. A file per source, named `<country code>-<slug>.md` for a native source and
 `<slug>.md` for a global one.
