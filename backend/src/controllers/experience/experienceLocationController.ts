@@ -22,8 +22,8 @@ import type {
 } from '../../db/schema.generated.js';
 import {
   hideLostSql,
-  hideRefusedSql,
-  hidePendingSql,
+  experienceOfferedToReaderSql,
+  readableByIdSql,
   offeredLocationSql,
   offeredToReaderSql,
   publishedContentSql,
@@ -101,12 +101,12 @@ export async function getRegionExperienceLocations(
   // otherwise get the rows without their locations — no pins, and a
   // "0 locations" count on every one of them.
   //
-  // `hidePendingSql` has no toggle: the map feed is a set, like the list it
+  // The unread half has no toggle: the map feed is a set, like the list it
   // follows, and the curator relaxation (ADR-0025) stops at the three by-id
-  // reads so the two never disagree on what is being shown.
-  const lifecycleFilter = `AND ${hideRefusedSql()} `
-    + (includeLost(q) ? '' : `AND ${hideLostSql()} `)
-    + `AND ${hidePendingSql()}`;
+  // reads so the two never disagree on what is being shown. One question of
+  // the memberships, as the list asks it (`experienceOfferedToReaderSql`, #1275).
+  const lifecycleFilter = `AND ${experienceOfferedToReaderSql()} `
+    + (includeLost(q) ? '' : `AND ${hideLostSql()}`);
 
   let query: string;
   const params: number[] = [regionId];
@@ -272,7 +272,7 @@ export async function getExperienceLocations(
   // closing it is a separate decision about a different question.
   const expResult = await pool.query<Pick<ExperiencesRow, 'id' | 'name'>>(
     `SELECT e.id, e.name FROM experiences e
-     WHERE e.id = $1 AND ${hideRefusedSql()} AND ($2::boolean OR ${hidePendingSql()})`,
+     WHERE e.id = $1 AND ${readableByIdSql('$2::boolean')}`,
     [experienceId, maySeeUnread],
   );
   if (expResult.rows.length === 0) throw notFound('Experience not found');
@@ -380,7 +380,7 @@ export async function getVisitedLocationIds(
     JOIN experience_locations el ON uvl.location_id = el.id
     JOIN experiences e ON e.id = el.experience_id
     WHERE uvl.user_id = $1
-      AND ${hideRefusedSql()} AND ${hidePendingSql()}
+      AND ${experienceOfferedToReaderSql()}
       AND ${offeredLocationSql('el')} AND ${publishedContentSql('el')}
   `;
 
@@ -748,7 +748,7 @@ export async function getExperienceVisitedStatus(
     -- The pending gate rides beside it, unrelaxed: this read is not one of the
     -- three by-id reads ADR-0025 widens for a curator, so an unread museum's
     -- points stay out of a progress denominator the same way a refused one does.
-    JOIN experiences e ON e.id = el.experience_id AND ${hideRefusedSql()} AND ${hidePendingSql()}
+    JOIN experiences e ON e.id = el.experience_id AND ${experienceOfferedToReaderSql()}
     LEFT JOIN user_visited_locations uvl ON uvl.location_id = el.id AND uvl.user_id = $2
     WHERE el.experience_id = $1
       -- Offered points only, like every other read that shows a place.

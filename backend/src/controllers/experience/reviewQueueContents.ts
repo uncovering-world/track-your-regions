@@ -578,8 +578,8 @@ export async function queryWithdrawn(
  * its own, and the point returns to readers only where both axes come clear — which is
  * `offeredLocationSql` read forward rather than a rule this list invents.
  *
- * **No object-level lifecycle guards, unlike every kind above.** `hidePendingSql`,
- * `hideRefusedSql` and `e.missing_since IS NULL` are on the queue's questions so that one
+ * **No object-level lifecycle guards, unlike every kind above.**
+ * `experienceOfferedToReaderSql` and `e.missing_since IS NULL` are on the queue's questions so that one
  * row never raises two cards whose answers contradict each other. This asks nothing, so
  * there is nothing to contradict — and each of those guards hides the *object* from
  * readers, which makes the point inside it more unreachable rather than less. Scope is

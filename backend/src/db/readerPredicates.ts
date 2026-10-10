@@ -43,12 +43,12 @@
  * One of an experience's *locations* is filtered on `missing_since` even so —
  * `offeredLocationSql` below says why the two are not the same question.
  *
- * `curation_state` is the fourth, and `hidePendingSql`/`publishedContentSql`
- * below say why a gated source's unread rows get their own predicate rather
- * than reusing one of the first three.
+ * `curation_state` is the fourth, and `publishedContentSql` below says why a
+ * gated source's unread rows get their own predicate rather than reusing one
+ * of the first three.
  */
 
-import { placeAdmittedSql, placeOfferedSql, placeVisibleSql, rowKindJoinSql } from './membership.js';
+import { placeAdmittedSql, placeOfferedSql, rowKindJoinSql } from './membership.js';
 
 /**
  * Hides `lost` objects. `alias` is the `experiences` alias in the query.
@@ -62,33 +62,6 @@ import { placeAdmittedSql, placeOfferedSql, placeVisibleSql, rowKindJoinSql } fr
  */
 export function hideLostSql(alias = 'e'): string {
   return `${alias}.existence <> 'lost'`;
-}
-
-/**
- * Hides a place no kind's rule accepts (ADR-0024): every membership of it is
- * refused. `alias` is the `experiences` alias in the query.
- *
- * A separate fragment from `hideLostSql` rather than one combined predicate,
- * because the two hide for unrelated reasons and are asked for separately: the
- * "show what is gone" affordance wants lost rows back, the curation queue wants
- * refused ones, and neither wants the other.
- *
- * It applies where `missing_since` deliberately does not, and the difference is
- * the difference between silence and a sentence. A run that stops seeing an
- * object may simply not have looked everywhere, so the note above leaves that
- * to a curator. A refusal is our own rule naming the object and turning it
- * down; re-running it gives the same answer, and a candidate that fails the
- * same rule is never created at all. A row that predates the rule has to end up
- * where a new one would, or the catalogue becomes the union of every rule the
- * importer has ever had — which is how a collection nobody calls the "Egyptian
- * Museum of Berlin" survived into a list of top art museums.
- *
- * Visits are untouched, as under ADR-0022. Someone who stood in the British
- * Museum stood in it, and that record cannot depend on which of our kinds
- * currently claims the building.
- */
-export function hideRefusedSql(alias = 'e'): string {
-  return placeAdmittedSql(alias);
 }
 
 /**
@@ -262,33 +235,25 @@ export function lifecycleSelectSql(alias = 'e'): string {
 }
 
 /**
- * The fourth question a read has to ask: has anyone looked at this row?
- *
- * `pending` means a gated source wrote it and no curator has passed it
- * (ADR-0025). It is not "wrong", "gone" or "turned down" — the other three
- * helpers above answer those — so it gets its own predicate and its own
- * relaxation: a curator following a queue item through to an object's page is
- * served the row, while every list, count and feed refuses it (the three
- * by-id reads under `/api/experiences/:id` do the widening; nothing else
- * does — `maySeeUnreadExperience` in `experienceScope.ts` is where that
- * boolean comes from).
- *
- * A fragment for the same reason `hideLostSql` is one: it goes into queries
- * that build a WHERE by concatenation, some bare and some already inside a
- * conditions array, so it is returned bare too.
- *
- * Asked of the place's memberships since #822: a place is unread while none
- * of them has been passed.
+ * The by-id reads' gate (ADR-0025): a curator or admin whose scope reaches the
+ * place (`maySeeExpr`, a boolean parameter) is served it while some membership
+ * is admitted, unread or not — the one relaxation; everyone else only where a
+ * membership offers it, as the lists do (`experienceOfferedToReaderSql`,
+ * #1275), so a
+ * reader following a list to a card and a reader opening a card by its id get
+ * the same answer.
  */
-export function hidePendingSql(alias = 'e'): string {
-  return placeVisibleSql(alias);
+export function readableByIdSql(maySeeExpr: string, alias = 'e'): string {
+  return `((${maySeeExpr} AND ${placeAdmittedSql(alias)}) OR ${placeOfferedSql(alias)})`;
 }
 
 /**
- * The same question, asked of a content row — a location, a treasure link, a
- * treasure — rather than the experience that holds it.
+ * Has anyone looked at this row? — asked of a content row — a location, a
+ * treasure link, a treasure — rather than of the experience that holds it,
+ * whose unread half `experienceOfferedToReaderSql` asks through its
+ * memberships (ADR-0025).
  *
- * A separate fragment from `hidePendingSql` rather than a shared one taking
+ * A separate fragment from the place's rather than a shared one taking
  * any alias, because a call site should read as what it gates: a content
  * row's state is its own, and ADR-0025's split is load-bearing precisely
  * because of this — a published museum may hold newly-written, unread
@@ -307,15 +272,23 @@ export function publishedContentSql(alias: string): string {
  * predicate for the two writers whose claim is about an experience rather than
  * a point or a work — `markVisited` and `markNewBadgesSeen`. It is one fragment
  * because a hand-spelled subset of it is a hole: a writer carrying
- * `hidePendingSql` alone answers 200 to a guessed id for a refused row, echoes
+ * the unread half alone answers 200 to a guessed id for a refused row, echoes
  * the row's name, and writes a visit that outlives the catalogue's verdict on
  * purpose (ADR-0022), so nothing else clears the row. A conjunction spelled in
  * one place cannot be spelled partly.
  *
- * One `EXISTS` over the memberships rather than the two fragments above joined
- * with `AND`, and the difference is the day a place has two memberships
+ * One `EXISTS` over the memberships rather than `placeAdmittedSql` and
+ * `placeVisibleSql` joined with `AND`, and the difference is the day a place has two memberships
  * (#755): one admitted and another passed satisfies each fragment on its own
  * and offers a place no single kind offers. `db/membership.ts` says so.
+ *
+ * The set rule every reader-facing list, count, feed and search composes too
+ * (#1275): the region list, the search, the map feed, a traveller's ticks,
+ * the progress denominators and the review queue's guards on a place readers
+ * see — so the Capitoline Museums with an Archaeology membership admitted but
+ * unread and an Art Museums one passed but refused is in no list, as it is on
+ * no map and in no kind. The by-id reads compose `readableByIdSql`, which
+ * relaxes the unread half alone for a curator.
  */
 export function experienceOfferedToReaderSql(alias = 'e'): string {
   return placeOfferedSql(alias);

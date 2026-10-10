@@ -79,7 +79,7 @@ const ROUTE_REGISTRY_RULES = [
 
 /**
  * A reader predicate spelled out rather than composed (#791). Whether a row is
- * one a reader may see is asked by a named fragment — `hidePendingSql`,
+ * one a reader may see is asked by a named fragment — `experienceOfferedToReaderSql`,
  * `publishedContentSql` and `hideLostSql` in `src/db/readerPredicates.ts`,
  * `membershipVisibleSql` in `src/db/membership.ts` — and those two files are
  * the only ones that may spell the SQL. A copy elsewhere is the one that
@@ -87,7 +87,7 @@ const ROUTE_REGISTRY_RULES = [
  * template's literal parts, so a TypeScript comment naming the predicate is
  * not a copy, while a SQL comment inside the statement is, and says so.
  */
-const READER_PREDICATE = 'A reader predicate is composed, not spelled: use publishedContentSql / hidePendingSql / hideLostSql / '
+const READER_PREDICATE = 'A reader predicate is composed, not spelled: use publishedContentSql / experienceOfferedToReaderSql / hideLostSql / '
   + 'offeredLocationSql (src/db/readerPredicates.ts) or membershipVisibleSql (src/db/membership.ts) (#791).';
 const READER_PREDICATE_TEXT = "/curation_state\\s*<>\\s*'pending'|existence\\s*<>\\s*'lost'/";
 const READER_PREDICATE_RULES = [

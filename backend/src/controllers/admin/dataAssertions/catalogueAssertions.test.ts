@@ -324,7 +324,7 @@ describe('a picture with nobody credited', () => {
     expect(workArm).toContain("(f->>'held')::boolean");
     // The queue's own question, composed as the object's half composes it — not
     // the pointer alone. A refused or missing museum keeps its pointer while the
-    // held card carries `hideRefusedSql` and `missing_since IS NULL`, so keyed
+    // held card carries `experienceOfferedToReaderSql` and `missing_since IS NULL`, so keyed
     // on the pointer the report would say "waiting on a curator" about a change
     // no screen offers to publish (the review of #717, round two).
     expect(workArm).toContain(collapse(heldWaitingSql('e', 'm')));

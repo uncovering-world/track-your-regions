@@ -336,7 +336,7 @@ export async function getReviewQueue(
   //
   // Every other verdict is taken back where the object is: `former` never
   // hides it, and `lost` has a reader toggle that reveals it. A confirmed
-  // refusal has neither — `hideRefusedSql` is on every read and rides on no
+  // refusal has neither — `experienceOfferedToReaderSql` is on every read and rides on no
   // toggle, so the row answers 404 by id and appears in no list. Without this
   // query one mis-click would put an object out of the product for good, which
   // is the shape `setExperienceState` (`lifecycleController.ts`) reasoned

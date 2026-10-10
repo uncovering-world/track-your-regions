@@ -208,7 +208,7 @@ describe('refusing to publish', () => {
     const res = await publish({ locationIds: [11] }, client);
 
     // A refused museum's unread paintings raise no `contents` card either —
-    // that query carries `hideRefusedSql()` on the container — so this path
+    // that query carries `experienceOfferedToReaderSql()` on the container — so this path
     // must refuse for the same reason and not only the object path.
     expect(res.status).toHaveBeenCalledWith(409);
     expect(noWrites(queries)).toBe(true);

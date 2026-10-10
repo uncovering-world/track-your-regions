@@ -13,8 +13,8 @@ import { pool } from '../../db/index.js';
 import type { ExperienceKindsRow } from '../../db/schema.generated.js';
 import {
   hideLostSql,
-  hideRefusedSql,
-  hidePendingSql,
+  experienceOfferedToReaderSql,
+  readableByIdSql,
   lifecycleSelectSql,
   readerPositionSql,
   readerRegionMembershipSql,
@@ -153,13 +153,13 @@ async function readExperience(id: number, caller: Express.User | undefined): Pro
       -- deliberately not filtered here and never was: that gap predates this
       -- axis, and closing it would be a separate decision about a different
       -- question.
-      AND ${hideRefusedSql()}
       -- Unread stays hidden for everyone except a curator or admin whose scope
       -- reaches this experience (ADR-0025) -- the one relaxation this predicate
-      -- gets. $2 is read twice: here, and by the position rule in the select
-      -- list, so the places a curator is positioned by are the same rows this
-      -- gate let them have.
-      AND ($2::boolean OR ${hidePendingSql()})
+      -- gets; a reader is served the place only where a membership offers it,
+      -- as the lists serve it (#1275). $2 is read twice: here, and by the
+      -- position rule in the select list, so the places a curator is
+      -- positioned by are the same rows this gate let them have.
+      AND ${readableByIdSql('$2::boolean')}
   `, [id, maySeeUnread]);
 
   if (result.rows.length === 0) return null;
@@ -347,8 +347,7 @@ export async function searchExperiences(
       -- object whose name happens to match by trigram.
       WHERE (e.name ILIKE $2 OR e.name % $1)
         AND ${hideLostSql()}
-        AND ${hideRefusedSql()}
-        AND ${hidePendingSql()}
+        AND ${experienceOfferedToReaderSql()}
       -- A name that contains the query outranks one the trigram index merely
       -- thought similar; name_contains is never null, so DESC puts those
       -- first exactly as the CASE it replaces did.

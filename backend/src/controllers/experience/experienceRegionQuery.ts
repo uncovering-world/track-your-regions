@@ -11,8 +11,7 @@
 
 import {
   hideLostSql,
-  hideRefusedSql,
-  hidePendingSql,
+  experienceOfferedToReaderSql,
   lifecycleSelectSql,
   offeredLinkSql,
   offeredLocationSql,
@@ -64,26 +63,27 @@ export function buildRegionQueries(opts: {
   // should never have been offered (ADR-0024). The curation queue reads it
   // through its own query.
   //
-  // `hidePendingSql` has no toggle either, and for a different reason than
+  // The unread half has no toggle either, and for a different reason than
   // refusal's: a region list is a *set*, and the curator relaxation
   // (ADR-0025) stops at the three by-id reads precisely so a curator's set
-  // matches a reader's — see `maySeeUnreadExperience`.
-  const lifecycleFilter = ` AND ${hideRefusedSql()}`
-    + (includeLostRows ? '' : ` AND ${hideLostSql()}`)
-    + ` AND ${hidePendingSql()}`;
+  // matches a reader's — see `maySeeUnreadExperience`. One question of the
+  // memberships, not two (`experienceOfferedToReaderSql`, #1275): a place is listed where
+  // one membership is both admitted and passed, which is the kind it is
+  // listed under and the pin the map draws.
+  const lifecycleFilter = ` AND ${experienceOfferedToReaderSql()}`
+    + (includeLostRows ? '' : ` AND ${hideLostSql()}`);
   // The same rule as an expression, for the count: one aggregate answers how
   // many the list is showing and another how many it is holding back, so the
   // page can offer the toggle only where there is something behind it.
-  const lifecyclePredicate = (includeLostRows
-    ? hideRefusedSql()
-    : `${hideRefusedSql()} AND ${hideLostSql()}`)
-    + ` AND ${hidePendingSql()}`;
+  const lifecyclePredicate = includeLostRows
+    ? experienceOfferedToReaderSql()
+    : `${experienceOfferedToReaderSql()} AND ${hideLostSql()}`;
   // Refused rows are excluded here too. This number is an offer to reveal, and
   // revealing would not bring back a row the other predicate still hides.
   // Pending rows are excluded for the same reason: showing lost rows again
   // would not un-hide one that is also unread, so it must not be counted as
   // something the toggle would reveal.
-  const lostHiddenPredicate = `e.existence = 'lost' AND ${hideRefusedSql()} AND ${hidePendingSql()}`;
+  const lostHiddenPredicate = `e.existence = 'lost' AND ${experienceOfferedToReaderSql()}`;
   // What puts an object in this region, asked of the points a reader may see
   // rather than of the roll-up alone (#521) — `readerRegionMembershipSql` says
   // why the roll-up cannot answer it. It goes on the WHERE of all four

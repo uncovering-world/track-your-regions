@@ -21,8 +21,7 @@ import { MEMBERSHIPS, admissionAnsweredSql, membershipAdmittedSql, membershipOff
 import { openViewFieldsSql } from '../../db/sourceViews.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import {
-  hidePendingSql,
-  hideRefusedSql,
+  experienceOfferedToReaderSql,
   offeredLocationSql,
   publishedContentSql,
 } from '../../db/readerPredicates.js';
@@ -37,13 +36,16 @@ import {
  * contradictory questions, "did this disappear?" beside "was refusing it
  * right?", and only the second has a true answer. An unread row is excluded
  * too (ADR-0025 § 3.6): nobody has ever seen it, so there is no verdict to
- * give about whether it disappeared from in front of anyone.
+ * give about whether it disappeared from in front of anyone. A row readers
+ * see is one a membership offers — one both admitted and passed
+ * (`experienceOfferedToReaderSql`, #1275), the rule every reader-facing read
+ * asks — so a place with one membership admitted but unread and another
+ * passed but refused raises no card here: no reader ever saw it.
  */
 export function missingOpenSql(e = 'e'): string {
   return `${e}.missing_since IS NOT NULL
     AND ${e}.source_membership = 'present'
-    AND ${hideRefusedSql(e)}
-    AND ${hidePendingSql(e)}`;
+    AND ${experienceOfferedToReaderSql(e)}`;
 }
 
 /**
@@ -127,7 +129,7 @@ export function withdrawnPointOpenSql(el = 'el'): string {
  * disappearance is `missing`'s question, answered before this one.
  */
 export function withdrawnContainerOpenSql(e = 'e'): string {
-  return `${hidePendingSql(e)} AND ${hideRefusedSql(e)} AND ${e}.missing_since IS NULL`;
+  return `${experienceOfferedToReaderSql(e)} AND ${e}.missing_since IS NULL`;
 }
 
 /**
@@ -217,7 +219,7 @@ export function openProposalSql(p = 'p', el = 'el'): string {
  * and the identity of its parts waits on that.
  */
 export function componentItemsOpenSql(e = 'e'): string {
-  return `${hidePendingSql(e)} AND ${hideRefusedSql(e)} AND ${e}.missing_since IS NULL
+  return `${experienceOfferedToReaderSql(e)} AND ${e}.missing_since IS NULL
     AND EXISTS (SELECT 1 FROM experience_component_item_proposals p
                   JOIN experience_locations el ON el.id = p.location_id
                  WHERE el.experience_id = ${e}.id AND ${openProposalSql('p', 'el')})`;

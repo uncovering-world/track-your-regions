@@ -6,7 +6,7 @@
  * `maySeeUnreadExperience`'s own scope logic (covered where it is exercised
  * for `getExperience`, in `experienceQueryController.test.ts`).
  *
- * Before this slice, the query filtered only the container (`hideRefusedSql`
+ * Before this slice, the query filtered only the container (the refusal's half
  * on `e`). ADR-0025 adds three more predicates here, not one: the experience,
  * `experience_treasures` and `treasures` each carry their own `curation_state`
  * (decision 2 — a published museum may hold newly-written, unread paintings
@@ -24,9 +24,8 @@ import { pool } from '../../db/index.js';
 import {
   experienceOfferedToReaderSql,
   hideLostSql,
-  hidePendingSql,
-  hideRefusedSql,
   linkedForReaderSql,
+  readableByIdSql,
   venuesSql,
 } from '../../db/readerPredicates.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
@@ -66,11 +65,10 @@ describe('getExperienceTreasures gate', () => {
     await answerRoute(routeAt(experienceReadRoutes, '/:id/treasures'), { params: { id: '1' } } as never, makeRes() as never);
 
     const sql = String(mockedQuery.mock.calls[0][0]);
-    // The container's two questions are its membership's (#822), asked
-    // through the shared fragments — separately here, since the gate is the
-    // one a curator's by-id read relaxes.
-    expect(sql).toContain(hideRefusedSql('e'));
-    expect(sql).toContain(hidePendingSql('e'));
+    // The container's question is its memberships' (#822), asked through the
+    // by-id gate: a curator's relaxation on the unread half alone, a reader
+    // served the container only where a membership offers it (#1275).
+    expect(sql).toContain(readableByIdSql('$2::boolean'));
     expect(sql).toMatch(/et\.curation_state <> 'pending'/);
     expect(sql).toMatch(/t\.curation_state <> 'pending'/);
   });
@@ -233,8 +231,10 @@ describe('getExperienceTreasures gate', () => {
     const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
     expect(params).toEqual([1, true]);
     // All three widen on the one boolean, so an admin who is let past one
-    // predicate is let past all three.
-    expect(sql.match(/\$2::boolean OR/g)).toHaveLength(3);
+    // predicate is let past all three: the container's gate by its own arm
+    // (`readableByIdSql`), the link's and the treasure's by an OR each.
+    expect(sql).toContain(readableByIdSql('$2::boolean'));
+    expect(sql.match(/\$2::boolean OR/g)).toHaveLength(2);
   });
 
   it('opens the gate for a curator whose scope reaches the experience', async () => {
@@ -390,7 +390,7 @@ describe('markTreasureViewed auto-mark — #520', () => {
       .map(c => String(c[0]))
       .find(sql => /INSERT INTO user_visited_locations/.test(sql));
     expect(insertLocations).toBeDefined();
-    expect(insertLocations).toContain(hidePendingSql('e'));
+    expect(insertLocations).toContain(experienceOfferedToReaderSql('e'));
     expect(insertLocations).toMatch(/el\.curation_state <> 'pending'/);
   });
 });
