@@ -294,3 +294,11 @@ dozen questions and some 18 MB on the day it runs (§ What was measured), short 
 **Provenance.** The instances serve one dataset, so the instance that answered changes the run
 log's line and not what the row names: `metadata.osm.door` is `overpass` whichever instance drew
 the extent, as ADR-0059 decision 2 names the source — OpenStreetMap — rather than a host.
+
+## Read for a part's picture and description (2026-10-10, #1306)
+
+Two sites were read through this door, one bounding-box question each (Dacia: `historic` in the
+fort and ruin values or a name containing "castr"; Aalto: `architect` or `name` containing
+"Aalto"): the counts are in `openstreetmap-qlever` § Read for a part's picture and description,
+with the Alps, which the Alpine bounding box timed out on here (504) and a per-point `around`
+pass, two seconds apart, spent ninety minutes in back-offs on; the mirror answered it whole.
