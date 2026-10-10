@@ -23,10 +23,11 @@ const hooks = () => ({ budget: new WaitBudget(1000) });
 
 /** The sites a query names in its VALUES block. */
 const sitesIn = (query: string) => [...query.matchAll(/wd:(Q\d+)/g)].map(m => m[1]);
-const part = (site: string, item: string) => ({
+const part = (site: string, item: string, whc?: string) => ({
   site: { value: `http://www.wikidata.org/entity/${site}` },
   part: { value: `http://www.wikidata.org/entity/${item}` },
   coord: { value: 'Point(21.87 61.59)' },
+  ...(whc ? { whc: { value: whc } } : {}),
 });
 
 // A braced body: a function returned from beforeEach is run as its cleanup.
@@ -46,6 +47,17 @@ describe('partsOfSites', () => {
     expect(unread).toEqual(['Q2']);
     expect([...parts.keys()].sort()).toEqual(['Q1', 'Q3', 'Q4']);
     expect(parts.get('Q3')).toEqual([{ item: 'Q300', labels: [], coords: [[61.59, 21.87]], classes: [] }]);
+  });
+
+  it('carries the World Heritage references a part states, so the finder can tell another site\'s part from this one\'s (#1344)', async () => {
+    asked.mockResolvedValue([part('Q1', 'Q100', '527-002'), part('Q1', 'Q100', '527ter-002'), part('Q1', 'Q101')]);
+
+    const { parts } = await partsOfSites(['Q1'], hooks());
+
+    expect(parts.get('Q1')).toEqual([
+      { item: 'Q100', labels: [], coords: [[61.59, 21.87]], classes: [], references: ['527-002', '527ter-002'] },
+      { item: 'Q101', labels: [], coords: [[61.59, 21.87]], classes: [] },
+    ]);
   });
 
   it.each([

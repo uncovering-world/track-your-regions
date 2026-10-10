@@ -18,8 +18,15 @@ const STALE_ITEM = 'Q98404';
 const RESOLVED_ITEM = 'Q98409';
 const CASTRUM = 'Q88205';
 
+const OTHER_SITES_PART = 'Q98410';
 const parts: CandidateItem[] = [
-  { item: MAIREA_ITEM, labels: ['Villa Mairea'], coords: [[61.5949, 21.8731]] },
+  // A part of the site item that is another property's component: not this
+  // site's candidate, however well it matches — first in the list and closest
+  // to the point, so it would win the tie if the finder did not leave it out.
+  { item: OTHER_SITES_PART, labels: ['Villa Mairea'], coords: [[61.5948, 21.8729]], references: ['9999-001'] },
+  // The site's own component, filed on Wikidata under the inscription's
+  // earlier numbering: the point says 9840bis-001, the item 9840-001 (#1344).
+  { item: MAIREA_ITEM, labels: ['Villa Mairea'], coords: [[61.5949, 21.8731]], references: ['9840-001'] },
   { item: RESOLVED_ITEM, labels: ['Resolved'], coords: [[61.6, 21.9]] },
 ];
 const nearby: CandidateItem[] = [
@@ -86,7 +93,7 @@ beforeEach(async () => {
     [SITE, [SITE_ITEM]],
   );
   points = {
-    mairea: await point('9840-001', 'Villa Mairea', 61.5947, 21.8728, null),
+    mairea: await point('9840bis-001', 'Villa Mairea', 61.5947, 21.8728, null),
     bologa: await point('9840-002', 'Bologa', 46.8853, 22.8752, null),
     buciumi: await point('9840-003', 'Buciumi', 47.0383, 23.0581, null),
     resolved: await point('9840-004', 'Resolved', 61.6, 21.9, RESOLVED_ITEM),
@@ -106,7 +113,7 @@ afterAll(async () => {
 });
 
 describe('findComponentItems', () => {
-  it("proposes the site's own part and an item of its kind beside a point, and nothing a curator refused", async () => {
+  it("proposes the site's own part — under whatever numbering Wikidata files it — and an item of its kind beside a point, and nothing a curator refused, nor another property's part", async () => {
     await run();
 
     expect(await proposals()).toEqual([

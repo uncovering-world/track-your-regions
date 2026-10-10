@@ -18,6 +18,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { parseWhcRef } from './unescoWikidata.js';
 import {
   admittedClasses, bestMatch, nearestM, ofTheSitesKind, standsForWholeSite, NEAR_SAME_NAME_RADIUS_M, SAME_NAME_RADIUS_M,
   type CandidateItem, type ComponentMatch, type ComponentPoint,
@@ -49,6 +50,8 @@ const CATALOGUE_CLASS_FLOOR = 5;
 interface PointRow extends ComponentPoint {
   experienceId: number;
   siteItems: string[];
+  /** The component's World Heritage reference, whose property number says which site a part's own reference must name. */
+  externalRef: string;
 }
 
 interface PointRead extends PointRow {
@@ -92,11 +95,11 @@ export interface FinderOptions {
  */
 async function readPoints(): Promise<{ points: PointRow[]; wholeSites: number; wholeSiteIds: number[] }> {
   const result = await pool.query<{
-    id: number; name: string | null; lat: number; lon: number; experience_id: number;
+    id: number; name: string | null; lat: number; lon: number; experience_id: number; external_ref: string;
     wikidata_items: string[] | null; site_name: string; standing_points: number;
   }>(
     `SELECT el.id, el.name, ST_Y(el.location) AS lat, ST_X(el.location) AS lon,
-            el.experience_id, m.wikidata_items, e.name AS site_name,
+            el.experience_id, el.external_ref, m.wikidata_items, e.name AS site_name,
             (SELECT count(*)::int FROM experience_locations s
               WHERE s.experience_id = el.experience_id
                 AND s.missing_since IS NULL AND s.merged_into_id IS NULL) AS standing_points
@@ -112,7 +115,7 @@ async function readPoints(): Promise<{ points: PointRow[]; wholeSites: number; w
   );
   const read: PointRead[] = result.rows.map(row => ({
     locationId: row.id, name: row.name, lat: row.lat, lon: row.lon,
-    experienceId: row.experience_id, siteItems: row.wikidata_items ?? [],
+    experienceId: row.experience_id, siteItems: row.wikidata_items ?? [], externalRef: row.external_ref,
     siteName: row.site_name, standingPoints: row.standing_points,
   }));
   const points = read.filter(p => !standsForWholeSite(p.name, p.siteName, p.standingPoints));
@@ -274,6 +277,22 @@ async function nearbyOf(
 }
 
 /**
+ * Whether a part's own World Heritage references all name a property other
+ * than the point's: a part of a site item that is also a component of another
+ * property is that property's, not this one's. A part with no reference, or
+ * with this property's number under any variant of the inscription (Kyiv's
+ * Lavra is 527-002 on Wikidata and 527ter-002 on the list), stays a candidate:
+ * the reference reader matches a reference exactly, since an extension can
+ * renumber the parts, so a curator is the one to say the two are the same
+ * place (#1344).
+ */
+function claimsAnotherSite(candidate: CandidateItem, point: PointRow): boolean {
+  const own = parseWhcRef(point.externalRef)?.site;
+  const claimed = (candidate.references ?? []).map(ref => parseWhcRef(ref)?.site).filter((site): site is string => !!site);
+  return claimed.length > 0 && !!own && !claimed.includes(own);
+}
+
+/**
  * Replaces the open proposals of the points this pass answered for with what it found.
  * An answered proposal is kept: a refusal is what keeps a candidate from coming
  * back, and an acceptance has already recorded its item on the point. A candidate
@@ -346,7 +365,7 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
   onStage?.(`Reading the parts ${new Set(points.flatMap(p => p.siteItems)).size} site items name`);
   const { parts, unread } = await partsOfSites([...new Set(points.flatMap(p => p.siteItems))], counted);
   const partsNear = new Map(points.map(p => [
-    p.locationId, reachable(p, p.siteItems.flatMap(item => parts.get(item) ?? []), SAME_NAME_RADIUS_M),
+    p.locationId, reachable(p, p.siteItems.flatMap(item => parts.get(item) ?? []).filter(c => !claimsAnotherSite(c, p)), SAME_NAME_RADIUS_M),
   ]));
   await readLabels(partsNear.values());
   const matches: ComponentMatch[] = [];

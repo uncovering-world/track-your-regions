@@ -362,6 +362,14 @@ describe('resolving components to their items', () => {
     expect(resolution.ambiguous).toEqual([{ ref: '1363-070', items: ['Q31828921', 'Q31828922'] }]);
   });
 
+  it("resolves nothing from a reference that differs only by the inscription's variant (#1344)", () => {
+    // Getbol: the list says 1591bis-004 for Gochang's tidal flat; Wikidata's
+    // 1591-004 is Boseong's — an extension renumbered the parts, so the bare
+    // number is not an identity. The finder proposes such an item; this does not.
+    const getbol = indexWorldHeritageFacts([binding('1591-004', 'Q66311160')] as never);
+    expect(resolveComponents(getbol, '1591', ['1591bis-004']).items).toEqual([{ ref: '1591bis-004', item: null }]);
+  });
+
   it('resolves nothing for a site Wikidata names no component of', () => {
     expect(resolveComponents(index, '1428', ['1428-001']).items).toEqual([{ ref: '1428-001', item: null }]);
   });

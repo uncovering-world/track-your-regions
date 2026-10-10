@@ -74,6 +74,11 @@ function candidatesOf(rows: SparqlBinding[], key: 'item' | 'part'): Map<string, 
     if (coord && !candidate.coords.some(([a, b]) => a === coord[0] && b === coord[1])) candidate.coords.push(coord);
     const cls = row.class?.value ? itemOf(row.class.value) : null;
     if (cls && !candidate.classes!.includes(cls)) candidate.classes!.push(cls);
+    const whc = row.whc?.value?.trim();
+    if (whc) {
+      candidate.references ??= [];
+      if (!candidate.references.includes(whc)) candidate.references.push(whc);
+    }
   }
   return byItem;
 }
@@ -94,9 +99,13 @@ export async function classesOfItems(items: readonly string[], hooks: QueryHooks
 }
 
 /**
- * The items each site item names as its part (P361), less those that carry a
- * World Heritage reference of their own: those are already matched by it
- * (#1269), or belong to another site. A batch the service cannot answer in its
+ * The items each site item names as its part (P361), with or without a World
+ * Heritage reference of their own: one the reference reader matched (#1269)
+ * is a point's item already and the finder leaves it as taken; one it could
+ * not match — a component the list numbers under a later variant of the
+ * inscription than Wikidata does — stays a candidate for a curator, with its
+ * references carried so the finder leaves out a part that claims another
+ * site (#1344). A batch the service cannot answer in its
  * minute is asked again in halves, down to one site; a site it cannot answer
  * even alone is named in `unread` rather than ending the pass.
  */
@@ -109,11 +118,11 @@ export async function partsOfSites(
     if (hooks.isCancelled?.()) return;
     let rows: SparqlBinding[];
     try {
-      rows = await ask(`SELECT ?site ?part ?coord WHERE {
+      rows = await ask(`SELECT ?site ?part ?coord ?whc WHERE {
         VALUES ?site { ${batch.map(item => `wd:${item}`).join(' ')} }
         ?part wdt:P361 ?site .
-        FILTER NOT EXISTS { ?part wdt:P757 [] }
         OPTIONAL { ?part wdt:P625 ?coord }
+        OPTIONAL { ?part wdt:P757 ?whc }
       }`, hooks, HEAVY_RETRIES);
     } catch (error) {
       if (!tooHeavy(error)) throw error;
@@ -258,7 +267,8 @@ function commonsFilePath(name: string): string {
 /**
  * The picture and the English description of each item, read when a curator
  * confirms a candidate: the run's index knows only the items that carry a
- * World Heritage reference, which a candidate by definition does not. One
+ * World Heritage reference the reader matched, and a candidate is read here
+ * whatever it carries. One
  * picture per item, the first by its address (ADR-0085's rule), from the
  * statements that are not deprecated. Through the same API and at the same
  * pace as the labels.
