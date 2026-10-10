@@ -6,7 +6,9 @@ records ("the verdicts arrive with the curator's grouped card for an object's
 contents") is landed by [ADR-0026](0026-a-run-records-what-a-container-holds.md), which is that card;
 decision 2's "same point" is narrowed by
 [ADR-0027](0027-a-point-rewritten-more-precisely-is-the-same-point.md) to admit a coordinate
-rewritten within ten metres
+rewritten within ten metres, and by
+[ADR-0090](0090-a-component-renumbered-by-an-extension-is-the-same-point.md) to read a reference
+that differs only by the inscription's variant, within that window, as the same reference
 
 ---
 
