@@ -124,6 +124,26 @@ describe('findComponentItems', () => {
     expect((await proposals()).map(p => p.wikidata_item)).toEqual([STALE_ITEM, REFUSED_ITEM]);
   });
 
+  it('rewrites a taken-back candidate it finds again, mark kept, and drops one it no longer finds (#1336)', async () => {
+    await pool.query(
+      `INSERT INTO experience_component_item_proposals
+              (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis, taken_back_at)
+       VALUES ($1, $2, 'Castra of Bologa, as first found', 900, 0.1, false, 'near', NOW() - interval '1 day'),
+              ($1, 'Q9840999', 'An item the pass no longer finds', 400, 0.3, false, 'near', NOW() - interval '1 day')`,
+      [points.bologa, BOLOGA_ITEM],
+    );
+
+    await run();
+
+    const rows = (await pool.query<{ wikidata_item: string; item_label: string; distance_m: number; marked: boolean }>(
+      `SELECT wikidata_item, item_label, distance_m, taken_back_at IS NOT NULL AS marked
+         FROM experience_component_item_proposals WHERE location_id = $1 ORDER BY wikidata_item`,
+      [points.bologa],
+    )).rows;
+    expect(rows).toEqual([{ wikidata_item: BOLOGA_ITEM, item_label: 'Castra of Bologa', distance_m: expect.any(Number), marked: true }]);
+    expect(rows[0].distance_m).toBeLessThan(100);
+  });
+
   it('keeps its answer on a second pass rather than adding to it', async () => {
     await run();
     await run();

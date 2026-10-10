@@ -16411,6 +16411,10 @@
             "type": "boolean",
             "description": "The same name, folded, at the same spot: what a batch accept takes."
           },
+          "takenBack": {
+            "type": "boolean",
+            "description": "A curator confirmed it and took it back (#1336): open again, and no batch confirms it — only a click on it does."
+          },
           "basis": {
             "type": "string",
             "enum": [
@@ -16450,6 +16454,7 @@
           "distanceM",
           "similarity",
           "exact",
+          "takenBack",
           "basis",
           "itemLatitude",
           "itemLongitude",
@@ -25038,7 +25043,7 @@
           "cleared"
         ],
         "additionalProperties": false,
-        "description": "A confirmed component item taken back (#1317): the point has no item again, and the candidate stays turned down."
+        "description": "A confirmed component item taken back (#1317): the point has no item again, and the candidate is back in the queue, open (#1336)."
       },
       "PointsDetail": {
         "type": "string",

@@ -267,6 +267,7 @@ export const ComponentItemProposal = z.strictObject({
   distanceM: z.number().int().describe('Metres from the point to the nearest coordinate the item states; -1 where it states none.'),
   similarity: z.number().describe('How alike the names are, 0 to 1.'),
   exact: z.boolean().describe('The same name, folded, at the same spot: what a batch accept takes.'),
+  takenBack: z.boolean().describe('A curator confirmed it and took it back (#1336): open again, and no batch confirms it — only a click on it does.'),
   basis: z.enum(CHECK_VALUES.experience_component_item_proposals.basis)
     .describe('The rule that found it: the item says it is part of the site, or lies near the point and is of its kind.'),
   itemLatitude: z.number().nullable().describe('Where the item stands, nearest the point; null on a proposal that kept none.'),

@@ -276,27 +276,40 @@ async function nearbyOf(
 /**
  * Replaces the open proposals of the points this pass answered for with what it found.
  * An answered proposal is kept: a refusal is what keeps a candidate from coming
- * back, and an acceptance has already recorded its item on the point.
+ * back, and an acceptance has already recorded its item on the point. A candidate
+ * a curator took back (#1336) is open and marked: found again, it takes the
+ * pass's measures and keeps its mark; not found, it goes the way every open
+ * candidate the pass does not find goes.
  */
 async function writeProposals(locationIds: readonly number[], matches: readonly ComponentMatch[]): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query(
-      `DELETE FROM experience_component_item_proposals WHERE answer IS NULL AND location_id = ANY($1::int[])`,
-      [locationIds],
+      `DELETE FROM experience_component_item_proposals p
+        WHERE p.answer IS NULL AND p.location_id = ANY($1::int[])
+          AND (p.taken_back_at IS NULL
+               OR NOT EXISTS (SELECT 1 FROM unnest($2::int[], $3::text[]) AS f(location_id, item)
+                               WHERE f.location_id = p.location_id AND f.item = p.wikidata_item))`,
+      [locationIds, matches.map(m => m.locationId), matches.map(m => m.item)],
     );
     // With the item's coordinate nearest the point, so the card can show the
     // candidate beside the component; none where the item states no coordinate.
+    // The only rows left to conflict with are answered ones, kept as they are,
+    // and marked open ones, rewritten with the mark kept.
     await client.query(
-      `INSERT INTO experience_component_item_proposals
+      `INSERT INTO experience_component_item_proposals AS p
               (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis, item_location)
        SELECT m.location_id, m.item, m.label, m.distance_m, m.similarity, m.exact, m.basis,
               CASE WHEN m.lon IS NULL THEN NULL ELSE ST_SetSRID(ST_MakePoint(m.lon, m.lat), 4326) END
          FROM unnest($1::int[], $2::text[], $3::text[], $4::int[], $5::real[], $6::bool[], $7::text[],
                      $8::float8[], $9::float8[])
               AS m(location_id, item, label, distance_m, similarity, exact, basis, lon, lat)
-       ON CONFLICT (location_id, wikidata_item) DO NOTHING`,
+       ON CONFLICT (location_id, wikidata_item) DO UPDATE
+          SET item_label = EXCLUDED.item_label, distance_m = EXCLUDED.distance_m,
+              name_similarity = EXCLUDED.name_similarity, exact = EXCLUDED.exact, basis = EXCLUDED.basis,
+              item_location = EXCLUDED.item_location, proposed_at = NOW()
+        WHERE p.answer IS NULL`,
       [
         matches.map(m => m.locationId), matches.map(m => m.item), matches.map(m => m.label),
         matches.map(m => m.distanceM), matches.map(m => m.similarity), matches.map(m => m.exact), matches.map(m => m.basis),
@@ -376,8 +389,11 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
   const unreadSites = new Set(unread);
   const waiting = new Set(unmatched.map(p => p.locationId));
   const proposed = new Set(proposals.map(m => m.locationId));
-  const answered = points.filter(p => proposed.has(p.locationId)
-    || (!p.siteItems.some(item => unreadSites.has(item)) && (!waiting.has(p.locationId) || nearOf.has(p.locationId))));
+  // A point one of whose site items went unread is not answered for, even
+  // with a part found under another: the pass did not see all of it, and
+  // writing would drop the open candidates it did not evaluate.
+  const answered = points.filter(p => !p.siteItems.some(item => unreadSites.has(item))
+    && (proposed.has(p.locationId) || !waiting.has(p.locationId) || nearOf.has(p.locationId)));
   // A point that stands for its whole site is answered for too: nothing is
   // proposed for it, and what an earlier pass proposed is cleared.
   if (options.write && !hooks.isCancelled?.()) await writeProposals([...answered.map(p => p.locationId), ...wholeSiteIds], proposals);

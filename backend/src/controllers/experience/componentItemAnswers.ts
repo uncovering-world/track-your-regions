@@ -77,24 +77,28 @@ export async function clearMootProposals(
 }
 
 /**
- * A confirmed candidate taken back (#1317): its row is turned down, so the
- * finder never proposes the item for the point again, and the curator's
- * second answer is the one on record. Answers whether a row was found.
+ * A confirmed candidate taken back (#1317, #1336): its row is open again, so
+ * the point is asked about on the card with that candidate at once — the
+ * take-back undoes the confirmation, and the curator's next answer there,
+ * a no or a second yes, is the one on record. A batch confirms more than a
+ * curator has read, so a take-back is as often "not yet" as "not it"; the
+ * "not it" costs one more click on the card. Marked taken back, so neither
+ * batch confirmation takes it again: only a click on the candidate can.
+ * Answers whether a row was found.
  */
-export async function turnDownConfirmed(
+export async function reopenConfirmed(
   client: PoolClient,
   lock: LockedExperience,
-  userId: number,
   locationId: number,
   item: string,
 ): Promise<boolean> {
   const result = await client.query(
     `UPDATE experience_component_item_proposals p
-        SET answer = 'refused', answered_by = $4, answered_at = NOW()
+        SET answer = NULL, answered_by = NULL, answered_at = NULL, taken_back_at = NOW()
        FROM experience_locations el
       WHERE el.id = p.location_id AND el.experience_id = $1
         AND p.location_id = $2 AND p.wikidata_item = $3`,
-    [lock.id, locationId, item, userId],
+    [lock.id, locationId, item],
   );
   return (result.rowCount ?? 0) > 0;
 }

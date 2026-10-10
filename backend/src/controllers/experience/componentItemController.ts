@@ -244,7 +244,7 @@ export async function openCandidates(experienceId: number, only: 'exact' | 'all'
        FROM experience_component_item_proposals p
        JOIN experience_locations el ON el.id = p.location_id
       WHERE el.experience_id = $1 AND ${openProposalSql('p', 'el')}
-        AND ($2::boolean OR p.exact)
+        AND ($2::boolean OR (p.exact AND p.taken_back_at IS NULL))
       ORDER BY p.id`,
     [experienceId, only === 'all'],
   );
