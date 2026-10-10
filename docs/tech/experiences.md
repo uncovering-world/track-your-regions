@@ -146,7 +146,15 @@ it — a tolerance alone would be a nearest-point search over an object's own po
 points of one experience lie within a kilometre of each other, many at 0.000 m, since what separates
 two rock-art shelters in one cliff is the component number rather than the metres. Where an incoming
 point carries no reference the comparison stays exact, there being nothing to hold the tolerance to
-one component. `samePointSql()` is the one fragment every site that asks composes, and only two do —
+one component. The reference half reads past the inscription's variant
+([ADR-0090](../decisions/0090-a-component-renumbered-by-an-extension-is-the-same-point.md)):
+`829bis-001` and `829ter-001` are one reference (`whc_ref_bare` in the schema, `sameReferenceSql()`),
+so a component the list renumbered at an extension keeps its row where the geometry says the place is
+the same — Pompeii's seven components, Graz's two — and the keeping arm rewrites its reference; the
+fast path asks for the reference exactly, so the object takes the slow path on the run that renumbers
+it and not after, and the pairing takes an exact reference before one read past its variant. A
+component renumbered at another point is a move as before, which is Getbol, where the extension
+renumbered the parts. `samePointSql()` is the one fragment every site that asks composes, and only two do —
 the relation the pairing is built from and the fast path's `matched` term. Everything else reads the
 pairing — every statement after the one that decides it, which is the five arms that keep, resurrect,
 insert, withdraw and hold, the statement that lets go of a spent pairing, and the lookup that decides
@@ -231,10 +239,10 @@ hypothetical:
 - **one location carries no reference at all** (8754, "Routes of Santiago de Compostela in
   France"), and it is that experience's only point — so the match is `IS NOT DISTINCT FROM`
   rather than `=`;
-- **a renumbered component changes the reference itself**, so no match by reference is possible,
-  and all but one of the single-point UNESCO sites carry a component reference. This is what the
-  by-position pass is for, and a renumber does not even have to move the point to blank the map
-  without it.
+- **a renumbered component that also moved changes the reference itself**, so no match by
+  reference is possible, and all but one of the single-point UNESCO sites carry a component
+  reference. This is what the by-position pass is for. A renumbering at the same point is not a
+  move at all since ADR-0090: the row is kept under its new reference and nothing is withdrawn.
 
 What that buys is a count rather than a hope: exactly `min(withdrawals, arrivals)` withdrawals
 are held, so the points a reader can see after a run are
@@ -300,8 +308,8 @@ equally the count that infers from what remains whether the experience-level vis
 should go with the last visible tick. So both unmark handlers hold an unfiltered DELETE beside
 a filtered count, which is that one line drawn through a single handler.
 That view counts offered points only because identity is the point together with the source's
-reference: an edit to either — a component moved more than ten metres, a renumbered one — is a
-withdrawal plus an insert, and the reader would otherwise meet the same place twice.
+reference: an edit to either — a component moved more than ten metres, one renumbered and moved
+(ADR-0090) — is a withdrawal plus an insert, and the reader would otherwise meet the same place twice.
 `getVisitedLocationIds` is not one of the unfiltered reads, and the argument that it could be — every
 consumer uses it as a set-membership test over a list that is already filtered, so it draws no pin
 and inflates no count — is not the one the code makes. It carries all four predicates: the curation
