@@ -10,16 +10,15 @@ import { describe, it, expect } from 'vitest';
 import { placeAdmittedSql, placeOfferedSql, placeVisibleSql } from './membership.js';
 import {
   hideLostSql,
-  hideRefusedSql,
   lifecycleSelectSql,
   offeredLocationSql,
   offeredLinkSql,
   linkedForReaderSql,
   experienceOfferedToReaderSql,
-  hidePendingSql,
   publishedContentSql,
   readerPositionSql,
   readerRegionMembershipSql,
+  readableByIdSql,
 } from './readerPredicates.js';
 
 describe('offeredLocationSql', () => {
@@ -76,38 +75,6 @@ describe('hideLostSql', () => {
   });
 });
 
-describe('hideRefusedSql', () => {
-  it('hides only what its kind turned down', () => {
-    const sql = hideRefusedSql();
-
-    expect(sql).toContain("admission <> 'refused'");
-    // Not a claim about the world. The British Museum stands open and Wikidata
-    // still lists it; what changed is which of our kinds claims it.
-    expect(sql).not.toContain('existence');
-    expect(sql).not.toContain('source_membership');
-    // A refusal is a decision with a reason, and the reason is for the curator
-    // to read — the predicate must not depend on the run's flag (ADR-0024).
-    expect(sql).not.toContain('missing_since');
-  });
-
-  it('asks the place\'s memberships, through the one shared spelling', () => {
-    // The verdict is the membership's since #822, so the fragment is the
-    // place-level EXISTS from db/membership.ts and nothing spelled here.
-    expect(hideRefusedSql('ex')).toBe(placeAdmittedSql('ex'));
-    expect(hideRefusedSql('ex')).toContain('km.experience_id = ex.id');
-  });
-
-  it('comes bare, since some callers push it into a conditions array', () => {
-    expect(hideRefusedSql().trimStart()).not.toMatch(/^AND/);
-  });
-
-  it('is a separate predicate from the lost one, not the same rule renamed', () => {
-    // The two are toggled independently: the curation queue asks for refused
-    // rows and the "show what is gone" affordance asks for lost ones.
-    expect(hideRefusedSql()).not.toEqual(hideLostSql());
-  });
-});
-
 describe('lifecycleSelectSql', () => {
   it('carries both axes, since a card labels one and history needs the other', () => {
     const sql = lifecycleSelectSql();
@@ -121,24 +88,6 @@ describe('lifecycleSelectSql', () => {
     // included. Inferring it from the verdict would be an assumption where the
     // truth is one column away.
     expect(lifecycleSelectSql()).toContain('missing_since');
-  });
-});
-
-describe('hidePendingSql', () => {
-  it('hides an unread place, and says nothing about the other three questions', () => {
-    // The gate state is the membership's since #822: a place is unread while
-    // none of its memberships has been passed.
-    expect(hidePendingSql()).toBe(placeVisibleSql());
-    expect(hidePendingSql('x')).toBe(placeVisibleSql('x'));
-    expect(hidePendingSql()).toContain("curation_state <> 'pending'");
-    // The gate must not mention existence, admission or missing_since: a
-    // predicate that answered two questions could not be relaxed for one of
-    // them alone (ADR-0025's Negative consequences).
-    expect(hidePendingSql()).not.toMatch(/existence|admission|missing_since/);
-  });
-
-  it('qualifies the place, so it can join a query with more than one table', () => {
-    expect(hidePendingSql('ex')).toContain('km.experience_id = ex.id');
   });
 });
 
@@ -185,12 +134,23 @@ describe('linkedForReaderSql', () => {
 describe('experienceOfferedToReaderSql', () => {
   it('asks both questions of one membership, not each of any', () => {
     // A place with one membership admitted and another passed satisfies
-    // hideRefusedSql and hidePendingSql on their own and is offered by no
+    // placeAdmittedSql and placeVisibleSql on their own and is offered by no
     // single kind (#755); the writers that record a reader's claim compose
     // this one, which asks both of the same row.
     expect(experienceOfferedToReaderSql('x')).toBe(placeOfferedSql('x'));
     expect(experienceOfferedToReaderSql('x'))
-      .not.toBe(`${hideRefusedSql('x')} AND ${hidePendingSql('x')}`);
+      .not.toBe(`${placeAdmittedSql('x')} AND ${placeVisibleSql('x')}`);
+  });
+});
+
+describe('readableByIdSql', () => {
+  it('serves a curator an admitted place unread or not, and a reader only an offered one (#1275)', () => {
+    const sql = readableByIdSql('$2::boolean', 'x');
+    expect(sql).toBe(`(($2::boolean AND ${placeAdmittedSql('x')}) OR ${placeOfferedSql('x')})`);
+    // The reader's arm is the lists' rule, one membership both admitted and
+    // passed, never the two one-sided fragments side by side.
+    expect(sql).toContain(experienceOfferedToReaderSql('x'));
+    expect(sql).not.toContain(placeVisibleSql('x'));
   });
 });
 

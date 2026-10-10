@@ -13,8 +13,7 @@ import { MEMBERSHIPS, linkKindsSql, membershipOfferedSql, rowKindJoinSql } from 
 import {
   experienceOfferedToReaderSql,
   hideLostSql,
-  hideRefusedSql,
-  hidePendingSql,
+  readableByIdSql,
   linkedForReaderSql,
   offeredLinkSql,
   offeredLocationSql,
@@ -109,12 +108,13 @@ export async function getExperienceTreasures(
       -- The contents follow the container: a refused museum's works are not on
       -- offer either, and answering with them would put back on screen exactly
       -- what hiding the museum took off it (ADR-0024).
-      AND ${hideRefusedSql()}
       -- Three predicates, not one: ADR-0025 gates the experience, the link and
       -- the treasure separately, because a published museum can hold newly
       -- written, unread paintings the container gate never reaches. All three
-      -- widen on the same boolean, so a curator let past one is let past all.
-      AND ($2::boolean OR ${hidePendingSql()})
+      -- widen on the same boolean, so a curator let past one is let past all;
+      -- a reader is served the container only where a membership offers it
+      -- (#1275).
+      AND ${readableByIdSql('$2::boolean')}
       AND ($2::boolean OR ${publishedContentSql('et')})
       AND ($2::boolean OR ${publishedContentSql('t')})
       -- Not widened with them: a link the source stopped placing here is not
@@ -249,7 +249,7 @@ export async function markTreasureViewed(
         FROM experience_locations el
         JOIN experiences e ON e.id = el.experience_id
         WHERE el.experience_id = $2 AND ${offeredLocationSql()}
-          AND ${hidePendingSql()} AND ${publishedContentSql('el')}
+          AND ${experienceOfferedToReaderSql()} AND ${publishedContentSql('el')}
         ON CONFLICT (user_id, location_id) DO NOTHING
       `, [userId, experienceId]);
 

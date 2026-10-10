@@ -5,8 +5,8 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { membershipAdmittedSql, membershipVisibleSql } from '../../db/membership.js';
-import { hidePendingSql, hideRefusedSql } from '../../db/readerPredicates.js';
+import { membershipAdmittedSql, membershipVisibleSql, placeOfferedSql } from '../../db/membership.js';
+import { experienceOfferedToReaderSql, readableByIdSql } from '../../db/readerPredicates.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 
@@ -169,7 +169,7 @@ describe('getExperience curation relaxation', () => {
     // a scope check nobody needs.
     expect(mockedQuery).toHaveBeenCalledTimes(2);
     const [sql, params] = mockedQuery.mock.calls[0] as [string, unknown[]];
-    expect(sql).toContain(`$2::boolean OR ${hidePendingSql('e')}`);
+    expect(sql).toContain(readableByIdSql('$2::boolean'));
     expect(params).toEqual([281, false]);
   });
 
@@ -347,10 +347,12 @@ describe('lifecycle visibility across the read paths', () => {
         .filter(sql => !/WITH RECURSIVE chain AS \(\s*SELECT id, merged_into_id/.test(sql))
         .filter(sql => /\b(FROM|JOIN) experiences\b/.test(sql) || sql.includes('FROM experience_kind_memberships'));
       expect(reads.length).toBeGreaterThan(0);
+      // One membership both admitted and passed (#1275): the offered rule
+      // hides a refused place as it hides an unread one.
       for (const sql of reads) {
         expect(sql).toContain(countsMemberships
           ? membershipAdmittedSql(countsMemberships)
-          : hideRefusedSql('e'));
+          : placeOfferedSql('e'));
       }
     });
   }
@@ -372,7 +374,7 @@ describe('lifecycle visibility across the read paths', () => {
       const list = String(mockedQuery.mock.calls[0][0]);
       expect(list).toContain(countsMemberships
         ? membershipVisibleSql(countsMemberships)
-        : hidePendingSql('e'));
+        : placeOfferedSql('e'));
     });
   }
 
@@ -415,8 +417,8 @@ describe('lifecycle visibility across the read paths', () => {
     // predicate (`publishedContentSql('el')`), and an unanchored check would
     // pass on that alone even with the container-level gate missing — which
     // is exactly what happened here until this was anchored.
-    expect(list).toContain(hidePendingSql('e'));
-    expect(count).toContain(hidePendingSql('e'));
+    expect(list).toContain(experienceOfferedToReaderSql('e'));
+    expect(count).toContain(experienceOfferedToReaderSql('e'));
   });
 
   it('keeps search brackets round the name alternatives', async () => {
@@ -451,14 +453,14 @@ describe('lifecycle visibility across the read paths', () => {
     // control for a state almost no region has is worse than none
     const count = String(mockedQuery.mock.calls[1][0]);
     expect(count).toContain(
-      `FILTER (WHERE e.existence = 'lost' AND ${hideRefusedSql('e')} AND ${hidePendingSql('e')})`);
+      `FILTER (WHERE e.existence = 'lost' AND ${experienceOfferedToReaderSql('e')})`);
     expect(count).toContain('lost_hidden');
     // A refused row is not something the reader is being offered a look at:
     // revealing the lost would not bring it back (ADR-0024). Same for a
     // pending one: `curation_state` has no toggle here, unlike `existence`
     // (ADR-0025), so it rides along in both FILTER expressions unconditionally.
     expect(count).toContain(
-      `FILTER (WHERE ${hideRefusedSql('e')} AND e.existence <> 'lost' AND ${hidePendingSql('e')})`);
+      `FILTER (WHERE ${experienceOfferedToReaderSql('e')} AND e.existence <> 'lost')`);
   });
 
   it('counts everything as shown once the caller asked for them', async () => {
@@ -471,7 +473,7 @@ describe('lifecycle visibility across the read paths', () => {
     // curation_state have no toggle, so both survive into a count the caller
     // asked to widen.
     expect(String(mockedQuery.mock.calls[1][0])).toContain(
-      `FILTER (WHERE ${hideRefusedSql('e')} AND ${hidePendingSql('e')})`);
+      `FILTER (WHERE ${experienceOfferedToReaderSql('e')})`);
   });
 
   it('reports nothing hidden once it is showing them', async () => {

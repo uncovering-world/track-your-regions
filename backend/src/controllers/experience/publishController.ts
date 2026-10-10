@@ -107,7 +107,7 @@ function refusedBeforeWriting(
   // question, "asked only once the first has been answered yes". Publishing a
   // refused row asks the second first — which is what the review queue refuses
   // to do from the other side, where each of the gate's three kinds carries
-  // `hideRefusedSql()`.
+  // `experienceOfferedToReaderSql()`.
   //
   // Left unrefused this is not a tidiness problem: the row would leave
   // `arrivals` for ever — nothing returns a `verified` row to `pending` — so a

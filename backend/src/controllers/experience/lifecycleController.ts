@@ -306,7 +306,7 @@ async function publishArrivalContents(
  * back that an earlier click can close is not a way back — the one thing this
  * endpoint must never become is the one-way door `setExperienceState` reasoned
  * itself out of. Confirmed rows are reachable in the queue's own kept-out list,
- * since `hideRefusedSql` leaves them visible nowhere else.
+ * since `experienceOfferedToReaderSql` leaves them visible nowhere else.
  *
  * No `expected` block here, unlike `setExperienceState`. `confirm` uses the pin
  * as its concurrency check — it hides, so a second curator on a stale card must
