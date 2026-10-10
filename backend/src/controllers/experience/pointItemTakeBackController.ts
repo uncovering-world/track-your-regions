@@ -9,9 +9,10 @@
  * merge has (ADR-0086): the item and its claim come off, and the picture and
  * the description come off with them where no curator has claimed the field
  * since — a point with no item has no run-written picture or description, so
- * an unclaimed one is the confirmation's; the candidate stays turned down, so
- * the finder never proposes it again, and the point is searched again on the
- * finder's next pass, since it has no item. Only a confirmation is taken back:
+ * an unclaimed one is the confirmation's; the candidate is open again
+ * (#1336), so the point is asked about on the card with it at once — a no or a
+ * second yes there is the answer on record — and the point is searched again
+ * on the finder's next pass, since it has no item. Only a confirmation is taken back:
  * an item a run recorded off the component's reference carries no claim, and
  * is the source's to change.
  *
@@ -30,7 +31,7 @@ import { lockExperience } from '../../db/experienceWriter.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import type { locationIdParamSchema, takeBackPointItemBodySchema } from '../../types/index.js';
-import { turnDownConfirmed } from './componentItemAnswers.js';
+import { reopenConfirmed } from './componentItemAnswers.js';
 import { releasePointItem } from './experienceLocationWriter.js';
 import { resolveExperienceScope } from './experienceScope.js';
 
@@ -92,7 +93,7 @@ export async function takeBackPointItemUnderLock(
 
     const item = point.wikidata_item;
     const cleared = await releasePointItem(client, lock, locationId);
-    await turnDownConfirmed(client, lock, userId, locationId, item);
+    await reopenConfirmed(client, lock, locationId, item);
     await client.query(
       `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
        VALUES ($1, $2, 'component_item_taken_back', $3, $4)`,

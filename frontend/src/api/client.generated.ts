@@ -1983,6 +1983,8 @@ export interface ComponentItemProposal {
   similarity: number;
   /** The same name, folded, at the same spot: what a batch accept takes. */
   exact: boolean;
+  /** A curator confirmed it and took it back (#1336): open again, and no batch confirms it — only a click on it does. */
+  takenBack: boolean;
   /** The rule that found it: the item says it is part of the site, or lies near the point and is of its kind. */
   basis: ComponentItemProposalBasis;
   /**
@@ -6336,7 +6338,7 @@ export const PointItemTakenBackClearedItem = {
 } as const;
 
 /**
- * A confirmed component item taken back (#1317): the point has no item again, and the candidate stays turned down.
+ * A confirmed component item taken back (#1317): the point has no item again, and the candidate is back in the queue, open (#1336).
  */
 export interface PointItemTakenBack {
   /**

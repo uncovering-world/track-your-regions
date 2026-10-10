@@ -33,6 +33,7 @@ const CANDIDATES = `(SELECT jsonb_agg(jsonb_build_object(
            'distanceM', p.distance_m,
            'similarity', p.name_similarity,
            'exact', p.exact,
+           'takenBack', p.taken_back_at IS NOT NULL,
            'basis', p.basis,
            'itemLatitude', ST_Y(p.item_location),
            'itemLongitude', ST_X(p.item_location),

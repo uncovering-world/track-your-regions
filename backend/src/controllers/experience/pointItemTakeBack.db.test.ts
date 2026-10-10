@@ -1,13 +1,13 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
-import { answerComponentItemsUnderLock } from './componentItemController.js';
+import { answerComponentItemsUnderLock, openCandidates } from './componentItemController.js';
 import { takeBackPointItemUnderLock } from './pointItemTakeBackController.js';
 
 /**
  * A confirmed component item taken back (#1317), against PostgreSQL: the fort
  * of Bologa confirmed for the point Bologa with its picture and description,
  * then taken back — the point has no item, no claim, no picture and no
- * description again, the candidate stays turned down, and the act is logged.
+ * description again, the candidate is open again (#1336), and the act is logged.
  * A point whose item a run recorded off the reference is not a curator's to
  * take back; a picture a curator chose since the confirmation stays.
  */
@@ -82,7 +82,7 @@ afterAll(async () => {
 });
 
 describe('a confirmed component item taken back (#1317)', () => {
-  it('takes the item, its claim and what the confirmation wrote off the point, turns the candidate down and logs it', async () => {
+  it('takes the item, its claim and what the confirmation wrote off the point, reopens the candidate and logs it', async () => {
     await confirm();
     expect(await stored(bologa)).toMatchObject({ wikidata_item: BOLOGA_FORT, curated_fields: ['wikidata_item'], image_url: PICTURE });
 
@@ -90,10 +90,14 @@ describe('a confirmed component item taken back (#1317)', () => {
 
     expect(outcome.result).toEqual({ locationId: bologa, item: BOLOGA_FORT, cleared: ['image_url', 'description'] });
     expect(await stored(bologa)).toEqual({ wikidata_item: null, curated_fields: [], image_url: null, credit: null, description: null });
-    const proposal = await pool.query<{ answer: string; answered_by: number }>(
-      'SELECT answer, answered_by FROM experience_component_item_proposals WHERE id = $1', [fort],
+    const proposal = await pool.query<{ answer: string | null; answered_by: number | null; answered_at: Date | null; marked: boolean }>(
+      'SELECT answer, answered_by, answered_at, taken_back_at IS NOT NULL AS marked FROM experience_component_item_proposals WHERE id = $1', [fort],
     );
-    expect(proposal.rows[0]).toEqual({ answer: 'refused', answered_by: curatorId });
+    // Open again and marked: the card asks about the point with this candidate
+    // at once, and neither batch confirmation takes it (#1336).
+    expect(proposal.rows[0]).toEqual({ answer: null, answered_by: null, answered_at: null, marked: true });
+    expect(await openCandidates(SITE, 'all')).toEqual([fort]);
+    expect(await openCandidates(SITE, 'exact')).toEqual([]);
     const log = await pool.query<{ action: string; details: unknown }>(
       `SELECT action, details FROM experience_curation_log WHERE experience_id = $1 ORDER BY id`, [SITE],
     );
