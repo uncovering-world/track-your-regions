@@ -383,7 +383,7 @@ export async function chooseSourceViews(experienceId: number, choices: ChooseVie
 /**
  * Take back the Wikidata item a curator confirmed for a component (#1317):
  * the item and its claim come off the point, with what the confirmation wrote,
- * and the candidate stays turned down.
+ * and the candidate is back in the queue, open and marked (#1336).
  */
 export async function takeBackPointItem(locationId: number, item: string): Promise<PointItemTakenBack> {
   return postExperiencesLocationsByLocationIdTakeBackItem(locationId, { item });

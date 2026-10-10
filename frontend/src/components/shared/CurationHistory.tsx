@@ -162,10 +162,11 @@ export function CurationHistory({ experienceId, regionId }: CurationHistoryProps
     mutationFn: ({ locationId, item }: TakeableItem) => takeBackPointItem(locationId, item),
     onSuccess: () => {
       // The point has no item again: its row on the place's card and the
-      // place's history are read afresh. The review queue has no question for
-      // it until the finder's next pass proposes something.
+      // place's history are read afresh, and so is the review queue, where
+      // the candidate is open again and marked (#1336).
       invalidateExperiences(queryClient, { regionId, experienceId });
       queryClient.invalidateQueries({ queryKey: queryKeys.experience.curationLogAll });
+      queryClient.invalidateQueries({ queryKey: queryKeys.curation.reviewQueueAll });
     },
   });
 
