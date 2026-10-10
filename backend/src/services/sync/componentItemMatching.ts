@@ -42,6 +42,8 @@ export interface CandidateItem {
   coords: Array<[lat: number, lon: number]>;
   /** Its P31 classes, for the near rule. */
   classes?: string[];
+  /** The World Heritage references it carries (P757), where the part-of door read them: a part claiming another site is not this site's. */
+  references?: string[];
 }
 
 export interface ComponentMatch {

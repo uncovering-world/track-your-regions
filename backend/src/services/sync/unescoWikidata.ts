@@ -411,7 +411,14 @@ function itemId(value: string | null): string | null {
   return id && /^Q\d+$/.test(id) ? id : null;
 }
 
-/** A component reference as compared: case and runs of blanks folded, `1363-061` as `1363-061`. */
+/**
+ * A component reference as compared: case and runs of blanks folded,
+ * `1363-061` as `1363-061` — and the inscription's variant kept, since an
+ * extension can renumber the parts: Wikidata's `1591-004` is Boseong's tidal
+ * flat and the list's `1591bis-004` is Gochang's. A reference that differs
+ * only by the variant is the finder's to propose to a curator, never an
+ * identity this reader records (#1344).
+ */
 const comparableRef = (value: string): string => value.trim().toLowerCase().replace(/\s+/g, ' ');
 
 /** How a site's components resolved to their Wikidata items (#1269). */
