@@ -159,8 +159,10 @@ export function boxFilter(box: Box): string {
  * carry a World Heritage reference, asked of Wikidata on QLever
  * (`qleverWikidata.ts`): the near rule reads the coordinates of whole classes
  * around a thousand places, which the Wikidata Query Service throttled even
- * paced at its own published rate, and which the mirror answers in under a
- * second. Many boxes go in one question, as one filter over the class's
+ * paced at its own published rate, and which an unloaded mirror answers in
+ * under a second — a loaded one in about 15 s, and then refuses the pass
+ * (the register's record for the mirror), so a pass a day is the budget.
+ * Many boxes go in one question, as one filter over the class's
  * coordinates. Which of the answers are settlements is a second question
  * (`settlementsAmong`), asked of the class tree rather than read off a list.
  */
