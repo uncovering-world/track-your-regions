@@ -15,4 +15,6 @@ and says so in its first lines.
   them), the result with its date, and what it does not show. A report states no plan; the plan
   is the issue that cites it.
 
-There are no reports yet.
+| Report | Cited by |
+|---|---|
+| [2026-10-10 — Which open sources give a World Heritage component its picture and description](2026-10-10-sources-for-a-parts-picture-and-description.md) | #1306, #1337, #1339, #1340, #1341 |
