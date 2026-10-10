@@ -94,16 +94,15 @@ export interface MarkerData {
  * The kinds of a place a pin shows, in display order: those among the kinds the
  * surface is showing — one kind where it shows one (Discover's `?kind=`), the
  * open groups' where some are open (Map mode), and every kind of the place
- * otherwise. A row with no `kinds`, cached from before the field, shows its own.
+ * otherwise. A row with no `kinds` field, cached from before the field, shows
+ * its own; one with an empty list is on no map (#1275) and shows none.
  */
 function shownKinds(
   exp: Experience,
   shownKindNames: Set<string>,
   onlyKindId: number | null,
 ): Array<{ kind_id: number; type: string | null }> {
-  const kinds = exp.kinds?.length
-    ? exp.kinds
-    : [{ kind_id: exp.kind_id, kind_name: exp.kind_name || 'Experiences', type: exp.type }];
+  const kinds = exp.kinds ?? [{ kind_id: exp.kind_id, kind_name: exp.kind_name || 'Experiences', type: exp.type }];
   if (onlyKindId !== null) return kinds.filter(kind => kind.kind_id === onlyKindId);
   if (shownKindNames.size > 0) return kinds.filter(kind => shownKindNames.has(kind.kind_name));
   return kinds;

@@ -31,13 +31,13 @@ export interface KindGroup {
 }
 
 /**
- * The kinds a row is listed under: its offered kinds, or its own where it
- * carries none — a row cached from an answer older than the field has none.
+ * The kinds a row is listed under: its offered kinds — never empty on a listed
+ * row, since the list holds a place only where a membership offers it (#1275)
+ * — or its own where it carries no field at all, a row cached from an answer
+ * older than the field.
  */
 function kindsOf(exp: Experience): Array<{ kind_id: number; kind_name: string; kind_priority: number }> {
-  return exp.kinds?.length
-    ? exp.kinds
-    : [{ kind_id: exp.kind_id, kind_name: exp.kind_name, kind_priority: exp.kind_priority }];
+  return exp.kinds ?? [{ kind_id: exp.kind_id, kind_name: exp.kind_name, kind_priority: exp.kind_priority }];
 }
 
 /** Each place's rows in its other kinds, kept for as long as the place's own object lives. */
