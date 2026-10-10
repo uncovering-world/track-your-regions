@@ -21,12 +21,12 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { admissionAnsweredSql, membershipAdmittedSql } from '../../db/membership.js';
+import { admissionAnsweredSql, membershipAdmittedSql, membershipOfferedSql } from '../../db/membership.js';
 import {
   hidePendingSql, hideRefusedSql, linkedForReaderSql, offeredLinkSql, offeredLocationSql, venuesSql,
 } from '../../db/readerPredicates.js';
 import { CONTENTS_ROWS_SHOWN } from './reviewQueueContents.js';
-import { contentsAnswerableSql } from './waitingCounts.js';
+import { contentsTakeableSql, contentsWaitingSql } from './waitingCounts.js';
 import { ORPHANED_RUN_ERROR } from '../../services/sync/syncLogMarkers.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
@@ -824,7 +824,9 @@ describe('getReviewQueue', () => {
 
   it('counts a visible experience holding unread locations, and only unread ones', async () => {
     const sql = await capturedQueueSql('contents');
-    expect(sql).toContain(hidePendingSql('e')); // an arrival is the other card
+    // One card per membership holding unread rows it placed (#1290): the
+    // membership is offered, so an arrival is the other card.
+    expect(sql).toContain(contentsWaitingSql('e', 'm'));
     // Anchored inside the points subquery rather than on the statement, because the
     // same fragment is legitimately elsewhere in it: `offeredLocationSql` is what
     // `contentsWaitingSql` composes too, and a `.toContain` over the whole text
@@ -896,7 +898,7 @@ describe('getReviewQueue', () => {
 
   it('excludes a refused row from the contents card', async () => {
     const sql = await capturedQueueSql('contents');
-    expect(sql).toContain(hideRefusedSql('e'));
+    expect(sql).toContain(membershipOfferedSql('m'));
   });
 
   it('names the kind, the source and the external id on all three new kinds, like the older four do', async () => {
@@ -1389,7 +1391,7 @@ describe('getReviewQueue', () => {
       // The writer's own fragment, not a second spelling of it: a card offering a
       // button the writer refuses is a dead end with nothing on it to act on, and
       // two spellings of "may this be asked about again" is how one comes to.
-      expect(sql).toContain(contentsAnswerableSql('e', 'answerable_m'));
+      expect(sql).toContain(contentsTakeableSql('e'));
       expect(sql).toContain('AS takeable');
       // The columns beside it choose the sentence — each cause has its own card.
       expect(sql).toContain('answerable_m.admission AS object_admission');

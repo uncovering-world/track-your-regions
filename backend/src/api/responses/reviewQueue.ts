@@ -204,6 +204,8 @@ export const RefusedPoint = z.strictObject({
   note: z.string().nullable(),
   missingSince: timestamp.nullable().describe('Set where the source has stopped listing the point since it was turned down.'),
   visited: z.boolean(),
+  membershipId: z.number().int().nullable()
+    .describe('The membership the point is asked through — the first offered one whose run placed it (#1290); its take-back answers through it.'),
 }).describe('A point a curator turned down (#859).');
 export type RefusedPoint = z.infer<typeof RefusedPoint>;
 
@@ -219,6 +221,8 @@ export const RefusedWork = z.strictObject({
   refusedBy: z.string().nullable(),
   note: z.string().nullable(),
   missingSince: timestamp.nullable(),
+  membershipId: z.number().int().nullable()
+    .describe('The membership the link is asked through — the first offered one whose run placed it (#1290); its take-back answers through it.'),
 }).describe('A work link a curator turned down (#859).');
 export type RefusedWork = z.infer<typeof RefusedWork>;
 
@@ -283,8 +287,8 @@ export const ReviewQueueItem = z.strictObject({
   kind: z.enum(QUEUE_ITEM_KINDS),
   membership_id: z.number().int().nullable().optional().describe(
     'The membership this card asks about (#1264): an arrival, a held proposal or a refusal is one kind\'s, and an answer'
-    + ' sends it back as `membershipId`. Unread contents name the membership readers see the place through, which their'
-    + ' answer is written under. Absent on a card about the place as a whole.',
+    + ' sends it back as `membershipId`. Unread contents are asked per membership whose run placed them (#1290), one card'
+    + ' each, which their answer is written under. Absent on a card about the place as a whole.',
   ),
   image_url: z.string().nullable().optional(),
   image_credit: ImageCredit.nullable().optional(),
@@ -400,7 +404,7 @@ export const ReviewQueue = z.strictObject({
   componentItems: z.array(ReviewQueueItem).describe('Serial sites whose components have candidate Wikidata items (#1272).'),
   arrivals: z.array(ReviewQueueItem),
   held: z.array(ReviewQueueItem),
-  contents: z.array(ReviewQueueItem),
+  contents: z.array(ReviewQueueItem).describe('One per place and membership holding unread rows it placed (#1290).'),
   withdrawn: z.array(ReviewQueueItem),
   answeredWithdrawals: z.array(ReviewQueueItem),
   refusedParts: z.array(ReviewQueueItem),

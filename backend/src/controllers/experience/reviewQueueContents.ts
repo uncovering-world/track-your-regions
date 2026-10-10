@@ -29,12 +29,12 @@ import type { QueryResult } from 'pg';
 import {
   lifecycleSelectSql, linkedForReaderSql, offeredLinkSql, offeredLocationSql, publishedContentSql, venueCountSql, venuesSql,
 } from '../../db/readerPredicates.js';
-import { contentsMembershipSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
+import { contentsWaitingSql, linkMembershipSql, pointMembershipSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 import { objectContextSelectSql, QUEUE_PAGE_SIZE } from './reviewQueueContext.js';
 import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 import { pointMovedToSql } from './movedPoint.js';
-import { contentsOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql } from './reviewQueuePredicates.js';
+import { withdrawnContainerOpenSql, withdrawnPointOpenSql } from './reviewQueuePredicates.js';
 
 /**
  * The held fields of an object's parts, as the held card carries them.
@@ -246,10 +246,11 @@ export async function queryContents(
            pair.id AS coordinates_move_point_id,
            NULL::jsonb AS proposed
     FROM experiences e
-    -- The membership the contents are asked and answered through, which the
-    -- card names back (#1264, contentsMembershipSql). Its source is the one
-    -- the scope and the source chip read, as for every other waiting question.
-    LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${contentsMembershipSql('e.id')}
+    -- One card per membership holding unread rows it placed (#1290), which
+    -- the card names back and the section is drawn under. Its source is the
+    -- one the scope and the source chip read, as for every other waiting
+    -- question; the rows below are the ones asked through it.
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
     LEFT JOIN ${KINDS} kd ON kd.id = m.kind_id
     -- The unread point the object's held coordinate would take along, by the
     -- rule the publish asks (pointMovedToSql): the card marks this row and no
@@ -320,6 +321,7 @@ export async function queryContents(
         FROM experience_locations el
         WHERE el.experience_id = e.id AND ${unreadPointSql('el')}
           AND ${offeredLocationSql('el')}
+          AND ${pointMembershipSql('el')} = m.id
       ) el
     ) points
     CROSS JOIN LATERAL (
@@ -381,17 +383,18 @@ export async function queryContents(
           -- button cannot answer (ADR-0044).
           AND ${offeredLinkSql('et')}
           AND ${unreadLinkSql('et', 't')}
+          AND ${linkMembershipSql('et')} = m.id
       ) t
     ) works
-    -- contentsOpenSql restates the two lateral joins above as EXISTS, which is
-    -- what makes points.total > 0 OR works.total > 0 and the shared predicate
-    -- answer the same question about the same row (#805). Withdrawn
+    -- contentsWaitingSql restates the two lateral joins above as EXISTS, which
+    -- is what makes points.total > 0 OR works.total > 0 and the shared
+    -- predicate answer the same question about the same row (#805). Withdrawn
     -- rows belong to the 'missing' card, like an arrival and like a held
     -- proposal: the same row under two headings would ask two questions whose
     -- answers contradict each other. "May readers see these twelve works?" is
     -- not answerable while "did this venue disappear?" is open, and publishing
     -- the works would not put them anywhere a reader looks anyway.
-    WHERE ${contentsOpenSql('e')}
+    WHERE ${contentsWaitingSql('e', 'm')}
       AND ${scopeFilter} ${sourceFilter}
       AND e.id = ANY($${params.length + 1}::int[])
     ORDER BY e.id

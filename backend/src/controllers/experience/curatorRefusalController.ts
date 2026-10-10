@@ -42,7 +42,7 @@ import { answeredSourceId, contentsMembershipId, resolveExperienceScope } from '
 import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import type { AnswerRefusal } from './lifecycleController.js';
-import { contentsAnswerableSql, contentsMembershipSql } from './waitingCounts.js';
+import { contentsAnswerableSql, contentsMembershipToAnswerSql } from './waitingCounts.js';
 import { lockExperience, recordDecisionOnExperience } from '../../db/experienceWriter.js';
 import { markUnreadPointsRefused } from './experienceLocationWriter.js';
 import { markUnreadLinksRefused } from './workWriter.js';
@@ -75,9 +75,11 @@ export async function refuseContents(
     params: z.output<typeof idParamSchema>; body: z.output<typeof refuseContentsBodySchema>; caller: Express.User;
   },
 ): Promise<RefuseContentsResult> {
-  // In the scope of the source whose membership the contents belong to (#1264).
+  // In the scope of the source whose membership the rows are asked through
+  // (#1264, #1290): the one the body names, else the first holding unread rows.
   return answerThroughScope(id, caller, (experienceId, userId, logRegionId) =>
-    refuseContentsUnderLock(experienceId, userId, logRegionId, body), await contentsMembershipId(id));
+    refuseContentsUnderLock(experienceId, userId, logRegionId, body),
+  await contentsMembershipId(id, 'unread', body.membershipId));
 }
 
 /**
@@ -218,7 +220,9 @@ export async function refuseContentsUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
-  { locationIds, treasureIds, note }: { locationIds?: number[]; treasureIds?: number[]; note?: string },
+  { locationIds, treasureIds, note, membershipId }: {
+    locationIds?: number[]; treasureIds?: number[]; note?: string; membershipId?: number;
+  },
 ): Promise<{ result?: RefuseContentsResult; refusal?: AnswerRefusal }> {
   const anyNamed = locationIds !== undefined || treasureIds !== undefined;
   const client = await pool.connect();
@@ -247,12 +251,13 @@ export async function refuseContentsUnderLock(
       `SELECT m.id AS membership_id, m.admission, m.curation_state,
               (${contentsAnswerableSql()}) AS answerable
          FROM experiences e
-         -- Through the membership the contents belong to (#1264); with none
-         -- offered, the waiting one, whose state says what to answer instead.
+         -- Through the membership the body names, else the first holding
+         -- unread rows (#1264, #1290); with none, the waiting one, whose state
+         -- says what to answer instead.
          LEFT JOIN ${MEMBERSHIPS} m ON m.id = COALESCE(
-           ${contentsMembershipSql('e.id')}, ${membershipToAnswerSql('e.id', 'waiting')})
+           ${contentsMembershipToAnswerSql('e.id', '$2::int', 'unread')}, ${membershipToAnswerSql('e.id', 'waiting')})
         WHERE e.id = $1`,
-      [experienceId],
+      [experienceId, membershipId ?? null],
     );
     const before = read.rows[0] ?? {};
     if (before.answerable !== true) {
@@ -271,12 +276,15 @@ export async function refuseContentsUnderLock(
     // ADR-0083: a refused point keeps the withdrawal a move deferred onto it: a no
     // to a move leaves the stored pin where readers see it, and the location
     // writer goes on holding that pin while the refused point names it.
+    // Through the answering membership alone (#1290): another kind's rows
+    // under the same place stay asked about.
+    const answering = before.membership_id as number;
     if (locationIds !== undefined || !anyNamed) {
-      pointsRefused = await markUnreadPointsRefused(client, locked.lock, locationIds);
+      pointsRefused = await markUnreadPointsRefused(client, locked.lock, locationIds, answering);
     }
     const locationsRefused = pointsRefused;
     if (treasureIds !== undefined || !anyNamed) {
-      treasureLinksRefused = await markUnreadLinksRefused(client, locked.lock, treasureIds);
+      treasureLinksRefused = await markUnreadLinksRefused(client, locked.lock, treasureIds, answering);
     }
 
     if (locationsRefused + treasureLinksRefused === 0) {

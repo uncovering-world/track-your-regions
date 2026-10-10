@@ -85,7 +85,7 @@ describe('publishing the held fields of an object\'s parts', () => {
 
     // Resolved and locked through the one rule the card resolves by, scoped to
     // this experience — a reference alone is duplicated on nine objects.
-    const lock = only(queries, 'FROM experience_locations el');
+    const lock = only(queries, 'FOR UPDATE OF el');
     expect(lock.sql).toContain('FOR UPDATE');
     expect(lock.sql).toContain('el.experience_id = $1');
     expect(lock.params).toEqual([5, '1755-004', 'Château de Montésgur']);
@@ -431,7 +431,7 @@ describe('publishing the held fields of an object\'s parts', () => {
     // A contents publish leaves the object's row, its pointer and its held
     // proposal exactly as they were — a part's held field is part of that.
     expect(none(contents.queries, 'UPDATE experience_locations SET name')).toBe(true);
-    expect(none(contents.queries, 'FROM experience_locations el')).toBe(true);
+    expect(none(contents.queries, 'FOR UPDATE OF el')).toBe(true);
   });
 
   it('reports a part the record names that no offered row answers to, and publishes the rest', async () => {
@@ -482,7 +482,7 @@ describe('publishing the held fields of an object\'s parts', () => {
     // mocked lane cannot run the statement, so it pins the terms and their
     // order; the rule itself was run on the live rows 7485/7486, where the old
     // ordering handed this record to Sehlabathebe.
-    const lock = only(queries, 'FROM experience_locations el');
+    const lock = only(queries, 'FOR UPDATE OF el');
     expect(lock.sql).toContain('FOR UPDATE OF el');
     expect(lock.params).toEqual([5, '985ter-001', 'uKhahlamba Drakensberg Park']);
     expect(lock.sql).toMatch(/ORDER BY cand\.named DESC, cand\.renamed DESC, cand\.id/);

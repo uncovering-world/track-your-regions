@@ -25933,6 +25933,11 @@
           "note": {
             "type": "string",
             "maxLength": 1000
+          },
+          "membershipId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
           }
         }
       },
@@ -26053,6 +26058,19 @@
           },
           "visited": {
             "type": "boolean"
+          },
+          "membershipId": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The membership the point is asked through — the first offered one whose run placed it (#1290); its take-back answers through it."
           }
         },
         "required": [
@@ -26065,7 +26083,8 @@
           "refusedBy",
           "note",
           "missingSince",
-          "visited"
+          "visited",
+          "membershipId"
         ],
         "additionalProperties": false,
         "description": "A point a curator turned down (#859)."
@@ -26181,6 +26200,19 @@
                 "type": "null"
               }
             ]
+          },
+          "membershipId": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The membership the link is asked through — the first offered one whose run placed it (#1290); its take-back answers through it."
           }
         },
         "required": [
@@ -26192,7 +26224,8 @@
           "refusedAt",
           "refusedBy",
           "note",
-          "missingSince"
+          "missingSince",
+          "membershipId"
         ],
         "additionalProperties": false,
         "description": "A work link a curator turned down (#859)."
@@ -27531,7 +27564,8 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/ReviewQueueItem"
-            }
+            },
+            "description": "One per place and membership holding unread rows it placed (#1290)."
           },
           "withdrawn": {
             "type": "array",
@@ -27740,7 +27774,7 @@
             ]
           },
           "membership_id": {
-            "description": "The membership this card asks about (#1264): an arrival, a held proposal or a refusal is one kind's, and an answer sends it back as `membershipId`. Unread contents name the membership readers see the place through, which their answer is written under. Absent on a card about the place as a whole.",
+            "description": "The membership this card asks about (#1264): an arrival, a held proposal or a refusal is one kind's, and an answer sends it back as `membershipId`. Unread contents are asked per membership whose run placed them (#1290), one card each, which their answer is written under. Absent on a card about the place as a whole.",
             "anyOf": [
               {
                 "type": "integer",

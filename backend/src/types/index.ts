@@ -607,6 +607,12 @@ export const refuseContentsBodySchema = z.object({
   locationIds: z.array(bodyRowIdSchema).min(1).max(2000).optional(),
   treasureIds: z.array(bodyRowIdSchema).min(1).max(2000).optional(),
   note: z.string().max(1000).optional(),
+  /**
+   * The membership the card's section is about (#1290): the answer reaches the
+   * rows asked through it and no other kind's. Unnamed, the first membership
+   * holding such rows answers.
+   */
+  membershipId: bodyRowIdSchema.optional(),
 });
 
 export const newBadgesSeenBodySchema = z.object({

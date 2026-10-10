@@ -33,7 +33,7 @@ import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import type { QueryResult } from 'pg';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
-import { contentsAnswerableSql, contentsMembershipSql } from './waitingCounts.js';
+import { contentsMembershipToAnswerSql, contentsTakeableSql, linkMembershipSql, pointMembershipSql } from './waitingCounts.js';
 import { MEMBERSHIPS, membershipToAnswerSql, rowKindJoinSql } from '../../db/membership.js';
 import { type AnsweredQueryContext, CONTENTS_ROWS_SHOWN } from './reviewQueueContents.js';
 
@@ -110,7 +110,7 @@ export async function queryRefusedParts(
            -- writer's own fragment rather than by a second spelling of it: a card
            -- offering a button that 409s is a dead end with nothing on it to act
            -- on. The two columns beside it choose the sentence, never the verdict.
-           (${contentsAnswerableSql('e', 'answerable_m')}) AS takeable,
+           (${contentsTakeableSql('e')}) AS takeable,
            answerable_m.admission AS object_admission,
            answerable_m.curation_state AS object_curation_state,
            points.total AS refused_points_total,
@@ -125,7 +125,8 @@ export async function queryRefusedParts(
     -- reads it so the two ask about the same row (#1264): the one the contents
     -- belong to, else the waiting one.
     LEFT JOIN ${MEMBERSHIPS} answerable_m
-      ON answerable_m.id = COALESCE(${contentsMembershipSql('e.id')}, ${membershipToAnswerSql('e.id', 'waiting')})
+      ON answerable_m.id = COALESCE(${contentsMembershipToAnswerSql('e.id', 'NULL::int', 'refused')},
+                                    ${membershipToAnswerSql('e.id', 'waiting')})
     CROSS JOIN LATERAL (
       SELECT COUNT(*)::int AS total, MAX(refused_at) AS newest,
              COALESCE(jsonb_agg(jsonb_build_object(
@@ -145,12 +146,15 @@ export async function queryRefusedParts(
                'missingSince', missing_since,
                -- Whether anyone had been there. A visit survives a refusal
                -- (ADR-0022) and it is the weight of the decision being taken back.
-               'visited', visited
+               'visited', visited,
+               -- The membership the row is asked through (#1290), which its
+               -- take-back answers through.
+               'membershipId', membership_id
              ) ORDER BY refused_at DESC NULLS LAST, id)
                FILTER (WHERE rn <= ${CONTENTS_ROWS_SHOWN}), '[]'::jsonb) AS items
       FROM (
         SELECT el.id, el.name, el.external_ref, el.curated_fields, el.refused_at,
-               el.missing_since,
+               el.missing_since, ${pointMembershipSql('el')} AS membership_id,
                ST_Y(el.location) AS lat, ST_X(el.location) AS lon,
                ${decidedBy('el.refused_at')} AS refused_by,
                ${noteOf('el.refused_at')} AS note,
@@ -184,7 +188,8 @@ export async function queryRefusedParts(
                'refusedBy', refused_by,
                'note', note,
                -- The link's own withdrawal, for the reason the points carry it.
-               'missingSince', missing_since
+               'missingSince', missing_since,
+               'membershipId', membership_id
              ) ORDER BY refused_at DESC NULLS LAST, sitelinks_count DESC NULLS LAST, id)
                FILTER (WHERE rn <= ${CONTENTS_ROWS_SHOWN}), '[]'::jsonb) AS items
       FROM (
@@ -196,7 +201,7 @@ export async function queryRefusedParts(
         -- every row including the ones the cap then discards.
         SELECT t.id, t.name, t.artists, t.curated_fields ? 'artists' AS artists_curated,
                t.year, t.sitelinks_count, t.external_id, t.curated_fields,
-               et.refused_at, et.missing_since,
+               et.refused_at, et.missing_since, ${linkMembershipSql('et')} AS membership_id,
                ${decidedBy('et.refused_at')} AS refused_by,
                ${noteOf('et.refused_at')} AS note,
                row_number() OVER (

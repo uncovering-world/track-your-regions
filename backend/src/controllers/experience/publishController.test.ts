@@ -57,10 +57,11 @@ describe('publishing an arrival', () => {
     const update = only(queries, 'UPDATE experience_kind_memberships');
     expect(update.sql).toContain(`curation_state = 'verified'`);
     expect(update.params).toEqual([77, 5]);
-    // Its contents go with it: naming none means all of them, which is what an
-    // arrival card asks about — the whole object, nobody having seen any of it.
-    expect(only(queries, 'UPDATE experience_locations SET curation_state').sql).not.toContain('ANY($2::int[])');
-    expect(only(queries, 'UPDATE experience_treasures').sql).not.toContain('ANY($2::int[])');
+    // Its contents go with it, by id: the rows the arrival's section drew, read
+    // before the arrival was made offered (#1290), so the writers name them
+    // rather than deciding again under the state the publish just changed.
+    expect(only(queries, 'UPDATE experience_locations SET curation_state').params).toEqual([5, [21, 22]]);
+    expect(only(queries, 'UPDATE experience_treasures').params).toEqual([5, [31]]);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       curationState: 'verified', locationsPublished: 2, treasureLinksPublished: 12, treasuresPublished: 12,
     }));
@@ -290,8 +291,9 @@ describe('publishing bare contents ({ contentsOnly: true })', () => {
 
     const res = await publish({ contentsOnly: true }, client);
 
-    expect(only(queries, 'UPDATE experience_locations SET curation_state').sql).not.toContain('ANY($2::int[])');
-    expect(only(queries, 'UPDATE experience_treasures').sql).not.toContain('ANY($2::int[])');
+    // By id, the rows the section drew (#1290).
+    expect(only(queries, 'UPDATE experience_locations SET curation_state').params).toEqual([5, [21, 22]]);
+    expect(only(queries, 'UPDATE experience_treasures').params).toEqual([5, [31]]);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       locationsPublished: 2, treasureLinksPublished: 5, treasuresPublished: 5,
     }));

@@ -139,15 +139,18 @@ describe('unrefuseContents', () => {
     expect(points?.sql).toContain('SET refused_at = NULL');
     expect(points?.sql).toContain('refused_at IS NOT NULL');
     expect(points?.sql).toContain('RETURNING id');
-    // The state is not this act's to write — on either kind.
-    expect(points?.sql).not.toContain('curation_state');
+    // The state is not this act's to write — on either kind; the membership
+    // filter in the WHERE reads it, and may.
+    expect(points?.sql).not.toContain('SET curation_state');
+    expect(points?.sql).not.toMatch(/curation_state\s*=\s*'/);
 
     const links = client.queries.find(q => q.sql.includes('UPDATE experience_treasures'));
     expect(links?.sql).toContain('SET refused_at = NULL');
     expect(links?.sql).toContain('RETURNING et.treasure_id');
     // A refused link was set `pending` to say nobody had passed the work *here*.
     // Putting `auto` back would silently pass a work a curator turned down.
-    expect(links?.sql).not.toContain('curation_state');
+    expect(links?.sql).not.toContain('SET curation_state');
+    expect(links?.sql).not.toMatch(/curation_state\s*=\s*'/);
   });
 
   it('reaches a part the source has stopped offering, which nothing else can', async () => {
@@ -198,7 +201,7 @@ describe('unrefuseContents', () => {
     expect(works.queries.some(q => q.sql.includes('UPDATE experience_locations'))).toBe(false);
     const links = works.queries.find(q => q.sql.includes('UPDATE experience_treasures'));
     expect(links?.sql).toContain('ANY($2::int[])');
-    expect(links?.params).toEqual([5, [88, 89]]);
+    expect(links?.params).toEqual([5, [88, 89], 40]);
 
     const points = makeClient(VISIBLE);
     await answerRoute(postUnrefuseContents, 

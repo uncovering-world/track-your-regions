@@ -20,6 +20,46 @@ import { publishUnreadPoints, releaseDeferredWithdrawals } from './experienceLoc
 import { lockWorksToPublish, publishUnreadLinks, publishUnreadWorks } from './workWriter.js';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 import { pointMovedToSql } from './movedPoint.js';
+import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
+import { linkAnsweredBySql, pointAnsweredBySql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
+
+/**
+ * The unread points and works one membership's answer reaches, by id (#1290):
+ * exactly the rows its section drew — the rows asked through it; for an
+ * arrival, the rows its run placed that no offered membership is asked
+ * through; and, for an arrival that is the place's only membership, the rows
+ * nothing placed and no kind yet answers for (`pointAnsweredBySql`,
+ * `linkAnsweredBySql`) — the named ones among them. Read under the lock
+ * **before** the caller makes an arriving membership offered: read after, a
+ * row another kind's section drew would be asked through the arrival's kind
+ * where that kind sorts first, and go out with an arrival no section of that
+ * kind showed it under. A kind named alone leaves the other kind's rows
+ * untouched, as `publishContents`' own naming rule has it. Read by the publish
+ * (`publishController.ts`) and by the admission's override
+ * (`lifecycleController.ts`), which both reach `publishContents`.
+ */
+export async function contentsReached(
+  client: PoolClient,
+  experienceId: number,
+  { locationIds, treasureIds, membershipId }: { locationIds?: number[]; treasureIds?: number[]; membershipId: number },
+): Promise<{ locationIds?: number[]; treasureIds?: number[] }> {
+  const reached = await client.query<{ points: number[]; works: number[] }>(
+    `SELECT COALESCE((SELECT array_agg(el.id) FROM experience_locations el
+                       WHERE el.experience_id = $1 AND ${offeredLocationSql('el')} AND ${unreadPointSql('el')}
+                         AND ${pointAnsweredBySql('el', '$2::int')}
+                         AND ($3::int[] IS NULL OR el.id = ANY($3::int[]))), '{}') AS points,
+            COALESCE((SELECT array_agg(DISTINCT et.treasure_id) FROM experience_treasures et
+                       JOIN treasures t ON t.id = et.treasure_id
+                       WHERE et.experience_id = $1 AND ${offeredLinkSql('et')} AND ${unreadLinkSql('et', 't')}
+                         AND ${linkAnsweredBySql('et', '$2::int')}
+                         AND ($4::int[] IS NULL OR et.treasure_id = ANY($4::int[]))), '{}') AS works`,
+    [experienceId, membershipId, locationIds ?? null, treasureIds ?? null],
+  );
+  const { points, works } = reached.rows[0];
+  const namesPoints = locationIds !== undefined || treasureIds === undefined;
+  const namesWorks = treasureIds !== undefined || locationIds === undefined;
+  return { locationIds: namesPoints ? points : undefined, treasureIds: namesWorks ? works : undefined };
+}
 
 /**
  * Whether a publish naming these ids publishes the venue's pending works: when
@@ -58,6 +98,7 @@ export async function publishContents(
   lock: LockedExperience,
   locationIds?: number[],
   treasureIds?: number[],
+  membershipId?: number,
 ): Promise<{
   locationsPublished: number;
   treasureLinksPublished: number;
@@ -69,7 +110,7 @@ export async function publishContents(
   let locationsPublished = 0;
   if (locationIds !== undefined || !anyNamed) {
     // Exactly the points the `contents` card shows (`publishUnreadPoints` says why).
-    locationsPublished = await publishUnreadPoints(client, lock, locationIds);
+    locationsPublished = await publishUnreadPoints(client, lock, locationIds, membershipId);
   }
 
   // A point that moved is a withdrawal plus an insert, and the location writer
@@ -86,14 +127,14 @@ export async function publishContents(
     // The works this writes, locked ascending in one statement before the
     // UPDATE takes them in scan order (#1095); where the caller already took
     // them, with the held works, the rows are this transaction's already.
-    await lockWorksToPublish(client, lock, { heldRefs: [], pending: { treasureIds } });
+    await lockWorksToPublish(client, lock, { heldRefs: [], pending: { treasureIds, membershipId } });
     // Two states from one id, because they are two facts: the link says this
     // work has been passed as being *here*, the work says it has been passed at
     // all — "checked once, globally" (ADR-0025 decision 2). A reader's treasure
     // list gates both, so publishing one and not the other would leave the
     // card's count unanswered.
-    treasureLinksPublished = await publishUnreadLinks(client, lock, treasureIds);
-    treasuresPublished = await publishUnreadWorks(client, lock, treasureIds);
+    treasureLinksPublished = await publishUnreadLinks(client, lock, treasureIds, membershipId);
+    treasuresPublished = await publishUnreadWorks(client, lock, treasureIds, membershipId);
   }
 
   return { locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased };

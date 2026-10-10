@@ -37,13 +37,11 @@ import type { z } from 'zod/v4';
 import type { PublishResult, AppliedPart, PartNotFound } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql, withTypeClaim } from '../../db/membership.js';
-import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
-import { contentsMembershipSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 import type { CheckValue } from '../../db/schema.generated.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { idParamSchema, publishExperienceBodySchema } from '../../types/index.js';
 import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
-import { publishContents, placeAfterRelease, pointMovedWithObject, worksPublished } from './publishContents.js';
+import { contentsReached, publishContents, placeAfterRelease, pointMovedWithObject, worksPublished } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { heldFieldWrites, publicationAssignments, type HeldFieldWrites } from './publishHeldFields.js';
 import {
@@ -232,44 +230,20 @@ export async function publishExperience(
 }
 
 /**
- * Which unread contents a publish releases, as `contentsOf` takes them (#1264).
- *
- * A publish that names contents, or a fields publish, is taken as asked. An
- * object publish releases them only through the membership they belong to
- * (`contentsMembershipSql`), or where none is offered yet — the arrival that
- * makes the place visible takes them all. Through any other membership it
- * leaves them, as a fields publish does: an Archaeology arrival on a place
- * readers see as an art museum does not release what the Art Museums question
- * is still asking about. It does release what it brought itself — the points
- * and works its own membership placed — since those arrived with it.
+ * Which unread contents a publish releases, as `contentsOf` takes them (#1264,
+ * #1290): on a fields publish none; otherwise exactly the rows the answering
+ * membership's section drew, by id (`contentsReached`, `publishContents.ts`),
+ * read under the lock before the publish makes an arriving membership offered.
  */
 async function contentsReleased(
   client: PoolClient,
   experienceId: number,
-  { fieldsOnly, contentsOnly, locationIds, treasureIds, membershipId, owner, arrival }: {
-    fieldsOnly?: true; contentsOnly: boolean; locationIds?: number[]; treasureIds?: number[];
-    membershipId: number; owner: number | null; arrival: boolean;
+  { fieldsOnly, locationIds, treasureIds, membershipId }: {
+    fieldsOnly?: true; locationIds?: number[]; treasureIds?: number[]; membershipId: number;
   },
 ): Promise<{ fieldsOnly?: true; locationIds?: number[]; treasureIds?: number[] }> {
-  if (fieldsOnly || contentsOnly || owner === null || owner === membershipId) {
-    return { fieldsOnly, locationIds, treasureIds };
-  }
-  if (!arrival) return { fieldsOnly: true };
-  const placed = await client.query<{ points: number[]; works: number[] }>(
-    `SELECT COALESCE((SELECT array_agg(el.id) FROM experience_locations el
-                        JOIN experience_location_placements lp ON lp.location_id = el.id
-                       WHERE el.experience_id = $1 AND lp.membership_id = $2
-                         AND ${offeredLocationSql('el')} AND ${unreadPointSql('el')}), '{}') AS points,
-            COALESCE((SELECT array_agg(DISTINCT et.treasure_id) FROM experience_treasures et
-                        JOIN experience_treasure_placements tp ON tp.link_id = et.id
-                        JOIN treasures t ON t.id = et.treasure_id
-                       WHERE et.experience_id = $1 AND tp.membership_id = $2
-                         AND ${offeredLinkSql('et')} AND ${unreadLinkSql('et', 't')}), '{}') AS works`,
-    [experienceId, membershipId],
-  );
-  const { points, works } = placed.rows[0];
-  if (points.length === 0 && works.length === 0) return { fieldsOnly: true };
-  return { locationIds: points, treasureIds: works };
+  if (fieldsOnly) return { fieldsOnly };
+  return contentsReached(client, experienceId, { locationIds, treasureIds, membershipId });
 }
 
 /**
@@ -286,13 +260,15 @@ async function contentsReleased(
 async function contentsOf(
   client: PoolClient,
   lock: LockedExperience,
-  { fieldsOnly, applied, locationIds, treasureIds }: {
-    fieldsOnly?: true; applied: string[]; locationIds?: number[]; treasureIds?: number[];
+  { fieldsOnly, applied, locationIds, treasureIds, membershipId }: {
+    fieldsOnly?: true; applied: string[]; locationIds?: number[]; treasureIds?: number[]; membershipId: number;
   },
 ): Promise<Awaited<ReturnType<typeof publishContents>>> {
   if (!fieldsOnly) return publishContents(client, lock, locationIds, treasureIds);
   const movedPoint = applied.includes('location') ? await pointMovedWithObject(client, lock) : null;
-  if (movedPoint !== null) return publishContents(client, lock, [movedPoint]);
+  // Through the answering membership too (#1290): the pin arrived with the
+  // run whose coordinate it is.
+  if (movedPoint !== null) return publishContents(client, lock, [movedPoint], undefined, membershipId);
   return { locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0, withdrawalsReleased: 0 };
 }
 
@@ -543,8 +519,7 @@ export async function publishUnderLock(
       // none.
       `SELECT e.curated_fields, e.metadata, e.name_local, e.image_url,
               m.id AS membership_id, m.curation_state, m.admission,
-              m.pending_change_sync_log_id, m.curated_fields ? 'type' AS type_claimed,
-              ${contentsMembershipSql('e.id')} AS contents_membership_id
+              m.pending_change_sync_log_id, m.curated_fields ? 'type' AS type_claimed
          FROM experiences e
          LEFT JOIN ${MEMBERSHIPS} m ON m.id = ${membershipToAnswerSql('e.id', 'waiting', '$2::int')}
         WHERE e.id = $1`,
@@ -581,6 +556,10 @@ export async function publishUnderLock(
     let appliedParts: AppliedPart[] = [];
     let partsNotFound: PartNotFound[] = [];
     let heldLeftOpen = 0;
+
+    // The rows this publish releases, read before anything below changes
+    // which membership they are asked through (contentsReleased).
+    const release = await contentsReleased(client, experienceId, { fieldsOnly, locationIds, treasureIds, membershipId });
 
     if (!contentsOnly) {
       const pointer = (before.pending_change_sync_log_id as number | null) ?? null;
@@ -657,11 +636,7 @@ export async function publishUnderLock(
     //
     // One point is the exception (`contentsOf`): the one that is the object's
     // own coordinate moving.
-    const release = await contentsReleased(client, experienceId, {
-      fieldsOnly, contentsOnly, locationIds, treasureIds, membershipId,
-      owner: before.contents_membership_id ?? null, arrival: before.curation_state === 'pending',
-    });
-    const contents = await contentsOf(client, locked.lock, { ...release, applied });
+    const contents = await contentsOf(client, locked.lock, { ...release, applied, membershipId });
     const { locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased } = contents;
 
     await client.query(`
