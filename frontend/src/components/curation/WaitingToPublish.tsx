@@ -42,9 +42,9 @@ import { sectionKind, type GatedGroup } from './gatedGroup';
  * Which halves share a section is measured against the queries rather than
  * assumed: `held` fires only where the membership's `curation_state <>
  * 'pending'` (#822), so **an arrival is always alone** in its section; unread
- * contents name the membership they belong to (the backend's
- * `contentsMembershipSql`), so where that membership also holds a proposal
- * they share its section — the source wants to change the label *and* the
+ * contents name the membership whose run placed them (the backend's
+ * `pointMembershipSql` / `linkMembershipSql`, #1290), so where that membership
+ * also holds a proposal they share its section — the source wants to change the label *and* the
  * museum gained twelve paintings. A second section exists only where a second
  * kind asks.
  */

@@ -22,6 +22,7 @@ import {
 import PlaceIcon from '@mui/icons-material/Place';
 import { useMutation } from '@tanstack/react-query';
 import { unrefuseContents, type UnrefuseContentsResult } from '../../api/curation';
+import { namedMembership } from '../../utils/namedMembership';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { formatDateTime } from '../../utils/dateFormat';
 import { plural } from '../../utils/plural';
@@ -162,10 +163,14 @@ export function blockedByObject(item: BlockingFacts): string | null {
 
 /** What pressing the button will actually do, which the source's answer decides. */
 export function takeBackCaption(
-  item: BlockingFacts, part: { missingSince: string | null }, noun: string,
+  item: BlockingFacts, part: { missingSince: string | null; membershipId?: number | null }, noun: string,
 ): string {
   const blocked = blockedByObject(item);
   if (blocked) return blocked;
+  if (part.membershipId === null) {
+    return 'No kind readers see the place in asks about it yet: it came with an arrival nobody '
+      + 'has passed, and can be asked about again once that arrival is.';
+  }
   if (part.missingSince) {
     return 'Puts the question back on record. The source no longer offers it, so nothing '
       + 'will show it until the source lists it again.';
@@ -197,12 +202,15 @@ function RefusedPointRow({ item, point, onDone }: {
   const hasPoint = typeof point.latitude === 'number' && typeof point.longitude === 'number';
 
   const askAgain = useMutation({
-    mutationFn: () => unrefuseContents(item.id, { locationIds: [point.id] }),
+    // Through the membership the row is asked through (#1290).
+    mutationFn: () => unrefuseContents(item.id, { locationIds: [point.id], ...namedMembership(point.membershipId) }),
     onSettled: (data, error) => onDone(
       error ? messageFor(item, error)
         : askedAgainOutcome(item.name, data, point.missingSince === null), item.id),
   });
-  const blocked = blockedByObject(item) !== null;
+  // A row no offered kind asks through (#1290) — only a membership not yet
+  // offered placed it — is its arrival's: nothing answers for it here.
+  const blocked = blockedByObject(item) !== null || point.membershipId === null;
 
   return (
     <Box sx={{ mb: 2 }}>
@@ -286,12 +294,12 @@ function RefusedWorkRow({ item, work, onDone }: {
   onDone: OnDone;
 }) {
   const askAgain = useMutation({
-    mutationFn: () => unrefuseContents(item.id, { treasureIds: [work.id] }),
+    mutationFn: () => unrefuseContents(item.id, { treasureIds: [work.id], ...namedMembership(work.membershipId) }),
     onSettled: (data, error) => onDone(
       error ? messageFor(item, error)
         : askedAgainOutcome(item.name, data, work.missingSince === null), item.id),
   });
-  const blocked = blockedByObject(item) !== null;
+  const blocked = blockedByObject(item) !== null || work.membershipId === null;
 
   const about = [
     creatorsBrief(work.artists, work.artistsCurated),

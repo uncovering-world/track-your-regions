@@ -108,7 +108,7 @@ export function GatedSection({ group, heading, objectButton, onDone }: {
   const publish = useMutation({
     // The membership the section is about (#1264): a held field's answer is
     // the held proposal's, anything else the arrival's where there is one, and
-    // unread contents the membership readers see the place through.
+    // unread contents the membership whose run placed them (#1290).
     mutationFn: (body?: PublishRequest) => publishExperience(group.id, {
       ...(body ?? publishBodyFor(group)),
       ...namedMembership(body?.heldFields !== undefined || body?.heldParts !== undefined
@@ -173,7 +173,10 @@ export function GatedSection({ group, heading, objectButton, onDone }: {
   // the object, since the point counts toward no region now; a moved point's
   // pin stays where readers see it (ADR-0083).
   const turnDown = useMutation({
-    mutationFn: (body: RefuseContentsBody) => refuseContents(group.id, body),
+    // Through the section's membership (#1290): the no reaches the rows this
+    // kind placed and no other section's.
+    mutationFn: (body: RefuseContentsBody) =>
+      refuseContents(group.id, { ...body, ...namedMembership(contents?.membership_id) }),
     onSettled: (data, error) => {
       invalidateExperiences(queryClient, { experienceId: group.id });
       onDone(error ? messageFor(item, error) : keptOutOutcomeFor(item, false, data));
