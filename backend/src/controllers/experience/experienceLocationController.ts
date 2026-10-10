@@ -755,8 +755,8 @@ export async function getExperienceVisitedStatus(
       --
       -- Not a withdrawn point this reader has visited, even to keep their
       -- record of it in view: a replaced point shows why. Identity is the point together with the
-      -- source's reference, so an edit to either — a component moved to a new place, a
-      -- renumbered one — is a withdrawal plus an insert, and the reader
+      -- source's reference, so an edit to either — a component moved to a new place, one
+      -- renumbered and moved (ADR-0090) — is a withdrawal plus an insert, and the reader
       -- would meet the same place twice, once ticked and once not, with this
       -- denominator
       -- disagreeing with the location_count every list shows. The visit row is

@@ -159,6 +159,43 @@ describe('writeExperienceLocations — when a stored point is the incoming one',
     }
   });
 
+  it("reads a reference past the inscription's variant in both sites, and asks it exactly on the fast path alone (ADR-0090)", async () => {
+    mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
+    const { client, statements } = fakeClient([
+      [INSERT, { rows: [{ id: 9, curation_state: 'pending', name: 'A', external_ref: 'r1' }] }],
+      [MARK, { rowCount: 1 }],
+    ]);
+    mockedConnect.mockResolvedValue(client);
+
+    await writeExperienceLocations(1, [A]);
+
+    const all = [String(mockedQuery.mock.calls[0][0]), ...statements];
+    for (const [what, pattern, slice] of ASKS_SAME_POINT) {
+      const sql = slice(String(all.find(s => pattern.test(s))));
+      // 829bis-001 and 829ter-001 are one reference where the geometry says one
+      // place: the pairing's candidate relation and the fast path's match both
+      // compose samePointSql, the fragment that reads past the variant.
+      expect(sql, `${what} reads past the variant`).toContain('whc_ref_bare(el.external_ref) = whc_ref_bare(i.external_ref)');
+    }
+    // The fast path asks for the reference exactly as well, outside the fragment:
+    // a renumbering is a change the keeping arm writes once, and an object whose
+    // only change is its numbering must not read as unchanged.
+    const fast = String(mockedQuery.mock.calls[0][0]);
+    const outsideFragment = fast.split('whc_ref_bare(i.external_ref)))').pop() ?? '';
+    expect(outsideFragment).toContain('el.external_ref IS NOT DISTINCT FROM i.external_ref');
+    // And the pairing takes an exact reference before one read past its variant,
+    // so a property whose rows carry both numberings pairs by the number, not by
+    // the centimetre.
+    // A claimed row pairs at any distance, so it compares the reference exactly:
+    // the window that tells Pompeii from Getbol cannot speak for it.
+    const candidateSql = String(all.find(s => /candidate AS \(/.test(s)));
+    const claimedTerm = candidateSql.slice(candidateSql.indexOf("curated_fields ? 'location'"));
+    expect(claimedTerm.slice(0, 200)).toContain('el.external_ref IS NOT DISTINCT FROM i.external_ref');
+    expect(claimedTerm.slice(0, 200)).not.toContain('whc_ref_bare');
+    const candidate = candidateSql;
+    expect(candidate).toMatch(/ORDER BY ordinal, exact_ref DESC, \(missing_since IS NULL\) DESC, metres, location_id/);
+  });
+
   it('holds the tolerance to a matching reference, and to ten metres', async () => {
     mockedQuery.mockResolvedValue({ rows: [{ stored: '1', matched: '0', ids: [7] }] });
     const { client } = fakeClient();
@@ -384,7 +421,7 @@ describe('writeExperienceLocations — when a stored point is the incoming one',
     const build = String(statements.find(s => /CREATE TEMP TABLE paired_rows/.test(s)));
     expect(build).toContain('DISTINCT ON (ordinal)');
     expect(build).toContain('DISTINCT ON (location_id)');
-    expect(build).toContain('ORDER BY ordinal, (missing_since IS NULL) DESC, metres');
+    expect(build).toContain('ORDER BY ordinal, exact_ref DESC, (missing_since IS NULL) DESC, metres');
     expect(build).toContain('ORDER BY location_id, ordinal');
     const kept = String(statements.find(s => KEEP.test(s) && !RESURRECT.test(s)));
     expect(kept).toContain('FROM paired_rows p JOIN incoming i ON i.ordinal = p.ordinal');

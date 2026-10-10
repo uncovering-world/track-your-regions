@@ -70,9 +70,10 @@
  *   Compostela in France"), and it is that experience's only point — so the match
  *   is `IS NOT DISTINCT FROM` rather than `=`. Under `=` that site's withdrawal
  *   would apply at once and leave a World Heritage site with nothing on the map.
- * - A renumbered component changes the reference itself, so no match by reference
- *   is possible at all — and 787 of the 788 single-point UNESCO sites carry one.
- *   Whatever the references cannot pair is therefore paired by position.
+ * - A component renumbered *and* moved changes the reference itself, so no match by
+ *   reference is possible at all — and 787 of the 788 single-point UNESCO sites carry
+ *   one. Whatever the references cannot pair is therefore paired by position. One
+ *   renumbered at its point is not a withdrawal at all (ADR-0090).
  *
  * That makes the promise a count rather than a hope. Exactly
  * min(withdrawals, arrivals) withdrawals are held, so the points a reader can see
@@ -249,6 +250,7 @@ export async function writeExperienceLocations(
   const paired = `${cte},
      candidate AS (
        SELECT i.ordinal, el.id AS location_id, el.missing_since,
+              (el.external_ref IS NOT DISTINCT FROM i.external_ref) AS exact_ref,
               ST_Distance(el.location::geography,
                           ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)::geography) AS metres
        FROM incoming i
@@ -256,10 +258,14 @@ export async function writeExperienceLocations(
          ON el.experience_id = $1
         AND (${samePointSql('el')} OR ${claimedPointSql('el')})
      ),
+     -- The reference exactly before one read past its variant (ADR-0090
+     -- decision 3): where a property's rows carry both numberings, the row
+     -- the incoming reference names outright is the candidate, not whichever
+     -- is a centimetre nearer.
      best_row AS (
        SELECT DISTINCT ON (ordinal) ordinal, location_id, metres
        FROM candidate
-       ORDER BY ordinal, (missing_since IS NULL) DESC, metres, location_id
+       ORDER BY ordinal, exact_ref DESC, (missing_since IS NULL) DESC, metres, location_id
      ),
      paired AS (
        SELECT DISTINCT ON (location_id) ordinal, location_id, metres
@@ -288,6 +294,12 @@ export async function writeExperienceLocations(
                 AND el.missing_since IS NULL
                 AND ${runsPoint('el')}
                 AND ${samePointSql('el')}
+                -- The reference exactly, where the pairing reads past the
+                -- inscription's variant (ADR-0090): a renumbered component is
+                -- the same row, and the one change to write is its reference,
+                -- which the keeping arm writes on the slow path this term buys
+                -- once; the next run matches here again.
+                AND el.external_ref IS NOT DISTINCT FROM i.external_ref
                 AND el.ordinal = i.ordinal
                 -- A claimed name against a source that offers none is matched, and
                 -- it is the one claim this comparison forgives. upsertSingleLocation
@@ -690,12 +702,12 @@ export async function writeExperienceLocations(
               ),
               -- Whatever the references could not pair, matched by position
               -- alone. This is where "hold rather than apply" is decided, and it
-              -- is not a nicety: a source that renumbers a component writes a
-              -- withdrawal and an insert whose references do not line up, and 787
-              -- of the 788 single-point UNESCO sites carry a component reference.
+              -- is not a nicety: a source that renumbers a component and moves it
+              -- writes a withdrawal and an insert whose references do not line up
+              -- (one renumbered at its point keeps its row, ADR-0090), and 787 of
+              -- the 788 single-point UNESCO sites carry a component reference.
               -- Under a gate, applying that withdrawal takes the site's only pin
-              -- off the map while its replacement is invisible — and a renumber
-              -- does not even have to move the point to do it.
+              -- off the map while its replacement is invisible.
               --
               -- What this buys is stated as a count, because that is the promise:
               -- exactly min(withdrawals, arrivals) withdrawals are held, so the

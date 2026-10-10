@@ -33,8 +33,9 @@
  *
  * For the region assignment this is the right question either way: a component
  * that kept its point kept its region, and one that moved has to be recomputed
- * whatever it is called. Keying on the pair only adds that a *renumbered*
- * component is treated as new — which errs towards recomputing, the safe side.
+ * whatever it is called. The reference half reads past the inscription's
+ * variant (ADR-0090): a component the list renumbered at an extension, at the
+ * same point, is the same row, and only one renumbered *and* moved is new.
  *
  * Every comparison happens in PostGIS rather than on JavaScript numbers.
  * Round-tripping a coordinate through a JS float to compare it risks calling an
@@ -44,6 +45,22 @@
 import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
 import type { ContentItem, ContentItemChange, ContentsDelta } from './types.js';
 import { pointChanges } from './contentsChangeSet.js';
+
+/**
+ * When a stored row's reference is the one the source is offering: equal, or
+ * naming the same property number and part under another variant of the
+ * inscription — `829bis-001` and `829ter-001` are one reference, the way the
+ * list renumbers every component when a property is extended (ADR-0090,
+ * `whc_ref_bare` in the schema). Null-safe, so a referenceless row is covered
+ * (`claimedPointSql` says why). Composed by `samePointSql` alone, where the
+ * ten-metre window is what makes a variant match the same place; a claimed
+ * row, which pairs at any distance, compares the reference exactly.
+ */
+export function sameReferenceSql(alias: string): string {
+  return `(${alias}.external_ref IS NOT DISTINCT FROM i.external_ref
+             OR (${alias}.external_ref IS NOT NULL AND i.external_ref IS NOT NULL
+                 AND whc_ref_bare(${alias}.external_ref) = whc_ref_bare(i.external_ref)))`;
+}
 
 /**
  * When a stored row is the point the source is offering (ADR-0027).
@@ -77,7 +94,7 @@ import { pointChanges } from './contentsChangeSet.js';
  * beside it are parameters, bound by `locationIncoming.ts` as everywhere here.
  */
 export function samePointSql(alias: string): string {
-  return `${alias}.external_ref IS NOT DISTINCT FROM i.external_ref
+  return `${sameReferenceSql(alias)}
         AND (CASE WHEN i.external_ref IS NULL
                   THEN ${alias}.location = ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)
                   ELSE ST_DWithin(${alias}.location::geography,
@@ -125,6 +142,10 @@ export function samePointSql(alias: string): string {
  * first-listed point takes the claimed row and the other arrives as new.
  */
 export function claimedPointSql(alias: string): string {
+  // The reference exactly, never read past its variant: a claimed row pairs at
+  // any distance, so the geometry that tells Pompeii's renumbering from
+  // Getbol's (ADR-0090 decision 2) cannot speak here, and a claimed Boseong
+  // (1591-004) would take Gochang's 1591bis-004.
   return `${alias}.curated_fields ? 'location'
         AND ${alias}.external_ref IS NOT DISTINCT FROM i.external_ref`;
 }
