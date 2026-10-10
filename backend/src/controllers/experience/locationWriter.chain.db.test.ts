@@ -196,4 +196,27 @@ describe('a point moved twice under a gated source, with no publish in between',
 
   it('holds the visible row on the newest arrival under a renumbered reference, and a publish leaves exactly one pin', () =>
     chain('Y'));
+
+  it('keeps the row, its id and its state when the list renumbers the component at the same point (ADR-0090)', async () => {
+    // Pompeii: 829bis-001 while the property stands at its first extension,
+    // 829ter-001 after its second — the same point, the same name.
+    const first = await offer(10.5, '829bis-001');
+    const l0 = first.needsAssignment[0];
+    await publish();
+    expect(await rows()).toMatchObject([{ id: l0, curation_state: 'verified', missing_since: null, ordinal: 1 }]);
+
+    const renumbered = await offer(10.5, '829ter-001');
+    // No arrival, no withdrawal, nothing to place: the one row took the new reference.
+    expect(renumbered.needsAssignment).toEqual([]);
+    expect(renumbered.unoffered).toBe(0);
+    expect(await rows()).toMatchObject([{ id: l0, curation_state: 'verified', missing_since: null, withdrawal_deferred_for_location_id: null }]);
+    const ref = await pool.query<{ external_ref: string }>('SELECT external_ref FROM experience_locations WHERE id = $1', [l0]);
+    expect(ref.rows[0].external_ref).toBe('829ter-001');
+    expect(await readerVisibleIds()).toEqual([l0]);
+
+    // The next run offering 829ter-001 reads as unchanged: the fast path, one row.
+    const again = await offer(10.5, '829ter-001');
+    expect(again.unchanged).toEqual([l0]);
+    expect(await rows()).toHaveLength(1);
+  });
 });
