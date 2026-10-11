@@ -79,12 +79,8 @@ This phase includes the full pre-commit verification suite:
 npm run gates        # what this change asks for; every skip carries its reason
 npm run check
 npm run knip
-npm run security:all
-TEST_REPORT_LOCAL=1 npm run gates -- run test
-npm run test:e2e:smoke   # when npm run gates lists it
-npm run test:db          # when npm run gates lists it
-npm run test:api         # when npm run gates lists it
-npm run perf:local       # when npm run gates lists it
+TEST_REPORT_LOCAL=1 npm run gates -- run test --affected
+npm run gates -- run stack   # run only the lanes it marks `run here`; CI runs the rest (/commit § 8)
 ```
 
 Plus `/security-check` for Claude Code security review.

@@ -76,35 +76,41 @@ command that runs it against 3.12 instead.
 ### Testing
 
 **A gate runs when, and only when, the inputs it checks have changed.**
-`scripts/gates.mjs` is the map from each gate to its inputs;
-`npm run gates` prints which gates the current change asks for and why
-the rest are skipped; `docs/tech/gates.md` has the map and the
-reasoning. Before every commit: `npm run check` (the fast gates the
-change asks for; `npm run check:all` forces every one),
-`npm run gates -- run test` (the unit lanes it asks for;
-`TEST_REPORT_LOCAL=1` keeps them on the host), and `/security-check`.
-Before the pull request opens, and again on the head the maintainer is
-asked to merge when a review wave since then touched their inputs:
-`npm run security:all` (the fast gates plus the slow Semgrep and Trivy
-scans the change asks for) and, when `npm run gates` lists them,
-`npm run test:e2e:smoke`, `npm run test:db`, `npm run test:api` and `npm run perf:local` — a
-review-wave push owes the per-commit tier alone, and CI answers for the
-slow lanes on the pushed head (the `commit` skill's § 8, `.claude/skills/commit/SKILL.md`, holds the
-rule, #920). A
-gate the map skips was not run and did not need to be; a gate the host
-cannot run (the Python tooling guard) is a failure to report, not a
-skip. CI reads the same map per job, so a skipped job is a job whose
-inputs the pull request does not touch. A gate that already passed on the
-same inputs — after a fold, a clean rebase or a Markdown-only wave — is
-not run again and is printed as reused, never as a fresh pass;
-`--no-cache` runs it anyway, and CI never reuses one (ADR-0091).
+`scripts/gates.mjs` is the map from each gate to its inputs; `npm run
+gates` prints which gates the current change asks for and why the rest
+are skipped; `docs/tech/gates.md` has the map and the reasoning. Before
+every commit: `npm run check` (the fast gates the change asks for; `npm
+run check:all` forces every one), `TEST_REPORT_LOCAL=1 npm run gates --
+run test --affected` (the unit lanes it asks for, narrowed to the specs
+the change reaches; without `--affected` they run whole), and
+`/security-check`. A review wave runs the same two against the pull
+request's pushed head (`--base <head>`), which CI has already answered
+for. The slow lanes — the Semgrep and Trivy scans, the smoke, database
+and API lanes, Lighthouse — are CI's: it runs every one the change asks
+for on every pushed head, and a pull request is merged only when every
+check that ran on its head is green, not only the required ones. `npm
+run gates -- run stack` marks what is still owed by hand, the
+measurements CI cannot hold — `perf:local` (Lighthouse on the real
+catalogue) on a change to what the browser loads, `perf:api` (the
+latency probe) on a change to what answers the hot reads — run from the
+checkout the dev stack serves; a lane CI reports red is reproduced
+locally on its own (`/commit` § 8 holds the rule, #1379). A gate the map
+skips was not run and did not need to be; a gate the host cannot run
+(the Python tooling guard) is a failure to report, not a skip. CI reads
+the same map per job, so a skipped job is a job whose inputs the pull
+request does not touch. A gate that already passed on the same inputs —
+after a fold, a clean rebase or a Markdown-only wave — is not run again
+and is printed as reused, never as a fresh pass; `--no-cache` runs it
+anyway, and CI never reuses one (ADR-0091).
 
 ```shell
 npm run gates                  # every gate, run or skipped, with its reason
 npm run check                  # the fast gates this change asks for
-npm run gates -- run test      # the unit lanes it asks for (the Python
-                               # one needs setup:py:dev)
-npm run gates -- run stack     # the before-push lanes, listed not run
+npm run gates -- run test --affected
+                               # the unit lanes it asks for, narrowed to
+                               # the specs it reaches (the Python one
+                               # needs setup:py:dev)
+npm run gates -- run stack     # where each slow lane is owed: here, or CI
 ```
 
 `/security-check` is a Claude Code slash command, so it is not
