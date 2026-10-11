@@ -57,14 +57,56 @@ Against `HEAD` the comparison includes the working tree and the files git does
 not track yet, so `npm run check` answers for what is on disk rather than for
 what is committed.
 
+With no `--base` and no `GATES_BASE`, a local run measures against `main`, or
+against `origin/main` when that has moved past it (`freshestBase`). A clone's own
+`main` falls behind every merge made on GitHub, and a branch measured against a
+stale one counts every file merged since as its own, asking for gates nothing on
+the branch touched. A local `main` with commits of its own is kept.
+
 ## The tiers
 
-| Tier | What it holds | What runs it |
-| --- | --- | --- |
-| `check` | the fast gates: lint, typecheck, knip, the circular-import pass, the generated row types against the schema, the docs pass, the line-pointer pass over every file that carries prose, the workflow lint, the fast security audits | `npm run check` — `npm run check:all` forces every one |
-| `test` | the unit lanes, Node and Python | `npm run gates -- run test`, with `TEST_REPORT_LOCAL=1` to keep the Node lanes on the host |
-| `scan` | the slow scans: Semgrep on both stacks, the Trivy image scan | `npm run security:all` — the `check` tier, then this one |
-| `stack` | build, smoke, the database lane, Lighthouse: the lanes that stand a stack up | `npm run gates -- run stack` **lists** them with run/skip marks and exits 2; they are typed by hand |
+| Tier | What it holds | Owed locally | What runs it |
+| --- | --- | --- | --- |
+| `check` | the fast gates: lint, typecheck, knip, the circular-import pass, the generated row types against the schema, the docs pass, the line-pointer pass over every file that carries prose, the workflow lint, the fast security audits | before every commit | `npm run check` — `npm run check:all` forces every one |
+| `test` | the unit lanes, Node and Python | before every commit, narrowed to the specs the change reaches | `TEST_REPORT_LOCAL=1 npm run gates -- run test --affected` (§ Running only the specs a change reaches) |
+| `scan` | the slow scans: Semgrep on both stacks, the Trivy image scan | no: CI runs them | `npm run security:all` — the `check` tier, then this one |
+| `stack` | build, smoke, the database lane, the API lane, Lighthouse: the lanes that stand a stack up | only a measurement marked `run here` | `npm run gates -- run stack` **lists** them as `run here`, `CI runs it` or `skip`, and exits 2; they are typed by hand |
+
+**Where each tier runs (#1379).** The local loop is for fast feedback, and CI is
+where the slow lanes run: it runs every lane a change asks for on every pushed
+head. A local run of a lane CI also runs therefore repeats it on a slower
+machine and finds nothing CI would not. So:
+
+- **Before every commit:** the `check` tier and the selected unit lanes. A
+  review wave measures both against the pull request's pushed head
+  (`--base <head>`), which CI has already answered for, so its own edits are
+  all it runs.
+- **By hand:** a measurement a stack lane lists in `local`, when the change
+  touches a class it names. `perf` lists two, each under its own command:
+  `perf:local`, Lighthouse on the dev stack's real catalogue where CI's lane
+  weighs a fixture, on a change to what the browser loads (`web`, `shared`);
+  and `perf:api`, the latency probe over the hot reads and tiles, which no CI
+  job runs, on a change to what answers them (`backend`, `database`, `tiles`,
+  `shared`). A change to a measurement's own runner (`scripts/perf-local.sh`,
+  `scripts/perf-api.mjs`), which no CI job runs, owes it too. `perf:local`
+  runs the probe as its last step, so the two are never owed side by side.
+  Both measure the dev stack, which serves the main checkout, so they are run
+  where the branch is what that checkout holds.
+- **On a red CI lane:** that lane alone, reproduced locally.
+- **Before merging:** every check that ran on the head is green. The slow
+  lanes are not among the contexts branch protection requires, so this is the
+  rule that makes them count.
+
+```text
+$ npm run gates -- run stack
+The stack tier, lane by lane — CI runs every lane this change asks for on every pushed head:
+
+  CI runs it build            npm run build && npm --prefix frontend run size  (inputs touched: web)
+  CI runs it test:e2e:smoke   npm run test:e2e:smoke  (inputs touched: web)
+  skip       test:db          npm run test:db  (inputs untouched: backend, shared, database, runners, compose)
+  skip       test:api         npm run test:api  (inputs untouched: backend, shared, database, runners, compose)
+  run here   perf             npm run perf:local  (inputs touched: web; Lighthouse on the dev stack's real catalogue, where CI's lane weighs a fixture: a change to what the browser loads)
+```
 
 A `run` stops at the first failure, then prints what it did, what broke, what
 never got its turn and what this change never asked for. The `check` tier over a

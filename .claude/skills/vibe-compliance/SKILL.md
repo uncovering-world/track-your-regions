@@ -97,12 +97,8 @@ Run ALL project checks to verify everything is clean:
 npm run gates          # which gates this change asks for, and why the rest are skipped
 npm run check          # the fast gates it asks for (check:all forces every one)
 npm run knip           # unused files + dependencies
-npm run security:all   # the fast gates plus the slow Semgrep and Trivy scans it asks for
-TEST_REPORT_LOCAL=1 npm run gates -- run test  # the unit lanes it asks for, on the host
-npm run test:e2e:smoke # isolated test stack + Playwright smoke (the slow tier, when npm run gates lists it)
-npm run test:db        # the database-backed backend specs inside the same stack (the slow tier, when npm run gates lists it)
-npm run test:api       # Schemathesis against the same stack's backend (the slow tier, when npm run gates lists it)
-npm run perf:local     # production build on the dev stack's own data (the slow tier, when npm run gates lists it)
+TEST_REPORT_LOCAL=1 npm run gates -- run test --affected  # the unit lanes it asks for, narrowed to the specs it reaches
+npm run gates -- run stack  # each slow lane as `run here`, `CI runs it` or `skip` (CI runs the slow lanes; /commit § 8)
 ```
 
 Also run `/security-check` for Claude Code security review of changed files.

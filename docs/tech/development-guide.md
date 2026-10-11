@@ -908,14 +908,12 @@ loop never waits on it). The next wave starts once both have finished and
 covers everything gathered by then, never on the first comment from either.
 CI binds the branch rather than the round: a job already red when the round
 ends joins the wave, one that fails later opens a wave of its own, and a
-wave's push owes the per-commit tier locally while CI answers for the slow
-lanes — the slow tier is run before the pull request opens and again on the
-head the maintainer is asked to merge, then only when a wave touched its
-inputs — keyed on the wave's own edits, which each round comment records on a
-`Touched:` line, never on a diff between two heads (`/commit` § 8; `/pr-create`
-§ 8 *Done* is the step that reads those lines and runs it, since the wave's own
-push is exempt). `/pr-create` § 8 "The next round" is
-the one statement of the signal, the command that reads it off the pull
+wave's push owes the per-commit tier locally, measured against the pushed head,
+while CI answers for the slow lanes on every pushed head (`/commit` § 8). What a
+wave owes by hand is what `npm run gates -- run stack --base <pushed head>`
+marks `run here` for its own edits (`perf:local`, `perf:api`), which each round
+comment records on a `Touched:` line and `/pr-create` § 8 *Done* runs on the
+head to be merged. `/pr-create` § 8 "The next round" is the one statement of the signal, the command that reads it off the pull
 request's head, and the two clocks that bound the wait — a head CodeRabbit
 never picks up, and a status that never leaves `pending`.
 
@@ -947,29 +945,33 @@ See `docs/security/SECURITY.md` for the full security profile and `CLAUDE.md` fo
 **A gate runs when, and only when, the inputs it checks have changed.**
 `scripts/gates.mjs` is the map from each gate to its inputs; `npm run gates`
 prints which gates the current change asks for and why the rest are skipped;
-`docs/tech/gates.md` has the map and the reasoning. Before every commit:
-`npm run check` (the fast gates the change asks for; `npm run check:all` forces
-every one), `npm run gates -- run test` (the unit lanes it asks for;
-`TEST_REPORT_LOCAL=1` keeps them on the host), and `/security-check`. Before
-the pull request opens, and again on the head the maintainer is asked to merge
-when a review wave since then touched their inputs: `npm run security:all` (the
-fast gates plus the slow Semgrep and Trivy scans the change asks for) and, when
-`npm run gates` lists them, `npm run test:e2e:smoke`, `npm run test:db`, `npm run test:api`
-and `npm run perf:local` — a review-wave push owes the per-commit tier alone, and CI
-answers for the slow lanes on the pushed head (`/commit` § 8 holds the rule,
-#920). A gate the map
-skips was not run and did not need to be; a gate the host cannot run (the Python tooling
-guard) is a failure to report, not a skip. CI reads the same map per job, so a
-skipped job is a job whose inputs the pull request does not touch. A gate that
-already passed on the same inputs — after a fold, a clean rebase or a
-Markdown-only wave — is not run again and is printed as reused, never as a fresh
-pass; `--no-cache` runs it anyway, and CI never reuses one (ADR-0091).
+`docs/tech/gates.md` has the map and the reasoning. Before every commit: `npm
+run check` (the fast gates the change asks for; `npm run check:all` forces every
+one), `TEST_REPORT_LOCAL=1 npm run gates -- run test --affected` (the unit lanes
+it asks for, narrowed to the specs the change reaches; without `--affected` they
+run whole), and `/security-check`. A review wave runs the same two against the
+pull request's pushed head (`--base <head>`), which CI has already answered for.
+The slow lanes — the Semgrep and Trivy scans, the smoke, database and API lanes,
+Lighthouse — are CI's: it runs every one the change asks for on every pushed
+head, and a pull request is merged only when every check that ran on its head is
+green, not only the required ones. `npm run gates -- run stack` marks what is
+still owed by hand, the measurements CI cannot hold — `perf:local` (Lighthouse
+on the real catalogue) on a change to what the browser loads, `perf:api` (the
+latency probe) on a change to what answers the hot reads — run from the checkout
+the dev stack serves; a lane CI reports red is reproduced locally on its own
+(`/commit` § 8 holds the rule, #1379). A gate the map skips was not run and did
+not need to be; a gate the host cannot run (the Python tooling guard) is a
+failure to report, not a skip. CI reads the same map per job, so a skipped job
+is a job whose inputs the pull request does not touch. A gate that already
+passed on the same inputs — after a fold, a clean rebase or a Markdown-only wave
+— is not run again and is printed as reused, never as a fresh pass; `--no-cache`
+runs it anyway, and CI never reuses one (ADR-0091).
 
 ```bash
 npm run gates                       # every gate, run or skipped, with its reason
 npm run check                       # the fast gates this change asks for
-npm run gates -- run test           # the unit lanes it asks for
-npm run gates -- run stack          # the before-push lanes, listed with run/skip marks
+npm run gates -- run test --affected  # the unit lanes it asks for, narrowed to the specs it reaches
+npm run gates -- run stack          # where each slow lane is owed: here, CI, or skipped
 ```
 
 ADR-0062 is the rule and `scripts/gates.mjs` holds the only copy of the map, so
@@ -993,8 +995,12 @@ For periodic cleanup (includes exports/types, ~30-40% false positive rate on exp
 npm run knip:full      # full knip scan including exports/types
 ```
 
-The before-push tier assumes Docker and minutes of runtime, which is why the map
-lists those lanes rather than running them:
+The slow lanes assume Docker and minutes of runtime. CI runs every one a change
+asks for on every pushed head, so locally they are run for one of two reasons:
+`npm run gates -- run stack` marks a measurement `run here` (`perf:local` on a
+change to what the browser loads, `perf:api` on a change to what answers the
+hot reads), or CI reported a lane red and it is being reproduced on its own
+(`/commit` § 8):
 
 ```bash
 npm run security:all   # the fast gates, then the slow Semgrep and Trivy scans the change asks for
@@ -1070,7 +1076,7 @@ own data:
 npm run perf:size      # build the frontend, check the entry chunk and each named chunk against its gzip budget (size-limit)
 npm run perf           # Lighthouse against the production build on the isolated test stack (the fixture)
 npm run perf:api       # p50/p95 of the hot read endpoints against a running stack (a measurement, not a gate)
-npm run perf:local     # all of the above on the dev stack and its real catalogue - the pre-push run
+npm run perf:local     # all of the above on the dev stack and its real catalogue - owed on a change to what the browser loads
 ```
 
 **A visitor downloads the shell, not the whole application** (#643). The

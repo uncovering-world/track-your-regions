@@ -22,8 +22,8 @@ ratchets instead of aspiring.
 |------|------|-----------------|------|
 | Bundle size | gzip size of the entry chunk, the map's worker chunk and the stylesheet, from `vite build` | `frontend/package.json` → `"size-limit"` | CI **Build** job, after the frontend build; locally `npm run perf:size` |
 | Lighthouse | LCP, TBT, CLS, TTI, the performance score, and transfer size per resource type, on the map view and Discover, against the **production build** served compressed inside the isolated test stack | `frontend/perf/lighthouse-budgets.json` | CI **Performance (Lighthouse)** job; locally `npm run perf` |
-| Backend latency | p50/p95/max of the hot read endpoints — the by-region experience reads and the Martin tile functions — and the bytes each one puts on the wire, in the encoding it puts them there in | — (a measurement, recorded here) | locally `npm run perf:api` against a stack holding the real catalogue |
-| Local run | all three, on the dev stack's production build and its real catalogue: the map view and Discover of the world view the database exposes | `frontend/perf/lighthouse-budgets.local.json` | locally `npm run perf:local` — the pre-push run for a change that touches what the browser loads or draws |
+| Backend latency | p50/p95/max of the hot read endpoints — the by-region experience reads and the Martin tile functions — and the bytes each one puts on the wire, in the encoding it puts them there in | — (a measurement, recorded here) | locally `npm run perf:api` against a stack holding the real catalogue — owed on a change to what answers those reads (`npm run gates -- run stack` marks it `run here`) |
+| Local run | all three, on the dev stack's production build and its real catalogue: the map view and Discover of the world view the database exposes | `frontend/perf/lighthouse-budgets.local.json` | locally `npm run perf:local` — owed on a change that touches what the browser loads or draws (`npm run gates -- run stack` marks it `run here`) |
 
 Both CI jobs are gates in the map, on the product's input classes (`backend`,
 `web`, `shared`, and for the Lighthouse lane the database, the tiles, the runner
