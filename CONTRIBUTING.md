@@ -94,7 +94,10 @@ rule, #920). A
 gate the map skips was not run and did not need to be; a gate the host
 cannot run (the Python tooling guard) is a failure to report, not a
 skip. CI reads the same map per job, so a skipped job is a job whose
-inputs the pull request does not touch.
+inputs the pull request does not touch. A gate that already passed on the
+same inputs — after a fold, a clean rebase or a Markdown-only wave — is
+not run again and is printed as reused, never as a fresh pass;
+`--no-cache` runs it anyway, and CI never reuses one (ADR-0091).
 
 ```shell
 npm run gates                  # every gate, run or skipped, with its reason

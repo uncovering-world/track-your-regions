@@ -111,6 +111,67 @@ Without it a reader sees every gate in the map run, or a stack listing whose eve
 reads `(every gate applies)`, and has to guess whether the branch really touched
 everything or the base was simply unknown.
 
+## Reusing a pass
+
+A gate that passed on the same inputs is not run again (ADR-0091). Folding
+review fixes into the commits they belong to, a rebase that applies cleanly and
+a review wave of Markdown alone all leave the files a lane reads exactly as
+they were. Before this, each of them cost the lane's whole run again: a median
+of 278 s for `test:frontend` on the development machine.
+
+`run` hashes, for each gate, every file in its input classes as it sits on disk,
+and whether git tracks it. `lint:shell`, `lint:docker` and `lint:pointers` read
+only what git tracks, so staging a new file moves their key. The hash also covers:
+
+- the `tooling` class;
+- the Node manifests and lockfiles;
+- the command;
+- the Node version, and the Python version for a Python gate;
+- for a unit lane, whether it runs on the host (`TEST_REPORT_LOCAL=1`) or in the
+  backend container, since the container has no git and mounts only part of the
+  tree.
+
+That hash is the gate's key. `scripts/gate-cache.mjs` holds the key and the
+records. If a pass is recorded under the key, the gate is not spawned. The run
+prints it on a line of its own and names it again in the summary:
+
+```text
+✓ test:frontend  reused: passed on these inputs at 2026-10-11T15:00:00.000Z (abc1234)
+▶ test:backend  node scripts/test-report.mjs backend-unit
+…
+Ran: test:backend
+Reused (passed on the same inputs, not run again): test:frontend (2026-10-11T15:00:00.000Z, abc1234)
+```
+
+What is and is not recorded:
+
+- **Only a pass is recorded.** A failure, a gate the host could not run, and a
+  gate killed by a signal leave nothing behind.
+- **A pass whose files moved while it ran is not recorded.** The run hashes the
+  files again after the gate exits, and records the pass only if both hashes
+  agree. Otherwise the summary names the gate under `Not recorded (files changed
+  while the gate ran)`.
+- **A gate whose answer reads something outside the tree is never reused.** The
+  dependency audits read advisory databases, Semgrep fetches its rule packs, Trivy
+  reads a vulnerability database, `api:breaking` reads the base's document, and
+  `lint:links` resolves links to files of every type while its class holds the
+  Markdown only.
+  The *Pass reused* column of the gates table below names each of them with its
+  reason, from `uncached` on the gate's entry in the map.
+- **The stack tier is listed, never run,** so nothing records its passes.
+
+Records sit under the clone's common git directory, `<git-common-dir>/tyr-gates/`,
+so the worktrees of one clone share them and nothing is tracked. Deleting that
+directory forgets every pass.
+
+Three things run every gate the change asks for:
+
+- **`--no-cache`** on `run` (`npm run gates -- run test --no-cache`);
+- **`--all`**, which forces every gate of the tier, so `npm run check:all` reuses
+  nothing either;
+- **CI**, which never reads or writes a record. A run with `CI` set reuses
+  nothing: a fresh checkout is what answers for a pushed head.
+
 ## The map
 
 ### Inputs
