@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CandidateItem } from './componentItemMatching.js';
+import type { StandingPlace } from './componentItemQueries.js';
 
 /**
  * Finding a World Heritage component's Wikidata item and proposing it (#1272),
@@ -43,7 +44,7 @@ vi.mock('./componentItemQueries.js', async (importOriginal) => ({
   // The class tree is QLever's to walk, not the spec's: nothing here is a settlement unless a test says so.
   settlementsAmong: vi.fn(async () => new Set<string>()),
   // Where a candidate stands is QLever's answer too: no place, unless a test names one.
-  placeNamesOf: vi.fn(async () => new Map<string, string[]>()),
+  placesOf: vi.fn(async () => new Map<string, StandingPlace[]>()),
   // The labels come from Wikidata's API, read only for the items the distance leaves.
   labelsOf: vi.fn(async (items: string[]) => new Map(items.map(item => {
     const all = [...parts, ...nearby].find(c => c.item === item)?.labels ?? [];
@@ -62,7 +63,9 @@ let points: Record<string, number> = {};
 
 /** Five other sites with a resolved castrum each: the floor the catalogue-wide classes need. */
 const OTHER_SITES = [9841, 9842, 9843, 9844, 9845];
-const otherSiteItem = (site: number) => `Q${site}0`;
+const otherSiteItem = (site: number) => `Q${site}9`;
+/** The place the item near Bologa stands in. */
+const PLACE_ITEM = 'Q98420';
 
 async function clear(): Promise<void> {
   await pool.query('DELETE FROM experiences WHERE id = ANY($1)', [[SITE, ...OTHER_SITES]]);
@@ -108,7 +111,7 @@ const run = () => findComponentItems({ write: true, hooks: { budget: new WaitBud
 
 beforeEach(async () => {
   vi.mocked(queries.itemsInBoxes).mockImplementation(async () => nearby.map(c => ({ ...c, labels: [] })));
-  vi.mocked(queries.placeNamesOf).mockReset().mockImplementation(async () => new Map<string, string[]>());
+  vi.mocked(queries.placesOf).mockReset().mockImplementation(async () => new Map<string, StandingPlace[]>());
   vi.mocked(queries.classesOfItems).mockImplementation(async (items: readonly string[]) =>
     new Map(items.map(item => [item, item === RESOLVED_ITEM ? [CASTRUM] : []])));
   await clear();
@@ -270,18 +273,44 @@ describe('findComponentItems', () => {
 
   it('sets aside, on a site with no resolved component, a contender standing in a place named like the component, and counts it (#1349)', async () => {
     await fallBack();
-    // Wikidata says the item near Bologa stands in Bologa, and it is not named "Bologa" itself.
-    vi.mocked(queries.placeNamesOf).mockImplementation(async (items: readonly string[]) =>
-      new Map(items.filter(item => item === BOLOGA_ITEM).map(item => [item, ['Bologa']])));
+    // Wikidata says the item near Bologa stands in Bologa, and it is not named "Bologa" itself;
+    // the place states no coordinate, so it cannot be offered in its stead.
+    vi.mocked(queries.placesOf).mockImplementation(async (items: readonly string[]) => new Map(items
+      .filter(item => item === BOLOGA_ITEM)
+      .map(item => [item, [{ item: PLACE_ITEM, names: ['Bologa'], coords: [], referenced: false }]])));
 
     const { report, matches } = await findComponentItems({ write: false, hooks: { budget: new WaitBudget(1000) } });
 
     // Asked only about what the near rule would take: the castra, not the whole neighbourhood.
-    const asked = vi.mocked(queries.placeNamesOf).mock.calls.flatMap(([items]) => [...items]);
+    const asked = vi.mocked(queries.placesOf).mock.calls.flatMap(([items]) => [...items]);
     expect(asked).toContain(BOLOGA_ITEM);
     expect(asked).not.toContain(STALE_ITEM);
     expect(matches.find(m => m.locationId === points.bologa)).toBeUndefined();
     expect(report.atTheComponent).toBe(1);
+  });
+
+  it('offers the place a thing at the component stands in, in its stead, unless it carries a World Heritage reference (#1349)', async () => {
+    await fallBack();
+    const at = (referenced: boolean) => vi.mocked(queries.placesOf).mockImplementation(async (items: readonly string[]) => new Map(items
+      .filter(item => item === BOLOGA_ITEM)
+      .map(item => [item, [{ item: PLACE_ITEM, names: ['Bologa'], coords: [[46.8856, 22.8749]], referenced }]])));
+
+    at(false);
+    const offered = await findComponentItems({ write: false, hooks: { budget: new WaitBudget(1000) } });
+    expect(offered.matches.find(m => m.locationId === points.bologa)).toMatchObject({ item: PLACE_ITEM, basis: 'near' });
+
+    // A place with a reference of its own is the reference reader's to find, never the near rule's.
+    at(true);
+    const kept = await findComponentItems({ write: false, hooks: { budget: new WaitBudget(1000) } });
+    expect(kept.matches.find(m => m.locationId === points.bologa)).toBeUndefined();
+
+    // Nor a settlement: the village a thing at the component stands in is not the component.
+    at(false);
+    vi.mocked(queries.settlementsAmong).mockImplementation(async (ids: readonly string[], _hooks, asClasses) =>
+      new Set(asClasses ? [] : ids.filter(id => id === PLACE_ITEM)));
+    const village = await findComponentItems({ write: false, hooks: { budget: new WaitBudget(1000) } });
+    expect(village.matches.find(m => m.locationId === points.bologa)).toBeUndefined();
+    expect(vi.mocked(queries.settlementsAmong).mock.calls.some(([ids]) => ids.includes(PLACE_ITEM))).toBe(true);
   });
 
   it('leaves those points unanswered when QLever cannot say where their contenders stand', async () => {
@@ -291,7 +320,7 @@ describe('findComponentItems', () => {
        VALUES ($1, 'Q98408', 'An earlier pass found this', 40, 0.5, false, 'near')`,
       [points.bologa],
     );
-    vi.mocked(queries.placeNamesOf).mockRejectedValue(new SparqlUnanswered('QLever error 503'));
+    vi.mocked(queries.placesOf).mockRejectedValue(new SparqlUnanswered('QLever error 503'));
 
     const { report } = await run();
 

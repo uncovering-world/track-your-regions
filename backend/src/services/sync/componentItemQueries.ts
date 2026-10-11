@@ -369,31 +369,53 @@ export async function settlementsAmong(
 /** Items per question about the places they stand in. */
 const PLACE_BATCH = 400;
 
+/** A place an item stands in (P131, P276) or is part of (P361), as the near rule reads it. */
+export interface StandingPlace {
+  item: string;
+  /** Its English and multilingual names. */
+  names: string[];
+  /** Every coordinate it states. */
+  coords: Array<[lat: number, lon: number]>;
+  /** Whether it carries a World Heritage reference of its own: then the reference reader is what finds it, never the near rule. */
+  referenced: boolean;
+}
+
 /**
- * The names, English or multilingual, of the places each item stands in
- * (P131, P276) or is part of (P361), asked of QLever: what tells a museum in
- * Herrnhut from the settlement of Herrnhut (`standsAtTheComponent`). An item
- * that names no such place is absent from the answer.
+ * The places each item stands in (P131, P276) or is part of (P361), with their
+ * English or multilingual names, coordinates and whether they carry a World
+ * Heritage reference, asked of QLever: what tells a museum in Herrnhut from the
+ * settlement of Herrnhut (`standsAtTheComponent`), and what offers the islet of
+ * Mjölnareholmen in the place of the gunpowder house on it
+ * (`placeAsCandidate`). An item that names no such place
+ * is absent from the answer.
  */
-export async function placeNamesOf(items: readonly string[], hooks: QueryHooks): Promise<Map<string, string[]>> {
-  const names = new Map<string, string[]>();
+export async function placesOf(items: readonly string[], hooks: QueryHooks): Promise<Map<string, StandingPlace[]>> {
+  const places = new Map<string, Map<string, StandingPlace>>();
   for (let i = 0; i < items.length; i += PLACE_BATCH) {
     if (hooks.isCancelled?.()) break;
     const values = items.slice(i, i + PLACE_BATCH).map(id => `wd:${id}`).join(' ');
     const rows = await qleverWikidataQuery(`${QLEVER_PREFIXES}
       PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
-      SELECT DISTINCT ?item ?name WHERE {
+      SELECT DISTINCT ?item ?place ?name ?coord ?reference WHERE {
         VALUES ?item { ${values} }
         VALUES ?held { wdt:P131 wdt:P276 wdt:P361 }
         ?item ?held ?place .
         ?place rdfs:label ?name .
         FILTER(LANG(?name) = "en" || LANG(?name) = "mul")
+        OPTIONAL { ?place wdt:P625 ?coord }
+        OPTIONAL { ?place wdt:P757 ?reference }
       }`, hooks.isCancelled);
     hooks.onQuery?.();
     for (const row of rows) {
       const item = itemOf(row.item!.value);
-      names.set(item, [...(names.get(item) ?? []), row.name!.value]);
+      const id = itemOf(row.place!.value);
+      const ofItem = places.get(item) ?? places.set(item, new Map()).get(item)!;
+      const place = ofItem.get(id) ?? ofItem.set(id, { item: id, names: [], coords: [], referenced: false }).get(id)!;
+      if (!place.names.includes(row.name!.value)) place.names.push(row.name!.value);
+      const coord = coordOf(row.coord?.value);
+      if (coord && !place.coords.some(([lat, lon]) => lat === coord[0] && lon === coord[1])) place.coords.push(coord);
+      if (row.reference) place.referenced = true;
     }
   }
-  return names;
+  return new Map([...places].map(([item, ofItem]) => [item, [...ofItem.values()]]));
 }
