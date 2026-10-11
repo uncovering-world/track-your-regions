@@ -242,6 +242,14 @@ async function runStep(step, activeMode, index) {
   let env = {};
   let cwd = ROOT_DIR;
 
+  // The affected selection (scripts/affected-specs.mjs): the paths to hand
+  // `vitest related`, set by `gates.mjs run test --affected`. Only the host
+  // shape can take it; the container lane runs whole and says so.
+  const related = relatedTargets();
+  if (related && RUN_CONTAINER_TESTS) {
+    console.log(`${step.label}: the container shape runs the whole lane; the affected selection needs TEST_REPORT_LOCAL=1.`);
+  }
+
   if (RUN_CONTAINER_TESTS) {
     const stackCommand = STEP_CONTAINER_COMMAND[step.id];
     if (!stackCommand) {
@@ -255,7 +263,10 @@ async function runStep(step, activeMode, index) {
     cwd = packageCwd;
     if (step.kind === 'vitest') {
       command = resolveLocalBinary(step.packageDir, 'vitest');
-      args = ['run', '--reporter=default', '--reporter=json', `--outputFile=${jsonPath}`];
+      args = related && !step.coverage
+        ? ['related', ...related, '--run', '--passWithNoTests']
+        : ['run'];
+      args.push('--reporter=default', '--reporter=json', `--outputFile=${jsonPath}`);
       if (step.coverage) {
         args.push('--coverage');
       }
@@ -270,6 +281,18 @@ async function runStep(step, activeMode, index) {
 
   const exitCode = await runCommand(command, args, { cwd, env });
   const parsed = parseStepReport(step, jsonPath);
+  const selected = related && !RUN_CONTAINER_TESTS && step.kind === 'vitest' && !step.coverage;
+  if (selected) {
+    const total = process.env.TEST_REPORT_SPEC_TOTAL;
+    console.log(`${step.label}: ran ${parsed.files.length}${total ? ` of ${total}` : ''} spec files, the affected selection.`);
+  }
+  // A selection no spec of the lane imports is an answer, not a failure: the
+  // change reaches none of them. Said as such, so an empty run never reads as
+  // a lane that passed its specs.
+  if (selected && exitCode === 0 && !parsed.parseError && parsed.files.length === 0) {
+    console.log(`${step.label}: no spec of the lane reaches the change.`);
+    return { ...step, ...parsed, exitCode, ok: true, reportPath: jsonPath };
+  }
 
   // `ok` after the spread, not before it: the parsed report carries its own
   // `ok`, and spread last it replaced this one - so a runner that exited
@@ -296,6 +319,17 @@ function parseStepReport(step, jsonPath) {
     });
   }
   return parsePlaywrightResults(jsonPath);
+}
+
+/** The affected selection's targets, or null for a whole lane. */
+function relatedTargets() {
+  const raw = process.env.TEST_REPORT_RELATED;
+  if (!raw) return null;
+  const targets = JSON.parse(raw);
+  if (!Array.isArray(targets) || targets.some((target) => typeof target !== 'string')) {
+    throw new Error('TEST_REPORT_RELATED must be a JSON array of paths.');
+  }
+  return targets;
 }
 
 function resolveLocalBinary(packageDir, binName) {

@@ -610,7 +610,7 @@ describe('the base the change is measured against', () => {
 
 describe('the command line', () => {
   it('reads the branch against the working tree by default', () => {
-    expect(parseArgs([])).toEqual({ mode: 'list', tier: null, all: false, noCache: false, base: null, rev: 'HEAD' });
+    expect(parseArgs([])).toEqual({ mode: 'list', tier: null, all: false, noCache: false, affected: false, base: null, rev: 'HEAD' });
   });
 
   it('refuses a flag whose value is missing, rather than reading the next flag as it', () => {
@@ -634,6 +634,7 @@ describe('the command line', () => {
       tier: 'check',
       all: true,
       noCache: false,
+      affected: false,
       base: null,
       rev: 'HEAD',
     });
@@ -649,6 +650,13 @@ describe('the command line', () => {
     expect(() => parseArgs(['--all'])).toThrow(/--all only means something with/);
     expect(() => parseArgs(['--json', '--all'])).toThrow(/--all/);
     expect(parseArgs(['--all', 'run', 'scan']).all).toBe(true);
+  });
+
+  it('takes --affected for the unit tier only, and never beside --all', () => {
+    expect(parseArgs(['run', 'test', '--affected']).affected).toBe(true);
+    expect(() => parseArgs(['run', 'check', '--affected'])).toThrow(/--affected only means something with `run test`/);
+    expect(() => parseArgs(['--affected'])).toThrow(/--affected/);
+    expect(() => parseArgs(['run', 'test', '--affected', '--all'])).toThrow(/Pick one/);
   });
 
   it('refuses --no-cache where there is no run for it to change', () => {
@@ -700,13 +708,13 @@ describe('what the runner says it did', () => {
 
     const plain = fakeSpawn();
     capture(backend(), 'test', { spawn: plain });
-    expect(plain.envs.every((env) => env === process.env)).toBe(true);
+    expect(plain.envs.every((env) => env.GATES_BASE === process.env.GATES_BASE)).toBe(true);
 
     // What `parseArgs` leaves where no --base was given: CI's own GATES_BASE
     // must reach the gate, not the text "null".
     const unset = fakeSpawn();
     capture(backend(), 'test', { spawn: unset, base: parseArgs(['run', 'test']).base });
-    expect(unset.envs.every((env) => env === process.env)).toBe(true);
+    expect(unset.envs.every((env) => env.GATES_BASE === process.env.GATES_BASE)).toBe(true);
   });
 
   it('names the gate that failed, its code, and what never ran', () => {
@@ -740,6 +748,41 @@ describe('what the runner says it did', () => {
     expect(code).toBe(1);
     expect(printed).toContain('test:backend could not run: spawn npm ENOENT');
     expect(printed).toContain('Failed: test:backend (exit 1)');
+  });
+
+  it('says which specs a selected lane runs, and hands the selection to it', () => {
+    const select = (gate) => (gate.id === 'test:backend'
+      ? { whole: false, why: '1 changed module', env: { TEST_REPORT_RELATED: '["src/a.ts"]' } }
+      : { whole: true, why: 'frontend/vite.config.ts configures every spec of the lane' });
+    const spawn = fakeSpawn();
+    const { printed } = capture(backend(), 'test', { spawn, select });
+    expect(printed).toContain('affected specs: 1 changed module');
+    expect(printed).toContain('whole lane: frontend/vite.config.ts configures every spec of the lane');
+    expect(spawn.envs[0].TEST_REPORT_RELATED).toBe('["src/a.ts"]');
+    expect(spawn.envs[1].TEST_REPORT_RELATED).toBeUndefined();
+
+    // A selection that reaches no spec starts nothing, and says so.
+    const none = fakeSpawn();
+    const quiet = capture(backend(), 'test', {
+      spawn: none,
+      select: () => ({ none: true, why: '0 changed modules; no spec of the lane reaches the change' }),
+    });
+    expect(none.calls).toEqual([]);
+    expect(quiet.code).toBe(0);
+    expect(quiet.printed).toContain('○ test:backend  affected specs: 0 changed modules; no spec of the lane reaches the change');
+    expect(quiet.printed).toContain('Not started (the change reaches no spec of the lane): test:backend, test:frontend');
+
+    // An inherited selection never narrows a whole lane.
+    const before = process.env.TEST_REPORT_RELATED;
+    process.env.TEST_REPORT_RELATED = '["src/stale.ts"]';
+    try {
+      const whole = fakeSpawn();
+      capture(backend(), 'test', { spawn: whole });
+      expect(whole.envs.every((env) => env.TEST_REPORT_RELATED === undefined)).toBe(true);
+    } finally {
+      if (before === undefined) delete process.env.TEST_REPORT_RELATED;
+      else process.env.TEST_REPORT_RELATED = before;
+    }
   });
 
   it('says so loudly when the tier has nothing to run', () => {
