@@ -245,6 +245,16 @@ describe('a run that reuses passes', () => {
     expect(printed).toContain('Failed: test:backend (exit 3)');
   });
 
+  it('records no pass for a selected lane, which ran only some of its specs', () => {
+    const cache = fakeCache({ passes: [] });
+    const select = (gate) => (gate.id === 'test:backend'
+      ? { whole: false, why: '1 changed module', env: {} }
+      : { whole: true, why: 'the change set is unknown' });
+    run(backend(), 'test', { cache, select });
+    // The whole web lane is a pass of that lane; the selected backend run is not.
+    expect(cache.settled).toEqual(['test:frontend@key-test:frontend']);
+  });
+
   it('records no pass when the files moved while the gate ran', () => {
     const cache = fakeCache({ moved: ['test:backend'] });
     const { printed } = run(backend(), 'test', { cache });

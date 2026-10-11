@@ -20,9 +20,10 @@
  * the local scripts read it (`npm run check`), and `docs/tech/gates.md` embeds
  * the tables `--table` prints, pinned by `scripts/gates.test.mjs`.
  */
-import { appendFileSync, readFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 
+import { LANES, loadsModules, readsText, selectSpecs } from './affected-specs.mjs';
 import { openGateCache } from './gate-cache.mjs';
 import { READ_EXTENSIONS } from './lint-line-pointers.mjs';
 
@@ -33,7 +34,7 @@ import { READ_EXTENSIONS } from './lint-line-pointers.mjs';
  * for the `runners` pattern.
  */
 const TOOL_SCRIPTS = [
-  'board.sh', 'catalogue-coverage.sh', 'ci-graph-measure.mjs', 'db-cli.sh', 'db-migrate.sh',
+  'affected-specs.mjs', 'board.sh', 'catalogue-coverage.sh', 'ci-graph-measure.mjs', 'db-cli.sh', 'db-migrate.sh',
   'db-types.sh', 'gate-cache.mjs', 'gates.mjs', 'lib/db-env.sh', 'lint-line-pointers.mjs',
   'match-snapshot.sh', 'openapi-breaking.mjs', 'require-node-tools.sh', 'require-py-tools.sh',
   'require-python-312.sh', 'review-surface.mjs', 'scan-image.sh', 'setup.sh',
@@ -849,7 +850,7 @@ export function changedPaths({ base, rev }) {
 
 const USAGE = [
   'usage: gates.mjs [--base <ref>] [--rev <ref>] [--json | --github-output | --table]',
-  '       gates.mjs run <check|test|scan|stack> [--all] [--no-cache] [--base <ref>] [--rev <ref>]',
+  '       gates.mjs run <check|test|scan|stack> [--all] [--no-cache] [--affected] [--base <ref>] [--rev <ref>]',
 ].join('\n');
 
 /**
@@ -858,7 +859,7 @@ const USAGE = [
  * degrades into "nothing to run", which looks exactly like a clean gate.
  */
 export function parseArgs(argv) {
-  const args = { mode: 'list', tier: null, all: false, noCache: false, base: null, rev: 'HEAD' };
+  const args = { mode: 'list', tier: null, all: false, noCache: false, affected: false, base: null, rev: 'HEAD' };
   let modeSetBy = null;
 
   const setMode = (mode, flag) => {
@@ -892,6 +893,7 @@ export function parseArgs(argv) {
     else if (arg === '--table') setMode('table', '--table');
     else if (arg === '--all') args.all = true;
     else if (arg === '--no-cache') args.noCache = true;
+    else if (arg === '--affected') args.affected = true;
     else if (arg === '--base') args.base = value(++i, '--base');
     else if (arg === '--rev') args.rev = value(++i, '--rev');
     else throw new Error(`Unknown argument "${arg}".`);
@@ -904,6 +906,12 @@ export function parseArgs(argv) {
   if (args.noCache && args.mode !== 'run') {
     throw new Error('--no-cache only means something with `run <tier>`.');
   }
+  // The selection narrows the unit lanes and nothing else; with --all, which
+  // forces every gate whole, it would contradict what was asked.
+  if (args.affected && args.tier !== 'test') {
+    throw new Error('--affected only means something with `run test`.');
+  }
+  if (args.affected && args.all) throw new Error('Pick one: --affected or --all.');
   return args;
 }
 
@@ -924,8 +932,15 @@ export function parseArgs(argv) {
  * is printed as reused, with when and where it passed, and named on a line of
  * its own in the summary — a reuse that read as a fresh pass would be the
  * silence this runner exists to break.
+ *
+ * `select(gate)` is the affected selection of a unit lane (`--affected`,
+ * scripts/affected-specs.mjs), or null for a whole run: it returns
+ * `{ whole, why, env }`, or `{ none: true, why }` when no spec of the lane
+ * reaches the change, which starts nothing and is named in the summary. The lane says which it ran and why. A selected run is
+ * not the lane's pass, so it is never recorded; a whole pass already recorded
+ * answers for it.
  */
-export function runTier(decision, tier, { all = false, spawn = spawnSync, base, cache = null } = {}) {
+export function runTier(decision, tier, { all = false, spawn = spawnSync, base, cache = null, select = null } = {}) {
   const gates = decision.gates.filter((gate) => gate.tier === tier);
 
   // "Everything applies" owes its sentence here as much as in the listing: a
@@ -961,6 +976,7 @@ export function runTier(decision, tier, { all = false, spawn = spawnSync, base, 
   const ran = [];
   const reused = [];
   const unrecorded = [];
+  const reachedNone = [];
   let failed = null;
   for (const gate of selected) {
     const lookup = cache && !gate.uncached ? cache.lookup(gate) : null;
@@ -970,13 +986,28 @@ export function runTier(decision, tier, { all = false, spawn = spawnSync, base, 
       reused.push(`${gate.id} (${passedAt}, ${rev})`);
       continue;
     }
+    const selection = select ? select(gate) : null;
+    if (selection?.none) {
+      console.log(`○ ${gate.id}  affected specs: ${selection.why}`);
+      reachedNone.push(gate.id);
+      continue;
+    }
     console.log(`▶ ${gate.id}  ${gate.command.join(' ')}`);
-    const result = spawn(gate.command[0], gate.command.slice(1), {
-      stdio: 'inherit',
-      // `null` is what `parseArgs` leaves where no `--base` was given; only a
-      // string was given, and an empty one is given too (`resolveBase`).
-      env: typeof base === 'string' ? { ...process.env, GATES_BASE: base } : process.env,
-    });
+    if (selection) {
+      console.log(`  ${selection.whole ? 'whole lane' : 'affected specs'}: ${selection.why}`);
+    }
+    // A selection reaches the lane only through these two variables, so a
+    // run that is not selected clears them: one inherited from a shell, or
+    // from a selected run this one is nested in, would narrow the lane while
+    // it reported itself whole.
+    const { TEST_REPORT_RELATED, TEST_REPORT_SPEC_TOTAL, ...inherited } = process.env;
+    const selecting = selection?.env !== undefined;
+    const narrowed = selecting || TEST_REPORT_RELATED !== undefined || TEST_REPORT_SPEC_TOTAL !== undefined;
+    let env = narrowed ? { ...inherited, ...(selection?.env ?? {}) } : process.env;
+    // `null` is what `parseArgs` leaves where no `--base` was given; only a
+    // string was given, and an empty one is given too (`resolveBase`).
+    if (typeof base === 'string') env = { ...env, GATES_BASE: base };
+    const result = spawn(gate.command[0], gate.command.slice(1), { stdio: 'inherit', env });
     ran.push(gate.id);
     // A gate killed by a signal, or one whose binary is not there, has no
     // status; neither of those is a pass. Both also produce no output of their
@@ -989,7 +1020,9 @@ export function runTier(decision, tier, { all = false, spawn = spawnSync, base, 
       failed = { gate, code };
       break;
     }
-    if (lookup && !cache.settle(gate, lookup.key)) unrecorded.push(gate.id);
+    if (lookup && !(selection && !selection.whole) && !cache.settle(gate, lookup.key)) {
+      unrecorded.push(gate.id);
+    }
   }
 
   // Reading order: what ran, what was reused, what broke, what never got its
@@ -1001,6 +1034,9 @@ export function runTier(decision, tier, { all = false, spawn = spawnSync, base, 
   }
   if (unrecorded.length) {
     console.log(`Not recorded (files changed while the gate ran): ${unrecorded.join(', ')}`);
+  }
+  if (reachedNone.length) {
+    console.log(`Not started (the change reaches no spec of the lane): ${reachedNone.join(', ')}`);
   }
   if (failed) {
     // Unconditionally: when the last gate of a tier is the one that failed
@@ -1055,6 +1091,52 @@ function printList(decision, changed, rev) {
 export function cacheFor(args, env = process.env) {
   if (args.noCache || args.all || env.CI) return null;
   return openGateCache({ belongsTo: keyBelongs });
+}
+
+/**
+ * The affected selection of each Node unit lane for these changed paths
+ * (impure: it reads the specs and asks the disk which paths still exist). A
+ * change set it cannot read runs every lane whole.
+ */
+function affectedSelector(paths) {
+  const top = git('rev-parse', '--show-toplevel').trim();
+  const tracked = git('ls-files').split('\n').filter(Boolean);
+  return (gate) => {
+    const lane = LANES[gate.id];
+    if (!lane) return null;
+    if (paths === null) return { whole: true, why: 'the change set is unknown' };
+    const specs = tracked.filter((path) => lane.specs.test(path));
+    const source = (path) => {
+      try {
+        return readFileSync(`${top}/${path}`, 'utf8');
+      } catch {
+        return '';
+      }
+    };
+    const textReaders = specs.filter((path) => readsText(source(path)));
+    const loaders = tracked
+      .filter((path) => /\.[cm]?[jt]sx?$/.test(path) && !lane.specs.test(path))
+      .filter((path) => lane.roots.some((root) => path.startsWith(root)))
+      .filter((path) => loadsModules(source(path)));
+    const chosen = selectSpecs({
+      lane: gate.id,
+      changed: paths,
+      exists: (path) => existsSync(`${top}/${path}`),
+      textReaders,
+      loaders,
+    });
+    if (chosen.whole) return { whole: true, why: chosen.why };
+    if (chosen.targets.length === 0) {
+      // `vitest related` with no paths would run every spec, so the lane is
+      // not started at all.
+      return { whole: false, none: true, why: `${chosen.why}; no spec of the lane reaches the change` };
+    }
+    return {
+      whole: false,
+      why: `${chosen.why}; ${specs.length} spec files in the lane`,
+      env: { TEST_REPORT_RELATED: JSON.stringify(chosen.targets), TEST_REPORT_SPEC_TOTAL: String(specs.length) },
+    };
+  };
 }
 
 /** A file of the checkout, as it is on disk; empty if it cannot be read. */
@@ -1113,7 +1195,12 @@ function main(argv) {
   }
   if (args.mode === 'run') {
     process.exit(
-      runTier(decision, args.tier, { all: args.all, base: args.base, cache: cacheFor(args) }),
+      runTier(decision, args.tier, {
+        all: args.all,
+        base: args.base,
+        cache: cacheFor(args),
+        select: args.affected && !process.env.CI ? affectedSelector(changed.paths) : null,
+      }),
     );
   }
   printList(decision, changed, args.rev);
