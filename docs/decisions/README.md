@@ -110,6 +110,7 @@ and accepted by it.
 | [0088](0088-a-world-heritage-site-of-one-point-is-its-one-item-and-one-point.md) | A World Heritage site of one point is its one Wikidata item, and merges to one point | Accepted | 2026-10-08 |
 | [0089](0089-a-parts-empty-field-is-filled-without-a-hold.md) | A part's empty field is filled without a hold | Accepted | 2026-10-08 |
 | [0090](0090-a-component-renumbered-by-an-extension-is-the-same-point.md) | A component renumbered by an extension is the same point | Accepted | 2026-10-10 |
+| [0091](0091-a-gates-pass-is-reused-for-the-same-inputs.md) | A gate's pass is reused for the same inputs, keyed from the gate map | Accepted | 2026-10-11 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
