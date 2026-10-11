@@ -1150,7 +1150,12 @@ path needs.
   day. The lasting route is a local
   subset of the Wikidata dump (#1312). The labels are read from Wikidata's own API (`wbgetentities`,
   `labelsOf`), fifty items a request, one request at a time, and only for the candidates within
-  reach: 5 km of a point for a part, 1 km for a near item. A part or box question the service or
+  reach: 5 km of a point for a part, 1 km for a near item. Every label is matched on, but the
+  proposal names the candidate by its English label where the item has one, else by its
+  multilingual one (`mul`, a name every language spells alike), and by the label most like the
+  component's name only where it has neither (#1358): the most name-alike label of a
+  candidate found at the point rather than by name is whatever language a trigram favoured —
+  Bahjí's Shrine of Bahá'u'lláh read as "Bahaullah'ın Makamı". A part or box question the service or
   the mirror cannot answer is tried once more, then asked again smaller: a batch of sites in halves,
   a group of cells one cell at a time. A site or a cell it cannot answer even alone is left out
   and counted on the job's closing sentence, rather than ending the pass, and its points keep
