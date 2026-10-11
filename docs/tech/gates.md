@@ -26,15 +26,15 @@ $ node scripts/gates.mjs --base 82b0345d^ --rev 82b0345d
 Change against 82b0345d^ (merge-base 3e6ac38): 1 paths
 Inputs touched: docs
 
-check lint:backend          skipped  inputs untouched: app
-check lint:frontend         skipped  inputs untouched: app
+check lint:backend          skipped  inputs untouched: backend, shared
+check lint:frontend         skipped  inputs untouched: web, shared
 …
 check lint:md               runs     inputs touched: docs
 check lint:links            runs     inputs touched: docs
 check lint:pointers         runs     inputs touched: prose
 …
-stack test:e2e:smoke        skipped  inputs untouched: app
-stack perf                  skipped  inputs untouched: app
+stack test:e2e:smoke        skipped  inputs untouched: backend, web, shared, database, tiles, runners, compose
+stack perf                  skipped  inputs untouched: backend, web, shared, database, tiles, runners, compose
 ```
 
 `lint:md`, `lint:links` and `lint:pointers` run, and every other one names the input class it did not see
@@ -42,9 +42,11 @@ move. Three shapes of answer are worth recognising:
 
 - **`inputs touched: <class>`** — the gate runs, and the class says which of its
   inputs moved.
-- **`every gate applies`**, under a line naming the reason — a path in the
-  `tooling` class was touched, or the change set could not be worked out (no
-  base, a shallow clone, a git that would not answer). The reason is printed
+- **`every gate applies`**, under a line naming the reason — the root
+  `package.json` changed outside its scripts and dependencies, a run in CI saw
+  the map or the workflow change (§ What a tool's settings ask for), or the
+  change set could not be worked out (no base, a shallow clone, a git that would
+  not answer). The reason is printed
   once above the list rather than repeated on every line of it.
 - **`Not an input to any gate: …`**, at the end — paths that belong to no class.
   They are reported rather than dropped: a file nothing reads is a fact about the
@@ -79,7 +81,7 @@ Ran: check:py
 Failed: check:py (exit 1)
 Not run (stopped after check:py failed): security:py:bandit, security:py:deps
 Skipped (inputs untouched):
-  lint:backend         inputs untouched: app
+  lint:backend         inputs untouched: backend, shared
   …
   lint:links           inputs untouched: docs
 ```
@@ -99,7 +101,7 @@ and exits 0. That is the one line this runner exists to print: a gate that did
 not run has to say so, because silence and success look identical in a log.
 
 The opposite case says as much. Where every gate applies — a change set the
-runner could not work out, or a repository-wide file that reaches all of them —
+runner could not work out, or a change only every gate can answer for —
 the run opens with the sentence that made it so before the first gate starts:
 
 ```text
@@ -123,8 +125,11 @@ of 278 s for `test:frontend` on the development machine.
 and whether git tracks it. `lint:shell`, `lint:docker` and `lint:pointers` read
 only what git tracks, so staging a new file moves their key. The hash also covers:
 
-- the `tooling` class;
-- the Node manifests and lockfiles;
+- the files in the gate's own `config` (§ What a tool's settings ask for);
+- the gate machinery and the root manifests: `scripts/gates.mjs`,
+  `scripts/gate-cache.mjs`, `package.json` and `package-lock.json`, so a pass
+  recorded under older machinery is never reused;
+- the Node manifests and lockfiles of the three packages;
 - the command;
 - the Node version, and the Python version for a Python gate;
 - for a unit lane, whether it runs on the host (`TEST_REPORT_LOCAL=1`) or in the
@@ -171,6 +176,61 @@ Three things run every gate the change asks for:
   nothing either;
 - **CI**, which never reads or writes a record. A run with `CI` set reuses
   nothing: a fresh checkout is what answers for a pushed head.
+
+## What a tool's settings ask for
+
+No tool's settings ask for every gate (ADR-0092). Each
+file a gate reads outside its classes is in that gate's `config`, the way a
+target's own settings are its input in Nx, and asks for that gate alone:
+
+- `.madgerc` asks for `lint:circular`, `.markdownlint-cli2.jsonc` for `lint:md`,
+  `.semgrepignore` for the two Semgrep scans;
+- a tool guard (`scripts/require-node-tools.sh`, `scripts/require-py-tools.sh`,
+  `scripts/require-python-312.sh`) asks for the gates whose script calls it, and
+  `scripts/scan-image.sh` for the image scan;
+- the root `package-lock.json` asks for the two gates that run a root tool,
+  `lint:circular` and `lint:md`;
+- `docs/tech/gates.md`, `ci.yml` and the root `package.json` ask for
+  `test:backend`, whose specs read them.
+
+The root `package.json` is read by script, the way Nx reads a root `tsconfig` by
+path mapping. A change to one npm script asks for the gates that run it, or run
+a script that runs it: an edit to `format:py` asks for `check:py`, which calls
+it. The listing names it as `runs the changed npm script format:py`. A change
+outside the scripts and the dependencies, to `engines` say, cannot be placed,
+and asks for every gate.
+
+**The map and the workflow are global in CI only.** A change to
+`scripts/gates.mjs` or `.github/workflows/ci.yml` runs every gate in CI, and so
+does a change to a root npm script the workflow runs by name (`npm run check`,
+`npm run perf`, `npm run setup:py:dev`, read from the workflow by
+`workflowScripts`), since that script is part of a job's definition. An edit
+that narrows the map could otherwise skip the very gate it broke, and a job's
+definition is tested only by running it. Locally the same change asks for
+its readers alone: the map's and the workflow's specs in `test:backend`,
+actionlint, the docs gates. The listing says so on a line of its own:
+
+```text
+.github/workflows/ci.yml decides what CI runs, so CI runs every gate for this change; locally its readers do (ADR-0092).
+```
+
+So a pull request that edits the map runs its own specs locally, and CI answers
+for the rest before it merges.
+
+With no class that runs everything, a file a gate reads but the map never names
+would be checked by nothing, locally or in CI. Two specs in
+`scripts/gates.test.mjs` hold the map complete:
+
+- **Every tracked path is placed.** It is in a class, in a gate's `config`, or
+  in the *Read by no gate* table below with its reason. A new file fails the
+  spec until the map says who reads it.
+- **Every file a gate's npm script names is that gate's input.** A guard or
+  runner the script calls by path (`./scripts/require-py-tools.sh`), and any
+  root `.…rc` file it names, is in the gate's classes or `config`, and in its
+  cache key.
+
+A tool's settings that its script does not name (`.madgerc`) can only be placed
+by hand. The first spec is what makes sure the file is placed at all.
 
 ## The map
 
@@ -249,15 +309,23 @@ Three things run every gate the change asks for:
 
 ## What the backend suite reads across the repository
 
-The `app` class is one class and not two because the product is one contract
-surface. Both sides import `packages/shared` — the rules both apply, declared
-once (ADR-0065), which is why that directory is in the class too: a change to
-a shared rule is a change to both sides, and both typechecks read its source
-through the link.
+The product is one contract surface split across the classes `backend`, `web`,
+`shared`, `database`, `tiles`, `scripts`, `runners` and `compose` (#1378). Each gate
+reads the classes it opens, and only those. Before the split one class, `app`,
+held all of them. A change of backend source therefore ran the web's lint,
+typecheck, knip and unit lane (a median of 278 s on the development machine),
+none of which can see a file under `backend/`.
+
+The two sides meet in `packages/shared`, the `shared` class. Both sides import
+it: the rules both apply, declared once (ADR-0065). A change to a shared rule is
+a change to both sides, and both typechecks read its source through the link.
+So a `shared` change asks for every gate of both sides.
 
 The package also carries the OpenAPI document the web's client is generated
-from (ADR-0072, ADR-0073). Three gates follow from that for an endpoint whose
-answer a schema declares:
+from (ADR-0072, ADR-0073). That document is the only path from the backend to the
+web: a backend change that leaves it as it was cannot move a web type or a web
+spec, which is why a `backend` change asks for no web gate. Three gates follow
+from the document for an endpoint whose answer a schema declares:
 
 - `backend/src/api/openApi.test.ts`, in the backend unit lane, fails while the
   document lags the schemas;
@@ -291,11 +359,11 @@ reached on 2026-10-03:
 That list is not maintained by hand. `scripts/gates.test.mjs` reads every
 `repoFile()` call whose arguments are string literals — in the backend suite and
 in the tooling specs beside it under `scripts/`, which `backend/vitest.config.ts`
-runs in the same gate — resolves each to a repository path, and asserts it is an
-input to `test:backend` or to `tooling`. The `docs/tech/gates.md` and
+runs in the same gate — resolves each to a repository path, and asserts it is in
+one of `test:backend`'s classes or its `config`. The `docs/tech/gates.md` and
 `.github/workflows/ci.yml` rows arrived that way:
 `scripts/ci-failsafe.test.mjs` reads `.github/workflows/ci.yml`, and the
-assertion is green only because the map carries that path under `tooling`. A
+assertion is green only because `test:backend`'s `config` names that path. A
 spec that starts reading a path the map does not name turns the test red, and
 the reason it must is the failure the assertion names: a path in no input class
 means a change to that file alone touches no input, so the unit lane is skipped,
@@ -372,8 +440,8 @@ same stack, keeping it up too. The third runs `npm run test:api`, the API
 contract lane (§ The API contract), against the same backend; it reads
 `job_test_api` and fails the job like the others. The database step reads `job_test_db`, a key of its own
 in the shape of the `Semgrep SAST (Node)` and `Semgrep SAST (Python)` steps.
-Today it always equals `job_smoke`, since both gates read `app`; what
-`scripts/gates.test.mjs` pins is the containment, not the equality — a smoke
+It holds only when `job_smoke` does, since the lane reads a subset of what the
+smoke gate reads; what `scripts/gates.test.mjs` pins is that containment — a smoke
 gate narrowed to fewer inputs than `test:db` reads would leave the step inside a
 skipped job, reporting Success with nothing run.
 
@@ -538,8 +606,9 @@ things:
 `api:client` (`frontend/scripts/api-client.mjs`) regenerates the web's API client from the
 document with Orval (ADR-0073) and fails while the committed `frontend/src/api/client.generated.ts`
 is not what that generates.
-- Its inputs are `api-contract` and `app`, which the document's own path belongs to, and
-  `node-deps`, since an Orval upgrade changes the output as surely as a route does.
+- Its inputs are `api-contract`, `shared`, which the document's own path belongs to, `web`,
+  which holds the mutator and the Orval configuration, and `node-deps`, since an Orval
+  upgrade changes the output as surely as a route does.
 - A changed route therefore asks for two regenerations in turn: `npm --prefix backend run
   api:openapi` for the document (`openApi.test.ts` holds it), then `npm --prefix frontend run
   api:client` for the client.
@@ -596,8 +665,9 @@ so the lane's findings are defects and its step fails the job.
   gate.
 - **The `docs` class is `*.md`, while `lint:links` resolves links to any file.**
   Renaming a `.sh`, an `.sql` or an image leaves a dead link in prose that this
-  map does not chase, because the change touched no Markdown. The next full run —
-  any `tooling` change, or the next docs edit — finds it.
+  map does not chase, because the change touched no Markdown. The next docs edit
+  finds it, or a CI run after a change to the map or the workflow, which runs
+  every gate.
 - **A workflow's syntax is read; what it needs from GitHub is not.** The gap ADR-0062
   recorded here — the Claude workflows in no input class, `ci.yml` held
   only to the fail-safe contract and never to the syntax of a workflow file — is

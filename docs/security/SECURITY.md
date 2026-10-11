@@ -116,9 +116,9 @@ Since #783 a gate runs when, and only when, the inputs it checks have changed,
 and the scanners above sit on both sides of that rule. **Semgrep (both scans),
 Trivy, `npm audit`, `pip-audit` and Bandit are gates in the map**
 (`docs/tech/gates.md`, [ADR-0062](../decisions/0062-a-gate-runs-only-when-its-inputs-changed.md)):
-the Node scan is pointed at the whole checkout and runs when any `app` path
-moved — `backend/`, `frontend/`, `db/`, `martin/`, `scripts/`, either compose
-file or `.env.example` — or any `cv-python/` path did, since its rule packs
+the Node scan is pointed at the whole checkout and runs when any product path
+moved — `backend/`, `frontend/`, `packages/`, `db/`, `martin/`, `scripts/`,
+either compose file or `.env.example` — or any `cv-python/` path did, since its rule packs
 carry Python rules; the Python scan and the image scan run when `cv-python/`
 did, and `npm audit` when a manifest or lockfile did. A backend change cannot
 alter what the Python scan finds, and a prose change cannot alter any of them.

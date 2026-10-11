@@ -191,10 +191,10 @@ and `npm run perf:local` — is owed
 twice per pull request, not before every push (#920): before the push the
 pull request opens on, so the first review round does not read a broken
 smoke lane; and again on the head the maintainer is asked to merge, then
-only when a review wave touched its inputs — the `app` and `python`
-classes those lanes read, and the `tooling` class, any path of which
-re-asks the whole map and so owes the slow tier by itself
-(`docs/tech/gates.md` § Inputs). What a wave touched is keyed on the
+only when a review wave touched its inputs — any class those lanes
+read (`docs/tech/gates.md` § Gates names each lane's). A change to the
+gate map or `ci.yml` asks for its readers locally and for every gate in
+CI, so it owes no local slow tier of its own (ADR-0092). What a wave touched is keyed on the
 wave's own edits, never on a diff between two heads: the first pushed
 head is recorded nowhere and is no ancestor of the branch once a fold has
 force-pushed, and `git diff A B` after a `git rebase origin/main` lists

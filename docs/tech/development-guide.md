@@ -1060,8 +1060,9 @@ whatever database that code is later run against. See
 ## Performance
 
 Performance is measured, budgeted and gated — not felt. Two tiers, both run
-by CI on every pull request whose inputs ask for them — they are `app` gates,
-so a prose pull request runs neither (`docs/tech/gates.md`) — and both
+by CI on every pull request whose inputs ask for them — they read the
+product's input classes, so a prose pull request runs neither
+(`docs/tech/gates.md`) — and both
 available locally under the same names, plus a local run on the developer's
 own data:
 
