@@ -13,7 +13,7 @@
  * request, and only for the candidates the distance leaves.
  */
 
-import type { CandidateItem } from './componentItemMatching.js';
+import { FIND_RECORD_CLASSES, type CandidateItem } from './componentItemMatching.js';
 import { askWikipediaOnce } from './wikipediaCategories.js';
 import { qleverWikidataQuery } from './qleverWikidata.js';
 import {
@@ -165,7 +165,9 @@ export function boxFilter(box: Box): string {
 
 /**
  * Items inside any of the boxes that are of one of `classes`, less those that
- * carry a World Heritage reference, asked of Wikidata on QLever
+ * carry a World Heritage reference or record a find or a dig
+ * (`FIND_RECORD_CLASSES` or a class under one: an item's answer names only
+ * the classes asked about, so the record class is refused here or nowhere), asked of Wikidata on QLever
  * (`qleverWikidata.ts`): the near rule reads the coordinates of whole classes
  * around a thousand places, which the Wikidata Query Service throttled even
  * paced at its own published rate, and which an unloaded mirror answers in
@@ -180,6 +182,7 @@ export async function itemsInBoxes(
 ): Promise<CandidateItem[]> {
   if (classes.length === 0 || boxes.length === 0 || hooks.isCancelled?.()) return [];
   const values = classes.map(c => `wd:${c}`).join(' ');
+  const findRecordValues = Object.keys(FIND_RECORD_CLASSES).map(c => `wd:${c}`).join(' ');
   const rows = await qleverWikidataQuery(`${QLEVER_PREFIXES}
     SELECT ?item ?coord ?class WHERE {
       VALUES ?class { ${values} }
@@ -189,6 +192,7 @@ export async function itemsInBoxes(
       BIND(geof:longitude(?coord) AS ?lon)
       FILTER(${boxes.map(boxFilter).join('\n        || ')})
       FILTER NOT EXISTS { ?item wdt:P757 ?reference }
+      FILTER NOT EXISTS { VALUES ?record { ${findRecordValues} } ?item wdt:P31/wdt:P279* ?record }
     }`, hooks.isCancelled);
   hooks.onQuery?.();
   return [...candidatesOf(rows, 'item').values()];

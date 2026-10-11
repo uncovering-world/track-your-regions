@@ -257,6 +257,23 @@ export function admittedClasses(
 }
 
 /**
+ * Classes whose items record a find or a dig rather than a place to go: bulk
+ * imports that name each item after its town and type it an archaeological
+ * site too, so the class tree admits it and the name matches the town's
+ * component ("Pompeii (Samian Ware Discovery Site)" 265 m from Pompeii). The
+ * tree cannot tell them apart, since each is a direct subclass of
+ * archaeological site (Q839954), as every kind of site is; so they are named.
+ * An item of one of them, or of a class under one, is never a near candidate,
+ * whatever else it is typed;
+ * the near query refuses it (`itemsInBoxes`), since a candidate carries only
+ * the classes it was asked for.
+ */
+export const FIND_RECORD_CLASSES: Readonly<Record<string, string>> = {
+  Q102202066: 'Samian Ware Discovery Site',
+  Q101008619: 'rescue excavation',
+};
+
+/**
  * Whether a near candidate is of a class the site admits, and not a settlement
  * where the site's parts are not settlements: a fort named after a village is
  * not the village. `isSettlement` is the class tree's word on the item.
