@@ -153,6 +153,24 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
     ]);
   });
 
+  it('folds onto the survivor\'s standing point, never onto one its source withdrew at the same reference (#1360)', async () => {
+    // A moved coordinate: the old point is withdrawn and keeps the lower id,
+    // the new one stands beside it under the same reference.
+    await pool.query('UPDATE experience_locations SET missing_since = NOW() WHERE experience_id = $1', [WORSHIP]);
+    const moved = await pool.query<{ id: number }>(
+      `INSERT INTO experience_locations (experience_id, name, external_ref, location)
+       VALUES ($1, 'Pantheon', $2, ST_SetSRID(ST_MakePoint(12.4769, 41.8987), 4326)) RETURNING id`,
+      [WORSHIP, QID],
+    );
+
+    await mergePlaces({ survivorId: WORSHIP, foldedId: SITE, mergedBy: null, reason: 'equal_wikidata_item' });
+
+    const folded = await pool.query<{ merged_into_id: number }>(
+      'SELECT merged_into_id FROM experience_locations WHERE experience_id = $1', [SITE],
+    );
+    expect(folded.rows).toEqual([{ merged_into_id: moved.rows[0].id }]);
+  });
+
   it('is undone exactly: both places as they were, with their own points and visits', async () => {
     const merged = await mergePlaces({ survivorId: WORSHIP, foldedId: SITE, mergedBy: null, reason: 'equal_wikidata_item' });
 

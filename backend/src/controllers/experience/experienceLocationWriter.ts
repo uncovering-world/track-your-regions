@@ -519,8 +519,11 @@ export interface FoldedPoints {
 /**
  * Fold the folded place's points into the survivor's where they are one point
  * (ADR-0086 decision 3, narrowed by ADR-0088): the same `external_ref`, which
- * both sources read off one Wikidata item; or the one point of a place of one
- * point folded into another place of one point — a World Heritage site and the
+ * both sources read off one Wikidata item; or the one standing point of a place
+ * of one standing point folded into another such place — a point its source
+ * withdrew is on no map and is not counted (#1360), and where the survivor holds
+ * the reference twice, withdrawn and standing (a moved coordinate), the folded
+ * point folds onto the standing one — a World Heritage site and the
  * cathedral it is name the place by different references, and it is still one
  * place on the ground, where two pins would be the bug the merge exists to
  * end. The folded point's placements move onto the survivor's point, and the
@@ -534,22 +537,22 @@ export async function foldPoints(
 ): Promise<FoldedPoints> {
   const pairs = await client.query<{ point: number; target: number }>(
     `WITH standing AS (
-       SELECT id, experience_id, external_ref FROM experience_locations
+       SELECT id, experience_id, external_ref, missing_since IS NULL AS offered FROM experience_locations
         WHERE experience_id IN ($1, $2) AND merged_into_id IS NULL
      ), by_ref AS (
-       SELECT f.id AS point, s.id AS target
+       SELECT f.id AS point, s.id AS target, s.offered AS onto_offered
          FROM standing f JOIN standing s ON s.experience_id = $2 AND s.external_ref = f.external_ref
         WHERE f.experience_id = $1 AND f.external_ref IS NOT NULL
      ), one_each AS (
-       SELECT f.id AS point, s.id AS target
-         FROM standing f JOIN standing s ON s.experience_id = $2
-        WHERE f.experience_id = $1
-          AND (SELECT count(*) FROM standing WHERE experience_id = $1) = 1
-          AND (SELECT count(*) FROM standing WHERE experience_id = $2) = 1
+       SELECT f.id AS point, s.id AS target, s.offered AS onto_offered
+         FROM standing f JOIN standing s ON s.experience_id = $2 AND s.offered
+        WHERE f.experience_id = $1 AND f.offered
+          AND (SELECT count(*) FROM standing WHERE experience_id = $1 AND offered) = 1
+          AND (SELECT count(*) FROM standing WHERE experience_id = $2 AND offered) = 1
      )
      SELECT DISTINCT ON (point) point, target
        FROM (SELECT * FROM by_ref UNION ALL SELECT * FROM one_each) pair
-      ORDER BY point, target`,
+      ORDER BY point, onto_offered DESC, target`,
     [folded.id, survivor.id],
   );
   const points = pairs.rows;

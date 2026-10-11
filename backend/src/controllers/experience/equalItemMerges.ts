@@ -22,15 +22,17 @@ import { mergePlaces } from './placeMerge.js';
  * The Wikidata item a membership makes its place, or NULL: a Wikidata source's
  * own id, or, for a source that knows the place by another id, the one item
  * that id resolves to (`wikidata_items`, a World Heritage site's through P757,
- * #1248, ADR-0088) — and only for a place of exactly one point, since a serial
- * site's items name its parts and wait for identity per location, and a place
- * whose point was never written is not yet the place its item names.
+ * #1248, ADR-0088) — and only for a place of exactly one standing point, since
+ * a serial site's items name its parts and wait for identity per location, and
+ * a place whose point was never written is not yet the place its item names. A
+ * point its source withdrew is not one of the place's points (#1360).
  */
 export function membershipItemSql(membership = 'm', place = 'e'): string {
   return `CASE WHEN ${membership}.external_id ~ '^Q[0-9]+$' THEN ${membership}.external_id
                WHEN cardinality(${membership}.wikidata_items) = 1
                 AND (SELECT count(*) FROM experience_locations one_point
-                      WHERE one_point.experience_id = ${place}.id AND one_point.merged_into_id IS NULL) = 1
+                      WHERE one_point.experience_id = ${place}.id AND one_point.merged_into_id IS NULL
+                        AND one_point.missing_since IS NULL) = 1
                THEN ${membership}.wikidata_items[1] END`;
 }
 
