@@ -85,6 +85,20 @@ describe('itemsInBoxes', () => {
 
     expect(items).toEqual([{ item: 'Q98402', labels: [], coords: [[46.8851, 22.8754]], classes: ['Q88205'] }]);
   });
+
+  it('refuses a record of a find or a dig, though it is of a class asked about (#1357)', async () => {
+    // "Pompeii (Samian Ware Discovery Site)", Q103190089, is typed Samian Ware
+    // Discovery Site and archaeological site: an answer to a question about
+    // archaeological sites names that class alone, so the query refuses it.
+    vi.mocked(qleverWikidataQuery).mockResolvedValue([]);
+
+    await itemsInBoxes([{ south: 40.74, west: 14.47, north: 40.76, east: 14.5 }], ['Q839954'], hooks());
+
+    const query = vi.mocked(qleverWikidataQuery).mock.calls.at(-1)![0].replace(/\s+/g, ' ');
+    expect(query).toContain('VALUES ?class { wd:Q839954 } ?item wdt:P31 ?class .');
+    expect(query).toContain(
+      'FILTER NOT EXISTS { VALUES ?record { wd:Q102202066 wd:Q101008619 } ?item wdt:P31/wdt:P279* ?record } }');
+  });
 });
 
 describe('boxFilter', () => {
