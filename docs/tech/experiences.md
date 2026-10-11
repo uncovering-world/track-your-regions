@@ -1117,6 +1117,16 @@ path needs.
     Karnak, which somebody filed as a *city*, and the collegiate church of Ziortza, a *Trappist
     monastery* — a class under *human settlement*. A component thereby left without a candidate
     is where it was before the search; the cost is accepted over a rule that keeps Tarentum.
+    A record of a find or a dig is never a candidate, whatever else it is typed: the near query
+    refuses an item of a record class or a class under one (`FIND_RECORD_CLASSES`,
+    `itemsInBoxes`), since an answer names only the classes
+    the query asked about. Wikidata holds one *Samian Ware Discovery Site* per town where that
+    pottery turned up and a *rescue excavation* per Athens street dig, each also an
+    *archaeological site* and named after its town or street, so "Pompeii (Samian Ware Discovery
+    Site)", 265 m from Pompeii and read without its bracket, matched the component by name. Both
+    classes sit directly under *archaeological site*, as every kind of site does, so the tree
+    cannot set them aside and the two are named. What a find is linked to is not this list's
+    business: a find names its site's own item (`siteFinds.ts`), never a component's.
 
   Not every point is searched. A component that stands for its whole site — the only standing
   point of a site of one, or a point named exactly like its site, folded (`standsForWholeSite`;
