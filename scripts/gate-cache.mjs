@@ -3,8 +3,8 @@
  * checked twice (ADR-0091).
  *
  * The key of a gate is a hash over every file in its input classes as it sits
- * on disk, the tooling class and the Node manifests and lockfiles, the command,
- * and the runtime that ran it. A pass recorded under that key answers for the
+ * on disk, its own config files, the gate machinery and the root manifests, the
+ * Node manifests and lockfiles, the command, and the runtime that ran it. A pass recorded under that key answers for the
  * next run whose key is the same: folding review fixes into earlier commits, a
  * clean rebase and a Markdown-only wave all leave the tree a gate reads as it
  * was, and only the history moved.

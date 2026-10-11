@@ -20,11 +20,25 @@
  * the local scripts read it (`npm run check`), and `docs/tech/gates.md` embeds
  * the tables `--table` prints, pinned by `scripts/gates.test.mjs`.
  */
-import { appendFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 
 import { openGateCache } from './gate-cache.mjs';
 import { READ_EXTENSIONS } from './lint-line-pointers.mjs';
+
+/**
+ * The scripts no unit or stack lane executes: the gate map and its cache, the
+ * board, the review and coverage tools, the database shell, the tool guards and
+ * the gates that run them by name (`config` on their entries below). Escaped
+ * for the `runners` pattern.
+ */
+const TOOL_SCRIPTS = [
+  'board.sh', 'catalogue-coverage.sh', 'ci-graph-measure.mjs', 'db-cli.sh', 'db-migrate.sh',
+  'db-types.sh', 'gate-cache.mjs', 'gates.mjs', 'lib/db-env.sh', 'lint-line-pointers.mjs',
+  'match-snapshot.sh', 'openapi-breaking.mjs', 'require-node-tools.sh', 'require-py-tools.sh',
+  'require-python-312.sh', 'review-surface.mjs', 'scan-image.sh', 'setup.sh',
+  'setup-integrations.sh', 'test-db-migrate.sh',
+].map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 
 /**
  * The classes of file a gate can read, in the order a reader should meet them.
@@ -36,27 +50,77 @@ import { READ_EXTENSIONS } from './lint-line-pointers.mjs';
  */
 export const INPUTS = [
   {
-    id: 'app',
-    paths: [
-      'backend/',
-      'frontend/',
-      'packages/',
-      // All of db/ but the coverage lists, which are data with one reader and
-      // a class of their own below. Anything else that lands beside them stays here.
-      /^db\/(?!catalogue-coverage\/.*\.jsonl$)/,
-      'martin/',
-      'scripts/',
-      'docker-compose.yml',
-      'docker-compose.test.yml',
-      '.env.example',
-    ],
+    id: 'backend',
+    // A README beside the code is prose: no lint, typecheck or spec reads it.
+    paths: [/^backend\/(?!.*\.md$)/],
     note:
-      'The product is one contract surface, not two stacks. Both sides import'
-      + ' packages/shared (ADR-0065), whose generated api module types the frontend'
-      + " by the backend's response schemas (ADR-0066). Backend specs read db/,"
-      + ' frontend/src, martin/, packages/ and scripts/ through repoFile(). So a'
-      + ' change to any of them asks for all of it, but for the coverage lists,'
-      + ' which are a class of their own below.',
+      "The API's source, its specs and its build. The web reads none of it: the"
+      + " backend's response schemas reach the web only as the OpenAPI document"
+      + ' in packages/shared (ADR-0072, ADR-0073), which api/openApi.test.ts holds'
+      + ' to the schemas. So a backend change that leaves the document as it was'
+      + " asks for the backend's own gates and the lanes that run the stack.",
+  },
+  {
+    id: 'web',
+    paths: [/^frontend\/(?!.*\.md$)/],
+    note:
+      'The web client, its specs and its Playwright and Lighthouse runners.'
+      + ' The backend unit lane reads frontend/src through repoFile() — the URL'
+      + ' safety and antimeridian scans — so a change here still asks for'
+      + " test:backend; none of the backend's other gates reads it.",
+  },
+  {
+    id: 'shared',
+    paths: [/^packages\/(?!.*\.md$)/],
+    note:
+      'The rules both sides import (ADR-0065) and the OpenAPI document the'
+      + " web's client is generated from (ADR-0072): both typechecks read it"
+      + ' through the link, and its specs run in the backend unit lane. A change'
+      + ' here asks for both sides.',
+  },
+  {
+    id: 'database',
+    // All of db/ but the coverage lists, which are data with one reader and
+    // a class of their own below. Anything else that lands beside them stays here.
+    paths: [/^db\/(?!catalogue-coverage\/.*\.jsonl$)/],
+    note:
+      'The schema, the migrations and the loaders: what a database is built'
+      + ' from. The backend unit lane reads db/ through repoFile() — schema'
+      + ' parity, the migration ledger, the trigger guards — and the stack lanes'
+      + ' stand on it. No lint, typecheck or web gate reads it.',
+  },
+  {
+    id: 'tiles',
+    paths: ['martin/'],
+    note:
+      "Martin's configuration. The backend unit lane asserts on the tile"
+      + ' sources it publishes, and the smoke and Lighthouse lanes draw them.',
+  },
+  {
+    id: 'scripts',
+    paths: ['scripts/'],
+    note:
+      "The repository's own scripts and their specs, whole: the tooling specs"
+      + ' run in the backend unit lane, and two of its specs scan the tree for'
+      + ' anything that switches the geometry triggers off.',
+  },
+  {
+    id: 'runners',
+    paths: [new RegExp(`^scripts/(?!.*\\.test\\.mjs$)(?!(?:${TOOL_SCRIPTS.join('|')})$)`)],
+    note:
+      'The scripts the unit and stack lanes run through: test-report.mjs,'
+      + " test-stack.sh, the report parsers the web's specs import, the API"
+      + ' contract and performance runners. Everything under scripts/ but the'
+      + ' specs and the tools no lane executes, so a new script counts as a'
+      + ' runner until it is named a tool.',
+  },
+  {
+    id: 'compose',
+    paths: ['docker-compose.yml', 'docker-compose.test.yml', '.env.example'],
+    note:
+      "What the containers are: the dev and test stacks, the unit lanes'"
+      + ' container shape and the variables they read. Every lane that runs in'
+      + ' a container reads it; no lint or typecheck does.',
   },
   {
     id: 'python',
@@ -164,43 +228,9 @@ export const INPUTS = [
     paths: ['packages/shared/src/openapi.generated.json', 'scripts/openapi-breaking.mjs'],
     note:
       'The OpenAPI document a client is generated from (ADR-0072), and the check'
-      + ' that compares it with the base. The document also sits under app, whose'
-      + ' gates regenerate and lint it; this class is what asks whether it still'
+      + ' that compares it with the base. The document also sits under shared,'
+      + ' whose gates regenerate and lint it; this class is what asks whether it still'
       + ' serves a client built against the last one.',
-  },
-  {
-    id: 'tooling',
-    paths: [
-      // In two classes, and both are true of it: `workflows` is what actionlint
-      // reads, and `tooling` is what makes an edit to the job filter re-ask
-      // every gate the filter decides for.
-      '.github/workflows/ci.yml',
-      'package.json',
-      'package-lock.json',
-      'scripts/gates.mjs',
-      // Whether a gate runs at all, as much as the map is: an edit to the key
-      // it reuses a pass by re-asks every gate.
-      'scripts/gate-cache.mjs',
-      'scripts/require-node-tools.sh',
-      'scripts/require-py-tools.sh',
-      'scripts/require-python-312.sh',
-      // The image scan's own runner. Every other gate's script sits under an
-      // input of that gate (scripts/ is app, and the test and perf lanes read
-      // app); this one's gate reads python only, so without this line an edit
-      // to the scan itself — its severity, its pin — would never run it.
-      'scripts/scan-image.sh',
-      '.semgrepignore',
-      '.markdownlint-cli2.jsonc',
-      // lint:circular's own settings: a module a generated client depends on
-      // may take a type from that client, which madge would count as a cycle.
-      '.madgerc',
-      'docs/tech/gates.md',
-    ],
-    note:
-      'A root config reaches every stack — it decides what the gates are, not'
-      + ' what they read — so a change to one runs everything. That is the'
-      + ' conservative answer to the reach question #783 had to settle, and the'
-      + ' only one that cannot skip a gate its own change just broke.',
   },
 ];
 
@@ -214,6 +244,12 @@ export const INPUTS = [
  * install before the command works; `docker` means nothing to install, because
  * every runner already has it. `job` is the CI job the gate belongs to.
  *
+ * `config` names the files outside its classes that the gate itself reads — its
+ * tool's settings, the guard its script calls, the documents its specs open —
+ * and asks for this gate alone when one of them changes (ADR-0092). The npm
+ * script a gate runs is read the same way: a change to the root package.json
+ * asks for the gates whose script, or a script it runs, changed.
+ *
  * `uncached` says why a pass of this gate is never reused (ADR-0091): its
  * answer reads something outside the tree, which can change while the files
  * the gate reads stay as they were.
@@ -225,19 +261,19 @@ const VULNERABILITY_DATABASE = 'Trivy reads a vulnerability database and a base 
 const LINK_TARGETS = 'lychee resolves links to files of every type, and its input class holds the Markdown only';
 
 export const GATES = [
-  { id: 'lint:backend', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'backend', 'run', 'lint'], job: 'check', setup: 'node' },
-  { id: 'lint:frontend', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'frontend', 'run', 'lint'], job: 'check', setup: 'node' },
-  { id: 'typecheck:backend', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'backend', 'run', 'typecheck'], job: 'check', setup: 'node' },
-  { id: 'typecheck:frontend', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'frontend', 'run', 'typecheck'], job: 'check', setup: 'node' },
-  { id: 'knip:backend', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'backend', 'run', 'knip'], job: 'check', setup: 'node' },
-  { id: 'knip:frontend', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'frontend', 'run', 'knip'], job: 'check', setup: 'node' },
+  { id: 'lint:backend', tier: 'check', inputs: ['backend', 'shared'], command: ['npm', '--prefix', 'backend', 'run', 'lint'], job: 'check', setup: 'node' },
+  { id: 'lint:frontend', tier: 'check', inputs: ['web', 'shared'], command: ['npm', '--prefix', 'frontend', 'run', 'lint'], job: 'check', setup: 'node' },
+  { id: 'typecheck:backend', tier: 'check', inputs: ['backend', 'shared'], command: ['npm', '--prefix', 'backend', 'run', 'typecheck'], job: 'check', setup: 'node' },
+  { id: 'typecheck:frontend', tier: 'check', inputs: ['web', 'shared'], command: ['npm', '--prefix', 'frontend', 'run', 'typecheck'], job: 'check', setup: 'node' },
+  { id: 'knip:backend', tier: 'check', inputs: ['backend', 'shared'], command: ['npm', '--prefix', 'backend', 'run', 'knip'], job: 'check', setup: 'node' },
+  { id: 'knip:frontend', tier: 'check', inputs: ['web', 'shared'], command: ['npm', '--prefix', 'frontend', 'run', 'knip'], job: 'check', setup: 'node' },
   // The third package (ADR-0065): its own lint, typecheck and knip, the way
   // the other two have theirs. Its specs run in test:backend, like the
   // tooling's, and both sides' typechecks read its source through the link.
-  { id: 'lint:shared', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'packages/shared', 'run', 'lint'], job: 'check', setup: 'node' },
-  { id: 'typecheck:shared', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'packages/shared', 'run', 'typecheck'], job: 'check', setup: 'node' },
-  { id: 'knip:shared', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'packages/shared', 'run', 'knip'], job: 'check', setup: 'node' },
-  { id: 'lint:circular', tier: 'check', inputs: ['app'], command: ['npm', 'run', 'lint:circular'], job: 'check', setup: 'node' },
+  { id: 'lint:shared', tier: 'check', inputs: ['shared'], command: ['npm', '--prefix', 'packages/shared', 'run', 'lint'], job: 'check', setup: 'node' },
+  { id: 'typecheck:shared', tier: 'check', inputs: ['shared'], command: ['npm', '--prefix', 'packages/shared', 'run', 'typecheck'], job: 'check', setup: 'node' },
+  { id: 'knip:shared', tier: 'check', inputs: ['shared'], command: ['npm', '--prefix', 'packages/shared', 'run', 'knip'], job: 'check', setup: 'node' },
+  { id: 'lint:circular', tier: 'check', inputs: ['backend', 'web', 'shared'], command: ['npm', 'run', 'lint:circular'], job: 'check', setup: 'node', config: ['.madgerc', 'package-lock.json', 'scripts/require-node-tools.sh'] },
   // Stands a fresh Postgres up from db/init, regenerates the row types and
   // diffs them against the committed file (ADR-0064): a schema edit without
   // `npm run db:types` fails here. `node` because the generator runs from
@@ -247,12 +283,12 @@ export const GATES = [
   { id: 'lint:shell', tier: 'check', inputs: ['shell'], command: ['npm', 'run', 'lint:shell'], job: 'check', setup: 'docker' },
   { id: 'lint:docker', tier: 'check', inputs: ['docker'], command: ['npm', 'run', 'lint:docker'], job: 'check', setup: 'docker' },
   { id: 'lint:actions', tier: 'check', inputs: ['workflows'], command: ['npm', 'run', 'lint:actions'], job: 'check', setup: 'docker' },
-  { id: 'lint:md', tier: 'check', inputs: ['docs'], command: ['npm', 'run', 'lint:md'], job: 'check', setup: 'docs' },
+  { id: 'lint:md', tier: 'check', inputs: ['docs'], command: ['npm', 'run', 'lint:md'], job: 'check', setup: 'docs', config: ['.markdownlint-cli2.jsonc', 'package-lock.json', 'scripts/require-node-tools.sh'] },
   { id: 'lint:links', tier: 'check', inputs: ['docs'], command: ['npm', 'run', 'lint:links'], job: 'check', setup: 'docker', uncached: LINK_TARGETS },
   // Redocly over the OpenAPI document (ADR-0072). The document is generated
-  // from the route declarations into packages/shared/src, so a change to the
-  // app is what can change it; the rules are in packages/shared/redocly.yaml.
-  { id: 'lint:openapi', tier: 'check', inputs: ['app'], command: ['npm', 'run', 'lint:openapi'], job: 'check', setup: 'docker' },
+  // from the route declarations into packages/shared/src, and a backend change
+  // that moves it moves that file; the rules are in packages/shared/redocly.yaml.
+  { id: 'lint:openapi', tier: 'check', inputs: ['shared'], command: ['npm', 'run', 'lint:openapi'], job: 'check', setup: 'docker' },
   // oasdiff between the base's OpenAPI document and this one (#1090): a warning
   // while no native client exists, a failure once one does
   // (`scripts/openapi-breaking.mjs` holds the policy).
@@ -260,7 +296,7 @@ export const GATES = [
   // Orval regenerates the web client from the OpenAPI document and compares
   // it with the committed one (ADR-0073): a document, a mutator or an Orval
   // version changed without `npm --prefix frontend run api:client` fails here.
-  { id: 'api:client', tier: 'check', inputs: ['api-contract', 'app', 'node-deps'], command: ['npm', '--prefix', 'frontend', 'run', 'api:client:check'], job: 'check', setup: 'node' },
+  { id: 'api:client', tier: 'check', inputs: ['api-contract', 'web', 'shared', 'node-deps'], command: ['npm', '--prefix', 'frontend', 'run', 'api:client:check'], job: 'check', setup: 'node' },
   // A line pointer — a file name with a line number after it — is refused
   // wherever living prose lives: a Markdown page, a code comment, a workflow's
   // `#` line. Its input is the `prose` class, which is the pass's own
@@ -269,40 +305,118 @@ export const GATES = [
   // root install CI's check job runs unconditionally — so a prose-only change
   // still installs no package.
   { id: 'lint:pointers', tier: 'check', inputs: ['prose'], command: ['node', 'scripts/lint-line-pointers.mjs'], job: 'check', setup: 'docs' },
-  { id: 'check:py', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'check:py'], job: 'check', setup: 'python' },
-  { id: 'security:py:bandit', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'security:py:bandit'], job: 'check', setup: 'python' },
-  { id: 'security:py:deps', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'security:py:deps'], job: 'check', setup: 'python', uncached: ADVISORIES },
-  { id: 'test:backend', tier: 'test', inputs: ['app', 'coverage'], command: ['node', 'scripts/test-report.mjs', 'backend-unit'], job: 'test', setup: 'node' },
-  { id: 'test:frontend', tier: 'test', inputs: ['app'], command: ['node', 'scripts/test-report.mjs', 'frontend-unit'], job: 'test', setup: 'node' },
-  { id: 'test:py', tier: 'test', inputs: ['python', 'db-python'], command: ['npm', 'run', 'test:py'], job: 'python-tests', setup: 'python' },
+  { id: 'check:py', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'check:py'], job: 'check', setup: 'python', config: ['scripts/require-py-tools.sh', 'scripts/require-python-312.sh'] },
+  { id: 'security:py:bandit', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'security:py:bandit'], job: 'check', setup: 'python', config: ['scripts/require-py-tools.sh', 'scripts/require-python-312.sh'] },
+  { id: 'security:py:deps', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'security:py:deps'], job: 'check', setup: 'python', uncached: ADVISORIES, config: ['scripts/require-py-tools.sh', 'scripts/require-python-312.sh'] },
+  { id: 'test:backend', tier: 'test', inputs: ['backend', 'web', 'shared', 'database', 'tiles', 'scripts', 'compose', 'coverage'], command: ['node', 'scripts/test-report.mjs', 'backend-unit'], job: 'test', setup: 'node', config: ['.github/workflows/ci.yml', 'docs/tech/gates.md', 'package.json'] },
+  { id: 'test:frontend', tier: 'test', inputs: ['web', 'shared', 'runners', 'compose'], command: ['node', 'scripts/test-report.mjs', 'frontend-unit'], job: 'test', setup: 'node' },
+  { id: 'test:py', tier: 'test', inputs: ['python', 'db-python'], command: ['npm', 'run', 'test:py'], job: 'python-tests', setup: 'python', config: ['scripts/require-py-tools.sh', 'scripts/require-python-312.sh'] },
   // The Node scan is pointed at the whole checkout, and its rule packs
   // (`p/default`, `p/owasp-top-ten`, `p/secrets`) carry Python rules, so
   // cv-python's files are its input too — not only the product's. And
   // `.semgrepignore` leaves `.jsonl` in, so `p/secrets` reads the coverage
   // lists, which agents write from web pages.
-  { id: 'security:scan', tier: 'scan', inputs: ['app', 'python', 'coverage'], command: ['npm', 'run', 'security:scan'], job: 'security', setup: 'docker', uncached: RULE_PACKS },
-  { id: 'security:py:semgrep', tier: 'scan', inputs: ['python'], command: ['npm', 'run', 'security:py:semgrep'], job: 'security', setup: 'docker', uncached: RULE_PACKS },
-  { id: 'security:image', tier: 'scan', inputs: ['python'], command: ['npm', 'run', 'security:image'], job: 'trivy', setup: 'docker', uncached: VULNERABILITY_DATABASE },
+  { id: 'security:scan', tier: 'scan', inputs: ['backend', 'web', 'shared', 'database', 'tiles', 'scripts', 'compose', 'python', 'coverage'], command: ['npm', 'run', 'security:scan'], job: 'security', setup: 'docker', uncached: RULE_PACKS, config: ['.semgrepignore'] },
+  { id: 'security:py:semgrep', tier: 'scan', inputs: ['python'], command: ['npm', 'run', 'security:py:semgrep'], job: 'security', setup: 'docker', uncached: RULE_PACKS, config: ['.semgrepignore'] },
+  { id: 'security:image', tier: 'scan', inputs: ['python'], command: ['npm', 'run', 'security:image'], job: 'trivy', setup: 'docker', uncached: VULNERABILITY_DATABASE, config: ['scripts/scan-image.sh'] },
   // The stack tier is printed and never spawned, so this one line is two
   // commands: it is what a person types, not an argv the runner passes on.
-  { id: 'build', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'build', '&&', 'npm', '--prefix', 'frontend', 'run', 'size'], job: 'build', setup: 'node' },
-  { id: 'test:e2e:smoke', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'test:e2e:smoke'], job: 'smoke', setup: 'docker' },
+  { id: 'build', tier: 'stack', inputs: ['backend', 'web', 'shared'], command: ['npm', 'run', 'build', '&&', 'npm', '--prefix', 'frontend', 'run', 'size'], job: 'build', setup: 'node' },
+  { id: 'test:e2e:smoke', tier: 'stack', inputs: ['backend', 'web', 'shared', 'database', 'tiles', 'runners', 'compose'], command: ['npm', 'run', 'test:e2e:smoke'], job: 'smoke', setup: 'docker' },
   // The database-backed backend specs (#522): the ones that need a real
   // Postgres, by the criterion in docs/tech/development-guide.md § Tests that
   // need a database. They run inside the same isolated stack the smoke lane
   // stands up, so they hang off that job and share its inputs.
-  { id: 'test:db', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'test:db'], job: 'smoke', setup: 'docker' },
+  { id: 'test:db', tier: 'stack', inputs: ['backend', 'shared', 'database', 'runners', 'compose'], command: ['npm', 'run', 'test:db'], job: 'smoke', setup: 'docker' },
   // The API contract lane (#1091): Schemathesis against the backend of that
   // same stack, as each of the fixture's accounts, reads only. It hangs off
   // the smoke job for the stack it stands up, as the database lane does.
-  { id: 'test:api', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'test:api'], job: 'smoke', setup: 'docker' },
-  { id: 'perf', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'perf:local'], job: 'perf', setup: 'docker' },
+  { id: 'test:api', tier: 'stack', inputs: ['backend', 'shared', 'database', 'runners', 'compose'], command: ['npm', 'run', 'test:api'], job: 'smoke', setup: 'docker' },
+  { id: 'perf', tier: 'stack', inputs: ['backend', 'web', 'shared', 'database', 'tiles', 'runners', 'compose'], command: ['npm', 'run', 'perf:local'], job: 'perf', setup: 'docker' },
+];
+
+/**
+ * The tracked paths no gate reads, each with the reason (ADR-0092). With no
+ * class that runs everything, a file a gate reads but the map never names would
+ * go unchecked locally and in CI alike, so `scripts/gates.test.mjs` holds every
+ * tracked path to a class, a gate's `config`, or this list.
+ */
+export const UNREAD = [
+  {
+    path: '.agents/skills/',
+    why: 'Links to .claude/skills for another agent (ADR-0080); the skills they point to are docs.',
+  },
+  {
+    path: '.gitignore',
+    why: 'Decides what git tracks, not what a gate reads: a file it newly ignores leaves the tree every gate sees.',
+  },
+  {
+    path: 'LICENSE',
+    why: 'No gate reads it. A link to it is lint:links’ gap for non-Markdown targets (§ What the map does not reach).',
+  },
+  {
+    path: 'repomix.config.json',
+    why: 'The settings of a packing tool no gate runs.',
+  },
 ];
 
 /** The tiers `run` accepts. `stack` is listed by it, never run by it. */
 const TIERS = ['check', 'test', 'scan', 'stack'];
 
-const TOOLING = INPUTS.find((input) => input.id === 'tooling');
+/**
+ * The files that decide what CI runs at all (ADR-0092): the map and the
+ * workflow that applies it. In CI a change to one runs every gate, because an
+ * edit that narrows the map could otherwise skip the very gate it broke, and a
+ * job's definition is tested only by running it. Locally they ask for their
+ * readers alone — the map's and the workflow's specs, actionlint — and CI
+ * answers for the rest before anything merges.
+ */
+export const CI_GLOBAL = ['.github/workflows/ci.yml', 'scripts/gates.mjs'];
+
+/**
+ * The files every gate's cache key covers (ADR-0091) without their change
+ * asking for every gate: the map, the cache, and the root manifests whose
+ * scripts and tools the gates run through. A pass recorded under older gate
+ * machinery is never reused, and that is all an edit to it costs.
+ */
+const KEY_GLOBALS = ['scripts/gates.mjs', 'scripts/gate-cache.mjs', 'package.json', 'package-lock.json'];
+
+/**
+ * The root npm scripts the workflow runs by name (`npm run check`, `npm run
+ * perf`, `npm run setup:py:dev`): part of a CI job's definition, so in CI a
+ * change to one runs every gate, like a change to the workflow itself
+ * (ADR-0092). `npm --prefix <dir> run` names a package's script, not the
+ * root's, and is left out.
+ */
+export function workflowScripts(workflow) {
+  return new Set(
+    [...String(workflow).matchAll(/npm (?:-s )?run (?:-s )?([\w:.-]+)/g)].map(([, name]) => name),
+  );
+}
+
+/** The prefix a changed npm script of the root package.json is reported under. */
+export const SCRIPT_PREFIX = 'package.json#scripts/';
+
+/**
+ * The root npm scripts a gate runs: the one its command names, and every one
+ * that script runs through `npm run`, transitively (`check:py` runs `lint:py`).
+ * A gate whose command is not a root `npm run` runs none.
+ */
+export function gateScripts(gate, scripts) {
+  const [tool, verb, name] = gate.command;
+  if (tool !== 'npm' || verb !== 'run') return new Set();
+  const seen = new Set();
+  const queue = [name];
+  while (queue.length) {
+    const next = queue.shift();
+    if (seen.has(next)) continue;
+    seen.add(next);
+    for (const [, called] of String(scripts[next] ?? '').matchAll(/npm (?:-s )?run (?:-s )?([\w:.-]+)/g)) {
+      queue.push(called);
+    }
+  }
+  return seen;
+}
 
 function matches(pattern, path) {
   if (pattern instanceof RegExp) return pattern.test(path);
@@ -314,13 +428,14 @@ const belongsTo = (input, path) => input.paths.some((pattern) => matches(pattern
 
 /**
  * The paths whose content enters a gate's cache key (ADR-0091): its own input
- * classes, the tooling class that decides what the gates are, and the Node
- * manifests and lockfiles every Node gate runs its installed tools from.
+ * classes and config files, the gate machinery and root manifests, and the
+ * Node manifests and lockfiles every Node gate runs its installed tools from.
  */
 export function keyBelongs(gate) {
-  const ids = new Set([...gate.inputs, 'tooling', 'node-deps']);
+  const ids = new Set([...gate.inputs, 'node-deps']);
   const classes = INPUTS.filter((input) => ids.has(input.id));
-  return (path) => classes.some((input) => belongsTo(input, path));
+  const files = new Set([...(gate.config ?? []), ...KEY_GLOBALS]);
+  return (path) => files.has(path) || classes.some((input) => belongsTo(input, path));
 }
 
 /** Which input classes these paths touch, and which of them touch none. */
@@ -356,8 +471,19 @@ function everything(reason, inputs, unclassified) {
  *
  * `paths === null` means the change set could not be worked out at all, which
  * is the one case that runs everything without knowing why it must.
+ *
+ * A path may name an npm script of the root package.json
+ * (`package.json#scripts/lint:md`, from `packageChanges`): it asks for the gates
+ * that run that script. `package.json#other` — a change to the root manifest
+ * outside its scripts and dependencies — is one this map cannot place, and asks
+ * for everything. `scripts` is the root manifest's `scripts` object, which says
+ * what each gate's script runs in turn. `ci` is true on a CI runner, where a
+ * change to the map or the workflow (`CI_GLOBAL`) runs everything; elsewhere the
+ * decision says CI will, and asks for the readers alone. `ciScripts` holds the
+ * root npm scripts the workflow runs by name (`workflowScripts`): a change to
+ * one is a change to a CI job's definition, and counts as `CI_GLOBAL` does.
  */
-export function decide({ paths, reason }) {
+export function decide({ paths, reason, scripts = {}, ci = false, ciScripts = new Set() }) {
   if (paths === null) {
     return everything(
       reason ?? 'The set of changed paths is unknown, so every gate applies.',
@@ -366,12 +492,27 @@ export function decide({ paths, reason }) {
     );
   }
 
-  const { inputs, unclassified } = classifyPaths(paths);
+  const changedScripts = new Set(
+    paths.filter((path) => path.startsWith(SCRIPT_PREFIX)).map((path) => path.slice(SCRIPT_PREFIX.length)),
+  );
+  const files = paths.filter((path) => !path.startsWith(SCRIPT_PREFIX));
+  const { inputs, unclassified: unplaced } = classifyPaths(files);
+  const configured = new Set(GATES.flatMap((gate) => gate.config ?? []));
+  const unclassified = unplaced.filter((path) => !configured.has(path) && path !== 'package.json#other');
 
-  const reaching = paths.find((path) => belongsTo(TOOLING, path));
-  if (reaching !== undefined) {
+  if (paths.includes('package.json#other')) {
     return everything(
-      `${reaching} is repository-wide tooling, so every gate applies.`,
+      'The root package.json changed outside its scripts and dependencies, which no gate'
+      + ' reads on its own, so every gate applies.',
+      inputs,
+      unclassified,
+    );
+  }
+  const global = paths.find((path) => CI_GLOBAL.includes(path)
+    || (path.startsWith(SCRIPT_PREFIX) && ciScripts.has(path.slice(SCRIPT_PREFIX.length))));
+  if (ci && global !== undefined) {
+    return everything(
+      `${global} decides what CI runs, so in CI every gate applies (ADR-0092).`,
       inputs,
       unclassified,
     );
@@ -379,18 +520,27 @@ export function decide({ paths, reason }) {
 
   const gates = GATES.map((gate) => {
     const touched = gate.inputs.filter((id) => inputs.has(id));
+    const own = (gate.config ?? []).filter((file) => paths.includes(file));
+    const ran = [...gateScripts(gate, scripts)].filter((name) => changedScripts.has(name));
+    const reasons = [
+      ...(touched.length ? [`inputs touched: ${touched.join(', ')}`] : []),
+      ...own.map((file) => `reads ${file}`),
+      ...ran.map((name) => `runs the changed npm script ${name}`),
+    ];
     return {
       ...gate,
-      applies: touched.length > 0,
-      why: touched.length
-        ? `inputs touched: ${touched.join(', ')}`
-        : `inputs untouched: ${gate.inputs.join(', ')}`,
+      applies: reasons.length > 0,
+      why: reasons.length ? reasons.join('; ') : `inputs untouched: ${gate.inputs.join(', ')}`,
     };
   });
 
   const count = `${paths.length} changed path${paths.length === 1 ? '' : 's'}`;
   return {
     everything: false,
+    ciNote:
+      global === undefined
+        ? null
+        : `${global} decides what CI runs, so CI runs every gate for this change; locally its readers do (ADR-0092).`,
     reason: inputs.size
       ? `${count} touching: ${[...inputs].join(', ')}`
       : `${count}, none of them an input to any gate.`,
@@ -422,6 +572,11 @@ export function githubOutputs(decision) {
     job_check_python: hasSetup('python'),
     job_check_docs: hasSetup('docs'),
     job_test: hasJob('test'),
+    // The unit job runs both Node lanes as steps of their own, in the shape of
+    // the two Semgrep steps: a backend change does not install or run the web's
+    // specs, and a change the web's lane alone reads does not run the backend's.
+    job_test_backend: hasGate('test:backend'),
+    job_test_frontend: hasGate('test:frontend'),
     job_python_tests: hasJob('python-tests'),
     job_build: hasJob('build'),
     job_security: hasJob('security'),
@@ -435,10 +590,10 @@ export function githubOutputs(decision) {
     job_smoke: hasJob('smoke'),
     // The database lane is a step of the smoke job, in the same shape as the
     // two Semgrep steps: the job-level key starts the job, this one says the
-    // step has something to read. Today both gates read `app`, so it can never
-    // be true while `job_smoke` is false — and gates.test.mjs pins that, since
-    // a smoke gate narrowed on its own would strand the step in a skipped job
-    // that reports Success.
+    // step has something to read. Both gates read a subset of what the smoke
+    // gate reads, so neither can be true while `job_smoke` is false — and
+    // gates.test.mjs pins that, since a smoke gate narrowed on its own would
+    // strand the step in a skipped job that reports Success.
     job_test_db: hasGate('test:db'),
     // The API contract lane, a step of the same job in the same shape.
     job_test_api: hasGate('test:api'),
@@ -477,9 +632,11 @@ export function renderTable() {
   };
   const gateRows = GATES.map(
     (gate) =>
-      `| ${code(gate.id)} | ${gate.tier} | ${codes(gate.inputs)} |`
+      `| ${code(gate.id)} | ${gate.tier} | ${codes(gate.inputs)}`
+      + `${gate.config ? `; reads ${codes(gate.config)}` : ''} |`
       + ` ${code(gate.command.join(' '))} | ${gate.job} | ${cell(reuse(gate))} |`,
   );
+  const unreadRows = UNREAD.map((entry) => `| ${code(entry.path)} | ${cell(entry.why)} |`);
   return [
     '### Inputs',
     '',
@@ -492,6 +649,12 @@ export function renderTable() {
     '| Gate | Tier | Inputs | Local command | CI job | Pass reused |',
     '| --- | --- | --- | --- | --- | --- |',
     ...gateRows,
+    '',
+    '### Read by no gate',
+    '',
+    '| Path | Why |',
+    '| --- | --- |',
+    ...unreadRows,
     '',
   ].join('\n');
 }
@@ -573,6 +736,37 @@ function resolveBase(given) {
 }
 
 /**
+ * What changed in the root package.json, as paths the map can read (ADR-0092).
+ * Pure: the caller hands it both versions of the manifest.
+ *
+ * Each npm script whose text differs is `package.json#scripts/<name>`; a change
+ * to the root's dependencies is the lockfile's business and is reported by it;
+ * any other change — `engines`, a renamed field, a manifest that does not parse —
+ * is `package.json#other`, which runs everything.
+ */
+export function packageChanges(before, after) {
+  let old;
+  let now;
+  try {
+    old = JSON.parse(before ?? '{}');
+    now = JSON.parse(after ?? '{}');
+  } catch {
+    return ['package.json#other'];
+  }
+  const changed = [];
+  const names = new Set([...Object.keys(old.scripts ?? {}), ...Object.keys(now.scripts ?? {})]);
+  for (const name of [...names].sort()) {
+    if ((old.scripts ?? {})[name] !== (now.scripts ?? {})[name]) changed.push(`${SCRIPT_PREFIX}${name}`);
+  }
+  const rest = (manifest) => {
+    const { scripts, dependencies, devDependencies, ...others } = manifest;
+    return JSON.stringify(others);
+  };
+  if (rest(old) !== rest(now)) changed.push('package.json#other');
+  return changed;
+}
+
+/**
  * The paths this change touches (impure: it asks git).
  *
  * `--no-renames` so that a file's old path counts as changed too: a gate whose
@@ -625,8 +819,28 @@ export function changedPaths({ base, rev }) {
     };
   }
 
+  const paths = [...new Set([...changed, ...untracked])];
+  if (paths.includes('package.json')) {
+    // The manifest itself stays on the list: the specs that read it ask for it.
+    const read = (spec) => {
+      try {
+        return git('show', spec);
+      } catch {
+        return '{}';
+      }
+    };
+    const onDisk = () => {
+      try {
+        return readFileSync(`${git('rev-parse', '--show-toplevel').trim()}/package.json`, 'utf8');
+      } catch {
+        return '{}';
+      }
+    };
+    const now = againstWorkingTree ? onDisk() : read(`${rev}:package.json`);
+    paths.push(...packageChanges(read(`${mergeBase}:package.json`), now));
+  }
   return {
-    paths: [...new Set([...changed, ...untracked])].sort(),
+    paths: paths.sort(),
     base: resolved,
     mergeBase,
     reason: null,
@@ -717,9 +931,10 @@ export function runTier(decision, tier, { all = false, spawn = spawnSync, base, 
   // "Everything applies" owes its sentence here as much as in the listing: a
   // run that spends fifteen gates on a shallow clone, or a stack listing whose
   // every line reads `(every gate applies)`, must say what made the change set
-  // unknown — or that a repository-wide file reached every gate — rather than
+  // unknown — or that a change only every gate can answer for — rather than
   // leaving a reader to infer it from the length of the run (#783).
   if (decision.everything) console.log(`${decision.reason}\n`);
+  if (decision.ciNote) console.log(`${decision.ciNote}\n`);
 
   if (tier === 'stack') {
     console.log('The before-push tier, in the order it is meant to be typed:\n');
@@ -819,6 +1034,7 @@ function printList(decision, changed, rev) {
         : 'No changed path is an input to any gate.',
     );
     if (decision.everything) console.log(decision.reason);
+    if (decision.ciNote) console.log(decision.ciNote);
   }
 
   console.log('');
@@ -841,6 +1057,24 @@ export function cacheFor(args, env = process.env) {
   return openGateCache({ belongsTo: keyBelongs });
 }
 
+/** A file of the checkout, as it is on disk; empty if it cannot be read. */
+function rootFile(path) {
+  try {
+    return readFileSync(`${git('rev-parse', '--show-toplevel').trim()}/${path}`, 'utf8');
+  } catch {
+    return '';
+  }
+}
+
+/** The root manifest's npm scripts, as the checkout holds them; none if it cannot be read. */
+function rootScripts() {
+  try {
+    return JSON.parse(rootFile('package.json')).scripts ?? {};
+  } catch {
+    return {};
+  }
+}
+
 function main(argv) {
   let args;
   try {
@@ -857,7 +1091,13 @@ function main(argv) {
   }
 
   const changed = changedPaths({ base: args.base, rev: args.rev });
-  const decision = decide({ paths: changed.paths, reason: changed.reason });
+  const decision = decide({
+    paths: changed.paths,
+    reason: changed.reason,
+    scripts: rootScripts(),
+    ci: Boolean(process.env.CI),
+    ciScripts: workflowScripts(rootFile('.github/workflows/ci.yml')),
+  });
 
   if (args.mode === 'json') {
     // A Set does not survive JSON.stringify, and the ids are what a reader wants.

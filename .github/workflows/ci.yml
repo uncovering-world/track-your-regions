@@ -62,6 +62,8 @@ jobs:
       job_check_python: ${{ steps.gates.outputs.job_check_python }}
       job_check_docs: ${{ steps.gates.outputs.job_check_docs }}
       job_test: ${{ steps.gates.outputs.job_test }}
+      job_test_backend: ${{ steps.gates.outputs.job_test_backend }}
+      job_test_frontend: ${{ steps.gates.outputs.job_test_frontend }}
       job_python_tests: ${{ steps.gates.outputs.job_python_tests }}
       job_build: ${{ steps.gates.outputs.job_build }}
       job_security: ${{ steps.gates.outputs.job_security }}
@@ -199,8 +201,9 @@ jobs:
       # The root install is this job's alone, and it is unconditional because
       # of one gate: `lint:md` needs markdownlint from here, and it is the gate
       # a prose-only change runs with no other install to its name. (The root's
-      # other tool, madge, serves `lint:circular`, which is an `app` gate and
-      # so never arrives without `job_check_node`.) That is also why nothing
+      # other tool, madge, serves `lint:circular`, which reads the backend, the
+      # web and the shared package and so never arrives without
+      # `job_check_node`.) That is also why nothing
       # reads the `job_check_docs` output: the install the docs gates need is
       # already here, and the Docker gates (`lint:links`, `lint:shell`,
       # `lint:docker`, `lint:actions`) install nothing at all. `npm ci` rather than
@@ -246,17 +249,24 @@ jobs:
         with:
           node-version: '22'
 
+      # Each lane installs and runs only when the map asks for it: a backend
+      # change reads nothing of the web's specs, and a change only the web's
+      # lane reads does not run the backend's (scripts/gates.mjs, #1378).
       - name: Install backend dependencies
+        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_test_backend == 'true' }}
         run: npm ci --prefix backend
 
       - name: Install frontend dependencies
+        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_test_frontend == 'true' }}
         run: npm ci --prefix frontend
 
       - name: Run backend tests
+        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_test_backend == 'true' }}
         run: npx vitest run
         working-directory: backend
 
       - name: Run frontend tests
+        if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_test_frontend == 'true' }}
         run: npx vitest run
         working-directory: frontend
 
@@ -496,8 +506,9 @@ jobs:
       # reachability-guarded spec in that suite would skip for ever and report
       # green. Same key shape as the two
       # Semgrep steps: the job-level `job_smoke` starts the job, `job_test_db`
-      # says this step has something to read — today both key off `app`, and
-      # scripts/gates.test.mjs pins that the second never holds without the first.
+      # says this step has something to read — the lane reads a subset of what
+      # the smoke gate reads, and scripts/gates.test.mjs pins that the second
+      # never holds without the first.
       - name: Run the database-backed backend specs
         if: ${{ needs.changes.result != 'success' || needs.changes.outputs.job_test_db == 'true' }}
         # The stack stays up for the API contract lane after it, which takes
