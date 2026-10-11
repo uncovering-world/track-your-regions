@@ -303,6 +303,59 @@ lane. Three more limits:
 - **The container shape runs the whole lane** and says so.
 - **CI never selects.** It runs every lane whole on every pushed head.
 
+## The web unit lane
+
+What a whole run of the web lane costs is mostly not its tests. Vitest's own
+breakdown of one run splits the time it spent across the workers into
+transformation, setup, imports, the jsdom environment and the tests themselves,
+and on 2026-10-11, on the development machine (4 cores), the imports alone came
+to more than the tests and the environment together. The icon package's index,
+`@mui/icons-material`, was most of that: it loads every one of its icons, and
+each spec file whose graph reached one of the 37 imports from it loaded them
+again. Requiring the index takes 3–4 s in Node, one icon 0.25 s.
+
+Two changes were adopted (#1377), each measured as one full run,
+`vitest run` in `frontend/` under the shared lock, 188 spec files and 1985 tests,
+all green:
+
+| Run | Wall | Transform | Import | Environment | Tests |
+|---|---|---|---|---|---|
+| Before | 310 s | 85 s | 487 s | 160 s | 158 s |
+| One path per icon | 238 s | 12 s | 242 s | 174 s | 180 s |
+| One path per icon, `pool: 'threads'` | 222 s | 11 s | 219 s | 163 s | 179 s |
+
+- **One path per icon.** Every icon is imported by its own path
+  (`@mui/icons-material/Delete`), and the frontend lint refuses the package
+  index (`no-restricted-imports` in `frontend/eslint.config.mjs`). The bundle
+  tree-shook the index already, so the app's build does not change; the
+  saving is the lane's.
+- **Worker threads** (`pool` in `frontend/vite.config.ts`). Each spec file
+  still gets a fresh module graph and environment; a thread costs less to
+  start than a child process. No spec of the lane needs a process of its own.
+
+Three more were measured and not adopted:
+
+- **`isolate: false`** (`--no-isolate`) breaks the specs rather than speeding
+  them: modules mocked by one file leak into the next, and at least 27 spec
+  files failed before the run was stopped, `ChunkBoundary.test.tsx` among them
+  waiting out 170 s per test. Telling the files that hold no module state from
+  the rest is a classification every new spec would have to keep up to date.
+- **Vitest's dependency optimizer** (`deps.optimizer.client`) made the run
+  slower, 329 s against 310 s, since it pre-bundles what the lane would have
+  loaded anyway.
+- **happy-dom instead of jsdom** ran the lane in 189 s against 222 s, with one
+  spec failing on how it replaces the clipboard. It is left to #1388: about
+  twenty comments in the web's specs and components state what jsdom cannot
+  do, and each is a claim the switch may make false.
+
+The figures above were taken at the load the machine usually carries, a load
+average near 4, which is also the load the lane has to pass at: the specs that
+time out under load (#1239) passed in every run. The pair that matters was
+taken again with the machine idle at the start of each run (a one-minute load
+average below 1): 336 s before, 207 s with both changes, every spec green. A
+whole run fills all four cores by itself, so idle describes only what else the
+machine was doing.
+
 ## What a tool's settings ask for
 
 No tool's settings ask for every gate (ADR-0092). Each
