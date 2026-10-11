@@ -63,6 +63,18 @@ against `origin/main` when that has moved past it (`freshestBase`). A clone's ow
 stale one counts every file merged since as its own, asking for gates nothing on
 the branch touched. A local `main` with commits of its own is kept.
 
+The change set is listed from the merge base, which keeps out what the base's
+own line gained since the fork. The one exception is a `--base` that is no
+ancestor of the revision and does not lie on `main`'s line either (`listFrom`):
+a pushed head the branch has been rewritten past, by a review wave folded into
+its commits or by a rebase. Its merge base is the fork from `main`, which would
+read the wave as the whole branch, so the two trees are compared instead, and
+the change line says so. After a rebase onto a newer `main` that also lists what
+`main` moved, which over-reports rather than misses. A `main` that moved on
+since the fork (`--base origin/main` after a merge on GitHub) keeps the merge
+base, and `GATES_BASE` always takes it, since CI sets it from the event,
+never from a head the branch was rewritten past.
+
 ## The tiers
 
 | Tier | What it holds | Owed locally | What runs it |
@@ -760,9 +772,11 @@ client is generated from, so a change to it can break a client that was built ag
 previous one: a path removed, a response field removed or narrowed, a request field newly
 required. `api:breaking` (`scripts/openapi-breaking.mjs`) asks that of every change to the
 `api-contract` class:
-- It takes the document at the merge base the map settles on: `--base` when the run was given
-  one (the runner hands it to each gate as `GATES_BASE`), `GATES_BASE` in CI, and `main` on a
-  machine.
+- It takes the document at the merge base of the branch and its base: `--base` when the run
+  was given one (the runner hands it to each gate as `GATES_BASE`), `GATES_BASE` in CI, and
+  `main` on a machine. A review wave's `--base` is the pushed head; once a fold has rewritten
+  the branch past it, that merge base is the fork from `main`, and the gate reports the
+  branch's contract changes rather than only the wave's.
 - It compares that document with the one in the tree using oasdiff, pinned by digest.
 - It names each change oasdiff classes as breaking, and apart from those, each it classes as
   possibly breaking, such as a value added to an enum a client may switch over.

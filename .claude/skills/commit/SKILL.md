@@ -216,8 +216,9 @@ A push that carries a review wave owes step 4 measured against the pull
 request's pushed head (`--base <head>`), which CI has already answered for,
 so the wave's own edits are all it runs. What the wave owes by hand is
 `npm run gates -- run stack --base <pushed head>`, read in `/pr-create` § 8
-*Checks* before the fold while the pushed head is still an ancestor of the
-branch; the commands it marks `run here` go on the `Touched:` line of the
+*Checks* before the fold, or after one that did not move the branch onto a
+newer main (a rewritten-past head is compared by its tree, #1391); the
+commands it marks `run here` go on the `Touched:` line of the
 wave's `Review round <n> — dispositions` comment, and `/pr-create` § 8 *Done*
 runs them on the head to be merged.
 This paragraph is the one statement of that rule; `CLAUDE.md`,
