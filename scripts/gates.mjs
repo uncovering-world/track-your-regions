@@ -793,7 +793,7 @@ function resolveBase(given) {
           + ' diff against, so every gate applies.',
       };
     }
-    return { base: named, reason: null };
+    return { base: named, flag: source.name === '--base', reason: null };
   }
 
   const present = ['main', 'origin/main'].filter((ref) => {
@@ -855,6 +855,33 @@ export function packageChanges(before, after) {
 }
 
 /**
+ * Which commit the change set is listed from. Pure: the caller says whether the
+ * base came from `--base`, whether it is an ancestor of the revision, and
+ * whether it lies on `main`'s line (an ancestor of `main` or `origin/main`).
+ *
+ * The merge base keeps out what the base's own line gained since the fork —
+ * `main`'s commits, for a branch measured against `main` — and for a base that
+ * is an ancestor it is the base itself. A base typed with `--base` that is *not*
+ * an ancestor, and is not on `main`'s line either, is a pushed head the branch
+ * has since rewritten past: a review wave folded into its commits, or a rebase.
+ * Its merge base is the fork point from `main`, and listing from there reads
+ * the wave as the whole branch. So the two trees are compared instead: what
+ * differs from the tree the base holds, which is the one CI answered for. After
+ * a rebase onto a newer `main` that also lists what `main` moved, which
+ * over-reports — the safe direction.
+ *
+ * A `main` the branch forked from earlier (`--base origin/main` after a merge
+ * on GitHub) is no ancestor either, and keeps the merge base: what it gained
+ * since the fork is not the branch's. So does `GATES_BASE`, which CI sets from
+ * the event: a pull request's base or a push's previous tip, never a head the
+ * branch was rewritten past.
+ */
+export function listFrom({ base, flag, isAncestor, onMainLine, mergeBase }) {
+  if (flag && !isAncestor && !onMainLine) return { from: base, how: 'tree' };
+  return { from: mergeBase, how: 'merge-base' };
+}
+
+/**
  * The paths this change touches (impure: it asks git).
  *
  * `--no-renames` so that a file's old path counts as changed too: a gate whose
@@ -863,7 +890,7 @@ export function packageChanges(before, after) {
  * does not track yet, so that `npm run check` answers for what is on disk.
  */
 export function changedPaths({ base, rev }) {
-  const { base: resolved, reason: noBase } = resolveBase(base);
+  const { base: resolved, flag, reason: noBase } = resolveBase(base);
   if (!resolved) {
     return { paths: null, base: null, mergeBase: null, reason: noBase };
   }
@@ -882,6 +909,22 @@ export function changedPaths({ base, rev }) {
     };
   }
 
+  const isAncestorOf = (newer) => {
+    try {
+      git('merge-base', '--is-ancestor', resolved, newer);
+      return true;
+    } catch {
+      return false; // not an ancestor, or a ref this clone does not have
+    }
+  };
+  const { from, how } = listFrom({
+    base: resolved,
+    flag,
+    isAncestor: isAncestorOf(rev),
+    onMainLine: ['main', 'origin/main'].some(isAncestorOf),
+    mergeBase,
+  });
+
   const lines = (text) => text.split('\n').filter(Boolean);
   const againstWorkingTree = rev === 'HEAD';
   let changed;
@@ -889,8 +932,8 @@ export function changedPaths({ base, rev }) {
   try {
     changed = lines(
       againstWorkingTree
-        ? git('diff', '--name-only', '--no-renames', mergeBase)
-        : git('diff', '--name-only', '--no-renames', mergeBase, rev),
+        ? git('diff', '--name-only', '--no-renames', from)
+        : git('diff', '--name-only', '--no-renames', from, rev),
     );
     untracked = againstWorkingTree ? lines(git('ls-files', '--others', '--exclude-standard')) : [];
   } catch (error) {
@@ -902,7 +945,7 @@ export function changedPaths({ base, rev }) {
       base: resolved,
       mergeBase,
       reason:
-        `git could not list the change against ${mergeBase.slice(0, 7)}`
+        `git could not list the change against ${from.slice(0, 7)}`
         + ` (${oneLine(error.stderr || error.message)}), so every gate applies.`,
     };
   }
@@ -925,12 +968,13 @@ export function changedPaths({ base, rev }) {
       }
     };
     const now = againstWorkingTree ? onDisk() : read(`${rev}:package.json`);
-    paths.push(...packageChanges(read(`${mergeBase}:package.json`), now));
+    paths.push(...packageChanges(read(`${from}:package.json`), now));
   }
   return {
     paths: paths.sort(),
     base: resolved,
     mergeBase,
+    from: how,
     reason: null,
   };
 }
@@ -1010,9 +1054,11 @@ export function parseArgs(argv) {
  * injectable for the same reason — the shapes this prints are the whole point
  * of the runner, so a test drives them without spawning anything.
  *
- * A base given as `--base` reaches each gate as `GATES_BASE`, so a gate that
- * compares against the base (`api:breaking`) compares against the one this run
- * chose its gates by.
+ * A base given as `--base` reaches each gate as `GATES_BASE`, so `api:breaking`
+ * compares the contract at that base's merge base with the branch: the base
+ * itself while it is an ancestor, the fork from `main` once a fold rewrote the
+ * branch past it, which reports the branch's contract changes and not only the
+ * wave's.
  *
  * `cache` is what `openGateCache` returns, or null for a run that reuses
  * nothing (ADR-0091). A gate whose key has a recorded pass is not spawned; it
@@ -1146,10 +1192,10 @@ function printList(decision, changed, rev) {
   if (changed.paths === null) console.log(decision.reason);
   else {
     const scope = rev === 'HEAD' ? ' + working tree' : '';
-    console.log(
-      `Change against ${changed.base} (merge-base ${changed.mergeBase.slice(0, 7)})`
-      + `${scope}: ${changed.paths.length} paths`,
-    );
+    const against = changed.from === 'tree'
+      ? 'no ancestor of the branch any more: what differs from its tree'
+      : `merge-base ${changed.mergeBase.slice(0, 7)}`;
+    console.log(`Change against ${changed.base} (${against})${scope}: ${changed.paths.length} paths`);
     console.log(
       decision.inputs.size
         ? `Inputs touched: ${[...decision.inputs].join(', ')}`
