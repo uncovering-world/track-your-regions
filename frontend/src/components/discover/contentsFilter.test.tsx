@@ -15,22 +15,17 @@ import { HoverProvider } from '../../hooks/useHoverContext';
 import { ContentsSection } from './ContentsSection';
 import { LocationsSection } from './LocationsSection';
 
-// The places list is virtualised, and jsdom has no layout — without a height
+// The places list is virtualised, and happy-dom has no layout — without a height
 // the virtualiser mounts no rows. The shim `contentsDisclosure.test.tsx` uses.
 const realOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
-const realResizeObserver = globalThis.ResizeObserver;
 beforeAll(() => {
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
     configurable: true,
     get() { return 600; },
   });
-  globalThis.ResizeObserver = class {
-    observe() {} unobserve() {} disconnect() {}
-  } as unknown as typeof ResizeObserver;
 });
 afterAll(() => {
   if (realOffsetHeight) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', realOffsetHeight);
-  globalThis.ResizeObserver = realResizeObserver;
 });
 
 function work(id: number, name: string, artists: string[] = []): ExperienceTreasure {

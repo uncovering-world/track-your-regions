@@ -4,7 +4,7 @@
  * The endpoint's contract is the thing to pin — a name and/or a coordinate pair,
  * never half a move and never an empty body — and the sentences around the button,
  * because a claim is not obvious from a text field and the outcome is read off the
- * reply rather than promised. The picker is stubbed: its map cannot mount in jsdom,
+ * reply rather than promised. The picker is stubbed: its map cannot mount in happy-dom,
  * and what it hands back is a coordinate, which a button can hand back just as well.
  */
 

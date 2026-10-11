@@ -31,7 +31,7 @@ vi.mock('../../api/geocode', () => ({
   suggestImageUrl: vi.fn(async () => { throw new Error('No image found'); }),
 }));
 
-// The picker draws a map, which jsdom cannot; here it only has to set the pin.
+// The picker draws a map, which happy-dom cannot; here it only has to set the pin.
 // The pin is passed per test: a right one, and one whose latitude was mistyped.
 let pin = { lat: 34.3964, lng: 64.5161 };
 vi.mock('./LocationPicker', () => ({

@@ -412,7 +412,7 @@ describe('ReviewQueueList', () => {
 
     const clicked = screen.getByRole('button', { name: /Aksum/ });
     fireEvent.click(clicked);
-    // jsdom does not move the focus on a click the way a browser does; this is where the
+    // happy-dom does not move the focus on a click the way a browser does; this is where the
     // browser would have left it.
     clicked.focus();
 

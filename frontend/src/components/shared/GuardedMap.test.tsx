@@ -4,7 +4,7 @@
  * "renders an explanation" and "does not throw" are one requirement here — and
  * both assertions below are deliberately kept.
  *
- * The underlying `<Map>` is mocked because the real one cannot mount in jsdom
+ * The underlying `<Map>` is mocked because the real one cannot mount in happy-dom
  * at all, which is the very reason this went unnoticed: every suite that would
  * have exercised a map surface mocked it away.
  */

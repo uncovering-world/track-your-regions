@@ -54,21 +54,14 @@ describe('TreasuresInsideChip', () => {
   });
 
   it('is sized like LifecycleChip (18px), not MUI\'s default small chip (24px)', () => {
-    // A style assertion on the emitted CSS, not a computed style: jsdom's
-    // `getComputedStyle` does not resolve emotion's injected sheets
-    // (`theme/focusRing.test.tsx` hit this first). Scoped to this chip's own
-    // generated class, not just any "18px" in the document — `MuiChip-avatarSmall`
-    // carries that figure on every chip, size override or not, so a bare
-    // substring match would pass whether or not this chip's own rule shrank it.
+    // The computed style of this chip, so the figure is the one its own rule
+    // resolves to — not "18px" anywhere in the emitted CSS, which
+    // `MuiChip-avatarSmall` carries on every chip, size override or not.
     const { container } = render(<TreasuresInsideChip count={2} kindId={PLACES_OF_WORSHIP} />);
     const chip = container.querySelector('.MuiChip-root') as HTMLElement;
-    const ownClass = Array.from(chip.classList).find(c => c.startsWith('css-'));
-    const emittedCss = Array.from(document.querySelectorAll('style')).map(s => s.textContent ?? '').join('\n');
-    const marker = `.${ownClass}{`;
-    const start = emittedCss.indexOf(marker);
-    const ownRule = start >= 0 ? emittedCss.slice(start, emittedCss.indexOf('}', start) + 1) : '';
 
-    expect(ownRule).toMatch(/height:18px/);
-    expect(ownRule).toMatch(/font-size:0\.6rem/);
+    expect(getComputedStyle(chip).height).toBe('18px');
+    // 0.6rem at the document's 16px root.
+    expect(getComputedStyle(chip).fontSize).toBe('9.6px');
   });
 });

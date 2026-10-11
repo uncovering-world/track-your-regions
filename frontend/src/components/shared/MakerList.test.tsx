@@ -2,7 +2,7 @@
  * The makers of a work, as objects a curator moves rather than text they retype.
  *
  * The keyboard path is what is pinned here. Dragging is the other one and needs a
- * pointer with real coordinates, which jsdom does not give — so the arrows carry
+ * pointer with real coordinates, which happy-dom does not give — so the arrows carry
  * the guarantee: every reordering this component allows is reachable without a
  * mouse, and both paths end in the same `arrayMove`.
  */

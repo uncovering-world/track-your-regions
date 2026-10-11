@@ -20,14 +20,13 @@ import type { Experience } from '../../api/experiences';
 import { HoverProvider, useHoverActions } from '../../hooks/useHoverContext';
 import { DiscoverExperienceList, DiscoverExperienceRow } from './DiscoverExperienceList';
 
-// jsdom has no layout and no ResizeObserver, so without these the virtualiser
-// reads a 0-height scroll container (`offsetHeight`, via its `getRect`) and
-// mounts nothing — which would let every assertion below pass vacuously
-// against an empty list. A `li` is a row (84 px, the row estimate); anything
+// happy-dom has no layout, and its ResizeObserver never reports, so without
+// these the virtualiser reads a 0-height scroll container (`offsetHeight`, via
+// its `getRect`) and mounts nothing — which would let every assertion below
+// pass vacuously against an empty list. A `li` is a row (84 px, the row estimate); anything
 // else is the 600 px scroll container.
 const realOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
 const realOffsetWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetWidth');
-const realResizeObserver = globalThis.ResizeObserver;
 const realRequestAnimationFrame = globalThis.requestAnimationFrame;
 const realCancelAnimationFrame = globalThis.cancelAnimationFrame;
 beforeAll(() => {
@@ -39,14 +38,9 @@ beforeAll(() => {
     configurable: true,
     get() { return 400; },
   });
-  globalThis.ResizeObserver = class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  } as unknown as typeof ResizeObserver;
   // Synchronous, so the virtualiser's scroll-verify chain (`scrollToIndex`
   // re-checks the offset over up to ten animation frames) runs to completion
-  // inside the act() that triggered it. Left asynchronous, jsdom fires the
+  // inside the act() that triggered it. Left asynchronous, happy-dom fires the
   // leftover frames after the test has unmounted the list, where virtual-core
   // dereferences its nulled `targetWindow` — an unhandled error that failed
   // the CI run while every test in it passed, and raced too tightly to show
@@ -57,7 +51,6 @@ beforeAll(() => {
 afterAll(() => {
   if (realOffsetHeight) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', realOffsetHeight);
   if (realOffsetWidth) Object.defineProperty(HTMLElement.prototype, 'offsetWidth', realOffsetWidth);
-  globalThis.ResizeObserver = realResizeObserver;
   globalThis.requestAnimationFrame = realRequestAnimationFrame;
   globalThis.cancelAnimationFrame = realCancelAnimationFrame;
 });

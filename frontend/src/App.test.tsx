@@ -3,7 +3,7 @@
  *
  * Mounts the real App, so the router, theme and both context providers have
  * to compose for this to pass; an upgrade that leaves a top-level component
- * `undefined` fails here instead of in the browser. Only the leaves jsdom
+ * `undefined` fails here instead of in the browser. Only the leaves happy-dom
  * cannot run are mocked: MapLibre (via MainDisplay) and the network layer.
  */
 

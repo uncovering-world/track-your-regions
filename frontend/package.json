@@ -108,7 +108,7 @@
     "eslint-plugin-react-hooks": "^5.0.0",
     "eslint-plugin-security": "^3.0.1",
     "eslint-plugin-sonarjs": "^4.0.2",
-    "jsdom": "^26.0.0",
+    "happy-dom": "^20.14.5",
     "knip": "^5.84.1",
     "lighthouse": "^13.4.1",
     "orval": "8.38.0",
