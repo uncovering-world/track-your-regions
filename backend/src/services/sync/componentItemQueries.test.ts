@@ -14,7 +14,7 @@ vi.mock('./qleverWikidata.js', () => ({ qleverWikidataQuery: vi.fn() }));
 vi.mock('./wikipediaCategories.js', () => ({ askWikipediaOnce: vi.fn() }));
 
 const { sparqlQuery, SparqlUnanswered, WaitBudget } = await import('./wikidataUtils.js');
-const { boxFilter, contentsOf, itemsInBoxes, labelsOf, partsOfSites } = await import('./componentItemQueries.js');
+const { boxFilter, contentsOf, itemsInBoxes, labelsOf, partsOfSites, placeNamesOf } = await import('./componentItemQueries.js');
 const { qleverWikidataQuery } = await import('./qleverWikidata.js');
 const { askWikipediaOnce } = await import('./wikipediaCategories.js');
 
@@ -98,6 +98,21 @@ describe('itemsInBoxes', () => {
     expect(query).toContain('VALUES ?class { wd:Q839954 } ?item wdt:P31 ?class .');
     expect(query).toContain(
       'FILTER NOT EXISTS { VALUES ?record { wd:Q102202066 wd:Q101008619 } ?item wdt:P31/wdt:P279* ?record } }');
+  });
+});
+
+describe('placeNamesOf', () => {
+  it('reads the English or multilingual names of what an item stands in or is part of (#1349)', async () => {
+    vi.mocked(qleverWikidataQuery).mockResolvedValue([
+      { item: { value: 'http://www.wikidata.org/entity/Q61757379' }, name: { value: 'Kolding Municipality' } },
+      { item: { value: 'http://www.wikidata.org/entity/Q61757379' }, name: { value: 'Christiansfeld' } },
+    ]);
+
+    const names = await placeNamesOf(['Q61757379', 'Q76637833'], hooks());
+
+    expect(names).toEqual(new Map([['Q61757379', ['Kolding Municipality', 'Christiansfeld']]]));
+    const query = vi.mocked(qleverWikidataQuery).mock.calls.at(-1)![0].replace(/\s+/g, ' ');
+    expect(query).toContain('VALUES ?item { wd:Q61757379 wd:Q76637833 } VALUES ?held { wdt:P131 wdt:P276 wdt:P361 } ?item ?held ?place . ?place rdfs:label ?name . FILTER(LANG(?name) = "en" || LANG(?name) = "mul")');
   });
 });
 

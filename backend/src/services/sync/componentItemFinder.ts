@@ -20,11 +20,11 @@
 import { pool } from '../../db/index.js';
 import { parseWhcRef } from './unescoWikidata.js';
 import {
-  admittedClasses, bestMatch, nearestM, ofTheSitesKind, standsForWholeSite, NEAR_SAME_NAME_RADIUS_M, SAME_NAME_RADIUS_M,
+  admittedClasses, bestMatch, nearestM, ofTheSitesKind, standsAtTheComponent, standsForWholeSite, NEAR_SAME_NAME_RADIUS_M, SAME_NAME_RADIUS_M,
   type CandidateItem, type ComponentMatch, type ComponentPoint,
 } from './componentItemMatching.js';
 import {
-  classesOfItems, itemsInBoxes, labelsOf, partsOfSites, settlementsAmong, tooHeavy, type Box, type ItemLabels,
+  classesOfItems, itemsInBoxes, labelsOf, partsOfSites, placeNamesOf, settlementsAmong, tooHeavy, type Box, type ItemLabels,
   type QueryHooks,
 } from './componentItemQueries.js';
 
@@ -67,6 +67,8 @@ export interface ComponentItemReport {
   wholeSites: number;
   /** Near candidates set aside as settlements, on sites whose parts are not settlements. */
   settlements: number;
+  /** Near candidates set aside as things at the component, on sites none of whose components resolve. */
+  atTheComponent: number;
   /** Proposals found by the item's own statement that it is part of the site. */
   partOf: number;
   /** Proposals found near the point among items of the site's kind. */
@@ -255,6 +257,57 @@ async function settlementsNear(
 
 
 /**
+ * The near rule's choice for each point, among the candidates of its site's
+ * kind, less, on a site none of whose components resolve, the things standing
+ * at the component (`standsAtTheComponent`), with how many it set aside.
+ */
+function chooseNear(
+  points: readonly PointRow[], ofKindOf: Map<number, CandidateItem[]>, places: Map<string, string[]>,
+  fallsBack: (point: PointRow) => boolean, refused: Map<number, Set<string>>,
+): { chosen: ComponentMatch[]; atTheComponent: number } {
+  const chosen: ComponentMatch[] = [];
+  let atTheComponent = 0;
+  for (const point of points) {
+    const ofKind = ofKindOf.get(point.locationId)!;
+    const theComponent = fallsBack(point)
+      ? ofKind.filter(c => !standsAtTheComponent(point, c, places.get(c.item) ?? []))
+      : ofKind;
+    atTheComponent += ofKind.length - theComponent.length;
+    const match = bestMatch(point, theComponent, 'near', refused.get(point.locationId));
+    if (match) chosen.push(match);
+  }
+  return { chosen, atTheComponent };
+}
+
+/**
+ * The names of the places the contenders of sites none of whose components
+ * resolve stand in (`placeNamesOf`), so a museum in Herrnhut is not offered as
+ * Herrnhut. Asked only of a candidate the near rule would take on its own —
+ * the place cannot change the choice among candidates the rule refuses —
+ * never of every building around the points. A batch QLever cannot answer
+ * leaves those points unanswered —
+ * they keep an earlier pass's proposals — as the settlement question does,
+ * rather than offering what the rule would have set aside.
+ */
+async function placesNear(
+  fallingBack: readonly PointRow[], ofKindOf: Map<number, CandidateItem[]>, refused: Map<number, Set<string>>,
+  nearOf: Map<number, CandidateItem[]>, hooks: QueryHooks, onStage: ((message: string) => void) | undefined,
+): Promise<Map<string, string[]>> {
+  const contenders = new Map(fallingBack.filter(p => nearOf.has(p.locationId)).map(p => [p.locationId,
+    ofKindOf.get(p.locationId)!.filter(c => bestMatch(p, [c], 'near', refused.get(p.locationId)) !== null)]));
+  const items = [...new Set([...contenders.values()].flat().map(c => c.item))];
+  if (items.length === 0) return new Map();
+  onStage?.(`Reading where ${items.length} near candidates stand`);
+  try {
+    return await placeNamesOf(items, hooks);
+  } catch (error) {
+    if (!tooHeavy(error)) throw error;
+    for (const [locationId, theirs] of contenders) if (theirs.length > 0) nearOf.delete(locationId);
+    return new Map();
+  }
+}
+
+/**
  * What stands near a group of cells, asked in one query, and where the service
  * could not answer that, one cell at a time. A cell it cannot answer even alone
  * is left out — its points are counted as unsearched — rather than ending the
@@ -391,18 +444,21 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
     reachable(point, items.filter(c => (c.classes ?? []).some(k => admitted.get(point.locationId)!.has(k))), NEAR_SAME_NAME_RADIUS_M));
   const { settled, settlementKinds, unanswered } = await settlementsNear(nearOf, admitted, counted, onStage);
   for (const locationId of unanswered) nearOf.delete(locationId);
-  const unsearched = unmatched.filter(p => !nearOf.has(p.locationId)).length;
   await readLabels(nearOf.values());
   let settlements = 0;
+  const ofKindOf = new Map<number, CandidateItem[]>();
   for (const point of searchable) {
     const ownClasses = admitted.get(point.locationId)!;
     const siteAdmits = [...ownClasses].some(c => settlementKinds.has(c));
     const candidates = named(nearOf.get(point.locationId) ?? []);
     const ofKind = candidates.filter(c => ofTheSitesKind(c, ownClasses, settled.has(c.item), siteAdmits));
     settlements += candidates.length - ofKind.length;
-    const match = bestMatch(point, ofKind, 'near', refused.get(point.locationId));
-    if (match) matches.push(match);
+    ofKindOf.set(point.locationId, ofKind);
   }
+  const places = await placesNear(searchable.filter(fallsBack), ofKindOf, refused, nearOf, counted, onStage);
+  const unsearched = unmatched.filter(p => !nearOf.has(p.locationId)).length;
+  const { chosen, atTheComponent } = chooseNear(searchable.filter(p => nearOf.has(p.locationId)), ofKindOf, places, fallsBack, refused);
+  matches.push(...chosen);
 
   const proposals = onePerItem(matches);
   // Answered for: a new proposal, or every question this pass asked about the
@@ -428,6 +484,7 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
       exact: proposals.filter(m => m.exact).length,
       wholeSites,
       settlements,
+      atTheComponent,
       unsearched,
       unreadSites: unread.length,
       queries,

@@ -365,3 +365,35 @@ export async function settlementsAmong(
   }
   return found;
 }
+
+/** Items per question about the places they stand in. */
+const PLACE_BATCH = 400;
+
+/**
+ * The names, English or multilingual, of the places each item stands in
+ * (P131, P276) or is part of (P361), asked of QLever: what tells a museum in
+ * Herrnhut from the settlement of Herrnhut (`standsAtTheComponent`). An item
+ * that names no such place is absent from the answer.
+ */
+export async function placeNamesOf(items: readonly string[], hooks: QueryHooks): Promise<Map<string, string[]>> {
+  const names = new Map<string, string[]>();
+  for (let i = 0; i < items.length; i += PLACE_BATCH) {
+    if (hooks.isCancelled?.()) break;
+    const values = items.slice(i, i + PLACE_BATCH).map(id => `wd:${id}`).join(' ');
+    const rows = await qleverWikidataQuery(`${QLEVER_PREFIXES}
+      PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+      SELECT DISTINCT ?item ?name WHERE {
+        VALUES ?item { ${values} }
+        VALUES ?held { wdt:P131 wdt:P276 wdt:P361 }
+        ?item ?held ?place .
+        ?place rdfs:label ?name .
+        FILTER(LANG(?name) = "en" || LANG(?name) = "mul")
+      }`, hooks.isCancelled);
+    hooks.onQuery?.();
+    for (const row of rows) {
+      const item = itemOf(row.item!.value);
+      names.set(item, [...(names.get(item) ?? []), row.name!.value]);
+    }
+  }
+  return names;
+}

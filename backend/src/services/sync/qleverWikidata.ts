@@ -1,11 +1,12 @@
 /**
  * Wikidata asked through QLever's mirror (`https://qlever.dev/api/wikidata`),
- * for two bulk questions the Wikidata Query Service could not answer within
- * its limits (#1272): the component-item search's near rule — which on
+ * for the bulk questions of the component-item search the Wikidata Query
+ * Service could not answer within its limits (#1272): its near rule — which on
  * 2026-10-09 drew a 429 halfway through a pass paced at the query service's
  * own published rate, where QLever answered the same four-area question in
- * 0.43 s against 18 s — and the class-tree walk that tells the settlements
- * among its candidates and classes (`settlementsAmong`).
+ * 0.43 s against 18 s — the class-tree walk that tells the settlements among
+ * its candidates and classes (`settlementsAmong`), and the places the
+ * contenders of a site with no resolved component stand in (`placeNamesOf`).
  *
  * The manners are those of the register record
  * (`docs/sources/global/wikidata-qlever.md`): the mirror has no formal terms
