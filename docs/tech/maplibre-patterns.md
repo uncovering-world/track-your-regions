@@ -420,7 +420,7 @@ point of `GuardedMap` is that you should not have to.
 
 ### Testing it
 
-jsdom has no WebGL, so the unavailable branch is the default in unit tests —
+happy-dom has no WebGL, so the unavailable branch is the default in unit tests —
 which is exactly why this went unnoticed: the surfaces that would have thrown
 were mocked out of every suite (`App.test.tsx` mocks `MainDisplay` for this
 reason). A guard test asserts *both* that the explanation renders and that
@@ -476,7 +476,7 @@ chunk does not move, since 4.x carried the same code as a string inside it.
 
 ### The guard
 
-Nothing in the unit suites can see this (jsdom has neither WebGL nor
+Nothing in the unit suites can see this (happy-dom has neither WebGL nor
 workers), and the smoke lane browses the dev server, where the URL resolves.
 The performance lane loads the production build, so that is where it is
 asserted: the map view's `urls` entry in both budgets files expects a 2xx

@@ -232,7 +232,7 @@ canvas and reads as a loaded page to every timing in the file — which is
 exactly what maplibre-gl 6's bundled worker did on its first production
 build (#849: the worker's URL resolved against the entry chunk, to a file
 the build never emits) while every test the repository had stayed green.
-The unit suites run in jsdom, which has neither WebGL nor workers; the
+The unit suites run in happy-dom, which has neither WebGL nor workers; the
 smoke lane asserts a painted canvas against the **dev server**, where the
 worker's URL resolves; and this lane is the only one that loads the
 production build at all — so this is where "the map asked for its regions"
