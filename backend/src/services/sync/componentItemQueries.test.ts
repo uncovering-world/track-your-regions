@@ -14,7 +14,7 @@ vi.mock('./qleverWikidata.js', () => ({ qleverWikidataQuery: vi.fn() }));
 vi.mock('./wikipediaCategories.js', () => ({ askWikipediaOnce: vi.fn() }));
 
 const { sparqlQuery, SparqlUnanswered, WaitBudget } = await import('./wikidataUtils.js');
-const { boxFilter, contentsOf, itemsInBoxes, labelsOf, partsOfSites, placeNamesOf } = await import('./componentItemQueries.js');
+const { boxFilter, contentsOf, itemsInBoxes, labelsOf, partsOfSites, placesOf } = await import('./componentItemQueries.js');
 const { qleverWikidataQuery } = await import('./qleverWikidata.js');
 const { askWikipediaOnce } = await import('./wikipediaCategories.js');
 
@@ -101,18 +101,30 @@ describe('itemsInBoxes', () => {
   });
 });
 
-describe('placeNamesOf', () => {
-  it('reads the English or multilingual names of what an item stands in or is part of (#1349)', async () => {
+describe('placesOf', () => {
+  it('reads each place an item stands in or is part of, with its names, coordinates and whether it carries a reference (#1349)', async () => {
+    const row = (item: string, place: string, name: string, coord?: string, reference?: string) => ({
+      item: { value: `http://www.wikidata.org/entity/${item}` }, place: { value: `http://www.wikidata.org/entity/${place}` },
+      name: { value: name }, ...(coord ? { coord: { value: coord } } : {}), ...(reference ? { reference: { value: reference } } : {}),
+    });
+    // Christiansfeld's pharmacy: in Kolding Municipality and at Christiansfeld, which carries
+    // the reference of the inscription it was before the extension, 1468.
     vi.mocked(qleverWikidataQuery).mockResolvedValue([
-      { item: { value: 'http://www.wikidata.org/entity/Q61757379' }, name: { value: 'Kolding Municipality' } },
-      { item: { value: 'http://www.wikidata.org/entity/Q61757379' }, name: { value: 'Christiansfeld' } },
+      row('Q61757379', 'Q21101', 'Kolding Municipality', 'POINT(9.4722 55.4903)'),
+      row('Q61757379', 'Q3197288', 'Christiansfeld', 'POINT(9.483056 55.356667)', '1468'),
+      row('Q76637833', 'Q165140', 'Herrnhut', 'POINT(14.741666 51.016666)'),
+      row('Q76637833', 'Q165140', 'Herrnhut', 'POINT(14.741666 51.016666)'),
     ]);
 
-    const names = await placeNamesOf(['Q61757379', 'Q76637833'], hooks());
+    const places = await placesOf(['Q61757379', 'Q76637833'], hooks());
 
-    expect(names).toEqual(new Map([['Q61757379', ['Kolding Municipality', 'Christiansfeld']]]));
+    expect(places.get('Q61757379')).toEqual([
+      { item: 'Q21101', names: ['Kolding Municipality'], coords: [[55.4903, 9.4722]], referenced: false },
+      { item: 'Q3197288', names: ['Christiansfeld'], coords: [[55.356667, 9.483056]], referenced: true },
+    ]);
+    expect(places.get('Q76637833')).toEqual([{ item: 'Q165140', names: ['Herrnhut'], coords: [[51.016666, 14.741666]], referenced: false }]);
     const query = vi.mocked(qleverWikidataQuery).mock.calls.at(-1)![0].replace(/\s+/g, ' ');
-    expect(query).toContain('VALUES ?item { wd:Q61757379 wd:Q76637833 } VALUES ?held { wdt:P131 wdt:P276 wdt:P361 } ?item ?held ?place . ?place rdfs:label ?name . FILTER(LANG(?name) = "en" || LANG(?name) = "mul")');
+    expect(query).toContain('VALUES ?item { wd:Q61757379 wd:Q76637833 } VALUES ?held { wdt:P131 wdt:P276 wdt:P361 } ?item ?held ?place . ?place rdfs:label ?name . FILTER(LANG(?name) = "en" || LANG(?name) = "mul") OPTIONAL { ?place wdt:P625 ?coord } OPTIONAL { ?place wdt:P757 ?reference }');
   });
 });
 

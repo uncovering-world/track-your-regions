@@ -5,7 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  admittedClasses, bestMatch, distanceM, nameSimilarity, ofTheSitesKind, standsAtTheComponent, standsForWholeSite,
+  admittedClasses, bestMatch, distanceM, nameSimilarity, ofTheSitesKind, placeAsCandidate, standsAtTheComponent,
+  standsForWholeSite,
   type CandidateItem,
 } from './componentItemMatching.js';
 
@@ -174,5 +175,25 @@ describe('a thing at the component, on a site none of whose components resolve (
     expect(at('Herrnhut', 'Heimatmuseum Herrnhut', [])).toBe(false);
     expect(standsAtTheComponent({ locationId: 1, name: null, lat: 0, lon: 0 },
       { item: 'Q1', labels: ['Heimatmuseum Herrnhut'], coords: [] }, ['Herrnhut'])).toBe(false);
+  });
+});
+
+describe('the place a thing at the component stands in, offered in its stead (#1349)', () => {
+  const herrnhut = { locationId: 8669, name: 'Herrnhut', lat: 51.0155555556, lon: 14.7441666666 };
+
+  it('is a candidate the near rule then measures like any other', () => {
+    // Naval Port of Karlskrona: the islet the gunpowder house stands on, 30 m from the point.
+    const mjolnarholmen = { locationId: 7910, name: 'Mjölnarholmen', lat: 56.1654463692, lon: 15.6039170196 };
+    const place = { item: 'Q32294768', names: ['Mjölnareholmen'], coords: [[56.1652, 15.6038]] as Array<[number, number]>, referenced: false };
+    const whole = placeAsCandidate(mjolnarholmen, place);
+    expect(whole).toEqual({ item: 'Q32294768', labels: ['Mjölnareholmen'], coords: place.coords });
+    expect(bestMatch(mjolnarholmen, [whole!], 'near')).toMatchObject({ item: 'Q32294768', label: 'Mjölnareholmen' });
+  });
+
+  it('is not offered where it carries a World Heritage reference, or is named otherwise', () => {
+    // Christiansfeld carries 1468, the reference of the inscription it was before the extension.
+    const christiansfeld = { locationId: 8672, name: 'Christiansfeld', lat: 55.3555555556, lon: 9.4813888889 };
+    expect(placeAsCandidate(christiansfeld, { item: 'Q3197288', names: ['Christiansfeld'], coords: [[55.356667, 9.483056]], referenced: true })).toBeNull();
+    expect(placeAsCandidate(herrnhut, { item: 'Q21101', names: ['Görlitz District'], coords: [], referenced: false })).toBeNull();
   });
 });

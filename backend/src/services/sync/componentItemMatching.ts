@@ -300,6 +300,24 @@ export function standsAtTheComponent(
 }
 
 /**
+ * The place a thing at the component stands in, offered in its stead: the
+ * component is the place the museum, the pharmacy or the gunpowder house is
+ * in — Mjölnareholmen, the islet the gunpowder house stands on — when the place
+ * is named like the component
+ * as `standsAtTheComponent` reads it. Never a place with a World Heritage
+ * reference of its own, which the reference reader finds or a curator
+ * matches, as the near rule never offers one. Whether it lies close enough is
+ * the near rule's own question (`bestMatch`), asked of it like any candidate.
+ */
+export function placeAsCandidate(
+  point: ComponentPoint, place: { item: string; names: string[]; coords: Array<[lat: number, lon: number]>; referenced: boolean },
+): CandidateItem | null {
+  if (point.name === null || place.referenced) return null;
+  if (!place.names.some(name => nameSimilarity(point.name!, name) >= AT_THE_COMPONENT_SIMILARITY)) return null;
+  return { item: place.item, labels: place.names, coords: place.coords };
+}
+
+/**
  * Whether a near candidate is of a class the site admits, and not a settlement
  * where the site's parts are not settlements: a fort named after a village is
  * not the village. `isSettlement` is the class tree's word on the item.
