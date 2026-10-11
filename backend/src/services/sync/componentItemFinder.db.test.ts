@@ -42,6 +42,8 @@ vi.mock('./componentItemQueries.js', async (importOriginal) => ({
   itemsInBoxes: vi.fn(async () => nearby.map(c => ({ ...c, labels: [] }))),
   // The class tree is QLever's to walk, not the spec's: nothing here is a settlement unless a test says so.
   settlementsAmong: vi.fn(async () => new Set<string>()),
+  // Where a candidate stands is QLever's answer too: no place, unless a test names one.
+  placeNamesOf: vi.fn(async () => new Map<string, string[]>()),
   // The labels come from Wikidata's API, read only for the items the distance leaves.
   labelsOf: vi.fn(async (items: string[]) => new Map(items.map(item => {
     const all = [...parts, ...nearby].find(c => c.item === item)?.labels ?? [];
@@ -58,8 +60,31 @@ const { WaitBudget } = await import('./sourceRetry.js');
 const SITE = 9840;
 let points: Record<string, number> = {};
 
+/** Five other sites with a resolved castrum each: the floor the catalogue-wide classes need. */
+const OTHER_SITES = [9841, 9842, 9843, 9844, 9845];
+const otherSiteItem = (site: number) => `Q${site}0`;
+
 async function clear(): Promise<void> {
-  await pool.query('DELETE FROM experiences WHERE id = $1', [SITE]);
+  await pool.query('DELETE FROM experiences WHERE id = ANY($1)', [[SITE, ...OTHER_SITES]]);
+}
+
+/** Leaves the fixture site with no resolved component, so it falls back on the classes the other sites teach. */
+async function fallBack(): Promise<void> {
+  await pool.query(`UPDATE experience_locations SET wikidata_item = NULL WHERE id = $1`, [points.resolved]);
+  for (const site of OTHER_SITES) {
+    await pool.query(
+      `INSERT INTO experiences (id, source_id, external_id, name, location)
+       VALUES ($1, 1, $2, 'Another fixture site', ST_SetSRID(ST_MakePoint(10, 50), 4326))`,
+      [site, `${site}-fixture`],
+    );
+    await pool.query(
+      `INSERT INTO experience_locations (experience_id, name, external_ref, location, wikidata_item)
+       VALUES ($1, 'A resolved castrum', $2, ST_SetSRID(ST_MakePoint(10, 50), 4326), $3)`,
+      [site, `${site}-001`, otherSiteItem(site)],
+    );
+  }
+  vi.mocked(queries.classesOfItems).mockImplementation(async (items: readonly string[]) =>
+    new Map(items.map(item => [item, OTHER_SITES.map(otherSiteItem).includes(item) ? [CASTRUM] : []])));
 }
 
 async function point(ref: string, name: string, lat: number, lon: number, item: string | null): Promise<number> {
@@ -83,6 +108,9 @@ const run = () => findComponentItems({ write: true, hooks: { budget: new WaitBud
 
 beforeEach(async () => {
   vi.mocked(queries.itemsInBoxes).mockImplementation(async () => nearby.map(c => ({ ...c, labels: [] })));
+  vi.mocked(queries.placeNamesOf).mockReset().mockImplementation(async () => new Map<string, string[]>());
+  vi.mocked(queries.classesOfItems).mockImplementation(async (items: readonly string[]) =>
+    new Map(items.map(item => [item, item === RESOLVED_ITEM ? [CASTRUM] : []])));
   await clear();
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
@@ -238,6 +266,39 @@ describe('findComponentItems', () => {
 
     expect(report.wholeSites).toBe(1);
     expect((await proposals()).filter(p => p.location_id === points.mairea && p.answer === null)).toHaveLength(0);
+  });
+
+  it('sets aside, on a site with no resolved component, a contender standing in a place named like the component, and counts it (#1349)', async () => {
+    await fallBack();
+    // Wikidata says the item near Bologa stands in Bologa, and it is not named "Bologa" itself.
+    vi.mocked(queries.placeNamesOf).mockImplementation(async (items: readonly string[]) =>
+      new Map(items.filter(item => item === BOLOGA_ITEM).map(item => [item, ['Bologa']])));
+
+    const { report, matches } = await findComponentItems({ write: false, hooks: { budget: new WaitBudget(1000) } });
+
+    // Asked only about what the near rule would take: the castra, not the whole neighbourhood.
+    const asked = vi.mocked(queries.placeNamesOf).mock.calls.flatMap(([items]) => [...items]);
+    expect(asked).toContain(BOLOGA_ITEM);
+    expect(asked).not.toContain(STALE_ITEM);
+    expect(matches.find(m => m.locationId === points.bologa)).toBeUndefined();
+    expect(report.atTheComponent).toBe(1);
+  });
+
+  it('leaves those points unanswered when QLever cannot say where their contenders stand', async () => {
+    await fallBack();
+    await pool.query(
+      `INSERT INTO experience_component_item_proposals (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
+       VALUES ($1, 'Q98408', 'An earlier pass found this', 40, 0.5, false, 'near')`,
+      [points.bologa],
+    );
+    vi.mocked(queries.placeNamesOf).mockRejectedValue(new SparqlUnanswered('QLever error 503'));
+
+    const { report } = await run();
+
+    expect(report.near).toBe(0);
+    expect(report.unsearched).toBeGreaterThan(0);
+    const open = (await proposals()).filter(p => p.location_id === points.bologa && p.answer === null).map(p => p.wikidata_item);
+    expect(open).toContain('Q98408');
   });
 
   it('leaves a site with no resolved components unsearched when QLever cannot say which classes are settlements', async () => {

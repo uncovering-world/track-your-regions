@@ -5,7 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  admittedClasses, bestMatch, distanceM, nameSimilarity, ofTheSitesKind, standsForWholeSite, type CandidateItem,
+  admittedClasses, bestMatch, distanceM, nameSimilarity, ofTheSitesKind, standsAtTheComponent, standsForWholeSite,
+  type CandidateItem,
 } from './componentItemMatching.js';
 
 /** Aalto Works' Villa Mairea in Noormarkku (component 1700-007). */
@@ -140,5 +141,38 @@ describe('what is not searched or not taken', () => {
     const grounds = { locationId: 7, name: 'Exhibition grounds 1901', lat: 49.8771, lon: 8.6670 };
     const tower: CandidateItem = { item: 'Q3', labels: ['Hochzeitsturm'], coords: [[49.8774, 8.6680]] };
     expect(bestMatch(grounds, [tower], 'part_of')).toBeNull();
+  });
+});
+
+describe('a thing at the component, on a site none of whose components resolve (#1349)', () => {
+  const at = (name: string, label: string, places: string[]) => standsAtTheComponent(
+    { locationId: 1, name, lat: 0, lon: 0 }, { item: 'Q1', labels: [label], coords: [] }, places);
+
+  it('is set aside where it stands in a place named like the component', () => {
+    // Moravian Church Settlements: the component is the settlement, the candidates are in it.
+    expect(at('Herrnhut', 'Heimatmuseum Herrnhut', ['Herrnhut'])).toBe(true);
+    expect(at('Christiansfeld', 'Christiansfeld Pharmacy', ['Kolding Municipality', 'Christiansfeld'])).toBe(true);
+    expect(at('Moroni', 'Moroni Old Friday Mosque', ['Moroni'])).toBe(true);
+    // Naval Port of Karlskrona: the islet, spelled one letter apart on Wikidata.
+    expect(at('Mjölnarholmen', 'Kruthuset och våghuset på Mjölnarholmen', ['Mjölnareholmen'])).toBe(true);
+  });
+
+  it('stays a candidate where it is named like the component itself', () => {
+    expect(at('Pompeii', 'Pompeii', ['Pompei'])).toBe(false);
+    expect(at('Panhala Fort', 'Panhala Fort', ['Panhala'])).toBe(false);
+    // Abu Simbel's item stands in the village of Abu Simbel and is named like it, as the component is.
+    expect(at('Abu Simbel', 'Abu Simbel', ['Abu Simbel'])).toBe(false);
+  });
+
+  it('stays a candidate where the place is only the town a fort is named after', () => {
+    // The Danube Limes: the castrum is the component, Straubing the town around it.
+    expect(at('Straubing – Ostkastell', 'Castrum Sorviodurum', ['Straubing'])).toBe(false);
+    expect(at('Klosterneuburg – Kastell und Vicus', 'Castra of Klosterneuburg', ['Klosterneuburg'])).toBe(false);
+  });
+
+  it('stays a candidate where it names no place, or the component has no name', () => {
+    expect(at('Herrnhut', 'Heimatmuseum Herrnhut', [])).toBe(false);
+    expect(standsAtTheComponent({ locationId: 1, name: null, lat: 0, lon: 0 },
+      { item: 'Q1', labels: ['Heimatmuseum Herrnhut'], coords: [] }, ['Herrnhut'])).toBe(false);
   });
 });

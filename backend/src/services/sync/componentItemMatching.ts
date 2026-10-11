@@ -274,6 +274,32 @@ export const FIND_RECORD_CLASSES: Readonly<Record<string, string>> = {
 };
 
 /**
+ * How alike the name of a place a candidate stands in must be to the
+ * component's for the candidate to be a thing at the component: Herrnhut's
+ * museum stands in Herrnhut (1.0), the gunpowder house on Mjölnarholmen in
+ * Mjölnareholmen (0.71), while Straubing's castrum stands in Straubing, short
+ * of "Straubing – Ostkastell" at 0.48, and is the component itself.
+ */
+export const AT_THE_COMPONENT_SIMILARITY = 0.7;
+
+/**
+ * Whether a near candidate is a thing at the component rather than the
+ * component: it stands in (P131, P276) or is part of (P361) a place named like
+ * the component — Christiansfeld's pharmacy in Christiansfeld, Moroni's Old
+ * Friday Mosque in Moroni — and is not itself named like it, as Pompeii's item
+ * is beside the comune of Pompei. Asked only for a site none of whose
+ * components resolve: there the catalogue-wide classes admit a house and a
+ * museum, while a site's own classes say what its components are, and the
+ * wooden church that is the component "Hervartov" stands in Hervartov.
+ */
+export function standsAtTheComponent(
+  point: ComponentPoint, candidate: CandidateItem, placeNames: readonly string[],
+): boolean {
+  if (point.name === null || candidate.labels.some(label => sameName(withoutQualifier(label), point.name!))) return false;
+  return placeNames.some(place => nameSimilarity(point.name!, place) >= AT_THE_COMPONENT_SIMILARITY);
+}
+
+/**
  * Whether a near candidate is of a class the site admits, and not a settlement
  * where the site's parts are not settlements: a fort named after a village is
  * not the village. `isSettlement` is the class tree's word on the item.
