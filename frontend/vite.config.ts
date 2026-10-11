@@ -85,6 +85,11 @@ export default defineConfig({
     // full unit lane the default five seconds cut them off mid-flight (#1239).
     // A spec that truly hangs still fails, at fifteen.
     testTimeout: 15_000,
+    // Worker threads rather than child processes: each spec file still gets a
+    // fresh module graph and environment, at less cost per file. No spec here
+    // needs a process of its own — none changes directory, exits, spawns or
+    // loads a native module, which is what forks are for (#1377).
+    pool: 'threads',
     // perf/ holds the performance lane's runner; its budget evaluator is the
     // one piece of it worth a unit test, and it is plain ESM. tests/ holds the
     // same for the E2E lane: the Playwright specs there are `*.spec.ts` and
