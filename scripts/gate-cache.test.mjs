@@ -47,10 +47,10 @@ describe('the key a pass is kept under', () => {
     expect(keyOf('lint:md', prose)).not.toBe(keyOf('lint:md', tree(BASE_TREE)));
   });
 
-  it('moves for every gate when the tooling that decides the gates moves', () => {
-    const tooling = tree({ ...BASE_TREE, 'scripts/gates.mjs': 'd2' });
+  it('moves for every gate when the gate machinery moves', () => {
+    const machinery = tree({ ...BASE_TREE, 'scripts/gates.mjs': 'd2' });
     for (const id of ['lint:md', 'test:backend', 'check:py']) {
-      expect(keyOf(id, tooling), id).not.toBe(keyOf(id, tree(BASE_TREE)));
+      expect(keyOf(id, machinery), id).not.toBe(keyOf(id, tree(BASE_TREE)));
     }
   });
 
@@ -213,7 +213,8 @@ function run(decision, tier, options) {
 }
 
 describe('a run that reuses passes', () => {
-  const backend = () => decide({ paths: ['backend/src/a.ts'] });
+  // The shared package asks for both Node unit lanes, which these shapes need.
+  const backend = () => decide({ paths: ['packages/shared/src/a.ts'] });
 
   it('does not run a gate whose inputs already passed, and says so on a line of its own', () => {
     const cache = fakeCache({ passes: ['test:frontend'] });
