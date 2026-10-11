@@ -1174,7 +1174,9 @@ path needs.
   exactly one standing point. A site of several items (Venice beside "Venice and its Lagoon") or of
   several points (a serial site, whose identity is decided per location) is never merged on the
   item. A site of one point merged into a place of several keeps both places' points, since
-  the fold of one point into one needs a single point on each side (ADR-0088 § Consequences). Measured on 2026-10-08 against live Wikidata: 1 184 of 1 272 sites resolve to one item and
+  the fold of one point into one needs a single point on each side (ADR-0088 § Consequences).
+  A point its source withdrew is no point on either side, for the item and for the fold
+  (`foldPoints`, #1360): it moves with its place and stays hidden. Measured on 2026-10-08 against live Wikidata: 1 184 of 1 272 sites resolve to one item and
   88 to several; 734 of the one-item sites have one point, and 188 of those share the item with
   another kind's place — Chartres Cathedral, Cologne Cathedral, Shulgan-Tash Cave. A run merges
   only the places it created (`mergeArrivalsOfRun`), so a pair that existed before its item was
