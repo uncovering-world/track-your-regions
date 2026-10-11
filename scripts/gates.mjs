@@ -237,7 +237,7 @@ export const INPUTS = [
 
 /**
  * Every gate, in the order a person would meet it: the fast checks, then the
- * unit tests, then the slow scans, then the before-push stack lanes.
+ * unit tests, then the slow scans, then the stack lanes.
  *
  * `command` is an argv array — the runner spawns argv[0] directly, with no
  * shell — except in the `stack` tier, which is listed and never run, where the
@@ -260,6 +260,34 @@ const RULE_PACKS = 'Semgrep fetches its rule packs from the registry on every ru
 const BASE_DOCUMENT = "it compares with the base's OpenAPI document, which is not in this tree";
 const VULNERABILITY_DATABASE = 'Trivy reads a vulnerability database and a base image that move under the same tree';
 const LINK_TARGETS = 'lychee resolves links to files of every type, and its input class holds the Markdown only';
+
+/**
+ * `local` on a stack gate lists what of it is owed by hand as well as by CI
+ * (#1379): CI runs every stack lane the change asks for on every pushed head,
+ * so a local run of one only repeats it, unless the run measures something CI
+ * cannot hold. Each entry names the classes whose change owes it, the files of
+ * its own runner (CI never runs them, so a change to one owes the measurement
+ * too), the command that measures it, and why. `covers` names a command whose
+ * measurement this one includes, which is then not owed beside it.
+ *
+ * Both of perf's measure the dev stack, which serves the main checkout: they
+ * measure a branch only where the branch is what that checkout holds.
+ */
+const PERF_LOCAL = [
+  {
+    reads: ['web', 'shared'],
+    files: ['scripts/perf-local.sh', 'scripts/frontend-mode.sh'],
+    covers: 'npm run perf:api',
+    command: 'npm run perf:local',
+    why: "Lighthouse on the dev stack's real catalogue, where CI's lane weighs a fixture: a change to what the browser loads",
+  },
+  {
+    reads: ['backend', 'database', 'tiles', 'shared'],
+    files: ['scripts/perf-api.mjs', 'scripts/perf-api-report.mjs'],
+    command: 'npm run perf:api',
+    why: "the latency probe over the hot reads and tiles, which no CI job runs: a change to what answers them",
+  },
+];
 
 export const GATES = [
   { id: 'lint:backend', tier: 'check', inputs: ['backend', 'shared'], command: ['npm', '--prefix', 'backend', 'run', 'lint'], job: 'check', setup: 'node' },
@@ -333,7 +361,7 @@ export const GATES = [
   // same stack, as each of the fixture's accounts, reads only. It hangs off
   // the smoke job for the stack it stands up, as the database lane does.
   { id: 'test:api', tier: 'stack', inputs: ['backend', 'shared', 'database', 'runners', 'compose'], command: ['npm', 'run', 'test:api'], job: 'smoke', setup: 'docker' },
-  { id: 'perf', tier: 'stack', inputs: ['backend', 'web', 'shared', 'database', 'tiles', 'runners', 'compose'], command: ['npm', 'run', 'perf:local'], job: 'perf', setup: 'docker' },
+  { id: 'perf', tier: 'stack', inputs: ['backend', 'web', 'shared', 'database', 'tiles', 'runners', 'compose'], command: ['npm', 'run', 'perf:local'], job: 'perf', setup: 'docker' , local: PERF_LOCAL},
 ];
 
 /**
@@ -360,6 +388,39 @@ export const UNREAD = [
     why: 'The settings of a packing tool no gate runs.',
   },
 ];
+
+/**
+ * Where each stack lane of this decision is owed (#1379): `run here`, under the
+ * command of each `local` entry whose classes or runner files the change
+ * touches, less one another owed entry covers, `CI runs it`
+ * when it is asked for and CI answers for it alone, `skip` when nothing it
+ * reads changed. A decision that runs everything owes every local entry.
+ */
+export function stackVerdicts(decision) {
+  return decision.gates
+    .filter((gate) => gate.tier === 'stack')
+    .flatMap((gate) => {
+      if (!gate.applies) return [{ ...gate, verdict: 'skip', reason: gate.why }];
+      const changed = new Set(decision.paths ?? []);
+      const due = (gate.local ?? []).filter((entry) =>
+        decision.everything
+        || entry.reads.some((id) => decision.inputs.has(id))
+        || (entry.files ?? []).some((file) => changed.has(file)));
+      // A measurement another owed one includes is not owed beside it:
+      // perf:local runs the latency probe as its last step.
+      const covered = new Set(due.map((entry) => entry.covers).filter(Boolean));
+      const owed = due.filter((entry) => !covered.has(entry.command));
+      if (!owed.length) return [{ ...gate, verdict: 'CI runs it', reason: gate.why }];
+      // One line per measurement owed, under its own command: a backend change
+      // owes the latency probe, not Lighthouse.
+      return owed.map((entry) => ({
+        ...gate,
+        command: entry.command.split(' '),
+        verdict: 'run here',
+        reason: `${gate.why}; ${entry.why}`,
+      }));
+    });
+}
 
 /** The tiers `run` accepts. `stack` is listed by it, never run by it. */
 const TIERS = ['check', 'test', 'scan', 'stack'];
@@ -548,6 +609,7 @@ export function decide({ paths, reason, scripts = {}, ci = false, ciScripts = ne
     inputs,
     unclassified,
     gates,
+    paths,
   };
 }
 
@@ -676,6 +738,20 @@ const git = (...args) => {
 const ZERO_SHA = '0'.repeat(40);
 
 /**
+ * The base a local run measures against: `main`, unless `origin/main` has moved
+ * past it. A clone's own `main` falls behind every merge made on GitHub, and a
+ * change measured against a stale one counts every file merged since as its
+ * own, asking for gates nothing on the branch touched. A local `main` with
+ * commits of its own is the one meant, and is kept.
+ */
+export function freshestBase(present, isAncestor) {
+  if (present.includes('main') && present.includes('origin/main') && isAncestor('main', 'origin/main')) {
+    return 'origin/main';
+  }
+  return present[0];
+}
+
+/**
  * Which commit the change is measured against, or the reason there is none.
  *
  * A base that was *given* is authoritative, and that includes one given empty:
@@ -720,13 +796,24 @@ function resolveBase(given) {
     return { base: named, reason: null };
   }
 
-  for (const ref of ['main', 'origin/main']) {
+  const present = ['main', 'origin/main'].filter((ref) => {
     try {
       git('rev-parse', '--verify', '-q', ref);
-      return { base: ref, reason: null };
+      return true;
     } catch {
-      // Not in this clone — try the next one, and give up rather than guess.
+      return false; // not in this clone — give up rather than guess
     }
+  });
+  if (present.length) {
+    const isAncestor = (older, newer) => {
+      try {
+        git('merge-base', '--is-ancestor', older, newer);
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    return { base: freshestBase(present, isAncestor), reason: null };
   }
   return {
     base: null,
@@ -952,15 +1039,14 @@ export function runTier(decision, tier, { all = false, spawn = spawnSync, base, 
   if (decision.ciNote) console.log(`${decision.ciNote}\n`);
 
   if (tier === 'stack') {
-    console.log('The before-push tier, in the order it is meant to be typed:\n');
-    // Each line says whether this change asks for the lane and why. Without
-    // that, a Markdown-only branch reads a flat list telling it to spend ten
-    // minutes on the smoke lane and Lighthouse for prose neither can see.
-    for (const gate of gates) {
-      const verdict = gate.applies ? 'run ' : 'skip';
-      console.log(`  ${verdict}  ${gate.id.padEnd(16)} ${gate.command.join(' ')}  (${gate.why})`);
+    console.log('The stack tier, lane by lane — CI runs every lane this change asks for on every pushed head:\n');
+    // Each line says whether the lane is owed here, left to CI, or not asked
+    // for at all, and why (#1379). A local run of a lane CI also runs repeats
+    // it; only a lane that measures what CI cannot hold is owed by hand.
+    for (const gate of stackVerdicts(decision)) {
+      console.log(`  ${gate.verdict.padEnd(10)} ${gate.id.padEnd(16)} ${gate.command.join(' ')}  (${gate.reason})`);
     }
-    console.log('\nThe stack tier is run by hand — see the commands above.');
+    console.log('\nA lane marked "run here" is typed by hand; a lane CI reports red is reproduced here on its own.');
     return 2;
   }
 
