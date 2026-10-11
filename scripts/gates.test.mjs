@@ -464,7 +464,7 @@ describe('the base the change is measured against', () => {
 
 describe('the command line', () => {
   it('reads the branch against the working tree by default', () => {
-    expect(parseArgs([])).toEqual({ mode: 'list', tier: null, all: false, base: null, rev: 'HEAD' });
+    expect(parseArgs([])).toEqual({ mode: 'list', tier: null, all: false, noCache: false, base: null, rev: 'HEAD' });
   });
 
   it('refuses a flag whose value is missing, rather than reading the next flag as it', () => {
@@ -487,6 +487,7 @@ describe('the command line', () => {
       mode: 'run',
       tier: 'check',
       all: true,
+      noCache: false,
       base: null,
       rev: 'HEAD',
     });
@@ -502,6 +503,11 @@ describe('the command line', () => {
     expect(() => parseArgs(['--all'])).toThrow(/--all only means something with/);
     expect(() => parseArgs(['--json', '--all'])).toThrow(/--all/);
     expect(parseArgs(['--all', 'run', 'scan']).all).toBe(true);
+  });
+
+  it('refuses --no-cache where there is no run for it to change', () => {
+    expect(() => parseArgs(['--no-cache'])).toThrow(/--no-cache only means something with/);
+    expect(parseArgs(['run', 'test', '--no-cache']).noCache).toBe(true);
   });
 });
 

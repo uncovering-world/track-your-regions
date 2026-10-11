@@ -129,47 +129,47 @@ everything or the base was simply unknown.
 | `workflows` | `.github/workflows/` | actionlint parses the workflow files themselves — their syntax, their expressions, the shell in their `run:` blocks. Every one of them, not only ci.yml: a workflow is checked by nothing else, so a mistake in one is found by the run that hits it, on the branch it is already merged to. |
 | `prose` | `/\.(?:md\|ts\|tsx\|mjs\|cjs\|js\|sql\|sh\|py\|yml\|yaml)$/` | Every tracked file the line-pointer pass reads — Markdown, and each file type that carries a comment — by the extension list the pass itself declares (scripts/lint-line-pointers.mjs), whichever directory the file sits in. |
 | `api-contract` | `packages/shared/src/openapi.generated.json`, `scripts/openapi-breaking.mjs` | The OpenAPI document a client is generated from (ADR-0072), and the check that compares it with the base. The document also sits under app, whose gates regenerate and lint it; this class is what asks whether it still serves a client built against the last one. |
-| `tooling` | `.github/workflows/ci.yml`, `package.json`, `package-lock.json`, `scripts/gates.mjs`, `scripts/require-node-tools.sh`, `scripts/require-py-tools.sh`, `scripts/require-python-312.sh`, `scripts/scan-image.sh`, `.semgrepignore`, `.markdownlint-cli2.jsonc`, `.madgerc`, `docs/tech/gates.md` | A root config reaches every stack — it decides what the gates are, not what they read — so a change to one runs everything. That is the conservative answer to the reach question #783 had to settle, and the only one that cannot skip a gate its own change just broke. |
+| `tooling` | `.github/workflows/ci.yml`, `package.json`, `package-lock.json`, `scripts/gates.mjs`, `scripts/gate-cache.mjs`, `scripts/require-node-tools.sh`, `scripts/require-py-tools.sh`, `scripts/require-python-312.sh`, `scripts/scan-image.sh`, `.semgrepignore`, `.markdownlint-cli2.jsonc`, `.madgerc`, `docs/tech/gates.md` | A root config reaches every stack — it decides what the gates are, not what they read — so a change to one runs everything. That is the conservative answer to the reach question #783 had to settle, and the only one that cannot skip a gate its own change just broke. |
 
 ### Gates
 
-| Gate | Tier | Inputs | Local command | CI job |
-| --- | --- | --- | --- | --- |
-| `lint:backend` | check | `app` | `npm --prefix backend run lint` | check |
-| `lint:frontend` | check | `app` | `npm --prefix frontend run lint` | check |
-| `typecheck:backend` | check | `app` | `npm --prefix backend run typecheck` | check |
-| `typecheck:frontend` | check | `app` | `npm --prefix frontend run typecheck` | check |
-| `knip:backend` | check | `app` | `npm --prefix backend run knip` | check |
-| `knip:frontend` | check | `app` | `npm --prefix frontend run knip` | check |
-| `lint:shared` | check | `app` | `npm --prefix packages/shared run lint` | check |
-| `typecheck:shared` | check | `app` | `npm --prefix packages/shared run typecheck` | check |
-| `knip:shared` | check | `app` | `npm --prefix packages/shared run knip` | check |
-| `lint:circular` | check | `app` | `npm run lint:circular` | check |
-| `db:types` | check | `schema` | `npm run db:types:check` | check |
-| `security:deps` | check | `node-deps` | `npm run security:deps` | check |
-| `lint:shell` | check | `shell` | `npm run lint:shell` | check |
-| `lint:docker` | check | `docker` | `npm run lint:docker` | check |
-| `lint:actions` | check | `workflows` | `npm run lint:actions` | check |
-| `lint:md` | check | `docs` | `npm run lint:md` | check |
-| `lint:links` | check | `docs` | `npm run lint:links` | check |
-| `lint:openapi` | check | `app` | `npm run lint:openapi` | check |
-| `api:breaking` | check | `api-contract` | `npm run api:breaking` | check |
-| `api:client` | check | `api-contract`, `app`, `node-deps` | `npm --prefix frontend run api:client:check` | check |
-| `lint:pointers` | check | `prose` | `node scripts/lint-line-pointers.mjs` | check |
-| `check:py` | check | `python` | `npm run check:py` | check |
-| `security:py:bandit` | check | `python` | `npm run security:py:bandit` | check |
-| `security:py:deps` | check | `python` | `npm run security:py:deps` | check |
-| `test:backend` | test | `app`, `coverage` | `node scripts/test-report.mjs backend-unit` | test |
-| `test:frontend` | test | `app` | `node scripts/test-report.mjs frontend-unit` | test |
-| `test:py` | test | `python`, `db-python` | `npm run test:py` | python-tests |
-| `security:scan` | scan | `app`, `python`, `coverage` | `npm run security:scan` | security |
-| `security:py:semgrep` | scan | `python` | `npm run security:py:semgrep` | security |
-| `security:image` | scan | `python` | `npm run security:image` | trivy |
-| `build` | stack | `app` | `npm run build && npm --prefix frontend run size` | build |
-| `test:e2e:smoke` | stack | `app` | `npm run test:e2e:smoke` | smoke |
-| `test:db` | stack | `app` | `npm run test:db` | smoke |
-| `test:api` | stack | `app` | `npm run test:api` | smoke |
-| `perf` | stack | `app` | `npm run perf:local` | perf |
+| Gate | Tier | Inputs | Local command | CI job | Pass reused |
+| --- | --- | --- | --- | --- | --- |
+| `lint:backend` | check | `app` | `npm --prefix backend run lint` | check | on the same inputs |
+| `lint:frontend` | check | `app` | `npm --prefix frontend run lint` | check | on the same inputs |
+| `typecheck:backend` | check | `app` | `npm --prefix backend run typecheck` | check | on the same inputs |
+| `typecheck:frontend` | check | `app` | `npm --prefix frontend run typecheck` | check | on the same inputs |
+| `knip:backend` | check | `app` | `npm --prefix backend run knip` | check | on the same inputs |
+| `knip:frontend` | check | `app` | `npm --prefix frontend run knip` | check | on the same inputs |
+| `lint:shared` | check | `app` | `npm --prefix packages/shared run lint` | check | on the same inputs |
+| `typecheck:shared` | check | `app` | `npm --prefix packages/shared run typecheck` | check | on the same inputs |
+| `knip:shared` | check | `app` | `npm --prefix packages/shared run knip` | check | on the same inputs |
+| `lint:circular` | check | `app` | `npm run lint:circular` | check | on the same inputs |
+| `db:types` | check | `schema` | `npm run db:types:check` | check | on the same inputs |
+| `security:deps` | check | `node-deps` | `npm run security:deps` | check | never: its answer reads an advisory database that changes while the tree does not |
+| `lint:shell` | check | `shell` | `npm run lint:shell` | check | on the same inputs |
+| `lint:docker` | check | `docker` | `npm run lint:docker` | check | on the same inputs |
+| `lint:actions` | check | `workflows` | `npm run lint:actions` | check | on the same inputs |
+| `lint:md` | check | `docs` | `npm run lint:md` | check | on the same inputs |
+| `lint:links` | check | `docs` | `npm run lint:links` | check | never: lychee resolves links to files of every type, and its input class holds the Markdown only |
+| `lint:openapi` | check | `app` | `npm run lint:openapi` | check | on the same inputs |
+| `api:breaking` | check | `api-contract` | `npm run api:breaking` | check | never: it compares with the base's OpenAPI document, which is not in this tree |
+| `api:client` | check | `api-contract`, `app`, `node-deps` | `npm --prefix frontend run api:client:check` | check | on the same inputs |
+| `lint:pointers` | check | `prose` | `node scripts/lint-line-pointers.mjs` | check | on the same inputs |
+| `check:py` | check | `python` | `npm run check:py` | check | on the same inputs |
+| `security:py:bandit` | check | `python` | `npm run security:py:bandit` | check | on the same inputs |
+| `security:py:deps` | check | `python` | `npm run security:py:deps` | check | never: its answer reads an advisory database that changes while the tree does not |
+| `test:backend` | test | `app`, `coverage` | `node scripts/test-report.mjs backend-unit` | test | on the same inputs |
+| `test:frontend` | test | `app` | `node scripts/test-report.mjs frontend-unit` | test | on the same inputs |
+| `test:py` | test | `python`, `db-python` | `npm run test:py` | python-tests | on the same inputs |
+| `security:scan` | scan | `app`, `python`, `coverage` | `npm run security:scan` | security | never: Semgrep fetches its rule packs from the registry on every run, so a new rule can fail a tree that passed |
+| `security:py:semgrep` | scan | `python` | `npm run security:py:semgrep` | security | never: Semgrep fetches its rule packs from the registry on every run, so a new rule can fail a tree that passed |
+| `security:image` | scan | `python` | `npm run security:image` | trivy | never: Trivy reads a vulnerability database and a base image that move under the same tree |
+| `build` | stack | `app` | `npm run build && npm --prefix frontend run size` | build | never: run by hand |
+| `test:e2e:smoke` | stack | `app` | `npm run test:e2e:smoke` | smoke | never: run by hand |
+| `test:db` | stack | `app` | `npm run test:db` | smoke | never: run by hand |
+| `test:api` | stack | `app` | `npm run test:api` | smoke | never: run by hand |
+| `perf` | stack | `app` | `npm run perf:local` | perf | never: run by hand |
 
 ## What the backend suite reads across the repository
 
