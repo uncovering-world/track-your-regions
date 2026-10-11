@@ -18,7 +18,7 @@ import {
   Typography,
   CircularProgress,
 } from '@mui/material';
-import { Check as CheckIcon } from '@mui/icons-material';
+import CheckIcon from '@mui/icons-material/Check';
 import { toThumbnailUrl } from '../../utils/imageUrl';
 
 interface MapImagePickerDialogProps {

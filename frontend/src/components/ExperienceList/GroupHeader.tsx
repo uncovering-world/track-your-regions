@@ -9,7 +9,9 @@
  */
 
 import { ListItem, ListItemButton, ListItemText, Typography, Tooltip, IconButton } from '@mui/material';
-import { ExpandLess, ExpandMore, Add as AddIcon } from '@mui/icons-material';
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import AddIcon from '@mui/icons-material/Add';
 import type { ExperienceGroupLike } from './utils';
 
 interface GroupHeaderProps {

@@ -14,7 +14,9 @@
  */
 
 import { Box, List, ListItemButton, ListItemIcon, ListItemText, Typography, Collapse } from '@mui/material';
-import { ExpandLess, ExpandMore, Block as RejectIcon } from '@mui/icons-material';
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import RejectIcon from '@mui/icons-material/Block';
 import type { ReactNode } from 'react';
 import type { Experience } from '../../api/experiences';
 

@@ -25,9 +25,7 @@ import {
   Tooltip,
   Button,
 } from '@mui/material';
-import {
-  Refresh as RefreshIcon,
-} from '@mui/icons-material';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { plural } from '../../utils/plural';
 import {

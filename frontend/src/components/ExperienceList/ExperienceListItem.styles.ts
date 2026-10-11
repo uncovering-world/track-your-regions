@@ -7,7 +7,7 @@ import {
   Typography,
   styled,
 } from '@mui/material';
-import { Place as PlaceIcon } from '@mui/icons-material';
+import PlaceIcon from '@mui/icons-material/Place';
 import { VISITED_GREEN, PARTIAL_AMBER } from '../../utils/kindColors';
 
 /**

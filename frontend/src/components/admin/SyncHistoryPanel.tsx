@@ -27,13 +27,11 @@ import {
   Alert,
   Tooltip,
 } from '@mui/material';
-import {
-  CheckCircle as SuccessIcon,
-  Error as ErrorIcon,
-  Warning as WarningIcon,
-  Info as InfoIcon,
-  Cancel as CancelIcon,
-} from '@mui/icons-material';
+import SuccessIcon from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
+import WarningIcon from '@mui/icons-material/Warning';
+import InfoIcon from '@mui/icons-material/Info';
+import CancelIcon from '@mui/icons-material/Cancel';
 import { useQuery } from '@tanstack/react-query';
 import { getSyncLogs, getSyncLogDetails, type SyncLog } from '../../api/admin';
 import { formatDateTime, formatDuration } from '../../utils/dateFormat';

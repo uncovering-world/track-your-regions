@@ -6,14 +6,12 @@ import {
   IconButton,
   Link,
 } from '@mui/material';
-import {
-  ExpandMore as ExpandIcon,
-  ChevronRight as CollapseRightIcon,
-  OpenInNew as OpenInNewIcon,
-  Image as ImageIcon,
-  WarningAmber as WarningAmberIcon,
-  PublicOff as PublicOffIcon,
-} from '@mui/icons-material';
+import ExpandIcon from '@mui/icons-material/ExpandMore';
+import CollapseRightIcon from '@mui/icons-material/ChevronRight';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import ImageIcon from '@mui/icons-material/Image';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import PublicOffIcon from '@mui/icons-material/PublicOff';
 import type { MatchTreeNode } from '../../api/admin/worldViewImport';
 import { Tooltip, type ShadowInsertion } from './treeNodeShared';
 import { TreeNodeActions } from './TreeNodeActions';

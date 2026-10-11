@@ -8,7 +8,8 @@
 
 import { useRef } from 'react';
 import { Box, Typography, Paper, IconButton, Tooltip } from '@mui/material';
-import { Close as CloseIcon, Explore as ExploreIcon } from '@mui/icons-material';
+import CloseIcon from '@mui/icons-material/Close';
+import ExploreIcon from '@mui/icons-material/Explore';
 import { useNavigation } from '../hooks/useNavigation';
 import { useExperienceContext } from '../hooks/useExperienceContext';
 import { ExperienceList } from './ExperienceList';

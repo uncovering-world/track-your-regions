@@ -23,13 +23,11 @@ import {
   Tooltip,
   Paper,
 } from '@mui/material';
-import {
-  CheckCircle as CheckIcon,
-  Error as ErrorIcon,
-  Cancel as CancelIcon,
-  Delete as DeleteIcon,
-  QuestionAnswer as QuestionIcon,
-} from '@mui/icons-material';
+import CheckIcon from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
+import CancelIcon from '@mui/icons-material/Cancel';
+import DeleteIcon from '@mui/icons-material/Delete';
+import QuestionIcon from '@mui/icons-material/QuestionAnswer';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getImportStatus,

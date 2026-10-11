@@ -12,7 +12,8 @@
 
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { Box, Button, Chip, List, TextField, Typography } from '@mui/material';
-import { ExpandMore, ChevronRight } from '@mui/icons-material';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import ChevronRight from '@mui/icons-material/ChevronRight';
 import { foldLabel } from '@tyr/shared/labels';
 import { filterParts, groupParts } from '../../utils/partGroups';
 import { locationLabelWithRef, pointOfRow } from '../../utils/locationLabel';

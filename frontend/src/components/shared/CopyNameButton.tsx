@@ -10,7 +10,9 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { IconButton, Tooltip } from '@mui/material';
-import { ContentCopy as CopyIcon, Check as CopiedIcon, ErrorOutline as FailedIcon } from '@mui/icons-material';
+import CopyIcon from '@mui/icons-material/ContentCopy';
+import CopiedIcon from '@mui/icons-material/Check';
+import FailedIcon from '@mui/icons-material/ErrorOutline';
 
 const COPIED_MS = 1500;
 

@@ -17,7 +17,7 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
-import { Upload as UploadIcon } from '@mui/icons-material';
+import UploadIcon from '@mui/icons-material/Upload';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { startWorldViewImport } from '../../../api/admin/worldViewImport';
 import type { ImportSourceFormProps } from './types';

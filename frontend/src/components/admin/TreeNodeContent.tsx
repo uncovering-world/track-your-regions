@@ -8,12 +8,10 @@ import {
   IconButton,
   Button,
 } from '@mui/material';
-import {
-  Check as CheckIcon,
-  Close as CloseIcon,
-  Map as MapIcon,
-  DoneAll as AcceptAndRejectRestIcon,
-} from '@mui/icons-material';
+import CheckIcon from '@mui/icons-material/Check';
+import CloseIcon from '@mui/icons-material/Close';
+import MapIcon from '@mui/icons-material/Map';
+import AcceptAndRejectRestIcon from '@mui/icons-material/DoneAll';
 import type { MatchSuggestion, MatchTreeNode } from '../../api/admin/worldViewImport';
 import { Tooltip, type ShadowInsertion } from './treeNodeShared';
 

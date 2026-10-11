@@ -6,39 +6,37 @@ import {
   Typography,
   CircularProgress,
 } from '@mui/material';
-import {
-  Search as SearchIcon,
-  AutoFixHigh as AIIcon,
-  LayersClear as DismissChildrenIcon,
-  SyncAlt as SyncIcon,
-  AccountTree as GroupingIcon,
-  Place as GeocodeIcon,
-  Terrain as GeoshapeIcon,
-  RestartAlt as ResetIcon,
-  Build as ManualFixIcon,
-  CallMerge as MergeIcon,
-  Compress as SmartFlattenIcon,
-  CheckCircleOutline as DismissWarningsIcon,
-  AddCircleOutline as AddChildIcon,
-  DeleteOutline as RemoveRegionIcon,
-  VerticalAlignTop as CollapseToParentIcon,
-  AutoFixHigh as AutoResolveIcon,
-  Psychology as ReviewSubtreeIcon,
-  Edit as RenameIcon,
-  DriveFileMove as ReparentIcon,
-  AutoAwesome as SuggestChildrenIcon,
-  TravelExplore as DivisionSearchIcon,
-  ContentCut as PruneToLeavesIcon,
-  ScatterPlot as PointMatchIcon,
-  Map as ViewMapIcon,
-  Palette as CVMatchIcon,
-  Layers as MapshapeMatchIcon,
-  ClearAll as ClearAssignedIcon,
-  LowPriority as SimplifyIcon,
-  PlaylistAddCheck as SimplifyChildrenIcon,
-  SwapHoriz as SmartSimplifyIcon,
-  JoinInner as OverlapCheckIcon,
-} from '@mui/icons-material';
+import SearchIcon from '@mui/icons-material/Search';
+import AIIcon from '@mui/icons-material/AutoFixHigh';
+import DismissChildrenIcon from '@mui/icons-material/LayersClear';
+import SyncIcon from '@mui/icons-material/SyncAlt';
+import GroupingIcon from '@mui/icons-material/AccountTree';
+import GeocodeIcon from '@mui/icons-material/Place';
+import GeoshapeIcon from '@mui/icons-material/Terrain';
+import ResetIcon from '@mui/icons-material/RestartAlt';
+import ManualFixIcon from '@mui/icons-material/Build';
+import MergeIcon from '@mui/icons-material/CallMerge';
+import SmartFlattenIcon from '@mui/icons-material/Compress';
+import DismissWarningsIcon from '@mui/icons-material/CheckCircleOutline';
+import AddChildIcon from '@mui/icons-material/AddCircleOutline';
+import RemoveRegionIcon from '@mui/icons-material/DeleteOutline';
+import CollapseToParentIcon from '@mui/icons-material/VerticalAlignTop';
+import AutoResolveIcon from '@mui/icons-material/AutoFixHigh';
+import ReviewSubtreeIcon from '@mui/icons-material/Psychology';
+import RenameIcon from '@mui/icons-material/Edit';
+import ReparentIcon from '@mui/icons-material/DriveFileMove';
+import SuggestChildrenIcon from '@mui/icons-material/AutoAwesome';
+import DivisionSearchIcon from '@mui/icons-material/TravelExplore';
+import PruneToLeavesIcon from '@mui/icons-material/ContentCut';
+import PointMatchIcon from '@mui/icons-material/ScatterPlot';
+import ViewMapIcon from '@mui/icons-material/Map';
+import CVMatchIcon from '@mui/icons-material/Palette';
+import MapshapeMatchIcon from '@mui/icons-material/Layers';
+import ClearAssignedIcon from '@mui/icons-material/ClearAll';
+import SimplifyIcon from '@mui/icons-material/LowPriority';
+import SimplifyChildrenIcon from '@mui/icons-material/PlaylistAddCheck';
+import SmartSimplifyIcon from '@mui/icons-material/SwapHoriz';
+import OverlapCheckIcon from '@mui/icons-material/JoinInner';
 import type { ReactNode } from 'react';
 import type { MatchTreeNode } from '../../api/admin/worldViewImport';
 import { Tooltip } from './treeNodeShared';

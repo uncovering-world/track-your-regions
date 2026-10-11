@@ -1,8 +1,6 @@
 import { Chip } from '@mui/material';
-import {
-  CheckCircle as CheckCircleIcon,
-  IndeterminateCheckBox as PartialIcon,
-} from '@mui/icons-material';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import PartialIcon from '@mui/icons-material/IndeterminateCheckBox';
 import type { VisitedStatus } from '../../api/visited';
 
 interface VisitedStatusButtonProps {

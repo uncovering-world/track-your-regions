@@ -35,16 +35,14 @@ import {
   Autocomplete,
   Collapse,
 } from '@mui/material';
-import {
-  Delete as DeleteIcon,
-  History as HistoryIcon,
-  PersonAdd as PersonAddIcon,
-  Public as PublicIcon,
-  Map as MapIcon,
-  Source as SourceIcon,
-  ExpandMore as ExpandMoreIcon,
-  ExpandLess as ExpandLessIcon,
-} from '@mui/icons-material';
+import DeleteIcon from '@mui/icons-material/Delete';
+import HistoryIcon from '@mui/icons-material/History';
+import PersonAddIcon from '@mui/icons-material/PersonAdd';
+import PublicIcon from '@mui/icons-material/Public';
+import MapIcon from '@mui/icons-material/Map';
+import SourceIcon from '@mui/icons-material/Source';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   listCurators,
