@@ -112,6 +112,7 @@ and accepted by it.
 | [0090](0090-a-component-renumbered-by-an-extension-is-the-same-point.md) | A component renumbered by an extension is the same point | Accepted | 2026-10-10 |
 | [0091](0091-a-gates-pass-is-reused-for-the-same-inputs.md) | A gate's pass is reused for the same inputs, keyed from the gate map | Accepted — decision 1 narrowed by [0092](0092-a-gate-reads-its-own-side-and-its-own-settings.md) | 2026-10-11 |
 | [0092](0092-a-gate-reads-its-own-side-and-its-own-settings.md) | A gate reads its own side and its own settings, and only CI runs everything for the map | Accepted | 2026-10-11 |
+| [0093](0093-the-web-unit-lane-runs-under-happy-dom.md) | The web unit lane runs under happy-dom, not jsdom | Accepted | 2026-10-12 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
