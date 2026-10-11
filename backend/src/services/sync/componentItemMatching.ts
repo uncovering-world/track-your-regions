@@ -38,6 +38,8 @@ export interface CandidateItem {
   item: string;
   /** Every label the item has, in any language: a component is often named in its own. Empty until read. */
   labels: string[];
+  /** The label a curator reads it by — its English one, else its multilingual (`mul`) one — or null where it has neither. Unset until read. */
+  englishLabel?: string | null;
   /** Every coordinate the item states. */
   coords: Array<[lat: number, lon: number]>;
   /** Its P31 classes, for the near rule. */
@@ -49,7 +51,12 @@ export interface CandidateItem {
 export interface ComponentMatch {
   locationId: number;
   item: string;
-  /** The label shown on the card: the one most like the component's name. */
+  /**
+   * The label shown on the card: the item's English label, the product's
+   * language, else its multilingual (`mul`) one (#1358); the one most like the
+   * component's name only where it has neither. Matching reads every label
+   * either way.
+   */
   label: string;
   distanceM: number;
   similarity: number;
@@ -220,7 +227,7 @@ export function bestMatch(
     const match: ComponentMatch = {
       locationId: point.locationId,
       item: candidate.item,
-      label: m.label,
+      label: candidate.englishLabel ?? m.label,
       distanceM: Math.round(Number.isFinite(m.distance) ? m.distance : -1),
       similarity: Math.round(m.similarity * 100) / 100,
       exact: m.exactName && m.distance <= EXACT_DISTANCE_M,

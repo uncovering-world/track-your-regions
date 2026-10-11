@@ -209,14 +209,27 @@ interface EntityLabels {
   entities?: Record<string, { labels?: Record<string, { value: string }> }>;
 }
 
+/** An item's labels: every one, for matching, and the English one a curator reads the item by. */
+export interface ItemLabels {
+  all: string[];
+  /**
+   * The label in the product's language, or null where the item has none: its
+   * English label, else its multilingual one (`mul`), which Wikidata uses for a
+   * name every language spells alike and which often stands in for `en`.
+   */
+  english: string | null;
+}
+
 /**
  * Every label each item has, in every language: a component is often named in
  * its own (*Castrul roman de la Bologa*), and the item may carry that name only
- * there. One request at a time, with a pause between, as the API asks of a
- * reader that is not a person.
+ * there. The English label is kept apart as well: it is the one the card
+ * names the item by (#1358), since the most name-alike label is whatever
+ * language a trigram happened to favour. One request at a time, with a pause
+ * between, as the API asks of a reader that is not a person.
  */
-export async function labelsOf(items: readonly string[], hooks: QueryHooks): Promise<Map<string, string[]>> {
-  const labels = new Map<string, string[]>();
+export async function labelsOf(items: readonly string[], hooks: QueryHooks): Promise<Map<string, ItemLabels>> {
+  const labels = new Map<string, ItemLabels>();
   for (let i = 0; i < items.length; i += ENTITY_BATCH) {
     if (hooks.isCancelled?.()) break;
     if (i > 0) await delay(SPARQL_DELAY_MS);
@@ -232,7 +245,10 @@ export async function labelsOf(items: readonly string[], hooks: QueryHooks): Pro
     ) as unknown as EntityLabels;
     hooks.onQuery?.();
     for (const [item, entity] of Object.entries(answer.entities ?? {})) {
-      labels.set(item, [...new Set(Object.values(entity.labels ?? {}).map(label => label.value))]);
+      labels.set(item, {
+        all: [...new Set(Object.values(entity.labels ?? {}).map(label => label.value))],
+        english: entity.labels?.en?.value ?? entity.labels?.mul?.value ?? null,
+      });
     }
   }
   return labels;
