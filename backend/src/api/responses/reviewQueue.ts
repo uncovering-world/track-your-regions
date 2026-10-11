@@ -263,7 +263,7 @@ export const ComponentItemProposal = z.strictObject({
   latitude: z.number().nullable(),
   longitude: z.number().nullable(),
   item: z.string().describe('The candidate, a Wikidata item id.'),
-  label: z.string().describe("The item's label most like the component's name."),
+  label: z.string().describe("The item's English label, or its multilingual one; the label most like the component's name only where it has neither."),
   distanceM: z.number().int().describe('Metres from the point to the nearest coordinate the item states; -1 where it states none.'),
   similarity: z.number().describe('How alike the names are, 0 to 1.'),
   exact: z.boolean().describe('The same name, folded, at the same spot: what a batch accept takes.'),

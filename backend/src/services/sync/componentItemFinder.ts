@@ -24,7 +24,8 @@ import {
   type CandidateItem, type ComponentMatch, type ComponentPoint,
 } from './componentItemMatching.js';
 import {
-  classesOfItems, itemsInBoxes, labelsOf, partsOfSites, settlementsAmong, tooHeavy, type Box, type QueryHooks,
+  classesOfItems, itemsInBoxes, labelsOf, partsOfSites, settlementsAmong, tooHeavy, type Box, type ItemLabels,
+  type QueryHooks,
 } from './componentItemQueries.js';
 
 const UNESCO_SOURCE_ID = 1;
@@ -351,7 +352,7 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
 
   const [{ points, wholeSites, wholeSiteIds }, resolved, refused] = await Promise.all([readPoints(), readResolved(), readRefused()]);
   const taken = new Set([...resolved.values()].flat());
-  const labels = new Map<string, string[]>();
+  const labels = new Map<string, ItemLabels>();
   /** The candidates of one point that are free and close enough to be read. */
   const reachable = (point: PointRow, candidates: CandidateItem[], radius: number) =>
     candidates.filter(c => !taken.has(c.item) && nearestM(point, c) <= radius);
@@ -360,7 +361,9 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
     onStage?.(`Reading the names of ${wanted.length} candidate items`);
     for (const [item, names] of await labelsOf(wanted, counted)) labels.set(item, names);
   };
-  const named = (candidates: CandidateItem[]) => candidates.map(c => ({ ...c, labels: labels.get(c.item) ?? [] }));
+  const named = (candidates: CandidateItem[]) => candidates.map(c => ({
+    ...c, labels: labels.get(c.item)?.all ?? [], englishLabel: labels.get(c.item)?.english ?? null,
+  }));
 
   onStage?.(`Reading the parts ${new Set(points.flatMap(p => p.siteItems)).size} site items name`);
   const { parts, unread } = await partsOfSites([...new Set(points.flatMap(p => p.siteItems))], counted);

@@ -43,8 +43,10 @@ vi.mock('./componentItemQueries.js', async (importOriginal) => ({
   // The class tree is QLever's to walk, not the spec's: nothing here is a settlement unless a test says so.
   settlementsAmong: vi.fn(async () => new Set<string>()),
   // The labels come from Wikidata's API, read only for the items the distance leaves.
-  labelsOf: vi.fn(async (items: string[]) =>
-    new Map(items.map(item => [item, [...parts, ...nearby].find(c => c.item === item)?.labels ?? []]))),
+  labelsOf: vi.fn(async (items: string[]) => new Map(items.map(item => {
+    const all = [...parts, ...nearby].find(c => c.item === item)?.labels ?? [];
+    return [item, { all, english: all[0] ?? null }];
+  }))),
 }));
 
 const { pool } = await import('../../db/index.js');
@@ -209,8 +211,10 @@ describe('findComponentItems', () => {
       { item: VILLAGE_ITEM, labels: [], coords: [[46.8852, 22.8753]], classes: [CASTRUM] },
       ...nearby.map(c => ({ ...c, labels: [] })),
     ]);
-    vi.mocked(queries.labelsOf).mockImplementation(async (items: readonly string[]) => new Map(items.map(item =>
-      [item, item === VILLAGE_ITEM ? ['Bologa'] : ([...parts, ...nearby].find(c => c.item === item)?.labels ?? [])])));
+    vi.mocked(queries.labelsOf).mockImplementation(async (items: readonly string[]) => new Map(items.map(item => {
+      const all = item === VILLAGE_ITEM ? ['Bologa'] : ([...parts, ...nearby].find(c => c.item === item)?.labels ?? []);
+      return [item, { all, english: all[0] ?? null }];
+    })));
     vi.mocked(queries.settlementsAmong).mockImplementation(async (ids: readonly string[], _hooks, asClasses) =>
       new Set(asClasses ? [] : ids.filter(id => id === VILLAGE_ITEM)));
 

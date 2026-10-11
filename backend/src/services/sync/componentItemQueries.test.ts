@@ -14,7 +14,7 @@ vi.mock('./qleverWikidata.js', () => ({ qleverWikidataQuery: vi.fn() }));
 vi.mock('./wikipediaCategories.js', () => ({ askWikipediaOnce: vi.fn() }));
 
 const { sparqlQuery, SparqlUnanswered, WaitBudget } = await import('./wikidataUtils.js');
-const { boxFilter, contentsOf, itemsInBoxes, partsOfSites } = await import('./componentItemQueries.js');
+const { boxFilter, contentsOf, itemsInBoxes, labelsOf, partsOfSites } = await import('./componentItemQueries.js');
 const { qleverWikidataQuery } = await import('./qleverWikidata.js');
 const { askWikipediaOnce } = await import('./wikipediaCategories.js');
 
@@ -132,5 +132,23 @@ describe('contentsOf', () => {
       description: 'Roman fort in Cluj County, Romania',
     });
     expect(contents.get('Q98502')).toEqual({ image: null, description: null });
+  });
+});
+
+describe('labelsOf', () => {
+  it('keeps every label for matching and the English one, else the multilingual one, to name the item by (#1358)', async () => {
+    vi.mocked(askWikipediaOnce).mockResolvedValueOnce({
+      entities: {
+        Q98511: { labels: { tr: { value: 'Bir türbe' }, en: { value: 'A shrine' } } },
+        Q98512: { labels: { mul: { value: 'Kastell Fixture' }, de: { value: 'Kastell Fixture' }, ro: { value: 'Castrul Fixture' } } },
+        Q98513: { labels: { fr: { value: 'Un phare' } } },
+      },
+    } as never);
+
+    const labels = await labelsOf(['Q98511', 'Q98512', 'Q98513'], hooks());
+
+    expect(labels.get('Q98511')).toEqual({ all: ['Bir türbe', 'A shrine'], english: 'A shrine' });
+    expect(labels.get('Q98512')).toEqual({ all: ['Kastell Fixture', 'Castrul Fixture'], english: 'Kastell Fixture' });
+    expect(labels.get('Q98513')).toEqual({ all: ['Un phare'], english: null });
   });
 });

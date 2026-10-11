@@ -66,6 +66,20 @@ describe('bestMatch', () => {
     expect(bestMatch(unnamed, [mairea], 'part_of')).toBeNull();
     expect(bestMatch({ ...unnamed, lat: 61.5949, lon: 21.8731 }, [mairea], 'part_of')).toMatchObject({ item: 'Q1414131' });
   });
+
+  it('names a candidate by its English label, whichever label it matched by (#1358)', () => {
+    // Bahjí (1220-005) and the Shrine of Bahá'u'lláh, a part of the site standing at the point. No label is
+    // much like "Bahjí", so the most name-alike one was a Turkish label picked by trigrams.
+    const bahji = { locationId: 3, name: 'Bahjí', lat: 32.9434, lon: 35.0920 };
+    const shrine: CandidateItem = {
+      item: 'Q187499', labels: ["Bahaullah'ın Makamı", "Shrine of Bahá'u'lláh"], coords: [[32.9433, 35.0919]],
+    };
+    expect(bestMatch(bahji, [{ ...shrine, englishLabel: "Shrine of Bahá'u'lláh" }], 'part_of'))
+      .toMatchObject({ item: 'Q187499', label: "Shrine of Bahá'u'lláh" });
+    // An item with no English label keeps the one most like the component's name.
+    expect(bestMatch(MAIREA, [{ ...mairea, labels: ['Mairea', 'Villa Mairea'], englishLabel: null }], 'near'))
+      .toMatchObject({ label: 'Villa Mairea' });
+  });
 });
 
 describe('the classes a near candidate may be of', () => {

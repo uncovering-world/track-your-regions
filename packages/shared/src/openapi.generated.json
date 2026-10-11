@@ -16395,7 +16395,7 @@
           },
           "label": {
             "type": "string",
-            "description": "The item's label most like the component's name."
+            "description": "The item's English label, or its multilingual one; the label most like the component's name only where it has neither."
           },
           "distanceM": {
             "type": "integer",

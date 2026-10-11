@@ -1971,7 +1971,7 @@ export interface ComponentItemProposal {
   longitude: number | null;
   /** The candidate, a Wikidata item id. */
   item: string;
-  /** The item's label most like the component's name. */
+  /** The item's English label, or its multilingual one; the label most like the component's name only where it has neither. */
   label: string;
   /**
      * Metres from the point to the nearest coordinate the item states; -1 where it states none.
