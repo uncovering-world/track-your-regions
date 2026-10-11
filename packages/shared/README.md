@@ -27,4 +27,4 @@ In Docker, `docker-compose.yml` hands this directory to each image as a named bu
 
 ## Gates
 
-`npm run check` runs `lint:shared`, `typecheck:shared` and `knip:shared` for any change under `app` (`scripts/gates.mjs`); the specs beside each module run in the backend's unit lane, the way `scripts/*.test.mjs` do. A one-time `npm install` here (or `npm ci --prefix packages/shared`) provides the lint and typecheck tooling; the consumers need no install here at all — the link target only has to exist.
+`npm run check` runs `lint:shared`, `typecheck:shared` and `knip:shared` for any change under `packages/` (`scripts/gates.mjs`); the specs beside each module run in the backend's unit lane, the way `scripts/*.test.mjs` do. A one-time `npm install` here (or `npm ci --prefix packages/shared`) provides the lint and typecheck tooling; the consumers need no install here at all — the link target only has to exist.
