@@ -7,6 +7,7 @@ import {
   GATES,
   INPUTS,
   changedPaths,
+  listFrom,
   classifyPaths,
   decide,
   freshestBase,
@@ -615,6 +616,31 @@ describe('the base the change is measured against', () => {
     for (const changed of [fromEnv, fromFlag]) {
       expect(decide({ paths: changed.paths, reason: changed.reason }).everything).toBe(true);
     }
+  });
+});
+
+describe('the commit a change set is listed from', () => {
+  const merge = 'f0rk';
+  it('lists a review wave from the pushed head the fold rewrote past, not from the fork', () => {
+    // A wave folded into the branch's commits leaves the pushed head no ancestor
+    // of it; its merge base is the fork from main, which reads as the whole
+    // branch. What differs from the head's tree is the wave (#1391).
+    expect(listFrom({ base: 'pushed', flag: true, isAncestor: false, onMainLine: false, mergeBase: merge }))
+      .toEqual({ from: 'pushed', how: 'tree' });
+  });
+
+  it('keeps the merge base for an ancestor, a main that moved on, and a base CI or the runner set', () => {
+    // An ancestor is its own merge base; listing from it is the same either way.
+    expect(listFrom({ base: 'main', flag: true, isAncestor: true, onMainLine: true, mergeBase: 'main' }).how)
+      .toBe('merge-base');
+    // `--base origin/main` after a merge on GitHub is no ancestor of the branch,
+    // but what it gained since the fork is main's, not the branch's.
+    expect(listFrom({ base: 'origin/main', flag: true, isAncestor: false, onMainLine: true, mergeBase: merge }))
+      .toEqual({ from: merge, how: 'merge-base' });
+    // GATES_BASE is CI's, set from the event: main's own commits since the
+    // fork stay out of the change set there.
+    expect(listFrom({ base: 'main', flag: false, isAncestor: false, onMainLine: true, mergeBase: merge }))
+      .toEqual({ from: merge, how: 'merge-base' });
   });
 });
 
