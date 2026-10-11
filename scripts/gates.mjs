@@ -23,6 +23,7 @@
 import { appendFileSync } from 'node:fs';
 import { execFileSync, spawnSync } from 'node:child_process';
 
+import { openGateCache } from './gate-cache.mjs';
 import { READ_EXTENSIONS } from './lint-line-pointers.mjs';
 
 /**
@@ -177,6 +178,9 @@ export const INPUTS = [
       'package.json',
       'package-lock.json',
       'scripts/gates.mjs',
+      // Whether a gate runs at all, as much as the map is: an edit to the key
+      // it reuses a pass by re-asks every gate.
+      'scripts/gate-cache.mjs',
       'scripts/require-node-tools.sh',
       'scripts/require-py-tools.sh',
       'scripts/require-python-312.sh',
@@ -209,7 +213,17 @@ export const INPUTS = [
  * array is the line a person types. `setup` is the toolchain a runner has to
  * install before the command works; `docker` means nothing to install, because
  * every runner already has it. `job` is the CI job the gate belongs to.
+ *
+ * `uncached` says why a pass of this gate is never reused (ADR-0091): its
+ * answer reads something outside the tree, which can change while the files
+ * the gate reads stay as they were.
  */
+const ADVISORIES = 'its answer reads an advisory database that changes while the tree does not';
+const RULE_PACKS = 'Semgrep fetches its rule packs from the registry on every run, so a new rule can fail a tree that passed';
+const BASE_DOCUMENT = "it compares with the base's OpenAPI document, which is not in this tree";
+const VULNERABILITY_DATABASE = 'Trivy reads a vulnerability database and a base image that move under the same tree';
+const LINK_TARGETS = 'lychee resolves links to files of every type, and its input class holds the Markdown only';
+
 export const GATES = [
   { id: 'lint:backend', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'backend', 'run', 'lint'], job: 'check', setup: 'node' },
   { id: 'lint:frontend', tier: 'check', inputs: ['app'], command: ['npm', '--prefix', 'frontend', 'run', 'lint'], job: 'check', setup: 'node' },
@@ -229,12 +243,12 @@ export const GATES = [
   // `npm run db:types` fails here. `node` because the generator runs from
   // backend/node_modules; the database is Docker, which every runner has.
   { id: 'db:types', tier: 'check', inputs: ['schema'], command: ['npm', 'run', 'db:types:check'], job: 'check', setup: 'node' },
-  { id: 'security:deps', tier: 'check', inputs: ['node-deps'], command: ['npm', 'run', 'security:deps'], job: 'check', setup: 'node' },
+  { id: 'security:deps', tier: 'check', inputs: ['node-deps'], command: ['npm', 'run', 'security:deps'], job: 'check', setup: 'node', uncached: ADVISORIES },
   { id: 'lint:shell', tier: 'check', inputs: ['shell'], command: ['npm', 'run', 'lint:shell'], job: 'check', setup: 'docker' },
   { id: 'lint:docker', tier: 'check', inputs: ['docker'], command: ['npm', 'run', 'lint:docker'], job: 'check', setup: 'docker' },
   { id: 'lint:actions', tier: 'check', inputs: ['workflows'], command: ['npm', 'run', 'lint:actions'], job: 'check', setup: 'docker' },
   { id: 'lint:md', tier: 'check', inputs: ['docs'], command: ['npm', 'run', 'lint:md'], job: 'check', setup: 'docs' },
-  { id: 'lint:links', tier: 'check', inputs: ['docs'], command: ['npm', 'run', 'lint:links'], job: 'check', setup: 'docker' },
+  { id: 'lint:links', tier: 'check', inputs: ['docs'], command: ['npm', 'run', 'lint:links'], job: 'check', setup: 'docker', uncached: LINK_TARGETS },
   // Redocly over the OpenAPI document (ADR-0072). The document is generated
   // from the route declarations into packages/shared/src, so a change to the
   // app is what can change it; the rules are in packages/shared/redocly.yaml.
@@ -242,7 +256,7 @@ export const GATES = [
   // oasdiff between the base's OpenAPI document and this one (#1090): a warning
   // while no native client exists, a failure once one does
   // (`scripts/openapi-breaking.mjs` holds the policy).
-  { id: 'api:breaking', tier: 'check', inputs: ['api-contract'], command: ['npm', 'run', 'api:breaking'], job: 'check', setup: 'docker' },
+  { id: 'api:breaking', tier: 'check', inputs: ['api-contract'], command: ['npm', 'run', 'api:breaking'], job: 'check', setup: 'docker', uncached: BASE_DOCUMENT },
   // Orval regenerates the web client from the OpenAPI document and compares
   // it with the committed one (ADR-0073): a document, a mutator or an Orval
   // version changed without `npm --prefix frontend run api:client` fails here.
@@ -257,7 +271,7 @@ export const GATES = [
   { id: 'lint:pointers', tier: 'check', inputs: ['prose'], command: ['node', 'scripts/lint-line-pointers.mjs'], job: 'check', setup: 'docs' },
   { id: 'check:py', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'check:py'], job: 'check', setup: 'python' },
   { id: 'security:py:bandit', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'security:py:bandit'], job: 'check', setup: 'python' },
-  { id: 'security:py:deps', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'security:py:deps'], job: 'check', setup: 'python' },
+  { id: 'security:py:deps', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'security:py:deps'], job: 'check', setup: 'python', uncached: ADVISORIES },
   { id: 'test:backend', tier: 'test', inputs: ['app', 'coverage'], command: ['node', 'scripts/test-report.mjs', 'backend-unit'], job: 'test', setup: 'node' },
   { id: 'test:frontend', tier: 'test', inputs: ['app'], command: ['node', 'scripts/test-report.mjs', 'frontend-unit'], job: 'test', setup: 'node' },
   { id: 'test:py', tier: 'test', inputs: ['python', 'db-python'], command: ['npm', 'run', 'test:py'], job: 'python-tests', setup: 'python' },
@@ -266,9 +280,9 @@ export const GATES = [
   // cv-python's files are its input too — not only the product's. And
   // `.semgrepignore` leaves `.jsonl` in, so `p/secrets` reads the coverage
   // lists, which agents write from web pages.
-  { id: 'security:scan', tier: 'scan', inputs: ['app', 'python', 'coverage'], command: ['npm', 'run', 'security:scan'], job: 'security', setup: 'docker' },
-  { id: 'security:py:semgrep', tier: 'scan', inputs: ['python'], command: ['npm', 'run', 'security:py:semgrep'], job: 'security', setup: 'docker' },
-  { id: 'security:image', tier: 'scan', inputs: ['python'], command: ['npm', 'run', 'security:image'], job: 'trivy', setup: 'docker' },
+  { id: 'security:scan', tier: 'scan', inputs: ['app', 'python', 'coverage'], command: ['npm', 'run', 'security:scan'], job: 'security', setup: 'docker', uncached: RULE_PACKS },
+  { id: 'security:py:semgrep', tier: 'scan', inputs: ['python'], command: ['npm', 'run', 'security:py:semgrep'], job: 'security', setup: 'docker', uncached: RULE_PACKS },
+  { id: 'security:image', tier: 'scan', inputs: ['python'], command: ['npm', 'run', 'security:image'], job: 'trivy', setup: 'docker', uncached: VULNERABILITY_DATABASE },
   // The stack tier is printed and never spawned, so this one line is two
   // commands: it is what a person types, not an argv the runner passes on.
   { id: 'build', tier: 'stack', inputs: ['app'], command: ['npm', 'run', 'build', '&&', 'npm', '--prefix', 'frontend', 'run', 'size'], job: 'build', setup: 'node' },
@@ -297,6 +311,17 @@ function matches(pattern, path) {
 }
 
 const belongsTo = (input, path) => input.paths.some((pattern) => matches(pattern, path));
+
+/**
+ * The paths whose content enters a gate's cache key (ADR-0091): its own input
+ * classes, the tooling class that decides what the gates are, and the Node
+ * manifests and lockfiles every Node gate runs its installed tools from.
+ */
+export function keyBelongs(gate) {
+  const ids = new Set([...gate.inputs, 'tooling', 'node-deps']);
+  const classes = INPUTS.filter((input) => ids.has(input.id));
+  return (path) => classes.some((input) => belongsTo(input, path));
+}
 
 /** Which input classes these paths touch, and which of them touch none. */
 export function classifyPaths(paths) {
@@ -445,10 +470,15 @@ export function renderTable() {
   const inputRows = INPUTS.map(
     (input) => `| ${code(input.id)} | ${codes(input.paths)} | ${cell(input.note)} |`,
   );
+  // The stack tier is listed and never run, so nothing records its passes.
+  const reuse = (gate) => {
+    if (gate.tier === 'stack') return 'never: run by hand';
+    return gate.uncached ? `never: ${gate.uncached}` : 'on the same inputs';
+  };
   const gateRows = GATES.map(
     (gate) =>
       `| ${code(gate.id)} | ${gate.tier} | ${codes(gate.inputs)} |`
-      + ` ${code(gate.command.join(' '))} | ${gate.job} |`,
+      + ` ${code(gate.command.join(' '))} | ${gate.job} | ${cell(reuse(gate))} |`,
   );
   return [
     '### Inputs',
@@ -459,8 +489,8 @@ export function renderTable() {
     '',
     '### Gates',
     '',
-    '| Gate | Tier | Inputs | Local command | CI job |',
-    '| --- | --- | --- | --- | --- |',
+    '| Gate | Tier | Inputs | Local command | CI job | Pass reused |',
+    '| --- | --- | --- | --- | --- | --- |',
     ...gateRows,
     '',
   ].join('\n');
@@ -605,7 +635,7 @@ export function changedPaths({ base, rev }) {
 
 const USAGE = [
   'usage: gates.mjs [--base <ref>] [--rev <ref>] [--json | --github-output | --table]',
-  '       gates.mjs run <check|test|scan|stack> [--all] [--base <ref>] [--rev <ref>]',
+  '       gates.mjs run <check|test|scan|stack> [--all] [--no-cache] [--base <ref>] [--rev <ref>]',
 ].join('\n');
 
 /**
@@ -614,7 +644,7 @@ const USAGE = [
  * degrades into "nothing to run", which looks exactly like a clean gate.
  */
 export function parseArgs(argv) {
-  const args = { mode: 'list', tier: null, all: false, base: null, rev: 'HEAD' };
+  const args = { mode: 'list', tier: null, all: false, noCache: false, base: null, rev: 'HEAD' };
   let modeSetBy = null;
 
   const setMode = (mode, flag) => {
@@ -647,6 +677,7 @@ export function parseArgs(argv) {
     else if (arg === '--github-output') setMode('github-output', '--github-output');
     else if (arg === '--table') setMode('table', '--table');
     else if (arg === '--all') args.all = true;
+    else if (arg === '--no-cache') args.noCache = true;
     else if (arg === '--base') args.base = value(++i, '--base');
     else if (arg === '--rev') args.rev = value(++i, '--rev');
     else throw new Error(`Unknown argument "${arg}".`);
@@ -655,6 +686,9 @@ export function parseArgs(argv) {
   // it silently would let `gates.mjs --all` read as "everything ran".
   if (args.all && args.mode !== 'run') {
     throw new Error('--all only means something with `run <tier>`.');
+  }
+  if (args.noCache && args.mode !== 'run') {
+    throw new Error('--no-cache only means something with `run <tier>`.');
   }
   return args;
 }
@@ -670,8 +704,14 @@ export function parseArgs(argv) {
  * A base given as `--base` reaches each gate as `GATES_BASE`, so a gate that
  * compares against the base (`api:breaking`) compares against the one this run
  * chose its gates by.
+ *
+ * `cache` is what `openGateCache` returns, or null for a run that reuses
+ * nothing (ADR-0091). A gate whose key has a recorded pass is not spawned; it
+ * is printed as reused, with when and where it passed, and named on a line of
+ * its own in the summary — a reuse that read as a fresh pass would be the
+ * silence this runner exists to break.
  */
-export function runTier(decision, tier, { all = false, spawn = spawnSync, base } = {}) {
+export function runTier(decision, tier, { all = false, spawn = spawnSync, base, cache = null } = {}) {
   const gates = decision.gates.filter((gate) => gate.tier === tier);
 
   // "Everything applies" owes its sentence here as much as in the listing: a
@@ -704,8 +744,17 @@ export function runTier(decision, tier, { all = false, spawn = spawnSync, base }
   }
 
   const ran = [];
+  const reused = [];
+  const unrecorded = [];
   let failed = null;
   for (const gate of selected) {
+    const lookup = cache && !gate.uncached ? cache.lookup(gate) : null;
+    if (lookup?.pass) {
+      const { passedAt, rev } = lookup.pass;
+      console.log(`✓ ${gate.id}  reused: passed on these inputs at ${passedAt} (${rev})`);
+      reused.push(`${gate.id} (${passedAt}, ${rev})`);
+      continue;
+    }
     console.log(`▶ ${gate.id}  ${gate.command.join(' ')}`);
     const result = spawn(gate.command[0], gate.command.slice(1), {
       stdio: 'inherit',
@@ -725,12 +774,19 @@ export function runTier(decision, tier, { all = false, spawn = spawnSync, base }
       failed = { gate, code };
       break;
     }
+    if (lookup && !cache.settle(gate, lookup.key)) unrecorded.push(gate.id);
   }
 
-  // Reading order: what ran, what broke, what never got its turn, and last
-  // what this change never asked for. The failure sits next to the run rather
-  // than under a Skipped block thirteen gates long.
-  console.log(`\nRan: ${ran.join(', ')}`);
+  // Reading order: what ran, what was reused, what broke, what never got its
+  // turn, and last what this change never asked for. The failure sits next to
+  // the run rather than under a Skipped block thirteen gates long.
+  console.log(`\nRan: ${ran.length ? ran.join(', ') : 'none'}`);
+  if (reused.length) {
+    console.log(`Reused (passed on the same inputs, not run again): ${reused.join(', ')}`);
+  }
+  if (unrecorded.length) {
+    console.log(`Not recorded (files changed while the gate ran): ${unrecorded.join(', ')}`);
+  }
   if (failed) {
     // Unconditionally: when the last gate of a tier is the one that failed
     // there is nothing left to not run, and `Ran: a, b, c` on its own is the
@@ -775,6 +831,16 @@ function printList(decision, changed, rev) {
   }
 }
 
+/**
+ * The cache a run reuses passes from, or null (ADR-0091). `--all` forces every
+ * gate, so it reuses nothing either; CI never reads a record, since a runner
+ * that starts from a fresh checkout is what answers for a pushed head.
+ */
+export function cacheFor(args, env = process.env) {
+  if (args.noCache || args.all || env.CI) return null;
+  return openGateCache({ belongsTo: keyBelongs });
+}
+
 function main(argv) {
   let args;
   try {
@@ -806,7 +872,9 @@ function main(argv) {
     return;
   }
   if (args.mode === 'run') {
-    process.exit(runTier(decision, args.tier, { all: args.all, base: args.base }));
+    process.exit(
+      runTier(decision, args.tier, { all: args.all, base: args.base, cache: cacheFor(args) }),
+    );
   }
   printList(decision, changed, args.rev);
 }
