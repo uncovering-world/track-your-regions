@@ -1127,6 +1127,21 @@ path needs.
     classes sit directly under *archaeological site*, as every kind of site does, so the tree
     cannot set them aside and the two are named. What a find is linked to is not this list's
     business: a find names its site's own item (`siteFinds.ts`), never a component's.
+    On a site none of whose components resolve, a thing at the component is not the component
+    either (`standsAtTheComponent`): a candidate that stands in (P131, P276) or is part of (P361)
+    a place named like the component, at a similarity of 0.7 or more, and is not itself named like
+    it, is set aside — the Moravian Church Settlements' Herrnhut was offered its *Heimatmuseum*,
+    Christiansfeld its pharmacy, the Comoros' Moroni its Old Friday Mosque. The places are asked
+    of QLever only for those sites' contenders — the candidates the near rule would take, since
+    a place cannot change a choice the rule refuses (`placeNamesOf`; the source record
+    `docs/sources/global/wikidata-qlever.md` counts the questions) — and a batch it cannot answer
+    leaves the points unanswered, as the settlement question does. Only there, because a site's
+    own classes say what its components are: 53 of the 3 941 resolved components, measured on
+    2026-10-11, have an item standing in a place named like them that is not named like them
+    itself — the Slovak wooden church that is the component "Hervartov", the caravanserai that is
+    "Meybod" — and the rule would refuse each of them. Abu Simbel and Pompeii stay candidates,
+    named as their components are. A component thereby left without a candidate is where it was
+    before the search, and the pass counts what it set aside.
 
   Not every point is searched. A component that stands for its whole site — the only standing
   point of a site of one, or a point named exactly like its site, folded (`standsForWholeSite`;
