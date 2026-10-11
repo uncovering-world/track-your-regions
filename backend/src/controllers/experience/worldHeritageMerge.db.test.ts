@@ -9,7 +9,10 @@ import { undoMerge } from './placeMerge.js';
  * (81, one point) and a place of worship (Q180274) thirty metres apart: they
  * merge, to one point. A serial site of two points sharing an item, a site
  * whose id resolves to two items, and a site whose point was never written
- * merge with nothing.
+ * merge with nothing. Osun-Osogbo is the same shape with a point each source
+ * withdrew beside the one it stands on (#1360): a withdrawn point is no point,
+ * so the site is still its one item and the grove's standing point folds into
+ * the site's.
  */
 
 const CHARTRES = 9830;
@@ -20,7 +23,12 @@ const TWO_ITEMS = 9834;
 const TWO_ITEMS_WORSHIP = 9835;
 const NO_POINT = 9836;
 const NO_POINT_WORSHIP = 9837;
-const PLACES = [CHARTRES, CHARTRES_WORSHIP, SERIAL, SERIAL_WORSHIP, TWO_ITEMS, TWO_ITEMS_WORSHIP, NO_POINT, NO_POINT_WORSHIP];
+const OSUN = 9838;
+const OSUN_GROVE = 9839;
+const PLACES = [
+  CHARTRES, CHARTRES_WORSHIP, SERIAL, SERIAL_WORSHIP, TWO_ITEMS, TWO_ITEMS_WORSHIP, NO_POINT, NO_POINT_WORSHIP,
+  OSUN, OSUN_GROVE,
+];
 const CURATOR = '00000000-0000-4000-8000-000000009830';
 
 async function clear(): Promise<void> {
@@ -58,6 +66,21 @@ async function place(
   }
 }
 
+/** A point its source withdrew: marked, kept, and on no reader's map. */
+async function withdrawnPoint(id: number, ref: string, lon: number, lat: number): Promise<void> {
+  await pool.query(
+    `INSERT INTO experience_locations (experience_id, name, external_ref, location, missing_since)
+     VALUES ($1, $2, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326), NOW())`,
+    [id, ref, lon, lat],
+  );
+}
+
+/** The pins a reader is drawn: neither folded nor withdrawn. */
+const pins = async (id: number) => (await pool.query<{ ref: string }>(
+  `SELECT external_ref AS ref FROM experience_locations
+    WHERE experience_id = $1 AND merged_into_id IS NULL AND missing_since IS NULL ORDER BY id`, [id],
+)).rows.map(row => row.ref);
+
 const standingPoints = async (id: number) => (await pool.query<{ placements: number }>(
   `SELECT (SELECT count(*)::int FROM experience_location_placements p WHERE p.location_id = el.id) AS placements
      FROM experience_locations el WHERE el.experience_id = $1 AND el.merged_into_id IS NULL`, [id],
@@ -75,6 +98,12 @@ beforeEach(async () => {
   await place(TWO_ITEMS_WORSHIP, worship, 'Q98340', null, [['Q98340', 20, 20]]);
   await place(NO_POINT, unesco, '9836-fixture', ['Q98360'], []);
   await place(NO_POINT_WORSHIP, worship, 'Q98360', null, [['Q98360', 30, 30]]);
+  // 190 m apart, as on the development catalogue; each place also holds a
+  // point its source withdrew.
+  await place(OSUN, unesco, '9838-fixture', ['Q98380'], [['9838-001', 40, 40]]);
+  await withdrawnPoint(OSUN, '9838-002', 40.01, 40.01);
+  await place(OSUN_GROVE, worship, 'Q98380', null, [['Q98380', 40.0022, 40]]);
+  await withdrawnPoint(OSUN_GROVE, 'Q98380', 40, 40);
 });
 
 afterAll(async () => {
@@ -94,6 +123,14 @@ describe('a World Heritage site of one point and its one item (ADR-0088)', () =>
     expect(await standingPoints(SERIAL_WORSHIP)).toHaveLength(1);
     expect(await standingPoints(TWO_ITEMS_WORSHIP)).toHaveLength(1);
     expect(await standingPoints(NO_POINT_WORSHIP)).toHaveLength(1);
+  });
+
+  it('counts only standing points: a withdrawn one neither keeps a site from its item nor adds a pin (#1360)', async () => {
+    const report = await mergeEqualItems(['Q98380']);
+
+    expect(report.merged).toEqual([expect.objectContaining({ qid: 'Q98380', survivorId: OSUN, foldedId: OSUN_GROVE })]);
+    expect(await pins(OSUN)).toEqual(['9838-001']);
+    expect(await pins(OSUN_GROVE)).toEqual([]);
   });
 
   it('gives both places back their own point on an undo', async () => {
