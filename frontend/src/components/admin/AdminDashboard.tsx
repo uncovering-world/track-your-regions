@@ -22,20 +22,18 @@ import {
   AppBar,
   Toolbar,
 } from '@mui/material';
-import {
-  Sync as SyncIcon,
-  History as HistoryIcon,
-  Map as MapIcon,
-  Dashboard as DashboardIcon,
-  Menu as MenuIcon,
-  ArrowBack as ArrowBackIcon,
-  SupervisorAccount as CuratorIcon,
-  Public as PublicIcon,
-  SmartToy as AIIcon,
-  Gavel as RulesIcon,
-  FactCheck as ChecksIcon,
-  CameraEnhance as CVIcon,
-} from '@mui/icons-material';
+import SyncIcon from '@mui/icons-material/Sync';
+import HistoryIcon from '@mui/icons-material/History';
+import MapIcon from '@mui/icons-material/Map';
+import DashboardIcon from '@mui/icons-material/Dashboard';
+import MenuIcon from '@mui/icons-material/Menu';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import CuratorIcon from '@mui/icons-material/SupervisorAccount';
+import PublicIcon from '@mui/icons-material/Public';
+import AIIcon from '@mui/icons-material/SmartToy';
+import RulesIcon from '@mui/icons-material/Gavel';
+import ChecksIcon from '@mui/icons-material/FactCheck';
+import CVIcon from '@mui/icons-material/CameraEnhance';
 import { useAuth } from '../../hooks/useAuth';
 import { SyncPanel } from './SyncPanel';
 import { SyncHistoryPanel } from './SyncHistoryPanel';

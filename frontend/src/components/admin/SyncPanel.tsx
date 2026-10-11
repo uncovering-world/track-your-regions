@@ -17,15 +17,13 @@ import {
   Alert,
   Tooltip,
 } from '@mui/material';
-import {
-  Sync as SyncIcon,
-  Stop as StopIcon,
-  CheckCircle as CheckIcon,
-  Error as ErrorIcon,
-  Schedule as ScheduleIcon,
-  Cancel as CancelIcon,
-  DragIndicator as DragIcon,
-} from '@mui/icons-material';
+import SyncIcon from '@mui/icons-material/Sync';
+import StopIcon from '@mui/icons-material/Stop';
+import CheckIcon from '@mui/icons-material/CheckCircle';
+import ErrorIcon from '@mui/icons-material/Error';
+import ScheduleIcon from '@mui/icons-material/Schedule';
+import CancelIcon from '@mui/icons-material/Cancel';
+import DragIcon from '@mui/icons-material/DragIndicator';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getSources,

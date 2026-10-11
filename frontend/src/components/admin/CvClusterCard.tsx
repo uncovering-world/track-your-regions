@@ -8,7 +8,7 @@
  */
 
 import { Box, Typography, Button, IconButton, Select, MenuItem } from '@mui/material';
-import { Visibility } from '@mui/icons-material';
+import Visibility from '@mui/icons-material/Visibility';
 import { acceptBatchMatches, type ColorMatchCluster } from '../../api/admin/worldViewImport';
 import type { CvMatchDialogState } from './useCvMatchPipeline';
 

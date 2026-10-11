@@ -11,7 +11,9 @@
 
 import { useState } from 'react';
 import { Alert, Box, Button, Card, CardContent, Collapse, Link, Stack, Typography } from '@mui/material';
-import { ExpandLess, ExpandMore, MergeType as MergeIcon } from '@mui/icons-material';
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import MergeIcon from '@mui/icons-material/MergeType';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { mergePlacesSharingAnItem, type EqualItemMerges } from '../../api/admin/placeMerges';
 import { plural } from '../../utils/plural';

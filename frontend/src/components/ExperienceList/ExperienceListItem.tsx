@@ -7,12 +7,10 @@ import {
   Tooltip,
   CircularProgress,
 } from '@mui/material';
-import {
-  ExpandLess,
-  ExpandMore,
-  Add as AddIcon,
-  Remove as RemoveIcon,
-} from '@mui/icons-material';
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import AddIcon from '@mui/icons-material/Add';
+import RemoveIcon from '@mui/icons-material/Remove';
 import type {
   Experience,
   RegionExperienceLocation,

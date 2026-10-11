@@ -7,13 +7,11 @@ import {
   TextField,
   CircularProgress,
 } from '@mui/material';
-import {
-  NavigateBefore as PrevIcon,
-  NavigateNext as NextIcon,
-  Close as CloseNavIcon,
-  Check as CheckIcon,
-  Close as CloseIcon,
-} from '@mui/icons-material';
+import PrevIcon from '@mui/icons-material/NavigateBefore';
+import NextIcon from '@mui/icons-material/NavigateNext';
+import CloseNavIcon from '@mui/icons-material/Close';
+import CheckIcon from '@mui/icons-material/Check';
+import CloseIcon from '@mui/icons-material/Close';
 import type * as maplibregl from 'maplibre-gl';
 import MapGL, { NavigationControl, Source, Layer, type MapRef } from 'react-map-gl/maplibre';
 import * as turf from '@turf/turf';

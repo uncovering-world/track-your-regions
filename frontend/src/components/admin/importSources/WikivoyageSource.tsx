@@ -22,7 +22,8 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import { Language as LanguageIcon, Delete as DeleteIcon } from '@mui/icons-material';
+import LanguageIcon from '@mui/icons-material/Language';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   startWikivoyageExtraction,

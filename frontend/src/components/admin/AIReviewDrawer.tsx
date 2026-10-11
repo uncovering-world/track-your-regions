@@ -18,7 +18,7 @@ import {
   RadioGroup,
   FormControlLabel,
 } from '@mui/material';
-import { Close as CloseIcon } from '@mui/icons-material';
+import CloseIcon from '@mui/icons-material/Close';
 import ReactMarkdown from 'react-markdown';
 import type { HierarchyReviewAction, HierarchyReviewResult } from '../../api/admin/ai';
 import { linkifyRegionNames } from './importTreeLinkify';

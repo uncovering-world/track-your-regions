@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Box, Typography, IconButton, Tooltip } from '@mui/material';
-import { ChevronLeft as OpenPanelIcon } from '@mui/icons-material';
+import OpenPanelIcon from '@mui/icons-material/ChevronLeft';
 import { RegionMapVT } from './RegionMapVT';
 import { RegionDescriptionSection } from './RegionDescriptionSection';
 import { SetupInstructions } from './SetupInstructions';

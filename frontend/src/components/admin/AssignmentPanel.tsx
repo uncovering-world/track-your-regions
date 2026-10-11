@@ -32,10 +32,8 @@ import {
   TableRow,
   Paper,
 } from '@mui/material';
-import {
-  PlayArrow as StartIcon,
-  Stop as StopIcon,
-} from '@mui/icons-material';
+import StartIcon from '@mui/icons-material/PlayArrow';
+import StopIcon from '@mui/icons-material/Stop';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import {
   getSources,

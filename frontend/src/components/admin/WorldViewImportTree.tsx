@@ -15,16 +15,14 @@ import {
   Snackbar,
 } from '@mui/material';
 
-import {
-  UnfoldMore as ExpandAllIcon,
-  UnfoldLess as CollapseAllIcon,
-  ErrorOutline as UnresolvedIcon,
-  Layers as GapsIcon,
-  CallMerge as SingleChildIcon,
-  WarningAmber as WarningIcon,
-  Psychology as ReviewIcon,
-  PieChartOutline as CoverageIcon,
-} from '@mui/icons-material';
+import ExpandAllIcon from '@mui/icons-material/UnfoldMore';
+import CollapseAllIcon from '@mui/icons-material/UnfoldLess';
+import UnresolvedIcon from '@mui/icons-material/ErrorOutline';
+import GapsIcon from '@mui/icons-material/Layers';
+import SingleChildIcon from '@mui/icons-material/CallMerge';
+import WarningIcon from '@mui/icons-material/WarningAmber';
+import ReviewIcon from '@mui/icons-material/Psychology';
+import CoverageIcon from '@mui/icons-material/PieChartOutline';
 import { useQuery } from '@tanstack/react-query';
 import {
   getMatchTree,

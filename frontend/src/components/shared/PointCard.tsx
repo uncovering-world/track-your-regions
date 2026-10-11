@@ -24,7 +24,9 @@
 
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { Box, Button, Checkbox, FormControlLabel, IconButton, Link, Stack, Typography } from '@mui/material';
-import { ArrowBack, ChevronLeft, ChevronRight } from '@mui/icons-material';
+import ArrowBack from '@mui/icons-material/ArrowBack';
+import ChevronLeft from '@mui/icons-material/ChevronLeft';
+import ChevronRight from '@mui/icons-material/ChevronRight';
 import { useQuery } from '@tanstack/react-query';
 import { fetchExperienceLocations, type ImageCredit } from '../../api/experiences';
 import { queryKeys } from '../../api/queryKeys';

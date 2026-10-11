@@ -95,6 +95,15 @@ export default [
       // raw-line cap would tax exactly those. The guide states this number
       // and names this entry, so a change here is a change there too (#530).
       'max-lines': ['error', { max: 800, skipBlankLines: true, skipComments: true }],
+      // The icon package's index loads every one of its thousands of icons:
+      // the bundle tree-shakes it, but each spec that reaches the import pays
+      // for the whole package, seconds a file (#1377). One path per icon.
+      'no-restricted-imports': ['error', {
+        paths: [{
+          name: '@mui/icons-material',
+          message: "Import each icon by its path ('@mui/icons-material/Delete'), never the package index (#1377).",
+        }],
+      }],
       // A TanStack Query key is built by the factory in src/api/queryKeys.ts
       // (#790): a literal array beside it is a second spelling of the
       // vocabulary, and a key and its invalidation spelled apart drift apart

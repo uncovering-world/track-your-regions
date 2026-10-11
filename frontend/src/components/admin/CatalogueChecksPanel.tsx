@@ -31,18 +31,16 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
-import {
-  CheckCircleOutline as ClearIcon,
-  ErrorOutline as BrokenIcon,
-  ExpandLess,
-  ExpandMore,
-  HelpOutline as UnansweredIcon,
-  Refresh as RefreshIcon,
-  RemoveCircleOutline as HoldingIcon,
-  TrendingDown as ImprovedIcon,
-  TrendingUp as RegressedIcon,
-  Visibility as WatchIcon,
-} from '@mui/icons-material';
+import ClearIcon from '@mui/icons-material/CheckCircleOutline';
+import BrokenIcon from '@mui/icons-material/ErrorOutline';
+import ExpandLess from '@mui/icons-material/ExpandLess';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import UnansweredIcon from '@mui/icons-material/HelpOutline';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import HoldingIcon from '@mui/icons-material/RemoveCircleOutline';
+import ImprovedIcon from '@mui/icons-material/TrendingDown';
+import RegressedIcon from '@mui/icons-material/TrendingUp';
+import WatchIcon from '@mui/icons-material/Visibility';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   acceptDataAssertion,

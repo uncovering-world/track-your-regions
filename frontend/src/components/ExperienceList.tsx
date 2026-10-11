@@ -30,9 +30,7 @@ import {
   Snackbar,
   Alert,
 } from '@mui/material';
-import {
-  PlaylistAdd as AssignIcon,
-} from '@mui/icons-material';
+import AssignIcon from '@mui/icons-material/PlaylistAdd';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useExperienceContext } from '../hooks/useExperienceContext';
 import { useHoverActions } from '../hooks/useHoverContext';

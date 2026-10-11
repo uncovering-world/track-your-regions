@@ -14,10 +14,8 @@ import {
   Select,
   MenuItem,
 } from '@mui/material';
-import {
-  CallSplit as SplitIcon,
-  Block as BlockIcon,
-} from '@mui/icons-material';
+import SplitIcon from '@mui/icons-material/CallSplit';
+import BlockIcon from '@mui/icons-material/Block';
 import {
   respondToClusterReview,
   fetchClusterHighlight,

@@ -20,7 +20,8 @@
 import { memo } from 'react';
 import { useHoverSelector } from '../../hooks/useHoverContext';
 import { Box, ListItem, ListItemIcon, ListItemText, Checkbox, IconButton, Tooltip } from '@mui/material';
-import { LocationOn as LocationIcon, EditLocationAlt as FixPlaceIcon } from '@mui/icons-material';
+import LocationIcon from '@mui/icons-material/LocationOn';
+import FixPlaceIcon from '@mui/icons-material/EditLocationAlt';
 import { locationLabel, pointFullName, pointOfRow } from '../../utils/locationLabel';
 import { CopyNameButton } from '../shared/CopyNameButton';
 import { claimLabel } from '../../utils/placeClaims';

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Container, Box, CssBaseline, ThemeProvider, IconButton, Tooltip, Alert } from '@mui/material';
-import { ChevronLeft as CollapseIcon, ChevronRight as ExpandIcon } from '@mui/icons-material';
+import CollapseIcon from '@mui/icons-material/ChevronLeft';
+import ExpandIcon from '@mui/icons-material/ChevronRight';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { BrowserRouter, Routes, Route } from 'react-router';
 import { Header } from './components/Header';

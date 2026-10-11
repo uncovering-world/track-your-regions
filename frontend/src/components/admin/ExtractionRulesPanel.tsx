@@ -27,15 +27,13 @@ import {
   TextField,
   IconButton,
 } from '@mui/material';
-import {
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  AutoFixHigh as ReviewIcon,
-  Check as ApplyIcon,
-  MergeType as MergeIcon,
-  Warning as ConflictIcon,
-  DeleteSweep as ObsoleteIcon,
-} from '@mui/icons-material';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
+import ReviewIcon from '@mui/icons-material/AutoFixHigh';
+import ApplyIcon from '@mui/icons-material/Check';
+import MergeIcon from '@mui/icons-material/MergeType';
+import ConflictIcon from '@mui/icons-material/Warning';
+import ObsoleteIcon from '@mui/icons-material/DeleteSweep';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   getLearnedRules,

@@ -20,15 +20,13 @@ import {
   Tooltip,
   Alert,
 } from '@mui/material';
-import {
-  CheckCircle as CheckCircleIcon,
-  MenuBook as WikiIcon,
-  Language as WebsiteIcon,
-  LocationOn as LocationIcon,
-  Undo as UnrejectIcon,
-  Tune as CurateIcon,
-  LinkOff as RemoveFromRegionIcon,
-} from '@mui/icons-material';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import WikiIcon from '@mui/icons-material/MenuBook';
+import WebsiteIcon from '@mui/icons-material/Language';
+import LocationIcon from '@mui/icons-material/LocationOn';
+import UnrejectIcon from '@mui/icons-material/Undo';
+import CurateIcon from '@mui/icons-material/Tune';
+import RemoveFromRegionIcon from '@mui/icons-material/LinkOff';
 import { useQuery } from '@tanstack/react-query';
 import { cardImageUrl, isImagePreloaded, preloadImage } from '../../utils/imagePreload';
 import { inDangerLabel } from '../../utils/dangerLabel';
