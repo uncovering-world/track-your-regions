@@ -1,7 +1,7 @@
 # ADR-0062: A gate runs when, and only when, the inputs it checks have changed
 
 **Date:** 2026-09-20
-**Status:** Accepted
+**Status:** Accepted — decisions 3 and 4 narrowed by ADR-0092
 
 ---
 

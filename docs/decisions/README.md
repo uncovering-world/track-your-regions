@@ -81,7 +81,7 @@ and accepted by it.
 | [0059](0059-what-the-catalogue-takes-from-openstreetmap-it-keeps-separable-and-offers-under-odbl.md) | What the catalogue takes from OpenStreetMap it keeps separable and offers under ODbL | Accepted | 2026-09-13 |
 | [0060](0060-the-site-pool-has-a-second-entrance-the-map.md) | The site pool has a second entrance, what the map calls a dig, and one rule judges both | Accepted | 2026-09-15 |
 | [0061](0061-the-catalogues-world-map-is-a-read-of-the-api-not-a-tile-source.md) | The catalogue's world map is a read of the API, not a tile source | Accepted | 2026-09-16 |
-| [0062](0062-a-gate-runs-only-when-its-inputs-changed.md) | A gate runs when, and only when, the inputs it checks have changed | Accepted | 2026-09-20 |
+| [0062](0062-a-gate-runs-only-when-its-inputs-changed.md) | A gate runs when, and only when, the inputs it checks have changed | Accepted — decisions 3 and 4 narrowed by [0092](0092-a-gate-reads-its-own-side-and-its-own-settings.md) | 2026-09-20 |
 | [0063](0063-sql-whose-correctness-is-a-row-set-is-tested-on-postgres.md) | SQL whose correctness is a row set is tested on PostgreSQL | Accepted | 2026-09-21 |
 | [0064](0064-row-types-are-generated-from-the-schema-and-queries-stay-sql.md) | Row types are generated from the schema, and queries stay SQL | Accepted | 2026-09-21 |
 | [0065](0065-a-rule-both-sides-apply-lives-in-one-package-both-import.md) | A rule both sides apply lives in one package both import | Accepted | 2026-09-21 |
@@ -110,7 +110,8 @@ and accepted by it.
 | [0088](0088-a-world-heritage-site-of-one-point-is-its-one-item-and-one-point.md) | A World Heritage site of one point is its one Wikidata item, and merges to one point | Accepted | 2026-10-08 |
 | [0089](0089-a-parts-empty-field-is-filled-without-a-hold.md) | A part's empty field is filled without a hold | Accepted | 2026-10-08 |
 | [0090](0090-a-component-renumbered-by-an-extension-is-the-same-point.md) | A component renumbered by an extension is the same point | Accepted | 2026-10-10 |
-| [0091](0091-a-gates-pass-is-reused-for-the-same-inputs.md) | A gate's pass is reused for the same inputs, keyed from the gate map | Accepted | 2026-10-11 |
+| [0091](0091-a-gates-pass-is-reused-for-the-same-inputs.md) | A gate's pass is reused for the same inputs, keyed from the gate map | Accepted — decision 1 narrowed by [0092](0092-a-gate-reads-its-own-side-and-its-own-settings.md) | 2026-10-11 |
+| [0092](0092-a-gate-reads-its-own-side-and-its-own-settings.md) | A gate reads its own side and its own settings, and only CI runs everything for the map | Accepted | 2026-10-11 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
