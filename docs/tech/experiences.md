@@ -1133,15 +1133,24 @@ path needs.
     it, is set aside — the Moravian Church Settlements' Herrnhut was offered its *Heimatmuseum*,
     Christiansfeld its pharmacy, the Comoros' Moroni its Old Friday Mosque. The places are asked
     of QLever only for those sites' contenders — the candidates the near rule would take, since
-    a place cannot change a choice the rule refuses (`placeNamesOf`; the source record
+    a place cannot change a choice the rule refuses (`placesOf`; the source record
     `docs/sources/global/wikidata-qlever.md` counts the questions) — and a batch it cannot answer
     leaves the points unanswered, as the settlement question does. Only there, because a site's
     own classes say what its components are: 53 of the 3 941 resolved components, measured on
     2026-10-11, have an item standing in a place named like them that is not named like them
     itself — the Slovak wooden church that is the component "Hervartov", the caravanserai that is
     "Meybod" — and the rule would refuse each of them. Abu Simbel and Pompeii stay candidates,
-    named as their components are. A component thereby left without a candidate is where it was
-    before the search, and the pass counts what it set aside.
+    named as their components are. In a set-aside thing's stead the place it stands in is a
+    candidate (`placeAsCandidate`) when it is named like the component, and the near rule
+    measures it like any other: Mjölnareholmen, the islet in Karlskrona harbour, 30 m from the
+    point, for the gunpowder house on it. Never a settlement, by the same class tree that sets
+    the candidates' settlements aside (`settlementsAmong`): the site's parts are not known to be
+    towns, and the village a church is named after — the component "Hervartov" — is not the
+    church, so Herrnhut and Moroni stay without a candidate. Never a place with a World Heritage
+    reference of its own, as the near rule offers none: Christiansfeld's item carries 1468, the
+    reference of the inscription it was before the Moravian Church Settlements extended it
+    (#1373). A component left without a candidate is
+    where it was before the search, and the pass counts what it set aside.
 
   Not every point is searched. A component that stands for its whole site — the only standing
   point of a site of one, or a point named exactly like its site, folded (`standsForWholeSite`;
