@@ -9,8 +9,10 @@ import {
   changedPaths,
   classifyPaths,
   decide,
+  freshestBase,
   gateScripts,
   githubOutputs,
+  stackVerdicts,
   workflowScripts,
   keyBelongs,
   packageChanges,
@@ -569,6 +571,14 @@ function withGatesBase(value, body) {
 }
 
 describe('the base the change is measured against', () => {
+  it('takes origin/main over a local main it has moved past, and keeps a main with work of its own', () => {
+    const behind = (older, newer) => older === 'main' && newer === 'origin/main';
+    expect(freshestBase(['main', 'origin/main'], behind)).toBe('origin/main');
+    expect(freshestBase(['main', 'origin/main'], () => false)).toBe('main');
+    expect(freshestBase(['origin/main'], behind)).toBe('origin/main');
+    expect(freshestBase(['main'], behind)).toBe('main');
+  });
+
   // Both cases answer before git is asked anything, which is what lets them
   // run in the container lane, where this spec has no checkout around it.
   it('reads a GATES_BASE that is present but empty as no base at all', () => {
@@ -822,23 +832,43 @@ describe('what the runner says it did', () => {
     expect(backendRun.printed).not.toContain('every gate applies');
   });
 
-  it('lists the stack tier without running it, and marks what this change asks for', () => {
+  it('lists the stack tier without running it, and says where each lane is owed', () => {
     const spawn = fakeSpawn();
     const docs = capture(decide({ paths: ['docs/tech/x.md'] }), 'stack', { spawn });
 
     expect(docs.code).toBe(2);
     expect(spawn.calls).toEqual([]);
-    expect(docs.printed).toContain('The stack tier is run by hand');
     // A Markdown-only branch must not be told to spend ten minutes on the
     // smoke lane and Lighthouse for prose neither of them can see.
     for (const id of ['build', 'test:e2e:smoke', 'perf']) {
-      expect(docs.printed, id).toContain(`skip  ${id.padEnd(16)}`);
+      expect(docs.printed, id).toContain(`skip       ${id.padEnd(16)}`);
     }
-    expect(docs.printed).toContain('(inputs untouched: backend, web, shared, database, tiles, runners, compose)');
 
-    const app = capture(backend(), 'stack', { spawn: fakeSpawn() });
-    expect(app.printed).toContain(`run   ${'test:e2e:smoke'.padEnd(16)}`);
-    expect(app.printed).toContain('(inputs touched: shared)');
+    // CI runs every stack lane it asks for; only what CI cannot measure is
+    // owed here too (#1379).
+    const verdict = (paths) =>
+      Object.fromEntries(stackVerdicts(decide({ paths })).map((gate) => [gate.id, gate.verdict]));
+    const owed = (paths) => stackVerdicts(decide({ paths }))
+      .filter((gate) => gate.verdict === 'run here')
+      .map((gate) => gate.command.join(' '));
+    expect(verdict(['backend/src/a.ts'])['test:e2e:smoke']).toBe('CI runs it');
+    // A backend change owes the latency probe, which no CI job runs, and not
+    // Lighthouse; a web change owes Lighthouse on the real catalogue.
+    expect(owed(['backend/src/a.ts'])).toEqual(['npm run perf:api']);
+    expect(owed(['db/migrations/060-x.sql'])).toEqual(['npm run perf:api']);
+    expect(owed(['frontend/src/a.tsx'])).toEqual(['npm run perf:local']);
+    // perf:local runs the probe as its last step, so it is not owed beside it.
+    expect(owed(['packages/shared/src/a.ts'])).toEqual(['npm run perf:local']);
+    expect(owed(['frontend/src/a.tsx', 'backend/src/a.ts'])).toEqual(['npm run perf:local']);
+    expect(owed(['scripts/test-stack.sh'])).toEqual([]);
+    // A change to a measurement's own runner, which no CI job runs, owes it.
+    expect(owed(['scripts/perf-api.mjs'])).toEqual(['npm run perf:api']);
+    expect(owed(['scripts/perf-local.sh'])).toEqual(['npm run perf:local']);
+    // A change only every gate can answer for owes everything once.
+    expect(stackVerdicts(decide({ paths: null })).filter((gate) => gate.verdict === 'run here')
+      .map((gate) => gate.command.join(' '))).toEqual(['npm run perf:local']);
+    const listed = capture(decide({ paths: ['frontend/src/a.tsx'] }), 'stack', { spawn: fakeSpawn() });
+    expect(listed.printed).toContain("where CI's lane weighs a fixture");
   });
 });
 
