@@ -47,7 +47,9 @@ describe('sourceIdHref', () => {
 describe('SourceId', () => {
   it('links a Wikidata id to its item, with the id to copy beside it', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
+    // Defined, not assigned: the test DOM gives `navigator.clipboard` a getter
+    // and no setter, so an assignment throws.
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
 
     render(<SourceId id="Q1662392" kind="Art Museums" sourcePage="https://www.peramuseum.org" />);
 

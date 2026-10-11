@@ -17,24 +17,19 @@ import { HoverProvider } from '../../hooks/useHoverContext';
 import { ContentsSection } from './ContentsSection';
 import { LocationsSection } from './LocationsSection';
 
-// The places list is virtualised, and jsdom has no layout — so without a height
-// the virtualiser mounts no rows and any assertion about them passes against an
-// empty list. Same shim `discoverListWindow.test.tsx` uses, and for the same
-// reason.
+// The places list is virtualised, and happy-dom has no layout — so without a
+// height the virtualiser mounts no rows and any assertion about them passes
+// against an empty list. Same shim `discoverListWindow.test.tsx` uses, and for
+// the same reason.
 const realOffsetHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'offsetHeight');
-const realResizeObserver = globalThis.ResizeObserver;
 beforeAll(() => {
   Object.defineProperty(HTMLElement.prototype, 'offsetHeight', {
     configurable: true,
     get() { return 600; },
   });
-  globalThis.ResizeObserver = class {
-    observe() {} unobserve() {} disconnect() {}
-  } as unknown as typeof ResizeObserver;
 });
 afterAll(() => {
   if (realOffsetHeight) Object.defineProperty(HTMLElement.prototype, 'offsetHeight', realOffsetHeight);
-  globalThis.ResizeObserver = realResizeObserver;
 });
 
 function works(n: number): ExperienceTreasure[] {

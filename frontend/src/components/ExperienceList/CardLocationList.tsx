@@ -310,7 +310,7 @@ export function CardLocationList({
                       // The browser anchors the scroll to whatever sits below,
                       // so a group opening above it pushes its own header out of
                       // view; bring the header back to where the reader is.
-                      requestAnimationFrame(() => header.scrollIntoView?.({ block: 'nearest' }));
+                      requestAnimationFrame(() => header.scrollIntoView({ block: 'nearest' }));
                     }}
                     aria-expanded={open}
                     startIcon={open ? <ExpandMore fontSize="small" /> : <ChevronRight fontSize="small" />}

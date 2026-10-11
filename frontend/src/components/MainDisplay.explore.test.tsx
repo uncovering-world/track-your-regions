@@ -31,7 +31,7 @@ const { navState, mockFetchByRegion } = vi.hoisted(() => ({
 
 vi.mock('../hooks/useNavigation', () => ({ useNavigation: () => navState }));
 vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ isAuthenticated: false }) }));
-// The leaves jsdom cannot run, and the panel's own contents, which have their
+// The leaves happy-dom cannot run, and the panel's own contents, which have their
 // own tests: what is under test here is whether the panel is mounted at all.
 vi.mock('./RegionMapVT', () => ({ RegionMapVT: () => <div data-testid="map" /> }));
 vi.mock('./RegionDescriptionSection', () => ({

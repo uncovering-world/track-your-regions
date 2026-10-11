@@ -1,7 +1,7 @@
 /**
  * The location picker's place search runs when the curator asks — Enter or
  * *Find* — and never as they type: Nominatim's usage policy forbids
- * auto-complete over its API (#1308). jsdom has no WebGL, so the picker opens
+ * auto-complete over its API (#1308). happy-dom has no WebGL, so the picker opens
  * on its search.
  */
 

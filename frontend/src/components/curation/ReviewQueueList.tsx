@@ -176,10 +176,9 @@ export function ReviewQueueList({
     // own, which is exactly the case a stale `pending` must not be left standing over.
     // Either way the next move computes from `selected` again.
     pending.current = null;
-    // Optional chains on both the ref and the method: jsdom does not implement
-    // `scrollIntoView`, and a row that just left the page (answered, filtered
-    // out) leaves the ref briefly null before the next render picks a new one.
-    selectedRowRef.current?.scrollIntoView?.({ block: 'nearest' });
+    // An optional chain on the ref: a row that just left the page (answered,
+    // filtered out) leaves it briefly null before the next render picks a new one.
+    selectedRowRef.current?.scrollIntoView({ block: 'nearest' });
     if (!focusNext.current) return;
     focusNext.current = false;
     selectedRowRef.current?.focus?.();

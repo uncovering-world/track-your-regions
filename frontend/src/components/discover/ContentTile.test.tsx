@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { act, render, screen, fireEvent } from '@testing-library/react';
 import type { ExperienceTreasure } from '../../api/experiences';
 // The link a find spot becomes (#894) reads the world view and writes the
 // address; the one case that uses it renders inside a router.
@@ -107,14 +107,12 @@ describe('a work in the contents grid', () => {
     // plain div that never takes focus — the artist, the year and the credit were
     // shown to a pointer alone, on a tile that is a focus stop.
     //
-    // What is asserted is *which element carries the listeners*, not the focus path
-    // itself: MUI opens on focus only for `:focus-visible`, which jsdom does not
-    // implement, so a focus-based assertion would pass or fail for reasons that have
-    // nothing to do with this. Reaching the control opens the tooltip; bound to the
-    // inner strip, as it was, this event never reaches it.
+    // Reached the way a keyboard reaches it: MUI opens on focus only for
+    // `:focus-visible`, which a scripted focus satisfies. Bound to the inner
+    // strip, as it was, the focus never reaches the listeners.
     renderTile({ artists: ['Mesha'], year: -840 });
 
-    fireEvent.mouseOver(screen.getByRole('button', { name: /Mesha Stele/ }));
+    act(() => screen.getByRole('button', { name: /Mesha Stele/ }).focus());
 
     expect(await screen.findByRole('tooltip')).toHaveTextContent(/Mesha.*840.*Mbzt/);
   });

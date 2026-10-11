@@ -76,7 +76,10 @@ export default defineConfig({
     sourcemap: false,
   },
   test: {
-    environment: 'jsdom',
+    // ADR-0093: happy-dom, which builds a document for less than jsdom did. It
+    // has no layout, WebGL or workers either, and a spec that works around one
+    // of those says which.
+    environment: 'happy-dom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     // A spec's ceiling, above the three seconds one wait is given

@@ -47,9 +47,8 @@ export function VirtualRow({ virtualizer, index, start, children }: VirtualRowPr
    *
    * Measured in the browser on the Historic Centre of Saint Petersburg: hovering
    * its places blocked the main thread for **600-860 ms per hover**, which is the
-   * stutter the list was reported for. A unit test could not see it — jsdom has
-   * no layout, so `getBoundingClientRect` there is free, and the same hover
-   * measured 10 ms.
+   * stutter the list was reported for. A unit test cannot see it: happy-dom has
+   * no layout, so `getBoundingClientRect` there costs nothing.
    */
   const measure = useCallback((el: HTMLLIElement | null) => {
     virtualizer.measureElement(el);
