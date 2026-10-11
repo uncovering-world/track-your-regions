@@ -1,7 +1,7 @@
 # ADR-0091: A gate's pass is reused for the same inputs, keyed from the gate map
 
 **Date:** 2026-10-11
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by ADR-0092
 
 ---
 
