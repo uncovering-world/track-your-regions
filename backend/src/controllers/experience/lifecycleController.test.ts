@@ -503,6 +503,35 @@ describe('setExperienceAdmission', () => {
       expect.objectContaining({ experienceId: 5, admission: 'admitted', published: false }));
   });
 
+  it('puts a row back for now, unpinned, where the curator chose not to remember it (#1368)', async () => {
+    poolAnswers();
+    const { queries, client } = refusedClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await answerRoute(postAdmission,
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'override', remember: false } } as never,
+      makeRes() as never);
+
+    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
+    expect(update.params[1]).toBe('admitted');
+    expect(JSON.parse(String(update.params[3]))).not.toContain('admission');
+    const log = queries.find(q => q.sql.includes('INSERT INTO experience_curation_log'))!;
+    expect(JSON.parse(String(log.params[4]))).toMatchObject({ pinned: false });
+  });
+
+  it('pins a confirmation whatever the request says about remembering', async () => {
+    poolAnswers();
+    const { queries, client } = refusedClient();
+    mockedConnect.mockResolvedValue(client);
+
+    await answerRoute(postAdmission,
+      { params: { id: '5' }, user: ADMIN, body: { decision: 'confirm', remember: false } } as never,
+      makeRes() as never);
+
+    const update = queries.find(q => q.sql.includes('UPDATE experience_kind_memberships'))!;
+    expect(JSON.parse(String(update.params[3]))).toContain('admission');
+  });
+
   it('leaves a confirmed row refused, and pins that too', async () => {
     poolAnswers();
     const { queries, client } = refusedClient();

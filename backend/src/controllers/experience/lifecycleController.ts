@@ -287,7 +287,7 @@ async function publishArrivalContents(
 /**
  * Answer a refusal.
  * POST /api/experiences/:id/admission
- * Body: { decision: 'confirm' | 'override', note?: string }
+ * Body: { decision: 'confirm' | 'override', note?: string, remember?: boolean }
  *
  * Two answers, because a refusal has two and neither of them is a verdict about
  * the world (ADR-0024):
@@ -295,11 +295,14 @@ async function publishArrivalContents(
  * - **confirm** — the rule was right. The row stays refused and hidden.
  * - **override** — the rule was wrong. The row is admitted again.
  *
- * Both pin `admission` in `curated_fields`, and that pin is what takes the item
- * out of the queue. It is also what makes the answer durable against *runs*, in
- * both directions: a curator who has looked at the thing outranks the rule, so
- * no later run re-refuses an overridden row or re-admits a confirmed one. The
- * sync's three admission writes all skip a pinned row for that reason.
+ * A confirmation, and a put-back the curator chose to remember, pin `admission`
+ * in `curated_fields`. The pin makes the answer durable against *runs*, in both
+ * directions: a curator who has looked at the thing outranks the rule, so no
+ * later run re-refuses an overridden row or re-admits a confirmed one while it
+ * says what the pin answered (#1367). The sync's three admission writes all
+ * skip a pinned row for that reason. A put-back not remembered (`remember:
+ * false`, #1368, ADR-0097) admits the row for now and pins nothing; it leaves
+ * the queue because the row is no longer refused.
  *
  * Durable against runs is not the same as final. `override` stays available on
  * a confirmed row, because confirming hides an object from everyone and a way
@@ -334,10 +337,12 @@ export async function setExperienceAdmission(
     throw createError('You do not have curator permissions for this experience', 403);
   }
 
-  // Named field by field: `pin` is the batch's to set, never a request's, and a
-  // card's answer always claims `admission` (ADR-0067).
+  // Named field by field. A card's confirmation always claims `admission`
+  // (ADR-0067); its put-back claims it unless the curator chose otherwise on the
+  // card (`remember`, #1368), which is the only say a request has in the pin.
   const outcome = await answerAdmissionUnderLock(experienceId, userId, logRegionId, {
     decision: body.decision, note: body.note, membershipId: body.membershipId,
+    pin: body.decision === 'confirm' || body.remember !== false,
   });
   if (outcome.refusal) {
     const { status, ...body } = outcome.refusal;
@@ -357,7 +362,8 @@ export interface AdmissionAnswer {
    * card's answer does: a person read one row and said why. A batch's does
    * not (ADR-0067): its confirmation closes the question with
    * `admission_answered_at`, its put-back admits the row for now, and the next
-   * run applies the rule again. Not on the HTTP body — only the batch sets it.
+   * run applies the rule again. A card's put-back pins unless the curator
+   * unticked "Remember a put-back on later runs" (`remember`, #1368).
    */
   pin?: boolean;
 }

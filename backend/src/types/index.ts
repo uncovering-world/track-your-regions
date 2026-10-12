@@ -581,6 +581,13 @@ export const experienceAdmissionBodySchema = z.object({
   decision: z.enum(['confirm', 'override']),
   note: z.string().max(1000).optional(),
   membershipId: answeredMembershipSchema,
+  /**
+   * On a put-back: whether later runs keep the row while the rule refuses it
+   * for the same reason (the pin, #1367). Absent, they do; false admits it for
+   * now and the next run applies the rule again (#1368). Read only with
+   * `override` — a confirmation always pins.
+   */
+  remember: z.boolean().optional(),
 });
 
 /** The admission pins a curator may read (#1369): every one in scope, or one place's. */

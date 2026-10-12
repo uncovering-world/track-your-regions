@@ -20021,6 +20021,9 @@
             "type": "integer",
             "exclusiveMinimum": 0,
             "maximum": 2147483647
+          },
+          "remember": {
+            "type": "boolean"
           }
         },
         "required": [
