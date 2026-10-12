@@ -240,7 +240,8 @@ const SYNC_CHANGE_WRITE_RULES = spelledWriteRules('experience_sync_changes', SYN
  * `src/controllers/experience/membershipWriter.ts`, under the place's
  * `LockedExperience` token; the run's upsert (`experienceUpsert.ts`, which
  * writes the place and its membership in one statement), the admission sweep
- * (`admission.ts`), the verified pass a new content retires
+ * (`admission.ts`) and its questions about a curator's pin (`pinQuestion.ts`),
+ * the verified pass a new content retires
  * (`curationDecay.ts`) and the held proposal's pointer
  * (`heldProposalPointer.ts`); and the seed.
  *
@@ -576,6 +577,7 @@ export default [
       'src/services/sync/curationDecay.ts',
       'src/services/sync/heldProposalPointer.ts',
       'src/services/sync/missingDetection.ts',
+      'src/services/sync/pinQuestion.ts',
     ],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(MEMBERSHIP_WRITE_RULES),

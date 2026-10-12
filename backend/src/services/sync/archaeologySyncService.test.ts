@@ -36,6 +36,13 @@ vi.mock('./pictureRepair.js', () => ({ writeFoundPicture: vi.fn() }));
 vi.mock('./archaeology/pipeline.js', () => ({ collectArchaeology: vi.fn() }));
 vi.mock('./museum/pipeline.js', () => ({ collectTier1Museums: vi.fn() }));
 vi.mock('./museum/queries.js', () => ({ fetchEntityDetails: vi.fn(), isQid: vi.fn() }));
+vi.mock('./pinQuestion.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./pinQuestion.js')>()),
+  // The run's questions about a curator's pin read and write the database (#1367).
+  pinnedRows: vi.fn().mockResolvedValue([]),
+  writePinQuestions: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('./admission.js', () => ({ admittedExternalIds: vi.fn().mockResolvedValue(new Set()) }));
 vi.mock('./wikidataUtils.js', () => ({
   delay: vi.fn(),

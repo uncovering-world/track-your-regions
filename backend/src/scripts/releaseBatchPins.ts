@@ -91,7 +91,7 @@ async function answer(pin: BatchPin, keep: boolean, curatorId: number): Promise<
       await client.query('COMMIT');
       return;
     }
-    if (!keep) await releaseAdmissionPin(client, locked.lock, pin.membershipId, pin.reason);
+    if (!keep) await releaseAdmissionPin(client, locked.lock, pin.membershipId, { admitted: false, reason: pin.reason });
     // The membership named, as the kept-out list reads a refusal's note by it.
     await client.query(
       `INSERT INTO experience_curation_log (experience_id, curator_id, action, details)

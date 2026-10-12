@@ -25,6 +25,13 @@ vi.mock('./regionAssignmentService.js', () => ({
   worldViewsWithGeometry: vi.fn().mockResolvedValue([5]),
 }));
 
+vi.mock('./pinQuestion.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./pinQuestion.js')>()),
+  // The run's questions about a curator's pin read and write the database (#1367).
+  pinnedRows: vi.fn().mockResolvedValue([]),
+  writePinQuestions: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('./admission.js', () => ({
   admissionSweepSkipReason: vi.fn().mockReturnValue(null),
   countAdmitted: vi.fn().mockResolvedValue(0),

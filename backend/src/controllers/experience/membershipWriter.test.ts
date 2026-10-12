@@ -11,7 +11,7 @@ import type { LockedExperience } from '../../db/experienceWriter.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
 import {
   answerAdmissionOnMembership, clearHeldPointer, insertManualMembership, publishMembership, refuseOnMembership,
-  releaseAdmissionPin,
+  keepAdmissionPin, releaseAdmissionPin,
 } from './membershipWriter.js';
 
 /** The Kunsthalle Bremen, as the token a lock of it would hand out, and its one membership. */
@@ -65,18 +65,49 @@ describe('the other curator writes', () => {
       queries.push({ sql, params });
       return { rows: [], rowCount: 1 };
     }) as never);
-    await releaseAdmissionPin(client, KUNSTHALLE, MEMBERSHIP, 'not an art museum — painting-share: 0 painting(s) vs 2 sculptural work(s)');
+    await releaseAdmissionPin(client, KUNSTHALLE, MEMBERSHIP, {
+      admitted: false, reason: 'not an art museum — painting-share: 0 painting(s) vs 2 sculptural work(s)',
+    });
     const sql = collapse(queries[0].sql);
-    expect(sql).toContain("SET admission = 'refused'");
+    expect(sql).toContain('SET admission = $2');
     expect(sql).toContain("curated_fields = m.curated_fields - 'admission'");
     expect(sql).toContain('admission_answered_at = NOW()');
+    expect(sql).toContain('admission_questioned_at = NULL');
     expect(sql).toContain(collapse(CLEAR_ICONIC));
-    expect(queries[0].params).toEqual([MEMBERSHIP, 'not an art museum — painting-share: 0 painting(s) vs 2 sculptural work(s)', KUNSTHALLE.id]);
+    expect(queries[0].params).toEqual([
+      MEMBERSHIP, 'refused', 'not an art museum — painting-share: 0 painting(s) vs 2 sculptural work(s)', KUNSTHALLE.id,
+    ]);
+  });
+
+  it('releases a pin to an admission the rule now gives, as a run writes one (#1367)', async () => {
+    const { client, queries } = fakeClient();
+    vi.mocked(client.query).mockImplementationOnce((async (sql: string, params: unknown[] = []) => {
+      queries.push({ sql, params });
+      return { rows: [], rowCount: 1 };
+    }) as never);
+    await releaseAdmissionPin(client, KUNSTHALLE, MEMBERSHIP, { admitted: true, reason: 'ignored' });
+    const sql = collapse(queries[0].sql);
+    expect(sql).toContain('admission_answered_at = NULL');
+    expect(sql).not.toContain('is_iconic');
+    expect(queries[0].params).toEqual([MEMBERSHIP, 'admitted', null, KUNSTHALLE.id]);
+  });
+
+  it("keeps an asked pin as the answer to what the run now says, and only an asked one (#1367)", async () => {
+    const { client, queries } = fakeClient();
+    vi.mocked(client.query).mockImplementationOnce((async (sql: string, params: unknown[] = []) => {
+      queries.push({ sql, params });
+      return { rows: [], rowCount: 1 };
+    }) as never);
+    await keepAdmissionPin(client, KUNSTHALLE, MEMBERSHIP);
+    const sql = collapse(queries[0].sql);
+    expect(sql).toContain('admission_pin_verdict = m.admission_question_verdict');
+    expect(sql).toContain("m.curated_fields ? 'admission' AND m.admission_questioned_at IS NOT NULL");
+    await expect(keepAdmissionPin(fakeClient().client, KUNSTHALLE, MEMBERSHIP)).rejects.toThrow(/holds no asked pin/);
   });
 
   it('says so, rather than logging a release, where the membership is not the place\'s any more', async () => {
     const { client } = fakeClient();
-    await expect(releaseAdmissionPin(client, KUNSTHALLE, MEMBERSHIP, 'a reason')).rejects.toThrow(/was not released/);
+    await expect(releaseAdmissionPin(client, KUNSTHALLE, MEMBERSHIP, { admitted: false, reason: 'a reason' })).rejects.toThrow(/was not released/);
   });
 
   it('refuses an arrival with the pin and the flag cleared', async () => {

@@ -10,12 +10,14 @@
 
 import type { ChangeRecord } from './changeRecorder.js';
 import {
+  type Refusal,
   admissionSweepSkipReason,
   markIconic,
   markNotAdmitted,
   restoreAdmission,
   unmarkIconic,
 } from './admission.js';
+import { asksAgain, pinnedRows, writePinQuestions, type PinQuestion, type RunView } from './pinQuestion.js';
 import type { SyncServiceConfig } from './syncContract.js';
 import type { SyncProgress } from './types.js';
 
@@ -111,7 +113,7 @@ export async function badgeAdmitted<T>(
  * that decided every row it did not name. `swept` is the one any such caller
  * has to ask; `skipReason` is for the line in the log.
  */
-interface SweepOutcome {
+export interface SweepOutcome {
   /** Whether `markNotAdmitted` really decided the rows this run did not name. */
   swept: boolean;
   /** Why it did not, where a guard refused it. Null both when it ran and when it does not apply. */
@@ -174,4 +176,50 @@ export async function applyAdmissionSweep<T>(
     });
   }
   return { swept: true, skipReason: null };
+}
+
+/**
+ * Ask a curator again about each pin this run disagrees with, and close the
+ * questions it no longer does (#1367): the last step of admission, once the
+ * run has said everything it will about the source's rows.
+ *
+ * What the run says of a pinned row is what it would have written there: an
+ * admission where it recomputes its membership and selected the row — which
+ * wins over a refusal by name, as `restoreAdmission` after `markRefused` makes
+ * it win —, the rule's reason where it named the row and turned it down, and
+ * the sweep's reason where the sweep decided the rows it did not name. A row
+ * it said nothing about keeps whatever was asked before. Whether that is a
+ * question is `asksAgain`'s.
+ */
+export async function questionPins<T>(
+  config: SyncServiceConfig<T>,
+  progress: SyncProgress,
+  refusals: Refusal[],
+  admittedExternalIds: string[],
+  sweep: SweepOutcome,
+): Promise<void> {
+  if (progress.logId === null) return;
+  const admitted = config.recomputesMembership ? new Set(admittedExternalIds) : new Set<string>();
+  const refused = new Map(refusals.map((refusal) => [refusal.externalId, refusal.reason]));
+  const viewOf = (externalId: string): RunView | null => {
+    if (admitted.has(externalId)) return { verdict: 'admitted', reason: null };
+    const reason = refused.get(externalId);
+    if (reason !== undefined) return { verdict: 'refused', reason };
+    return sweep.swept ? { verdict: 'refused', reason: NOT_ADMITTED_REASON } : null;
+  };
+
+  const asked: PinQuestion[] = [];
+  const settled: number[] = [];
+  for (const pin of await pinnedRows(config.sourceId)) {
+    const now = viewOf(pin.externalId);
+    if (now === null) continue;
+    const answered = pin.answeredVerdict === null ? null : { verdict: pin.answeredVerdict, reason: pin.answeredReason };
+    if (asksAgain({ answer: pin.answer, answered }, now)) {
+      asked.push({ membershipId: pin.membershipId, ...now, read: pin });
+      console.log(`${config.logPrefix} Asking again about the pin on ${pin.name} (${pin.externalId}): ${now.reason ?? 'admitted'}`);
+    } else {
+      settled.push(pin.membershipId);
+    }
+  }
+  await writePinQuestions(asked, settled, progress.logId, progress.dryRun);
 }

@@ -45,6 +45,24 @@ function iconicAfterVerdictSql(admitted: boolean): string {
   return admitted ? '' : `, ${CLEAR_ICONIC}`;
 }
 
+/**
+ * The view a pin answered and the question closed, as a `SET` fragment
+ * (#1367): when `pinned` holds, the pin answered `verdict` for `reason`;
+ * otherwise there is no pin and no view. Every write that pins or unpins
+ * `admission` closes an open question with it.
+ */
+function pinViewSql(pinned: string, verdict: string, reason: string): string {
+  return `admission_pin_verdict = CASE WHEN ${pinned} THEN ${verdict} END,
+          admission_pin_reason = CASE WHEN ${pinned} THEN ${reason} END,
+          ${CLEAR_QUESTION}`;
+}
+
+/** No open question about the pin. */
+const CLEAR_QUESTION = `admission_question_verdict = NULL,
+          admission_question_reason = NULL,
+          admission_questioned_at = NULL,
+          admission_question_sync_log_id = NULL`;
+
 /** A curator's answer to a refusal, as the membership records it. */
 export interface AdmissionAnswer {
   /** `override` admits the place again; `confirm` keeps it refused. */
@@ -77,12 +95,16 @@ export async function answerAdmissionOnMembership(
   const publishSet = publishes
     ? `, curation_state = 'verified', published_at = COALESCE(published_at, NOW())`
     : '';
+  // A pin remembers the refusal it answered — the reason on the row before
+  // this write — so a later run is compared with it (#1367); any answer closes
+  // a question a run had asked about the pin.
   await client.query(`
       UPDATE ${MEMBERSHIPS} m
       SET admission = $2,
           admission_reason = $3,
           curated_fields = $4,
           admission_answered_at = ${!admitted && !pin ? 'NOW()' : 'NULL'},
+          ${pinViewSql(`$4::jsonb ? 'admission'`, `'refused'`, 'm.admission_reason')},
           updated_at = NOW()${publishSet}${iconicAfterVerdictSql(admitted)}
       WHERE m.id = $1 AND m.experience_id = $5
     `, [
@@ -91,38 +113,72 @@ export async function answerAdmissionOnMembership(
   ]);
 }
 
+/** The rule's verdict on a membership, written in a released pin's place. */
+export interface RuleVerdict {
+  admitted: boolean;
+  /** The rule's reason for a refusal; null for an admission. */
+  reason: string | null;
+}
+
 /**
- * Release a pin one unread batch answer made (#1365, ADR-0096): the rule's
- * verdict written in the pin's place. The row is refused with the reason the
- * rule gave, the claim on `admission` comes off, and the refusal is marked
- * answered, so a run that still refuses it does not ask again, while one whose
- * rule now admits it admits it. The badge is cleared the way a rule's refusal
- * clears it.
+ * Release an admission pin, the rule's verdict written in its place: one an
+ * unread batch answer made (#1365, ADR-0096), or one a curator lets the rule
+ * decide once a run asked about it (#1367). The claim on `admission` comes off
+ * with the view it answered and any question. A refusal is written with the
+ * rule's reason and marked answered, so a run that still refuses it does not
+ * ask again, while one whose rule now admits it admits it; the badge is
+ * cleared the way a rule's refusal clears it. An admission is written as a run
+ * writes one.
  */
 export async function releaseAdmissionPin(
   client: PoolClient,
   lock: LockedExperience,
   membershipId: number,
-  reason: string,
+  { admitted, reason }: RuleVerdict,
 ): Promise<void> {
   const result = await client.query(`
       UPDATE ${MEMBERSHIPS} m
-      SET admission = 'refused',
-          admission_reason = $2,
+      SET admission = $2,
+          admission_reason = $3,
           curated_fields = m.curated_fields - 'admission',
-          admission_answered_at = NOW(),
-          updated_at = NOW(),
-          ${CLEAR_ICONIC}
-      WHERE m.id = $1 AND m.experience_id = $3
-    `, [membershipId, reason, lock.id]);
+          admission_answered_at = ${admitted ? 'NULL' : 'NOW()'},
+          ${pinViewSql('false', 'NULL', 'NULL')},
+          updated_at = NOW()${iconicAfterVerdictSql(admitted)}
+      WHERE m.id = $1 AND m.experience_id = $4
+    `, [membershipId, admitted ? 'admitted' : 'refused', admitted ? null : reason, lock.id]);
   // A membership that is not this place's any more writes nothing, and the log
   // row beside it must not say it was released.
   if (result.rowCount !== 1) throw new Error(`membership ${membershipId} was not released on place ${lock.id}`);
 }
 
 /**
+ * Keep a curator's admission pin over the question a run asked (#1367): the
+ * pin now answers what that run said, so a later run that says the same keeps
+ * it silently, and the question is closed. Refused with 409 by the caller when
+ * nothing is asked; here a row that is not pinned or not asked writes nothing,
+ * and the log row beside it must not say it was kept.
+ */
+export async function keepAdmissionPin(
+  client: PoolClient,
+  lock: LockedExperience,
+  membershipId: number,
+): Promise<void> {
+  const result = await client.query(`
+      UPDATE ${MEMBERSHIPS} m
+      SET admission_pin_verdict = m.admission_question_verdict,
+          admission_pin_reason = m.admission_question_reason,
+          ${CLEAR_QUESTION},
+          updated_at = NOW()
+      WHERE m.id = $1 AND m.experience_id = $2
+        AND m.curated_fields ? 'admission' AND m.admission_questioned_at IS NOT NULL
+    `, [membershipId, lock.id]);
+  if (result.rowCount !== 1) throw new Error(`membership ${membershipId} holds no asked pin on place ${lock.id}`);
+}
+
+/**
  * A curator's refusal of an arrival on the membership: the verdict, its reason
  * and the pin, the badge cleared the way a rule's refusal clears it (#760).
+ * The pin answered an admission (#1367).
  */
 export async function refuseOnMembership(
   client: PoolClient,
@@ -136,6 +192,7 @@ export async function refuseOnMembership(
       SET admission = 'refused',
           admission_reason = $2,
           curated_fields = $3,
+          ${pinViewSql(`$3::jsonb ? 'admission'`, `'admitted'`, 'NULL')},
           updated_at = NOW(),
           ${CLEAR_ICONIC}
       WHERE m.id = $1 AND m.experience_id = $4

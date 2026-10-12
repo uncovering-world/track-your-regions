@@ -30,6 +30,13 @@ vi.mock('./wikidataCache.js', () => ({
   withCache: vi.fn((door: unknown) => door),
 }));
 vi.mock('./publicArt/pipeline.js', () => ({ collectPublicArt: vi.fn() }));
+vi.mock('./pinQuestion.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./pinQuestion.js')>()),
+  // The run's questions about a curator's pin read and write the database (#1367).
+  pinnedRows: vi.fn().mockResolvedValue([]),
+  writePinQuestions: vi.fn().mockResolvedValue(undefined),
+}));
+
 vi.mock('./admission.js', () => ({ admittedExternalIds: vi.fn() }));
 vi.mock('./wikidataUtils.js', () => ({
   delay: vi.fn(),
