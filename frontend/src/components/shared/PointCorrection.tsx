@@ -38,7 +38,9 @@ import { placementNotice } from '../../utils/placementNotice';
 import { describeMove, moveLabel } from '../../utils/moveDescription';
 import { tidyLabel } from '@tyr/shared/labels';
 import { LocationPicker } from './LocationPicker';
+import { CommonsNearbyPicker } from './CommonsNearbyPicker';
 import { PictureWithCredit } from './PictureWithCredit';
+import type { NearbyPicture } from '../../api/curation';
 import type { ImageCredit } from '../../api/experiences';
 
 /**
@@ -181,6 +183,9 @@ export function PointCorrection({ place, onDone, onCancel }: {
     { lat: place.latitude, lng: place.longitude },
   );
   const [picture, setPicture] = useState(place.imageUrl ?? '');
+  // The Commons file picked from those nearby (#1341), with the credit Commons
+  // gave for it: shown under the preview while the field still names that file.
+  const [picked, setPicked] = useState<NearbyPicture | null>(null);
   const [description, setDescription] = useState(place.description ?? '');
 
   // Tidied on both sides, as the endpoint stores a name (`tidyLabel`, #835):
@@ -200,6 +205,8 @@ export function PointCorrection({ place, onDone, onCancel }: {
     ...(redescribed ? { description: description.trim() } : {}),
   };
   const changed = renamed || moved || repictured || redescribed;
+  // Commons' own credit for the file picked, while the field still names it; none for an address typed.
+  const pickedCredit = picked && picked.url === picture.trim() ? picked.credit : undefined;
 
   const save = useMutation({
     mutationFn: () => editLocation(place.locationId, correction),
@@ -252,13 +259,22 @@ export function PointCorrection({ place, onDone, onCancel }: {
           helperText={`A Wikimedia Commons file, or a picture we host (/images/…). Empty shows ${place.objectName}’s own picture; a Commons photographer is looked up on save.`}
         />
       )}
+      {/* Offered for a place with no picture of its own: the one nothing else
+          gives a picture, which is what the geotags are for. */}
+      {place.imageUrl === null && (
+        <CommonsNearbyPicker
+          locationId={place.locationId}
+          chosenUrl={picture.trim()}
+          onPick={(file) => { setPicked(file); setPicture(file.url); }}
+        />
+      )}
       {/* The file the field names, drawn before it is claimed: a curator must see
           the photograph they are about to give this part. The stored credit only
           under the stored picture — none exists for an address not yet saved. */}
       {place.imageUrl !== undefined && picture.trim() !== '' && (
         <PictureWithCredit
           url={picture.trim()}
-          credit={repictured ? undefined : place.imageCredit}
+          credit={repictured ? pickedCredit : place.imageCredit}
           alt={place.name ?? place.objectName}
           width={250}
         />
