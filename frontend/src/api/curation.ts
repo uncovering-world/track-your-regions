@@ -11,7 +11,7 @@ import type {
   AcceptSourceResult, AdmissionResult, ComponentItemsAnswered, ComponentItemSuggestions, ContentKind, CurationLog,
   DeclineHeldResult,
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
-  LocationStateResult, ManualExperienceCreated, MergeUndone, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointItemTakenBack, PublishResult,
+  LocationStateResult, ManualExperienceCreated, MergeUndone, NearbyPictures, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointItemTakenBack, PublishResult,
   ViewsChosen, ViewSuggestions, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
 import {
@@ -26,7 +26,7 @@ import {
   postExperiencesByIdDeclineSource, postExperiencesByIdPublish, postExperiencesByIdRefuseArrival,
   postExperiencesByIdRefuseContents, postExperiencesByIdReject, postExperiencesByIdState,
   postExperiencesByIdUnrefuseContents, postExperiencesByIdUnreject, postExperiencesLocationsByLocationIdState,
-  postExperiencesLocationsByLocationIdTakeBackItem,
+  postExperiencesLocationsByLocationIdTakeBackItem, getExperiencesLocationsByLocationIdNearbyPictures,
   type CreateManualExperienceBody, type DeclineHeldBody, type EditExperienceBody, type EditLocationBody,
   type EditWorkBody, type ExperienceAdmissionBody, type LifecycleStateBody, type RefuseContentsBody,
 } from './client.generated';
@@ -38,7 +38,8 @@ export type {
   AcceptSourceResult, AdmissionResult, AnswerComponentItemsBody, AppliedPart, ComponentItemsAnswered,
   ComponentItemSuggestions, ContentKind, CurationLog, CurationLogEntry,
   DeclineHeldResult, DeclineSourceResult, DeclinedPart, ExperienceEditResult,
-  ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MergeUndone,
+  ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MergeUndone, NearbyPicture,
+  NearbyPictures,
   AdmissionPin, AdmissionPinHandedBack, AdmissionPins, HandBackPinBody,
   PartNotFound, PinQuestionAnswerBody, PinQuestionAnswered, PointItemTakenBack, ViewsChosen, ViewSuggestions, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
   RefuseContentsResult,
@@ -107,6 +108,14 @@ export async function editLocation(
   correction: EditLocationBody,
 ): Promise<LocationEditResult> {
   return patchExperiencesLocationsByLocationIdEdit(locationId, correction);
+}
+
+/**
+ * The Wikimedia Commons pictures geotagged near one point, nearest first (#1341):
+ * an offer a curator picks the point's picture from, never a write.
+ */
+export async function getNearbyPictures(locationId: number): Promise<NearbyPictures> {
+  return getExperiencesLocationsByLocationIdNearbyPictures(locationId);
 }
 
 /**

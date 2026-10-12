@@ -14,6 +14,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('../../api/curation', () => ({
   editLocation: vi.fn(),
+  getNearbyPictures: vi.fn(),
 }));
 
 vi.mock('./LocationPicker', () => ({
@@ -23,9 +24,10 @@ vi.mock('./LocationPicker', () => ({
 }));
 
 import { PointCorrection, correctionOutcome, type PlaceToCorrect } from './PointCorrection';
-import { editLocation } from '../../api/curation';
+import { editLocation, getNearbyPictures } from '../../api/curation';
 
 const mockedEdit = editLocation as unknown as ReturnType<typeof vi.fn>;
+const mockedNearby = getNearbyPictures as unknown as ReturnType<typeof vi.fn>;
 
 /** One of the nine unread components of Champagne Hillsides, as the review page lists it. */
 function place(over: Partial<PlaceToCorrect> = {}): PlaceToCorrect {
@@ -256,5 +258,56 @@ describe('correctionOutcome', () => {
     const line = correctionOutcome(place(), { name: 'X', latitude: 49.0442, longitude: 3.97 }, reply);
     expect(line).toContain('renamed to “X” and moved 1.1 km east.');
     expect(line).toContain('no longer overwrite its name or where it is.');
+  });
+});
+
+describe('PointCorrection: a picture picked from Commons nearby (#1341)', () => {
+  const RAVINTOLA = 'http://commons.wikimedia.org/wiki/Special:FilePath/Paimion%20parantola%20ravintola.jpg';
+  const credit = { author: 'Mikkoau', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null };
+  const paimio = (over: Partial<PlaceToCorrect> = {}) => place({
+    locationId: 7029, objectName: 'The Architectural Works of Alvar Aalto', name: 'Paimio Sanatorium', imageUrl: null, ...over,
+  });
+
+  beforeEach(() => {
+    mockedNearby.mockReset();
+    mockedNearby.mockResolvedValue({
+      radiusM: 300,
+      pictures: [{ file: 'Paimion parantola ravintola.jpg', url: RAVINTOLA, distanceM: 8, credit }],
+    });
+  });
+
+  it('asks Commons only when the curator opens the offer, and saves the file picked through the edit', async () => {
+    renderForm(paimio());
+    expect(mockedNearby).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Pick a picture from Commons nearby' }));
+    const tile = await screen.findByRole('button', { name: 'Use Paimion parantola ravintola.jpg, 8 m from the point' });
+    expect(mockedNearby).toHaveBeenCalledWith(7029);
+    expect(screen.getByText('8 m away')).toBeInTheDocument();
+
+    fireEvent.click(tile);
+    expect(screen.getByLabelText('Picture')).toHaveValue(RAVINTOLA);
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(7029, { imageUrl: RAVINTOLA }));
+  });
+
+  it('is not offered where the place already has a picture of its own, or where the caller does not know', () => {
+    renderForm(paimio({ imageUrl: RAVINTOLA, imageCredit: credit }));
+    expect(screen.queryByRole('button', { name: 'Pick a picture from Commons nearby' })).not.toBeInTheDocument();
+  });
+
+  it('offers to ask again when Commons did not answer', async () => {
+    mockedNearby.mockRejectedValueOnce(new Error('Wikimedia Commons did not answer — try again in a moment'));
+    renderForm(paimio());
+    fireEvent.click(screen.getByRole('button', { name: 'Pick a picture from Commons nearby' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('button', { name: 'Use Paimion parantola ravintola.jpg, 8 m from the point' })).toBeInTheDocument();
+    expect(mockedNearby).toHaveBeenCalledTimes(2);
+  });
+
+  it('says so when nothing is geotagged near the point', async () => {
+    mockedNearby.mockResolvedValue({ radiusM: 300, pictures: [] });
+    renderForm(paimio());
+    fireEvent.click(screen.getByRole('button', { name: 'Pick a picture from Commons nearby' }));
+    expect(await screen.findByText('No picture on Wikimedia Commons is geotagged within 300 m of this point.')).toBeInTheDocument();
   });
 });
