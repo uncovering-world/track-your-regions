@@ -281,6 +281,17 @@ export const ComponentItemProposal = z.strictObject({
 }).describe('A candidate Wikidata item for a World Heritage component whose reference no item records (#1272).');
 export type ComponentItemProposal = z.infer<typeof ComponentItemProposal>;
 
+export const SitePoint = z.strictObject({
+  locationId: z.number().int(),
+  name: z.string().nullable(),
+  ref: z.string().nullable().describe("The component's reference in the source's list."),
+  latitude: z.number().nullable(),
+  longitude: z.number().nullable(),
+  imageUrl: z.string().nullable().describe("The component's own picture, where it has one."),
+  imageCredit: ImageCredit.nullable(),
+}).describe('One of the places a site is made of (#1342).');
+export type SitePoint = z.infer<typeof SitePoint>;
+
 const Verdict = z.enum(['admitted', 'refused']);
 
 export const PinQuestion = z.strictObject({
@@ -373,6 +384,10 @@ export const ReviewQueueItem = z.strictObject({
   component_items: z.array(ComponentItemProposal).nullable().optional().describe(
     "The candidate items of the site's components, the points in the source's order and the better candidate first"
     + ' (#1272). `component-items` items only.',
+  ),
+  site_points: z.array(SitePoint).nullable().optional().describe(
+    'Every place the site is made of, in the source\'s order, each with its own picture where it has one: what the'
+    + ' card\'s map draws around the candidates (#1342). `component-items` items only.',
   ),
   pin_question: PinQuestion.nullable().optional().describe('`pin-question` items only (#1367).'),
 }).describe('An object waiting on a curator, or one a curator can take a verdict back from.');

@@ -8057,6 +8057,34 @@ export interface SourceViewField {
 }
 
 /**
+ * One of the places a site is made of (#1342).
+ */
+export interface SitePoint {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  locationId: number;
+  /** @nullable */
+  name: string | null;
+  /**
+     * The component's reference in the source's list.
+     * @nullable
+     */
+  ref: string | null;
+  /** @nullable */
+  latitude: number | null;
+  /** @nullable */
+  longitude: number | null;
+  /**
+     * The component's own picture, where it has one.
+     * @nullable
+     */
+  imageUrl: string | null;
+  imageCredit: ImageCredit | null;
+}
+
+/**
  * An object waiting on a curator, or one a curator can take a verdict back from.
  */
 export interface ReviewQueueItem {
@@ -8189,6 +8217,8 @@ export interface ReviewQueueItem {
   quiet_fields?: QuietField[];
   /** The candidate items of the site's components, the points in the source's order and the better candidate first (#1272). `component-items` items only. */
   component_items?: ComponentItemProposal[] | null;
+  /** Every place the site is made of, in the source's order, each with its own picture where it has one: what the card's map draws around the candidates (#1342). `component-items` items only. */
+  site_points?: SitePoint[] | null;
   /** `pin-question` items only (#1367). */
   pin_question?: PinQuestion | null;
 }

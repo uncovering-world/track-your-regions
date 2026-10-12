@@ -125,6 +125,26 @@ describe("a site's candidate component items (#1272)", () => {
     expect(await componentItemsSourceIds(SITE)).toEqual([1]);
   });
 
+  it('carries every place the site is made of, its own picture with it, and no point gone from the world (#1342)', async () => {
+    await pool.query(
+      `UPDATE experience_locations SET image_url = $2, metadata = jsonb_build_object('imageCredit', $3::jsonb) WHERE id = $1`,
+      [points.buciumi, PICTURE, JSON.stringify(CREDIT)],
+    );
+    const lost = await point('9850-004', 'Washed away', 46.95, 22.95, null);
+    await pool.query(`UPDATE experience_locations SET existence = 'lost' WHERE id = $1`, [lost]);
+
+    const row = await card();
+    expect(row.site_points.map((p: { locationId: number }) => p.locationId))
+      .toEqual([points.bologa, points.buciumi, points.resolved]);
+    expect(row.site_points[0]).toEqual({
+      locationId: points.bologa, name: 'Bologa', ref: '9850-001', latitude: 46.8853, longitude: 22.8752,
+      imageUrl: null, imageCredit: null,
+    });
+    expect(row.site_points[1]).toMatchObject({ imageUrl: PICTURE, imageCredit: CREDIT });
+    // The count the header says is the same set the map draws.
+    expect(row.offered_locations).toBe(row.site_points.length);
+  });
+
   it("confirms a candidate as the curator's choice with what the item gives the point, and turns another down", async () => {
     const outcome = await answerComponentItemsUnderLock(SITE, curatorId, null, [
       { proposalId: proposals.fort, answer: 'accepted' },

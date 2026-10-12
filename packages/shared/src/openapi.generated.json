@@ -28729,6 +28729,20 @@
               }
             ]
           },
+          "site_points": {
+            "description": "Every place the site is made of, in the source's order, each with its own picture where it has one: what the card's map draws around the candidates (#1342). `component-items` items only.",
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SitePoint"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "pin_question": {
             "description": "`pin-question` items only (#1367).",
             "anyOf": [
@@ -29110,6 +29124,69 @@
         ],
         "additionalProperties": false,
         "description": "The finds dug up at a site, and where they are shown."
+      },
+      "SitePoint": {
+        "type": "object",
+        "properties": {
+          "locationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ref": {
+            "description": "The component's reference in the source's list.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latitude": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "longitude": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "imageUrl": {
+            "description": "The component's own picture, where it has one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "imageCredit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCredit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "locationId",
+          "name",
+          "ref",
+          "latitude",
+          "longitude",
+          "imageUrl",
+          "imageCredit"
+        ],
+        "additionalProperties": false,
+        "description": "One of the places a site is made of (#1342)."
       },
       "SmartFlattenResult": {
         "anyOf": [

@@ -11,7 +11,7 @@
 
 import type {
   ChangedField, ComponentItemProposal, CountedWork, AnsweredPoint, HeldPart, PendingPoint, PendingWork, PinQuestion,
-  ProposedField, QuietField, RefusedPoint, RefusedWork, ReviewQueueItem, SourceViewField, WithdrawnPoint,
+  ProposedField, QuietField, RefusedPoint, RefusedWork, ReviewQueueItem, SitePoint, SourceViewField, WithdrawnPoint,
 } from '../../api/responses/reviewQueue.js';
 import type { ImageCredit } from '../../api/responses/experiences.js';
 import type { CheckValue } from '../../db/schema.generated.js';
@@ -78,6 +78,7 @@ export interface QueueRow {
   source_views?: SourceViewField[] | null;
   quiet_fields?: QuietField[];
   component_items?: ComponentItemProposal[] | null;
+  site_points?: SitePoint[] | null;
   /** Postgres's jsonb renders the dates as strings, in the schema's shape. */
   pin_question?: PinQuestion | null;
 }
@@ -199,6 +200,7 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     source_views: row.source_views,
     quiet_fields: row.quiet_fields,
     component_items: row.component_items,
+    site_points: row.site_points,
     pin_question: row.pin_question,
   };
 }
