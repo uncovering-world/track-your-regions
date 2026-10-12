@@ -9,6 +9,7 @@ import { defineRoute } from '../api/route.js';
 import {
   AcceptSourceResult,
   AdmissionResult,
+  PinQuestionAnswered,
   ComponentItemsAnswered,
   ComponentItemSuggestions,
   CurationLog,
@@ -74,6 +75,7 @@ import {
   setRunAside,
   bringRunBack,
   setExperienceAdmission,
+  answerPinQuestion,
   setExperienceState,
   setLocationState,
   editLocation,
@@ -105,6 +107,7 @@ import {
   reviewQueueQuerySchema,
   syncLogIdParamSchema,
   experienceAdmissionBodySchema,
+  pinQuestionAnswerBodySchema,
   refuseArrivalBodySchema,
   refuseContentsBodySchema,
   reviewAnswerBodySchema,
@@ -461,6 +464,16 @@ export const experienceCurationRoutes = [
     body: experienceAdmissionBodySchema,
     response: AdmissionResult,
     handler: setExperienceAdmission,
+  }),
+  // The other answer about a place's admission (#1367): a pin kept, or the
+  // rule's verdict written in its place. Limited as the refusal's answer is.
+  defineRoute({
+    method: 'post', path: '/:id/admission-pin', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Keep a curator\'s admission pin over what a run now says, or let the rule decide',
+    params: idParamSchema,
+    body: pinQuestionAnswerBodySchema,
+    response: PinQuestionAnswered,
+    handler: answerPinQuestion,
   }),
   // Joined the limited set when accepting a coordinate stopped being a pure claim
   // release: it puts the object's pin back on the source's coordinate, and a pin

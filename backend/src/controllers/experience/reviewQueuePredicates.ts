@@ -17,7 +17,9 @@
  * the other (`db/readerPredicates.ts` sets the same rule).
  */
 
-import { MEMBERSHIPS, admissionAnsweredSql, membershipAdmittedSql, membershipOfferedSql } from '../../db/membership.js';
+import {
+  MEMBERSHIPS, admissionAnsweredSql, admissionPinnedSql, membershipAdmittedSql, membershipOfferedSql,
+} from '../../db/membership.js';
 import { openViewFieldsSql } from '../../db/sourceViews.js';
 import { CHANGESET_LANDED_SQL } from '../../services/sync/syncLogMarkers.js';
 import {
@@ -223,4 +225,15 @@ export function componentItemsOpenSql(e = 'e'): string {
     AND EXISTS (SELECT 1 FROM experience_component_item_proposals p
                   JOIN experience_locations el ON el.id = p.location_id
                  WHERE el.experience_id = ${e}.id AND ${openProposalSql('p', 'el')})`;
+}
+
+/**
+ * `pin-question`: a curator's admission pin a run no longer agrees with
+ * (#1367, `questionPins`), on a membership `m`. The row's admission is the
+ * curator's answer and stays so until someone answers the question; a pin
+ * handed back takes its question with it, which the schema holds
+ * (`experience_kind_memberships_question_check`).
+ */
+export function pinQuestionOpenSql(m = 'm'): string {
+  return `${admissionPinnedSql(m)} AND ${m}.admission_questioned_at IS NOT NULL`;
 }

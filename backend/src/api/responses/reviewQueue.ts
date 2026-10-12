@@ -276,6 +276,20 @@ export const ComponentItemProposal = z.strictObject({
 }).describe('A candidate Wikidata item for a World Heritage component whose reference no item records (#1272).');
 export type ComponentItemProposal = z.infer<typeof ComponentItemProposal>;
 
+const Verdict = z.enum(['admitted', 'refused']);
+
+export const PinQuestion = z.strictObject({
+  answer: Verdict.describe("The curator's answer, which the membership holds: put back or kept out."),
+  answeredVerdict: Verdict.nullable().describe('What the run said when the curator answered.'),
+  answeredReason: z.string().nullable().describe("That run's reason for a refusal, in the rule's words."),
+  askedVerdict: Verdict.describe('What a run says now.'),
+  askedReason: z.string().nullable().describe('Its reason for a refusal; null for an admission.'),
+  askedAt: timestamp.describe('When a run first asked this question.'),
+  answeredAt: timestamp.nullable().describe("When the curator gave the answer the pin stands on."),
+  note: z.string().nullable().describe('The note given with it.'),
+}).describe("A curator's admission pin a run no longer agrees with (#1367).");
+export type PinQuestion = z.infer<typeof PinQuestion>;
+
 export const ReviewQueueItem = z.strictObject({
   id: z.number().int(),
   external_id: z.string(),
@@ -355,6 +369,7 @@ export const ReviewQueueItem = z.strictObject({
     "The candidate items of the site's components, the points in the source's order and the better candidate first"
     + ' (#1272). `component-items` items only.',
   ),
+  pin_question: PinQuestion.nullable().optional().describe('`pin-question` items only (#1367).'),
 }).describe('An object waiting on a curator, or one a curator can take a verdict back from.');
 export type ReviewQueueItem = z.infer<typeof ReviewQueueItem>;
 
@@ -403,6 +418,7 @@ export const ReviewQueue = z.strictObject({
   conflicts: z.array(ReviewQueueItem),
   sources: z.array(ReviewQueueItem).describe('Places two data sources describe differently (#1246).'),
   componentItems: z.array(ReviewQueueItem).describe('Serial sites whose components have candidate Wikidata items (#1272).'),
+  pinQuestions: z.array(ReviewQueueItem).describe("Curators' admission pins a run no longer agrees with (#1367)."),
   arrivals: z.array(ReviewQueueItem),
   held: z.array(ReviewQueueItem),
   contents: z.array(ReviewQueueItem).describe('One per place and membership holding unread rows it placed (#1290).'),
