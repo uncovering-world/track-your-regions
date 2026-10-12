@@ -14,6 +14,7 @@
  */
 
 import { FIND_RECORD_CLASSES, type CandidateItem } from './componentItemMatching.js';
+import { REGISTER_CODES, type ItemCode } from './componentItemRegisters.js';
 import { askWikipediaOnce } from './wikipediaCategories.js';
 import { qleverWikidataQuery } from './qleverWikidata.js';
 import {
@@ -96,6 +97,31 @@ export async function classesOfItems(items: readonly string[], hooks: QueryHooks
     }
   }
   return classes;
+}
+
+/**
+ * The national register codes the given items carry (`REGISTER_CODES`, #1340),
+ * asked only of the items a pass proposes: a handful of questions to the
+ * query service, never to QLever, whose budget is the near search's.
+ */
+export async function registerCodesOf(items: readonly string[], hooks: QueryHooks): Promise<Map<string, ItemCode[]>> {
+  const codes = new Map<string, ItemCode[]>();
+  const properties = REGISTER_CODES.map(r => `wdt:${r.property}`).join(' ');
+  for (let i = 0; i < items.length; i += BATCH) {
+    if (hooks.isCancelled?.()) break;
+    const values = items.slice(i, i + BATCH).map(item => `wd:${item}`).join(' ');
+    const rows = await ask(`SELECT ?item ?property ?code WHERE {
+      VALUES ?item { ${values} }
+      VALUES ?property { ${properties} }
+      ?item ?property ?code .
+    }`, hooks);
+    for (const row of rows) {
+      const item = itemOf(row.item!.value);
+      const code = { property: itemOf(row.property!.value), code: row.code!.value };
+      codes.set(item, [...(codes.get(item) ?? []), code].sort((a, b) => a.property.localeCompare(b.property) || a.code.localeCompare(b.code)));
+    }
+  }
+  return codes;
 }
 
 /**

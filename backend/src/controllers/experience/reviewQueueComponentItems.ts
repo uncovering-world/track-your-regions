@@ -3,8 +3,10 @@
  * which has a candidate Wikidata item (#1272): one card per site, a row per
  * candidate, grouped by the point it is proposed for — the item by its label
  * and id, how far from the point it stands and where, how alike the names are,
- * whether they are the same name at the same spot (`exact`), and the rule that
- * found it (`basis`).
+ * whether they are the same name at the same spot (`exact`), the rule that
+ * found it (`basis`), and its national register code with whether the code's
+ * group disagrees with the site's (#1340), a disagreeing candidate below the
+ * ones that agree.
  *
  * Which candidates are asked is `openProposalSql` (`reviewQueuePredicates.ts`),
  * the one rule the keys phase and the answer (`componentItemController.ts`)
@@ -42,8 +44,10 @@ const CANDIDATES = `(SELECT jsonb_agg(jsonb_build_object(
            'basis', p.basis,
            'itemLatitude', ST_Y(p.item_location),
            'itemLongitude', ST_X(p.item_location),
+           'registerCode', p.register_code,
+           'registerDisagrees', p.register_disagrees,
            'proposedAt', p.proposed_at)
-         ORDER BY el.ordinal NULLS LAST, el.id, p.exact DESC, p.distance_m, p.id)
+         ORDER BY el.ordinal NULLS LAST, el.id, p.exact DESC, p.register_disagrees, p.distance_m, p.id)
        FROM experience_component_item_proposals p
        JOIN experience_locations el ON el.id = p.location_id
       WHERE el.experience_id = e.id AND ${openProposalSql('p', 'el')})`;

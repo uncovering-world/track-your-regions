@@ -18,6 +18,8 @@ const REFUSED_ITEM = 'Q98403';
 const STALE_ITEM = 'Q98404';
 const RESOLVED_ITEM = 'Q98409';
 const CASTRUM = 'Q88205';
+/** The castrum at Gresia, whose label holds the component's place name and little else of its (#1340). */
+const GRESIA_ITEM = 'Q98405';
 
 const OTHER_SITES_PART = 'Q98410';
 const parts: CandidateItem[] = [
@@ -54,6 +56,8 @@ vi.mock('./componentItemQueries.js', async (importOriginal) => ({
   placesOf: vi.fn(async () => new Map<string, StandingPlace[]>()),
   // The items carrying a component's number: none, unless a test names them.
   componentNumbers: vi.fn(async () => [] as CandidateItem[]),
+  // The register codes the proposed items carry: none, unless a test names them.
+  registerCodesOf: vi.fn(async () => new Map()),
   // The labels come from Wikidata's API, read only for the items the distance leaves.
   labelsOf: vi.fn(async (items: string[]) => new Map(items.map(item => {
     const all = [...parts, ...nearby, ...numbered].find(c => c.item === item)?.labels ?? [];
@@ -122,6 +126,7 @@ beforeEach(async () => {
   vi.mocked(queries.itemsInBoxes).mockImplementation(async () => nearby.map(c => ({ ...c, labels: [] })));
   vi.mocked(queries.placesOf).mockReset().mockImplementation(async () => new Map<string, StandingPlace[]>());
   vi.mocked(queries.componentNumbers).mockReset().mockImplementation(async () => []);
+  vi.mocked(queries.registerCodesOf).mockReset().mockImplementation(async () => new Map());
   // A test that names its own labels must not leave them to the next one.
   vi.mocked(queries.labelsOf).mockImplementation(async (items: readonly string[]) => new Map(items.map(item => {
     const all = [...parts, ...nearby, ...numbered].find(c => c.item === item)?.labels ?? [];
@@ -169,6 +174,40 @@ describe('findComponentItems', () => {
       { location_id: points.bologa, wikidata_item: BOLOGA_ITEM, basis: 'near', exact: false, answer: null },
       { location_id: points.buciumi, wikidata_item: REFUSED_ITEM, basis: 'near', exact: false, answer: 'refused' },
     ]);
+  });
+
+  it("proposes by a place name of the component's where the name rule finds nothing, with the item's register code (#1340)", async () => {
+    vi.mocked(queries.itemsInBoxes).mockImplementation(async () => [
+      { item: BOLOGA_ITEM, labels: [], coords: [[46.8851, 22.8754]], classes: [CASTRUM] },
+      { item: GRESIA_ITEM, labels: [], coords: [[44.166667, 24.916667]], classes: [CASTRUM] },
+    ]);
+    vi.mocked(queries.labelsOf).mockImplementation(async (items: readonly string[]) => new Map(items.map(item => {
+      const all = item === GRESIA_ITEM ? ['Castrul roman de la Gresia'] : [...parts, ...nearby].find(c => c.item === item)?.labels ?? [];
+      return [item, { all, english: all[0] ?? null }];
+    })));
+    vi.mocked(queries.registerCodesOf).mockImplementation(async () => new Map([
+      [GRESIA_ITEM, [{ property: 'P1770', code: 'TR-I-s-B-14205' }]],
+      [BOLOGA_ITEM, [{ property: 'P1770', code: 'CJ-I-s-A-07104' }]],
+    ]));
+    const gresia = await point('9840-005', 'Gresia - La Biserică', 44.1666666667, 24.9166666667, null);
+
+    await run();
+
+    const row = (await pool.query(
+      `SELECT basis, register_code, register_disagrees FROM experience_component_item_proposals WHERE location_id = $1`, [gresia],
+    )).rows;
+    expect(row).toEqual([{ basis: 'toponym', register_code: 'LMI TR-I-s-B-14205', register_disagrees: false }]);
+  });
+
+  it('writes its proposals without codes when the register read fails, whatever the failure', async () => {
+    vi.mocked(queries.registerCodesOf).mockRejectedValue(new Error('the wait budget is spent'));
+
+    await run();
+
+    const rows = (await pool.query(
+      `SELECT wikidata_item, register_code FROM experience_component_item_proposals WHERE location_id = $1`, [points.bologa],
+    )).rows;
+    expect(rows).toEqual([{ wikidata_item: BOLOGA_ITEM, register_code: null }]);
   });
 
   it('writes nothing on a dry pass', async () => {

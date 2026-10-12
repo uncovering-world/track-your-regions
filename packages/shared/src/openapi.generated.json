@@ -16793,9 +16793,10 @@
             "enum": [
               "part_of",
               "near",
-              "numbered"
+              "numbered",
+              "toponym"
             ],
-            "description": "The rule that found it: the item says it is part of the site, lies near the point and is of its kind, or carries the component's number under another inscription."
+            "description": "The rule that found it: the item says it is part of the site, lies near the point and is of its kind, carries the component's number under another inscription, or lies near the point, is of its kind and its label holds a place name of the component's."
           },
           "itemLatitude": {
             "description": "Where the item stands, nearest the point; null on a proposal that kept none.",
@@ -16809,6 +16810,17 @@
               "number",
               "null"
             ]
+          },
+          "registerCode": {
+            "description": "The item's national register code, the register named first (\"LMI CJ-I-s-A-07208\"); null where it carries none the finder reads (#1340).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "registerDisagrees": {
+            "type": "boolean",
+            "description": "Whether the code's group differs from the one most of the site's coded candidates carry: an architecture entry offered for a Roman fort."
           },
           "proposedAt": {
             "type": "string",
@@ -16832,6 +16844,8 @@
           "basis",
           "itemLatitude",
           "itemLongitude",
+          "registerCode",
+          "registerDisagrees",
           "proposedAt"
         ],
         "additionalProperties": false,
