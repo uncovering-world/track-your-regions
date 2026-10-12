@@ -295,7 +295,9 @@ describe('a visible point under a gated source', () => {
     // The same guard the object's upsert puts on its columns: the claim, or the
     // gate over a row a reader can see — read through the experience, as the
     // insert arm reads the gate, so the two cannot disagree.
-    expect(kept).toMatch(/name = CASE WHEN el\.curated_fields \? 'name'\s+OR \(\(SELECT requires_curation FROM experience_sources WHERE id = \$\d+\)[\s\S]*el\.curation_state <> 'pending'\)\s+THEN el\.name ELSE i\.name END/);
+    // A qualifier added to the stored name passes the gate (#1353).
+    expect(kept).toMatch(/name = CASE WHEN el\.curated_fields \? 'name'\s+OR \(\(\(SELECT requires_curation FROM experience_sources WHERE id = \$\d+\)[\s\S]*el\.curation_state <> 'pending'\)\s+AND NOT COALESCE\(length\(el\.name\) > 0[\s\S]*left\(i\.name, length\(el\.name\)\) = el\.name[\s\S]*substr\(i\.name, length\(el\.name\) \+ 1\) ~ [\s\S]*, false\)\) THEN el\.name ELSE i\.name END/);
+    expect(kept).toMatch(/RETURNING[\s\S]*AS name_passed/);
     // The guard's own expression answers for the report, on the row the
     // statement locked — the arrangement that keeps the write and the record
     // from disagreeing about one run (experienceUpsert.ts, #519).

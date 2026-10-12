@@ -206,6 +206,18 @@ export async function writeExperienceLocations(
    */
   const heldPoint = `((SELECT requires_curation FROM experience_sources WHERE id = ${sourceParam})
                      AND ${publishedContentSql('el')})`;
+  /**
+   * A name the source extended with a qualifier and nothing removed passes the
+   * gate (#1353, `GatePass`, ADR-0099): the stored name, not empty, followed by
+   * a separator — `, `, ` (` or a spaced dash — and more. *Church of All
+   * Saints* → *Church of All Saints, Blizne* is the same church told apart from
+   * its namesakes; *Church of St Mary* → *Church of St Mary Magdalene* is
+   * another dedication, and is asked. Null-safe, since a point may have had no
+   * name.
+   */
+  const qualifierAdded = (stored: string) => `COALESCE(length(${stored}) > 0
+                     AND left(i.name, length(${stored})) = ${stored}
+                     AND substr(i.name, length(${stored}) + 1) ~ '^(, | \\(| [-–] ).', false)`;
 
   /**
    * One stored row per incoming point, and one incoming point per stored row.
@@ -428,7 +440,7 @@ export async function writeExperienceLocations(
            -- a curator answers, so the object takes this path per run while it
            -- is held -- the cost ADR-0029 decision 5 already accepts for a claimed
            -- point, and the same re-proposal the object's own held field makes.
-           name = ${claimed('name')} OR ${heldPoint} THEN el.name ELSE i.name END,
+           name = ${claimed('name')} OR (${heldPoint} AND NOT ${qualifierAdded('el.name')}) THEN el.name ELSE i.name END,
            source_membership = 'present',
            -- The coordinate the source is offering, on the runs that reach this arm.
            -- The source's value is the more precise of the two by construction — it is
@@ -465,7 +477,8 @@ export async function writeExperienceLocations(
                  el.external_ref,
                  -- The guard's own expression, so the record cannot disagree
                  -- with the write about whether the name was written.
-                 ${heldPoint} AS was_held`,
+                 (${heldPoint} AND NOT ${qualifierAdded('p.old_name')}) AS was_held,
+                 (${heldPoint} AND ${qualifierAdded('p.old_name')}) AS name_passed`,
       withSource,
     );
 

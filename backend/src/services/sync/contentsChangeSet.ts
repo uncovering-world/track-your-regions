@@ -107,6 +107,7 @@ export function pointChanges(
   after: PointSnapshot,
   curatedFields: readonly string[] = [],
   held = false,
+  namePassed = false,
 ): FieldChange[] {
   const changes: FieldChange[] = [];
 
@@ -134,7 +135,11 @@ export function pointChanges(
     ));
   }
 
-  return underClaims(changes, curatedFields, held ? POINT_HELD_FIELDS : NONE_HELD);
+  const out = underClaims(changes, curatedFields, held ? POINT_HELD_FIELDS : NONE_HELD);
+  // A qualified name the gate let through on a point it holds says why (#1353).
+  return namePassed
+    ? out.map(f => (f.field === 'name' && !f.curatedConflict ? { ...f, passedTheGate: 'qualifier' as const } : f))
+    : out;
 }
 
 /**

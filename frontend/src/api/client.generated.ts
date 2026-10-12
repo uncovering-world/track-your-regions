@@ -1219,6 +1219,18 @@ export const ChangedFieldSignificance = {
 } as const;
 
 /**
+ * On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth.
+ */
+export type ChangedFieldPassedTheGate = typeof ChangedFieldPassedTheGate[keyof typeof ChangedFieldPassedTheGate];
+
+
+export const ChangedFieldPassedTheGate = {
+  qualifier: 'qualifier',
+  'same-file-credit': 'same-file-credit',
+  remeasured: 'remeasured',
+} as const;
+
+/**
  * One field a run proposed to change.
  */
 export interface ChangedField {
@@ -1232,6 +1244,8 @@ export interface ChangedField {
   curatedConflict?: boolean;
   /** The source's gate kept the write out of a row readers see, so a verdict is waiting (ADR-0025). */
   held?: boolean;
+  /** On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth. */
+  passedTheGate?: ChangedFieldPassedTheGate;
 }
 
 export type ChildActionType = typeof ChildActionType[keyof typeof ChildActionType];
@@ -6640,6 +6654,18 @@ export const ProposedFieldSignificance = {
 } as const;
 
 /**
+ * On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth.
+ */
+export type ProposedFieldPassedTheGate = typeof ProposedFieldPassedTheGate[keyof typeof ProposedFieldPassedTheGate];
+
+
+export const ProposedFieldPassedTheGate = {
+  qualifier: 'qualifier',
+  'same-file-credit': 'same-file-credit',
+  remeasured: 'remeasured',
+} as const;
+
+/**
  * One of the object's own fields a run proposed, as its card asks about it.
  */
 export interface ProposedField {
@@ -6653,6 +6679,8 @@ export interface ProposedField {
   curatedConflict?: boolean;
   /** The source's gate kept the write out of a row readers see, so a verdict is waiting (ADR-0025). */
   held?: boolean;
+  /** On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth. */
+  passedTheGate?: ProposedFieldPassedTheGate;
   /** False where accepting releases the claim and the next run writes it. On a `conflict` field only: a `held` field carries `held` instead, and publishing is what applies it. */
   acceptable?: boolean;
   /** Who claimed the field. Absent where the claim predates the log, or where the gate holds the field. */
