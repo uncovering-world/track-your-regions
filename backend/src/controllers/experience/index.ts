@@ -10,6 +10,7 @@ export * from './experienceFindsController.js';
 export * from './worldPointsController.js';
 export * from './curationController.js';
 export * from './lifecycleController.js';
+export * from './pinQuestionController.js';
 export * from './locationStateController.js';
 export * from './locationEditController.js';
 export * from './workEditController.js';

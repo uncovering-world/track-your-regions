@@ -106,6 +106,15 @@ export const PublishResult = publication.superRefine(placementTogether)
   .describe('What a publication did, so the page can say it before the refetch.');
 export type PublishResult = z.infer<typeof PublishResult>;
 
+export const PinQuestionAnswered = z.strictObject({
+  experienceId: z.number().int(),
+  membershipId: z.number().int(),
+  admission: z.enum(CHECK_VALUES.experience_kind_memberships.admission)
+    .describe("The verdict now standing: the curator's, kept, or the rule's, written in its place."),
+  pinned: z.boolean().describe('Whether the pin still stands: true after `keep`, false after `release`.'),
+}).describe("A curator's answer to a run that asked again about their admission pin (#1367).");
+export type PinQuestionAnswered = z.infer<typeof PinQuestionAnswered>;
+
 /**
  * Publish's own answer with the verdict in front: a curator who clicks "Put it
  * back" on an arrival gets the verdict and the publication that came with it,

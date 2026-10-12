@@ -91,13 +91,21 @@ describe('queryQueueKeys', () => {
 
   it('carries the scope filter into every branch of the union', async () => {
     await queryQueueKeys(base);
-    // Ten: conflict, two sources (#1246), arrival, held, contents, withdrawn,
+    // Eleven: conflict, two sources (#1246), arrival, held, contents, withdrawn,
     // refused, the two missing branches — the place's, and one kind's
-    // (#1264) — and component items (#1272). The scope CTE's own join reads
-    // `r.parent_region_id = s.id`, so it is not counted here, and dropping the
-    // predicate from one branch fails this.
+    // (#1264) —, component items (#1272) and pin questions (#1367). The scope
+    // CTE's own join reads `r.parent_region_id = s.id`, so it is not counted
+    // here, and dropping the predicate from one branch fails this.
     expect(lastCall()[0].match(/JOIN curator_scoped_regions s ON s\.id = er\.region_id/g))
-      .toHaveLength(10);
+      .toHaveLength(11);
+  });
+
+  it("files a pin question under the run that asked it, dated when it was first asked (#1367)", async () => {
+    await queryQueueKeys(base);
+    const [sql] = lastCall();
+    expect(sql).toContain("SELECT 'pin-question', 8, e.id, e.name");
+    expect(sql).toContain('(array_agg(m.admission_question_sync_log_id ORDER BY m.admission_questioned_at DESC))[1]');
+    expect(sql).toContain("m.curated_fields ? 'admission' AND m.admission_questioned_at IS NOT NULL");
   });
 
   it('dates a site\'s candidate items by the newest proposal and files them under no run (#1272)', async () => {

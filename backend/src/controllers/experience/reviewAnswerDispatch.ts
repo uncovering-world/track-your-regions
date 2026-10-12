@@ -18,6 +18,7 @@
  * | conflict | take the source's value for every open field | keep ours for every open field | — |
  * | sources | refused: which source is chosen on the card | keep what the place shows for every open field | — |
  * | component-items | confirm the exact candidates: the same name at the same spot | turn down every open candidate | — |
+ * | pin-question | refused: a pin is a person's answer, answered on its card | refused, the same | — |
  * | refused | keep it out (confirm, unpinned) | put it back for now (override, unpinned; publishes an arrival) | — |
  * | missing | former: delisted, still there | the object stays: false alarm | no longer exists |
  * | missing, one kind (#1264) | no longer that kind (former, or out of the kind) | it stays in the kind | — |
@@ -101,6 +102,9 @@ export async function answerRow(
     case 'conflict': return answerConflict(who, answer);
     case 'sources': return answerSources(who, answer);
     case 'component-items': return answerComponentItems(who, answer);
+    // A pin is a person's answer to one row, and a batch neither makes one nor
+    // takes one back (ADR-0067, ADR-0096): the card asks it (#1367).
+    case 'pin-question': return refused(409, 'A pin is answered on its own card, where the curator\'s answer and the run\'s are read side by side');
     case 'refused': return answerRefused(who, answer);
     case 'missing': return answerMissing(who, answer);
     case 'withdrawn': return answerWithdrawn(who, answer);

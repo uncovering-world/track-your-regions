@@ -61,7 +61,7 @@ import { contentsWaitingSql, linkMembershipSql, pointMembershipSql, unreadLinkSq
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import {
   arrivalOpenSql, claimKeySql, componentItemsOpenSql, conflictChangeOpenSql, heldOpenSql,
-  membershipMissingOpenSql, missingOpenSql, openProposalSql, refusedOpenSql, sourcesOpenSql,
+  membershipMissingOpenSql, missingOpenSql, openProposalSql, pinQuestionOpenSql, refusedOpenSql, sourcesOpenSql,
   withdrawnContainerOpenSql, withdrawnPointOpenSql,
 } from './reviewQueuePredicates.js';
 
@@ -73,10 +73,13 @@ import {
  * what has left, then the two verdicts a rule already took. Last, the
  * candidate items of a site's components (#1272): every other question hides
  * or misdescribes something readers see, and this one adds what a component's
- * item would give it.
+ * item would give it. A pin a run no longer agrees with (#1367) comes after
+ * all: the place is as a curator left it, and the question is whether that
+ * answer still stands.
  */
 export const KIND_RANK: Record<QueueKind, number> = {
   conflict: 1, sources: 2, waiting: 3, withdrawn: 4, refused: 5, missing: 6, 'component-items': 7,
+  'pin-question': 8,
 };
 
 // The words a `kind` chip may carry, and the only ones, are `QUEUE_KINDS` and
@@ -387,6 +390,24 @@ function componentItemsKeysSql(membershipScopeFilter: string): string {
     GROUP BY e.id, e.name`;
 }
 
+/**
+ * A curator's admission pin a run no longer agrees with (#1367,
+ * `pinQuestionOpenSql`): one row per place, in scope by the source of the
+ * membership asked about, under the run that asked and dated by when it first
+ * asked — a later run asking the same keeps that date.
+ */
+function pinQuestionKeysSql(membershipScopeFilter: string): string {
+  return `
+    SELECT 'pin-question', ${KIND_RANK['pin-question']}, e.id, e.name, array_agg(DISTINCT m.source_id),
+           (array_agg(m.admission_question_sync_log_id ORDER BY m.admission_questioned_at DESC))[1],
+           max(m.admission_questioned_at), ARRAY[]::text[]
+    FROM experiences e
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
+    WHERE ${pinQuestionOpenSql('m')}
+      AND ${membershipScopeFilter}
+    GROUP BY e.id, e.name`;
+}
+
 /** The order, over the union's own columns. `prefix` qualifies them for `json_agg`. */
 function orderSql(sort: 'date' | 'question', prefix = ''): string {
   const date = `COALESCE(${prefix}asked_at, '-infinity') DESC`;
@@ -620,6 +641,7 @@ export async function queryQueueKeys(
     UNION ALL${refusedKeysSql(membershipScopeFilter)}
     UNION ALL${missingKeysSql(scopeFilter, membershipScopeFilter)}
     UNION ALL${componentItemsKeysSql(membershipScopeFilter)}
+    UNION ALL${pinQuestionKeysSql(membershipScopeFilter)}
   )
 , searched AS (
     SELECT k.kind, k.rank, k.id, k.name, k.source_ids, k.run_id, k.asked_at, k.subs

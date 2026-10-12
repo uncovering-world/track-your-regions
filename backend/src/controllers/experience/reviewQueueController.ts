@@ -29,6 +29,7 @@ import {
 import { queryRefusedParts } from './reviewQueueRefusedParts.js';
 import { querySources } from './reviewQueueSources.js';
 import { queryComponentItems } from './reviewQueueComponentItems.js';
+import { queryPinQuestions } from './reviewQueuePinQuestions.js';
 import { queryConflicts } from './reviewQueueConflicts.js';
 import {
   QUEUE_KINDS, WAITING_SUBS, likeParam, queryQueueKeys, queueScopeSql,
@@ -370,7 +371,7 @@ export async function getReviewQueue(
     LEFT JOIN LATERAL (
       SELECT cl.created_at AS at, cl.details->>'note' AS note
         FROM experience_curation_log cl
-       WHERE cl.experience_id = e.id AND cl.action IN ('admission_confirmed', 'arrival_refused', 'marked_former', 'admission_pin_released')
+       WHERE cl.experience_id = e.id AND cl.action IN ('admission_confirmed', 'arrival_refused', 'marked_former', 'admission_pin_released', 'admission_pin_kept')
          AND (cl.details->>'membershipId')::int = m.id
        ORDER BY cl.created_at DESC
        LIMIT 1
@@ -419,6 +420,13 @@ export async function getReviewQueue(
   // hydrated by the page's ids as the sources card is.
   const componentItemsIds = idsOf('component-items');
   const componentItems = await hydrate(componentItemsIds, () => queryComponentItems(componentItemsIds));
+  // A curator's admission pin a run no longer agrees with (#1367), one card
+  // per place with a question per membership, scoped per membership as the
+  // refusal card is.
+  const pinQuestionIds = idsOf('pin-question');
+  const pinQuestions = await hydrate(pinQuestionIds, () => queryPinQuestions(
+    pinQuestionIds, { params, membershipSourceFilter, membershipScopeFilter },
+  ));
 
   // What counts as `arrival`: the reasoning is on `arrivalOpenSql`
   // (`reviewQueuePredicates.ts`).
@@ -577,6 +585,7 @@ export async function getReviewQueue(
     conflicts: cards(conflicts),
     sources: cards(sources),
     componentItems: cards(componentItems),
+    pinQuestions: cards(pinQuestions),
     arrivals: cards(arrivals),
     held: cards(held),
     contents: cards(contents),

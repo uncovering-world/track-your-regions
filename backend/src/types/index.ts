@@ -45,12 +45,22 @@ export const getSubdivisionsQuerySchema = z.object({
   offset: offsetSchema,
 });
 
+/**
+ * Search text: no NUL byte, which Postgres cannot hold in text and refuses
+ * (22021). Declared on the schema, so a request carrying one is refused as
+ * the schema's own 400 and the OpenAPI document does not promise it is
+ * accepted — the API contract lane holds the route to that promise.
+ */
+// eslint-disable-next-line sonarjs/no-control-regex -- the NUL byte is the point: a pattern is what the OpenAPI document carries, a refine is not
+const NO_NUL = /^[^\u0000]*$/;
+const searchText = (min: number, max: number) => z.string().min(min).max(max).regex(NO_NUL, 'A NUL byte cannot be searched for');
+
 export const getGeometryQuerySchema = z.object({
   detail: detailLevelSchema,
 });
 
 export const searchQuerySchema = z.object({
-  query: z.string().max(255).optional().transform(v => v ?? ''),
+  query: searchText(0, 255).optional().transform(v => v ?? ''),
   worldViewId: worldViewIdSchema,
   limit: limitSchema,
 });
@@ -212,7 +222,7 @@ export const markTreasureViewedBodySchema = z.object({
 // =============================================================================
 
 export const experienceSearchQuerySchema = z.object({
-  q: z.string().min(2).max(255),
+  q: searchText(2, 255),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 
@@ -483,13 +493,14 @@ export const cacheTtlBodySchema = z.object({
  * unfiltered list (`docs/tech/addresses.md`).
  */
 export const reviewQueueQuerySchema = z.object({
-  q: z.string().trim().min(1).max(100).optional(),
+  q: z.string().trim().min(1).max(100).regex(NO_NUL, 'A NUL byte cannot be searched for').optional(),
   // Length-bounded like `cursor` and `q`: the shape alone admits a digit string
   // of any length, and the catalogue offers a handful of sources. Each id is bounded to
   // int4 by the controller, which is where the list is split — the same place a
   // `kind` word it does not know is dropped.
   source: z.string().max(200).regex(/^\d+(,\d+)*$/).optional(),
-  kind: z.string().regex(/^[a-z]+(,[a-z]+)*$/).optional(),
+  // A kind word may be hyphenated (`component-items`, `pin-question`).
+  kind: z.string().max(200).regex(/^[a-z]+(-[a-z]+)*(,[a-z]+(-[a-z]+)*)*$/).optional(),
   region: z.union([z.literal('none'), rowIdSchema]).optional(),
   run: rowIdSchema.optional(),
   aside: z.enum(['show']).optional(),
@@ -570,6 +581,23 @@ export const experienceAdmissionBodySchema = z.object({
   decision: z.enum(['confirm', 'override']),
   note: z.string().max(1000).optional(),
   membershipId: answeredMembershipSchema,
+});
+
+/**
+ * A curator's answer to a run that asked again about their admission pin
+ * (#1367): `keep` makes the pin answer what the run now says, `release` lets
+ * the rule decide. `asked` is what the card showed the run saying, compared
+ * under the lock with what is asked now, so an answer never closes a question
+ * the curator did not read.
+ */
+export const pinQuestionAnswerBodySchema = z.object({
+  decision: z.enum(['keep', 'release']),
+  membershipId: bodyRowIdSchema,
+  asked: z.object({
+    verdict: z.enum(['admitted', 'refused']),
+    reason: z.string().max(2000).nullable(),
+  }),
+  note: z.string().max(1000).optional(),
 });
 
 /**
@@ -986,7 +1014,7 @@ export const curatorActivityQuerySchema = z.object({
 });
 
 export const adminUserSearchQuerySchema = z.object({
-  q: z.string().min(2).max(255),
+  q: searchText(2, 255),
 });
 
 // =============================================================================
@@ -1035,7 +1063,7 @@ export const deleteRegionQuerySchema = z.object({
 });
 
 export const regionSearchQuerySchema = z.object({
-  query: z.string().min(2).max(255),
+  query: searchText(2, 255),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
@@ -1141,7 +1169,7 @@ export const regionGeometryDetailQuerySchema = z.object({
 // =============================================================================
 
 export const geocodeSearchQuerySchema = z.object({
-  q: z.string().min(2).max(255),
+  q: searchText(2, 255),
   limit: z.coerce.number().int().min(1).max(10).default(5),
 });
 

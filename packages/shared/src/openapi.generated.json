@@ -597,7 +597,9 @@
             "name": "query",
             "schema": {
               "type": "string",
-              "maxLength": 255
+              "minLength": 0,
+              "maxLength": 255,
+              "pattern": "^[^\\u0000]*$"
             }
           },
           {
@@ -1383,7 +1385,8 @@
             "schema": {
               "type": "string",
               "minLength": 2,
-              "maxLength": 255
+              "maxLength": 255,
+              "pattern": "^[^\\u0000]*$"
             },
             "required": true
           },
@@ -5585,7 +5588,8 @@
             "schema": {
               "type": "string",
               "minLength": 2,
-              "maxLength": 255
+              "maxLength": 255,
+              "pattern": "^[^\\u0000]*$"
             },
             "required": true
           }
@@ -10830,7 +10834,8 @@
             "schema": {
               "type": "string",
               "minLength": 2,
-              "maxLength": 255
+              "maxLength": 255,
+              "pattern": "^[^\\u0000]*$"
             },
             "required": true
           },
@@ -11825,7 +11830,8 @@
             "schema": {
               "type": "string",
               "minLength": 1,
-              "maxLength": 100
+              "maxLength": 100,
+              "pattern": "^[^\\u0000]*$"
             }
           },
           {
@@ -11842,7 +11848,8 @@
             "name": "kind",
             "schema": {
               "type": "string",
-              "pattern": "^[a-z]+(,[a-z]+)*$"
+              "maxLength": 200,
+              "pattern": "^[a-z]+(-[a-z]+)*(,[a-z]+(-[a-z]+)*)*$"
             }
           },
           {
@@ -12466,6 +12473,66 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/AdmissionResult"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/{id}/admission-pin": {
+      "post": {
+        "operationId": "postExperiencesByIdAdmissionPin",
+        "summary": "Keep a curator's admission pin over what a run now says, or let the rule decide",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PinQuestionAnswerBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PinQuestionAnswered"
                 }
               }
             }
@@ -13359,7 +13426,8 @@
             "schema": {
               "type": "string",
               "minLength": 2,
-              "maxLength": 255
+              "maxLength": 255,
+              "pattern": "^[^\\u0000]*$"
             },
             "required": true
           },
@@ -24871,6 +24939,182 @@
         "additionalProperties": false,
         "description": "A repair of one source's pictures, started in the background and followed through the sync status."
       },
+      "PinQuestion": {
+        "type": "object",
+        "properties": {
+          "answer": {
+            "type": "string",
+            "enum": [
+              "admitted",
+              "refused"
+            ],
+            "description": "The curator's answer, which the membership holds: put back or kept out."
+          },
+          "answeredVerdict": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "admitted",
+                  "refused"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What the run said when the curator answered."
+          },
+          "answeredReason": {
+            "description": "That run's reason for a refusal, in the rule's words.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "askedVerdict": {
+            "type": "string",
+            "enum": [
+              "admitted",
+              "refused"
+            ],
+            "description": "What a run says now."
+          },
+          "askedReason": {
+            "description": "Its reason for a refusal; null for an admission.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "askedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "When a run first asked this question."
+          },
+          "answeredAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the curator gave the answer the pin stands on."
+          },
+          "note": {
+            "description": "The note given with it.",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "answer",
+          "answeredVerdict",
+          "answeredReason",
+          "askedVerdict",
+          "askedReason",
+          "askedAt",
+          "answeredAt",
+          "note"
+        ],
+        "additionalProperties": false,
+        "description": "A curator's admission pin a run no longer agrees with (#1367)."
+      },
+      "PinQuestionAnswerBody": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "release"
+            ]
+          },
+          "membershipId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          },
+          "asked": {
+            "type": "object",
+            "properties": {
+              "verdict": {
+                "type": "string",
+                "enum": [
+                  "admitted",
+                  "refused"
+                ]
+              },
+              "reason": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 2000
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "verdict",
+              "reason"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "decision",
+          "membershipId",
+          "asked"
+        ]
+      },
+      "PinQuestionAnswered": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "membershipId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "admission": {
+            "type": "string",
+            "enum": [
+              "admitted",
+              "refused"
+            ],
+            "description": "The verdict now standing: the curator's, kept, or the rule's, written in its place."
+          },
+          "pinned": {
+            "type": "boolean",
+            "description": "Whether the pin still stands: true after `keep`, false after `release`."
+          }
+        },
+        "required": [
+          "experienceId",
+          "membershipId",
+          "admission",
+          "pinned"
+        ],
+        "additionalProperties": false,
+        "description": "A curator's answer to a run that asked again about their admission pin (#1367)."
+      },
       "PlaceKind": {
         "type": "object",
         "properties": {
@@ -25628,6 +25872,7 @@
                     "refused",
                     "missing",
                     "component-items",
+                    "pin-question",
                     "arrival",
                     "held",
                     "contents"
@@ -25800,7 +26045,8 @@
           "withdrawn",
           "refused",
           "missing",
-          "component-items"
+          "component-items",
+          "pin-question"
         ],
         "description": "The class of an open question, which a batch answer names a row by."
       },
@@ -27284,7 +27530,8 @@
                     "withdrawn",
                     "refused",
                     "missing",
-                    "component-items"
+                    "component-items",
+                    "pin-question"
                   ]
                 },
                 "id": {
@@ -27580,6 +27827,13 @@
             },
             "description": "Serial sites whose components have candidate Wikidata items (#1272)."
           },
+          "pinQuestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueItem"
+            },
+            "description": "Curators' admission pins a run no longer agrees with (#1367)."
+          },
           "arrivals": {
             "type": "array",
             "items": {
@@ -27725,6 +27979,7 @@
           "conflicts",
           "sources",
           "componentItems",
+          "pinQuestions",
           "arrivals",
           "held",
           "contents",
@@ -27802,7 +28057,8 @@
               "withdrawn",
               "withdrawn-answered",
               "contents-refused",
-              "component-items"
+              "component-items",
+              "pin-question"
             ]
           },
           "membership_id": {
@@ -28181,6 +28437,17 @@
                 "items": {
                   "$ref": "#/components/schemas/ComponentItemProposal"
                 }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "pin_question": {
+            "description": "`pin-question` items only (#1367).",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PinQuestion"
               },
               {
                 "type": "null"
