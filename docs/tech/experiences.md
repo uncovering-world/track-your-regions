@@ -730,6 +730,24 @@ content column but `tags` (#570) beside that column's own `curated_fields` guard
 unread is *not* held: nobody can see it, so the run refreshes it in place and the curator reviews
 the newest state rather than whatever landed first.
 
+**A rewrite a visitor would not notice passes the gate** (#1353, [ADR-0099](../decisions/0099-a-rewrite-a-visitor-would-not-notice-passes-the-gate.md), `GatePass` in `changeSet.ts`).
+Three classes were half the queue's held objects on 2026-10-10: a part's name the source extended
+with a qualifier and nothing removed — the stored name, not empty, then a comma, an opening parenthesis or a dash, each after or around a space
+(*Church of All Saints* → *Church of All Saints, Blizne* — 111 of the 114 held part names on
+2026-10-12; *Church of St Mary* → *Church of St Mary Magdalene* is another dedication and is held) —,
+a picture credit re-read for the same file under the same stated licence, on a picture no curator
+claimed (*No machine-readable author provided. Ansgar Walk* → *Ansgar Walk*), and a measurement (`MEASURED_METADATA_KEYS`, an area — never
+a year) the source re-took within `REMEASURED_SHARE`, a tenth (821.7474 → 821.748 ha). Each
+is written on a held row and filed with the written fields, carrying its class in `passedTheGate`,
+so the run's record says what moved and why nobody was asked; none raises a question, sets the held
+pointer or demotes a verified membership (`wroteContent`). On an object the rule is
+`metadataPassesTheGate`: the diff files a key by it, and the upsert merges the same keys
+(`passingMetadataKeys`, bound as `$29`) over the held `metadata` column, so the write and the
+record cannot disagree; a key the gate weighs as major (`dateInscribed`) never passes. On a part the
+location writer's keeping arm decides it in SQL (`qualifierAdded`) and returns its answer (`name_passed`) beside `was_held`. A claimed field still wins
+(ADR-0029), and every other rewrite — a name replaced, another picture, a licence changed, an area
+moved more — is held as before.
+
 **And a field of a part readers can already see is held the same way**
 ([ADR-0037](../decisions/0037-a-part-field-readers-see-is-held-like-the-objects.md)). A run rewrote a
 visible work's attribution or a visible place's name on the spot — 73 such changes on the dev database,
