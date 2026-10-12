@@ -10,6 +10,8 @@ import {
   AcceptSourceResult,
   AdmissionResult,
   PinQuestionAnswered,
+  AdmissionPins,
+  AdmissionPinHandedBack,
   ComponentItemsAnswered,
   ComponentItemSuggestions,
   CurationLog,
@@ -76,6 +78,8 @@ import {
   bringRunBack,
   setExperienceAdmission,
   answerPinQuestion,
+  listAdmissionPins,
+  handBackPin,
   setExperienceState,
   setLocationState,
   editLocation,
@@ -108,6 +112,8 @@ import {
   syncLogIdParamSchema,
   experienceAdmissionBodySchema,
   pinQuestionAnswerBodySchema,
+  admissionPinsQuerySchema,
+  handBackPinBodySchema,
   refuseArrivalBodySchema,
   refuseContentsBodySchema,
   reviewAnswerBodySchema,
@@ -340,6 +346,15 @@ export const experienceCurationRoutes = [
   // Decisions a sync run cannot make for itself: whether an object the source
   // stopped listing is delisted, destroyed, or was never gone, and whether a
   // value the source proposed should displace a curator's edit.
+  // Every admission pin in the caller's scope, or one place's (#1369): read by
+  // the review page's list and the place's curation dialog.
+  defineRoute({
+    method: 'get', path: '/review/pins', access: 'curator', cache: 'no-store',
+    summary: 'List the admission pins in the caller\'s scope, or one place\'s',
+    query: admissionPinsQuerySchema,
+    response: AdmissionPins,
+    handler: listAdmissionPins,
+  }),
   defineRoute({
     method: 'get', path: '/review/queue', access: 'curator', cache: 'no-store',
     summary: 'List the decisions sync runs left for a curator, within the caller\'s scope',
@@ -474,6 +489,17 @@ export const experienceCurationRoutes = [
     body: pinQuestionAnswerBodySchema,
     response: PinQuestionAnswered,
     handler: answerPinQuestion,
+  }),
+  // Hand back a pin with no question asked (#1369): one membership row and one
+  // log row in one transaction, limited as the pin's other answers are.
+  defineRoute({
+    method: 'post', path: '/:id/admission-pin/hand-back', access: 'curator', cache: 'no-store',
+    limiter: authenticatedLimiter,
+    summary: 'Hand back a curator\'s admission pin, leaving the row to the next run of its source',
+    params: idParamSchema,
+    body: handBackPinBodySchema,
+    response: AdmissionPinHandedBack,
+    handler: handBackPin,
   }),
   // Joined the limited set when accepting a coordinate stopped being a pure claim
   // release: it puts the object's pin back on the source's coordinate, and a pin

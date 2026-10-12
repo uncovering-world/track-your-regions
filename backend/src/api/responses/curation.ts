@@ -106,6 +106,45 @@ export const PublishResult = publication.superRefine(placementTogether)
   .describe('What a publication did, so the page can say it before the refetch.');
 export type PublishResult = z.infer<typeof PublishResult>;
 
+export const AdmissionPin = z.strictObject({
+  experienceId: z.number().int(),
+  name: z.string(),
+  membershipId: z.number().int(),
+  kindName: z.string(),
+  answer: z.enum(CHECK_VALUES.experience_kind_memberships.admission)
+    .describe("The curator's answer the pin holds: put back (`admitted`) or kept out (`refused`)."),
+  answeredReason: z.string().nullable().describe(
+    "The rule's reason the answer was given to: the refusal a put-back overrode, or the one a kept-out answer agreed"
+    + " with; null where the pin answered the run's admission (a curator's own refusal of an arrival).",
+  ),
+  answeredAt: z.iso.datetime({ offset: true }).nullable().describe('When the answer was given.'),
+  note: z.string().nullable(),
+  curatorName: z.string().nullable().describe(
+    'Who answered, as they chose to be named; null where they chose nothing or where the act lies outside the'
+    + " caller's regions, as in the curation log.",
+  ),
+  questioned: z.boolean().describe('Whether a run no longer agrees with it, and the review queue asks about it (#1367).'),
+  canHandBack: z.boolean().describe(
+    "Whether the pin can be handed back to the next run; false for a curator's own refusal of an arrival, which a"
+    + ' source publishing a list would never take back by itself, and whose way back is the put-back.',
+  ),
+}).describe("A curator's admission pin on one membership (#1369).");
+export type AdmissionPin = z.infer<typeof AdmissionPin>;
+
+export const AdmissionPins = z.strictObject({
+  pins: z.array(AdmissionPin).describe('By kind, then by place.'),
+  more: z.boolean().describe('Whether more pins stand in scope than the list carries.'),
+}).describe("The admission pins in a curator's scope (#1369).");
+export type AdmissionPins = z.infer<typeof AdmissionPins>;
+
+export const AdmissionPinHandedBack = z.strictObject({
+  experienceId: z.number().int(),
+  membershipId: z.number().int(),
+  admission: z.enum(CHECK_VALUES.experience_kind_memberships.admission)
+    .describe('The verdict the row keeps until the next run of its source decides.'),
+}).describe('An admission pin handed back (#1369): the next run decides.');
+export type AdmissionPinHandedBack = z.infer<typeof AdmissionPinHandedBack>;
+
 export const PinQuestionAnswered = z.strictObject({
   experienceId: z.number().int(),
   membershipId: z.number().int(),

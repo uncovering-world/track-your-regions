@@ -28,13 +28,19 @@ export interface PinQuestionContext {
 /**
  * The curator's act the pin stands on: the latest answer on the membership the
  * log records — a put-back, a confirmation, a refusal of an arrival, a pin
- * kept — and, for an answer logged before memberships were named, the place's.
+ * kept, a listing verdict that took the place out of the kind — and, for an
+ * answer logged before memberships were named, the place's.
+ * Over the place `e` and the membership `m`, as `pinned_by`: when, the note,
+ * who, and the region the act was logged under, which decides whether a
+ * scoped curator may read the name (`getCurationLog`'s rule).
  */
-const PINNED_BY = `LEFT JOIN LATERAL (
-      SELECT cl.created_at AS at, cl.details->>'note' AS note
+export const PINNED_BY = `LEFT JOIN LATERAL (
+      SELECT cl.created_at AS at, cl.details->>'note' AS note, cl.curator_id, cl.region_id
         FROM experience_curation_log cl
        WHERE cl.experience_id = e.id
-         AND cl.action IN ('admission_overridden', 'admission_confirmed', 'arrival_refused', 'admission_pin_kept')
+         AND (cl.action IN ('admission_overridden', 'admission_confirmed', 'arrival_refused', 'admission_pin_kept')
+              -- The listing verdict that took the place out of the kind pins it too.
+              OR (cl.action IN ('marked_former', 'missing_dismissed') AND cl.details->>'takenOutOfKind' = 'true'))
          AND ((cl.details->>'membershipId')::int = m.id OR NOT cl.details ? 'membershipId')
        ORDER BY cl.created_at DESC, cl.id DESC
        LIMIT 1
