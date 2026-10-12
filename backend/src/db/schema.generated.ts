@@ -232,6 +232,12 @@ export interface ExperienceKindMembershipsRow {
   admission: string;
   admission_reason: string | null;
   admission_answered_at: Date | null;
+  admission_pin_verdict: string | null;
+  admission_pin_reason: string | null;
+  admission_question_verdict: string | null;
+  admission_question_reason: string | null;
+  admission_questioned_at: Date | null;
+  admission_question_sync_log_id: number | null;
   admitted_for: unknown | null;
   is_iconic: boolean;
   curated_fields: unknown;
@@ -830,6 +836,8 @@ export const COLUMN_WIDTHS = {
     external_id: 255,
     type: 100,
     admission: 10,
+    admission_pin_verdict: 10,
+    admission_question_verdict: 10,
     curation_state: 10,
     source_membership: 10,
   },
@@ -963,7 +971,7 @@ export const CHECK_VALUES = {
     judgement: ["same", "other"],
   },
   experience_curation_log: {
-    action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone", "views_chosen", "component_items_answered", "component_item_taken_back", "admission_pin_released"],
+    action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone", "views_chosen", "component_items_answered", "component_item_taken_back", "admission_pin_released", "admission_pin_kept"],
   },
   experience_held_decisions: {
     answer: ["published", "refused"],
