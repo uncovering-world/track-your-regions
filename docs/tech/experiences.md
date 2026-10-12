@@ -1089,7 +1089,7 @@ path needs.
   (*Find component items*, `POST /api/admin/sync/sources/:sourceId/find-component-items`,
   `findUnescoComponentItems` in `componentItemJob.ts`), not from the run, whose job is to record
   what UNESCO states. It reads the standing component points with no item and no claim on one, and
-  asks Wikidata by two rules, each a reason the curator reads on the card:
+  asks Wikidata by three rules, each a reason the curator reads on the card:
   - **part of the site** (`part_of`) — an item that says it is part of one of the site's own items
     (P361), with or without a World Heritage reference of its own — one the reader matched is a
     point's item already and is left as taken; one naming this property under another variant of
@@ -1153,6 +1153,21 @@ path needs.
     reference of the inscription it was before the Moravian Church Settlements extended it
     (#1373). A component left without a candidate is
     where it was before the search, and the pass counts what it set aside.
+  - **numbered under another inscription** (`numbered`, #1394, `componentItemNumbered.ts`) — an
+    item that carries the component's number under another variant of the inscription, read in
+    one query of the component-level P757 statements (`componentNumbers`, some five thousand rows,
+    under two seconds on 2026-10-12): Mozu-Furuichi's Osamezuka Kofun is `1593-006` on Wikidata
+    and `1593bis-006` on the list. The number is keyed without its variant (`componentKey`, the
+    list's padding dropped as `listRef` drops it); an item carrying the point's own reference is
+    the reference reader's and is left out. The number is not an identity: an extension can
+    renumber the parts — the Beech Forests' `1133quinquies-039` is Abruzzo and Wikidata's
+    `1133ter-039` Paklenica — so the name decides, at 0.3 or more within 5 km
+    (`numberedMatches`), and every candidate the rule admits is asked about, since two villages
+    carry Frederiksoord-Wilhelminaoord's number. Asked beside the other two doors, never instead:
+    a point with only such a candidate is not answered for by the others, and where the numbers
+    could not be read the pass keeps the open proposals this door made before. Measured on
+    2026-10-12, 192 points had an item under their number in another variant and nothing
+    proposed; 71 of those items are named like their point (43 of them Mozu-Furuichi's kofun).
 
   Not every point is searched. A component that stands for its whole site — the only standing
   point of a site of one, or a point named exactly like its site, folded (`standsForWholeSite`;
