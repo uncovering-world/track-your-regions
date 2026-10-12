@@ -33,6 +33,17 @@ const DACIA = {
     { ...BUCIUMI, proposalId: 34, item: 'Q98501', label: 'Castrul Bologa', distanceM: 900, similarity: 0.3, exact: false, takenBack: false, itemLatitude: null, itemLongitude: null },
     { ...GILAU, proposalId: 35, item: 'Q98504', label: 'Kastell Gilău', distanceM: 1334, similarity: 0.36, exact: false, takenBack: false, itemLatitude: null, itemLongitude: null },
   ],
+  // Every place the site is made of: the three asked about, and Porolissum, which no question names.
+  site_points: [
+    { locationId: 501, name: 'Bologa', ref: '1591-005', latitude: 46.8853, longitude: 22.8752, imageUrl: null, imageCredit: null },
+    {
+      locationId: 502, name: 'Buciumi', ref: '1591-006', latitude: 47.0383, longitude: 23.0581,
+      imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Castrul_Buciumi.jpg',
+      imageCredit: { author: 'A photographer', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null },
+    },
+    { locationId: 503, name: 'Gilău', ref: '1591-007', latitude: 46.7497, longitude: 23.3906, imageUrl: null, imageCredit: null },
+    { locationId: 504, name: 'Porolissum', ref: '1591-001', latitude: 47.1789, longitude: 23.1564, imageUrl: null, imageCredit: null },
+  ],
 } as unknown as ReviewQueueItem;
 
 function renderCard(onDone = vi.fn()) {
@@ -59,9 +70,29 @@ describe("a site's candidate component items", () => {
     expect(screen.getByText('near the point, of the site’s kind · 410 m away · names 52 % alike')).toBeTruthy();
     expect(screen.getByText('same name, same spot')).toBeTruthy();
     expect(screen.getAllByRole('link', { name: 'Castrul Bologa' })[0]).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q98501');
-    // A map beside the point only where the item states a coordinate.
-    expect(screen.getAllByRole('button', { name: 'see both on the map' })).toHaveLength(2);
+    // One map on the card, reading the first candidate until the pointer rests on another.
+    expect(screen.getAllByText('Castrul Bologa').length).toBeGreaterThan(1);
+    expect(screen.getByText('the site’s other places')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'see both on the map' })).toBeNull();
     expect((screen.getByRole('button', { name: 'Save answers' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('reads the candidate the pointer rests on, and says when its position is not read yet (#1342)', () => {
+    renderCard();
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Same place: Castrul Buciumi' }));
+    expect(screen.getAllByText('Castrul Buciumi').length).toBeGreaterThan(1);
+    expect(screen.queryByText('The candidate’s position is not read yet')).toBeNull();
+
+    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Same place: Turnul Bologa' }));
+    expect(screen.getByText('The candidate’s position is not read yet')).toBeTruthy();
+  });
+
+  it("draws a component's own picture on its part-card, with the photographer under it (#1342)", () => {
+    renderCard();
+    const pictures = document.querySelectorAll('img');
+    expect(pictures).toHaveLength(1);
+    expect(pictures[0].getAttribute('src')).toContain('Castrul_Buciumi.jpg');
+    expect(screen.getByText(/A photographer/)).toBeTruthy();
   });
 
   it("counts and sends only its own site's answers when it is drawn for another site (#1397)", async () => {
