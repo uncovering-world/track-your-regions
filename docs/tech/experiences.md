@@ -115,7 +115,7 @@ An experience can have zero, one, or many locations. Location-bound experiences 
 - `experience_location_regions`: region assignment per location
 - `user_visited_locations`: per-user location visits
 
-**Where a reader is told an object is** ([ADR-0028](../decisions/0028-a-reader-is-positioned-by-places-they-can-go-to.md)). An object carries a coordinate of its own, `experiences.location`, and its places carry theirs. They are independent answers, and they disagreed by more than a kilometre for 106 objects and by up to 191 km (#502) — a list row and a map pin naming different countries for the same site. Every reader-facing read now positions an object with `readerPositionSql()`: **the place nearest the object's own published coordinate**, falling back to that coordinate for an object with no visible place.
+**Where a reader is told an object is** ([ADR-0028](../decisions/0028-a-reader-is-positioned-by-places-they-can-go-to.md)). An object carries a coordinate of its own, `experiences.location`, and its places carry theirs. They are independent answers, and they disagreed by more than a kilometre for 106 objects and by up to 191 km (#502) — a list row and a map pin naming different countries for the same site. Every reader-facing read now positions an object with `readerPositionSql()`: **the place nearest the object's own published coordinate**, falling back to that coordinate for an object with no visible place. For an object of several places the stored coordinate is no longer the source's but the anchor the run derives, its most central component ([ADR-0095](../decisions/0095-a-place-of-several-points-has-no-coordinate-of-its-own.md), § Serial nominations below), so the place a reader is given is that component.
 
 One rule, and no tolerance in it. For most objects — nine in ten on 2026-09-22 — the coordinate already *is* one of the places, so the distance is zero and nothing moves; of the rest the average move is 9.5 km, and the largest are the ones the issue was opened about — Wet Tropics of Queensland 191 km, Gondwana 171 km, Virgin Komi 144 km. The rule ADR-0028 first proposed — the coordinate when it matches a place to within ADR-0027's ten metres, the medoid otherwise — was measured and dropped: it is discontinuous, moving eight objects over 100 km because their coordinate misses a place by a few hundred metres, the worst of them 2068 km. Nearest is measured in metres, on `geography`, never in degrees: 42 multi-place objects sit above 60° — Struve Geodetic Arc's 34 points reach 70.7°N — where a degree of longitude is a third of a degree of latitude, and degree ordering was measured picking a further place for six objects. A tie is broken by `el.id`, so the two axes always name one place. The places considered are only those the same reader may see, so an object is never positioned at a point that reader is not shown — except that the caller which shows a curator an object the queue has not passed yet relaxes the same gate here, because a curator deciding a coordinate has to preview where publishing will put the pin rather than the anchor they are deciding against. It cost 25 ms on a whole-region read of Europe's 661 experiences and the 3725 places under them, measured 2026-08-19.
 
@@ -1006,9 +1006,18 @@ recorded as `change_type = 'filtered'`, not as an error: before this, eight such
 every museum run `partial` with failures nobody could fix, and on an authoritative source they
 would have blocked missing detection outright.
 
-**Serial nominations carry their coordinates in their parts.** UNESCO leaves `coordinates`
-null on many serial sites and fills `components_list` instead; `resolveMainPoint()` falls back
-to the component nearest the components' centroid. Not the first component (it sat 301 km from
+**Serial nominations carry their coordinates in their parts, and have none of their own**
+([ADR-0095](../decisions/0095-a-place-of-several-points-has-no-coordinate-of-its-own.md),
+#1354). UNESCO leaves `coordinates` null on many serial sites and fills `components_list`
+instead, and where it fills both, the site's value follows its list's ordering: the Danube Limes
+went from Carnuntum to near Linz, 180 km. So for a record of several components
+`resolveMainPoint()` takes the component nearest the components' centroid whatever the export's
+own value, and the run marks it as the place's anchor (`locationIsAnchor`): the upsert writes it
+past the gate, the change set files its move as a minor change written (`pastTheGate`), never a
+held question, a curator's claim on the location still keeps it, and the review card names the
+places an object is made of instead of printing the anchor's numbers. A record of one point keeps
+the export's coordinate. Regions and markers are read from the components; the anchor only says
+which component stands for the place where one has to. Not the first component (it sat 301 km from
 Getbol's former point, far enough to change its region) and not the centroid itself (for parts
 scattered like the Roças of São Tomé it can fall in open water). The dry run of 3 August found
 28 records of this shape, 25 of them new inscriptions that would never have entered the
