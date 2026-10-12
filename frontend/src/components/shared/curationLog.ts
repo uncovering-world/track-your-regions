@@ -132,6 +132,9 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // And the other answer to a run that asked again (#1367): the pin kept,
   // answering what the run now says.
   admission_pin_kept: { label: 'Pin kept', color: BLUE },
+  // A pin handed back with no question asked (#1369): the curator's word
+  // withdrawn, nothing moved yet, and the next run decides.
+  admission_pin_handed_back: { label: 'Pin handed back', color: AMBER },
 };
 
 /**
@@ -161,7 +164,7 @@ const OBJECT_VERDICT_ACTIONS = new Set([
   'marked_former', 'marked_lost', 'state_restored', 'missing_dismissed',
 ]);
 
-const ADMISSION_ACTIONS = new Set(['admission_confirmed', 'admission_overridden', 'admission_pin_released', 'admission_pin_kept']);
+const ADMISSION_ACTIONS = new Set(['admission_confirmed', 'admission_overridden', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back']);
 
 /**
  * Whether a recorded value is a picture's credit.

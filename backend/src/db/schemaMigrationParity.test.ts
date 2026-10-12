@@ -502,6 +502,9 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // pin now answers what the run says, until a run says something else.
     // Its other answer, letting the rule decide, is the release above.
     'admission_pin_kept',
+    // A pin a curator handed back with no question asked (#1369): the claim
+    // off, and the next run of the source decides.
+    'admission_pin_handed_back',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;
