@@ -1933,7 +1933,7 @@ export interface ColorMatchFailed {
 export type ColorMatchEvent = ColorMatchProgress | ColorMatchDebugImage | WaterReviewRequested | ClusterReviewRequested | IcpAdjustmentOffered | ColorMatchComplete | ColorMatchFailed;
 
 /**
- * The rule that found it: the item says it is part of the site, or lies near the point and is of its kind.
+ * The rule that found it: the item says it is part of the site, lies near the point and is of its kind, or carries the component's number under another inscription.
  */
 export type ComponentItemProposalBasis = typeof ComponentItemProposalBasis[keyof typeof ComponentItemProposalBasis];
 
@@ -1941,6 +1941,7 @@ export type ComponentItemProposalBasis = typeof ComponentItemProposalBasis[keyof
 export const ComponentItemProposalBasis = {
   part_of: 'part_of',
   near: 'near',
+  numbered: 'numbered',
 } as const;
 
 /**
@@ -1985,7 +1986,7 @@ export interface ComponentItemProposal {
   exact: boolean;
   /** A curator confirmed it and took it back (#1336): open again, and no batch confirms it — only a click on it does. */
   takenBack: boolean;
-  /** The rule that found it: the item says it is part of the site, or lies near the point and is of its kind. */
+  /** The rule that found it: the item says it is part of the site, lies near the point and is of its kind, or carries the component's number under another inscription. */
   basis: ComponentItemProposalBasis;
   /**
      * Where the item stands, nearest the point; null on a proposal that kept none.

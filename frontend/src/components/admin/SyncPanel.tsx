@@ -500,7 +500,7 @@ function SourceCard({ source }: SourceCardProps) {
                 </Tooltip>
               )}
               {source.findsComponentItems && (
-                <Tooltip title="Looks in Wikidata for the item of each component no item records the UNESCO reference of: an item that says it is part of the site, or one of the site's kind near the point with a similar name. Writes nothing on the components — each candidate waits for a curator.">
+                <Tooltip title="Looks in Wikidata for the item of each component no item records the UNESCO reference of: an item that says it is part of the site, one of the site's kind near the point with a similar name, or one carrying the component's number under another inscription with a similar name. Writes nothing on the components — each candidate waits for a curator.">
                   <span>
                     <Button
                       variant="outlined"
