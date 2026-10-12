@@ -17676,7 +17676,8 @@
               "views_chosen",
               "component_items_answered",
               "component_item_taken_back",
-              "admission_pin_released"
+              "admission_pin_released",
+              "admission_pin_kept"
             ]
           },
           "region_id": {
@@ -17842,7 +17843,8 @@
               "views_chosen",
               "component_items_answered",
               "component_item_taken_back",
-              "admission_pin_released"
+              "admission_pin_released",
+              "admission_pin_kept"
             ]
           },
           "created_at": {

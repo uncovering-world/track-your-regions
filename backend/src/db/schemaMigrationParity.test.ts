@@ -498,6 +498,10 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // A pin one unread batch answer made, released once a curator had read the
     // list (#1365, ADR-0096): the rule's verdict written in its place.
     'admission_pin_released',
+    // A curator's pin kept over a run that asked about it again (#1367): the
+    // pin now answers what the run says, until a run says something else.
+    // Its other answer, letting the rule decide, is the release above.
+    'admission_pin_kept',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;

@@ -2907,6 +2907,14 @@ CREATE TABLE IF NOT EXISTS experience_kind_memberships (
     admission VARCHAR(10) NOT NULL DEFAULT 'admitted' CHECK (admission IN ('admitted', 'refused')),
     admission_reason TEXT,
     admission_answered_at TIMESTAMPTZ,
+    -- What a curator's admission pin answered, and what a later run asks
+    -- about it (#1367): the constraints below the table.
+    admission_pin_verdict VARCHAR(10),
+    admission_pin_reason TEXT,
+    admission_question_verdict VARCHAR(10),
+    admission_question_reason TEXT,
+    admission_questioned_at TIMESTAMPTZ,
+    admission_question_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL,
     admitted_for JSONB,
     is_iconic BOOLEAN NOT NULL DEFAULT FALSE,
     curated_fields JSONB NOT NULL DEFAULT '[]'::jsonb,
@@ -2957,6 +2965,22 @@ ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_image_
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_location geometry(Point, 4326);
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_image_credit JSONB;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS wikidata_items TEXT[];
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_pin_verdict VARCHAR(10);
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_pin_reason TEXT;
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_question_verdict VARCHAR(10);
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_question_reason TEXT;
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_questioned_at TIMESTAMPTZ;
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS admission_question_sync_log_id INTEGER
+    REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
+-- db/migrations/090-a-pin-holds-for-the-reason-it-answered.sql for a database
+-- that already holds pins: it also gives each its view.
+ALTER TABLE experience_kind_memberships DROP CONSTRAINT IF EXISTS experience_kind_memberships_pin_verdict_check;
+ALTER TABLE experience_kind_memberships ADD CONSTRAINT experience_kind_memberships_pin_verdict_check
+    CHECK (admission_pin_verdict IN ('admitted', 'refused') AND admission_question_verdict IN ('admitted', 'refused'));
+ALTER TABLE experience_kind_memberships DROP CONSTRAINT IF EXISTS experience_kind_memberships_question_check;
+ALTER TABLE experience_kind_memberships ADD CONSTRAINT experience_kind_memberships_question_check
+    CHECK ((admission_questioned_at IS NULL) = (admission_question_verdict IS NULL)
+       AND (admission_questioned_at IS NULL OR curated_fields ? 'admission'));
 ALTER TABLE experience_kind_memberships DROP CONSTRAINT IF EXISTS experience_kind_memberships_source_external_key;
 ALTER TABLE experience_kind_memberships ADD CONSTRAINT experience_kind_memberships_source_external_key
     UNIQUE (source_id, external_id);
@@ -2984,6 +3008,12 @@ COMMENT ON COLUMN experience_kind_memberships.reported_location IS 'The coordina
 COMMENT ON COLUMN experience_kind_memberships.admission IS 'admitted or refused. Whether this kind accepts the place, independent of whether the source still lists it (ADR-0024). The machine sets this one: a refusal is our own rule applied to an object the run named, not an observation. A place with no admitted membership is hidden from every read that offers somewhere to go, and from none that records a visit.';
 COMMENT ON COLUMN experience_kind_memberships.admission_reason IS 'Why the kind refused it, stated verbatim to the curator. Here rather than in experience_sync_changes because a changeset is keyed by the external id the run named, which is not always this row''s.';
 COMMENT ON COLUMN experience_kind_memberships.admission_answered_at IS 'When a batch answer confirmed this refusal without pinning it (ADR-0067): the question is closed, and the next run applies the rule again. A run that refuses a row it had admitted clears it, so a refusal that comes back is asked again.';
+COMMENT ON COLUMN experience_kind_memberships.admission_pin_verdict IS 'The run''s verdict a curator''s admission pin answered (#1367): refused for a put-back or a confirmed refusal, admitted for a refused arrival. With admission_pin_reason, the view a later run is compared with; NULL on a row with no pin.';
+COMMENT ON COLUMN experience_kind_memberships.admission_pin_reason IS 'The run''s reason a curator''s admission pin answered (#1367), compared with a later run''s with its numbers folded; NULL for an admission.';
+COMMENT ON COLUMN experience_kind_memberships.admission_question_verdict IS 'What a run said about a pinned row against the curator''s answer (#1367): its verdict, with admission_question_reason. The row''s admission is untouched; the review queue asks the curator. NULL when nothing is asked.';
+COMMENT ON COLUMN experience_kind_memberships.admission_question_reason IS 'The asking run''s reason for a refusal; NULL for an admission (#1367).';
+COMMENT ON COLUMN experience_kind_memberships.admission_questioned_at IS 'When a run first asked the open question about this row''s pin (#1367); a later run that asks the same keeps it, one that agrees again clears it.';
+COMMENT ON COLUMN experience_kind_memberships.admission_question_sync_log_id IS 'The run that last asked about this row''s pin (#1367).';
 COMMENT ON COLUMN experience_kind_memberships.admitted_for IS 'The work whose fame qualified a museum for the works-first source ({qid, label}, ADR-0023): the reason this membership exists. The run''s own bookkeeping, never proposed to a curator (#571).';
 COMMENT ON COLUMN experience_kind_memberships.is_iconic IS 'The must-see badge, the world tier of this kind (ADR-0045 decision 5): set by a source whose admission rule is a fame line, cleared with a refusal, pinned by a curator in curated_fields. The membership''s, not the place''s: a place admitted to a second kind carries that kind''s badge on that kind''s terms.';
 COMMENT ON COLUMN experience_kind_memberships.curated_fields IS 'Field names a curator has pinned on this membership -- admission (a confirmed or overridden refusal), is_iconic, type -- in the shape of experiences.curated_fields. A pinned field is skipped by every run.';
@@ -3711,7 +3741,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     -- Null on the catalogue's own merge alone (ADR-0086): the check below.
     curator_id INTEGER REFERENCES users(id),
-    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released')),
+    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept')),
     region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -3731,7 +3761,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
 -- schema change and not a code-only one.
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check
-    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released'));
+    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept'));
 
 -- An existing database's NOT NULL goes with migration 076; a fresh one never had it.
 ALTER TABLE experience_curation_log ALTER COLUMN curator_id DROP NOT NULL;
