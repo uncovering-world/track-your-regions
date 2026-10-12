@@ -12,8 +12,7 @@
  * found — it states it is part of the site, lies near the point and is of the
  * site's kind, or carries the component's number under another inscription
  * (#1394) — how far off it stands and how alike the names are, and
- * opens on Wikidata and, where the item states a coordinate, on a map beside
- * the point. Nothing is written until the curator saves; a confirmed item
+ * opens on Wikidata. Nothing is written until the curator saves; a confirmed item
  * becomes the point's as the curator's choice, and its picture and description
  * follow where the item has them.
  *
@@ -24,9 +23,14 @@
  * same exception. The two buttons share it: a candidate that competes with any
  * candidate either button would take is left to the curator, so neither button
  * can undo the other's confirmation.
+ *
+ * The site is the container and each component a part of it (#1342): the
+ * header says what the site is made of, each component is a part-card with its
+ * own picture, and one map above the parts draws every place of the site with
+ * the candidate a curator points at beside its component (`ComponentItemsMap`).
  */
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Box, Button, Card, CardContent, Chip, Link, Stack, Typography } from '@mui/material';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
@@ -34,9 +38,11 @@ import {
 } from '../../api/curation';
 import { queryKeys } from '../../api/queryKeys';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
+import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { plural } from '../../utils/plural';
 import { wikidataItemUrl } from '../../utils/wikidataLinks';
-import { PointPreviewDialog } from '../shared/PointPreviewDialog';
+import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { ComponentItemsMap, MAP_HEIGHT, type MapFocus, type SitePoint } from './ComponentItemsMap';
 import { ItemHeader, messageFor } from './queueCard';
 
 type Candidate = NonNullable<ReviewQueueItem['component_items']>[number];
@@ -50,6 +56,10 @@ type Judgement = ComponentItemSuggestions['suggestions'][number];
  * over all of them.
  */
 export const JEV_SURE = 0.9;
+
+/** Where the sticky map stands, and the room a row's control keeps above it: the map's offset, its height and a gap. */
+const MAP_TOP = 8;
+const MAP_ROOM = MAP_TOP + MAP_HEIGHT + 16;
 
 /** What Jev makes of a candidate, in the words the caption uses. */
 const JUDGEMENT_WORDS: Record<Judgement['judgement'], string> = {
@@ -113,34 +123,41 @@ function byPoint(candidates: readonly Candidate[]): Array<{ locationId: number; 
   return [...groups].map(([locationId, ofPoint]) => ({ locationId, candidates: ofPoint }));
 }
 
-/**
- * The candidate beside its point, on a map: two pins and the distance between
- * them, never a move — confirming an item leaves the point where it is.
- */
-function BesideOnMap({ candidate }: { candidate: Candidate }) {
-  const [open, setOpen] = useState(false);
-  if (candidate.latitude == null || candidate.longitude == null
-    || candidate.itemLatitude == null || candidate.itemLongitude == null) return null;
+/** What the map reads for a candidate: its component, and the item beside it where the item's position is known. */
+function focusOf(candidate: Candidate): MapFocus | null {
+  if (candidate.latitude == null || candidate.longitude == null) return null;
+  const point = {
+    locationId: candidate.locationId, name: candidate.pointName ?? 'The component',
+    latitude: candidate.latitude, longitude: candidate.longitude,
+  };
+  const located = candidate.itemLatitude != null && candidate.itemLongitude != null;
+  return {
+    point,
+    candidate: located
+      ? { label: candidate.label, latitude: candidate.itemLatitude!, longitude: candidate.itemLongitude!, distance: distanceWords(candidate.distanceM) }
+      : null,
+  };
+}
+
+/** A component's own picture, with its credit under it — or the room it would take, so the part-cards line up. */
+function PartPicture({ point }: { point: SitePoint | undefined }) {
+  const [failed, setFailed] = useState(false);
+  const src = point?.imageUrl ? toThumbnailUrl(extractImageUrl(point.imageUrl) ?? '', 120) : '';
+  if (!src || failed) return <Box sx={{ width: 64, flexShrink: 0 }} />;
   return (
-    <>
-      <Link component="button" type="button" variant="caption" underline="hover" onClick={() => setOpen(true)}>
-        see both on the map
-      </Link>
-      <PointPreviewDialog
-        open={open}
-        onClose={() => setOpen(false)}
-        name={candidate.pointName ?? 'The component'}
-        latitude={candidate.latitude}
-        longitude={candidate.longitude}
-        beside={{ latitude: candidate.itemLatitude, longitude: candidate.itemLongitude, label: candidate.label }}
-      />
-    </>
+    <Box sx={{ width: 64, flexShrink: 0 }}>
+      <Box component="img" src={src} alt="" loading="lazy" onError={() => setFailed(true)}
+        sx={{ width: 64, height: 56, objectFit: 'cover', borderRadius: 0.5, display: 'block' }} />
+      <ImageCreditLine credit={point?.imageCredit} />
+    </Box>
   );
 }
 
 /** One candidate: what it is, why it was found, what Jev makes of it, and the two answers. */
-function CandidateRow({ candidate, judgement, answer, onAnswer }: {
+function CandidateRow({ candidate, judgement, answer, onAnswer, onLook }: {
   candidate: Candidate;
+  /** The pointer is on this candidate: the map reads it. */
+  onLook: () => void;
   /** Jev's judgement where this deployment asks it; a suggestion, never a choice. */
   judgement: Judgement | undefined;
   answer: Answer | undefined;
@@ -149,7 +166,7 @@ function CandidateRow({ candidate, judgement, answer, onAnswer }: {
   const url = wikidataItemUrl(candidate.item);
   const toggle = (next: Answer) => onAnswer(answer === next ? undefined : next);
   return (
-    <Stack direction="row" spacing={2} alignItems="flex-start" sx={{ py: 0.75 }}>
+    <Stack direction="row" spacing={2} alignItems="flex-start" sx={{ py: 0.75 }} onMouseEnter={onLook} onFocus={onLook}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
           <Typography variant="body1" sx={{ fontWeight: 600 }}>
@@ -168,7 +185,6 @@ function CandidateRow({ candidate, judgement, answer, onAnswer }: {
             {judgementWords(judgement)}
           </Typography>
         )}
-        <BesideOnMap candidate={candidate} />
       </Box>
       <Stack direction="row" spacing={1} sx={{ flexShrink: 0 }}>
         <Button
@@ -220,6 +236,12 @@ export function ComponentItemsCard({ item, onDone }: {
   // the batch that confirmed it in haste must not confirm it again.
   const exactAll = candidates.filter(candidate => candidate.exact && !candidate.takenBack);
   const points = byPoint(candidates);
+  const sitePoints = useMemo(() => item.site_points ?? [], [item.site_points]);
+  const pointOf = (locationId: number) => sitePoints.find(p => p.locationId === locationId);
+  // The candidate the map reads: the one the pointer last rested on, the first one until then.
+  const [looked, setLooked] = useState<number | null>(null);
+  const lookedAt = candidates.find(c => c.proposalId === looked) ?? candidates.find(c => focusOf(c) !== null);
+  const focus = useMemo(() => (lookedAt ? focusOf(lookedAt) : null), [lookedAt]);
 
   const save = useMutation({
     mutationFn: () => answerComponentItems(item.id, answered),
@@ -274,8 +296,12 @@ export function ComponentItemsCard({ item, onDone }: {
   const confirmSure = () => { for (const candidate of sure) confirm(candidate); };
 
   return (
-    <Card variant="outlined">
-      <CardContent>
+    // Visible overflow, since a card clips by default and a clipped ancestor turns the sticky map off.
+    <Card variant="outlined" sx={{ overflow: 'visible' }}>
+      {/* A control scrolled into view from above lands under the sticky map unless it asks for
+          room — every control of the card, the action row's too, and on the control itself,
+          since an ancestor's margin does not apply. */}
+      <CardContent sx={{ '& a, & button': { scrollMarginTop: MAP_ROOM } }}>
         <ItemHeader item={item} />
         <Typography variant="body2" sx={{ my: 2 }}>
           {plural(points.length, 'component')} of this site {points.length === 1 ? 'has' : 'have'} no Wikidata item
@@ -283,24 +309,46 @@ export function ComponentItemsCard({ item, onDone }: {
           whether it is the same place.
         </Typography>
 
-        <Stack spacing={2}>
+        {/* Sticky within the card: on a site of dozens of components the row a curator
+            reads is far below the map's place, and the map is what the row is read against. */}
+        {focus && (
+          <Box sx={{ position: 'sticky', top: MAP_TOP, zIndex: 2, mb: 2, bgcolor: 'background.paper' }}>
+            <ComponentItemsMap sitePoints={sitePoints} focus={focus} />
+          </Box>
+        )}
+
+        <Stack spacing={1.5}>
           {points.map(point => {
             const [first] = point.candidates;
+            const reading = lookedAt?.locationId === point.locationId;
             return (
-              <Box key={point.locationId}>
-                <Stack direction="row" spacing={1} alignItems="baseline">
-                  <Typography variant="subtitle2">{first.pointName ?? `Point #${point.locationId}`}</Typography>
-                  {first.pointRef && <Typography variant="caption" color="text.secondary">{first.pointRef}</Typography>}
+              // A part-card of the site, as a work is of its venue; its stripe says which one the map reads.
+              <Box
+                key={point.locationId}
+                sx={{
+                  border: 1, borderColor: 'divider', borderLeft: '3px solid', borderRadius: 1, px: 1.5, py: 1,
+                  borderLeftColor: reading ? 'primary.main' : 'divider',
+                }}
+              >
+                <Stack direction="row" spacing={1.25} alignItems="flex-start">
+                  <PartPicture point={pointOf(point.locationId)} />
+                  <Box sx={{ flex: 1, minWidth: 0 }}>
+                    <Stack direction="row" spacing={1} alignItems="baseline" flexWrap="wrap">
+                      <Typography variant="subtitle2">{first.pointName ?? `Point #${point.locationId}`}</Typography>
+                      {first.pointRef && <Typography variant="caption" color="text.secondary">{first.pointRef}</Typography>}
+                    </Stack>
+                    {point.candidates.map(candidate => (
+                      <CandidateRow
+                        key={candidate.proposalId}
+                        candidate={candidate}
+                        judgement={judgementOf(candidate.proposalId)}
+                        answer={answers[candidate.proposalId]}
+                        onAnswer={next => answer(candidate, next)}
+                        onLook={() => setLooked(candidate.proposalId)}
+                      />
+                    ))}
+                  </Box>
                 </Stack>
-                {point.candidates.map(candidate => (
-                  <CandidateRow
-                    key={candidate.proposalId}
-                    candidate={candidate}
-                    judgement={judgementOf(candidate.proposalId)}
-                    answer={answers[candidate.proposalId]}
-                    onAnswer={next => answer(candidate, next)}
-                  />
-                ))}
               </Box>
             );
           })}
