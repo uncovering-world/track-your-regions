@@ -11,6 +11,7 @@
     "./curationLog": "./src/curationLog.ts",
     "./equality": "./src/equality.ts",
     "./geometry": "./src/geometry.ts",
+    "./jevSettings": "./src/jevSettings.ts",
     "./labels": "./src/labels.ts",
     "./lifecycle": "./src/lifecycle.ts",
     "./moves": "./src/moves.ts",
