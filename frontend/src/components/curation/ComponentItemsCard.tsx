@@ -9,8 +9,9 @@
  * button confirms every such candidate at once — except two that compete for
  * one point or one item, which the curator picks between; a tower 400 m off with a name
  * half alike is read and judged on its own. Every candidate says why it was
- * found — it states it is part of the site, or lies near the point and is of
- * the site's kind — how far off it stands and how alike the names are, and
+ * found — it states it is part of the site, lies near the point and is of the
+ * site's kind, or carries the component's number under another inscription
+ * (#1394) — how far off it stands and how alike the names are, and
  * opens on Wikidata and, where the item states a coordinate, on a map beside
  * the point. Nothing is written until the curator saves; a confirmed item
  * becomes the point's as the curator's choice, and its picture and description
@@ -71,6 +72,7 @@ function judgementWords(judgement: Judgement): string {
 const BASIS_WORDS: Record<Candidate['basis'], string> = {
   part_of: 'says it is part of the site',
   near: 'near the point, of the site’s kind',
+  numbered: 'carries this component’s number under another inscription',
 };
 
 /** How far off the candidate stands, in metres or kilometres; or that it states no coordinate. */
