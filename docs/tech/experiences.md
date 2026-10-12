@@ -1020,7 +1020,11 @@ catalogue.
 comma, Aalto Works' parts lost the town that tells two of them apart and Tashkent's "Zhemchug
 Residential Building (Zhemchug, the “Pearl”)" lost half its bracket. A name the source leaves
 empty, as it does for parts of the Via Appia, stays empty; one it writes wrong, as "The " for two
-parts of Tarraco, is kept as written and is a suspicious-data heuristic's to flag (#497).
+parts of Tarraco, is kept as written and is a suspicious-data heuristic's to flag (#497). A name
+the export sends decoded twice is read once (`readOnce`, #1405): Birka and Hovgården's part
+comes as "HovgÃ¥rden", the two UTF-8 bytes of "å" read as two Latin-1 characters. Such a pair
+in a name made only of bytes that decode as well-formed UTF-8 is that UTF-8; anything else is
+kept as written.
 
 **Fixture source** — setting `SYNC_SOURCE_FIXTURE` to a directory makes UNESCO sync read
 `unesco.json` from it instead of the live API. Development only — the switch is refused
