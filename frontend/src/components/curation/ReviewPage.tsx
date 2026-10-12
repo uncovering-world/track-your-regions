@@ -48,6 +48,7 @@ import { useAnswerSelection } from './selection/useAnswerSelection';
 import { SelectionBar } from './selection/SelectionBar';
 import { SelectionSummary } from './selection/SelectionSummary';
 import { answerVerb, lostOfferedFor } from './selection/answerWords';
+import { PinnedAnswers } from '../shared/AdmissionPins';
 
 /**
  * What to add to "nothing here has changed what visitors see", which is not always true.
@@ -506,6 +507,9 @@ export function ReviewPage() {
             {list.items.map(list.card)}
           </AnsweredSection>
         ))}
+      {/* The answers pinned against a rule (#1369): answered work like the blocks
+          above, read on their own, until curators have a home screen (#614). */}
+      <PinnedAnswers />
     </Box>
   );
 }
