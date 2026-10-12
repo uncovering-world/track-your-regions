@@ -1,6 +1,6 @@
 # ADR-0028: A reader is positioned by places they can go to
 
-**Status:** Accepted
+**Status:** Accepted — decision 2 narrowed by ADR-0095
 
 **Date:** 2026-08-17
 

@@ -18,3 +18,4 @@ and says so in its first lines.
 | Report | Cited by |
 |---|---|
 | [2026-10-10 — Which open sources give a World Heritage component its picture and description](2026-10-10-sources-for-a-parts-picture-and-description.md) | #1306, #1337, #1339, #1340, #1341 |
+| [2026-10-12 — What the single coordinate of a serial World Heritage site means](2026-10-12-what-a-serial-sites-single-coordinate-means.md) | #1354, ADR-0095 |
