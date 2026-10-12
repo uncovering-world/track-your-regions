@@ -495,6 +495,9 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // And one of them taken back (#1317): the item and the claim off the
     // point, the candidate left turned down.
     'component_item_taken_back',
+    // A pin one unread batch answer made, released once a curator had read the
+    // list (#1365, ADR-0096): the rule's verdict written in its place.
+    'admission_pin_released',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;

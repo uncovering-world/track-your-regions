@@ -2680,6 +2680,7 @@ export const CurationLogEntryAction = {
   views_chosen: 'views_chosen',
   component_items_answered: 'component_items_answered',
   component_item_taken_back: 'component_item_taken_back',
+  admission_pin_released: 'admission_pin_released',
 } as const;
 
 /**
@@ -2749,6 +2750,7 @@ export const CuratorActivityEntryAction = {
   views_chosen: 'views_chosen',
   component_items_answered: 'component_items_answered',
   component_item_taken_back: 'component_item_taken_back',
+  admission_pin_released: 'admission_pin_released',
 } as const;
 
 /**

@@ -17675,7 +17675,8 @@
               "merge_undone",
               "views_chosen",
               "component_items_answered",
-              "component_item_taken_back"
+              "component_item_taken_back",
+              "admission_pin_released"
             ]
           },
           "region_id": {
@@ -17818,7 +17819,8 @@
               "merge_undone",
               "views_chosen",
               "component_items_answered",
-              "component_item_taken_back"
+              "component_item_taken_back",
+              "admission_pin_released"
             ]
           },
           "created_at": {
