@@ -26,7 +26,7 @@ const ADMIN = { id: 1, role: 'admin' };
 // Shaped as the driver hands it over, a Date and a parsed object included, since
 // `respond()` holds the answer to its schema in this lane.
 const IN_SCOPE_ROW = {
-  id: 1, action: 'edited', region_id: 20, region_name: 'Gyeongju', curator_name: 'Curator',
+  id: 1, action: 'edited', region_id: 20, region_name: 'Gyeongju', curator_name: 'Curator', folded_id: null, folded_name: null,
   details: { name: { old: 'Bulguksa', new: 'Bulguksa Temple' } }, created_at: new Date('2026-08-04T15:01:24.341Z'),
 };
 
@@ -148,6 +148,24 @@ describe('getCurationLog scope', () => {
     const [, params] = mockedQuery.mock.calls[1] as [string, unknown[]];
     expect(params).toEqual([ADMIN.id, EXPERIENCE_ID, true]);
     expect(res.status).not.toHaveBeenCalledWith(403);
+  });
+
+  it('reads the entries a standing merge folded into the place, under the same scope filter (#1366)', async () => {
+    queueQueries({ scope: { unrestricted: false, has_scoped_region: true } });
+    const { done } = callGetCurationLog(REGION_CURATOR);
+    await done;
+
+    const [gateSql] = mockedQuery.mock.calls[1] as [string, unknown[]];
+    const [logSql] = mockedQuery.mock.calls[2] as [string, unknown[]];
+    for (const sql of [gateSql, logSql]) {
+      expect(sql).toMatch(/log_places AS \([\s\S]*experience_merges m[\s\S]*m\.undone_at IS NULL/);
+      expect(sql).toMatch(/JOIN experience_curation_log cl ON cl\.experience_id = p\.id/);
+    }
+    // The folded entry's copy of a merge this read already holds is not read
+    // twice; one into a place outside the read is.
+    expect(logSql).toMatch(
+      /NOT \(p\.folded_id IS NOT NULL AND cl\.action IN \('merged', 'merge_undone'\)[\s\S]*'survivorId' IN \(SELECT id::text FROM log_places\)\)/,
+    );
   });
 
   it('answers 404 for an experience that does not exist', async () => {

@@ -12,7 +12,7 @@ import type {
   CurationLog, CurationLogEntry, ExperienceEditResult, ManualExperienceCreated, RegionMembershipResult,
 } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import type { ExperienceCurationLogRow, RegionsRow, UsersRow } from '../../db/schema.generated.js';
+import type { ExperienceCurationLogRow, ExperiencesRow, RegionsRow, UsersRow } from '../../db/schema.generated.js';
 import { badRequest, createError, notFound } from '../../middleware/errorHandler.js';
 import type {
   assignExperienceBodySchema, createManualExperienceBodySchema, editExperienceBodySchema, idAndRegionIdParamSchema,
@@ -601,6 +601,24 @@ export async function editExperience(
 }
 
 /**
+ * The entries a place's history reads, `$2` being the place (#1366): the place
+ * itself, and every entry a standing merge folded into it — the decisions made
+ * about an entry travel with what the merge moved, its memberships and their
+ * pins among them, while the log rows stay on the entry's own id. A place
+ * folded in after it had folded others in brings theirs too. `folded_id` names
+ * the folded entry, null on the place's own rows. It extends the recursive
+ * `CURATOR_SCOPED_REGIONS_CTE`, which both reads open with.
+ */
+const LOG_PLACES_CTE = `log_places AS (
+    SELECT $2::int AS id, NULL::int AS folded_id
+    UNION
+    SELECT m.folded_id, m.folded_id
+    FROM experience_merges m
+    JOIN log_places lp ON m.survivor_id = lp.id
+    WHERE m.undone_at IS NULL
+  )`;
+
+/**
  * Resolve what a caller may see of one experience's curation log.
  *
  * `unrestricted` — admins, global curators, and curators of the experience's
@@ -628,7 +646,7 @@ async function resolveCurationLogScope(
 ): Promise<{ unrestricted: boolean; hasScopedRegion: boolean }> {
   if (userRole === 'admin') return { unrestricted: true, hasScopedRegion: true };
 
-  const result = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
+  const result = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}, ${LOG_PLACES_CTE}
     SELECT
       ${CURATOR_UNRESTRICTED_SCOPE_EXISTS} AS unrestricted,
       (EXISTS (
@@ -636,9 +654,9 @@ async function resolveCurationLogScope(
         JOIN curator_scoped_regions s ON s.id = er.region_id
         WHERE er.experience_id = $2
       ) OR EXISTS (
-        SELECT 1 FROM experience_curation_log cl
+        SELECT 1 FROM log_places p
+        JOIN experience_curation_log cl ON cl.experience_id = p.id
         JOIN curator_scoped_regions s ON s.id = cl.region_id
-        WHERE cl.experience_id = $2
       )) AS has_scoped_region
   `, [userId, experienceId, sourceId]);
 
@@ -680,7 +698,7 @@ export async function getCurationLog(
 
   // A row survives when the curator is unrestricted, when it names no region
   // (it identifies no region to leak), or when its region is one they cover.
-  const result = await pool.query<CurationLogRow>(`${CURATOR_SCOPED_REGIONS_CTE}
+  const result = await pool.query<CurationLogRow>(`${CURATOR_SCOPED_REGIONS_CTE}, ${LOG_PLACES_CTE}
     SELECT
       cl.id,
       cl.action,
@@ -688,13 +706,22 @@ export async function getCurationLog(
       r.name as region_name,
       cl.details,
       cl.created_at,
-      u.display_name as curator_name
-    FROM experience_curation_log cl
+      u.display_name as curator_name,
+      p.folded_id,
+      f.name as folded_name
+    FROM log_places p
+    JOIN experience_curation_log cl ON cl.experience_id = p.id
+    LEFT JOIN experiences f ON f.id = p.folded_id
     -- LEFT: the catalogue's own merge names no curator (ADR-0086).
     LEFT JOIN users u ON cl.curator_id = u.id
     LEFT JOIN regions r ON cl.region_id = r.id
-    WHERE cl.experience_id = $2
-      AND ($3::boolean OR cl.region_id IS NULL OR cl.region_id IN (SELECT id FROM curator_scoped_regions))
+    WHERE ($3::boolean OR cl.region_id IS NULL OR cl.region_id IN (SELECT id FROM curator_scoped_regions))
+      -- A merge is logged on both places; the folded entry's copy of a merge
+      -- or undo whose survivor this read covers is a row it already holds. One
+      -- into another place, since undone, is held nowhere else here.
+      AND NOT (p.folded_id IS NOT NULL AND cl.action IN ('merged', 'merge_undone')
+        AND cl.details->>'foldedId' = p.id::text
+        AND cl.details->>'survivorId' IN (SELECT id::text FROM log_places))
     ORDER BY cl.created_at DESC
     LIMIT 50
   `, [userId, experienceId, unrestricted]);
@@ -708,6 +735,8 @@ export async function getCurationLog(
     details: row.details as CurationLogEntry['details'],
     created_at: row.created_at?.toISOString() ?? null,
     curator_name: row.curator_name,
+    folded_id: row.folded_id,
+    folded_name: row.folded_name,
   }));
 }
 
@@ -715,6 +744,8 @@ export async function getCurationLog(
 type CurationLogRow = Pick<ExperienceCurationLogRow, 'id' | 'action' | 'region_id' | 'details' | 'created_at'> & {
   region_name: RegionsRow['name'] | null;
   curator_name: UsersRow['display_name'];
+  folded_id: ExperiencesRow['id'] | null;
+  folded_name: ExperiencesRow['name'] | null;
 };
 
 interface CreateManualBody {
