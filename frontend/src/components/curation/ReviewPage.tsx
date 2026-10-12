@@ -427,7 +427,9 @@ export function ReviewPage() {
                   total={total}
                 />
               )
-              : <ReviewBench row={rows[selectedIndex]} onDone={refresh} />}
+              // Keyed by the row: a card's unsaved answers are about its own object,
+              // and another row of the same question must not inherit them (#1397).
+              : <ReviewBench key={rows[selectedIndex]?.key} row={rows[selectedIndex]} onDone={refresh} />}
           </Box>
         </Stack>
       )}

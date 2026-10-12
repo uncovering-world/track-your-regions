@@ -210,7 +210,10 @@ export function ComponentItemsCard({ item, onDone }: {
 }) {
   const candidates = item.component_items ?? [];
   const [answers, setAnswers] = useState<Record<number, Answer>>({});
-  const answered = Object.entries(answers).map(([proposalId, answer]) => ({ proposalId: Number(proposalId), answer }));
+  // Only this site's candidates: the server leaves another site's out without a word (#1397).
+  const answered = candidates
+    .filter(candidate => answers[candidate.proposalId] !== undefined)
+    .map(candidate => ({ proposalId: candidate.proposalId, answer: answers[candidate.proposalId] }));
   // A candidate a curator confirmed and took back (#1336) is neither button's:
   // the batch that confirmed it in haste must not confirm it again.
   const exactAll = candidates.filter(candidate => candidate.exact && !candidate.takenBack);
