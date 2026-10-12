@@ -73,7 +73,11 @@ describe('overpassBatchQuery', () => {
 
   it('leaves out a clause whose list is empty rather than matching the empty value', () => {
     const query = overpassBatchQuery(['Q22647'], { ...KEEP, manMade: [] });
-    expect(query).not.toContain('man_made');
+    expect(query).not.toContain('["man_made"');
+  });
+
+  it('names the keys it reads, so a cached answer read for fewer is not served (#1352)', () => {
+    expect(overpassBatchQuery(['Q22647'], KEEP)).toContain('amenity, building */');
   });
 
   it('refuses anything that is not a QID rather than splicing it into the query', () => {

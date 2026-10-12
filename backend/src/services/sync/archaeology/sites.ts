@@ -426,7 +426,6 @@ export async function collectSitesByFame(
   const facts = await collectFacts(run, qids, (qid) => !byId.has(qid));
   const candidates = [...pool.values()].sort((a, b) => b.sitelinks - a.sitelinks);
   const { retyped, filtered } = refuseRetyped(candidates, facts, trees, admitted, line, named);
-  const namedByCategory = await categoryVotes(run, candidates, facts, trees, named, line, admitted, entrance);
 
   // **Only the candidates the line would let speak.** `siteVerdict` answers
   // `out` for every row below the line that the source does not already admit,
@@ -445,6 +444,8 @@ export async function collectSitesByFame(
   // asked once and the row stores when it was asked (ADR-0059 decision 2).
   const objects = await osm(asked, OSM_KEEP_WKT, run);
   const readAt = new Date().toISOString();
+  // After the read, since a place used today is said so by its objects (#1352).
+  const namedByCategory = await categoryVotes(run, candidates, facts, trees, named, line, admitted, entrance, objects);
 
   // **And an empty answer is not a fact.** A mirror that answers 200 with no
   // bindings says "no OSM object carries this item" about every candidate at

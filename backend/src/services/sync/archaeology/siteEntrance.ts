@@ -17,6 +17,7 @@ import { SITE_CATEGORY, type ArchaeologyTrees } from './classes.js';
 import type { OsmDigs, OsmObject } from '../osm/types.js';
 import { enwikiTitleOf } from '../wikipediaCategories.js';
 import { lineStanding, type SourceLine } from '../sourceLine.js';
+import { inUseAmong } from './siteTest.js';
 
 const FACT_BATCH = 50;
 
@@ -132,12 +133,24 @@ export function withNamed(mapped: OsmObject[], named: OsmObject[]): OsmObject[] 
 }
 
 /**
+ * Whether the map's entrance refuses a row unless English Wikipedia votes for
+ * it: it states a population and is not World Heritage itself, or one of its
+ * objects says it is used today (ADR-0098).
+ */
+function refusedUnlessVoted(row: SiteFactsRow, objects: OsmObject[]): boolean {
+  return (row.statesPopulation && !row.worldHeritage) || inUseAmong(objects) !== null;
+}
+
+/**
  * English Wikipedia's second vote (#895, ADR-0060 decision 3), asked only
  * where it can change the answer: a row the map named and no class vouches
- * for, that states a population, is not World Heritage itself, has an
- * English article, and stands where the line would name its refusal. A
- * handful of titles a run — the categories of the article, never a walk —
- * against the eighteen comuni and the Jerash that share the shape.
+ * for, that has an English article, stands where the line would name its
+ * refusal, and is refused on the map's entrance unless the vote says
+ * otherwise — it states a population and is not World Heritage itself, or
+ * one of its objects says it is used today (`inUseAmong`, #1352). A handful
+ * of titles a run — the categories of the article, never a walk — against the
+ * eighteen comuni and the Jerash that share the first shape, and Bamburgh
+ * Castle the second.
  */
 export async function categoryVotes(
   run: QueryRunner,
@@ -148,15 +161,17 @@ export async function categoryVotes(
   line: SourceLine,
   admitted: ReadonlySet<string>,
   entrance: SiteEntrance,
+  objects: ReadonlyMap<string, OsmObject[]>,
 ): Promise<Set<string>> {
   const titles = new Map<string, string>();
   for (const entity of candidates) {
     // The map names it — whichever question named it first: a class-pool
     // row whose classes vanished is judged by the map's word too (`sites.ts`),
     // and gets the same vote.
-    if ((named.get(entity.qid)?.length ?? 0) === 0) continue;
+    const mapped = named.get(entity.qid) ?? [];
+    if (mapped.length === 0) continue;
     const row = facts.get(entity.qid);
-    if (!row || !row.statesPopulation || row.worldHeritage) continue;
+    if (!row || !refusedUnlessVoted(row, withNamed(objects.get(entity.qid) ?? [], mapped))) continue;
     if (row.classes.some((cls) => trees.site.has(cls))) continue;
     if (lineStanding(entity.sitelinks, admitted.has(entity.qid), line) === 'out') continue;
     const title = enwikiTitleOf(entity.articleUrl);
@@ -164,7 +179,7 @@ export async function categoryVotes(
   }
   const voted = new Set<string>();
   if (titles.size === 0) return voted;
-  run.phase(`Reading what English Wikipedia files ${titles.size} living places the map calls digs under...`);
+  run.phase(`Reading what English Wikipedia files ${titles.size} living or used places the map calls digs under...`);
   await run.step();
   const categories = await entrance.categories([...new Set(titles.values())]);
   for (const [qid, title] of titles) {
