@@ -13,7 +13,7 @@
  * caves with prehistoric art, protected areas, roads, churches, walls, islands,
  * belfries, castra — so no fixed list of classes describes them.
  *
- * Two rules, each a reason a curator reads on the card:
+ * Three rules, each a reason a curator reads on the card:
  * - **part of the site** — the item says it is part of the site's own item
  *   (P361), and only lacks the component's number. No class is asked: Wikidata
  *   has said what it is a part of. Aalto Works' Villa Mairea, the D-Day beaches.
@@ -23,9 +23,14 @@
  *   components of several sites are of. A settlement is a candidate only where the site's own
  *   components include settlements: a fort named after a village is not the
  *   village.
+ * - **numbered under another inscription** — the item carries the component's
+ *   number under another variant of the inscription (#1394): `1593-006` on
+ *   Wikidata, `1593bis-006` on the list. Proposed beside what the other rules
+ *   find, never instead, and only where the name agrees, since an extension can
+ *   renumber the parts.
  */
 
-export type MatchBasis = 'part_of' | 'near';
+export type MatchBasis = 'part_of' | 'near' | 'numbered';
 
 export interface ComponentPoint {
   locationId: number;
@@ -203,9 +208,42 @@ function measure(point: ComponentPoint, candidate: CandidateItem) {
 
 /** Whether a candidate passes the rule its basis names. */
 function passes(basis: MatchBasis, m: ReturnType<typeof measure>): boolean {
-  if (m.exactName && m.distance <= (basis === 'part_of' ? SAME_NAME_RADIUS_M : NEAR_SAME_NAME_RADIUS_M)) return true;
+  if (m.exactName && m.distance <= (basis === 'near' ? NEAR_SAME_NAME_RADIUS_M : SAME_NAME_RADIUS_M)) return true;
   if (basis === 'part_of') return m.distance <= PART_RADIUS_M && (m.similarity >= MIN_SIMILARITY || m.distance <= PART_SAME_SPOT_M);
+  // The number names the component, and an extension may have renumbered the
+  // parts, so the name decides; the distance only bounds it to the component's ground.
+  if (basis === 'numbered') return m.distance <= SAME_NAME_RADIUS_M && m.similarity >= MIN_SIMILARITY;
   return m.distance <= NEAR_RADIUS_M && m.similarity >= MIN_SIMILARITY;
+}
+
+/** One candidate as a match for one point under one rule, or null where the rule does not admit it. */
+function matchOf(point: ComponentPoint, candidate: CandidateItem, basis: MatchBasis): ComponentMatch | null {
+  const m = measure(point, candidate);
+  if (!passes(basis, m)) return null;
+  return {
+    locationId: point.locationId,
+    item: candidate.item,
+    label: candidate.englishLabel ?? m.label,
+    distanceM: Math.round(Number.isFinite(m.distance) ? m.distance : -1),
+    similarity: Math.round(m.similarity * 100) / 100,
+    exact: m.exactName && m.distance <= EXACT_DISTANCE_M,
+    basis,
+    itemLat: m.at?.[0] ?? null,
+    itemLon: m.at?.[1] ?? null,
+  };
+}
+
+/**
+ * Every candidate carrying the point's number under another inscription that
+ * the rule admits (#1394), each a question of its own: two villages carry
+ * Frederiksoord-Wilhelminaoord's number, and choosing one would be guessing.
+ */
+export function numberedMatches(
+  point: ComponentPoint, candidates: readonly CandidateItem[], refused: ReadonlySet<string> = new Set(),
+): ComponentMatch[] {
+  return candidates.filter(c => !refused.has(c.item))
+    .map(c => matchOf(point, c, 'numbered'))
+    .filter((match): match is ComponentMatch => match !== null);
 }
 
 /**
@@ -222,19 +260,8 @@ export function bestMatch(
   let best: ComponentMatch | null = null;
   for (const candidate of candidates) {
     if (refused.has(candidate.item)) continue;
-    const m = measure(point, candidate);
-    if (!passes(basis, m)) continue;
-    const match: ComponentMatch = {
-      locationId: point.locationId,
-      item: candidate.item,
-      label: candidate.englishLabel ?? m.label,
-      distanceM: Math.round(Number.isFinite(m.distance) ? m.distance : -1),
-      similarity: Math.round(m.similarity * 100) / 100,
-      exact: m.exactName && m.distance <= EXACT_DISTANCE_M,
-      basis,
-      itemLat: m.at?.[0] ?? null,
-      itemLon: m.at?.[1] ?? null,
-    };
+    const match = matchOf(point, candidate, basis);
+    if (!match) continue;
     if (!best || match.similarity > best.similarity
       || (match.similarity === best.similarity && match.distanceM < best.distanceM)) best = match;
   }

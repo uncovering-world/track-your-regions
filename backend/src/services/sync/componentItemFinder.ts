@@ -6,9 +6,10 @@
  * (#1270), and a component without one shows the whole site's picture. The
  * reference resolves 3 933 components on the development catalogue; 2 519
  * have none. Many of those have an item that simply lacks the number — a fort
- * of the Limes, a villa of Aalto's — and the two rules of
- * `componentItemMatching.ts` find it by what the item says it is part of and
- * by what lies near the point. A match by place and name is a proposal, never
+ * of the Limes, a villa of Aalto's — and the three rules of
+ * `componentItemMatching.ts` find it by what the item says it is part of, by
+ * what lies near the point, and by the component's number under another
+ * inscription (`componentItemNumbered.ts`). A match by place and name is a proposal, never
  * a fact (ADR-0046): each lands in `experience_component_item_proposals`, and
  * only a curator's answer records an item on the point.
  *
@@ -18,13 +19,15 @@
  */
 
 import { pool } from '../../db/index.js';
+import { byComponentKey, numberedFor } from './componentItemNumbered.js';
 import { listRef, parseWhcRef } from './unescoWikidata.js';
 import {
-  admittedClasses, bestMatch, nearestM, ofTheSitesKind, placeAsCandidate, standsAtTheComponent, standsForWholeSite, NEAR_SAME_NAME_RADIUS_M, SAME_NAME_RADIUS_M,
-  type CandidateItem, type ComponentMatch, type ComponentPoint,
+  admittedClasses, bestMatch, nearestM, numberedMatches, ofTheSitesKind, placeAsCandidate, standsAtTheComponent, standsForWholeSite,
+  NEAR_SAME_NAME_RADIUS_M, SAME_NAME_RADIUS_M,
+  type CandidateItem, type ComponentMatch, type ComponentPoint, type MatchBasis,
 } from './componentItemMatching.js';
 import {
-  classesOfItems, itemsInBoxes, labelsOf, partsOfSites, placesOf, settlementsAmong, tooHeavy, type Box, type ItemLabels,
+  classesOfItems, componentNumbers, itemsInBoxes, labelsOf, partsOfSites, placesOf, settlementsAmong, tooHeavy, type Box, type ItemLabels,
   type StandingPlace,
   type QueryHooks,
 } from './componentItemQueries.js';
@@ -74,6 +77,8 @@ export interface ComponentItemReport {
   partOf: number;
   /** Proposals found near the point among items of the site's kind. */
   near: number;
+  /** Proposals carrying the component's number under another inscription (#1394). */
+  numbered: number;
   /** Of those, the ones with the same name within a few metres. */
   exact: number;
   /** Components whose surroundings the service could not answer for, even asked one area at a time. */
@@ -382,24 +387,28 @@ function claimsAnotherSite(candidate: CandidateItem, point: PointRow): boolean {
 }
 
 /**
- * Replaces the open proposals of the points this pass answered for with what it found.
+ * Replaces the open proposals of the points this pass answered for with what it found,
+ * but those of a rule whose question went unanswered (`unasked`), which stand.
  * An answered proposal is kept: a refusal is what keeps a candidate from coming
  * back, and an acceptance has already recorded its item on the point. A candidate
  * a curator took back (#1336) is open and marked: found again, it takes the
  * pass's measures and keeps its mark; not found, it goes the way every open
  * candidate the pass does not find goes.
  */
-async function writeProposals(locationIds: readonly number[], matches: readonly ComponentMatch[]): Promise<void> {
+async function writeProposals(
+  locationIds: readonly number[], matches: readonly ComponentMatch[], unasked: MatchBasis | null,
+): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
     await client.query(
       `DELETE FROM experience_component_item_proposals p
         WHERE p.answer IS NULL AND p.location_id = ANY($1::int[])
+          AND ($4::text IS NULL OR p.basis <> $4)
           AND (p.taken_back_at IS NULL
                OR NOT EXISTS (SELECT 1 FROM unnest($2::int[], $3::text[]) AS f(location_id, item)
                                WHERE f.location_id = p.location_id AND f.item = p.wikidata_item))`,
-      [locationIds, matches.map(m => m.locationId), matches.map(m => m.item)],
+      [locationIds, matches.map(m => m.locationId), matches.map(m => m.item), unasked],
     );
     // With the item's coordinate nearest the point, so the card can show the
     // candidate beside the component; none where the item states no coordinate.
@@ -495,13 +504,31 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
   const { chosen, atTheComponent } = chooseNear(searchable.filter(p => nearOf.has(p.locationId)), ofKindOf, places, fallsBack, refused, new Set([...taken, ...settledPlaces]));
   matches.push(...chosen);
 
+  // The third door, beside the others' answers rather than instead of them (#1394).
+  onStage?.('Reading the items that carry a component\'s number under another inscription');
+  let byKey = new Map<string, CandidateItem[]>();
+  let numberedUnread = false;
+  try {
+    byKey = byComponentKey(await componentNumbers(counted));
+  } catch (error) {
+    if (!tooHeavy(error)) throw error;
+    numberedUnread = true;
+  }
+  const numberedOf = new Map(points.map(p => [p.locationId, reachable(p, numberedFor(p, byKey), SAME_NAME_RADIUS_M)]));
+  await readLabels(numberedOf.values());
+  for (const point of points) {
+    matches.push(...numberedMatches(point, named(numberedOf.get(point.locationId)!), refused.get(point.locationId)));
+  }
+
   const proposals = onePerItem(matches);
   // Answered for: a new proposal, or every question this pass asked about the
   // point got an answer. A point whose site's parts or surroundings the service
   // could not answer keeps what an earlier pass proposed for it.
   const unreadSites = new Set(unread);
   const waiting = new Set(unmatched.map(p => p.locationId));
-  const proposed = new Set(proposals.map(m => m.locationId));
+  // A number under another inscription is asked beside the other doors, so it
+  // does not make a point answered for that the other doors did not answer.
+  const proposed = new Set(proposals.filter(m => m.basis !== 'numbered').map(m => m.locationId));
   // A point one of whose site items went unread is not answered for, even
   // with a part found under another: the pass did not see all of it, and
   // writing would drop the open candidates it did not evaluate.
@@ -509,13 +536,16 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
     && (proposed.has(p.locationId) || !waiting.has(p.locationId) || nearOf.has(p.locationId)));
   // A point that stands for its whole site is answered for too: nothing is
   // proposed for it, and what an earlier pass proposed is cleared.
-  if (options.write && !hooks.isCancelled?.()) await writeProposals([...answered.map(p => p.locationId), ...wholeSiteIds], proposals);
+  if (options.write && !hooks.isCancelled?.()) {
+    await writeProposals([...answered.map(p => p.locationId), ...wholeSiteIds], proposals, numberedUnread ? 'numbered' : null);
+  }
   return {
     matches: proposals,
     report: {
       points: points.length,
       partOf: proposals.filter(m => m.basis === 'part_of').length,
       near: proposals.filter(m => m.basis === 'near').length,
+      numbered: proposals.filter(m => m.basis === 'numbered').length,
       exact: proposals.filter(m => m.exact).length,
       wholeSites,
       settlements,

@@ -143,6 +143,22 @@ export async function partsOfSites(
   return { parts, unread };
 }
 
+/**
+ * Every item that carries a component's World Heritage number (#1394), with
+ * the numbers it carries and its coordinates, in one question: some five
+ * thousand statements on 2026-10-12, answered in under two seconds. A number
+ * stated only as deprecated is left out, as the reference reader leaves it.
+ */
+export async function componentNumbers(hooks: QueryHooks): Promise<CandidateItem[]> {
+  const rows = await ask(`SELECT ?item ?whc ?coord WHERE {
+    ?item p:P757 ?statement . ?statement ps:P757 ?whc .
+    FILTER(CONTAINS(?whc, "-"))
+    FILTER NOT EXISTS { ?statement wikibase:rank wikibase:DeprecatedRank }
+    OPTIONAL { ?item wdt:P625 ?coord }
+  }`, hooks);
+  return [...candidatesOf(rows, 'item').values()];
+}
+
 export interface Box { south: number; west: number; north: number; east: number }
 
 /** QLever declares no prefixes of its own, unlike the Wikidata Query Service. */
