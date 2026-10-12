@@ -573,7 +573,7 @@ export function syncUnescoSites(
         throw new Error('No valid coordinates');
       }
       // The site's Wikidata items (#1248), only from an index Wikidata answered.
-      const items = factsAnswered ? siteItems(facts, String(record.id_no)) : null;
+      const items = factsAnswered ? siteItems(facts, String(record.id_no), record.name_en) : null;
       const result = await upsertExperience(processed, context, items);
       if (!context.dryRun && factsAnswered && result.experienceId) {
         const changed = await resolveSiteComponents(
