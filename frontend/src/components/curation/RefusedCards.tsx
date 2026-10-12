@@ -11,7 +11,7 @@
 
 import { useState } from 'react';
 import {
-  Typography, Card, CardContent, Button, Stack, TextField,
+  Typography, Card, CardContent, Button, Checkbox, FormControlLabel, Stack, TextField,
 } from '@mui/material';
 import { useMutation } from '@tanstack/react-query';
 import { setExperienceAdmission, type AdmissionResult } from '../../api/curation';
@@ -74,10 +74,14 @@ export function RefusedCard({ items, onDone }: { items: ReviewQueueItem[]; onDon
  */
 function RefusalSection({ item, heading, onDone }: { item: ReviewQueueItem; heading?: string; onDone: OnDone }) {
   const [note, setNote] = useState('');
+  // A put-back is remembered unless the curator says otherwise (#1368): they
+  // read this one row, which is what a pin stands for.
+  const [remember, setRemember] = useState(true);
   const decide = useMutation({
     mutationFn: (decision: 'confirm' | 'override') =>
       setExperienceAdmission(item.id, {
         decision, note: note || undefined, ...namedMembership(item.membership_id),
+        ...(decision === 'override' ? { remember } : {}),
       }),
     // "Put it back" on a row nobody had passed publishes it as well, and a
     // curator watching an object stay invisible after un-refusing it would go
@@ -109,8 +113,18 @@ function RefusalSection({ item, heading, onDone }: { item: ReviewQueueItem; head
         helperText="Shown beside this row in the kept-out list, and in its curation history."
         value={note}
         onChange={(e) => setNote(e.target.value)}
-        sx={{ mb: 2 }}
+        sx={{ mb: 1 }}
       />
+
+      <FormControlLabel
+        control={<Checkbox size="small" checked={remember} onChange={(e) => setRemember(e.target.checked)} />}
+        label={<Typography variant="body2">Remember a put-back on later runs</Typography>}
+      />
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 2, ml: 4 }}>
+        {remember
+          ? `Later runs keep it in ${item.kind_name} while the rule turns it down for this same reason; a new reason asks you again.`
+          : `It is back for now: the next run applies the rule again, and asks you again if it still turns it down.`}
+      </Typography>
 
       <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
         <Button

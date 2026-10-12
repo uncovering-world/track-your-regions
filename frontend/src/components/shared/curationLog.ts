@@ -418,6 +418,10 @@ function formatAdmission(d: Record<string, unknown>): string | null {
   const lines: string[] = [];
   if (d.reason) lines.push(`The rule said: ${d.reason}`);
   if (d.note) lines.push(`“${d.note}”`);
+  // Whether later runs keep the answer (#1368): a card's answer chooses, a
+  // batch's never pins (ADR-0067). An answer logged before the choice says nothing.
+  if (d.pinned === true) lines.push('Remembered on later runs');
+  if (d.pinned === false) lines.push('For now: the next run applies the rule again');
   if (d.published) lines.push('Published');
   lines.push(...releasedContents(d));
   return lines.length > 0 ? lines.join('\n') : null;
