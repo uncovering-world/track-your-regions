@@ -215,7 +215,9 @@ const NAME_STOPWORDS = new Set([
 /**
  * A name as the set of words it is made of: markup dropped (the portal writes
  * `<em>Subak</em>` and `<br /><small>…</small>` into names), accents folded,
- * case folded, and the words that name nothing left out.
+ * case folded, a plural's final `s` folded — "Rock-Art Site of the Côa Valley
+ * and Siega Verde" is named as "Rock Art Sites in the Côa Valley and Siega
+ * Verde" (#1403) — and the words that name nothing left out.
  */
 function nameWords(value: string | null | undefined): Set<string> {
   // Tags cut out by position rather than by pattern: what follows each `<` is
@@ -228,7 +230,12 @@ function nameWords(value: string | null | undefined): Set<string> {
     .replace(/\p{M}/gu, '')
     .toLowerCase();
   const words = plain.match(/[a-z0-9]+/g) ?? [];
-  return new Set(words.filter((word) => !NAME_STOPWORDS.has(word)));
+  return new Set(words.filter((word) => !NAME_STOPWORDS.has(word)).map(singular));
+}
+
+/** A word with a plural's final `s` folded; `fortress` and a word of three letters kept. */
+function singular(word: string): string {
+  return word.length > 3 && word.endsWith('s') && !word.endsWith('ss') ? word.slice(0, -1) : word;
 }
 
 /**

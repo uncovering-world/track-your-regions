@@ -474,6 +474,15 @@ describe("a World Heritage site's items, where one is named as the property", ()
     expect(siteItems(index, '1468', 'Moravian Church Settlements')).toEqual(['Q128009257']);
   });
 
+  it('reads a plural and its singular as one word (#1403)', () => {
+    // The 1998 inscription is the Côa Valley alone; the property since 2010 adds Siega Verde.
+    const index = indexWorldHeritageFacts([
+      item('Q552106', '866', 'Prehistoric Rock Art Sites in the Côa Valley', 30),
+      item('Q39258498', '866bis', 'Prehistoric Rock-Art Site of the Côa Valley and Siega Verde', 10),
+    ]);
+    expect(siteItems(index, '866', 'Prehistoric Rock Art Sites in the Côa Valley and Siega Verde')).toEqual(['Q39258498']);
+  });
+
   it('keeps every item named alike', () => {
     const index = indexWorldHeritageFacts([
       item('Q38095', '1', 'Galápagos Islands', 140),
