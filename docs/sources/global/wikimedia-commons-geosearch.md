@@ -76,3 +76,10 @@ item that Wikipedia geosearch or a register code finds (`wikipedia-geosearch`, `
 `ch-kgs-inventar`). Where no item exists, the nearby files are what a curator is shown to pick
 from, each with its extmetadata credit, never written unasked. The terms are the product's own
 already.
+
+**Read for a curator's pick (#1341, 2026-10-12)**, and the status stays `looked-at` because no sync
+reads it: a point with no picture of its
+own, opened for correction by a curator, is offered the picture files geotagged within 300 m,
+nearest first, at most twelve, each with its distance and extmetadata credit — one request when
+the curator asks, under `userAgent()`. The pick is the point's edit. Nothing is read by a run,
+and nothing is proposed in the review queue (`docs/tech/experiences.md`, the point's edit).
