@@ -41,7 +41,7 @@ interface CandidateRow {
   label: string;
   distanceM: number;
   similarity: number;
-  basis: 'part_of' | 'near';
+  basis: 'part_of' | 'near' | 'numbered';
   itemLat: number | null;
   itemLon: number | null;
   stored: { judgement: Judgement | null; confidence: number } | null;
@@ -72,6 +72,9 @@ const BASIS_WORDS: Record<CandidateRow['basis'], string> = {
     + 'coordinate often stands a kilometre or two from the component\'s point, one placed on the modern village and '
     + 'the other on the monument, so the distance alone decides little',
   near: 'because the item lies near the point and is of the kind the site\'s other components are',
+  numbered: 'because the item carries this component\'s World Heritage number under another inscription of the site; '
+    + 'an extension can renumber the parts, so the number alone does not make it this component, and the name and place '
+    + 'decide',
 };
 
 const at = (lat: number | null, lon: number | null): string => (lat == null || lon == null ? 'no coordinate' : `${lat}, ${lon}`);

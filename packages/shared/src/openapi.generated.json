@@ -16419,9 +16419,10 @@
             "type": "string",
             "enum": [
               "part_of",
-              "near"
+              "near",
+              "numbered"
             ],
-            "description": "The rule that found it: the item says it is part of the site, or lies near the point and is of its kind."
+            "description": "The rule that found it: the item says it is part of the site, lies near the point and is of its kind, or carries the component's number under another inscription."
           },
           "itemLatitude": {
             "description": "Where the item stands, nearest the point; null on a proposal that kept none.",

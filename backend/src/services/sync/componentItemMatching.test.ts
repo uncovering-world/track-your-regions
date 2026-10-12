@@ -5,8 +5,8 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  admittedClasses, bestMatch, distanceM, nameSimilarity, ofTheSitesKind, placeAsCandidate, standsAtTheComponent,
-  standsForWholeSite,
+  admittedClasses, bestMatch, distanceM, nameSimilarity, numberedMatches, ofTheSitesKind, placeAsCandidate,
+  standsAtTheComponent, standsForWholeSite,
   type CandidateItem,
 } from './componentItemMatching.js';
 
@@ -195,5 +195,39 @@ describe('the place a thing at the component stands in, offered in its stead (#1
     const christiansfeld = { locationId: 8672, name: 'Christiansfeld', lat: 55.3555555556, lon: 9.4813888889 };
     expect(placeAsCandidate(christiansfeld, { item: 'Q3197288', names: ['Christiansfeld'], coords: [[55.356667, 9.483056]], referenced: true })).toBeNull();
     expect(placeAsCandidate(herrnhut, { item: 'Q21101', names: ['Görlitz District'], coords: [], referenced: false })).toBeNull();
+  });
+});
+
+describe("an item carrying the component's number under another inscription (#1394)", () => {
+  // Mozu-Furuichi: the list numbers the kofun 1593bis-006, Wikidata 1593-006.
+  const OSAMEZUKA = { locationId: 11, name: 'Osamezuka Kofun', lat: 34.55886, lon: 135.48808 };
+  const osamezuka: CandidateItem = { item: 'Q11410610', labels: ['Osamezuka Kofun'], coords: [[34.55878, 135.48806]] };
+  // Beech Forests: the list's 1133quinquies-039 is Abruzzo, Wikidata's 1133ter-039 Paklenica, renumbered.
+  const ABRUZZO = { locationId: 12, name: 'Abruzzo', lat: 41.75, lon: 13.88333 };
+  const paklenica: CandidateItem = { item: 'Q732723', labels: ['Paklenica'], coords: [[44.36667, 15.43333]] };
+  // Frederiksoord stands 2.1 km from its component's point, past the part rule's 2 km.
+  const COLONY = { locationId: 13, name: 'Frederiksoord-Wilhelminaoord', lat: 52.85729, lon: 6.16717 };
+  const frederiksoord: CandidateItem = { item: 'Q2483434', labels: ['Frederiksoord'], coords: [[52.8431, 6.1872]] };
+
+  it('takes the item where the name agrees, as far as the same-name radius', () => {
+    expect(numberedMatches(OSAMEZUKA, [osamezuka])).toMatchObject([{ item: 'Q11410610', basis: 'numbered', exact: true }]);
+    const [colony] = numberedMatches(COLONY, [frederiksoord]);
+    expect(colony).toMatchObject({ item: 'Q2483434', basis: 'numbered', exact: false });
+    expect(colony.distanceM).toBeGreaterThan(2000);
+  });
+
+  it('leaves a renumbered part whose name is another place, and a refused one', () => {
+    expect(numberedMatches(ABRUZZO, [{ ...paklenica, coords: [[41.75, 13.88333]] }])).toEqual([]);
+    expect(numberedMatches(OSAMEZUKA, [osamezuka], new Set(['Q11410610']))).toEqual([]);
+  });
+
+  it('leaves an item farther than the same-name radius, and one with no coordinate', () => {
+    expect(numberedMatches(OSAMEZUKA, [{ ...osamezuka, coords: [[34.62, 135.48808]] }])).toEqual([]);
+    expect(numberedMatches(OSAMEZUKA, [{ ...osamezuka, coords: [] }])).toEqual([]);
+  });
+
+  it('answers every candidate the rule admits, not the best one', () => {
+    const second: CandidateItem = { item: 'Q1881045', labels: ['Wilhelminaoord'], coords: [[52.8561, 6.1639]] };
+    expect(numberedMatches(COLONY, [frederiksoord, second]).map(m => m.item)).toEqual(['Q2483434', 'Q1881045']);
   });
 });

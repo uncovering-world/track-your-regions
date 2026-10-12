@@ -32,6 +32,11 @@ const parts: CandidateItem[] = [
   { item: MAIREA_ITEM, labels: ['Villa Mairea'], coords: [[61.5949, 21.8731]], references: ['9840-001'] },
   { item: RESOLVED_ITEM, labels: ['Resolved'], coords: [[61.6, 21.9]] },
 ];
+/** Buciumi's fort under the inscription's later numbering, which the list does not use (#1394). */
+const NUMBERED_ITEM = 'Q98411';
+const numbered: CandidateItem[] = [
+  { item: NUMBERED_ITEM, labels: ['Buciumi'], coords: [[47.039, 23.059]], references: ['9840ter-003'] },
+];
 const nearby: CandidateItem[] = [
   { item: BOLOGA_ITEM, labels: ['Castra of Bologa'], coords: [[46.8851, 22.8754]], classes: [CASTRUM] },
   { item: REFUSED_ITEM, labels: ['Castra of Buciumi'], coords: [[47.0381, 23.0583]], classes: [CASTRUM] },
@@ -47,9 +52,11 @@ vi.mock('./componentItemQueries.js', async (importOriginal) => ({
   settlementsAmong: vi.fn(async () => new Set<string>()),
   // Where a candidate stands is QLever's answer too: no place, unless a test names one.
   placesOf: vi.fn(async () => new Map<string, StandingPlace[]>()),
+  // The items carrying a component's number: none, unless a test names them.
+  componentNumbers: vi.fn(async () => [] as CandidateItem[]),
   // The labels come from Wikidata's API, read only for the items the distance leaves.
   labelsOf: vi.fn(async (items: string[]) => new Map(items.map(item => {
-    const all = [...parts, ...nearby].find(c => c.item === item)?.labels ?? [];
+    const all = [...parts, ...nearby, ...numbered].find(c => c.item === item)?.labels ?? [];
     return [item, { all, english: all[0] ?? null }];
   }))),
 }));
@@ -114,6 +121,12 @@ const run = () => findComponentItems({ write: true, hooks: { budget: new WaitBud
 beforeEach(async () => {
   vi.mocked(queries.itemsInBoxes).mockImplementation(async () => nearby.map(c => ({ ...c, labels: [] })));
   vi.mocked(queries.placesOf).mockReset().mockImplementation(async () => new Map<string, StandingPlace[]>());
+  vi.mocked(queries.componentNumbers).mockReset().mockImplementation(async () => []);
+  // A test that names its own labels must not leave them to the next one.
+  vi.mocked(queries.labelsOf).mockImplementation(async (items: readonly string[]) => new Map(items.map(item => {
+    const all = [...parts, ...nearby, ...numbered].find(c => c.item === item)?.labels ?? [];
+    return [item, { all, english: all[0] ?? null }];
+  })));
   vi.mocked(queries.classesOfItems).mockImplementation(async (items: readonly string[]) =>
     new Map(items.map(item => [item, item === RESOLVED_ITEM ? [CASTRUM] : []])));
   await clear();
@@ -361,5 +374,31 @@ describe('findComponentItems', () => {
     const open = (await proposals()).filter(p => p.location_id === points.bologa && p.answer === null).map(p => p.wikidata_item);
     expect(open).toContain('Q98408');
     expect(open).toContain(STALE_ITEM);
+  });
+
+  it("proposes an item carrying the point's number under another inscription beside the other doors' answers (#1394)", async () => {
+    vi.mocked(queries.componentNumbers).mockImplementation(async () => numbered.map(c => ({ ...c, labels: [] })));
+
+    const { report } = await run();
+
+    expect(report.numbered).toBe(1);
+    expect((await proposals()).filter(p => p.location_id === points.buciumi)).toEqual([
+      { location_id: points.buciumi, wikidata_item: REFUSED_ITEM, basis: 'near', exact: false, answer: 'refused' },
+      { location_id: points.buciumi, wikidata_item: NUMBERED_ITEM, basis: 'numbered', exact: false, answer: null },
+    ]);
+  });
+
+  it("keeps an earlier pass's numbered proposals when the numbers could not be read", async () => {
+    await pool.query(
+      `INSERT INTO experience_component_item_proposals (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
+       VALUES ($1, $2, 'Buciumi', 90, 1, false, 'numbered')`,
+      [points.buciumi, NUMBERED_ITEM],
+    );
+    vi.mocked(queries.componentNumbers).mockRejectedValue(new SparqlUnanswered('Wikidata SPARQL error 504: gateway timeout'));
+
+    const { report } = await run();
+
+    expect(report.numbered).toBe(0);
+    expect((await proposals()).some(p => p.location_id === points.buciumi && p.wikidata_item === NUMBERED_ITEM && p.answer === null)).toBe(true);
   });
 });
