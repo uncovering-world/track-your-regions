@@ -4320,9 +4320,22 @@ the membership a client names), dated by the newest proposal and under no run, s
 finder is an admin's pass; last in the class order, because every other question hides or misdescribes
 something readers see and this one adds what a component's item would give it. The card
 lists the candidates under their points, the better first: the item by its label and id, the
-rule that found it, the distance, the name similarity, the mark for the same name at the same
-spot (`exact`), and where the item stands, from the coordinate the finder kept
-(`item_location`, migration 083), on a map beside the point. The answer is
+rule that found it, the distance, the name similarity and the mark for the same name at the same
+spot (`exact`). The site is drawn as a container and each component as a part of it (#1342):
+the header says what the site is made of and gives no single coordinate (ADR-0095), each
+component is a part-card with its own picture and credit, and one map above the parts
+(`ComponentItemsMap.tsx`) draws every place the site is made of (`site_points`, the set
+`placeOfObjectSql` in `reviewQueueContext.ts` names, the same the header's count counts) as a
+grey, named pin, with the candidate the pointer last rested on beside its component — where the
+item stands, from the coordinate the finder kept (`item_location`, migration 083), a dashed line
+and the distance between them — framed with the other component nearest the point
+(`framedShape`, through `frameGeoJson`), since whether a cave 11 m off is this component or the
+neighbouring one is read from where the neighbour is. The map stays in view while the parts under
+it are read — sticky within the card, since a Dacian frontier has dozens of components and the row a
+curator reads is far below the map's place. A proposal with no `item_location` draws
+the component and says the candidate's position is not read yet. The map is mounted only while
+the card is near the screen (`useNearViewport`): a page holds up to 25 of these cards, and a
+WebGL context per card would pass the browser's cap of about a dozen and blank the earliest. The answer is
 `POST /api/experiences/:id/component-items` (`componentItemController.ts`), per candidate
 `accepted` or `refused`, one request for the card. A confirmed candidate's item is written on
 the point as the curator's choice — `wikidata_item` with a claim on it (`claimPointItem`,
