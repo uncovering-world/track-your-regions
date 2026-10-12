@@ -56,7 +56,7 @@ and accepted by it.
 | [0034](0034-a-place-has-an-address.md) | A place has an address, and ids decide it | Accepted | 2026-08-25 |
 | [0035](0035-ancestor-geometry-invalidation-lives-in-the-database.md) | Ancestor geometry invalidation lives in the database | Accepted — narrowed by ADR-0068 | 2026-08-27 |
 | [0036](0036-a-rung-carries-the-holes-its-source-has.md) | A rung carries the holes its source has | Accepted | 2026-08-27 |
-| [0037](0037-a-part-field-readers-see-is-held-like-the-objects.md) | A field of a part readers can see is held like the object's own | Accepted — decision 6 narrowed by [0050](0050-a-renamed-component-is-found-by-its-claim.md); decision 1 narrowed by [0089](0089-a-parts-empty-field-is-filled-without-a-hold.md) | 2026-08-30 |
+| [0037](0037-a-part-field-readers-see-is-held-like-the-objects.md) | A field of a part readers can see is held like the object's own | Accepted — decision 6 narrowed by [0050](0050-a-renamed-component-is-found-by-its-claim.md); decision 1 narrowed by [0089](0089-a-parts-empty-field-is-filled-without-a-hold.md) and [0099](0099-a-rewrite-a-visitor-would-not-notice-passes-the-gate.md) | 2026-08-30 |
 | [0038](0038-a-held-proposal-is-answered-per-field.md) | A held proposal is answered per field, and the answer is recorded by value | Accepted — decisions 1 and 1a narrowed by ADR-0039 | 2026-08-30 |
 | [0039](0039-a-run-records-facts-not-columns.md) | A run records facts, not columns: every metadata key is its own changeset entry | Accepted — decision 2 narrowed by ADR-0077 | 2026-08-31 |
 | [0040](0040-a-work-names-every-one-of-its-makers.md) | A work names every one of its makers, and a curator can correct them | Accepted — decision 6 narrowed by [0049](0049-a-curator-writes-a-works-picture-only-with-its-credit.md) | 2026-08-31 |
@@ -118,6 +118,7 @@ and accepted by it.
 | [0096](0096-the-unread-batchs-pins-are-released-once-read.md) | The pins of the unread batch of 2026-09-14 are released once a curator has read them | Accepted | 2026-10-12 |
 | [0097](0097-a-cards-put-back-pins-only-when-the-curator-remembers-it.md) | A card's put-back pins only when the curator chooses to remember it | Accepted | 2026-10-12 |
 | [0098](0098-a-place-the-map-shows-in-use-is-refused-on-the-maps-entrance.md) | A place the map shows in use is refused on the map's entrance | Accepted | 2026-10-12 |
+| [0099](0099-a-rewrite-a-visitor-would-not-notice-passes-the-gate.md) | A rewrite a visitor would not notice passes the gate | Accepted | 2026-10-12 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
