@@ -80,6 +80,12 @@ const KIND_OPTIONS: Array<{ key: string; label: string; short: string; swatch: s
     short: 'candidate items',
     swatch: KIND_COLOR['component-items'],
   },
+  {
+    key: 'pin-question',
+    label: 'Pins a run no longer agrees with',
+    short: 'questioned pins',
+    swatch: KIND_COLOR['pin-question'],
+  },
 ];
 
 /** What the question chip says once a kind is picked: its short word, never the API's. */

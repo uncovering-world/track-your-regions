@@ -6295,6 +6295,137 @@ export interface PictureRepairStarted {
 }
 
 /**
+ * The curator's answer, which the membership holds: put back or kept out.
+ */
+export type PinQuestionAnswer = typeof PinQuestionAnswer[keyof typeof PinQuestionAnswer];
+
+
+export const PinQuestionAnswer = {
+  admitted: 'admitted',
+  refused: 'refused',
+} as const;
+
+/**
+ * What the run said when the curator answered.
+ */
+export type PinQuestionAnsweredVerdict = typeof PinQuestionAnsweredVerdict[keyof typeof PinQuestionAnsweredVerdict] | null;
+
+
+export const PinQuestionAnsweredVerdict = {
+  admitted: 'admitted',
+  refused: 'refused',
+} as const;
+
+/**
+ * What a run says now.
+ */
+export type PinQuestionAskedVerdict = typeof PinQuestionAskedVerdict[keyof typeof PinQuestionAskedVerdict];
+
+
+export const PinQuestionAskedVerdict = {
+  admitted: 'admitted',
+  refused: 'refused',
+} as const;
+
+/**
+ * A curator's admission pin a run no longer agrees with (#1367).
+ */
+export interface PinQuestion {
+  /** The curator's answer, which the membership holds: put back or kept out. */
+  answer: PinQuestionAnswer;
+  /** What the run said when the curator answered. */
+  answeredVerdict: PinQuestionAnsweredVerdict;
+  /**
+     * That run's reason for a refusal, in the rule's words.
+     * @nullable
+     */
+  answeredReason: string | null;
+  /** What a run says now. */
+  askedVerdict: PinQuestionAskedVerdict;
+  /**
+     * Its reason for a refusal; null for an admission.
+     * @nullable
+     */
+  askedReason: string | null;
+  /**
+     * When a run first asked this question.
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+     */
+  askedAt: string;
+  /** When the curator gave the answer the pin stands on. */
+  answeredAt: string | null;
+  /**
+     * The note given with it.
+     * @nullable
+     */
+  note: string | null;
+}
+
+export type PinQuestionAnswerBodyDecision = typeof PinQuestionAnswerBodyDecision[keyof typeof PinQuestionAnswerBodyDecision];
+
+
+export const PinQuestionAnswerBodyDecision = {
+  keep: 'keep',
+  release: 'release',
+} as const;
+
+export type PinQuestionAnswerBodyAskedVerdict = typeof PinQuestionAnswerBodyAskedVerdict[keyof typeof PinQuestionAnswerBodyAskedVerdict];
+
+
+export const PinQuestionAnswerBodyAskedVerdict = {
+  admitted: 'admitted',
+  refused: 'refused',
+} as const;
+
+export type PinQuestionAnswerBodyAsked = {
+  verdict: PinQuestionAnswerBodyAskedVerdict;
+  reason: string | null;
+};
+
+export interface PinQuestionAnswerBody {
+  decision: PinQuestionAnswerBodyDecision;
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  membershipId: number;
+  asked: PinQuestionAnswerBodyAsked;
+  /** @maxLength 1000 */
+  note?: string;
+}
+
+/**
+ * The verdict now standing: the curator's, kept, or the rule's, written in its place.
+ */
+export type PinQuestionAnsweredAdmission = typeof PinQuestionAnsweredAdmission[keyof typeof PinQuestionAnsweredAdmission];
+
+
+export const PinQuestionAnsweredAdmission = {
+  admitted: 'admitted',
+  refused: 'refused',
+} as const;
+
+/**
+ * A curator's answer to a run that asked again about their admission pin (#1367).
+ */
+export interface PinQuestionAnswered {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  membershipId: number;
+  /** The verdict now standing: the curator's, kept, or the rule's, written in its place. */
+  admission: PinQuestionAnsweredAdmission;
+  /** Whether the pin still stands: true after `keep`, false after `release`. */
+  pinned: boolean;
+}
+
+/**
  * One place found by name.
  */
 export interface PlaceResult {
@@ -6672,6 +6803,7 @@ export const QueueFacetsKindItemKind = {
   refused: 'refused',
   missing: 'missing',
   'component-items': 'component-items',
+  'pin-question': 'pin-question',
   arrival: 'arrival',
   held: 'held',
   contents: 'contents',
@@ -6776,6 +6908,7 @@ export const QueueKind = {
   refused: 'refused',
   missing: 'missing',
   'component-items': 'component-items',
+  'pin-question': 'pin-question',
 } as const;
 
 /**
@@ -7481,6 +7614,7 @@ export const ReviewAnswerBodyRowsItemKind = {
   refused: 'refused',
   missing: 'missing',
   'component-items': 'component-items',
+  'pin-question': 'pin-question',
 } as const;
 
 export type ReviewAnswerBodyRowsItem = {
@@ -7716,6 +7850,7 @@ export const ReviewQueueItemKind = {
   'withdrawn-answered': 'withdrawn-answered',
   'contents-refused': 'contents-refused',
   'component-items': 'component-items',
+  'pin-question': 'pin-question',
 } as const;
 
 /**
@@ -7925,6 +8060,8 @@ export interface ReviewQueueItem {
   quiet_fields?: QuietField[];
   /** The candidate items of the site's components, the points in the source's order and the better candidate first (#1272). `component-items` items only. */
   component_items?: ComponentItemProposal[] | null;
+  /** `pin-question` items only (#1367). */
+  pin_question?: PinQuestion | null;
 }
 
 /**
@@ -7941,6 +8078,8 @@ export interface ReviewQueue {
   sources: ReviewQueueItem[];
   /** Serial sites whose components have candidate Wikidata items (#1272). */
   componentItems: ReviewQueueItem[];
+  /** Curators' admission pins a run no longer agrees with (#1367). */
+  pinQuestions: ReviewQueueItem[];
   arrivals: ReviewQueueItem[];
   held: ReviewQueueItem[];
   /** One per place and membership holding unread rows it placed (#1290). */
@@ -10100,7 +10239,9 @@ login_hint?: string;
 
 export type GetDivisionsSearchParams = {
 /**
+ * @minLength 0
  * @maxLength 255
+ * @pattern ^[^\u0000]*$
  */
 query?: string;
 /**
@@ -10159,6 +10300,7 @@ export type GetWorldViewsByWorldViewIdRegionsSearchParams = {
 /**
  * @minLength 2
  * @maxLength 255
+ * @pattern ^[^\u0000]*$
  */
 query: string;
 /**
@@ -10394,6 +10536,7 @@ export type GetAdminUsersSearchParams = {
 /**
  * @minLength 2
  * @maxLength 255
+ * @pattern ^[^\u0000]*$
  */
 q: string;
 };
@@ -10432,6 +10575,7 @@ export type GetExperiencesSearchParams = {
 /**
  * @minLength 2
  * @maxLength 255
+ * @pattern ^[^\u0000]*$
  */
 q: string;
 /**
@@ -10548,6 +10692,7 @@ export type GetExperiencesReviewQueueParams = {
 /**
  * @minLength 1
  * @maxLength 100
+ * @pattern ^[^\u0000]*$
  */
 q?: string;
 /**
@@ -10556,7 +10701,8 @@ q?: string;
  */
 source?: string;
 /**
- * @pattern ^[a-z]+(,[a-z]+)*$
+ * @maxLength 200
+ * @pattern ^[a-z]+(-[a-z]+)*(,[a-z]+(-[a-z]+)*)*$
  */
 kind?: string;
 region?: 'none' | number;
@@ -10612,6 +10758,7 @@ export type GetGeocodeSearchParams = {
 /**
  * @minLength 2
  * @maxLength 255
+ * @pattern ^[^\u0000]*$
  */
 q: string;
 /**
@@ -18264,6 +18411,46 @@ return apiFetch<AdmissionResult>(getPostExperiencesByIdAdmissionUrl(id),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(experienceAdmissionBody)
+  }
+);}
+
+
+
+export const getPostExperiencesByIdAdmissionPinUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/admission-pin`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Keep a curator's admission pin over what a run now says, or let the rule decide
+ */
+export const postExperiencesByIdAdmissionPin = async (id: number,
+    pinQuestionAnswerBody: PinQuestionAnswerBody, options?: Parameters<typeof apiFetch>[1]): Promise<PinQuestionAnswered> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<PinQuestionAnswered>(getPostExperiencesByIdAdmissionPinUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(pinQuestionAnswerBody)
   }
 );}
 

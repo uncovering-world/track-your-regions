@@ -37,6 +37,7 @@ export const KIND_COLOR: Record<RowKind | 'arrival' | 'contents', string> = {
   refused: '#6A1B9A',
   missing: '#757575',
   'component-items': '#5D4037',
+  'pin-question': '#4527A0',
 };
 
 /** The question word a row prints in bold, ahead of its specific text. */
@@ -50,6 +51,7 @@ export const KIND_SHORT: Record<RowKind | 'arrival' | 'contents', string> = {
   refused: 'refused',
   missing: 'gone from the source',
   'component-items': 'candidate items',
+  'pin-question': 'your pin is questioned',
 };
 
 /** A field two sources disagree on (#1246), in the words the card's rows use. */
@@ -188,6 +190,13 @@ export function rowSpecific(row: {
       const components = new Set(candidates.map(c => c.locationId)).size;
       return `for ${countLabel(components, 'component', 'components')}, ${countLabel(candidates.length, 'candidate', 'candidates')}`;
     }
+    case 'pin-question':
+      // What the run says now, per kind where two pins are asked (#1367).
+      return (row.items ?? []).map(item => {
+        const asked = item.pin_question;
+        const says = asked?.askedVerdict === 'admitted' ? 'the rule would admit it' : (asked?.askedReason ?? '');
+        return row.items && row.items.length > 1 ? `${item.kind_name}: ${says}` : says;
+      }).join('; ');
     case 'waiting':
       return row.sections ? waitingSpecific(row.sections) : '';
     default:
