@@ -3,6 +3,7 @@ import { pool } from '../../db/index.js';
 import { mergePlaces, undoMerge } from './placeMerge.js';
 import { mergeArrivalsOfRun, mergeEqualItems } from './equalItemMerges.js';
 import { getExperience } from './experienceQueryController.js';
+import { getCurationLog } from './curationController.js';
 
 /**
  * A merge of two places and its undo (#1247, ADR-0046, ADR-0086), executed
@@ -336,6 +337,70 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
 
     expect(undone.refusal).toMatchObject({ status: 409 });
     expect((await placesOf([SITE]))[0].merged_into_id).toBe(WORSHIP);
+  });
+
+  it("reads the decisions made about every entry folded into the place, down a chain, while the merges stand (#1366)", async () => {
+    await pool.query(
+      `INSERT INTO experiences (id, source_id, external_id, name, location)
+       SELECT $1, s.id, 'Q9699-merge-fixture', 'Pantheon (merge fixture museum)', ST_SetSRID(ST_MakePoint(12.4768, 41.8986), 4326)
+         FROM experience_sources s WHERE s.name = 'Art Museums'`,
+      [MUSEUM],
+    );
+    await pool.query(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, 'Q9699-merge-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
+      [MUSEUM],
+    );
+    // The archaeological site's admission was pinned before any merge.
+    await pool.query(
+      `INSERT INTO experience_curation_log (experience_id, curator_id, action, details)
+       VALUES ($1, $2, 'admission_overridden', '{"reason": "an ancient temple"}')`,
+      [SITE, curatorId],
+    );
+    const first = await mergePlaces({ survivorId: WORSHIP, foldedId: SITE, mergedBy: null, reason: 'equal_wikidata_item' });
+    const second = await mergePlaces({ survivorId: MUSEUM, foldedId: WORSHIP, mergedBy: curatorId, reason: 'curator' });
+    const history = () => getCurationLog({ params: { id: MUSEUM }, caller: { id: curatorId, role: 'admin' } as Express.User });
+
+    const log = await history();
+    expect(log.find(entry => entry.action === 'admission_overridden')).toMatchObject({
+      folded_id: SITE, folded_name: 'Pantheon (merge fixture)', details: { reason: 'an ancient temple' },
+    });
+    // Each merge once: the museum's own, and the place of worship's fold of the
+    // site — never a folded entry's copy of the merge that folded it.
+    expect(log.filter(entry => entry.action === 'merged').map(entry => [entry.folded_id, entry.details?.mergeId]))
+      .toEqual(expect.arrayContaining([[null, second.result!.mergeId], [WORSHIP, first.result!.mergeId]]));
+    expect(log.filter(entry => entry.action === 'merged')).toHaveLength(2);
+
+    expect((await undoMerge(second.result!.mergeId, curatorId)).refusal).toBeUndefined();
+    expect((await history()).filter(entry => entry.folded_id !== null)).toEqual([]);
+  });
+
+  it("keeps a folded entry's earlier merge into another place, since undone, in the history (#1366)", async () => {
+    await pool.query(
+      `INSERT INTO experiences (id, source_id, external_id, name, location)
+       SELECT $1, s.id, 'Q9699-merge-fixture', 'Pantheon (merge fixture museum)', ST_SetSRID(ST_MakePoint(12.4768, 41.8986), 4326)
+         FROM experience_sources s WHERE s.name = 'Art Museums'`,
+      [MUSEUM],
+    );
+    await pool.query(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, 'Q9699-merge-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Art Museums'`,
+      [MUSEUM],
+    );
+    // The site went into the museum first, by mistake, and came back out.
+    const wrong = await mergePlaces({ survivorId: MUSEUM, foldedId: SITE, mergedBy: curatorId, reason: 'curator' });
+    expect((await undoMerge(wrong.result!.mergeId, curatorId)).refusal).toBeUndefined();
+    const right = await mergePlaces({ survivorId: WORSHIP, foldedId: SITE, mergedBy: null, reason: 'equal_wikidata_item' });
+
+    const log = await getCurationLog({ params: { id: WORSHIP }, caller: { id: curatorId, role: 'admin' } as Express.User });
+    const merges = log.filter(entry => entry.action === 'merged' || entry.action === 'merge_undone')
+      .map(entry => [entry.action, entry.folded_id, entry.details?.mergeId]);
+    expect(merges).toHaveLength(3);
+    expect(merges).toEqual(expect.arrayContaining([
+      ['merged', null, right.result!.mergeId],
+      ['merged', SITE, wrong.result!.mergeId],
+      ['merge_undone', SITE, wrong.result!.mergeId],
+    ]));
   });
 
   it('undoes two merges into one place last first', async () => {

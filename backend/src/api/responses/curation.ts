@@ -292,11 +292,16 @@ export const CurationLogEntry = z.strictObject({
     'The curator as they chose to be named, null where they chose nothing — or where no curator acted: the catalogue\'s'
     + ' own merge of two places sharing a Wikidata item (ADR-0086).',
   ),
+  folded_id: z.number().int().nullable().describe(
+    'The entry a standing merge folded into this place, when the act was about that entry rather than about the place'
+    + ' itself; null on the place\'s own acts (#1366).',
+  ),
+  folded_name: z.string().nullable().describe('The folded entry\'s name, beside `folded_id`.'),
 }).describe("One act of the object's curation log.");
 export type CurationLogEntry = z.infer<typeof CurationLogEntry>;
 
 export const CurationLog = z.array(CurationLogEntry)
-  .describe('The newest fifty acts on the object that the curator may see, newest first.');
+  .describe('The newest fifty acts on the object, and on the entries merged into it, that the curator may see, newest first.');
 export type CurationLog = z.infer<typeof CurationLog>;
 
 export const MergeUndone = z.strictObject({

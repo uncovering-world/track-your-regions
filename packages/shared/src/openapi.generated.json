@@ -17633,7 +17633,7 @@
         "items": {
           "$ref": "#/components/schemas/CurationLogEntry"
         },
-        "description": "The newest fifty acts on the object that the curator may see, newest first."
+        "description": "The newest fifty acts on the object, and on the entries merged into it, that the curator may see, newest first."
       },
       "CurationLogEntry": {
         "type": "object",
@@ -17730,6 +17730,26 @@
               "string",
               "null"
             ]
+          },
+          "folded_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The entry a standing merge folded into this place, when the act was about that entry rather than about the place itself; null on the place's own acts (#1366)."
+          },
+          "folded_name": {
+            "description": "The folded entry's name, beside `folded_id`.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -17739,7 +17759,9 @@
           "region_name",
           "details",
           "created_at",
-          "curator_name"
+          "curator_name",
+          "folded_id",
+          "folded_name"
         ],
         "additionalProperties": false,
         "description": "One act of the object's curation log."
