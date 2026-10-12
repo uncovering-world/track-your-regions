@@ -3964,7 +3964,7 @@ hides and two curators clicking it reach the same state. `confirm` keeps "alread
 (the curated-fields pin, or a batch's `admission_answered_at`, `admissionAnsweredSql`) as its
 concurrency check, so a stale card cannot silently re-hide a row someone just put back. A batch
 answer (ADR-0067) is turned away from any answered row in either direction, under the same lock,
-so it can never put back over a card's answer and keep that card's pin. If the kept-out row was a `pending` arrival nobody had read before it was confirmed,
+so it can never put back over a card's answer and keep that card's pin. The 119 pins the unread batch of 2026-09-14 made were read as a list on 2026-10-12 and released once ([ADR-0096](../decisions/0096-the-unread-batchs-pins-are-released-once-read.md), #1365): 8 were kept as a person's decision (`admission_overridden`), and 111 were released by `releaseAdmissionPin` (`membershipWriter.ts`) with the rule's reason written back, the refusal marked answered and an `admission_pin_released` row in each place's history, from the one-time script `backend/src/scripts/releaseBatchPins.ts`. If the kept-out row was a `pending` arrival nobody had read before it was confirmed,
 putting it back publishes it in the same step (see "Overriding a refusal is the other half"
 under § Publishing) — confirming never changes `curation_state`, so it is still there to answer.
 
