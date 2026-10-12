@@ -83,6 +83,7 @@ const BASIS_WORDS: Record<Candidate['basis'], string> = {
   part_of: 'says it is part of the site',
   near: 'near the point, of the site’s kind',
   numbered: 'carries this component’s number under another inscription',
+  toponym: 'near the point, of the site’s kind, and named for a place in the component’s name',
 };
 
 /** How far off the candidate stands, in metres or kilometres; or that it states no coordinate. */
@@ -179,6 +180,12 @@ function CandidateRow({ candidate, judgement, answer, onAnswer, onLook }: {
         <Typography variant="body2" color="text.secondary">
           {BASIS_WORDS[candidate.basis]} · {distanceWords(candidate.distanceM)} · {similarityWords(candidate)}
         </Typography>
+        {candidate.registerCode && (
+          <Typography variant="caption" color="text.secondary" display="block">
+            {candidate.registerCode}
+            {candidate.registerDisagrees && ' · another kind of entry than the site’s other candidates'}
+          </Typography>
+        )}
         {judgement && (
           // In grey, apart from the facts: a judgement is not a state of the place.
           <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, display: 'block' }}>

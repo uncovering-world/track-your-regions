@@ -26,8 +26,8 @@ const DACIA = {
   id: 9850, external_id: '1591', name: 'Frontiers of the Roman Empire – Dacia', kind_id: 1, kind_name: 'World Heritage Sites',
   missing_since: null, source_membership: 'present', existence: 'extant', kind: 'component-items', proposed: null,
   component_items: [
-    { ...BOLOGA, proposalId: 31, item: 'Q98501', label: 'Castrul Bologa', distanceM: 20, similarity: 1, exact: true, takenBack: false, itemLatitude: 46.8855, itemLongitude: 22.8753 },
-    { ...BOLOGA, proposalId: 32, item: 'Q98502', label: 'Turnul Bologa', distanceM: 410, similarity: 0.52, exact: false, takenBack: false, itemLatitude: null, itemLongitude: null },
+    { ...BOLOGA, proposalId: 31, item: 'Q98501', label: 'Castrul Bologa', distanceM: 20, similarity: 1, exact: true, takenBack: false, itemLatitude: 46.8855, itemLongitude: 22.8753, registerCode: 'LMI CJ-I-s-A-07104', registerDisagrees: false },
+    { ...BOLOGA, proposalId: 32, item: 'Q98502', label: 'Turnul Bologa', distanceM: 410, similarity: 0.52, exact: false, takenBack: false, itemLatitude: null, itemLongitude: null, registerCode: 'LMI CJ-II-m-B-07533', registerDisagrees: true },
     { ...BUCIUMI, proposalId: 33, item: 'Q98503', label: 'Castrul Buciumi', distanceM: 35, similarity: 0.61, exact: false, takenBack: false, itemLatitude: 47.0385, itemLongitude: 23.0583 },
     // The fort of Bologa proposed for Buciumi too, from an earlier pass.
     { ...BUCIUMI, proposalId: 34, item: 'Q98501', label: 'Castrul Bologa', distanceM: 900, similarity: 0.3, exact: false, takenBack: false, itemLatitude: null, itemLongitude: null },
@@ -69,6 +69,9 @@ describe("a site's candidate component items", () => {
     expect(screen.getByText('near the point, of the site’s kind · 20 m away · the same name')).toBeTruthy();
     expect(screen.getByText('near the point, of the site’s kind · 410 m away · names 52 % alike')).toBeTruthy();
     expect(screen.getByText('same name, same spot')).toBeTruthy();
+    // The register code under the candidate, and a word where its kind of entry is not the site's (#1340).
+    expect(screen.getByText('LMI CJ-I-s-A-07104')).toBeTruthy();
+    expect(screen.getByText('LMI CJ-II-m-B-07533 · another kind of entry than the site’s other candidates')).toBeTruthy();
     expect(screen.getAllByRole('link', { name: 'Castrul Bologa' })[0]).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q98501');
     // One map on the card, reading the first candidate until the pointer rests on another.
     expect(screen.getAllByText('Castrul Bologa').length).toBeGreaterThan(1);
