@@ -23,8 +23,11 @@ vi.mock('../../services/sync/index.js', async (importOriginal) => ({
 vi.mock('../../services/sync/componentItemJob.js', () => ({
   findUnescoComponentItems: vi.fn(async () => undefined),
 }));
+// Jev's judging at finder time is an AI setting (#1355): off unless a test turns it on.
+vi.mock('../../services/ai/aiSettingsService.js', () => ({ getSetting: vi.fn(async () => undefined) }));
 
 import { pool } from '../../db/index.js';
+import { getSetting } from '../../services/ai/aiSettingsService.js';
 import { findUnescoComponentItems } from '../../services/sync/componentItemJob.js';
 import { fixUnescoImages, runningSyncs } from '../../services/sync/index.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
@@ -130,8 +133,19 @@ describe('findComponentItems', () => {
 
     await answerRoute(findItemsRoute, request(1) as never, res as never);
 
-    expect(mockedSearch).toHaveBeenCalledWith(7);
+    await vi.waitFor(() => expect(mockedSearch).toHaveBeenCalledWith(7, undefined));
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ started: true }));
+  });
+
+  it("hands the search Jev's judging, within the budget, only where an admin turned it on (#1355)", async () => {
+    vi.mocked(getSetting).mockImplementation(async (key: string) => ({ jev_finder_judges: 'on', jev_finder_budget_usd: '0.05' } as Record<string, string>)[key]);
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 1, is_active: true }] });
+
+    await answerRoute(findItemsRoute, request(1) as never, makeRes() as never);
+
+    // Five cents at $0.042 per million input tokens.
+    await vi.waitFor(() => expect(mockedSearch).toHaveBeenCalledWith(7, expect.objectContaining({ budgetUsd: 0.05, budgetTokens: 1_190_476 })));
+    vi.mocked(getSetting).mockImplementation(async () => undefined);
   });
 
   it('answers 409 while a run is in flight', async () => {

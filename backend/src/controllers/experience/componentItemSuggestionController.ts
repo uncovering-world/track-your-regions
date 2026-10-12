@@ -151,16 +151,27 @@ function sharedOut(inputTokens: number, count: number): number[] {
   return Array.from({ length: count }, (_, i) => each + (i === 0 ? inputTokens - each * count : 0));
 }
 
+/** What one site's call came to: the questions asked, the answers by judgement, and the input tokens it cost. */
+export interface JudgedCandidates {
+  asked: number;
+  same: number;
+  other: number;
+  refused: number;
+  inputTokens: number;
+}
+
 /**
  * Ask Jev about the candidates not yet judged as they stand, in one call, and
  * record every answer: a refused one with no judgement, so the same candidate
- * is not paid for again. Answers what the card may show. A call that fails
- * leaves those candidates without a judgement; the next opening asks again.
+ * is not paid for again. Answers what the card may show and what the call came
+ * to. A call that fails leaves those candidates without a judgement; the next
+ * opening, or the finder's next pass, asks again.
  */
 async function judge(
   experienceId: number, place: { name: string; countries: string[] }, candidates: readonly CandidateRow[],
-): Promise<Suggestion[]> {
-  if (candidates.length === 0) return [];
+): Promise<{ shown: Suggestion[]; tally: JudgedCandidates }> {
+  const tally: JudgedCandidates = { asked: 0, same: 0, other: 0, refused: 0, inputTokens: 0 };
+  if (candidates.length === 0) return { shown: [], tally };
   try {
     const questions = Object.fromEntries(candidates.map(c => [`p${c.proposalId}`, questionFor(c)]));
     const { answers, model, inputTokens } = await askJevChoices(
@@ -177,15 +188,58 @@ async function judge(
         };
     });
     await store(experienceId, model, judged);
-    return judged
-      .map(s => shown(candidates.find(c => c.proposalId === s.proposalId)!, s.judgement, s.confidence))
-      .filter((s): s is Suggestion => s !== null);
+    tally.asked = judged.length;
+    tally.inputTokens = inputTokens;
+    for (const one of judged) {
+      if (one.judgement === null) tally.refused += 1; else tally[one.judgement] += 1;
+    }
+    return {
+      shown: judged
+        .map(one => shown(candidates.find(c => c.proposalId === one.proposalId)!, one.judgement, one.confidence))
+        .filter((one): one is Suggestion => one !== null),
+      tally,
+    };
   } catch (error) {
     // No judgement for these candidates: the card shows them without one,
     // exactly as on a deployment without Jev.
     console.error('[jev] no judgement for the candidates of experience %d:', experienceId, error);
-    return [];
+    return { shown: [], tally };
   }
+}
+
+/**
+ * The sites with an open candidate Jev has not judged as it stands, and how
+ * many (#1355): what the finder's pass asks about once its proposals are
+ * written. The sites with the most candidates that are not the same name at
+ * the same spot first — those the batch confirmation does not already take,
+ * and the ones a judgement helps a curator read.
+ */
+export async function sitesWithUnjudgedCandidates(): Promise<Array<{ experienceId: number; unjudged: number }>> {
+  const result = await pool.query<{ experience_id: number; unjudged: number }>(
+    `SELECT el.experience_id, COUNT(*)::int AS unjudged
+       FROM experience_component_item_proposals p
+       JOIN experience_locations el ON el.id = p.location_id
+      WHERE ${openProposalSql('p', 'el')}
+        AND NOT EXISTS (SELECT 1 FROM experience_component_item_suggestions g
+                         WHERE g.location_id = p.location_id AND g.wikidata_item = p.wikidata_item
+                           AND g.asked = ${askedSql('p')})
+      GROUP BY el.experience_id
+      ORDER BY COUNT(*) FILTER (WHERE NOT p.exact) DESC, el.experience_id`,
+  );
+  return result.rows.map(row => ({ experienceId: row.experience_id, unjudged: row.unjudged }));
+}
+
+/**
+ * Ask Jev about one site's candidates not yet judged as they stand, the
+ * question and the record the card's request makes (#1355). Nothing where the
+ * deployment has no Jev.
+ */
+export async function judgeSiteCandidates(experienceId: number): Promise<JudgedCandidates> {
+  const none: JudgedCandidates = { asked: 0, same: 0, other: 0, refused: 0, inputTokens: 0 };
+  if (!jevConfigured()) return none;
+  const place = await openCandidates(experienceId);
+  if (!place) return none;
+  return (await judge(experienceId, place, place.candidates.filter(c => !c.stored))).tally;
 }
 
 export async function suggestComponentItems(
@@ -203,6 +257,6 @@ export async function suggestComponentItems(
     .filter(c => c.stored)
     .map(c => shown(c, c.stored!.judgement, c.stored!.confidence))
     .filter((s): s is Suggestion => s !== null);
-  const fresh = await judge(id, place, place.candidates.filter(c => !c.stored));
+  const { shown: fresh } = await judge(id, place, place.candidates.filter(c => !c.stored));
   return { configured: true, suggestions: [...kept, ...fresh] };
 }

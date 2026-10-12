@@ -39,7 +39,11 @@ import { isTerminalSyncStatus } from '../../services/sync/types.js';
 import { heldRunStatusOf, idleStatusOf, rowRunStatusOf } from './syncStatusAnswer.js';
 import { CHANGESET_LOST_MARKER, stoppedByRestartSql } from '../../services/sync/syncLogMarkers.js';
 import { readLatestSyncLog } from '../../services/sync/syncUtils.js';
-import { findUnescoComponentItems } from '../../services/sync/componentItemJob.js';
+import { JEV_FINDER_BUDGET_USD_KEY, JEV_FINDER_JUDGES_KEY, finderBudgetUsd, finderJudges } from '@tyr/shared/jevSettings';
+import { JEV_USD_PER_MILLION_INPUT_TOKENS } from '../../services/jev/jevClient.js';
+import { getSetting } from '../../services/ai/aiSettingsService.js';
+import { findUnescoComponentItems, type JudgeCandidates } from '../../services/sync/componentItemJob.js';
+import { judgeSiteCandidates, sitesWithUnjudgedCandidates } from '../experience/componentItemSuggestionController.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { waitingCountsBySource } from '../experience/waitingCounts.js';
 import {
@@ -94,8 +98,24 @@ const PICTURE_REPAIRS: Record<number, (triggeredBy: number | null) => Promise<vo
  * (#1272): the one whose objects are serial, with components a reference names.
  */
 const COMPONENT_ITEM_SEARCHES: Record<number, (triggeredBy: number | null) => Promise<void>> = {
-  [UNESCO_SOURCE_ID]: findUnescoComponentItems,
+  [UNESCO_SOURCE_ID]: async (triggeredBy) => findUnescoComponentItems(triggeredBy, await finderJudge()),
 };
+
+/**
+ * Jev's judgement of what the pass proposed (#1355), where an admin turned it
+ * on in AI Settings, within the budget set there, through the module that owns
+ * the judgements' writes. Off by default: Jev is paid by the token.
+ */
+async function finderJudge(): Promise<JudgeCandidates | undefined> {
+  if (!finderJudges(await getSetting(JEV_FINDER_JUDGES_KEY))) return undefined;
+  const budgetUsd = finderBudgetUsd(await getSetting(JEV_FINDER_BUDGET_USD_KEY));
+  return {
+    budgetUsd,
+    budgetTokens: Math.floor((budgetUsd / JEV_USD_PER_MILLION_INPUT_TOKENS) * 1_000_000),
+    sites: sitesWithUnjudgedCandidates,
+    site: judgeSiteCandidates,
+  };
+}
 
 /** Registry mapping source IDs to their sync functions */
 const syncRegistry: Record<

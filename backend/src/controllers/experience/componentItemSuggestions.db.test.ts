@@ -26,7 +26,7 @@ import { pool } from '../../db/index.js';
 import { askJevChoices } from '../../services/jev/jevClient.js';
 import { getJevUsage } from '../admin/jevUsageController.js';
 import { answerComponentItemsUnderLock } from './componentItemController.js';
-import { suggestComponentItems } from './componentItemSuggestionController.js';
+import { judgeSiteCandidates, sitesWithUnjudgedCandidates, suggestComponentItems } from './componentItemSuggestionController.js';
 
 const mockedAsk = askJevChoices as unknown as ReturnType<typeof vi.fn>;
 
@@ -143,6 +143,20 @@ describe("Jev's judgement of a site's candidate component items (#1272)", () => 
     const second = await ask();
     expect(mockedAsk).toHaveBeenCalledTimes(1);
     expect(second.suggestions).toEqual(first.suggestions);
+  });
+
+  it("judges a site's candidates for the finder's pass, with the card's question and record, and leaves nothing to ask (#1355)", async () => {
+    expect(await sitesWithUnjudgedCandidates()).toContainEqual({ experienceId: SITE, unjudged: 3 });
+
+    expect(await judgeSiteCandidates(SITE)).toEqual({ asked: 3, same: 2, other: 1, refused: 0, inputTokens: 1000 });
+    expect((await stored()).map(row => row.judgement)).toEqual(['same', 'other', 'same']);
+
+    expect((await sitesWithUnjudgedCandidates()).map(site => site.experienceId)).not.toContain(SITE);
+    expect(await judgeSiteCandidates(SITE)).toEqual({ asked: 0, same: 0, other: 0, refused: 0, inputTokens: 0 });
+    expect(mockedAsk).toHaveBeenCalledTimes(1);
+    // The card reads what the pass recorded and asks nothing more.
+    expect((await ask()).suggestions.map(one => one.judgement)).toEqual(['same', 'other', 'same']);
+    expect(mockedAsk).toHaveBeenCalledTimes(1);
   });
 
   it('records an answer it refused with no judgement, shows none, and does not ask about that candidate again', async () => {
