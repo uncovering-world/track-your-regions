@@ -2278,6 +2278,12 @@ not a place to stand in; a `ruins` tag alone cannot carry a fortification, a pal
 a structure of worship or a museum past the door (Devín, Bodiam, the Tower of David, the
 Château de Blois — a monument in ruins is another kind's row), where
 `historic=archaeological_site` on the same item can (Tintagel, the Thracian Tomb of Kazanlak);
+**a place the map shows in use today is refused** (#1352, ADR-0098) — one of the item's objects,
+outside a ruin, says so (`inUseOf`, `OSM_IN_USE`: `amenity=place_of_worship`, a residential
+`building=*`, a standing `historic=castle` or `palace`), whatever dig tag a mapper put on its crypt
+or precinct (Reims Cathedral, the Lingaraja Temple, Prora's blocks), World Heritage on the item
+notwithstanding, and English Wikipedia's archaeological-sites category alone lifting it (Bamburgh
+Castle);
 and **a population statement is the living-place rule here** — a comune of
 Italy stands on no settlement branch and states its people all the same, and eighteen of them
 arrive on a ruin the mapper linked to the town's article (Potenza, Alcalá de Henares) —
