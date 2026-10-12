@@ -295,7 +295,7 @@ interface EntityContents {
  * so a file the run read through SPARQL and the same file read here are one
  * address, which is how a point takes the credit another point holds for it.
  */
-function commonsFilePath(name: string): string {
+export function commonsFilePath(name: string): string {
   const encoded = encodeURIComponent(name).replace(/[!'()*]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
   return `http://commons.wikimedia.org/wiki/Special:FilePath/${encoded}`;
 }

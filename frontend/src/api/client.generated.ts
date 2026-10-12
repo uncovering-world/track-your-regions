@@ -6205,6 +6205,34 @@ export interface MyAccount {
   curatorScopes?: CuratorScope[];
 }
 
+export interface NearbyPicture {
+  /** The file's name on Wikimedia Commons. */
+  file: string;
+  /** The address the catalogue stores a picture by: what a pick sends as `imageUrl`. */
+  url: string;
+  /**
+     * Metres from the point to where the file is geotagged.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  distanceM: number;
+  credit: ImageCredit;
+}
+
+/**
+ * The Commons files geotagged near a point, for a curator to pick the point's picture from (#1341).
+ */
+export interface NearbyPictures {
+  /**
+     * How far from the point a file may stand.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  radiusM: number;
+  /** Picture files only, nearest first; a geotag says where the camera stood, not what it shows. */
+  pictures: NearbyPicture[];
+}
+
 /**
  * Which New chips were recorded as shown.
  */
@@ -18488,6 +18516,31 @@ return apiFetch<LocationEditResult>(getPatchExperiencesLocationsByLocationIdEdit
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(editLocationBody)
+  }
+);}
+
+
+
+export const getGetExperiencesLocationsByLocationIdNearbyPicturesUrl = (locationId: number,) => {
+
+
+
+
+  return `/api/experiences/locations/${encodeURIComponent(String(locationId))}/nearby-pictures`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary List the Wikimedia Commons pictures geotagged near one point, nearest first
+ */
+export const getExperiencesLocationsByLocationIdNearbyPictures = async (locationId: number, options?: Parameters<typeof apiFetch>[1]): Promise<NearbyPictures> => {
+
+  return apiFetch<NearbyPictures>(getGetExperiencesLocationsByLocationIdNearbyPicturesUrl(locationId),
+  {
+    ...options,
+    method: 'GET'
+
+
   }
 );}
 
