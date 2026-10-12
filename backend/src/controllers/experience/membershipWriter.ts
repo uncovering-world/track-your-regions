@@ -92,6 +92,35 @@ export async function answerAdmissionOnMembership(
 }
 
 /**
+ * Release a pin one unread batch answer made (#1365, ADR-0096): the rule's
+ * verdict written in the pin's place. The row is refused with the reason the
+ * rule gave, the claim on `admission` comes off, and the refusal is marked
+ * answered, so a run that still refuses it does not ask again, while one whose
+ * rule now admits it admits it. The badge is cleared the way a rule's refusal
+ * clears it.
+ */
+export async function releaseAdmissionPin(
+  client: PoolClient,
+  lock: LockedExperience,
+  membershipId: number,
+  reason: string,
+): Promise<void> {
+  const result = await client.query(`
+      UPDATE ${MEMBERSHIPS} m
+      SET admission = 'refused',
+          admission_reason = $2,
+          curated_fields = m.curated_fields - 'admission',
+          admission_answered_at = NOW(),
+          updated_at = NOW(),
+          ${CLEAR_ICONIC}
+      WHERE m.id = $1 AND m.experience_id = $3
+    `, [membershipId, reason, lock.id]);
+  // A membership that is not this place's any more writes nothing, and the log
+  // row beside it must not say it was released.
+  if (result.rowCount !== 1) throw new Error(`membership ${membershipId} was not released on place ${lock.id}`);
+}
+
+/**
  * A curator's refusal of an arrival on the membership: the verdict, its reason
  * and the pin, the badge cleared the way a rule's refusal clears it (#760).
  */
