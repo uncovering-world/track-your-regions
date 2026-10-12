@@ -41,9 +41,9 @@ export interface QueueRow {
   subs: string[];
   item?: ReviewQueueItem;
   /**
-   * A `refused` row's refusals, one per kind whose rule refused the place, or a `missing`
-   * row's kinds whose source stopped listing a place another still lists (#1264); `item` is
-   * the first.
+   * A `refused` row's refusals, one per kind whose rule refused the place, a `missing`
+   * row's kinds whose source stopped listing a place another still lists (#1264), or a
+   * `pin-question` row's pins a run asked about again (#1367); `item` is the first.
    */
   items?: ReviewQueueItem[];
   /** A `waiting` row's questions, a section per kind that asks about the place (#1264). */
@@ -58,6 +58,7 @@ const QUESTION: Record<RowKind, string> = {
   waiting: 'waiting to be published',
   withdrawn: 'lost places it is made of',
   'component-items': 'candidate items for its components',
+  'pin-question': 'a run no longer agrees with a pin',
 };
 
 /** The server's word for a question kind, mapped to this file's own — only `conflict` differs. */
@@ -69,6 +70,7 @@ const ROW_KIND: Record<QueueOrderEntry['kind'], RowKind> = {
   refused: 'refused',
   missing: 'missing',
   'component-items': 'component-items',
+  'pin-question': 'pin-question',
 };
 
 const warnedKeys = new Set<string>();
@@ -116,7 +118,7 @@ function itemRow(kind: Exclude<RowKind, 'waiting'>, entry: QueueOrderEntry, item
     specific: rowSpecific({ kind, item, items }),
     subs: entry.subs,
     item,
-    ...(kind === 'refused' || kind === 'missing' ? { items } : {}),
+    ...(kind === 'refused' || kind === 'missing' || kind === 'pin-question' ? { items } : {}),
   };
 }
 
@@ -145,6 +147,7 @@ export function queueRows(data: ReviewQueue | undefined): QueueRow[] {
     refused: byPlace(data.refused),
     missing: byPlace(data.missing),
     'component-items': byPlace(data.componentItems),
+    'pin-question': byPlace(data.pinQuestions),
   };
 
   const rows: QueueRow[] = [];

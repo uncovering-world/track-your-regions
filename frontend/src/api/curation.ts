@@ -11,8 +11,8 @@ import type {
   AcceptSourceResult, AdmissionResult, ComponentItemsAnswered, ComponentItemSuggestions, ContentKind, CurationLog,
   DeclineHeldResult,
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
-  LocationStateResult, ManualExperienceCreated, MergeUndone, PointItemTakenBack, PublishResult, ViewsChosen, ViewSuggestions,
-  RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
+  LocationStateResult, ManualExperienceCreated, MergeUndone, PinQuestionAnswered, PointItemTakenBack, PublishResult,
+  ViewsChosen, ViewSuggestions, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
 import {
   deleteExperiencesByIdAssignByRegionId, deleteExperiencesByIdRemoveFromRegionByRegionId,
@@ -21,7 +21,7 @@ import {
   postExperiencesMergesByMergeIdUndo, postExperiencesByIdChooseViews, type ChooseViewsBody,
   postExperiencesByIdViewSuggestions, postExperiencesByIdComponentItems, type AnswerComponentItemsBody,
   postExperiencesByIdComponentItemSuggestions,
-  postExperiencesByIdAdmission, postExperiencesByIdAssign, postExperiencesByIdDeclineHeld,
+  postExperiencesByIdAdmission, postExperiencesByIdAdmissionPin, type PinQuestionAnswerBody, postExperiencesByIdAssign, postExperiencesByIdDeclineHeld,
   postExperiencesByIdDeclineSource, postExperiencesByIdPublish, postExperiencesByIdRefuseArrival,
   postExperiencesByIdRefuseContents, postExperiencesByIdReject, postExperiencesByIdState,
   postExperiencesByIdUnrefuseContents, postExperiencesByIdUnreject, postExperiencesLocationsByLocationIdState,
@@ -38,7 +38,7 @@ export type {
   ComponentItemSuggestions, ContentKind, CurationLog, CurationLogEntry,
   DeclineHeldResult, DeclineSourceResult, DeclinedPart, ExperienceEditResult,
   ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MergeUndone,
-  PartNotFound, PointItemTakenBack, ViewsChosen, ViewSuggestions, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
+  PartNotFound, PinQuestionAnswerBody, PinQuestionAnswered, PointItemTakenBack, ViewsChosen, ViewSuggestions, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
   RefuseContentsResult,
   RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
@@ -161,6 +161,18 @@ export async function setExperienceAdmission(
   decision: ExperienceAdmissionBody,
 ): Promise<AdmissionResult> {
   return postExperiencesByIdAdmission(experienceId, decision);
+}
+
+/**
+ * Answer a run that asked again about a curator's admission pin (#1367): keep
+ * the answer, or let the rule decide. `asked` is what the card showed the run
+ * saying; a question that changed since is refused, not answered.
+ */
+export async function answerPinQuestion(
+  experienceId: number,
+  body: PinQuestionAnswerBody,
+): Promise<PinQuestionAnswered> {
+  return postExperiencesByIdAdmissionPin(experienceId, body);
 }
 
 /**

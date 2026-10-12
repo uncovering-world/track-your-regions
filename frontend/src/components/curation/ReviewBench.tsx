@@ -12,6 +12,7 @@ import { Alert, Box, Typography } from '@mui/material';
 import type { QueueRow, RowKind } from './queueRows';
 import { MissingCard, ConflictCard } from './ReviewQueue';
 import { RefusedCard } from './RefusedCards';
+import { PinQuestionCard } from './PinQuestionCard';
 import { SourcesCard } from './SourcesCard';
 import { ComponentItemsCard } from './ComponentItemsCard';
 import { KindMissingCard } from './KindMissingCard';
@@ -54,6 +55,10 @@ const KIND_NOTE: Record<RowKind, string> = {
     + 'name is a guess until you say otherwise. Confirming one makes it the part’s entry — its picture and '
     + 'description follow — and your choice is kept through every run; turning one down keeps it from being '
     + 'offered again.',
+  'pin-question': 'A curator — perhaps you — answered whether this place belongs in this list and pinned the answer, '
+    + 'so every run kept it as they left it. A run now says something else — it turns the place down for a different reason, '
+    + 'or its rule would now take in what you kept out. Nothing has changed for visitors yet: keep your answer, or '
+    + 'let the rule decide.',
 };
 
 /** The note above a kind whose source stopped listing a place other sources still list (#1264). */
@@ -91,6 +96,7 @@ export function ReviewBench({ row, onDone }: {
       {row.kind === 'sources' && row.item && <SourcesCard item={row.item} onDone={onDone} />}
       {row.kind === 'component-items' && row.item && <ComponentItemsCard item={row.item} onDone={onDone} />}
       {row.kind === 'refused' && row.items && <RefusedCard items={row.items} onDone={onDone} />}
+      {row.kind === 'pin-question' && row.items && <PinQuestionCard items={row.items} onDone={onDone} />}
       {row.kind === 'missing' && row.items && asksOfKinds(row.items) && <KindMissingCard items={row.items} onDone={onDone} />}
       {row.kind === 'missing' && row.item && !asksOfKinds(row.items) && <MissingCard item={row.item} onDone={onDone} />}
       {row.kind === 'withdrawn' && row.item && <WithdrawnCard item={row.item} onDone={onDone} />}
