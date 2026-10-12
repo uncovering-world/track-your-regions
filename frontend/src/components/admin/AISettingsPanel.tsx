@@ -36,6 +36,7 @@ import {
   type AIModelOption,
 } from '../../api/admin/ai';
 import { queryKeys } from '../../api/queryKeys';
+import { JevFinderSettings } from './JevFinderSettings';
 import { JevUsageCard } from './JevUsageCard';
 
 const FEATURE_LABELS: Record<string, { label: string; description: string }> = {
@@ -352,6 +353,7 @@ export function AISettingsPanel() {
         </CardContent>
       </Card>
 
+      <JevFinderSettings />
       <JevUsageCard />
 
       <Snackbar open={snackbar.open} autoHideDuration={3000} onClose={() => setSnackbar(s => ({ ...s, open: false }))}>
