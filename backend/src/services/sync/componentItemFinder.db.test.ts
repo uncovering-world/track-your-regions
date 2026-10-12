@@ -26,7 +26,9 @@ const parts: CandidateItem[] = [
   // to the point, so it would win the tie if the finder did not leave it out.
   { item: OTHER_SITES_PART, labels: ['Villa Mairea'], coords: [[61.5948, 21.8729]], references: ['9999-001'] },
   // The site's own component, filed on Wikidata under the inscription's
-  // earlier numbering: the point says 9840bis-001, the item 9840-001 (#1344).
+  // earlier numbering: the point says 09840bis-001, the item 9840-001 (#1344).
+  // The point's number is zero-padded the way the list pads Thebes' (087-001),
+  // which is still this property's number (#1393).
   { item: MAIREA_ITEM, labels: ['Villa Mairea'], coords: [[61.5949, 21.8731]], references: ['9840-001'] },
   { item: RESOLVED_ITEM, labels: ['Resolved'], coords: [[61.6, 21.9]] },
 ];
@@ -126,7 +128,7 @@ beforeEach(async () => {
     [SITE, [SITE_ITEM]],
   );
   points = {
-    mairea: await point('9840bis-001', 'Villa Mairea', 61.5947, 21.8728, null),
+    mairea: await point('09840bis-001', 'Villa Mairea', 61.5947, 21.8728, null),
     bologa: await point('9840-002', 'Bologa', 46.8853, 22.8752, null),
     buciumi: await point('9840-003', 'Buciumi', 47.0383, 23.0581, null),
     resolved: await point('9840-004', 'Resolved', 61.6, 21.9, RESOLVED_ITEM),

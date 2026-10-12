@@ -18,7 +18,7 @@
  */
 
 import { pool } from '../../db/index.js';
-import { parseWhcRef } from './unescoWikidata.js';
+import { listRef, parseWhcRef } from './unescoWikidata.js';
 import {
   admittedClasses, bestMatch, nearestM, ofTheSitesKind, placeAsCandidate, standsAtTheComponent, standsForWholeSite, NEAR_SAME_NAME_RADIUS_M, SAME_NAME_RADIUS_M,
   type CandidateItem, type ComponentMatch, type ComponentPoint,
@@ -376,7 +376,7 @@ async function nearbyOf(
  * place (#1344).
  */
 function claimsAnotherSite(candidate: CandidateItem, point: PointRow): boolean {
-  const own = parseWhcRef(point.externalRef)?.site;
+  const own = parseWhcRef(listRef(point.externalRef))?.site;
   const claimed = (candidate.references ?? []).map(ref => parseWhcRef(ref)?.site).filter((site): site is string => !!site);
   return claimed.length > 0 && !!own && !claimed.includes(own);
 }

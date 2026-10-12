@@ -370,6 +370,17 @@ describe('resolving components to their items', () => {
     expect(resolveComponents(getbol, '1591', ['1591bis-004']).items).toEqual([{ ref: '1591bis-004', item: null }]);
   });
 
+  it("resolves a reference the list pads with a leading zero, and never folds Wikidata's (#1393)", () => {
+    // Thebes: the list says 087-001 for the Temple of Karnak; Karnak Temple
+    // Complex carries 87-001. A Wikidata value of 087-002 is a typo on the wiki.
+    const thebes = indexWorldHeritageFacts([binding('87-001', 'Q522862'), binding('087-002', 'Q319841')] as never);
+    expect(resolveComponents(thebes, '87', ['087-001', '87-001', '087-002']).items).toEqual([
+      { ref: '087-001', item: 'Q522862' },
+      { ref: '87-001', item: 'Q522862' },
+      { ref: '087-002', item: null },
+    ]);
+  });
+
   it('resolves nothing for a site Wikidata names no component of', () => {
     expect(resolveComponents(index, '1428', ['1428-001']).items).toEqual([{ ref: '1428-001', item: null }]);
   });

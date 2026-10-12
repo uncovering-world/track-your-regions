@@ -61,7 +61,11 @@ export interface SiteFacts {
  * rather than guessed at.
  */
 interface WhcRef {
-  /** The property's number, as digits, never renormalised: `0166` is not `166`. */
+  /**
+   * The property's number, as digits, never renormalised: Wikidata's `0166` is
+   * not `166`. The list's own references are folded before they are compared
+   * (`listRef`).
+   */
   site: string;
   /** `bis`, `rev`, `ter` … — a later numbering of the same property. */
   variant: string | null;
@@ -84,6 +88,17 @@ export function parseWhcRef(value: string): WhcRef | null {
     part: match[3]?.trim() || null,
     raw: value.trim(),
   };
+}
+
+/**
+ * A component reference as the World Heritage list writes it, in the form
+ * Wikidata states it: the list pads some property numbers — Thebes' components
+ * are `087-001`, where Karnak Temple Complex carries `87-001` (#1393) — and a
+ * catalogue id never has a leading zero, so the list's padding is dropped. A
+ * Wikidata value is never folded this way: its `0166` stays a typo.
+ */
+export function listRef(value: string): string {
+  return value.trim().replace(/^0+(?=\d)/, '');
 }
 
 interface Candidate {
@@ -455,7 +470,7 @@ export function resolveComponents(index: WorldHeritageIndex, site: string, refs:
   const items: ComponentResolution['items'] = [];
   const ambiguous: ComponentResolution['ambiguous'] = [];
   for (const ref of new Set(refs)) {
-    const found = [...(byRef.get(comparableRef(ref)) ?? [])].sort();
+    const found = [...(byRef.get(comparableRef(listRef(ref))) ?? [])].sort();
     if (found.length > 1) ambiguous.push({ ref, items: found });
     items.push({ ref, item: found.length === 1 ? found[0] : null });
   }
