@@ -1,7 +1,7 @@
 # ADR-0060: The site pool has a second entrance, what the map calls a dig, and one rule judges both
 
 **Date:** 2026-09-15
-**Status:** Accepted
+**Status:** Accepted — decisions 2 and 3 narrowed by ADR-0098
 
 ---
 

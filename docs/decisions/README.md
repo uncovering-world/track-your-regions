@@ -79,7 +79,7 @@ and accepted by it.
 | [0057](0057-a-work-famous-in-its-own-language-admits-its-museum-where-no-native-source-is-adopted.md) | A work read at home as much as a world masterpiece admits its museum to a regional tier that has no native source | Draft | 2026-09-11 |
 | [0058](0058-archaeology-is-one-kind-of-sites-and-museums.md) | Archaeology is one kind of sites and museums, and a museum joins it for what it is, not for one find | Accepted — decision 4 narrowed by [0060](0060-the-site-pool-has-a-second-entrance-the-map.md) | 2026-09-13 |
 | [0059](0059-what-the-catalogue-takes-from-openstreetmap-it-keeps-separable-and-offers-under-odbl.md) | What the catalogue takes from OpenStreetMap it keeps separable and offers under ODbL | Accepted | 2026-09-13 |
-| [0060](0060-the-site-pool-has-a-second-entrance-the-map.md) | The site pool has a second entrance, what the map calls a dig, and one rule judges both | Accepted | 2026-09-15 |
+| [0060](0060-the-site-pool-has-a-second-entrance-the-map.md) | The site pool has a second entrance, what the map calls a dig, and one rule judges both | Accepted — decisions 2 and 3 narrowed by [0098](0098-a-place-the-map-shows-in-use-is-refused-on-the-maps-entrance.md) | 2026-09-15 |
 | [0061](0061-the-catalogues-world-map-is-a-read-of-the-api-not-a-tile-source.md) | The catalogue's world map is a read of the API, not a tile source | Accepted | 2026-09-16 |
 | [0062](0062-a-gate-runs-only-when-its-inputs-changed.md) | A gate runs when, and only when, the inputs it checks have changed | Accepted — decisions 3 and 4 narrowed by [0092](0092-a-gate-reads-its-own-side-and-its-own-settings.md) | 2026-09-20 |
 | [0063](0063-sql-whose-correctness-is-a-row-set-is-tested-on-postgres.md) | SQL whose correctness is a row set is tested on PostgreSQL | Accepted | 2026-09-21 |
@@ -117,6 +117,7 @@ and accepted by it.
 | [0095](0095-a-place-of-several-points-has-no-coordinate-of-its-own.md) | A place of several points has no coordinate of its own | Accepted | 2026-10-12 |
 | [0096](0096-the-unread-batchs-pins-are-released-once-read.md) | The pins of the unread batch of 2026-09-14 are released once a curator has read them | Accepted | 2026-10-12 |
 | [0097](0097-a-cards-put-back-pins-only-when-the-curator-remembers-it.md) | A card's put-back pins only when the curator chooses to remember it | Accepted | 2026-10-12 |
+| [0098](0098-a-place-the-map-shows-in-use-is-refused-on-the-maps-entrance.md) | A place the map shows in use is refused on the map's entrance | Accepted | 2026-10-12 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
