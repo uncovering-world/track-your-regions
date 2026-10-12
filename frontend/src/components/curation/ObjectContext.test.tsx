@@ -110,9 +110,12 @@ describe('ObjectContext', () => {
     // UNESCO 1239, Berlin Modernism Housing Estates: the source proposed a
     // description of one of its seven estates and the card showed it against the
     // site's own text with nothing to say the site had parts.
-    render(<ObjectContext item={item({ offered_locations: 7 })} />);
+    render(<ObjectContext item={item({ offered_locations: 7, latitude: 52.4506, longitude: 13.2636 })} />);
 
     expect(screen.getByText(/made of 7 places/)).toBeInTheDocument();
+    // A place of several points has no coordinate of its own (ADR-0095): the stored
+    // point is the anchor of one of its estates, and its number is not shown.
+    expect(screen.queryByText('52.4506, 13.2636')).not.toBeInTheDocument();
   });
 
   it('says how many works a venue holds', () => {
