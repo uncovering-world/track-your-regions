@@ -86,7 +86,7 @@ and accepted by it.
 | [0064](0064-row-types-are-generated-from-the-schema-and-queries-stay-sql.md) | Row types are generated from the schema, and queries stay SQL | Accepted | 2026-09-21 |
 | [0065](0065-a-rule-both-sides-apply-lives-in-one-package-both-import.md) | A rule both sides apply lives in one package both import | Accepted | 2026-09-21 |
 | [0066](0066-an-endpoints-answer-is-a-backend-schema-and-the-clients-type-is-generated-from-it.md) | An endpoint's answer is a backend schema, and the client's type is generated from it | Accepted — decisions 3 and 7 narrowed by ADR-0073 | 2026-09-22 |
-| [0067](0067-accepting-a-refusal-keeps-it-and-a-batch-answer-pins-nothing.md) | Accepting a refusal keeps it, and a batch answer pins nothing | Accepted | 2026-09-24 |
+| [0067](0067-accepting-a-refusal-keeps-it-and-a-batch-answer-pins-nothing.md) | Accepting a refusal keeps it, and a batch answer pins nothing | Accepted — its consequence on the 119 batch pins narrowed by [0096](0096-the-unread-batchs-pins-are-released-once-read.md) | 2026-09-24 |
 | [0068](0068-a-member-change-invalidates-its-region-in-the-database.md) | A member change invalidates its region in the database | Accepted | 2026-09-25 |
 | [0069](0069-a-catalogue-tables-writers-are-a-closed-list-and-a-locked-write-takes-the-lock.md) | A catalogue table's writers are a closed list, and a locked write takes the lock | Accepted | 2026-09-25 |
 | [0070](0070-the-database-refuses-a-curation-state-move-the-gate-does-not-allow.md) | The database refuses a curation-state move the gate does not allow | Accepted | 2026-09-26 |
@@ -115,6 +115,7 @@ and accepted by it.
 | [0093](0093-the-web-unit-lane-runs-under-happy-dom.md) | The web unit lane runs under happy-dom, not jsdom | Accepted | 2026-10-12 |
 | [0094](0094-the-item-named-as-a-world-heritage-property-is-its-item-whichever-number-it-carries.md) | The item named as a World Heritage property is its item, whichever number it carries | Accepted | 2026-10-12 |
 | [0095](0095-a-place-of-several-points-has-no-coordinate-of-its-own.md) | A place of several points has no coordinate of its own | Accepted | 2026-10-12 |
+| [0096](0096-the-unread-batchs-pins-are-released-once-read.md) | The pins of the unread batch of 2026-09-14 are released once a curator has read them | Accepted | 2026-10-12 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
