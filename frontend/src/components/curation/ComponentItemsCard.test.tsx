@@ -64,6 +64,27 @@ describe("a site's candidate component items", () => {
     expect((screen.getByRole('button', { name: 'Save answers' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
+  it("counts and sends only its own site's answers when it is drawn for another site (#1397)", async () => {
+    mockedAnswer.mockResolvedValue({ experienceId: 9851, accepted: 1, refused: 0, pictured: 0 });
+    const client = new QueryClient();
+    const MANDELA = {
+      ...DACIA, id: 9851, external_id: '1676', name: 'Nelson Mandela Legacy Sites',
+      component_items: [{ ...BOLOGA, locationId: 601, pointName: 'Liliesleaf', pointRef: '1676-007', proposalId: 41, item: 'Q6547813', label: 'Liliesleaf Farm', distanceM: 71, similarity: 1, exact: false, takenBack: false, itemLatitude: null, itemLongitude: null }],
+    } as unknown as ReviewQueueItem;
+    const { rerender } = render(
+      <QueryClientProvider client={client}><ComponentItemsCard item={DACIA} onDone={vi.fn()} /></QueryClientProvider>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Same place: Castrul Buciumi' }));
+    expect(screen.getByRole('button', { name: 'Save 1 answer' })).toBeTruthy();
+
+    rerender(<QueryClientProvider client={client}><ComponentItemsCard item={MANDELA} onDone={vi.fn()} /></QueryClientProvider>);
+    expect((screen.getByRole('button', { name: 'Save answers' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Same place: Liliesleaf Farm' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save 1 answer' }));
+
+    await waitFor(() => expect(mockedAnswer).toHaveBeenCalledWith(9851, [{ proposalId: 41, answer: 'accepted' }]));
+  });
+
   it('confirms every exact match at once and says what landed', async () => {
     mockedAnswer.mockResolvedValue({ experienceId: 9850, accepted: 1, refused: 0, pictured: 1 });
     const onDone = renderCard();
