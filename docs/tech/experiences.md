@@ -1042,7 +1042,9 @@ path needs.
 - **Each component point names its own Wikidata item** (#1269, `unescoComponents.ts`). From the
   same P757 index, read at every rank but a statement that is only deprecated (an identity, ADR-0088
   decision 1), a component resolves to the item whose World Heritage Site
-  ID equals its reference (`resolveComponents`, case and blanks folded) — the inscription's variant
+  ID equals its reference (`resolveComponents`, case and blanks folded, and the padding the list
+  puts on some property numbers dropped: Thebes' `087-001` is Karnak Temple Complex's `87-001`,
+  `listRef`, #1393, which `claimsAnotherSite` reads too) — the inscription's variant
   included, since an extension can renumber the parts: Wikidata's `1591-004` is Boseong's tidal
   flat and the list's `1591bis-004` is Gochang's, so a reference under another variant is a
   candidate for a curator through the finder's part-of door, never an identity (#1344) — and the run records it on
