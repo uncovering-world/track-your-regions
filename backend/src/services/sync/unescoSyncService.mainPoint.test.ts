@@ -67,6 +67,28 @@ describe('resolveMainPoint', () => {
     expect(point).toEqual({ lat: 1, lon: 2 });
   });
 
+  it("takes the most central component of a site of several, whatever the site's own coordinate says (ADR-0095)", () => {
+    // The Danube Limes' export coordinate followed the first component listed
+    // (Carnuntum, then Linz); the site is its components.
+    const point = resolveMainPoint(record({ coordinates: { lat: 48.1152, lon: 16.8614 } }), [
+      component({ lat: 48.2262, lon: 14.5507 }),
+      component({ lat: 48.1152, lon: 16.8614 }),
+      component({ lat: 48.2, lon: 15.6 }),
+    ]);
+
+    expect(point).toEqual({ lat: 48.2, lon: 15.6 });
+  });
+
+  it('marks the point of a site of several components as its anchor, and a single place\'s as its own', () => {
+    const serial = transformRecord(record({
+      coordinates: { lat: 48.1152, lon: 16.8614 },
+      components_list: '{name: Carnuntum, ref: 1608-001, latitude: 48.1152, longitude: 16.8614}'
+        + ' {name: Enns, ref: 1608-002, latitude: 48.2262, longitude: 14.5507}',
+    }));
+    expect(serial?.locationIsAnchor).toBe(true);
+    expect(transformRecord(record({ coordinates: { lat: 4.1, lon: 29.3 } }))?.locationIsAnchor).toBe(false);
+  });
+
   it('treats a coordinate of zero as a position, not as missing', () => {
     // A site on the equator or the prime meridian; truthiness would send it to
     // the component fallback and move it

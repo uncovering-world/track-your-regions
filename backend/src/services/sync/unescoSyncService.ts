@@ -303,7 +303,18 @@ export function isInDanger(record: UnescoApiRecord): boolean {
 }
 
 /**
- * The site's own point, falling back to its most central component.
+ * The site's point: its own where it is one place, and where it is made of
+ * several, the anchor the run derives from them (ADR-0095).
+ *
+ * A site of several components has no coordinate of its own. UNESCO asks a
+ * nomination for "a point at the approximate centre" of the property beside
+ * each component's, publishes none on the Danube Limes' page, and the
+ * export's value jumps when the list is reordered: Carnuntum to Linz, 180 km,
+ * a held move a curator could answer nothing about. Regions and markers are
+ * read from the components; the stored point only says which component
+ * stands for the place where one has to, so it is the most central
+ * component whatever the export's value, written past the gate
+ * (`locationIsAnchor`).
  *
  * UNESCO leaves `coordinates` null on serial nominations and carries the real
  * positions in `components_list` — 28 of the 29 records that failed the dry run
@@ -324,7 +335,7 @@ export function resolveMainPoint(
   // Number.isFinite, not truthiness: a site on the equator or the prime
   // meridian has a coordinate of 0, which is a position, not a missing value.
   const { lat, lon } = record.coordinates ?? {};
-  if (Number.isFinite(lat) && Number.isFinite(lon)) {
+  if (locations.length <= 1 && Number.isFinite(lat) && Number.isFinite(lon)) {
     return { lat: lat as number, lon: lon as number };
   }
   if (locations.length === 0) return null;
@@ -422,6 +433,7 @@ export function transformRecord(
     tags: buildUnescoTags(record),
     lat: point.lat,
     lon: point.lon,
+    locationIsAnchor: locations.length > 1,
     countryCodes: parseDelimitedField(record.iso_codes),
     countryNames: parseDelimitedField(record.states_names),
     imageUrl,
@@ -449,6 +461,7 @@ async function upsertExperience(
     tags: exp.tags,
     lon: exp.lon,
     lat: exp.lat,
+    locationIsAnchor: exp.locationIsAnchor,
     countryCodes: exp.countryCodes,
     countryNames: exp.countryNames,
     imageUrl: exp.imageUrl,

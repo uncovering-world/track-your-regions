@@ -213,3 +213,45 @@ describe('a run reaches its places through its own membership (ADR-0084)', () =>
     expect(seen.some(change => change.experienceId === LOUVRE)).toBe(false);
   });
 });
+
+describe('the anchor of a place of several points (ADR-0095)', () => {
+  it('is written past the gate on a place readers see and raises no question, where a coordinate of its own is held', async () => {
+    const gated = await pool.query<{ requires_curation: boolean }>(
+      'SELECT requires_curation FROM experience_sources WHERE id = $1', [archaeology],
+    );
+    expect(gated.rows[0].requires_curation).toBe(true);
+    const created = await upsertExperienceRecord(params(archaeology, NEW_SITE_QID, 'A new site'));
+    // Passed by a curator, so a reader sees it and the gate holds what the source changes.
+    await pool.query(
+      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+        WHERE experience_id = $1 AND source_id = $2`,
+      [created.experienceId, archaeology],
+    );
+    const log = (await pool.query<{ id: number }>(
+      `INSERT INTO experience_sync_logs (source_id, status, started_at, is_dry_run)
+       VALUES ($1, 'running', NOW(), FALSE) RETURNING id`, [archaeology],
+    )).rows[0].id;
+    const state = async () => (await pool.query<{ lon: number; pointer: number | null }>(
+      `SELECT ST_X(e.location) AS lon, m.pending_change_sync_log_id AS pointer
+         FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
+        WHERE e.id = $1`,
+      [created.experienceId, archaeology],
+    )).rows[0];
+    try {
+      // 180 km east: the Danube Limes' anchor moving from Linz to Carnuntum.
+      await upsertExperienceRecord(
+        { ...params(archaeology, NEW_SITE_QID, 'A new site'), lon: 4.78, locationIsAnchor: true }, { syncLogId: log },
+      );
+      expect(await state()).toEqual({ lon: 4.78, pointer: null });
+
+      await upsertExperienceRecord(
+        { ...params(archaeology, NEW_SITE_QID, 'A new site'), lon: 5.5 }, { syncLogId: log },
+      );
+      expect(await state()).toEqual({ lon: 4.78, pointer: log });
+    } finally {
+      await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
+      await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
+      await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [log]);
+    }
+  });
+});
