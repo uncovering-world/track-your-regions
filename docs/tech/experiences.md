@@ -1120,7 +1120,7 @@ path needs.
   (*Find component items*, `POST /api/admin/sync/sources/:sourceId/find-component-items`,
   `findUnescoComponentItems` in `componentItemJob.ts`), not from the run, whose job is to record
   what UNESCO states. It reads the standing component points with no item and no claim on one, and
-  asks Wikidata by three rules, each a reason the curator reads on the card:
+  asks Wikidata by these rules, each a reason the curator reads on the card:
   - **part of the site** (`part_of`) — an item that says it is part of one of the site's own items
     (P361), with or without a World Heritage reference of its own — one the reader matched is a
     point's item already and is left as taken; one naming this property under another variant of
@@ -1165,7 +1165,8 @@ path needs.
     a place named like the component, at a similarity of 0.7 or more, and is not itself named like
     it, is set aside — the Moravian Church Settlements' Herrnhut was offered its *Heimatmuseum*,
     Christiansfeld its pharmacy, the Comoros' Moroni its Old Friday Mosque. The places are asked
-    of QLever only for those sites' contenders — the candidates the near rule would take, since
+    of QLever only for those sites' contenders — the candidates the near rule or the place-name
+    rule would take, since
     a place cannot change a choice the rule refuses (`placesOf`; the source record
     `docs/sources/global/wikidata-qlever.md` counts the questions) — and a batch it cannot answer
     leaves the points unanswered, as the settlement question does. Only there, because a site's
@@ -1194,11 +1195,39 @@ path needs.
     renumber the parts — the Beech Forests' `1133quinquies-039` is Abruzzo and Wikidata's
     `1133ter-039` Paklenica — so the name decides, at 0.3 or more within 5 km
     (`numberedMatches`), and every candidate the rule admits is asked about, since two villages
-    carry Frederiksoord-Wilhelminaoord's number. Asked beside the other two doors, never instead:
+    carry Frederiksoord-Wilhelminaoord's number. Asked beside the other doors, never instead:
     a point with only such a candidate is not answered for by the others, and where the numbers
     could not be read the pass keeps the open proposals this door made before. Measured on
     2026-10-12, 192 points had an item under their number in another variant and nothing
     proposed; 71 of those items are named like their point (43 of them Mozu-Furuichi's kofun).
+  - **named for a place in the component's name** (`toponym`, #1340) — where the near rule finds
+    nothing for a point, a candidate of the site's kind within 1 km whose label holds one of the
+    component's place names as whole words, the label read without its trailing qualifier as the
+    name rule reads it (`holdsToponym`). The list writes a component as places joined by a dash
+    with a space before it or by a slash — "Turda - Potaissa / Dealul Cetății" — and each piece of
+    four letters or more is a place the rule reads (`toponymsOf`); a hyphen inside a town's name
+    ("Drobeta-Turnu Severin") joins one place. A name of one piece is read for nothing: "Žatec"
+    is a town, and every house in it would hold the name. The Dacian castra are
+    the case: "Castrul roman de la Gresia" scores 0.21 against "Gresia - La Biserică" at 0 m,
+    the generic words diluting the one they share. Out to 1 km because the Dacian points are
+    written to an arc-minute: measured offline on 2026-10-12 against the 7 234 Wikidata items with
+    a Romanian LMI code, the rule finds an archaeology entry for 12 of the 277 points within 1 km
+    and 5 within 500 m — Apulum at 485 m, Potaissa at 611 m, Angustia at 997 m — where the name
+    rule finds two. A church named for its village (Lozna's wooden church, 616 m) is a place-name
+    match too; the site's kind keeps it out of the candidates, and its register code below.
+
+  **A candidate's national register code** (#1340, `componentItemRegisters.ts`) is read off the
+  proposed items only — one query to the Wikidata Query Service per two hundred items
+  (`registerCodesOf`), never to QLever, whose day's budget the near search spends — for the
+  registers in `REGISTER_CODES`: Romania's LMI (P1770), Switzerland's KGS (P381) and Finland's
+  RKY (P4009). The proposal keeps it as the card shows it (`register_code`, "LMI CJ-I-s-A-07208",
+  migration 092) and whether its group disagrees with the one most of the site's coded candidates
+  carry (`register_disagrees`): LMI writes the group in the code — I archaeology, II architecture —
+  and Bologa Castle (`CJ-II-m-B-07533`), offered for a Roman fort, disagrees with the castra
+  around it. A disagreeing candidate sorts below the ones that agree on the card, and says so
+  under its code; a register that writes no group, or a site whose codes split evenly, disagrees
+  with nothing. A read that fails for any reason but a cancelled pass leaves the codes off and
+  the proposals as they are.
 
   Not every point is searched. A component that stands for its whole site — the only standing
   point of a site of one, or a point named exactly like its site, folded (`standsForWholeSite`;
