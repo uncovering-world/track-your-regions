@@ -11,7 +11,7 @@ import type {
   AcceptSourceResult, AdmissionResult, ComponentItemsAnswered, ComponentItemSuggestions, ContentKind, CurationLog,
   DeclineHeldResult,
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
-  LocationStateResult, ManualExperienceCreated, MergeUndone, PinQuestionAnswered, PointItemTakenBack, PublishResult,
+  LocationStateResult, ManualExperienceCreated, MergeUndone, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointItemTakenBack, PublishResult,
   ViewsChosen, ViewSuggestions, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
 import {
@@ -21,7 +21,8 @@ import {
   postExperiencesMergesByMergeIdUndo, postExperiencesByIdChooseViews, type ChooseViewsBody,
   postExperiencesByIdViewSuggestions, postExperiencesByIdComponentItems, type AnswerComponentItemsBody,
   postExperiencesByIdComponentItemSuggestions,
-  postExperiencesByIdAdmission, postExperiencesByIdAdmissionPin, type PinQuestionAnswerBody, postExperiencesByIdAssign, postExperiencesByIdDeclineHeld,
+  postExperiencesByIdAdmission, postExperiencesByIdAdmissionPin, type PinQuestionAnswerBody,
+  getExperiencesReviewPins, postExperiencesByIdAdmissionPinHandBack, type HandBackPinBody, postExperiencesByIdAssign, postExperiencesByIdDeclineHeld,
   postExperiencesByIdDeclineSource, postExperiencesByIdPublish, postExperiencesByIdRefuseArrival,
   postExperiencesByIdRefuseContents, postExperiencesByIdReject, postExperiencesByIdState,
   postExperiencesByIdUnrefuseContents, postExperiencesByIdUnreject, postExperiencesLocationsByLocationIdState,
@@ -38,6 +39,7 @@ export type {
   ComponentItemSuggestions, ContentKind, CurationLog, CurationLogEntry,
   DeclineHeldResult, DeclineSourceResult, DeclinedPart, ExperienceEditResult,
   ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MergeUndone,
+  AdmissionPin, AdmissionPinHandedBack, AdmissionPins, HandBackPinBody,
   PartNotFound, PinQuestionAnswerBody, PinQuestionAnswered, PointItemTakenBack, ViewsChosen, ViewSuggestions, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
   RefuseContentsResult,
   RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
@@ -173,6 +175,16 @@ export async function answerPinQuestion(
   body: PinQuestionAnswerBody,
 ): Promise<PinQuestionAnswered> {
   return postExperiencesByIdAdmissionPin(experienceId, body);
+}
+
+/** The admission pins in the caller's scope, or one place's (#1369). */
+export async function fetchAdmissionPins(experienceId?: number): Promise<AdmissionPins> {
+  return getExperiencesReviewPins(experienceId === undefined ? undefined : { experienceId });
+}
+
+/** Hand an admission pin back: the next run of its source decides (#1369). */
+export async function handBackAdmissionPin(experienceId: number, body: HandBackPinBody): Promise<AdmissionPinHandedBack> {
+  return postExperiencesByIdAdmissionPinHandBack(experienceId, body);
 }
 
 /**

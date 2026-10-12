@@ -471,6 +471,94 @@ export interface AdministrativeDivision {
 export type AdministrativeDivisions = AdministrativeDivision[];
 
 /**
+ * The curator's answer the pin holds: put back (`admitted`) or kept out (`refused`).
+ */
+export type AdmissionPinAnswer = typeof AdmissionPinAnswer[keyof typeof AdmissionPinAnswer];
+
+
+export const AdmissionPinAnswer = {
+  admitted: 'admitted',
+  refused: 'refused',
+} as const;
+
+/**
+ * A curator's admission pin on one membership (#1369).
+ */
+export interface AdmissionPin {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  name: string;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  membershipId: number;
+  kindName: string;
+  /** The curator's answer the pin holds: put back (`admitted`) or kept out (`refused`). */
+  answer: AdmissionPinAnswer;
+  /**
+     * The rule's reason the answer was given to: the refusal a put-back overrode, or the one a kept-out answer agreed with; null where the pin answered the run's admission (a curator's own refusal of an arrival).
+     * @nullable
+     */
+  answeredReason: string | null;
+  /** When the answer was given. */
+  answeredAt: string | null;
+  /** @nullable */
+  note: string | null;
+  /**
+     * Who answered, as they chose to be named; null where they chose nothing or where the act lies outside the caller's regions, as in the curation log.
+     * @nullable
+     */
+  curatorName: string | null;
+  /** Whether a run no longer agrees with it, and the review queue asks about it (#1367). */
+  questioned: boolean;
+  /** Whether the pin can be handed back to the next run; false for a curator's own refusal of an arrival, which a source publishing a list would never take back by itself, and whose way back is the put-back. */
+  canHandBack: boolean;
+}
+
+/**
+ * The verdict the row keeps until the next run of its source decides.
+ */
+export type AdmissionPinHandedBackAdmission = typeof AdmissionPinHandedBackAdmission[keyof typeof AdmissionPinHandedBackAdmission];
+
+
+export const AdmissionPinHandedBackAdmission = {
+  admitted: 'admitted',
+  refused: 'refused',
+} as const;
+
+/**
+ * An admission pin handed back (#1369): the next run decides.
+ */
+export interface AdmissionPinHandedBack {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  membershipId: number;
+  /** The verdict the row keeps until the next run of its source decides. */
+  admission: AdmissionPinHandedBackAdmission;
+}
+
+/**
+ * The admission pins in a curator's scope (#1369).
+ */
+export interface AdmissionPins {
+  /** By kind, then by place. */
+  pins: AdmissionPin[];
+  /** Whether more pins stand in scope than the list carries. */
+  more: boolean;
+}
+
+/**
  * The verdict now standing: `admitted` after an override, `refused` after a confirm.
  */
 export type AdmissionResultAdmission = typeof AdmissionResultAdmission[keyof typeof AdmissionResultAdmission];
@@ -2682,6 +2770,7 @@ export const CurationLogEntryAction = {
   component_item_taken_back: 'component_item_taken_back',
   admission_pin_released: 'admission_pin_released',
   admission_pin_kept: 'admission_pin_kept',
+  admission_pin_handed_back: 'admission_pin_handed_back',
 } as const;
 
 /**
@@ -2760,6 +2849,7 @@ export const CuratorActivityEntryAction = {
   component_item_taken_back: 'component_item_taken_back',
   admission_pin_released: 'admission_pin_released',
   admission_pin_kept: 'admission_pin_kept',
+  admission_pin_handed_back: 'admission_pin_handed_back',
 } as const;
 
 /**
@@ -4879,6 +4969,16 @@ export interface GroupSuggestion {
   escalationLevel: EscalationLevel;
   /** The model advises asking again one level up, since it was not sure at this one. */
   needsEscalation: boolean;
+}
+
+export interface HandBackPinBody {
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  membershipId: number;
+  /** @maxLength 1000 */
+  note?: string;
 }
 
 /**
@@ -10686,6 +10786,14 @@ export type GetExperiencesByIdLocationsParams = {
  * @exclusiveMinimum 0
  */
 regionId?: number;
+};
+
+export type GetExperiencesReviewPinsParams = {
+/**
+ * @maximum 2147483647
+ * @exclusiveMinimum 0
+ */
+experienceId?: number;
 };
 
 export type GetExperiencesReviewQueueParams = {
@@ -18053,6 +18161,38 @@ return apiFetch<NewBadgesSeen>(getPostExperiencesNewBadgesSeenUrl(),
 
 
 
+export const getGetExperiencesReviewPinsUrl = (params?: GetExperiencesReviewPinsParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/experiences/review/pins?${stringifiedParams}` : `/api/experiences/review/pins`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary List the admission pins in the caller's scope, or one place's
+ */
+export const getExperiencesReviewPins = async (params?: GetExperiencesReviewPinsParams, options?: Parameters<typeof apiFetch>[1]): Promise<AdmissionPins> => {
+
+  return apiFetch<AdmissionPins>(getGetExperiencesReviewPinsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
 export const getGetExperiencesReviewQueueUrl = (params?: GetExperiencesReviewQueueParams,) => {
   const normalizedParams = new URLSearchParams();
 
@@ -18451,6 +18591,46 @@ return apiFetch<PinQuestionAnswered>(getPostExperiencesByIdAdmissionPinUrl(id),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(pinQuestionAnswerBody)
+  }
+);}
+
+
+
+export const getPostExperiencesByIdAdmissionPinHandBackUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/admission-pin/hand-back`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Hand back a curator's admission pin, leaving the row to the next run of its source
+ */
+export const postExperiencesByIdAdmissionPinHandBack = async (id: number,
+    handBackPinBody: HandBackPinBody, options?: Parameters<typeof apiFetch>[1]): Promise<AdmissionPinHandedBack> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<AdmissionPinHandedBack>(getPostExperiencesByIdAdmissionPinHandBackUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(handBackPinBody)
   }
 );}
 
