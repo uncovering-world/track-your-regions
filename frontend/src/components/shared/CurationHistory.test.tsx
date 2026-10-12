@@ -20,7 +20,7 @@ const mockedLog = fetchCurationLog as unknown as ReturnType<typeof vi.fn>;
 const mockedUndo = undoPlaceMerge as unknown as ReturnType<typeof vi.fn>;
 
 const MERGED = {
-  id: 1, action: 'merged', curator_name: null, region_name: null, created_at: '2026-10-07T10:00:00Z',
+  id: 1, action: 'merged', curator_name: null, region_name: null, folded_id: null, folded_name: null, created_at: '2026-10-07T10:00:00Z',
   details: {
     mergeId: 12, survivorId: 9700, foldedId: 9701, survivorName: 'Pantheon', foldedName: 'Pantheon',
     kinds: ['Archaeology'], reason: 'equal_wikidata_item', qid: 'Q99309',
@@ -28,7 +28,7 @@ const MERGED = {
 } as unknown as CurationLogEntry;
 
 const UNDONE = {
-  id: 2, action: 'merge_undone', curator_name: 'Ada', region_name: 'Lazio', created_at: '2026-10-07T11:00:00Z',
+  id: 2, action: 'merge_undone', curator_name: 'Ada', region_name: 'Lazio', folded_id: null, folded_name: null, created_at: '2026-10-07T11:00:00Z',
   details: { mergeId: 12, survivorId: 9700, foldedId: 9701, foldedName: 'Pantheon', kinds: ['Archaeology'] },
 } as unknown as CurationLogEntry;
 
@@ -84,6 +84,29 @@ describe('a merge in the history of the place that stayed', () => {
     expect(screen.queryByRole('button', { name: /Undo this merge/ })).toBeNull();
   });
 
+  it("shows what was decided about the folded entry, marked as its, with nothing to undo there (#1366)", async () => {
+    // The Tower of Hercules (761) holds the Public Art membership a merge
+    // brought from 1430; the pin on it was decided about 1430.
+    const PINNED = {
+      id: 5, action: 'admission_overridden', curator_name: 'Ada', region_name: null, folded_id: 9701,
+      folded_name: 'Pantheon', created_at: '2026-09-14T16:33:52Z',
+      details: { reason: 'not an artwork', note: null },
+    } as unknown as CurationLogEntry;
+    const ANSWERED = {
+      id: 6, action: 'component_items_answered', curator_name: 'Ada', region_name: null, folded_id: 9701,
+      folded_name: 'Pantheon', created_at: '2026-09-20T10:00:00Z',
+      details: { accepted: [{ locationId: 503, point: 'Portico', item: 'Q98505', label: 'Portico' }], refused: [] },
+    } as unknown as CurationLogEntry;
+    mockedLog.mockResolvedValue([MERGED, ANSWERED, PINNED]);
+    openHistory();
+
+    expect(await screen.findAllByText('About Pantheon (#9701), since merged into this place')).toHaveLength(2);
+    // The merge row is where this place's history is changed; a row about the
+    // folded entry is read, never acted on from here.
+    expect(screen.getAllByRole('button', { name: /Undo this merge/ })).toHaveLength(1);
+    expect(screen.queryByRole('button', { name: /Take back/ })).toBeNull();
+  });
+
   it('says why the server refused, where the undo was asked', async () => {
     mockedLog.mockResolvedValue([MERGED]);
     mockedUndo.mockRejectedValue(new Error('A later merge into the same place is still in effect — undo that merge first'));
@@ -101,14 +124,14 @@ describe('a merge in the history of the place that stayed', () => {
  */
 describe('a confirmed component item in the history of its site', () => {
   const CONFIRMED = {
-    id: 3, action: 'component_items_answered', curator_name: 'Ada', region_name: null, created_at: '2026-10-09T18:00:00Z',
+    id: 3, action: 'component_items_answered', curator_name: 'Ada', region_name: null, folded_id: null, folded_name: null, created_at: '2026-10-09T18:00:00Z',
     details: {
       accepted: [{ locationId: 501, point: 'Bologa', item: 'Q98501', label: 'Castrul Bologa', pictured: true }],
       refused: [{ locationId: 502, point: 'Buciumi', item: 'Q98503', label: 'Castrul Buciumi' }],
     },
   } as unknown as CurationLogEntry;
   const TAKEN_BACK = {
-    id: 4, action: 'component_item_taken_back', curator_name: 'Ada', region_name: null, created_at: '2026-10-10T09:00:00Z',
+    id: 4, action: 'component_item_taken_back', curator_name: 'Ada', region_name: null, folded_id: null, folded_name: null, created_at: '2026-10-10T09:00:00Z',
     details: { locationId: 501, point: 'Bologa', item: 'Q98501', label: 'Castrul Bologa', cleared: ['image_url', 'description'] },
   } as unknown as CurationLogEntry;
   const mockedTakeBack = takeBackPointItem as unknown as ReturnType<typeof vi.fn>;
