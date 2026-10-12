@@ -6,6 +6,11 @@
  *
  * What an entry reads as — the chip naming each act and the line under it — is
  * `curationLog.ts`, presentation the admin panel reads too.
+ *
+ * A place a merge folded another entry into reads that entry's history too
+ * (#1366): what was decided about it came along with what the merge moved, a
+ * pin among them. Those rows say which entry they were about and offer nothing
+ * to undo — the merge row above them is where the merge itself is undone.
  */
 
 import { useState } from 'react';
@@ -84,6 +89,11 @@ function HistoryRow({ entry, onUndo, undoing, takeBacks = [], onTakeBack, taking
         {entry.region_name && (
           <Typography variant="caption" color="text.secondary">
             {' '}in {entry.region_name}
+          </Typography>
+        )}
+        {entry.folded_id !== null && (
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontStyle: 'italic' }}>
+            About {entry.folded_name ?? 'an entry'} (#{entry.folded_id}), since merged into this place
           </Typography>
         )}
         {details && (
@@ -213,14 +223,15 @@ export function CurationHistory({ experienceId, regionId }: CurationHistoryProps
             </Typography>
           )}
           {log.map((entry) => {
-            const mergeId = undoableMerge(entry, log, experienceId);
+            const own = entry.folded_id === null;
+            const mergeId = own ? undoableMerge(entry, log, experienceId) : null;
             return (
               <HistoryRow
                 key={entry.id}
                 entry={entry}
                 onUndo={mergeId === null ? undefined : () => undo.mutate(mergeId)}
                 undoing={undo.isPending && undo.variables === mergeId}
-                takeBacks={takeableItems(entry, log)}
+                takeBacks={own ? takeableItems(entry, log) : []}
                 onTakeBack={item => takeBack.mutate(item)}
                 takingBack={takeBack.isPending ? takeBack.variables?.locationId : undefined}
               />

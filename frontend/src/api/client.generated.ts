@@ -2709,10 +2709,17 @@ export interface CurationLogEntry {
      * @nullable
      */
   curator_name: string | null;
+  /** The entry a standing merge folded into this place, when the act was about that entry rather than about the place itself; null on the place's own acts (#1366). */
+  folded_id: number | null;
+  /**
+     * The folded entry's name, beside `folded_id`.
+     * @nullable
+     */
+  folded_name: string | null;
 }
 
 /**
- * The newest fifty acts on the object that the curator may see, newest first.
+ * The newest fifty acts on the object, and on the entries merged into it, that the curator may see, newest first.
  */
 export type CurationLog = CurationLogEntry[];
 
