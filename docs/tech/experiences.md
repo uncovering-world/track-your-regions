@@ -3968,6 +3968,34 @@ so it can never put back over a card's answer and keep that card's pin. The 119 
 putting it back publishes it in the same step (see "Overriding a refusal is the other half"
 under § Publishing) — confirming never changes `curation_state`, so it is still there to answer.
 
+**A pin holds while the run says what it answered** (#1367). A pin is a curator's answer to
+what one run said, and it remembers that view beside the answer: `admission_pin_verdict` and
+`admission_pin_reason` on the membership — the refusal a put-back overrode or a confirmation kept
+(the reason on the row before the answer, `answerAdmissionOnMembership`), or the admission a
+curator's refusal of an arrival or of a row no longer listed answered (`refuseOnMembership`).
+Migration 090 gave the pins that stood then the view their own record holds: a put-back the
+reason its latest `admission_overridden` row overrode, any other the row's own. As the last
+step of admission, every run compares what it says of each pinned row of its source with that
+view (`questionPins`, `admissionStep.ts`; the decision is `asksAgain`, `pinQuestion.ts`): an
+admission where it recomputes its membership and selected the row, the rule's reason where it
+named the row and turned it down, the sweep's reason where the sweep decided the rows it did not
+name, and nothing — the row keeps whatever was asked — where it said nothing. Reasons are
+compared with every run of digits folded (`foldedReason`), since a reason carries the counts it
+was decided on ("17 sitelinks: below the world tier's line …") and a count that ticks is not a
+new reason. The pin holds silently when the run says what it answered, when the rule has come
+round to the curator's own answer (a put-back it now admits, an arrival a curator refused that
+it now refuses), and when it refuses a confirmed refusal in other words, which keeps the row out
+either way; otherwise — a put-back refused for another reason, a confirmed refusal the rule
+would now admit — the run writes its view beside the pin as a question
+(`admission_question_verdict`, `admission_question_reason`, `admission_questioned_at` kept from
+the first time the same question was asked, `admission_question_sync_log_id`;
+`writePinQuestions`) and leaves `admission` as the curator left it. A later run that agrees
+again closes the question. A question stands only on a pinned row
+(`experience_kind_memberships_question_check`), and every write that pins or unpins `admission`
+closes it. The two answers to it are the membership writer's: `keepAdmissionPin` makes the pin
+answer what the run now says, and `releaseAdmissionPin` writes the rule's verdict, admission or
+refusal, in the pin's place.
+
 **Answered withdrawals** — the same thing one level down, returned as `answeredWithdrawals`
 and collapsed beside the kept-out block. A verdict on a point is what removes it from the
 `withdrawn` card: that query asks about a flagged point whose two axes are still clean, so
@@ -4181,9 +4209,10 @@ table anywhere but its writers:
   and nothing rewrites it.
 - `experience_kind_memberships` (`MEMBERSHIP_WRITE_RULES`): the curator's writes in
   `controllers/experience/membershipWriter.ts`, each requiring the place's `LockedExperience` —
-  `answerAdmissionOnMembership`, `refuseOnMembership`, `publishMembership`, `clearHeldPointer`
-  and `insertManualMembership`; the run's upsert (`experienceUpsert.ts`, whose one statement
-  writes the place and its membership), its admission sweep (`admission.ts`), `curationDecay.ts`
+  `answerAdmissionOnMembership`, `refuseOnMembership`, `releaseAdmissionPin`, `keepAdmissionPin`,
+  `publishMembership`, `clearHeldPointer` and `insertManualMembership`; the run's upsert
+  (`experienceUpsert.ts`, whose one statement writes the place and its membership), its
+  admission sweep (`admission.ts`) and its questions about a pin (`pinQuestion.ts`), `curationDecay.ts`
   and `heldProposalPointer.ts`; and the seed. The code names the table through `MEMBERSHIPS`
   (`db/membership.ts`) more often than it spells it, so the rule also reads a verb that ends the
   literal part before that interpolation; a row lock (`FOR UPDATE`, `FOR NO KEY UPDATE`) and an
