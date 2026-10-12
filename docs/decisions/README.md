@@ -62,7 +62,7 @@ and accepted by it.
 | [0040](0040-a-work-names-every-one-of-its-makers.md) | A work names every one of its makers, and a curator can correct them | Accepted — decision 6 narrowed by [0049](0049-a-curator-writes-a-works-picture-only-with-its-credit.md) | 2026-08-31 |
 | [0041](0041-a-database-says-which-migrations-it-has-seen.md) | A database says which migrations it has seen | Accepted | 2026-08-31 |
 | [0042](0042-a-search-answers-about-the-catalogue-and-opens-where-the-reader-is.md) | A search answers about the catalogue, and opens where the reader is | Accepted | 2026-09-01 |
-| [0043](0043-a-picture-we-show-is-one-we-may-show.md) | A picture we show is one we may show | Accepted | 2026-09-01 |
+| [0043](0043-a-picture-we-show-is-one-we-may-show.md) | A picture we show is one we may show | Accepted — decision 2's order narrowed by [0094](0094-the-item-named-as-a-world-heritage-property-is-its-item-whichever-number-it-carries.md) | 2026-09-01 |
 | [0044](0044-a-work-leaves-a-museum-behind-a-floor-measured-on-works.md) | A work leaves a museum by a mark, behind a floor measured on works | Accepted | 2026-09-02 |
 | [0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) | A traveller browses by kind of place, and a source is how a kind is filled | Accepted — decision 4 narrowed by [0046](0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md); decisions 2 and 3 narrowed by [0048](0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md); decision 4 narrowed by [0084](0084-a-place-belongs-to-no-source-and-no-kind.md) | 2026-09-03 |
 | [0046](0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md) | A place is ours to identify, and two rows become one place by a merge a curator confirms | Accepted — the wording of decision 5 narrowed by [0084](0084-a-place-belongs-to-no-source-and-no-kind.md) | 2026-09-03 |
@@ -107,12 +107,13 @@ and accepted by it.
 | [0085](0085-one-wikidata-item-is-one-reading-whichever-source-reads-it.md) | One Wikidata item is one reading, whichever source reads it | Accepted | 2026-10-05 |
 | [0086](0086-a-merge-is-a-record-that-moves-a-place-into-another-and-back.md) | A merge is a record that moves one place into another, and can move it back | Accepted — decision 3 narrowed by ADR-0088 | 2026-10-07 |
 | [0087](0087-jev-suggests-an-answer-on-a-curator-card-and-a-curator-decides.md) | Jev suggests an answer on a curator's card, and a curator decides | Accepted | 2026-10-08 |
-| [0088](0088-a-world-heritage-site-of-one-point-is-its-one-item-and-one-point.md) | A World Heritage site of one point is its one Wikidata item, and merges to one point | Accepted | 2026-10-08 |
+| [0088](0088-a-world-heritage-site-of-one-point-is-its-one-item-and-one-point.md) | A World Heritage site of one point is its one Wikidata item, and merges to one point | Accepted — decision 1 narrowed by [0094](0094-the-item-named-as-a-world-heritage-property-is-its-item-whichever-number-it-carries.md) | 2026-10-08 |
 | [0089](0089-a-parts-empty-field-is-filled-without-a-hold.md) | A part's empty field is filled without a hold | Accepted | 2026-10-08 |
 | [0090](0090-a-component-renumbered-by-an-extension-is-the-same-point.md) | A component renumbered by an extension is the same point | Accepted | 2026-10-10 |
 | [0091](0091-a-gates-pass-is-reused-for-the-same-inputs.md) | A gate's pass is reused for the same inputs, keyed from the gate map | Accepted — decision 1 narrowed by [0092](0092-a-gate-reads-its-own-side-and-its-own-settings.md) | 2026-10-11 |
 | [0092](0092-a-gate-reads-its-own-side-and-its-own-settings.md) | A gate reads its own side and its own settings, and only CI runs everything for the map | Accepted | 2026-10-11 |
 | [0093](0093-the-web-unit-lane-runs-under-happy-dom.md) | The web unit lane runs under happy-dom, not jsdom | Accepted | 2026-10-12 |
+| [0094](0094-the-item-named-as-a-world-heritage-property-is-its-item-whichever-number-it-carries.md) | The item named as a World Heritage property is its item, whichever number it carries | Accepted | 2026-10-12 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

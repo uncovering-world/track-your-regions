@@ -1,7 +1,7 @@
 # ADR-0043: A picture we show is one we may show
 
 **Date:** 2026-09-01
-**Status:** Accepted
+**Status:** Accepted — decision 2's order narrowed by ADR-0094
 
 ---
 

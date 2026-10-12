@@ -1,7 +1,7 @@
 # ADR-0088: A World Heritage site of one point is its one Wikidata item, and merges to one point
 
 **Date:** 2026-10-08
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by ADR-0094
 
 ---
 
