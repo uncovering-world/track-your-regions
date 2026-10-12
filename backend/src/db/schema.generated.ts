@@ -170,6 +170,8 @@ export interface ExperienceComponentItemProposalsRow {
   answered_at: Date | null;
   item_location: string | null;
   taken_back_at: Date | null;
+  register_code: string | null;
+  register_disagrees: boolean;
 }
 
 /** The table `experience_component_item_suggestions`. */
@@ -965,7 +967,7 @@ export const CHECK_VALUES = {
   },
   experience_component_item_proposals: {
     answer: ["accepted", "refused"],
-    basis: ["part_of", "near", "numbered"],
+    basis: ["part_of", "near", "numbered", "toponym"],
   },
   experience_component_item_suggestions: {
     judgement: ["same", "other"],
