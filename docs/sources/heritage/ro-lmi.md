@@ -90,3 +90,9 @@ reach, filtered to the archaeology group and matched on the label, are the candi
 component finder (#1272, #1317) should be proposing — with the LMI code as a second key beside
 the name — and nineteen of them bring a Commons picture with them. The county lists reach what
 Wikidata does not have yet, as rows a curator reads.
+
+**Read by the component finder (#1340).** The finder reads the P1770 code off the items it
+proposes, keeps it on the proposal and shows it on the card, and sorts an entry whose group
+disagrees with the site's other coded candidates — an architecture entry beside a Roman fort —
+below the ones that agree; a candidate is proposed by its name holding a place name from the
+component's own, within 1 km. The record stays `looked-at`: no sync reads the register.
