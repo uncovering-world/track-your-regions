@@ -451,3 +451,91 @@ describe("a World Heritage site's items", () => {
     expect(siteItems(index, '292')).toEqual(['Q4176']);
   });
 });
+
+/**
+ * The item named as the property, whichever numbering it carries (#1373).
+ * Every pair is one Wikidata held on 2026-10-12.
+ */
+describe("a World Heritage site's items, where one is named as the property", () => {
+  it('takes the whole over a part that carries only the first number', () => {
+    const index = indexWorldHeritageFacts([
+      item('Q12506', '356', 'Hagia Sophia', 152),
+      item('Q5773394', '356', 'Historic Areas of Istanbul', 24),
+      item('Q5773394', '356bis', 'Historic Areas of Istanbul', 24),
+    ]);
+    expect(siteItems(index, '356', 'Historic Areas of Istanbul')).toEqual(['Q5773394']);
+  });
+
+  it("takes the extended inscription's item over the earlier inscription's", () => {
+    const index = indexWorldHeritageFacts([
+      item('Q3197288', '1468', 'Christiansfeld', 60),
+      item('Q128009257', '1468bis', 'Moravian Church Settlements', 3),
+    ]);
+    expect(siteItems(index, '1468', 'Moravian Church Settlements')).toEqual(['Q128009257']);
+  });
+
+  it('keeps every item named alike', () => {
+    const index = indexWorldHeritageFacts([
+      item('Q38095', '1', 'Galápagos Islands', 140),
+      item('Q117188122', '1', 'Galápagos Islands', 2),
+    ]);
+    expect(siteItems(index, '1', 'Galápagos Islands')).toEqual(['Q117188122', 'Q38095']);
+  });
+
+  it('reads the tiers as before where no label lies wholly in the name', () => {
+    const index = indexWorldHeritageFacts([item('Q189417', '1708', 'Appian Way', 70)]);
+    expect(siteItems(index, '1708', 'Via Appia. <em>Regina Viarum</em>')).toEqual(['Q189417']);
+  });
+});
+
+describe('factsForSite, where an extension renumbered the property (#1373)', () => {
+  it("answers from the item named as the property, not from the first inscription's", () => {
+    // Bagrati Cathedral left the property in 2017; Gelati Monastery is `710bis`.
+    const index = indexWorldHeritageFacts([
+      item('Q16147548', '710', 'Bagrati Cathedral and Gelati Monastery', 12, { image: 'Kutaisi, Bagrati Cathedral.jpg' }),
+      item('Q679979', '710bis', 'Gelati Monastery', 40, { article: 'Gelati_Monastery', image: 'Gelati Monastery 1.jpg' }),
+    ]);
+    expect(factsForSite(index, '710', 'Gelati Monastery')).toEqual({
+      article: 'https://en.wikipedia.org/wiki/Gelati_Monastery',
+      picture: { url: COMMONS + 'Gelati Monastery 1.jpg', via: 'variant', ref: '710bis' },
+    });
+  });
+
+  it("asks the components before a carrier that hardly answers to the name, where the property's item has no picture", () => {
+    // Cavernas do Peruaçu carries the Cerrado's `1035`; its cave is 600 km from either park.
+    const index = indexWorldHeritageFacts([
+      item('Q1051873', '1035', 'Cavernas do Peruaçu National Park', 30, { image: 'Caverna Janelão.jpg' }),
+      item('Q137787234', '1035bis', 'Cerrado Protected Areas: Chapada dos Veadeiros and Emas National Parks', 2),
+      binding('1035-001', { image: 'Vale do Rio Preto.jpg' }),
+    ]);
+    expect(factsForSite(index, '1035', 'Cerrado Protected Areas: Chapada dos Veadeiros and Emas National Parks').picture)
+      .toEqual({ url: COMMONS + 'Vale do Rio Preto.jpg', via: 'component', ref: '1035-001' });
+  });
+
+  it("takes no little-known carrier's article where the property's item has none, its own number's first one included", () => {
+    // Christiansfeld's sitelinks put under the bar, to stand for a little-known part.
+    const index = indexWorldHeritageFacts([
+      item('Q3197288', '1468', 'Christiansfeld', 4, { article: 'Christiansfeld' }),
+      item('Q128009257', '1468bis', 'Moravian Church Settlements', 3),
+    ]);
+    expect(factsForSite(index, '1468', 'Moravian Church Settlements').article).toBeNull();
+  });
+
+  it('lets the best-known carrier stand in for the article, not the one named most nearly', () => {
+    // Sitelinks set to put the partly named carrier below the unnamed one.
+    const index = indexWorldHeritageFacts([
+      item('Q3197288', '1468', 'Christiansfeld Moravian Settlement', 15, { article: 'Christiansfeld' }),
+      item('Q165140', '1468', 'Herrnhut', 200, { article: 'Herrnhut' }),
+      item('Q128009257', '1468bis', 'Moravian Church Settlements', 3),
+    ]);
+    expect(factsForSite(index, '1468', 'Moravian Church Settlements').article).toBe('https://en.wikipedia.org/wiki/Herrnhut');
+  });
+
+  it('still takes such a carrier\'s picture where nothing else has one', () => {
+    const index = indexWorldHeritageFacts([
+      item('Q129503044', '1708', 'Via Appia. Regina Viarum', 3),
+      item('Q189417', '1708', 'Appian Way', 70, { image: 'Appian Way.jpg' }),
+    ]);
+    expect(factsForSite(index, '1708', 'Via Appia. <em>Regina Viarum</em>').picture?.url).toBe(COMMONS + 'Appian Way.jpg');
+  });
+});

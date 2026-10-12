@@ -280,6 +280,39 @@ function byRenown(a: Candidate, b: Candidate): number {
 }
 
 /**
+ * The items carrying the property's number, its own or a later numbering's,
+ * that are named as the property (#1373, ADR-0094): every word of the label is
+ * in the site's name, and no other such item shares more of it — the ties kept, since
+ * Galápagos Islands is two items alike. None where no label lies wholly in the
+ * name. An extension is numbered on, and the item that carries only the first
+ * inscription's number is often a part of the site or the site as it was:
+ * Hagia Sophia beside Historic Areas of Istanbul (`356bis`), Christiansfeld
+ * beside Moravian Church Settlements (`1468bis`), Bagrati Cathedral and Gelati
+ * Monastery where the property is now Gelati Monastery alone (`710bis`).
+ * Measured on 2026-10-12 over the 1 272 sites: it names another item than the
+ * tier rule on 87, each the whole where the tier rule held a part beside it or
+ * the earlier inscription. A deprecated statement names nothing.
+ */
+function namedAsTheProperty(candidates: SiteCandidates, site: ReadonlySet<string>): Candidate[] {
+  const whole = [...candidates.exact, ...candidates.variant]
+    .filter((c) => !c.deprecated && itemId(c.item) !== null)
+    .map((c) => ({ c, m: nameMatch(c.label, site) }))
+    .filter(({ m }) => m.covered === 1);
+  const best = Math.max(0, ...whole.map(({ m }) => m.shared));
+  return whole.filter(({ m }) => m.shared === best).map(({ c }) => c);
+}
+
+/**
+ * How much of another carrier's label must be in the site's name for its
+ * picture to come before the components' (#1373). Cavernas do Peruaçu National
+ * Park carries the Cerrado Protected Areas' `1035` and shares one word of the
+ * name, and its cave is 600 km from either park; Venice is wholly inside
+ * "Venice and its Lagoon". A carrier under it is still asked after the
+ * components, so a site with neither keeps a picture.
+ */
+const ANSWERS_TO_THE_NAME = 0.5;
+
+/**
  * How widely written about another carrier of the id has to be before its
  * article stands in for a property whose own item has none.
  *
@@ -306,12 +339,16 @@ export const ARTICLE_STAND_IN_MIN_SITELINKS = 10;
  * article is taken from an item carrying the property's own number,
  * renumberings included.
  *
- * Among those, the item named as the site is named answers first
- * (`asTheProperty`) — for both facts, so the article and the picture are the
- * same item's wherever it states both. Where it has no article, the best-known
- * other carrier stands in if it is known widely enough
+ * Among those, the item named as the property answers first, whichever
+ * numbering it carries (`namedAsTheProperty`), and then, within the property's
+ * own number before a later one, the item named most nearly as the site is
+ * named (`asTheProperty`) — for both facts, so the article and the picture are
+ * the same item's wherever it states both. Where it has no article, the
+ * best-known other carrier stands in if it is known widely enough
  * (`ARTICLE_STAND_IN_MIN_SITELINKS`); where it has no picture, the others are
- * asked in order of renown, and then the components.
+ * asked in order of renown, and then the components — after the components,
+ * where an item is named as the property, a carrier whose label hardly answers
+ * to the name (`ANSWERS_TO_THE_NAME`).
  *
  * `name` is the site's name as the portal gives it. Without one — a caller
  * that has only the id — every label matches alike and renown decides.
@@ -327,17 +364,25 @@ export function factsForSite(index: WorldHeritageIndex, idNo: string, name?: str
       const [own, ...others] = [...tier].sort(asTheProperty(site));
       return { own, others: others.sort(byRenown) };
     });
+  const named = namedAsTheProperty(candidates, site).sort(byRenown);
 
-  let article: string | null = null;
+  // Where an item is named as the property, a tier's first carrier is only
+  // another carrier, and stands in for the article as any other does.
+  const standsIn = (c: Candidate) => c.article !== null && c.sitelinks >= ARTICLE_STAND_IN_MIN_SITELINKS;
+  let article: string | null = named.find((c) => c.article)?.article ?? null;
   for (const { own, others } of property) {
-    article = own.article
-      ?? others.find((c) => c.article && c.sitelinks >= ARTICLE_STAND_IN_MIN_SITELINKS)?.article
-      ?? null;
     if (article) break;
+    article = (named.length === 0 ? own.article : null)
+      ?? [...(named.length === 0 ? [] : [own]), ...others].sort(byRenown).find(standsIn)?.article
+      ?? null;
   }
 
-  const pictured = [...property.flatMap(({ own, others }) => [own, ...others]), ...candidates.component]
-    .find((c) => c.image);
+  const carriers = property.flatMap(({ own, others }) => [own, ...others]).filter((c) => !named.includes(c));
+  const answers = (c: Candidate) => nameMatch(c.label, site).covered >= ANSWERS_TO_THE_NAME;
+  const pictured = (named.length === 0
+    ? [...carriers, ...candidates.component]
+    : [...named, ...carriers.filter(answers), ...candidates.component, ...carriers.filter((c) => !answers(c))]
+  ).find((c) => c.image);
 
   return {
     article,
@@ -509,20 +554,24 @@ export function componentContents(
 }
 
 /**
- * The Wikidata items a World Heritage site's id resolves to (#1248): every item
- * carrying the property's own number, or, where none does, a later numbering
- * of it (`292bis` for Cologne Cathedral's `292`) — never a component's, which
- * names a part. One item is the site's; several (Venice beside "Venice and its
- * Lagoon") name more than one thing, and the catalogue merges on none of them.
- * An item that carries the number only in deprecated statements is not counted:
- * Wikidata keeps those as wrong, and here they would decide identity.
+ * The Wikidata items a World Heritage site's id resolves to (#1248): the items
+ * named as the property, whichever numbering they carry (`namedAsTheProperty`,
+ * #1373); where none is, every item carrying the property's own number, or,
+ * where none does, a later numbering of it (`292bis` for Cologne Cathedral's
+ * `292`) — never a component's, which names a part. One item is the site's;
+ * several (two Galápagos Islands, or Venice beside "Venice and its Lagoon"
+ * where `name` is not given) name more than one thing, and the catalogue
+ * merges on none of them. An item that carries the number only in deprecated
+ * statements is not counted: Wikidata keeps those as wrong, and here they
+ * would decide identity.
  */
-export function siteItems(index: WorldHeritageIndex, site: string): string[] {
+export function siteItems(index: WorldHeritageIndex, site: string, name?: string | null): string[] {
   const candidates = index.bySite.get(String(site).trim());
   if (!candidates) return [];
   const current = (tier: Candidate[]) => tier.filter(candidate => !candidate.deprecated);
   const exact = current(candidates.exact);
-  const tier = exact.length > 0 ? exact : current(candidates.variant);
+  let tier = namedAsTheProperty(candidates, nameWords(name));
+  if (tier.length === 0) tier = exact.length > 0 ? exact : current(candidates.variant);
   return [...new Set(tier.map(candidate => itemId(candidate.item)).filter((item): item is string => item !== null))].sort();
 }
 
