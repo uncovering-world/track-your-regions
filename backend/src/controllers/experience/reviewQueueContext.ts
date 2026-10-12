@@ -23,6 +23,26 @@ import { dangerSelectSql } from './experienceDanger.js';
 export const QUEUE_PAGE_SIZE = 25;
 
 /**
+ * A point that is one of the places an object is made of: offered, and not
+ * the unread arrival of a move whose stored pin is still offered — a gated run
+ * keeps the stored pin and writes the moved one as an arrival that names what
+ * it replaces (locationWriter.ts), and for as long as the move waits the
+ * object is still made of one place there. Only while the pin it replaces is
+ * itself offered: a curator may declare that pin gone while the move waits,
+ * and leaving both rows out would lose the place.
+ *
+ * What "made of N places" counts and what the component-items card draws as
+ * the site's places (#1342), so the number and the pins cannot disagree.
+ */
+export function placeOfObjectSql(alias: string): string {
+  return `${offeredLocationSql(alias)}
+              AND NOT EXISTS (
+                SELECT 1 FROM experience_locations replaced
+                 WHERE replaced.id = ${alias}.withdrawal_deferred_for_location_id
+                   AND ${offeredLocationSql('replaced')})`;
+}
+
+/**
  * What the object *is*, for a card that asks a question about it.
  *
  * Every kind here asks a curator to judge something — whether a site is gone, whether a
@@ -86,21 +106,10 @@ export function objectContextSelectSql(alias = 'e'): string {
           -- is the divergence reviewQueueContents.ts's own join already learned once,
           -- and says so where it composes the same fragment.
           --
-          -- And a point is counted once while it moves. A gated run keeps the
-          -- stored pin and writes the moved one as an unread arrival that names
-          -- what it replaces (locationWriter.ts), so for as long as the move
-          -- waits the object offers both rows and is still made of one place:
+          -- And a point is counted once while it moves (placeOfObjectSql):
           -- Ephesus, run 146, read "made of 2 places" over a 158 m correction.
-          -- Only while the pin it replaces is itself still offered: a curator
-          -- may declare that pin gone while the move waits, the pairing stands
-          -- until the arrival is answered, and leaving both rows out would
-          -- read "made of 0 places".
           (SELECT count(*) FROM experience_locations off
-            WHERE off.experience_id = ${alias}.id AND ${offeredLocationSql('off')}
-              AND NOT EXISTS (
-                SELECT 1 FROM experience_locations replaced
-                 WHERE replaced.id = off.withdrawal_deferred_for_location_id
-                   AND ${offeredLocationSql('replaced')}))::int
+            WHERE off.experience_id = ${alias}.id AND ${placeOfObjectSql('off')})::int
             AS offered_locations,
           (SELECT count(*) FROM experience_treasures et
             WHERE et.experience_id = ${alias}.id
