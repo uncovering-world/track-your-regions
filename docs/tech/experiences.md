@@ -4290,8 +4290,25 @@ answer confirms the exact candidates only — the same name within
 (`answerComponentItems` in `reviewAnswerDispatch.ts`); the rest is judged on the card.
 
 **Jev's judgement on the component-items card** (#1272, ADR-0087). Where `JEV_API_KEY` is set,
-the card asks `POST /api/experiences/:id/component-item-suggestions`
-(`componentItemSuggestionController.ts`) when it opens: for each open candidate, the newest
+and an admin has turned it on in AI Settings (#1355; `jev_finder_judges`, off by default,
+`@tyr/shared/jevSettings`, written by `JevFinderSettings.tsx`), the finder's pass asks once its
+proposals are written: `sitesWithUnjudgedCandidates` names the sites with an open candidate not
+judged as it stands, those with the most candidates that are not an exact match first, and
+`judgeSiteCandidates` asks about each site in one call — the question and record the card's
+request makes — handed to the job by `syncController` (`JudgeCandidates` in
+`componentItemJob.ts`), so the sync layer never writes a judgement itself. Jev is paid by the
+input token, so a pass spends at most its budget (`jev_finder_budget_usd`, ten cents where none
+is set, at `JEV_USD_PER_MILLION_INPUT_TOKENS`): before a site it reckons the site's questions at
+`TOKENS_PER_QUESTION` (600, above the 533 of the 90th percentile of the 119 questions recorded on
+2026-10-12, whose mean was 459) on top of the tokens already spent, and leaves a site that would
+pass the budget whole for its card while still asking a smaller one after it. Ten cents bought
+about 4,000 questions that day, several times every open candidate: a ceiling on a mistake,
+not a ration. The pass's summary says how many candidates Jev judged, how it judged them, the
+input tokens the calls took and how many candidates the budget left. Judging off, a pass
+cancelled, a budget spent or a deployment that gained Jev later leaves candidates the card asks
+about when it opens:
+`POST /api/experiences/:id/component-item-suggestions`
+(`componentItemSuggestionController.ts`): for each open candidate, the newest
 stored judgement made for the candidate as it stands — its label, distance, name similarity and
 the rule that found it, as `askedSql` states them, so a candidate the finder proposes again
 with other measures is asked about again — or a new one. The candidates not yet judged go to
