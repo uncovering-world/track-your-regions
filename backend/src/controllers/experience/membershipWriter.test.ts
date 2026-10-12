@@ -11,6 +11,7 @@ import type { LockedExperience } from '../../db/experienceWriter.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
 import {
   answerAdmissionOnMembership, clearHeldPointer, insertManualMembership, publishMembership, refuseOnMembership,
+  releaseAdmissionPin,
 } from './membershipWriter.js';
 
 /** The Kunsthalle Bremen, as the token a lock of it would hand out, and its one membership. */
@@ -58,6 +59,26 @@ describe('answering a refusal', () => {
 });
 
 describe('the other curator writes', () => {
+  it("releases a batch's pin: the rule's verdict, the claim off, answered, the flag cleared (#1365)", async () => {
+    const { client, queries } = fakeClient();
+    vi.mocked(client.query).mockImplementationOnce((async (sql: string, params: unknown[] = []) => {
+      queries.push({ sql, params });
+      return { rows: [], rowCount: 1 };
+    }) as never);
+    await releaseAdmissionPin(client, KUNSTHALLE, MEMBERSHIP, 'not an art museum — painting-share: 0 painting(s) vs 2 sculptural work(s)');
+    const sql = collapse(queries[0].sql);
+    expect(sql).toContain("SET admission = 'refused'");
+    expect(sql).toContain("curated_fields = m.curated_fields - 'admission'");
+    expect(sql).toContain('admission_answered_at = NOW()');
+    expect(sql).toContain(collapse(CLEAR_ICONIC));
+    expect(queries[0].params).toEqual([MEMBERSHIP, 'not an art museum — painting-share: 0 painting(s) vs 2 sculptural work(s)', KUNSTHALLE.id]);
+  });
+
+  it('says so, rather than logging a release, where the membership is not the place\'s any more', async () => {
+    const { client } = fakeClient();
+    await expect(releaseAdmissionPin(client, KUNSTHALLE, MEMBERSHIP, 'a reason')).rejects.toThrow(/was not released/);
+  });
+
   it('refuses an arrival with the pin and the flag cleared', async () => {
     const { client, queries } = fakeClient();
     await refuseOnMembership(client, KUNSTHALLE, MEMBERSHIP, 'kept out by a curator', ['admission']);

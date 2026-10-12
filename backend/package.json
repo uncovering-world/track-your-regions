@@ -19,6 +19,7 @@
     "catalogue:coverage:load": "tsx src/scripts/loadCatalogueCoverage.ts",
     "catalogue:coverage": "tsx src/scripts/catalogueCoverageReport.ts",
     "catalogue:coverage:lookup": "tsx src/scripts/catalogueCoverageLookup.ts",
+    "pins:release-batch": "tsx src/scripts/releaseBatchPins.ts",
     "db:types": "tsx src/db/generateSchemaTypes.ts",
     "knip": "knip --include files,dependencies,unlisted",
     "knip:full": "knip"
