@@ -683,6 +683,70 @@ describe('a candidate only OpenStreetMap named', () => {
     expect(verdict.osm.object).toBe('way/1069114387');
   });
 
+  // #1352: a building in use that a mapper's dig tag named. The objects and
+  // their tags as OpenStreetMap held them on 2026-10-12.
+  it("refuses Reims Cathedral: its crypt's dig tag does not undo the cathedral's own object", () => {
+    // Q206823, class Catholic cathedral, World Heritage on the item itself —
+    // which does not lift this refusal.
+    const verdict = osmVerdict(
+      facts({ qid: 'Q206823', classes: ['Q56242215'], sitelinks: 70, worldHeritage: true }),
+      [
+        object('node/7388163831', { historic: 'archaeological_site', archaeological_site: 'church', name: 'Cathédrale de Reims' }),
+        object('way/92294792', { amenity: 'place_of_worship', building: 'cathedral', tourism: 'attraction' }, POLYGON),
+      ],
+    );
+    expect(verdict.pass).toBe(false);
+    if (verdict.pass || 'out' in verdict) throw new Error('Reims Cathedral must be refused by name');
+    expect(verdict.group).toBe('living');
+    expect(verdict.reason).toBe(
+      'in use today — OpenStreetMap maps it as a place of worship (amenity=place_of_worship on way/92294792), and'
+      + " Wikidata gives it no class of a site; only a mapper's tag calls it an archaeological site here"
+      + ' (historic=archaeological_site on node/7388163831)',
+    );
+  });
+
+  it('refuses Prora, where people live in the blocks the map also calls ruins', () => {
+    const verdict = osmVerdict(
+      facts({ qid: 'Q685448', classes: ['Q486972'], sitelinks: 30 }),
+      [
+        object('way/91181455', { building: 'ruins', historic: 'ruins' }),
+        object('way/117783762', { building: 'apartments', heritage: 'yes' }),
+      ],
+    );
+    expect(verdict.pass).toBe(false);
+    if (verdict.pass || 'out' in verdict) throw new Error('Prora must be refused by name');
+    expect(verdict.reason).toMatch(/^in use today — OpenStreetMap maps it as homes \(building=apartments on way\/117783762\)/);
+  });
+
+  it('admits Bamburgh Castle, a standing castle English Wikipedia files under its archaeological sites', () => {
+    const verdict = osmVerdict(
+      facts({ qid: 'Q2026185', classes: ['Q23413'], sitelinks: 40, namedByCategory: true }),
+      [
+        object('way/405517389', { historic: 'archaeological_site', name: 'Bamburgh Research Project Archaeological Site' }),
+        object('way/301645315', { historic: 'castle', castle_type: 'fortress' }, POLYGON),
+      ],
+    );
+    expect(verdict.pass).toBe(true);
+  });
+
+  it('admits Dunfermline Palace and Zvartnots, whose place of worship and church are ruins', () => {
+    const dunfermline = osmVerdict(
+      facts({ qid: 'Q2014458', classes: ['Q23413'], sitelinks: 30 }),
+      [object('relation/5353726', {
+        amenity: 'place_of_worship', building: 'yes', historic: 'archaeological_site', ruins: 'yes',
+      }, POLYGON)],
+    );
+    const zvartnots = osmVerdict(
+      facts({ qid: 'Q17054090', classes: ['Q56242215'], sitelinks: 40, worldHeritage: true }),
+      [
+        object('way/1169668461', { historic: 'archaeological_site' }),
+        object('way/360172402', { building: 'church', historic: 'ruins', ruins: 'temple' }, POLYGON),
+      ],
+    );
+    expect(dunfermline.pass).toBe(true);
+    expect(zvartnots.pass).toBe(true);
+  });
+
   it('refuses Potenza: a town whose ruin the mapper linked to the town', () => {
     // Q3543, 106 sitelinks, classes city / comune of Italy, a population
     // statement, and node/1687849903 tagged historic=archaeological_site.

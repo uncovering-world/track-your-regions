@@ -27,7 +27,7 @@
 
 import {
   CENSUS_BOUNDARY, DESTROYED_CLASS, LIVING_PLACE, OSM_DIG_HISTORIC, OSM_DIG_KEY,
-  OSM_ONLY_NOT_A_PLACE, OSM_RUINS_HISTORIC, OSM_RUINS_KEY, PROTECTED_BOUNDARY, RUIN_HISTORIC,
+  OSM_IN_USE, OSM_ONLY_NOT_A_PLACE, OSM_RUINS_HISTORIC, OSM_RUINS_KEY, PROTECTED_BOUNDARY, RUIN_HISTORIC,
   RUIN_KEYS, RUIN_MAN_MADE, RUINS_ONLY_MONUMENT_CLASSES, SHIPWRECK_ROOT, SITE_CLASSES,
   SITE_KILL_BY_NAME, SITE_KILL_CLASSES, SITE_KILL_NATURAL, SITE_KILL_UNLESS_SITE,
   type ArchaeologyTrees,
@@ -425,13 +425,47 @@ function osmOnlyVeto(facts: SiteFacts, naming: OsmNaming, trees: ArchaeologyTree
   return null;
 }
 
+/** A place's use today, as one OSM object states it: the tag and the words a refusal reads. */
+export interface InUse { tag: string; what: string; ref: string }
+
+/**
+ * What one object says about the place being used today (`OSM_IN_USE`,
+ * #1352), or null. An object the mapper marked as ruins says nothing of the
+ * kind: Dunfermline Palace's abbey carries `amenity=place_of_worship` beside
+ * `ruins=yes`, and Zvartnots' cathedral `building=church` under
+ * `historic=ruins`.
+ */
+export function inUseOf(object: OsmObject): InUse | null {
+  if (object.tags.historic === 'ruins' || saidOf(object, OSM_RUINS_KEY) || object.tags.building === 'ruins') {
+    return null;
+  }
+  for (const use of OSM_IN_USE) {
+    const value = object.tags[use.key];
+    if (value && use.values.has(value)) return { tag: `${use.key}=${value}`, what: use.what, ref: object.ref };
+  }
+  return null;
+}
+
+/** The first of an item's objects that says the place is used today, or null. */
+export function inUseAmong(objects: OsmObject[]): InUse | null {
+  for (const object of objects) {
+    const used = inUseOf(object);
+    if (used) return used;
+  }
+  return null;
+}
+
 /**
  * The verdict on a candidate OpenStreetMap named and the class tree did not
  * — the pool's second entrance (#895, ADR-0060).
  *
  * The map's word is the step-2 signal by construction, so what is asked here
  * is whether Wikidata's classes contradict it: the four vetoes above, then
- * the living place. **A population statement is the living-place rule here**,
+ * the living place. **A place used today is refused first** (#1352): one of the
+ * item's objects says so outside a ruin (`inUseOf`) — Reims Cathedral's own
+ * building beside the dig tag on its crypt — and only English Wikipedia filing
+ * the article under its archaeological sites outweighs it, as Bamburgh's is.
+ * World Heritage does not: Reims Cathedral carries it. **A population statement is the living-place rule here**,
  * where for a row the tree vouches for it is the last word in one narrow
  * dispute: a comune of Italy or a Spanish municipality is on no settlement
  * branch and states its people all the same, and eighteen of them arrive on a
@@ -463,6 +497,14 @@ function osmNamedVerdict(
   // was not called a dig by anyone.
   const mapped = `${naming.names === 'dig' ? 'an archaeological site' : 'ruins'} here `
     + `(${naming.tag} on ${naming.object.ref})`;
+  const used = inUseAmong(objects);
+  if (used && facts.namedByCategory !== true) {
+    return refuse(
+      `in use today — OpenStreetMap maps it as ${used.what} (${used.tag} on ${used.ref}), and Wikidata gives it`
+        + ` no class of a site; only a mapper's tag calls it ${mapped}`,
+      'living',
+    );
+  }
   const vouched = facts.worldHeritage || facts.namedByCategory === true;
   if (facts.statesPopulation && !vouched) {
     return refuse(

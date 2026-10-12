@@ -157,7 +157,11 @@ export function overpassBatchQuery(qids: string[], keep: KeepWkt): string {
     anyOf('man_made', keep.manMade),
     anyOf('boundary', keep.boundary),
   ].filter((clause): clause is string => clause !== null).map((clause) => `  ${clause}`).join('\n');
+  // The keys the answer is read for, named in the question although Overpass
+  // sends every tag: a cached answer was filtered through the list it was read
+  // with (`rowsOf`), so the cache's key — the query text — has to move with it.
   return `[out:json][timeout:${OVERPASS_QUERY_TIMEOUT_S}][maxsize:${OVERPASS_QUERY_MAXSIZE_B}];
+/* read for: ${OSM_TAG_KEYS.join(', ')} */
 (
 ${asked}
 )->.asked;

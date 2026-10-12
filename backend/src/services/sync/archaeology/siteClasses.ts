@@ -120,6 +120,27 @@ export const RUIN_HISTORIC: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * What an OSM object says about a place used today (#1352), each with the
+ * words a refusal reads: a congregation, residents, a castle or palace that
+ * stands. Read only off an object the mapper did not mark as ruins
+ * (`inUseOf`, `siteTest.ts`), and only on the map's own entrance, where the
+ * map's word is all a candidate has: a mapper's `historic=archaeological_site`
+ * on Reims Cathedral's crypt, or on the Lingaraja Temple's whole precinct,
+ * names a building in use, and the cathedral's or temple's own object says so.
+ * Measured on 2026-10-12 over the 89 Archaeology arrivals then open: nine items
+ * carry such an object outside a ruin, every one a building in use (Bamburgh
+ * Castle among them, which English Wikipedia files under its archaeological
+ * sites), and no ruin does — the mortuary temple of Hatshepsut, Esagila, the
+ * Jesuit missions, the Hồ citadel and Dunfermline Palace (`ruins=yes` beside its
+ * place of worship) carry none.
+ */
+export const OSM_IN_USE: ReadonlyArray<{ key: string; values: ReadonlySet<string>; what: string }> = [
+  { key: 'amenity', values: new Set(['place_of_worship']), what: 'a place of worship' },
+  { key: 'building', values: new Set(['apartments', 'residential', 'house', 'dormitory']), what: 'homes' },
+  { key: 'historic', values: new Set(['castle', 'palace']), what: 'a standing castle or palace' },
+];
+
+/**
  * Keys whose presence says a ruin, whatever the value — except `no`, which is
  * the mapper saying the opposite (`saidOf` in `siteTest.ts`). Both
  * enumerations leave a `no` out, and the rule reads the per-item objects the
