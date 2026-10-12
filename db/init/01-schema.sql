@@ -3146,7 +3146,7 @@ CREATE TABLE IF NOT EXISTS experience_component_item_proposals (
     distance_m INTEGER NOT NULL,
     name_similarity REAL NOT NULL,
     exact BOOLEAN NOT NULL DEFAULT false,
-    basis VARCHAR(10) NOT NULL CHECK (basis IN ('part_of', 'near', 'numbered')),
+    basis VARCHAR(10) NOT NULL CHECK (basis IN ('part_of', 'near', 'numbered', 'wikipedia')),
     proposed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     answer VARCHAR(10) CHECK (answer IN ('accepted', 'refused')),
     answered_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -3156,7 +3156,7 @@ CREATE TABLE IF NOT EXISTS experience_component_item_proposals (
 );
 CREATE INDEX IF NOT EXISTS idx_component_item_proposals_open
     ON experience_component_item_proposals(location_id) WHERE answer IS NULL;
-COMMENT ON TABLE experience_component_item_proposals IS 'A candidate Wikidata item for a World Heritage component whose reference no item records (#1272), and what the match rests on: the item says it is part of the site (part_of), it lies near the point and is of a class the site''s resolved components are of (near), or it carries the component''s number under another variant of the inscription and is named like it (numbered, #1394); the distance, the name similarity and whether the names are the same. A curator answers it on the review queue: accepted records the item on the point as a curator''s choice; refused is kept so the candidate is never proposed again.';
+COMMENT ON TABLE experience_component_item_proposals IS 'A candidate Wikidata item for a World Heritage component whose reference no item records (#1272), and what the match rests on: the item says it is part of the site (part_of), it lies near the point and is of a class the site''s resolved components are of (near), it carries the component''s number under another variant of the inscription and is named like it (numbered, #1394), or a Wikipedia article near a point no other rule found anything for is about it and named like the component (wikipedia, #1339); the distance, the name similarity and whether the names are the same. A curator answers it on the review queue: accepted records the item on the point as a curator''s choice; refused is kept so the candidate is never proposed again.';
 -- Where the candidate stands, for the card's map, and the index that answers
 -- whether a candidate's item is already some point's. See db/migrations/083.
 ALTER TABLE experience_component_item_proposals ADD COLUMN IF NOT EXISTS item_location GEOMETRY(Point, 4326);

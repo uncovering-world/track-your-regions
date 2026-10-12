@@ -14,7 +14,7 @@ vi.mock('./qleverWikidata.js', () => ({ qleverWikidataQuery: vi.fn() }));
 vi.mock('./wikipediaCategories.js', () => ({ askWikipediaOnce: vi.fn() }));
 
 const { sparqlQuery, SparqlUnanswered, WaitBudget } = await import('./wikidataUtils.js');
-const { boxFilter, contentsOf, itemsInBoxes, labelsOf, partsOfSites, placesOf } = await import('./componentItemQueries.js');
+const { articlesNear, boxFilter, contentsOf, itemsInBoxes, labelsOf, partsOfSites, placesOf } = await import('./componentItemQueries.js');
 const { qleverWikidataQuery } = await import('./qleverWikidata.js');
 const { askWikipediaOnce } = await import('./wikipediaCategories.js');
 
@@ -191,5 +191,30 @@ describe('labelsOf', () => {
     expect(labels.get('Q98511')).toEqual({ all: ['Bir türbe', 'A shrine'], english: 'A shrine' });
     expect(labels.get('Q98512')).toEqual({ all: ['Kastell Fixture', 'Castrul Fixture'], english: 'Kastell Fixture' });
     expect(labels.get('Q98513')).toEqual({ all: ['Un phare'], english: null });
+  });
+});
+
+describe('articlesNear (#1339)', () => {
+  it('asks each edition for the articles near the point, with every coordinate they carry, and keeps their items', async () => {
+    vi.mocked(askWikipediaOnce)
+      .mockResolvedValueOnce({ query: { pages: [
+        { title: 'Villa Mairea', pageprops: { wikibase_item: 'Q2706241' }, coordinates: [{ lat: 61.5948, lon: 21.8729 }] },
+        // A list's row carries a coordinate of its own; its item is the list's, not the component's.
+        { title: 'Luettelo Porin rakennuksista', pageprops: { wikibase_item: 'Q98520' }, coordinates: [{ lat: 61.59, lon: 21.87 }] },
+        { title: 'Mairea (täsmennyssivu)', pageprops: { wikibase_item: 'Q98521', disambiguation: '' }, coordinates: [{ lat: 61.59, lon: 21.87 }] },
+        { title: 'Noormarkku' },
+      ] } } as never)
+      .mockResolvedValueOnce({ query: { pages: [
+        { title: 'Villa Mairea', pageprops: { wikibase_item: 'Q2706241' }, coordinates: [{ lat: 61.5948, lon: 21.8729 }] },
+      ] } } as never);
+
+    const found = await articlesNear({ lat: 61.5947, lon: 21.8728 }, ['fi', 'en'], 500, hooks());
+
+    expect(found).toEqual([{ item: 'Q2706241', labels: ['Villa Mairea'], coords: [[61.5948, 21.8729]] }]);
+    const [[fi, fiOptions], [en, enOptions]] = vi.mocked(askWikipediaOnce).mock.calls.slice(-2) as unknown as Array<[Record<string, string>, { endpoint: string }]>;
+    expect(fiOptions.endpoint).toBe('https://fi.wikipedia.org/w/api.php');
+    expect(enOptions.endpoint).toBe('https://en.wikipedia.org/w/api.php');
+    expect(fi).toMatchObject({ generator: 'geosearch', ggscoord: '61.5947|21.8728', ggsradius: '500', ggsprimary: 'all', coprimary: 'all' });
+    expect(en.ppprop).toBe('wikibase_item|disambiguation');
   });
 });

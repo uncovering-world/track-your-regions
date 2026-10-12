@@ -159,6 +159,70 @@ export async function componentNumbers(hooks: QueryHooks): Promise<CandidateItem
   return [...candidatesOf(rows, 'item').values()];
 }
 
+/** One page of a geosearch answer, as the API writes it with `pageprops` and `coordinates`. */
+interface GeosearchPage {
+  title: string;
+  pageprops?: { wikibase_item?: string; disambiguation?: string };
+  coordinates?: Array<{ lat: number; lon: number }>;
+}
+
+/**
+ * A title that names a list rather than a place: the county monument lists of
+ * the Romanian edition carry a coordinate for every row (`gsprimary=all`), and
+ * the list's item is not the component.
+ */
+const LIST_TITLE = /^(list|lista|liste|luettelo|список|seznam|zoznam|llista)(\s|$)/iu;
+
+/**
+ * The Wikidata items of the articles within `radiusM` of a point, in each
+ * edition asked (#1339): every coordinate an article carries, its primary and
+ * the secondary ones a list or a long article puts on its rows, and the item
+ * through `pageprops`. The articles' text is not read; their title is what the
+ * item is called there. One request an edition, one at a time, through the
+ * category client's retry and pacing. A list or a disambiguation page is left
+ * out; so is an article with no item.
+ */
+export async function articlesNear(
+  point: { lat: number; lon: number }, editions: readonly string[], radiusM: number, hooks: QueryHooks,
+): Promise<CandidateItem[]> {
+  const byItem = new Map<string, CandidateItem>();
+  for (const [i, edition] of editions.entries()) {
+    if (hooks.isCancelled?.()) break;
+    if (i > 0) await delay(SPARQL_DELAY_MS);
+    const at = `${point.lat}|${point.lon}`;
+    const answer = await askWikipediaOnce(
+      {
+        action: 'query', generator: 'geosearch', ggscoord: at, ggsradius: String(radiusM), ggslimit: '20',
+        ggsprimary: 'all', prop: 'pageprops|coordinates', ppprop: 'wikibase_item|disambiguation',
+        coprimary: 'all', colimit: 'max', format: 'json', formatversion: '2',
+      },
+      {
+        userAgent: WIKIDATA_USER_AGENT, endpoint: `https://${edition}.wikipedia.org/w/api.php`,
+        isCancelled: hooks.isCancelled, onWait: hooks.onWait, budget: hooks.budget,
+      },
+      hooks.budget,
+      `the articles near ${at} on ${edition}.wikipedia`,
+    ) as unknown as { query?: { pages?: GeosearchPage[] } };
+    hooks.onQuery?.();
+    foldArticles(byItem, answer.query?.pages ?? []);
+  }
+  return [...byItem.values()];
+}
+
+/** Each article's item into the candidates found so far: the titles it goes by and every coordinate it carries. */
+function foldArticles(byItem: Map<string, CandidateItem>, pages: readonly GeosearchPage[]): void {
+  for (const page of pages) {
+    const item = page.pageprops?.wikibase_item;
+    if (!item || page.pageprops?.disambiguation !== undefined || LIST_TITLE.test(page.title)) continue;
+    const candidate = byItem.get(item) ?? { item, labels: [], coords: [] };
+    if (!candidate.labels.includes(page.title)) candidate.labels.push(page.title);
+    for (const c of page.coordinates ?? []) {
+      if (!candidate.coords.some(([a, b]) => a === c.lat && b === c.lon)) candidate.coords.push([c.lat, c.lon]);
+    }
+    byItem.set(item, candidate);
+  }
+}
+
 export interface Box { south: number; west: number; north: number; east: number }
 
 /** QLever declares no prefixes of its own, unlike the Wikidata Query Service. */

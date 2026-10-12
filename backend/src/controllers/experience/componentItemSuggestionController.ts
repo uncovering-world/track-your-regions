@@ -41,7 +41,7 @@ interface CandidateRow {
   label: string;
   distanceM: number;
   similarity: number;
-  basis: 'part_of' | 'near' | 'numbered';
+  basis: 'part_of' | 'near' | 'numbered' | 'wikipedia';
   itemLat: number | null;
   itemLon: number | null;
   stored: { judgement: Judgement | null; confidence: number } | null;
@@ -75,6 +75,8 @@ const BASIS_WORDS: Record<CandidateRow['basis'], string> = {
   numbered: 'because the item carries this component\'s World Heritage number under another inscription of the site; '
     + 'an extension can renumber the parts, so the number alone does not make it this component, and the name and place '
     + 'decide',
+  wikipedia: 'because a Wikipedia article near the point is about it; the article may be about a neighbouring place, '
+    + 'so its name and place decide',
 };
 
 const at = (lat: number | null, lon: number | null): string => (lat == null || lon == null ? 'no coordinate' : `${lat}, ${lon}`);

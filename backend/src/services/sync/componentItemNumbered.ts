@@ -11,6 +11,7 @@
 
 import { listRef, parseWhcRef } from './unescoWikidata.js';
 import type { CandidateItem } from './componentItemMatching.js';
+import { componentNumbers, tooHeavy, type QueryHooks } from './componentItemQueries.js';
 
 /**
  * A component number with its inscription's variant left out, as a key: the
@@ -44,4 +45,17 @@ export function numberedFor(point: { externalRef: string }, byKey: ReadonlyMap<s
   if (!key) return [];
   const own = listRef(point.externalRef).toLowerCase();
   return (byKey.get(key) ?? []).filter(item => !(item.references ?? []).some(ref => ref.trim().toLowerCase() === own));
+}
+
+/**
+ * The component numbers, keyed, or none and `unread` where the query service
+ * could not answer: the pass then keeps the numbered proposals it made before.
+ */
+export async function readComponentNumbers(hooks: QueryHooks): Promise<{ byKey: Map<string, CandidateItem[]>; unread: boolean }> {
+  try {
+    return { byKey: byComponentKey(await componentNumbers(hooks)), unread: false };
+  } catch (error) {
+    if (!tooHeavy(error)) throw error;
+    return { byKey: new Map(), unread: true };
+  }
 }

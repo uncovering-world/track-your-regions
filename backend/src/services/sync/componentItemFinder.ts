@@ -19,7 +19,8 @@
  */
 
 import { pool } from '../../db/index.js';
-import { byComponentKey, numberedFor } from './componentItemNumbered.js';
+import { articleMatches } from './componentItemArticles.js';
+import { numberedFor, readComponentNumbers } from './componentItemNumbered.js';
 import { listRef, parseWhcRef } from './unescoWikidata.js';
 import {
   admittedClasses, bestMatch, nearestM, numberedMatches, ofTheSitesKind, placeAsCandidate, standsAtTheComponent, standsForWholeSite,
@@ -27,7 +28,7 @@ import {
   type CandidateItem, type ComponentMatch, type ComponentPoint, type MatchBasis,
 } from './componentItemMatching.js';
 import {
-  classesOfItems, componentNumbers, itemsInBoxes, labelsOf, partsOfSites, placesOf, settlementsAmong, tooHeavy, type Box, type ItemLabels,
+  classesOfItems, itemsInBoxes, labelsOf, partsOfSites, placesOf, settlementsAmong, tooHeavy, type Box, type ItemLabels,
   type StandingPlace,
   type QueryHooks,
 } from './componentItemQueries.js';
@@ -55,6 +56,8 @@ const CATALOGUE_CLASS_FLOOR = 5;
 interface PointRow extends ComponentPoint {
   experienceId: number;
   siteItems: string[];
+  /** The site's countries, whose Wikipedia editions the article door asks (#1339). */
+  countryCodes: string[];
   /** The component's World Heritage reference, whose property number says which site a part's own reference must name. */
   externalRef: string;
 }
@@ -79,6 +82,8 @@ export interface ComponentItemReport {
   near: number;
   /** Proposals carrying the component's number under another inscription (#1394). */
   numbered: number;
+  /** Proposals of an article near the point, for points no other door found anything for (#1339). */
+  wikipedia: number;
   /** Of those, the ones with the same name within a few metres. */
   exact: number;
   /** Components whose surroundings the service could not answer for, even asked one area at a time. */
@@ -105,10 +110,10 @@ export interface FinderOptions {
 async function readPoints(): Promise<{ points: PointRow[]; wholeSites: number; wholeSiteIds: number[] }> {
   const result = await pool.query<{
     id: number; name: string | null; lat: number; lon: number; experience_id: number; external_ref: string;
-    wikidata_items: string[] | null; site_name: string; standing_points: number;
+    wikidata_items: string[] | null; site_name: string; standing_points: number; country_codes: string[] | null;
   }>(
     `SELECT el.id, el.name, ST_Y(el.location) AS lat, ST_X(el.location) AS lon,
-            el.experience_id, el.external_ref, m.wikidata_items, e.name AS site_name,
+            el.experience_id, el.external_ref, m.wikidata_items, e.name AS site_name, e.country_codes,
             (SELECT count(*)::int FROM experience_locations s
               WHERE s.experience_id = el.experience_id
                 AND s.missing_since IS NULL AND s.merged_into_id IS NULL) AS standing_points
@@ -125,6 +130,7 @@ async function readPoints(): Promise<{ points: PointRow[]; wholeSites: number; w
   const read: PointRead[] = result.rows.map(row => ({
     locationId: row.id, name: row.name, lat: row.lat, lon: row.lon,
     experienceId: row.experience_id, siteItems: row.wikidata_items ?? [], externalRef: row.external_ref,
+    countryCodes: row.country_codes ?? [],
     siteName: row.site_name, standingPoints: row.standing_points,
   }));
   const points = read.filter(p => !standsForWholeSite(p.name, p.siteName, p.standingPoints));
@@ -388,7 +394,8 @@ function claimsAnotherSite(candidate: CandidateItem, point: PointRow): boolean {
 
 /**
  * Replaces the open proposals of the points this pass answered for with what it found,
- * but those of a rule whose question went unanswered (`unasked`), which stand.
+ * but those of a rule whose question went unanswered (`unasked`), and the article
+ * candidates of a point whose articles could not be read, which stand.
  * An answered proposal is kept: a refusal is what keeps a candidate from coming
  * back, and an acceptance has already recorded its item on the point. A candidate
  * a curator took back (#1336) is open and marked: found again, it takes the
@@ -396,7 +403,8 @@ function claimsAnotherSite(candidate: CandidateItem, point: PointRow): boolean {
  * candidate the pass does not find goes.
  */
 async function writeProposals(
-  locationIds: readonly number[], matches: readonly ComponentMatch[], unasked: MatchBasis | null,
+  locationIds: readonly number[], matches: readonly ComponentMatch[], unasked: readonly MatchBasis[],
+  articlesUnread: readonly number[],
 ): Promise<void> {
   const client = await pool.connect();
   try {
@@ -404,11 +412,12 @@ async function writeProposals(
     await client.query(
       `DELETE FROM experience_component_item_proposals p
         WHERE p.answer IS NULL AND p.location_id = ANY($1::int[])
-          AND ($4::text IS NULL OR p.basis <> $4)
+          AND NOT (p.basis = ANY($4::text[]))
+          AND NOT (p.basis = 'wikipedia' AND p.location_id = ANY($5::int[]))
           AND (p.taken_back_at IS NULL
                OR NOT EXISTS (SELECT 1 FROM unnest($2::int[], $3::text[]) AS f(location_id, item)
                                WHERE f.location_id = p.location_id AND f.item = p.wikidata_item))`,
-      [locationIds, matches.map(m => m.locationId), matches.map(m => m.item), unasked],
+      [locationIds, matches.map(m => m.locationId), matches.map(m => m.item), unasked, articlesUnread],
     );
     // With the item's coordinate nearest the point, so the card can show the
     // candidate beside the component; none where the item states no coordinate.
@@ -506,19 +515,17 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
 
   // The third door, beside the others' answers rather than instead of them (#1394).
   onStage?.('Reading the items that carry a component\'s number under another inscription');
-  let byKey = new Map<string, CandidateItem[]>();
-  let numberedUnread = false;
-  try {
-    byKey = byComponentKey(await componentNumbers(counted));
-  } catch (error) {
-    if (!tooHeavy(error)) throw error;
-    numberedUnread = true;
-  }
+  const { byKey, unread: numberedUnread } = await readComponentNumbers(counted);
   const numberedOf = new Map(points.map(p => [p.locationId, reachable(p, numberedFor(p, byKey), SAME_NAME_RADIUS_M)]));
   await readLabels(numberedOf.values());
   for (const point of points) {
     matches.push(...numberedMatches(point, named(numberedOf.get(point.locationId)!), refused.get(point.locationId)));
   }
+
+  // The fourth door, for the points no other door found anything for (#1339).
+  const unfound = points.filter(p => !matches.some(m => m.locationId === p.locationId));
+  const articles = await articleMatches(unfound, taken, refused, counted, onStage);
+  matches.push(...articles.matches);
 
   const proposals = onePerItem(matches);
   // Answered for: a new proposal, or every question this pass asked about the
@@ -526,9 +533,10 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
   // could not answer keeps what an earlier pass proposed for it.
   const unreadSites = new Set(unread);
   const waiting = new Set(unmatched.map(p => p.locationId));
-  // A number under another inscription is asked beside the other doors, so it
-  // does not make a point answered for that the other doors did not answer.
-  const proposed = new Set(proposals.filter(m => m.basis !== 'numbered').map(m => m.locationId));
+  // A number under another inscription and an article near the point are asked
+  // beside the part and near doors, so neither makes a point answered for that
+  // those doors did not answer.
+  const proposed = new Set(proposals.filter(m => m.basis !== 'numbered' && m.basis !== 'wikipedia').map(m => m.locationId));
   // A point one of whose site items went unread is not answered for, even
   // with a part found under another: the pass did not see all of it, and
   // writing would drop the open candidates it did not evaluate.
@@ -537,7 +545,12 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
   // A point that stands for its whole site is answered for too: nothing is
   // proposed for it, and what an earlier pass proposed is cleared.
   if (options.write && !hooks.isCancelled?.()) {
-    await writeProposals([...answered.map(p => p.locationId), ...wholeSiteIds], proposals, numberedUnread ? 'numbered' : null);
+    // A point whose articles went unread keeps the article candidates it had.
+    const unasked: MatchBasis[] = numberedUnread ? ['numbered'] : [];
+    await writeProposals(
+      [...answered.map(p => p.locationId), ...wholeSiteIds], proposals, unasked,
+      [...articles.unread],
+    );
   }
   return {
     matches: proposals,
@@ -546,6 +559,7 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
       partOf: proposals.filter(m => m.basis === 'part_of').length,
       near: proposals.filter(m => m.basis === 'near').length,
       numbered: proposals.filter(m => m.basis === 'numbered').length,
+      wikipedia: proposals.filter(m => m.basis === 'wikipedia').length,
       exact: proposals.filter(m => m.exact).length,
       wholeSites,
       settlements,

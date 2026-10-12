@@ -13,7 +13,7 @@
  * caves with prehistoric art, protected areas, roads, churches, walls, islands,
  * belfries, castra — so no fixed list of classes describes them.
  *
- * Three rules, each a reason a curator reads on the card:
+ * Four rules, each a reason a curator reads on the card:
  * - **part of the site** — the item says it is part of the site's own item
  *   (P361), and only lacks the component's number. No class is asked: Wikidata
  *   has said what it is a part of. Aalto Works' Villa Mairea, the D-Day beaches.
@@ -28,9 +28,14 @@
  *   Wikidata, `1593bis-006` on the list. Proposed beside what the other rules
  *   find, never instead, and only where the name agrees, since an extension can
  *   renumber the parts.
+ * - **an article near the point** — a Wikipedia article within the near
+ *   radius, in the country's editions or English, whose item is named like the
+ *   component (#1339): asked only for a point no other rule found anything for,
+ *   such as Aalto's villa and sanatorium, of classes no resolved component
+ *   teaches. The near rule's distance and name test, without its classes.
  */
 
-export type MatchBasis = 'part_of' | 'near' | 'numbered';
+export type MatchBasis = 'part_of' | 'near' | 'numbered' | 'wikipedia';
 
 export interface ComponentPoint {
   locationId: number;
@@ -208,11 +213,13 @@ function measure(point: ComponentPoint, candidate: CandidateItem) {
 
 /** Whether a candidate passes the rule its basis names. */
 function passes(basis: MatchBasis, m: ReturnType<typeof measure>): boolean {
-  if (m.exactName && m.distance <= (basis === 'near' ? NEAR_SAME_NAME_RADIUS_M : SAME_NAME_RADIUS_M)) return true;
+  const nearby = basis === 'near' || basis === 'wikipedia';
+  if (m.exactName && m.distance <= (nearby ? NEAR_SAME_NAME_RADIUS_M : SAME_NAME_RADIUS_M)) return true;
   if (basis === 'part_of') return m.distance <= PART_RADIUS_M && (m.similarity >= MIN_SIMILARITY || m.distance <= PART_SAME_SPOT_M);
   // The number names the component, and an extension may have renumbered the
   // parts, so the name decides; the distance only bounds it to the component's ground.
   if (basis === 'numbered') return m.distance <= SAME_NAME_RADIUS_M && m.similarity >= MIN_SIMILARITY;
+  // An article near the point and a near item of the site's kind meet the same test.
   return m.distance <= NEAR_RADIUS_M && m.similarity >= MIN_SIMILARITY;
 }
 

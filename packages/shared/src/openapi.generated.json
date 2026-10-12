@@ -16420,9 +16420,10 @@
             "enum": [
               "part_of",
               "near",
-              "numbered"
+              "numbered",
+              "wikipedia"
             ],
-            "description": "The rule that found it: the item says it is part of the site, lies near the point and is of its kind, or carries the component's number under another inscription."
+            "description": "The rule that found it: the item says it is part of the site, lies near the point and is of its kind, carries the component's number under another inscription, or is a Wikipedia article near the point."
           },
           "itemLatitude": {
             "description": "Where the item stands, nearest the point; null on a proposal that kept none.",

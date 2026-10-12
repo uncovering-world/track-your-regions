@@ -54,6 +54,8 @@ vi.mock('./componentItemQueries.js', async (importOriginal) => ({
   placesOf: vi.fn(async () => new Map<string, StandingPlace[]>()),
   // The items carrying a component's number: none, unless a test names them.
   componentNumbers: vi.fn(async () => [] as CandidateItem[]),
+  // The articles near a point: none, unless a test names them (#1339).
+  articlesNear: vi.fn(async () => [] as CandidateItem[]),
   // The labels come from Wikidata's API, read only for the items the distance leaves.
   labelsOf: vi.fn(async (items: string[]) => new Map(items.map(item => {
     const all = [...parts, ...nearby, ...numbered].find(c => c.item === item)?.labels ?? [];
@@ -122,6 +124,7 @@ beforeEach(async () => {
   vi.mocked(queries.itemsInBoxes).mockImplementation(async () => nearby.map(c => ({ ...c, labels: [] })));
   vi.mocked(queries.placesOf).mockReset().mockImplementation(async () => new Map<string, StandingPlace[]>());
   vi.mocked(queries.componentNumbers).mockReset().mockImplementation(async () => []);
+  vi.mocked(queries.articlesNear).mockReset().mockImplementation(async () => []);
   // A test that names its own labels must not leave them to the next one.
   vi.mocked(queries.labelsOf).mockImplementation(async (items: readonly string[]) => new Map(items.map(item => {
     const all = [...parts, ...nearby, ...numbered].find(c => c.item === item)?.labels ?? [];
@@ -400,5 +403,39 @@ describe('findComponentItems', () => {
 
     expect(report.numbered).toBe(0);
     expect((await proposals()).some(p => p.location_id === points.buciumi && p.wikidata_item === NUMBERED_ITEM && p.answer === null)).toBe(true);
+  });
+
+  it('asks Wikipedia near a point no other door found anything for, and proposes the article named like it (#1339)', async () => {
+    const kokkonen = await point('9840-005', 'Villa Kokkonen', 60.4035, 25.0995, null);
+    points = { ...points, kokkonen };
+    vi.mocked(queries.articlesNear).mockImplementation(async (at) => (at.lat === 60.4035
+      ? [{ item: 'Q98412', labels: ['Villa Kokkonen'], coords: [[60.4036, 25.0996]] }]
+      : []));
+
+    const { report } = await run();
+
+    expect(report.wikipedia).toBe(1);
+    expect((await proposals()).filter(p => p.location_id === kokkonen)).toEqual([
+      { location_id: kokkonen, wikidata_item: 'Q98412', basis: 'wikipedia', exact: true, answer: null },
+    ]);
+    // Asked only for the points nothing else was found for, never for Villa Mairea, which its part answers.
+    const asked = vi.mocked(queries.articlesNear).mock.calls.map(([at]) => at.lat);
+    expect(asked).toContain(60.4035);
+    expect(asked).not.toContain(61.5947);
+  });
+
+  it("keeps an earlier article candidate of a point whose articles could not be read", async () => {
+    const kokkonen = await point('9840-005', 'Villa Kokkonen', 60.4035, 25.0995, null);
+    points = { ...points, kokkonen };
+    await pool.query(
+      `INSERT INTO experience_component_item_proposals (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
+       VALUES ($1, 'Q98412', 'Villa Kokkonen', 10, 1, true, 'wikipedia')`,
+      [kokkonen],
+    );
+    vi.mocked(queries.articlesNear).mockRejectedValue(new Error('[Wikipedia] the articles near 60.4035|25.0995 on fi.wikipedia could not be read: 503'));
+
+    await run();
+
+    expect((await proposals()).some(p => p.location_id === kokkonen && p.wikidata_item === 'Q98412' && p.answer === null)).toBe(true);
   });
 });

@@ -269,7 +269,7 @@ export const ComponentItemProposal = z.strictObject({
   exact: z.boolean().describe('The same name, folded, at the same spot: what a batch accept takes.'),
   takenBack: z.boolean().describe('A curator confirmed it and took it back (#1336): open again, and no batch confirms it — only a click on it does.'),
   basis: z.enum(CHECK_VALUES.experience_component_item_proposals.basis)
-    .describe('The rule that found it: the item says it is part of the site, lies near the point and is of its kind, or carries the component\'s number under another inscription.'),
+    .describe('The rule that found it: the item says it is part of the site, lies near the point and is of its kind, carries the component\'s number under another inscription, or is a Wikipedia article near the point.'),
   itemLatitude: z.number().nullable().describe('Where the item stands, nearest the point; null on a proposal that kept none.'),
   itemLongitude: z.number().nullable(),
   proposedAt: timestamp,

@@ -957,7 +957,7 @@ export const CHECK_VALUES = {
   },
   experience_component_item_proposals: {
     answer: ["accepted", "refused"],
-    basis: ["part_of", "near", "numbered"],
+    basis: ["part_of", "near", "numbered", "wikipedia"],
   },
   experience_component_item_suggestions: {
     judgement: ["same", "other"],
