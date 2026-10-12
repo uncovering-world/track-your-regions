@@ -187,6 +187,8 @@ export interface KeptRow {
    * rather than re-deriving it, which is what keeps the two from disagreeing.
    */
   was_held: boolean;
+  /** Whether the gate let a qualified name through on a point it holds (#1353), by the same guard. */
+  name_passed?: boolean;
 }
 
 /**
@@ -207,6 +209,7 @@ export function keptChanges(rows: KeptRow[]): ContentItemChange[] {
       { name: row.new_name, lon: Number(row.new_lon), lat: Number(row.new_lat) },
       row.old_curated_fields ?? [],
       Boolean(row.was_held),
+      Boolean(row.name_passed),
     );
     if (fields.length > 0) {
       // Named by what it was called before the run rewrote it, like every other

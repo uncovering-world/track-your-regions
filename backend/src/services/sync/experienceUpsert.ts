@@ -78,7 +78,7 @@ import {
 } from '../../db/membership.js';
 import { pointHeldProposalAt } from './heldProposalPointer.js';
 import {
-  computeChangeSet, METADATA_CLAIM_PREFIX, METADATA_SET_KEYS, SYNC_OWNED_METADATA_KEYS,
+  computeChangeSet, METADATA_CLAIM_PREFIX, METADATA_SET_KEYS, passingMetadataKeys, SYNC_OWNED_METADATA_KEYS,
   type BoundarySnapshot, type ChangeSetResult, type ExperienceSnapshot,
 } from './changeSet.js';
 import { tidyLabel } from '@tyr/shared/labels';
@@ -191,6 +191,18 @@ const SYNC_OWNED_SLICE = `COALESCE((
                  SELECT jsonb_object_agg(owned.k, EXCLUDED.metadata -> owned.k)
                  FROM unnest($16::text[]) AS owned(k)
                  WHERE EXCLUDED.metadata ? owned.k
+               ), '{}'::jsonb)`;
+
+/**
+ * The keys of the incoming metadata a held row takes all the same (#1353): a
+ * credit re-read for the same picture, a number re-measured by a little
+ * (`passingMetadataKeys`, `changeSet.ts`). `$29`, worked out in TS from the
+ * stored row read under the lock and filed by the diff with the same rule.
+ */
+const PASSING_SLICE = `COALESCE((
+                 SELECT jsonb_object_agg(passed.k, EXCLUDED.metadata -> passed.k)
+                 FROM unnest($29::text[]) AS passed(k)
+                 WHERE EXCLUDED.metadata ? passed.k
                ), '{}'::jsonb)`;
 
 /** Columns the diff reads. Declared once; the SQL below is built from them. */
@@ -581,7 +593,7 @@ async function writeUnderLock(
         -- a change or waits on anybody.
         metadata = CASE
           WHEN experiences.curated_fields ? 'metadata' OR ${HELD}
-            THEN COALESCE(experiences.metadata, '{}'::jsonb) || ${SYNC_OWNED_SLICE}
+            THEN COALESCE(experiences.metadata, '{}'::jsonb) || ${SYNC_OWNED_SLICE} || ${PASSING_SLICE}
           -- No credit beside no picture, whatever the params say: a run's
           -- credit is decided by creditToWrite, which sends none for a picture
           -- it may not write, and this is the column holding that line for a
@@ -747,6 +759,9 @@ async function writeUnderLock(
       reportedCreditOf(params, stored?.curated_fields),
       params.wikidataItems ?? null,
       params.locationIsAnchor ?? false,
+      held && stored
+        ? passingMetadataKeys(stored.metadata, written.metadata, stored.curated_fields ?? [], stored.image_url === written.imageUrl)
+        : [],
     ]
   );
 
@@ -781,11 +796,14 @@ async function writeUnderLock(
   //
   // Fields this statement actually wrote, which is what `changedFields` holds:
   // `computeChangeSet` files a refused write under the reason it was refused
-  // instead (#519). One written field is left out: a serial site's anchor
-  // moving is the run's own bookkeeping (ADR-0095) — written and recorded, but
-  // neither a proposal for the pointer nor a reason to demote a verified
-  // membership.
-  const wroteContent = changeSet.changedFields.some(f => !(f.field === 'location' && params.locationIsAnchor));
+  // instead (#519). Two kinds of written field are left out: a serial site's
+  // anchor moving is the run's own bookkeeping (ADR-0095), and a rewrite that
+  // passed the gate changes nothing a visitor would notice (#1353) — written and
+  // recorded, but neither a proposal for the pointer nor a reason to demote a
+  // verified membership.
+  const wroteContent = changeSet.changedFields.some(
+    f => !(f.field === 'location' && params.locationIsAnchor) && !f.passedTheGate,
+  );
   // The pointer follows every proposal this statement refused, not only the ones
   // it wrote — and both kinds of refusal are proposals. A field a curator claimed
   // lands in `curatedConflicts`, a field the gate held in `heldFields`, and

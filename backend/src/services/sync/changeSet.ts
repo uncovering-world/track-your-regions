@@ -57,6 +57,53 @@ export interface ExperienceSnapshot {
 
 export type FieldSignificance = 'major' | 'minor';
 
+/**
+ * Why a rewrite a gated source proposes on a row readers see passes the gate
+ * unasked (#1353): it changes nothing a visitor would notice. A part's name
+ * with a qualifier added and nothing removed (*Church of All Saints* → *…,
+ * Blizne*); a picture credit re-read for the same file under the same licence;
+ * a measurement (`MEASURED_METADATA_KEYS`) the source re-took within
+ * `REMEASURED_SHARE` (an area of 821.7474 ha → 821.748). Every other rewrite is
+ * held as before (ADR-0099).
+ */
+export const GATE_PASSES = ['qualifier', 'same-file-credit', 'remeasured'] as const;
+export type GatePass = (typeof GATE_PASSES)[number];
+
+/** How far a number may move and still be the same measurement re-taken. */
+export const REMEASURED_SHARE = 0.1;
+
+/**
+ * The metadata keys that are measurements, and so may be re-taken: an area.
+ * Named rather than read off the value's type, since a year is a number too —
+ * a public-art monument's `year` moved from 1935 to 2100 is a different
+ * statement, not a re-measurement.
+ */
+export const MEASURED_METADATA_KEYS: readonly string[] = ['areaHectares'];
+
+/**
+ * Whether a metadata key's rewrite passes the gate, and as which class, or
+ * null. `sameImage` is whether the place keeps its picture: a credit passes
+ * only beside the same file. The keys the gate weighs as major
+ * (`MAJOR_METADATA_KEYS` — an inscription year among them) never pass, and a
+ * value that appears or disappears is no re-reading.
+ */
+export function metadataPassesTheGate(key: string, old: unknown, next: unknown, sameImage: boolean): GatePass | null {
+  if ((MAJOR_METADATA_KEYS as readonly string[]).includes(key)) return null;
+  if (key === 'imageCredit') {
+    const [a, b] = [old as { license?: unknown } | null, next as { license?: unknown } | null];
+    // A licence on both sides, and the same one: a credit that names none
+    // cannot be read as the same terms.
+    return sameImage && a && b && typeof a === 'object' && typeof b === 'object'
+      && typeof a.license === 'string' && a.license !== '' && a.license === b.license
+      ? 'same-file-credit' : null;
+  }
+  if (MEASURED_METADATA_KEYS.includes(key) && typeof old === 'number' && typeof next === 'number' && old > 0
+      && Math.abs(next - old) / old < REMEASURED_SHARE) {
+    return 'remeasured';
+  }
+  return null;
+}
+
 export interface FieldChange {
   field: string;
   old: unknown;
@@ -77,6 +124,12 @@ export interface FieldChange {
    * because the gate is not the only other reason a write can be refused.
    */
   held: boolean;
+  /**
+   * On a row the gate holds, a rewrite it let through unasked, and why
+   * (`GatePass`, #1353): written, so filed with the written fields, and saying
+   * why no one was asked.
+   */
+  passedTheGate?: GatePass;
 }
 
 export interface ChangeSetResult {
@@ -352,6 +405,8 @@ interface RawDiff {
    * compared nowhere.
    */
   pastTheGate?: boolean;
+  /** A rewrite of this class passes the gate on a held row (`metadataPassesTheGate`, #1353). */
+  passedTheGate?: GatePass;
 }
 
 function isAbsent(value: unknown): boolean {
@@ -444,6 +499,7 @@ function metadataChanges(
   before: Record<string, unknown> | null,
   incoming: Record<string, unknown> | null,
   curatedFields: string[],
+  sameImage: boolean,
 ): RawDiff[] {
   const changes: RawDiff[] = [];
   const left = before ?? {};
@@ -512,16 +568,43 @@ function metadataChanges(
   for (const key of [...new Set([...Object.keys(left), ...Object.keys(right)])].sort()) {
     if (reported.has(key)) continue;
     if (sameMetadataValue(key, ownValue(left, key), ownValue(right, key))) continue;
+    const passed = metadataPassesTheGate(key, ownValue(left, key), ownValue(right, key), sameImage);
     changes.push({
       field: `${METADATA_CLAIM_PREFIX}${key}`,
       old: ownValue(left, key),
       new: ownValue(right, key),
       significance: 'minor',
       protectedByClaim: wholeColumnClaimed,
+      ...(passed ? { passedTheGate: passed } : {}),
     });
   }
 
   return changes;
+}
+
+/**
+ * Whether a credit may pass the gate as the same file's: the place keeps its
+ * picture, and no curator owns it — a claimed picture's credit is the claim's,
+ * as the upsert's last metadata arm puts it back.
+ */
+function creditMayPass(sameImage: boolean, curatedFields: string[]): boolean {
+  return sameImage && !curatedFields.includes('image_url');
+}
+
+/**
+ * The metadata keys the upsert writes past the gate on a held row (#1353): the
+ * per-key rewrites `metadataChanges` files as passed, by the same rule — so the
+ * write and the record cannot disagree. None under a claim on the whole column.
+ */
+export function passingMetadataKeys(
+  before: Record<string, unknown> | null,
+  incoming: Record<string, unknown> | null,
+  curatedFields: string[],
+  sameImage: boolean,
+): string[] {
+  return metadataChanges(before, incoming, curatedFields, creditMayPass(sameImage, curatedFields))
+    .filter(diff => diff.passedTheGate && !diff.protectedByClaim)
+    .map(diff => diff.field.slice(METADATA_CLAIM_PREFIX.length));
 }
 
 /**
@@ -634,9 +717,48 @@ function collectDifferences(
     });
   }
 
-  diffs.push(...metadataChanges(before.metadata, incoming.metadata, curatedFields));
+  diffs.push(...metadataChanges(
+    before.metadata, incoming.metadata, curatedFields, creditMayPass(before.imageUrl === incoming.imageUrl, curatedFields),
+  ));
 
   return diffs;
+}
+
+/** Which of the three buckets one difference lands in, and as what (`computeChangeSet`). */
+function filed(
+  diff: RawDiff, curated: ReadonlySet<string>, held: boolean,
+): { change: FieldChange; bucket: 'written' | 'claimed' | 'held' } {
+  // A claim key is not always a column: 'metadata.website' is claimed under
+  // that literal name (#488), which is what `claimKeyFor`'s fallback is for.
+  const isProtected = diff.protectedByClaim ?? curated.has(claimKeyFor(diff.field));
+  // The claim wins where both are true, and the upsert's `claim OR held` guard
+  // is indifferent — it keeps the stored value either way. The claim is the
+  // narrower and separately answerable reason: `accept-source` owns it, and
+  // publishing deliberately leaves a claimed field alone, so filing it as held
+  // would offer a curator their own value back as though a source had sent it.
+  // Named field by field rather than spread: `protectedByClaim` is how
+  // `metadataChanges` answers a question a field name cannot, and it is nobody
+  // else's. Spread, it was stored in `changed_fields` on every per-key metadata
+  // entry — an internal flag in provenance that is never deleted, and on an API
+  // shape `FieldChange` does not declare. Listing what a reported change is
+  // keeps the next internal field off the wire too, which a destructure would
+  // not.
+  // A field the upsert writes past the gate is not held by it, whatever the
+  // row's gate state: filed as written, because it was (`pastTheGate`).
+  // A rewrite of a passing class is written past it too, and says why (#1353).
+  const passed = held && !isProtected ? diff.passedTheGate : undefined;
+  const heldBack = held && !diff.pastTheGate && !passed;
+  const change: FieldChange = {
+    field: diff.field,
+    old: diff.old,
+    new: diff.new,
+    significance: diff.significance,
+    curatedConflict: isProtected,
+    held: !isProtected && heldBack,
+    ...(passed ? { passedTheGate: passed } : {}),
+  };
+  if (isProtected) return { change, bucket: 'claimed' };
+  return { change, bucket: heldBack ? 'held' : 'written' };
 }
 
 /**
@@ -680,34 +802,9 @@ export function computeChangeSet(
   const heldFields: FieldChange[] = [];
 
   for (const diff of collectDifferences(before, incoming, curatedFields)) {
-    // A claim key is not always a column: 'metadata.website' is claimed under
-    // that literal name (#488), which is what `claimKeyFor`'s fallback is for.
-    const isProtected = diff.protectedByClaim ?? curated.has(claimKeyFor(diff.field));
-    // The claim wins where both are true, and the upsert's `claim OR held` guard
-    // is indifferent — it keeps the stored value either way. The claim is the
-    // narrower and separately answerable reason: `accept-source` owns it, and
-    // publishing deliberately leaves a claimed field alone, so filing it as held
-    // would offer a curator their own value back as though a source had sent it.
-    // Named field by field rather than spread: `protectedByClaim` is how
-    // `metadataChanges` answers a question a field name cannot, and it is nobody
-    // else's. Spread, it was stored in `changed_fields` on every per-key metadata
-    // entry — an internal flag in provenance that is never deleted, and on an API
-    // shape `FieldChange` does not declare. Listing what a reported change is
-    // keeps the next internal field off the wire too, which a destructure would
-    // not.
-    // A field the upsert writes past the gate is not held by it, whatever the
-    // row's gate state: filed as written, because it was (`pastTheGate`).
-    const heldBack = held && !diff.pastTheGate;
-    const change: FieldChange = {
-      field: diff.field,
-      old: diff.old,
-      new: diff.new,
-      significance: diff.significance,
-      curatedConflict: isProtected,
-      held: !isProtected && heldBack,
-    };
-    if (isProtected) curatedConflicts.push(change);
-    else if (heldBack) heldFields.push(change);
+    const { change, bucket } = filed(diff, curated, held);
+    if (bucket === 'claimed') curatedConflicts.push(change);
+    else if (bucket === 'held') heldFields.push(change);
     else changedFields.push(change);
   }
 

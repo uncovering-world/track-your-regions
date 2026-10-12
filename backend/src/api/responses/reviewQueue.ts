@@ -16,6 +16,7 @@
  */
 
 import { VIEW_FIELDS } from '../../db/sourceViews.js';
+import { GATE_PASSES } from '../../services/sync/changeSet.js';
 import { z } from 'zod/v4';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
 import {
@@ -52,6 +53,10 @@ const changedField = {
   curatedConflict: z.boolean().optional().describe('A curator had claimed the field, so the stored value won on purpose.'),
   held: z.boolean().optional()
     .describe("The source's gate kept the write out of a row readers see, so a verdict is waiting (ADR-0025)."),
+  passedTheGate: z.enum(GATE_PASSES).optional().describe(
+    'On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit'
+    + ' re-read for the same picture, an area re-measured by under a tenth.',
+  ),
 };
 
 export const ChangedField = z.strictObject(changedField).describe('One field a run proposed to change.');

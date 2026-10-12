@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ReviewQueueItem } from '../../api/responses/reviewQueue.js';
-import { queueItemOf, type QueueRow } from './reviewQueueItem.js';
+import { changedFieldOf, queueItemOf, type QueueRow } from './reviewQueueItem.js';
 
 /** Bamiyan Valley's conflict card, as the driver hands the row over. */
 function conflictRow(over: Record<string, unknown> = {}): QueueRow {
@@ -58,5 +58,21 @@ describe('queueItemOf', () => {
     expect(card.proposed_parts?.[0].fields[0]).not.toHaveProperty('protectedByClaim');
     expect(card.proposed_parts?.[0].item).toEqual({ name: null, ref: '1239-003' });
     expect(ReviewQueueItem.safeParse(JSON.parse(JSON.stringify(card))).success).toBe(true);
+  });
+});
+
+describe('a stored change that passed the gate (#1353)', () => {
+  it('carries its class to the answer, and a field that passed nothing carries none', () => {
+    const passed = changedFieldOf({
+      field: 'metadata.imageCredit', old: { author: 'No machine-readable author provided. Ansgar Walk' },
+      new: { author: 'Ansgar Walk' }, significance: 'minor', curatedConflict: false, held: false,
+      passedTheGate: 'same-file-credit',
+    } as never);
+    const held = changedFieldOf({
+      field: 'name', old: 'A', new: 'B', significance: 'major', curatedConflict: false, held: true,
+    } as never);
+
+    expect(passed.passedTheGate).toBe('same-file-credit');
+    expect(held).not.toHaveProperty('passedTheGate');
   });
 });

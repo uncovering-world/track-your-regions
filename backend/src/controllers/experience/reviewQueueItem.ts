@@ -101,6 +101,7 @@ export function changedFieldOf(f: StoredProposal): ChangedField {
     significance: f.significance,
     curatedConflict: f.curatedConflict,
     held: f.held,
+    ...(f.passedTheGate ? { passedTheGate: f.passedTheGate } : {}),
   };
 }
 

@@ -255,3 +255,67 @@ describe('the anchor of a place of several points (ADR-0095)', () => {
     }
   });
 });
+
+describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
+  // Wood Buffalo National Park's picture credit as Commons now reads it, and the
+  // Danube Limes' area re-measured: on a place readers see, under a gated source.
+  const PICTURE = 'https://commons.wikimedia.org/wiki/Special:FilePath/Wood_Buffalo_fixture.jpg';
+  const OLD_CREDIT = { author: 'No machine-readable author provided. Ansgar Walk', license: 'CC BY-SA 2.5' };
+  const NEW_CREDIT = { author: 'Ansgar Walk', license: 'CC BY-SA 2.5' };
+  const site = (metadata: Record<string, unknown>, imageUrl = PICTURE) => ({
+    ...params(archaeology, NEW_SITE_QID, 'A new site'), imageUrl, metadata: { wikidataQid: NEW_SITE_QID, ...metadata },
+  });
+
+  it('writes a credit re-read for the same file and an area moved under a tenth, and asks about the rest', async () => {
+    const created = await upsertExperienceRecord(site({ imageCredit: OLD_CREDIT, areaHectares: 821.7474 }));
+    await pool.query(
+      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+        WHERE experience_id = $1 AND source_id = $2`,
+      [created.experienceId, archaeology],
+    );
+    const log = (await pool.query<{ id: number }>(
+      `INSERT INTO experience_sync_logs (source_id, status, started_at, is_dry_run)
+       VALUES ($1, 'running', NOW(), FALSE) RETURNING id`, [archaeology],
+    )).rows[0].id;
+    const state = async () => (await pool.query<{ metadata: Record<string, unknown>; pointer: number | null; state: string }>(
+      `SELECT e.metadata, m.pending_change_sync_log_id AS pointer, m.curation_state AS state
+         FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
+        WHERE e.id = $1`,
+      [created.experienceId, archaeology],
+    )).rows[0];
+    try {
+      const passed = await upsertExperienceRecord(site({ imageCredit: NEW_CREDIT, areaHectares: 821.748 }), { syncLogId: log });
+
+      expect(passed.changeSet.heldFields).toEqual([]);
+      expect(passed.changeSet.changedFields.map(f => [f.field, f.passedTheGate])).toEqual([
+        ['metadata.areaHectares', 'remeasured'], ['metadata.imageCredit', 'same-file-credit'],
+      ]);
+      // Written, no question raised, and the curator's pass still stands.
+      expect(await state()).toMatchObject({
+        metadata: expect.objectContaining({ imageCredit: NEW_CREDIT, areaHectares: 821.748 }), pointer: null, state: 'verified',
+      });
+
+      // Moved by more than a tenth — the Brú na Bóinne's 770 → 796 is not, this is: asked.
+      const held = await upsertExperienceRecord(site({ imageCredit: NEW_CREDIT, areaHectares: 1000 }), { syncLogId: log });
+      expect(held.changeSet.heldFields.map(f => f.field)).toEqual(['metadata.areaHectares']);
+      expect(await state()).toMatchObject({ metadata: expect.objectContaining({ areaHectares: 821.748 }), pointer: log });
+    } finally {
+      await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
+      await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
+      await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [log]);
+    }
+  });
+
+  it('asks about a credit that changed its licence, and one beside another picture', async () => {
+    const created = await upsertExperienceRecord(site({ imageCredit: OLD_CREDIT }));
+    await pool.query(
+      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+        WHERE experience_id = $1 AND source_id = $2`,
+      [created.experienceId, archaeology],
+    );
+    const relicensed = await upsertExperienceRecord(site({ imageCredit: { ...NEW_CREDIT, license: 'CC BY-SA 4.0' } }));
+    expect(relicensed.changeSet.heldFields.map(f => f.field)).toEqual(['metadata.imageCredit']);
+    const another = await upsertExperienceRecord(site({ imageCredit: NEW_CREDIT }, `${PICTURE.replace('fixture', 'other')}`));
+    expect(another.changeSet.heldFields.map(f => f.field)).toEqual(['imageUrl', 'metadata.imageCredit']);
+  });
+});
