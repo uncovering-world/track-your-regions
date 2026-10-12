@@ -36,6 +36,8 @@ export interface ViewRecord {
   imageUrl: string | null;
   lon: number;
   lat: number;
+  /** `lon`/`lat` is a place of several points' anchor, which no other view contests (ADR-0095). */
+  locationIsAnchor?: boolean;
   metadata: Record<string, unknown>;
 }
 
@@ -86,7 +88,9 @@ export async function contestedFields(
     [placeId, params.externalId, params.name, params.description, params.imageUrl, params.lon, params.lat],
   );
   const contested = new Set(result.rows.map(row => row.field));
-  return VIEW_FIELDS.filter(field => contested.has(field));
+  // An anchor is the run's, not the place's coordinate (ADR-0095): there is no
+  // view of it to contest, and a choice keyed on it would expire at every move.
+  return VIEW_FIELDS.filter(field => contested.has(field) && !(field === 'location' && params.locationIsAnchor));
 }
 
 /**

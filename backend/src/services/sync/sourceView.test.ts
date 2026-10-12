@@ -75,4 +75,10 @@ describe('the fields another source contradicts', () => {
     expect(sql).toMatch(/NULLIF\(\$5::text, ''\) IS NULL AND NULLIF\(m\.reported_image_url, ''\) IS NOT NULL/);
     expect(params).toEqual([9480, 'Q9480', RECORD.name, RECORD.description, RECORD.imageUrl, RECORD.lon, RECORD.lat]);
   });
+
+  it("does not contest the anchor of a place of several points, which is the run's (ADR-0095)", async () => {
+    const query = vi.fn().mockResolvedValue({ rows: [{ field: 'location' }, { field: 'imageUrl' }] });
+
+    expect(await contestedFields({ query } as never, 9480, { ...RECORD, locationIsAnchor: true })).toEqual(['imageUrl']);
+  });
 });

@@ -37,6 +37,12 @@ export interface ExperienceSnapshot {
   tags: string[] | null;
   lon: number;
   lat: number;
+  /**
+   * On an incoming record: `lon`/`lat` is the anchor of a place of several
+   * points, not a coordinate of its own (ADR-0095), so a move is written past
+   * the gate. Absent on a stored row, which says nothing either way.
+   */
+  locationIsAnchor?: boolean;
   countryCodes: string[] | null;
   countryNames: string[] | null;
   imageUrl: string | null;
@@ -338,10 +344,12 @@ interface RawDiff {
   /**
    * The upsert writes this field whether or not the gate holds the row, so a
    * held row reports its change as written — which it was — rather than as
-   * waiting on a verdict. The extent is the one such field the diff reads:
-   * an outline is what somebody surveyed, not a claim about the place
-   * (`experienceUpsert.ts`, the `boundary` arm). `tags` is written past the
-   * gate too and compared nowhere.
+   * waiting on a verdict. The diff reads two such fields: the extent, since an
+   * outline is what somebody surveyed, not a claim about the place
+   * (`experienceUpsert.ts`, the `boundary` arm), and the anchor of a place of
+   * several points, which is the run's and no coordinate of the place's own
+   * (ADR-0095, `locationDiff`). `tags` is written past the gate too and
+   * compared nowhere.
    */
   pastTheGate?: boolean;
 }
@@ -517,6 +525,24 @@ function metadataChanges(
 }
 
 /**
+ * The place's coordinate as a diff, or none within `LOCATION_UNCHANGED_METERS`.
+ * A place of several points has no coordinate of its own (ADR-0095): its
+ * anchor moving says nothing a reader sees, so it is minor and written past
+ * the gate, recorded rather than asked.
+ */
+function locationDiff(before: ExperienceSnapshot, incoming: ExperienceSnapshot): RawDiff | null {
+  const moved = distanceMeters(before.lon, before.lat, incoming.lon, incoming.lat);
+  if (moved < LOCATION_UNCHANGED_METERS) return null;
+  return {
+    field: 'location',
+    old: { lon: before.lon, lat: before.lat },
+    new: { lon: incoming.lon, lat: incoming.lat },
+    significance: !incoming.locationIsAnchor && moved > LOCATION_MAJOR_METERS ? 'major' : 'minor',
+    ...(incoming.locationIsAnchor ? { pastTheGate: true } : {}),
+  };
+}
+
+/**
  * The local names are diffed **one language at a time**: every language that
  * differs is reported under its own name, `nameLocal.<lang>` (#728).
  *
@@ -590,15 +616,8 @@ function collectDifferences(
     }
   }
 
-  const moved = distanceMeters(before.lon, before.lat, incoming.lon, incoming.lat);
-  if (moved >= LOCATION_UNCHANGED_METERS) {
-    diffs.push({
-      field: 'location',
-      old: { lon: before.lon, lat: before.lat },
-      new: { lon: incoming.lon, lat: incoming.lat },
-      significance: moved > LOCATION_MAJOR_METERS ? 'major' : 'minor',
-    });
-  }
+  const location = locationDiff(before, incoming);
+  if (location) diffs.push(location);
 
   // The extent, by the hash of the geometry the writer stores: a re-traced
   // polygon is a change and a re-read of the same one is not. The record

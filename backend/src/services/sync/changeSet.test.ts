@@ -100,6 +100,23 @@ describe('computeChangeSet', () => {
     expect(result.significance).toBe('minor');
   });
 
+  it("writes past the gate, as minor, the anchor of a place of several points (ADR-0095)", () => {
+    // The Danube Limes' anchor, 180 km: a move a curator could answer nothing about.
+    const incoming = snapshot({ lat: 48.2262, lon: 14.5507, locationIsAnchor: true });
+    const result = computeChangeSet(snapshot({ lat: 48.1152, lon: 16.8614 }), incoming, [], true);
+
+    expect(result.heldFields).toEqual([]);
+    expect(result.changedFields.map(f => [f.field, f.held])).toEqual([['location', false]]);
+    expect(result.significance).toBe('minor');
+  });
+
+  it("keeps a curator's claim on an anchor", () => {
+    const incoming = snapshot({ lat: 48.2262, lon: 14.5507, locationIsAnchor: true });
+    const result = computeChangeSet(snapshot({ lat: 48.1152, lon: 16.8614 }), incoming, ['location'], true);
+
+    expect(result.curatedConflicts.map(f => f.field)).toEqual(['location']);
+  });
+
   it('reports a kilometre-scale coordinate shift as major', () => {
     // ~5 km east
     const incoming = snapshot({ lon: 34.8333 + 0.045 });

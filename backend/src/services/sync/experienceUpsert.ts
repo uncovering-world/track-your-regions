@@ -102,6 +102,12 @@ export interface ExperienceUpsertParams {
   tags: string[];
   lon: number;
   lat: number;
+  /**
+   * The place has several points and `lon`/`lat` is only the anchor the run
+   * derived from them (ADR-0095): written past the gate and filed as written,
+   * never a question for a curator. Absent is a place's own coordinate.
+   */
+  locationIsAnchor?: boolean;
   countryCodes: string[];
   countryNames: string[];
   imageUrl: string | null;
@@ -277,6 +283,7 @@ function snapshotFromParams(
     tags: params.tags,
     lon: params.lon,
     lat: params.lat,
+    locationIsAnchor: params.locationIsAnchor,
     countryCodes: params.countryCodes,
     countryNames: params.countryNames,
     imageUrl: params.imageUrl,
@@ -541,7 +548,13 @@ async function writeUnderLock(
         -- held, and the Catalogue Check comparing the two leaves out a row
         -- whose held proposal holds the flag itself.
         tags = CASE WHEN experiences.curated_fields ? 'tags' THEN experiences.tags ELSE EXCLUDED.tags END,
-        location = CASE WHEN experiences.curated_fields ? 'location' OR ${HELD} THEN experiences.location ELSE EXCLUDED.location END,
+        -- A place of several points has no coordinate of its own (ADR-0095):
+        -- the one stored is an anchor the run derives from its points, written
+        -- past the gate, since a curator can decide nothing by answering it.
+        -- A curator's claim still keeps it.
+        location = CASE WHEN experiences.curated_fields ? 'location' THEN experiences.location
+                        WHEN $28::boolean THEN EXCLUDED.location
+                        WHEN ${HELD} THEN experiences.location ELSE EXCLUDED.location END,
         country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' OR ${HELD} THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
         country_names = CASE WHEN experiences.curated_fields ? 'country_names' OR ${HELD} THEN experiences.country_names ELSE EXCLUDED.country_names END,
         image_url = CASE WHEN experiences.curated_fields ? 'image_url' OR ${HELD} THEN experiences.image_url ELSE EXCLUDED.image_url END,
@@ -733,6 +746,7 @@ async function writeUnderLock(
       // (`creditToWrite`), which is not this picture's.
       reportedCreditOf(params, stored?.curated_fields),
       params.wikidataItems ?? null,
+      params.locationIsAnchor ?? false,
     ]
   );
 
@@ -765,11 +779,13 @@ async function writeUnderLock(
   // error, which leaves a membership saying `verified` about content nobody
   // passed, and the next run finds nothing changed and so never decays it.
   //
-  // Fields this statement actually wrote, which is now exactly what
-  // `changedFields` holds: `computeChangeSet` files a refused write under the
-  // reason it was refused instead (#519). So the decay below stays keyed to
-  // written content without having to subtract anything.
-  const wroteContent = changeSet.changedFields.length > 0;
+  // Fields this statement actually wrote, which is what `changedFields` holds:
+  // `computeChangeSet` files a refused write under the reason it was refused
+  // instead (#519). One written field is left out: a serial site's anchor
+  // moving is the run's own bookkeeping (ADR-0095) — written and recorded, but
+  // neither a proposal for the pointer nor a reason to demote a verified
+  // membership.
+  const wroteContent = changeSet.changedFields.some(f => !(f.field === 'location' && params.locationIsAnchor));
   // The pointer follows every proposal this statement refused, not only the ones
   // it wrote — and both kinds of refusal are proposals. A field a curator claimed
   // lands in `curatedConflicts`, a field the gate held in `heldFields`, and

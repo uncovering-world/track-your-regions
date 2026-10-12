@@ -232,6 +232,8 @@ export interface ProcessedExperience {
   tags: string[];
   lat: number;
   lon: number;
+  /** `lat`/`lon` is the anchor of a place of several components, not its own coordinate (ADR-0095). */
+  locationIsAnchor?: boolean;
   countryCodes: string[];
   countryNames: string[];
   imageUrl: string | null;
