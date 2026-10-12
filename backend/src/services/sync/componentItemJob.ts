@@ -10,8 +10,9 @@
  *
  * Once the proposals are written, and where an admin turned it on (#1355),
  * Jev is asked about the candidates it has not judged as they stand, the
- * question the card asks, up to a cap of questions a pass: Jev is paid by
- * the token. The judging is handed in by the caller (`JudgeCandidates`),
+ * question the card asks, within a budget for the pass, checked against an
+ * estimate of each site's questions before it is asked: Jev is paid by the
+ * token. The judging is handed in by the caller (`JudgeCandidates`),
  * which owns the writes to the judgements; without it the pass is as before,
  * and every candidate is asked about when a curator opens its card.
  */
@@ -25,8 +26,18 @@ import { SPARQL_WAIT_BUDGET_MS, waitMessage } from './wikidataUtils.js';
 const UNESCO_SOURCE_ID = 1;
 const LOG_PREFIX = '[Component items]';
 
-/** What one site's Jev call came to. */
-export interface JudgedTally { asked: number; same: number; other: number; refused: number; inputTokens: number }
+/** What one site's Jev call came to; `failed` where the call did not answer at all. */
+export interface JudgedTally {
+  asked: number;
+  same: number;
+  other: number;
+  refused: number;
+  inputTokens: number;
+  failed: boolean;
+}
+
+/** A call that asked nothing. */
+export const noJudgements = (): JudgedTally => ({ asked: 0, same: 0, other: 0, refused: 0, inputTokens: 0, failed: false });
 
 /** A site with candidates Jev has not judged as they stand, and how many. */
 export interface UnjudgedSite { experienceId: number; unjudged: number }
@@ -50,8 +61,8 @@ export interface JudgeCandidates {
  */
 export const TOKENS_PER_QUESTION = 600;
 
-/** What the pass's questions came to, and the candidates the budget left for their card. */
-interface Judged extends JudgedTally { budgetUsd: number; left: number }
+/** What the pass's questions came to, the candidates the budget left for their card, and those a failed call did. */
+interface Judged extends JudgedTally { budgetUsd: number; left: number; unasked: number }
 
 /**
  * Ask Jev about the sites with unjudged candidates, one site a call, while the
@@ -60,15 +71,19 @@ interface Judged extends JudgedTally { budgetUsd: number; left: number }
  * card, and a smaller one after it is still asked.
  */
 async function judgeAll(judge: JudgeCandidates, progress: SyncProgress): Promise<Judged> {
-  const total: Judged = { asked: 0, same: 0, other: 0, refused: 0, inputTokens: 0, budgetUsd: judge.budgetUsd, left: 0 };
+  const total: Judged = { ...noJudgements(), budgetUsd: judge.budgetUsd, left: 0, unasked: 0 };
   const sites = await judge.sites();
   for (const [i, { experienceId, unjudged }] of sites.entries()) {
     if (progress.cancel) break;
+    // A call that failed is not tried on every other site: Jev is down or
+    // refusing, and the rest wait for their cards.
+    if (total.failed) { total.unasked += unjudged; continue; }
     if (total.inputTokens + unjudged * TOKENS_PER_QUESTION > judge.budgetTokens) { total.left += unjudged; continue; }
     progress.statusMessage = `Asking Jev about the candidates of site ${i + 1} of ${sites.length}`;
     const one = await judge.site(experienceId);
     total.asked += one.asked; total.same += one.same; total.other += one.other;
     total.refused += one.refused; total.inputTokens += one.inputTokens;
+    if (one.failed) { total.failed = true; total.unasked += unjudged; }
   }
   return total;
 }
@@ -80,7 +95,8 @@ function judgedWords(judged: Judged | null): string {
   const asked = judged.asked === 0 ? '' : `; Jev judged ${judged.asked} candidates — ${judged.same} the same place, `
     + `${judged.other} another${unanswered} — for ${judged.inputTokens} input tokens`;
   const left = judged.left === 0 ? '' : `; ${judged.left} candidates past the pass's budget of $${judged.budgetUsd} wait for their card`;
-  return asked + left;
+  const failed = judged.failed ? `; Jev did not answer, so ${judged.unasked} candidates wait for their card` : '';
+  return asked + left + failed;
 }
 
 /** The pass's outcome in the words the source's card shows. */

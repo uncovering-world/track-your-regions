@@ -29,6 +29,7 @@ import { componentItemsScope } from './componentItemController.js';
 import {
   askedSql, recordComponentItemSuggestions, type ComponentItemSuggestion, type Judgement,
 } from './componentItemSuggestions.js';
+import { noJudgements, type JudgedTally } from '../../services/sync/componentItemJob.js';
 import { openProposalSql } from './reviewQueuePredicates.js';
 
 interface CandidateRow {
@@ -41,6 +42,8 @@ interface CandidateRow {
   label: string;
   distanceM: number;
   similarity: number;
+  /** The same name at the same spot: what the finder's rules are sure of without Jev. */
+  exact: boolean;
   basis: 'part_of' | 'near' | 'numbered';
   itemLat: number | null;
   itemLon: number | null;
@@ -101,7 +104,7 @@ async function openCandidates(
                       'proposalId', p.id, 'pointName', el.name, 'pointRef', el.external_ref,
                       'lat', round(ST_Y(el.location)::numeric, 5), 'lon', round(ST_X(el.location)::numeric, 5),
                       'item', p.wikidata_item, 'label', p.item_label, 'distanceM', p.distance_m,
-                      'similarity', p.name_similarity, 'basis', p.basis,
+                      'similarity', p.name_similarity, 'exact', p.exact, 'basis', p.basis,
                       'itemLat', round(ST_Y(p.item_location)::numeric, 5), 'itemLon', round(ST_X(p.item_location)::numeric, 5),
                       'stored', (SELECT jsonb_build_object('judgement', g.judgement, 'confidence', g.confidence)
                                    FROM experience_component_item_suggestions g
@@ -151,15 +154,6 @@ function sharedOut(inputTokens: number, count: number): number[] {
   return Array.from({ length: count }, (_, i) => each + (i === 0 ? inputTokens - each * count : 0));
 }
 
-/** What one site's call came to: the questions asked, the answers by judgement, and the input tokens it cost. */
-export interface JudgedCandidates {
-  asked: number;
-  same: number;
-  other: number;
-  refused: number;
-  inputTokens: number;
-}
-
 /**
  * Ask Jev about the candidates not yet judged as they stand, in one call, and
  * record every answer: a refused one with no judgement, so the same candidate
@@ -169,8 +163,8 @@ export interface JudgedCandidates {
  */
 async function judge(
   experienceId: number, place: { name: string; countries: string[] }, candidates: readonly CandidateRow[],
-): Promise<{ shown: Suggestion[]; tally: JudgedCandidates }> {
-  const tally: JudgedCandidates = { asked: 0, same: 0, other: 0, refused: 0, inputTokens: 0 };
+): Promise<{ shown: Suggestion[]; tally: JudgedTally }> {
+  const tally = noJudgements();
   if (candidates.length === 0) return { shown: [], tally };
   try {
     const questions = Object.fromEntries(candidates.map(c => [`p${c.proposalId}`, questionFor(c)]));
@@ -203,43 +197,45 @@ async function judge(
     // No judgement for these candidates: the card shows them without one,
     // exactly as on a deployment without Jev.
     console.error('[jev] no judgement for the candidates of experience %d:', experienceId, error);
-    return { shown: [], tally };
+    return { shown: [], tally: { ...tally, failed: true } };
   }
 }
 
 /**
  * The sites with an open candidate Jev has not judged as it stands, and how
  * many (#1355): what the finder's pass asks about once its proposals are
- * written. The sites with the most candidates that are not the same name at
- * the same spot first — those the batch confirmation does not already take,
- * and the ones a judgement helps a curator read.
+ * written. An exact match — the same name at the same spot — is one the
+ * finder's own rules are sure of and the batch confirmation takes, so the
+ * pass leaves it for the card to ask about if a curator wants a judgement;
+ * Jev is asked where the rules cannot tell. The sites with the most such
+ * candidates first.
  */
 export async function sitesWithUnjudgedCandidates(): Promise<Array<{ experienceId: number; unjudged: number }>> {
   const result = await pool.query<{ experience_id: number; unjudged: number }>(
     `SELECT el.experience_id, COUNT(*)::int AS unjudged
        FROM experience_component_item_proposals p
        JOIN experience_locations el ON el.id = p.location_id
-      WHERE ${openProposalSql('p', 'el')}
+      WHERE ${openProposalSql('p', 'el')} AND NOT p.exact
         AND NOT EXISTS (SELECT 1 FROM experience_component_item_suggestions g
                          WHERE g.location_id = p.location_id AND g.wikidata_item = p.wikidata_item
                            AND g.asked = ${askedSql('p')})
       GROUP BY el.experience_id
-      ORDER BY COUNT(*) FILTER (WHERE NOT p.exact) DESC, el.experience_id`,
+      ORDER BY COUNT(*) DESC, el.experience_id`,
   );
   return result.rows.map(row => ({ experienceId: row.experience_id, unjudged: row.unjudged }));
 }
 
 /**
- * Ask Jev about one site's candidates not yet judged as they stand, the
- * question and the record the card's request makes (#1355). Nothing where the
- * deployment has no Jev.
+ * Ask Jev about one site's candidates not yet judged as they stand, but the
+ * exact matches (`sitesWithUnjudgedCandidates`), with the question and the
+ * record the card's request makes (#1355). Nothing where the deployment has
+ * no Jev.
  */
-export async function judgeSiteCandidates(experienceId: number): Promise<JudgedCandidates> {
-  const none: JudgedCandidates = { asked: 0, same: 0, other: 0, refused: 0, inputTokens: 0 };
-  if (!jevConfigured()) return none;
+export async function judgeSiteCandidates(experienceId: number): Promise<JudgedTally> {
+  if (!jevConfigured()) return noJudgements();
   const place = await openCandidates(experienceId);
-  if (!place) return none;
-  return (await judge(experienceId, place, place.candidates.filter(c => !c.stored))).tally;
+  if (!place) return noJudgements();
+  return (await judge(experienceId, place, place.candidates.filter(c => !c.stored && !c.exact))).tally;
 }
 
 export async function suggestComponentItems(

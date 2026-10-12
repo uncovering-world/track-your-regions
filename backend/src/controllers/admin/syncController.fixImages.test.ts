@@ -133,7 +133,7 @@ describe('findComponentItems', () => {
 
     await answerRoute(findItemsRoute, request(1) as never, res as never);
 
-    await vi.waitFor(() => expect(mockedSearch).toHaveBeenCalledWith(7, undefined));
+    expect(mockedSearch).toHaveBeenCalledWith(7, undefined);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ started: true }));
   });
 
@@ -144,7 +144,7 @@ describe('findComponentItems', () => {
     await answerRoute(findItemsRoute, request(1) as never, makeRes() as never);
 
     // Five cents at $0.042 per million input tokens.
-    await vi.waitFor(() => expect(mockedSearch).toHaveBeenCalledWith(7, expect.objectContaining({ budgetUsd: 0.05, budgetTokens: 1_190_476 })));
+    expect(mockedSearch).toHaveBeenCalledWith(7, expect.objectContaining({ budgetUsd: 0.05, budgetTokens: 1_190_476 }));
     vi.mocked(getSetting).mockImplementation(async () => undefined);
   });
 

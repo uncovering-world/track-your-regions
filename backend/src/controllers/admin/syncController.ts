@@ -97,8 +97,9 @@ const PICTURE_REPAIRS: Record<number, (triggeredBy: number | null) => Promise<vo
  * Which sources the panel can search Wikidata for their components' items
  * (#1272): the one whose objects are serial, with components a reference names.
  */
-const COMPONENT_ITEM_SEARCHES: Record<number, (triggeredBy: number | null) => Promise<void>> = {
-  [UNESCO_SOURCE_ID]: async (triggeredBy) => findUnescoComponentItems(triggeredBy, await finderJudge()),
+type ComponentItemSearch = (triggeredBy: number | null, judge?: JudgeCandidates) => Promise<void>;
+const COMPONENT_ITEM_SEARCHES: Record<number, ComponentItemSearch> = {
+  [UNESCO_SOURCE_ID]: findUnescoComponentItems,
 };
 
 /**
@@ -327,7 +328,12 @@ export async function fixImages(
 export async function findComponentItems(
   { params: { sourceId }, caller }: { params: SourceParams; caller: Express.User },
 ): Promise<ComponentItemSearchStarted> {
-  await startBesideSync(sourceId, caller.id, COMPONENT_ITEM_SEARCHES[sourceId], 'Find component items');
+  // The settings are read before the doors, so the job still starts in the
+  // tick the in-flight check passed (`startBesideSync`).
+  const search = COMPONENT_ITEM_SEARCHES[sourceId] as ComponentItemSearch | undefined;
+  const judge = search ? await finderJudge() : undefined;
+  const job = search ? (triggeredBy: number | null) => search(triggeredBy, judge) : undefined;
+  await startBesideSync(sourceId, caller.id, job, 'Find component items');
   return { started: true, message: 'Searching for component items. Poll /status endpoint for progress.' };
 }
 

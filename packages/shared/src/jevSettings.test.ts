@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_JEV_FINDER_BUDGET_USD, finderBudgetUsd, finderJudges } from './jevSettings';
+import { DEFAULT_JEV_FINDER_BUDGET_USD, finderBudgetUsd, finderJudges } from './jevSettings.js';
 
 describe("Jev's judging at finder time (#1355)", () => {
   it('is on only where the setting says on', () => {

@@ -24,8 +24,8 @@ afterEach(() => { runningSyncs.clear(); });
 describe("the component-item pass's summary", () => {
   it('says what Jev judged, site by site, once the proposals are written', async () => {
     const site = vi.fn(async (id: number) => (id === 1
-      ? { asked: 2, same: 1, other: 1, refused: 0, inputTokens: 600 }
-      : { asked: 1, same: 0, other: 0, refused: 1, inputTokens: 400 }));
+      ? { asked: 2, same: 1, other: 1, refused: 0, inputTokens: 600, failed: false }
+      : { asked: 1, same: 0, other: 0, refused: 1, inputTokens: 400, failed: false }));
 
     await findUnescoComponentItems(null, {
       budgetUsd: 0.1, budgetTokens: 2_380_952,
@@ -40,7 +40,7 @@ describe("the component-item pass's summary", () => {
   });
 
   it("leaves a site whose questions would pass the budget for its card, and still asks a smaller one after it", async () => {
-    const site = vi.fn(async (_id: number) => ({ asked: 1, same: 1, other: 0, refused: 0, inputTokens: 500 }));
+    const site = vi.fn(async (_id: number) => ({ asked: 1, same: 1, other: 0, refused: 0, inputTokens: 500, failed: false }));
 
     // 1,200 tokens: room for two questions at 600 each, not for a site of three.
     await findUnescoComponentItems(null, {
@@ -51,6 +51,19 @@ describe("the component-item pass's summary", () => {
 
     expect(site.mock.calls.map(([id]) => id)).toEqual([2]);
     expect(runningSyncs.get(1)?.statusMessage).toContain("; 3 candidates past the pass's budget of $0.0000504 wait for their card");
+  });
+
+  it('stops asking after a call Jev did not answer, and says how many candidates wait for their card', async () => {
+    const site = vi.fn(async (_id: number) => ({ asked: 0, same: 0, other: 0, refused: 0, inputTokens: 0, failed: true }));
+
+    await findUnescoComponentItems(null, {
+      budgetUsd: 0.1, budgetTokens: 2_380_952,
+      sites: async () => [{ experienceId: 1, unjudged: 2 }, { experienceId: 2, unjudged: 3 }],
+      site,
+    });
+
+    expect(site).toHaveBeenCalledTimes(1);
+    expect(runningSyncs.get(1)?.statusMessage).toContain('; Jev did not answer, so 5 candidates wait for their card');
   });
 
   it('asks nothing and says nothing of Jev without a judge', async () => {
