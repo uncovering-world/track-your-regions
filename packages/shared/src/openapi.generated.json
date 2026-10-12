@@ -12349,6 +12349,56 @@
         }
       }
     },
+    "/api/experiences/locations/{locationId}/nearby-pictures": {
+      "get": {
+        "operationId": "getExperiencesLocationsByLocationIdNearbyPictures",
+        "summary": "List the Wikimedia Commons pictures geotagged near one point, nearest first",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "locationId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/NearbyPictures"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/locations/{locationId}/take-back-item": {
       "post": {
         "operationId": "postExperiencesLocationsByLocationIdTakeBackItem",
@@ -24717,6 +24767,59 @@
         ],
         "additionalProperties": false,
         "description": "A GADM division by id and name."
+      },
+      "NearbyPicture": {
+        "type": "object",
+        "properties": {
+          "file": {
+            "type": "string",
+            "description": "The file's name on Wikimedia Commons."
+          },
+          "url": {
+            "type": "string",
+            "description": "The address the catalogue stores a picture by: what a pick sends as `imageUrl`."
+          },
+          "distanceM": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Metres from the point to where the file is geotagged."
+          },
+          "credit": {
+            "$ref": "#/components/schemas/ImageCredit"
+          }
+        },
+        "required": [
+          "file",
+          "url",
+          "distanceM",
+          "credit"
+        ],
+        "additionalProperties": false
+      },
+      "NearbyPictures": {
+        "type": "object",
+        "properties": {
+          "radiusM": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "How far from the point a file may stand."
+          },
+          "pictures": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/NearbyPicture"
+            },
+            "description": "Picture files only, nearest first; a geotag says where the camera stood, not what it shows."
+          }
+        },
+        "required": [
+          "radiusM",
+          "pictures"
+        ],
+        "additionalProperties": false,
+        "description": "The Commons files geotagged near a point, for a curator to pick the point's picture from (#1341)."
       },
       "NewBadgesSeen": {
         "type": "object",

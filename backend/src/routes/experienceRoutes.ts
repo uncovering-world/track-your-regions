@@ -24,6 +24,7 @@ import {
   LocationStateResult,
   ManualExperienceCreated,
   MergeUndone,
+  NearbyPictures,
   ViewsChosen,
   ViewSuggestions,
   PublishResult,
@@ -39,6 +40,7 @@ import { chooseViews } from '../controllers/experience/viewChoiceController.js';
 import { answerComponentItems } from '../controllers/experience/componentItemController.js';
 import { suggestComponentItems } from '../controllers/experience/componentItemSuggestionController.js';
 import { takeBackPointItem } from '../controllers/experience/pointItemTakeBackController.js';
+import { getNearbyPictures } from '../controllers/experience/nearbyPicturesController.js';
 import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
 import { ReviewAnswerResult, ReviewQueue, RunSetAside } from '../api/responses/reviewQueue.js';
 import {
@@ -430,6 +432,17 @@ export const experienceCurationRoutes = [
     body: editLocationBodySchema,
     response: LocationEditResult,
     handler: editLocation,
+  }),
+  // The Commons files geotagged near a point, for a curator picking its picture
+  // (#1341): an outbound request per ask, so rate-limited as the edit the pick
+  // becomes, and in that edit's scope.
+  defineRoute({
+    method: 'get', path: '/locations/:locationId/nearby-pictures', access: 'curator', cache: 'no-store',
+    limiter: authenticatedLimiter,
+    summary: 'List the Wikimedia Commons pictures geotagged near one point, nearest first',
+    params: locationIdParamSchema,
+    response: NearbyPictures,
+    handler: getNearbyPictures,
   }),
   // The way back from a confirmed component item (#1317): the item and its
   // claim off the point, with what the confirmation wrote, the candidate left

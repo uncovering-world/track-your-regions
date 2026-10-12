@@ -404,3 +404,16 @@ export const ComponentItemSuggestions = z.strictObject({
   })),
 }).describe("Jev's judgement of the candidate items of a site's components (#1272), per candidate it could judge; never applied.");
 export type ComponentItemSuggestions = z.infer<typeof ComponentItemSuggestions>;
+
+export const NearbyPicture = z.strictObject({
+  file: z.string().describe("The file's name on Wikimedia Commons."),
+  url: z.string().describe('The address the catalogue stores a picture by: what a pick sends as `imageUrl`.'),
+  distanceM: z.number().int().describe('Metres from the point to where the file is geotagged.'),
+  credit: ImageCredit,
+});
+
+export const NearbyPictures = z.strictObject({
+  radiusM: z.number().int().describe('How far from the point a file may stand.'),
+  pictures: z.array(NearbyPicture).describe('Picture files only, nearest first; a geotag says where the camera stood, not what it shows.'),
+}).describe("The Commons files geotagged near a point, for a curator to pick the point's picture from (#1341).");
+export type NearbyPictures = z.infer<typeof NearbyPictures>;
