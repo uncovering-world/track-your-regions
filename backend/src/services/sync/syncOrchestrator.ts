@@ -22,7 +22,7 @@ import {
   countSeenAmongActive,
 } from './missingDetection.js';
 import { recordItemOutcome, recordItemFailure, recordFilteredEntities } from './itemOutcome.js';
-import { applyAdmissionSweep, badgeAdmitted } from './admissionStep.js';
+import { applyAdmissionSweep, badgeAdmitted, questionPins } from './admissionStep.js';
 import {
   completionMessage,
   computeFinalStatus,
@@ -265,6 +265,7 @@ export async function orchestrateSync<T>(
       console.log(`${logPrefix} Admission sweep skipped: ${sweep.skipReason}`);
     }
     await badgeAdmitted(config, progress, seenExternalIds, items, sweep.swept);
+    await questionPins(config, progress, filtered ?? [], seenExternalIds, sweep);
 
     changesRecorded = await recordChangesetOrMark(changes, errorDetails, progress, logPrefix);
 
