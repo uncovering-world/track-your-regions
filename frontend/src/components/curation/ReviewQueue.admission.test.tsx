@@ -80,12 +80,30 @@ describe('ReviewQueue', () => {
         99, expect.objectContaining({ decision: 'confirm' })));
     });
 
-    it('sends override when the curator does not', async () => {
+    it('sends override when the curator does not, remembered on later runs by default', async () => {
       renderQueue();
       fireEvent.click(await screen.findByRole('button', { name: /the rule was wrong/i }));
 
       await waitFor(() => expect(mockedAdmission).toHaveBeenCalledWith(
-        99, expect.objectContaining({ decision: 'override' })));
+        99, expect.objectContaining({ decision: 'override', remember: true })));
+    });
+
+    it('puts it back for now when the curator unticks remembering (#1368)', async () => {
+      renderQueue();
+      fireEvent.click(await screen.findByRole('checkbox', { name: /remember a put-back on later runs/i }));
+      expect(screen.getByText(/the next run applies the rule again/)).toBeInTheDocument();
+      fireEvent.click(screen.getByRole('button', { name: /the rule was wrong/i }));
+
+      await waitFor(() => expect(mockedAdmission).toHaveBeenCalledWith(
+        99, expect.objectContaining({ decision: 'override', remember: false })));
+    });
+
+    it('sends no remembering with a confirmation, which always pins', async () => {
+      renderQueue();
+      fireEvent.click(await screen.findByRole('button', { name: /the rule was right/i }));
+
+      await waitFor(() => expect(mockedAdmission).toHaveBeenCalled());
+      expect(mockedAdmission.mock.calls[0][1]).not.toHaveProperty('remember');
     });
 
     it('withdraws the page\'s promise for this section only', async () => {

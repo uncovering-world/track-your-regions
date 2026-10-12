@@ -3839,6 +3839,7 @@ export interface ExperienceAdmissionBody {
      * @exclusiveMinimum 0
      */
   membershipId?: number;
+  remember?: boolean;
 }
 
 export type ExperienceDetailNameLocal = {[key: string]: string} | null;

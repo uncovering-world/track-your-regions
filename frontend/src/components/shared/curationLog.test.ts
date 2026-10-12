@@ -193,6 +193,16 @@ describe('a verdict on a rule’s refusal', () => {
     expect(line).toContain('Published');
     expect(line).toContain('1 point and 12 works now visible');
   });
+
+  it('says whether later runs keep the answer, where the act recorded it (#1368)', () => {
+    const kept = formatLogDetails(entry('admission_overridden', { reason: 'site, not a venue', pinned: true })) as string;
+    const forNow = formatLogDetails(entry('admission_overridden', { reason: 'site, not a venue', pinned: false })) as string;
+    const older = formatLogDetails(entry('admission_overridden', { reason: 'site, not a venue' })) as string;
+
+    expect(kept).toContain('Remembered on later runs');
+    expect(forNow).toContain('For now: the next run applies the rule again');
+    expect(older).not.toMatch(/Remembered|For now/);
+  });
 });
 
 describe('an edit that replaced or removed the picture', () => {
