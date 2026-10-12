@@ -86,7 +86,10 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   const cardFailed = !!image && cardFailedFor === image;
   const fullFailed = !!image && fullFailedFor === image;
   const thumbnail = image && !cardFailed ? toThumbnailUrl(image, 120) : '';
-  const hasPoint = typeof item.latitude === 'number' && typeof item.longitude === 'number';
+  // An object made of several places has no coordinate of its own (ADR-0095): the
+  // stored point is only the anchor of one of its places, so its number is not shown.
+  const hasPoint = typeof item.latitude === 'number' && typeof item.longitude === 'number'
+    && (item.offered_locations ?? 0) <= 1;
   const regions = item.region_names ?? [];
   const links: Array<{ label: string; href: string }> = [];
   // The article first: it is what a curator reads to judge the place, where the
@@ -144,8 +147,6 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
             photographer named under no photograph credits them for nothing. */}
         {thumbnail && <ImageCreditLine credit={item.image_credit} />}
         {madeOf && (
-          // Above the coordinates, because it changes what the coordinates mean: one
-          // pair of numbers on an object made of seven places is one of seven.
           <Typography variant="caption" color="text.secondary" display="block">
             {madeOf}
           </Typography>
