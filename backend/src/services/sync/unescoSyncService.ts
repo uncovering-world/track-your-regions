@@ -75,7 +75,23 @@ function componentName(entry: string): string | null {
   ref.lastIndex = name.index + name[0].length;
   const refFound = ref.exec(entry);
   if (!refFound) return null;
-  return entry.slice(name.index + name[0].length, refFound.index).trim().replace(/,$/, '').trim();
+  return readOnce(entry.slice(name.index + name[0].length, refFound.index).trim().replace(/,$/, '').trim());
+}
+
+/**
+ * A name the portal sends decoded twice, read once (#1405): Birka and
+ * Hovgården's component comes as "HovgÃ¥rden", the two UTF-8 bytes of "å"
+ * read as two Latin-1 characters. A name with such a pair, every character of
+ * it a byte, whose bytes are well-formed UTF-8, is that UTF-8; anything else —
+ * a name that merely holds an "Ã", or bytes that do not decode — is kept.
+ */
+function readOnce(name: string): string {
+  if (!/[\u00C2-\u00DF][\u0080-\u00BF]/.test(name) || /[^\u0000-\u00FF]/.test(name)) return name;
+  try {
+    return new TextDecoder('utf-8', { fatal: true }).decode(Buffer.from(name, 'latin1'));
+  } catch {
+    return name;
+  }
 }
 
 /**

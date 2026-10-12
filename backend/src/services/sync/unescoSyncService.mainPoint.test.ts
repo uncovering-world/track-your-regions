@@ -307,3 +307,20 @@ describe("a component's name (#1279)", () => {
     expect(site?.locations[0]).toMatchObject({ name: '', externalRef: '1708-003' });
   });
 });
+
+/** A component name the portal sends decoded twice (#1405). */
+describe("a component's name", () => {
+  const namesOf = (componentsList: string) =>
+    transformRecord(record({ coordinates: { lat: 59.33, lon: 17.55 }, components_list: componentsList }))
+      ?.locations.map(location => location.name);
+
+  it('is read once where the portal decoded it twice', () => {
+    // Birka and Hovgården (555): the export sends "HovgÃ¥rden", the bytes c3 a5 of "å" as two characters.
+    expect(namesOf('{name: HovgÃ¥rden, ref: 555-002, latitude: 59.3333, longitude: 17.55}')).toEqual(['Hovgården']);
+  });
+
+  it('is kept where it only looks so, or its bytes are not UTF-8', () => {
+    expect(namesOf('{name: Kåfjord, ref: 352bis-004, latitude: 69.95, longitude: 23.02}')).toEqual(['Kåfjord']);
+    expect(namesOf('{name: Ã©tude Ãx, ref: 1-001, latitude: 1, longitude: 1}')).toEqual(['Ã©tude Ãx']);
+  });
+});
