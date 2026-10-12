@@ -95,16 +95,22 @@ export async function answerAdmissionOnMembership(
   const publishSet = publishes
     ? `, curation_state = 'verified', published_at = COALESCE(published_at, NOW())`
     : '';
-  // A pin remembers the refusal it answered — the reason on the row before
-  // this write — so a later run is compared with it (#1367); any answer closes
-  // a question a run had asked about the pin.
+  // A pin remembers the run's view it answered, so a later run is compared with
+  // it (#1367): the refusal on the row before this write, or — on a row already
+  // pinned, whose admission is a curator's and not the run's — the view the pin
+  // already holds, which a curator's second answer does not change. Any answer
+  // closes a question a run had asked about the pin.
   await client.query(`
       UPDATE ${MEMBERSHIPS} m
       SET admission = $2,
           admission_reason = $3,
           curated_fields = $4,
           admission_answered_at = ${!admitted && !pin ? 'NOW()' : 'NULL'},
-          ${pinViewSql(`$4::jsonb ? 'admission'`, `'refused'`, 'm.admission_reason')},
+          ${pinViewSql(
+            `$4::jsonb ? 'admission'`,
+            `COALESCE(m.admission_pin_verdict, 'refused')`,
+            `CASE WHEN m.admission_pin_verdict IS NULL THEN m.admission_reason ELSE m.admission_pin_reason END`,
+          )},
           updated_at = NOW()${publishSet}${iconicAfterVerdictSql(admitted)}
       WHERE m.id = $1 AND m.experience_id = $5
     `, [
@@ -149,6 +155,33 @@ export async function releaseAdmissionPin(
   // A membership that is not this place's any more writes nothing, and the log
   // row beside it must not say it was released.
   if (result.rowCount !== 1) throw new Error(`membership ${membershipId} was not released on place ${lock.id}`);
+}
+
+/**
+ * Hand an admission pin back with no question asked (#1369): the claim comes
+ * off, with the view it answered and any question, and the row stays as it
+ * is until the next run of its source decides, as it decides about a row
+ * nobody pinned. A put-back stays admitted — a run that refuses it asks
+ * afresh, as a refusal of an admitted row always does. A kept-out row stays
+ * refused and is marked answered, as a batch's confirmation marks one
+ * (ADR-0067), so it is not asked about again until a run admits it, which
+ * `restoreAdmission` then does. A row with no pin writes nothing, and the log
+ * row beside it must not say it was handed back.
+ */
+export async function handBackAdmissionPin(
+  client: PoolClient,
+  lock: LockedExperience,
+  membershipId: number,
+): Promise<void> {
+  const result = await client.query(`
+      UPDATE ${MEMBERSHIPS} m
+      SET curated_fields = m.curated_fields - 'admission',
+          admission_answered_at = CASE WHEN m.admission = 'refused' THEN NOW() END,
+          ${pinViewSql('false', 'NULL', 'NULL')},
+          updated_at = NOW()
+      WHERE m.id = $1 AND m.experience_id = $2 AND m.curated_fields ? 'admission'
+    `, [membershipId, lock.id]);
+  if (result.rowCount !== 1) throw new Error(`membership ${membershipId} holds no admission pin on place ${lock.id}`);
 }
 
 /**

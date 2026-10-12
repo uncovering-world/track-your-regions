@@ -583,6 +583,17 @@ export const experienceAdmissionBodySchema = z.object({
   membershipId: answeredMembershipSchema,
 });
 
+/** The admission pins a curator may read (#1369): every one in scope, or one place's. */
+export const admissionPinsQuerySchema = z.object({
+  experienceId: rowIdSchema.optional(),
+});
+
+/** A curator's admission pin handed back (#1369), with the note kept in the place's history. */
+export const handBackPinBodySchema = z.object({
+  membershipId: bodyRowIdSchema,
+  note: z.string().max(1000).optional(),
+});
+
 /**
  * A curator's answer to a run that asked again about their admission pin
  * (#1367): `keep` makes the pin answer what the run now says, `release` lets

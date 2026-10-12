@@ -11809,6 +11809,55 @@
         }
       }
     },
+    "/api/experiences/review/pins": {
+      "get": {
+        "operationId": "getExperiencesReviewPins",
+        "summary": "List the admission pins in the caller's scope, or one place's",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "experienceId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdmissionPins"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/review/queue": {
       "get": {
         "operationId": "getExperiencesReviewQueue",
@@ -12533,6 +12582,66 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/PinQuestionAnswered"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/{id}/admission-pin/hand-back": {
+      "post": {
+        "operationId": "postExperiencesByIdAdmissionPinHandBack",
+        "summary": "Hand back a curator's admission pin, leaving the row to the next run of its source",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HandBackPinBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AdmissionPinHandedBack"
                 }
               }
             }
@@ -14285,6 +14394,143 @@
           "$ref": "#/components/schemas/AdministrativeDivision"
         },
         "description": "Divisions: roots, children or siblings; or a division's ancestors, from the root to the division itself."
+      },
+      "AdmissionPin": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string"
+          },
+          "membershipId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "kindName": {
+            "type": "string"
+          },
+          "answer": {
+            "type": "string",
+            "enum": [
+              "admitted",
+              "refused"
+            ],
+            "description": "The curator's answer the pin holds: put back (`admitted`) or kept out (`refused`)."
+          },
+          "answeredReason": {
+            "description": "The rule's reason the answer was given to: the refusal a put-back overrode, or the one a kept-out answer agreed with; null where the pin answered the run's admission (a curator's own refusal of an arrival).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "answeredAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the answer was given."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "curatorName": {
+            "description": "Who answered, as they chose to be named; null where they chose nothing or where the act lies outside the caller's regions, as in the curation log.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "questioned": {
+            "type": "boolean",
+            "description": "Whether a run no longer agrees with it, and the review queue asks about it (#1367)."
+          },
+          "canHandBack": {
+            "type": "boolean",
+            "description": "Whether the pin can be handed back to the next run; false for a curator's own refusal of an arrival, which a source publishing a list would never take back by itself, and whose way back is the put-back."
+          }
+        },
+        "required": [
+          "experienceId",
+          "name",
+          "membershipId",
+          "kindName",
+          "answer",
+          "answeredReason",
+          "answeredAt",
+          "note",
+          "curatorName",
+          "questioned",
+          "canHandBack"
+        ],
+        "additionalProperties": false,
+        "description": "A curator's admission pin on one membership (#1369)."
+      },
+      "AdmissionPinHandedBack": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "membershipId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "admission": {
+            "type": "string",
+            "enum": [
+              "admitted",
+              "refused"
+            ],
+            "description": "The verdict the row keeps until the next run of its source decides."
+          }
+        },
+        "required": [
+          "experienceId",
+          "membershipId",
+          "admission"
+        ],
+        "additionalProperties": false,
+        "description": "An admission pin handed back (#1369): the next run decides."
+      },
+      "AdmissionPins": {
+        "type": "object",
+        "properties": {
+          "pins": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AdmissionPin"
+            },
+            "description": "By kind, then by place."
+          },
+          "more": {
+            "type": "boolean",
+            "description": "Whether more pins stand in scope than the list carries."
+          }
+        },
+        "required": [
+          "pins",
+          "more"
+        ],
+        "additionalProperties": false,
+        "description": "The admission pins in a curator's scope (#1369)."
       },
       "AdmissionResult": {
         "type": "object",
@@ -17745,7 +17991,8 @@
               "component_items_answered",
               "component_item_taken_back",
               "admission_pin_released",
-              "admission_pin_kept"
+              "admission_pin_kept",
+              "admission_pin_handed_back"
             ]
           },
           "region_id": {
@@ -17912,7 +18159,8 @@
               "component_items_answered",
               "component_item_taken_back",
               "admission_pin_released",
-              "admission_pin_kept"
+              "admission_pin_kept",
+              "admission_pin_handed_back"
             ]
           },
           "created_at": {
@@ -21806,6 +22054,23 @@
         ],
         "additionalProperties": false,
         "description": "Which group one region belongs to, as the model suggests it, and what asking cost."
+      },
+      "HandBackPinBody": {
+        "type": "object",
+        "properties": {
+          "membershipId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "membershipId"
+        ]
       },
       "HealthStatus": {
         "type": "object",
