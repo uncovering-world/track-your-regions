@@ -2035,7 +2035,7 @@ export interface ColorMatchFailed {
 export type ColorMatchEvent = ColorMatchProgress | ColorMatchDebugImage | WaterReviewRequested | ClusterReviewRequested | IcpAdjustmentOffered | ColorMatchComplete | ColorMatchFailed;
 
 /**
- * The rule that found it: the item says it is part of the site, lies near the point and is of its kind, or carries the component's number under another inscription.
+ * The rule that found it: the item says it is part of the site, lies near the point and is of its kind, carries the component's number under another inscription, or lies near the point, is of its kind and its label holds a place name of the component's.
  */
 export type ComponentItemProposalBasis = typeof ComponentItemProposalBasis[keyof typeof ComponentItemProposalBasis];
 
@@ -2044,6 +2044,7 @@ export const ComponentItemProposalBasis = {
   part_of: 'part_of',
   near: 'near',
   numbered: 'numbered',
+  toponym: 'toponym',
 } as const;
 
 /**
@@ -2088,7 +2089,7 @@ export interface ComponentItemProposal {
   exact: boolean;
   /** A curator confirmed it and took it back (#1336): open again, and no batch confirms it — only a click on it does. */
   takenBack: boolean;
-  /** The rule that found it: the item says it is part of the site, lies near the point and is of its kind, or carries the component's number under another inscription. */
+  /** The rule that found it: the item says it is part of the site, lies near the point and is of its kind, carries the component's number under another inscription, or lies near the point, is of its kind and its label holds a place name of the component's. */
   basis: ComponentItemProposalBasis;
   /**
      * Where the item stands, nearest the point; null on a proposal that kept none.
@@ -2097,6 +2098,13 @@ export interface ComponentItemProposal {
   itemLatitude: number | null;
   /** @nullable */
   itemLongitude: number | null;
+  /**
+     * The item's national register code, the register named first ("LMI CJ-I-s-A-07208"); null where it carries none the finder reads (#1340).
+     * @nullable
+     */
+  registerCode: string | null;
+  /** Whether the code's group differs from the one most of the site's coded candidates carry: an architecture entry offered for a Roman fort. */
+  registerDisagrees: boolean;
   /** @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$ */
   proposedAt: string;
 }

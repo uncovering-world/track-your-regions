@@ -14,7 +14,7 @@ vi.mock('./qleverWikidata.js', () => ({ qleverWikidataQuery: vi.fn() }));
 vi.mock('./wikipediaCategories.js', () => ({ askWikipediaOnce: vi.fn() }));
 
 const { sparqlQuery, SparqlUnanswered, WaitBudget } = await import('./wikidataUtils.js');
-const { boxFilter, contentsOf, itemsInBoxes, labelsOf, partsOfSites, placesOf } = await import('./componentItemQueries.js');
+const { boxFilter, contentsOf, itemsInBoxes, labelsOf, partsOfSites, placesOf, registerCodesOf } = await import('./componentItemQueries.js');
 const { qleverWikidataQuery } = await import('./qleverWikidata.js');
 const { askWikipediaOnce } = await import('./wikipediaCategories.js');
 
@@ -191,5 +191,21 @@ describe('labelsOf', () => {
     expect(labels.get('Q98511')).toEqual({ all: ['Bir türbe', 'A shrine'], english: 'A shrine' });
     expect(labels.get('Q98512')).toEqual({ all: ['Kastell Fixture', 'Castrul Fixture'], english: 'Kastell Fixture' });
     expect(labels.get('Q98513')).toEqual({ all: ['Un phare'], english: null });
+  });
+});
+
+describe('registerCodesOf', () => {
+  it('asks the query service, never QLever, for the codes the registers list carries, keyed by item', async () => {
+    vi.mocked(qleverWikidataQuery).mockClear();
+    asked.mockResolvedValueOnce([
+      { item: { value: 'http://www.wikidata.org/entity/Q7234612' }, property: { value: 'http://www.wikidata.org/prop/direct/P1770' }, code: { value: 'CJ-I-s-A-07208' } },
+      { item: { value: 'http://www.wikidata.org/entity/Q1414131' }, property: { value: 'http://www.wikidata.org/prop/direct/P4009' }, code: { value: '1393' } },
+    ]);
+    const codes = await registerCodesOf(['Q7234612', 'Q1414131'], hooks());
+    expect(codes.get('Q7234612')).toEqual([{ property: 'P1770', code: 'CJ-I-s-A-07208' }]);
+    expect(codes.get('Q1414131')).toEqual([{ property: 'P4009', code: '1393' }]);
+    const query = asked.mock.calls[0][0].replace(/\s+/g, ' ');
+    expect(query).toContain('VALUES ?property { wdt:P1770 wdt:P381 wdt:P4009 }');
+    expect(vi.mocked(qleverWikidataQuery)).not.toHaveBeenCalled();
   });
 });

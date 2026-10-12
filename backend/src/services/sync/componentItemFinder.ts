@@ -6,10 +6,11 @@
  * (#1270), and a component without one shows the whole site's picture. The
  * reference resolves 3 933 components on the development catalogue; 2 519
  * have none. Many of those have an item that simply lacks the number — a fort
- * of the Limes, a villa of Aalto's — and the three rules of
+ * of the Limes, a villa of Aalto's — and the rules of
  * `componentItemMatching.ts` find it by what the item says it is part of, by
- * what lies near the point, and by the component's number under another
- * inscription (`componentItemNumbered.ts`). A match by place and name is a proposal, never
+ * what lies near the point — named like the component or for a place in its
+ * name — and by the component's number under another inscription
+ * (`componentItemNumbered.ts`). A match by place and name is a proposal, never
  * a fact (ADR-0046): each lands in `experience_component_item_proposals`, and
  * only a curator's answer records an item on the point.
  *
@@ -27,10 +28,12 @@ import {
   type CandidateItem, type ComponentMatch, type ComponentPoint, type MatchBasis,
 } from './componentItemMatching.js';
 import {
-  classesOfItems, componentNumbers, itemsInBoxes, labelsOf, partsOfSites, placesOf, settlementsAmong, tooHeavy, type Box, type ItemLabels,
+  classesOfItems, componentNumbers, itemsInBoxes, labelsOf, partsOfSites, placesOf, registerCodesOf, settlementsAmong, tooHeavy,
+  type Box, type ItemLabels,
   type StandingPlace,
   type QueryHooks,
 } from './componentItemQueries.js';
+import { withRegisterCodes } from './componentItemRegisters.js';
 
 const UNESCO_SOURCE_ID = 1;
 /** Points are asked about in cells of this many degrees: one box query per cell. */
@@ -79,6 +82,8 @@ export interface ComponentItemReport {
   near: number;
   /** Proposals carrying the component's number under another inscription (#1394). */
   numbered: number;
+  /** Proposals near the point among items of the site's kind whose label holds a place name of the component's (#1340). */
+  toponym: number;
   /** Of those, the ones with the same name within a few metres. */
   exact: number;
   /** Components whose surroundings the service could not answer for, even asked one area at a time. */
@@ -183,6 +188,28 @@ function boxOf(points: readonly PointRow[]): Box {
   const north = Math.max(...lats) + BOX_MARGIN_DEG;
   const lonMargin = BOX_MARGIN_DEG / Math.max(Math.cos(((south + north) / 2) * Math.PI / 180), 0.1);
   return { south, north, west: Math.min(...lons) - lonMargin, east: Math.max(...lons) + lonMargin };
+}
+
+/**
+ * The proposals with their national register codes (#1340). A read that fails
+ * for any reason but a cancelled pass — a heavy question, a refusal, a spent
+ * wait budget — leaves the codes off rather than the proposals: a code is a
+ * second key, the name and place are what proposed the candidate, and the
+ * proposals are a day's QLever pass.
+ */
+async function coded(
+  proposals: ComponentMatch[], points: readonly PointRow[], hooks: QueryHooks, onStage: ((message: string) => void) | undefined,
+): Promise<ComponentMatch[]> {
+  const siteOf = new Map(points.map(p => [p.locationId, p.experienceId]));
+  onStage?.(`Reading the register codes of ${proposals.length} candidate items`);
+  try {
+    const codes = await registerCodesOf([...new Set(proposals.map(m => m.item))], hooks);
+    return withRegisterCodes(proposals, codes, locationId => siteOf.get(locationId) ?? 0);
+  } catch (error) {
+    if (hooks.isCancelled?.()) throw error;
+    console.warn('[Component items] Register codes not read:', error instanceof Error ? error.message : error);
+    return proposals;
+  }
 }
 
 /** One proposal per item: an item two components could be is offered for the one it matches better. */
@@ -298,7 +325,10 @@ function chooseNear(
     const ofKind = ofKindOf.get(point.locationId)!;
     const { candidates, setAside } = fallsBack(point) ? atThePoint(point, ofKind, places, notOffered) : { candidates: ofKind, setAside: 0 };
     atTheComponent += setAside;
-    const match = bestMatch(point, candidates, 'near', refused.get(point.locationId));
+    // The place-name rule only where the name rule finds nothing: a match by
+    // name is the better evidence, and one question per point by this door.
+    const match = bestMatch(point, candidates, 'near', refused.get(point.locationId))
+      ?? bestMatch(point, candidates, 'toponym', refused.get(point.locationId));
     if (match) chosen.push(match);
   }
   return { chosen, atTheComponent };
@@ -320,7 +350,8 @@ async function placesNear(
   nearOf: Map<number, CandidateItem[]>, hooks: QueryHooks, onStage: ((message: string) => void) | undefined,
 ): Promise<{ places: Map<string, StandingPlace[]>; settledPlaces: Set<string> }> {
   const contenders = new Map(fallingBack.filter(p => nearOf.has(p.locationId)).map(p => [p.locationId,
-    ofKindOf.get(p.locationId)!.filter(c => bestMatch(p, [c], 'near', refused.get(p.locationId)) !== null)]));
+    ofKindOf.get(p.locationId)!.filter(c => (['near', 'toponym'] as const)
+      .some(basis => bestMatch(p, [c], basis, refused.get(p.locationId)) !== null))]));
   const items = [...new Set([...contenders.values()].flat().map(c => c.item))];
   if (items.length === 0) return { places: new Map(), settledPlaces: new Set() };
   onStage?.(`Reading where ${items.length} near candidates stand`);
@@ -416,21 +447,25 @@ async function writeProposals(
     // and marked open ones, rewritten with the mark kept.
     await client.query(
       `INSERT INTO experience_component_item_proposals AS p
-              (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis, item_location)
+              (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis, item_location,
+               register_code, register_disagrees)
        SELECT m.location_id, m.item, m.label, m.distance_m, m.similarity, m.exact, m.basis,
-              CASE WHEN m.lon IS NULL THEN NULL ELSE ST_SetSRID(ST_MakePoint(m.lon, m.lat), 4326) END
+              CASE WHEN m.lon IS NULL THEN NULL ELSE ST_SetSRID(ST_MakePoint(m.lon, m.lat), 4326) END,
+              m.register_code, m.register_disagrees
          FROM unnest($1::int[], $2::text[], $3::text[], $4::int[], $5::real[], $6::bool[], $7::text[],
-                     $8::float8[], $9::float8[])
-              AS m(location_id, item, label, distance_m, similarity, exact, basis, lon, lat)
+                     $8::float8[], $9::float8[], $10::text[], $11::bool[])
+              AS m(location_id, item, label, distance_m, similarity, exact, basis, lon, lat, register_code, register_disagrees)
        ON CONFLICT (location_id, wikidata_item) DO UPDATE
           SET item_label = EXCLUDED.item_label, distance_m = EXCLUDED.distance_m,
               name_similarity = EXCLUDED.name_similarity, exact = EXCLUDED.exact, basis = EXCLUDED.basis,
-              item_location = EXCLUDED.item_location, proposed_at = NOW()
+              item_location = EXCLUDED.item_location, register_code = EXCLUDED.register_code,
+              register_disagrees = EXCLUDED.register_disagrees, proposed_at = NOW()
         WHERE p.answer IS NULL`,
       [
         matches.map(m => m.locationId), matches.map(m => m.item), matches.map(m => m.label),
         matches.map(m => m.distanceM), matches.map(m => m.similarity), matches.map(m => m.exact), matches.map(m => m.basis),
         matches.map(m => m.itemLon), matches.map(m => m.itemLat),
+        matches.map(m => m.registerCode ?? null), matches.map(m => m.registerDisagrees ?? false),
       ],
     );
     await client.query('COMMIT');
@@ -520,7 +555,7 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
     matches.push(...numberedMatches(point, named(numberedOf.get(point.locationId)!), refused.get(point.locationId)));
   }
 
-  const proposals = onePerItem(matches);
+  const proposals = await coded(onePerItem(matches), points, counted, onStage);
   // Answered for: a new proposal, or every question this pass asked about the
   // point got an answer. A point whose site's parts or surroundings the service
   // could not answer keeps what an earlier pass proposed for it.
@@ -546,6 +581,7 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
       partOf: proposals.filter(m => m.basis === 'part_of').length,
       near: proposals.filter(m => m.basis === 'near').length,
       numbered: proposals.filter(m => m.basis === 'numbered').length,
+      toponym: proposals.filter(m => m.basis === 'toponym').length,
       exact: proposals.filter(m => m.exact).length,
       wholeSites,
       settlements,

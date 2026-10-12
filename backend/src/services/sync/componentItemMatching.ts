@@ -13,7 +13,7 @@
  * caves with prehistoric art, protected areas, roads, churches, walls, islands,
  * belfries, castra — so no fixed list of classes describes them.
  *
- * Three rules, each a reason a curator reads on the card:
+ * The rules, each a reason a curator reads on the card:
  * - **part of the site** — the item says it is part of the site's own item
  *   (P361), and only lacks the component's number. No class is asked: Wikidata
  *   has said what it is a part of. Aalto Works' Villa Mairea, the D-Day beaches.
@@ -28,9 +28,13 @@
  *   Wikidata, `1593bis-006` on the list. Proposed beside what the other rules
  *   find, never instead, and only where the name agrees, since an extension can
  *   renumber the parts.
+ * - **named for a place in the component's name** — where the near rule finds
+ *   nothing, a candidate of the site's kind whose label holds one of the
+ *   places the component's name is made of (#1340): "Castrul roman de la
+ *   Gresia" for "Gresia - La Biserică".
  */
 
-export type MatchBasis = 'part_of' | 'near' | 'numbered';
+export type MatchBasis = 'part_of' | 'near' | 'numbered' | 'toponym';
 
 export interface ComponentPoint {
   locationId: number;
@@ -71,6 +75,10 @@ export interface ComponentMatch {
   /** The item's coordinate nearest the point, for the card's map; null where it states none. */
   itemLat: number | null;
   itemLon: number | null;
+  /** The item's national register code as the card shows it ("LMI CJ-I-s-A-07208"), once read (#1340). */
+  registerCode?: string | null;
+  /** Whether the code's group differs from the one most of the site's coded candidates carry. */
+  registerDisagrees?: boolean;
 }
 
 /** Within this, a component and an item of the same name are one place by every measure the catalogue has. */
@@ -142,6 +150,36 @@ export function distanceM(lat1: number, lon1: number, lat2: number, lon2: number
 
 const sameName = (a: string, b: string) => matchKey(a) === matchKey(b);
 
+/** The shortest place name a component's name is read for: a shorter piece is a word, not a place. */
+const TOPONYM_MIN_LETTERS = 4;
+
+/**
+ * The place names a component's name is made of, folded: the World Heritage
+ * list writes a component as places joined by a dash with a space before it or
+ * by a slash — "Turda - Potaissa / Dealul Cetății", "Iaz – Tibiscum / Traianu"
+ * — while a hyphen inside a town's name joins one place ("Drobeta-Turnu
+ * Severin").
+ */
+export function toponymsOf(name: string): string[] {
+  const pieces = name.split('/').flatMap(piece => piece.split(/\s[-–]/));
+  // A name of one piece is one place, and every building in it holds that
+  // name: "Žatec" would take any house "(Žatec)". The list's "place - what it
+  // is" shape is what makes a piece a place of the component's own.
+  if (pieces.length < 2) return [];
+  return pieces.map(matchKey).filter(piece => piece.replace(/[^\p{L}]/gu, '').length >= TOPONYM_MIN_LETTERS);
+}
+
+/**
+ * Whether a label holds one of the component's place names as whole words:
+ * "Castrul roman Potaissa" holds "Potaissa", which the trigram similarity
+ * scores 0.20 against "Turda - Potaissa / Dealul Cetății", the generic
+ * "Castrul roman" diluting the one word the two share (#1340).
+ */
+export function holdsToponym(name: string, label: string): boolean {
+  const words = ` ${matchKey(label)} `;
+  return toponymsOf(name).some(place => words.includes(` ${place} `));
+}
+
 /**
  * A label without its trailing qualifier: "Dům čp. 7 (Žatec)" names a house,
  * and read with its town it looked like the component named "Žatec".
@@ -198,12 +236,15 @@ function measure(point: ComponentPoint, candidate: CandidateItem) {
   let label = candidate.labels[0] ?? candidate.item;
   let similarity = 0;
   let exactName = false;
+  let toponym = false;
   for (const each of candidate.labels) {
     const s = point.name ? nameSimilarity(point.name, withoutQualifier(each)) : 0;
     if (s > similarity) { similarity = s; label = each; }
     if (point.name && sameName(point.name, each)) { exactName = true; label = each; similarity = 1; }
+    // Without its trailing qualifier, as the name rule reads it: "(Žatec)" names the town a house is in.
+    if (point.name && holdsToponym(point.name, withoutQualifier(each))) toponym = true;
   }
-  return { distance, at: closest?.at ?? null, label, similarity, exactName };
+  return { distance, at: closest?.at ?? null, label, similarity, exactName, toponym };
 }
 
 /** Whether a candidate passes the rule its basis names. */
@@ -213,6 +254,10 @@ function passes(basis: MatchBasis, m: ReturnType<typeof measure>): boolean {
   // The number names the component, and an extension may have renumbered the
   // parts, so the name decides; the distance only bounds it to the component's ground.
   if (basis === 'numbered') return m.distance <= SAME_NAME_RADIUS_M && m.similarity >= MIN_SIMILARITY;
+  // Out to the same-name radius: the Dacian points are written to an
+  // arc-minute, about a kilometre, and the castra the names find stand
+  // 485–997 m from them (Apulum, Potaissa, Angustia).
+  if (basis === 'toponym') return m.distance <= NEAR_SAME_NAME_RADIUS_M && m.toponym;
   return m.distance <= NEAR_RADIUS_M && m.similarity >= MIN_SIMILARITY;
 }
 

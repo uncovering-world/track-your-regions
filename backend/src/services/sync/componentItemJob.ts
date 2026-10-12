@@ -63,10 +63,11 @@ export async function findUnescoComponentItems(_triggeredBy: number | null): Pro
       return;
     }
     progress.status = 'complete';
-    progress.created = report.partOf + report.near + report.numbered;
+    progress.created = report.partOf + report.near + report.toponym + report.numbered;
     progress.statusMessage =
-      `${report.partOf + report.near} of ${report.points} components without an item have a candidate for a curator`
+      `${report.partOf + report.near + report.toponym} of ${report.points} components without an item have a candidate for a curator`
       + ` — ${report.partOf} named as parts of their site, ${report.near} found near the point`
+      + (report.toponym > 0 ? `, ${report.toponym} near the point carrying a place name of the component's` : '')
       + `, ${report.exact} of the same name at the point`
       + (report.numbered > 0 ? `; ${report.numbered} more carry a component's number under another inscription` : '')
       + (report.unsearched > 0 ? `; ${report.unsearched} could not be searched around, as Wikidata did not answer` : '')
