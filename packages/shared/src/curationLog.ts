@@ -45,6 +45,7 @@ export const CURATION_LOG_ACTIONS = [
   'component_item_taken_back',
   'admission_pin_released',
   'admission_pin_kept',
+  'admission_pin_handed_back',
 ] as const;
 
 /** One act of the curation log. */
