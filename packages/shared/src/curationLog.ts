@@ -43,6 +43,7 @@ export const CURATION_LOG_ACTIONS = [
   'views_chosen',
   'component_items_answered',
   'component_item_taken_back',
+  'admission_pin_released',
 ] as const;
 
 /** One act of the curation log. */

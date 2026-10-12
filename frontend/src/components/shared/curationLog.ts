@@ -124,6 +124,10 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // take-backs: the item comes off the point, and the candidate stays turned
   // down.
   component_item_taken_back: { label: 'Item taken back', color: GREEN },
+  // A pin one unread batch answer made, released once a curator had read the
+  // list, with the rule's verdict written in its place (#1365, ADR-0096): red
+  // like a kept-out row, since the place leaves that kind.
+  admission_pin_released: { label: 'Pin released', color: RED },
 };
 
 /**
@@ -153,7 +157,7 @@ const OBJECT_VERDICT_ACTIONS = new Set([
   'marked_former', 'marked_lost', 'state_restored', 'missing_dismissed',
 ]);
 
-const ADMISSION_ACTIONS = new Set(['admission_confirmed', 'admission_overridden']);
+const ADMISSION_ACTIONS = new Set(['admission_confirmed', 'admission_overridden', 'admission_pin_released']);
 
 /**
  * Whether a recorded value is a picture's credit.
