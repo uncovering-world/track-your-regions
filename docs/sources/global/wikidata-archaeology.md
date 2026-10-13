@@ -295,8 +295,8 @@ each with a fame signal of its own.
   decision 2). What stays beyond reach is a museum neither signal names — the National Museum of
   Korea is typed `national museum` at 38 sitelinks and filed under `History museums in South
   Korea` and `Art museums and galleries in Seoul` (checked 2026-09-13), so no road reaches it at
-  all; the Viking Ship Museum in Oslo and the Drents Museum hold finds and are refused by name for
-  the same want of a nature — and a museum under the place line with nothing at the finds' line:
+  all; the Viking Ship Museum in Oslo and the Drents Museum have no nature either, but they hold
+  famous finds no other kind shows, so they arrive held for a curator (ADR-0103) — and a museum under the place line with nothing at the finds' line:
   the Larco Museum, which carries both signals at 18 sitelinks, and the Yorkshire Museum at 15.
   These are the regional tier's (ADR-0048 decision 3) and a curator's — Peru's national register of
   museums is already a record here (`museums/pe-museos-cultura.md`).
@@ -307,9 +307,10 @@ each with a fame signal of its own.
   and one neither names — Sanchi, the Thai historical parks — through nothing yet.
 - **A find in a natural history museum**: the Venus of Willendorf (Naturhistorisches Museum
   Wien), the Venus of Lespugue (Musée de l'Homme, typed `museum`), Lucy (the National Museum of
-  Ethiopia). The natural-history class is a veto for this kind by product decision (2026-09-13:
-  a natural history museum is not an archaeology museum, whatever one find it holds), so the
-  Venus of Willendorf reaches no kind until a natural-history kind exists.
+  Ethiopia). A natural history museum is not an archaeology museum, whatever one find it holds
+  (ADR-0058 decision 2). But where no other kind shows the find, the museum arrives held for a
+  curator with the find named (ADR-0103). Until a natural-history kind exists, the curator's yes is
+  the only way the Venus of Willendorf reaches a card.
 
 ## Terms
 

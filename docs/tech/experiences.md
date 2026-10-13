@@ -2685,20 +2685,21 @@ kind exists to keep out of a curator's list. Dry run 113 named 40 of them.
 **What the museum is about** (`museumNature` in `archaeology/museumTest.ts`), in the order a person
 would give the reason:
 
-- **A veto is answered ahead of any nature**, because it names the thing better than "no
-  archaeological signal" would and refuses whatever else the row carries — but the two vetoes are
-  not asked alike. The **archaeological park** veto is asked of every row, and reads the whole park
+- **The archaeological park veto is answered ahead of any nature**, because it names the thing
+  better than "no archaeological signal" would and refuses whatever else the row carries. It is asked
+  of every row, and reads the whole park
   tree rather than the one class: Wikidata files `archaeological park` under `archaeological
   museum`, and a row typed only `Fudoki no oka` — Japan's word for an archaeological park with a
   museum on it — would otherwise walk in. An open-air excavation with a ticket office is somewhere
   you walk around whatever Wikipedia shelves it under: it is a site, and the site door admits it on
-  its own terms (decision 4). The **natural history** veto is asked only where **neither signal of
-  the nature answered**, because either one is enough and a museum of both natures is a museum of
-  both: the Naturhistorisches Museum Wien is typed `natural history museum` and its article carries
-  `Natural history museums in Austria` and `Geology museums in Austria` and nothing archaeological,
-  so it is refused and the Venus of Willendorf waits for a kind of its own; the Yorkshire Museum is
+  its own terms (decision 4). **Natural history is a reason, not a veto** (ADR-0103 decision 3),
+  marked only where **neither signal of the nature answered**, because either one is enough and a
+  museum of both natures is a museum of both: the Naturhistorisches Museum Wien is typed `natural
+  history museum` and its article carries `Natural history museums in Austria` and `Geology museums
+  in Austria` and nothing archaeological, so it has no nature (`{ nature: 'none', naturalHistory:
+  true }`) and the verdict decides what the Venus of Willendorf makes of it; the Yorkshire Museum is
   typed natural history *and* archaeological, is filed under `Archaeological museums in England`
-  and `Museums of ancient Rome in the United Kingdom`, and its draw is Roman York, so the veto is
+  and `Museums of ancient Rome in the United Kingdom`, and its draw is Roman York, so the mark is
   never reached. Dry run 112 refused the Piacenza Civic Museum, typed both, on the unnarrowed
   veto; run 113 admits it.
 - **The English Wikipedia category**, `Archaeological museums in|of …` (`NATURE_CATEGORY`), before
@@ -2717,7 +2718,22 @@ would give the reason:
   museums` *and* `Archaeological museums in Peru`, and a department word beside a nature takes
   nothing away.
 
-**The verdict** (`museumVerdict`). A veto or no signal at all refuses the row by name. A nature — and
+**The verdict** (`museumVerdict`). A veto refuses the row by name. No signal at all refuses it
+too, unless it holds a find above the finds' line that **no other kind shows** (ADR-0103,
+`noNatureVerdict`): then it arrives held, nature `find`, with the question `…, but it holds 1 famous
+find (Venus of Willendorf) no other kind shows; take it for that find?` in `metadata.admissionNote`
+and that find in `admitted_for` whatever the museum's own fame. "Shown" is what a reader sees: the
+set the run reads once, `worksShownByOtherSources` in `shownElsewhere.ts`. It holds every work that is
+published and linked by a published, live link at a place **another** source offers. A place only
+Archaeology offers is left out, or the next run would refuse the museum a curator took for its find.
+The question is about the finds and not the museum, because a kind can hold a museum without showing
+the find. So the Uffizi and the Bargello, whose Venus de' Medici and Franks Casket are on their
+art-museum cards, are refused with `…(1 famous find held, shown by another kind)`, while the Viking
+Ship Museum, the Potteries Museum & Art Gallery (the Staffordshire
+Hoard) and the Moravian Museum (the Venus of Dolní Věstonice) arrive for
+a curator — fifteen such museums on the development catalogue on 2026-10-13. A museum held for a
+find has no nature of its own, so nothing folds onto it (below). A natural history museum whose
+famous finds another kind shows, or that holds none, is refused as one. A nature — and
 a department counts as one — then meets the fame line, which is `sourceLine.ts`'s for every kind
 (hysteresis, and the sentence a fallen row is refused with) with one thing added here: **a find above
 the finds' own line counts as in before the standing is asked at all**, which is how the
@@ -2727,7 +2743,7 @@ slip — the finds' *stay* line for a museum the source already admits, the ente
 other — while the collected item carries a second count of the same finds taken at the enter line
 alone, which is the badge's and not the door's (below); where the count is zero the refusal says so,
 and where the nature is missing
-the refusal says how many famous finds were not enough. A museum whose categories name only an
+and another kind shows the museum, the refusal says how many famous finds it holds there. A museum whose categories name only an
 antiquities department — the Hermitage, the Vatican Museums, the Kunsthistorisches Museum, the
 Pushkin Museum, the National Museum of Scotland — is **admitted with the run's question on it** rather than kept out:
 `an antiquities department (category: …); is the exposition substantially archaeology?` goes into
@@ -2996,7 +3012,7 @@ admitted museum keeps a visible link at the one it left until the new museum is 
 (`placedElsewhereFor`), since the museum it moved to may be written after the one it left. The
 metadata is the museum's facts plus **three keys the run owns** —
 `wikipediaCategories` (what English Wikipedia files the article under), `archaeologyNature`
-(`archaeological` or `department`) and `admissionNote` (the question on a held row's card) — added
+(`archaeological`, `department` or `find`) and `admissionNote` (the question on a held row's card) — added
 to `SYNC_OWNED_METADATA_KEYS`, so they pass the gate and a claim without ever raising a card:
 editors re-file articles constantly, and each re-filing would otherwise ask a curator to approve a
 category list nobody displays, while all three are re-derived from live sources every pass and a
@@ -3060,15 +3076,17 @@ belongs to #603.
 
 **Refusals**, in the words the *kept out* card shows:
 
-- `a natural history museum, not an archaeology museum` and `an archaeological park: a site, not a
-  museum`, the two vetoes.
+- `an archaeological park: a site, not a museum`, the one veto.
 - `no museum class on Wikidata: a site, a castle or a city in Wikipedia's category — the site
   door's`, for what the editorial shelf named and Wikidata does not call a museum — said at or
   above the place line, and of a row the source already admits whatever its count (`lineStanding`
   answers `fell`, not `out`), and 40 times on dry run 113: Pompeii, Chichén Itzá, Teotihuacan,
   Masada.
-- `not an archaeology museum by category or class (no find above the line)`, or `(2 famous finds
-  held)` where the museum holds some and they were not the question.
+- `not an archaeology museum by category or class (no find above the line)`, or `(1 famous find
+  held, shown by another kind)` / `(2 famous finds held, each shown by another kind)` where every
+  famous find it holds is on another kind's card; `a natural history museum, not an archaeology
+  museum` in their place for a museum typed natural history (ADR-0103). A famous find no other kind
+  shows makes the museum a held arrival instead (`noNatureVerdict`).
 - `21 Wikipedia editions: below the world tier's line (22 to enter, 18 to stay)`, for an admitted row that
   slipped; a candidate below the line that was never in is simply out and nothing is said about it,
   because a refusal names a rule and none ran on it.
@@ -3082,7 +3100,7 @@ belongs to #603.
   that ran on it before the fold was settled.
 
 **What a run keeps** — six cache kinds (`CACHED_KINDS_BY_SOURCE[5]`, ADR-0047): `classes` for this
-kind's eleven class trees (the museum roots, the parks, the natural-history veto, the artefacts,
+kind's eleven class trees (the museum roots, the parks, the natural-history tree, the artefacts,
 the natural-history trees that say what is no find, walked from six roots (#890), the site
 door's three —
 `archaeological site`, `human settlement`, `shipwreck` — and the map entrance's three a `ruins`
@@ -3125,7 +3143,9 @@ that each list holds what its name says, which the nature rule secures.
 - **A museum neither signal names.** The Viking Ship Museum in Oslo, which holds the Oseberg ship,
   and the Drents Museum, which holds the Yde Girl, are refused by name — `not an archaeology museum
   by category or class` — because Wikidata types neither archaeological and English Wikipedia files
-  neither under `Archaeological museums in …`; each holds finds, and a find admits no museum here.
+  neither under `Archaeological museums in …`. Each holds finds no other kind shows, so each now
+  arrives held for a curator rather than refused (ADR-0103): a find makes a question here, never an
+  admission on the run's word.
   The National Museum of Korea, typed `national museum` at 38 sitelinks and filed under `History
   museums in South Korea` and `Art museums and galleries in Seoul` (checked 2026-09-13), is not even
   a candidate: no road reaches it, so not a word is said about it. A museum with no English article
@@ -3135,10 +3155,11 @@ that each list holds what its name says, which the nature rule secures.
   among the misses for holding a Hokusai print, entered on run 113 through `Archaeological museums
   in Japan`. That is the price and the reward of an editorial signal, and it is why a run's refusals
   are to be read by name rather than counted.
-- **A famous find in a museum this kind does not admit stays out with it.** The Venus of Willendorf
-  is the Naturhistorisches Museum Wien's, which the veto refuses; the Venus of Lespugue is the Musée
-  de l'Homme's and Lucy the National Museum of Ethiopia's; the Shigir Idol is the Sverdlovsk regional
-  museum's. Each waits for a kind of its own — natural history, local history. Museum Ulm is the one
+- **A famous find in a museum of no archaeological nature waits on a curator.** The Venus of
+  Willendorf is the Naturhistorisches Museum Wien's, the Venus of Lespugue the Musée de l'Homme's,
+  the Shigir Idol the Middle Urals museum's: no kind holds those museums, so each arrives held with
+  the find named on the question (ADR-0103). Where another kind shows the find on a card, the museum
+  is refused here. Museum Ulm is the one
   the survey filed there and the rule admits: its article carries `Archaeological museums in Germany`
   beside `History museums in Germany`, so the Lion man's museum passes this door on the category
   after all, which is the editorial signal being taken at its word in both directions.
