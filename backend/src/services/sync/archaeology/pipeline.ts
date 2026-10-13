@@ -146,6 +146,12 @@ export interface CollectedArchaeology {
 
 export interface ArchaeologyPipelineDeps {
   /**
+   * The item ids of the works another kind shows a reader on a card (ADR-0103):
+   * a famous find there makes no question here. Read by the run
+   * (`worksShownByOtherSources`); none when not given.
+   */
+  shownElsewhere?: ReadonlySet<string>;
+  /**
    * Works other kinds refused as held at a place (ADR-0102), which the
    * venue-side read keeps at a venue this kind admits. Read by the run
    * (`readHandOvers`); the test passes none.
@@ -377,6 +383,7 @@ export async function collectArchaeology(
     museumClasses,
     findFacts: reader.facts,
     admitted: deps.admittedMuseums,
+    shownElsewhere: deps.shownElsewhere ?? new Set(),
     line: deps.line,
     findLine,
   };

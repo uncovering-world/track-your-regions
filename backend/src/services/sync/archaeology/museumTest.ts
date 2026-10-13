@@ -60,7 +60,14 @@ export interface MuseumFacts {
 export type MuseumNature =
   | { nature: 'archaeological'; why: string }
   | { nature: 'department'; why: string }
-  | { nature: 'none' };
+  | {
+    nature: 'none';
+    /**
+     * Typed a natural history museum with no archaeological signal: refused as
+     * one, unless it holds a find no other kind shows (ADR-0103).
+     */
+    naturalHistory?: true;
+  };
 
 /** A nature, or the one word that refuses the row whatever its nature would be. */
 export type MuseumNatureOrVeto = MuseumNature | { veto: string };
@@ -72,21 +79,21 @@ export type MuseumNatureOrVeto = MuseumNature | { veto: string };
  * than "no archaeological signal" would — the shape `worshipVerdict`'s kill
  * classes use.
  *
- * The natural-history veto is for a natural history museum **with no
- * archaeological signal of its own**, and it is the find door it refuses: a
- * famous find does not make a museum this kind's (ADR-0058 decision 2). The
+ * A natural history museum **with no archaeological signal of its own** is no
+ * archaeology museum, and says so: a famous find does not make a museum this
+ * kind's (ADR-0058 decision 2), though it may make it a question for a curator
+ * when no other kind shows the find — the verdict's call (ADR-0103). The
  * Naturhistorisches Museum Wien is typed `natural history museum`, holds the
  * Venus of Willendorf, and its article carries `Natural history museums in
- * Austria`, `Geology museums in Austria` and nothing archaeological — vetoed,
- * and the Venus reaches no kind until a natural-history one exists. The
+ * Austria`, `Geology museums in Austria` and nothing archaeological. The
  * Yorkshire Museum is typed `natural history museum` *and* `archaeological
  * museum`, and its article carries `Archaeological museums in England` and
  * `Museums of ancient Rome in the United Kingdom` beside `Natural history
  * museums in England`; its draw is Roman York. A museum of both is a museum of
  * both and enters — held or not, that is the verdict's question, not this one.
- * So the veto is asked *after* the two signals of the nature have been read and
- * only when neither answered: either signal is enough, because the class misses
- * the canon and the category is where half of it is named.
+ * So the natural-history mark is set *after* the two signals of the nature have
+ * been read and only when neither answered: either signal is enough, because
+ * the class misses the canon and the category is where half of it is named.
  *
  * The park veto reads the whole park tree, not the one root class.
  * `buildArchaeologyTrees` already took that tree out of the museum set, which
@@ -110,20 +117,20 @@ export type MuseumNatureOrVeto = MuseumNature | { veto: string };
  * Peru`, and a department word beside a nature takes nothing away.
  */
 export function museumNature(facts: MuseumFacts, trees: ArchaeologyTrees): MuseumNatureOrVeto {
-  // The two signals of the nature, read before either veto is asked. The first
+  // The two signals of the nature, read before anything else is asked. The first
   // matching *category*, not the first matching pattern: the why quotes what
   // Wikipedia says, in the order the article lists it.
   const nature = facts.categories.find((c) => NATURE_CATEGORY.test(c));
   const cls = facts.classes.find((c) => trees.museum.has(c));
 
-  if (!nature && !cls && facts.classes.some((c) => trees.naturalHistory.has(c))) {
-    return { veto: 'a natural history museum, not an archaeology museum' };
-  }
   // The park veto is asked of every row, signal or no signal: an open-air
   // excavation with a ticket office is somewhere you walk around whatever
   // Wikipedia shelves it under, and the site door admits it on its own terms.
   if (facts.classes.some((c) => trees.park.has(c))) {
     return { veto: 'an archaeological park: a site, not a museum' };
+  }
+  if (!nature && !cls && facts.classes.some((c) => trees.naturalHistory.has(c))) {
+    return { nature: 'none', naturalHistory: true };
   }
 
   if (nature) return { nature: 'archaeological', why: `category: ${nature}` };
@@ -199,9 +206,41 @@ export function isMuseumOnWikidata(
 
 export type MuseumVerdict =
   | { pass: true; held: false; type: 'museum' }
-  | { pass: true; held: true; note: string; type: 'museum' }
+  | {
+    pass: true; held: true; note: string; type: 'museum';
+    /** Held for a find no other kind shows, with no archaeological nature of its own (ADR-0103). */
+    byFind?: true;
+  }
   | { pass: false; reason: string }
   | { pass: false; out: true };
+
+/**
+ * The verdict on a museum with no archaeological nature. A famous find no
+ * other kind shows makes it a question rather than a refusal (ADR-0103): the
+ * Venus of Willendorf is on no card while the Natural History Museum in Vienna
+ * is in no kind. A museum whose every famous find is on another kind's card —
+ * the Uffizi's Venus de' Medici — is refused here as before.
+ */
+function noNatureVerdict(
+  nature: { naturalHistory?: true },
+  n: number,
+  unshown: readonly string[],
+): MuseumVerdict {
+  const word = (k: number) => (k === 1 ? 'find' : 'finds');
+  const u = unshown.length;
+  if (u > 0) {
+    const what = nature.naturalHistory ? 'a natural history museum' : 'not an archaeology museum by category or class';
+    const named = u === 1 ? unshown[0] : `${unshown[0]} and ${u - 1} more`;
+    return {
+      pass: true, held: true, type: 'museum', byFind: true,
+      note: `${what}, but it holds ${u} famous ${word(u)} (${named}) no other kind shows; take it for ${u === 1 ? 'that find' : 'them'}?`,
+    };
+  }
+  if (nature.naturalHistory) return { pass: false, reason: 'a natural history museum, not an archaeology museum' };
+  const shown = n === 1 ? 'shown by another kind' : 'each shown by another kind';
+  const held = n === 0 ? 'no find above the line' : `${n} famous ${word(n)} held, ${shown}`;
+  return { pass: false, reason: `not an archaeology museum by category or class (${held})` };
+}
 
 /**
  * The whole verdict on one museum: in, in and held for a curator, refused by
@@ -222,9 +261,10 @@ export type MuseumVerdict =
  * questions about the same finds, which is why they carry different names. One
  * such find carries a museum that passed the nature door below the place line:
  * Delphi at 15 sitelinks for the Charioteer, Olympia at 17 for the Hermes,
- * Heraklion at 21 for the Phaistos disc. It never carries a museum that failed
- * that door, which is the whole point of the decision, and the refusal says how
- * many finds were not enough.
+ * Heraklion at 21 for the Phaistos disc. It never admits a museum that failed
+ * that door, which is the whole point of the decision: such a museum is held
+ * for a curator when no other kind shows a find, and otherwise the refusal
+ * says how many finds were not enough (`noNatureVerdict`, ADR-0103).
  *
  * The coordinates are never asked here. The venue graph's `venueVerdict`
  * already refused a museum without them, and a rule asked twice is a rule that
@@ -237,17 +277,17 @@ export function museumVerdict(input: {
   nature: MuseumNatureOrVeto;
   admitted: ReadonlySet<string>;
   line: SourceLine;
+  /**
+   * The famous finds the door counted that no other kind shows a reader, most
+   * famous first: what a museum of no nature is held for (ADR-0103).
+   */
+  unshownFinds: readonly string[];
 }): MuseumVerdict {
   const { facts, sitelinks, findsForTheDoor, nature, admitted, line } = input;
 
   if ('veto' in nature) return { pass: false, reason: nature.veto };
 
-  if (nature.nature === 'none') {
-    const n = findsForTheDoor;
-    const word = n === 1 ? 'find' : 'finds';
-    const held = n === 0 ? 'no find above the line' : `${n} famous ${word} held`;
-    return { pass: false, reason: `not an archaeology museum by category or class (${held})` };
-  }
+  if (nature.nature === 'none') return noNatureVerdict(nature, findsForTheDoor, input.unshownFinds);
 
   // The place line, with a find as the second way over it — the one thing about
   // this door that is not every kind's rule, so it is asked here and the rest
