@@ -15,6 +15,7 @@ import { startProgressWriter } from './syncProgressWriter.js';
 import type { ChangeRecord } from './changeRecorder.js';
 import { finishPlacement, enterAssigningPhase, takeOverUnplaced, terminalStatus } from './placement.js';
 import { countAdmitted, markRefused } from './admission.js';
+import { recordHandOvers } from './handOvers.js';
 import {
   missingDetectionSkipReason,
   flagMissingExperiences,
@@ -213,6 +214,9 @@ export async function orchestrateSync<T>(
     // these and a rule turned them down, which no coverage floor or error count
     // can make less true (ADR-0024).
     const refusedRows = await markRefused(sourceId, filtered ?? [], dryRun);
+    // What the run refused as another place's, for the kind that holds that
+    // place (ADR-0102): the fetch answered whole, so the set is replaced.
+    await recordHandOvers(sourceId, filtered ?? [], progress.logId, dryRun);
     recordFilteredEntities(filtered ?? [], progress, changes, refusedRows);
     // An object a row holds is reported the same way and marked nowhere: it
     // is not a row of this source, whatever id it shares with one. And named

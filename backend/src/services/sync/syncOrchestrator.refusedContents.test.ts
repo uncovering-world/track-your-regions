@@ -45,6 +45,11 @@ vi.mock('./pinQuestion.js', async (importOriginal) => ({
   writePinQuestions: vi.fn().mockResolvedValue(undefined),
 }));
 
+// What other kinds handed over (ADR-0102): none here, and nothing recorded.
+vi.mock('./handOvers.js', () => ({
+  recordHandOvers: vi.fn().mockResolvedValue(0),
+  readHandOvers: vi.fn().mockResolvedValue(new Map()),
+}));
 vi.mock('./admission.js', () => ({
   admissionSweepSkipReason: vi.fn().mockReturnValue(null),
   countAdmitted: vi.fn().mockResolvedValue(0),

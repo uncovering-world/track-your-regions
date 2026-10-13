@@ -337,7 +337,11 @@ export async function collectPublicArt(
       lon: entity.lon,
     }, trees);
     if (!verdict.pass) {
-      filtered.push({ externalId: entity.qid, name: entity.label, reason: verdict.reason });
+      filtered.push({
+        externalId: entity.qid, name: entity.label, reason: verdict.reason,
+        // Where it is held, for the kind that holds that place to take it (ADR-0102).
+        ...(verdict.heldIn ? { heldIn: verdict.heldIn } : {}),
+      });
       continue;
     }
     // The verdict refused anything placeless above; this narrows the type,

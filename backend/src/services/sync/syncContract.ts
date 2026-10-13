@@ -21,6 +21,12 @@ export interface FilteredEntity {
   externalId: string;
   name: string;
   reason: string;
+  /**
+   * Where the rule found it held, when it refused it as another place's:
+   * item ids, nearest first (ADR-0102). Written on the refusal, where a works
+   * kind that admits one of those places takes the work.
+   */
+  heldIn?: string[];
 }
 
 export interface FetchResult<T> {

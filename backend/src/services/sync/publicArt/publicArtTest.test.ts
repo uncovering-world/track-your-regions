@@ -226,6 +226,8 @@ describe('publicArtVerdict — what it refuses', () => {
       containers: [inside('Q12512', "St. Peter's Basilica", [BASILICA, 'Q16970'])],
     }), trees);
     expect(reasonOf(v)).toContain("inside St. Peter's Basilica");
+    // Where it is held, for the places of worship to take it (ADR-0102).
+    expect(v).toMatchObject({ pass: false, heldIn: ['Q12512'] });
   });
 
   it('refuses a work a museum holds, naming the museum', () => {
@@ -239,6 +241,8 @@ describe('publicArtVerdict — what it refuses', () => {
       ],
     }), trees);
     expect(reasonOf(v)).toContain('inside Louvre');
+    // From the place the reason names outward: the museum, not the room below it.
+    expect(v).toMatchObject({ pass: false, heldIn: ['Q19675'] });
   });
 
   it('refuses a work that is only part of a museum, as the museum\'s', () => {
@@ -331,6 +335,7 @@ describe('publicArtVerdict — what it refuses', () => {
       collections: [owned('Q172988', "St Mark's Basilica", ['Q2977', BASILICA])],
     }), trees);
     expect(reasonOf(v)).toBe("in the collection of St Mark's Basilica: a work of a place of worship, not public art");
+    expect(v).toMatchObject({ pass: false, heldIn: ['Q172988'] });
   });
 
   it('refuses a church the worship tree knows and the pinned floor does not', () => {
@@ -376,6 +381,8 @@ describe('publicArtVerdict — what it refuses', () => {
       containers: [inside('Q5684', 'Babylon', ['Q839954', 'Q15661340'])],
     }), trees);
     expect(reasonOf(v)).toBe('part of Babylon: archaeological site, not public art');
+    // A site owns its parts, and no works kind holds a site: nothing is handed over.
+    expect(v).not.toHaveProperty('heldIn');
   });
 
   it('does not refuse a work for being part of a district, a forest or a landscape', () => {
