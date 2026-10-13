@@ -23,6 +23,7 @@ import { placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { lockExperience } from '../../db/experienceWriter.js';
 import { setPointVerdict } from './experienceLocationWriter.js';
+import { answeringPlaceSql } from '../../db/placePoints.js';
 
 /** The point's two axes, as the columns' CHECK lists spell them. */
 type Membership = CheckValue<'experience_locations', 'source_membership'>;
@@ -134,9 +135,9 @@ export async function setLocationState(
   // The point carries no scope of its own: it is judged through the object holding
   // it, which is where the regions and the source live.
   const found = await pool.query(
-    `SELECT el.id, el.experience_id, e.source_id
+    `SELECT el.id, ${answeringPlaceSql()} AS experience_id, e.source_id
        FROM experience_locations el
-       JOIN experiences e ON e.id = el.experience_id
+       JOIN experiences e ON e.id = ${answeringPlaceSql()}
       WHERE el.id = $1`,
     [locationId],
   );

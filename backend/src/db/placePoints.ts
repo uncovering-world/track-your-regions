@@ -21,6 +21,11 @@
  * - `madeOfSql` and `shownBySql` are the rule for places already known (a
  *   correlated count, a write for given places): the places themselves and
  *   their parts, and a point whose own place is one of them.
+ *
+ * Read the other way, from a point to the places that show it:
+ * `withWholesSql` adds the wholes of given places, and `answeringPlaceSql`
+ * names the one place a curator's write on a point is judged and locked
+ * under.
  */
 
 /** One way a place shows a point: the tables it is read from, and the place it is shown by. */
@@ -91,6 +96,19 @@ export function shownBySql(point: string, places: string): string {
 export function withWholesSql(places: string): string {
   return `ARRAY(SELECT unnest(${places})
     UNION SELECT prt.whole_id FROM experience_parts prt WHERE prt.part_id = ANY(${places}))`;
+}
+
+/**
+ * The place a curator answers for a point under, as an expression over the
+ * point `point`: the site that shows it when the point's own place is one of
+ * its parts (ADR-0100), and its own place otherwise. Its scope, its source and
+ * its lock are the ones a write on the point is judged and taken under, as the
+ * site's are for a component today. A part of two sites answers to the lower
+ * id, so every lookup names the same one.
+ */
+export function answeringPlaceSql(point = 'el'): string {
+  return `COALESCE((SELECT min(prt.whole_id) FROM experience_parts prt WHERE prt.part_id = ${point}.experience_id),
+         ${point}.experience_id)`;
 }
 
 /**

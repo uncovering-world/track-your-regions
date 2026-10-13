@@ -36,6 +36,7 @@ import { objectContextSelectSql } from './reviewQueueContext.js';
 import { contentsMembershipToAnswerSql, contentsTakeableSql, linkMembershipSql, pointMembershipSql } from './waitingCounts.js';
 import { MEMBERSHIPS, membershipToAnswerSql, rowKindJoinSql } from '../../db/membership.js';
 import { type AnsweredQueryContext, CONTENTS_ROWS_SHOWN } from './reviewQueueContents.js';
+import { answeringPlaceSql, shownBySql } from '../../db/placePoints.js';
 
 /**
  * The one act that marks a part refused, for the log join above.
@@ -95,7 +96,7 @@ export async function queryRefusedParts(
     -- adds, so the gate costs about nothing on the catalogue where the answer is
     -- "none of them", which is every catalogue until a curator turns something down.
     refused_part_holders AS MATERIALIZED (
-      SELECT el.experience_id AS id
+      SELECT ${answeringPlaceSql()} AS id
         FROM experience_locations el
        WHERE el.refused_at IS NOT NULL
        UNION
@@ -168,7 +169,7 @@ export async function queryRefusedParts(
         -- would leave it on no screen at all, with the answer that put it there
         -- permanently unanswerable. Its row says the source dropped it instead.
         FROM experience_locations el
-        WHERE el.experience_id = e.id
+        WHERE ${shownBySql('el', 'ARRAY[e.id]')}
           AND el.refused_at IS NOT NULL
       ) el
     ) points

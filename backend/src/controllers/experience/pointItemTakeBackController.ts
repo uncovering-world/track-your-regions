@@ -34,6 +34,7 @@ import type { locationIdParamSchema, takeBackPointItemBodySchema } from '../../t
 import { reopenConfirmed } from './componentItemAnswers.js';
 import { releasePointItem } from './experienceLocationWriter.js';
 import { resolveExperienceScope } from './experienceScope.js';
+import { answeringPlaceSql, shownBySql } from '../../db/placePoints.js';
 
 interface TakeBackRefusal {
   status: number;
@@ -78,7 +79,7 @@ export async function takeBackPointItemUnderLock(
                 WHERE p.location_id = el.id AND p.wikidata_item = el.wikidata_item
                 ORDER BY p.id DESC LIMIT 1) AS label
          FROM experience_locations el
-        WHERE el.id = $1 AND el.experience_id = $2`,
+        WHERE el.id = $1 AND ${shownBySql('el', 'ARRAY[$2::int]')}`,
       [locationId, experienceId],
     );
     const point = found.rows[0];
@@ -117,11 +118,11 @@ export async function takeBackPointItem(
   // The sources whose memberships place the point, as the confirmation was
   // scoped; the object's first source where none does.
   const found = await pool.query<{ experience_id: number; source_ids: number[] | null; source_id: number }>(
-    `SELECT el.experience_id, e.source_id,
+    `SELECT ${answeringPlaceSql()} AS experience_id, e.source_id,
             (SELECT array_agg(DISTINCT m.source_id)
                FROM experience_location_placements pl JOIN ${MEMBERSHIPS} m ON m.id = pl.membership_id
               WHERE pl.location_id = el.id) AS source_ids
-       FROM experience_locations el JOIN experiences e ON e.id = el.experience_id
+       FROM experience_locations el JOIN experiences e ON e.id = ${answeringPlaceSql()}
       WHERE el.id = $1`,
     [locationId],
   );

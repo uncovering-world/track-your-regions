@@ -836,7 +836,8 @@ describe('getReviewQueue', () => {
     // in a file whose other guards say a safety check must not itself backtrack.
     const points = sql.slice(sql.indexOf('FROM experience_locations el'));
     const where = points.slice(0, points.indexOf(') el'));
-    expect(where).toContain("WHERE el.experience_id = e.id AND el.curation_state = 'pending'");
+    expect(where).toContain("WHERE el.experience_id = ANY(ARRAY(SELECT unnest(ARRAY[e.id])");
+    expect(where).toContain("AND el.curation_state = 'pending'");
     expect(where).toContain("AND el.missing_since IS NULL AND el.existence <> 'lost'");
   });
 

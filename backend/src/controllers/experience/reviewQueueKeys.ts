@@ -64,6 +64,7 @@ import {
   membershipMissingOpenSql, missingOpenSql, openProposalSql, pinQuestionOpenSql, refusedOpenSql, sourcesOpenSql,
   withdrawnContainerOpenSql, withdrawnPointOpenSql,
 } from './reviewQueuePredicates.js';
+import { answeringPlaceSql, shownBySql } from '../../db/placePoints.js';
 
 /**
  * The class order: what a curator works down when they sort by question rather
@@ -226,7 +227,7 @@ function contentsKeysSql(membershipScopeFilter: string): string {
   return `
         SELECT e.id, e.name, m.source_id, NULL, GREATEST(
                  (SELECT max(el.created_at) FROM experience_locations el
-                   WHERE el.experience_id = e.id AND ${unreadPointSql('el')}
+                   WHERE ${shownBySql('el', 'ARRAY[e.id]')} AND ${unreadPointSql('el')}
                      AND ${offeredLocationSql('el')}
                      AND ${pointMembershipSql('el')} = m.id),
                  (SELECT max(et.created_at) FROM experience_treasures et
@@ -289,7 +290,7 @@ function withdrawnKeysSql(scopeFilter: string): string {
     SELECT 'withdrawn', ${KIND_RANK.withdrawn}, e.id, e.name, ARRAY[e.source_id], NULL,
            max(el.missing_since), ARRAY[]::text[]
     FROM experience_locations el
-    JOIN experiences e ON e.id = el.experience_id
+    JOIN experiences e ON e.id = ${answeringPlaceSql()}
     WHERE ${withdrawnPointOpenSql('el')}
       AND ${withdrawnContainerOpenSql('e')}
       AND ${scopeFilter}
@@ -380,7 +381,7 @@ function componentItemsKeysSql(membershipScopeFilter: string): string {
     SELECT 'component-items', ${KIND_RANK['component-items']}, e.id, e.name, array_agg(DISTINCT m.source_id), NULL,
            max(p.proposed_at), ARRAY[]::text[]
     FROM experiences e
-    JOIN experience_locations el ON el.experience_id = e.id
+    JOIN experience_locations el ON ${shownBySql('el', 'ARRAY[e.id]')}
     JOIN experience_component_item_proposals p ON p.location_id = el.id
     JOIN experience_location_placements pl ON pl.location_id = el.id
     JOIN ${MEMBERSHIPS} m ON m.id = pl.membership_id

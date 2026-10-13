@@ -58,6 +58,7 @@ import type { PlacementFailure, PublishResult } from '../../api/responses/curati
 import type { ReviewAnswerDid } from '../../api/responses/reviewQueue.js';
 import type { QueueKind as AnswerKind, ReviewAnswer as Answer } from './reviewQueueVocabulary.js';
 import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
+import { shownBySql } from '../../db/placePoints.js';
 
 export type { AnswerKind, Answer };
 
@@ -389,8 +390,8 @@ async function answerWithdrawn(who: Answerer, answer: Answer): Promise<Outcome> 
   const open = await pool.query(
     `SELECT el.id, el.source_membership, el.existence, el.missing_since
        FROM experience_locations el
-       JOIN experiences e ON e.id = el.experience_id
-      WHERE el.experience_id = $1
+       JOIN experiences e ON e.id = $1
+      WHERE ${shownBySql('el', 'ARRAY[$1::int]')}
         AND ${withdrawnPointOpenSql('el')}
         AND ${withdrawnContainerOpenSql('e')}
       ORDER BY el.id`,

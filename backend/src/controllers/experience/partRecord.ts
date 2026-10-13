@@ -62,6 +62,7 @@
 
 import { venueCountSql, venuesSql } from '../../db/readerPredicates.js';
 import { tidyLabelSql } from '../../services/sync/labelFold.js';
+import { shownBySql } from '../../db/placePoints.js';
 
 /**
  * The stored point a record entry names, as a query body: `SELECT … FROM
@@ -102,7 +103,7 @@ export function recordedLocationSql(
                                            IS NOT DISTINCT FROM ${tidyLabelSql(name)} AS named,
                                          el.curated_fields ? 'name' AS renamed
                                     FROM experience_locations el
-                                   WHERE el.experience_id = ${experienceId}
+                                   WHERE ${shownBySql('el', `ARRAY[${experienceId}]`)}
                                      AND el.external_ref IS NOT DISTINCT FROM ${ref}
                                      AND el.missing_since IS NULL) AS cand
                            ORDER BY cand.named DESC, cand.renamed DESC, cand.id
