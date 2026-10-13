@@ -4063,6 +4063,20 @@ export const ExperienceDetailExistence = {
 } as const;
 
 /**
+ * The site this place is a part of (ADR-0100): the Temple of Karnak of Ancient Thebes. A part with no kind of its own is shown under its whole's kind.
+ */
+export type ExperienceDetailPartOf = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  name: string;
+  /** The part's own point: the id its whole's card opens it at. */
+  point_id: number | null;
+} | null;
+
+/**
  * A region an object can be opened at, in a world view the caller may see.
  */
 export interface ExperienceRegionRef {
@@ -4140,6 +4154,8 @@ export interface ExperienceDetail {
   source_description: string | null;
   /** The regions whose own lists hold the object, in the world views the caller may see. */
   regions: ExperienceRegionRef[];
+  /** The site this place is a part of (ADR-0100): the Temple of Karnak of Ancient Thebes. A part with no kind of its own is shown under its whole's kind. */
+  part_of: ExperienceDetailPartOf;
 }
 
 /**

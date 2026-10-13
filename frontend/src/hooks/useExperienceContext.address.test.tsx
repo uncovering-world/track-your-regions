@@ -115,6 +115,18 @@ describe('the open card is in the address', () => {
     expect(mockFetchOne).toHaveBeenCalledWith(4321);
   });
 
+  it("moves the address of a part to its site's card, opened at the part's point, in place", async () => {
+    // ADR-0100: a part is in no list; its by-id read names the site it belongs to.
+    mockFetchOne.mockResolvedValue({
+      id: 4400, name: 'Temple of Karnak', part_of: { id: 1234, name: 'Stonehenge', point_id: 77 },
+    });
+    const { result } = renderHook(useUnderTest, { wrapper: wrapperAt('/wv/5/r/6737-europe/e/4400') });
+
+    await waitFor(() => expect(result.current.at).toBe('/wv/5/r/6737-europe/e/1234-stonehenge/p/77-temple-of-karnak'));
+    expect(result.current.type).toBe('REPLACE');
+    expect(result.current.ctx.selectedExperienceId).toBe(1234);
+  });
+
   it('asks nothing about a card the list holds', async () => {
     const { result } = renderHook(useUnderTest, { wrapper: wrapperAt('/wv/5/r/6737-europe/e/1234') });
 

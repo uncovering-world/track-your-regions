@@ -8,6 +8,10 @@
  * opens the place it now is, rather than being dropped as a card the list does
  * not hold.
  *
+ * A part of a serial site (ADR-0100) is in no list either: it is reached
+ * through its site, and its own address — a link to the Temple of Karnak —
+ * moves to Ancient Thebes' card opened at the temple's point.
+ *
  * Asked only for a card the list has answered without — a place nobody merged
  * costs no request. Kept under a key of its own rather than the card's: the
  * answer is the survivor's detail under the folded id, and cached as the
@@ -19,10 +23,17 @@ import { fetchExperience } from '../api/experiences';
 import { ApiError } from '../api/fetchUtils';
 import { queryKeys } from '../api/queryKeys';
 
-/** The place a folded card now is: its id, and its name for the address's slug. */
+/**
+ * The place a folded card now is: its id, and its name for the address's
+ * slug; for a part, the site's, with the part's point to open it at.
+ */
 export interface FoldedInto {
   id: number;
   name: string;
+  /** The part's point, which the site's card opens it at; null for a merge. */
+  pointId: number | null;
+  /** The part's name, for the point's slug. */
+  pointName?: string;
 }
 
 const isNotFound = (error: unknown) => error instanceof ApiError && error.status === 404;
@@ -31,7 +42,8 @@ const isNotFound = (error: unknown) => error instanceof ApiError && error.status
  * `undefined` while the answer is out, or when the read failed for a reason
  * that says nothing about the card — a failed read must not spend a shared
  * link; `null` when the card is not one to open (hidden, refused, elsewhere,
- * gone) and the address drops it; the surviving place when a merge folded it.
+ * gone) and the address drops it; the surviving place when a merge folded it;
+ * the site, at the part's point, when the card is a part.
  */
 export function useFoldedCard(id: number | null, missing: boolean): FoldedInto | null | undefined {
   const asked = id !== null && missing;
@@ -42,6 +54,10 @@ export function useFoldedCard(id: number | null, missing: boolean): FoldedInto |
     retry: (count, failure) => !isNotFound(failure) && count < 1,
   });
   if (!asked) return null;
-  if (data) return data.id === id ? null : { id: data.id, name: data.name };
+  if (data?.part_of) {
+    const { part_of: whole } = data;
+    return { id: whole.id, name: whole.name, pointId: whole.point_id, pointName: data.name };
+  }
+  if (data) return data.id === id ? null : { id: data.id, name: data.name, pointId: null };
   return isNotFound(error) ? null : undefined;
 }
