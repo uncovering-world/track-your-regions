@@ -31,6 +31,7 @@ import { pointHeldProposalAt } from './heldProposalPointer.js';
 import type { ImageCredit } from './imageCredit.js';
 import type { LocationWriteRun } from './locationWriter.js';
 import type { ContentItemChange } from './types.js';
+import { shownBySql } from '../../db/placePoints.js';
 
 /** What the source offers one component: a picture, the credit fetched for it, and a description. */
 export interface PointContent {
@@ -129,7 +130,7 @@ export async function writePointContents(
                  AND ${publishedContentSql('el')}) AS gated_visible
            FROM experience_locations el
            JOIN incoming i ON lower(el.external_ref) = lower(i.ref)
-          WHERE el.experience_id = $1 AND el.missing_since IS NULL AND el.merged_into_id IS NULL
+          WHERE ${shownBySql('el', 'ARRAY[$1::int]')} AND el.missing_since IS NULL AND el.merged_into_id IS NULL
             -- A point whose item a curator chose (#1272) shows what that item
             -- gives it, written when it was chosen: the run's contents are read
             -- off the items its index resolves, which never include that one,

@@ -252,7 +252,8 @@ describe('writeExperienceLocations', () => {
     // count went stale the moment a subquery was added, and a count above a list always
     // will. What the fast path promises is that *no* part of it reads a marked row.
     const sql = String(mockedQuery.mock.calls[0][0]);
-    const subqueries = sql.split('(SELECT').filter(part => part.includes('experience_locations'));
+    // The places-shown arrays (`ARRAY(SELECT …)`, ADR-0100) are no read of a point.
+    const subqueries = sql.split(/(?<!ARRAY)\(SELECT/).filter(part => part.includes('experience_locations'));
     expect(subqueries.length).toBeGreaterThan(1);
     for (const part of subqueries) expect(part).toContain('missing_since IS NULL');
   });
