@@ -79,8 +79,23 @@ accepted debt, and a fresh checkout of the code inherits none.
 | objects | A work names several makers in an order nobody has confirmed | watch |
 | objects | A public-art row admitted with a class the rule refuses | invariant |
 | objects | An archaeology site standing on the same ground as a World Heritage row | watch |
+| objects | A work no place a reader is offered holds | watch |
 | pictures | A stored picture on a host whose terms do not let us show it | invariant |
 | pictures | A picture shown with nobody credited | invariant |
+
+**A work no place a reader is offered holds** (`workAssertions.ts`, #1444) is
+what a refusal by one kind can take from every kind. A work is shown only on the
+card of a place that holds it, so a museum its kind refuses takes its works with
+it unless another kind holds the museum. On the development catalogue on
+2026-10-13 that was the Venus of Willendorf and the Venus of Galgenberg, both at
+the Natural History Museum, Vienna, which Art Museums refused as no art museum.
+It also listed the Venus of Dolní Věstonice, the Shigir Idol and the East Side
+Gallery mural. It is a watch rather than an invariant, because a work a museum
+gave back is rightly on no card, and the Battle of Anghiari, lost since the
+sixteenth century, is held by no place. A work waiting for a curator's read is
+left out, and so is a work a reader reaches as a place of its own (an offered
+membership under the same item). Each row names the venues that hold the work,
+which is where the refusal that lost it is found.
 
 **A stored picture the product may not show** is ADR-0043's own invariant over
 live rows: every `image_url` names a Commons file or a file we host, because the
