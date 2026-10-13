@@ -34,7 +34,7 @@ import {
   type QueryHooks,
 } from './componentItemQueries.js';
 import { withRegisterCodes } from './componentItemRegisters.js';
-import { overPlacePoints, placePointsSql, shownBySql, type PlacePointArm } from '../../db/placePoints.js';
+import { overPlacePoints, type PlacePointArm, placePointsSql, pointsShownSql } from '../../db/placePoints.js';
 
 const UNESCO_SOURCE_ID = 1;
 /** Points are asked about in cells of this many degrees: one box query per cell. */
@@ -108,12 +108,10 @@ export interface FinderOptions {
  * and the site's standing points count it.
  */
 function sitePointsArm({ from, placeId }: PlacePointArm): string {
-  const site = `ARRAY[${placeId}]`;
   return `SELECT el.id, el.name, ST_Y(el.location) AS lat, ST_X(el.location) AS lon,
             ${placeId} AS experience_id, el.external_ref, m.wikidata_items, e.name AS site_name,
-            (SELECT count(*)::int FROM experience_locations s
-              WHERE ${shownBySql('s', site)}
-                AND s.missing_since IS NULL AND s.merged_into_id IS NULL) AS standing_points
+            (SELECT count(*)::int FROM ${pointsShownSql(placeId, 's')}
+              WHERE s.missing_since IS NULL AND s.merged_into_id IS NULL) AS standing_points
        FROM ${from}
        JOIN experience_kind_memberships m ON m.experience_id = ${placeId} AND m.source_id = $1
       WHERE el.wikidata_item IS NULL

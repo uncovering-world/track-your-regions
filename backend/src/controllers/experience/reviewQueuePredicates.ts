@@ -30,7 +30,7 @@ import {
 import {
   heldFieldExistsSql, heldPartExistsSql,
 } from './waitingCounts.js';
-import { shownBySql } from '../../db/placePoints.js';
+import { somePointShownSql } from '../../db/placePoints.js';
 
 /**
  * `missing`: a row the source stopped listing and nobody has judged
@@ -222,11 +222,10 @@ export function openProposalSql(p = 'p', el = 'el'): string {
  * and the identity of its parts waits on that.
  */
 export function componentItemsOpenSql(e = 'e'): string {
-  const site = `ARRAY[${e}.id]`;
+  const candidates = 'JOIN experience_component_item_proposals p ON p.location_id = el.id';
+  const site = `${e}.id`;
   return `${experienceOfferedToReaderSql(e)} AND ${e}.missing_since IS NULL
-    AND EXISTS (SELECT 1 FROM experience_component_item_proposals p
-                  JOIN experience_locations el ON el.id = p.location_id
-                 WHERE ${shownBySql('el', site)} AND ${openProposalSql('p', 'el')})`;
+    AND ${somePointShownSql(site, 'el', openProposalSql('p', 'el'), candidates)}`;
 }
 
 /**

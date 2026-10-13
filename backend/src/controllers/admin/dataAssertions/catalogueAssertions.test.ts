@@ -191,7 +191,8 @@ describe('an object offered to readers with no place a reader can see', () => {
   it('looks for the absence of a visible place, not of a row', () => {
     // A row exists in both failing shapes — an unread arrival and a withdrawn
     // point are rows. What is missing is a place a reader may be shown.
-    expect(sql).toMatch(/NOT EXISTS \(SELECT 1 FROM experience_locations el/);
+    // The points the object shows, its parts' included (ADR-0100).
+    expect(sql).toMatch(/NOT EXISTS \(SELECT 1 FROM \(SELECT el_own\.\* FROM experience_locations el_own WHERE el_own\.experience_id = e\.id/);
   });
 
   it('distinguishes an object holding nothing from one holding only hidden places', () => {

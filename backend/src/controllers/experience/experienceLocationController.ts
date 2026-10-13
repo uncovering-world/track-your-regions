@@ -17,7 +17,7 @@ import type {
   VisitedLocationIds, VisitedStatus,
 } from '../../api/responses/visited.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { overPlacePoints, placePointsSql, shownBySql } from '../../db/placePoints.js';
+import { overPlacePoints, placePointsSql, pointsShownSql } from '../../db/placePoints.js';
 import type {
   CheckValue, ExperienceLocationsRow, ExperiencesRow, UserVisitedLocationsRow,
 } from '../../db/schema.generated.js';
@@ -544,10 +544,9 @@ export async function unmarkLocationVisited(
     DELETE FROM user_visited_experiences uve
     WHERE uve.user_id = $1 AND uve.experience_id = ANY($2::int[])
       AND NOT EXISTS (
-        SELECT 1 FROM user_visited_locations uvl
-        JOIN experience_locations el ON uvl.location_id = el.id
-        WHERE uvl.user_id = $1 AND ${shownBySql('el', 'ARRAY[uve.experience_id]')}
-          AND ${offeredLocationSql()})
+        SELECT 1 FROM ${pointsShownSql('uve.experience_id', 'el')}
+        JOIN user_visited_locations uvl ON uvl.location_id = el.id
+        WHERE uvl.user_id = $1 AND ${offeredLocationSql()})
   `, [userId, places]);
 
   return { success: true, locationId, experienceId };

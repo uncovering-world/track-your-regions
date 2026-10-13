@@ -228,7 +228,8 @@ describe('readerPositionSql', () => {
   });
 
   it('takes the alias it is given, so a query with another name for the table is not silently wrong', () => {
-    expect(readerPositionSql('x')).toContain('el.experience_id = ANY(ARRAY(SELECT unnest(ARRAY[x.id])');
+    expect(readerPositionSql('x')).toContain('WHERE el_own.experience_id = x.id');
+    expect(readerPositionSql('x')).toContain('WHERE el_prt.whole_id = x.id');
     expect(readerPositionSql('x')).toContain('ORDER BY el.location::geography <-> x.location::geography');
   });
 });
@@ -241,10 +242,10 @@ describe('readerRegionMembershipSql', () => {
   it('asks the region for a point this reader may see', () => {
     const sql = readerRegionMembershipSql();
 
-    // Reached from the place and its parts (ADR-0100), each one's points by the
-    // index on their place, then the region's placement of them.
-    expect(sql).toContain('FROM unnest(ARRAY(SELECT unnest(ARRAY[e.id])');
-    expect(sql).toContain('JOIN experience_locations mem_el ON mem_el.experience_id = mem_el_place.id');
+    // The place's own points and its parts' (ADR-0100), one EXISTS each, and
+    // the region's placement of them.
+    expect(sql).toContain('WHERE mem_el.experience_id = e.id AND');
+    expect(sql).toContain('WHERE mem_el_part.whole_id = e.id AND');
     expect(sql).toContain('JOIN experience_location_regions mem_elr ON mem_elr.location_id = mem_el.id');
     // The point has to be placed in *this* region and belong to *this* object:
     // dropping either correlation turns the predicate into "somebody has a
@@ -289,12 +290,12 @@ describe('readerRegionMembershipSql', () => {
     // hard-coded `e.id` would fail there rather than being quietly wrong, which
     // is the better half of this argument existing.
     const sql = readerRegionMembershipSql('er.experience_id', 'er');
-    expect(sql).toContain('FROM unnest(ARRAY(SELECT unnest(ARRAY[er.experience_id])');
+    expect(sql).toContain('WHERE mem_el.experience_id = er.experience_id AND');
 
     const aliased = readerRegionMembershipSql('x.id', 'm');
     expect(aliased).toContain('mem_elr.region_id = m.region_id');
     expect(aliased).toContain("m.assignment_type = 'manual'");
-    expect(aliased).toContain('FROM unnest(ARRAY(SELECT unnest(ARRAY[x.id])');
+    expect(aliased).toContain('WHERE mem_el.experience_id = x.id AND');
   });
 
   it('never shadows the caller\'s own location aliases', () => {

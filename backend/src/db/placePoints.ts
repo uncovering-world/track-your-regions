@@ -22,6 +22,10 @@
  *   correlated count, a write for given places): the places themselves and
  *   their parts, and a point whose own place is one of them.
  *
+ * A read about one place that comes from an outer row takes the arms as well:
+ * `pointsShownSql` is them as a table of the place's points, and
+ * `somePointShownSql` as a test that one of them meets a condition.
+ *
  * Read the other way, from a point to the places that show it:
  * `withWholesSql` adds the wholes of given places, and `answeringPlaceSql`
  * names the one place a curator's write on a point is judged and locked
@@ -112,15 +116,41 @@ export function answeringPlaceSql(point = 'el'): string {
 }
 
 /**
- * The points the places `places` show, as FROM items binding `point`: the
- * places and their parts first, then each one's points through the index on
- * the point's place. The shape for a correlated read that reaches the point
- * from elsewhere — a region's placements, a reader's visits — where
- * `shownBySql` as a filter is evaluated once per row the plan meets: the
- * region list's check of a place's points took 11.6 s that way on the
- * development catalogue on 2026-10-13, and 58 ms this way (71 ms before parts).
+ * The points one place shows, as a FROM item binding `point` to every column
+ * of `experience_locations`: the place's own points and its parts', one arm
+ * each by an equality on `place`, so each arm is an index probe for the outer
+ * row it is asked about. The shape for a read that comes from an outer row (a
+ * region list's count, a card's points); joined beside that row it needs
+ * LATERAL. As a filter (`shownBySql`) the places' array is computed again for
+ * every row the plan meets wherever the plan reaches the points from
+ * elsewhere: the review queue's first page took 4.2 s that way on the
+ * development catalogue on 2026-10-13, against 260 ms before parts.
  */
-export function pointsShownSql(places: string, point = 'el'): string {
-  return `unnest(${madeOfSql(places)}) AS ${point}_place(id)
-       JOIN experience_locations ${point} ON ${point}.experience_id = ${point}_place.id`;
+export function pointsShownSql(place: string, point = 'el'): string {
+  // The arms' own aliases are named after `point`, so a `place` that names an
+  // outer alias (the finder's `prt.whole_id`) is never captured inside them.
+  const own = `${point}_own`;
+  const link = `${point}_prt`;
+  const ofPart = `${point}_of_part`;
+  return `(SELECT ${own}.* FROM experience_locations ${own} WHERE ${own}.experience_id = ${place}
+        UNION ALL
+        SELECT ${ofPart}.* FROM experience_parts ${link}
+          JOIN experience_locations ${ofPart} ON ${ofPart}.experience_id = ${link}.part_id
+         WHERE ${link}.whole_id = ${place}) AS ${point}`;
+}
+
+/**
+ * Whether some point the place `place` shows meets `where`, past the joins
+ * `joins` from it: an EXISTS per arm, joined by OR, so the own arm is the
+ * question as it was asked before parts, which the planner can answer from
+ * either side (from a region's placements, from the open candidates), and the
+ * parts arm a probe of a table that holds only parts. `point` is bound to the
+ * point in both, and `where` reads it.
+ */
+export function somePointShownSql(place: string, point: string, where: string, joins = ''): string {
+  return `(EXISTS (SELECT 1 FROM experience_locations ${point} ${joins}
+                  WHERE ${point}.experience_id = ${place} AND ${where})
+       OR EXISTS (SELECT 1 FROM experience_parts ${point}_part
+                    JOIN experience_locations ${point} ON ${point}.experience_id = ${point}_part.part_id ${joins}
+                   WHERE ${point}_part.whole_id = ${place} AND ${where}))`;
 }

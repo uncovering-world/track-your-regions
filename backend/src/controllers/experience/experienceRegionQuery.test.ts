@@ -26,7 +26,7 @@ function locationCountSql(includeChildren: boolean): string {
     limit: 20,
     offset: 0,
   });
-  const match = query.match(/\(SELECT COUNT\(\*\)::int FROM experience_locations el[\s\S]*?as location_count,/);
+  const match = query.match(/\(SELECT COUNT\(\*\)::int FROM \(SELECT el_own\.\* FROM experience_locations el_own WHERE el_own\.experience_id = e\.id[\s\S]*?as location_count,/);
   expect(match).not.toBeNull();
   return (match as RegExpMatchArray)[0];
 }

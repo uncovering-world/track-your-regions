@@ -64,7 +64,7 @@ import {
   membershipMissingOpenSql, missingOpenSql, openProposalSql, pinQuestionOpenSql, refusedOpenSql, sourcesOpenSql,
   withdrawnContainerOpenSql, withdrawnPointOpenSql,
 } from './reviewQueuePredicates.js';
-import { answeringPlaceSql, shownBySql } from '../../db/placePoints.js';
+import { answeringPlaceSql, pointsShownSql } from '../../db/placePoints.js';
 
 /**
  * The class order: what a curator works down when they sort by question rather
@@ -226,8 +226,8 @@ function heldKeysSql(scopeFilter: string): string {
 function contentsKeysSql(membershipScopeFilter: string): string {
   return `
         SELECT e.id, e.name, m.source_id, NULL, GREATEST(
-                 (SELECT max(el.created_at) FROM experience_locations el
-                   WHERE ${shownBySql('el', 'ARRAY[e.id]')} AND ${unreadPointSql('el')}
+                 (SELECT max(el.created_at) FROM ${pointsShownSql('e.id', 'el')}
+                   WHERE ${unreadPointSql('el')}
                      AND ${offeredLocationSql('el')}
                      AND ${pointMembershipSql('el')} = m.id),
                  (SELECT max(et.created_at) FROM experience_treasures et
@@ -380,9 +380,10 @@ function componentItemsKeysSql(membershipScopeFilter: string): string {
   return `
     SELECT 'component-items', ${KIND_RANK['component-items']}, e.id, e.name, array_agg(DISTINCT m.source_id), NULL,
            max(p.proposed_at), ARRAY[]::text[]
-    FROM experiences e
-    JOIN experience_locations el ON ${shownBySql('el', 'ARRAY[e.id]')}
-    JOIN experience_component_item_proposals p ON p.location_id = el.id
+    FROM experience_component_item_proposals p
+    JOIN experience_locations el ON el.id = p.location_id
+    -- The site whose card asks about the point, its part's included (ADR-0100).
+    JOIN experiences e ON e.id = ${answeringPlaceSql()}
     JOIN experience_location_placements pl ON pl.location_id = el.id
     JOIN ${MEMBERSHIPS} m ON m.id = pl.membership_id
     WHERE ${openProposalSql('p', 'el')}

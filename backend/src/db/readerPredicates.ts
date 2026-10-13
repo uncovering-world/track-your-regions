@@ -49,7 +49,7 @@
  */
 
 import { placeAdmittedSql, placeOfferedSql, rowKindJoinSql } from './membership.js';
-import { pointsShownSql, shownBySql } from './placePoints.js';
+import { pointsShownSql, somePointShownSql } from './placePoints.js';
 
 /**
  * Hides `lost` objects. `alias` is the `experiences` alias in the query.
@@ -213,9 +213,9 @@ export function readerPositionSql(alias = 'e', maySeeUnreadParam?: string): stri
   const unreadGate = maySeeUnreadParam
     ? `(${maySeeUnreadParam}::boolean OR ${publishedContentSql('el')})`
     : publishedContentSql('el');
-  const nearestPlace = `(SELECT el.location FROM experience_locations el
-      WHERE ${shownBySql('el', `ARRAY[${alias}.id]`)}
-        AND ${offeredLocationSql()} AND ${unreadGate}
+  const place = `${alias}.id`;
+  const nearestPlace = `(SELECT el.location FROM ${pointsShownSql(place, 'el')}
+      WHERE ${offeredLocationSql()} AND ${unreadGate}
       ORDER BY el.location::geography <-> ${alias}.location::geography, el.id
       LIMIT 1)`;
   return `ST_X(COALESCE(${nearestPlace}, ${alias}.location)) as longitude,
@@ -383,15 +383,12 @@ export function offeredToReaderSql(experienceAlias = 'e', locationAlias = 'el'):
  * of the curator who is being asked about it.
  */
 export function readerRegionMembershipSql(experienceIdExpr = 'e.id', membershipAlias = 'er'): string {
-  // Any point the place shows, its parts' included (ADR-0100), reached from
-  // the place: from the region's placements, the plan meets every point there.
-  const place = `ARRAY[${experienceIdExpr}]`;
-  return `(${membershipAlias}.assignment_type = 'manual' OR EXISTS (
-        SELECT 1 FROM ${pointsShownSql(place, 'mem_el')}
-        JOIN experience_location_regions mem_elr ON mem_elr.location_id = mem_el.id
-        WHERE mem_elr.region_id = ${membershipAlias}.region_id
+  // Any point the place shows, its parts' included (ADR-0100).
+  const placed = 'JOIN experience_location_regions mem_elr ON mem_elr.location_id = mem_el.id';
+  const seen = `mem_elr.region_id = ${membershipAlias}.region_id
           AND ${offeredLocationSql('mem_el')}
-          AND ${publishedContentSql('mem_el')}))`;
+          AND ${publishedContentSql('mem_el')}`;
+  return `(${membershipAlias}.assignment_type = 'manual' OR ${somePointShownSql(experienceIdExpr, 'mem_el', seen, placed)})`;
 }
 
 /**

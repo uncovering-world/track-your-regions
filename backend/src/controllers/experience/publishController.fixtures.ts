@@ -160,7 +160,7 @@ function proposalRow(opts: ClientOptions) {
  * while production read `undefined` and called every place ambiguous.
  */
 function partStatement(sql: string, opts: ClientOptions): { rows: unknown[] } | null {
-  if (sql.includes('FROM experience_locations el') && sql.includes('FOR UPDATE')) {
+  if (sql.includes('JOIN experience_locations el ON el.id = pick.id') && sql.includes('FOR UPDATE OF el')) {
     const identified = sql.includes('pick.identified') ? { identified: true } : {};
     return { rows: opts.parts?.location ? [{ ...identified, ...opts.parts.location }] : [] };
   }
