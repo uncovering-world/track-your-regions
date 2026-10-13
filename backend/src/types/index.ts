@@ -14,6 +14,7 @@ import { safeImageUrlSchema, safeUrlSchema } from './urlSchemas.js';
 import { pictureFetchUrl, PICTURE_FETCH_URL_MESSAGE } from './urlSafety.js';
 import { POINTS_DETAILS } from '../controllers/experience/worldPointsVocabulary.js';
 import { QUEUE_KINDS } from '../controllers/experience/reviewQueueVocabulary.js';
+import { DUMP_KEYS } from '../services/dumps/catalog.js';
 
 // The world-view import's request schemas live in their own module (#933) and
 // are part of this barrel, so a route imports them from here as before.
@@ -374,6 +375,11 @@ export const visitedRegionBodySchema = z.object({
 
 export const sourceIdParamSchema = z.object({
   sourceId: rowIdSchema,
+});
+
+/** A public dump the catalogue reads, by its key in the dump catalog (ADR-0101). */
+export const dumpKeyParamSchema = z.object({
+  dump: z.enum(DUMP_KEYS),
 });
 
 /** A curator's choice between two sources' views of a place (#1246): per field, a membership or none to keep. */

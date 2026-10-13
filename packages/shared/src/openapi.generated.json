@@ -4532,6 +4532,159 @@
         }
       }
     },
+    "/api/admin/dumps": {
+      "get": {
+        "operationId": "getAdminDumps",
+        "summary": "List the public dumps the catalogue reads, with the build in flight and the recent builds of each",
+        "tags": [
+          "admin"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Dumps"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/dumps/{dump}/build": {
+      "post": {
+        "operationId": "postAdminDumpsByDumpBuild",
+        "summary": "Start a build that reads the newest complete file of a dump and verifies it against its host",
+        "tags": [
+          "admin"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dump",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "wikidata-entities",
+                "wikidata-lexemes",
+                "enwiki-page",
+                "enwiki-page-props",
+                "enwiki-categorylinks",
+                "enwiki-langlinks",
+                "pageviews-user"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DumpBuildStarted"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/dumps/{dump}/cancel": {
+      "post": {
+        "operationId": "postAdminDumpsByDumpCancel",
+        "summary": "Ask a running build of a dump to stop",
+        "tags": [
+          "admin"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dump",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "wikidata-entities",
+                "wikidata-lexemes",
+                "enwiki-page",
+                "enwiki-page-props",
+                "enwiki-categorylinks",
+                "enwiki-langlinks",
+                "pageviews-user"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DumpBuildCancelled"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/sync/sources/{sourceId}/find-component-items": {
       "post": {
         "operationId": "postAdminSyncSourcesBySourceIdFindComponentItems",
@@ -19612,6 +19765,320 @@
         ],
         "additionalProperties": false,
         "description": "Division members removed from a region."
+      },
+      "DumpBuild": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "dumpDate": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "enum": [
+              "stream",
+              "local"
+            ]
+          },
+          "bytes": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "lines": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "checksumKind": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "md5",
+                  "sha1"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "verified": {
+            "type": "boolean",
+            "description": "The published checksum matched, or, where none is published, the size and the end of stream did."
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "success",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "startedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          },
+          "finishedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "fileName",
+          "dumpDate",
+          "mode",
+          "bytes",
+          "lines",
+          "checksumKind",
+          "verified",
+          "status",
+          "error",
+          "startedAt",
+          "finishedAt"
+        ],
+        "additionalProperties": false,
+        "description": "One build of a dump, from the ledger."
+      },
+      "DumpBuildCancelled": {
+        "type": "object",
+        "properties": {
+          "cancelled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cancelled"
+        ],
+        "additionalProperties": false,
+        "description": "Whether a running build of the dump was asked to stop."
+      },
+      "DumpBuildProgress": {
+        "type": "object",
+        "properties": {
+          "dump": {
+            "type": "string",
+            "enum": [
+              "wikidata-entities",
+              "wikidata-lexemes",
+              "enwiki-page",
+              "enwiki-page-props",
+              "enwiki-categorylinks",
+              "enwiki-langlinks",
+              "pageviews-user"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "resolving",
+              "reading",
+              "success",
+              "failed",
+              "cancelled"
+            ]
+          },
+          "message": {
+            "type": "string"
+          },
+          "file": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "fileName": {
+                    "type": "string"
+                  },
+                  "date": {
+                    "type": "string"
+                  },
+                  "expectedBytes": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "fileName",
+                  "date",
+                  "expectedBytes"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "downloaded": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "read": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "lines": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "buildId": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "dump",
+          "status",
+          "message",
+          "file",
+          "downloaded",
+          "read",
+          "lines",
+          "buildId"
+        ],
+        "additionalProperties": false,
+        "description": "A dump build in flight, or the last one this process ran."
+      },
+      "DumpBuildStarted": {
+        "type": "object",
+        "properties": {
+          "started": {
+            "type": "boolean",
+            "const": true
+          },
+          "progress": {
+            "$ref": "#/components/schemas/DumpBuildProgress"
+          }
+        },
+        "required": [
+          "started",
+          "progress"
+        ],
+        "additionalProperties": false,
+        "description": "A dump build started in the background, followed through the dump list."
+      },
+      "Dumps": {
+        "type": "object",
+        "properties": {
+          "dumps": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "enum": [
+                    "wikidata-entities",
+                    "wikidata-lexemes",
+                    "enwiki-page",
+                    "enwiki-page-props",
+                    "enwiki-categorylinks",
+                    "enwiki-langlinks",
+                    "pageviews-user"
+                  ]
+                },
+                "source": {
+                  "type": "string",
+                  "description": "Who publishes the dump: Wikidata, English Wikipedia, Wikimedia pageviews."
+                },
+                "title": {
+                  "type": "string"
+                },
+                "datedBy": {
+                  "type": "string",
+                  "enum": [
+                    "day",
+                    "month"
+                  ],
+                  "description": "Whether a file's date is the day of its dump or the month its counts cover."
+                },
+                "about": {
+                  "type": "string"
+                },
+                "progress": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/DumpBuildProgress"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "builds": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/DumpBuild"
+                  }
+                }
+              },
+              "required": [
+                "key",
+                "source",
+                "title",
+                "datedBy",
+                "about",
+                "progress",
+                "builds"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "localCopy": {
+            "type": "boolean",
+            "description": "Whether builds keep a local copy (DUMPS_DIR) or read each file as a stream from its host."
+          }
+        },
+        "required": [
+          "dumps",
+          "localCopy"
+        ],
+        "additionalProperties": false,
+        "description": "The public dumps the catalogue reads, with their builds (ADR-0101)."
       },
       "EarlierAnswer": {
         "type": "object",

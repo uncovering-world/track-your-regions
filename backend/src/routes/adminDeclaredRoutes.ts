@@ -21,6 +21,8 @@ import {
   PricingUpdated, ReviewSuggestionApplied, RuleReviewResult,
 } from '../api/responses/adminAi.js';
 import { DataAssertion, DataAssertionReport } from '../api/responses/dataAssertions.js';
+import { DumpBuildCancelled, DumpBuildStarted, Dumps } from '../api/responses/dumps.js';
+import { cancelDumpBuild, listDumps, startDumpBuild } from '../controllers/admin/dumpController.js';
 import {
   startSync, getSyncStatus, cancelSync, fixImages, findComponentItems, getSyncLogs, getWikidataCache, clearWikidataCache,
   setWikidataCacheTtl, getSyncLogDetails, getSyncLogChanges, getSources, reorderSources, startRegionAssignment,
@@ -45,7 +47,7 @@ import {
   addLearnedRuleBodySchema, adminUserSearchQuerySchema, aiRuleIdParamSchema, aiSettingKeyParamSchema,
   aiSettingValueBodySchema, applyRuleReviewBodySchema, assignmentIdParamSchema, cacheKindParamSchema,
   cacheTtlBodySchema, clearCacheQuerySchema, createCuratorAssignmentBodySchema, curationGateBodySchema,
-  curatorActivityQuerySchema, dataAssertionAcceptBodySchema, experienceCountsQuerySchema, hierarchyReviewBodySchema,
+  curatorActivityQuerySchema, dataAssertionAcceptBodySchema, dumpKeyParamSchema, experienceCountsQuerySchema, hierarchyReviewBodySchema,
   logIdParamSchema, regionAssignmentStatusQuerySchema, reorderSourcesBodySchema, sourceIdParamSchema,
   sourceLineBodySchema, startRegionAssignmentBodySchema, startSyncBodySchema, syncChangesQuerySchema,
   syncLogsQuerySchema, userIdParamSchema, worldViewIdParamSchema,
@@ -137,6 +139,30 @@ export const adminDeclaredRoutes = [
     params: sourceIdParamSchema,
     response: PictureRepairStarted,
     handler: fixImages,
+  }),
+  // The public dumps the catalogue reads (ADR-0101): each with its build in
+  // flight and its recent builds, a verify build of one, and stopping it. A
+  // build reads a file of up to 100 GB from its host, so it stands behind the
+  // expensive-action limiter; the URL is the catalog's, never the caller's.
+  defineRoute({
+    ...ADMIN, method: 'get', path: '/dumps',
+    summary: 'List the public dumps the catalogue reads, with the build in flight and the recent builds of each',
+    response: Dumps,
+    handler: listDumps,
+  }),
+  defineRoute({
+    ...ADMIN, method: 'post', path: '/dumps/:dump/build', limiter: expensiveAdminLimiter,
+    summary: 'Start a build that reads the newest complete file of a dump and verifies it against its host',
+    params: dumpKeyParamSchema,
+    response: DumpBuildStarted,
+    handler: startDumpBuild,
+  }),
+  defineRoute({
+    ...ADMIN, method: 'post', path: '/dumps/:dump/cancel',
+    summary: 'Ask a running build of a dump to stop',
+    params: dumpKeyParamSchema,
+    response: DumpBuildCancelled,
+    handler: cancelDumpBuild,
   }),
   // Search Wikidata for the items of World Heritage components no item records
   // the reference of (#1272). Proposals only — a curator answers each — but a
