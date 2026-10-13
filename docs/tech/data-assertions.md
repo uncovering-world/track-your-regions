@@ -95,7 +95,9 @@ gave back is rightly on no card, and the Battle of Anghiari, lost since the
 sixteenth century, is held by no place. A work waiting for a curator's read is
 left out, and so is a work a reader reaches as a place of its own (an offered
 membership under the same item). Each row names the venues that hold the work,
-which is where the refusal that lost it is found.
+which is where the refusal that lost it is found. A work a kind refused as held at a place
+another kind admits is taken by that kind's next run (ADR-0102), so it leaves
+the list then; what stays is a work whose place no kind admits.
 
 **A stored picture the product may not show** is ADR-0043's own invariant over
 live rows: every `image_url` names a Commons file or a file we host, because the
