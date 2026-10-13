@@ -4183,7 +4183,9 @@ always accepted the correction (`POST /locations/:locationId/state` logs
 `location_state_restored`); what was missing was the list to offer it from.
 
 Two predicates, and neither alone is the criterion: **a verdict stands** — `former` or
-`lost` — and **no reader can see the point**. The first is what there is to take back, and
+`lost` — and **no reader can see the point**; a point a published move replaced
+(`moved_to_location_id`) is left out besides, since the publish is its record (see "Publishing
+releases a withdrawal that was waiting on it"). The first is what there is to take back, and
 it is also what makes this list and the `withdrawn` card disjoint *by construction* rather
 than by a guard either one carries. It is asked of the axes rather than of
 `state_decided_at` for two reasons. The axes are themselves the record of a person: no arm
@@ -5698,7 +5700,17 @@ have made true — and then the pairing is cleared, because a pairing left stand
 purpose and turns harmful (a run that offers the old point again clears its `missing_since`, and
 the next run to withdraw it would find the stale pointer and hold it for ever, with no second
 arrival for anyone to publish). Both are skipped when the call published no point at all, since a
-pairing only ever sits on a `pending` one. The count is returned as `withdrawalsReleased` and
+pairing only ever sits on a `pending` one. **The publish also answers the departure it releases**: the
+curator who accepted the move has said the place moved, so the held point is written
+`source_membership = 'former'` in their name (`state_decided_by`, `state_decided_at`) with a note
+naming the distance ("Moved 24 m: the source lists it at its new spot"), and names the point it
+moved to (`moved_to_location_id`, migration 098). The answered withdrawals leave such a point out:
+the publish, on the curation log under the curator's name, is its record, and the card's take-back
+("It is still listed") would set a second pin beside the one it moved to. A run that lists the old
+spot again, or a curator who answers it still listed (`setPointVerdict`), clears the pointer. Without that, the released
+point stood as an open withdrawal (`withdrawnPointOpenSql`) and the queue asked the same curator
+what had become of a place they had just moved — the Trevi Fountain, published 24 m from where it
+was, came straight back as "lost places". The count is returned as `withdrawalsReleased` and
 recorded in the audit row: a person asking why a pin moved has that row and nothing else, because
 the run that proposed the move is a different row in a different table and says nothing about when
 it took effect.
