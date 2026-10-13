@@ -143,7 +143,16 @@ export interface LocationWriteResult {
  * The run this write belongs to — `WriteRun`, and the source it is a run of:
  * whose gate a point passes through and whose membership places it (ADR-0084).
  */
-export type LocationWriteRun = WriteRun & { sourceId: number };
+export type LocationWriteRun = WriteRun & {
+  sourceId: number;
+  /**
+   * The points are a serial site's components, each a place part of the site
+   * (ADR-0100): the World Heritage run's. The write ends by parting them
+   * (`part_site_components`), so a component that arrived is a part before
+   * the site's lock is let go.
+   */
+  components?: boolean;
+};
 
 /**
  * Make `experience_locations` for one experience match `incoming`, keeping the
@@ -873,6 +882,13 @@ export async function writeExperienceLocations(
     // pointer is a proposal no screen can reach.
     if (changed.some(entry => entry.fields.some(field => field.held))) {
       await pointHeldProposalAt(client, experienceId, run.syncLogId);
+    }
+
+    if (run.components) {
+      await client.query(
+        `SELECT part_site_components($1, (SELECT id FROM ${MEMBERSHIPS} WHERE experience_id = $1 AND source_id = $2))`,
+        [experienceId, run.sourceId],
+      );
     }
 
     await client.query('COMMIT');
