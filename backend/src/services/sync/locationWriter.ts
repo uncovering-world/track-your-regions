@@ -111,6 +111,7 @@ import {
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { lockExperience } from '../../db/experienceWriter.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
+import { shownBySql } from '../../db/placePoints.js';
 
 
 /** Which rows the write touched, so assignment can be limited to them. */
@@ -267,7 +268,7 @@ export async function writeExperienceLocations(
                           ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)::geography) AS metres
        FROM incoming i
        JOIN experience_locations el
-         ON el.experience_id = $1
+         ON ${shownBySql('el', 'ARRAY[$1::int]')}
         AND (${samePointSql('el')} OR ${claimedPointSql('el')})
      ),
      -- The reference exactly before one read past its variant (ADR-0090
@@ -299,10 +300,10 @@ export async function writeExperienceLocations(
   const same = await pool.query(
     `WITH ${cte}
      SELECT (SELECT count(*) FROM experience_locations el
-               WHERE el.experience_id = $1 AND el.missing_since IS NULL AND ${runsPoint('el')}) AS stored,
+               WHERE ${shownBySql('el', 'ARRAY[$1::int]')} AND el.missing_since IS NULL AND ${runsPoint('el')}) AS stored,
             (SELECT count(*) FROM incoming i
                JOIN experience_locations el
-                 ON el.experience_id = $1
+                 ON ${shownBySql('el', 'ARRAY[$1::int]')}
                 AND el.missing_since IS NULL
                 AND ${runsPoint('el')}
                 AND ${samePointSql('el')}
@@ -339,7 +340,7 @@ export async function writeExperienceLocations(
                 -- the queue reads the axes as nobody having answered.
                 AND el.source_membership = 'present') AS matched,
             (SELECT array_agg(el.id) FROM experience_locations el
-               WHERE el.experience_id = $1 AND el.missing_since IS NULL AND ${runsPoint('el')}) AS ids`,
+               WHERE ${shownBySql('el', 'ARRAY[$1::int]')} AND el.missing_since IS NULL AND ${runsPoint('el')}) AS ids`,
     withSource,
   );
   const { stored, matched, ids } = same.rows[0] as
@@ -462,7 +463,7 @@ export async function writeExperienceLocations(
        -- object's rows only, so this narrows nothing -- but with the pairing now a table
        -- rather than a CTE, it is the last mention of $1 in the statement, and without it
        -- Postgres cannot infer that parameter's type and refuses the whole query.
-       WHERE el.experience_id = $1
+       WHERE ${shownBySql('el', 'ARRAY[$1::int]')}
          AND el.id = p.location_id
          AND el.missing_since IS NULL
        -- The distance decides whether this row still holds the place it was assigned
@@ -512,7 +513,7 @@ export async function writeExperienceLocations(
        FROM paired_rows p JOIN incoming i ON i.ordinal = p.ordinal
        -- Scoped to the experience for the reason given on the arm above: the pairing
        -- already narrows it, and $1 has to appear or Postgres cannot type the parameter.
-       WHERE el.experience_id = $1
+       WHERE ${shownBySql('el', 'ARRAY[$1::int]')}
          AND el.id = p.location_id
          AND el.missing_since IS NOT NULL
        RETURNING el.id, el.name, el.external_ref`,
@@ -633,7 +634,7 @@ export async function writeExperienceLocations(
               withdrawn AS (
                 SELECT el.id, el.external_ref
                 FROM experience_locations el
-                WHERE el.experience_id = $1
+                WHERE ${shownBySql('el', 'ARRAY[$1::int]')}
                   -- Rows a reader can *see*, which is what a deferral slot is scarce for:
                   -- one per arrival, and spending one on a row nobody is looking at leaves
                   -- a visible pin unheld. So all three terms of that, not one:
@@ -672,7 +673,7 @@ export async function writeExperienceLocations(
                   -- is exactly the chain the note above says cannot form.
                   AND NOT EXISTS (
                     SELECT 1 FROM experience_locations waiting
-                    WHERE waiting.experience_id = $1
+                    WHERE ${shownBySql('waiting', 'ARRAY[$1::int]')}
                       AND waiting.withdrawal_deferred_for_location_id = el.id
                       AND EXISTS (
                         SELECT 1 FROM paired_rows p WHERE p.location_id = waiting.id
@@ -760,8 +761,8 @@ export async function writeExperienceLocations(
        UPDATE experience_locations n
        SET withdrawal_deferred_for_location_id = NULL
        FROM experience_locations old
-       WHERE n.experience_id = $1
-         AND old.experience_id = $1
+       WHERE ${shownBySql('n', 'ARRAY[$1::int]')}
+         AND ${shownBySql('old', 'ARRAY[$1::int]')}
          AND n.withdrawal_deferred_for_location_id = old.id
          AND EXISTS (
            SELECT 1 FROM paired_rows p WHERE p.location_id = old.id
@@ -794,7 +795,7 @@ export async function writeExperienceLocations(
       `WITH ${cte},
        gone AS (
          SELECT el.id FROM experience_locations el
-          WHERE el.experience_id = $1
+          WHERE ${shownBySql('el', 'ARRAY[$1::int]')}
             AND el.missing_since IS NULL
             AND ${runsPoint('el')}
             AND NOT EXISTS (
@@ -802,7 +803,7 @@ export async function writeExperienceLocations(
             )
             AND NOT EXISTS (
               SELECT 1 FROM experience_locations waiting
-              WHERE waiting.experience_id = $1
+              WHERE ${shownBySql('waiting', 'ARRAY[$1::int]')}
               AND waiting.withdrawal_deferred_for_location_id = el.id
             )
        ),
@@ -840,7 +841,7 @@ export async function writeExperienceLocations(
       `WITH ${cte}
        UPDATE experience_locations el
        SET ordinal = NULL
-       WHERE el.experience_id = $1
+       WHERE ${shownBySql('el', 'ARRAY[$1::int]')}
          AND el.missing_since IS NULL
          AND el.ordinal IS NOT NULL
          AND ${runsPoint('el')}
@@ -849,7 +850,7 @@ export async function writeExperienceLocations(
          )
          AND EXISTS (
            SELECT 1 FROM experience_locations waiting
-           WHERE waiting.experience_id = $1
+           WHERE ${shownBySql('waiting', 'ARRAY[$1::int]')}
            AND waiting.withdrawal_deferred_for_location_id = el.id
          )`,
       withSource,
@@ -958,7 +959,7 @@ export async function recordComponentItems(
       `UPDATE experience_locations el
           SET wikidata_item = r.item
          FROM unnest($2::text[], $3::text[]) AS r(ref, item)
-        WHERE el.experience_id = $1
+        WHERE ${shownBySql('el', 'ARRAY[$1::int]')}
           AND lower(el.external_ref) = lower(r.ref)
           AND NOT (COALESCE(el.curated_fields, '[]'::jsonb) ? 'wikidata_item')
           AND el.wikidata_item IS DISTINCT FROM r.item

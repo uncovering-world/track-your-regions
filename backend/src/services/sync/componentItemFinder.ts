@@ -34,6 +34,7 @@ import {
   type QueryHooks,
 } from './componentItemQueries.js';
 import { withRegisterCodes } from './componentItemRegisters.js';
+import { overPlacePoints, placePointsSql, shownBySql, type PlacePointArm } from '../../db/placePoints.js';
 
 const UNESCO_SOURCE_ID = 1;
 /** Points are asked about in cells of this many degrees: one box query per cell. */
@@ -102,6 +103,27 @@ export interface FinderOptions {
 }
 
 /**
+ * One arm of the points a World Heritage site shows (ADR-0100): its own, and
+ * its parts' — the Temple of Karnak is read as a component of Ancient Thebes,
+ * and the site's standing points count it.
+ */
+function sitePointsArm({ from, placeId }: PlacePointArm): string {
+  const site = `ARRAY[${placeId}]`;
+  return `SELECT el.id, el.name, ST_Y(el.location) AS lat, ST_X(el.location) AS lon,
+            ${placeId} AS experience_id, el.external_ref, m.wikidata_items, e.name AS site_name,
+            (SELECT count(*)::int FROM experience_locations s
+              WHERE ${shownBySql('s', site)}
+                AND s.missing_since IS NULL AND s.merged_into_id IS NULL) AS standing_points
+       FROM ${from}
+       JOIN experience_kind_memberships m ON m.experience_id = ${placeId} AND m.source_id = $1
+      WHERE el.wikidata_item IS NULL
+        AND el.external_ref IS NOT NULL
+        AND el.missing_since IS NULL
+        AND el.merged_into_id IS NULL
+        AND NOT el.curated_fields ? 'wikidata_item'`;
+}
+
+/**
  * The components no item records and no curator has claimed one for, less the
  * ones that stand for their whole site (`standsForWholeSite`): a site of one
  * point, or a point named like the site, is the site's own item, and anything
@@ -112,19 +134,7 @@ async function readPoints(): Promise<{ points: PointRow[]; wholeSites: number; w
     id: number; name: string | null; lat: number; lon: number; experience_id: number; external_ref: string;
     wikidata_items: string[] | null; site_name: string; standing_points: number;
   }>(
-    `SELECT el.id, el.name, ST_Y(el.location) AS lat, ST_X(el.location) AS lon,
-            el.experience_id, el.external_ref, m.wikidata_items, e.name AS site_name,
-            (SELECT count(*)::int FROM experience_locations s
-              WHERE s.experience_id = el.experience_id
-                AND s.missing_since IS NULL AND s.merged_into_id IS NULL) AS standing_points
-       FROM experience_locations el
-       JOIN experience_kind_memberships m ON m.experience_id = el.experience_id AND m.source_id = $1
-       JOIN experiences e ON e.id = el.experience_id
-      WHERE el.wikidata_item IS NULL
-        AND el.external_ref IS NOT NULL
-        AND el.missing_since IS NULL
-        AND el.merged_into_id IS NULL
-        AND NOT el.curated_fields ? 'wikidata_item'`,
+    overPlacePoints(sitePointsArm),
     [UNESCO_SOURCE_ID],
   );
   const read: PointRead[] = result.rows.map(row => ({
@@ -140,8 +150,10 @@ async function readPoints(): Promise<{ points: PointRow[]; wholeSites: number; w
 /** The items components already are, per site: what the site's kind is learned from, and what is never proposed again. */
 async function readResolved(): Promise<Map<number, string[]>> {
   const result = await pool.query<{ experience_id: number; wikidata_item: string }>(
-    `SELECT el.experience_id, el.wikidata_item
-       FROM experience_locations el
+    // Under every place that shows the point, so a part's item is its site's too (ADR-0100).
+    `SELECT pp.place_id AS experience_id, el.wikidata_item
+       FROM ${placePointsSql()} pp
+       JOIN experience_locations el ON el.id = pp.location_id
       WHERE el.wikidata_item IS NOT NULL AND el.merged_into_id IS NULL`,
   );
   const bySite = new Map<number, string[]>();

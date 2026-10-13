@@ -187,7 +187,7 @@ describe('a withdrawal the run replaced waits for the point that replaces it', (
     // The half that makes the pairing mean anything. Without it the row would be
     // paired and withdrawn in the same transaction.
     expect(only(statements, MARK))
-      .toMatch(/NOT EXISTS \(\s*SELECT 1 FROM experience_locations waiting\s*WHERE waiting\.experience_id = \$1\s*AND waiting\.withdrawal_deferred_for_location_id = el\.id/);
+      .toMatch(/NOT EXISTS \(\s*SELECT 1 FROM experience_locations waiting\s*WHERE waiting\.experience_id = ANY\(ARRAY\(SELECT unnest\(ARRAY\[\$1::int\]\)[\s\S]*?\)\)\s*AND waiting\.withdrawal_deferred_for_location_id = el\.id/);
   });
 
   it('lets go of a pairing whose point the source is offering again', async () => {
@@ -216,8 +216,8 @@ describe('a withdrawal the run replaced waits for the point that replaces it', (
     // foreign key does not say a pairing stays inside one object; the writer does,
     // and every statement that walks the pairing says so itself rather than
     // trusting the others.
-    expect(unpair).toMatch(/n\.experience_id = \$1/);
-    expect(unpair).toMatch(/old\.experience_id = \$1/);
+    expect(unpair).toMatch(/n\.experience_id = ANY\(ARRAY\(SELECT unnest\(ARRAY\[\$1::int\]\)/);
+    expect(unpair).toMatch(/old\.experience_id = ANY\(ARRAY\(SELECT unnest\(ARRAY\[\$1::int\]\)/);
   });
 
   it('lets go of a pairing whose replacement the source withdrew in turn', async () => {
@@ -247,7 +247,7 @@ describe('a withdrawal the run replaced waits for the point that replaces it', (
     const hold = only(statements, HOLD);
     expect(hold).toMatch(/SET ordinal = NULL/);
     expect(hold).not.toMatch(/missing_since = NOW/);
-    expect(hold).toMatch(/(?<!NOT )EXISTS \(\s*SELECT 1 FROM experience_locations waiting\s*WHERE waiting\.experience_id = \$1/);
+    expect(hold).toMatch(/(?<!NOT )EXISTS \(\s*SELECT 1 FROM experience_locations waiting\s*WHERE waiting\.experience_id = ANY\(ARRAY\(SELECT unnest\(ARRAY\[\$1::int\]\)/);
     // And it says nothing about a row the pairing kept. Membership of `paired`, not
     // nearness: a row that lost the pairing to a nearer one is *near* the incoming point
     // and must still lose its place, or it stays in the list as a second pin beside
