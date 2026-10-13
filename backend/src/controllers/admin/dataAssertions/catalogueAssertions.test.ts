@@ -210,8 +210,9 @@ describe('visits on places no reader is shown', () => {
   const assertion = byId('visits-on-places-no-reader-is-shown');
   const sql = collapse(assertion.sql);
 
-  it('negates the reader composite rather than a chosen part of it', () => {
-    expect(sql).toContain(`NOT (${collapse(offeredToReaderSql())})`);
+  it('negates the reader composite rather than a chosen part of it, over every place that shows the point', () => {
+    expect(sql).toContain('WHERE NOT EXISTS (SELECT 1 FROM');
+    expect(sql).toContain(collapse(offeredToReaderSql('shower')));
   });
 
   it('counts by place and never reads the person, whose whereabouts are not a maintainer\'s', () => {

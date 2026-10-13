@@ -2,13 +2,17 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from './index.js';
 import {
   getExperienceLocations, getExperienceVisitedStatus, getRegionExperienceLocations, getVisitedLocationIds,
+  markLocationVisited, unmarkLocationVisited,
 } from '../controllers/experience/experienceLocationController.js';
+import { getReviewQueue } from '../controllers/experience/reviewQueueController.js';
+import { catalogueAssertions } from '../controllers/admin/dataAssertions/catalogueAssertions.js';
 import { getExperiencesByRegion } from '../controllers/experience/experienceQueryController.js';
 import { queryComponentItems } from '../controllers/experience/reviewQueueComponentItems.js';
 import { getWorldPoints } from '../controllers/experience/worldPointsController.js';
 import { assignExperiencesToRegions, assignRegionsForExperiences } from '../services/sync/regionAssignmentService.js';
 import {
-  experienceLocationsQuerySchema, experiencesByRegionQuerySchema, regionLocationsQuerySchema, worldPointsQuerySchema,
+  experienceLocationsQuerySchema, experiencesByRegionQuerySchema, regionLocationsQuerySchema, reviewQueueQuerySchema,
+  worldPointsQuerySchema,
 } from '../types/index.js';
 
 /**
@@ -24,18 +28,21 @@ import {
 const SITE = 9890;
 const KARNAK = 9891;
 const TRAVELLER = '00000000-0000-4000-8000-000000009890';
+const ADMIN = '00000000-0000-4000-8000-000000009891';
 /** A world view of its own holding Karnak's region, so the site reaches it only through its part. */
 const KARNAK_WORLD_VIEW = 9890;
 const KARNAK_REGION = 9890;
 
 let regionId = 0;
 let userId = 0;
+let adminId = 0;
+let membershipId = 0;
 let luxorPoint = 0;
 let karnakPoint = 0;
 
 async function clear(): Promise<void> {
   await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [[SITE, KARNAK]]);
-  await pool.query('DELETE FROM users WHERE uuid = $1', [TRAVELLER]);
+  await pool.query('DELETE FROM users WHERE uuid = ANY($1::text[])', [[TRAVELLER, ADMIN]]);
   await pool.query('DELETE FROM regions WHERE world_view_id = $1', [KARNAK_WORLD_VIEW]);
   await pool.query('DELETE FROM world_views WHERE id = $1', [KARNAK_WORLD_VIEW]);
 }
@@ -75,9 +82,12 @@ beforeEach(async () => {
   userId = (await pool.query<{ id: number }>(
     `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'A traveller', 'user') RETURNING id`, [TRAVELLER],
   )).rows[0].id;
+  adminId = (await pool.query<{ id: number }>(
+    `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'An admin', 'admin') RETURNING id`, [ADMIN],
+  )).rows[0].id;
 
   await place(SITE, 'Ancient Thebes with its Necropolis (parts fixture)', 32.6396, 25.7188);
-  const membership = (await pool.query<{ id: number }>(
+  const membership = membershipId = (await pool.query<{ id: number }>(
     `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
      SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.id = 1 RETURNING id`,
     [SITE, `${SITE}-fixture`],
@@ -211,5 +221,55 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
       [karnakPoint, KARNAK_REGION])).rowCount).toBe(0);
     expect((await pool.query('SELECT 1 FROM experience_regions WHERE experience_id = $1 AND region_id = $2',
       [SITE, KARNAK_REGION])).rowCount).toBe(0);
+  });
+
+  it("keeps the site in its region's list on its part's point alone (#1428)", async () => {
+    await pool.query(`UPDATE experience_regions SET assignment_type = 'auto' WHERE experience_id = $1`, [SITE]);
+    await pool.query('DELETE FROM experience_location_regions WHERE location_id = $1', [luxorPoint]);
+    const list = await getExperiencesByRegion({
+      params: { regionId }, query: experiencesByRegionQuerySchema.parse({ includeChildren: 'false' }), caller: undefined,
+    });
+    expect(list.experiences.map(e => e.id)).toContain(SITE);
+  });
+
+  it('counts a tick on the part on the site, and takes it back from the site (#1428)', async () => {
+    const marked = await markLocationVisited({ params: { locationId: karnakPoint }, body: {}, caller: traveller() });
+    expect(marked).toMatchObject({ locationId: karnakPoint, experienceId: SITE });
+    const held = 'SELECT experience_id FROM user_visited_experiences WHERE user_id = $1 ORDER BY experience_id';
+    expect((await pool.query(held, [userId])).rows).toEqual([{ experience_id: SITE }]);
+
+    await unmarkLocationVisited({ params: { locationId: karnakPoint }, caller: traveller() });
+    expect((await pool.query(held, [userId])).rows).toEqual([]);
+  });
+
+  it("raises the site's card for its part's unread point (#1428)", async () => {
+    // A second point of the part, unread: the Hypostyle Hall as the source now lists it.
+    await pool.query(
+      `INSERT INTO experience_locations (experience_id, name, location, curation_state)
+       VALUES ($1, 'Great Hypostyle Hall', ST_SetSRID(ST_MakePoint(32.6575, 25.7186), 4326), 'pending')`,
+      [KARNAK],
+    );
+    const queue = await getReviewQueue({
+      query: reviewQueueQuerySchema.parse({ q: 'parts fixture' }),
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    });
+    expect(queue.contents).toEqual([expect.objectContaining({ id: SITE, membership_id: membershipId })]);
+  });
+
+  it('is nothing the catalogue checks report (#1428)', async () => {
+    await pool.query(
+      'INSERT INTO experience_location_placements (location_id, membership_id) VALUES ($1, $2), ($3, $2)',
+      [luxorPoint, membershipId, karnakPoint],
+    );
+    await pool.query('INSERT INTO user_visited_locations (user_id, location_id) VALUES ($1, $2)', [userId, karnakPoint]);
+    for (const id of [
+      'place-without-membership', 'point-placed-by-another-places-membership',
+      'visits-on-places-no-reader-is-shown', 'listed-with-nowhere-to-go',
+    ]) {
+      const check = catalogueAssertions.find(a => a.id === id);
+      expect(check, id).toBeDefined();
+      const rows = (await pool.query(check!.sql)).rows;
+      expect(JSON.stringify(rows), id).not.toMatch(/parts fixture|Temple of Karnak/);
+    }
   });
 });
