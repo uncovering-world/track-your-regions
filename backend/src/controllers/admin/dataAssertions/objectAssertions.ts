@@ -27,7 +27,6 @@ import { sharedItemsSql } from '../../experience/equalItemMerges.js';
 import { count, text } from './assertion.js';
 import type { CatalogueAssertion } from './assertion.js';
 import { publishedContentSql } from '../../../db/readerPredicates.js';
-import { shownBySql } from '../../../db/placePoints.js';
 
 /**
  * One fact, stored twice, asked whether the two copies still agree.
@@ -587,7 +586,9 @@ const pointPlacementOfAnotherPlace: CatalogueAssertion = {
           JOIN ${MEMBERSHIPS} m ON m.id = p.membership_id
           JOIN experiences other ON other.id = m.experience_id
          -- A membership of a place that shows the point: its own, or a site it is part of (ADR-0100).
-         WHERE NOT ${shownBySql('el', 'ARRAY[m.experience_id]')}
+         WHERE m.experience_id <> el.experience_id
+           AND NOT EXISTS (SELECT 1 FROM experience_parts prt
+                            WHERE prt.part_id = el.experience_id AND prt.whole_id = m.experience_id)
          ORDER BY e.name, el.id`,
   describe: row =>
     `Point ${count(row, 'location_id')} of ${text(row, 'experience_name')} (experience `

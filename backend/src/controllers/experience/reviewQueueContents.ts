@@ -35,7 +35,7 @@ import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 import { pointMovedToSql } from './movedPoint.js';
 import { withdrawnContainerOpenSql, withdrawnPointOpenSql } from './reviewQueuePredicates.js';
-import { pointsShownSql } from '../../db/placePoints.js';
+import { answeringPlaceSql, pointsShownSql } from '../../db/placePoints.js';
 
 /**
  * The held fields of an object's parts, as the held card carries them.
@@ -699,6 +699,10 @@ export async function queryAnsweredWithdrawals(
         FROM ${pointsShownSql('e.id', 'el')}
         WHERE (el.source_membership = 'former' OR el.existence = 'lost')
           AND NOT (${offeredLocationSql('el')})
+          -- Under the place that answers for the point, a part's under its site
+          -- (ADR-0100): the list walks every place, parts included, and a part
+          -- would otherwise carry its point on a card of its own.
+          AND ${answeringPlaceSql('el')} = e.id
       ) el
     ) answered
     WHERE answered.total > 0

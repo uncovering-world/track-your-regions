@@ -119,6 +119,16 @@ export async function getRegionExperienceLocations(
         UNION ALL
         SELECT r.id FROM regions r
         JOIN descendant_regions dr ON r.parent_region_id = dr.id
+      ),
+      -- The places the region lists, asked once for both arms of the points
+      -- (ADR-0100) rather than once per arm. The same membership the list
+      -- uses (#521): this batch answers for the rows the list is showing, so
+      -- the two ask the question the same way or the feed starts carrying an
+      -- object the list dropped.
+      region_places AS MATERIALIZED (
+        SELECT DISTINCT er.experience_id FROM experience_regions er
+        WHERE er.region_id IN (SELECT id FROM descendant_regions)
+          AND ${readerRegionMembershipSql('er.experience_id')}
       )
       ${overPlacePoints(({ from, placeId }) => `
       SELECT
@@ -160,14 +170,7 @@ export async function getRegionExperienceLocations(
         SELECT string_agg(name, ' > ' ORDER BY depth DESC) as region_path
         FROM ancestors
       ) leaf_r ON true
-      WHERE e.id IN (
-        SELECT DISTINCT er.experience_id FROM experience_regions er
-        WHERE er.region_id IN (SELECT id FROM descendant_regions)
-          -- The same membership the list uses (#521). This batch answers for
-          -- the rows the list is showing, so the two ask the question the same
-          -- way or the feed starts carrying an object the list dropped.
-          AND ${readerRegionMembershipSql('er.experience_id')}
-      )
+      WHERE e.id IN (SELECT experience_id FROM region_places)
         AND ${offeredLocationSql()}
         AND ${publishedContentSql('el')}
         ${lifecycleFilter}
@@ -176,6 +179,12 @@ export async function getRegionExperienceLocations(
     `;
   } else {
     query = `
+      -- As on the other branch: the places the region lists, asked once.
+      WITH region_places AS MATERIALIZED (
+        SELECT er.experience_id FROM experience_regions er
+        WHERE er.region_id = $1
+          AND ${readerRegionMembershipSql('er.experience_id')}
+      )
       ${overPlacePoints(({ from, placeId }) => `
       SELECT
         el.id,
@@ -216,11 +225,7 @@ export async function getRegionExperienceLocations(
         SELECT string_agg(name, ' > ' ORDER BY depth DESC) as region_path
         FROM ancestors
       ) leaf_r ON true
-      JOIN experience_regions er ON er.experience_id = e.id
-      WHERE er.region_id = $1
-        -- The same membership the list uses (#521) — see the note on the
-        -- other branch.
-        AND ${readerRegionMembershipSql()}
+      WHERE e.id IN (SELECT experience_id FROM region_places)
         AND ${offeredLocationSql()}
         AND ${publishedContentSql('el')}
         ${lifecycleFilter}
@@ -292,7 +297,9 @@ export async function getExperienceLocations(
   }>(`
     SELECT
       el.id,
-      el.experience_id,
+      -- The place asked about, which shows the point: a site's part's point is
+      -- the site's here, as on the map (ADR-0100).
+      pp.place_id AS experience_id,
       el.name,
       el.external_ref,
       el.ordinal,

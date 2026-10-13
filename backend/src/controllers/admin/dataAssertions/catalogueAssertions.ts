@@ -419,7 +419,8 @@ const offeredPlaceInNoRegion: CatalogueAssertion = {
                e.id AS experience_id,
                e.name AS experience_name
           FROM experience_locations el
-          JOIN experiences e ON e.id = el.experience_id
+          -- Named by the object a reader finds it under: a part's site (ADR-0100).
+          JOIN experiences e ON e.id = ${answeringPlaceSql()}
          WHERE ${offeredLocationSql()}
            AND el.refused_at IS NULL
            AND NOT EXISTS (SELECT 1 FROM experience_location_regions r
