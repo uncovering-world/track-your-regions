@@ -16,6 +16,7 @@
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 import type { CheckValue } from '../../db/schema.generated.js';
+import { shownBySql } from '../../db/placePoints.js';
 
 /** What Jev can say of a candidate: the item is the component, or another place. */
 export type Judgement = CheckValue<'experience_component_item_suggestions', 'judgement'>;
@@ -63,7 +64,7 @@ export async function recordComponentItemSuggestions(
             AS s(proposal_id, judgement, confidence, probabilities, input_tokens)
        JOIN experience_component_item_proposals p ON p.id = s.proposal_id
        JOIN experience_locations el ON el.id = p.location_id
-      WHERE el.experience_id = $1`,
+      WHERE ${shownBySql('el', 'ARRAY[$1::int]')}`,
     [
       lock.id, model,
       suggestions.map(s => s.proposalId), suggestions.map(s => s.judgement), suggestions.map(s => s.confidence),

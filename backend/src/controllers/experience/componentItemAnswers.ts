@@ -17,6 +17,7 @@
 import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 import type { CheckValue } from '../../db/schema.generated.js';
+import { shownBySql } from '../../db/placePoints.js';
 
 /** The two answers a candidate takes, in the table's own words. */
 export type ProposalAnswer = CheckValue<'experience_component_item_proposals', 'answer'>;
@@ -46,7 +47,7 @@ export async function answerProposals(
     `UPDATE experience_component_item_proposals p
         SET answer = $3, answered_by = $4, answered_at = NOW()
        FROM experience_locations el
-      WHERE el.id = p.location_id AND el.experience_id = $1
+      WHERE el.id = p.location_id AND ${shownBySql('el', 'ARRAY[$1::int]')}
         AND p.id = ANY($2::int[]) AND p.answer IS NULL
       RETURNING p.id, p.location_id, p.wikidata_item, p.item_label`,
     [lock.id, proposalIds, answer, userId],
@@ -69,7 +70,7 @@ export async function clearMootProposals(
   const result = await client.query(
     `DELETE FROM experience_component_item_proposals p
       USING experience_locations el
-      WHERE el.id = p.location_id AND el.experience_id = $1 AND p.answer IS NULL
+      WHERE el.id = p.location_id AND ${shownBySql('el', 'ARRAY[$1::int]')} AND p.answer IS NULL
         AND (p.location_id = ANY($2::int[]) OR p.wikidata_item = ANY($3::text[]))`,
     [lock.id, locationIds, items],
   );
@@ -96,7 +97,7 @@ export async function reopenConfirmed(
     `UPDATE experience_component_item_proposals p
         SET answer = NULL, answered_by = NULL, answered_at = NULL, taken_back_at = NOW()
        FROM experience_locations el
-      WHERE el.id = p.location_id AND el.experience_id = $1
+      WHERE el.id = p.location_id AND ${shownBySql('el', 'ARRAY[$1::int]')}
         AND p.location_id = $2 AND p.wikidata_item = $3`,
     [lock.id, locationId, item],
   );

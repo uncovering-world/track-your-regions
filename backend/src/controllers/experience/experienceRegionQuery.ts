@@ -26,6 +26,7 @@ import { placeKindsSql, rowKindJoinSql, rowKindSelectSql } from '../../db/member
 import { isNewSql } from './experienceNewBadge.js';
 import { dangerSelectSql } from './experienceDanger.js';
 import { findsOnViewCountSql } from './siteFinds.js';
+import { shownBySql } from '../../db/placePoints.js';
 
 /**
  * The two statements a region read needs, and their parameters.
@@ -150,7 +151,7 @@ export function buildRegionQueries(opts: {
         -- deliberate, not a bug to close: this number answers what the
         -- catalogue offers, the by-id read answers what one caller may see.
         (SELECT COUNT(*)::int FROM experience_locations el
-           WHERE el.experience_id = e.id AND ${offeredLocationSql()}
+           WHERE ${shownBySql('el', 'ARRAY[e.id]')} AND ${offeredLocationSql()}
              AND ${publishedContentSql('el')}) as location_count,
         -- What a reader can look at inside: the offered, published works of
         -- the place (ADR-0044's offeredLinkSql, ADR-0025's published state on
@@ -235,7 +236,7 @@ export function buildRegionQueries(opts: {
         -- deliberate, not a bug to close: this number answers what the
         -- catalogue offers, the by-id read answers what one caller may see.
         (SELECT COUNT(*)::int FROM experience_locations el
-           WHERE el.experience_id = e.id AND ${offeredLocationSql()}
+           WHERE ${shownBySql('el', 'ARRAY[e.id]')} AND ${offeredLocationSql()}
              AND ${publishedContentSql('el')}) as location_count,
         -- What a reader can look at inside: the offered, published works of
         -- the place (ADR-0044's offeredLinkSql, ADR-0025's published state on

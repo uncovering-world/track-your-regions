@@ -49,6 +49,7 @@
  */
 
 import { placeAdmittedSql, placeOfferedSql, rowKindJoinSql } from './membership.js';
+import { shownBySql } from './placePoints.js';
 
 /**
  * Hides `lost` objects. `alias` is the `experiences` alias in the query.
@@ -213,7 +214,7 @@ export function readerPositionSql(alias = 'e', maySeeUnreadParam?: string): stri
     ? `(${maySeeUnreadParam}::boolean OR ${publishedContentSql('el')})`
     : publishedContentSql('el');
   const nearestPlace = `(SELECT el.location FROM experience_locations el
-      WHERE el.experience_id = ${alias}.id
+      WHERE ${shownBySql('el', `ARRAY[${alias}.id]`)}
         AND ${offeredLocationSql()} AND ${unreadGate}
       ORDER BY el.location::geography <-> ${alias}.location::geography, el.id
       LIMIT 1)`;

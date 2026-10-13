@@ -32,10 +32,11 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { placeOfSourceSql } from '../../db/membership.js';
+import { MEMBERSHIPS } from '../../db/membership.js';
 import {
   assignExperiencesToRegions, assignRegionsForExperiences, cancelAssignment, getAssignmentStatus,
 } from './regionAssignmentService.js';
+import { shownBySql } from '../../db/placePoints.js';
 
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
 
@@ -58,10 +59,13 @@ function fakeClient(answer: (sql: string) => void = () => {}) {
   return { client, statements, calls };
 }
 
-// The places the source has a membership on, never the place's own
-// source_id, which names only the source that first brought the row (ADR-0084).
-const ONE_SOURCE = `AND ${placeOfSourceSql('e', '$2')}`;
-const THESE_EXPERIENCES = 'AND el.experience_id = ANY($2::int[])';
+// The points of the places the source has a membership on, never of the
+// place's own source_id, which names only the source that first brought the
+// row (ADR-0084) — their own points and their parts' (ADR-0100).
+const SOURCE_PLACES = `ARRAY(SELECT experience_id FROM ${MEMBERSHIPS} WHERE source_id = $2)`;
+const ONE_SOURCE = `AND ${shownBySql('el', SOURCE_PLACES)}`;
+// The given places' points, their own and their parts' (ADR-0100).
+const THESE_EXPERIENCES = `AND ${shownBySql('el', '$2::int[]')}`;
 
 /** The direct step is the insert that reads the leaves' pieces; the ancestor walk inserts too. */
 const isDirect = (sql: string) =>

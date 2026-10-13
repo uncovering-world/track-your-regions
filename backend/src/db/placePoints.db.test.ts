@@ -1,0 +1,215 @@
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { pool } from './index.js';
+import {
+  getExperienceLocations, getExperienceVisitedStatus, getRegionExperienceLocations, getVisitedLocationIds,
+} from '../controllers/experience/experienceLocationController.js';
+import { getExperiencesByRegion } from '../controllers/experience/experienceQueryController.js';
+import { queryComponentItems } from '../controllers/experience/reviewQueueComponentItems.js';
+import { getWorldPoints } from '../controllers/experience/worldPointsController.js';
+import { assignExperiencesToRegions, assignRegionsForExperiences } from '../services/sync/regionAssignmentService.js';
+import {
+  experienceLocationsQuerySchema, experiencesByRegionQuerySchema, regionLocationsQuerySchema, worldPointsQuerySchema,
+} from '../types/index.js';
+
+/**
+ * The points a place shows are its own and its parts' (ADR-0100), against
+ * PostgreSQL: Ancient Thebes holds the Luxor Temple as its own point and the
+ * Temple of Karnak as a part place, and every reader of the site's points —
+ * the map, the place's own read, the region's list and its count, a
+ * traveller's visits and progress, the curator's card and region placement —
+ * answers with both, under the site. The part has no membership of its own,
+ * so nothing offers it as a place of its own.
+ */
+
+const SITE = 9890;
+const KARNAK = 9891;
+const TRAVELLER = '00000000-0000-4000-8000-000000009890';
+/** A world view of its own holding Karnak's region, so the site reaches it only through its part. */
+const KARNAK_WORLD_VIEW = 9890;
+const KARNAK_REGION = 9890;
+
+let regionId = 0;
+let userId = 0;
+let luxorPoint = 0;
+let karnakPoint = 0;
+
+async function clear(): Promise<void> {
+  await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [[SITE, KARNAK]]);
+  await pool.query('DELETE FROM users WHERE uuid = $1', [TRAVELLER]);
+  await pool.query('DELETE FROM regions WHERE world_view_id = $1', [KARNAK_WORLD_VIEW]);
+  await pool.query('DELETE FROM world_views WHERE id = $1', [KARNAK_WORLD_VIEW]);
+}
+
+async function place(id: number, name: string, lon: number, lat: number): Promise<void> {
+  await pool.query(
+    `INSERT INTO experiences (id, source_id, external_id, name, location)
+     VALUES ($1, 1, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326))`,
+    [id, `${id}-fixture`, name, lon, lat],
+  );
+}
+
+async function point(placeId: number, name: string, ref: string, lon: number, lat: number, region: number): Promise<number> {
+  const row = await pool.query<{ id: number }>(
+    `INSERT INTO experience_locations (experience_id, name, external_ref, ordinal, location, curation_state)
+     VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326), 'auto') RETURNING id`,
+    [placeId, name, ref, ref.endsWith('1') ? 1 : 2, lon, lat],
+  );
+  await pool.query(
+    `INSERT INTO experience_location_regions (location_id, region_id, assignment_type) VALUES ($1, $2, 'manual')`,
+    [row.rows[0].id, region],
+  );
+  return row.rows[0].id;
+}
+
+beforeEach(async () => {
+  await clear();
+  regionId = (await pool.query<{ id: number }>('SELECT id FROM regions ORDER BY id LIMIT 1')).rows[0].id;
+  await pool.query(
+    `INSERT INTO world_views (id, name, is_default, tile_version) VALUES ($1, 'Parts fixture', false, 0)`,
+    [KARNAK_WORLD_VIEW],
+  );
+  await pool.query(
+    `INSERT INTO regions (id, world_view_id, name) VALUES ($1, $2, 'Karnak (parts fixture)')`,
+    [KARNAK_REGION, KARNAK_WORLD_VIEW],
+  );
+  userId = (await pool.query<{ id: number }>(
+    `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'A traveller', 'user') RETURNING id`, [TRAVELLER],
+  )).rows[0].id;
+
+  await place(SITE, 'Ancient Thebes with its Necropolis (parts fixture)', 32.6396, 25.7188);
+  const membership = (await pool.query<{ id: number }>(
+    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+     SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.id = 1 RETURNING id`,
+    [SITE, `${SITE}-fixture`],
+  )).rows[0].id;
+  await pool.query(
+    `INSERT INTO experience_regions (experience_id, region_id, assignment_type) VALUES ($1, $2, 'manual')`,
+    [SITE, regionId],
+  );
+  luxorPoint = await point(SITE, 'Luxor Temple', '87-002', 32.6390, 25.6995, regionId);
+
+  await place(KARNAK, 'Temple of Karnak', 32.6573, 25.7188);
+  karnakPoint = await point(KARNAK, 'Temple of Karnak', '87-001', 32.6573, 25.7188, regionId);
+  await pool.query(
+    `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref)
+     VALUES ($1, $2, 'component', $3, '87-001')`,
+    [SITE, KARNAK, membership],
+  );
+});
+
+afterAll(async () => {
+  await clear();
+  await pool.end();
+});
+
+const traveller = () => ({ id: userId, role: 'user' }) as Express.User;
+
+describe("a place's points are its own and its parts' (ADR-0100)", () => {
+  it('draws the part on the map under the site, and the part alone nowhere', async () => {
+    const { locationsByExperience } = await getRegionExperienceLocations({
+      params: { regionId }, query: regionLocationsQuerySchema.parse({}),
+    });
+    expect(locationsByExperience[SITE]?.map(l => l.id).sort()).toEqual([luxorPoint, karnakPoint].sort());
+    expect(locationsByExperience[KARNAK]).toBeUndefined();
+
+    const world = await getWorldPoints({ query: worldPointsQuerySchema.parse({ detail: 'markers' }) });
+    const shown = (world.locationId ?? []).flatMap((id, i) => (id === luxorPoint || id === karnakPoint
+      ? [[id, world.experienceId?.[i]]] : []));
+    expect(shown.sort()).toEqual([[luxorPoint, SITE], [karnakPoint, SITE]].sort());
+
+    const folded = await getWorldPoints({ query: worldPointsQuerySchema.parse({ detail: 'markers', folded: 'true' }) });
+    const site = (folded.experienceId ?? []).indexOf(SITE);
+    expect(folded.locationCount?.[site]).toBe(2);
+    expect(folded.experienceId).not.toContain(KARNAK);
+  });
+
+  it("reads both points as the site's own, counts them in the region's list, and names both on the curator's card", async () => {
+    const own = await getExperienceLocations({
+      params: { id: SITE }, query: experienceLocationsQuerySchema.parse({}), caller: undefined,
+    });
+    expect(own.locations.map(l => l.name)).toEqual(['Temple of Karnak', 'Luxor Temple']);
+
+    const list = await getExperiencesByRegion({
+      params: { regionId }, query: experiencesByRegionQuerySchema.parse({ includeChildren: 'false' }), caller: undefined,
+    });
+    expect(list.experiences.find(e => e.id === SITE)?.location_count).toBe(2);
+    expect(list.experiences.find(e => e.id === KARNAK)).toBeUndefined();
+
+    await pool.query(
+      `INSERT INTO experience_component_item_proposals
+              (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
+       VALUES ($1, 'Q9891', 'Karnak Temple Complex', 125, 0.62, false, 'near')`,
+      [karnakPoint],
+    );
+    const card = (await queryComponentItems([SITE])).rows[0];
+    expect(card.component_items.map((c: { locationId: number }) => c.locationId)).toEqual([karnakPoint]);
+    expect(card.offered_locations).toBe(2);
+    expect(card.site_points.map((p: { locationId: number }) => p.locationId)).toEqual([karnakPoint, luxorPoint]);
+  });
+
+  it("counts a visit to the part in the site's progress, once", async () => {
+    await pool.query('INSERT INTO user_visited_locations (user_id, location_id) VALUES ($1, $2)', [userId, karnakPoint]);
+
+    const status = await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() });
+    expect(status).toMatchObject({ totalLocations: 2, visitedLocations: 1 });
+
+    const visited = await getVisitedLocationIds({ query: { experienceId: SITE }, caller: traveller() });
+    expect(visited).toEqual({ visitedLocationIds: [karnakPoint], byExperience: { [SITE]: [karnakPoint] }, total: 1 });
+  });
+
+  it("places the site wherever one of its parts' points is", async () => {
+    await pool.query(
+      `INSERT INTO experience_location_regions (location_id, region_id, assignment_type) VALUES ($1, $2, 'manual')`,
+      [karnakPoint, KARNAK_REGION],
+    );
+    await assignRegionsForExperiences([SITE], KARNAK_WORLD_VIEW);
+    const regions = await pool.query<{ region_id: number }>(
+      `SELECT DISTINCT elr.region_id FROM experience_location_regions elr
+        WHERE elr.location_id = $1
+       EXCEPT SELECT er.region_id FROM experience_regions er WHERE er.experience_id = $2`,
+      [karnakPoint, SITE],
+    );
+    expect(regions.rows).toEqual([]);
+    expect((await pool.query('SELECT 1 FROM experience_regions WHERE experience_id = $1 AND region_id = $2',
+      [SITE, KARNAK_REGION])).rowCount).toBe(1);
+  });
+
+  it('places the part again too when the site is placed again', async () => {
+    // A part with a kind of its own has a list row, read through its own regions.
+    await pool.query(
+      `INSERT INTO experience_location_regions (location_id, region_id, assignment_type) VALUES ($1, $2, 'manual')`,
+      [karnakPoint, KARNAK_REGION],
+    );
+    await assignRegionsForExperiences([SITE], KARNAK_WORLD_VIEW);
+    expect((await pool.query('SELECT 1 FROM experience_regions WHERE experience_id = $1 AND region_id = $2',
+      [KARNAK, KARNAK_REGION])).rowCount).toBe(1);
+  });
+
+  it('places the site again when only its part is placed again', async () => {
+    await pool.query(
+      `INSERT INTO experience_location_regions (location_id, region_id, assignment_type) VALUES ($1, $2, 'manual')`,
+      [karnakPoint, KARNAK_REGION],
+    );
+    await assignRegionsForExperiences([KARNAK], KARNAK_WORLD_VIEW);
+    expect((await pool.query('SELECT 1 FROM experience_regions WHERE experience_id = $1 AND region_id = $2',
+      [SITE, KARNAK_REGION])).rowCount).toBe(1);
+  });
+
+  it("clears a part's stale placement when the site's source is placed again", async () => {
+    // Karnak's point left the region its automatic row still names; the part
+    // has no World Heritage membership, so the source reaches it through the site.
+    await pool.query(
+      `INSERT INTO experience_location_regions (location_id, region_id, assignment_type) VALUES ($1, $2, 'auto')`,
+      [karnakPoint, KARNAK_REGION],
+    );
+    await pool.query(
+      `INSERT INTO experience_regions (experience_id, region_id, assignment_type) VALUES ($1, $2, 'auto')`,
+      [SITE, KARNAK_REGION],
+    );
+    await assignExperiencesToRegions(KARNAK_WORLD_VIEW, 1);
+    expect((await pool.query('SELECT 1 FROM experience_location_regions WHERE location_id = $1 AND region_id = $2',
+      [karnakPoint, KARNAK_REGION])).rowCount).toBe(0);
+    expect((await pool.query('SELECT 1 FROM experience_regions WHERE experience_id = $1 AND region_id = $2',
+      [SITE, KARNAK_REGION])).rowCount).toBe(0);
+  });
+});

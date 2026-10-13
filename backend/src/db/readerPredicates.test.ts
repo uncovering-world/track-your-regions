@@ -228,7 +228,7 @@ describe('readerPositionSql', () => {
   });
 
   it('takes the alias it is given, so a query with another name for the table is not silently wrong', () => {
-    expect(readerPositionSql('x')).toContain('el.experience_id = x.id');
+    expect(readerPositionSql('x')).toContain('el.experience_id = ANY(ARRAY(SELECT unnest(ARRAY[x.id])');
     expect(readerPositionSql('x')).toContain('ORDER BY el.location::geography <-> x.location::geography');
   });
 });
