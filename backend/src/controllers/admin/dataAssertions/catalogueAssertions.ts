@@ -60,6 +60,7 @@ import {
   publishedContentSql,
 } from '../../../db/readerPredicates.js';
 import { MEMBERSHIPS } from '../../../db/membership.js';
+import { answeringPlaceSql, placePointsSql, shownBySql } from '../../../db/placePoints.js';
 import { heldWaitingSql } from '../../experience/waitingCounts.js';
 import { heldFieldRefusedSql, heldPartRefusedSql } from '../../experience/heldDecisions.js';
 import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
@@ -162,11 +163,11 @@ const withdrawnBesideItsReplacement: CatalogueAssertion = {
                ST_Distance(ghost.location::geography, survivor.location::geography) AS metres
           FROM experience_locations ghost
           JOIN experience_locations survivor
-            ON survivor.experience_id = ghost.experience_id
+            ON ${answeringPlaceSql('survivor')} = ${answeringPlaceSql('ghost')}
            AND survivor.id <> ghost.id
            AND ${offeredLocationSql('survivor')}
            AND ${samePlaceSql('ghost', 'survivor')}
-          JOIN experiences e ON e.id = ghost.experience_id
+          JOIN experiences e ON e.id = ${answeringPlaceSql('ghost')}
          WHERE ghost.missing_since IS NOT NULL
            AND ${publishedContentSql('ghost')}
          ORDER BY e.name, ghost.id`,
@@ -213,11 +214,11 @@ const twoOfferedPlacesAtOneReference: CatalogueAssertion = {
                ST_Distance(first.location::geography, second.location::geography) AS metres
           FROM experience_locations first
           JOIN experience_locations second
-            ON second.experience_id = first.experience_id
+            ON ${answeringPlaceSql('second')} = ${answeringPlaceSql('first')}
            AND second.id > first.id
            AND ${offeredLocationSql('second')}
            AND ${samePlaceSql('first', 'second')}
-          JOIN experiences e ON e.id = first.experience_id
+          JOIN experiences e ON e.id = ${answeringPlaceSql('first')}
          WHERE ${offeredLocationSql('first')}
          ORDER BY e.name, first.id`,
   describe: row => {
@@ -266,12 +267,12 @@ const listedWithNowhereToGo: CatalogueAssertion = {
                e.name AS experience_name,
                e.external_id AS external_id,
                (SELECT count(*) FROM experience_locations el
-                 WHERE el.experience_id = e.id) AS places_held
+                 WHERE ${shownBySql('el', 'ARRAY[e.id]')}) AS places_held
           FROM experiences e
          WHERE ${hideLostSql()}
            AND ${experienceOfferedToReaderSql()}
            AND NOT EXISTS (SELECT 1 FROM experience_locations el
-                            WHERE el.experience_id = e.id
+                            WHERE ${shownBySql('el', 'ARRAY[e.id]')}
                               AND ${offeredLocationSql()}
                               AND ${publishedContentSql('el')})
          ORDER BY e.name`,
@@ -313,8 +314,11 @@ const visitsOnPlacesNoReaderIsShown: CatalogueAssertion = {
                count(*) AS ticks
           FROM user_visited_locations v
           JOIN experience_locations el ON el.id = v.location_id
-          JOIN experiences e ON e.id = el.experience_id
-         WHERE NOT (${offeredToReaderSql()})
+          JOIN experiences e ON e.id = ${answeringPlaceSql()}
+         -- Shown by no offered place: neither its own nor a site it is part of (ADR-0100).
+         WHERE NOT EXISTS (SELECT 1 FROM ${placePointsSql()} pp
+                             JOIN experiences shower ON shower.id = pp.place_id
+                            WHERE pp.location_id = el.id AND ${offeredToReaderSql('shower')})
          GROUP BY el.id, el.name, e.name
          ORDER BY count(*) DESC, e.name`,
   describe: row => {
@@ -617,7 +621,7 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
                          CROSS JOIN LATERAL jsonb_array_elements(
                            COALESCE(ch.contents -> 'locations' -> 'changed', '[]'::jsonb)) AS c
                          CROSS JOIN LATERAL jsonb_array_elements(c -> 'fields') AS f
-                        WHERE e.id = el.experience_id
+                        WHERE e.id = ${answeringPlaceSql()}
                           AND ${heldWaitingSql('e', 'm')}
                           AND c -> 'item' ->> 'ref' = el.external_ref
                           AND f ->> 'field' = 'metadata.imageCredit'

@@ -27,6 +27,7 @@ import { sharedItemsSql } from '../../experience/equalItemMerges.js';
 import { count, text } from './assertion.js';
 import type { CatalogueAssertion } from './assertion.js';
 import { publishedContentSql } from '../../../db/readerPredicates.js';
+import { shownBySql } from '../../../db/placePoints.js';
 
 /**
  * One fact, stored twice, asked whether the two copies still agree.
@@ -415,6 +416,8 @@ const placeWithoutMembership: CatalogueAssertion = {
          )
            -- A place folded into another by a merge keeps none, by design (ADR-0086).
            AND e.merged_into_id IS NULL
+           -- Nor does a part, which is offered through its whole (ADR-0100 decision 2).
+           AND NOT EXISTS (SELECT 1 FROM experience_parts prt WHERE prt.part_id = e.id)
          ORDER BY e.name`,
   describe: row =>
     `${text(row, 'experience_name')}: keyed on ${text(row, 'source_name')} and a member of no `
@@ -572,7 +575,8 @@ const pointPlacementOfAnotherPlace: CatalogueAssertion = {
     'A point of a place is recorded as placed by a membership that belongs to a different place. No run '
     + 'of this place can take that placement away, so the pin stays on the map after every source of the '
     + 'place has stopped offering it. A merge that moved the point without its placement, or a placement '
-    + 'written by hand, leaves this; the placement belongs to a membership of the point\'s own place.',
+    + 'written by hand, leaves this; the placement belongs to a membership of the point\'s own place, or of '
+    + 'the site the place is part of.',
   sql: `SELECT e.id AS experience_id,
                e.name AS experience_name,
                el.id AS location_id,
@@ -582,7 +586,8 @@ const pointPlacementOfAnotherPlace: CatalogueAssertion = {
           JOIN experiences e ON e.id = el.experience_id
           JOIN ${MEMBERSHIPS} m ON m.id = p.membership_id
           JOIN experiences other ON other.id = m.experience_id
-         WHERE m.experience_id <> el.experience_id
+         -- A membership of a place that shows the point: its own, or a site it is part of (ADR-0100).
+         WHERE NOT ${shownBySql('el', 'ARRAY[m.experience_id]')}
          ORDER BY e.name, el.id`,
   describe: row =>
     `Point ${count(row, 'location_id')} of ${text(row, 'experience_name')} (experience `

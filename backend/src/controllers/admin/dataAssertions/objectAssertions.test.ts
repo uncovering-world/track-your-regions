@@ -294,9 +294,9 @@ describe('a point placed by a membership of another place', () => {
   const assertion = byId('point-placed-by-another-places-membership');
   const sql = collapse(assertion.sql);
 
-  it('compares the placing membership\'s place with the point\'s own', () => {
+  it('compares the placing membership\'s place with the places that show the point', () => {
     expect(sql).toContain('FROM experience_location_placements p');
-    expect(sql).toContain('WHERE m.experience_id <> el.experience_id');
+    expect(sql).toContain('WHERE NOT el.experience_id = ANY(ARRAY(SELECT unnest(ARRAY[m.experience_id])');
     expect(assertion.kind).toBe('invariant');
   });
 

@@ -19,6 +19,7 @@ import type {
 } from '../../../db/schema.generated.js';
 import { countedMembershipSql } from '../../experience/experienceCounts.js';
 import { venuesShowingSql } from '../../experience/siteFinds.js';
+import { placePointsSql } from '../../../db/placePoints.js';
 
 export type KindRow = Pick<CoverageKindsRow, 'slug' | 'name' | 'form' | 'status' | 'experience_kind_id' | 'issue_number' | 'in_venue'> & {
   /** The sitelinks a place needs to enter this kind's world tier, where its source states one. */
@@ -127,7 +128,9 @@ const NEARBY_SQL = `
     JOIN experience_locations el
       ON ST_DWithin(el.location, x.location, 0.01)
      AND ST_DWithin(el.location::geography, x.location::geography, $2)
-    JOIN experiences e ON e.id = el.experience_id
+    -- Under every place that shows the point, a part's site included (ADR-0100).
+    JOIN ${placePointsSql()} pp ON pp.location_id = el.id
+    JOIN experiences e ON e.id = pp.place_id
    WHERE x.location IS NOT NULL
      AND ($1::text[] IS NULL OR x.region_slug = ANY($1))
      AND ${offeredLocationSql('el')}
