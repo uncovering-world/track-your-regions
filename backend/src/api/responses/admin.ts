@@ -312,6 +312,8 @@ export type SyncLogDetail = z.infer<typeof SyncLogDetail>;
 export const SyncContentItem = z.strictObject({
   name: z.string().nullable(),
   ref: z.string().nullable(),
+  handed_by: z.string().optional()
+    .describe('The kind that handed a work to this venue, and its reason (ADR-0102): only on a work the venue gained that way.'),
 }).describe('One thing an object holds, as the record names it: never a database id (ADR-0026).');
 export type SyncContentItem = z.infer<typeof SyncContentItem>;
 

@@ -509,6 +509,7 @@ export function toContent(work: PoolWork): ProcessedContent {
     year: work.year,
     imageUrl: work.imageUrl,
     sitelinksCount: work.sitelinks,
+    ...(work.handedBy ? { handedBy: work.handedBy } : {}),
   };
 }
 

@@ -158,6 +158,8 @@ export interface ProcessedContent {
    * and removes it; an object replaces it.
    */
   foundAt?: { qid: string; label: string } | null;
+  /** The kind that handed the work to this venue, and its reason (ADR-0102); absent on a work the kind kept itself. */
+  handedBy?: string;
 }
 
 /**
@@ -280,6 +282,8 @@ export interface ErrorDetail {
 export interface ContentItem {
   name: string | null;
   ref: string | null;
+  /** Who handed a work to its venue, and why (ADR-0102): only on a work the venue gained that way. */
+  handed_by?: string;
 }
 
 /**

@@ -100,6 +100,11 @@ export interface PoolWork {
    * subclass tree, and a label cannot be asked that.
    */
   typeQid: string | null;
+  /**
+   * The kind that handed the work over, and its reason, where the venue-side
+   * read kept it because another kind refused it as held here (ADR-0102).
+   */
+  handedBy?: string;
 }
 
 /**

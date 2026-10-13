@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { keptElsewhere, readVenueSide, refusedHoldingReason } from './venueSide.js';
+import { keptElsewhere, readVenueSide, refusedHoldingReason, type HandOver } from './venueSide.js';
 import {
   collectWorks, MUSEUM_BROAD_ROOTS, MUSEUM_WHOLE_ROOTS, MUSEUM_PINNED_CLASSES,
   MUSEUM_PINNED_EDITION_CLASSES, EDITION_ROOT, type WorksCollectorOptions,
@@ -23,12 +23,14 @@ const ART: WorksCollectorOptions = {
 const LOUVRE = 'Q19675';
 const PITTI = 'Q29286';
 
-async function read(opts: WorksCollectorOptions = ART, admitted = [LOUVRE, PITTI]) {
+async function read(
+  opts: WorksCollectorOptions = ART, admitted = [LOUVRE, PITTI], handedOver?: ReadonlyMap<string, HandOver>,
+) {
   const sparql = makeSparql();
   const phases: string[] = [];
   const run = { sparql, phase: (m: string) => phases.push(m), step: async () => {} };
   const collection = await collectWorks(run, opts);
-  const out = await readVenueSide(run, collection, opts, { admitted });
+  const out = await readVenueSide(run, collection, opts, { admitted, handedOver });
   return { ...out, before: collection, sparql, phases };
 }
 
@@ -166,6 +168,80 @@ describe('readVenueSide', () => {
     expect(refused.map((r) => r.qid)).not.toContain('Q12418');
     const byId = sparql.mock.calls.map((c) => String(c[0])).filter((q) => q.includes('OPTIONAL { ?w wdt:P31 ?cls }'));
     expect(byId.some((q) => q.includes('wd:Q12418'))).toBe(false);
+  });
+
+  describe('a work another kind handed over (ADR-0102)', () => {
+    const handedTo = (heldIn: string[]): ReadonlyMap<string, HandOver> => new Map([[
+      'Q900950', { by: 'Public Art & Monuments', reason: 'inside Louvre Museum: a work of a museum, not public art', heldIn },
+    ]]);
+
+    it('keeps a holding handed over at this venue, whatever its classes, and says who handed it', async () => {
+      const { collection, kept, refused } = await read(ART, [LOUVRE, PITTI], handedTo(['Q1', LOUVRE]));
+      expect(refused.map((r) => r.qid)).not.toContain('Q900950');
+      expect(collection.afterFolds.Q900950).toEqual([LOUVRE]);
+      const named = 'Public Art & Monuments: inside Louvre Museum: a work of a museum, not public art';
+      expect(kept.get('Q900950')?.handedBy).toBe(named);
+      expect(collection.pool.get('Q900950')?.handedBy).toBe(named);
+    });
+
+    it('keeps nothing handed over to a place this read did not find it at', async () => {
+      const { kept, refused } = await read(ART, [LOUVRE, PITTI], handedTo(['Q1', PITTI]));
+      expect(kept.has('Q900950')).toBe(false);
+      expect(refused.map((r) => r.qid)).toContain('Q900950');
+    });
+
+    it('places a handed-over work only at a place the refusal named, a venue folded into it included', async () => {
+      // A rule that keeps no fresco: the one the Galleria Palatina holds is refused by its classes.
+      const opts: WorksCollectorOptions = { ...ART, keep: (work) => work.typeQid !== 'Q1476300' };
+      const fresco = (heldIn: string[]): ReadonlyMap<string, HandOver> => new Map([[
+        'Q900952', { by: 'Public Art & Monuments', reason: 'inside Palazzo Pitti: a work of a museum, not public art', heldIn },
+      ]]);
+      const atPitti = await read(opts, [LOUVRE, PITTI], fresco([PITTI]));
+      expect(atPitti.collection.placed.Q900952).toEqual(['Q866498']);
+      expect(atPitti.collection.afterFolds.Q900952).toEqual([PITTI]);
+      // Named only where the read never finds it: not handed over at all.
+      const elsewhere = await read(opts, [LOUVRE, PITTI], fresco([LOUVRE]));
+      expect(elsewhere.kept.has('Q900952')).toBe(false);
+    });
+
+    it('places a handed-over work at the venue the refusal named, not at another admitted venue its statements reach', async () => {
+      // The Great Print is in three museums' collections; the refusal named the first.
+      const opts: WorksCollectorOptions = { ...ART, keep: (work) => work.qid !== 'Q900250' };
+      const print: ReadonlyMap<string, HandOver> = new Map([[
+        'Q900250', { by: 'Public Art & Monuments', reason: 'in the collection of Print Museum A: a work of a museum', heldIn: ['Q900401'] },
+      ]]);
+      const { collection, kept } = await read(opts, ['Q900401', 'Q900402', 'Q900403'], print);
+      expect(kept.get('Q900250')?.handedBy).toBeDefined();
+      expect(collection.placed.Q900250).toEqual(['Q900401']);
+    });
+
+    it('asks again about what an earlier round refused, once it is handed over at this round\'s venue', async () => {
+      const sparql = makeSparql();
+      const run = { sparql, phase: () => {}, step: async () => {} };
+      const collection = await collectWorks(run, ART);
+      const out = await readVenueSide(run, collection, ART, {
+        admitted: [LOUVRE], skip: new Set(['Q900950']), handedOver: handedTo([LOUVRE]),
+      });
+      expect(out.kept.get('Q900950')?.handedBy).toContain('Public Art & Monuments');
+      const unhanded = await readVenueSide(run, collection, ART, { admitted: [LOUVRE], skip: new Set(['Q900950']) });
+      expect(unhanded.kept.has('Q900950')).toBe(false);
+      expect(unhanded.refused.map((r) => r.qid)).not.toContain('Q900950');
+    });
+
+    it("asks again about what the pool's own keep refused, once it is handed over here", async () => {
+      const opts: WorksCollectorOptions = {
+        ...ART,
+        noun: { work: 'find', works: 'finds' },
+        workFacts: async (_run, qids) => new Map(qids.map((qid) => [qid, { classes: [], discoveryPlace: null }])),
+        keep: (work) => work.typeQid !== 'Q3305213',
+      };
+      const monaLisa: ReadonlyMap<string, HandOver> = new Map([[
+        'Q12418', { by: 'Public Art & Monuments', reason: 'inside Louvre Museum: a work of a museum, not public art', heldIn: [LOUVRE] },
+      ]]);
+      const { before, kept } = await read(opts, [LOUVRE, PITTI], monaLisa);
+      expect(before.refusedByKeep.has('Q12418')).toBe(true);
+      expect(kept.get('Q12418')?.handedBy).toContain('Public Art & Monuments');
+    });
   });
 
   it('says what it is doing in the phase lines', async () => {

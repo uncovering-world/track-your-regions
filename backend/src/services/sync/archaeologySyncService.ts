@@ -73,6 +73,7 @@ import {
   readStoredTreasureCredits,
 } from './imageCredit.js';
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
+import { readHandOvers } from './handOvers.js';
 
 // =============================================================================
 // Fetch
@@ -92,6 +93,7 @@ async function fetchArchaeologyItems(
   const line = await readSourceLine(ARCHAEOLOGY_SOURCE_ID);
   const findsLine = contentsLine(line);
   const previousPlacements = await readPreviousPlacements(ARCHAEOLOGY_SOURCE_ID);
+  const handOvers = await readHandOvers(ARCHAEOLOGY_SOURCE_ID);
   const storedCredits = await readStoredCredits(ARCHAEOLOGY_SOURCE_ID);
   const storedTreasureCredits = await readStoredTreasureCredits();
   // What the source holds as admitted before the run, so the stay line of the
@@ -120,6 +122,8 @@ async function fetchArchaeologyItems(
           admittedMuseums,
           admittedSites,
           line,
+          // What other kinds refused as held at a museum (ADR-0102).
+          handOvers,
           onPhase: (message) => { progress.statusMessage = message; },
           checkCancel: () => {
             if (progress.cancel) throw new Error('Sync cancelled');
