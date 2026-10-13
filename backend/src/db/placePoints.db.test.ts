@@ -7,6 +7,7 @@ import {
   markLocationVisited, unmarkLocationVisited,
 } from '../controllers/experience/experienceLocationController.js';
 import { getReviewQueue } from '../controllers/experience/reviewQueueController.js';
+import { ReviewQueue } from '../api/responses/reviewQueue.js';
 import { catalogueAssertions } from '../controllers/admin/dataAssertions/catalogueAssertions.js';
 import { getExperiencesByRegion } from '../controllers/experience/experienceQueryController.js';
 import { queryComponentItems } from '../controllers/experience/reviewQueueComponentItems.js';
@@ -103,7 +104,7 @@ beforeEach(async () => {
   );
   luxorPoint = await point(SITE, 'Luxor Temple', '87-002', 32.6390, 25.6995, regionId);
 
-  await place(KARNAK, 'Temple of Karnak', 32.6573, 25.7188);
+  await place(KARNAK, 'Temple of Karnak (parts fixture)', 32.6573, 25.7188);
   karnakPoint = await point(KARNAK, 'Temple of Karnak', '87-001', 32.6573, 25.7188, regionId);
   await pool.query(
     `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref)
@@ -318,5 +319,17 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
     );
     await assignRegionsForExperiences([SITE], KARNAK_WORLD_VIEW);
     expect((await pool.query('SELECT 1 FROM experience_regions WHERE experience_id = $1', [KARNAK])).rowCount).toBe(0);
+  });
+
+  it("answers the review queue in its schema, a part's answered point on the site's card (#1424)", async () => {
+    // A curator called Karnak's point gone: the answered list walks every
+    // place, and the part would otherwise carry it on a card with no kind.
+    await pool.query(`UPDATE experience_locations SET existence = 'lost', state_decided_at = NOW() WHERE id = $1`, [karnakPoint]);
+    const queue = await getReviewQueue({
+      query: reviewQueueQuerySchema.parse({ q: 'parts fixture' }),
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    });
+    expect(ReviewQueue.safeParse(queue).success).toBe(true);
+    expect(queue.answeredWithdrawals.map(card => card.id)).toEqual([SITE]);
   });
 });
