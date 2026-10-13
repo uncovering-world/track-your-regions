@@ -32,6 +32,13 @@ const SOURCE_PLACES = `ARRAY${ONE_SOURCE_PLACES}`;
 const ONE_SOURCE_POINTS = `AND ${shownBySql('el', SOURCE_PLACES)}`;
 /** The places whose regions those points decide: every place that shows one — the source's, their parts, and the wholes they are parts of. */
 const ONE_SOURCE_PLACED = withWholesSql(madeOfSql(SOURCE_PLACES));
+/**
+ * A place is placed in a region for the lists that offer it, and only a place
+ * with a membership is offered anywhere: a part with no kind of its own is in
+ * its site's lists, not in a region's (ADR-0100), and gains regions of its own
+ * with a membership.
+ */
+const LISTED_PLACE = `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} listed WHERE listed.experience_id = pp.place_id)`;
 
 export interface AssignmentProgress {
   cancel: boolean;
@@ -289,6 +296,7 @@ async function denormalizeExperienceRegions(
     JOIN experiences e ON pp.place_id = e.id
     JOIN regions r ON elr.region_id = r.id
     WHERE r.world_view_id = $1
+      AND ${LISTED_PLACE}
       ${sourceId ? `AND pp.place_id = ANY(${ONE_SOURCE_PLACED})` : ''}
     ON CONFLICT (experience_id, region_id) DO NOTHING
   `, params);
@@ -540,6 +548,7 @@ export async function assignRegionsForExperiences(
       JOIN ${placePointsSql()} pp ON pp.location_id = elr.location_id
       JOIN regions r ON elr.region_id = r.id
       WHERE r.world_view_id = $1 AND pp.place_id = ANY(${THESE_PLACED})
+        AND ${LISTED_PLACE}
       ON CONFLICT (experience_id, region_id) DO NOTHING
     `, params);
 

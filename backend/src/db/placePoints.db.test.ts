@@ -190,7 +190,13 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
   });
 
   it('places the part again too when the site is placed again', async () => {
-    // A part with a kind of its own has a list row, read through its own regions.
+    // A part with a kind of its own has a list row, read through its own
+    // regions: the Temple of Karnak as a place of worship.
+    await pool.query(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, 'Q522862-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'`,
+      [KARNAK],
+    );
     await pool.query(
       `INSERT INTO experience_location_regions (location_id, region_id, assignment_type) VALUES ($1, $2, 'manual')`,
       [karnakPoint, KARNAK_REGION],
@@ -303,5 +309,14 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
     } finally {
       client.release();
     }
+  });
+
+  it('places no part with no kind of its own in a region: its site is the one listed (#1424)', async () => {
+    await pool.query(
+      `INSERT INTO experience_location_regions (location_id, region_id, assignment_type) VALUES ($1, $2, 'manual')`,
+      [karnakPoint, KARNAK_REGION],
+    );
+    await assignRegionsForExperiences([SITE], KARNAK_WORLD_VIEW);
+    expect((await pool.query('SELECT 1 FROM experience_regions WHERE experience_id = $1', [KARNAK])).rowCount).toBe(0);
   });
 });
