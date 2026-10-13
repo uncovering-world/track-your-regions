@@ -1089,6 +1089,31 @@ scattered like the Roças of São Tomé it can fall in open water). The dry run 
 28 records of this shape, 25 of them new inscriptions that would never have entered the
 catalogue.
 
+**A serial site's components are places, part of the site** (ADR-0100, #1424). Each component of a
+site the World Heritage list writes with more than one is a place of its own point, held by the site
+through `experience_parts` (reason `component`, the site's World Heritage membership, the component's
+reference). `part_site_components(site, membership)` (`db/init/01-schema.sql`) is the one statement of
+which points are components and how each becomes a part: the site's own points its World Heritage
+membership places (or that no membership places, rows from before placements), on a site that has
+parts already or holds two or more standing ones — a withdrawn, lost or refused point, or an arrival
+that replaces a moved one, is no second component (the Pilgrimage Church of Wies, moved once, is one
+place). Each becomes a place named and placed as its point, and the
+point keeps its id, so its placements, regions, visits, claims, candidates and held decisions follow it;
+its picture, credit, description and item stay on the point until the part's card reads the place
+(#1425). A part's name, coordinate and reference are its point's: the trigger
+`follow_component_point()` carries a rename, a move or a renumbering of the point to the part and
+its relation, whoever writes it — the run, a curator, a publish. A site of one component stays one place (ADR-0088); one that falls back to one keeps its
+remaining part. Another source's point on the same row (an Archaeology dig the site's row also holds)
+is no component and is left alone. Migration 094 applied it to every World Heritage site: 5,680 points
+of 484 sites on the development catalogue on 2026-10-13, with the 17 other places of several points
+(the Cave of Altamira's two coordinates) untouched. The World Heritage run calls it at the end of
+`writeExperienceLocations` (`components` on its run), in the same transaction under the site's lock, so a
+component that arrives is a part before the lock is let go; the writer reads the points a site shows,
+its parts' included (#1428), so pairing, renumbering, withdrawal and deferral act on parts as they did on
+the site's own points. A part with no kind of its own carries no `experience_regions` rows: region
+placement derives them only for a place with a membership, and the lists find a part through its site.
+The smoke fixture parts its two-point World Heritage site the same way (`e2eFixture.ts`).
+
 **A component's name is everything between `name:` and `ref:`** (`componentName`,
 `unescoSyncService.ts`, #1279). The dataset writes each part as `{name: Villa Mairea, Pori, ref:
 1752-013, latitude: …, longitude: …}`, so a name has commas of its own: read up to the first
@@ -4249,7 +4274,10 @@ So a write issued before the lock, or on a path that never took it, does not com
 
 The table's writers are a closed list the backend lint names (`EXPERIENCE_WRITE_RULES`):
 that module; the run's upsert, missing detection and picture repair; and the seed. An
-`INSERT INTO` or `UPDATE` of `experiences` anywhere else is refused.
+`INSERT INTO` or `UPDATE` of `experiences` anywhere else is refused. Two writers live in the
+database, as invariants: `part_site_components()` inserts a serial site's component parts, and
+the trigger `follow_component_point()` keeps a part's name and coordinate its point's and stamps
+its `updated_at` (§ Serial nominations).
 
 **A point is written under its object's token too.** Every curator write to
 `experience_locations` requires the object's `LockedExperience`, and each names the object
@@ -4267,7 +4295,8 @@ The manual create's `insertCuratedExperience` hands back the token, since its in
 lock is the object lock. So *the object first, then its points* (`db/locks.ts`) is a type error
 to break. The table's writers are a closed list the backend lint names
 (`EXPERIENCE_LOCATION_WRITE_RULES`): that module; the run's `locationWriter.ts`, which takes the
-same lock; and the seed.
+same lock; and the seed. `part_site_components()` re-homes a component point onto its part in the
+database, called by the run under the same lock and by migration 094.
 
 **So are a venue's works and their links** (#1072). Every curator write to `treasures` and
 `experience_treasures` is in `controllers/experience/workWriter.ts` and requires the venue's
