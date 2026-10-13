@@ -27,9 +27,13 @@
  * `somePointShownSql` as a test that one of them meets a condition.
  *
  * Read the other way, from a point to the places that show it:
- * `withWholesSql` adds the wholes of given places, and `answeringPlaceSql`
- * names the one place a curator's write on a point is judged and locked
- * under.
+ * `withWholesSql` adds the wholes of given places, `wholeOfSql` names the
+ * whole of a part, and `answeringPlaceSql` names the one place a curator's
+ * write on a point is judged and locked under.
+ *
+ * A traveller's record reads the same rule: `visitedPointsSql` is the points
+ * a traveller has been at, a visit to the point itself or to the part place
+ * it is the point of (ADR-0100 decision 5).
  */
 
 /** One way a place shows a point: the tables it is read from, and the place it is shown by. */
@@ -103,6 +107,15 @@ export function withWholesSql(places: string): string {
 }
 
 /**
+ * The whole the place `place` is a part of, or NULL when it is a part of
+ * none: the site a component belongs to (ADR-0100). A part of two wholes
+ * answers the lower id, so every lookup names the same one.
+ */
+export function wholeOfSql(place: string): string {
+  return `(SELECT min(prt.whole_id) FROM experience_parts prt WHERE prt.part_id = ${place})`;
+}
+
+/**
  * The place a curator answers for a point under, as an expression over the
  * point `point`: the site that shows it when the point's own place is one of
  * its parts (ADR-0100), and its own place otherwise. Its scope, its source and
@@ -111,8 +124,8 @@ export function withWholesSql(places: string): string {
  * id, so every lookup names the same one.
  */
 export function answeringPlaceSql(point = 'el'): string {
-  return `COALESCE((SELECT min(prt.whole_id) FROM experience_parts prt WHERE prt.part_id = ${point}.experience_id),
-         ${point}.experience_id)`;
+  const own = `${point}.experience_id`;
+  return `COALESCE(${wholeOfSql(own)}, ${own})`;
 }
 
 /**
@@ -153,4 +166,66 @@ export function somePointShownSql(place: string, point: string, where: string, j
        OR EXISTS (SELECT 1 FROM experience_parts ${point}_part
                     JOIN experience_locations ${point} ON ${point}.experience_id = ${point}_part.part_id ${joins}
                    WHERE ${point}_part.whole_id = ${place} AND ${where}))`;
+}
+
+/**
+ * The part place the point `point` is the point of, or NULL where its own
+ * place is no part (ADR-0100): a visit to such a point is recorded on the
+ * part.
+ */
+export function partOfPointSql(point = 'el'): string {
+  return `CASE WHEN EXISTS (SELECT 1 FROM experience_parts pop WHERE pop.part_id = ${point}.experience_id)
+          THEN ${point}.experience_id END`;
+}
+
+/**
+ * The points the traveller `user` has been at, as a derived table of
+ * (location_id, visited_at, notes): a visit to the point itself, and the
+ * point of every part place they visited (ADR-0100 decision 5). A visit to a
+ * component is recorded on its part, as a place visit, so a merge with
+ * another kind's place reconciles it as any two places' visits; the site
+ * reads it as the part's point visited, as it read the point's own visit
+ * before. A visit to a place that is no part counts for none of its points:
+ * having been to a place of two coordinates is not having been at both.
+ * `user` is an int expression, a bound parameter.
+ */
+export function visitedPointsSql(user: string): string {
+  return `(SELECT uvl.location_id, uvl.visited_at, uvl.notes
+             FROM user_visited_locations uvl WHERE uvl.user_id = ${user}
+           UNION ALL
+           SELECT pel.id, upv.visited_at, upv.notes
+             FROM user_visited_experiences upv
+             JOIN experience_locations pel ON pel.experience_id = upv.experience_id
+            WHERE upv.user_id = ${user}
+              AND EXISTS (SELECT 1 FROM experience_parts vprt WHERE vprt.part_id = upv.experience_id)
+              -- One row per point, should a visit to the point itself outlive its parting.
+              AND NOT EXISTS (SELECT 1 FROM user_visited_locations vuvl
+                               WHERE vuvl.user_id = ${user} AND vuvl.location_id = pel.id))`;
+}
+
+/**
+ * Every visit to a point, by nobody in particular, as a derived table of
+ * (location_id): a visit to the point itself, and one to the part place it is
+ * the point of (ADR-0100 decision 5). What a maintainer's count of visits
+ * reads, which names a place and never a person.
+ */
+export function pointVisitsSql(): string {
+  return `(SELECT pvl.location_id FROM user_visited_locations pvl
+           UNION ALL
+           SELECT ppel.id FROM user_visited_experiences ppv
+             JOIN experience_locations ppel ON ppel.experience_id = ppv.experience_id
+            WHERE EXISTS (SELECT 1 FROM experience_parts pprt WHERE pprt.part_id = ppv.experience_id))`;
+}
+
+/**
+ * Whether any traveller has been at the point `point`: a visit to it, or to
+ * the part place it is the point of. What a curator's card about a point
+ * weighs, since a visit outlives either answer (ADR-0022). Two probes by the
+ * point and by its own place.
+ */
+export function someoneVisitedPointSql(point = 'el'): string {
+  return `(EXISTS (SELECT 1 FROM user_visited_locations sv WHERE sv.location_id = ${point}.id)
+       OR EXISTS (SELECT 1 FROM user_visited_experiences spv
+                    JOIN experience_parts sprt ON sprt.part_id = spv.experience_id
+                   WHERE spv.experience_id = ${point}.experience_id))`;
 }

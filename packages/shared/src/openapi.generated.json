@@ -20780,6 +20780,46 @@
               "$ref": "#/components/schemas/ExperienceRegionRef"
             },
             "description": "The regions whose own lists hold the object, in the world views the caller may see."
+          },
+          "part_of": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "point_id": {
+                    "anyOf": [
+                      {
+                        "type": "integer",
+                        "minimum": -9007199254740991,
+                        "maximum": 9007199254740991
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ],
+                    "description": "The part's own point: the id its whole's card opens it at."
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "point_id"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The site this place is a part of (ADR-0100): the Temple of Karnak of Ancient Thebes. A part with no kind of its own is shown under its whole's kind."
           }
         },
         "required": [
@@ -20810,7 +20850,8 @@
           "kinds",
           "source_name",
           "source_description",
-          "regions"
+          "regions",
+          "part_of"
         ],
         "additionalProperties": false,
         "description": "One object, as its own page reads it."

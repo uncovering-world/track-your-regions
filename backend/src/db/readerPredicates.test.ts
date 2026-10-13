@@ -9,12 +9,14 @@
 import { describe, it, expect } from 'vitest';
 import { placeAdmittedSql, placeOfferedSql, placeVisibleSql } from './membership.js';
 import {
+  claimablePlaceSql,
   hideLostSql,
   lifecycleSelectSql,
   offeredLocationSql,
   offeredLinkSql,
   linkedForReaderSql,
   experienceOfferedToReaderSql,
+  partOfferedSql,
   publishedContentSql,
   readerPositionSql,
   readerRegionMembershipSql,
@@ -146,11 +148,26 @@ describe('experienceOfferedToReaderSql', () => {
 describe('readableByIdSql', () => {
   it('serves a curator an admitted place unread or not, and a reader only an offered one (#1275)', () => {
     const sql = readableByIdSql('$2::boolean', 'x');
-    expect(sql).toBe(`(($2::boolean AND ${placeAdmittedSql('x')}) OR ${placeOfferedSql('x')})`);
+    expect(sql).toContain(`(($2::boolean AND (${placeAdmittedSql('x')} OR `);
     // The reader's arm is the lists' rule, one membership both admitted and
-    // passed, never the two one-sided fragments side by side.
-    expect(sql).toContain(experienceOfferedToReaderSql('x'));
+    // passed, never the two one-sided fragments side by side, or a part
+    // offered where its whole is (ADR-0100).
+    expect(sql).toContain(`OR (${experienceOfferedToReaderSql('x')} OR ${partOfferedSql('x')}))`);
     expect(sql).not.toContain(placeVisibleSql('x'));
+  });
+});
+
+describe('partOfferedSql', () => {
+  it('offers a part where its whole is offered and its own point may be shown, as a place readers claim', () => {
+    const sql = partOfferedSql('x');
+    expect(sql).toContain('WHERE po.part_id = x.id');
+    expect(sql).toContain(placeOfferedSql('pw'));
+    expect(sql).toContain(`${offeredLocationSql('pel')} AND ${publishedContentSql('pel')}`);
+    expect(claimablePlaceSql('x')).toBe(`(${placeOfferedSql('x')} OR ${sql})`);
+  });
+
+  it('is no part of the set every list composes: a part is reached through its whole', () => {
+    expect(experienceOfferedToReaderSql('x')).not.toContain('experience_parts');
   });
 });
 

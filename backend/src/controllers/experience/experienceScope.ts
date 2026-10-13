@@ -9,6 +9,7 @@
 
 import { pool } from '../../db/index.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
+import { wholeOfSql } from '../../db/placePoints.js';
 import { contentsMembershipToAnswerSql } from './waitingCounts.js';
 import type { UserRole } from '../../types/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, CURATOR_UNRESTRICTED_SCOPE_EXISTS } from '../../middleware/auth.js';
@@ -117,6 +118,10 @@ export async function contentsMembershipId(
  * hand before its row is fetched — the row is exactly what the pending gate
  * is deciding whether to return — so the lookup lives here once instead of
  * being repeated at each of the three call sites.
+ *
+ * A part of a serial site (ADR-0100) is asked about through its whole: it has
+ * no regions of its own, and a curator who answers for Ancient Thebes answers
+ * for the Temple of Karnak, as a write on the temple's point is judged.
  */
 export async function maySeeUnreadExperience(
   userId: number | undefined,
@@ -126,10 +131,14 @@ export async function maySeeUnreadExperience(
   if (userRole === 'admin') return true;
   if (!userId || userRole !== 'curator') return false;
 
-  const sourceResult = await pool.query('SELECT source_id FROM experiences WHERE id = $1', [experienceId]);
-  if (sourceResult.rows.length === 0) return false;
+  const placeResult = await pool.query<{ source_id: number; scoped_id: number }>(
+    `SELECT e.source_id, COALESCE(${wholeOfSql('e.id')}, e.id) AS scoped_id FROM experiences e WHERE e.id = $1`,
+    [experienceId],
+  );
+  if (placeResult.rows.length === 0) return false;
 
-  const { permitted } = await resolveExperienceScope(userId, userRole, experienceId, sourceResult.rows[0].source_id);
+  const { source_id: sourceId, scoped_id: scopedId } = placeResult.rows[0];
+  const { permitted } = await resolveExperienceScope(userId, userRole, scopedId, sourceId);
   return permitted;
 }
 

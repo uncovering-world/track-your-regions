@@ -243,9 +243,57 @@ export function lifecycleSelectSql(alias = 'e'): string {
  * #1275), so a
  * reader following a list to a card and a reader opening a card by its id get
  * the same answer.
+ *
+ * A part of a serial site holds no membership of its own (ADR-0100 decision
+ * 2) and is served where its whole is: `partOfferedSql` for a reader, and for
+ * the curator the same relaxation of its whole and its point.
  */
 export function readableByIdSql(maySeeExpr: string, alias = 'e'): string {
-  return `((${maySeeExpr} AND ${placeAdmittedSql(alias)}) OR ${placeOfferedSql(alias)})`;
+  const admitted = `(${placeAdmittedSql(alias)} OR ${partOfSql(alias, placeAdmittedSql, offeredLocationSql)})`;
+  return `((${maySeeExpr} AND ${admitted}) OR ${placeOffered(alias)})`;
+}
+
+/**
+ * Whether the place `alias` is a part of a whole `whole` says yes of, by a
+ * point of its own `point` says yes of (ADR-0100): `whole` is asked of the
+ * whole's `experiences` alias, `point` of the part's `experience_locations`
+ * alias.
+ */
+function partOfSql(alias: string, whole: (w: string) => string, point: (el: string) => string): string {
+  return `EXISTS (SELECT 1 FROM experience_parts po
+        JOIN experiences pw ON pw.id = po.whole_id
+        JOIN experience_locations pel ON pel.experience_id = po.part_id
+       WHERE po.part_id = ${alias}.id AND ${whole('pw')} AND ${point('pel')})`;
+}
+
+/**
+ * A part of a serial site a reader may be sent to (ADR-0100 decision 2): it
+ * carries no membership for its whole's kind, so it is offered where its whole
+ * is offered and its own point is one a reader may be shown — the Temple of
+ * Karnak while Ancient Thebes is offered and UNESCO still lists the temple.
+ *
+ * Composed into the by-id reads and the claims a reader records about one
+ * place, never into a set: a part is reached through its whole, and no list,
+ * count, search or map offers it as a place of its own until it holds a kind
+ * of its own (Google's rule for a sub-destination, ADR-0100 decision 2).
+ */
+export function partOfferedSql(alias = 'e'): string {
+  return partOfSql(alias, placeOfferedSql, el => `${offeredLocationSql(el)} AND ${publishedContentSql(el)}`);
+}
+
+/** Offered in a kind of its own, or as a part of a place that is. */
+function placeOffered(alias: string): string {
+  return `(${placeOfferedSql(alias)} OR ${partOfferedSql(alias)})`;
+}
+
+/**
+ * A place a reader may record a claim about — a visit — by its id: offered in
+ * a kind of its own (`experienceOfferedToReaderSql`), or a part of a place
+ * that is (`partOfferedSql`). A visit to the Temple of Karnak is the
+ * traveller's own record of the part (ADR-0100 decision 5).
+ */
+export function claimablePlaceSql(alias = 'e'): string {
+  return placeOffered(alias);
 }
 
 /**
@@ -321,6 +369,20 @@ export function experienceOfferedToReaderSql(alias = 'e'): string {
 export function offeredToReaderSql(experienceAlias = 'e', locationAlias = 'el'): string {
   return [
     experienceOfferedToReaderSql(experienceAlias),
+    offeredLocationSql(locationAlias),
+    publishedContentSql(locationAlias),
+  ].join(' AND ');
+}
+
+/**
+ * `offeredToReaderSql` for a traveller's own claim about one place: the place
+ * may also be a part of a serial site, offered where its whole is
+ * (`claimablePlaceSql`, ADR-0100), so a tick on the Temple of Karnak's point
+ * is answered under the temple as well as under Ancient Thebes.
+ */
+export function claimableToReaderSql(experienceAlias = 'e', locationAlias = 'el'): string {
+  return [
+    claimablePlaceSql(experienceAlias),
     offeredLocationSql(locationAlias),
     publishedContentSql(locationAlias),
   ].join(' AND ');

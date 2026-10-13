@@ -21,6 +21,7 @@ import {
 } from '../../db/readerPredicates.js';
 import { includeLost } from './includeLost.js';
 import { KINDS, MEMBERSHIPS, placeKindsSql, rowKindJoinSql, rowKindSelectSql } from '../../db/membership.js';
+import { wholeOfSql } from '../../db/placePoints.js';
 import { countedMembershipSql, countedMembershipsSql, kindCountSql } from './experienceCounts.js';
 import { buildRegionQueries } from './experienceRegionQuery.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
@@ -101,8 +102,9 @@ async function readExperience(id: number, caller: Express.User | undefined): Pro
       e.name_local,
       e.description,
       e.short_description,
-      -- The type within the kind the row is shown under: the membership's (ADR-0084).
-      m.type,
+      -- The type within the kind the row is shown under: the membership's (ADR-0084),
+      -- or for a part with no kind of its own its whole's (ADR-0100 decision 2).
+      COALESCE(m.type, wm.type) AS type,
       -- No tags: labels the import derives from facts the row already carries by
       -- name, rendered by nothing, and since #570 written past the curation gate
       -- -- which they can be only while no reader-facing read returns them.
@@ -135,7 +137,15 @@ async function readExperience(id: number, caller: Express.User | undefined): Pro
                         THEN ST_SimplifyPreserveTopology(e.boundary, 0.0002)
                         ELSE e.boundary END)::json as boundary_geojson,
       e.area_km2,
-      ${rowKindSelectSql()},
+      COALESCE(m.kind_id, wm.kind_id) AS kind_id,
+      COALESCE(k.name, wk.name) AS kind_name,
+      COALESCE(k.display_priority, wk.display_priority) AS kind_priority,
+      -- The site a part belongs to, and the part's own point, which the site's
+      -- card opens it at (ADR-0100).
+      pw.id AS part_of_id,
+      pw.name AS part_of_name,
+      CASE WHEN pw.id IS NOT NULL THEN
+        (SELECT min(own.id) FROM experience_locations own WHERE own.experience_id = e.id) END AS part_of_point_id,
       -- Every kind the place is offered in, none the primary one (#1245).
       ${placeKindsSql('e')} AS kinds,
       -- The source that brought the row, beside the kind it is shown under:
@@ -144,6 +154,8 @@ async function readExperience(id: number, caller: Express.User | undefined): Pro
       s.description as source_description
     FROM experiences e
     ${rowKindJoinSql('e')}
+    LEFT JOIN experiences pw ON pw.id = ${wholeOfSql('e.id')}
+    ${rowKindJoinSql('pw', 'wm', 'wk')}
     JOIN experience_sources s ON e.source_id = s.id
     WHERE e.id = $1
       -- A by-id read does not offer a *set* to go through, which is what the
