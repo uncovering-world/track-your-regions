@@ -152,6 +152,7 @@ export const queryKeys = {
     sources: ['admin', 'sources'] as const,
     experienceCounts: (worldViewId: Id, sourceId: Id) => ['admin', 'experienceCounts', worldViewId, sourceId] as const,
     dataAssertions: ['admin', 'data-assertions'] as const,
+    dumps: ['admin', 'dumps'] as const,
     curators: ['admin', 'curators'] as const,
     curatorActivity: (userId: Id) => ['admin', 'curatorActivity', userId] as const,
     userSearch: (query: string) => ['admin', 'userSearch', query] as const,

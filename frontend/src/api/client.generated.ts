@@ -3566,6 +3566,181 @@ export interface DivisionsRemoved {
   removed: number;
 }
 
+export type DumpBuildMode = typeof DumpBuildMode[keyof typeof DumpBuildMode];
+
+
+export const DumpBuildMode = {
+  stream: 'stream',
+  local: 'local',
+} as const;
+
+export type DumpBuildChecksumKind = typeof DumpBuildChecksumKind[keyof typeof DumpBuildChecksumKind] | null;
+
+
+export const DumpBuildChecksumKind = {
+  md5: 'md5',
+  sha1: 'sha1',
+} as const;
+
+export type DumpBuildStatus = typeof DumpBuildStatus[keyof typeof DumpBuildStatus];
+
+
+export const DumpBuildStatus = {
+  running: 'running',
+  success: 'success',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+/**
+ * One build of a dump, from the ledger.
+ */
+export interface DumpBuild {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  fileName: string;
+  dumpDate: string;
+  mode: DumpBuildMode;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  bytes: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  lines: number;
+  checksumKind: DumpBuildChecksumKind;
+  /** The published checksum matched, or, where none is published, the size and the end of stream did. */
+  verified: boolean;
+  status: DumpBuildStatus;
+  /** @nullable */
+  error: string | null;
+  /** @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$ */
+  startedAt: string;
+  finishedAt: string | null;
+}
+
+/**
+ * Whether a running build of the dump was asked to stop.
+ */
+export interface DumpBuildCancelled {
+  cancelled: boolean;
+}
+
+export type DumpBuildProgressDump = typeof DumpBuildProgressDump[keyof typeof DumpBuildProgressDump];
+
+
+export const DumpBuildProgressDump = {
+  'wikidata-entities': 'wikidata-entities',
+  'wikidata-lexemes': 'wikidata-lexemes',
+  'enwiki-page': 'enwiki-page',
+  'enwiki-page-props': 'enwiki-page-props',
+  'enwiki-categorylinks': 'enwiki-categorylinks',
+  'enwiki-langlinks': 'enwiki-langlinks',
+  'pageviews-user': 'pageviews-user',
+} as const;
+
+export type DumpBuildProgressStatus = typeof DumpBuildProgressStatus[keyof typeof DumpBuildProgressStatus];
+
+
+export const DumpBuildProgressStatus = {
+  resolving: 'resolving',
+  reading: 'reading',
+  success: 'success',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+
+export type DumpBuildProgressFile = {
+  fileName: string;
+  date: string;
+  expectedBytes: number | null;
+} | null;
+
+/**
+ * A dump build in flight, or the last one this process ran.
+ */
+export interface DumpBuildProgress {
+  dump: DumpBuildProgressDump;
+  status: DumpBuildProgressStatus;
+  message: string;
+  file: DumpBuildProgressFile;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  downloaded: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  read: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  lines: number;
+  buildId: number | null;
+}
+
+/**
+ * A dump build started in the background, followed through the dump list.
+ */
+export interface DumpBuildStarted {
+  started: true;
+  progress: DumpBuildProgress;
+}
+
+export type DumpsDumpsItemKey = typeof DumpsDumpsItemKey[keyof typeof DumpsDumpsItemKey];
+
+
+export const DumpsDumpsItemKey = {
+  'wikidata-entities': 'wikidata-entities',
+  'wikidata-lexemes': 'wikidata-lexemes',
+  'enwiki-page': 'enwiki-page',
+  'enwiki-page-props': 'enwiki-page-props',
+  'enwiki-categorylinks': 'enwiki-categorylinks',
+  'enwiki-langlinks': 'enwiki-langlinks',
+  'pageviews-user': 'pageviews-user',
+} as const;
+
+/**
+ * Whether a file's date is the day of its dump or the month its counts cover.
+ */
+export type DumpsDumpsItemDatedBy = typeof DumpsDumpsItemDatedBy[keyof typeof DumpsDumpsItemDatedBy];
+
+
+export const DumpsDumpsItemDatedBy = {
+  day: 'day',
+  month: 'month',
+} as const;
+
+export type DumpsDumpsItem = {
+  key: DumpsDumpsItemKey;
+  /** Who publishes the dump: Wikidata, English Wikipedia, Wikimedia pageviews. */
+  source: string;
+  title: string;
+  /** Whether a file's date is the day of its dump or the month its counts cover. */
+  datedBy: DumpsDumpsItemDatedBy;
+  about: string;
+  progress: DumpBuildProgress | null;
+  builds: DumpBuild[];
+};
+
+/**
+ * The public dumps the catalogue reads, with their builds (ADR-0101).
+ */
+export interface Dumps {
+  dumps: DumpsDumpsItem[];
+  /** Whether builds keep a local copy (DUMPS_DIR) or read each file as a stream from its host. */
+  localCopy: boolean;
+}
+
 /**
  * Which answer it was. Absent on rows written before refusing was possible.
  */
@@ -13766,6 +13941,81 @@ export const getPostAdminSyncSourcesBySourceIdFixImagesUrl = (sourceId: number,)
 export const postAdminSyncSourcesBySourceIdFixImages = async (sourceId: number, options?: Parameters<typeof apiFetch>[1]): Promise<PictureRepairStarted> => {
 
   return apiFetch<PictureRepairStarted>(getPostAdminSyncSourcesBySourceIdFixImagesUrl(sourceId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getGetAdminDumpsUrl = () => {
+
+
+
+
+  return `/api/admin/dumps`
+}
+
+/**
+ * Requires an admin.
+ * @summary List the public dumps the catalogue reads, with the build in flight and the recent builds of each
+ */
+export const getAdminDumps = async ( options?: Parameters<typeof apiFetch>[1]): Promise<Dumps> => {
+
+  return apiFetch<Dumps>(getGetAdminDumpsUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getPostAdminDumpsByDumpBuildUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user',) => {
+
+
+
+
+  return `/api/admin/dumps/${encodeURIComponent(String(dump))}/build`
+}
+
+/**
+ * Requires an admin.
+ * @summary Start a build that reads the newest complete file of a dump and verifies it against its host
+ */
+export const postAdminDumpsByDumpBuild = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
+
+  return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpBuildUrl(dump),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostAdminDumpsByDumpCancelUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user',) => {
+
+
+
+
+  return `/api/admin/dumps/${encodeURIComponent(String(dump))}/cancel`
+}
+
+/**
+ * Requires an admin.
+ * @summary Ask a running build of a dump to stop
+ */
+export const postAdminDumpsByDumpCancel = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildCancelled> => {
+
+  return apiFetch<DumpBuildCancelled>(getPostAdminDumpsByDumpCancelUrl(dump),
   {
     ...options,
     method: 'POST'
