@@ -101,16 +101,14 @@ export const MUSEUM_ROOTS: Record<string, string> = {
 };
 
 /**
- * Natural history: a veto, walked as a tree.
+ * Natural history, walked as a tree.
  *
  * A natural history museum is not an archaeology museum, whatever one find it
- * holds — the product decision of 2026-09-13, written into ADR-0058 decision
- * 2. The row it was taken from is the Naturhistorisches Museum Wien, which
- * holds the Venus of Willendorf and would otherwise arrive through the find
- * door; the Musée de l'Homme (the Venus of Lespugue) and the National Museum
- * of Ethiopia (Lucy) are the same shape. Those finds reach no kind until a
- * natural-history kind exists, which the source record says out loud rather
- * than leaving it to be discovered.
+ * holds (ADR-0058 decision 2). The row it was taken from is the
+ * Naturhistorisches Museum Wien, which holds the Venus of Willendorf. Such a
+ * museum is marked rather than vetoed: when no other kind shows its find, the
+ * find makes it a question for a curator (ADR-0103), and otherwise it is
+ * refused as a natural history museum.
  *
  * Walked as a tree, not matched as one class: the national natural-history
  * museums are filed under it, and a veto that only refuses the generic word

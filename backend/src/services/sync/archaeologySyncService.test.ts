@@ -49,6 +49,7 @@ vi.mock('./handOvers.js', () => ({
   readHandOvers: vi.fn().mockResolvedValue(new Map()),
 }));
 vi.mock('./admission.js', () => ({ admittedExternalIds: vi.fn().mockResolvedValue(new Set()) }));
+vi.mock('./shownElsewhere.js', () => ({ worksShownByOtherSources: vi.fn().mockResolvedValue(new Set()) }));
 vi.mock('./wikidataUtils.js', () => ({
   delay: vi.fn(),
   WaitBudget: class WaitBudget {},
@@ -98,6 +99,7 @@ import { orchestrateSync } from './syncOrchestrator.js';
 import type { SyncServiceConfig, SyncRunContext } from './syncContract.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { admittedExternalIds } from './admission.js';
+import { worksShownByOtherSources } from './shownElsewhere.js';
 import {
   collectArchaeology,
   type CollectedArchaeologyItem,
@@ -124,6 +126,7 @@ const mockedCollect = collectArchaeology as unknown as ReturnType<typeof vi.fn>;
 const mockedCategories = fetchWikipediaCategories as unknown as ReturnType<typeof vi.fn>;
 const mockedMembers = fetchCategoryMembers as unknown as ReturnType<typeof vi.fn>;
 const mockedAdmitted = admittedExternalIds as unknown as ReturnType<typeof vi.fn>;
+const mockedElsewhere = worksShownByOtherSources as unknown as ReturnType<typeof vi.fn>;
 const mockedWriter = upsertVenueTreasures as unknown as ReturnType<typeof vi.fn>;
 const mockedUpsert = upsertExperienceRecord as unknown as ReturnType<typeof vi.fn>;
 const mockedLocation = upsertSingleLocation as unknown as ReturnType<typeof vi.fn>;
@@ -297,6 +300,7 @@ describe('what the archaeology run fetches', () => {
   it('reads both lines off the source row before collecting, and hands them to the collector', async () => {
     mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
     mockedAdmitted.mockResolvedValue(new Set([BRITISH_MUSEUM]));
+    mockedElsewhere.mockResolvedValueOnce(new Set(['Q774967']));
     collected([museum()]);
 
     const result = await (await configOf()).fetchItems(progress(), []);
@@ -319,6 +323,10 @@ describe('what the archaeology run fetches', () => {
     expect(mockedAdmitted).toHaveBeenCalledWith(5, 'site');
     expect(deps.admittedMuseums).toEqual(new Set([BRITISH_MUSEUM]));
     expect(deps.admittedSites).toEqual(new Set([BRITISH_MUSEUM]));
+    // And the works every other kind shows, so a famous find makes a question
+    // only where no card shows it (ADR-0103).
+    expect(mockedElsewhere).toHaveBeenCalledWith(5);
+    expect(deps.shownElsewhere).toEqual(new Set(['Q774967']));
     expect(result.fetchedCount).toBe(900);
   });
 

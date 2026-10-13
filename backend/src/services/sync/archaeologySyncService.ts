@@ -39,6 +39,7 @@ import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.j
 import type { FetchResult } from './syncContract.js';
 import type { SyncProgress } from './types.js';
 import { admittedExternalIds } from './admission.js';
+import { worksShownByOtherSources } from './shownElsewhere.js';
 import { contentsLine, readSourceLine } from './sourceLine.js';
 import {
   collectArchaeology,
@@ -99,9 +100,12 @@ async function fetchArchaeologyItems(
   // What the source holds as admitted before the run, so the stay line of the
   // hysteretic tier has something to hold (ADR-0023) — by door, since each
   // asks after its own rows and no others (`ArchaeologyPipelineDeps`).
-  const [admittedMuseums, admittedSites] = await Promise.all([
+  // And the works another kind already shows a reader: a famous find on a
+  // card already makes no question here (ADR-0103).
+  const [admittedMuseums, admittedSites, shownElsewhere] = await Promise.all([
     admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'museum'),
     admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'site'),
+    worksShownByOtherSources(ARCHAEOLOGY_SOURCE_ID),
   ]);
 
   // The collection, read through one OpenStreetMap door (`osm/oneDoorPerRun.ts`):
@@ -121,6 +125,7 @@ async function fetchArchaeologyItems(
           previousPlacements,
           admittedMuseums,
           admittedSites,
+          shownElsewhere,
           line,
           // What other kinds refused as held at a museum (ADR-0102).
           handOvers,

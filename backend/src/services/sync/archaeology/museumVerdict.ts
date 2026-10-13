@@ -48,7 +48,8 @@ export interface CollectedArchaeologyMuseum {
   classes: string[];
   /** What English Wikipedia files the article under; empty where it has none. */
   categories: string[];
-  nature: 'archaeological' | 'department';
+  /** `find`: no archaeological nature, held for a find no other kind shows (ADR-0103). */
+  nature: 'archaeological' | 'department' | 'find';
   /** The signal the nature was read off, so the card can say why. */
   natureWhy: string;
   /** Present on a held row: the question the card shows a curator. */
@@ -74,8 +75,11 @@ export interface CollectedArchaeologyMuseum {
   admittedFor?: { qid: string; label: string };
 }
 
-/** A nature this kind admits: one of the two answers that carry a reason. */
-type AdmittedNature = Extract<MuseumNature, { why: string }>;
+/** A nature this kind admits by itself: one of the two answers that carry a reason. */
+type ThisKindsNature = Extract<MuseumNature, { why: string }>;
+
+/** What the collected museum carries: its own nature, or a find that held it with none (ADR-0103). */
+type AdmittedNature = ThisKindsNature | { nature: 'find'; why: string };
 
 /**
  * Whether a nature is one this kind admits at all: not a veto, and not nothing.
@@ -84,8 +88,23 @@ type AdmittedNature = Extract<MuseumNature, { why: string }>;
  * rather than refused (ADR-0058 decision 2) — a question for a curator, not a
  * museum kept out — and a held survivor is the name on the ticket all the same.
  */
-export const isThisKind = (nature: MuseumNatureOrVeto): nature is AdmittedNature =>
+export const isThisKind = (nature: MuseumNatureOrVeto): nature is ThisKindsNature =>
   !('veto' in nature) && nature.nature !== 'none';
+
+/** The find that got a museum in: none where its fame did, the unshown one where a find held it (ADR-0103). */
+function admittedForOf<F>(byFind: boolean, onItsOwn: boolean, famous: F | undefined, unshown: F | undefined): F | undefined {
+  if (byFind) return unshown;
+  return onItsOwn ? undefined : famous;
+}
+
+/** The nature a passed museum carries; one held for a find (ADR-0103) has none of its own, and the find is its why. */
+function admittedNatureOf(
+  nature: MuseumNatureOrVeto, byFind: boolean, find: { label: string } | undefined,
+): AdmittedNature | null {
+  if (isThisKind(nature)) return nature;
+  if (!byFind) return null;
+  return { nature: 'find', why: `find: ${find?.label ?? 'a famous find'}` };
+}
 
 /** A find as this kind stores it: the museum import's treasure, saying where it was dug up. */
 const treasureOf = (find: PoolWork, facts: Map<string, FindFacts>): ProcessedContent => ({
@@ -124,6 +143,8 @@ export interface MuseumJudging {
   museumClasses: ReadonlySet<string>;
   findFacts: Map<string, FindFacts>;
   admitted: ReadonlySet<string>;
+  /** The item ids of the works another kind shows a reader on a card (ADR-0103, `shownElsewhere.ts`). */
+  shownElsewhere: ReadonlySet<string>;
   line: SourceLine;
   findLine: LinePair;
 }
@@ -251,6 +272,9 @@ function judgeOne(
     (find) => find.sitelinks >= ctx.findLine.enterSitelinks,
   ).length;
 
+  // What a museum of no nature would be held for: the famous finds no other
+  // kind shows a reader (ADR-0103).
+  const unshown = famous.filter((find) => !ctx.shownElsewhere.has(find.qid));
   const verdict = museumVerdict({
     facts,
     sitelinks: row.sitelinks,
@@ -258,13 +282,16 @@ function judgeOne(
     nature,
     admitted: ctx.admitted,
     line: ctx.line,
+    unshownFinds: unshown.map((find) => find.label),
   });
   if (!verdict.pass) return 'out' in verdict ? null : refusal(verdict.reason);
   const at = placementOf(row);
   if ('reason' in at) return refusal(at.reason);
-  // Unreachable: `museumVerdict` refuses a veto and a `none` above. The check is
-  // how the compiler learns what the verdict already decided.
-  if (!isThisKind(nature)) return null;
+  const byFind = verdict.held && verdict.byFind === true;
+  const admittedNature = admittedNatureOf(nature, byFind, unshown[0]);
+  // Unreachable: `museumVerdict` refuses a veto and a `none` without a find. The
+  // check is how the compiler learns what the verdict already decided.
+  if (admittedNature === null) return null;
 
   return {
     item: itemOf({
@@ -272,7 +299,7 @@ function judgeOne(
       row,
       at,
       facts,
-      nature,
+      nature: admittedNature,
       note: verdict.held ? verdict.note : null,
       finds,
       // The badge's count, not the door's: the verdict above was taken on the
@@ -298,7 +325,9 @@ function judgeOne(
       // the band whose find has fallen below the finds' stay line names nothing
       // — `famous` is empty — and stays on its own count, which is then truly
       // what keeps it.
-      admittedFor: row.sitelinks >= ctx.line.enterSitelinks ? undefined : famous[0],
+      // Held for a find (ADR-0103), the find no other kind shows is what got
+      // it in, whatever the museum's own fame.
+      admittedFor: admittedForOf(byFind, row.sitelinks >= ctx.line.enterSitelinks, famous[0], unshown[0]),
       findFacts: ctx.findFacts,
     }),
   };

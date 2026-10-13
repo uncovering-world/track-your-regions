@@ -33,12 +33,19 @@ import {
 } from './pipelineFixture.js';
 import type { SourceLine } from '../sourceLine.js';
 
+/**
+ * What another kind shows a reader: the Venus de' Medici is on the Uffizi's
+ * art-museum card, so the Uffizi's one ancient statue asks nothing (ADR-0103).
+ */
+const SHOWN: ReadonlySet<string> = new Set(['Q774967']);
+
 const LINE: SourceLine = {
   enterSitelinks: 22, staySitelinks: 18, find: { enterSitelinks: 18, staySitelinks: 15 },
 };
 
 function collect(w: World, opts: {
   line?: SourceLine; admitted?: string[]; previousPlacements?: Record<string, string[]>;
+  shownElsewhere?: Iterable<string>;
 } = {}): Promise<CollectedArchaeology> {
   const door = categoryDoor(w);
   return collectArchaeology({
@@ -46,6 +53,7 @@ function collect(w: World, opts: {
     previousPlacements: opts.previousPlacements ?? {},
     admittedMuseums: new Set(opts.admitted ?? []),
     admittedSites: new Set<string>(),
+    shownElsewhere: new Set(opts.shownElsewhere ?? SHOWN),
     line: opts.line ?? LINE,
     categories: door.categories,
     categoryMembers: door.categoryMembers,
@@ -226,6 +234,7 @@ describe('collectArchaeology', () => {
       previousPlacements: {},
       admittedMuseums: new Set<string>(),
       admittedSites: new Set<string>(),
+      shownElsewhere: SHOWN,
       line: LINE,
       categories: door.categories,
       categoryMembers: door.categoryMembers,
@@ -394,7 +403,18 @@ describe('collectArchaeology', () => {
 
     expect(item(out, 'Q51252')).toBeUndefined();
     expect(reason(out, 'Q51252'))
-      .toBe('not an archaeology museum by category or class (1 famous find held)');
+      .toBe('not an archaeology museum by category or class (1 famous find held, shown by another kind)');
+  });
+
+  it('holds the Uffizi for its find when no card shows the find (ADR-0103)', async () => {
+    const out = await collect(world(), { shownElsewhere: [] });
+
+    expect(item(out, 'Q51252')).toMatchObject({
+      nature: 'find',
+      admissionNote: expect.stringContaining('no other kind shows; take it for that find?'),
+    });
+    expect(item(out, 'Q51252')?.admittedFor).toEqual({ qid: 'Q774967', label: "Venus de' Medici" });
+    expect(reason(out, 'Q51252')).toBeUndefined();
   });
 
   it('names no row the rules never ran on', async () => {
@@ -861,6 +881,7 @@ describe('collectArchaeology', () => {
       previousPlacements: {},
       admittedMuseums: new Set<string>(),
       admittedSites: new Set<string>(),
+      shownElsewhere: SHOWN,
       line: LINE,
       categories: door.categories,
       categoryMembers: door.categoryMembers,
@@ -905,6 +926,7 @@ describe('collectArchaeology', () => {
       previousPlacements: {},
       admittedMuseums: new Set<string>(),
       admittedSites: new Set<string>(),
+      shownElsewhere: SHOWN,
       line: LINE,
       categories: door.categories,
       categoryMembers: door.categoryMembers,
@@ -1077,6 +1099,7 @@ describe('what an admitted museum holds, read from its own side (#890)', () => {
       previousPlacements: {},
       admittedMuseums: new Set(),
       admittedSites: new Set<string>(),
+      shownElsewhere: SHOWN,
       line: LINE,
       categories: door.categories,
       categoryMembers: door.categoryMembers,
@@ -1125,6 +1148,7 @@ describe('what an admitted museum holds, read from its own side (#890)', () => {
       previousPlacements: {},
       admittedMuseums: new Set(),
       admittedSites: new Set<string>(),
+      shownElsewhere: SHOWN,
       line: LINE,
       categories: door.categories,
       categoryMembers: door.categoryMembers,
@@ -1157,6 +1181,7 @@ describe('the site door, beside the museums', () => {
       previousPlacements: {},
       admittedMuseums: new Set<string>(),
       admittedSites: new Set<string>(),
+      shownElsewhere: SHOWN,
       line: LINE,
       categories: door.categories,
       categoryMembers: door.categoryMembers,

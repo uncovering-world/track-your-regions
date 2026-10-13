@@ -24,13 +24,14 @@ describe('museumNature', () => {
   it('the Uffizi is neither', () => {
     expect(museumNature({ qid: 'Q51252', classes: [ART_MUSEUM], categories: ['Art museums and galleries in Florence'], ...at(43.77, 11.26) }, trees)).toEqual({ nature: 'none' });
   });
-  it('Vienna\'s natural history museum is vetoed whatever it holds', () => {
+  it('Vienna\'s natural history museum is no archaeology museum, and says it is a natural history one', () => {
     // Its real shelf on 2026-09-13: `Natural history museums in Austria`,
     // `Geology museums in Austria`, `Museums of Dacia` and nothing
     // archaeological, over `natural history museum` (with `collection` and
     // `academic publisher` besides, neither of them this kind's). So the Venus
-    // of Willendorf does not make it an archaeology museum (ADR-0058 decision 2).
-    expect(museumNature({ qid: 'Q688704', classes: [NAT_HIST], categories: ['Geology museums in Austria', 'Museums of Dacia', 'Natural history museums in Austria'], ...at(48.2, 16.36) }, trees)).toEqual({ veto: 'a natural history museum, not an archaeology museum' });
+    // of Willendorf does not make it an archaeology museum (ADR-0058 decision 2);
+    // whether the find makes it a question is the verdict's (ADR-0103).
+    expect(museumNature({ qid: 'Q688704', classes: [NAT_HIST], categories: ['Geology museums in Austria', 'Museums of Dacia', 'Natural history museums in Austria'], ...at(48.2, 16.36) }, trees)).toEqual({ nature: 'none', naturalHistory: true });
   });
   it('the Yorkshire Museum is both, and a museum of both is not vetoed', () => {
     // Q2086562, typed `natural history museum` *and* `archaeological museum`,
@@ -97,35 +98,58 @@ describe('museumVerdict', () => {
   const nature = { nature: 'archaeological' as const, why: 'class: archaeological museum' };
   const facts = { qid: 'Q636928', classes: [ARCH_MUSEUM], categories: [], ...at(38.48, 22.5) };
   it('admits an archaeology museum at the place line', () => {
-    expect(museumVerdict({ facts, sitelinks: 39, findsForTheDoor: 0, nature, admitted: new Set(), line })).toEqual({ pass: true, held: false, type: 'museum' });
+    expect(museumVerdict({ facts, sitelinks: 39, findsForTheDoor: 0, nature, admitted: new Set(), line, unshownFinds: [] })).toEqual({ pass: true, held: false, type: 'museum' });
   });
   it('admits Delphi below the place line for the Charioteer', () => {
-    expect(museumVerdict({ facts, sitelinks: 15, findsForTheDoor: 1, nature, admitted: new Set(), line })).toEqual({ pass: true, held: false, type: 'museum' });
+    expect(museumVerdict({ facts, sitelinks: 15, findsForTheDoor: 1, nature, admitted: new Set(), line, unshownFinds: [] })).toEqual({ pass: true, held: false, type: 'museum' });
   });
   it('leaves an unknown archaeology museum with no find out, unreported', () => {
-    expect(museumVerdict({ facts, sitelinks: 15, findsForTheDoor: 0, nature, admitted: new Set(), line })).toEqual({ pass: false, out: true });
+    expect(museumVerdict({ facts, sitelinks: 15, findsForTheDoor: 0, nature, admitted: new Set(), line, unshownFinds: [] })).toEqual({ pass: false, out: true });
   });
   it('keeps a museum the source holds that has slipped only to the stay line', () => {
-    expect(museumVerdict({ facts, sitelinks: 18, findsForTheDoor: 0, nature, admitted: new Set(['Q636928']), line })).toEqual({ pass: true, held: false, type: 'museum' });
+    expect(museumVerdict({ facts, sitelinks: 18, findsForTheDoor: 0, nature, admitted: new Set(['Q636928']), line, unshownFinds: [] })).toEqual({ pass: true, held: false, type: 'museum' });
   });
   it('refuses by name a museum the source held that fell below the stay line', () => {
-    const v = museumVerdict({ facts, sitelinks: 17, findsForTheDoor: 0, nature, admitted: new Set(['Q636928']), line });
+    const v = museumVerdict({ facts, sitelinks: 17, findsForTheDoor: 0, nature, admitted: new Set(['Q636928']), line, unshownFinds: [] });
     expect(v).toEqual({ pass: false, reason: '17 Wikipedia editions: below the world tier\'s line (22 to enter, 18 to stay)' });
   });
   it('holds a museum with only an antiquities department, with the question for a curator', () => {
-    const v = museumVerdict({ facts: { ...facts, qid: 'Q132783' }, sitelinks: 86, findsForTheDoor: 4, nature: { nature: 'department', why: 'category: Egyptological collections in Russia' }, admitted: new Set(), line });
+    const v = museumVerdict({ facts: { ...facts, qid: 'Q132783' }, sitelinks: 86, findsForTheDoor: 4, nature: { nature: 'department', why: 'category: Egyptological collections in Russia' }, admitted: new Set(), line, unshownFinds: [] });
     expect(v).toEqual({ pass: true, held: true, type: 'museum', note: 'an antiquities department (category: Egyptological collections in Russia); is the exposition substantially archaeology?' });
   });
-  it('refuses a museum of neither nature, naming the finds it holds', () => {
-    const v = museumVerdict({ facts: { ...facts, qid: 'Q51252' }, sitelinks: 73, findsForTheDoor: 1, nature: { nature: 'none' }, admitted: new Set(), line });
-    expect(v).toEqual({ pass: false, reason: 'not an archaeology museum by category or class (1 famous find held)' });
+  it('refuses a museum of neither nature whose famous find another kind shows', () => {
+    // The Uffizi's Venus de' Medici is on the Uffizi's art-museum card.
+    const v = museumVerdict({ facts: { ...facts, qid: 'Q51252' }, sitelinks: 73, findsForTheDoor: 1, nature: { nature: 'none' }, admitted: new Set(), line, unshownFinds: [] });
+    expect(v).toEqual({ pass: false, reason: 'not an archaeology museum by category or class (1 famous find held, shown by another kind)' });
+  });
+  it('holds a museum of neither nature for a find no other kind shows (ADR-0103)', () => {
+    // The Natural History Museum in Vienna (Q688704) holds the Venus of
+    // Willendorf, and no card of the catalogue shows it.
+    const v = museumVerdict({ facts: { ...facts, qid: 'Q688704' }, sitelinks: 60, findsForTheDoor: 1, nature: { nature: 'none', naturalHistory: true }, admitted: new Set(), line, unshownFinds: ['Venus of Willendorf'] });
+    expect(v).toEqual({
+      pass: true, held: true, type: 'museum', byFind: true,
+      note: 'a natural history museum, but it holds 1 famous find (Venus of Willendorf) no other kind shows; take it for that find?',
+    });
+  });
+  it('counts only the finds no card shows, and names the most famous of them', () => {
+    // The Viking Ship Museum's three famous finds, one of them on another card.
+    const v = museumVerdict({ facts: { ...facts, qid: 'Q961220' }, sitelinks: 50, findsForTheDoor: 3, nature: { nature: 'none' }, admitted: new Set(), line, unshownFinds: ['Oseberg ship', 'Gokstad ship'] });
+    expect(v).toMatchObject({ held: true, note: 'not an archaeology museum by category or class, but it holds 2 famous finds (Oseberg ship and 1 more) no other kind shows; take it for them?' });
+  });
+  it('refuses a natural history museum whose finds another kind shows, as one', () => {
+    const v = museumVerdict({ facts: { ...facts, qid: 'Q688704' }, sitelinks: 60, findsForTheDoor: 1, nature: { nature: 'none', naturalHistory: true }, admitted: new Set(), line, unshownFinds: [] });
+    expect(v).toEqual({ pass: false, reason: 'a natural history museum, not an archaeology museum' });
+  });
+  it('says each of several famous finds is shown elsewhere', () => {
+    const v = museumVerdict({ facts: { ...facts, qid: 'Q51252' }, sitelinks: 73, findsForTheDoor: 2, nature: { nature: 'none' }, admitted: new Set(), line, unshownFinds: [] });
+    expect(v).toEqual({ pass: false, reason: 'not an archaeology museum by category or class (2 famous finds held, each shown by another kind)' });
   });
   it('refuses a museum of neither nature that holds no find, without counting to zero', () => {
-    const v = museumVerdict({ facts: { ...facts, qid: 'Q51252' }, sitelinks: 73, findsForTheDoor: 0, nature: { nature: 'none' }, admitted: new Set(), line });
+    const v = museumVerdict({ facts: { ...facts, qid: 'Q51252' }, sitelinks: 73, findsForTheDoor: 0, nature: { nature: 'none' }, admitted: new Set(), line, unshownFinds: [] });
     expect(v).toEqual({ pass: false, reason: 'not an archaeology museum by category or class (no find above the line)' });
   });
   it('refuses a vetoed museum with the veto', () => {
-    expect(museumVerdict({ facts, sitelinks: 43, findsForTheDoor: 1, nature: { veto: 'a natural history museum, not an archaeology museum' }, admitted: new Set(), line }))
+    expect(museumVerdict({ facts, sitelinks: 43, findsForTheDoor: 1, nature: { veto: 'a natural history museum, not an archaeology museum' }, admitted: new Set(), line, unshownFinds: [] }))
       .toEqual({ pass: false, reason: 'a natural history museum, not an archaeology museum' });
   });
 });
