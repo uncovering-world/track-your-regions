@@ -20,6 +20,7 @@ const ACROPOLIS: ExperienceDetailRow = {
   boundary_geojson: { type: 'MultiPolygon', coordinates: [[[[23.72, 37.97], [23.73, 37.97], [23.73, 37.98], [23.72, 37.97]]]] },
   area_km2: 0.03, kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, source_name: 'Archaeology',
   source_description: null, kinds: [ACROPOLIS_IN_ARCHAEOLOGY],
+  part_of_id: null, part_of_name: null, part_of_point_id: null,
 };
 
 describe('experienceDetailOf', () => {
@@ -32,6 +33,13 @@ describe('experienceDetailOf', () => {
   it('does not serve a column the schema does not name', () => {
     const detail = experienceDetailOf({ ...ACROPOLIS, tags: ['acropolis'] } as ExperienceDetailRow, []);
     expect(detail).not.toHaveProperty('tags');
+  });
+
+  it('names the site a part belongs to and the point its card opens it at, and nothing for a place of its own', () => {
+    expect(experienceDetailOf(ACROPOLIS, []).part_of).toBeNull();
+    const karnak = experienceDetailOf({ ...ACROPOLIS, part_of_id: 153, part_of_name: 'Ancient Thebes with its Necropolis', part_of_point_id: 40211 }, []);
+    expect(karnak.part_of).toEqual({ id: 153, name: 'Ancient Thebes with its Necropolis', point_id: 40211 });
+    expect(ExperienceDetail.safeParse(JSON.parse(JSON.stringify(karnak))).success).toBe(true);
   });
 
   it('serves each kind of the place by its declared keys only', () => {

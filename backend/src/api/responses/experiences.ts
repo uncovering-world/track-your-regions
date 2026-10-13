@@ -240,6 +240,13 @@ export const ExperienceDetail = z.strictObject({
   source_description: z.string().nullable(),
   regions: z.array(ExperienceRegionRef)
     .describe('The regions whose own lists hold the object, in the world views the caller may see.'),
+  part_of: z.strictObject({
+    id: z.number().int(),
+    name: z.string(),
+    point_id: z.number().int().nullable()
+      .describe("The part's own point: the id its whole's card opens it at."),
+  }).nullable()
+    .describe('The site this place is a part of (ADR-0100): the Temple of Karnak of Ancient Thebes. A part with no kind of its own is shown under its whole\'s kind.'),
 }).describe('One object, as its own page reads it.');
 export type ExperienceDetail = z.infer<typeof ExperienceDetail>;
 

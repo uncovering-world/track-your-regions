@@ -45,6 +45,9 @@ const EXPERIENCE_ROW = {
   kind_priority: 1,
   source_name: 'UNESCO World Heritage Sites',
   source_description: null,
+  part_of_id: null,
+  part_of_name: null,
+  part_of_point_id: null,
 };
 
 // Mirrors the confirmed leak: experience 281 assigned to a region in hidden

@@ -152,6 +152,9 @@ export interface ExperienceDetailRow {
   kinds: PlaceKind[] | null;
   source_name: string;
   source_description: string | null;
+  part_of_id: number | null;
+  part_of_name: string | null;
+  part_of_point_id: number | null;
 }
 
 export function experienceDetailOf(row: ExperienceDetailRow, regions: ExperienceRegionRef[]): ExperienceDetail {
@@ -184,6 +187,9 @@ export function experienceDetailOf(row: ExperienceDetailRow, regions: Experience
     source_name: row.source_name,
     source_description: row.source_description,
     regions,
+    part_of: row.part_of_id === null || row.part_of_name === null
+      ? null
+      : { id: row.part_of_id, name: row.part_of_name, point_id: row.part_of_point_id },
   };
 }
 
