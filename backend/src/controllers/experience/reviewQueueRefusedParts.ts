@@ -36,7 +36,7 @@ import { objectContextSelectSql } from './reviewQueueContext.js';
 import { contentsMembershipToAnswerSql, contentsTakeableSql, linkMembershipSql, pointMembershipSql } from './waitingCounts.js';
 import { MEMBERSHIPS, membershipToAnswerSql, rowKindJoinSql } from '../../db/membership.js';
 import { type AnsweredQueryContext, CONTENTS_ROWS_SHOWN } from './reviewQueueContents.js';
-import { answeringPlaceSql, pointsShownSql } from '../../db/placePoints.js';
+import { answeringPlaceSql, pointsShownSql, someoneVisitedPointSql } from '../../db/placePoints.js';
 
 /**
  * The one act that marks a part refused, for the log join above.
@@ -159,8 +159,7 @@ export async function queryRefusedParts(
                ST_Y(el.location) AS lat, ST_X(el.location) AS lon,
                ${decidedBy('el.refused_at')} AS refused_by,
                ${noteOf('el.refused_at')} AS note,
-               EXISTS (SELECT 1 FROM user_visited_locations v
-                        WHERE v.location_id = el.id) AS visited,
+               ${someoneVisitedPointSql('el')} AS visited,
                row_number() OVER (ORDER BY el.refused_at DESC NULLS LAST, el.id) AS rn
         -- The mark alone. A refused point is always pending -- the refusal
         -- reaches only what unreadPointSql reaches -- and the withdrawn card

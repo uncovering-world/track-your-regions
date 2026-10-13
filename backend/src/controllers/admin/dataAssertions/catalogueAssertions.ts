@@ -60,7 +60,7 @@ import {
   publishedContentSql,
 } from '../../../db/readerPredicates.js';
 import { MEMBERSHIPS } from '../../../db/membership.js';
-import { answeringPlaceSql, placePointsSql, pointsShownSql } from '../../../db/placePoints.js';
+import { answeringPlaceSql, placePointsSql, pointsShownSql, pointVisitsSql } from '../../../db/placePoints.js';
 import { heldWaitingSql } from '../../experience/waitingCounts.js';
 import { heldFieldRefusedSql, heldPartRefusedSql } from '../../experience/heldDecisions.js';
 import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
@@ -310,7 +310,7 @@ const visitsOnPlacesNoReaderIsShown: CatalogueAssertion = {
                el.name AS place_name,
                e.name AS experience_name,
                count(*) AS ticks
-          FROM user_visited_locations v
+          FROM ${pointVisitsSql()} v
           JOIN experience_locations el ON el.id = v.location_id
           JOIN experiences e ON e.id = ${answeringPlaceSql()}
          -- Shown by no offered place: neither its own nor a site it is part of (ADR-0100).

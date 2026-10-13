@@ -35,7 +35,7 @@ import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 import { pointMovedToSql } from './movedPoint.js';
 import { withdrawnContainerOpenSql, withdrawnPointOpenSql } from './reviewQueuePredicates.js';
-import { answeringPlaceSql, pointsShownSql } from '../../db/placePoints.js';
+import { answeringPlaceSql, pointsShownSql, someoneVisitedPointSql } from '../../db/placePoints.js';
 
 /**
  * The held fields of an object's parts, as the held card carries them.
@@ -431,7 +431,7 @@ export async function queryWithdrawn(
              -- Whether anyone had been there. It is what makes the verdict matter
              -- rather than tidy-up: the visit survives either answer (ADR-0022), and
              -- the point it is attached to stops being shown.
-             'visited', EXISTS (SELECT 1 FROM user_visited_locations v WHERE v.location_id = el.id),
+             'visited', ${someoneVisitedPointSql('el')},
              -- How far away the source now offers this same component, or NULL where
              -- it offers it nowhere. Identity is the point together with the
              -- reference, so a coordinate rewritten far enough is a withdrawal plus an
@@ -692,8 +692,7 @@ export async function queryAnsweredWithdrawals(
                -- Whether anyone had been there, as the open card carries it: the visit
                -- survives either answer (ADR-0022) and it is the weight of the decision
                -- being taken back.
-               EXISTS (SELECT 1 FROM user_visited_locations v
-                        WHERE v.location_id = el.id) AS visited,
+               ${someoneVisitedPointSql('el')} AS visited,
                row_number() OVER (
                  ORDER BY el.state_decided_at DESC NULLS LAST, el.id) AS rn
         FROM ${pointsShownSql('e.id', 'el')}
