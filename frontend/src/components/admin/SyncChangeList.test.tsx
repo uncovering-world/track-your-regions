@@ -293,6 +293,24 @@ describe('SyncChangeList', () => {
     expect(lines).toEqual(['places: 3 moved, 1 renamed']);
   });
 
+  it('names who handed a work over to the venue that gained it (ADR-0102)', () => {
+    const lines = contentsLines({
+      treasures: {
+        added: [
+          { name: 'Bamberg Horseman', ref: 'Q680156',
+            handed_by: 'Public Art & Monuments: inside Bamberg Cathedral: a work of a place of worship, not public art' },
+          { name: 'Tomb of Henry II and Kunigunde', ref: null },
+        ],
+        withdrawn: [], returned: [],
+      },
+    });
+
+    expect(lines).toEqual([
+      'works: gained Bamberg Horseman (handed over by Public Art & Monuments: inside Bamberg Cathedral: '
+      + 'a work of a place of worship, not public art), Tomb of Henry II and Kunigunde',
+    ]);
+  });
+
   it('counts a change a curator\'s claim refused apart from the rest', () => {
     // A different event: the source proposed something and did not get it, so the
     // number says how often it is still arguing rather than how often anything moved.

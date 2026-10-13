@@ -42,6 +42,11 @@ function itemLabel(item: { name: string | null; ref: string | null }): string {
   return item.name ?? item.ref ?? 'an unnamed one';
 }
 
+/** A thing a run added, and who handed it over where another kind did (ADR-0102). */
+function addedLabel(item: { name: string | null; ref: string | null; handed_by?: string }): string {
+  return item.handed_by ? `${itemLabel(item)} (handed over by ${item.handed_by})` : itemLabel(item);
+}
+
 /**
  * What a rewrite was, in the fewest words that still answer it.
  *
@@ -102,7 +107,7 @@ export function contentsLines(
   return Object.entries(contents).flatMap(([kind, delta]) => {
     if (!delta) return [];
     const parts: string[] = [];
-    if (delta.added.length > 0) parts.push(`gained ${delta.added.map(itemLabel).join(', ')}`);
+    if (delta.added.length > 0) parts.push(`gained ${delta.added.map(addedLabel).join(', ')}`);
     if (delta.withdrawn.length > 0) parts.push(`lost ${delta.withdrawn.map(itemLabel).join(', ')}`);
     // Its own word, because the row and everything hanging off it are the same ones
     // as before — a visit on that point was never touched (ADR-0022).

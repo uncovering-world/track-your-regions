@@ -8973,6 +8973,8 @@ export interface SyncContentItem {
   name: string | null;
   /** @nullable */
   ref: string | null;
+  /** The kind that handed a work to this venue, and its reason (ADR-0102): only on a work the venue gained that way. */
+  handed_by?: string;
 }
 
 export type SyncContentsDeltaChangedItem = {
