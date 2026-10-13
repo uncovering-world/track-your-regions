@@ -89,9 +89,13 @@ describe('markVisited — #520', () => {
       res as never,
     );
 
-    expect(mockedQuery).toHaveBeenCalledTimes(2);
+    expect(mockedQuery).toHaveBeenCalledTimes(3);
     const insert = String(mockedQuery.mock.calls[1][0]);
     expect(insert).toContain('INSERT INTO user_visited_experiences');
+    // Then the wholes the place is a part of, which a visit to it cascades to (ADR-0100).
+    const cascade = String(mockedQuery.mock.calls[2][0]);
+    expect(cascade).toContain('FROM experience_parts prt');
+    expect(mockedQuery.mock.calls[2][1]).toEqual([5, 281]);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       success: true, experienceId: 281, experienceName: 'Published Site',
     }));

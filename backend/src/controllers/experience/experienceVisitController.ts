@@ -8,7 +8,8 @@ import type { z } from 'zod/v4';
 import type { ExperienceVisitMarked, ExperienceVisitUnmarked, VisitedExperienceIds } from '../../api/responses/visited.js';
 import { pool } from '../../db/index.js';
 import type { ExperiencesRow, UserVisitedExperiencesRow } from '../../db/schema.generated.js';
-import { experienceOfferedToReaderSql } from '../../db/readerPredicates.js';
+import { claimablePlaceSql } from '../../db/readerPredicates.js';
+import { dropUnvisitedWholes, visitWholes } from './wholeVisits.js';
 import { placeHasKindSql } from '../../db/membership.js';
 import { notFound } from '../../middleware/errorHandler.js';
 import type { experienceIdParamSchema, markVisitedBodySchema, visitedIdsQuerySchema } from '../../types/index.js';
@@ -43,8 +44,11 @@ export async function markVisited(
   //
   // Gating the write does not touch that exemption: a visit already recorded
   // stays a visit after a refusal.
+  //
+  // A part of a serial site is a place a traveller visits (ADR-0100 decision
+  // 5): offered where its whole is, and its visit cascades to the whole below.
   const expResult = await pool.query<Pick<ExperiencesRow, 'name'>>(
-    `SELECT e.id, e.name FROM experiences e WHERE e.id = $1 AND ${experienceOfferedToReaderSql()}`,
+    `SELECT e.id, e.name FROM experiences e WHERE e.id = $1 AND ${claimablePlaceSql()}`,
     [experienceId],
   );
   if (expResult.rows.length === 0) throw notFound('Experience not found');
@@ -59,6 +63,11 @@ export async function markVisited(
       visited_at = NOW()
     RETURNING id, visited_at, notes, rating
   `, [userId, experienceId, notes, rating]);
+
+  // Having been to the Temple of Karnak is having been to Ancient Thebes
+  // (ADR-0046 decision 7): the wholes a reader may claim, as a tick on the
+  // temple's point records them.
+  await visitWholes(userId, experienceId);
 
   const visit = result.rows[0];
   return {
@@ -85,6 +94,10 @@ export async function unmarkVisited(
   );
 
   if (result.rowCount === 0) throw notFound('Visit record not found');
+
+  // A whole the reader holds no other visited point of goes with its last
+  // part, as unticking a part's point clears it (ADR-0100).
+  await dropUnvisitedWholes(caller.id, experienceId);
 
   return { success: true, experienceId };
 }

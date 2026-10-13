@@ -24,7 +24,7 @@ import {
 import { treasureOf, type TreasureRow } from './experienceAnswerRows.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
-import { shownBySql } from '../../db/placePoints.js';
+import { partOfPointSql, shownBySql } from '../../db/placePoints.js';
 import { notFound } from '../../middleware/errorHandler.js';
 import type {
   idParamSchema, markTreasureViewedBodySchema, treasureIdParamSchema, viewedTreasureIdsQuerySchema,
@@ -244,14 +244,22 @@ export async function markTreasureViewed(
       // (ADR-0025): without the curation_state gate, viewing one treasure in
       // a museum would manufacture visits to every one of its unread points
       // (#520 — the write path this reasoning did not account for).
-      await pool.query(`
-        INSERT INTO user_visited_locations (user_id, location_id, visited_at)
-        SELECT $1, el.id, NOW()
-        FROM experience_locations el
+      //
+      // A part's point is visited on the part (ADR-0100 decision 5), as a
+      // tick on it is.
+      const offered = `FROM experience_locations el
         JOIN experiences e ON e.id = $2
         WHERE ${shownBySql('el', 'ARRAY[$2::int]')} AND ${offeredLocationSql()}
-          AND ${experienceOfferedToReaderSql()} AND ${publishedContentSql('el')}
+          AND ${experienceOfferedToReaderSql()} AND ${publishedContentSql('el')}`;
+      await pool.query(`
+        INSERT INTO user_visited_locations (user_id, location_id, visited_at)
+        SELECT $1, el.id, NOW() ${offered} AND ${partOfPointSql()} IS NULL
         ON CONFLICT (user_id, location_id) DO NOTHING
+      `, [userId, experienceId]);
+      await pool.query(`
+        INSERT INTO user_visited_experiences (user_id, experience_id, visited_at)
+        SELECT DISTINCT $1, el.experience_id, NOW() ${offered} AND ${partOfPointSql()} IS NOT NULL
+        ON CONFLICT (user_id, experience_id) DO NOTHING
       `, [userId, experienceId]);
 
       const expResult = await pool.query('SELECT name FROM experiences WHERE id = $1', [experienceId]);

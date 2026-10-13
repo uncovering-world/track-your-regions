@@ -5,6 +5,7 @@
 export * from './experienceQueryController.js';
 export * from './experienceVisitController.js';
 export * from './experienceLocationController.js';
+export * from './locationVisitController.js';
 export * from './experienceTreasureController.js';
 export * from './experienceFindsController.js';
 export * from './worldPointsController.js';

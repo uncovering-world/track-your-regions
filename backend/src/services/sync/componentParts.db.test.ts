@@ -16,6 +16,8 @@ const KARNAK = { name: 'Temple of Karnak', externalRef: '87-001', lon: 32.6573, 
 const LUXOR = { name: 'Luxor Temple', externalRef: '87-002', lon: 32.6390, lat: 25.6995 };
 const NECROPOLIS = { name: 'Theban Necropolis', externalRef: '87-003', lon: 32.6060, lat: 25.7330 };
 
+const TRAVELLER = '00000000-0000-4000-8000-000000009950';
+
 let run: LocationWriteRun;
 
 async function parts(site: number) {
@@ -41,6 +43,7 @@ async function clear(): Promise<void> {
     [[THEBES, GIZA]],
   );
   await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [[THEBES, GIZA]]);
+  await pool.query('DELETE FROM users WHERE uuid = $1', [TRAVELLER]);
 }
 
 beforeEach(async () => {
@@ -150,5 +153,27 @@ describe("a serial site's components become its parts (ADR-0100)", () => {
     await writeExperienceLocations(THEBES, [{ ...KARNAK, name: 'Karnak Temple Complex', externalRef: '87bis-001' }, LUXOR], run);
     const karnak = (await parts(THEBES)).find(p => p.location_id === before.location_id);
     expect(karnak).toMatchObject({ part_id: before.part_id, external_ref: '87bis-001', name: 'Karnak Temple Complex' });
+  });
+
+  it("moves a traveller's visit to a component onto the part it becomes (ADR-0100 decision 5)", async () => {
+    await writeExperienceLocations(THEBES, [KARNAK], run);
+    const [karnakPoint] = await ownPoints(THEBES);
+    const userId = (await pool.query<{ id: number }>(
+      `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'A traveller', 'user') RETURNING id`, [TRAVELLER],
+    )).rows[0].id;
+    await pool.query(
+      `INSERT INTO user_visited_locations (user_id, location_id, notes) VALUES ($1, $2, 'the hypostyle hall at dawn')`,
+      [userId, karnakPoint],
+    );
+
+    await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
+
+    const karnak = (await parts(THEBES)).find(p => p.location_id === karnakPoint);
+    const visits = await pool.query(
+      'SELECT experience_id, notes FROM user_visited_experiences WHERE user_id = $1', [userId],
+    );
+    expect(visits.rows).toEqual([{ experience_id: karnak?.part_id, notes: 'the hypostyle hall at dawn' }]);
+    const left = await pool.query('SELECT 1 FROM user_visited_locations WHERE user_id = $1', [userId]);
+    expect(left.rowCount).toBe(0);
   });
 });

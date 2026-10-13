@@ -33,7 +33,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { experienceOfferedToReaderSql, offeredToReaderSql, readableByIdSql } from '../../db/readerPredicates.js';
+import { claimableToReaderSql, experienceOfferedToReaderSql, readableByIdSql } from '../../db/readerPredicates.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceReadRoutes } from '../../routes/experienceRoutes.js';
 import { userRoutes } from '../../routes/userRoutes.js';
@@ -69,6 +69,8 @@ function placeRow(over: Record<string, unknown> = {}) {
     longitude: 9.4, latitude: 47.5, created_at: new Date('2026-08-04T15:01:24.341Z'),
     curated_fields: [], in_region: true, region_path: null, curation_state: 'auto', refused_at: null,
     image_url: null, image_credit: null, description: null, wikidata_item: null,
+    // The part place a point is the point of, which "mark all" visits instead (ADR-0100).
+    part_id: null,
     ...over,
   };
 }
@@ -376,7 +378,8 @@ describe('a visit outlives the point', () => {
 describe('a transaction is pinned to one connection', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
-    mockedQuery.mockResolvedValue({ rows: [{ id: 1, count: '0' }], rowCount: 1 });
+    // A point of the place's own: no part place to visit instead (ADR-0100).
+    mockedQuery.mockResolvedValue({ rows: [{ id: 1, part_id: null, count: '0' }], rowCount: 1 });
   });
 
   it('marks every location on the pinned client, BEGIN through COMMIT', async () => {
@@ -390,7 +393,8 @@ describe('a transaction is pinned to one connection', () => {
     expect(onClient[0]).toBe('BEGIN');
     expect(onClient.at(-1)).toBe('COMMIT');
     expect(onClient.filter(sql => /INSERT INTO user_visited_locations/i.test(sql))).toHaveLength(1);
-    expect(onClient.filter(sql => /INSERT INTO user_visited_experiences/i.test(sql))).toHaveLength(1);
+    // The place's own visit, and the sites it is a part of (ADR-0100).
+    expect(onClient.filter(sql => /INSERT INTO user_visited_experiences/i.test(sql))).toHaveLength(2);
     expect(client.release).toHaveBeenCalledTimes(1);
   });
 
@@ -405,7 +409,8 @@ describe('a transaction is pinned to one connection', () => {
     expect(onClient[0]).toBe('BEGIN');
     expect(onClient.at(-1)).toBe('COMMIT');
     expect(onClient.filter(sql => /DELETE FROM user_visited_locations/i.test(sql))).toHaveLength(1);
-    expect(onClient.filter(sql => /DELETE FROM user_visited_experiences/i.test(sql))).toHaveLength(1);
+    // The parts' visits, the place's own once none is left, and the sites it is a part of (ADR-0100).
+    expect(onClient.filter(sql => /DELETE FROM user_visited_experiences/i.test(sql))).toHaveLength(3);
     expect(client.release).toHaveBeenCalledTimes(1);
   });
 
@@ -538,7 +543,7 @@ describe('a claim can only be added for a row that was showable', () => {
     it(`${name} asks exactly what showable means`, async () => {
       await run();
       const [sql] = mockedQuery.mock.calls[0] as [string, unknown[]];
-      expect(sql).toContain(offeredToReaderSql());
+      expect(sql).toContain(claimableToReaderSql());
     });
   }
 });
@@ -591,7 +596,8 @@ describe('the by-id reads and a refused row', () => {
     // leaving `lost` reachable here is settled — the handler's own comment flags
     // closing it as a separate decision about a different question.
     const existenceRead = sentSql().find(sql => /FROM experiences\b/i.test(sql));
-    expect(existenceRead).not.toMatch(/existence <> 'lost'/);
+    // The place's own, not its part's point, which a part's card asks after (ADR-0100).
+    expect(existenceRead).not.toMatch(/\be\.existence <> 'lost'/);
   });
 
   it('answers 404 when the admission-filtered read returns nothing', async () => {

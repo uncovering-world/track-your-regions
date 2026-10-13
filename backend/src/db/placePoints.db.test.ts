@@ -1,15 +1,17 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from './index.js';
 import { anchorToItsPoint, lockExperience } from './experienceWriter.js';
-import { pointsShownSql } from './placePoints.js';
+import { pointsShownSql, someoneVisitedPointSql } from './placePoints.js';
+import { getExperienceLocations, getRegionExperienceLocations } from '../controllers/experience/experienceLocationController.js';
 import {
-  getExperienceLocations, getExperienceVisitedStatus, getRegionExperienceLocations, getVisitedLocationIds,
-  markLocationVisited, unmarkLocationVisited,
-} from '../controllers/experience/experienceLocationController.js';
+  getExperienceVisitedStatus, getVisitedLocationIds, markAllLocationsVisited, markLocationVisited,
+  unmarkAllLocationsVisited, unmarkLocationVisited,
+} from '../controllers/experience/locationVisitController.js';
+import { markVisited, unmarkVisited } from '../controllers/experience/experienceVisitController.js';
 import { getReviewQueue } from '../controllers/experience/reviewQueueController.js';
 import { ReviewQueue } from '../api/responses/reviewQueue.js';
 import { catalogueAssertions } from '../controllers/admin/dataAssertions/catalogueAssertions.js';
-import { getExperiencesByRegion } from '../controllers/experience/experienceQueryController.js';
+import { getExperience, getExperiencesByRegion } from '../controllers/experience/experienceQueryController.js';
 import { queryComponentItems } from '../controllers/experience/reviewQueueComponentItems.js';
 import { getWorldPoints } from '../controllers/experience/worldPointsController.js';
 import { assignExperiencesToRegions, assignRegionsForExperiences } from '../services/sync/regionAssignmentService.js';
@@ -119,6 +121,9 @@ afterAll(async () => {
 });
 
 const traveller = () => ({ id: userId, role: 'user' }) as Express.User;
+/** The places the traveller holds a visit to, and the points. */
+const HELD = 'SELECT experience_id FROM user_visited_experiences WHERE user_id = $1 ORDER BY experience_id';
+const POINT_VISITS = 'SELECT location_id FROM user_visited_locations WHERE user_id = $1 ORDER BY location_id';
 
 describe("a place's points are its own and its parts' (ADR-0100)", () => {
   it('draws the part on the map under the site, and the part alone nowhere', async () => {
@@ -164,7 +169,8 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
   });
 
   it("counts a visit to the part in the site's progress, once", async () => {
-    await pool.query('INSERT INTO user_visited_locations (user_id, location_id) VALUES ($1, $2)', [userId, karnakPoint]);
+    // Recorded on the part, as a place visit (ADR-0100 decision 5).
+    await pool.query('INSERT INTO user_visited_experiences (user_id, experience_id) VALUES ($1, $2)', [userId, KARNAK]);
 
     const status = await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() });
     expect(status).toMatchObject({ totalLocations: 2, visitedLocations: 1 });
@@ -244,14 +250,16 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
     expect(list.experiences.map(e => e.id)).toContain(SITE);
   });
 
-  it('counts a tick on the part on the site, and takes it back from the site (#1428)', async () => {
+  it('records a tick on the part on the part, counts it on the site, and takes both back (#1428, #1425)', async () => {
     const marked = await markLocationVisited({ params: { locationId: karnakPoint }, body: {}, caller: traveller() });
-    expect(marked).toMatchObject({ locationId: karnakPoint, experienceId: SITE });
-    const held = 'SELECT experience_id FROM user_visited_experiences WHERE user_id = $1 ORDER BY experience_id';
-    expect((await pool.query(held, [userId])).rows).toEqual([{ experience_id: SITE }]);
+    expect(marked).toMatchObject({ locationId: karnakPoint, experienceId: KARNAK });
+    expect((await pool.query(HELD, [userId])).rows).toEqual([{ experience_id: SITE }, { experience_id: KARNAK }]);
+    expect((await pool.query(POINT_VISITS, [userId])).rows).toEqual([]);
+    expect(await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() }))
+      .toMatchObject({ visitedLocations: 1, totalLocations: 2 });
 
     await unmarkLocationVisited({ params: { locationId: karnakPoint }, caller: traveller() });
-    expect((await pool.query(held, [userId])).rows).toEqual([]);
+    expect((await pool.query(HELD, [userId])).rows).toEqual([]);
   });
 
   it("raises the site's card for its part's unread point (#1428)", async () => {
@@ -273,7 +281,7 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
       'INSERT INTO experience_location_placements (location_id, membership_id) VALUES ($1, $2), ($3, $2)',
       [luxorPoint, membershipId, karnakPoint],
     );
-    await pool.query('INSERT INTO user_visited_locations (user_id, location_id) VALUES ($1, $2)', [userId, karnakPoint]);
+    await pool.query('INSERT INTO user_visited_experiences (user_id, experience_id) VALUES ($1, $2)', [userId, KARNAK]);
     for (const id of [
       'place-without-membership', 'point-placed-by-another-places-membership',
       'visits-on-places-no-reader-is-shown', 'listed-with-nowhere-to-go',
@@ -331,5 +339,92 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
     });
     expect(ReviewQueue.safeParse(queue).success).toBe(true);
     expect(queue.answeredWithdrawals.map(card => card.id)).toEqual([SITE]);
+  });
+});
+
+describe('a part reads as a place (ADR-0100, #1425)', () => {
+  it("opens the part's own card, under its site's kind, naming the site and the point its card opens it at", async () => {
+    const card = await getExperience({ params: { id: KARNAK }, caller: undefined });
+    expect(card).toMatchObject({
+      id: KARNAK, name: 'Temple of Karnak (parts fixture)', kind_id: 1, kinds: [],
+      part_of: { id: SITE, name: 'Ancient Thebes with its Necropolis (parts fixture)', point_id: karnakPoint },
+    });
+    expect((await getExperience({ params: { id: SITE }, caller: undefined })).part_of).toBeNull();
+    const own = await getExperienceLocations({ params: { id: KARNAK }, query: experienceLocationsQuerySchema.parse({}), caller: undefined });
+    expect(own.locations.map(l => l.id)).toEqual([karnakPoint]);
+  });
+
+  it("closes the part's card where its site is closed, or where its source no longer lists it", async () => {
+    await pool.query("UPDATE experience_kind_memberships SET admission = 'refused' WHERE id = $1", [membershipId]);
+    await expect(getExperience({ params: { id: KARNAK }, caller: undefined })).rejects.toThrow(/not found/i);
+    await pool.query("UPDATE experience_kind_memberships SET admission = 'admitted' WHERE id = $1", [membershipId]);
+    await pool.query('UPDATE experience_locations SET missing_since = NOW() WHERE id = $1', [karnakPoint]);
+    await expect(getExperience({ params: { id: KARNAK }, caller: undefined })).rejects.toThrow(/not found/i);
+    await expect(markVisited({ params: { experienceId: KARNAK }, body: {}, caller: traveller() })).rejects.toThrow(/not found/i);
+  });
+
+  it('records a visit to the part by its id on the part, cascades it to the site, and clears the site with it', async () => {
+    await markVisited({ params: { experienceId: KARNAK }, body: {}, caller: traveller() });
+    expect((await pool.query(HELD, [userId])).rows).toEqual([{ experience_id: SITE }, { experience_id: KARNAK }]);
+    const visited = await getVisitedLocationIds({ query: { experienceId: SITE }, caller: traveller() });
+    expect(visited.visitedLocationIds).toEqual([karnakPoint]);
+
+    await unmarkVisited({ params: { experienceId: KARNAK }, caller: traveller() });
+    expect((await pool.query(HELD, [userId])).rows).toEqual([]);
+  });
+
+  it('keeps the site visited while another of its points is', async () => {
+    await markLocationVisited({ params: { locationId: luxorPoint }, body: {}, caller: traveller() });
+    await markVisited({ params: { experienceId: KARNAK }, body: {}, caller: traveller() });
+    await unmarkVisited({ params: { experienceId: KARNAK }, caller: traveller() });
+    expect((await pool.query(HELD, [userId])).rows).toEqual([{ experience_id: SITE }]);
+  });
+
+  it("marks all of the site's points, a part's on the part, and unmarks them all", async () => {
+    const marked = await markAllLocationsVisited({
+      params: { experienceId: SITE }, query: {}, caller: traveller(),
+    });
+    expect(marked.locationsMarked).toBe(2);
+    expect((await pool.query(HELD, [userId])).rows).toEqual([{ experience_id: SITE }, { experience_id: KARNAK }]);
+    expect((await pool.query(POINT_VISITS, [userId])).rows).toEqual([{ location_id: luxorPoint }]);
+    expect(await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() }))
+      .toMatchObject({ visitedStatus: 'visited', visitedLocations: 2 });
+
+    const unmarked = await unmarkAllLocationsVisited({ params: { experienceId: SITE }, query: {}, caller: traveller() });
+    expect(unmarked.locationsUnmarked).toBe(2);
+    expect((await pool.query(HELD, [userId])).rows).toEqual([]);
+    expect((await pool.query(POINT_VISITS, [userId])).rows).toEqual([]);
+  });
+
+  it("tells a curator a component's point was visited when the visit is its part's", async () => {
+    const visited = `SELECT ${someoneVisitedPointSql('el')} AS visited FROM experience_locations el WHERE el.id = $1`;
+    expect((await pool.query(visited, [karnakPoint])).rows).toEqual([{ visited: false }]);
+    await pool.query('INSERT INTO user_visited_experiences (user_id, experience_id) VALUES ($1, $2)', [userId, KARNAK]);
+    expect((await pool.query(visited, [karnakPoint])).rows).toEqual([{ visited: true }]);
+    // A visit to the site is no visit to each of its points.
+    await pool.query('INSERT INTO user_visited_experiences (user_id, experience_id) VALUES ($1, $2)', [userId, SITE]);
+    expect((await pool.query(visited, [luxorPoint])).rows).toEqual([{ visited: false }]);
+  });
+
+  it("watches a part's visit once its point leaves every map, as it watches a point's", async () => {
+    await pool.query('INSERT INTO user_visited_experiences (user_id, experience_id) VALUES ($1, $2)', [userId, KARNAK]);
+    await pool.query('UPDATE experience_locations SET missing_since = NOW() WHERE id = $1', [karnakPoint]);
+    const check = catalogueAssertions.find(a => a.id === 'visits-on-places-no-reader-is-shown');
+    const rows = (await pool.query(check!.sql)).rows.filter(row => row.location_id === karnakPoint);
+    expect(rows).toEqual([expect.objectContaining({ place_name: 'Temple of Karnak', ticks: '1' })]);
+  });
+
+  it("takes back a tick a part's point still holds from before its parting", async () => {
+    await pool.query('INSERT INTO user_visited_locations (user_id, location_id) VALUES ($1, $2)', [userId, karnakPoint]);
+    await unmarkLocationVisited({ params: { locationId: karnakPoint }, caller: traveller() });
+    expect((await pool.query(POINT_VISITS, [userId])).rows).toEqual([]);
+  });
+
+  it('marks all of a part by its id as a visit to the site too, and unmarks the site with it', async () => {
+    await markAllLocationsVisited({ params: { experienceId: KARNAK }, query: {}, caller: traveller() });
+    expect((await pool.query(HELD, [userId])).rows).toEqual([{ experience_id: SITE }, { experience_id: KARNAK }]);
+
+    await unmarkAllLocationsVisited({ params: { experienceId: KARNAK }, query: {}, caller: traveller() });
+    expect((await pool.query(HELD, [userId])).rows).toEqual([]);
   });
 });
