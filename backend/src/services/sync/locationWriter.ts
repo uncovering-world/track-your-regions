@@ -452,6 +452,8 @@ export async function writeExperienceLocations(
            -- point, and the same re-proposal the object's own held field makes.
            name = ${claimed('name')} OR (${heldPoint} AND NOT ${qualifierAdded('el.name')}) THEN el.name ELSE i.name END,
            source_membership = 'present',
+           -- Listed here again: no longer the point that moved away (#1448).
+           moved_to_location_id = NULL,
            -- The coordinate the source is offering, on the runs that reach this arm.
            -- The source's value is the more precise of the two by construction — it is
            -- what the rounding lost (ADR-0027 decision 4).
@@ -514,6 +516,7 @@ export async function writeExperienceLocations(
            name = ${claimed('name')} THEN el.name ELSE i.name END,
            missing_since = NULL,
            source_membership = 'present',
+           moved_to_location_id = NULL,
            -- Adopted here too, for the keeping arm's reason: a point coming back within
            -- the tolerance is the same point written differently, and the row that
            -- carries the visit should carry the source's coordinate.

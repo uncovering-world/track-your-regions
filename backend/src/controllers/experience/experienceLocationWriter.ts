@@ -213,6 +213,7 @@ export async function restoreRefusedPoints(
 export async function releaseDeferredWithdrawals(
   client: PoolClient,
   lock: LockedExperience,
+  decidedBy: number,
 ): Promise<number> {
   // The old point loses the placement of the membership whose run brought the
   // arrival, and is marked missing only once no placement is left (ADR-0084):
@@ -221,7 +222,8 @@ export async function releaseDeferredWithdrawals(
   // excludes them by name.
   const released = await client.query(
     `WITH pairs AS (
-       SELECT old.id AS old_id, arrived.id AS new_id
+       SELECT old.id AS old_id, arrived.id AS new_id,
+              round(ST_Distance(old.location::geography, arrived.location::geography)) AS metres
          FROM experience_locations arrived
          JOIN experience_locations old ON old.id = arrived.withdrawal_deferred_for_location_id
         WHERE ${shownBySql('arrived', 'ARRAY[$1::int]')}
@@ -238,7 +240,13 @@ export async function releaseDeferredWithdrawals(
      )
      UPDATE experience_locations old
         SET missing_since = NOW(), ordinal = NULL,
-            withdrawal_deferred_for_location_id = NULL
+            withdrawal_deferred_for_location_id = NULL,
+            -- Answered by the publish itself: the curator accepted the move, so
+            -- the source no longer lists the old spot, and its departure is no
+            -- question left to ask (the Trevi Fountain, moved 24 m).
+            source_membership = 'former', moved_to_location_id = pairs.new_id,
+            state_decided_by = $2, state_decided_at = NOW(),
+            state_note = format('Moved %s m: the source lists it at its new spot', pairs.metres)
        FROM pairs
       WHERE old.id = pairs.old_id
         AND NOT EXISTS (
@@ -246,7 +254,7 @@ export async function releaseDeferredWithdrawals(
            WHERE other.location_id = old.id
              AND (other.location_id, other.membership_id) NOT IN (SELECT location_id, membership_id FROM unplaced)
         )`,
-    [lock.id],
+    [lock.id, decidedBy],
   );
   await client.query(
     `UPDATE experience_locations
@@ -279,9 +287,11 @@ export async function setPointVerdict(
 ): Promise<void> {
   await client.query(`
     UPDATE experience_locations
-    SET source_membership = $2,
+    SET source_membership = $2::varchar,
         existence = $3,
         missing_since = CASE WHEN $4 THEN NULL ELSE missing_since END,
+        -- Listed again by the curator's word: no longer a point that moved away (#1448).
+        moved_to_location_id = CASE WHEN $2::varchar = 'present' THEN NULL ELSE moved_to_location_id END,
         state_decided_by = $5,
         state_decided_at = NOW(),
         state_note = $6

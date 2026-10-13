@@ -97,6 +97,8 @@ export function worksPublished(locationIds?: number[], treasureIds?: number[]): 
 export async function publishContents(
   client: PoolClient,
   lock: LockedExperience,
+  /** The curator the publish is theirs: a released withdrawal is answered in their name. */
+  decidedBy: number,
   locationIds?: number[],
   treasureIds?: number[],
   membershipId?: number,
@@ -119,7 +121,7 @@ export async function publishContents(
   // two swap, in this transaction (`releaseDeferredWithdrawals` says why).
   let withdrawalsReleased = 0;
   if (locationsPublished > 0) {
-    withdrawalsReleased = await releaseDeferredWithdrawals(client, lock);
+    withdrawalsReleased = await releaseDeferredWithdrawals(client, lock, decidedBy);
   }
 
   let treasureLinksPublished = 0;

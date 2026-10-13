@@ -260,15 +260,16 @@ async function contentsReleased(
 async function contentsOf(
   client: PoolClient,
   lock: LockedExperience,
-  { fieldsOnly, applied, locationIds, treasureIds, membershipId }: {
+  { fieldsOnly, applied, locationIds, treasureIds, membershipId, decidedBy }: {
     fieldsOnly?: true; applied: string[]; locationIds?: number[]; treasureIds?: number[]; membershipId: number;
+    decidedBy: number;
   },
 ): Promise<Awaited<ReturnType<typeof publishContents>>> {
-  if (!fieldsOnly) return publishContents(client, lock, locationIds, treasureIds);
+  if (!fieldsOnly) return publishContents(client, lock, decidedBy, locationIds, treasureIds);
   const movedPoint = applied.includes('location') ? await pointMovedWithObject(client, lock) : null;
   // Through the answering membership too (#1290): the pin arrived with the
   // run whose coordinate it is.
-  if (movedPoint !== null) return publishContents(client, lock, [movedPoint], undefined, membershipId);
+  if (movedPoint !== null) return publishContents(client, lock, decidedBy, [movedPoint], undefined, membershipId);
   return { locationsPublished: 0, treasureLinksPublished: 0, treasuresPublished: 0, withdrawalsReleased: 0 };
 }
 
@@ -636,7 +637,7 @@ export async function publishUnderLock(
     //
     // One point is the exception (`contentsOf`): the one that is the object's
     // own coordinate moving.
-    const contents = await contentsOf(client, locked.lock, { ...release, applied, membershipId });
+    const contents = await contentsOf(client, locked.lock, { ...release, applied, membershipId, decidedBy: userId });
     const { locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased } = contents;
 
     await client.query(`

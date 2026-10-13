@@ -698,6 +698,10 @@ export async function queryAnsweredWithdrawals(
         FROM ${pointsShownSql('e.id', 'el')}
         WHERE (el.source_membership = 'former' OR el.existence = 'lost')
           AND NOT (${offeredLocationSql('el')})
+          -- A point that moved is no departure anybody answered: the publish that
+          -- moved it is its record, and taking it back would set a second pin
+          -- beside the one it moved to (#1448).
+          AND el.moved_to_location_id IS NULL
           -- Under the place that answers for the point, a part's under its site
           -- (ADR-0100): the list walks every place, parts included, and a part
           -- would otherwise carry its point on a card of its own.
