@@ -1977,6 +1977,26 @@ Mark's Campanile — rather than silently absent. Then one facts pass per 50 can
 fact it reads (a row's own classes and nothing else — a tower is a tower whether a cathedral stands
 beside it or not):
 
+- **A work another kind handed over is kept** (ADR-0102, #1444). Kinds pass works between them:
+  Public Art refuses the Horses of Saint Mark as "in the collection of St Mark's Basilica: a work of a
+  place of worship", and the places of worship refuse it as "not a treasure by its classes: group of
+  sculptures — held by St Mark's Basilica"; neither held it. So a refusal that says a work belongs to
+  another place records where it found it held (`experience_hand_overs`: the source, the item, the reason and
+  the places, item ids nearest first — the Cornaro chapel, then Santa Maria della Vittoria). The
+  orchestrator writes it beside the refusals (`recordHandOvers`, `services/sync/handOvers.ts`) from
+  what the run filtered (Public Art's verdict carries `heldIn`), whether or not the source ever held
+  the work as a row, and a complete run replaces its source's set. Each works kind's run reads the
+  other sources' hand-overs once (`readHandOvers`). The venue-side read keeps an object its class rule refuses — or the pool's
+  own keep refused — when it finds it held at one of the places the refusal named
+  (`handOverAt`): the read's own venue, never one the other kind merely said — and asks again about
+  one an earlier round or the pool refused, once a round finds it there. The work is placed by the
+  kind's resolver, only at a place the refusal named or a venue folded into one, and written under
+  the venue's own membership, so the venue's runs keep and
+  withdraw it like any link (ADR-0084), and no run writes another kind's rows. The venue's changeset
+  names it: the work added carries `handed_by` (the refusing kind and its reason), which the run's
+  report reads as "gained Bamberg Horseman (handed over by Public Art & Monuments: inside Bamberg
+  Cathedral: …)". A hand-over is read only after the refusing run has recorded it, so the next run
+  of the venue's kind is the first to take it.
 - **What it is**, before whether it is ours: a class of `WORSHIP_KILL_CLASSES` refuses the row
   whatever else it carries, because the Temple Mount is a hill though it is also a mosque. One
   entry is conditional: `destroyed building or structure` is lifted by a standing-ruin class
