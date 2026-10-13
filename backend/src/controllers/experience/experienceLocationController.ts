@@ -17,7 +17,7 @@ import type {
   VisitedLocationIds, VisitedStatus,
 } from '../../api/responses/visited.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { overPlacePoints, placePointsSql } from '../../db/placePoints.js';
+import { overPlacePoints, placePointsSql, shownBySql } from '../../db/placePoints.js';
 import type {
   CheckValue, ExperienceLocationsRow, ExperiencesRow, UserVisitedLocationsRow,
 } from '../../db/schema.generated.js';
@@ -444,13 +444,19 @@ export async function markLocationVisited(
   // place, and this endpoint is exactly the thing that can. No curator
   // relaxation here: this is the caller's own record, not one of the three
   // by-id reads, so it stays unconditional.
+  //
+  // One row per offered place that shows the point (ADR-0100): the Temple of
+  // Karnak's own, once it holds a kind, and Ancient Thebes', whose part it is.
+  // A visit counts on each, and the point's own place answers first.
   const locResult = await pool.query<
     Pick<ExperienceLocationsRow, 'id' | 'name' | 'experience_id'> & { experience_name: ExperiencesRow['name'] }
   >(`
-    SELECT el.id, el.name, el.experience_id, e.name as experience_name
-    FROM experience_locations el
-    JOIN experiences e ON el.experience_id = e.id
+    SELECT el.id, el.name, pp.place_id AS experience_id, e.name as experience_name
+    FROM ${placePointsSql()} pp
+    JOIN experience_locations el ON el.id = pp.location_id
+    JOIN experiences e ON e.id = pp.place_id
     WHERE el.id = $1 AND ${offeredToReaderSql()}
+    ORDER BY (pp.place_id = el.experience_id) DESC, pp.place_id
   `, [locationId]);
 
   if (locResult.rows.length === 0) throw notFound('Location not found');
@@ -471,9 +477,9 @@ export async function markLocationVisited(
   // This maintains backward compatibility
   await pool.query(`
     INSERT INTO user_visited_experiences (user_id, experience_id, visited_at)
-    VALUES ($1, $2, NOW())
+    SELECT $1, place_id, NOW() FROM unnest($2::int[]) AS place_id
     ON CONFLICT (user_id, experience_id) DO NOTHING
-  `, [userId, location.experience_id]);
+  `, [userId, locResult.rows.map(row => row.experience_id)]);
 
   const visit = result.rows[0];
   return {
@@ -497,14 +503,22 @@ export async function unmarkLocationVisited(
 ): Promise<LocationVisitUnmarked> {
   const userId = caller.id;
 
-  // Get the experience ID before deleting
-  const locResult = await pool.query(`
-    SELECT el.experience_id FROM experience_locations el WHERE el.id = $1
+  // The places that show the point, before deleting: its own, and the wholes
+  // it is a part of (ADR-0100), the point's own place first.
+  const locResult = await pool.query<{ experience_id: number }>(`
+    SELECT pp.place_id AS experience_id
+    FROM ${placePointsSql()} pp
+    JOIN experience_locations el ON el.id = pp.location_id
+    JOIN experiences e ON e.id = pp.place_id
+    WHERE el.id = $1
+    -- The place the tick was answered under first, as markLocationVisited names it.
+    ORDER BY ${experienceOfferedToReaderSql()} DESC, (pp.place_id = el.experience_id) DESC, pp.place_id
   `, [locationId]);
 
   if (locResult.rows.length === 0) throw notFound('Location not found');
 
   const experienceId = locResult.rows[0].experience_id;
+  const places = locResult.rows.map(row => row.experience_id);
 
   // Delete the visit record
   const result = await pool.query(
@@ -523,20 +537,18 @@ export async function unmarkLocationVisited(
   // shows offered points only — would report none visited with no tick on
   // screen to remove. Before locations were kept, the withdrawn row and its
   // visit were deleted together and this count reached zero on its own.
-  const remainingResult = await pool.query(`
-    SELECT COUNT(*) as count
-    FROM user_visited_locations uvl
-    JOIN experience_locations el ON uvl.location_id = el.id
-    WHERE uvl.user_id = $1 AND el.experience_id = $2
-      AND ${offeredLocationSql()}
-  `, [userId, experienceId]);
-
-  if (parseInt(remainingResult.rows[0].count) === 0) {
-    await pool.query(
-      'DELETE FROM user_visited_experiences WHERE user_id = $1 AND experience_id = $2',
-      [userId, experienceId]
-    );
-  }
+  //
+  // Asked of every place that shows the point: a whole keeps its record while
+  // the reader holds a visit to another of its parts.
+  await pool.query(`
+    DELETE FROM user_visited_experiences uve
+    WHERE uve.user_id = $1 AND uve.experience_id = ANY($2::int[])
+      AND NOT EXISTS (
+        SELECT 1 FROM user_visited_locations uvl
+        JOIN experience_locations el ON uvl.location_id = el.id
+        WHERE uvl.user_id = $1 AND ${shownBySql('el', 'ARRAY[uve.experience_id]')}
+          AND ${offeredLocationSql()})
+  `, [userId, places]);
 
   return { success: true, locationId, experienceId };
 }

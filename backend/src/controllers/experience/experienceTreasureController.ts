@@ -24,6 +24,7 @@ import {
 import { treasureOf, type TreasureRow } from './experienceAnswerRows.js';
 import { maySeeUnreadExperience } from './experienceScope.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
+import { shownBySql } from '../../db/placePoints.js';
 import { notFound } from '../../middleware/errorHandler.js';
 import type {
   idParamSchema, markTreasureViewedBodySchema, treasureIdParamSchema, viewedTreasureIdsQuerySchema,
@@ -247,8 +248,8 @@ export async function markTreasureViewed(
         INSERT INTO user_visited_locations (user_id, location_id, visited_at)
         SELECT $1, el.id, NOW()
         FROM experience_locations el
-        JOIN experiences e ON e.id = el.experience_id
-        WHERE el.experience_id = $2 AND ${offeredLocationSql()}
+        JOIN experiences e ON e.id = $2
+        WHERE ${shownBySql('el', 'ARRAY[$2::int]')} AND ${offeredLocationSql()}
           AND ${experienceOfferedToReaderSql()} AND ${publishedContentSql('el')}
         ON CONFLICT (user_id, location_id) DO NOTHING
       `, [userId, experienceId]);

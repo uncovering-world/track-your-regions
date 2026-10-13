@@ -92,3 +92,17 @@ export function withWholesSql(places: string): string {
   return `ARRAY(SELECT unnest(${places})
     UNION SELECT prt.whole_id FROM experience_parts prt WHERE prt.part_id = ANY(${places}))`;
 }
+
+/**
+ * The points the places `places` show, as FROM items binding `point`: the
+ * places and their parts first, then each one's points through the index on
+ * the point's place. The shape for a correlated read that reaches the point
+ * from elsewhere — a region's placements, a reader's visits — where
+ * `shownBySql` as a filter is evaluated once per row the plan meets: the
+ * region list's check of a place's points took 11.6 s that way on the
+ * development catalogue on 2026-10-13, and 58 ms this way (71 ms before parts).
+ */
+export function pointsShownSql(places: string, point = 'el'): string {
+  return `unnest(${madeOfSql(places)}) AS ${point}_place(id)
+       JOIN experience_locations ${point} ON ${point}.experience_id = ${point}_place.id`;
+}
