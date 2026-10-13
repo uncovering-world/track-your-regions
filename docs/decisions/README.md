@@ -77,7 +77,7 @@ and accepted by it.
 | [0055](0055-readership-is-read-from-monthly-dumps-and-an-unseen-country-is-unobserved.md) | Readership is read from Wikimedia's monthly dumps, and a country the data does not show is unobserved, not unread | Draft | 2026-09-11 |
 | [0056](0056-a-work-the-world-reads-opens-a-second-door-to-the-world-tier.md) | A work the world reads opens a second door to the world tier | Draft | 2026-09-11 |
 | [0057](0057-a-work-famous-in-its-own-language-admits-its-museum-where-no-native-source-is-adopted.md) | A work read at home as much as a world masterpiece admits its museum to a regional tier that has no native source | Draft | 2026-09-11 |
-| [0058](0058-archaeology-is-one-kind-of-sites-and-museums.md) | Archaeology is one kind of sites and museums, and a museum joins it for what it is, not for one find | Accepted — decision 4 narrowed by [0060](0060-the-site-pool-has-a-second-entrance-the-map.md) | 2026-09-13 |
+| [0058](0058-archaeology-is-one-kind-of-sites-and-museums.md) | Archaeology is one kind of sites and museums, and a museum joins it for what it is, not for one find | Accepted — decision 4 narrowed by [0060](0060-the-site-pool-has-a-second-entrance-the-map.md); decisions 1 and 2 narrowed by [0103](0103-a-museum-whose-famous-find-no-kind-shows-arrives-in-archaeology-held-for-a-curator.md) | 2026-09-13 |
 | [0059](0059-what-the-catalogue-takes-from-openstreetmap-it-keeps-separable-and-offers-under-odbl.md) | What the catalogue takes from OpenStreetMap it keeps separable and offers under ODbL | Accepted | 2026-09-13 |
 | [0060](0060-the-site-pool-has-a-second-entrance-the-map.md) | The site pool has a second entrance, what the map calls a dig, and one rule judges both | Accepted — decisions 2 and 3 narrowed by [0098](0098-a-place-the-map-shows-in-use-is-refused-on-the-maps-entrance.md); decision 1 narrowed by [0101](0101-bulk-reads-come-from-public-dumps-and-wikidata-is-kept-as-a-wide-subset.md) | 2026-09-15 |
 | [0061](0061-the-catalogues-world-map-is-a-read-of-the-api-not-a-tile-source.md) | The catalogue's world map is a read of the API, not a tile source | Accepted | 2026-09-16 |
@@ -122,6 +122,7 @@ and accepted by it.
 | [0100](0100-a-serial-sites-components-are-places-part-of-the-site.md) | A serial site's components are places, part of the site | Accepted | 2026-10-13 |
 | [0101](0101-bulk-reads-come-from-public-dumps-and-wikidata-is-kept-as-a-wide-subset.md) | Bulk reads come from public dumps, and Wikidata is kept as a wide subset cut by entity | Accepted | 2026-10-13 |
 | [0102](0102-a-work-one-kind-refuses-as-held-by-a-place-is-handed-to-the-kind-that-holds-it.md) | A work one kind refuses as held by a place is handed to the kind that holds that place | Accepted | 2026-10-13 |
+| [0103](0103-a-museum-whose-famous-find-no-kind-shows-arrives-in-archaeology-held-for-a-curator.md) | A museum whose famous find no kind shows arrives in Archaeology held for a curator | Accepted | 2026-10-13 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
