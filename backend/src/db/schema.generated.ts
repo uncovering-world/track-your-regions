@@ -145,6 +145,27 @@ export interface DataAssertionAcceptancesRow {
   accepted_at: Date;
 }
 
+/** The table `dump_builds`. */
+export interface DumpBuildsRow {
+  id: number;
+  dump: string;
+  file_name: string;
+  dump_date: Date;
+  url: string;
+  mode: string;
+  bytes: string;
+  expected_bytes: string | null;
+  checksum_kind: string | null;
+  checksum_expected: string | null;
+  checksum_actual: string | null;
+  lines: string;
+  status: string;
+  error: string | null;
+  started_by: number | null;
+  started_at: Date;
+  finished_at: Date | null;
+}
+
 /** The table `email_verification_tokens`. */
 export interface EmailVerificationTokensRow {
   id: number;
@@ -819,6 +840,12 @@ export const COLUMN_WIDTHS = {
   data_assertion_acceptances: {
     assertion_id: 80,
   },
+  dump_builds: {
+    dump: 60,
+    mode: 10,
+    checksum_kind: 10,
+    status: 20,
+  },
   email_verification_tokens: {
     token_hash: 255,
   },
@@ -978,6 +1005,11 @@ export const CHECK_VALUES = {
   },
   curator_assignments: {
     scope_type: ["region", "source", "global"],
+  },
+  dump_builds: {
+    checksum_kind: ["md5", "sha1"],
+    mode: ["stream", "local"],
+    status: ["running", "success", "failed", "cancelled"],
   },
   experience_component_item_proposals: {
     answer: ["accepted", "refused"],
