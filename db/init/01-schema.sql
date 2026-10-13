@@ -3835,11 +3835,13 @@ COMMENT ON COLUMN experience_parts.external_ref IS 'The reference the site''s so
 -- same row holds) is not one. A site whose components are parts already gets
 -- every new one parted; one of a single component stays one place (ADR-0088).
 -- Each part is a place of one point: the point keeps its id, so its
--- placements, regions, visits, claims and candidates follow it. Its name and
--- coordinate are the point's; the rest of its content stays on the point
--- until the part's card reads the place. A part with no kind of its own has
--- no regions of its own: lists find it through its site. Answers how many
--- points it parted.
+-- placements, regions, claims and candidates follow it. A traveller's visit
+-- to the component becomes a visit to the part (ADR-0100 decision 5), the
+-- record a merge reconciles with another kind's visits to the same place.
+-- Its name and coordinate are the point's; the rest of its content stays on
+-- the point until the part's card reads the place. A part with no kind of
+-- its own has no regions of its own: lists find it through its site. Answers
+-- how many points it parted.
 CREATE OR REPLACE FUNCTION part_site_components(site INTEGER, site_membership INTEGER)
 RETURNS INTEGER AS $$
 DECLARE
@@ -3883,6 +3885,12 @@ BEGIN
     VALUES (site, part, 'component', site_membership, component.external_ref);
 
     UPDATE experience_locations SET experience_id = part WHERE id = component.id;
+
+    INSERT INTO user_visited_experiences (user_id, experience_id, visited_at, notes)
+    SELECT uvl.user_id, part, uvl.visited_at, uvl.notes
+      FROM user_visited_locations uvl WHERE uvl.location_id = component.id
+    ON CONFLICT (user_id, experience_id) DO NOTHING;
+    DELETE FROM user_visited_locations WHERE location_id = component.id;
 
     parted := parted + 1;
   END LOOP;
