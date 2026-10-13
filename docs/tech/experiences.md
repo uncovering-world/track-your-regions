@@ -123,14 +123,26 @@ An experience can have zero, one, or many locations. Location-bound experiences 
 **The points a place shows are its own and its parts'** (ADR-0100). Ancient Thebes shows the Luxor
 Temple, its own point, and the Temple of Karnak, the point of a place that is its part, on its map,
 in its "made of N places", in a traveller's progress through it and in the regions it is placed in.
-`backend/src/db/placePoints.ts` is the one statement of that rule, in the three shapes a read takes:
-`overPlacePoints` writes a read over many places once per arm (the place's own points, its parts'
-points) and unions the arms at the top of the statement, so each arm is planned as the read was
-before parts existed — a view joined inside the region read made the planner sort every point of the
-catalogue first; `placePointsSql` is the same rule as a derived table of (place, point) for a read
-about one place, and a visit to a point both a part and its whole show is listed once;
-`madeOfSql` / `shownBySql` answer for places already known — a correlated count, a write for given
-places — by an index probe on the point's own place. The readers that compose it: the region's and
+`backend/src/db/placePoints.ts` is the one statement of that rule, and every shape of it keeps the
+place's own points and its parts' points as two arms, so the own arm is planned as the read was before
+parts existed:
+
+- `overPlacePoints` writes a read over many places once per arm and unions the arms at the top of the
+  statement — a view joined inside the region read made the planner sort every point of the catalogue
+  first;
+- `placePointsSql` is the arms as a derived table of (place, point) for a read about one place by id,
+  and a visit to a point both a part and its whole show is listed once;
+- `pointsShownSql` is the arms as a table of one place's points for a read that comes from an outer
+  row (a region list's count, a card's points), and `somePointShownSql` the arms as an EXISTS each
+  for a test that one of them meets a condition (a region list's check that a place stands in the
+  region, a site's open candidates);
+- `madeOfSql` / `shownBySql` filter by a set of places given as a parameter (a run's writes for one
+  site, a placement for given places), which Postgres computes once. As a filter on an outer row's
+  place the array is computed again for every row the plan meets: on 2026-10-13 that took the region
+  list's check to 11.6 s and the review queue's first page to 4.2 s on the development catalogue,
+  where the arms answer in 34 ms and 262 ms (71 ms and 260 ms before parts).
+
+The readers that compose it: the region's and
 the place's point reads, the world points (folded and not), the region list's place count and the
 position it gives a place (`readerPositionSql`), the visit reads and writes over a place's points,
 the review card's "made of N places", the component-items card (its candidates, its points, its
@@ -138,8 +150,18 @@ answers and Jev's suggestions) and region placement, where a site is placed in e
 its parts' points is: `assignRegionsForExperiences` re-places a site's parts' points with it and,
 given a part, places its whole again (`withWholesSql`), and a source's rebuild clears and re-places
 the points its places show, so a World Heritage rebuild reaches a part that holds no membership of
-its own. A
-part carries no membership of the site's kind, so no list offers it as a place of its own.
+its own. The
+same rule answers everything else that asks about a site's points (#1428): a region list's check
+that a place stands in the region (`readerRegionMembershipSql`); a traveller's tick on a point, which
+counts on every offered place that shows it and is taken back from each only once none of its points
+is left visited; the run's own reads in `locationWriter.ts`, `pointContentWriter.ts` and the
+component finder, which reads a part's point as a component of its site; the review queue's keys,
+cards, waiting counts and publish; and the catalogue checks, where a part, offered through its whole,
+is neither a place without a membership nor a point placed by another place's membership. A write on
+a point is judged and locked under `answeringPlaceSql` — the site that shows it when its own place is
+a part — so a curator's correction of the Temple of Karnak is taken under Ancient Thebes' lock and
+scope, as a component's is. A part carries no membership of the site's kind, so no list offers it as
+a place of its own.
 
 **Where a reader is told an object is** ([ADR-0028](../decisions/0028-a-reader-is-positioned-by-places-they-can-go-to.md)). An object carries a coordinate of its own, `experiences.location`, and its places carry theirs. They are independent answers, and they disagreed by more than a kilometre for 106 objects and by up to 191 km (#502) — a list row and a map pin naming different countries for the same site. Every reader-facing read now positions an object with `readerPositionSql()`: **the place nearest the object's own published coordinate**, falling back to that coordinate for an object with no visible place. For an object of several places the stored coordinate is no longer the source's but the anchor the run derives, its most central component ([ADR-0095](../decisions/0095-a-place-of-several-points-has-no-coordinate-of-its-own.md), § Serial nominations below), so the place a reader is given is that component.
 
