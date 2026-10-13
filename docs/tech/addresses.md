@@ -100,6 +100,7 @@ what exists, and nothing personal goes in a URL.
 | A card the region's list does not hold — hidden, rejected, elsewhere, of another kind | The `e` segment is dropped, once the list has answered |
 | A part its card's object does not hold — withdrawn, unread, another object's (#1271) | The `p` segment is dropped, once the object's own points have answered (`PointCard`'s `onPointGone`) |
 | A card a merge folded into another place (#1247, ADR-0086) | The `e` segment moves to the surviving place, in place — once the list has answered without it and the by-id read has named the survivor |
+| A card that is a part of a serial site (ADR-0100, #1425) | The `e` segment moves to the site and `p` names the part's point, in place — the same read, answering `part_of` |
 | A kind nobody knows | `?kind=` is dropped, once the kinds have answered — in Discover by `useDiscoverExperiences`, on the map by `useWorldLayer` |
 | A segment that does not parse | Read as absent, and canonicalised away |
 
@@ -124,8 +125,10 @@ names the place that was folded, and that place is in no list. So before the
 `useFoldedCard` (`hooks/useFoldedCard.ts`), from map mode's
 `useExperienceContext` and Discover's `useDiscoverExperiences` alike — and
 `GET /api/experiences/:id` follows `merged_into_id` to the place that stands:
-an answer under another id moves the address there, with that place's slug; a
-404 drops the card as before; a read that failed leaves the address alone, for
+an answer under another id moves the address there, with that place's slug; an
+answer that names the site the card is a part of (`part_of`) moves it to the
+site's card opened at the part's point, so a link to the Temple of Karnak opens
+Ancient Thebes at the temple; a 404 drops the card as before; a read that failed leaves the address alone, for
 the reason above. A card the list holds is never asked about, so the read costs
 only a miss.
 
