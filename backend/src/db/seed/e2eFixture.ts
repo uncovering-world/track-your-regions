@@ -222,6 +222,12 @@ async function seedSignedInAccounts(client: PoolClient): Promise<void> {
 async function seedRows(client: PoolClient): Promise<void> {
   // Idempotent: drop our own rows first. Cascades clear the links, the
   // memberships and the curator's assignment.
+  // A site's parts first: their points are theirs, so deleting the site alone
+  // would leave them (ADR-0100).
+  await client.query(
+    'DELETE FROM experiences WHERE id IN (SELECT part_id FROM experience_parts WHERE whole_id = ANY($1::int[]))',
+    [EXPERIENCES.map((e) => e.id)],
+  );
   await client.query(
     'DELETE FROM experiences WHERE id = ANY($1::int[])',
     [[...EXPERIENCES, ...ARRIVALS].map((e) => e.id)],
@@ -256,6 +262,15 @@ async function seedRows(client: PoolClient): Promise<void> {
   for (const exp of EXPERIENCES) await seedPlace(client, exp, unesco, 'auto');
   for (const exp of ARRIVALS) await seedPlace(client, exp, worship, 'pending');
   await seedRefusedPoint(client, REFUSED_POINT);
+  // A World Heritage site of two points is a serial site, whose components are
+  // places part of it, as the run leaves them (ADR-0100): the Testland
+  // Aqueduct and its north arch.
+  await client.query(
+    `SELECT part_site_components(m.experience_id, m.id)
+       FROM experience_kind_memberships m
+      WHERE m.source_id = $1 AND m.experience_id = ANY($2::int[])`,
+    [unesco.id, EXPERIENCES.map((e) => e.id)],
+  );
   await seedCurator(client);
   await seedSignedInAccounts(client);
 
