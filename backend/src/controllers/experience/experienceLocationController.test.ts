@@ -349,10 +349,12 @@ describe('a visit outlives the point', () => {
     // one for ever: the list would keep its check, the progress view would
     // report none visited, and there would be no tick on screen to remove.
     // Before locations were kept, the withdrawn row and its visit went together
-    // and this count reached zero on its own.
-    const counts = sentSql().filter(sql => /COUNT\(\*\) as count/i.test(sql));
-    expect(counts).toHaveLength(1);
-    expect(counts[0]).toMatch(/el\.missing_since IS NULL/);
+    // and this count reached zero on its own. Asked of every place that shows
+    // the point, a site it is part of included (ADR-0100).
+    const clears = sentSql().filter(sql => /DELETE FROM user_visited_experiences/i.test(sql));
+    expect(clears).toHaveLength(1);
+    expect(clears[0]).toMatch(/NOT EXISTS[\s\S]*el\.missing_since IS NULL/);
+    expect(clears[0]).toContain('uve.experience_id = ANY($2::int[])');
   });
 });
 

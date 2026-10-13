@@ -241,13 +241,15 @@ describe('readerRegionMembershipSql', () => {
   it('asks the region for a point this reader may see', () => {
     const sql = readerRegionMembershipSql();
 
-    expect(sql).toContain('FROM experience_location_regions mem_elr');
-    expect(sql).toContain('JOIN experience_locations mem_el ON mem_el.id = mem_elr.location_id');
+    // Reached from the place and its parts (ADR-0100), each one's points by the
+    // index on their place, then the region's placement of them.
+    expect(sql).toContain('FROM unnest(ARRAY(SELECT unnest(ARRAY[e.id])');
+    expect(sql).toContain('JOIN experience_locations mem_el ON mem_el.experience_id = mem_el_place.id');
+    expect(sql).toContain('JOIN experience_location_regions mem_elr ON mem_elr.location_id = mem_el.id');
     // The point has to be placed in *this* region and belong to *this* object:
     // dropping either correlation turns the predicate into "somebody has a
     // visible point somewhere", which is true of nearly every row.
     expect(sql).toContain('mem_elr.region_id = er.region_id');
-    expect(sql).toContain('mem_el.experience_id = e.id');
   });
 
   it('spells the whole of what a reader may see, not half of it', () => {
@@ -287,12 +289,12 @@ describe('readerRegionMembershipSql', () => {
     // hard-coded `e.id` would fail there rather than being quietly wrong, which
     // is the better half of this argument existing.
     const sql = readerRegionMembershipSql('er.experience_id', 'er');
-    expect(sql).toContain('mem_el.experience_id = er.experience_id');
+    expect(sql).toContain('FROM unnest(ARRAY(SELECT unnest(ARRAY[er.experience_id])');
 
     const aliased = readerRegionMembershipSql('x.id', 'm');
     expect(aliased).toContain('mem_elr.region_id = m.region_id');
     expect(aliased).toContain("m.assignment_type = 'manual'");
-    expect(aliased).toContain('mem_el.experience_id = x.id');
+    expect(aliased).toContain('FROM unnest(ARRAY(SELECT unnest(ARRAY[x.id])');
   });
 
   it('never shadows the caller\'s own location aliases', () => {

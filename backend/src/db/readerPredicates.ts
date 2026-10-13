@@ -49,7 +49,7 @@
  */
 
 import { placeAdmittedSql, placeOfferedSql, rowKindJoinSql } from './membership.js';
-import { shownBySql } from './placePoints.js';
+import { pointsShownSql, shownBySql } from './placePoints.js';
 
 /**
  * Hides `lost` objects. `alias` is the `experiences` alias in the query.
@@ -383,11 +383,13 @@ export function offeredToReaderSql(experienceAlias = 'e', locationAlias = 'el'):
  * of the curator who is being asked about it.
  */
 export function readerRegionMembershipSql(experienceIdExpr = 'e.id', membershipAlias = 'er'): string {
+  // Any point the place shows, its parts' included (ADR-0100), reached from
+  // the place: from the region's placements, the plan meets every point there.
+  const place = `ARRAY[${experienceIdExpr}]`;
   return `(${membershipAlias}.assignment_type = 'manual' OR EXISTS (
-        SELECT 1 FROM experience_location_regions mem_elr
-        JOIN experience_locations mem_el ON mem_el.id = mem_elr.location_id
+        SELECT 1 FROM ${pointsShownSql(place, 'mem_el')}
+        JOIN experience_location_regions mem_elr ON mem_elr.location_id = mem_el.id
         WHERE mem_elr.region_id = ${membershipAlias}.region_id
-          AND mem_el.experience_id = ${experienceIdExpr}
           AND ${offeredLocationSql('mem_el')}
           AND ${publishedContentSql('mem_el')}))`;
 }
