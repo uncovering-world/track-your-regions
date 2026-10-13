@@ -76,6 +76,10 @@ services:
       # API. Point it inside /app/data, which is already mounted. Refused when
       # NODE_ENV is production — see docs/security/SECURITY.md
       SYNC_SOURCE_FIXTURE: ${SYNC_SOURCE_FIXTURE:-}
+      # Where a public dump build keeps its copy of the file (ADR-0101, #1433):
+      # a directory inside /app/data, e.g. /app/data/dumps. Empty, a build reads
+      # the file straight from the host as a stream and keeps nothing on disk.
+      DUMPS_DIR: ${DUMPS_DIR:-}
     ports:
       - "127.0.0.1:${BACKEND_PORT:-3001}:3001"
     volumes:
