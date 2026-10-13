@@ -108,6 +108,13 @@ const startServer = async () => {
     console.log(`🧹 Marked ${stoppedPlacements.marked} sync run(s) stopped while placing what they moved`);
   }
 
+  // A dump build the previous process was in the middle of (ADR-0101).
+  const { closeOrphanedBuilds } = await import('./services/dumps/ledger.js');
+  const orphanedBuilds = await closeOrphanedBuilds();
+  if (orphanedBuilds > 0) {
+    console.log(`🧹 Marked ${orphanedBuilds} stale dump build(s) as failed`);
+  }
+
   // Mark any orphaned import_runs as failed (e.g., from a previous server crash)
   const staleImportResult = await pool.query(
     `UPDATE import_runs SET status = 'failed', completed_at = NOW()

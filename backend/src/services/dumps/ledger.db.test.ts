@@ -1,0 +1,65 @@
+import { afterAll, describe, expect, it } from 'vitest';
+import { pool } from '../../db/index.js';
+import type { DumpFile } from './catalog.js';
+import { closeBuild, closeOrphanedBuilds, openBuild, recentBuilds } from './ledger.js';
+
+/**
+ * The dump build ledger against PostgreSQL (ADR-0101 decision 3): a build's
+ * row is opened and closed with what was read, the panel sees the newest
+ * three of each dump, and a build a restart stopped is closed as failed while
+ * a closed one keeps its outcome. The rows carry a marker in their file name
+ * and are deleted after.
+ */
+
+const MARKER = 'ledger-fixture';
+
+afterAll(async () => {
+  await pool.query('DELETE FROM dump_builds WHERE file_name LIKE $1', [`${MARKER}%`]);
+});
+
+const file = (n: number, over: Partial<DumpFile> = {}): DumpFile => ({
+  key: 'wikidata-lexemes', fileName: `${MARKER}-${n}.json.gz`, url: `https://dumps.wikimedia.org/${MARKER}-${n}.json.gz`,
+  date: '2026-10-07', checksum: { kind: 'sha1', value: 'a'.repeat(40) }, expectedBytes: 1000, compression: 'gzip', ...over,
+});
+
+const row = async (id: number) => (await pool.query('SELECT * FROM dump_builds WHERE id = $1', [id])).rows[0];
+
+describe('the dump build ledger', () => {
+  it('opens a build as running with what the host published, and closes it with what was read', async () => {
+    const id = await openBuild(file(1), 'stream', null);
+    expect(await row(id)).toMatchObject({
+      dump: 'wikidata-lexemes', status: 'running', mode: 'stream', expected_bytes: '1000',
+      checksum_kind: 'sha1', checksum_expected: 'a'.repeat(40), finished_at: null,
+    });
+    await closeBuild(id, { status: 'success', bytes: 1000, lines: 42, checksumActual: 'a'.repeat(40), error: null });
+    const closed = await row(id);
+    expect(closed).toMatchObject({ status: 'success', bytes: '1000', lines: '42', checksum_actual: 'a'.repeat(40) });
+    expect(closed.finished_at).not.toBeNull();
+  });
+
+  it('shows the panel the newest three builds of a dump, newest first', async () => {
+    const ids: number[] = [];
+    for (const n of [10, 11, 12, 13]) {
+      const id = await openBuild(file(n, { key: 'enwiki-langlinks' }), 'local', null);
+      await closeBuild(id, { status: 'failed', bytes: 0, lines: 0, checksumActual: null, error: 'fixture' });
+      ids.push(id);
+    }
+    const shown = (await recentBuilds()).filter(build => build.dump === 'enwiki-langlinks').map(build => build.id);
+    expect(shown).toEqual([ids[3], ids[2], ids[1]]);
+  });
+
+  it('closes a build a restart stopped as failed, and leaves a closed one as it was', async () => {
+    const stopped = await openBuild(file(20), 'stream', null);
+    const done = await openBuild(file(21), 'stream', null);
+    await closeBuild(done, { status: 'cancelled', bytes: 5, lines: 1, checksumActual: null, error: 'Cancelled.' });
+    expect(await closeOrphanedBuilds()).toBeGreaterThanOrEqual(1);
+    expect(await row(stopped)).toMatchObject({ status: 'failed', error: 'The server restarted during the build.' });
+    expect(await row(done)).toMatchObject({ status: 'cancelled', error: 'Cancelled.' });
+  });
+
+  it('refuses a status or a mode the ledger does not know', async () => {
+    const id = await openBuild(file(30), 'stream', null);
+    await expect(pool.query("UPDATE dump_builds SET status = 'half' WHERE id = $1", [id])).rejects.toThrow(/check constraint/);
+    await expect(pool.query("UPDATE dump_builds SET mode = 'copy' WHERE id = $1", [id])).rejects.toThrow(/check constraint/);
+  });
+});
