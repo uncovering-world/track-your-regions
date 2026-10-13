@@ -341,6 +341,7 @@ export interface ExperienceLocationsRow {
   state_decided_at: Date | null;
   state_note: string | null;
   merged_into_id: number | null;
+  moved_to_location_id: number | null;
 }
 
 /** The table `experience_merges`. */

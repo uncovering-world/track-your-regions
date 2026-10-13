@@ -3791,6 +3791,10 @@ CREATE INDEX IF NOT EXISTS idx_experiences_merged_into ON experiences(merged_int
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS merged_into_id INTEGER REFERENCES experience_locations(id);
 CREATE INDEX IF NOT EXISTS idx_experience_locations_merged_into
   ON experience_locations(merged_into_id) WHERE merged_into_id IS NOT NULL;
+-- The point a published move replaced this one with (#1448). See db/migrations/098.
+ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS moved_to_location_id INTEGER
+    REFERENCES experience_locations(id) ON DELETE SET NULL;
+COMMENT ON COLUMN experience_locations.moved_to_location_id IS 'The point a curator''s published move replaced this one with (#1448): the old spot of the Trevi Fountain names the point 24 m away. Set with source_membership former by the publish, which is its answer; the answered withdrawals leave it out, and a run that lists the old spot again, or a curator who answers it still listed, clears it.';
 CREATE TABLE IF NOT EXISTS experience_merges (
     id SERIAL PRIMARY KEY,
     survivor_id INTEGER NOT NULL REFERENCES experiences(id),

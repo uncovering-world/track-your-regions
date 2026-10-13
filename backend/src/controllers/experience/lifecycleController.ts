@@ -261,6 +261,7 @@ export async function answerStateUnderLock(
  */
 async function publishArrivalContents(
   client: PoolClient, lock: LockedExperience, reach: { locationIds?: number[]; treasureIds?: number[] } | null,
+  decidedBy: number,
 ): Promise<{
   locationsPublished: number;
   treasureLinksPublished: number;
@@ -281,7 +282,7 @@ async function publishArrivalContents(
   // guard the shared one already carries. By id, the rows the arrival's
   // section drew (`contentsReached`, #1290), read before the arrival was made
   // offered: another kind's rows under the same place stay that kind's.
-  return publishContents(client, lock, reach.locationIds, reach.treasureIds);
+  return publishContents(client, lock, decidedBy, reach.locationIds, reach.treasureIds);
 }
 
 /**
@@ -512,7 +513,7 @@ export async function answerAdmissionUnderLock(
     await recordDecisionOnExperience(client, locked.lock, userId, note ?? null);
 
     ({ locationsPublished, treasureLinksPublished, treasuresPublished, withdrawalsReleased } =
-      await publishArrivalContents(client, locked.lock, reach));
+      await publishArrivalContents(client, locked.lock, reach, userId));
 
     // No placement for the admission columns themselves. Placement's insert
     // predicate is the `offeredLocationSql` pair — still offered, and not gone

@@ -29,6 +29,8 @@ const EXPERIENCE_ID = 9100;
 /** The run, of the gated source the fixture's place is under: its gate is the run's own (ADR-0084). */
 const RUN = { syncLogId: null, sourceId: 0 };
 const REF = 'X';
+const CURATOR = '00000000-0000-4000-8000-000000009100';
+let curatorId = 0;
 
 interface LocationRow {
   id: number;
@@ -82,7 +84,7 @@ async function publish(locationIds?: number[]) {
     // The object first, as the publish handler takes it: the writer requires its token.
     const locked = await lockExperience(client, EXPERIENCE_ID);
     if (!locked) throw new Error('the fixture object is gone');
-    const result = await publishContents(client, locked.lock, locationIds);
+    const result = await publishContents(client, locked.lock, curatorId, locationIds);
     await client.query('COMMIT');
     return result;
   } catch (err) {
@@ -95,6 +97,7 @@ async function publish(locationIds?: number[]) {
 
 async function resetFixture(): Promise<void> {
   await pool.query('DELETE FROM experiences WHERE id = $1', [EXPERIENCE_ID]);
+  await pool.query('DELETE FROM users WHERE uuid = $1', [CURATOR]);
 }
 
 describe('a point moved twice under a gated source, with no publish in between', () => {
@@ -112,6 +115,9 @@ describe('a point moved twice under a gated source, with no publish in between',
        VALUES ($1, $2, 'chain-9100', 'Chain chapel', ST_SetSRID(ST_MakePoint(10.5, 50.5), 4326))`,
       [EXPERIENCE_ID, source.rows[0].id],
     );
+    curatorId = (await pool.query<{ id: number }>(
+      `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'A curator', 'curator') RETURNING id`, [CURATOR],
+    )).rows[0].id;
   });
 
   afterAll(async () => {
@@ -179,6 +185,14 @@ describe('a point moved twice under a gated source, with no publish in between',
     const afterPublish = await rows();
     expect(afterPublish.find(r => r.id === l2)).toMatchObject({ curation_state: 'verified' });
     expect(afterPublish.every(r => r.withdrawal_deferred_for_location_id === null)).toBe(true);
+    // The publish answered the old spot's departure: it moved, which the source
+    // no longer lists, and no question about it is left open (the Trevi Fountain).
+    const answered = await pool.query(
+      'SELECT source_membership, state_decided_by, state_note, moved_to_location_id FROM experience_locations WHERE id = $1',
+      [l0],
+    );
+    expect(answered.rows[0]).toMatchObject({ source_membership: 'former', state_decided_by: curatorId, moved_to_location_id: l2 });
+    expect(answered.rows[0].state_note).toMatch(/^Moved \d+ m: the source lists it at its new spot$/);
 
     // Three further runs offering the same point change nothing: one pin, the
     // same row.

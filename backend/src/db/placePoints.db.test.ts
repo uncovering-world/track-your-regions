@@ -1,6 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from './index.js';
 import { anchorToItsPoint, lockExperience } from './experienceWriter.js';
+import { setPointVerdict } from '../controllers/experience/experienceLocationWriter.js';
 import { pointsShownSql, someoneVisitedPointSql } from './placePoints.js';
 import { getExperienceLocations, getRegionExperienceLocations } from '../controllers/experience/experienceLocationController.js';
 import {
@@ -339,6 +340,58 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
     });
     expect(ReviewQueue.safeParse(queue).success).toBe(true);
     expect(queue.answeredWithdrawals.map(card => card.id)).toEqual([SITE]);
+  });
+
+  it('keeps a point a published move replaced off the answered withdrawals (#1448)', async () => {
+    // The Luxor Temple's point published 24 m away: the publish answered its old spot.
+    const moved = (await pool.query<{ id: number }>(
+      `INSERT INTO experience_locations (experience_id, name, external_ref, location, curation_state)
+       VALUES ($1, 'Luxor Temple', '87-002', ST_SetSRID(ST_MakePoint(32.6392, 25.6996), 4326), 'verified') RETURNING id`,
+      [SITE],
+    )).rows[0].id;
+    await pool.query(
+      `UPDATE experience_locations
+          SET missing_since = NOW(), source_membership = 'former', moved_to_location_id = $2, state_decided_at = NOW()
+        WHERE id = $1`,
+      [luxorPoint, moved],
+    );
+    const answered = async () => (await getReviewQueue({
+      query: reviewQueueQuerySchema.parse({ q: 'parts fixture' }),
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    })).answeredWithdrawals;
+    expect(await answered()).toEqual([]);
+    // The same answer by a curator, with no move behind it, is on the card.
+    await pool.query('UPDATE experience_locations SET moved_to_location_id = NULL WHERE id = $1', [luxorPoint]);
+    expect((await answered()).map(card => card.id)).toEqual([SITE]);
+  });
+
+  it("clears where a point moved when a curator answers it still listed (#1448)", async () => {
+    const moved = (await pool.query<{ id: number }>(
+      `INSERT INTO experience_locations (experience_id, name, external_ref, location, curation_state)
+       VALUES ($1, 'Luxor Temple', '87-002', ST_SetSRID(ST_MakePoint(32.6392, 25.6996), 4326), 'verified') RETURNING id`,
+      [SITE],
+    )).rows[0].id;
+    await pool.query(
+      `UPDATE experience_locations SET missing_since = NOW(), source_membership = 'former', moved_to_location_id = $2
+        WHERE id = $1`,
+      [luxorPoint, moved],
+    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const locked = await lockExperience(client, SITE);
+      await setPointVerdict(client, locked!.lock, luxorPoint, {
+        sourceMembership: 'present', existence: 'extant', clearFlag: true, decidedBy: adminId, note: null,
+      });
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+    const row = await pool.query('SELECT source_membership, moved_to_location_id FROM experience_locations WHERE id = $1', [luxorPoint]);
+    expect(row.rows[0]).toEqual({ source_membership: 'present', moved_to_location_id: null });
   });
 });
 
