@@ -121,7 +121,10 @@ describe('collectPublicArt', () => {
     expect(items[0]).toMatchObject({ type: 'monument', classes: [MONUMENT], creators: [], artwork: false });
     expect(fetched).toBe(3);
     expect(filtered).toEqual([
-      { externalId: 'Q235242', name: 'Pietà', reason: "inside St. Peter's Basilica: a work of a place of worship, not public art" },
+      {
+        externalId: 'Q235242', name: 'Pietà', reason: "inside St. Peter's Basilica: a work of a place of worship, not public art",
+        heldIn: ['Q12512'],
+      },
       { externalId: 'Q1499912', name: 'Segovia Cathedral', reason: 'a place of worship, not public art' },
     ]);
   });
@@ -178,7 +181,11 @@ describe('collectPublicArt', () => {
     const { items, filtered } = await collectPublicArt(doorTo(world), new Set(['Q3100139']));
     expect(items).toEqual([]);
     expect(filtered).toEqual([
-      { externalId: 'Q3100139', name: 'Dendera zodiac', reason: 'inside Room 325 (Louvre Palace): a work indoors, not public art' },
+      {
+        externalId: 'Q3100139', name: 'Dendera zodiac', reason: 'inside Room 325 (Louvre Palace): a work indoors, not public art',
+        // The room, and every place the walk reached above it, nearest first (ADR-0102).
+        heldIn: ['Q19119449', 'Q7', 'Q17309954', 'Q1075988'],
+      },
     ]);
   });
 
@@ -198,7 +205,10 @@ describe('collectPublicArt', () => {
     };
     const { filtered } = await collectPublicArt(doorTo(world), new Set());
     expect(filtered).toEqual([
-      { externalId: 'Q9', name: 'A bust', reason: 'inside Room 12 (Palazzo Barberini): a work indoors, not public art' },
+      {
+        externalId: 'Q9', name: 'A bust', reason: 'inside Room 12 (Palazzo Barberini): a work indoors, not public art',
+        heldIn: ['Q1', 'Q2', 'Q220'],
+      },
     ]);
   });
 
@@ -229,6 +239,7 @@ describe('collectPublicArt', () => {
     expect(filtered).toEqual([{
       externalId: 'Q8', name: 'A bust',
       reason: 'part of Pakistan Monument Museum: a work of a museum, not public art',
+      heldIn: ['Q86452047'],
     }]);
   });
 
@@ -250,7 +261,7 @@ describe('collectPublicArt', () => {
     const { items, filtered } = await collectPublicArt(doorTo(world), new Set());
     expect(items).toEqual([]);
     expect(filtered).toEqual([
-      { externalId: 'Q9', name: 'A bust', reason: 'inside A museum: a work of a museum, not public art' },
+      { externalId: 'Q9', name: 'A bust', reason: 'inside A museum: a work of a museum, not public art', heldIn: ['Q2'] },
     ]);
   });
 
@@ -274,7 +285,10 @@ describe('collectPublicArt', () => {
       const { items, filtered } = await collectPublicArt(doorTo(complex(parents)), new Set());
       expect(items, parents.join(',')).toEqual([]);
       expect(filtered, parents.join(',')).toEqual([
-        { externalId: 'Q9', name: 'A bust', reason: 'inside A museum complex: a work of a museum, not public art' },
+        {
+          externalId: 'Q9', name: 'A bust', reason: 'inside A museum complex: a work of a museum, not public art',
+          heldIn: ['Q3'],
+        },
       ]);
     }
   });
@@ -305,6 +319,7 @@ describe('collectPublicArt', () => {
     expect(filtered).toEqual([{
       externalId: 'Q4523656', name: 'Shigir Idol',
       reason: 'in the collection of Sverdlovsk Regional Natural History Museum: a work of a museum, not public art',
+      heldIn: ['Q4410161'],
     }]);
   });
 

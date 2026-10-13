@@ -89,7 +89,23 @@ export type PublicArtResult =
      */
     artwork: boolean;
   }
-  | { pass: false; reason: string };
+  | {
+    pass: false;
+    reason: string;
+    /**
+     * Where the rule found the entity held, when it refused it as another
+     * place's: item ids, nearest first — the Cornaro chapel, then Santa Maria
+     * della Vittoria. Written on the refusal (ADR-0102), where a works kind
+     * that admits one of those places takes the work.
+     */
+    heldIn?: string[];
+  };
+
+/** A refusal that names the places the entity is held in, nearest first. */
+interface HeldElsewhere {
+  reason: string;
+  heldIn: string[];
+}
 
 function named(classes: string[], of: Record<string, string>): string[] {
   return classes.filter((c) => of[c]).map((c) => of[c]);
@@ -112,27 +128,31 @@ function named(classes: string[], of: Record<string, string>): string[] {
  * Sibelius Monument, which stands in a park — see `ownedElsewhere` for the
  * one case it is read.
  */
-function heldElsewhere(places: ContainerFact[], trees: PublicArtTrees): string | null {
+function heldElsewhere(places: ContainerFact[], trees: PublicArtTrees): HeldElsewhere | null {
+  // The places from the one the reason names outward, nearest first: what a
+  // works kind reads to find the venue it admits among them (ADR-0102).
+  const from = (index: number): string[] => places.slice(index).map((c) => c.qid);
   // The building before the room: "inside Louvre Museum" is the reason a
   // curator can read, and the room is only reached for when no place in the
   // chain is a museum or a place of worship. Nearest first across both
   // kinds: a chapel inside a museum complex names the chapel.
-  for (const container of places) {
+  for (const [index, container] of places.entries()) {
     if (container.classes.some((c) => trees.museum.has(c))) {
-      return `inside ${container.label}: a work of a museum, not public art`;
+      return { reason: `inside ${container.label}: a work of a museum, not public art`, heldIn: from(index) };
     }
     if (container.classes.some((c) => trees.worship.has(c))) {
-      return `inside ${container.label}: a work of a place of worship, not public art`;
+      return { reason: `inside ${container.label}: a work of a place of worship, not public art`, heldIn: from(index) };
     }
   }
-  for (const container of places) {
+  for (const [index, container] of places.entries()) {
     if (container.classes.some((c) => INDOOR_CLASSES[c])) {
       const where = container.building ? `${container.label} (${container.building})` : container.label;
-      return `inside ${where}: a work indoors, not public art`;
+      return { reason: `inside ${where}: a work indoors, not public art`, heldIn: from(index) };
     }
     const site = named(container.classes, SITE_CLASSES);
     if (site.length) {
-      return `part of ${container.label}: ${site[0]}, not public art`;
+      // A site owns its parts; no works kind holds a site, so nothing is handed over.
+      return { reason: `part of ${container.label}: ${site[0]}, not public art`, heldIn: [] };
     }
   }
   return null;
@@ -205,14 +225,14 @@ function placesAndOwners(
  * three of those an owner, and the fallback refuses exactly the two whose
  * owner is a museum or a basilica (#804).
  */
-function ownedElsewhere(owners: ContainerFact[], trees: PublicArtTrees): string | null {
+function ownedElsewhere(owners: ContainerFact[], trees: PublicArtTrees): HeldElsewhere | null {
   for (const owner of owners) {
     const how = owner.relation === 'part of' ? 'part of' : 'in the collection of';
     if (owner.classes.some((c) => trees.museum.has(c))) {
-      return `${how} ${owner.label}: a work of a museum, not public art`;
+      return { reason: `${how} ${owner.label}: a work of a museum, not public art`, heldIn: [owner.qid] };
     }
     if (owner.classes.some((c) => trees.worship.has(c))) {
-      return `${how} ${owner.label}: a work of a place of worship, not public art`;
+      return { reason: `${how} ${owner.label}: a work of a place of worship, not public art`, heldIn: [owner.qid] };
     }
   }
   return null;
@@ -232,6 +252,17 @@ function vetoes(classes: string[], trees: PublicArtTrees): string[] {
     ...(!commemorative && classes.some((c) => trees.museum.has(c)) ? ['a museum'] : []),
     ...named(classes, VETO_CLASSES),
   ];
+}
+
+/**
+ * The place or owner that makes the entity somebody else's work, or nothing:
+ * where it stands decides, and whose it is only when nothing says where it
+ * stands.
+ */
+function anothersWork(e: PublicArtFacts, trees: PublicArtTrees): HeldElsewhere | null {
+  const { places, owners } = placesAndOwners(e.containers, trees);
+  return heldElsewhere(places, trees)
+    ?? (places.length ? null : ownedElsewhere([...owners, ...e.collections], trees));
 }
 
 export function publicArtVerdict(e: PublicArtFacts, trees: PublicArtTrees): PublicArtResult {
@@ -262,15 +293,11 @@ export function publicArtVerdict(e: PublicArtFacts, trees: PublicArtTrees): Publ
     return { pass: false, reason: 'not on Earth: its coordinate (P625) is on another globe' };
   }
 
-  const { places, owners } = placesAndOwners(e.containers, trees);
-  const elsewhere = heldElsewhere(places, trees);
-  if (elsewhere) {
-    return { pass: false, reason: elsewhere };
-  }
-  // Where it stands decides; whose it is only when nothing says where it stands.
-  const owned = places.length ? null : ownedElsewhere([...owners, ...e.collections], trees);
-  if (owned) {
-    return { pass: false, reason: owned };
+  const another = anothersWork(e, trees);
+  if (another) {
+    return another.heldIn.length
+      ? { pass: false, reason: another.reason, heldIn: another.heldIn }
+      : { pass: false, reason: another.reason };
   }
 
   const artwork = e.classes.some((c) => trees.artwork.has(c));
