@@ -35,6 +35,7 @@ import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 import { pointMovedToSql } from './movedPoint.js';
 import { withdrawnContainerOpenSql, withdrawnPointOpenSql } from './reviewQueuePredicates.js';
+import { shownBySql } from '../../db/placePoints.js';
 
 /**
  * The held fields of an object's parts, as the held card carries them.
@@ -319,7 +320,7 @@ export async function queryContents(
         -- fragment gained it, so the badge and the card would have disagreed about
         -- an object holding one unread point a curator had declared gone.
         FROM experience_locations el
-        WHERE el.experience_id = e.id AND ${unreadPointSql('el')}
+        WHERE ${shownBySql('el', 'ARRAY[e.id]')} AND ${unreadPointSql('el')}
           AND ${offeredLocationSql('el')}
           AND ${pointMembershipSql('el')} = m.id
       ) el
@@ -473,7 +474,7 @@ export async function queryWithdrawn(
              'replacedMetres', (
                SELECT round(MIN(ST_Distance(el.location::geography, moved.location::geography))::numeric, 2)
                FROM experience_locations moved
-               WHERE moved.experience_id = e.id
+               WHERE ${shownBySql('moved', 'ARRAY[e.id]')}
                  -- The same fragment, and worth stating what it does *not* carry: it has
                  -- no term on curation_state, so a pending arrival counts as a replacement
                  -- here. That is right for the question the distance answers -- whether
@@ -508,7 +509,7 @@ export async function queryWithdrawn(
                  -- replacement.
                  AND NOT EXISTS (
                    SELECT 1 FROM experience_locations pausing
-                   WHERE pausing.experience_id = e.id
+                   WHERE ${shownBySql('pausing', 'ARRAY[e.id]')}
                      AND pausing.withdrawal_deferred_for_location_id = moved.id
                  )
                  AND moved.external_ref IS NOT DISTINCT FROM el.external_ref
@@ -518,7 +519,7 @@ export async function queryWithdrawn(
     FROM experiences e
     ${rowKindJoinSql('e', 'mk', 'kd')}
     JOIN experience_locations el
-      ON el.experience_id = e.id
+      ON ${shownBySql('el', 'ARRAY[e.id]')}
      AND ${withdrawnPointOpenSql('el')}
     -- The container half's reasoning is on withdrawnContainerOpenSql
     -- (reviewQueuePredicates.ts).
@@ -699,7 +700,7 @@ export async function queryAnsweredWithdrawals(
                row_number() OVER (
                  ORDER BY el.state_decided_at DESC NULLS LAST, el.id) AS rn
         FROM experience_locations el
-        WHERE el.experience_id = e.id
+        WHERE ${shownBySql('el', 'ARRAY[e.id]')}
           AND (el.source_membership = 'former' OR el.existence = 'lost')
           AND NOT (${offeredLocationSql('el')})
       ) el

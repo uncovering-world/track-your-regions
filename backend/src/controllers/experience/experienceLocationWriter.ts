@@ -9,7 +9,8 @@
  * `LockedExperience` that `lockExperience` hands out, so **the object first,
  * then its points** — `db/locks.ts`'s order — is a property of the types: a
  * point write issued before the object's lock does not compile. A write that
- * names one point also names the object (`AND experience_id = …`), so a token
+ * names one point also names the object that shows it (`shownBySql`, its own
+ * points and its parts', ADR-0100), so a token
  * for one object cannot be spent on another's point.
  *
  * The statements and the reasoning that belongs to them live here; whether to
@@ -26,6 +27,7 @@ import { MEMBERSHIPS } from '../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { pointAnsweredBySql, unreadPointSql } from './waitingCounts.js';
+import { shownBySql } from '../../db/placePoints.js';
 
 /** `AND id = ANY($2)` where the caller named points, nothing where it meant all of them. */
 /**
@@ -110,7 +112,7 @@ export async function publishUnreadPoints(
   const named = namedPoints(locationIds, membershipId);
   const result = await client.query(
     `UPDATE experience_locations SET curation_state = 'verified'
-      WHERE experience_id = $1 AND ${unreadPointSql('experience_locations')}
+      WHERE ${shownBySql('experience_locations', 'ARRAY[$1::int]')} AND ${unreadPointSql('experience_locations')}
         AND ${offeredLocationSql('experience_locations')}
       ${named.sql}`,
     [lock.id, ...named.params],
@@ -133,7 +135,7 @@ export async function markUnreadPointsRefused(
   const named = namedPoints(locationIds, membershipId);
   const result = await client.query(
     `UPDATE experience_locations SET refused_at = NOW()
-      WHERE experience_id = $1 AND ${unreadPointSql('experience_locations')}
+      WHERE ${shownBySql('experience_locations', 'ARRAY[$1::int]')} AND ${unreadPointSql('experience_locations')}
         AND ${offeredLocationSql('experience_locations')}
       ${named.sql}`,
     [lock.id, ...named.params],
@@ -163,7 +165,7 @@ export async function restoreRefusedPoints(
   const named = namedPoints(locationIds, membershipId);
   const result = await client.query<{ id: number }>(
     `UPDATE experience_locations SET refused_at = NULL
-      WHERE experience_id = $1 AND refused_at IS NOT NULL
+      WHERE ${shownBySql('experience_locations', 'ARRAY[$1::int]')} AND refused_at IS NOT NULL
       ${named.sql}
       RETURNING id`,
     [lock.id, ...named.params],
@@ -222,8 +224,8 @@ export async function releaseDeferredWithdrawals(
        SELECT old.id AS old_id, arrived.id AS new_id
          FROM experience_locations arrived
          JOIN experience_locations old ON old.id = arrived.withdrawal_deferred_for_location_id
-        WHERE arrived.experience_id = $1
-          AND old.experience_id = $1
+        WHERE ${shownBySql('arrived', 'ARRAY[$1::int]')}
+          AND ${shownBySql('old', 'ARRAY[$1::int]')}
           AND ${publishedContentSql('arrived')}
           AND old.missing_since IS NULL
      ), unplaced AS (
@@ -249,7 +251,7 @@ export async function releaseDeferredWithdrawals(
   await client.query(
     `UPDATE experience_locations
         SET withdrawal_deferred_for_location_id = NULL
-      WHERE experience_id = $1
+      WHERE ${shownBySql('experience_locations', 'ARRAY[$1::int]')}
         AND withdrawal_deferred_for_location_id IS NOT NULL
         AND ${publishedContentSql('experience_locations')}`,
     [lock.id],
@@ -283,7 +285,7 @@ export async function setPointVerdict(
         state_decided_by = $5,
         state_decided_at = NOW(),
         state_note = $6
-    WHERE id = $1 AND experience_id = $7
+    WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$7::int]')}
   `, [
     locationId, verdict.sourceMembership, verdict.existence, verdict.clearFlag,
     verdict.decidedBy, verdict.note, lock.id,
@@ -326,7 +328,7 @@ export async function correctPoint(
                             ELSE metadata || jsonb_build_object('imageCredit', $10::jsonb) END,
             description = CASE WHEN $11::boolean THEN $12 ELSE description END,
             curated_fields = $6::jsonb
-      WHERE id = $1 AND experience_id = $7`,
+      WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$7::int]')}`,
     [locationId, correction.name, correction.movesPoint, correction.longitude, correction.latitude,
       JSON.stringify(correction.curatedFields), lock.id,
       correction.picture !== undefined, correction.picture ?? null,
@@ -370,7 +372,7 @@ export async function claimPointItem(
                             THEN metadata || jsonb_build_object('imageCredit', $6::jsonb)
                             ELSE metadata END,
             description = CASE WHEN $7::boolean AND NOT curated_fields ? 'description' THEN $8 ELSE description END
-      WHERE id = $1 AND experience_id = $2
+      WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}
       RETURNING ($4::boolean AND image_url = $5) AS pictured`,
     [
       locationId, lock.id, item,
@@ -399,7 +401,7 @@ export async function releasePointItem(
   const result = await client.query<{ picture_cleared: boolean; description_cleared: boolean }>(
     `WITH before AS (
        SELECT id, image_url, description, curated_fields FROM experience_locations
-        WHERE id = $1 AND experience_id = $2
+        WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}
      )
      UPDATE experience_locations el
         SET wikidata_item = NULL,
@@ -435,7 +437,7 @@ export async function releaseAnchorPointClaim(
         -- unqualified it is ambiguous rather than wrong-but-working.
         SET curated_fields = el.curated_fields - 'location'
        FROM experiences e
-      WHERE e.id = $1 AND el.experience_id = e.id
+      WHERE e.id = $1 AND ${shownBySql('el', 'ARRAY[e.id]')}
         AND el.curated_fields ? 'location'
         AND el.location = e.location
       RETURNING el.id, el.external_ref, el.name`,
@@ -455,7 +457,7 @@ export async function movePointTo(
   await client.query(
     `UPDATE experience_locations
         SET location = ST_SetSRID(ST_MakePoint($2, $3), 4326)
-      WHERE id = $1 AND experience_id = $4`,
+      WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$4::int]')}`,
     [locationId, longitude, latitude, lock.id],
   );
 }
@@ -502,7 +504,7 @@ export async function writeHeldPointFields(
     return `${field} = ${bind(value)}`;
   });
   await client.query(
-    `UPDATE experience_locations SET ${assignments.join(', ')} WHERE id = $1 AND experience_id = $2`,
+    `UPDATE experience_locations SET ${assignments.join(', ')} WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}`,
     params,
   );
 }

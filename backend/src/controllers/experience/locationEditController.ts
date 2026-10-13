@@ -26,6 +26,7 @@ import { lockExperience, anchorToItsPoint } from '../../db/experienceWriter.js';
 import { correctPoint } from './experienceLocationWriter.js';
 import { userAgent } from '../../config/userAgent.js';
 import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
+import { answeringPlaceSql } from '../../db/placePoints.js';
 
 /** What a curator may claim on a point — see `db/migrations/027`, and #1270 for the picture and description. */
 type Claim = 'name' | 'location' | 'image_url' | 'description';
@@ -93,9 +94,9 @@ export async function editLocation(
   // The point carries no scope of its own: it is judged through the object
   // holding it, which is where the regions and the source live.
   const found = await pool.query(
-    `SELECT el.experience_id, e.source_id
+    `SELECT ${answeringPlaceSql()} AS experience_id, e.source_id
        FROM experience_locations el
-       JOIN experiences e ON e.id = el.experience_id
+       JOIN experiences e ON e.id = ${answeringPlaceSql()}
       WHERE el.id = $1`,
     [locationId],
   );

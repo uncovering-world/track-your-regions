@@ -99,8 +99,8 @@ describe('publishing releases the withdrawal that was waiting on it', () => {
     // objects, and the foreign key does not say so, so this is the one statement
     // here that could otherwise reach a row the caller's scope was not checked
     // against.
-    expect(release.sql).toContain('arrived.experience_id = $1');
-    expect(release.sql).toContain('old.experience_id = $1');
+    expect(release.sql).toContain('arrived.experience_id = ANY(ARRAY(SELECT unnest(ARRAY[$1::int])');
+    expect(release.sql).toContain('old.experience_id = ANY(ARRAY(SELECT unnest(ARRAY[$1::int])');
     expect(release.params[0]).toBe(5);
   });
 

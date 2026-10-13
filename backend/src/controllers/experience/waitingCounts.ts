@@ -38,6 +38,7 @@ import { pool } from '../../db/index.js';
 import { KINDS, MEMBERSHIPS, membershipAdmittedSql, membershipOfferedSql } from '../../db/membership.js';
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
+import { answeringPlaceSql, shownBySql } from '../../db/placePoints.js';
 
 /** A membership nobody has read yet, of a place the source still offers. */
 export function arrivalWaitingSql(alias = 'e', membership = 'm'): string {
@@ -117,7 +118,7 @@ export function heldWaitingSql(alias = 'e', membership = 'm'): string {
 export function pointMembershipSql(el = 'el'): string {
   return placedBySql(
     `SELECT lp.membership_id FROM experience_location_placements lp WHERE lp.location_id = ${el}.id`,
-    `${el}.experience_id`,
+    answeringPlaceSql(el),
   );
 }
 
@@ -218,7 +219,7 @@ export function contentsRowsSql(alias: string, membership: string, which: 'unrea
     : 'et.refused_at IS NOT NULL';
   return `(EXISTS (
         SELECT 1 FROM experience_locations el
-        WHERE el.experience_id = ${alias}.id AND ${point}
+        WHERE ${shownBySql('el', `ARRAY[${alias}.id]`)} AND ${point}
           AND ${pointMembershipSql('el')} = ${membership}.id)
       OR EXISTS (
         SELECT 1 FROM experience_treasures et

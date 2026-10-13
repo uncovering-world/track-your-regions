@@ -26,6 +26,7 @@ import type { PoolClient } from 'pg';
 import { OBJECT_LOCK } from './locks.js';
 import { MEMBERSHIPS } from './membership.js';
 import { offeredLocationSql, publishedContentSql } from './readerPredicates.js';
+import { shownBySql } from './placePoints.js';
 
 declare const locked: unique symbol;
 
@@ -164,8 +165,9 @@ export async function anchorToItsPoint(
             -- coordinate moved.
             updated_at = NOW()
       WHERE e.id = $1
+        -- Of every point the object shows, its parts' included (ADR-0100).
         AND (SELECT COUNT(*) FROM experience_locations el
-              WHERE el.experience_id = e.id
+              WHERE ${shownBySql('el', 'ARRAY[$1::int]')}
                 AND ${offeredLocationSql('el')}
                 AND ${publishedContentSql('el')}) = 1
         -- ...and it is *this* point. The count alone says the object has one
@@ -178,7 +180,7 @@ export async function anchorToItsPoint(
         -- fragments: under missing_since IS NULL alone a lost or unread
         -- sibling made the count 2 and nothing moved.
         AND EXISTS (SELECT 1 FROM experience_locations el
-                     WHERE el.id = $4 AND el.experience_id = e.id
+                     WHERE el.id = $4 AND ${shownBySql('el', 'ARRAY[$1::int]')}
                        AND ${offeredLocationSql('el')}
                        AND ${publishedContentSql('el')})
       RETURNING e.id`,

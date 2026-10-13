@@ -19,14 +19,15 @@ import { createError, failure, notFound } from '../../middleware/errorHandler.js
 import { commonsPicturesNear, NEARBY_RADIUS_M } from '../../services/sync/commonsNearby.js';
 import type { locationIdParamSchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
+import { answeringPlaceSql } from '../../db/placePoints.js';
 
 export async function getNearbyPictures(
   { params: { locationId }, caller }: { params: z.output<typeof locationIdParamSchema>; caller: Express.User },
 ): Promise<NearbyPictures> {
   const found = await pool.query<{ experience_id: number; source_id: number; lat: number | null; lon: number | null }>(
-    `SELECT el.experience_id, e.source_id, ST_Y(el.location) AS lat, ST_X(el.location) AS lon
+    `SELECT ${answeringPlaceSql()} AS experience_id, e.source_id, ST_Y(el.location) AS lat, ST_X(el.location) AS lon
        FROM experience_locations el
-       JOIN experiences e ON e.id = el.experience_id
+       JOIN experiences e ON e.id = ${answeringPlaceSql()}
       WHERE el.id = $1`,
     [locationId],
   );

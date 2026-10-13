@@ -198,7 +198,10 @@ describe('editLocation', () => {
     // one: editing a withdrawn or unread sibling beside a single visible point
     // satisfies the count and would move the object onto a coordinate no reader is
     // ever sent to.
-    expect(anchor.sql).toContain('WHERE el.id = $4 AND el.experience_id = e.id');
+    // Of the points the object shows, its parts' included (ADR-0100), in the
+    // count and in this test alike.
+    expect(anchor.sql).toContain('WHERE el.id = $4 AND el.experience_id = ANY(ARRAY(SELECT unnest(ARRAY[$1::int])');
+    expect(anchor.sql).toMatch(/SELECT COUNT\(\*\) FROM experience_locations el\s+WHERE el\.experience_id = ANY\(ARRAY\(SELECT unnest\(ARRAY\[\$1::int\]\)/);
     expect(anchor.params[3]).toBe(31);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ anchorMoved: true }));
   });
