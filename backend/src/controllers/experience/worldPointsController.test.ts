@@ -120,8 +120,9 @@ describe('getWorldPoints', () => {
     });
 
     it('is one envelope for an ordinary box', async () => {
+      // Once per arm of the union: a place's own points and its parts' (ADR-0100).
       const { sql, params } = await ask({ bbox: '-10,35,30,60' });
-      expect(sql.match(/ST_MakeEnvelope/g)).toHaveLength(1);
+      expect(sql.match(/ST_MakeEnvelope/g)).toHaveLength(2);
       expect(params).toEqual([-10, 35, 30, 60]);
     });
 
@@ -129,7 +130,7 @@ describe('getWorldPoints', () => {
       // One envelope does not fail on `west > east`, it silently normalises
       // into the whole planet except the strip asked for.
       const { sql } = await ask({ bbox: '170,-10,-170,10' });
-      expect(sql.match(/ST_MakeEnvelope/g)).toHaveLength(2);
+      expect(sql.match(/ST_MakeEnvelope/g)).toHaveLength(4);
       expect(sql).toContain('180,');
       expect(sql).toContain('-180,');
     });
@@ -176,7 +177,8 @@ describe('getWorldPoints', () => {
 
     it('breaks a tie on the id, so the answer is total', async () => {
       const { sql } = await ask({ folded: 'true' });
-      expect(sql).toMatch(/<-> e\.location::geography,\s*el\.id/);
+      expect(sql).toMatch(/<-> e\.location::geography AS off_anchor/);
+      expect(sql).toMatch(/ORDER BY experience_id, off_anchor, id/);
     });
 
     it('counts the places over the un-joined set, so a second membership cannot inflate it', async () => {
@@ -184,7 +186,8 @@ describe('getWorldPoints', () => {
       // LEFT JOIN would then count memberships and label the badge with them.
       const { sql } = await ask({ folded: 'true' });
       const fold = sql.slice(sql.indexOf('folded AS ('), sql.indexOf('SELECT\n', sql.indexOf('folded AS (')));
-      expect(fold).toContain('count(*) OVER (PARTITION BY el.experience_id)');
+      expect(fold).toContain('count(*) OVER (PARTITION BY experience_id)');
+      expect(fold).toContain('FROM places');
       expect(fold).not.toContain('LEFT JOIN experience_kind_memberships');
     });
   });

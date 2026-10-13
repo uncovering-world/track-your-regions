@@ -14,16 +14,24 @@ import type { PoolClient } from 'pg';
 import type { AssignmentStatus, PlacementCounts } from '../../api/responses/admin.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { offeredLocationSql } from '../../db/readerPredicates.js';
-import { MEMBERSHIPS, placeOfSourceSql } from '../../db/membership.js';
+import { MEMBERSHIPS } from '../../db/membership.js';
+import { madeOfSql, placePointsSql, shownBySql, withWholesSql } from '../../db/placePoints.js';
 
 /**
  * A rebuild narrowed to one source ($2) is narrowed to the places that source
  * has a membership on — never to `experiences.source_id`, which names only the
  * source that first brought the row (ADR-0084).
  */
-const ONE_SOURCE = `AND ${placeOfSourceSql('e', '$2')}`;
-/** The same narrowing, as the ids of those places. */
 const ONE_SOURCE_PLACES = `(SELECT experience_id FROM ${MEMBERSHIPS} WHERE source_id = $2)`;
+/**
+ * The points those places show, their own and their parts' (ADR-0100): a part
+ * carries no membership of its whole's kind, so the World Heritage source's
+ * rebuild reaches the Temple of Karnak's point through Ancient Thebes.
+ */
+const SOURCE_PLACES = `ARRAY${ONE_SOURCE_PLACES}`;
+const ONE_SOURCE_POINTS = `AND ${shownBySql('el', SOURCE_PLACES)}`;
+/** The places whose regions those points decide: every place that shows one — the source's, their parts, and the wholes they are parts of. */
+const ONE_SOURCE_PLACED = withWholesSql(madeOfSql(SOURCE_PLACES));
 
 export interface AssignmentProgress {
   cancel: boolean;
@@ -66,7 +74,7 @@ async function clearPreviousAssignments(
       AND elr.region_id = r.id
       AND r.world_view_id = $1
       AND elr.assignment_type = 'auto'
-      ${sourceId ? ONE_SOURCE : ''}
+      ${sourceId ? ONE_SOURCE_POINTS : ''}
   `, params);
   console.log(`[Region Assignment] Cleared ${clearLocResult.rowCount} location-region auto-assignments`);
 
@@ -76,7 +84,7 @@ async function clearPreviousAssignments(
     WHERE er.region_id = r.id
       AND r.world_view_id = $1
       AND er.assignment_type = 'auto'
-      ${sourceId ? `AND er.experience_id IN ${ONE_SOURCE_PLACES}` : ''}
+      ${sourceId ? `AND er.experience_id = ANY(${ONE_SOURCE_PLACED})` : ''}
   `, params);
   console.log(`[Region Assignment] Cleared ${clearExpResult.rowCount} experience-region auto-assignments`);
 }
@@ -195,7 +203,10 @@ function directPlacementSql(pointFilter: string): string {
 }
 
 /** The points of the objects a run or a curator has just moved. */
-const THESE_EXPERIENCES = 'AND el.experience_id = ANY($2::int[])';
+// A place's points are its own and its parts' (ADR-0100), so placing a site places its parts' points.
+const THESE_EXPERIENCES = `AND ${shownBySql('el', '$2::int[]')}`;
+/** The places whose regions those points decide: every place that shows one — the given ones, their parts, and the wholes they are parts of. */
+const THESE_PLACED = withWholesSql(madeOfSql('$2::int[]'));
 
 /** Step 2: insert direct location→region rows — the leaves that hold each point, and for a point no leaf holds, the other regions that do. */
 async function assignDirect(
@@ -207,7 +218,7 @@ async function assignDirect(
   progress.statusMessage = 'Computing direct spatial containment for locations...';
 
   const directResult = await client.query(
-    directPlacementSql(sourceId ? ONE_SOURCE : ''),
+    directPlacementSql(sourceId ? ONE_SOURCE_POINTS : ''),
     sourceId ? [worldViewId, sourceId] : [worldViewId],
   );
 
@@ -236,8 +247,7 @@ async function assignAncestors(
         AND r.parent_region_id IS NOT NULL
         AND elr.assignment_type = 'auto'
         ${sourceId ? `AND elr.location_id IN (
-          SELECT el.id FROM experience_locations el
-          WHERE el.experience_id IN ${ONE_SOURCE_PLACES}
+          SELECT el.id FROM experience_locations el WHERE true ${ONE_SOURCE_POINTS}
         )` : ''}
 
       UNION
@@ -272,13 +282,14 @@ async function denormalizeExperienceRegions(
 
   const expResult = await client.query(`
     INSERT INTO experience_regions (experience_id, region_id, assignment_type)
-    SELECT DISTINCT el.experience_id, elr.region_id, 'auto'
+    SELECT DISTINCT pp.place_id, elr.region_id, 'auto'
     FROM experience_location_regions elr
-    JOIN experience_locations el ON elr.location_id = el.id
-    JOIN experiences e ON el.experience_id = e.id
+    -- A site is in every region one of its parts' points is (ADR-0100).
+    JOIN ${placePointsSql()} pp ON pp.location_id = elr.location_id
+    JOIN experiences e ON pp.place_id = e.id
     JOIN regions r ON elr.region_id = r.id
     WHERE r.world_view_id = $1
-      ${sourceId ? ONE_SOURCE : ''}
+      ${sourceId ? `AND pp.place_id = ANY(${ONE_SOURCE_PLACED})` : ''}
     ON CONFLICT (experience_id, region_id) DO NOTHING
   `, params);
 
@@ -484,14 +495,14 @@ export async function assignRegionsForExperiences(
       USING experience_locations el, regions r
       WHERE elr.location_id = el.id AND elr.region_id = r.id
         AND r.world_view_id = $1 AND elr.assignment_type = 'auto'
-        AND el.experience_id = ANY($2::int[])
+        ${THESE_EXPERIENCES}
     `, params);
 
     await client.query(`
       DELETE FROM experience_regions er
       USING regions r
       WHERE er.region_id = r.id AND r.world_view_id = $1
-        AND er.assignment_type = 'auto' AND er.experience_id = ANY($2::int[])
+        AND er.assignment_type = 'auto' AND er.experience_id = ANY(${THESE_PLACED})
     `, params);
 
     // Offered points only, as `directPlacementSql` says. A point the source
@@ -510,7 +521,7 @@ export async function assignRegionsForExperiences(
         JOIN experience_locations el ON el.id = elr.location_id
         WHERE r.world_view_id = $1 AND r.parent_region_id IS NOT NULL
           AND elr.assignment_type = 'auto'
-          AND el.experience_id = ANY($2::int[])
+          ${THESE_EXPERIENCES}
         UNION
         SELECT a.location_id, r.parent_region_id
         FROM ancestors a JOIN regions r ON a.region_id = r.id
@@ -524,11 +535,11 @@ export async function assignRegionsForExperiences(
 
     const denorm = await client.query(`
       INSERT INTO experience_regions (experience_id, region_id, assignment_type)
-      SELECT DISTINCT el.experience_id, elr.region_id, 'auto'
+      SELECT DISTINCT pp.place_id, elr.region_id, 'auto'
       FROM experience_location_regions elr
-      JOIN experience_locations el ON elr.location_id = el.id
+      JOIN ${placePointsSql()} pp ON pp.location_id = elr.location_id
       JOIN regions r ON elr.region_id = r.id
-      WHERE r.world_view_id = $1 AND el.experience_id = ANY($2::int[])
+      WHERE r.world_view_id = $1 AND pp.place_id = ANY(${THESE_PLACED})
       ON CONFLICT (experience_id, region_id) DO NOTHING
     `, params);
 

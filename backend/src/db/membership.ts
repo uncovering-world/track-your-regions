@@ -106,17 +106,6 @@ export function sourcePlacesSql(experience = 'e', membership = 'sm'): string {
 }
 
 /**
- * The place carries a membership the source named by `sourceParam` brought —
- * the filter for "this source's places" in a read that is otherwise about the
- * place, such as rebuilding one source's region assignments. `alias` is the
- * `experiences` alias.
- */
-export function placeOfSourceSql(alias = 'e', sourceParam = '$1'): string {
-  return `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} ${INNER}
-        WHERE ${INNER}.experience_id = ${alias}.id AND ${INNER}.source_id = ${sourceParam})`;
-}
-
-/**
  * The claims a source's proposal about a place meets, as a `jsonb` array: the
  * place's own `curated_fields`, and the claim on the type held by the
  * membership of the proposing source — the type within a kind is the

@@ -145,7 +145,8 @@ describe('reads that show a point', () => {
     for (const query of [{}, { includeChildren: 'false' }]) {
       mockedQuery.mockClear();
       await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), { params: { regionId: '7' }, query } as never, makeRes() as never);
-      expect(locationRead()).toMatch(/ORDER BY el\.experience_id, el\.ordinal, el\.id/);
+      // Over the union of a place's own points and its parts' (ADR-0100), by the union's columns.
+      expect(locationRead()).toMatch(/ORDER BY experience_id, ordinal, id/);
     }
   });
 

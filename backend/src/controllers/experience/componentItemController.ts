@@ -25,6 +25,7 @@ import { userAgent } from '../../config/userAgent.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience, type LockedExperience } from '../../db/experienceWriter.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
+import { shownBySql } from '../../db/placePoints.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import { contentsOf } from '../../services/sync/componentItemQueries.js';
 import { fetchCommonsCredits, type ImageCredit } from '../../services/sync/imageCredit.js';
@@ -105,7 +106,7 @@ async function namedCandidates(client: PoolClient, lock: LockedExperience, ids: 
             EXISTS (SELECT 1 FROM experience_locations taken WHERE taken.wikidata_item = p.wikidata_item) AS taken
        FROM experience_component_item_proposals p
        JOIN experience_locations el ON el.id = p.location_id
-      WHERE p.id = ANY($2::int[]) AND el.experience_id = $1`,
+      WHERE p.id = ANY($2::int[]) AND ${shownBySql('el', 'ARRAY[$1::int]')}`,
     [lock.id, ids],
   );
   return result.rows;
@@ -227,7 +228,7 @@ export async function candidateItems(experienceId: number, proposalIds: readonly
     `SELECT DISTINCT p.wikidata_item
        FROM experience_component_item_proposals p
        JOIN experience_locations el ON el.id = p.location_id
-      WHERE el.experience_id = $1 AND p.id = ANY($2::int[]) AND p.answer IS NULL`,
+      WHERE ${shownBySql('el', 'ARRAY[$1::int]')} AND p.id = ANY($2::int[]) AND p.answer IS NULL`,
     [experienceId, proposalIds],
   );
   return result.rows.map(row => row.wikidata_item);
@@ -243,7 +244,7 @@ export async function openCandidates(experienceId: number, only: 'exact' | 'all'
     `SELECT p.id
        FROM experience_component_item_proposals p
        JOIN experience_locations el ON el.id = p.location_id
-      WHERE el.experience_id = $1 AND ${openProposalSql('p', 'el')}
+      WHERE ${shownBySql('el', 'ARRAY[$1::int]')} AND ${openProposalSql('p', 'el')}
         AND ($2::boolean OR (p.exact AND p.taken_back_at IS NULL))
       ORDER BY p.id`,
     [experienceId, only === 'all'],
@@ -264,7 +265,7 @@ export async function componentItemsSourceIds(experienceId: number): Promise<num
                JOIN experience_locations el ON el.id = p.location_id
                JOIN experience_location_placements pl ON pl.location_id = el.id
                JOIN ${MEMBERSHIPS} m ON m.id = pl.membership_id
-              WHERE el.experience_id = e.id AND ${openProposalSql('p', 'el')}) AS source_ids,
+              WHERE ${shownBySql('el', 'ARRAY[e.id]')} AND ${openProposalSql('p', 'el')}) AS source_ids,
             e.source_id
        FROM experiences e WHERE e.id = $1`,
     [experienceId],

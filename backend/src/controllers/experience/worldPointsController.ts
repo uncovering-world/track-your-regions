@@ -56,6 +56,7 @@ import { pool } from '../../db/index.js';
 import { kindMembershipJoinSql, placeKindsSql, placeOfferedSql, rowKindJoinSql } from '../../db/membership.js';
 import { bboxIntersectsSql, parseBbox } from '../../db/bboxEnvelopes.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
+import { overPlacePoints, type PlacePointArm } from '../../db/placePoints.js';
 
 /**
  * Decimals a coordinate is rounded to, per tier.
@@ -123,7 +124,10 @@ interface PointRow {
  * `location` is the geometry column's owner — `el` unfolded, the fold's CTE
  * folded — so one list serves both.
  */
-function selectSql(detail: PointsDetail, folded: boolean, location: string, locationRow: string): string {
+function selectSql(
+  detail: PointsDetail, folded: boolean, location: string, locationRow: string,
+  placeId = `${locationRow}.experience_id`,
+): string {
   const geometry = `${location}.location`;
   const columns = [
     `${coordinateSql('X', geometry, detail)} AS lng`,
@@ -133,7 +137,7 @@ function selectSql(detail: PointsDetail, folded: boolean, location: string, loca
   if (detail === 'markers') {
     columns.push(
       `${locationRow}.id AS location_id`,
-      `${locationRow}.experience_id`,
+      `${placeId} AS experience_id`,
       `${locationRow}.name AS location_name`,
       'e.name AS experience_name',
       'm.kind_id',
@@ -210,14 +214,14 @@ export async function getWorldPoints(
   }
 
   const where = conditions.join('\n        AND ');
+  const unfolded = ({ from, placeId }: PlacePointArm): string => `SELECT
+        ${selectSql(detail, false, 'el', 'el', placeId)}
+      FROM ${from}
+      ${kindJoin}
+      WHERE ${where}`;
   const query = folded
     ? foldedQuery(detail, where, kindJoin)
-    : `SELECT
-        ${selectSql(detail, false, 'el', 'el')}
-      FROM experience_locations el
-      JOIN experiences e ON e.id = el.experience_id
-      ${kindJoin}
-      WHERE ${where}
+    : `${overPlacePoints(unfolded)}
       LIMIT ${MAX_POINTS + 1}`;
 
   // One more than the cap, so hitting it is distinguishable from filling it.
@@ -259,23 +263,25 @@ export async function getWorldPoints(
  */
 function foldedQuery(detail: PointsDetail, where: string, kindJoin: string): string {
   return `WITH matched AS (
-        SELECT DISTINCT el.experience_id
-        FROM experience_locations el
-        JOIN experiences e ON e.id = el.experience_id
-        ${kindJoin}
-        WHERE ${where}
-      ), folded AS (
-        SELECT DISTINCT ON (el.experience_id)
-          el.id, el.experience_id, el.location, el.name,
-          count(*) OVER (PARTITION BY el.experience_id)::int AS location_count
-        FROM experience_locations el
-        JOIN matched ON matched.experience_id = el.experience_id
-        JOIN experiences e ON e.id = el.experience_id
+        SELECT DISTINCT experience_id FROM (
+          ${overPlacePoints(({ from, placeId }) => `SELECT ${placeId} AS experience_id
+          FROM ${from}
+          ${kindJoin}
+          WHERE ${where}`)}
+        ) shown
+      ), places AS (
+        ${overPlacePoints(({ from, placeId }) => `SELECT el.id, ${placeId} AS experience_id, el.location, el.name,
+          el.location::geography <-> e.location::geography AS off_anchor
+        FROM ${from}
+        JOIN matched ON matched.experience_id = ${placeId}
         WHERE ${offeredLocationSql('el')}
-          AND ${publishedContentSql('el')}
-        ORDER BY el.experience_id,
-          el.location::geography <-> e.location::geography,
-          el.id
+          AND ${publishedContentSql('el')}`)}
+      ), folded AS (
+        SELECT DISTINCT ON (experience_id)
+          id, experience_id, location, name,
+          count(*) OVER (PARTITION BY experience_id)::int AS location_count
+        FROM places
+        ORDER BY experience_id, off_anchor, id
       )
       SELECT
         ${selectSql(detail, true, 'folded', 'folded')}

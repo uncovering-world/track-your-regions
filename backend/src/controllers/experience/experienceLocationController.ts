@@ -17,6 +17,7 @@ import type {
   VisitedLocationIds, VisitedStatus,
 } from '../../api/responses/visited.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
+import { overPlacePoints, placePointsSql } from '../../db/placePoints.js';
 import type {
   CheckValue, ExperienceLocationsRow, ExperiencesRow, UserVisitedLocationsRow,
 } from '../../db/schema.generated.js';
@@ -119,9 +120,10 @@ export async function getRegionExperienceLocations(
         SELECT r.id FROM regions r
         JOIN descendant_regions dr ON r.parent_region_id = dr.id
       )
+      ${overPlacePoints(({ from, placeId }) => `
       SELECT
         el.id,
-        el.experience_id,
+        ${placeId} AS experience_id,
         el.name,
         el.external_ref,
         el.ordinal,
@@ -136,8 +138,7 @@ export async function getRegionExperienceLocations(
           WHERE elr.location_id = el.id AND elr.region_id IN (SELECT id FROM descendant_regions)
         ) as in_region,
         leaf_r.region_path
-      FROM experience_locations el
-      JOIN experiences e ON e.id = el.experience_id
+      FROM ${from}
       LEFT JOIN LATERAL (
         WITH RECURSIVE
         leaf AS (
@@ -170,13 +171,15 @@ export async function getRegionExperienceLocations(
         AND ${offeredLocationSql()}
         AND ${publishedContentSql('el')}
         ${lifecycleFilter}
-      ORDER BY el.experience_id, el.ordinal, el.id
+      `)}
+      ORDER BY experience_id, ordinal, id
     `;
   } else {
     query = `
+      ${overPlacePoints(({ from, placeId }) => `
       SELECT
         el.id,
-        el.experience_id,
+        ${placeId} AS experience_id,
         el.name,
         el.external_ref,
         el.ordinal,
@@ -191,8 +194,7 @@ export async function getRegionExperienceLocations(
           WHERE elr.location_id = el.id AND elr.region_id = $1
         ) as in_region,
         leaf_r.region_path
-      FROM experience_locations el
-      JOIN experiences e ON e.id = el.experience_id
+      FROM ${from}
       LEFT JOIN LATERAL (
         WITH RECURSIVE
         leaf AS (
@@ -222,7 +224,8 @@ export async function getRegionExperienceLocations(
         AND ${offeredLocationSql()}
         AND ${publishedContentSql('el')}
         ${lifecycleFilter}
-      ORDER BY el.experience_id, el.ordinal, el.id
+      `)}
+      ORDER BY experience_id, ordinal, id
     `;
   }
 
@@ -317,8 +320,9 @@ export async function getExperienceLocations(
         SELECT 1 FROM experience_location_regions elr
         WHERE elr.location_id = el.id AND elr.region_id = $2
       ) as in_region` : 'true as in_region'}
-    FROM experience_locations el
-    WHERE el.experience_id = $1
+    FROM ${placePointsSql()} pp
+    JOIN experience_locations el ON el.id = pp.location_id
+    WHERE pp.place_id = $1
       AND ${offeredLocationSql()}
       AND ($${maySeeUnreadIdx}::boolean OR ${publishedContentSql('el')})
     ORDER BY el.ordinal, el.id
@@ -375,10 +379,12 @@ export async function getVisitedLocationIds(
   // caller's own record, not one of the three by-id reads ADR-0025 widens for a
   // curator.
   let query = `
-    SELECT uvl.location_id, el.experience_id
+    SELECT uvl.location_id, pp.place_id AS experience_id
     FROM user_visited_locations uvl
     JOIN experience_locations el ON uvl.location_id = el.id
-    JOIN experiences e ON e.id = el.experience_id
+    -- Under every place that shows the point: a part's and its whole's (ADR-0100).
+    JOIN ${placePointsSql()} pp ON pp.location_id = el.id
+    JOIN experiences e ON e.id = pp.place_id
     WHERE uvl.user_id = $1
       AND ${experienceOfferedToReaderSql()}
       AND ${offeredLocationSql('el')} AND ${publishedContentSql('el')}
@@ -387,7 +393,7 @@ export async function getVisitedLocationIds(
   const params: number[] = [userId];
 
   if (experienceId) {
-    query += ' AND el.experience_id = $2';
+    query += ' AND pp.place_id = $2';
     params.push(experienceId);
   }
 
@@ -404,10 +410,12 @@ export async function getVisitedLocationIds(
     byExperience[row.experience_id].push(row.location_id);
   }
 
+  // A point a part and its whole both show is one visit, listed once.
+  const visitedLocationIds = [...new Set(result.rows.map(r => r.location_id))];
   return {
-    visitedLocationIds: result.rows.map(r => r.location_id),
+    visitedLocationIds,
     byExperience,
-    total: result.rows.length,
+    total: visitedLocationIds.length,
   };
 }
 
@@ -565,18 +573,20 @@ export async function markAllLocationsVisited(
     // Only locations that are in the specified region
     locationsQuery = `
       SELECT el.id
-      FROM experience_locations el
+      FROM ${placePointsSql()} pp
+      JOIN experience_locations el ON el.id = pp.location_id
       JOIN experience_location_regions elr ON elr.location_id = el.id
-      JOIN experiences e ON e.id = el.experience_id
-      WHERE el.experience_id = $1 AND elr.region_id = $2
+      JOIN experiences e ON e.id = pp.place_id
+      WHERE pp.place_id = $1 AND elr.region_id = $2
         AND ${offeredToReaderSql()}
     `;
     locationsParams = [experienceId, regionId];
   } else {
     // All locations
-    locationsQuery = `SELECT el.id FROM experience_locations el
-       JOIN experiences e ON e.id = el.experience_id
-       WHERE el.experience_id = $1 AND ${offeredToReaderSql()}`;
+    locationsQuery = `SELECT el.id FROM ${placePointsSql()} pp
+       JOIN experience_locations el ON el.id = pp.location_id
+       JOIN experiences e ON e.id = pp.place_id
+       WHERE pp.place_id = $1 AND ${offeredToReaderSql()}`;
     locationsParams = [experienceId];
   }
 
@@ -659,10 +669,10 @@ export async function unmarkAllLocationsVisited(
       result = await client.query(`
         DELETE FROM user_visited_locations
         WHERE user_id = $1 AND location_id IN (
-          SELECT el.id
-          FROM experience_locations el
-          JOIN experience_location_regions elr ON elr.location_id = el.id
-          WHERE el.experience_id = $2 AND elr.region_id = $3
+          SELECT pp.location_id
+          FROM ${placePointsSql()} pp
+          JOIN experience_location_regions elr ON elr.location_id = pp.location_id
+          WHERE pp.place_id = $2 AND elr.region_id = $3
         )
       `, [userId, experienceId, regionId]);
     } else {
@@ -670,7 +680,7 @@ export async function unmarkAllLocationsVisited(
       result = await client.query(`
         DELETE FROM user_visited_locations
         WHERE user_id = $1 AND location_id IN (
-          SELECT id FROM experience_locations WHERE experience_id = $2
+          SELECT pp.location_id FROM ${placePointsSql()} pp WHERE pp.place_id = $2
         )
       `, [userId, experienceId]);
     }
@@ -683,7 +693,8 @@ export async function unmarkAllLocationsVisited(
       SELECT COUNT(*) as count
       FROM user_visited_locations uvl
       JOIN experience_locations el ON uvl.location_id = el.id
-      WHERE uvl.user_id = $1 AND el.experience_id = $2
+      JOIN ${placePointsSql()} pp ON pp.location_id = el.id
+      WHERE uvl.user_id = $1 AND pp.place_id = $2
         AND ${offeredLocationSql()}
     `, [userId, experienceId]);
 
@@ -738,7 +749,8 @@ export async function getExperienceVisitedStatus(
       uvl.id as visit_id,
       uvl.visited_at,
       uvl.notes
-    FROM experience_locations el
+    FROM ${placePointsSql()} pp
+    JOIN experience_locations el ON el.id = pp.location_id
     -- The row this reader is asking about has to be one the catalogue offers.
     -- Without this join no admission predicate reached here at all, so any
     -- authenticated account got a refused museum's points back -- coordinates,
@@ -748,9 +760,9 @@ export async function getExperienceVisitedStatus(
     -- The pending gate rides beside it, unrelaxed: this read is not one of the
     -- three by-id reads ADR-0025 widens for a curator, so an unread museum's
     -- points stay out of a progress denominator the same way a refused one does.
-    JOIN experiences e ON e.id = el.experience_id AND ${experienceOfferedToReaderSql()}
+    JOIN experiences e ON e.id = pp.place_id AND ${experienceOfferedToReaderSql()}
     LEFT JOIN user_visited_locations uvl ON uvl.location_id = el.id AND uvl.user_id = $2
-    WHERE el.experience_id = $1
+    WHERE pp.place_id = $1
       -- Offered points only, like every other read that shows a place.
       --
       -- Not a withdrawn point this reader has visited, even to keep their
