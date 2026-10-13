@@ -3807,6 +3807,22 @@ CREATE INDEX IF NOT EXISTS idx_experience_merges_survivor ON experience_merges(s
 CREATE INDEX IF NOT EXISTS idx_experience_merges_folded ON experience_merges(folded_id);
 COMMENT ON TABLE experience_merges IS 'A merge of one place into another (ADR-0086): what moved, for the undo; merged_by null on the catalogue''s own.';
 
+-- A place that is part of another (ADR-0100). See db/migrations/093.
+CREATE TABLE IF NOT EXISTS experience_parts (
+    id SERIAL PRIMARY KEY,
+    whole_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+    part_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+    reason VARCHAR(20) NOT NULL CHECK (reason IN ('component', 'wikidata_part_of', 'curator')),
+    membership_id INTEGER REFERENCES experience_kind_memberships(id) ON DELETE CASCADE,
+    external_ref TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (whole_id, part_id),
+    CHECK (whole_id <> part_id),
+    CHECK (reason <> 'component' OR membership_id IS NOT NULL)
+);
+CREATE INDEX IF NOT EXISTS idx_experience_parts_part ON experience_parts(part_id);
+COMMENT ON TABLE experience_parts IS 'A place that is part of another (ADR-0046 decision 6, ADR-0100): a component of a serial World Heritage site, placed by the site''s membership under its reference (component); a Wikidata part-of statement (wikidata_part_of); or a curator''s (curator).';
+COMMENT ON COLUMN experience_parts.external_ref IS 'The reference the site''s source knows a component by (527ter-002); null on a part that is not a component.';
 -- The proposals a curator has refused, so the queue stops asking about them.
 --
 -- A conflict is a field a curator claimed and a source keeps proposing otherwise. The
