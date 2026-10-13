@@ -36,7 +36,7 @@ import { objectContextSelectSql } from './reviewQueueContext.js';
 import { contentsMembershipToAnswerSql, contentsTakeableSql, linkMembershipSql, pointMembershipSql } from './waitingCounts.js';
 import { MEMBERSHIPS, membershipToAnswerSql, rowKindJoinSql } from '../../db/membership.js';
 import { type AnsweredQueryContext, CONTENTS_ROWS_SHOWN } from './reviewQueueContents.js';
-import { answeringPlaceSql, shownBySql } from '../../db/placePoints.js';
+import { answeringPlaceSql, pointsShownSql } from '../../db/placePoints.js';
 
 /**
  * The one act that marks a part refused, for the log join above.
@@ -168,9 +168,8 @@ export async function queryRefusedParts(
         -- then stops offering raises no card of its own. An offered term here
         -- would leave it on no screen at all, with the answer that put it there
         -- permanently unanswerable. Its row says the source dropped it instead.
-        FROM experience_locations el
-        WHERE ${shownBySql('el', 'ARRAY[e.id]')}
-          AND el.refused_at IS NOT NULL
+        FROM ${pointsShownSql('e.id', 'el')}
+        WHERE el.refused_at IS NOT NULL
       ) el
     ) points
     CROSS JOIN LATERAL (

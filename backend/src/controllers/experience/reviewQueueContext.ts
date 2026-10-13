@@ -11,7 +11,7 @@
 
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { dangerSelectSql } from './experienceDanger.js';
-import { shownBySql } from '../../db/placePoints.js';
+import { pointsShownSql } from '../../db/placePoints.js';
 
 /**
  * How many items a queue page holds by default.
@@ -109,8 +109,8 @@ export function objectContextSelectSql(alias = 'e'): string {
           --
           -- And a point is counted once while it moves (placeOfObjectSql):
           -- Ephesus, run 146, read "made of 2 places" over a 158 m correction.
-          (SELECT count(*) FROM experience_locations off
-            WHERE ${shownBySql('off', `ARRAY[${alias}.id]`)} AND ${placeOfObjectSql('off')})::int
+          (SELECT count(*) FROM ${pointsShownSql(`${alias}.id`, 'off')}
+            WHERE ${placeOfObjectSql('off')})::int
             AS offered_locations,
           (SELECT count(*) FROM experience_treasures et
             WHERE et.experience_id = ${alias}.id

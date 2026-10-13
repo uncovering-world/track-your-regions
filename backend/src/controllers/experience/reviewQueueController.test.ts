@@ -30,6 +30,7 @@ import { contentsTakeableSql, contentsWaitingSql } from './waitingCounts.js';
 import { ORPHANED_RUN_ERROR } from '../../services/sync/syncLogMarkers.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
+import { pointsShownSql } from '../../db/placePoints.js';
 
 /** The declared routes these specs answer through (ADR-0071). */
 const getReviewQueue2 = routeAt(experienceCurationRoutes, '/review/queue', 'get');
@@ -834,10 +835,9 @@ describe('getReviewQueue', () => {
     // than matched with a nested quantifier — the comment lines inside the subquery
     // would need `(?:…)*`, which `security/detect-unsafe-regex` objects to, fairly,
     // in a file whose other guards say a safety check must not itself backtrack.
-    const points = sql.slice(sql.indexOf('FROM experience_locations el'));
+    const points = sql.slice(sql.indexOf(`FROM ${pointsShownSql('e.id', 'el')}`));
     const where = points.slice(0, points.indexOf(') el'));
-    expect(where).toContain("WHERE el.experience_id = ANY(ARRAY(SELECT unnest(ARRAY[e.id])");
-    expect(where).toContain("AND el.curation_state = 'pending'");
+    expect(where).toContain("WHERE el.curation_state = 'pending'");
     expect(where).toContain("AND el.missing_since IS NULL AND el.existence <> 'lost'");
   });
 
@@ -889,8 +889,14 @@ describe('getReviewQueue', () => {
     // the same product, and an assertion naming `LEFT JOIN` would have watched
     // the wrong keyword. Neither table is joined at all here — each is read
     // inside its own lateral — so the strings themselves must be absent.
-    expect(sql).not.toContain('JOIN experience_locations');
-    expect(sql).not.toContain('JOIN experience_treasures');
+    // The points an object shows are read through `pointsShownSql` and
+    // `somePointShownSql`, whose own joins reach the points of the place's
+    // parts, never a product.
+    const outside = sql
+      .replace(/JOIN experience_locations (\w+)_of_part ON \1_of_part\.experience_id = \1_prt\.part_id/g, '')
+      .replace(/JOIN experience_locations (\w+) ON \1\.experience_id = \1_part\.part_id/g, '');
+    expect(outside).not.toContain('JOIN experience_locations');
+    expect(outside).not.toContain('JOIN experience_treasures');
     // Three laterals: the points, the works, and the one point the held
     // coordinate takes along — a scalar, one row per object, which cannot
     // multiply anything.
@@ -1340,7 +1346,7 @@ describe('getReviewQueue', () => {
       // elsewhere in this text — `objectContextSelectSql`'s `counted_works_total`
       // composes it — and a `.not.toContain` over the whole thing would be a guard
       // that can never fail.
-      const points = sql.slice(sql.indexOf('FROM experience_locations el'));
+      const points = sql.slice(sql.indexOf(`FROM ${pointsShownSql('e.id', 'el')}`));
       expect(points.slice(0, points.indexOf(') el'))).not.toContain(offeredLocationSql('el'));
       const works = sql.slice(sql.indexOf('FROM experience_treasures et\n        JOIN treasures t'));
       expect(works.slice(0, works.indexOf(') t'))).not.toContain(offeredLinkSql('et'));

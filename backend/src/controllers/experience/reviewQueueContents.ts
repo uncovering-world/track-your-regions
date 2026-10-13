@@ -35,7 +35,7 @@ import { recordedLocationSql, recordedTreasureSql } from './partRecord.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
 import { pointMovedToSql } from './movedPoint.js';
 import { withdrawnContainerOpenSql, withdrawnPointOpenSql } from './reviewQueuePredicates.js';
-import { shownBySql } from '../../db/placePoints.js';
+import { pointsShownSql } from '../../db/placePoints.js';
 
 /**
  * The held fields of an object's parts, as the held card carries them.
@@ -319,8 +319,8 @@ export async function queryContents(
         -- rows: spelled out here, this join missed the existence term when the
         -- fragment gained it, so the badge and the card would have disagreed about
         -- an object holding one unread point a curator had declared gone.
-        FROM experience_locations el
-        WHERE ${shownBySql('el', 'ARRAY[e.id]')} AND ${unreadPointSql('el')}
+        FROM ${pointsShownSql('e.id', 'el')}
+        WHERE ${unreadPointSql('el')}
           AND ${offeredLocationSql('el')}
           AND ${pointMembershipSql('el')} = m.id
       ) el
@@ -473,8 +473,8 @@ export async function queryWithdrawn(
              -- points: with two candidates the question is what replaced *this* one.
              'replacedMetres', (
                SELECT round(MIN(ST_Distance(el.location::geography, moved.location::geography))::numeric, 2)
-               FROM experience_locations moved
-               WHERE ${shownBySql('moved', 'ARRAY[e.id]')}
+               FROM ${pointsShownSql('e.id', 'moved')}
+               WHERE ${offeredLocationSql('moved')}
                  -- The same fragment, and worth stating what it does *not* carry: it has
                  -- no term on curation_state, so a pending arrival counts as a replacement
                  -- here. That is right for the question the distance answers -- whether
@@ -497,7 +497,6 @@ export async function queryWithdrawn(
                  -- statement is skipped for want of an unread arrival, and the mark marks
                  -- the loser at once -- with a *visible* replacement metres away, which is
                  -- the case route 3 names (ADR-0027 decision 5a-i).
-                 AND ${offeredLocationSql('moved')}
                  -- And not a row whose own withdrawal is merely waiting its turn. A
                  -- deferral holds one departure per unread arrival, so where a run drops
                  -- two points of one reference and offers a single arrival, the second
@@ -508,9 +507,8 @@ export async function queryWithdrawn(
                  -- pin that is leaving. It is the same departure paused, not a
                  -- replacement.
                  AND NOT EXISTS (
-                   SELECT 1 FROM experience_locations pausing
-                   WHERE ${shownBySql('pausing', 'ARRAY[e.id]')}
-                     AND pausing.withdrawal_deferred_for_location_id = moved.id
+                   SELECT 1 FROM ${pointsShownSql('e.id', 'pausing')}
+                   WHERE pausing.withdrawal_deferred_for_location_id = moved.id
                  )
                  AND moved.external_ref IS NOT DISTINCT FROM el.external_ref
              )
@@ -518,12 +516,11 @@ export async function queryWithdrawn(
            NULL::jsonb AS proposed
     FROM experiences e
     ${rowKindJoinSql('e', 'mk', 'kd')}
-    JOIN experience_locations el
-      ON ${shownBySql('el', 'ARRAY[e.id]')}
-     AND ${withdrawnPointOpenSql('el')}
+    CROSS JOIN LATERAL ${pointsShownSql('e.id', 'el')}
     -- The container half's reasoning is on withdrawnContainerOpenSql
     -- (reviewQueuePredicates.ts).
-    WHERE ${withdrawnContainerOpenSql('e')}
+    WHERE ${withdrawnPointOpenSql('el')}
+      AND ${withdrawnContainerOpenSql('e')}
       AND ${scopeFilter} ${sourceFilter}
       AND e.id = ANY($${params.length + 1}::int[])
     GROUP BY e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name
@@ -699,9 +696,8 @@ export async function queryAnsweredWithdrawals(
                         WHERE v.location_id = el.id) AS visited,
                row_number() OVER (
                  ORDER BY el.state_decided_at DESC NULLS LAST, el.id) AS rn
-        FROM experience_locations el
-        WHERE ${shownBySql('el', 'ARRAY[e.id]')}
-          AND (el.source_membership = 'former' OR el.existence = 'lost')
+        FROM ${pointsShownSql('e.id', 'el')}
+        WHERE (el.source_membership = 'former' OR el.existence = 'lost')
           AND NOT (${offeredLocationSql('el')})
       ) el
     ) answered

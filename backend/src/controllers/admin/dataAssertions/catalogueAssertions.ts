@@ -60,7 +60,7 @@ import {
   publishedContentSql,
 } from '../../../db/readerPredicates.js';
 import { MEMBERSHIPS } from '../../../db/membership.js';
-import { answeringPlaceSql, placePointsSql, shownBySql } from '../../../db/placePoints.js';
+import { answeringPlaceSql, placePointsSql, pointsShownSql } from '../../../db/placePoints.js';
 import { heldWaitingSql } from '../../experience/waitingCounts.js';
 import { heldFieldRefusedSql, heldPartRefusedSql } from '../../experience/heldDecisions.js';
 import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
@@ -266,14 +266,12 @@ const listedWithNowhereToGo: CatalogueAssertion = {
   sql: `SELECT e.id AS experience_id,
                e.name AS experience_name,
                e.external_id AS external_id,
-               (SELECT count(*) FROM experience_locations el
-                 WHERE ${shownBySql('el', 'ARRAY[e.id]')}) AS places_held
+               (SELECT count(*) FROM ${pointsShownSql('e.id', 'el')}) AS places_held
           FROM experiences e
          WHERE ${hideLostSql()}
            AND ${experienceOfferedToReaderSql()}
-           AND NOT EXISTS (SELECT 1 FROM experience_locations el
-                            WHERE ${shownBySql('el', 'ARRAY[e.id]')}
-                              AND ${offeredLocationSql()}
+           AND NOT EXISTS (SELECT 1 FROM ${pointsShownSql('e.id', 'el')}
+                            WHERE ${offeredLocationSql()}
                               AND ${publishedContentSql('el')})
          ORDER BY e.name`,
   describe: row => {

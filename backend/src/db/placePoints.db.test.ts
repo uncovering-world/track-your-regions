@@ -1,5 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from './index.js';
+import { anchorToItsPoint, lockExperience } from './experienceWriter.js';
+import { pointsShownSql } from './placePoints.js';
 import {
   getExperienceLocations, getExperienceVisitedStatus, getRegionExperienceLocations, getVisitedLocationIds,
   markLocationVisited, unmarkLocationVisited,
@@ -27,6 +29,9 @@ import {
 
 const SITE = 9890;
 const KARNAK = 9891;
+/** Another site with a part of its own, so a read that confuses whose parts are whose counts too many. */
+const OTHER_SITE = 9892;
+const OTHER_PART = 9893;
 const TRAVELLER = '00000000-0000-4000-8000-000000009890';
 const ADMIN = '00000000-0000-4000-8000-000000009891';
 /** A world view of its own holding Karnak's region, so the site reaches it only through its part. */
@@ -41,7 +46,7 @@ let luxorPoint = 0;
 let karnakPoint = 0;
 
 async function clear(): Promise<void> {
-  await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [[SITE, KARNAK]]);
+  await pool.query('DELETE FROM experiences WHERE id = ANY($1::int[])', [[SITE, KARNAK, OTHER_SITE, OTHER_PART]]);
   await pool.query('DELETE FROM users WHERE uuid = ANY($1::text[])', [[TRAVELLER, ADMIN]]);
   await pool.query('DELETE FROM regions WHERE world_view_id = $1', [KARNAK_WORLD_VIEW]);
   await pool.query('DELETE FROM world_views WHERE id = $1', [KARNAK_WORLD_VIEW]);
@@ -270,6 +275,33 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
       expect(check, id).toBeDefined();
       const rows = (await pool.query(check!.sql)).rows;
       expect(JSON.stringify(rows), id).not.toMatch(/parts fixture|Temple of Karnak/);
+    }
+  });
+
+  it("counts a site's own parts only, whatever alias the outer read names the site by (#1430)", async () => {
+    await place(OTHER_SITE, 'Another serial site (parts fixture)', 10, 50);
+    await place(OTHER_PART, 'Another part (parts fixture)', 10.01, 50.01);
+    await point(OTHER_PART, 'Another part', '99-001', 10.01, 50.01, regionId);
+    await pool.query(
+      `INSERT INTO experience_parts (whole_id, part_id, reason) VALUES ($1, $2, 'curator')`, [OTHER_SITE, OTHER_PART],
+    );
+    // The finder names the site by the parts table's own alias.
+    const counted = await pool.query<{ count: number }>(
+      `SELECT (SELECT count(*)::int FROM ${pointsShownSql('prt.whole_id', 's')}) AS count
+         FROM experience_parts prt WHERE prt.whole_id = $1`, [SITE],
+    );
+    expect(counted.rows).toEqual([{ count: 2 }]);
+  });
+
+  it("keeps the site's anchor where it is when a curator corrects one of the two points it shows (#1430)", async () => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const locked = await lockExperience(client, SITE);
+      expect(await anchorToItsPoint(client, locked!.lock, 32.64, 25.70, luxorPoint)).toBe(false);
+      await client.query('ROLLBACK');
+    } finally {
+      client.release();
     }
   });
 });

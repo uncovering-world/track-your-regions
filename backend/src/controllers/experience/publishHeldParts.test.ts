@@ -87,7 +87,7 @@ describe('publishing the held fields of an object\'s parts', () => {
     // this experience — a reference alone is duplicated on nine objects.
     const lock = only(queries, 'FOR UPDATE OF el');
     expect(lock.sql).toContain('FOR UPDATE');
-    expect(lock.sql).toContain('el.experience_id = ANY(ARRAY(SELECT unnest(ARRAY[$1])');
+    expect(lock.sql).toContain('WHERE el_own.experience_id = $1');
     expect(lock.params).toEqual([5, '1755-004', 'Château de Montésgur']);
     const write = only(queries, 'UPDATE experience_locations SET name');
     // The point, the object it has to belong to (the lock's), and its name.

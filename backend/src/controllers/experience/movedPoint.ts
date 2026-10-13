@@ -19,7 +19,7 @@ import type { LockedExperience } from '../../db/experienceWriter.js';
 import { offeredLocationSql } from '../../db/readerPredicates.js';
 import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
 import { unreadPointSql } from './waitingCounts.js';
-import { shownBySql } from '../../db/placePoints.js';
+import { pointsShownSql } from '../../db/placePoints.js';
 
 /**
  * The id of the unread offered point that replaces a pin still offered and sits
@@ -37,9 +37,8 @@ import { shownBySql } from '../../db/placePoints.js';
  */
 export function pointMovedToSql(experienceId: string, point: string): string {
   return `(SELECT arrival.id
-             FROM experience_locations arrival
-            WHERE ${shownBySql('arrival', `ARRAY[${experienceId}]`)}
-              AND ${unreadPointSql('arrival')} AND ${offeredLocationSql('arrival')}
+             FROM ${pointsShownSql(`${experienceId}`, 'arrival')}
+            WHERE ${unreadPointSql('arrival')} AND ${offeredLocationSql('arrival')}
               AND EXISTS (SELECT 1 FROM experience_locations replaced
                            WHERE replaced.id = arrival.withdrawal_deferred_for_location_id
                              AND ${offeredLocationSql('replaced')})

@@ -26,7 +26,7 @@ import { MEMBERSHIPS, rowKindJoinSql } from '../../db/membership.js';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import { objectContextSelectSql, placeOfObjectSql } from './reviewQueueContext.js';
 import { componentItemsOpenSql, openProposalSql } from './reviewQueuePredicates.js';
-import { shownBySql } from '../../db/placePoints.js';
+import { pointsShownSql } from '../../db/placePoints.js';
 
 /** Every open candidate of the site's points, as a jsonb array, the points in the source's order. */
 const CANDIDATES = `(SELECT jsonb_agg(jsonb_build_object(
@@ -49,9 +49,9 @@ const CANDIDATES = `(SELECT jsonb_agg(jsonb_build_object(
            'registerDisagrees', p.register_disagrees,
            'proposedAt', p.proposed_at)
          ORDER BY el.ordinal NULLS LAST, el.id, p.exact DESC, p.register_disagrees, p.distance_m, p.id)
-       FROM experience_component_item_proposals p
-       JOIN experience_locations el ON el.id = p.location_id
-      WHERE ${shownBySql('el', 'ARRAY[e.id]')} AND ${openProposalSql('p', 'el')})`;
+       FROM ${pointsShownSql('e.id', 'el')}
+       JOIN experience_component_item_proposals p ON p.location_id = el.id
+      WHERE ${openProposalSql('p', 'el')})`;
 
 /** Every place the site is made of, in the source's order: what its map draws around the candidates. */
 const SITE_POINTS = `(SELECT jsonb_agg(jsonb_build_object(
@@ -63,16 +63,16 @@ const SITE_POINTS = `(SELECT jsonb_agg(jsonb_build_object(
            'imageUrl', sp.image_url,
            'imageCredit', sp.metadata -> 'imageCredit')
          ORDER BY sp.ordinal NULLS LAST, sp.id)
-       FROM experience_locations sp
-      WHERE ${shownBySql('sp', 'ARRAY[e.id]')} AND ${placeOfObjectSql('sp')})`;
+       FROM ${pointsShownSql('e.id', 'sp')}
+      WHERE ${placeOfObjectSql('sp')})`;
 
 /** The membership that places a point with an open candidate: whose source the answer is scoped by. */
 const PLACING_MEMBERSHIP = `(SELECT pl.membership_id
-       FROM experience_component_item_proposals p
-       JOIN experience_locations el ON el.id = p.location_id
+       FROM ${pointsShownSql('e.id', 'el')}
+       JOIN experience_component_item_proposals p ON p.location_id = el.id
        JOIN experience_location_placements pl ON pl.location_id = el.id
        JOIN ${MEMBERSHIPS} m ON m.id = pl.membership_id
-      WHERE ${shownBySql('el', 'ARRAY[e.id]')} AND ${openProposalSql('p', 'el')}
+      WHERE ${openProposalSql('p', 'el')}
       ORDER BY m.id LIMIT 1)`;
 
 export async function queryComponentItems(ids: number[]): Promise<QueryResult> {

@@ -30,7 +30,7 @@ import {
   askedSql, recordComponentItemSuggestions, type ComponentItemSuggestion, type Judgement,
 } from './componentItemSuggestions.js';
 import { openProposalSql } from './reviewQueuePredicates.js';
-import { shownBySql } from '../../db/placePoints.js';
+import { pointsShownSql } from '../../db/placePoints.js';
 
 interface CandidateRow {
   proposalId: number;
@@ -112,9 +112,9 @@ async function openCandidates(
                                   WHERE g.location_id = p.location_id AND g.wikidata_item = p.wikidata_item
                                     AND g.asked = ${askedSql('p')}
                                   ORDER BY g.asked_at DESC, g.id DESC LIMIT 1)) ORDER BY p.id)
-               FROM experience_component_item_proposals p
-               JOIN experience_locations el ON el.id = p.location_id
-              WHERE ${shownBySql('el', 'ARRAY[e.id]')} AND ${openProposalSql('p', 'el')}) AS candidates
+               FROM ${pointsShownSql('e.id', 'el')}
+               JOIN experience_component_item_proposals p ON p.location_id = el.id
+              WHERE ${openProposalSql('p', 'el')}) AS candidates
        FROM experiences e WHERE e.id = $1`,
     [experienceId],
   );

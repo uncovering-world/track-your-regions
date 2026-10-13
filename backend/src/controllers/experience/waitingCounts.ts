@@ -38,7 +38,7 @@ import { pool } from '../../db/index.js';
 import { KINDS, MEMBERSHIPS, membershipAdmittedSql, membershipOfferedSql } from '../../db/membership.js';
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { heldFieldAnsweredSql, heldPartAnsweredSql } from './heldDecisions.js';
-import { answeringPlaceSql, shownBySql } from '../../db/placePoints.js';
+import { answeringPlaceSql, somePointShownSql } from '../../db/placePoints.js';
 
 /** A membership nobody has read yet, of a place the source still offers. */
 export function arrivalWaitingSql(alias = 'e', membership = 'm'): string {
@@ -217,10 +217,10 @@ export function contentsRowsSql(alias: string, membership: string, which: 'unrea
   const link = which === 'unread'
     ? `${offeredLinkSql('et')} AND ${unreadLinkSql('et', 't')}`
     : 'et.refused_at IS NOT NULL';
-  return `(EXISTS (
-        SELECT 1 FROM experience_locations el
-        WHERE ${shownBySql('el', `ARRAY[${alias}.id]`)} AND ${point}
-          AND ${pointMembershipSql('el')} = ${membership}.id)
+  const place = `${alias}.id`;
+  const asked = `${point}
+          AND ${pointMembershipSql('el')} = ${membership}.id`;
+  return `(${somePointShownSql(place, 'el', asked)}
       OR EXISTS (
         SELECT 1 FROM experience_treasures et
         LEFT JOIN treasures t ON t.id = et.treasure_id

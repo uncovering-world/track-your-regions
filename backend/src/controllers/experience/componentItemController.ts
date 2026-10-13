@@ -25,7 +25,7 @@ import { userAgent } from '../../config/userAgent.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { lockExperience, type LockedExperience } from '../../db/experienceWriter.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
-import { shownBySql } from '../../db/placePoints.js';
+import { pointsShownSql, shownBySql } from '../../db/placePoints.js';
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import { contentsOf } from '../../services/sync/componentItemQueries.js';
 import { fetchCommonsCredits, type ImageCredit } from '../../services/sync/imageCredit.js';
@@ -261,11 +261,11 @@ export async function openCandidates(experienceId: number, only: 'exact' | 'all'
 export async function componentItemsSourceIds(experienceId: number): Promise<number[] | null> {
   const result = await pool.query<{ source_ids: number[] | null; source_id: number }>(
     `SELECT (SELECT array_agg(DISTINCT m.source_id)
-               FROM experience_component_item_proposals p
-               JOIN experience_locations el ON el.id = p.location_id
+               FROM ${pointsShownSql('e.id', 'el')}
+               JOIN experience_component_item_proposals p ON p.location_id = el.id
                JOIN experience_location_placements pl ON pl.location_id = el.id
                JOIN ${MEMBERSHIPS} m ON m.id = pl.membership_id
-              WHERE ${shownBySql('el', 'ARRAY[e.id]')} AND ${openProposalSql('p', 'el')}) AS source_ids,
+              WHERE ${openProposalSql('p', 'el')}) AS source_ids,
             e.source_id
        FROM experiences e WHERE e.id = $1`,
     [experienceId],
