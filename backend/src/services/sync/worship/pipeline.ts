@@ -49,7 +49,7 @@ import {
   type WorksCollectorOptions,
 } from '../museum/worksCollector.js';
 import {
-  holdingReason, keptElsewhere, readVenueSide, refusedHoldingReason,
+  holdingReason, keptElsewhere, readVenueSide, refusedHoldingReason, type HandOver,
 } from '../museum/venueSide.js';
 import { fetchWorshipTrees, fetchTreasureClasses } from './queries.js';
 // Door two's own rules over the works — which are this kind's, why one is not,
@@ -119,6 +119,12 @@ export interface WorshipPipelineDeps {
   /** Rate limiting between queries. The test passes nothing. */
   pause?: () => Promise<void>;
   closure?: ClosureOptions;
+  /**
+   * Works other kinds refused as held at a place (ADR-0102), which the
+   * venue-side read keeps at a venue this kind admits. Read by the run
+   * (`readHandOvers`); the test passes none.
+   */
+  handOvers?: ReadonlyMap<string, HandOver>;
 }
 
 /** A door-two venue the rule admits, with the iconic works that named it. */
@@ -339,6 +345,7 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
   // treasure, and nobody can see a lost one.
   const side = await readVenueSide(run, works, options, {
     admitted,
+    handedOver: deps.handOvers,
     // Named where a treasure of this kind would keep its badge — the line the
     // source states, which `contentsLine` hands the writer too (#883).
     reportFloor: contentsLine(deps.line).staySitelinks,

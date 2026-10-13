@@ -30737,6 +30737,10 @@
               "string",
               "null"
             ]
+          },
+          "handed_by": {
+            "description": "The kind that handed a work to this venue, and its reason (ADR-0102): only on a work the venue gained that way.",
+            "type": "string"
           }
         },
         "required": [

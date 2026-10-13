@@ -44,6 +44,7 @@ import {
   type StoredCredit,
 } from './imageCredit.js';
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
+import { readHandOvers } from './handOvers.js';
 // Museums use remote Wikimedia URLs, no local image storage
 
 const MUSEUM_SOURCE_ID = 2;
@@ -224,6 +225,8 @@ async function fetchMuseumItems(
     // fails late otherwise starts the next attempt at its first phase.
     sparql: collectingSparql(progress, refreshCache),
     previousPlacements,
+    // What other kinds refused as held at a museum (ADR-0102).
+    handOvers: await readHandOvers(MUSEUM_SOURCE_ID),
     onPhase: (message) => { progress.statusMessage = message; },
     checkCancel: () => {
       if (progress.cancel) throw new Error('Sync cancelled');

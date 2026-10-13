@@ -32,7 +32,7 @@ import {
   type UnseenWork,
   type WorksCollectorOptions,
 } from './worksCollector.js';
-import { holdingReason, keptElsewhere, readVenueSide, refusedHoldingReason } from './venueSide.js';
+import { holdingReason, keptElsewhere, readVenueSide, refusedHoldingReason, type HandOver } from './venueSide.js';
 import { fetchMuseumClasses, type PoolWork, type RawStatement } from './queries.js';
 import type { ClosureOptions } from '../classClosure.js';
 import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
@@ -56,6 +56,12 @@ export interface PipelineDeps {
   checkCancel?: () => void;
   /** Rate limiting between queries. The test passes nothing. */
   pause?: () => Promise<void>;
+  /**
+   * Works other kinds refused as held at a place (ADR-0102), which the
+   * venue-side read keeps at a venue this kind admits. Read by the run
+   * (`readHandOvers`); the test passes none.
+   */
+  handOvers?: ReadonlyMap<string, HandOver>;
 }
 
 export interface PipelineResult {
@@ -375,6 +381,7 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
   // knows, and an object found from the venue's side is listed on its card.
   const side = await readVenueSide(run, collected, options, {
     admitted,
+    handedOver: deps.handOvers,
     // Named where a work of this kind would keep its badge: what the museums
     // hold below that is the long tail of every collection on Wikidata.
     reportFloor: ICONIC_RELEASE,

@@ -672,7 +672,10 @@ export async function upsertVenueTreasures(
     // one a reader will see is the stored one. Reporting the source's title for a
     // link to a work the catalogue calls something else names a work nobody can
     // find.
-    if (link.rows.length > 0) added.push({ name: stored.name, ref: artwork.externalId });
+    if (link.rows.length > 0) {
+      // A work another kind handed over says so (ADR-0102).
+      added.push({ name: stored.name, ref: artwork.externalId, ...(artwork.handedBy ? { handed_by: artwork.handedBy } : {}) });
+    }
   }
 
   // The museum's other links, once every work is written and not before: a

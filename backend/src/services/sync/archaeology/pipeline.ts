@@ -74,7 +74,7 @@ import {
   type WorksCollection,
   type WorksCollectorOptions,
 } from '../museum/worksCollector.js';
-import { holdingReason, keptElsewhere, refusedHoldingReason } from '../museum/venueSide.js';
+import { holdingReason, keptElsewhere, refusedHoldingReason, type HandOver } from '../museum/venueSide.js';
 // The verdict and the fold decision to a fixed point, and the venue-side read
 // asked of what it admits until nothing is new: the museum door's second half
 // (`museumHoldings.ts`, split out at the seam the review of #890 named).
@@ -145,6 +145,12 @@ export interface CollectedArchaeology {
 }
 
 export interface ArchaeologyPipelineDeps {
+  /**
+   * Works other kinds refused as held at a place (ADR-0102), which the
+   * venue-side read keeps at a venue this kind admits. Read by the run
+   * (`readHandOvers`); the test passes none.
+   */
+  handOvers?: ReadonlyMap<string, HandOver>;
   sparql: SparqlFn;
   /** Where the previous run left each find, so this run can say what it moved. */
   previousPlacements: Record<string, string[]>;
@@ -414,6 +420,7 @@ export async function collectArchaeology(
     // Named where a find would keep its badge: below the finds' stay line
     // the Louvre's paintings refused as not finds would bury the real misses.
     reportFloor: findLine.staySitelinks,
+    handOvers: deps.handOvers,
   });
 
   // A museum that folded into a survivor this run writes is that survivor's, and

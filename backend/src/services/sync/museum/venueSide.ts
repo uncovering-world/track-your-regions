@@ -82,6 +82,15 @@ export interface VenueSideRead {
   counts: { venues: number; held: number; alreadyInPool: number };
 }
 
+/** A work another kind refused as held at a place (ADR-0102): who refused it, why, and where it found it held. */
+export interface HandOver {
+  /** The refusing kind's name. */
+  by: string;
+  reason: string;
+  /** Item ids, nearest first: the Cornaro chapel, then Santa Maria della Vittoria. */
+  heldIn: readonly string[];
+}
+
 export interface VenueSideOptions {
   /** The venues the kind admits and writes: the survivors. Their fold sources are added here. */
   admitted: Iterable<string>;
@@ -105,6 +114,14 @@ export interface VenueSideOptions {
    * answer names it; only the fetch and the verdict are spared.
    */
   skip?: ReadonlySet<string>;
+  /**
+   * The works other kinds refused as held at a place, by id (ADR-0102,
+   * `readHandOvers`). One this read finds held at one of those places is kept
+   * whatever this kind's class rule says: the places of worship take the Bamberg
+   * Horseman, which Public Art refused as inside Bamberg Cathedral, though a
+   * sculpture is no worship object to their rule.
+   */
+  handedOver?: ReadonlyMap<string, HandOver>;
 }
 
 /** The venues to ask about: every admitted survivor, and every venue folded into one. */
@@ -231,6 +248,52 @@ async function readStatements(
 }
 
 /**
+ * The hand-over of a work, where this read found it held at a place the
+ * refusal named (ADR-0102): the read's own venue, never one the other kind
+ * merely said.
+ */
+function handOverAt(
+  handOver: HandOver | undefined, at: { venues: Set<string>; heldBy: Set<string> } | undefined,
+): HandOver | undefined {
+  if (!handOver || !at) return undefined;
+  const named = new Set(handOver.heldIn);
+  return [...at.venues, ...at.heldBy].some((venue) => named.has(venue)) ? handOver : undefined;
+}
+
+/**
+ * Each object the venues hold: kept by the kind's rule, kept because another
+ * kind handed it over here, or refused with its classes and holders named.
+ */
+function judgeHoldings(
+  details: Map<string, WorkDetails>,
+  judge: (qid: string, row: WorkDetails) => { work: PoolWork; keeps: boolean; handOver: HandOver | undefined },
+  held: Map<string, { heldBy: Set<string> }>,
+): { kept: Map<string, PoolWork>; refused: RefusedHolding[]; handedOver: Map<string, string> } {
+  const kept = new Map<string, PoolWork>();
+  const refused: RefusedHolding[] = [];
+  const handedOver = new Map<string, string>();
+  for (const [qid, row] of details) {
+    const { work, keeps, handOver } = judge(qid, row);
+    if (keeps) {
+      kept.set(qid, work);
+    } else if (handOver) {
+      const handedBy = `${handOver.by}: ${handOver.reason}`;
+      kept.set(qid, { ...work, handedBy });
+      handedOver.set(qid, handedBy);
+    } else {
+      refused.push({
+        qid,
+        label: work.label,
+        sitelinks: work.sitelinks,
+        classes: [...row.classes].map(([cls, label]) => ({ qid: cls, label })),
+        heldBy: [...(held.get(qid)?.heldBy ?? [])],
+      });
+    }
+  }
+  return { kept, refused, handedOver };
+}
+
+/**
  * Read what every admitted venue holds, keep what the kind's rule keeps, and
  * merge it into the collection as if the pool had collected it.
  *
@@ -256,8 +319,13 @@ export async function readVenueSide(
   // already, and what its keep turned down would only be fetched again, judged
   // the same and named twice.
   const skip = venueSide.skip ?? new Set<string>();
+  const handOverHere = (qid: string) => handOverAt(venueSide.handedOver?.get(qid), held.get(qid));
+  // A refusal stands, the pool's or an earlier round's, unless the work is
+  // handed over at a venue this read finds it at: a round that reads the
+  // museum the refusal named asks about it again.
   const fresh = [...held.keys()].filter(
-    (qid) => !collection.pool.has(qid) && !collection.refusedByKeep.has(qid) && !skip.has(qid),
+    (qid) => !collection.pool.has(qid)
+      && ((!skip.has(qid) && !collection.refusedByKeep.has(qid)) || handOverHere(qid) !== undefined),
   );
   const details = await readDetails(run, fresh);
   const facts = await readFacts(run, details, opts);
@@ -267,22 +335,12 @@ export async function readVenueSide(
       (workFacts?.classes ?? []).some((cls) => collection.askedClasses.has(cls)));
 
   const reportFloor = venueSide.reportFloor ?? floor;
-  const kept = new Map<string, PoolWork>();
-  const refused: RefusedHolding[] = [];
-  for (const [qid, row] of details) {
-    const work = retyped(row, own, collection.askedClasses);
-    if (keep(work, facts.get(qid))) {
-      kept.set(qid, work);
-    } else {
-      refused.push({
-        qid,
-        label: work.label,
-        sitelinks: work.sitelinks,
-        classes: [...row.classes].map(([cls, label]) => ({ qid: cls, label })),
-        heldBy: [...(held.get(qid)?.heldBy ?? [])],
-      });
-    }
-  }
+  const { kept, refused, handedOver } = judgeHoldings(
+    details, (qid, row) => {
+      const work = retyped(row, own, collection.askedClasses);
+      return { work, keeps: keep(work, facts.get(qid)), handOver: handOverHere(qid) };
+    }, held,
+  );
 
   const statements = await readStatements(run, [...kept.keys()]);
   // The venues the kept objects name, and the ones they were read at: an
@@ -302,7 +360,14 @@ export async function readVenueSide(
   const arrived: Record<string, string[]> = {};
   for (const [qid, work] of kept) {
     const ownStatements = statements.get(qid) ?? [];
-    const venuesOfWork = placeArtwork(ownStatements, resolver.resolve, graph.ancestors);
+    const placedAt = placeArtwork(ownStatements, resolver.resolve, graph.ancestors);
+    // A handed-over work goes only to a place the refusal named (ADR-0102):
+    // another admitted venue its statements reach refused it by its own rule.
+    // A venue folded into one the refusal named is that venue: the Galleria Palatina is Palazzo Pitti's.
+    const named = work.handedBy ? new Set(venueSide.handedOver?.get(qid)?.heldIn ?? []) : null;
+    const venuesOfWork = named
+      ? placedAt.filter((venue) => named.has(venue) || named.has(survivorOf(collection.folds, venue)))
+      : placedAt;
     // The lost tree asked of the object's own classes, since it was never in
     // the class pool `collectLost` intersects with; the label is its own class's.
     const lost = new Map<string, string>();
@@ -327,7 +392,8 @@ export async function readVenueSide(
   console.log(
     `${opts.logPrefix} Venue-side read: ${venues.length} venues hold ${held.size} objects at `
     + `${floor}+ Wikipedia editions; ${held.size - fresh.length} already in the pool, ${kept.size} kept as `
-    + `${opts.noun.works}, ${refused.length} refused (${reported.length} at ${reportFloor}+ Wikipedia editions, named)`,
+    + `${opts.noun.works} (${handedOver.size} handed over by another kind), `
+    + `${refused.length} refused (${reported.length} at ${reportFloor}+ Wikipedia editions, named)`,
   );
   return {
     collection: { ...collection, pool, statements: allStatements, graph, resolver, placed, unseen, afterFolds },

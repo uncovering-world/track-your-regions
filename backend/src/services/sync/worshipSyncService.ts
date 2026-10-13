@@ -49,6 +49,7 @@ import {
   type StoredCredit,
 } from './imageCredit.js';
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
+import { readHandOvers } from './handOvers.js';
 
 const WORSHIP_SOURCE_ID = 4;
 
@@ -192,6 +193,8 @@ async function fetchWorshipItems(
     previousPlacements,
     admitted,
     line,
+    // What other kinds refused as held at a place of worship (ADR-0102).
+    handOvers: await readHandOvers(WORSHIP_SOURCE_ID),
     onPhase: (message) => { progress.statusMessage = message; },
     checkCancel: () => {
       if (progress.cancel) throw new Error('Sync cancelled');

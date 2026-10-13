@@ -14,7 +14,7 @@
 import { applyFolds, survivorOf } from '../museum/venueGraph.js';
 import type { Fold } from '../museum/venueFolds.js';
 import type { WorksCollection, WorksCollectorOptions } from '../museum/worksCollector.js';
-import { readVenueSide, type RefusedHolding, type VenueSideRead } from '../museum/venueSide.js';
+import { readVenueSide, type HandOver, type RefusedHolding, type VenueSideRead } from '../museum/venueSide.js';
 import type { PoolEntity } from '../publicArt/queries.js';
 import type { QueryRunner } from '../wikidataQueries.js';
 import {
@@ -206,6 +206,8 @@ export interface HoldingsContext {
   /** English Wikipedia's categories for a batch of titles: the pipeline's own door, handed in. */
   categoriesDoor: (titles: string[]) => Promise<Map<string, string[]>>;
   reportFloor: number;
+  /** Works other kinds refused as held at a place (ADR-0102), for every round's read. */
+  handOvers?: ReadonlyMap<string, HandOver>;
 }
 
 /**
@@ -239,7 +241,7 @@ export async function readAdmittedHoldings(
     if (!unread.length) break;
     for (const qid of unread) read.add(qid);
     const round = await readVenueSide(run, works, options, {
-      admitted: unread, reportFloor: ctx.reportFloor, skip: refused,
+      admitted: unread, reportFloor: ctx.reportFloor, skip: refused, handedOver: ctx.handOvers,
     });
     rounds.push(round);
     for (const refusal of round.refused) refused.add(refusal.qid);
