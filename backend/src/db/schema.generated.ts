@@ -230,6 +230,17 @@ export interface ExperienceCurationLogRow {
   created_at: Date | null;
 }
 
+/** The table `experience_hand_overs`. */
+export interface ExperienceHandOversRow {
+  source_id: number;
+  external_id: string;
+  name: string | null;
+  reason: string;
+  held_in: string[];
+  sync_log_id: number | null;
+  recorded_at: Date;
+}
+
 /** The table `experience_held_decisions`. */
 export interface ExperienceHeldDecisionsRow {
   id: string;
@@ -864,6 +875,9 @@ export const COLUMN_WIDTHS = {
   },
   experience_curation_log: {
     action: 30,
+  },
+  experience_hand_overs: {
+    external_id: 255,
   },
   experience_held_decisions: {
     part_kind: 20,
