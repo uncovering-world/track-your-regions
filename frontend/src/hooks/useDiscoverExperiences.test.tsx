@@ -264,6 +264,18 @@ describe('useDiscoverExperiences — the place is in the address', () => {
     expect(result.current.discover.selectedExperienceId).toBe(1234);
   });
 
+  it("moves the address of a part to its site's card, opened at the part's point, in its list", async () => {
+    // ADR-0100: a part is in no list; its by-id read names the site it belongs to.
+    mockFetchOne.mockResolvedValue({
+      id: 4400, name: 'Temple of Karnak', part_of: { id: 1234, name: 'Stonehenge', point_id: 77 },
+    });
+    const { result } = renderAt('/discover/wv/5/r/7100/e/4400');
+
+    await waitFor(() => expect(result.current.at)
+      .toBe('/discover/wv/5/r/7100-malta/e/1234-stonehenge/p/77-temple-of-karnak?kind=1'));
+    expect(result.current.discover.selectedExperienceId).toBe(1234);
+  });
+
   it('drops a kind nobody knows, in place', async () => {
     const { result } = renderAt('/discover/wv/5/r/7100?kind=42');
 

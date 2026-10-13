@@ -232,8 +232,8 @@ export function useDiscoverExperiences() {
     && !experiences.some(e => e.id === selectedExperienceId);
   const foldedInto = useFoldedCard(addressedExperienceId, unkindedMissing || listMissing);
   const moveOrDrop = useCallback((at: AppAddress, into: FoldedInto | null) => go(
-    { ...at, experienceId: into?.id ?? null },
-    { replace: true, names: { experience: into?.name } },
+    { ...at, experienceId: into?.id ?? null, pointId: into?.pointId ?? null },
+    { replace: true, names: { experience: into?.name, point: into?.pointName } },
   ), [go]);
 
   useEffect(() => {

@@ -197,8 +197,8 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   useEffect(() => {
     if (address === null || !cardMissing || foldedInto === undefined) return;
     go(
-      { ...address, experienceId: foldedInto?.id ?? null },
-      { replace: true, names: { experience: foldedInto?.name } },
+      { ...address, experienceId: foldedInto?.id ?? null, pointId: foldedInto?.pointId ?? null },
+      { replace: true, names: { experience: foldedInto?.name, point: foldedInto?.pointName } },
     );
   }, [address, cardMissing, foldedInto, go]);
 
