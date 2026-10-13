@@ -71,6 +71,7 @@ import { count, text } from './assertion.js';
 import type { AssertionRow, CatalogueAssertion } from './assertion.js';
 import { divisionTreeAssertions } from './divisionTreeAssertions.js';
 import { objectAssertions } from './objectAssertions.js';
+import { workAssertions } from './workAssertions.js';
 import { regionGeometryAssertions } from './regionGeometryAssertions.js';
 
 export type { AssertionRow, CatalogueAssertion } from './assertion.js';
@@ -746,6 +747,7 @@ export const catalogueAssertions: CatalogueAssertion[] = [
   ...regionGeometryAssertions,
   ...divisionTreeAssertions,
   ...objectAssertions,
+  ...workAssertions,
   pictureTheProductMayNotShow,
   pictureWithNobodyCredited,
 ];
