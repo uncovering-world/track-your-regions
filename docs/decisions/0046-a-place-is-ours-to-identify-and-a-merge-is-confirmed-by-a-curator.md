@@ -3,7 +3,10 @@
 **Date:** 2026-09-03
 **Status:** Accepted — the wording of decision 5 narrowed by
 [ADR-0084](0084-a-place-belongs-to-no-source-and-no-kind.md): the "surviving place" is the row
-that stays physically, with no kind or source of its own; every decision stands
+that stays physically, with no kind or source of its own. Decisions 1 and 5 narrowed by
+[ADR-0100](0100-a-serial-sites-components-are-places-part-of-the-site.md): a component is a place
+row, part of the site, and a merged component's address is its own card. Every other decision
+stands
 
 ---
 
