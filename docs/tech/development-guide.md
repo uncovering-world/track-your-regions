@@ -843,11 +843,14 @@ brings no review, so the commands that push ask for the next round themselves:
 `/pr-create` § 8 after every wave it pushes, `/commit` § 8 after a push to a
 branch with an open PR. Those are the three modes Anthropic's managed Code
 Review, Copilot and CodeRabbit ship between them; the measurement that set this
-cadence is on #796. One pull request gets none of this: a PR that changes
+cadence is on #796. One pull request is the exception: a PR that changes
 `claude-review.yml` itself. The action refuses to run while the workflow file
-differs from `main`'s copy, and the `review` check reports success anyway — so a
-green check on such a PR is not a review, the maintainer reads that PR alone,
-and what the change does is seen on the first PR after it merges.
+differs from `main`'s copy and exits success anyway, so the workflow's last step
+fails that run, and the PR's own `review` check is red because nothing was
+reviewed, not because something was found (#483). `/review` does review such a
+PR — an `issue_comment` run reads `main`'s copy of the workflow — and its
+summary, not that red check, is the round's answer; what the change itself does
+is seen on the first PR after it merges.
 
 What the bot posts arrives through two channels, and severity with provenance
 decides which. An inline thread is opened only for a Critical or Major finding
@@ -954,7 +957,8 @@ pull request's pushed head (`--base <head>`), which CI has already answered for.
 The slow lanes — the Semgrep and Trivy scans, the smoke, database and API lanes,
 Lighthouse — are CI's: it runs every one the change asks for on every pushed
 head, and a pull request is merged only when every check that ran on its head is
-green, not only the required ones. `npm run gates -- run stack` marks what is
+green, not only the required ones (one exemption, the `review` check on a PR that
+changes `claude-review.yml`: `docs/tech/gates.md` § Before merging). `npm run gates -- run stack` marks what is
 still owed by hand, the measurements CI cannot hold — `perf:local` (Lighthouse
 on the real catalogue) on a change to what the browser loads, `perf:api` (the
 latency probe) on a change to what answers the hot reads — run from the checkout
