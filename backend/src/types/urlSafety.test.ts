@@ -637,7 +637,9 @@ describe('the rule is declared once', () => {
    * url runs just the same -- as the string the row carried. What is looked at
    * is every module that carries a stored link at all, by the names the
    * links travel under -- a region's `sourceUrl`, a credit's `licenseUrl`
-   * and `detailsUrl` -- a hook as much as a component, since `window.open`
+   * and `detailsUrl`, an experience's `website` and `wikipediaUrl` (served as
+   * `website_url` / `wikipedia_url` to a review card), which a sync writes
+   * through no request schema -- a hook as much as a component, since `window.open`
    * is imperative and lives as naturally in one -- and in such a module every
    * dynamic `href={…}`, every `window.open(…)` and every `.href = …`
    * assignment, whatever it names: the
@@ -724,10 +726,28 @@ describe('the rule is declared once', () => {
     expect(rawLinkSites("window.open(safeHref(node.sourceUrl) || node.sourceUrl, '_blank')")).toEqual(['window.open(safeHref(node.sourceUrl) || node.sourceUrl']);
   });
 
+  /**
+   * A stored link: a region's source page, a picture credit's licence and
+   * details pages, and an experience's own site and Wikipedia article, by the
+   * names every prop and every row carry them under.
+   */
+  const storedLink = /\b(?:sourceUrl|source_url|licenseUrl|detailsUrl|website|website_url|wikipediaUrl|wikipedia_url)\b/;
+
+  it('reads a module by every name a stored link travels under', () => {
+    // The two shapes an experience's links take on the way to a link: the
+    // metadata keys the detail read serves, and the review queue's columns.
+    for (const carrier of [
+      'metadata.website', 'metadata?.wikipediaUrl', 'item.website_url', 'item.wikipedia_url',
+      'node.sourceUrl', 'credit.licenseUrl', 'credit.detailsUrl',
+    ]) {
+      expect(storedLink.test(carrier), carrier).toBe(true);
+    }
+    // A word that merely starts like one is not a carrier.
+    expect(storedLink.test('websiteIcon')).toBe(false);
+  });
+
   it('lets no module that carries a stored link put an href of its own on screen', () => {
     const frontendSrc = repoFile('frontend', 'src');
-    /** A stored link: a region's source page, and a picture credit's licence and details pages, by the names every prop and every row carry them under. */
-    const storedLink = /\b(?:sourceUrl|source_url|licenseUrl|detailsUrl)\b/;
 
     const offenders: string[] = [];
     for (const name of readdirSync(frontendSrc, { recursive: true, encoding: 'utf8' })) {
