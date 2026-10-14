@@ -51,6 +51,7 @@ import { ExtentLine } from '../shared/ExtentLine';
 import { ContentsSection } from './ContentsSection';
 import { locationLabel, pointOfRow } from '../../utils/locationLabel';
 import { inDangerLabel } from '../../utils/dangerLabel';
+import { safeHref } from '../../utils/safeHref';
 import { queryKeys } from '../../api/queryKeys';
 
 interface ExperienceDetailPanelProps {
@@ -429,8 +430,11 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
           )}
           {(() => {
             const metadata = details?.metadata;
-            const wikiUrl = typeof metadata?.wikipediaUrl === 'string' && metadata.wikipediaUrl ? metadata.wikipediaUrl : null;
-            const websiteUrl = typeof metadata?.website === 'string' && metadata.website ? metadata.website : null;
+            // Decided where they meet the DOM: a sync writes both keys through no request
+            // schema, so the write-path rule does not hold every stored row. A refused
+            // value offers no button at all.
+            const wikiUrl = safeHref(typeof metadata?.wikipediaUrl === 'string' ? metadata.wikipediaUrl : null);
+            const websiteUrl = safeHref(typeof metadata?.website === 'string' ? metadata.website : null);
 
             return (
               <>

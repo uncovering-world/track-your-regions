@@ -21,6 +21,7 @@ import PlaceIcon from '@mui/icons-material/Place';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { plural } from '../../utils/plural';
+import { safeHref } from '../../utils/safeHref';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { proposedPoint } from './MoveFact';
@@ -91,15 +92,15 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   const hasPoint = typeof item.latitude === 'number' && typeof item.longitude === 'number'
     && (item.offered_locations ?? 0) <= 1;
   const regions = item.region_names ?? [];
-  const links: Array<{ label: string; href: string }> = [];
-  // The article first: it is what a curator reads to judge the place, where the
-  // source's page is where the data came from.
-  if (item.wikipedia_url) links.push({ label: 'Wikipedia', href: item.wikipedia_url });
-  if (item.website_url) links.push({ label: 'source page', href: item.website_url });
+  // Decided where they meet the DOM: a sync writes both through no request schema,
+  // so the write-path rule does not hold every stored row. A refused value is not
+  // linked, and the card names no link for it.
+  const wikipediaHref = safeHref(item.wikipedia_url);
+  const sourcePageHref = safeHref(item.website_url);
 
   const madeOf = madeOfLabel(item.offered_locations, item.counted_works_total ?? undefined);
 
-  if (!thumbnail && !hasPoint && !madeOf && regions.length === 0 && links.length === 0) return null;
+  if (!thumbnail && !hasPoint && !madeOf && regions.length === 0 && !wikipediaHref && !sourcePageHref) return null;
 
   return (
     <Stack direction="row" spacing={1.5} sx={{ mb: 1.5 }} alignItems="flex-start">
@@ -168,22 +169,22 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
             {coordinateLabel(item.latitude as number, item.longitude as number)}
           </Button>
         )}
-        {links.length > 0 && (
+        {(wikipediaHref || sourcePageHref) && (
+          // The article first: it is what a curator reads to judge the place, where
+          // the source's page is where the data came from. `rel` on every outbound
+          // link: these open a source's own site, and `noopener` is what keeps that
+          // page from reaching back into this one.
           <Stack direction="row" spacing={1} sx={{ mt: 0.25 }}>
-            {links.map(link => (
-              // `rel` on every outbound link: these open a source's own site, and
-              // `noopener` is what keeps that page from reaching back into this one.
-              <Link
-                key={link.label}
-                href={link.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                variant="caption"
-                underline="hover"
-              >
-                {link.label}
+            {wikipediaHref && (
+              <Link href={wikipediaHref} target="_blank" rel="noopener noreferrer" variant="caption" underline="hover">
+                Wikipedia
               </Link>
-            ))}
+            )}
+            {sourcePageHref && (
+              <Link href={sourcePageHref} target="_blank" rel="noopener noreferrer" variant="caption" underline="hover">
+                source page
+              </Link>
+            )}
           </Stack>
         )}
         {regions.length > 0 && (

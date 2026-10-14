@@ -49,7 +49,10 @@ export function SourceId({ id, kind, sourcePage }: {
   sourcePage?: string | null;
 }) {
   const [copied, setCopied] = useState(false);
-  const href = sourceIdHref(id, sourcePage);
+  // Through safeHref although sourceIdHref answers only an https literal or a page
+  // safeHref already kept: the rule is declared once, and `urlSafety.test.ts` reads
+  // every href in a module that carries a stored link as going through it.
+  const href = safeHref(sourceIdHref(id, sourcePage));
 
   const copy = async () => {
     try {
