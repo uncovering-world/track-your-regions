@@ -41,6 +41,7 @@ import {
   type ArchaeologyTrees,
 } from './classes.js';
 import { belowLineReason, lineStanding, type SourceLine } from '../sourceLine.js';
+import { ART_CLASSES } from '../museum/artTest.js';
 
 export interface MuseumFacts {
   qid: string;
@@ -48,6 +49,12 @@ export interface MuseumFacts {
   classes: string[];
   /** The categories of its English Wikipedia article, as they are spelled there. */
   categories: string[];
+  /**
+   * What OpenStreetMap says the museum is about: the `museum` values of the
+   * objects that carry its item, split at `;` (#889). Empty where the map says
+   * nothing or was not read.
+   */
+  mapped?: string[];
   lat: number | null;
   lon: number | null;
 }
@@ -59,7 +66,16 @@ export interface MuseumFacts {
  */
 export type MuseumNature =
   | { nature: 'archaeological'; why: string }
-  | { nature: 'department'; why: string }
+  | {
+    nature: 'department'; why: string;
+    /**
+     * What calls the museum an art museum, where something does (#889): the
+     * map's `museum=art` or Wikidata's `art museum`. A department in an art
+     * museum asks the curator nothing unless a find or the source's own
+     * admission already brought it.
+     */
+    artMuseum?: string;
+  }
   | {
     nature: 'none';
     /**
@@ -71,6 +87,20 @@ export type MuseumNature =
 
 /** A nature, or the one word that refuses the row whatever its nature would be. */
 export type MuseumNatureOrVeto = MuseumNature | { veto: string };
+
+/**
+ * What calls a museum an art museum, in the words a refusal quotes: the map
+ * first, being the traveller's view, then a class the Art Museums kind reads
+ * as an art museum's (`ART_CLASSES`: `art museum` under both of Wikidata's
+ * items of that name, `glyptotheque`, `pinacotheca` and the rest), so the two
+ * kinds mean one thing by the word.
+ */
+function artMuseumBy(facts: MuseumFacts, mapped: readonly string[]): string | undefined {
+  if (mapped.includes('art')) return 'map: museum=art';
+  const artClass = facts.classes.find((c) => ART_CLASSES[c]);
+  if (!artClass) return undefined;
+  return `class: ${ART_CLASSES[artClass].startsWith('art museum') ? 'art museum' : ART_CLASSES[artClass]}`;
+}
 
 /**
  * What the museum is about, or why it is not this kind's at all.
@@ -91,9 +121,10 @@ export type MuseumNatureOrVeto = MuseumNature | { veto: string };
  * `Museums of ancient Rome in the United Kingdom` beside `Natural history
  * museums in England`; its draw is Roman York. A museum of both is a museum of
  * both and enters — held or not, that is the verdict's question, not this one.
- * So the natural-history mark is set *after* the two signals of the nature have
- * been read and only when neither answered: either signal is enough, because
- * the class misses the canon and the category is where half of it is named.
+ * So the natural-history mark is set *after* the signals of the nature — the
+ * category, the class and the map — have been read, and only when none
+ * answered: any one is enough, because the class misses the canon, the
+ * category is where half of it is named, and the map names some of the rest.
  *
  * The park veto reads the whole park tree, not the one root class.
  * `buildArchaeologyTrees` already took that tree out of the museum set, which
@@ -117,11 +148,13 @@ export type MuseumNatureOrVeto = MuseumNature | { veto: string };
  * Peru`, and a department word beside a nature takes nothing away.
  */
 export function museumNature(facts: MuseumFacts, trees: ArchaeologyTrees): MuseumNatureOrVeto {
-  // The two signals of the nature, read before anything else is asked. The first
+  // The signals of the nature, read before anything else is asked. The first
   // matching *category*, not the first matching pattern: the why quotes what
   // Wikipedia says, in the order the article lists it.
   const nature = facts.categories.find((c) => NATURE_CATEGORY.test(c));
   const cls = facts.classes.find((c) => trees.museum.has(c));
+  const mapped = facts.mapped ?? [];
+  const onTheMap = mapped.includes('archaeological');
 
   // The park veto is asked of every row, signal or no signal: an open-air
   // excavation with a ticket office is somewhere you walk around whatever
@@ -129,7 +162,7 @@ export function museumNature(facts: MuseumFacts, trees: ArchaeologyTrees): Museu
   if (facts.classes.some((c) => trees.park.has(c))) {
     return { veto: 'an archaeological park: a site, not a museum' };
   }
-  if (!nature && !cls && facts.classes.some((c) => trees.naturalHistory.has(c))) {
+  if (!nature && !cls && !onTheMap && facts.classes.some((c) => trees.naturalHistory.has(c))) {
     return { nature: 'none', naturalHistory: true };
   }
 
@@ -139,8 +172,18 @@ export function museumNature(facts: MuseumFacts, trees: ArchaeologyTrees): Museu
     return { nature: 'archaeological', why: `class: ${MUSEUM_ROOTS[cls] ?? 'archaeological museum'}` };
   }
 
+  // The map is the third signal, and the one a traveller's own eyes give:
+  // whoever tagged `museum=archaeological` stood at the door. It is precise and
+  // sparse. On 2026-10-14 it was on 23 of the 84 archaeology museums the source
+  // admits and on 1 of the 100 art museums Art Museums admits, so it can admit
+  // and its absence says nothing. The Altes Museum carries it and nothing else.
+  if (onTheMap) return { nature: 'archaeological', why: 'map: museum=archaeological' };
+
   const department = facts.categories.find((c) => DEPARTMENT_CATEGORIES.some((re) => re.test(c)));
-  if (department) return { nature: 'department', why: `category: ${department}` };
+  if (department) {
+    const artMuseum = artMuseumBy(facts, mapped);
+    return { nature: 'department', why: `category: ${department}`, ...(artMuseum ? { artMuseum } : {}) };
+  }
 
   return { nature: 'none' };
 }
@@ -306,6 +349,16 @@ export function museumVerdict(input: {
   // antiquities are among the world's best and it is still visited as an art
   // museum, and a person has to say which this is.
   if (nature.nature === 'department') {
+    // A department in what the map or Wikidata calls an art museum is the
+    // Cleveland Museum of Art's shape (#889, ADR-0104 decision 4): the
+    // department shelves name some twenty such museums, and a curator would
+    // answer no to nearly all. Refused by name unless the source already admits
+    // it — the Hermitage, the Vatican Museums and the Pushkin Museum, which a
+    // curator was asked about before this rule — or a famous find carries it
+    // over the line, which is a reason to ask of its own.
+    if (nature.artMuseum && findsForTheDoor === 0 && !admitted.has(facts.qid)) {
+      return { pass: false, reason: `an antiquities department in an art museum (${nature.artMuseum}, ${nature.why})` };
+    }
     return {
       pass: true,
       held: true,

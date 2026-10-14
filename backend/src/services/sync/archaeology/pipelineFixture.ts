@@ -80,6 +80,8 @@ import {
 } from './classes.js';
 import type { OsmObject } from '../osm/types.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
+import type { SourceLine } from '../sourceLine.js';
+import { collectArchaeology, type CollectedArchaeology, type CollectedArchaeologyMuseum } from './pipeline.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';
 const RANK = 'http://wikiba.se/ontology#NormalRank';
@@ -895,3 +897,49 @@ export function osmDoor(w: World) {
   );
   return { read, digs, resolveArticles, calls };
 }
+
+// =============================================================================
+// A run of the pipeline against this world, as the pipeline specs ask it
+// =============================================================================
+
+/**
+ * What another kind shows a reader: the Venus de' Medici is on the Uffizi's
+ * art-museum card, so the Uffizi's one ancient statue asks nothing (ADR-0103).
+ */
+export const SHOWN: ReadonlySet<string> = new Set(['Q774967']);
+
+export const LINE: SourceLine = {
+  enterSitelinks: 22, staySitelinks: 18, find: { enterSitelinks: 18, staySitelinks: 15 },
+};
+
+export function collect(w: World, opts: {
+  line?: SourceLine; admitted?: string[]; previousPlacements?: Record<string, string[]>;
+  shownElsewhere?: Iterable<string>;
+} = {}): Promise<CollectedArchaeology> {
+  const door = categoryDoor(w);
+  return collectArchaeology({
+    sparql: (query: string) => Promise.resolve(answer(w, query)),
+    previousPlacements: opts.previousPlacements ?? {},
+    admittedMuseums: new Set(opts.admitted ?? []),
+    admittedSites: new Set<string>(),
+    shownElsewhere: new Set(opts.shownElsewhere ?? SHOWN),
+    line: opts.line ?? LINE,
+    categories: door.categories,
+    categoryMembers: door.categoryMembers,
+    osm: osmDoor(w).read,
+    osmDigs: osmDoor(w).digs,
+    resolveArticles: osmDoor(w).resolveArticles,
+  });
+}
+
+/**
+ * The museum row of an entity, which is what every assertion in this block
+ * reads: one proposal carries the kind's two types (ADR-0058 decision 1), and a
+ * site is nobody's museum however the two doors named it.
+ */
+export const item = (out: CollectedArchaeology, qid: string): CollectedArchaeologyMuseum | undefined => {
+  const found = out.items.find((i) => i.qid === qid);
+  return found && found.type === 'museum' ? found : undefined;
+};
+export const reason = (out: CollectedArchaeology, qid: string) =>
+  out.filtered.find((f) => f.externalId === qid)?.reason;

@@ -27,6 +27,7 @@ import { enwikiTitleOf } from '../wikipediaCategories.js';
 import { chunk, type QueryRunner } from '../wikidataQueries.js';
 import { isQid } from '../wikidataUtils.js';
 import type { MuseumFacts } from './museumTest.js';
+import type { KeepWkt, OsmObject } from '../osm/types.js';
 import type { LinePair } from '../sourceLine.js';
 
 const FACT_BATCH = 50;
@@ -369,18 +370,46 @@ export async function readCategories(
   return categories;
 }
 
-/** The facts the rule reads about one museum, from the three questions that answered. */
+/** No geometry for a museum: what the map is asked for is one tag, never an outline. */
+const NO_WKT: KeepWkt = { historic: [], manMade: [], boundary: [] };
+
+/**
+ * What OpenStreetMap says each museum is about: the `museum` values of every
+ * object carrying its item, split at `;` (#889). Read through the pass's own
+ * map door, the one the site door reads, so a museum and a dig are asked of the
+ * same map. A museum the map does not hold keeps an empty list, which says
+ * nothing: the tag is sparse, and its absence is no signal.
+ */
+export async function readMuseumMap(
+  run: QueryRunner,
+  osm: (qids: string[], keep: KeepWkt, run: Pick<QueryRunner, 'phase' | 'step'>) => Promise<Map<string, OsmObject[]>>,
+  qids: string[],
+): Promise<Map<string, string[]>> {
+  const mapped = new Map<string, string[]>();
+  if (qids.length === 0) return mapped;
+  run.phase('Reading what OpenStreetMap says these museums are about...');
+  for (const [qid, objects] of await osm(qids, NO_WKT, run)) {
+    const values = objects.flatMap((object) => (object.tags.museum ?? '').split(';'))
+      .map((value) => value.trim()).filter(Boolean);
+    if (values.length) mapped.set(qid, [...new Set(values)]);
+  }
+  return mapped;
+}
+
+/** The facts the rule reads about one museum, from the questions that answered. */
 export function factsOf(
   qid: string,
   rows: Map<string, MuseumRow>,
   classes: Map<string, string[]>,
   categories: Map<string, string[]>,
+  mapped: ReadonlyMap<string, string[]> = new Map(),
 ): MuseumFacts {
   const row = rows.get(qid);
   return {
     qid,
     classes: classes.get(qid) ?? [],
     categories: categories.get(qid) ?? [],
+    mapped: mapped.get(qid) ?? [],
     lat: row?.lat ?? null,
     lon: row?.lon ?? null,
   };

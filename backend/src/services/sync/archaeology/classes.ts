@@ -79,8 +79,8 @@ export type ArchaeologyType = 'site' | 'museum';
 /**
  * The roots of the museum door: walked as trees by `fetchArchaeologyTrees`.
  *
- * The class is one of two signals and never the whole door. It is right about
- * the Louvre, which Wikidata types `art museum, national museum,
+ * The class is one signal of the nature, beside the category and the map, and
+ * never the whole door. It is right about the Louvre, which Wikidata types `art museum, national museum,
  * archaeological museum` (169 sitelinks) — a museum can be two kinds at once,
  * and what Art Museums makes of the same row is not this kind's business. It
  * is silent about the canon, though: the British Museum is `art museum,

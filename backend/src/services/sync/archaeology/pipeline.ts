@@ -9,20 +9,22 @@
  * the museum import's own stages (`museum/worksCollector.ts`) under this kind's
  * rule (`finds.ts`), and one verdict decides where worship unions two.
  *
- * **Who is judged at all.** A museum reaches the verdict three ways: the class
- * question named it, English Wikipedia files its article under the
- * archaeological-museum categories, or it holds a find above the finds' own
- * line. Nothing else, so the long tail of everything that owns an ancient statue
- * produces no named refusals. The first two are the two signals of one nature
- * and both are doors, because the class misses half the canon and a museum it
+ * **Who is judged at all.** A museum reaches the verdict four ways: the class
+ * question named it, English Wikipedia files its article (or its own category)
+ * under the archaeological-museum categories, it is on a department shelf such
+ * as `Museums of ancient Greece in …` (#889), or it holds a find above the
+ * finds' own line. Nothing else, so the long tail of everything that owns an
+ * ancient statue produces no named refusals. The class and the category are
+ * signals of the nature (the map is the third, read of whoever is named) and
+ * both are doors, because the class misses half the canon and a museum it
  * misses reaches no pool at all — the Bardo is `museum` at 35 sitelinks. A find
  * carries a museum that already passed the nature door below the place line
  * (Delphi at 15 sitelinks for the Charioteer); it never carries one that failed
  * that door, which is the decision's whole point.
  *
  * **The folds are the museum import's**, narrowed twice by this kind. A museum
- * folds only onto a survivor this kind admits — by class, by category, or as a
- * department held for a curator — so an archaeological collection is never taken
+ * folds only onto a survivor this kind admits — by class, by category, by the
+ * map, or as a department held for a curator — so an archaeological collection is never taken
  * out of the catalogue by a fold onto a museum the rule refuses.
  * `worship/pipeline.ts` found that shape first, with the Cappella Paolina. And
  * then, once the verdict is in, **only onto a survivor this run actually
@@ -87,6 +89,7 @@ import {
   candidatesOf,
   factsOf,
   readCategories,
+  readMuseumMap,
   readClasses,
   readMembers,
   rowsOf,
@@ -366,7 +369,8 @@ export async function collectArchaeology(
   const rows = rowsOf(candidates, pool, collected.graph);
   const classes = await readClasses(run, [...rows.keys()], collected.graph);
   const categories = await readCategories(run, deps.categories, rows);
-  const natureOf = (qid: string) => museumNature(factsOf(qid, rows, classes, categories), trees);
+  const mapped = await readMuseumMap(run, deps.osm, [...rows.keys()]);
+  const natureOf = (qid: string) => museumNature(factsOf(qid, rows, classes, categories, mapped), trees);
 
   /**
    * What every pass of the verdict reads: the rows, the classes, the
@@ -376,7 +380,7 @@ export async function collectArchaeology(
    */
   const judging: MuseumJudging = {
     trees,
-    facts: (qid) => factsOf(qid, rows, classes, categories),
+    facts: (qid) => factsOf(qid, rows, classes, categories, mapped),
     rows,
     named: [...pool.keys(), ...members.judged],
     namedByCategory: (qid) => members.judged.has(qid),
