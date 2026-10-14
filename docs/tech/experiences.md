@@ -615,7 +615,9 @@ dig OpenStreetMap names that the subset does not keep (`subsetKeeps`) is not
 read as an item with no articles: the entrance names it in the run's log
 (`keptBySubset` in `archaeology/siteEntrance.ts`) and asks nothing more about
 it. It is no refusal: the subset keeps every item with a coordinate, so such an
-item has none, and the live run leaves it out unnamed as well.
+item has none, and the live run leaves it out unnamed as well. Places of
+worship asks no question of its own (#1461): its class trees are the shared
+kit's, its places Public Art's fetchers and its treasures the museum's.
 
 **A row the subset cannot read is left as it is.** An item created, or given a
 coordinate, after the dump's date is in no answer the subset gives, which says
@@ -650,11 +652,13 @@ still one year late.
 (`live` or `subset`), switched on the source's card in the sync panel
 (`WikidataReaderControls`, `PUT /api/admin/sync/sources/:sourceId/wikidata-reader`).
 The subset is offered only for a source every question of which has a twin
-(`SUBSET_READY_SOURCES`: Public Art, Art Museums and Archaeology so far), since a run that
+(`SUBSET_READY_SOURCES`: Public Art, Art Museums, Places of worship and
+Archaeology; UNESCO's own Wikidata questions in `unescoWikidata.ts` have no
+twins), since a run that
 read some answers from the subset and the rest live would mix two dates of
 Wikidata. Such a run is handed `subsetOnlyDoor()` by `wikidataRunDoor`
 (`sync/subset/runDoor.ts`): marked, and failing by name if any question
-reaches SPARQL; the museum and archaeology runs then skip the pause they keep
+reaches SPARQL; the museum, worship and archaeology runs then skip the pause they keep
 between questions to the live service. Archaeology takes the door through
 `subsetRunDoor` once for the run and hands it to every pass, since its
 fallback from the OpenStreetMap mirror to Overpass changes only the map. A run switched to the subset before one is built stops at once
