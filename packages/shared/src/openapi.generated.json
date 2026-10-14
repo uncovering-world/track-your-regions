@@ -4574,7 +4574,7 @@
     "/api/admin/dumps/{dump}/build": {
       "post": {
         "operationId": "postAdminDumpsByDumpBuild",
-        "summary": "Start a build that reads the newest complete file of a dump and verifies it against its host",
+        "summary": "Start a build that reads the newest complete file of a dump, or the local copy's, and verifies it against its host",
         "tags": [
           "admin"
         ],
@@ -4604,6 +4604,16 @@
             "required": true
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DumpBuildBody"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "The answer.",
@@ -4631,7 +4641,7 @@
     "/api/admin/dumps/{dump}/keep": {
       "post": {
         "operationId": "postAdminDumpsByDumpKeep",
-        "summary": "Start a build that reads the newest complete file of a dump and keeps what is built from it, swapping it in whole",
+        "summary": "Start a build that reads the newest complete file of a dump, or the local copy's, and keeps what is built from it, swapping it in whole",
         "tags": [
           "admin"
         ],
@@ -4661,6 +4671,16 @@
             "required": true
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DumpBuildBody"
+              }
+            }
+          }
+        },
         "responses": {
           "200": {
             "description": "The answer.",
@@ -19922,6 +19942,19 @@
         "additionalProperties": false,
         "description": "One build of a dump, from the ledger."
       },
+      "DumpBuildBody": {
+        "type": "object",
+        "properties": {
+          "from": {
+            "default": "newest",
+            "type": "string",
+            "enum": [
+              "newest",
+              "local"
+            ]
+          }
+        }
+      },
       "DumpBuildCancelled": {
         "type": "object",
         "properties": {
@@ -20206,6 +20239,37 @@
                     }
                   ],
                   "description": "A build of this dump running in another process (a script, another server), which refuses a new build until it ends (#1463); null when none runs or this process runs it."
+                },
+                "localCopy": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "date": {
+                          "type": "string",
+                          "description": "The date in the file name: YYYYMMDD, or YYYYMM for a month of counts."
+                        },
+                        "bytes": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "fileName",
+                        "date",
+                        "bytes"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The newest local copy of the dump in DUMPS_DIR, which a build can read instead of the newest file the host lists (#1456); null without one."
                 }
               },
               "required": [
@@ -20217,7 +20281,8 @@
                 "progress",
                 "builds",
                 "keeps",
-                "elsewhere"
+                "elsewhere",
+                "localCopy"
               ],
               "additionalProperties": false
             }

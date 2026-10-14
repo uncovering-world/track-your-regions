@@ -67,4 +67,15 @@ describe('the dump catalog', () => {
       fileName: 'pageviews-202609-user.bz2', date: '2026-09-01', checksum: null, expectedBytes: 6326820535, compression: 'bzip2',
     });
   });
+
+  it('tells a dump\'s own dated files from anything else in the dumps directory (#1456)', () => {
+    const entities = dumpNamed('wikidata-entities')!;
+    expect(entities.isFileName('wikidata-20261005-all.json.gz')).toBe(true);
+    expect(entities.isFileName('wikidata-20261005-lexemes.json.gz')).toBe(false);
+    expect(entities.isFileName('wikidata-2026100-all.json.gz')).toBe(false);
+    expect(entities.isFileName('wikidata-20261005-all.json.gz.part')).toBe(false);
+    expect(dumpNamed('enwiki-page')!.isFileName('enwiki-20261001-page.sql.gz')).toBe(true);
+    expect(dumpNamed('enwiki-page')!.isFileName('enwiki-20261001-page_props.sql.gz')).toBe(false);
+    expect(dumpNamed('pageviews-user')!.isFileName('pageviews-202609-user.bz2')).toBe(true);
+  });
 });

@@ -64,6 +64,11 @@ export const Dumps = z.strictObject({
       startedAt: timestamp,
       heartbeatAt: timestamp.describe('When the build last said it is alive; it beats every minute.'),
     }).nullable().describe('A build of this dump running in another process (a script, another server), which refuses a new build until it ends (#1463); null when none runs or this process runs it.'),
+    localCopy: z.strictObject({
+      fileName: z.string(),
+      date: z.string().describe('The date in the file name: YYYYMMDD, or YYYYMM for a month of counts.'),
+      bytes: z.number().int(),
+    }).nullable().describe('The newest local copy of the dump in DUMPS_DIR, which a build can read instead of the newest file the host lists (#1456); null without one.'),
   })),
   localCopy: z.boolean().describe('Whether builds keep a local copy (DUMPS_DIR) or read each file as a stream from its host.'),
 }).describe('The public dumps the catalogue reads, with their builds (ADR-0101).');
