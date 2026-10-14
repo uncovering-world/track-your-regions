@@ -54,8 +54,10 @@ const DUMP = [
   dumpLine('P361', 'part of', [], { datatype: 'wikibase-item' }),
   dumpLine('P170', 'creator', [], { datatype: 'wikibase-item' }),
   dumpLine('P625', 'coordinate location', [], { datatype: 'globe-coordinate' }),
-  dumpLine(`Q${LEONARDO}`, 'Leonardo da Vinci', [{ property: 31, value: item(5) }], { labels: { fr: 'Léonard de Vinci', ru: 'Леонардо да Винчи' } }),
-  dumpLine(`Q${LOUVRE_PALACE}`, 'Louvre Palace', [{ property: 625, value: at(48.861, 2.336) }]),
+  // A NUL and a lone surrogate, which the dump holds and Postgres stores in
+  // neither text nor jsonb: one in a spooled label, two in a kept entity's.
+  dumpLine(`Q${LEONARDO}`, 'Leonardo da Vinci', [{ property: 31, value: item(5) }], { labels: { fr: 'Léonard de Vinci\0', ru: 'Леонардо да Винчи' } }),
+  dumpLine(`Q${LOUVRE_PALACE}`, 'Louvre Palace', [{ property: 625, value: at(48.861, 2.336) }], { labels: { es: 'Palacio del Louvre\0', it: 'Palazzo \uD800del Louvre' } }),
   dumpLine(`Q${LOUVRE}`, 'Louvre Museum', [
     { property: 31, value: item(MUSEUM) }, { property: 276, value: item(LOUVRE_PALACE) },
     { property: 625, value: at(48.861, 2.3358) },
@@ -71,7 +73,7 @@ const DUMP = [
   dumpLine(`Q${MONA_LISA}`, 'Mona Lisa', [
     { property: 31, value: item(PAINTING) }, { property: 170, value: item(LEONARDO) },
     { property: 276, value: item(LOUVRE), rank: 'preferred' },
-  ], { sitelinks: { enwiki: 'Mona Lisa' } }),
+  ], { sitelinks: { enwiki: 'Mona Lisa' }, descriptions: { de: 'Gemälde von Leonardo da Vinci' } }),
   dumpLine(`Q${PAINTING}`, 'painting', [{ property: 279, value: item(WORK_OF_ART) }]),
   dumpLine(`Q${WORK_OF_ART}`, 'work of art', [{ property: 279, value: item(2342494) }]),
   dumpLine(`Q${MUSEUM}`, 'museum', [{ property: 279, value: item(1030034) }]),
@@ -126,6 +128,22 @@ describe('a build of the local Wikidata subset (#1434)', () => {
     expect(row.sitelink_count).toBe(1);
     expect(row.entity.claims.P276[0]).toMatchObject({ value: `Q${LOUVRE}`, rank: 'preferred' });
     expect(row.entity.sitelinks).toEqual({ enwiki: 'Mona Lisa' });
+  });
+
+  it("gives every kept entity its labels and descriptions in the subset's languages", async () => {
+    // A label with no description in one language, a description with no label in another: a row for each.
+    const { rows } = await pool.query(`SELECT language, label, description FROM wikidata_labels WHERE id = 'Q${MONA_LISA}' ORDER BY language`);
+    expect(rows).toEqual([
+      { language: 'de', label: null, description: 'Gemälde von Leonardo da Vinci' },
+      { language: 'en', label: 'Mona Lisa', description: null },
+    ]);
+  });
+
+  it('keeps a label holding a NUL or a lone surrogate as Postgres can store it', async () => {
+    const { rows: [row] } = await pool.query(`SELECT entity FROM wikidata_entities WHERE id = 'Q${LOUVRE_PALACE}'`);
+    expect(row.entity.labels).toMatchObject({ es: 'Palacio del Louvre', it: 'Palazzo \uFFFDdel Louvre' });
+    const { rows } = await pool.query(`SELECT language, label FROM wikidata_labels WHERE id = 'Q${LOUVRE_PALACE}' AND language IN ('es', 'it') ORDER BY language`);
+    expect(rows).toEqual([{ language: 'es', label: 'Palacio del Louvre' }, { language: 'it', label: 'Palazzo \uFFFDdel Louvre' }]);
   });
 
   it('derives the claims, an item value apart from any other', async () => {

@@ -10,6 +10,7 @@ import { entityJson, entityOf, forEachMainItemValue } from './entityLine.js';
 import { IdSet } from './idSets.js';
 import { type TermsSpool, termsOf } from './labelsRing.js';
 import type { Scope } from './scope.js';
+import { insertRefusing, type Refusals } from './refusals.js';
 import { type EntityRow, insertEntities } from './subsetTables.js';
 
 /** Rows per insert: a few megabytes of JSON. */
@@ -29,7 +30,12 @@ export class SubsetWriter implements DumpConsumer {
   private readonly inFlight = new Set<Promise<void>>();
   private failure: unknown = null;
 
-  constructor(private readonly scope: Scope, private readonly spool: TermsSpool) {}
+  constructor(
+    private readonly scope: Scope,
+    private readonly spool: TermsSpool,
+    /** The build's refused rows, entities and labels alike, under one budget. */
+    private readonly refusals: Refusals,
+  ) {}
 
   async line(line: string): Promise<void> {
     if (this.failure) throw this.failure;
@@ -69,8 +75,8 @@ export class SubsetWriter implements DumpConsumer {
     this.batch = [];
     if (rows.length === 0) return;
     while (this.inFlight.size >= IN_FLIGHT) await Promise.race(this.inFlight);
-    const insert = insertEntities(rows)
-      .then(() => { this.counts.written += rows.length; })
+    const insert = insertRefusing(rows, row => row.id, insertEntities, this.refusals)
+      .then(written => { this.counts.written += written; })
       .catch((error: unknown) => { this.failure ??= error; })
       .finally(() => { this.inFlight.delete(insert); });
     this.inFlight.add(insert);
