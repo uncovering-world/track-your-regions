@@ -20083,6 +20083,19 @@
               }
             ],
             "description": "When the build last said it is alive, every few seconds; null while it waits for the worker."
+          },
+          "etaSeconds": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Seconds the pass being read has left at its pace so far; null in its first minute, between passes and in a step that reads no file."
           }
         },
         "required": [
@@ -20095,7 +20108,8 @@
           "read",
           "lines",
           "buildId",
-          "heartbeatAt"
+          "heartbeatAt",
+          "etaSeconds"
         ],
         "additionalProperties": false,
         "description": "A dump build queued or running, read from its ledger row whatever process runs it."

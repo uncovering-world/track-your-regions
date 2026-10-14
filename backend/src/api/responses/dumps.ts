@@ -27,6 +27,8 @@ export const DumpBuildProgress = z.strictObject({
   lines: z.number().int(),
   buildId: z.number().int(),
   heartbeatAt: timestamp.nullable().describe('When the build last said it is alive, every few seconds; null while it waits for the worker.'),
+  etaSeconds: z.number().int().nullable()
+    .describe('Seconds the pass being read has left at its pace so far; null in its first minute, between passes and in a step that reads no file.'),
 }).describe('A dump build queued or running, read from its ledger row whatever process runs it.');
 export type DumpBuildProgress = z.infer<typeof DumpBuildProgress>;
 

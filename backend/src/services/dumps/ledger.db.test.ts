@@ -25,7 +25,7 @@ const file = (n: number, over: Partial<DumpFile> = {}): DumpFile => ({
 });
 
 const row = async (id: number) => (await pool.query('SELECT * FROM dump_builds WHERE id = $1', [id])).rows[0];
-const progress = { phase: 'reading' as const, message: 'Reading...', downloaded: 10, read: 5, lines: 2 };
+const progress = { phase: 'reading' as const, message: 'Reading...', downloaded: 10, read: 5, lines: 2, etaSeconds: 600 };
 
 /** A build queued and taken by `runner`, as the worker takes one. */
 async function running(dump: string, runner = 'worker:fixture'): Promise<number> {
