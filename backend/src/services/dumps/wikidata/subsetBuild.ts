@@ -18,7 +18,8 @@ import { join } from 'node:path';
 import type { DumpFile } from '../catalog.js';
 import { readDump, type ReadOptions } from '../read.js';
 import { TermsSpool } from './labelsRing.js';
-import { ScopeCollector, type ScopeCounts } from './scope.js';
+import { ScopeCollector, type Scope, type ScopeCounts } from './scope.js';
+import { loadScope, saveScope, scopePath } from './scopeFile.js';
 import { SubsetWriter } from './subsetWriter.js';
 import {
   createNextTables, deriveClassClosure, deriveFromEntities, dropNextTables, indexNextTables, insertLabels,
@@ -58,14 +59,31 @@ async function labelTheRing(spool: TermsSpool, ring: (id: number) => boolean, si
   return labelled;
 }
 
-export async function buildSubset(file: DumpFile, options: SubsetBuildOptions): Promise<SubsetResult> {
-  const { onPhase } = options;
-  onPhase('Pass 1 of 2: finding what the subset keeps...');
+/**
+ * The first pass: what the subset keeps. With a local copy, its result is kept
+ * beside the dump (#1468), and a build of the same file reads it back instead
+ * of scanning the dump again; the second pass still verifies the file.
+ */
+async function scopeOf(file: DumpFile, options: SubsetBuildOptions): Promise<Scope> {
+  const path = options.dumpsDir ? scopePath(options.dumpsDir, file) : null;
+  const earlier = path ? await loadScope(path, file) : null;
+  if (earlier) {
+    options.onPhase(`Pass 1 of 2: read from an earlier build of ${file.fileName}, ${earlier.counts.kept.toLocaleString('en')} items`);
+    return earlier;
+  }
+  options.onPhase('Pass 1 of 2: finding what the subset keeps...');
   const collector = new ScopeCollector();
   await readDump(file, {
     line: line => collector.line(line), commit: async () => undefined, abort: async () => undefined,
   }, options);
   const scope = collector.finish();
+  if (path) await saveScope(path, file, scope);
+  return scope;
+}
+
+export async function buildSubset(file: DumpFile, options: SubsetBuildOptions): Promise<SubsetResult> {
+  const { onPhase } = options;
+  const scope = await scopeOf(file, options);
 
   const spool = new TermsSpool(join(options.dumpsDir ?? tmpdir(), `${file.fileName}.terms.gz`));
   try {

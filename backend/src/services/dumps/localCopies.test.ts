@@ -14,7 +14,7 @@ beforeAll(() => {
     'wikidata-20261005-all.json.gz', 'wikidata-20261005-all.json.gz.terms.gz', 'wikidata-20260928-all.json.gz.part',
     'wikidata-20260928-all.json.gz.part.json', 'wikidata-20261005-lexemes.json.gz', 'wikidata-20261012-all.json.gz.part',
     'enwiki-20261001-page.sql.gz', 'enwiki-20260901-page.sql.gz', 'enwiki-20260901-page_props.sql.gz',
-    'pageviews-202608-user.bz2', 'notes.txt',
+    'pageviews-202608-user.bz2', 'notes.txt', 'wikidata-20261005-all.json.gz.scope',
   ]) writeFileSync(join(dir, name), '');
 });
 
@@ -25,6 +25,8 @@ describe('the local copies of one dump (#1456)', () => {
     expect(copyOf('wikidata-20261005-all.json.gz')).toEqual({ dump: 'wikidata-*-all.json.gz', date: '20261005' });
     expect(copyOf('wikidata-20261005-all.json.gz.part.json.tmp')).toEqual({ dump: 'wikidata-*-all.json.gz', date: '20261005' });
     expect(copyOf('wikidata-20261005-all.json.gz.terms.gz')).toEqual({ dump: 'wikidata-*-all.json.gz', date: '20261005' });
+    expect(copyOf('wikidata-20261005-all.json.gz.scope')).toEqual({ dump: 'wikidata-*-all.json.gz', date: '20261005' });
+    expect(copyOf('wikidata-20261005-all.json.gz.scope.tmp')).toEqual({ dump: 'wikidata-*-all.json.gz', date: '20261005' });
     expect(copyOf('pageviews-202609-user.bz2')).toEqual({ dump: 'pageviews-*-user.bz2', date: '202609' });
     expect(copyOf('notes.txt')).toBeNull();
   });
@@ -32,7 +34,7 @@ describe('the local copies of one dump (#1456)', () => {
   it('names every older copy of the same dump with its leftovers, and nothing else', async () => {
     expect(await olderCopies(dir, 'wikidata-20261012-all.json.gz', name => /^wikidata-\d{8}-all\.json\.gz$/.test(name))).toEqual([
       'wikidata-20260928-all.json.gz.part', 'wikidata-20260928-all.json.gz.part.json',
-      'wikidata-20261005-all.json.gz', 'wikidata-20261005-all.json.gz.terms.gz',
+      'wikidata-20261005-all.json.gz', 'wikidata-20261005-all.json.gz.scope', 'wikidata-20261005-all.json.gz.terms.gz',
     ]);
     expect(await olderCopies(dir, 'enwiki-20261001-page.sql.gz', name => /^enwiki-\d{8}-page\.sql\.gz$/.test(name))).toEqual(['enwiki-20260901-page.sql.gz']);
   });

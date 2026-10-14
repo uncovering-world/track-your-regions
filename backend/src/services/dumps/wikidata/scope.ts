@@ -30,6 +30,18 @@ export const CHAIN_PROPERTIES = [276, 361, 195] as const;
 /** How far a chain is followed before it is given up as never reaching a coordinate. */
 export const CHAIN_DEPTH = 8;
 
+/**
+ * The rules above as one value, written into a kept first-pass result
+ * (`scopeFile.ts`): a change to any of them makes an earlier result stale
+ * without anyone having to remember it. A change to how a line is read
+ * (`entityLine.ts`) or to `ScopeCollector` itself raises `SCOPE_VERSION`
+ * there instead.
+ */
+export const SCOPE_RULES = JSON.stringify({
+  coordinate: COORDINATE, subclassOf: SUBCLASS_OF, instanceOf: INSTANCE_OF,
+  place: PLACE_PROPERTIES, chain: CHAIN_PROPERTIES, chainDepth: CHAIN_DEPTH,
+});
+
 const PLACE_TAG = new Map<number, number>(PLACE_PROPERTIES.map((property, index) => [property, index]));
 const CHAIN_TAGS = new Set<number>(CHAIN_PROPERTIES.map(property => PLACE_TAG.get(property)!));
 

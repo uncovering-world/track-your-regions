@@ -4,7 +4,7 @@
  * of its name — `wikidata-20261005-all.json.gz`, `enwiki-20261001-page.sql.gz`,
  * `pageviews-202609-user.bz2` — and `copyOf` reads a name's dump and date,
  * with its leftovers: a ranged download's `.part` and its state, and a subset
- * build's terms spool.
+ * build's terms spool and first-pass result (`.scope`).
  *
  * A dump dated by day keeps one copy: a newer file replaces the older one,
  * since the full entities dump is 156 GB and two of them do not fit where one
@@ -18,8 +18,8 @@
 import { readdir, rm, stat, statfs } from 'node:fs/promises';
 import { join } from 'node:path';
 
-const LEFTOVER = /(?:\.part(?:\.json(?:\.tmp)?)?|\.terms\.gz)$/;
-const DATED = /^([a-z]+)-(\d{6}|\d{8})-(.+?)(?:\.part(?:\.json(?:\.tmp)?)?|\.terms\.gz)?$/;
+const LEFTOVER = /(?:\.part(?:\.json(?:\.tmp)?)?|\.terms\.gz|\.scope(?:\.tmp)?)$/;
+const DATED = /^([a-z]+)-(\d{6}|\d{8})-(.+)$/;
 
 export interface Copy {
   /** The name with its date taken out: what every copy of the dump shares. */
@@ -28,7 +28,7 @@ export interface Copy {
 }
 
 export function copyOf(name: string): Copy | null {
-  const match = DATED.exec(name);
+  const match = DATED.exec(baseName(name));
   return match ? { dump: `${match[1]}-*-${match[3]}`, date: match[2] } : null;
 }
 
