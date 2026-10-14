@@ -3,7 +3,8 @@
  * rules: `dumps.wikimedia.org` rate-limits, caps a client at 3 connections and
  * enforces the Wikimedia User-Agent policy. Every request carries the project's
  * bot `userAgent()`, and at most `HOST_CONNECTIONS` are open to one host from
- * this process at a time; a build itself opens one. Nothing retries in a loop:
+ * this process at a time; a read opens one, and a download into the local copy
+ * up to all of them (`rangedDownload.ts`). Nothing retries in a loop:
  * a failed request fails the build, and the admin starts it again.
  */
 
@@ -13,6 +14,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { userAgent } from '../../config/userAgent.js';
+import { downloadRanges } from './rangedDownload.js';
 
 const HOST_CONNECTIONS = 3;
 const USER_AGENT = userAgent({ bot: true, purpose: 'public dump builds' });
@@ -84,14 +86,19 @@ export async function sizeOf(url: string, signal?: AbortSignal): Promise<number 
   return Number.isFinite(length) && length > 0 ? length : null;
 }
 
+/** The `Range` header for the bytes from `from` on, up to `to` inclusive where one is given. */
+function rangeHeader(from: number, to?: number): Record<string, string> {
+  if (to !== undefined) return { Range: `bytes=${from}-${to}` };
+  return from > 0 ? { Range: `bytes=${from}-` } : {};
+}
+
 /**
- * The file's bytes from `from` on, as a Node stream. The host's connection is
- * held until the stream ends or is destroyed.
+ * The file's bytes from `from` on (up to `to` inclusive, where given), as a
+ * Node stream. The host's connection is held until the stream ends or is
+ * destroyed.
  */
-export async function openStream(url: string, signal: AbortSignal, from = 0): Promise<Readable> {
-  const { response, release } = await request(url, {
-    signal, headers: from > 0 ? { Range: `bytes=${from}-` } : {},
-  });
+export async function openStream(url: string, signal: AbortSignal, from = 0, to?: number): Promise<Readable> {
+  const { response, release } = await request(url, { signal, headers: rangeHeader(from, to) });
   // A copy already at full size asks for a range past the end, which a host
   // answers with 416 where it named no size to compare with: the copy is whole
   // as far as the host can say, and the checksum decides.
@@ -103,7 +110,7 @@ export async function openStream(url: string, signal: AbortSignal, from = 0): Pr
     release();
     throw new Error(`${url} answered ${response.status}`);
   }
-  if (from > 0 && response.status !== 206) {
+  if ((from > 0 || to !== undefined) && response.status !== 206) {
     release();
     throw new Error(`${url} does not resume a download (answered ${response.status} to a range)`);
   }
@@ -115,13 +122,21 @@ export async function openStream(url: string, signal: AbortSignal, from = 0): Pr
 /**
  * Bring a local copy to the host's full size, resuming from what is already
  * on disk: a cut download picks up where it stopped instead of starting a
- * 100 GB file again. Answers the copy's size.
+ * 100 GB file again. Where the host names the size, the rest is fetched over
+ * every connection the host allows (`downloadRanges`); where it does not, in
+ * order over one. Answers the copy's size.
  */
 export async function downloadTo(url: string, path: string, signal: AbortSignal, onBytes: (n: number) => void): Promise<number> {
   const have = await stat(path).then(s => s.size).catch(() => 0);
   const expected = await sizeOf(url, signal);
   if (expected !== null && have === expected) return have;
   if (expected !== null && have > expected) throw new Error(`${path} is larger than the host's file; delete it and build again`);
+  if (expected !== null) {
+    return downloadRanges({
+      url, path, expected, have, signal, onBytes, connections: HOST_CONNECTIONS,
+      openRange: (rangeSignal, from, to) => openStream(url, rangeSignal, from, to),
+    });
+  }
   const source = await openStream(url, signal, have);
   source.on('data', (chunk: Buffer) => onBytes(chunk.length));
   await pipeline(source, createWriteStream(path, { flags: have > 0 ? 'a' : 'w' }), { signal });
