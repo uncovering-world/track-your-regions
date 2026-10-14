@@ -55,10 +55,14 @@ All three are needed. A stream cut short reads as a clean end of file to a
 line reader (ADR-0055 measured it on the pageview files); the decompressor
 fails on a truncated gzip or bzip2 stream; and the size catches a cut that
 happens to fall on a block boundary. Only then is `consumer.commit()` called.
-Any failure — a mismatch, a network error, a decoder error, a cancel —
-destroys the source, stops the decoder (a bzip2 process is killed rather than
-left to notice its closed pipes) and calls `consumer.abort()`, so a
-consumer's half-built tables are never kept.
+Any failure — a mismatch, a network error, a decoder error, a consumer that
+throws, a cancel — destroys the source, stops the decoder (a bzip2 process is
+killed rather than left to notice its closed pipes) and calls
+`consumer.abort()`, so a consumer's half-built tables are never kept. The
+read rejects with that failure: stopping the decoder breaks the text stream
+the line reader was reading, and the reader's late `error` is listened to and
+dropped, since an `error` nobody listens to ends the whole process and loses
+the failure that stopped the read.
 
 gzip is decoded in-process (`createGunzip`). bzip2 runs as a child process,
 `/usr/bin/bzip2 -dc` by its absolute path, whose exit code is what says the
@@ -212,6 +216,18 @@ which reads the file twice through `readDump`, each pass verified:
    spool beside the dump (`labelsRing.ts`, `TermsSpool`), read without
    parsing the line.
 
+Every string kept is one Postgres can store (`storableText`,
+`storableJson` in `compactEntity.ts`): `text` and `jsonb` hold no NUL, and
+`jsonb` no surrogate without its partner, and the dump holds both — an
+Arabic label ending in a NUL stopped the first full build of the 2026-10-05
+dump in its second pass. A NUL is dropped and a lone surrogate becomes
+U+FFFD. A row Postgres still refuses for its data (SQLSTATE class 22) is
+left out rather than ending a build of hours (`refusals.ts`): a refused
+batch of entities or ring labels is written again row by row, the rows still
+refused are counted (`counts.refused`) and the first ten named in the
+build's notes, and more than `MAX_REFUSED` of them, or any other failure,
+stops the build as before.
+
 Then the ring's terms are read back from the spool into `wikidata_labels_next`,
 and `subsetTables.ts` derives the rest from the entities in SQL
 (`deriveFromEntities`, `deriveClassClosure`), gives each `_next` copy the live
@@ -225,7 +241,7 @@ the copies; the spool is removed either way.
 |---|---|
 | `wikidata_entities` | Each kept entity's compact JSON (`lz4`, `toast_tuple_target = 128`) and its sitelink count |
 | `wikidata_claims` | A row per statement of `CLAIM_PROPERTIES`: rank (1, 0, −1), `value_item` for an item value (told by the property's datatype), `value` otherwise, qualifiers |
-| `wikidata_labels` | Labels and descriptions in `SUBSET_LANGUAGES`, of the kept entities and of the ring |
+| `wikidata_labels` | Labels and descriptions in `SUBSET_LANGUAGES`, of the kept entities (derived from their compact form) and of the ring (from the spool) |
 | `wikidata_sitelinks` | Every sitelink of a kept entity |
 | `wikidata_class_closure` | Each class a kept item is an instance of, with itself and every class above it through non-deprecated P279 |
 | `wikidata_subset_builds` | The builds swapped in: the `dump_builds` row, the dump date, the counts |
