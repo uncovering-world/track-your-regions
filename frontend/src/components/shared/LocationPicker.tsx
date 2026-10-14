@@ -76,6 +76,10 @@ const MAP_STYLE: maplibregl.StyleSpecification = {
   layers: [{ id: 'osm-tiles', type: 'raster', source: 'osm' }],
 };
 
+function sameCoords(a: { lat: number; lng: number } | null, b: { lat: number; lng: number } | null): boolean {
+  return a !== null && b !== null && a.lat === b.lat && a.lng === b.lng;
+}
+
 export function LocationPicker({
   value, onChange, name, onPlaceSelect, initialZoom = 6, origin = null,
 }: LocationPickerProps) {
@@ -97,8 +101,12 @@ export function LocationPicker({
   // --- Coordinates state ---
   const [coordText, setCoordText] = useState('');
   const [coordError, setCoordError] = useState('');
-  // Track whether the user is actively editing the coord field
+  // True from the first keystroke until the field is left or Enter is pressed:
+  // a coordinate parses long before it is finished ("49.0545, 3." reads as
+  // 3°E), so the formatted value must not be written back mid-edit.
   const coordUserEditing = useRef(false);
+  /** The last value the field itself sent, told apart from a pin dragged or a place picked. */
+  const coordSent = useRef<{ lat: number; lng: number } | null>(null);
 
   // --- AI state ---
   const [aiDescription, setAiDescription] = useState('');
@@ -132,8 +140,11 @@ export function LocationPicker({
 
   // --- Sync coordText when value changes from external source ---
   useEffect(() => {
-    // Don't overwrite while the user is typing in the coords field
-    if (coordUserEditing.current) return;
+    // Don't overwrite while the user is typing in the coords field. A change
+    // from elsewhere still lands: the marker takes no focus, so dragging it
+    // does not end the edit.
+    if (coordUserEditing.current && sameCoords(value, coordSent.current)) return;
+    coordUserEditing.current = false;
     if (value) {
       setCoordText(formatCoordinates(value.lat, value.lng));
       setCoordError('');
@@ -272,7 +283,7 @@ export function LocationPicker({
     }
   };
 
-  // --- Coordinate paste handler ---
+  // --- Coordinate field: the pin follows each parse, the text is the user's ---
   const handleCoordChange = (text: string) => {
     coordUserEditing.current = true;
     setCoordText(text);
@@ -283,12 +294,23 @@ export function LocationPicker({
     const parsed = parseCoordinates(text);
     if (parsed) {
       setCoordError('');
+      coordSent.current = parsed;
       onChange(parsed);
-      // After successful parse, allow external sync again
-      coordUserEditing.current = false;
     } else {
       setCoordError('Could not parse coordinates. Try "48.8566, 2.3522" or DMS format.');
     }
+  };
+
+  // The edit ends on blur or Enter: only then is a parsed value written back
+  // formatted, and outside changes may rewrite the field again. A field left
+  // empty sends nothing, so it shows again where the pin still stands rather
+  // than reading as no coordinate.
+  const endCoordEdit = () => {
+    if (!coordUserEditing.current) return;
+    coordUserEditing.current = false;
+    const parsed = parseCoordinates(coordText);
+    if (parsed) setCoordText(formatCoordinates(parsed.lat, parsed.lng));
+    else if (!coordText.trim() && value) setCoordText(formatCoordinates(value.lat, value.lng));
   };
 
   // --- AI geocode handler ---
@@ -442,6 +464,8 @@ export function LocationPicker({
           placeholder={'e.g. 48.8566, 2.3522 or 48°51\'24"N, 2°21\'8"E'}
           value={coordText}
           onChange={(e) => handleCoordChange(e.target.value)}
+          onBlur={endCoordEdit}
+          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); endCoordEdit(); } }}
           fullWidth
           size="small"
           autoFocus
