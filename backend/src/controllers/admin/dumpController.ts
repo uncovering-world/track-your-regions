@@ -9,8 +9,8 @@
 import type { z } from 'zod/v4';
 import type { DumpBuildCancelled, DumpBuildStarted, Dumps } from '../../api/responses/dumps.js';
 import { DUMPS } from '../../services/dumps/catalog.js';
-import { buildProgress, cancelBuild, keeperOf, startBuild } from '../../services/dumps/job.js';
-import { recentBuilds } from '../../services/dumps/ledger.js';
+import { buildProgress, cancelBuild, inFlight, keeperOf, startBuild } from '../../services/dumps/job.js';
+import { closeOrphanedBuilds, liveBuildOf, recentBuilds, SERVER_RUNNER } from '../../services/dumps/ledger.js';
 import { createError } from '../../middleware/errorHandler.js';
 import type { dumpKeyParamSchema } from '../../types/index.js';
 
@@ -23,9 +23,26 @@ async function keepsOf(key: Dumps['dumps'][number]['key']): Promise<Dumps['dumps
   return { title: keeper.title, built: built ? { dumpDate: built.dumpDate, swappedAt: built.swappedAt.toISOString() } : null };
 }
 
+/** A build of the dump that another process runs and still beats for (#1463), which this one cannot follow. */
+async function elsewhereOf(key: Dumps['dumps'][number]['key']): Promise<Dumps['dumps'][number]['elsewhere']> {
+  const progress = buildProgress(key);
+  if (progress && inFlight(progress)) return null;
+  const live = await liveBuildOf(key);
+  if (!live) return null;
+  return {
+    buildId: live.id,
+    fileName: live.file_name,
+    startedAt: live.started_at.toISOString(),
+    heartbeatAt: (live.heartbeat_at ?? live.started_at).toISOString(),
+  };
+}
+
 export async function listDumps(): Promise<Dumps> {
+  // A build that stopped beating shows as the failure it is, not as running.
+  await closeOrphanedBuilds();
   const builds = await recentBuilds();
   const keeps = await Promise.all(DUMPS.map(dump => keepsOf(dump.key)));
+  const elsewhere = await Promise.all(DUMPS.map(dump => elsewhereOf(dump.key)));
   return {
     localCopy: Boolean(process.env.DUMPS_DIR?.trim()),
     dumps: DUMPS.map((dump, index) => ({
@@ -50,6 +67,7 @@ export async function listDumps(): Promise<Dumps> {
         finishedAt: build.finished_at?.toISOString() ?? null,
       })),
       keeps: keeps[index],
+      elsewhere: elsewhere[index],
     })),
   };
 }
@@ -58,7 +76,7 @@ export async function startDumpBuild(
   { params: { dump }, caller }: { params: DumpParams; caller: Express.User },
 ): Promise<DumpBuildStarted> {
   try {
-    return { started: true, progress: startBuild(dump, caller.id) };
+    return { started: true, progress: await startBuild(dump, { startedBy: caller.id, runner: SERVER_RUNNER }) };
   } catch (error) {
     throw createError(error instanceof Error ? error.message : 'The build could not start', 409);
   }
@@ -68,7 +86,7 @@ export async function startDumpKeep(
   { params: { dump }, caller }: { params: DumpParams; caller: Express.User },
 ): Promise<DumpBuildStarted> {
   try {
-    return { started: true, progress: startBuild(dump, caller.id, 'keep') };
+    return { started: true, progress: await startBuild(dump, { startedBy: caller.id, runner: SERVER_RUNNER, kind: 'keep' }) };
   } catch (error) {
     throw createError(error instanceof Error ? error.message : 'The build could not start', 409);
   }
