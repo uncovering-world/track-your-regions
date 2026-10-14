@@ -5,6 +5,8 @@
  * is not built stops the run before it asks anything.
  */
 
+import { pool } from '../../../db/index.js';
+import { MEMBERSHIPS } from '../../../db/membership.js';
 import { latestSubset, entitiesAreHeld } from '../../dumps/wikidata/subsetTables.js';
 import type { SyncProgress } from '../types.js';
 import type { SparqlFn } from '../wikidataQueries.js';
@@ -25,4 +27,26 @@ export async function subsetRunDoor(sourceId: number, progress: SyncProgress): P
   const door = subsetOnlyDoor();
   if (!readsSubset(door)) throw new Error('The subset door lost its mark');
   return door;
+}
+
+/**
+ * The source's rows whose items the subset does not keep, with their names:
+ * a run on the subset can read nothing about them, which is not the same as
+ * their having gone (`FetchResult.unread`). Only a row a run listed on or
+ * after the dump's date counts: its item may have been created, or given a
+ * coordinate, since. A row last listed before that date whose item the dump
+ * lacks had gone by then (merged, deleted or stripped of its coordinate), and
+ * missing detection reads it as the live run would.
+ */
+export async function unreadOnSubset(sourceId: number): Promise<Array<{ externalId: string; name: string }>> {
+  const result = await pool.query<{ externalId: string; name: string }>(
+    `SELECT m.external_id AS "externalId", e.name
+       FROM ${MEMBERSHIPS} m JOIN experiences e ON e.id = m.experience_id
+      WHERE m.source_id = $1
+        AND m.last_seen_at >= (SELECT dump_date FROM wikidata_subset_builds ORDER BY swapped_at DESC LIMIT 1)
+        AND NOT EXISTS (SELECT 1 FROM wikidata_entities w WHERE w.id = m.external_id)
+      ORDER BY m.external_id`,
+    [sourceId],
+  );
+  return result.rows;
 }

@@ -58,6 +58,16 @@ export interface FetchResult<T> {
    * are paired per object — leaves it out.
    */
   withdrawalSkippedReason?: string | null;
+  /**
+   * The source's rows this run could not read at all, so it says nothing
+   * about them: on the local Wikidata subset, an item the subset does not
+   * keep on a row a run listed on or after the dump's date — created, or
+   * given a coordinate, since (#1462).
+   * Missing detection, the admission sweep, the badge's clear and the pin
+   * questions leave them as they are, and the run names them, rather than
+   * reading "no answer" as "gone".
+   */
+  unread?: Array<{ externalId: string; name: string }>;
 }
 
 

@@ -210,6 +210,11 @@ export async function orchestrateSync<T>(
     if (withdrawalSkippedReason !== null) {
       console.log(`${logPrefix} Withdrawals skipped: ${withdrawalSkippedReason}`);
     }
+    const unread = (fetched.unread ?? []).map((row) => row.externalId);
+    if (unread.length) {
+      const named = (fetched.unread ?? []).map((row) => row.name + ' (' + row.externalId + ')').join(', ');
+      console.log(`${logPrefix} Left as they are, unread on the local Wikidata subset: ${named}`);
+    }
 
     // Unconditional, and before anything else touches admission: the run named
     // these and a rule turned them down, which no coverage floor or error count
@@ -260,18 +265,18 @@ export async function orchestrateSync<T>(
     });
 
     skipped.detection = await detectMissing(
-      config, progress, previousActiveCount, seenCount, changes, seenExternalIds,
+      config, progress, previousActiveCount, seenCount, changes, [...seenExternalIds, ...unread],
     );
 
     const sweep = await applyAdmissionSweep(
-      config, progress, seenExternalIds, previousAdmittedCount, changes,
+      config, progress, seenExternalIds, previousAdmittedCount, changes, unread,
     );
     skipped.admissionSweep = sweep.skipReason;
     if (sweep.skipReason !== null) {
       console.log(`${logPrefix} Admission sweep skipped: ${sweep.skipReason}`);
     }
-    await badgeAdmitted(config, progress, seenExternalIds, items, sweep.swept);
-    await questionPins(config, progress, filtered ?? [], seenExternalIds, sweep);
+    await badgeAdmitted(config, progress, seenExternalIds, items, sweep.swept, unread);
+    await questionPins(config, progress, filtered ?? [], seenExternalIds, sweep, unread);
 
     changesRecorded = await recordChangesetOrMark(changes, errorDetails, progress, logPrefix);
 
