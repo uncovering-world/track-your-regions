@@ -112,6 +112,21 @@ describe('reading a dump through the pipeline', () => {
     expect(consumer.outcome).toBe('committed');
   });
 
+  it("rejects with the consumer's own error when it throws mid-file, and the process keeps running", async () => {
+    // Stopping the decoder after the line loop has left must not reach the
+    // line reader as an unhandled 'error' event: that ended the whole backend
+    // and lost the error that stopped the build (a NUL the database refused).
+    for (const path of ['/whole.json.gz', '/whole.bz2']) {
+      const consumer = recording();
+      let seen = 0;
+      const failing = { ...consumer, line: () => { seen += 1; if (seen === 1200) throw new Error('the database refused a row'); } };
+      await expect(readDump(file(path), failing, { signal: signal() })).rejects.toThrow('the database refused a row');
+      expect(consumer.outcome).toBe('aborted');
+    }
+    // An 'error' emitted after the rejection surfaces on a later tick.
+    await new Promise(resolve => setTimeout(resolve, 50));
+  });
+
   it('aborts a stream cut short, which a line reader alone would read as a clean end', async () => {
     for (const path of ['/cut.json.gz', '/cut.bz2']) {
       const consumer = recording();

@@ -207,13 +207,24 @@ async function decode(
   for (const stage of [fed, drained, decoded]) stage.catch(() => undefined);
 
   let lines = 0;
-  for await (const line of createInterface({ input: text, crlfDelay: Infinity })) {
-    await consumer.line(line);
-    lines += 1;
-    if (lines % PROGRESS_EVERY === 0) {
-      if (signal.aborted) throw new Error('Cancelled');
-      options.onProgress?.({ downloaded: downloaded(), read: bytes, lines });
+  const reader = createInterface({ input: text, crlfDelay: Infinity });
+  try {
+    for await (const line of reader) {
+      await consumer.line(line);
+      lines += 1;
+      if (lines % PROGRESS_EVERY === 0) {
+        if (signal.aborted) throw new Error('Cancelled');
+        options.onProgress?.({ downloaded: downloaded(), read: bytes, lines });
+      }
     }
+  } finally {
+    // A loop left early (a consumer that threw, a cancel) is followed by the
+    // decoder being stopped, which breaks the text stream; the line reader
+    // re-emits that as 'error' with nobody listening any more, and an
+    // unheard 'error' ends the process with the error that stopped the read
+    // unrecorded. The error that counts is the one already thrown.
+    reader.on('error', () => undefined);
+    reader.close();
   }
   // The decoder's own verdict first: a bzip2 that refused the stream also
   // breaks the pipe that fed it, and that error says less.
