@@ -100,20 +100,21 @@ The full Wikidata dump is well over 100 GB, so a local copy needs a disk with
 room for it; a machine without one streams.
 
 **One copy per dump** (`localCopies.ts`, #1456). Every file the catalog names
-carries its date as the second part of its name (`wikidata-20261005-all.json.gz`,
-`enwiki-20261001-page.sql.gz`, `pageviews-202609-user.bz2`), and `copyOf`
-reads a name's dump and date, with its leftovers: a ranged download's `.part`
-and state, a subset build's terms spool. A dump dated by day keeps one copy: once a copy is verified, `readDump`
-removes the older copies of its dump (`olderCopies`, matched by the catalog's
-`isFileName`); before a download, it removes them first when the disk cannot
-hold what is left of the new one beside them (`makeRoom`, `freeBytes`, with
-what a resumed ranged download already holds read from its saved ranges,
-`bytesHeld`). The monthly pageview files are twelve different months, which
-readership reads together (ADR-0055), so none of them is removed.
-Either is said in the build's message (`onNote`), as is a copy that could not be
-removed: the verified read stands. One build per dump runs at
-a time in any process (§ A build), so no build of that dump is reading an
-older copy then.
+carries its date as the second part of its name
+(`wikidata-20261005-all.json.gz`, `enwiki-20261001-page.sql.gz`,
+`pageviews-202609-user.bz2`), and `copyOf` reads a name's dump and date, with
+its leftovers: a ranged download's `.part` and state, a subset build's terms
+spool and first-pass result. A dump dated by day keeps one copy: once a copy
+is verified, `readDump` removes the older copies of its dump (`olderCopies`,
+matched by the catalog's `isFileName`); before a download, it removes them
+first when the disk cannot hold what is left of the new one beside them
+(`makeRoom`, `freeBytes`, with what a resumed ranged download already holds
+read from its saved ranges, `bytesHeld`). The monthly pageview files are
+twelve different months, which readership reads together (ADR-0055), so none
+of them is removed. Either is said in the build's message (`onNote`), as is a
+copy that could not be removed: the verified read stands. One build per dump
+runs at a time in any process (§ A build), so no build of that dump is reading
+an older copy then.
 
 **A build from the local copy.** A build reads the newest file the host lists,
 or, asked `from: 'local'`, the file of the dump's newest local copy
@@ -193,7 +194,17 @@ which reads the file twice through `readDump`, each pass verified:
    names a seed through one of those, every item whose chain of P276, P361 and
    P195 reaches a coordinate within `CHAIN_DEPTH` steps with every item on the
    way, and every property. `finish()` answers the kept set and its counts,
-   the bytes of the kept lines among them.
+   the bytes of the kept lines among them. With a local copy, the result is
+   kept beside the dump as `<file>.scope` (`scopeFile.ts`, #1468): the
+   kept and property id sets, a bit per id, under a header naming the file,
+   its checksum and the rules it was made under: the scope's constants
+   written whole (`SCOPE_RULES`), so a change to one makes it stale by
+   itself, and `SCOPE_VERSION`, raised by hand when the code that applies
+   them (`entityLine.ts`, `ScopeCollector`) keeps something else. A build of
+   the same file reads it back
+   instead of scanning the dump again, about four hours on the entities dump;
+   one for another file, checksum or rules is removed, not read. The second
+   pass still verifies the file.
 2. **Write** (`subsetWriter.ts`). `SubsetWriter` parses each kept line,
    writes its compact form (`compactEntity.ts`) to `wikidata_entities_next` in
    batches, and gathers the items the kept ones name (the labels ring). Every
