@@ -13806,8 +13806,13 @@
         "tags": [
           "geocode"
         ],
-        "x-access": "public",
-        "security": [],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "parameters": [
           {
             "in": "query",

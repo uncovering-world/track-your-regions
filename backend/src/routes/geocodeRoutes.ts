@@ -1,6 +1,8 @@
 /**
  * Geocode Routes — Place search (Nominatim) and AI geocoding.
- * Search is public; AI geocode requires curator/admin auth.
+ * Every route is the curator's: only the curator dialogs call them, and each
+ * asks a third party — Nominatim, an AI model, Wikidata — on the product's
+ * behalf and under its User-Agent.
  */
 
 import { defineRoute } from '../api/route.js';
@@ -12,9 +14,10 @@ import { searchLimiter } from '../middleware/rateLimiter.js';
 import { geocodeSearchQuerySchema, suggestImageQuerySchema, aiGeocodeBodySchema } from '../types/index.js';
 
 export const geocodeRoutes = [
-  // Search places by name. The same answer for everyone who asks.
+  // Search places by name, when the curator asks. Not public: anyone could
+  // otherwise query Nominatim through the product's server and its contact.
   defineRoute({
-    method: 'get', path: '/search', access: 'public', cache: 'shared-revalidate', limiter: searchLimiter,
+    method: 'get', path: '/search', access: 'curator', cache: 'no-store', limiter: searchLimiter,
     summary: 'Search places by name in OpenStreetMap\'s Nominatim, with their coordinates',
     query: geocodeSearchQuerySchema,
     response: PlaceSearch,
