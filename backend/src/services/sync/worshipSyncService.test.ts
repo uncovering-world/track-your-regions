@@ -57,6 +57,10 @@ vi.mock('./wikidataUtils.js', () => ({
   WIKIDATA_USER_AGENT: 'test',
   wikidataDoor: vi.fn(() => vi.fn()),
 }));
+vi.mock('../dumps/wikidata/subsetTables.js', () => ({
+  latestSubset: vi.fn().mockResolvedValue({ dumpDate: '2026-10-05', swappedAt: new Date() }),
+  entitiesAreHeld: vi.fn().mockResolvedValue(true),
+}));
 vi.mock('./museum/treasureWriter.js', () => ({
   upsertVenueTreasures: vi.fn().mockResolvedValue({
     added: [], withdrawn: [], returned: [], changed: [],
@@ -76,6 +80,7 @@ import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { admittedExternalIds } from './admission.js';
 import { collectPlacesOfWorship, type CollectedPlaceOfWorship } from './worship/pipeline.js';
 import { upsertVenueTreasures } from './museum/treasureWriter.js';
+import { readsSubset } from './subset/reader.js';
 import { syncPlacesOfWorship } from './worshipSyncService.js';
 import type { SyncProgress } from './types.js';
 
@@ -184,6 +189,20 @@ beforeEach(() => {
 });
 
 describe('what the worship run fetches', () => {
+  it('reads Wikidata from the local subset when the source is switched to it, with no pause (#1461)', async () => {
+    mockedQuery.mockImplementation(async (sql: string) => ({
+      rows: sql.includes('wikidata_reader') ? [{ wikidata_reader: 'subset' }] : [],
+    }));
+    mockedQuery.mockResolvedValueOnce(lineRow());
+    collected([place()]);
+
+    await (await configOf()).fetchItems(progress(), []);
+
+    const deps = mockedCollect.mock.calls[0][0];
+    expect(readsSubset(deps.sparql)).toBe(true);
+    expect(deps.pause).toBeUndefined();
+  });
+
   it('reads the line off the source row before collecting, and hands it to the collector', async () => {
     mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
     mockedAdmitted.mockResolvedValue(new Set([COLOGNE]));
