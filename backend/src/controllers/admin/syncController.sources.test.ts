@@ -40,7 +40,7 @@ const mockedCounts = waitingCountsBySource as unknown as ReturnType<typeof vi.fn
 /** A source row as `getSources` selects it, with what the two below vary. */
 function sourceRow(id: number, name: string, requiresCuration: boolean) {
   return {
-    id, name, description: null, is_active: true, requires_curation: requiresCuration,
+    id, name, description: null, is_active: true, requires_curation: requiresCuration, wikidata_reader: 'live',
     last_sync_at: new Date('2026-09-20T08:00:00Z'), last_sync_status: 'success', display_priority: id,
     created_at: new Date('2026-01-01T00:00:00Z'),
     enter_sitelinks: null, stay_sitelinks: null, find_enter_sitelinks: null, find_stay_sitelinks: null,

@@ -60,6 +60,9 @@ export const ExperienceSource = z.strictObject({
   repairsPictures: z.boolean().describe('Whether this source\'s pictures can be repaired from the panel (ADR-0043).'),
   findsComponentItems: z.boolean()
     .describe('Whether the panel can search Wikidata for the items of this source\'s components that no item records the reference of (#1272).'),
+  wikidataReader: z.enum(CHECK_VALUES.experience_sources.wikidata_reader)
+    .describe('Which Wikidata the source\'s runs read: the live query service, or the local subset built from the entities dump (#1459, ADR-0105).'),
+  subsetReady: z.boolean().describe('Whether every question this source asks has a twin in the local subset, so its runs may be switched to read it.'),
 }).describe('One active source, with its gate, its line and what it is holding.');
 export type ExperienceSource = z.infer<typeof ExperienceSource>;
 
@@ -199,6 +202,13 @@ export const CurationGateSet = z.strictObject({
   requiresCuration: z.boolean().describe('The gate as it is now stored, which is what a switch that lost a race should show.'),
 }).describe('A source\'s curation gate, switched.');
 export type CurationGateSet = z.infer<typeof CurationGateSet>;
+
+export const WikidataReaderSet = z.strictObject({
+  sourceId: z.number().int(),
+  name: z.string(),
+  wikidataReader: z.enum(CHECK_VALUES.experience_sources.wikidata_reader),
+}).describe('Which Wikidata a source\'s runs read, switched.');
+export type WikidataReaderSet = z.infer<typeof WikidataReaderSet>;
 
 export const SourceLineSet = z.strictObject({
   sourceId: z.number().int(),

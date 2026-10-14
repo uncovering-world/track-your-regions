@@ -387,6 +387,11 @@ export const dumpBuildBodySchema = z.object({
   from: z.enum(['newest', 'local']).default('newest'),
 });
 
+/** Which Wikidata a source's runs read (#1459). */
+export const wikidataReaderBodySchema = z.object({
+  reader: z.enum(CHECK_VALUES.experience_sources.wikidata_reader),
+});
+
 /** A curator's choice between two sources' views of a place (#1246): per field, a membership or none to keep. */
 export const chooseViewsBodySchema = z.object({
   choices: z.array(z.object({
