@@ -125,6 +125,7 @@ and accepted by it.
 | [0103](0103-a-museum-whose-famous-find-no-kind-shows-arrives-in-archaeology-held-for-a-curator.md) | A museum whose famous find no kind shows arrives in Archaeology held for a curator | Accepted | 2026-10-13 |
 | [0104](0104-the-map-is-a-third-signal-of-an-archaeology-museum-and-a-department-in-an-art-museum-is-refused.md) | The map is a third signal of an archaeology museum, and a department in an art museum is refused | Accepted | 2026-10-14 |
 | [0105](0105-the-wikidata-subset-follows-containment-chains-and-is-kept-compact-and-swapped-in-whole.md) | The Wikidata subset follows containment chains, and is kept compact and swapped in whole | Accepted | 2026-10-14 |
+| [0106](0106-public-dump-builds-run-in-a-worker-process-queued-through-the-ledger.md) | Public dump builds run in a worker process, queued through the ledger | Accepted | 2026-10-14 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

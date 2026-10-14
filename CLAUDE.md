@@ -35,7 +35,7 @@ npm --prefix frontend run api:client  # Regenerate frontend/src/api/client.gener
 npm run help               # Full command reference (all other scripts: package.json)
 ```
 
-Backend runs on port 3001, frontend on port 5173, Martin tile server on port 3000, cv-python on port 8000.
+Backend runs on port 3001, frontend on port 5173, Martin tile server on port 3000, cv-python on port 8000. The `dump-worker` service runs the public dump builds the admin panel queues (ADR-0106), in its own process with no file watcher: an edit or a pull restarts the backend (`tsx watch`) but not a build, while `docker compose restart dump-worker` (or `npm run dev`, which recreates it) stops the build it is running.
 
 ### Mandatory Pre-Commit Checks
 
