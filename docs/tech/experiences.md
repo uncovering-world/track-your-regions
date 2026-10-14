@@ -4718,13 +4718,17 @@ It follows that keeping the edit needs no call and leaves the item in place: ref
 the current state, and the run will go on proposing until someone accepts.
 
 Answering that question needs a translation, because the two vocabularies differ:
-`changed_fields` says `shortDescription` where `curated_fields` holds `short_description`,
-and both `metadata.inDanger` and `metadata.dateInscribed` are claimed as plain `metadata`.
+`changed_fields` says `shortDescription` where `curated_fields` holds `short_description`.
 `CURATED_KEY_BY_FIELD` in `changeSet.ts` — the map the upsert itself honours — is passed in
-as a parameter rather than restated. A `curated_fields` entry is **not** reliably a column
-name: `editExperience` claims `metadata.website`, `metadata.wikipediaUrl` and
-`metadata.imageCredit` per key, none of which a column matches, so the query falls back to the field's own name for keys the map does not
-carry.
+as a parameter rather than restated. A `curated_fields` entry is **not** always a column
+name: **a claim on metadata is always per key** and named for it — `editExperience` claims
+`metadata.website`, `metadata.wikipediaUrl` and `metadata.imageCredit`, and a claim on
+`metadata.inDanger` would be named the same way — so the map carries no metadata entry and the
+query falls back to the field's own name, which is the claim (ADR-0077 decision 3). The bare
+column name `metadata` is refused by a CHECK on `experiences.curated_fields`
+(`experiences_curated_fields_per_key_metadata_check`): it would protect every key
+while matching none of the names the run records them under, so no card or answer could reach
+them.
 
 Between the map and that fallback sits a third arm, `CLAIM_KEY_BY_FAMILY`, for the per-part
 entries of a column claimed **whole**. `nameLocal.ko` is the case: the languages are the source's,
@@ -4738,10 +4742,6 @@ things (`claimKeySql` in `reviewQueuePredicates.ts`, read by `reviewQueueConflic
 `reviewQueueKeys.ts`). The shape the queue serves has one home, the backend schema
 `ReviewQueue` whose type the web imports (ADR-0066).
 
-(The upsert honours a per-key claim on each of those two keys directly (#488), re-applying
-just that key over the source's value; `CURATED_KEY_BY_FIELD` sends them to `metadata`, so a
-queue lookup by name still reads them as a whole-column claim — #729's half, below.)
-
 `computeChangeSet` diffs **every** metadata key on its own now, under `metadata.<key>`
 (ADR-0039), so a curator's claim on one reports as its own conflict rather than disappearing
 inside a catch-all diff. Before #488 there was no diff a per-key claim could match against — the
@@ -4753,12 +4753,10 @@ has the same shape one layer out, and #519 is that story: a write the hold refus
 run made. Both are fixed the same way — the field says which refusal kept it out.)
 
 **Whether a claim reaches a key is decided where the stored row can be seen**, not by the name:
-`RawDiff.protectedByClaim` carries the answer out of `metadataChanges`, because two facts about
-the row settle it and no lookup can. A claim on the whole `metadata` column protects every key
-under it, which no per-key name matches — without this the source's values would report as applied
-over a curator's claim. And a claim whose key the row no longer carries protects nothing, so the
-source's value lands and filing it as a conflict would offer a curator "accept" on a value already
-written.
+`RawDiff.protectedByClaim` carries the answer out of `metadataChanges`, because a fact about the
+row settles it and no lookup can: a claim whose key the row no longer carries protects nothing, so
+the source's value lands and filing it as a conflict would offer a curator "accept" on a value
+already written.
 
 **Which keys a per-key claim holds is one declaration, `claimedMetadataKeys` (`changeSet.ts`,
 ADR-0077 decision 2)**, read by every runtime that asks. It takes the claims and the stored
@@ -4772,22 +4770,16 @@ it to put the claimed keys back after the entries are merged. A **major** key is
 other: a claim on `metadata.inDanger` keeps the curator's flag, and the run records the source's
 disagreement as a conflict rather than as applied, because the write and the record read one list.
 
-**The flag answers protection, not addressability, and the whole-column arm is where that costs
-something** (#729). Such a claim used to raise one conflict named `metadata`, which
-`CURATED_KEY_BY_FIELD` resolves; it now raises one per key, and all three readers look a
-conflict's claim up by name — the queue through the same map, `accept-source` and `decline-source`
-through `claimKeyFor` — which sends `metadata.website` to itself, and `['metadata']` does not
-contain it, so those conflicts reach no card and no answer. **Publishing is a fourth reader and
-loses more than the asking**: its skip list is the same lookup, so the per-key entries are not
-skipped and are written key by key over the column the claim covers, while `experienceUpsert.ts` still
-keeps that column whole on `curated_fields ? 'metadata'`. Reachable only for a claim made *after*
-the run, since one standing at diff time holds every key. Unreachable today, since nothing writes a
-bare `metadata` claim.
-
-`editExperience` (`curationController.ts`) claims `metadata.website`, `metadata.wikipediaUrl` and
-`metadata.imageCredit` per key, and none of them is in `CURATED_KEY_BY_FIELD`: for those keys the
-claim key the queue reads, the claim the upsert honours and the key `computeChangeSet` files — the
-very `changed_fields` and `curatedConflicts` the queue reads — are the same string.
+**The flag answers protection; the name answers addressability, and the two agree because the
+claim is in the grain the run records.** Every reader of a metadata conflict or held entry — the
+queue through `CURATED_KEY_BY_FIELD` and its fallback, `accept-source`, `decline-source` and
+publishing's skip list through `claimKeyFor` — resolves `metadata.<key>` to itself, which is the
+claim that protected it: accepting `metadata.inDanger` releases that claim and no other, declining
+it records a refusal of it, and publishing skips it under a claim made after the run. The upsert
+keeps the stored object whole only for the gate's hold; a claim re-applies its own key. For every
+metadata key, the claim key the queue reads, the claim the upsert honours and the key
+`computeChangeSet` files — the very `changed_fields` and `curatedConflicts` the queue reads — are
+one string.
 
 Accepting is always a claim release; whether the value is *also* written on the spot is what
 `ACCEPTABLE_FIELDS` (`acceptableFields.ts`) decides — `name`, `shortDescription`,
