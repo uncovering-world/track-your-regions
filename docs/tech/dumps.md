@@ -225,6 +225,25 @@ which reads the file twice through `readDump`, each pass verified:
    spool beside the dump (`labelsRing.ts`, `TermsSpool`), read without
    parsing the line.
 
+Between the two passes the build checks the disk (`diskRoom.ts`, #1466): the
+tables are unlogged, so a database that runs out of disk mid-build would come
+back with them empty. The write is estimated from the first pass's counts: the
+tables as `TABLES_SHARE` of what the kept lines weigh (`keptBytes`), the terms
+spool as `SPOOL_SHARE` of what the other lines weigh (`bytes - keptBytes`),
+whose labels it holds. On the first 4 GB of the 2026-10-05 dump's JSON, built
+into Postgres with every index, the tables took 0.37 of the kept bytes and the
+spool 0.0034 of the rest; the shares are set above that, at 0.45 and 0.005.
+The sample under-counts two tables, which fill in only over the whole dump:
+the labels ring (the labels of entities the kept items name, spooled only from
+the lines inside the sample) and the class closure (cut at the first parent
+past it). The first full build's table sizes are what checks the 0.45. Each is checked on its own disk — the spool on its
+directory's, the tables on the database's, named by `DB_DISK_DIR` (compose
+mounts the database's volume read-only at `/app/db-disk` for that, since
+`DATA_DIR` may point at another disk) — and on one disk where the two share
+it; the build is refused, with the figures, unless each disk holds its share
+and `HEADROOM` besides. Without `DB_DISK_DIR` (a managed database) only the
+spool's disk is checked, and the build's message says the database's was not.
+
 Both passes run in worker threads (`linePool.ts`, #1479): the main thread
 decompresses, hashes and hands pieces of text to a pool of workers, every core
 but one by default (`DUMP_WORKERS` sets it; `0` runs the same code on the main
