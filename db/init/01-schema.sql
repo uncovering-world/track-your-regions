@@ -2671,6 +2671,18 @@ COMMENT ON COLUMN experiences.location IS 'Required point location for the exper
 COMMENT ON COLUMN experiences.boundary IS 'Optional boundary polygon for experiences with defined areas';
 COMMENT ON COLUMN experiences.country_codes IS 'ISO country codes, array for transboundary sites';
 COMMENT ON COLUMN experiences.metadata IS 'Source-specific data (UNESCO: date_inscribed, danger, criteria, etc.)';
+COMMENT ON COLUMN experiences.curated_fields IS 'What a curator has claimed on this place, so every run keeps the stored value: column names (name, short_description, image_url, ...) and, for metadata, one entry per key (metadata.website, metadata.inDanger). Never the bare name metadata (ADR-0077 decision 3): a claim is in the grain the run records, so every key it protects is a key a curator can be asked about.';
+
+-- A claim on metadata names its key (ADR-0077 decision 3, #729): the bare
+-- column name would protect every key while matching none of the names the
+-- run records them under, so no review card or answer could reach them.
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'experiences_curated_fields_per_key_metadata_check') THEN
+        ALTER TABLE experiences ADD CONSTRAINT experiences_curated_fields_per_key_metadata_check
+            CHECK (NOT (curated_fields ? 'metadata'));
+    END IF;
+END $$;
 
 -- Spatial indexes for experiences
 CREATE INDEX IF NOT EXISTS idx_experiences_location ON experiences USING GIST(location);
