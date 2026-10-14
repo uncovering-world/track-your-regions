@@ -574,6 +574,30 @@ Three consequences worth stating, because each is a rule and not a detail:
 
 Each source has a dedicated sync service in `backend/src/services/sync/`. All follow the same pattern: `syncX()`, `getXSyncStatus()`, `cancelXSync()`. In-memory progress is tracked via the `runningSyncs` Map, and the run's log row follows it a few seconds behind (`syncProgressWriter.ts`, #1131), so a restart leaves a row that says how far the run got; `finally` blocks use a captured `thisProgress` reference to avoid timer race conditions.
 
+### Reading Wikidata from the local subset
+
+The kind syncs ask Wikidata through a handful of fetchers (`wikidataQueries.ts`
+and each kind's `queries.ts`), each handed a door: the run's paced `sparql`, or
+a bare `SparqlFn`. A door marked by `subsetDoor` (`sync/subset/reader.ts`, #1458)
+reads the local Wikidata subset (ADR-0105, `docs/tech/dumps.md` § The local
+Wikidata subset) instead of sending SPARQL: each fetcher with a local twin asks
+it, and answers what the live service answers. The shared twins are in
+`sync/subset/kit.ts`: direct subclasses (`subsetSubclasses`), the subclass tree
+under a root (`subsetClassTree`, a recursive walk down best-rank P279, which is
+what `wdt:` reads: preferred statements where an item has any, normal ones
+otherwise, never deprecated), and the Wikipedia editions of items
+(`subsetWikipediaEditions`, every `…wiki` sitelink but those in
+`NOT_WIKIPEDIA`). No run marks its door yet: a kind's own fetchers have no
+twins, and a run that read the subset for some questions and the live service
+for the rest would mix two dates of Wikidata. A wrapper around a marked door
+is marked again (`subsetDoor`), or the fetchers behind it go live.
+
+`npm --prefix backend run subset:parity` (`sync/subset/parity.ts`) asks the
+subset again the questions the runs cached in `wikidata_query_cache` that it
+can read (`SHAPES`), the newest `--limit` of each shape (200 unless given), and
+prints per shape how many agree, which item ids differ and how many older
+questions the limit left uncompared.
+
 ### Sync orchestrator
 
 The generic sync lifecycle (progress init, already-running check, sync log creation, processing loop with cancel checks, final status, error handling, delayed cleanup) is implemented once in `syncOrchestrator.ts`, which holds the order of a run's phases while each phase's writes live in a module beside it (§ Shared modules). Each service provides a `SyncServiceConfig<T>` (`syncContract.ts`, with the shapes it returns) with domain-specific callbacks:
