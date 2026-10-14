@@ -35,8 +35,6 @@ services:
       additional_contexts:
         shared: ./packages/shared
     container_name: ${STACK_NAME:-tyr-ng}-backend
-    # A stable name across restarts and recreates: the dump builds' runner (#1463).
-    hostname: ${STACK_NAME:-tyr-ng}-backend
     environment:
       DB_HOST: db
       DB_PORT: 5432
@@ -137,6 +135,24 @@ services:
       db:
         condition: service_healthy
     command: npm run dev
+
+  # The dump worker (ADR-0106): runs the public dump builds the admin panel
+  # queues, in a process of its own with no file watcher, so an edit, a pull or
+  # a restart of the backend does not stop a build of hours. It is the backend
+  # service's image, environment and mounts; it serves no port. Code it runs
+  # changes when it is restarted (`docker compose restart dump-worker`), which
+  # stops the build it is running.
+  dump-worker:
+    extends:
+      service: backend
+    container_name: ${STACK_NAME:-tyr-ng}-dump-worker
+    # A stable name across restarts and recreates: the worker's runner.
+    hostname: ${STACK_NAME:-tyr-ng}-dump-worker
+    ports: !reset []
+    depends_on:
+      db:
+        condition: service_healthy
+    command: npm run worker
 
   frontend:
     build:
