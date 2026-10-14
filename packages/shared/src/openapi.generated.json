@@ -4628,6 +4628,63 @@
         }
       }
     },
+    "/api/admin/dumps/{dump}/keep": {
+      "post": {
+        "operationId": "postAdminDumpsByDumpKeep",
+        "summary": "Start a build that reads the newest complete file of a dump and keeps what is built from it, swapping it in whole",
+        "tags": [
+          "admin"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dump",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "wikidata-entities",
+                "wikidata-lexemes",
+                "enwiki-page",
+                "enwiki-page-props",
+                "enwiki-categorylinks",
+                "enwiki-langlinks",
+                "pageviews-user"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DumpBuildStarted"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/dumps/{dump}/cancel": {
       "post": {
         "operationId": "postAdminDumpsByDumpCancel",
@@ -19893,6 +19950,14 @@
               "pageviews-user"
             ]
           },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "verify",
+              "keep"
+            ],
+            "description": "A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds."
+          },
           "status": {
             "type": "string",
             "enum": [
@@ -19972,6 +20037,7 @@
         },
         "required": [
           "dump",
+          "kind",
           "status",
           "message",
           "file",
@@ -20054,6 +20120,53 @@
                   "items": {
                     "$ref": "#/components/schemas/DumpBuild"
                   }
+                },
+                "keeps": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string"
+                        },
+                        "built": {
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "dumpDate": {
+                                  "type": "string"
+                                },
+                                "swappedAt": {
+                                  "type": "string",
+                                  "format": "date-time",
+                                  "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+                                }
+                              },
+                              "required": [
+                                "dumpDate",
+                                "swappedAt"
+                              ],
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "The build now in place: its dump date and when it was swapped in."
+                        }
+                      },
+                      "required": [
+                        "title",
+                        "built"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "What a keeping build of this dump makes (the local Wikidata subset), or null where nothing is built from it yet."
                 }
               },
               "required": [
@@ -20063,7 +20176,8 @@
                 "datedBy",
                 "about",
                 "progress",
-                "builds"
+                "builds",
+                "keeps"
               ],
               "additionalProperties": false
             }
