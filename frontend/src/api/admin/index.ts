@@ -6,7 +6,7 @@
 
 import type {
   AssignmentCancelled, AssignmentStarted, AssignmentStatus, ComponentItemSearchStarted, CuratorActivity, CuratorAssignmentCreated,
-  CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, PictureRepairStarted, PlacementCounts,
+  CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, WikidataReaderSet, PictureRepairStarted, PlacementCounts,
   PublishWaitingResult, SourceLineSet, SourcesReordered, SyncCancelled, SyncChanges, SyncLogDetail, SyncLogs,
   SyncStarted, SyncStatus, UserSearchResults, WikidataCache, WikidataCacheCleared, WikidataCacheTtlSet,
 } from '../client.generated';
@@ -19,7 +19,7 @@ import {
   postAdminExperiencesAssignRegions, postAdminExperiencesAssignRegionsCancel, postAdminSyncSourcesBySourceIdCancel,
   postAdminSyncSourcesBySourceIdFindComponentItems, postAdminSyncSourcesBySourceIdFixImages,
   postAdminSyncSourcesBySourceIdStart, postExperiencesSourcesBySourceIdPublishWaiting, putAdminSyncSourcesBySourceIdCacheByKindTtl,
-  putAdminSyncSourcesBySourceIdCurationGate, putAdminSyncSourcesBySourceIdLine, putAdminSyncSourcesReorder,
+  putAdminSyncSourcesBySourceIdCurationGate, putAdminSyncSourcesBySourceIdWikidataReader, putAdminSyncSourcesBySourceIdLine, putAdminSyncSourcesReorder,
   type CreateCuratorAssignmentBody, type GetAdminSyncLogsByLogIdChangesParams, type SourceLineBody,
 } from '../client.generated';
 
@@ -157,6 +157,17 @@ export async function setCurationGate(
   sourceId: number, requiresCuration: boolean,
 ): Promise<CurationGateSet> {
   return putAdminSyncSourcesBySourceIdCurationGate(sourceId, { requiresCuration });
+}
+
+/**
+ * Switch which Wikidata a source's runs read (#1459): the live query service,
+ * or the local subset built from the entities dump. 409 for `subset` on a
+ * source that still asks a question the subset has no answer for.
+ */
+export async function setWikidataReader(
+  sourceId: number, reader: WikidataReaderSet['wikidataReader'],
+): Promise<WikidataReaderSet> {
+  return putAdminSyncSourcesBySourceIdWikidataReader(sourceId, { reader });
 }
 
 /**

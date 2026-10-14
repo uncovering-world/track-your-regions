@@ -39,6 +39,7 @@ import { formatDateTime } from '../../utils/dateFormat';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { CurationGateControls } from './CurationGateControls';
 import { SourceLineControls } from './SourceLineControls';
+import { WikidataReaderControls } from './WikidataReaderControls';
 import { WikidataCacheSection } from './WikidataCacheSection';
 import { SourceLastRunNote } from './SourceLastRunNote';
 import { useSyncStatusPolling } from './useSyncStatusPolling';
@@ -427,6 +428,7 @@ function SourceCard({ source }: SourceCardProps) {
         )}
         <CurationGateControls source={source} />
         <SourceLineControls source={source} />
+        <WikidataReaderControls source={source} />
 
         {/* Inside the source's own card, closed: what a run remembers is a
             property of that source, and it is a thing to open when a run

@@ -48,6 +48,8 @@ function source(overrides: Partial<ExperienceSource> = {}): ExperienceSource {
     caches: true,
     repairsPictures: false,
     findsComponentItems: false,
+    wikidataReader: 'live',
+    subsetReady: false,
     ...overrides,
   };
 }

@@ -50,6 +50,8 @@ const MUSEUMS: ExperienceSource = {
   caches: true,
   repairsPictures: true,
   findsComponentItems: true,
+  wikidataReader: 'live',
+  subsetReady: false,
 };
 
 /** A museum run the restart stopped 412 of 1,083 objects in. */
