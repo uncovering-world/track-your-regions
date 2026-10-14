@@ -17,6 +17,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DumpFile } from '../catalog.js';
 import { readDump, type ReadOptions } from '../read.js';
+import { assertRoomToWrite } from './diskRoom.js';
 import { TermsSpool } from './labelsRing.js';
 import { insertRefusing, Refusals } from './refusals.js';
 import type { Scope, ScopeCounts } from './scope.js';
@@ -88,7 +89,9 @@ export async function buildSubset(file: DumpFile, options: SubsetBuildOptions): 
   const { onPhase } = options;
   const scope = await scopeOf(file, options);
 
-  const spool = new TermsSpool(join(options.dumpsDir ?? tmpdir(), `${file.fileName}.terms.gz`));
+  const spoolDir = options.dumpsDir ?? tmpdir();
+  for (const note of await assertRoomToWrite(spoolDir, scope.counts)) options.onNote?.(note);
+  const spool = new TermsSpool(join(spoolDir, `${file.fileName}.terms.gz`));
   try {
     await createNextTables();
     onPhase(`Pass 2 of 2: writing ${scope.counts.kept.toLocaleString('en')} items...`);
