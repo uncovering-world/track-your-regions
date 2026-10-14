@@ -766,11 +766,43 @@ export interface WikidataCachePolicyRow {
   updated_at: Date;
 }
 
+/** The table `wikidata_claims`. */
+export interface WikidataClaimsRow {
+  subject: string;
+  property: string;
+  statement_id: string;
+  rank: number;
+  value_item: string | null;
+  value: unknown | null;
+  qualifiers: unknown | null;
+}
+
+/** The table `wikidata_class_closure`. */
+export interface WikidataClassClosureRow {
+  class: string;
+  ancestor: string;
+}
+
+/** The table `wikidata_entities`. */
+export interface WikidataEntitiesRow {
+  id: string;
+  sitelink_count: number;
+  entity: unknown;
+}
+
 /** The table `wikidata_geoshapes`. */
 export interface WikidataGeoshapesRow {
   wikidata_id: string;
   geom: string | null;
   not_available: boolean;
+}
+
+/** The table `wikidata_labels`. */
+export interface WikidataLabelsRow {
+  id: string;
+  language: string;
+  label: string | null;
+  description: string | null;
 }
 
 /** The table `wikidata_query_cache`. */
@@ -785,6 +817,21 @@ export interface WikidataQueryCacheRow {
   row_count: number;
   fetched_at: Date;
   expires_at: Date;
+}
+
+/** The table `wikidata_sitelinks`. */
+export interface WikidataSitelinksRow {
+  id: string;
+  site: string;
+  title: string;
+}
+
+/** The table `wikidata_subset_builds`. */
+export interface WikidataSubsetBuildsRow {
+  build_id: number;
+  dump_date: Date;
+  counts: unknown;
+  swapped_at: Date;
 }
 
 /** The table `world_views`. */
@@ -1089,6 +1136,9 @@ export const CHECK_VALUES = {
   },
   treasures: {
     curation_state: ["pending", "auto", "verified"],
+  },
+  wikidata_claims: {
+    rank: ["-1"],
   },
 } as const;
 
