@@ -8,7 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  claimKeyFor, computeChangeSet, CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX,
+  claimedMetadataKeys, claimKeyFor, computeChangeSet, CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX,
   SYNC_OWNED_METADATA_KEYS,
   type ExperienceSnapshot,
 } from './changeSet.js';
@@ -386,11 +386,11 @@ describe('a metadata key claimed per key', () => {
 
   it('lets an orphaned claim fall through as applied, because the guard would too', () => {
     // The claim survives in curated_fields, but the key itself is gone from
-    // the stored row — e.g. wiped by a run that predates this guard. The SQL
-    // guard only re-applies a claimed key that `experiences.metadata ?
-    // claimed.k`, so a missing key gets no protection and the source's value
-    // is written; the report must agree, not raise a conflict over a write
-    // that already happened.
+    // the stored row — e.g. wiped by a run that predates this guard. The
+    // upsert re-applies only the keys `claimedMetadataKeys` answers, which
+    // needs the key present, so the source's value is written; the report
+    // reads the same list, and raises no conflict over a write that already
+    // happened.
     const orphanedBefore = snapshot({ metadata: { wikipediaUrl: 'https://en.wikipedia.org/wiki/Serengeti' } });
     const result = computeChangeSet(orphanedBefore, incoming, ['metadata.website'], WROTE);
 
@@ -399,6 +399,58 @@ describe('a metadata key claimed per key', () => {
       .toEqual(['metadata.website', 'metadata.wikipediaUrl']);
     expect(result.changedFields.find(c => c.field === 'metadata.website')?.new)
       .toBe('https://source.example');
+  });
+});
+
+/**
+ * The keys a per-key claim holds (ADR-0077 decision 2, #727): one list, which
+ * the upsert binds and the diff reads, so the two cannot disagree about a key.
+ */
+describe('claimedMetadataKeys', () => {
+  const stored = { inDanger: true, website: 'https://curator.example', artworkCount: 122, cleared: null };
+
+  it('holds a major key like any other', () => {
+    expect(claimedMetadataKeys(['metadata.inDanger', 'metadata.website'], stored))
+      .toEqual(['inDanger', 'website']);
+  });
+
+  it('holds no key the run computes about its own pass', () => {
+    expect(claimedMetadataKeys(['metadata.artworkCount'], stored)).toEqual([]);
+  });
+
+  it('holds a key by its presence on the row, a cleared one included', () => {
+    // An orphaned claim falls through and the source's value lands; a value
+    // the curator cleared and still claims stays theirs.
+    expect(claimedMetadataKeys(['metadata.dateInscribed', 'metadata.cleared'], stored)).toEqual(['cleared']);
+    expect(claimedMetadataKeys(['metadata.website'], null)).toEqual([]);
+  });
+
+  it('reads only the per-key claims', () => {
+    expect(claimedMetadataKeys(['name', 'short_description', 'metadata'], stored)).toEqual([]);
+  });
+});
+
+describe('a major metadata key claimed per key', () => {
+  it("reports the claimed key as the curator's, as the upsert keeps it", () => {
+    // The upsert puts a claimed `inDanger` back over the source's value, so
+    // the record has to say the stored value won on purpose — not that the
+    // source's flag was applied while the row still shows the curator's.
+    const before = snapshot({ metadata: { inDanger: true, dateInscribed: 1981, areaHectares: 1476300 } });
+    const incoming = snapshot({ metadata: { inDanger: false, dateInscribed: 1981, areaHectares: 1476300 } });
+    const result = computeChangeSet(before, incoming, ['metadata.inDanger'], WROTE);
+
+    expect(result.curatedConflicts.map(c => c.field)).toEqual(['metadata.inDanger']);
+    expect(result.curatedConflicts[0].significance).toBe('major');
+    expect(result.changedFields).toEqual([]);
+  });
+
+  it('lets an orphaned claim on a major key fall through, as the upsert does', () => {
+    const before = snapshot({ metadata: { dateInscribed: 1981 } });
+    const incoming = snapshot({ metadata: { inDanger: true, dateInscribed: 1981 } });
+    const result = computeChangeSet(before, incoming, ['metadata.inDanger'], WROTE);
+
+    expect(result.curatedConflicts).toEqual([]);
+    expect(result.changedFields.map(c => c.field)).toEqual(['metadata.inDanger']);
   });
 });
 
@@ -555,9 +607,10 @@ describe('a metadata key the run computes about its own pass', () => {
 
   it('raises no conflict when claimed, because the upsert writes it anyway', () => {
     // Unreachable through `editExperience`, which offers three keys and none of
-    // them is this. Pinned because the upsert's claimed-key re-application
-    // carries the same exclusion, and a conflict here would offer a curator
-    // "accept source" over a value the same statement had already written.
+    // them is this. Pinned because the upsert re-applies only the keys
+    // `claimedMetadataKeys` holds, which leaves this one out, and a conflict
+    // here would offer a curator "accept source" over a value the same
+    // statement had already written.
     const result = computeChangeSet(
       museum(2363), museum(2365), ['metadata.totalArtworkSitelinks'], HELD);
 

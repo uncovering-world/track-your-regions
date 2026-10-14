@@ -48,8 +48,8 @@ export type PictureWrite = 'written' | 'kept' | 'refused';
  * therefore absent rather than null. Not because the differ would notice —
  * `jsonEquals` reads null and absent as one absence — but because the presence
  * tests tell them apart: `'{"a":null}'::jsonb ? 'a'` is true, so a stored null
- * would make the key present to the upsert's claim guard
- * (`experiences.metadata ? claimed.k`, `experienceUpsert.ts`), which would then
+ * would make the key present to the claims (`claimedMetadataKeys`, which
+ * holds a claimed key by its presence on the row), and the run would then
  * re-apply a curator's claim over a credit that is not there.
  */
 export async function writeFoundPicture(
