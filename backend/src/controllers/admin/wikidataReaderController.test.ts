@@ -11,7 +11,7 @@ beforeEach(() => db.query.mockReset());
 
 describe('setWikidataReader (#1459)', () => {
   it('refuses the subset for a source that still asks questions it has no answer for', async () => {
-    await expect(setWikidataReader({ params: { sourceId: 2 }, body: { reader: 'subset' }, caller: { id: 1 } as Express.User }))
+    await expect(setWikidataReader({ params: { sourceId: 4 }, body: { reader: 'subset' }, caller: { id: 1 } as Express.User }))
       .rejects.toMatchObject({ statusCode: 409 });
     expect(db.query).not.toHaveBeenCalled();
   });
