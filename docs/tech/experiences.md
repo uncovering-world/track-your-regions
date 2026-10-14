@@ -3887,10 +3887,13 @@ no map is a path on our own origin — see
 [world-view-import.md](world-view-import.md) § "JSON Tree Validation" (#694).
 A region's source page is held to it on the way **out** as well, offered only
 through `safeHref` (`frontend/src/utils/safeHref.ts`) — the same function a
-picture credit's licence link already asked (#703). `websiteUrl` and
-`wikipediaUrl` are not yet: the surfaces that link them — the expanded list card, Discover's
-detail panel and the review page's `ObjectContext` — take the stored
-value as it is, which is what #708 is for.
+picture credit's licence link already asked (#703). So are `websiteUrl` and
+`wikipediaUrl` (#708), which a sync writes as `metadata.website` /
+`metadata.wikipediaUrl` through no request schema: the surfaces that link
+them — the expanded list card, Discover's detail panel, the review page's
+`ObjectContext`, a part's `PointCard` and the id chip's `SourceId` — ask
+`safeHref` where the value meets the DOM, and a value it refuses gets no
+button or link at all.
 
 ## The "New" chip
 
