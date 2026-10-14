@@ -147,3 +147,14 @@ async function fetchRange(
   }
   if (range.next < range.end) throw new Error(`${job.url}: a range ended at byte ${range.next} of ${range.end}`);
 }
+
+/**
+ * How many bytes of the file a download in progress already holds: what its
+ * saved ranges reached, or, with none, a copy written in order (`path`).
+ * The `.part` itself is sparse, written at offsets, so its size says nothing.
+ */
+export async function bytesHeld(path: string, expected: number): Promise<number> {
+  const state = await readState(path, expected);
+  if (state) return expected - state.ranges.reduce((sum, range) => sum + (range.end - range.next), 0);
+  return stat(path).then(s => s.size).catch(() => 0);
+}

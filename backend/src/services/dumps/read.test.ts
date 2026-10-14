@@ -145,6 +145,53 @@ describe('reading a dump through the pipeline', () => {
     }
   });
 
+  it('removes the older copy of the same dump once the newer one is verified, and tells the build (#1456)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dumps-'));
+    try {
+      writeFileSync(join(dir, 'wikidata-20260928-lexemes.json.gz'), 'older');
+      writeFileSync(join(dir, 'wikidata-20260928-all.json.gz'), 'another dump');
+      const notes: string[] = [];
+      await readDump(
+        file('/whole.json.gz', { fileName: 'wikidata-20261005-lexemes.json.gz', checksum: { kind: 'sha1', value: sha1(GZ) }, expectedBytes: GZ.length }),
+        countLines(), { signal: signal(), dumpsDir: dir, onNote: note => notes.push(note) },
+      );
+      expect(existsSync(join(dir, 'wikidata-20260928-lexemes.json.gz'))).toBe(false);
+      expect(existsSync(join(dir, 'wikidata-20260928-all.json.gz'))).toBe(true);
+      expect(existsSync(join(dir, 'wikidata-20261005-lexemes.json.gz'))).toBe(true);
+      expect(notes).toEqual(['removed the older wikidata-20260928-lexemes.json.gz']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the earlier months of the pageview counts, which are not copies of one another', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dumps-'));
+    try {
+      writeFileSync(join(dir, 'pageviews-202608-user.bz2'), 'August');
+      await readDump(
+        file('/whole.bz2', { key: 'pageviews-user', fileName: 'pageviews-202609-user.bz2', expectedBytes: BZ2.length }),
+        countLines(), { signal: signal(), dumpsDir: dir },
+      );
+      expect(existsSync(join(dir, 'pageviews-202608-user.bz2'))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the older copy when the newer one fails verification', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dumps-'));
+    try {
+      writeFileSync(join(dir, 'wikidata-20260928-lexemes.json.gz'), 'older');
+      await expect(readDump(
+        file('/whole.json.gz', { fileName: 'wikidata-20261005-lexemes.json.gz', checksum: { kind: 'sha1', value: 'b'.repeat(40) }, expectedBytes: GZ.length }),
+        countLines(), { signal: signal(), dumpsDir: dir },
+      )).rejects.toThrow();
+      expect(existsSync(join(dir, 'wikidata-20260928-lexemes.json.gz'))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('refuses a file name that is more than one plain path segment for the local copy', async () => {
     await expect(readDump(file('/whole.json.gz', { fileName: '../escape.gz' }), countLines(), { signal: signal(), dumpsDir: tmpdir() }))
       .rejects.toThrow(/one plain segment/);

@@ -4,7 +4,7 @@ import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { openStream } from './fetch.js';
-import { downloadRanges, splitRanges } from './rangedDownload.js';
+import { bytesHeld, downloadRanges, splitRanges } from './rangedDownload.js';
 
 /**
  * A local copy fetched over several ranged connections (#1455), against a
@@ -98,6 +98,8 @@ describe('a download over several ranges (#1455)', () => {
       const state = JSON.parse(readFileSync(`${path}.part.json`, 'utf8')) as { ranges: Array<{ next: number; end: number }> };
       const left = state.ranges.filter(range => range.next < range.end);
       expect(left.length).toBeGreaterThan(0);
+      // What the download holds is what its ranges reached, not the sparse part's size.
+      expect(await bytesHeld(path, BODY.length)).toBe(BODY.length - left.reduce((sum, range) => sum + range.end - range.next, 0));
       requested.length = 0;
       expect(await download(path).run).toBe(BODY.length);
       // Each range is asked for again from where the saved state says it stopped, and only those.
