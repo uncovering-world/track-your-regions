@@ -45,6 +45,8 @@ import {
 } from './imageCredit.js';
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 import { readHandOvers } from './handOvers.js';
+import { readsSubset } from './subset/reader.js';
+import { wikidataRunDoor } from './subset/runDoor.js';
 // Museums use remote Wikimedia URLs, no local image storage
 
 const MUSEUM_SOURCE_ID = 2;
@@ -218,12 +220,14 @@ async function fetchMuseumItems(
   storedCredits = await readStoredCredits(MUSEUM_SOURCE_ID);
   storedTreasureCredits = await readStoredTreasureCredits();
 
+  // The reporting door for the long half: everything in `collectTier1Museums`
+  // runs before the first museum is written, which is where a wait is
+  // invisible — and where an answer is worth keeping, since a collection that
+  // fails late otherwise starts the next attempt at its first phase. Or the
+  // local subset, where the admin switched the source to it (#1460).
+  const sparql = await wikidataRunDoor(MUSEUM_SOURCE_ID, progress, () => collectingSparql(progress, refreshCache));
   const { items, fetched, filtered, refusedContents } = await collectTier1Museums({
-    // The reporting door for the long half: everything in `collectTier1Museums`
-    // runs before the first museum is written, which is where a wait is
-    // invisible — and where an answer is worth keeping, since a collection that
-    // fails late otherwise starts the next attempt at its first phase.
-    sparql: collectingSparql(progress, refreshCache),
+    sparql,
     previousPlacements,
     // What other kinds refused as held at a museum (ADR-0102).
     handOvers: await readHandOvers(MUSEUM_SOURCE_ID),
@@ -231,7 +235,8 @@ async function fetchMuseumItems(
     checkCancel: () => {
       if (progress.cancel) throw new Error('Sync cancelled');
     },
-    pause: () => delay(SPARQL_DELAY_MS),
+    // The pause spares the query service; the subset is our own database.
+    pause: readsSubset(sparql) ? undefined : () => delay(SPARQL_DELAY_MS),
   });
 
   // Whether the run saw enough of what the catalogue holds to be believed

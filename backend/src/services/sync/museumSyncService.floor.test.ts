@@ -42,6 +42,10 @@ vi.mock('./wikidataUtils.js', () => ({
   WIKIDATA_USER_AGENT: 'test',
   wikidataDoor: vi.fn(() => vi.fn()),
 }));
+vi.mock('../dumps/wikidata/subsetTables.js', () => ({
+  latestSubset: vi.fn().mockResolvedValue({ dumpDate: '2026-10-05', swappedAt: new Date() }),
+  entitiesAreHeld: vi.fn().mockResolvedValue(true),
+}));
 vi.mock('./museum/treasureWriter.js', () => ({
   upsertVenueTreasures: vi.fn().mockResolvedValue({
     added: [], withdrawn: [], returned: [], changed: [],
@@ -61,6 +65,7 @@ import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { collectTier1Museums } from './museum/pipeline.js';
 import { upsertVenueTreasures } from './museum/treasureWriter.js';
 import { syncMuseums } from './museumSyncService.js';
+import { readsSubset } from './subset/reader.js';
 import type { CollectedMuseum, SyncProgress } from './types.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -211,5 +216,21 @@ describe('the museum run and its floor', () => {
     // SQL narrows it to the works actually linked here.
     const placedElsewhere = mockedWriter.mock.calls[0][4] as string[];
     expect([...placedElsewhere].sort()).toEqual(['Q1001', 'Q1002']);
+  });
+
+  it('reads the local subset when the source is switched to it, with no pause between questions (#1460)', async () => {
+    mockedQuery.mockImplementation(async (sql: string) => ({
+      rows: sql.includes('wikidata_reader') ? [{ wikidata_reader: 'subset' }] : [],
+    }));
+    mockedCollect.mockResolvedValueOnce({
+      items: [museum(LOUVRE, ['Q1000'])], fetched: 1, filtered: [],
+      diff: { moved: [], gained: [], lost: [], dropped: [] },
+    });
+
+    await (await configOf()).fetchItems(progress(), []);
+
+    const deps = mockedCollect.mock.calls[0][0];
+    expect(readsSubset(deps.sparql)).toBe(true);
+    expect(deps.pause).toBeUndefined();
   });
 });
