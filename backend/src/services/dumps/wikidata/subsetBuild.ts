@@ -18,6 +18,7 @@ import { join } from 'node:path';
 import type { DumpFile } from '../catalog.js';
 import { readDump, type ReadOptions } from '../read.js';
 import { TermsSpool } from './labelsRing.js';
+import { insertRefusing, Refusals } from './refusals.js';
 import { ScopeCollector, type Scope, type ScopeCounts } from './scope.js';
 import { loadScope, saveScope, scopePath } from './scopeFile.js';
 import { SubsetWriter } from './subsetWriter.js';
@@ -36,26 +37,29 @@ export interface SubsetResult {
   bytes: number;
   lines: number;
   checksumActual: string | null;
-  counts: ScopeCounts & { written: number; ring: number; ringLabelled: number };
+  counts: ScopeCounts & { written: number; ring: number; ringLabelled: number; refused: number };
 }
 
 const LABEL_BATCH = 5000;
 
 /** Insert the spooled terms of every entity the ring holds; answers how many entities got one. */
-async function labelTheRing(spool: TermsSpool, ring: (id: number) => boolean, signal: AbortSignal): Promise<number> {
+async function labelTheRing(
+  spool: TermsSpool, ring: (id: number) => boolean, signal: AbortSignal, refusals: Refusals,
+): Promise<number> {
   let rows: LabelRow[] = [];
   let labelled = 0;
+  const insert = (batch: LabelRow[]) => insertRefusing(batch, row => `${row.id}@${row.language}`, insertLabels, refusals);
   for await (const { id, terms } of spool.read()) {
     signal.throwIfAborted();
     if (!ring(Number(id.slice(1)))) continue;
     labelled += 1;
     for (const [language, [label, description]] of Object.entries(terms)) rows.push({ id, language, label, description });
     if (rows.length >= LABEL_BATCH) {
-      await insertLabels(rows);
+      await insert(rows);
       rows = [];
     }
   }
-  await insertLabels(rows);
+  await insert(rows);
   return labelled;
 }
 
@@ -89,7 +93,9 @@ export async function buildSubset(file: DumpFile, options: SubsetBuildOptions): 
   try {
     await createNextTables();
     onPhase(`Pass 2 of 2: writing ${scope.counts.kept.toLocaleString('en')} items...`);
-    const writer = new SubsetWriter(scope, spool);
+    // One budget for every row the build leaves out: `MAX_REFUSED` holds for entities and labels together.
+    const refusals = new Refusals();
+    const writer = new SubsetWriter(scope, spool, refusals);
     const read = await readDump(file, writer, options);
 
     // Past the reads, a cancel is honoured between steps and inside each
@@ -98,7 +104,9 @@ export async function buildSubset(file: DumpFile, options: SubsetBuildOptions): 
     const { signal } = options;
     onPhase('Labelling the entities the kept items name...');
     const ring = (id: number) => writer.ring.has(id) && !scope.kept.has(id);
-    const ringLabelled = await labelTheRing(spool, ring, signal);
+    const ringLabelled = await labelTheRing(spool, ring, signal, refusals);
+    const refused = refusals.note('rows (an entity, or a label as id@language)');
+    if (refused) options.onNote?.(refused);
     onPhase('Deriving the claims, labels and sitelinks...');
     await deriveFromEntities(signal);
     onPhase('Indexing...');
@@ -107,7 +115,10 @@ export async function buildSubset(file: DumpFile, options: SubsetBuildOptions): 
     await deriveClassClosure(signal);
     await indexNextTables(signal, ['wikidata_class_closure']);
 
-    const counts = { ...scope.counts, written: writer.counts.written, ring: writer.ring.size, ringLabelled };
+    const counts = {
+      ...scope.counts, written: writer.counts.written, ring: writer.ring.size, ringLabelled,
+      refused: refusals.count,
+    };
     signal.throwIfAborted();
     onPhase('Swapping the new subset in...');
     await swapIn(options.buildId, file.date, counts);

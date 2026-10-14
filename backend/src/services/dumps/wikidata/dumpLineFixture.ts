@@ -54,6 +54,8 @@ export interface LineExtras {
   datatype?: string;
   /** Labels in other languages, which the subset leaves out unless they are among its languages. */
   labels?: Record<string, string>;
+  /** language → description; none by default. */
+  descriptions?: Record<string, string>;
 }
 
 /** One entity as a dump line, labelled in English. */
@@ -66,11 +68,13 @@ export function dumpLine(id: string, label: string, statements: Statement[] = []
   const claims = [...byProperty].map(([property, list]) => `"P${property}":[${list.join(',')}]`).join(',');
   const labels = Object.entries({ en: label, ...extras.labels })
     .map(([language, value]) => `"${language}":{"language":"${language}","value":${JSON.stringify(value)}}`).join(',');
+  const descriptions = Object.entries(extras.descriptions ?? {})
+    .map(([language, value]) => `"${language}":{"language":"${language}","value":${JSON.stringify(value)}}`).join(',');
   const sitelinks = Object.entries(extras.sitelinks ?? {})
     .map(([site, title]) => `"${site}":{"site":"${site}","title":${JSON.stringify(title)},"badges":[]}`).join(',');
   const datatype = extras.datatype ? `"datatype":"${extras.datatype}",` : '';
   return `{"type":"${type}",${datatype}"id":"${id}","labels":{${labels}},`
-    + `"descriptions":{},"aliases":{},"claims":{${claims}},"sitelinks":{${sitelinks}},"lastrevid":1,"modified":"2026-10-05T00:00:00Z"},`;
+    + `"descriptions":{${descriptions}},"aliases":{},"claims":{${claims}},"sitelinks":{${sitelinks}},"lastrevid":1,"modified":"2026-10-05T00:00:00Z"},`;
 }
 
 export const item = (id: number): Value => ({ item: id });
