@@ -99,6 +99,31 @@ wherever the host offers both.
 The full Wikidata dump is well over 100 GB, so a local copy needs a disk with
 room for it; a machine without one streams.
 
+**One copy per dump** (`localCopies.ts`, #1456). Every file the catalog names
+carries its date as the second part of its name (`wikidata-20261005-all.json.gz`,
+`enwiki-20261001-page.sql.gz`, `pageviews-202609-user.bz2`), and `copyOf`
+reads a name's dump and date, with its leftovers: a ranged download's `.part`
+and state, a subset build's terms spool. A dump dated by day keeps one copy: once a copy is verified, `readDump`
+removes the older copies of its dump (`olderCopies`, matched by the catalog's
+`isFileName`); before a download, it removes them first when the disk cannot
+hold what is left of the new one beside them (`makeRoom`, `freeBytes`, with
+what a resumed ranged download already holds read from its saved ranges,
+`bytesHeld`). The monthly pageview files are twelve different months, which
+readership reads together (ADR-0055), so none of them is removed.
+Either is said in the build's message (`onNote`), as is a copy that could not be
+removed: the verified read stands. One build per dump runs at
+a time in any process (§ A build), so no build of that dump is reading an
+older copy then.
+
+**A build from the local copy.** A build reads the newest file the host lists,
+or, asked `from: 'local'`, the file of the dump's newest local copy
+(`newestLocalCopy`, by the catalog's `isFileName`): its resolver walks the same
+dated directories and keeps to that file name (`only`), so the copy is still
+verified against the host's checksum and size. A copy downloaded for hours is
+built from even after the host has published a newer dump. A copy whose
+directory the host no longer lists among its recent ones cannot be verified,
+and the build says so.
+
 ## The host's rules
 
 `dumps.wikimedia.org` caps a client at three connections, rate-limits, and
@@ -210,9 +235,12 @@ dump's date — a day, or for the pageview files the month their counts cover
 among its last three (`recentBuilds`) open under the row. *Verify newest* runs
 the counting consumer over the newest complete file and the row turns into its
 progress, polled every three seconds while the page is visible; *Cancel* stops
-it. A dump something is built from (`keeps` in the list) also has *Build*,
-which starts a `keep` build, and its row names what is built and the dump date
-of the build in place, or says it was never built. A build of the dump that
+it. A dump something is built from (`keeps` in the list) also has *Build
+newest*, which starts a `keep` build, and, where a local copy exists
+(`localCopy` in the list, shown under the row's description with its date and
+size), *Build \<date\> copy*, which starts one from that copy. Such a row
+also names what is built and the dump date of the build in place, or says it
+was never built. A build of the dump that
 another process runs (`elsewhere` in the list) takes the row's progress cell,
 with when it started and when it last beat, and the row offers no button
 until it ends; the page polls every 30 seconds while one runs.
