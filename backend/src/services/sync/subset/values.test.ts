@@ -41,4 +41,10 @@ describe('values spelled as the live service spells them (#1459)', () => {
     const preferred = { id: 'd', value: 'Q1', rank: 'preferred' as const };
     expect(bestStatements([louvre, preferred])).toEqual([preferred]);
   });
+
+  it('reads an end time of no value as no end, as WDQS writes it with no pq: triple', () => {
+    const open = { id: 'e', value: 'Q19675', qualifiers: { P582: [{ novalue: true }] } };
+    const unknownEnd = { id: 'f', value: 'Q19675', qualifiers: { P582: [{ somevalue: true }] } };
+    expect(standingStatements([open, unknownEnd])).toEqual([open]);
+  });
 });

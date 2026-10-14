@@ -19,9 +19,23 @@ export function bestStatements(statements: CompactStatement[] | undefined): Comp
   return preferred.length ? preferred : all.filter(statement => statement.rank === undefined);
 }
 
-/** The best statements that still hold: none carries an end time (`pq:P582`), as `standing` in the live kit asks. */
+/** A value Wikidata records as *no value*, which WDQS writes as no triple at all. */
+export function isNoValue(value: CompactValue): boolean {
+  return typeof value === 'object' && value !== null && !Array.isArray(value) && value.novalue === true;
+}
+
+/**
+ * Whether a statement carries an end time (`pq:P582`): an end time of no value
+ * is none, since WDQS writes it as `wdno:P582` rather than a `pq:` triple, and
+ * `FILTER NOT EXISTS { ?st pq:P582 ?ended }` keeps the statement.
+ */
+export function hasEnded(statement: CompactStatement): boolean {
+  return (statement.qualifiers?.P582 ?? []).some(value => !isNoValue(value));
+}
+
+/** The best statements that still hold: none carries an end time, as `standing` in the live kit asks. */
 export function standingStatements(statements: CompactStatement[] | undefined): CompactStatement[] {
-  return bestStatements(statements).filter(statement => !statement.qualifiers?.P582?.length);
+  return bestStatements(statements).filter(statement => !hasEnded(statement));
 }
 
 /** The item a value names, or null for a value that is no item id. */
