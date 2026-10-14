@@ -42,17 +42,18 @@ beforeAll(async () => {
   server = createServer((req, res) => {
     const body = files.get(req.url ?? '');
     if (!body) { res.statusCode = 404; res.end(); return; }
-    const range = /bytes=(\d+)-/.exec(req.headers.range ?? '');
+    const range = /bytes=(\d+)-(\d*)/.exec(req.headers.range ?? '');
     if (range) {
       ranges.push(req.headers.range!);
       const from = Number(range[1]);
+      const to = range[2] ? Math.min(Number(range[2]), body.length - 1) : body.length - 1;
       if (from >= body.length) {
         res.writeHead(416, { 'Content-Range': `bytes */${body.length}` });
         res.end();
         return;
       }
-      res.writeHead(206, { 'Content-Length': body.length - from, 'Content-Range': `bytes ${from}-${body.length - 1}/${body.length}` });
-      res.end(req.method === 'HEAD' ? undefined : body.subarray(from));
+      res.writeHead(206, { 'Content-Length': to - from + 1, 'Content-Range': `bytes ${from}-${to}/${body.length}` });
+      res.end(req.method === 'HEAD' ? undefined : body.subarray(from, to + 1));
       return;
     }
     if (req.method === 'HEAD' && unsized.has(req.url ?? '')) {
@@ -135,7 +136,8 @@ describe('reading a dump through the pipeline', () => {
         file('/whole.json.gz', { checksum: { kind: 'sha1', value: sha1(GZ) }, expectedBytes: GZ.length }),
         countLines(), { signal: signal(), dumpsDir: dir },
       );
-      expect(ranges).toEqual(['bytes=100-']);
+      // A file this small is one range: the rest of it, over one connection.
+      expect(ranges).toEqual([`bytes=100-${GZ.length - 1}`]);
       expect(result.lines).toBe(LINES.length);
       expect(readFileSync(join(dir, 'whole.json.gz')).equals(GZ)).toBe(true);
     } finally {
