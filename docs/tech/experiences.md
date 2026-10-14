@@ -1815,7 +1815,18 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    (`inside Louvre Museum` for the Venus de Milo), a room or a wing as `inside Room 325 (Louvre
    Palace): a work indoors, not public art`, and a container that is a site (`SITE_CLASSES`: an
    archaeological site, a camp — the classes that own their parts) as `part of Babylon:
-   archaeological site, not public art` (the Ishtar Gate). A district, a forest or a landscape as
+   archaeological site, not public art` (the Ishtar Gate). **A work stranded outdoors stays
+   public art** (#1444): a museum or place-of-worship refusal is lifted when no place of the chain
+   is one another kind offers a reader (`placesOtherSourcesOffer` in
+   `services/sync/shownElsewhere.ts`, read once per run) and the work stands outdoors by what it
+   is — a colossal statue or an obelisk (`OUTDOOR_CLASSES`; not a memorial, which may be a plaque
+   in a nave). The room and the site are still asked: a colossal statue in a museum's hall is the
+   hall's. Refused, such a work would be on no card:
+   the Mother Ukraine Monument stands on the hill of a war museum, and the Philae obelisk in the
+   garden of Kingston Lacy, and the catalogue holds neither venue in any kind. Where a place of the
+   chain is offered, the refusal stands and that place's kind takes the work (ADR-0102); a
+   `sculpture` in a hall is refused either way, which is the Veiled Christ in the Cappella
+   Sansevero. A district, a forest or a landscape as
    container says nothing — the third dry run refused the Charging Bull as part of the Financial
    District and the Hermannsdenkmal as part of the Teutoburg Forest before the list was narrowed
    to sites. **Whose it is, only when nothing says where it stands** (#804): a work nothing
