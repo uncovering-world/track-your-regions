@@ -9,6 +9,8 @@
  * works, of a pool of monuments) stays with the source that asks it.
  */
 
+import { readsSubset } from './subset/reader.js';
+import { subsetClassTree, subsetSubclasses, subsetWikipediaEditions } from './subset/kit.js';
 import { extractQid, isQid, type SparqlBinding } from './wikidataUtils.js';
 import type { CacheDescriptor } from './wikidataCache.js';
 
@@ -95,8 +97,9 @@ export async function fetchWikipediaEditions(
   qids: string[],
   before: () => Promise<void> = () => Promise.resolve(),
 ): Promise<Map<string, number>> {
-  const out = new Map<string, number>();
   const asked = unique(qids.filter(isQid));
+  if (readsSubset(sparql)) return subsetWikipediaEditions(asked);
+  const out = new Map<string, number>();
   for (const batch of chunk(asked, WIKIPEDIA_EDITIONS_BATCH)) {
     await before();
     const rows = await sparql(`
@@ -222,6 +225,7 @@ export const MUSEUM_ROOT = 'Q33506';
 /** Direct `P279` children of a frontier — one hop, for `boundedClosure`. */
 export async function fetchSubclasses(sparql: SparqlFn, parents: string[]): Promise<string[]> {
   if (!parents.length) return [];
+  if (readsSubset(sparql)) return subsetSubclasses(parents);
   const rows = await sparql(
     `SELECT DISTINCT ?c WHERE { VALUES ?p { ${values(parents)} } ?c wdt:P279 ?p }`,
     { kind: 'classes', label: `subclasses of ${parents.length} class(es)` },
@@ -243,6 +247,7 @@ export async function fetchClassTree(
   root: string,
   label: string,
 ): Promise<Set<string>> {
+  if (readsSubset(sparql)) return subsetClassTree(root);
   const rows = await sparql(
     `SELECT ?c WHERE { ?c wdt:P279* wd:${root} }`,
     { kind: 'classes', label },
