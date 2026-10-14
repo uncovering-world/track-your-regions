@@ -8,7 +8,8 @@
  * treasures — simpler than museums, and since #754 the same shape.
  */
 
-import { wikidataRunDoor } from './subset/runDoor.js';
+import { readsSubset } from './subset/reader.js';
+import { unreadOnSubset, wikidataRunDoor } from './subset/runDoor.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import type { SyncProgress, WikidataLandmark, ContentsByKind } from './types.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
@@ -194,8 +195,9 @@ async function fetchLandmarkItems(
   // kind offers stays public art rather than being refused onto no card (#1444).
   const offered = await placesOtherSourcesOffer(LANDMARK_SOURCE_ID);
 
+  const sparql = await wikidataRunDoor(LANDMARK_SOURCE_ID, progress, () => collectingSparql(progress, refreshCache));
   const { items, fetched, filtered } = await collectPublicArt({
-    sparql: await wikidataRunDoor(LANDMARK_SOURCE_ID, progress, () => collectingSparql(progress, refreshCache)),
+    sparql,
     phase: (message) => { progress.statusMessage = message; },
     step: async () => {
       if (progress.cancel) throw new Error('Sync cancelled');
@@ -220,7 +222,9 @@ async function fetchLandmarkItems(
     pause: () => delay(SPARQL_DELAY_MS),
   });
 
-  return { items, fetchedCount: fetched, filtered };
+  // What the subset cannot read is left as it is, not read as gone.
+  const unread = readsSubset(sparql) ? await unreadOnSubset(LANDMARK_SOURCE_ID) : undefined;
+  return { items, fetchedCount: fetched, filtered, unread };
 }
 
 // =============================================================================

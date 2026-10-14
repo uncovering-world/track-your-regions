@@ -78,6 +78,8 @@ export async function badgeAdmitted<T>(
   admittedExternalIds: string[],
   items: T[],
   sweptMembership: boolean,
+  /** Rows the run could not read (a run on the subset, #1462): it says nothing about their badge either. */
+  unread: string[] = [],
 ): Promise<void> {
   if (!config.badgesAdmitted) return;
 
@@ -98,7 +100,7 @@ export async function badgeAdmitted<T>(
   }
 
   if (!predicate || !sweptMembership) return;
-  const cleared = await unmarkIconic(config.sourceId, toBadge, progress.dryRun);
+  const cleared = await unmarkIconic(config.sourceId, [...toBadge, ...unread], progress.dryRun);
   if (cleared.length > 0) {
     console.log(`${config.logPrefix} Took the must-see badge back off ${cleared.length} row(s)`);
   }
@@ -143,6 +145,7 @@ export async function applyAdmissionSweep<T>(
   admittedExternalIds: string[],
   previousAdmittedCount: number,
   changes: ChangeRecord[],
+  unread: string[] = [],
 ): Promise<SweepOutcome> {
   if (!config.recomputesMembership || progress.logId === null) return NO_SWEEP;
 
@@ -159,8 +162,9 @@ export async function applyAdmissionSweep<T>(
   });
   if (skipReason !== null) return { swept: false, skipReason };
 
+  // A row the run could not read is not one it stopped admitting (`FetchResult.unread`).
   const swept = await markNotAdmitted(
-    config.sourceId, admittedExternalIds, NOT_ADMITTED_REASON, progress.dryRun,
+    config.sourceId, [...admittedExternalIds, ...unread], NOT_ADMITTED_REASON, progress.dryRun,
   );
   for (const row of swept) {
     progress.filtered++;
@@ -198,11 +202,15 @@ export async function questionPins<T>(
   refusals: Refusal[],
   admittedExternalIds: string[],
   sweep: SweepOutcome,
+  /** Rows the run could not read (#1462): no view of theirs, so a pin on one keeps what was asked before. */
+  unread: string[] = [],
 ): Promise<void> {
   if (progress.logId === null) return;
+  const notRead = new Set(unread);
   const admitted = config.recomputesMembership ? new Set(admittedExternalIds) : new Set<string>();
   const refused = new Map(refusals.map((refusal) => [refusal.externalId, refusal.reason]));
   const viewOf = (externalId: string): RunView | null => {
+    if (notRead.has(externalId)) return null;
     if (admitted.has(externalId)) return { verdict: 'admitted', reason: null };
     const reason = refused.get(externalId);
     if (reason !== undefined) return { verdict: 'refused', reason };

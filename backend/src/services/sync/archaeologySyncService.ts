@@ -50,7 +50,7 @@ import { OSM_READER_VARIABLE, parseOsmReaderName } from './osm/readerChoice.js';
 import { readThroughOneDoor } from './osm/oneDoorPerRun.js';
 // Every door a pass asks through, built the same way for the mirror's pass and
 // for Overpass's (`archaeology/runDoors.ts`).
-import { subsetRunDoor } from './subset/runDoor.js';
+import { subsetRunDoor, unreadOnSubset } from './subset/runDoor.js';
 import { ARCHAEOLOGY_SOURCE_ID, doorsForAPass, LOG_PREFIX } from './archaeology/runDoors.js';
 // One item at a time, once the run has decided: the writers and what they were
 // told about this pass (`archaeology/writer.ts`).
@@ -216,7 +216,9 @@ async function fetchArchaeologyItems(
     imageCredits, storedCredits, storedTreasureCredits, placedThisRun, findsLine, osmDoor: osmDoorName,
   });
 
-  return { items, fetchedCount: fetched, filtered, refusedContents, withdrawalSkippedReason };
+  // What the subset cannot read is left as it is, not read as gone.
+  const unread = subset ? await unreadOnSubset(ARCHAEOLOGY_SOURCE_ID) : undefined;
+  return { items, fetchedCount: fetched, filtered, refusedContents, withdrawalSkippedReason, unread };
 }
 
 // =============================================================================

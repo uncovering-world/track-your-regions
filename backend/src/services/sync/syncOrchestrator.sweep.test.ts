@@ -58,6 +58,7 @@ vi.mock('./missingDetection.js', () => ({
 import { orchestrateSync } from './syncOrchestrator.js';
 import { updateSyncLog } from './syncUtils.js';
 import { recordSyncChanges } from './changeRecorder.js';
+import { pinnedRows, writePinQuestions } from './pinQuestion.js';
 import {
   missingDetectionSkipReason, flagMissingExperiences, countSeenAmongActive,
 } from './missingDetection.js';
@@ -361,6 +362,45 @@ describe('orchestrateSync changeset recording', () => {
     expect(flagMissingExperiences).toHaveBeenCalledWith(
       TEST_SOURCE_ID, 42, true, ['1', '2'],
     );
+  });
+
+  it('leaves a row it could not read as it is: neither swept nor flagged missing, nor re-admitted (#1462)', async () => {
+    // A dig admitted by a live run whose item is newer than the subset's dump:
+    // a run on the subset reads nothing about it, which says nothing about it.
+    await orchestrateSync(makeConfig({
+      recomputesMembership: true,
+      fetchItems: vi.fn().mockResolvedValue({
+        items: [{ id: '1', name: 'Item 1' }, { id: '2', name: 'Item 2' }],
+        fetchedCount: 2,
+        unread: [{ externalId: 'Q9', name: 'A dig newer than the dump' }],
+      }),
+    }), 1);
+
+    expect(flagMissingExperiences).toHaveBeenCalledWith(TEST_SOURCE_ID, 42, false, ['1', '2', 'Q9']);
+    expect(markNotAdmitted).toHaveBeenCalledWith(TEST_SOURCE_ID, ['1', '2', 'Q9'], expect.any(String), false);
+    expect(restoreAdmission).toHaveBeenCalledWith(TEST_SOURCE_ID, ['1', '2'], false);
+  });
+
+  it('keeps the badge on, and the pin question about, a row it could not read (#1462)', async () => {
+    // The badge's clear and the pin's view read `swept` as "the run decided every
+    // row it did not name"; a row the run could not read was not decided.
+    vi.mocked(pinnedRows).mockResolvedValueOnce([{
+      id: 9, externalId: 'Q9', name: 'A dig newer than the dump', membershipId: 90,
+      answer: 'admitted', answeredVerdict: 'admitted', answeredReason: null,
+    }]);
+    await orchestrateSync(makeConfig({
+      recomputesMembership: true,
+      badgesAdmitted: (item) => item.id === '2',
+      fetchItems: vi.fn().mockResolvedValue({
+        items: [{ id: '1', name: 'Item 1' }, { id: '2', name: 'Item 2' }],
+        fetchedCount: 2,
+        unread: [{ externalId: 'Q9', name: 'A dig newer than the dump' }],
+      }),
+    }), 1);
+
+    expect(unmarkIconic).toHaveBeenCalledWith(TEST_SOURCE_ID, ['2', 'Q9'], false);
+    // Neither asked again nor settled: the run has no view of it.
+    expect(writePinQuestions).toHaveBeenCalledWith([], [], expect.anything(), false);
   });
 
   it('counts an item the source offered but processing dropped as seen', async () => {

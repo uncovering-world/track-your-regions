@@ -46,7 +46,7 @@ import {
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 import { readHandOvers } from './handOvers.js';
 import { readsSubset } from './subset/reader.js';
-import { wikidataRunDoor } from './subset/runDoor.js';
+import { unreadOnSubset, wikidataRunDoor } from './subset/runDoor.js';
 // Museums use remote Wikimedia URLs, no local image storage
 
 const MUSEUM_SOURCE_ID = 2;
@@ -214,6 +214,7 @@ async function fetchMuseumItems(
   filtered: FilteredEntity[];
   refusedContents: FilteredEntity[];
   withdrawalSkippedReason: string | null;
+  unread?: Array<{ externalId: string; name: string }>;
 }> {
   const previousPlacements = await readPreviousPlacements(MUSEUM_SOURCE_ID);
   imageCredits = new Map();
@@ -295,7 +296,9 @@ async function fetchMuseumItems(
     pause: () => delay(SPARQL_DELAY_MS),
   });
 
-  return { items, fetchedCount: fetched, filtered, refusedContents, withdrawalSkippedReason };
+  // What the subset cannot read is left as it is, not read as gone.
+  const unread = readsSubset(sparql) ? await unreadOnSubset(MUSEUM_SOURCE_ID) : undefined;
+  return { items, fetchedCount: fetched, filtered, refusedContents, withdrawalSkippedReason, unread };
 }
 
 // =============================================================================

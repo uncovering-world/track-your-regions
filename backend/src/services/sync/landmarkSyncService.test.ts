@@ -67,6 +67,7 @@ vi.mock('./imageCredit.js', () => ({
   creditToWrite: vi.fn().mockReturnValue({}),
 }));
 
+import { pool } from '../../db/index.js';
 import { orchestrateSync } from './syncOrchestrator.js';
 import type { SyncServiceConfig, SyncRunContext } from './syncContract.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
@@ -156,7 +157,11 @@ describe('syncLandmarks', () => {
 
     vi.mocked(latestSubset).mockResolvedValue({ dumpDate: '2026-10-05', swappedAt: new Date() });
     mockedCollect.mockResolvedValue({ items: [], fetched: 0, filtered: [] });
-    await (await configOf()).fetchItems(progress(), []);
+    // A row whose item the subset does not keep: left as it is, and named (#1462).
+    const unread = [{ externalId: 'Q130000001', name: 'A statue newer than the dump' }];
+    vi.mocked(pool.query).mockResolvedValueOnce({ rows: unread } as never);
+    const result = await (await configOf()).fetchItems(progress(), []);
+    expect(result.unread).toEqual(unread);
     const door = mockedCollect.mock.calls.at(-1)![0].sparql;
     expect(readsSubset(door)).toBe(true);
     await expect(door('SELECT ?x WHERE {}', { kind: 'pool', label: 'a pool' })).rejects.toThrow(/asked the live service: a pool/);
