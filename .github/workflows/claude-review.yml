@@ -43,12 +43,13 @@ name: Claude PR Review
 # starts (docs/security.md), and Bash is limited to the `gh`, `grep` and `rg`
 # forms under --allowedTools.
 #
-# A pull request that changes this file gets no review from it: the action
-# refuses to run when the workflow file differs from the default branch's copy
-# ("Workflow validation failed … identical content"), and the `review` check
-# still reports success while the step below prints that no execution log
-# exists. The review of such a PR is the maintainer's own, and what the change
-# does is seen on the first pull request after it merges.
+# A pull request that changes this file gets no review from its own
+# `pull_request` runs: the action refuses to run when the workflow file differs
+# from the default branch's copy ("Workflow validation failed … identical
+# content") and still exits success. The last step below fails such a run, so
+# a `review` check that reviewed nothing is red rather than green (#483). A
+# `/review` comment does review such a PR, since an `issue_comment` run reads
+# the default branch's copy of this file.
 
 on:
   pull_request:
@@ -147,6 +148,7 @@ jobs:
           echo "PR #$PR is subscribed: every push is reviewed until the label is removed."
 
       - name: Run Claude Code
+        id: claude
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
@@ -578,12 +580,30 @@ jobs:
       #
       # Names only, never the transcript: this repo is public, and the log
       # holds full tool results including file contents the review read.
+      #
+      # It also fails the job when the action succeeded without running Claude
+      # at all. The action sets its `conclusion` output only once Claude has run
+      # (`success` or `failure`); a workflow-validation skip (the header)
+      # returns before that and leaves it empty while the step still succeeds.
+      # A missing execution log is not that signal: the action writes the log
+      # on a best-effort basis, so a real review can finish without one (#483).
       - name: List tools the review reached for
         if: always()
+        env:
+          REVIEW_OUTCOME: ${{ steps.claude.outcome }}
+          # Through fromJSON(toJSON(…)): actionlint's bundled description of the
+          # action predates its `conclusion` output (action.yml on v1 declares
+          # it), so naming the property directly fails the lint. Only this one
+          # property reaches the environment — the outputs also carry a token.
+          REVIEW_CONCLUSION: ${{ fromJSON(toJSON(steps.claude.outputs)).conclusion }}
         run: |
+          if [ "$REVIEW_OUTCOME" = "success" ] && [ -z "$REVIEW_CONCLUSION" ]; then
+            echo "::error::The review action reported success without running Claude. Nothing was reviewed; on a pull request that changes claude-review.yml, comment /review."
+            exit 1
+          fi
           log="${RUNNER_TEMP}/claude-execution-output.json"
           if [ ! -f "$log" ]; then
-            echo "No execution log at $log — the action skipped or died early."
+            echo "No execution log at $log (review step '$REVIEW_OUTCOME', Claude's conclusion '${REVIEW_CONCLUSION:-none}')."
             exit 0
           fi
           # The result record carries a `permission_denials` array alongside the
