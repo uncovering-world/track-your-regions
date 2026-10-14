@@ -50,6 +50,8 @@ import {
 } from './imageCredit.js';
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 import { readHandOvers } from './handOvers.js';
+import { readsSubset } from './subset/reader.js';
+import { unreadOnSubset, wikidataRunDoor } from './subset/runDoor.js';
 
 const WORSHIP_SOURCE_ID = 4;
 
@@ -188,8 +190,10 @@ async function fetchWorshipItems(
   // hysteretic tier has something to hold (ADR-0023).
   const admitted = await admittedExternalIds(WORSHIP_SOURCE_ID);
 
+  // Or the local subset, where the admin switched the source to it (#1461).
+  const sparql = await wikidataRunDoor(WORSHIP_SOURCE_ID, progress, () => collectingSparql(progress, refreshCache));
   const { items, fetched, filtered, refusedContents } = await collectPlacesOfWorship({
-    sparql: collectingSparql(progress, refreshCache),
+    sparql,
     previousPlacements,
     admitted,
     line,
@@ -199,7 +203,8 @@ async function fetchWorshipItems(
     checkCancel: () => {
       if (progress.cancel) throw new Error('Sync cancelled');
     },
-    pause: () => delay(SPARQL_DELAY_MS),
+    // The pause spares the query service; the subset is our own database.
+    pause: readsSubset(sparql) ? undefined : () => delay(SPARQL_DELAY_MS),
   });
 
   // Whether the run saw enough of what the catalogue holds to be believed about
@@ -248,7 +253,9 @@ async function fetchWorshipItems(
     pause: () => delay(SPARQL_DELAY_MS),
   });
 
-  return { items, fetchedCount: fetched, filtered, refusedContents, withdrawalSkippedReason };
+  // What the subset cannot read is left as it is, not read as gone.
+  const unread = readsSubset(sparql) ? await unreadOnSubset(WORSHIP_SOURCE_ID) : undefined;
+  return { items, fetchedCount: fetched, filtered, refusedContents, withdrawalSkippedReason, unread };
 }
 
 // =============================================================================
