@@ -8,7 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
  */
 
 const ledger = vi.hoisted(() => ({
-  beat: vi.fn(async () => ({ cancelRequested: false })),
+  beat: vi.fn(async (_id: number, _progress: { etaSeconds: number | null }) => ({ cancelRequested: false })),
   closeBuild: vi.fn(async () => undefined),
   recordFile: vi.fn(async () => undefined),
   BEAT_EVERY_MS: 5_000,
@@ -73,5 +73,27 @@ describe('a build in the dump worker (ADR-0106)', () => {
     expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
       status: 'failed', error: 'The dump worker stopped; start the build again.',
     }));
+  });
+
+  it('starts the time left again when the download ends and the read begins (#1474)', async () => {
+    vi.useFakeTimers({ now: 0 });
+    const etas: Array<number | null> = [];
+    ledger.beat.mockImplementation(async (_id: number, progress: { etaSeconds: number | null }) => {
+      etas.push(progress.etaSeconds);
+      return { cancelRequested: false };
+    });
+    read.readDump.mockImplementation(async (_file: unknown, _consumer: unknown, options: { onProgress: (p: object) => void }) => {
+      vi.setSystemTime(0);
+      options.onProgress({ downloaded: 0, read: 0, lines: 0 });
+      vi.setSystemTime(120_000);
+      options.onProgress({ downloaded: 1, read: 0, lines: 0 });
+      // The read starts at 0 with the whole file downloaded: a new pass, with no estimate in its first minute.
+      vi.setSystemTime(130_000);
+      options.onProgress({ downloaded: 1, read: 0.1, lines: 1 });
+      await vi.advanceTimersByTimeAsync(5_000);
+      return { bytes: 1, lines: 3, checksumActual: 'a'.repeat(40) };
+    });
+    await runBuild(claimed, new AbortController().signal);
+    expect(etas.at(-1)).toBeNull();
   });
 });

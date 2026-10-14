@@ -32,6 +32,8 @@ export interface BuildProgressRecord {
   downloaded: number;
   read: number;
   lines: number;
+  /** Seconds the pass being read has left at its pace so far (`PassClock`); null while there is no telling. */
+  etaSeconds: number | null;
 }
 
 /** How often a running build says it is alive and how far it got (#1463, #1467). */

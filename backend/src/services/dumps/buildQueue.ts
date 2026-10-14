@@ -23,6 +23,8 @@ export interface DumpBuildProgress {
   buildId: number;
   /** When the build last said it is alive; null while it waits for the worker. */
   heartbeatAt: Date | null;
+  /** Seconds the pass being read has left at its pace so far; null while there is no telling. */
+  etaSeconds: number | null;
 }
 
 /**
@@ -49,7 +51,9 @@ async function localCopyName(descriptor: DumpDescriptor): Promise<string> {
 function progressOf(dump: DumpKey, build: ActiveBuild): DumpBuildProgress {
   // A row from before migration 101 asked for nothing: it was a verify or keep build the old code ran.
   const request = build.request as { kind: 'verify' | 'keep' } | null;
-  const progress = build.progress as { phase: 'resolving' | 'reading'; message: string; downloaded: number; read: number; lines: number } | null;
+  const progress = build.progress as {
+    phase: 'resolving' | 'reading'; message: string; downloaded: number; read: number; lines: number; etaSeconds?: number | null;
+  } | null;
   const queued = build.status === 'queued';
   return {
     dump,
@@ -64,6 +68,7 @@ function progressOf(dump: DumpKey, build: ActiveBuild): DumpBuildProgress {
     lines: progress?.lines ?? 0,
     buildId: build.id,
     heartbeatAt: queued ? null : build.heartbeat_at,
+    etaSeconds: progress?.etaSeconds ?? null,
   };
 }
 

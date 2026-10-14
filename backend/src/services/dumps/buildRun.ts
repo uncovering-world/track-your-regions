@@ -12,6 +12,7 @@ import { fetchText, sizeOf } from './fetch.js';
 import { BEAT_EVERY_MS, beat, closeBuild, recordFile, type BuildProgressRecord, type ClaimedBuild } from './ledger.js';
 import { dumpsDir } from './buildQueue.js';
 import { keeperOf } from './keepers.js';
+import { PassClock } from './passClock.js';
 import { countLines, readDump, type ReadOptions } from './read.js';
 
 function verifiedMessage(file: DumpFile, lines: number, checksumActual: string | null): string {
@@ -31,7 +32,10 @@ async function resolveFile(descriptor: DumpDescriptor, signal: AbortSignal, only
 }
 
 /** What the read reports to the build's progress and notes. */
-function readOptions(descriptor: DumpDescriptor, progress: BuildProgressRecord, signal: AbortSignal, notes: string[]): ReadOptions {
+function readOptions(
+  descriptor: DumpDescriptor, progress: BuildProgressRecord, signal: AbortSignal, notes: string[],
+  clock: PassClock, total: number | null,
+): ReadOptions {
   return {
     dumpsDir: dumpsDir(),
     signal,
@@ -39,6 +43,9 @@ function readOptions(descriptor: DumpDescriptor, progress: BuildProgressRecord, 
       progress.downloaded = downloaded;
       progress.read = read;
       progress.lines = lines;
+      // The download and the read are two passes over the file: the read's first report falls below the
+      // download's last, and the clock starts again. A ranged download counts the bytes already held.
+      progress.etaSeconds = clock.observe(read > 0 ? read : downloaded, total, Date.now());
     },
     onNote: note => {
       notes.push(note);
@@ -59,7 +66,10 @@ export async function runBuild(claimed: ClaimedBuild, stop: AbortSignal): Promis
   const controller = new AbortController();
   const onStop = () => controller.abort(new WorkerStopping('The dump worker stopped; start the build again.'));
   stop.addEventListener('abort', onStop, { once: true });
-  const progress: BuildProgressRecord = { phase: 'resolving', message: 'Finding the newest complete file...', downloaded: 0, read: 0, lines: 0 };
+  const progress: BuildProgressRecord = {
+    phase: 'resolving', message: 'Finding the newest complete file...', downloaded: 0, read: 0, lines: 0, etaSeconds: null,
+  };
+  const clock = new PassClock();
   const notes: string[] = [];
   const heart = setInterval(() => {
     beat(claimed.id, progress)
@@ -76,10 +86,15 @@ export async function runBuild(claimed: ClaimedBuild, stop: AbortSignal): Promis
     await recordFile(claimed.id, file);
     progress.phase = 'reading';
     progress.message = `Reading ${file.fileName}${dumpsDir() ? ' into the local copy' : ' from the host'}...`;
-    const options = readOptions(descriptor, progress, controller.signal, notes);
+    const options = readOptions(descriptor, progress, controller.signal, notes, clock, file.expectedBytes);
     const keeper = kind === 'keep' ? keeperOf(descriptor.key) : null;
     const result = keeper
-      ? await keeper.build(file, { ...options, buildId: claimed.id, onPhase: message => { progress.message = message; } })
+      ? await keeper.build(file, {
+        ...options,
+        buildId: claimed.id,
+        // A new step: a pass starts its own clock, and a step that reads no file has no estimate.
+        onPhase: message => { progress.message = message; progress.etaSeconds = null; clock.reset(); },
+      })
       : await readDump(file, countLines(), options);
     const message = [verifiedMessage(file, result.lines, result.checksumActual), ...(keeper ? ['built and swapped in'] : []), ...notes].join('; ');
     console.log(`[Dumps] ${descriptor.key}: ${message}`);
