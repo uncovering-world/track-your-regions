@@ -13,8 +13,9 @@ is what the admin panel's *Verify newest* runs.
 Code: `backend/src/services/dumps/` — `catalog.ts` (which dumps exist and how
 the newest complete file of each is found), `fetch.ts` (the door to the host),
 `rangedDownload.ts` (a local copy over several connections), `read.ts`
-(reading and verifying), `job.ts` (the in-memory build and its
-progress), `ledger.ts` (the `dump_builds` table).
+(reading and verifying), `buildQueue.ts` (the panel's side of a build),
+`dumpWorker.ts` and `buildRun.ts` (the worker's), `keepers.ts` (what a build
+keeps), `ledger.ts` (the `dump_builds` table).
 
 ## The catalog
 
@@ -146,9 +147,9 @@ enforces the Wikimedia User-Agent policy; it publishes no `robots.txt`.
 process, sends the bot `userAgent()` with the purpose `public dump builds` on
 every request, follows redirects, and never retries: a failed request fails
 the build, and an admin starts it again. A read opens one connection and a
-download into the local copy up to three, so another build waits for a slot —
-possibly behind a download or a read of hours — and a cancel ends that wait
-rather than leaving the build queued.
+download into the local copy up to three. The worker runs one build at a
+time, so a second build waits as a queued row (§ A build), not on a
+connection.
 
 What the files may be used for is the dump's own licence, and a table built
 from one carries it (ADR-0101): Wikidata's entities and the pageview counts
@@ -156,38 +157,57 @@ are CC0; a table derived from the Wikipedia dumps is CC BY-SA and attributed.
 
 ## A build
 
-`startBuild` in `job.ts` resolves the newest complete file,
-opens a `dump_builds` row (`openBuild`), reads it — through the counting
-consumer for a `verify` build, through the dump's builder (`KEEPERS`) for a
-`keep` build, refused for a dump with none — and closes the row
-(`closeBuild`) as `success`, `failed` or `cancelled`. Progress — what is
-being resolved, the file, the bytes downloaded and read, the lines — is held
-in memory (`buildProgress`) and lost on a restart.
+A build runs in the dump worker, a process of its own
+([ADR-0106](../decisions/0106-public-dump-builds-run-in-a-worker-process-queued-through-the-ledger.md)),
+so an edit, a `git pull` or a restart of the backend does not stop it. The
+backend and the worker talk only through the build's `dump_builds` row:
 
-One build per dump runs at a time, whatever process runs it (#1463). A running
-build beats its row's `heartbeat_at` every minute (`beat`, `BEAT_EVERY_MS`),
-and a start is refused while the dump has a `running` row that beat within the
-last five minutes (`liveBuildOf`): a build a script runs reads the same local
-copy, and a second download of the 156 GB entities dump beside it would fill
-the disk under both. The ledger holds the rule too: a unique index admits one
-`running` row per dump, so two starts that pass the check together cannot both
-open a build (`BuildAlreadyRunning`). Each row names what runs it (`runner`):
-this backend's builds are `server:<hostname>` (`SERVER_RUNNER`), and compose
-fixes the backend's host name (`hostname:` in `docker-compose.yml`) so it stays
-the same across a restart and a recreated container; anything else that opens
-a build (`openBuild`) names itself, a script inside that container included. A `running` row is closed as `failed`
-(`closeOrphanedBuilds`) when it stopped beating, and at startup
-(`backend/src/index.ts`) also at once when this backend's own previous run
-left it; the panel's list and a start of the dump close the stopped ones too.
-A build alive in another process is left alone and survives this one's
-restart.
+1. **Queued.** `startBuild` in `buildQueue.ts` checks the request — a keeping
+   build needs a builder (`keeperOf` in `keepers.ts`), a build from the local
+   copy needs one — and queues a row (`enqueueBuild`) holding what was asked
+   for (`request`: the kind, and the local copy's file to keep to).
+2. **Taken.** The worker (`workLoop` in `dumpWorker.ts`, entry
+   `backend/src/worker.ts`, run as the `dump-worker` compose service with
+   `npm run worker` and no file watcher) takes the oldest queued row
+   (`claimNextBuild`, `FOR UPDATE SKIP LOCKED`) and runs it (`runBuild` in
+   `buildRun.ts`): it resolves the file and records it (`recordFile`), reads it
+   through the counting consumer for a `verify` build or the dump's builder for
+   a `keep` build, and closes the row (`closeBuild`) as `success`, `failed` or
+   `cancelled`, with what it did on the way (an older copy removed) in the
+   message either way.
+3. **Followed.** Every `BEAT_EVERY_MS` (five seconds) the build writes its
+   progress — phase, message, bytes downloaded and read, lines — and its
+   heartbeat to the row (`beat`), and the panel reads them back
+   (`buildProgress`), whatever process runs the build.
+4. **Stopped.** *Cancel* (`requestCancel`) closes a queued row at once and
+   marks a running one (`cancel_requested_at`); the build reads the mark with
+   its next heartbeat and ends as `cancelled`. A worker that stops (SIGTERM)
+   ends its build as `failed`, saying to start it again.
 
-`dump_builds` (migration `095-a-dump-build-is-recorded.sql`) records each
-build: the dump, the file and its date, the mode (`stream` or `local`), the
-bytes and lines read, the published and the computed checksum, the status
-and the error, who started it, what runs it, when it last beat and when it
-finished. It is what says which
-dump a consumer's tables were built from.
+One build per dump is queued or running at a time, whatever process runs it
+(#1463): a unique index admits one such row per dump, and a second request is
+refused with 409 (`BuildAlreadyRunning`) — a second download of the 156 GB
+entities dump beside the first would fill the disk under both. Each row names
+what runs it (`runner`): the worker's builds are `worker:<hostname>`
+(`WORKER_RUNNER`), and compose fixes the worker's host name so it stays the
+same across a restart and a recreated container; anything else that takes a
+build names itself. A `running` row is closed as `failed`
+(`closeOrphanedBuilds`) when it stopped beating for five minutes, and a worker
+that starts also closes at once the rows of its own runner, which its previous
+run left; the backend's startup and the panel's list close the stopped ones
+too. A queued row waits for a worker: a stack without one shows it waiting.
+
+The worker runs the code it started with: a change to the build reaches it on
+`docker compose restart dump-worker`, which stops the build it is running.
+
+`dump_builds` (migrations `095-a-dump-build-is-recorded.sql`, `100-…` and
+`101-a-dump-build-is-queued-for-the-worker.sql`) records each build: the dump,
+what was asked for, the file and its date once resolved (none for a build that
+ended before it found one), the mode (`stream` or `local`), the bytes and lines
+read, the published and the computed checksum, the status (`queued`,
+`running`, `success`, `failed`, `cancelled`) and the error, who started it,
+what runs it, its progress and when it last beat, a cancel asked for, and when
+it finished. It is what says which dump a consumer's tables were built from.
 
 ## The local Wikidata subset
 
@@ -319,18 +339,18 @@ and how its last build ended: *Verified*, *Failed* or *Cancelled*, when, the
 dump's date — a day, or for the pageview files the month their counts cover
 (`datedBy`) — its size and lines, and what verified it (`sha1 matched`,
 `size matched`); a failed build's error sits under its row. The other builds
-among its last three (`recentBuilds`) open under the row. *Verify newest* runs
-the counting consumer over the newest complete file and the row turns into its
-progress, polled every three seconds while the page is visible; *Cancel* stops
-it. A dump something is built from (`keeps` in the list) also has *Build
+among its last three (`recentBuilds`) open under the row. *Verify newest* queues
+a build of the counting consumer over the newest complete file and the row
+turns into its progress, polled every three seconds while the page is visible:
+*Waiting for the dump worker* while it is queued, then the worker's phase, its
+bytes and lines, and when it was last seen alive; *Cancel* stops it, queued or
+running. A dump something is built from (`keeps` in the list) also has *Build
 newest*, which starts a `keep` build, and, where a local copy exists
 (`localCopy` in the list, shown under the row's description with its date and
 size), *Build \<date\> copy*, which starts one from that copy. Such a row
 also names what is built and the dump date of the build in place, or says it
-was never built. A build of the dump that
-another process runs (`elsewhere` in the list) takes the row's progress cell,
-with when it started and when it last beat, and the row offers no button
-until it ends; the page polls every 30 seconds while one runs.
+was never built. While a build of the dump is queued or running, the row offers no other
+button.
 The routes are `GET /api/admin/dumps`, `POST /api/admin/dumps/:dump/build`,
 `POST /api/admin/dumps/:dump/keep` and `POST /api/admin/dumps/:dump/cancel`
 (`backend/src/controllers/admin/dumpController.ts`);
