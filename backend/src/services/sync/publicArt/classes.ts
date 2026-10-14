@@ -160,6 +160,21 @@ export const WORSHIP_DESIGNATIONS: Record<string, string> = {
 };
 
 /**
+ * What stands under the sky by what it is: a colossal statue and an obelisk
+ * (#1444). Not the commemorative set, since a memorial may be a plaque in a
+ * nave or a hall. Read only of a work the rule found
+ * inside a museum or a place of worship that no kind offers a reader, where
+ * it decides whether the work stands on the grounds — the Mother Ukraine
+ * Monument on the war museum's hill, the Philae obelisk in Kingston Lacy's
+ * garden — or in a hall, like the Veiled Christ in the Cappella Sansevero,
+ * which is a `sculpture` and nothing more.
+ */
+export const OUTDOOR_CLASSES: Record<string, string> = {
+  Q1779653: 'colossal statue',
+  Q170980: 'obelisk',
+};
+
+/**
  * A container that is indoors whatever the building is called. The Dendera
  * zodiac is located in Room 325 of the Sully Wing of the Louvre *Palace*,
  * which Wikidata types a palace and not a museum; the room says enough.

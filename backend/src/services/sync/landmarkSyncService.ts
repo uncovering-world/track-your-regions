@@ -13,6 +13,7 @@ import type { SyncProgress, WikidataLandmark, ContentsByKind } from './types.js'
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { FetchResult, ProcessItemResult, SyncRunContext } from './syncContract.js';
 import { admittedExternalIds } from './admission.js';
+import { placesOtherSourcesOffer } from './shownElsewhere.js';
 import { collectPublicArt } from './publicArt/pipeline.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import {
@@ -188,6 +189,9 @@ async function fetchLandmarkItems(
   imageCredits = new Map();
   storedCredits = await readStoredCredits(LANDMARK_SOURCE_ID);
   const admitted = await admittedExternalIds(LANDMARK_SOURCE_ID);
+  // The places another kind offers a reader, so a work outdoors on a venue no
+  // kind offers stays public art rather than being refused onto no card (#1444).
+  const offered = await placesOtherSourcesOffer(LANDMARK_SOURCE_ID);
 
   const { items, fetched, filtered } = await collectPublicArt({
     sparql: collectingSparql(progress, refreshCache),
@@ -196,7 +200,7 @@ async function fetchLandmarkItems(
       if (progress.cancel) throw new Error('Sync cancelled');
       await delay(SPARQL_DELAY_MS);
     },
-  }, admitted);
+  }, admitted, offered);
 
   disambiguateDuplicateNames(items);
 

@@ -309,13 +309,16 @@ function collectionFacts(facts: EntityFacts, containers: Map<string, ContainerFa
  * reason it gave.
  *
  * `admitted` is what the source holds as admitted before the run, so the
- * stay line has something to hold. Items come back most famous first, which
+ * stay line has something to hold. `offered` is the places another kind offers a
+ * reader, which decides whether a work outdoors on a venue's grounds is
+ * stranded there (#1444). Items come back most famous first, which
  * is the order the run writes them in and the order a person watching it
  * reads.
  */
 export async function collectPublicArt(
   run: QueryRunner,
   admitted: ReadonlySet<string>,
+  offered?: ReadonlySet<string>,
 ): Promise<CollectedPublicArt> {
   const trees = await collectTrees(run);
   const pool = await collectPool(run, trees, admitted);
@@ -335,7 +338,7 @@ export async function collectPublicArt(
       onEarth: entity.onEarth,
       lat: entity.lat,
       lon: entity.lon,
-    }, trees);
+    }, trees, offered);
     if (!verdict.pass) {
       filtered.push({
         externalId: entity.qid, name: entity.label, reason: verdict.reason,

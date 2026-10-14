@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
-import { worksShownByOtherSources } from './shownElsewhere.js';
+import { placesOtherSourcesOffer, worksShownByOtherSources } from './shownElsewhere.js';
 
 /**
  * The works another kind already shows a reader, read by a kind that would take
@@ -85,5 +85,22 @@ describe('the works another kind shows a reader (ADR-0103)', () => {
     await member(archaeology);
     await link();
     expect((await worksShownByOtherSources(archaeology)).has(VENUS_QID)).toBe(false);
+  });
+});
+
+describe('the places other sources offer (#1444)', () => {
+  it('names a place another source offers through an admitted, passed membership', async () => {
+    await member(artMuseums);
+    expect((await placesOtherSourcesOffer(archaeology)).has(UFFIZI_QID)).toBe(true);
+  });
+
+  it('does not name a place waiting on its curator', async () => {
+    await member(artMuseums, 'pending');
+    expect((await placesOtherSourcesOffer(archaeology)).has(UFFIZI_QID)).toBe(false);
+  });
+
+  it("does not name the asking source's own places", async () => {
+    await member(artMuseums);
+    expect((await placesOtherSourcesOffer(artMuseums)).has(UFFIZI_QID)).toBe(false);
   });
 });

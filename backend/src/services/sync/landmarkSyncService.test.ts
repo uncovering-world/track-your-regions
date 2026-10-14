@@ -43,6 +43,7 @@ vi.mock('./handOvers.js', () => ({
   readHandOvers: vi.fn().mockResolvedValue(new Map()),
 }));
 vi.mock('./admission.js', () => ({ admittedExternalIds: vi.fn() }));
+vi.mock('./shownElsewhere.js', () => ({ placesOtherSourcesOffer: vi.fn().mockResolvedValue(new Set(['Q19675'])) }));
 vi.mock('./wikidataUtils.js', () => ({
   delay: vi.fn(),
   WaitBudget: class WaitBudget {},
@@ -117,6 +118,9 @@ describe('syncLandmarks', () => {
 
     expect(mockedAdmitted).toHaveBeenCalledWith(3);
     expect(mockedCollect.mock.calls[0][1]).toEqual(new Set(['Q337179']));
+    // And the places another kind offers, so a work outdoors on a venue no
+    // kind offers stays public art (#1444).
+    expect(mockedCollect.mock.calls[0][2]).toEqual(new Set(['Q19675']));
     expect(fetched.fetchedCount).toBe(5);
     expect(fetched.filtered).toEqual([refusal]);
     expect(fetched.items.map((i) => i.qid)).toEqual(['Q337179']);
