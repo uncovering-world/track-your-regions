@@ -28,9 +28,11 @@
 
 import { extractQid, isQid } from '../wikidataUtils.js';
 import {
-  doorOf, failIfTruncated, HINT_PREFIX, inWikipediaEditions, values, type Door,
+  doorOf, failIfTruncated, HINT_PREFIX, inWikipediaEditions, values, type Door, type SparqlFn,
 } from '../wikidataQueries.js';
 import { parsePool, POOL_DETAILS, type PoolWork } from './queries.js';
+import { readsSubset } from '../subset/reader.js';
+import { subsetVenueHoldings, subsetWorksByIds } from '../subset/museum.js';
 
 /** One current statement of a venue's: this object is in its collection (`P195`), or stands in it (`P276`). */
 export interface VenueHolding {
@@ -81,6 +83,10 @@ export async function fetchVenueHoldings(
   const asked = venueQids.filter(isQid);
   if (!asked.length) return [];
   const { sparql, step } = doorOf(door);
+  // The floor the question asked by every site, held again by Wikipedia editions (ADR-0082).
+  const recount = (holdings: VenueHolding[]) =>
+    inWikipediaEditions(sparql, holdings, { floor, qidOf: (holding) => holding.work, before: step });
+  if (readsSubset(sparql)) return recount(await subsetVenueHoldings(asked, floor));
   const rows = await sparql(`${HINT_PREFIX}
     SELECT ?w ?sl ?venue ?rel ?rank WHERE {
       hint:Query hint:optimizer "None" .
@@ -105,8 +111,7 @@ export async function fetchVenueHoldings(
     if ((row.rank?.value ?? '').endsWith('#DeprecatedRank')) continue;
     out.push({ work, venue, property, sitelinks: parseInt(row.sl?.value || '0', 10) });
   }
-  // The floor the question asked by every site, held again by Wikipedia editions (ADR-0082).
-  return inWikipediaEditions(sparql, out, { floor, qidOf: (holding) => holding.work, before: step });
+  return recount(out);
 }
 
 /** An object asked for by id: the pool's row for it, and every class it carries with its label. */
@@ -145,10 +150,27 @@ export async function fetchWorksByIds(
   door: Door,
   qids: string[],
 ): Promise<Map<string, WorkDetails>> {
-  const out = new Map<string, WorkDetails>();
   const asked = qids.filter(isQid);
-  if (!asked.length) return out;
+  if (!asked.length) return new Map();
   const { sparql, step } = doorOf(door);
+  const read = readsSubset(sparql) ? await subsetWorksByIds(asked) : await liveWorksByIds(sparql, asked);
+  const out = new Map<string, WorkDetails>();
+  for (const [qid, { work, classes }] of read) {
+    const typeQid = lowestClass(classes);
+    const label = typeQid === null ? null : classes.get(typeQid) ?? null;
+    out.set(qid, {
+      work: { ...work, typeQid, type: label !== null && !isQid(label) ? label : 'object' },
+      classes,
+    });
+  }
+  // Every object the venue side keeps enters the pool, and the pool's lines,
+  // its iconic mark and its stored count all read Wikipedia editions (ADR-0082).
+  await inWikipediaEditions(sparql, [...out.values()].map((details) => details.work), { before: step });
+  return out;
+}
+
+/** The pool's row and the classes of each object, as the query service answers them, untyped. */
+async function liveWorksByIds(sparql: SparqlFn, asked: string[]): Promise<Map<string, WorkDetails>> {
   const rows = await sparql(`
     SELECT ?w ?wLabel ?sl ?img ?creator ?creatorLabel (YEAR(?inception) AS ?year) ?cls ?clsLabel WHERE {
       VALUES ?w { ${values(asked)} }
@@ -166,21 +188,7 @@ export async function fetchWorksByIds(
     classes.set(cls, label && !isQid(label) ? label : cls);
     classesOf.set(work, classes);
   }
-  for (const work of parsePool(rows, 'object', null)) {
-    const classes = classesOf.get(work.qid) ?? new Map<string, string>();
-    const typeQid = lowestClass(classes);
-    const label = typeQid === null ? null : classes.get(typeQid) ?? null;
-    out.set(work.qid, {
-      work: {
-        ...work,
-        typeQid,
-        type: label !== null && !isQid(label) ? label : 'object',
-      },
-      classes,
-    });
-  }
-  // Every object the venue side keeps enters the pool, and the pool's lines,
-  // its iconic mark and its stored count all read Wikipedia editions (ADR-0082).
-  await inWikipediaEditions(sparql, [...out.values()].map((details) => details.work), { before: step });
-  return out;
+  return new Map(parsePool(rows, 'object', null).map((work) => [
+    work.qid, { work, classes: classesOf.get(work.qid) ?? new Map<string, string>() },
+  ]));
 }

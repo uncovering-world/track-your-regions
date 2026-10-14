@@ -43,6 +43,11 @@ import {
   type QueryRunner,
   type SparqlFn,
 } from '../wikidataQueries.js';
+import { readsSubset } from '../subset/reader.js';
+import { DISSOLVED_UNKNOWN } from './venueTest.js';
+import {
+  subsetEntityDetails, subsetEntityEdges, subsetMuseumParts, subsetVenueStatements, subsetWorkPool,
+} from '../subset/museum.js';
 
 export { LABEL_LANGS, isQid };
 
@@ -316,6 +321,12 @@ export async function fetchBroadPool(
   root: { qid: string; type: string },
   limit = POOL_LIMIT,
 ): Promise<PoolWork[]> {
+  if (readsSubset(run.sparql)) {
+    run.phase(`Reading ${root.type}s from the local subset...`);
+    const works = await subsetWorkPool([root.qid], POOL_MIN_SITELINKS, root);
+    run.phase(`Counting the Wikipedia editions of ${works.length} ${root.type}s...`);
+    return inWikipediaEditions(run.sparql, works, { floor: POOL_MIN_SITELINKS, before: run.step });
+  }
   const works = new Map<string, PoolWork>();
   for (let i = 0; i < POOL_BANDS.length; i++) {
     const band = POOL_BANDS[i];
@@ -343,6 +354,10 @@ export async function fetchClassPool(
 ): Promise<PoolWork[]> {
   if (!classQids.length) return [];
   const { sparql, step } = doorOf(door);
+  if (readsSubset(sparql)) {
+    const works = await subsetWorkPool(classQids, POOL_MIN_SITELINKS, null);
+    return inWikipediaEditions(sparql, works, { floor: POOL_MIN_SITELINKS, before: step });
+  }
   const rows = await sparql(
     classPoolQuery(classQids, limit),
     { kind: 'pool', label: `pool: ${classQids.length} narrow classes` },
@@ -398,6 +413,7 @@ export async function fetchVenueStatements(
   workQids: string[],
 ): Promise<RawStatement[]> {
   if (!workQids.length) return [];
+  if (readsSubset(sparql)) return subsetVenueStatements(workQids);
   const rows = await sparql(`
     SELECT ?w ?rel ?venue ?rank WHERE {
       VALUES ?w { ${values(workQids)} }
@@ -458,10 +474,24 @@ export async function fetchEntityDetails(
   qids: string[],
   { recount = true }: { recount?: boolean } = {},
 ): Promise<Map<string, EntityDetails>> {
-  const out = new Map<string, EntityDetails>();
-  if (!qids.length) return out;
+  if (!qids.length) return new Map();
   const { sparql, step } = doorOf(door);
+  const out = readsSubset(sparql) ? await subsetEntityDetails(qids) : await liveEntityDetails(sparql, qids);
+  // A venue's own fame decides folds and, where it is a row of its own, its
+  // line: the same count the works are held to (ADR-0082). A caller that reads
+  // no fame — the picture repair — says so and is not asked the second question.
+  if (recount) await inWikipediaEditions(sparql, [...out.values()], { before: step });
+  return out;
+}
 
+/** A dissolution as the query service answers it, an unknown value read as one of unknown date. */
+function dissolvedValue(value: string | undefined): string | null {
+  if (!value) return null;
+  return value.startsWith(UNKNOWN_VALUE_PREFIX) ? DISSOLVED_UNKNOWN : value;
+}
+
+async function liveEntityDetails(sparql: SparqlFn, qids: string[]): Promise<Map<string, EntityDetails>> {
+  const out = new Map<string, EntityDetails>();
   const rows = await sparql(`
     SELECT ?e ?eLabel ?eDescription ?coord ?dissolved ?img ?site ?article ?sl ?countryLabel WHERE {
       VALUES ?e { ${values(qids)} }
@@ -498,14 +528,10 @@ export async function fetchEntityDetails(
       website: row.site?.value || null,
       articleUrl: row.article?.value || null,
       sitelinks: parseInt(row.sl?.value || '0', 10),
-      dissolved: row.dissolved?.value || null,
+      dissolved: dissolvedValue(row.dissolved?.value),
     });
   }
   applyPreferred(out, kept);
-  // A venue's own fame decides folds and, where it is a row of its own, its
-  // line: the same count the works are held to (ADR-0082). A caller that reads
-  // no fame — the picture repair — says so and is not asked the second question.
-  if (recount) await inWikipediaEditions(sparql, [...out.values()], { before: step });
   return out;
 }
 
@@ -515,6 +541,7 @@ export async function fetchEntityEdges(
 ): Promise<Map<string, EntityEdges>> {
   const out = new Map<string, EntityEdges>();
   if (!qids.length) return out;
+  if (readsSubset(sparql)) return subsetEntityEdges(qids);
   for (const qid of qids) out.set(qid, { classes: [], parents: [], locations: [] });
 
   // A location is read statement by statement (`standing`, the shared kit's phrasing): best-
@@ -567,6 +594,7 @@ export async function fetchMuseumParts(
 ): Promise<Map<string, MuseumPart[]>> {
   const out = new Map<string, MuseumPart[]>();
   if (!qids.length) return out;
+  if (readsSubset(sparql)) return subsetMuseumParts(qids);
   for (const qid of qids) out.set(qid, []);
   const rows = await sparql(`
     SELECT ?e ?part ?coord WHERE {
