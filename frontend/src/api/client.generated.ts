@@ -3751,6 +3751,25 @@ export type DumpsDumpsItemKeeps = {
   built: DumpsDumpsItemKeepsBuilt;
 } | null;
 
+/**
+ * A build of this dump running in another process (a script, another server), which refuses a new build until it ends (#1463); null when none runs or this process runs it.
+ */
+export type DumpsDumpsItemElsewhere = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  buildId: number;
+  fileName: string;
+  /** @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$ */
+  startedAt: string;
+  /**
+     * When the build last said it is alive; it beats every minute.
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+     */
+  heartbeatAt: string;
+} | null;
+
 export type DumpsDumpsItem = {
   key: DumpsDumpsItemKey;
   /** Who publishes the dump: Wikidata, English Wikipedia, Wikimedia pageviews. */
@@ -3763,6 +3782,8 @@ export type DumpsDumpsItem = {
   builds: DumpBuild[];
   /** What a keeping build of this dump makes (the local Wikidata subset), or null where nothing is built from it yet. */
   keeps: DumpsDumpsItemKeeps;
+  /** A build of this dump running in another process (a script, another server), which refuses a new build until it ends (#1463); null when none runs or this process runs it. */
+  elsewhere: DumpsDumpsItemElsewhere;
 };
 
 /**
