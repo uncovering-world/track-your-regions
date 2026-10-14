@@ -19,7 +19,23 @@ describe('museumNature', () => {
   });
   it('the Hermitage has a department, not a nature', () => {
     const n = museumNature({ qid: 'Q132783', classes: [ART_MUSEUM], categories: ['Egyptological collections in Russia', 'Museums of ancient Greece in Russia'], ...at(59.94, 30.31) }, trees);
-    expect(n).toEqual({ nature: 'department', why: 'category: Egyptological collections in Russia' });
+    expect(n).toEqual({ nature: 'department', why: 'category: Egyptological collections in Russia', artMuseum: 'class: art museum' });
+  });
+  it('the Altes Museum is archaeological by the map alone (#889)', () => {
+    const n = museumNature({ qid: 'Q156722', classes: ['Q16735822', ART_MUSEUM], categories: ['Art museums and galleries in Berlin', 'Museums of ancient Greece in Germany'], mapped: ['archaeological'], ...at(52.52, 13.4) }, trees);
+    expect(n).toEqual({ nature: 'archaeological', why: 'map: museum=archaeological' });
+  });
+  it('a department the map calls an art museum says so, and the map comes first', () => {
+    const n = museumNature({ qid: 'Q657415', classes: [ART_MUSEUM], categories: ['Egyptological collections in the United States'], mapped: ['art'], ...at(41.51, -81.61) }, trees);
+    expect(n).toEqual({ nature: 'department', why: 'category: Egyptological collections in the United States', artMuseum: 'map: museum=art' });
+  });
+  it('a natural history museum the map calls archaeological is not marked natural history', () => {
+    const n = museumNature({ qid: 'Q1', classes: [NAT_HIST], categories: [], mapped: ['archaeological', 'history'], ...at(0, 0) }, trees);
+    expect(n).toEqual({ nature: 'archaeological', why: 'map: museum=archaeological' });
+  });
+  it('the bare Archaeological museums category is a nature (#889)', () => {
+    const n = museumNature({ qid: 'Q3915253', classes: [], categories: ['Archaeological museums', 'Museums in Yerevan'], ...at(40.14, 44.53) }, trees);
+    expect(n).toEqual({ nature: 'archaeological', why: 'category: Archaeological museums' });
   });
   it('the Uffizi is neither', () => {
     expect(museumNature({ qid: 'Q51252', classes: [ART_MUSEUM], categories: ['Art museums and galleries in Florence'], ...at(43.77, 11.26) }, trees)).toEqual({ nature: 'none' });
@@ -147,6 +163,16 @@ describe('museumVerdict', () => {
   it('refuses a museum of neither nature that holds no find, without counting to zero', () => {
     const v = museumVerdict({ facts: { ...facts, qid: 'Q51252' }, sitelinks: 73, findsForTheDoor: 0, nature: { nature: 'none' }, admitted: new Set(), line, unshownFinds: [] });
     expect(v).toEqual({ pass: false, reason: 'not an archaeology museum by category or class (no find above the line)' });
+  });
+  it('refuses a department in an art museum that holds no find and was never admitted (#889)', () => {
+    const cleveland = { nature: 'department' as const, why: 'category: Egyptological collections in the United States', artMuseum: 'map: museum=art' };
+    expect(museumVerdict({ facts: { ...facts, qid: 'Q657415' }, sitelinks: 32, findsForTheDoor: 0, nature: cleveland, admitted: new Set(), line, unshownFinds: [] }))
+      .toEqual({ pass: false, reason: 'an antiquities department in an art museum (map: museum=art, category: Egyptological collections in the United States)' });
+    // Admitted already, or carried by a find, it is asked as before.
+    expect(museumVerdict({ facts: { ...facts, qid: 'Q657415' }, sitelinks: 32, findsForTheDoor: 0, nature: cleveland, admitted: new Set(['Q657415']), line, unshownFinds: [] }))
+      .toMatchObject({ pass: true, held: true });
+    expect(museumVerdict({ facts: { ...facts, qid: 'Q657415' }, sitelinks: 32, findsForTheDoor: 1, nature: cleveland, admitted: new Set(), line, unshownFinds: [] }))
+      .toMatchObject({ pass: true, held: true });
   });
   it('refuses a vetoed museum with the veto', () => {
     expect(museumVerdict({ facts, sitelinks: 43, findsForTheDoor: 1, nature: { veto: 'a natural history museum, not an archaeology museum' }, admitted: new Set(), line, unshownFinds: [] }))

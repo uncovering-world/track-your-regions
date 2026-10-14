@@ -39,13 +39,15 @@ export interface OsmObject {
  * OSM calls the thing, and `natural` because a lake tagged `natural=water` is
  * how the measurement told Lake Bled from a ruin. `amenity` and `building` say
  * a place is used today — a congregation, residents — which a dig tag on the
- * same item does not undo (#1352: Reims Cathedral, Lingaraja Temple). `site_type` is deliberately
+ * same item does not undo (#1352: Reims Cathedral, Lingaraja Temple). `museum`
+ * is what the map says a museum is about (#889): `museum=archaeological` on the
+ * Altes Museum, `museum=art` on the Cleveland Museum of Art. `site_type` is deliberately
  * absent: the tagging wiki does not document it for `historic=archaeological_site`
  * and it was unused across all 1,544 objects measured on 2026-09-14.
  */
 export const OSM_TAG_KEYS = [
   'historic', 'place', 'archaeological_site', 'ruins', 'heritage',
-  'tourism', 'boundary', 'man_made', 'natural', 'name', 'amenity', 'building',
+  'tourism', 'boundary', 'man_made', 'natural', 'name', 'amenity', 'building', 'museum',
 ] as const;
 
 /**

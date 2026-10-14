@@ -16,10 +16,14 @@ import { describe, it, expect, vi } from 'vitest';
 import {
   collectArchaeology,
   type CollectedArchaeology,
-  type CollectedArchaeologyMuseum,
 } from './pipeline.js';
 import {
   answer,
+  collect,
+  item,
+  reason,
+  LINE,
+  SHOWN,
   categoryDoor,
   osmDoor,
   world,
@@ -31,49 +35,7 @@ import {
   PALACE,
   type World,
 } from './pipelineFixture.js';
-import type { SourceLine } from '../sourceLine.js';
 
-/**
- * What another kind shows a reader: the Venus de' Medici is on the Uffizi's
- * art-museum card, so the Uffizi's one ancient statue asks nothing (ADR-0103).
- */
-const SHOWN: ReadonlySet<string> = new Set(['Q774967']);
-
-const LINE: SourceLine = {
-  enterSitelinks: 22, staySitelinks: 18, find: { enterSitelinks: 18, staySitelinks: 15 },
-};
-
-function collect(w: World, opts: {
-  line?: SourceLine; admitted?: string[]; previousPlacements?: Record<string, string[]>;
-  shownElsewhere?: Iterable<string>;
-} = {}): Promise<CollectedArchaeology> {
-  const door = categoryDoor(w);
-  return collectArchaeology({
-    sparql: (query: string) => Promise.resolve(answer(w, query)),
-    previousPlacements: opts.previousPlacements ?? {},
-    admittedMuseums: new Set(opts.admitted ?? []),
-    admittedSites: new Set<string>(),
-    shownElsewhere: new Set(opts.shownElsewhere ?? SHOWN),
-    line: opts.line ?? LINE,
-    categories: door.categories,
-    categoryMembers: door.categoryMembers,
-    osm: osmDoor(w).read,
-    osmDigs: osmDoor(w).digs,
-    resolveArticles: osmDoor(w).resolveArticles,
-  });
-}
-
-/**
- * The museum row of an entity, which is what every assertion in this block
- * reads: one proposal carries the kind's two types (ADR-0058 decision 1), and a
- * site is nobody's museum however the two doors named it.
- */
-const item = (out: CollectedArchaeology, qid: string): CollectedArchaeologyMuseum | undefined => {
-  const found = out.items.find((i) => i.qid === qid);
-  return found && found.type === 'museum' ? found : undefined;
-};
-const reason = (out: CollectedArchaeology, qid: string) =>
-  out.filtered.find((f) => f.externalId === qid)?.reason;
 const treasuresOf = (out: CollectedArchaeology, qid: string) =>
   (item(out, qid)?.treasures ?? []).map((t) => t.externalId);
 
@@ -1229,16 +1191,17 @@ describe('the site door, beside the museums', () => {
     expect(result.filtered.some((f) => f.externalId === 'Q43332')).toBe(false);
   });
 
-  it('asks OpenStreetMap once, about the site candidates and nothing else', async () => {
+  it('asks OpenStreetMap once about the museums and once about the site candidates', async () => {
     const { run, osm } = both(world());
     await run;
 
-    expect(osm.calls).toHaveLength(1);
-    // The museums are not in it: a museum's nature is Wikipedia's and
-    // Wikidata's question, and asking OSM about 87 more items would be 87 more
-    // rows on somebody else's mirror for an answer nothing reads.
-    expect(osm.calls[0]).not.toContain('Q6373');
-    expect(osm.calls[0]).toContain('Q22647');
+    // The museums first, for the one tag that says what a museum is about
+    // (#889); then the sites, for the ruin and the extent.
+    expect(osm.calls).toHaveLength(2);
+    expect(osm.calls[0]).toContain('Q6373');
+    expect(osm.calls[0]).not.toContain('Q22647');
+    expect(osm.calls[1]).toContain('Q22647');
+    expect(osm.calls[1]).not.toContain('Q6373');
   });
 
   it('counts a row both doors named once, and every entity it asked about', async () => {

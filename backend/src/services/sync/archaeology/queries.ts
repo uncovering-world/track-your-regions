@@ -248,9 +248,10 @@ export async function fetchFindFacts(
  * alone has tens of thousands and has to be asked a band at a time. So the
  * classes are asked in batches, each taken whole.
  *
- * The class is only one of the two signals this kind's door reads, and it is
- * silent about most of the canon — the British Museum carries no archaeological
- * class at all. What the other signal admits is the pipeline's business: the
+ * The class is only one of the signals this kind's door reads (the category
+ * and the map are the others), and it is silent about most of the canon — the
+ * British Museum carries no archaeological class at all. What the other
+ * signals admit is the pipeline's business: the
  * museums the finds name are looked up beside this pool, and the categories are
  * read of both. This function answers only "which museums does the class say so
  * about".
