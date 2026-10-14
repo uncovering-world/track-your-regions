@@ -315,6 +315,25 @@ describe('acceptSourceValue', () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ applied: [], released: ['tags'] }));
   });
 
+  it('releases a claim on a major metadata key under its own name', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
+    const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'metadata.inDanger', new: false, curatedConflict: true }] }];
+    const { client, queries } = makeClient(['metadata.inDanger', 'metadata.website'], PROPOSAL);
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    // A metadata claim names its key (ADR-0077 decision 3), so the conflict
+    // resolves to the claim that raised it and only that one is released.
+    await answerRoute(postAcceptSource,
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['metadata.inDanger'], expectedSyncLogId: 9 } } as never,
+      res as never,
+    );
+
+    const update = queries.find(q => q.sql.includes('UPDATE experiences'));
+    expect(update?.params).toContain(JSON.stringify(['metadata.website']));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ applied: [], released: ['metadata.inDanger'] }));
+  });
+
   it('releases the coordinate on the object and on its pin together', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{

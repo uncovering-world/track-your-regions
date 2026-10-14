@@ -372,16 +372,25 @@ describe('a metadata key claimed per key', () => {
     expect(result.changedFields[0].new).toBe('https://en.wikipedia.org/wiki/Serengeti_National_Park');
   });
 
-  it('keeps a whole-column claim as a conflict, with nothing else applied', () => {
+  it('files every conflict under a name that resolves to the claim behind it', () => {
+    // The claim is in the grain the run records (ADR-0077 decision 3), so the
+    // name a reader looks a conflict's claim up by — `claimKeyFor`, in the
+    // queue, accept-source, decline-source and publishing alike — is the claim
+    // that protected it. A major key included: `metadata.inDanger` is claimed
+    // under that name, and nothing resolves it to the whole column.
+    const danger = snapshot({ metadata: { ...before.metadata, inDanger: true } });
+    const claims = ['metadata.website', 'metadata.inDanger'];
+    const result = computeChangeSet(danger, { ...incoming, metadata: { ...incoming.metadata, inDanger: false } }, claims, WROTE);
+
+    expect(result.curatedConflicts.map(c => c.field).sort()).toEqual(['metadata.inDanger', 'metadata.website']);
+    for (const conflict of result.curatedConflicts) expect(claims).toContain(claimKeyFor(conflict.field));
+  });
+
+  it('protects nothing under the bare column name, which the schema refuses', () => {
     const result = computeChangeSet(before, incoming, ['metadata'], WROTE);
 
-    // A claim on the column protects every key under it, which no per-key name
-    // matches — so the keys themselves have to carry the answer. Without this
-    // the source's values would be reported as applied over a curator's claim.
-    expect(result.curatedConflicts.map(c => c.field).sort())
-      .toEqual(['metadata.website', 'metadata.wikipediaUrl']);
-    expect(result.changedFields).toHaveLength(0);
-    expect(result.changeType).toBe('unchanged');
+    expect(result.curatedConflicts).toEqual([]);
+    expect(result.changedFields.map(c => c.field).sort()).toEqual(['metadata.website', 'metadata.wikipediaUrl']);
   });
 
   it('lets an orphaned claim fall through as applied, because the guard would too', () => {
@@ -620,19 +629,13 @@ describe('a metadata key the run computes about its own pass', () => {
 });
 
 describe('CURATED_KEY_BY_FIELD', () => {
-  it('keeps every dotted key spelled with the shared claim prefix', () => {
-    const dottedKeys = Object.keys(CURATED_KEY_BY_FIELD).filter(key => key.includes('.'));
-
-    // Not a computed key -- the map stays a readable literal on purpose --
-    // but every dotted entry still has to start with the same prefix the
-    // major-key loop composes a diff's field name from. If the prefix ever
-    // changed here and not there, a diff for `metadata.inDanger` would stop
-    // matching this map's key of the same literal spelling, the `?? diff.field`
-    // fallback would take over, and a whole-column claim on 'metadata' would
-    // stop protecting the major keys -- with no behavioural test catching it,
-    // since none combines a whole-column claim with a major-key change.
-    expect(dottedKeys.length).toBeGreaterThan(0);
-    dottedKeys.forEach(key => expect(key.startsWith(METADATA_CLAIM_PREFIX)).toBe(true));
+  it('sends no metadata entry to the whole column', () => {
+    // A metadata claim names its key (ADR-0077 decision 3): an entry here
+    // mapping `metadata.<key>` — or the catch-all `metadata` — to `metadata`
+    // would resolve a conflict to a claim the schema refuses, and no reader
+    // could reach it again.
+    expect(Object.values(CURATED_KEY_BY_FIELD)).not.toContain('metadata');
+    expect(Object.keys(CURATED_KEY_BY_FIELD).filter(key => key.startsWith(METADATA_CLAIM_PREFIX))).toEqual([]);
   });
 });
 
@@ -665,8 +668,9 @@ describe('claimKeyFor', () => {
     // so `metadata` is deliberately not a family. A rule that folded it in would
     // answer a whole-column question of a per-key claim.
     expect(claimKeyFor('metadata.website')).toBe('metadata.website');
-    // Except the two the map itself carries, which a whole-column claim protects.
-    expect(claimKeyFor('metadata.inDanger')).toBe('metadata');
+    // The major keys too: a claim on one is a claim on that key alone.
+    expect(claimKeyFor('metadata.inDanger')).toBe('metadata.inDanger');
+    expect(claimKeyFor('metadata.dateInscribed')).toBe('metadata.dateInscribed');
   });
 
   it('sends a name it has never heard of to itself', () => {

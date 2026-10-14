@@ -428,6 +428,24 @@ describe('the metadata column, which no single entry describes', () => {
       proposal: proposal as never,
     });
 
+    it('skips a major key a curator claimed after the run, under its own name', async () => {
+      grantScope();
+      // A claim on a metadata key names the key (ADR-0077 decision 3), so the
+      // skip list reaches it through `claimKeyFor` like any other claim, and
+      // publishing reports the danger flag as the curator's rather than
+      // applying the source's over it.
+      const { client } = perKey(
+        { metadata: { inDanger: true }, curated_fields: ['metadata.inDanger'] },
+        [{ field: 'metadata.inDanger', old: true, new: false, held: true }],
+      );
+
+      const res = await publish({ expectedSyncLogId: 53 }, client);
+
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        claimedFieldsSkipped: ['metadata.inDanger'], appliedFields: [],
+      }));
+    });
+
     it('answers the picture and its credit together, as a work already did', async () => {
       grantScope();
       // The asymmetry this removes: a work's credit was a field of its own and
