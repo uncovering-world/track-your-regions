@@ -6,12 +6,16 @@
  *   2. Search & Add — search existing experiences by name, assign to region
  *
  * Auto-fill: once the curator has typed a name (3+ chars), *Look up* (the
- * button beside it, or Enter in the field) finds its coordinates (Nominatim),
- * image and description (Wikidata), filling the fields that are empty. It
- * never runs as the curator types: Nominatim's usage policy forbids
- * auto-complete over its API, and a lookup fired by a pause in typing searched
- * a half-typed name. Pressed again (*Look up again*), it overwrites what an
- * earlier lookup filled in.
+ * button beside it, or Enter in the field) finds the place (Nominatim) and the
+ * Wikidata item it is, filling the fields that are empty: the image and
+ * description from the item; the location from the item's own coordinate
+ * where the item is the place — Nominatim found none, or the item is the one
+ * the found place links to — and from the found place's point otherwise
+ * (`lookupLocation`). A lookup that finds no location says so beside the
+ * match. It never runs as the curator types:
+ * Nominatim's usage policy forbids auto-complete over its API, and a lookup
+ * fired by a pause in typing searched a half-typed name. Pressed again
+ * (*Look up again*), it overwrites what an earlier lookup filled in.
  *
  * Used from both Map mode (ExperienceList) and Discover mode
  * (DiscoverExperienceView).
@@ -135,6 +139,71 @@ function pickImageHelperText(args: {
 }
 
 /**
+ * The place a lookup is about, from Nominatim: asked with the region's name
+ * first, which tells one "Old Town Hall" from another ("Old Town Hall
+ * Czechia" finds Brno's), then by the name alone when that finds nothing.
+ * Nominatim reads a query as an address, and a continent, a Wikivoyage region
+ * or a world view's own group ("Europe", "Balkans") is no part of one:
+ * "Charles Bridge Europe" finds nothing where "Charles Bridge" finds Karlův
+ * most (#270). A search that fails is not asked again — the usage policy's
+ * answer to a client that keeps asking after a refusal is a ban — and counts
+ * as no place: the item is still looked for by its name.
+ */
+async function findPlace(
+  name: string, regionName: string | undefined, stillAsked: () => boolean,
+): Promise<PlaceResult | undefined> {
+  const queries = regionName ? [`${name} ${regionName}`, name] : [name];
+  for (const query of queries) {
+    let places: PlaceResult[];
+    try {
+      places = await searchPlaces(query, 1);
+    } catch {
+      return undefined;
+    }
+    if (places.length > 0 || !stillAsked()) return places[0];
+  }
+  return undefined;
+}
+
+/**
+ * What the last lookup found, under the name: the Wikidata item it matched, or
+ * the place Nominatim found where no item was, and — beside either, or alone —
+ * that it found no location, while the curator has set none.
+ */
+function LookupOutcome({ entity, found, locationMissed }: {
+  entity: { label: string; wikidataId: string } | null; found: string | null; locationMissed: boolean;
+}) {
+  if (!entity && !found && !locationMissed) return null;
+  let match: React.ReactNode = null;
+  if (entity) match = <>Matched: <strong>{entity.label}</strong> ({entity.wikidataId})</>;
+  else if (found) match = <>Found: {found}</>;
+  return (
+    <Box sx={{
+      mt: 0.75,
+      px: 1.5,
+      py: 0.75,
+      bgcolor: 'action.hover',
+      borderRadius: 1,
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 1,
+    }}>
+      {match && (
+        <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.4 }}>{match}</Typography>
+      )}
+      {locationMissed && (
+        // The primary text colour, heavier than the match beside it: the
+        // theme's amber reads at about 2:1 on this box, too faint for a caption.
+        <Typography variant="caption" color="text.primary" sx={{ lineHeight: 1.4, fontWeight: 600 }}>
+          No location found — set it below
+        </Typography>
+      )}
+    </Box>
+  );
+}
+
+/**
  * A search hit's picture and its lines, including whose photograph it is.
  *
  * Its own component because the row holds state: whether the picture arrived.
@@ -179,7 +248,7 @@ interface AddExperienceDialogProps {
   open: boolean;
   onClose: () => void;
   regionId: number;
-  /** Region name — appended to Nominatim queries for better geo-disambiguation */
+  /** Region name — tried with the name in the place search first (`findPlace`) */
   regionName?: string;
   /** Pre-select this source when opening Create New tab */
   defaultKindId?: number;
@@ -253,6 +322,9 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
   // Refs track whether each field was set by auto-fill (true) or manually (false).
   // Auto-fill overwrites fields that are empty OR were previously auto-filled.
   const coordsAutoFilled = useRef(false);
+  // The item id a lookup took from Nominatim, as against one the curator chose
+  // in the location search: only the curator's outlives the next lookup.
+  const wikidataAutoFilled = useRef(false);
   const imageAutoFilled = useRef(false);
   const descAutoFilled = useRef(false);
   const linkAutoFilled = useRef(false);
@@ -266,15 +338,21 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
   const [autoFillLoading, setAutoFillLoading] = useState(false);
   const [autoFillInfo, setAutoFillInfo] = useState<string | null>(null);
   const [autoFillEntity, setAutoFillEntity] = useState<{ label: string; wikidataId: string } | null>(null);
+  // The last lookup found no location for the name: neither the item nor
+  // Nominatim gave one, and the curator had placed no pin.
+  const [locationMissed, setLocationMissed] = useState(false);
 
   // Apply a Wikidata image suggestion, from the auto-fill and the Suggest button
-  // alike: the picture always, the description and Wikipedia URL when the field
-  // is empty or was filled by an earlier suggestion — so a re-lookup never leaves
-  // a stale auto-filled description behind, and a curator's own text stays.
-  const applySuggestion = (suggestion: ImageSuggestion): void => {
+  // alike: the picture unless told to keep the curator's own, the description
+  // and Wikipedia URL when the field is empty or was filled by an earlier
+  // suggestion — so a re-lookup never leaves a stale auto-filled description
+  // behind, and a curator's own text stays.
+  const applySuggestion = (suggestion: ImageSuggestion, keepPicture = false): void => {
     const current = stateRef.current.values;
-    form.set('imageUrl', suggestion.imageUrl);
-    imageAutoFilled.current = true;
+    if (!keepPicture) {
+      form.set('imageUrl', suggestion.imageUrl);
+      imageAutoFilled.current = true;
+    }
     setAutoFillEntity({ label: suggestion.entityLabel, wikidataId: suggestion.wikidataId });
     if (suggestion.description && (!current.shortDescription || descAutoFilled.current)) {
       form.set('shortDescription', suggestion.description);
@@ -290,32 +368,63 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
   const suggestMutation = useMutation({
     mutationFn: (params: { name?: string; lat?: number; lng?: number; wikidataId?: string }) =>
       suggestImageUrl(params),
-    onSuccess: applySuggestion,
+    onSuccess: (suggestion) => applySuggestion(suggestion),
   });
 
   // --- Core lookup logic, run by Look up ---
   // Reads from stateRef to always have current values regardless of closures.
 
-  // Apply Nominatim geocode result to local state. Returns the *effective*
-  // coords/QID that the form is now using — so the downstream image-
-  // suggestion lookup uses the same identity (manually-pinned coords
-  // override geocoded ones, and we explicitly null out the wikidataId
-  // when the new place has none, instead of letting the caller fall back
-  // to a stale previous QID).
-  const applyNominatimPlace = (place: PlaceResult): { lat: number; lng: number; wikidataId?: string } => {
-    const pinned = coordsAutoFilled.current ? null : stateRef.current.values.coords;
-    const effectiveCoords = pinned ?? { lat: place.lat, lng: place.lng };
-    if (!pinned) {
-      form.set('coords', effectiveCoords);
-      coordsAutoFilled.current = true;
+  // A pin the curator placed, never one an earlier lookup placed: a lookup
+  // moves only what a lookup wrote. Read again after every wait, since the
+  // curator can drop a pin while a lookup runs.
+  const pinnedCoords = (): { lat: number; lng: number } | null =>
+    (coordsAutoFilled.current ? null : stateRef.current.values.coords);
+
+  // The location a lookup fills in. The item's own coordinate (P625) where
+  // the item is the place: Nominatim found none, or found the place and the
+  // item is the one it links to — then the coordinate is a statement about
+  // it, where Nominatim's point is a search's best guess. Otherwise the
+  // place's point wins: an item matched by the bare name ("Old Town Hall" —
+  // Hanover's, for Brno's) or by its distance to the point (a neighbour
+  // within two kilometres) is another place, shown as the match for the
+  // curator to judge but never moving the pin.
+  const lookupLocation = (
+    place: PlaceResult | undefined, suggestion: ImageSuggestion | null,
+  ): { lat: number; lng: number } | null => {
+    const itemIsThePlace = !place || suggestion?.wikidataId === place.wikidataId;
+    if (suggestion?.coordinates && suggestion.source !== 'wikidata_spatial' && itemIsThePlace) return suggestion.coordinates;
+    return place ? { lat: place.lat, lng: place.lng } : null;
+  };
+
+  // A picture the curator set themselves, which a lookup leaves alone.
+  const imageIsCurators = () => !!stateRef.current.values.imageUrl && !imageAutoFilled.current;
+
+  // The item id a lookup asks about, written to the form's state: the place
+  // Nominatim found is the identity. Without one, the item the curator chose
+  // in the location search still is, but the one an earlier lookup took for
+  // another name is dropped — the Suggest button reads the same state.
+  const takeItemId = (place: PlaceResult | undefined): string | undefined => {
+    if (place) {
+      setWikidataId(place.wikidataId ?? null);
+      wikidataAutoFilled.current = true;
+      return place.wikidataId ?? undefined;
     }
-    setWikidataId(place.wikidataId ?? null);
-    setAutoFillInfo(place.display_name.split(',').slice(0, 3).join(',').trim());
-    return {
-      lat: effectiveCoords.lat,
-      lng: effectiveCoords.lng,
-      wikidataId: place.wikidataId ?? undefined,
-    };
+    if (!wikidataAutoFilled.current) return stateRef.current.wikidataId ?? undefined;
+    setWikidataId(null);
+    wikidataAutoFilled.current = false;
+    return undefined;
+  };
+
+  // The Wikidata item for a looked-up name, or null when none has a picture.
+  const suggestFor = async (
+    lookupName: string, place: PlaceResult | undefined, itemId: string | undefined,
+  ): Promise<ImageSuggestion | null> => {
+    const point = pinnedCoords() ?? place;
+    try {
+      return await suggestImageUrl({ name: lookupName, lat: point?.lat, lng: point?.lng, wikidataId: itemId });
+    } catch {
+      return null; // 404 or error — no image found, that's OK.
+    }
   };
 
   const performLookup = async () => {
@@ -326,39 +435,36 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     setAutoFillLoading(true);
     setAutoFillInfo(null);
     setAutoFillEntity(null);
+    setLocationMissed(false);
 
     try {
-      // Step 1: Search Nominatim for coordinates. Append region name for
-      // geo-disambiguation (e.g. "Holocaust Memorial Berlin").
-      const nominatimQuery = stateRef.current.regionName ? `${lookupName} ${stateRef.current.regionName}` : lookupName;
-      const places = await searchPlaces(nominatimQuery, 1);
+      // Step 1: the place, from Nominatim. It names the Wikidata item
+      // OpenStreetMap links it to, which the suggestion below reads directly.
+      const place = await findPlace(lookupName, stateRef.current.regionName, () => autoFillGen.current === generation);
       if (autoFillGen.current !== generation) return;
-      const effective = places.length > 0 ? applyNominatimPlace(places[0]) : null;
+      const itemId = takeItemId(place);
+      if (place) setAutoFillInfo(place.display_name.split(',').slice(0, 3).join(',').trim());
 
-      // Step 2: Suggest image + description (only if user hasn't set image manually).
-      if (!stateRef.current.values.imageUrl || imageAutoFilled.current) {
-        try {
-          // When Nominatim returned a place, trust its identity (already
-          // reconciled with the form's manual pins inside applyNominatimPlace).
-          // Only fall back to stateRef when Nominatim returned nothing at all,
-          // so a previous lookup's QID can't bleed into the new suggestion.
-          const suggestion = await suggestImageUrl({
-            name: lookupName,
-            lat: effective?.lat ?? stateRef.current.values.coords?.lat,
-            lng: effective?.lng ?? stateRef.current.values.coords?.lng,
-            wikidataId: effective ? effective.wikidataId : stateRef.current.wikidataId ?? undefined,
-          });
-          if (autoFillGen.current !== generation) return;
-          applySuggestion(suggestion);
-          suggestMutation.reset();
-        } catch {
-          // 404 or error — no image found, that's OK.
-        }
+      // Step 2: the item — its match, description and coordinate always, its
+      // picture only where the curator has not set their own, before the
+      // lookup or while it ran.
+      const suggestion = await suggestFor(lookupName, place, itemId);
+      if (autoFillGen.current !== generation) return;
+      if (suggestion) {
+        applySuggestion(suggestion, imageIsCurators());
+        suggestMutation.reset();
+      }
+
+      // Step 3: the location, unless the curator placed their own pin — before
+      // the lookup or while it ran.
+      if (!pinnedCoords()) {
+        const found = lookupLocation(place, suggestion);
+        form.set('coords', found);
+        coordsAutoFilled.current = found !== null;
+        setLocationMissed(found === null);
       }
 
       autoFillDone.current = true;
-    } catch {
-      // Nominatim search failed, ignore.
     } finally {
       if (autoFillGen.current === generation) {
         setAutoFillLoading(false);
@@ -374,6 +480,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     if (name.length >= 3) return;
     setAutoFillInfo(null);
     setAutoFillEntity(null);
+    setLocationMissed(false);
     autoFillDone.current = false;
   }, [name]);
 
@@ -439,13 +546,18 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     setWikidataId(null);
     setAutoFillInfo(null);
     setAutoFillEntity(null);
+    setLocationMissed(false);
     coordsAutoFilled.current = false;
+    wikidataAutoFilled.current = false;
     imageAutoFilled.current = false;
     descAutoFilled.current = false;
     linkAutoFilled.current = false;
     autoFillDone.current = false;
     handleClose();
   };
+
+  // Said until the curator sets a location: the pin they place answers it.
+  const showLocationMissed = locationMissed && coords === null;
 
   // Helper text for image field
   const imageHelperText = pickImageHelperText({
@@ -486,26 +598,8 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
                   },
                 }}
               />
-              {/* Suggestion result info box */}
-              {(autoFillInfo || autoFillEntity) && !autoFillLoading && (
-                <Box sx={{
-                  mt: 0.75,
-                  px: 1.5,
-                  py: 0.75,
-                  bgcolor: 'action.hover',
-                  borderRadius: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 1,
-                }}>
-                  <Typography variant="caption" color="text.secondary" sx={{ lineHeight: 1.4 }}>
-                    {autoFillEntity
-                      ? <>Matched: <strong>{autoFillEntity.label}</strong> ({autoFillEntity.wikidataId})</>
-                      : <>Found: {autoFillInfo}</>
-                    }
-                  </Typography>
-                </Box>
+              {!autoFillLoading && (
+                <LookupOutcome entity={autoFillEntity} found={autoFillInfo} locationMissed={showLocationMissed} />
               )}
             </Box>
 
@@ -562,6 +656,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
                 name={name}
                 onPlaceSelect={(place) => {
                   setWikidataId(place.wikidataId ?? null);
+                  wikidataAutoFilled.current = false;
                   coordsAutoFilled.current = false;
                 }}
               />
