@@ -18,6 +18,8 @@ import type { OsmDigs, OsmObject } from '../osm/types.js';
 import { enwikiTitleOf } from '../wikipediaCategories.js';
 import { lineStanding, type SourceLine } from '../sourceLine.js';
 import { inUseAmong } from './siteTest.js';
+import { readsSubset } from '../subset/reader.js';
+import { subsetKeeps } from '../subset/archaeology.js';
 
 const FACT_BATCH = 50;
 
@@ -86,7 +88,8 @@ export async function collectOsmEntrance(
     }
   }
 
-  const unnamed = [...named.keys()].filter((qid) => !pool.has(qid));
+  const notPooled = [...named.keys()].filter((qid) => !pool.has(qid));
+  const unnamed = await keptBySubset(run, notPooled, named);
   const batches = chunk(unnamed, SITELINKS_BATCH);
   const sitelinks = new Map<string, number>();
   for (let i = 0; i < batches.length; i++) {
@@ -108,9 +111,30 @@ export async function collectOsmEntrance(
   }
   console.log(
     `[Archaeology Sync] OpenStreetMap names ${named.size} items as digs or ruins; `
-    + `${unnamed.length} the classes did not, ${wanted.length} of those at the pool's floor`,
+    + `${notPooled.length} the classes did not, ${wanted.length} of those at the pool's floor`,
   );
   return { byOsm, named, byArticleOnly };
+}
+
+/**
+ * On the local subset, the items it keeps. One it does not keep has no
+ * answer there, which is not an item with no articles, so it is named rather
+ * than dropped below the floor in silence (#1462). It is no refusal: the
+ * subset keeps every item with a coordinate, so such an item has none, and
+ * the live run leaves it out unnamed as well (`judgeCandidate`).
+ */
+async function keptBySubset(
+  run: QueryRunner, qids: string[], named: ReadonlyMap<string, OsmObject[]>,
+): Promise<string[]> {
+  if (!readsSubset(run.sparql)) return qids;
+  const kept = await subsetKeeps(qids);
+  const outside = qids.filter((qid) => !kept.has(qid));
+  if (outside.length) {
+    const name = (qid: string) => named.get(qid)?.map((object) => object.tags.name).find(Boolean) ?? qid;
+    const listed = outside.map((qid) => name(qid) + ' (' + qid + ')').join(', ');
+    console.log(`[Archaeology Sync] OpenStreetMap names ${outside.length} items the local Wikidata subset does not keep: ${listed}`);
+  }
+  return qids.filter((qid) => kept.has(qid));
 }
 
 /**
