@@ -71,6 +71,70 @@ describe('suggestImage', () => {
     });
   });
 
+  it("answers the item's own coordinate with the item it found by its name", async () => {
+    // Charles Bridge, Q204871, as Wikidata holds it: the item a curator adding it
+    // under *Europe* is matched with, where no address names the continent.
+    reply({ search: [{ id: 'Q204871', label: 'Charles Bridge' }] });
+    reply({
+      entities: {
+        Q204871: {
+          labels: { en: { value: 'Charles Bridge' } },
+          descriptions: { en: { value: 'bridge in Prague, Czech Republic' } },
+          claims: {
+            P18: [{ rank: 'normal', mainsnak: { datavalue: { value: 'Prague 07-2016 View from Petrinska Tower img2.jpg' } } }],
+            P625: [{
+              rank: 'normal',
+              mainsnak: {
+                datavalue: {
+                  value: {
+                    latitude: 50.086388888889, longitude: 14.411944444444, altitude: null,
+                    precision: 0.000277778, globe: 'http://www.wikidata.org/entity/Q2',
+                  },
+                },
+              },
+            }],
+          },
+          sitelinks: { enwiki: { title: 'Charles Bridge', url: 'https://en.wikipedia.org/wiki/Charles_Bridge' } },
+        },
+      },
+    });
+
+    expect(await suggest({ name: 'Charles Bridge' })).toMatchObject({
+      source: 'wikidata_search',
+      wikidataId: 'Q204871',
+      coordinates: { lat: 50.086388888889, lng: 14.411944444444 },
+    });
+  });
+
+  it('answers no coordinate the item states on another globe', async () => {
+    // Tycho, Q631696, a lunar crater: its P625 is on the Moon (Q405).
+    reply({
+      entities: {
+        Q631696: {
+          labels: { en: { value: 'Tycho' } },
+          claims: {
+            P18: [{ rank: 'normal', mainsnak: { datavalue: { value: 'ComputerHotline - Sud-lune (by).jpg' } } }],
+            P625: [{
+              rank: 'normal',
+              mainsnak: {
+                datavalue: {
+                  value: {
+                    latitude: -43.3, longitude: -11.22, altitude: null,
+                    precision: 0.01, globe: 'http://www.wikidata.org/entity/Q405',
+                  },
+                },
+              },
+            }],
+          },
+        },
+      },
+    });
+
+    const suggestion = await suggest({ wikidataId: 'Q631696' });
+    expect(suggestion).toMatchObject({ source: 'wikidata_direct', wikidataId: 'Q631696' });
+    expect(suggestion.coordinates).toBeUndefined();
+  });
+
   it('answers 404 when no layer finds a picture', async () => {
     reply({ entities: { Q603622: { labels: { en: { value: 'Qazan Kremlin' } }, claims: {} } } });
     await expect(suggest({ wikidataId: 'Q603622' }))

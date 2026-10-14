@@ -23508,6 +23508,23 @@
           "wikipediaUrl": {
             "description": "The item's English Wikipedia article.",
             "type": "string"
+          },
+          "coordinates": {
+            "description": "The item's own coordinate location (P625) at its best rank, when it states one on the Earth: where the place is, as Wikidata says.",
+            "type": "object",
+            "properties": {
+              "lat": {
+                "type": "number"
+              },
+              "lng": {
+                "type": "number"
+              }
+            },
+            "required": [
+              "lat",
+              "lng"
+            ],
+            "additionalProperties": false
           }
         },
         "required": [

@@ -1,6 +1,7 @@
 /**
  * Geocode Controller — Proxies to Nominatim for place search,
- * and provides Wikidata image suggestion for experience creation.
+ * and provides Wikidata image suggestion for experience creation: the item a
+ * new place most likely is, with its picture and its own coordinate.
  *
  * Nominatim is asked through `services/nominatim.ts`, which holds its usage
  * policy for the whole process: one request a second, answers cached, no
@@ -125,10 +126,41 @@ function filePathUrl(filename: string): string {
   return `https://commons.wikimedia.org/wiki/Special:FilePath/${encodeURIComponent(filename)}`;
 }
 
+type Statement = { rank?: string; mainsnak: { datavalue?: { value: unknown } } };
+
+/** Wikidata's item for the Earth: the globe of a coordinate on it. */
+const EARTH = 'http://www.wikidata.org/entity/Q2';
+
 /**
- * Layer 1: Direct Wikidata entity lookup by QID → P18 (image)
+ * The item's own coordinate location (P625), at its best rank: a preferred
+ * statement over a normal one, never a deprecated one. Only a point on the
+ * Earth is answered — a lunar crater's coordinate (Tycho, Q631696) is as valid
+ * a statement as a bridge's, and would put the crater in the South Atlantic.
  */
-async function lookupByQid(qid: string, signal: AbortSignal): Promise<{ imageUrl: string; entityLabel: string; description?: string; wikipediaUrl?: string } | null> {
+function earthCoordinateOf(statements: Statement[] | undefined): { lat: number; lng: number } | undefined {
+  const ranked = statements?.filter((s) => s.rank !== 'deprecated') ?? [];
+  const best = ranked.find((s) => s.rank === 'preferred') ?? ranked[0];
+  const value = best?.mainsnak.datavalue?.value as { latitude?: unknown; longitude?: unknown; globe?: unknown } | undefined;
+  if (!value || value.globe !== EARTH) return undefined;
+  const { latitude, longitude } = value;
+  if (typeof latitude !== 'number' || typeof longitude !== 'number' || !isValidLatLng(latitude, longitude)) return undefined;
+  return { lat: latitude, lng: longitude };
+}
+
+/** What the lookups read off one item. */
+interface ItemFacts {
+  imageUrl: string;
+  entityLabel: string;
+  description?: string;
+  wikipediaUrl?: string;
+  coordinates?: { lat: number; lng: number };
+}
+
+/**
+ * Layer 1: Direct Wikidata entity lookup by QID → P18 (image), and the item's
+ * coordinate (P625) with it
+ */
+async function lookupByQid(qid: string, signal: AbortSignal): Promise<ItemFacts | null> {
   const url = `https://www.wikidata.org/wiki/Special:EntityData/${qid}.json`;
   const response = await fetch(url, {
     headers: { 'User-Agent': USER_AGENT },
@@ -140,7 +172,7 @@ async function lookupByQid(qid: string, signal: AbortSignal): Promise<{ imageUrl
     entities: Record<string, {
       labels?: Record<string, { value: string }>;
       descriptions?: Record<string, { value: string }>;
-      claims?: Record<string, Array<{ mainsnak: { datavalue?: { value: unknown } } }>>;
+      claims?: Record<string, Statement[]>;
       sitelinks?: Record<string, { title: string; url?: string }>;
     }>;
   };
@@ -159,7 +191,10 @@ async function lookupByQid(qid: string, signal: AbortSignal): Promise<{ imageUrl
   const enwiki = entity.sitelinks?.enwiki;
   const wikipediaUrl = enwiki?.url ?? (enwiki?.title ? `https://en.wikipedia.org/wiki/${encodeURIComponent(enwiki.title.replace(/ /g, '_'))}` : undefined);
 
-  return { imageUrl: filePathUrl(filename), entityLabel: label, description, wikipediaUrl };
+  return {
+    imageUrl: filePathUrl(filename), entityLabel: label, description, wikipediaUrl,
+    coordinates: earthCoordinateOf(entity.claims?.P625),
+  };
 }
 
 /**
@@ -198,7 +233,7 @@ async function lookupBySpatial(lat: number, lng: number, signal: AbortSignal): P
 /**
  * Layer 3: Name search via wbsearchentities → check P18
  */
-async function lookupByName(name: string, signal: AbortSignal): Promise<{ imageUrl: string; entityLabel: string; wikidataId: string; description?: string; wikipediaUrl?: string } | null> {
+async function lookupByName(name: string, signal: AbortSignal): Promise<ItemFacts & { wikidataId: string } | null> {
   const url = new URL('https://www.wikidata.org/w/api.php');
   url.searchParams.set('action', 'wbsearchentities');
   url.searchParams.set('search', name);
@@ -243,6 +278,7 @@ async function suggestByQid(wikidataId: string | undefined, signal: AbortSignal)
     entityLabel: result.entityLabel,
     description: result.description,
     wikipediaUrl: result.wikipediaUrl,
+    coordinates: result.coordinates,
     wikidataId,
   };
 }
@@ -280,6 +316,7 @@ async function suggestBySpatial(
     entityLabel: result.entityLabel,
     description: result.description,
     wikipediaUrl: entityData?.wikipediaUrl,
+    coordinates: entityData?.coordinates,
     wikidataId: result.wikidataId,
   };
 }
@@ -294,6 +331,7 @@ async function suggestByName(name: string | undefined, signal: AbortSignal): Pro
     entityLabel: result.entityLabel,
     description: result.description,
     wikipediaUrl: result.wikipediaUrl,
+    coordinates: result.coordinates,
     wikidataId: result.wikidataId,
   };
 }
