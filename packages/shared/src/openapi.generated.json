@@ -19857,10 +19857,17 @@
             "maximum": 9007199254740991
           },
           "fileName": {
-            "type": "string"
+            "description": "Null for a build that ended before it found its file.",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "dumpDate": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "mode": {
             "type": "string",
@@ -19999,12 +20006,11 @@
           "status": {
             "type": "string",
             "enum": [
+              "queued",
               "resolving",
-              "reading",
-              "success",
-              "failed",
-              "cancelled"
-            ]
+              "reading"
+            ],
+            "description": "Queued for the dump worker, finding its file, or reading it (ADR-0106)."
           },
           "message": {
             "type": "string"
@@ -20061,16 +20067,22 @@
             "maximum": 9007199254740991
           },
           "buildId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "heartbeatAt": {
             "anyOf": [
               {
-                "type": "integer",
-                "minimum": -9007199254740991,
-                "maximum": 9007199254740991
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
               },
               {
                 "type": "null"
               }
-            ]
+            ],
+            "description": "When the build last said it is alive, every few seconds; null while it waits for the worker."
           }
         },
         "required": [
@@ -20082,10 +20094,11 @@
           "downloaded",
           "read",
           "lines",
-          "buildId"
+          "buildId",
+          "heartbeatAt"
         ],
         "additionalProperties": false,
-        "description": "A dump build in flight, or the last one this process ran."
+        "description": "A dump build queued or running, read from its ledger row whatever process runs it."
       },
       "DumpBuildStarted": {
         "type": "object",
@@ -20206,45 +20219,6 @@
                   ],
                   "description": "What a keeping build of this dump makes (the local Wikidata subset), or null where nothing is built from it yet."
                 },
-                "elsewhere": {
-                  "anyOf": [
-                    {
-                      "type": "object",
-                      "properties": {
-                        "buildId": {
-                          "type": "integer",
-                          "minimum": -9007199254740991,
-                          "maximum": 9007199254740991
-                        },
-                        "fileName": {
-                          "type": "string"
-                        },
-                        "startedAt": {
-                          "type": "string",
-                          "format": "date-time",
-                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
-                        },
-                        "heartbeatAt": {
-                          "type": "string",
-                          "format": "date-time",
-                          "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
-                          "description": "When the build last said it is alive; it beats every minute."
-                        }
-                      },
-                      "required": [
-                        "buildId",
-                        "fileName",
-                        "startedAt",
-                        "heartbeatAt"
-                      ],
-                      "additionalProperties": false
-                    },
-                    {
-                      "type": "null"
-                    }
-                  ],
-                  "description": "A build of this dump running in another process (a script, another server), which refuses a new build until it ends (#1463); null when none runs or this process runs it."
-                },
                 "localCopy": {
                   "anyOf": [
                     {
@@ -20286,7 +20260,6 @@
                 "progress",
                 "builds",
                 "keeps",
-                "elsewhere",
                 "localCopy"
               ],
               "additionalProperties": false
