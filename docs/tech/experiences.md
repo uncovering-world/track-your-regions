@@ -587,10 +587,26 @@ under a root (`subsetClassTree`, a recursive walk down best-rank P279, which is
 what `wdt:` reads: preferred statements where an item has any, normal ones
 otherwise, never deprecated), and the Wikipedia editions of items
 (`subsetWikipediaEditions`, every `…wiki` sitelink but those in
-`NOT_WIKIPEDIA`). No run marks its door yet: a kind's own fetchers have no
-twins, and a run that read the subset for some questions and the live service
-for the rest would mix two dates of Wikidata. A wrapper around a marked door
-is marked again (`subsetDoor`), or the fetchers behind it go live.
+`NOT_WIKIPEDIA`). A kind's own fetchers get their twins in its own file: Public
+Art's in `sync/subset/publicArt.ts` (#1459) — the class and broad pools
+(`subsetPoolOfClasses`: best-rank P31, a point, the sitelinks floor), the pool
+row by id (`subsetPoolOfIds`), the facts (`subsetEntityFacts`: classes, where
+it stands, what it is part of, whose collection, makers by label) and the
+containers (`subsetContainerFacts`) — with the values spelled as WDQS spells
+them (`sync/subset/values.ts`: best and standing statements, the `Special:FilePath`
+picture, the English article, the WKT point with its globe, the year) and the
+labels read in `LABEL_LANGS` order from `wikidata_labels`.
+
+**Which Wikidata a source's runs read** is `experience_sources.wikidata_reader`
+(`live` or `subset`), switched on the source's card in the sync panel
+(`WikidataReaderControls`, `PUT /api/admin/sync/sources/:sourceId/wikidata-reader`).
+The subset is offered only for a source every question of which has a twin
+(`SUBSET_READY_SOURCES`: Public Art so far), since a run that read some answers
+from the subset and the rest live would mix two dates of Wikidata. Such a run
+is handed `subsetOnlyDoor()`: marked, and failing by name if any question
+reaches SPARQL. A run switched to the subset before one is built stops at once
+and says so. A wrapper around a marked door is marked again (`subsetDoor`), or
+the fetchers behind it go live.
 
 `npm --prefix backend run subset:parity` (`sync/subset/parity.ts`) asks the
 subset again the questions the runs cached in `wikidata_query_cache` that it
