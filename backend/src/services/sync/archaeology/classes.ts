@@ -289,11 +289,17 @@ export const NOT_A_FIND_WALKED: Record<string, string> = Object.fromEntries(
  * famous find would otherwise admit (ADR-0058 decision 2: a museum is
  * admitted for what it is, never for one find).
  *
- * The trailing space is deliberate: the category names a place after the
- * preposition, and a bare `Archaeological museums` is a parent category rather
- * than a statement about a museum.
+ * The bare `Archaeological museums` counts too (#889). It is the parent of the
+ * country shelves, and editors also file a museum there directly: 60 articles
+ * on 2026-10-14, the Erebuni Museum, the National Museum of Sudan, the
+ * Rockefeller Archeological Museum and the national museums of Finland,
+ * Slovakia and Singapore among them. `Archaeological museums by country` is a
+ * shelf of shelves, which no article carries.
  */
-export const NATURE_CATEGORY = /^Archaeological museums (in|of) /;
+export const NATURE_CATEGORY = /^Archaeological museums(?: (?:in|of) |$)/;
+
+/** The categories the walk follows down from `NATURE_CATEGORY_ROOT`: the shelf of countries, then the country shelves. */
+export const NATURE_WALK = /^Archaeological museums (?:by country$|(?:in|of) )/;
 
 /**
  * Where the same categories are entered rather than tested: the root of the
@@ -307,13 +313,15 @@ export const NATURE_CATEGORY = /^Archaeological museums (in|of) /;
  * typed `container`. So the tree is walked from here and its articles join the
  * candidates.
  *
- * Measured on 2026-09-13: this category holds 60 country subcategories and no
- * articles of its own; a country nests regional ones one step further (Greece
- * has 15, `Archaeological museums in Crete` among them) beside siblings that
- * are another kind's (`Byzantine museums in Greece`, `Archaeological
- * collections in Greece`). Which of them the walk follows is `NATURE_CATEGORY`
- * above — the same rule that reads a museum's nature, asked of a category's own
- * title.
+ * Measured on 2026-09-13: `Archaeological museums by country` holds 60 country
+ * subcategories and no articles of its own; a country nests regional ones one
+ * step further (Greece has 15, `Archaeological museums in Crete` among them)
+ * beside siblings that are another kind's (`Byzantine museums in Greece`,
+ * `Archaeological collections in Greece`). Which of them the walk follows is
+ * `NATURE_WALK` above. The walk starts one level higher, at the bare
+ * `Archaeological museums` (#889), because editors file museums there
+ * directly. It also reads a subcategory named after a museum as that museum:
+ * `Category:History Museum of Armenia` is shelved there, and its article is not.
  *
  * **What else the editors file here.** The country categories held 776 articles
  * that day, of which 75 are at or above the place line — and **27 of those 75
@@ -328,7 +336,7 @@ export const NATURE_CATEGORY = /^Archaeological museums (in|of) /;
  * it, where the rest of a country's archaeology would bury a curator's real
  * refusals.
  */
-export const NATURE_CATEGORY_ROOT = 'Category:Archaeological museums by country';
+export const NATURE_CATEGORY_ROOT = 'Category:Archaeological museums';
 
 /**
  * The categories that name an antiquities *department* rather than a museum.
@@ -338,8 +346,8 @@ export const NATURE_CATEGORY_ROOT = 'Category:Archaeological museums by country'
  * archaeological, while the British Museum carries `Archaeological museums in
  * London`. The difference is real and it is not a matter of quality: the
  * Hermitage's antiquities are among the world's best, and the museum is still
- * visited as an art museum. The Vatican Museums, the Kunsthistorisches Museum,
- * the Pushkin Museum and the Ny Carlsberg Glyptotek read the same way.
+ * visited as an art museum. The Vatican Museums, the Kunsthistorisches Museum
+ * and the Pushkin Museum read the same way.
  *
  * The last two name a department the same way, and were read off the same
  * category dumps on 2026-09-13: the Larco Museum carries `Pre-Columbian art
@@ -349,9 +357,12 @@ export const NATURE_CATEGORY_ROOT = 'Category:Archaeological museums by country'
  * nature category takes nothing away.
  *
  * What a row carrying only one of these deserves is the rule's decision, not
- * this list's — ADR-0058 decision 2 holds it for a curator, with the question
- * "an antiquities department; is the exposition substantially archaeology?" on
- * the card. All this list says is which words name a department.
+ * this list's (`museumVerdict`): held for a curator with the question "an
+ * antiquities department; is the exposition substantially archaeology?" on the
+ * card (ADR-0058 decision 2), or refused where the map or Wikidata calls the
+ * museum an art museum and nothing else brought it (ADR-0104 decision 4) — the
+ * Ny Carlsberg Glyptotek, mapped `museum=art` and typed `glyptotheque`, is
+ * refused now. All this list says is which words name a department.
  */
 export const DEPARTMENT_CATEGORIES: RegExp[] = [
   /^Museums of ancient /,
@@ -360,6 +371,34 @@ export const DEPARTMENT_CATEGORIES: RegExp[] = [
   /^Pre-Columbian art museums/,
   /^Mesoamerican art museums/,
 ];
+
+/**
+ * Where the department categories are entered rather than tested (#889): the
+ * roots of the walks that name a museum no nature signal does, such as the
+ * Altes Museum. Its Antikensammlung is what a traveller goes to Berlin's Museum
+ * Island for. Wikidata types it `history museum` and `art museum`, and English
+ * Wikipedia files it under `Museums of ancient Greece in Germany` and nowhere
+ * archaeological.
+ *
+ * A door, not a nature. On 2026-10-14 these trees named about 27 museums at the
+ * place line that no kind holds. All but a handful are art museums with an
+ * Egyptian or classical gallery: Cleveland, Denver, Houston, Toledo. What a
+ * museum named here becomes is `museumNature`'s and the verdict's call: the
+ * map's word (`museum=archaeological`) admits it, an art museum by the map or
+ * by class is refused by name, and anything else is held with the
+ * department question.
+ */
+export const DEPARTMENT_ROOTS = [
+  'Category:Museums of ancient Greece',
+  'Category:Museums of ancient Rome',
+  'Category:Museums of the ancient Near East',
+  'Category:Egyptological collections',
+  'Category:Pre-Columbian art museums',
+  'Category:Mesoamerican art museums',
+] as const;
+
+/** The categories the department walks follow: the same words, by country and by continent. */
+export const DEPARTMENT_WALK = new RegExp(DEPARTMENT_CATEGORIES.map((re) => re.source).join('|'));
 
 export interface ArchaeologyTrees {
   /** Every class that makes a museum an archaeology museum, floored and cleaned. */

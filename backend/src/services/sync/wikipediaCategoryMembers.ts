@@ -11,8 +11,7 @@
  * typed `container` and never reaches the finds pool) are in the catalogue only
  * if the category is a way *in*. ADR-0058 decision 2 says a museum
  * archaeological by nature enters at the place line, and the category is one of
- * the two signals of that nature; this module is the half of it that reaches
- * out.
+ * the signals of that nature; this module is the part of it that reaches out.
  *
  * Titles and ids, no archaeology: which root is walked and which subcategories
  * are followed are the caller's (`archaeology/classes.ts`), so a second kind
@@ -45,13 +44,15 @@ import { WaitBudget } from './sourceRetry.js';
 /**
  * How far from the root the walk may go, counting the root as 0.
  *
- * Measured on 2026-09-13: `Archaeological museums by country` holds 60 country
- * categories, and a country nests regional ones one step further — Greece has
- * 15, `Archaeological museums in Crete` among them. Two steps is the shape the
- * tree has today; four is that with room for a country that files its museums
+ * Measured on 2026-09-13 and 2026-10-14: the walk starts at the bare
+ * `Archaeological museums` (0), whose `by country` shelf (1) holds 60 country
+ * categories (2). A country nests regional ones a step further (3) — Greece has
+ * 15, `Archaeological museums in Crete` among them — and the United Kingdom
+ * two steps further still: England (3), London (4). Four steps is the shape the
+ * tree has today; five is that with room for a country that files its museums
  * by province, and a floor under a circle the visited set has already closed.
  */
-const MAX_CATEGORY_DEPTH = 4;
+const MAX_CATEGORY_DEPTH = 5;
 
 /**
  * The articles of one category, each with the Wikidata item it is about.
@@ -66,6 +67,14 @@ const MEMBER_QUERY: Record<string, string> = {
   action: 'query', generator: 'categorymembers', gcmtype: 'page', gcmlimit: 'max',
   prop: 'pageprops', ppprop: 'wikibase_item', format: 'json', formatversion: '2',
 };
+
+/** The Wikidata items of articles named by their titles; a missing page or a redirect has none. */
+const TITLE_QUERY: Record<string, string> = {
+  action: 'query', prop: 'pageprops', ppprop: 'wikibase_item', format: 'json', formatversion: '2',
+};
+
+/** How many titles one request names, the API's own limit for a client without the bot right. */
+const TITLES_PER_ASK = 50;
 
 /** The subcategories of one category, by title; nothing else about them is read. */
 const SUBCATEGORY_QUERY: Record<string, string> = {
@@ -83,6 +92,18 @@ export interface CategoryWalkOptions extends CategoryOptions {
   recurseInto: RegExp;
   /** How far from the root to walk; the root is 0. Defaults to `MAX_CATEGORY_DEPTH`. */
   maxDepth?: number;
+  /**
+   * Where the walk records an article it found through its *eponymous*
+   * category: article title → the categories that category is shelved under.
+   * Given, a subcategory the walk does not follow is read as the article of
+   * the same title when there is one (#889). Editors file a museum's own
+   * category rather than its article: `Category:History Museum of Armenia`
+   * sits in `Archaeological museums`, while the article is filed under
+   * `History museums in Armenia`. A shelf the walk entered is the
+   * editors' word about the museum all the same, so the caller may read it as
+   * one of the article's own categories.
+   */
+  shelves?: Map<string, string[]>;
 }
 
 /** What one category's own articles came to. */
@@ -148,6 +169,39 @@ async function readSubcategories(
   return titles;
 }
 
+/** A category's title without its namespace, as rules and shelves spell it. */
+const bare = (title: string): string => title.replace(/^Category:/, '');
+
+/**
+ * The articles the unfollowed subcategories of one category are named after,
+ * added to the members with the category as a shelf (`shelves`). Only an
+ * article of exactly the subcategory's name, with an item of its own, counts:
+ * `Byzantine museums` is no article, and a redirect carries no item.
+ */
+async function readEponymous(
+  subcategories: string[], category: string, options: CategoryWalkOptions, budget: WaitBudget,
+  into: Map<string, string>,
+): Promise<number> {
+  let found = 0;
+  const titles = subcategories.map(bare);
+  for (let i = 0; i < titles.length; i += TITLES_PER_ASK) {
+    const answer = await askWikipediaOnce(
+      { ...TITLE_QUERY, titles: titles.slice(i, i + TITLES_PER_ASK).join('|') },
+      options, budget, `the articles named after the subcategories of "${category}"`,
+    );
+    for (const page of pagesOf(answer)) {
+      const qid = page.pageprops?.wikibase_item;
+      if (!page.title || !qid) continue;
+      into.set(page.title, qid);
+      const shelves = options.shelves?.get(page.title) ?? [];
+      options.shelves?.set(page.title, [...new Set([...shelves, bare(category)])]);
+      found += 1;
+    }
+    if (options.pause) await options.pause();
+  }
+  return found;
+}
+
 /**
  * Every article under a category tree, as the Wikidata item it is about: page
  * title → QID.
@@ -181,11 +235,16 @@ export async function fetchCategoryMembers(
       );
       return;
     }
-    const followed = (await readSubcategories(category, options, budget))
-      .filter((title) => options.recurseInto.test(title.replace(/^Category:/, '')));
+    const subcategories = await readSubcategories(category, options, budget);
+    const followed = subcategories.filter((title) => options.recurseInto.test(bare(title)));
+    const eponymous = options.shelves
+      ? await readEponymous(subcategories.filter((title) => !followed.includes(title)), category, options, budget, members)
+      : 0;
     console.log(
       `${LOG_PREFIX} ${count(tally.pages, 'page')}, `
-      + `${count(followed.length, 'subcategory', 'subcategories')} under "${category}"`,
+      + `${count(followed.length, 'subcategory', 'subcategories')}`
+      + (eponymous > 0 ? `, ${count(eponymous, 'museum')} by its own category` : '')
+      + ` under "${category}"`,
     );
     // One after another rather than at once: the pause between requests is the
     // whole of this door's politeness to Wikimedia, and a fan-out would spend it.

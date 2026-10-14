@@ -22,6 +22,8 @@ interface Tree {
   pages: Record<string, Record<string, string | null>>;
   /** Category title → the subcategory titles it holds. */
   subcats?: Record<string, string[]>;
+  /** Article title → the Wikidata item, for an article asked for by its title. */
+  articles?: Record<string, string>;
 }
 
 /**
@@ -36,6 +38,16 @@ function wikipedia(tree: Tree) {
     const body = new URLSearchParams(String(init?.body));
     sent.push(body);
     seen.push({ url: String(url), init });
+    if (body.has('titles')) {
+      const titles = (body.get('titles') ?? '').split('|');
+      return json({
+        query: {
+          pages: titles.map((title) => (tree.articles?.[title]
+            ? { ns: 0, title, pageprops: { wikibase_item: tree.articles[title] } }
+            : { ns: 0, title, missing: true })),
+        },
+      });
+    }
     if (body.get('list') === 'categorymembers') {
       const titles = tree.subcats?.[body.get('cmtitle') ?? ''] ?? [];
       return json({ query: { categorymembers: titles.map((title) => ({ ns: 14, title })) } });
@@ -292,5 +304,41 @@ describe('fetchCategoryMembers', () => {
     expect(sent[1].get('list')).toBe('categorymembers');
     expect(sent[1].get('cmtype')).toBe('subcat');
     expect(sent[1].get('cmlimit')).toBe('max');
+  });
+
+  it("reads an unfollowed subcategory named after an article as that article, and records the shelf (#889)", async () => {
+    // `Category:History Museum of Armenia` sits in `Archaeological museums`;
+    // the article itself is filed under `History museums in Armenia`.
+    // `Byzantine museums` is a sibling the walk does not follow and no article.
+    const { fetchImpl } = wikipedia({
+      pages: { 'Category:Archaeological museums': { 'Erebuni Museum': 'Q3915253' } },
+      subcats: {
+        'Category:Archaeological museums': [
+          'Category:History Museum of Armenia', 'Category:Byzantine museums',
+        ],
+      },
+      articles: { 'History Museum of Armenia': 'Q1138228' },
+    });
+    const shelves = new Map<string, string[]>();
+
+    const got = await fetchCategoryMembers('Category:Archaeological museums', {
+      userAgent: 'test', fetchImpl, recurseInto: NATURE, shelves,
+    });
+
+    expect([...got]).toEqual([['Erebuni Museum', 'Q3915253'], ['History Museum of Armenia', 'Q1138228']]);
+    expect([...shelves]).toEqual([['History Museum of Armenia', ['Archaeological museums']]]);
+  });
+
+  it('asks nothing about the titles of subcategories when no shelves are kept', async () => {
+    const { fetchImpl, sent } = wikipedia({
+      pages: {},
+      subcats: { 'Category:Archaeological museums': ['Category:History Museum of Armenia'] },
+      articles: { 'History Museum of Armenia': 'Q1138228' },
+    });
+
+    const got = await fetchCategoryMembers('Category:Archaeological museums', { userAgent: 'test', fetchImpl, recurseInto: NATURE });
+
+    expect(got.size).toBe(0);
+    expect(sent.some((body) => body.has('titles'))).toBe(false);
   });
 });

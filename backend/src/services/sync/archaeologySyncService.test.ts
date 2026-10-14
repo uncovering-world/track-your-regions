@@ -112,7 +112,7 @@ import { readOsmObjects } from './osm/readOsmObjects.js';
 import { forgetCached, withCache } from './wikidataCache.js';
 import { fetchWikipediaCategories } from './wikipediaCategories.js';
 import { fetchCategoryMembers } from './wikipediaCategoryMembers.js';
-import { NATURE_CATEGORY } from './archaeology/classes.js';
+import { DEPARTMENT_ROOTS, DEPARTMENT_WALK, NATURE_WALK } from './archaeology/classes.js';
 import { OsmAnswerFloorError } from './archaeology/sites.js';
 import { OsmDoorFailedError, OsmEmptyEnumerationError } from './osm/readOsmObjects.js';
 import { OsmBothDoorsFailedError } from './osm/oneDoorPerRun.js';
@@ -358,9 +358,33 @@ describe('what the archaeology run fetches', () => {
     // follows are the kind's own (`archaeology/classes.ts`), so the door that
     // sends the requests knows nothing about archaeology.
     expect(mockedMembers).toHaveBeenCalledWith(
-      'Category:Archaeological museums by country',
-      expect.objectContaining({ userAgent: 'test', recurseInto: NATURE_CATEGORY }),
+      'Category:Archaeological museums',
+      expect.objectContaining({ userAgent: 'test', recurseInto: NATURE_WALK }),
     );
+    // And the department shelves, which name what no nature signal does (#889).
+    for (const root of DEPARTMENT_ROOTS) {
+      expect(mockedMembers).toHaveBeenCalledWith(root, expect.objectContaining({ recurseInto: DEPARTMENT_WALK }));
+    }
+  });
+
+  it("reads a museum's own category as one of its article's (#889)", async () => {
+    mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+    collected([museum()]);
+    // The walk finds the History Museum of Armenia (Q1138228) through
+    // `Category:History Museum of Armenia`, shelved under `Archaeological museums`.
+    mockedMembers.mockImplementationOnce((_root: string, options: { shelves?: Map<string, string[]> }) => {
+      options.shelves?.set('History Museum of Armenia', ['Archaeological museums']);
+      return Promise.resolve(new Map([['History Museum of Armenia', 'Q1138228']]));
+    });
+    mockedCategories.mockResolvedValueOnce(new Map([
+      ['History Museum of Armenia', ['History museums in Armenia', 'National museums of Armenia']],
+    ]));
+
+    await (await configOf()).fetchItems(progress(), []);
+    const deps = mockedCollect.mock.calls[0][0];
+    expect((await deps.categoryMembers()).get('History Museum of Armenia')).toBe('Q1138228');
+    expect((await deps.categories(['History Museum of Armenia'])).get('History Museum of Armenia'))
+      .toEqual(['History museums in Armenia', 'National museums of Armenia', 'Archaeological museums']);
   });
 
   it('lets a category walk it could not finish end the run', async () => {

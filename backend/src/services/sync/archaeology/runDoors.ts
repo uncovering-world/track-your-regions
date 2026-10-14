@@ -21,7 +21,7 @@ import type { OsmReader, SiteEntrance } from './sites.js';
 import { fetchWikipediaCategories } from '../wikipediaCategories.js';
 import { resolveWikipediaArticles } from '../wikipediaArticles.js';
 import { fetchCategoryMembers } from '../wikipediaCategoryMembers.js';
-import { NATURE_CATEGORY, NATURE_CATEGORY_ROOT, OSM_DIG_TAGS } from './classes.js';
+import { DEPARTMENT_ROOTS, DEPARTMENT_WALK, NATURE_CATEGORY_ROOT, NATURE_WALK, OSM_DIG_TAGS } from './classes.js';
 import {
   delay,
   WaitBudget,
@@ -84,21 +84,32 @@ function collectingSparql(
  * budget per wiki would let one run wait twice the number either was held to.
  */
 function categoriesDoor(
-  progress: SyncProgress, budget: WaitBudget,
+  progress: SyncProgress, budget: WaitBudget, shelves: ReadonlyMap<string, string[]>,
 ): (titles: string[]) => Promise<Map<string, string[]>> {
-  return (titles) => fetchWikipediaCategories(titles, {
-    userAgent: WIKIDATA_USER_AGENT,
-    isCancelled: () => progress.cancel,
-    pause: () => delay(SPARQL_DELAY_MS),
-    budget,
-    onWait: (wait) => { progress.statusMessage = waitMessage('Wikipedia', wait, budget); },
-  });
+  return async (titles) => {
+    const categories = await fetchWikipediaCategories(titles, {
+      userAgent: WIKIDATA_USER_AGENT,
+      isCancelled: () => progress.cancel,
+      pause: () => delay(SPARQL_DELAY_MS),
+      budget,
+      onWait: (wait) => { progress.statusMessage = waitMessage('Wikipedia', wait, budget); },
+    });
+    // A museum the walk found through its own category carries that
+    // category's shelves as its own (#889): the History Museum of Armenia is
+    // shelved under `Archaeological museums` by its category, not its article.
+    for (const [title, shelved] of shelves) {
+      const own = categories.get(title);
+      if (own) categories.set(title, [...new Set([...own, ...shelved])]);
+    }
+    return categories;
+  };
 }
 
 /**
  * The same categories entered rather than tested: the walk down
- * `Archaeological museums by country`, which names the museums no class does
- * (ADR-0058 decision 2, `archaeology/classes.ts`).
+ * `Archaeological museums`, which names the museums no class does (ADR-0058
+ * decision 2, `archaeology/classes.ts`), and the walks down the department
+ * shelves, which name the ones no nature signal does (#889).
  *
  * **A category that cannot be read ends the run**, exactly as a batch of titles
  * does and for a stronger reason: a lost category is every museum of a country
@@ -107,16 +118,29 @@ function categoriesDoor(
  * whose log said success.
  */
 function categoryMembersDoor(
-  progress: SyncProgress, budget: WaitBudget,
+  progress: SyncProgress, budget: WaitBudget, shelves: Map<string, string[]>,
 ): () => Promise<Map<string, string>> {
-  return () => fetchCategoryMembers(NATURE_CATEGORY_ROOT, {
+  const walk = (root: string, recurseInto: RegExp) => fetchCategoryMembers(root, {
     userAgent: WIKIDATA_USER_AGENT,
     isCancelled: () => progress.cancel,
     pause: () => delay(SPARQL_DELAY_MS),
-    recurseInto: NATURE_CATEGORY,
+    recurseInto,
+    shelves,
     budget,
     onWait: (wait) => { progress.statusMessage = waitMessage('Wikipedia', wait, budget); },
   });
+  return async () => {
+    const members = await walk(NATURE_CATEGORY_ROOT, NATURE_WALK);
+    // The department shelves name a museum no nature signal does, such as the
+    // Altes Museum (#889). What each one is stays the rule's call, read off its
+    // own categories, classes and map.
+    for (const root of DEPARTMENT_ROOTS) {
+      for (const [title, qid] of await walk(root, DEPARTMENT_WALK)) {
+        if (!members.has(title)) members.set(title, qid);
+      }
+    }
+    return members;
+  };
 }
 
 /**
@@ -222,11 +246,15 @@ export function doorsForAPass(
   // Wikidata's first: each composes the run's cache over its send.
   const sparql = collectingSparql(progress, refreshCache, budget);
   const { door, forget } = cachedOsmDoor(reader, progress, refreshCache, budget);
+  // What the walk learns of a museum's own category, read back when the
+  // museum's categories are (#889): written by one door, read by the other,
+  // within one pass.
+  const shelves = new Map<string, string[]>();
   return {
     deps: {
       sparql,
-      categories: categoriesDoor(progress, budget),
-      categoryMembers: categoryMembersDoor(progress, budget),
+      categories: categoriesDoor(progress, budget, shelves),
+      categoryMembers: categoryMembersDoor(progress, budget, shelves),
       // The site door's second signal. Never a default inside the pipeline: a
       // run that silently read no map would refuse Troy and call it a verdict.
       osm: osmReader(door),
