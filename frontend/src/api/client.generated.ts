@@ -3601,8 +3601,13 @@ export interface DumpBuild {
      * @maximum 9007199254740991
      */
   id: number;
-  fileName: string;
-  dumpDate: string;
+  /**
+     * Null for a build that ended before it found its file.
+     * @nullable
+     */
+  fileName: string | null;
+  /** @nullable */
+  dumpDate: string | null;
   mode: DumpBuildMode;
   /**
      * @minimum -9007199254740991
@@ -3668,15 +3673,16 @@ export const DumpBuildProgressKind = {
   keep: 'keep',
 } as const;
 
+/**
+ * Queued for the dump worker, finding its file, or reading it (ADR-0106).
+ */
 export type DumpBuildProgressStatus = typeof DumpBuildProgressStatus[keyof typeof DumpBuildProgressStatus];
 
 
 export const DumpBuildProgressStatus = {
+  queued: 'queued',
   resolving: 'resolving',
   reading: 'reading',
-  success: 'success',
-  failed: 'failed',
-  cancelled: 'cancelled',
 } as const;
 
 export type DumpBuildProgressFile = {
@@ -3686,12 +3692,13 @@ export type DumpBuildProgressFile = {
 } | null;
 
 /**
- * A dump build in flight, or the last one this process ran.
+ * A dump build queued or running, read from its ledger row whatever process runs it.
  */
 export interface DumpBuildProgress {
   dump: DumpBuildProgressDump;
   /** A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds. */
   kind: DumpBuildProgressKind;
+  /** Queued for the dump worker, finding its file, or reading it (ADR-0106). */
   status: DumpBuildProgressStatus;
   message: string;
   file: DumpBuildProgressFile;
@@ -3710,7 +3717,13 @@ export interface DumpBuildProgress {
      * @maximum 9007199254740991
      */
   lines: number;
-  buildId: number | null;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  buildId: number;
+  /** When the build last said it is alive, every few seconds; null while it waits for the worker. */
+  heartbeatAt: string | null;
 }
 
 /**
@@ -3764,25 +3777,6 @@ export type DumpsDumpsItemKeeps = {
 } | null;
 
 /**
- * A build of this dump running in another process (a script, another server), which refuses a new build until it ends (#1463); null when none runs or this process runs it.
- */
-export type DumpsDumpsItemElsewhere = {
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  buildId: number;
-  fileName: string;
-  /** @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$ */
-  startedAt: string;
-  /**
-     * When the build last said it is alive; it beats every minute.
-     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
-     */
-  heartbeatAt: string;
-} | null;
-
-/**
  * The newest local copy of the dump in DUMPS_DIR, which a build can read instead of the newest file the host lists (#1456); null without one.
  */
 export type DumpsDumpsItemLocalCopy = {
@@ -3808,8 +3802,6 @@ export type DumpsDumpsItem = {
   builds: DumpBuild[];
   /** What a keeping build of this dump makes (the local Wikidata subset), or null where nothing is built from it yet. */
   keeps: DumpsDumpsItemKeeps;
-  /** A build of this dump running in another process (a script, another server), which refuses a new build until it ends (#1463); null when none runs or this process runs it. */
-  elsewhere: DumpsDumpsItemElsewhere;
   /** The newest local copy of the dump in DUMPS_DIR, which a build can read instead of the newest file the host lists (#1456); null without one. */
   localCopy: DumpsDumpsItemLocalCopy;
 };
