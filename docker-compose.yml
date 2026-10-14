@@ -35,6 +35,8 @@ services:
       additional_contexts:
         shared: ./packages/shared
     container_name: ${STACK_NAME:-tyr-ng}-backend
+    # A stable name across restarts and recreates: the dump builds' runner (#1463).
+    hostname: ${STACK_NAME:-tyr-ng}-backend
     environment:
       DB_HOST: db
       DB_PORT: 5432
