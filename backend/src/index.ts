@@ -108,9 +108,10 @@ const startServer = async () => {
     console.log(`🧹 Marked ${stoppedPlacements.marked} sync run(s) stopped while placing what they moved`);
   }
 
-  // A dump build the previous process was in the middle of (ADR-0101).
-  const { closeOrphanedBuilds, SERVER_RUNNER } = await import('./services/dumps/ledger.js');
-  const orphanedBuilds = await closeOrphanedBuilds({ runner: SERVER_RUNNER });
+  // A dump build whose process stopped beating (ADR-0101): the dump worker
+  // runs them (ADR-0106) and closes its own on start; this closes the rest.
+  const { closeOrphanedBuilds } = await import('./services/dumps/ledger.js');
+  const orphanedBuilds = await closeOrphanedBuilds();
   if (orphanedBuilds > 0) {
     console.log(`🧹 Marked ${orphanedBuilds} stale dump build(s) as failed`);
   }
