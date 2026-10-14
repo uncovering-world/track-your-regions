@@ -4457,6 +4457,17 @@ export const ExperienceSourceLastSyncStatus = {
 } as const;
 
 /**
+ * Which Wikidata the source's runs read: the live query service, or the local subset built from the entities dump (#1459, ADR-0105).
+ */
+export type ExperienceSourceWikidataReader = typeof ExperienceSourceWikidataReader[keyof typeof ExperienceSourceWikidataReader];
+
+
+export const ExperienceSourceWikidataReader = {
+  live: 'live',
+  subset: 'subset',
+} as const;
+
+/**
  * What one source is holding, in the three kinds the review queue asks about.
  */
 export interface WaitingCounts {
@@ -4518,6 +4529,10 @@ export interface ExperienceSource {
   repairsPictures: boolean;
   /** Whether the panel can search Wikidata for the items of this source's components that no item records the reference of (#1272). */
   findsComponentItems: boolean;
+  /** Which Wikidata the source's runs read: the live query service, or the local subset built from the entities dump (#1459, ADR-0105). */
+  wikidataReader: ExperienceSourceWikidataReader;
+  /** Whether every question this source asks has a twin in the local subset, so its runs may be switched to read it. */
+  subsetReady: boolean;
 }
 
 /**
@@ -10081,6 +10096,39 @@ export interface WikidataCacheTtlSet {
   restamped: number;
 }
 
+export type WikidataReaderBodyReader = typeof WikidataReaderBodyReader[keyof typeof WikidataReaderBodyReader];
+
+
+export const WikidataReaderBodyReader = {
+  live: 'live',
+  subset: 'subset',
+} as const;
+
+export interface WikidataReaderBody {
+  reader: WikidataReaderBodyReader;
+}
+
+export type WikidataReaderSetWikidataReader = typeof WikidataReaderSetWikidataReader[keyof typeof WikidataReaderSetWikidataReader];
+
+
+export const WikidataReaderSetWikidataReader = {
+  live: 'live',
+  subset: 'subset',
+} as const;
+
+/**
+ * Which Wikidata a source's runs read, switched.
+ */
+export interface WikidataReaderSet {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  sourceId: number;
+  name: string;
+  wikidataReader: WikidataReaderSetWikidataReader;
+}
+
 /**
  * A saved copy of the pages, deleted.
  */
@@ -13933,6 +13981,46 @@ return apiFetch<CurationGateSet>(getPutAdminSyncSourcesBySourceIdCurationGateUrl
     method: 'PUT',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(curationGateBody)
+  }
+);}
+
+
+
+export const getPutAdminSyncSourcesBySourceIdWikidataReaderUrl = (sourceId: number,) => {
+
+
+
+
+  return `/api/admin/sync/sources/${encodeURIComponent(String(sourceId))}/wikidata-reader`
+}
+
+/**
+ * Requires an admin.
+ * @summary Switch which Wikidata a source's runs read: the live query service or the local subset
+ */
+export const putAdminSyncSourcesBySourceIdWikidataReader = async (sourceId: number,
+    wikidataReaderBody: WikidataReaderBody, options?: Parameters<typeof apiFetch>[1]): Promise<WikidataReaderSet> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<WikidataReaderSet>(getPutAdminSyncSourcesBySourceIdWikidataReaderUrl(sourceId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(wikidataReaderBody)
   }
 );}
 
