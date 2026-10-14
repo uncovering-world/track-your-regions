@@ -18,7 +18,7 @@ import { rm } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { createGunzip, createGzip } from 'node:zlib';
-import { SUBSET_LANGUAGES } from './compactEntity.js';
+import { storableText, SUBSET_LANGUAGES } from './compactEntity.js';
 
 export interface Terms {
   id: string;
@@ -29,7 +29,9 @@ export interface Terms {
 const TERMS_START = '"labels":';
 const TERMS_END = ',"aliases":';
 
-/** The line's labels and descriptions in `languages`, or null when it has none of them. */
+const storableOrNull = (text: string | undefined) => (text === undefined ? null : storableText(text));
+
+/** The line's labels and descriptions in `languages`, or null when it has none of them, as Postgres can store them. */
 export function termsOf(id: string, line: string, languages: readonly string[] = SUBSET_LANGUAGES): Terms | null {
   const start = line.indexOf(TERMS_START);
   const end = line.indexOf(TERMS_END, start);
@@ -40,8 +42,8 @@ export function termsOf(id: string, line: string, languages: readonly string[] =
   };
   const terms: Terms['terms'] = {};
   for (const language of languages) {
-    const label = parsed.labels?.[language]?.value ?? null;
-    const description = parsed.descriptions?.[language]?.value ?? null;
+    const label = storableOrNull(parsed.labels?.[language]?.value);
+    const description = storableOrNull(parsed.descriptions?.[language]?.value);
     if (label !== null || description !== null) terms[language] = [label, description];
   }
   return Object.keys(terms).length > 0 ? { id, terms } : null;
