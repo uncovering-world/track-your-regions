@@ -4738,11 +4738,9 @@ things (`claimKeySql` in `reviewQueuePredicates.ts`, read by `reviewQueueConflic
 `reviewQueueKeys.ts`). The shape the queue serves has one home, the backend schema
 `ReviewQueue` whose type the web imports (ADR-0066).
 
-(Those two metadata keys used to be a pre-existing hole in metadata protection too —
-the upsert guarded metadata only with `curated_fields ? 'metadata'`, which neither
-satisfies. That guard now also honours a per-key claim on each of them directly (#488),
-re-applying just that key over the source's value. `CURATED_KEY_BY_FIELD` still does
-not carry either key, though, so that fallback is still what represents them here.)
+(The upsert honours a per-key claim on each of those two keys directly (#488), re-applying
+just that key over the source's value; `CURATED_KEY_BY_FIELD` sends them to `metadata`, so a
+queue lookup by name still reads them as a whole-column claim — #729's half, below.)
 
 `computeChangeSet` diffs **every** metadata key on its own now, under `metadata.<key>`
 (ADR-0039), so a curator's claim on one reports as its own conflict rather than disappearing
@@ -4758,9 +4756,21 @@ run made. Both are fixed the same way — the field says which refusal kept it o
 `RawDiff.protectedByClaim` carries the answer out of `metadataChanges`, because two facts about
 the row settle it and no lookup can. A claim on the whole `metadata` column protects every key
 under it, which no per-key name matches — without this the source's values would report as applied
-over a curator's claim. And a claim whose key the row no longer carries protects nothing: the
-upsert only re-applies a claimed key while `experiences.metadata ? claimed.k`, so the source's
-value lands and filing it as a conflict would offer a curator "accept" on a value already written.
+over a curator's claim. And a claim whose key the row no longer carries protects nothing, so the
+source's value lands and filing it as a conflict would offer a curator "accept" on a value already
+written.
+
+**Which keys a per-key claim holds is one declaration, `claimedMetadataKeys` (`changeSet.ts`,
+ADR-0077 decision 2)**, read by every runtime that asks. It takes the claims and the stored
+metadata and answers the bare key names: every `metadata.<key>` claim whose key the row still
+carries — by presence, so a value a curator cleared and still claims stays theirs — except the keys
+the run computes about its own pass (`SYNC_OWNED_METADATA_KEYS`), which no claim can freeze. The
+upsert binds that list, worked out from the row it read under the lock, and its metadata arm puts
+exactly those keys back over the source's object instead of parsing `curated_fields` in SQL; the
+diff reads the same list to mark those keys `protectedByClaim`; and publishing a held proposal reads
+it to put the claimed keys back after the entries are merged. A **major** key is held like any
+other: a claim on `metadata.inDanger` keeps the curator's flag, and the run records the source's
+disagreement as a conflict rather than as applied, because the write and the record read one list.
 
 **The flag answers protection, not addressability, and the whole-column arm is where that costs
 something** (#729). Such a claim used to raise one conflict named `metadata`, which
@@ -4772,24 +4782,12 @@ loses more than the asking**: its skip list is the same lookup, so the per-key e
 skipped and are written key by key over the column the claim covers, while `experienceUpsert.ts` still
 keeps that column whole on `curated_fields ? 'metadata'`. Reachable only for a claim made *after*
 the run, since one standing at diff time holds every key. Unreachable today, since nothing writes a
-bare `metadata` claim, and the same class as the per-key gap the paragraph below records.
+bare `metadata` claim.
 
-A claim on a key the map *does* carry — `metadata.inDanger` or `metadata.dateInscribed` — is
-not this fallback's case, and would still be reported as applied, not as a conflict:
-`CURATED_KEY_BY_FIELD` already has an entry for it, so the `?? diff.field` fallback never
-fires, and the diff is checked against a whole-column claim instead of its own name. The
-upsert's SQL guard does not draw that distinction — it re-applies any claimed `metadata.%` key
-still present in the stored row the same way, major or not — so a per-key claim on one of
-these two, provided the row still carries that key, would be honoured in storage and still
-misreported here, #488's exact shape, unfixed for those two keys. No writer
-produces such a claim today: `editExperience` (`curationController.ts`) adds
-`metadata.website`, `metadata.wikipediaUrl` and `metadata.imageCredit` per key — never
-`inDanger` or `dateInscribed`, the two the map carries — so this is a doc-truth gap rather
-than a live one, tracked as #727 with its sibling above. The credit joined that list with the picture credits and takes the same
-fallback, being no more a major key than the other two. The rule holds for the keys the map does not carry: there,
-the claim key the queue reads and the claim key the upsert honours are the same string, and
-`computeChangeSet` — producing the very `changed_fields` and `curatedConflicts` the queue
-reads — uses that same string too.
+`editExperience` (`curationController.ts`) claims `metadata.website`, `metadata.wikipediaUrl` and
+`metadata.imageCredit` per key, and none of them is in `CURATED_KEY_BY_FIELD`: for those keys the
+claim key the queue reads, the claim the upsert honours and the key `computeChangeSet` files — the
+very `changed_fields` and `curatedConflicts` the queue reads — are the same string.
 
 Accepting is always a claim release; whether the value is *also* written on the spot is what
 `ACCEPTABLE_FIELDS` (`acceptableFields.ts`) decides — `name`, `shortDescription`,
@@ -5723,8 +5721,8 @@ proposed for ever and applied never.
 - **`metadata`**, reported **one key at a time** (ADR-0039) — `metadata.<key>` for every key that
   differs, and nothing at all for the keys the run computes about its own pass. Two rules sit on
   top of the merge here: the credit follows the picture (see "The credit belongs to the picture"
-  above), and every `metadata.<key>` a curator claims is re-applied from what is stored, exactly as
-  the upsert re-applies it.
+  above), and the keys a curator's claims hold are re-applied from what is stored — the same
+  `claimedMetadataKeys` list the upsert re-applies.
 - **`name_local`**, reported **one language at a time** (#728) — `nameLocal.<lang>` for every
   language that differs. Neither extra rule applies: a language map holds no fact belonging to
   another column, and no per-language claim can exist, because `curated_fields ? 'name_local'` is
