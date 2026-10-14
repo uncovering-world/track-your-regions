@@ -69,13 +69,20 @@ export function museumRule(classes: ReadonlySet<string>): VenueRule {
   return { classes, siteVeto: true, noun: 'museum' };
 }
 
+/**
+ * What a dissolution of unknown date is read as: Wikidata says the venue
+ * closed and nobody can say when, which refuses it as surely as a date does.
+ */
+export const DISSOLVED_UNKNOWN = 'unknown';
+
 export function venueVerdict(e: VenueFacts, rule: VenueRule): VenueResult {
   const killed = e.classes.filter((c) => KILL_CLASSES[c]);
   if (killed.length) {
     return { pass: false, reason: `kill-list: ${killed.map((c) => KILL_CLASSES[c]).join('; ')}` };
   }
   if (e.dissolved) {
-    return { pass: false, reason: `dissolved ${e.dissolved.slice(0, 10)} (P576)` };
+    const when = e.dissolved === DISSOLVED_UNKNOWN ? ', date unknown' : ` ${e.dissolved.slice(0, 10)}`;
+    return { pass: false, reason: `dissolved${when} (P576)` };
   }
   if (!e.classes.some((c) => rule.classes.has(c))) {
     return { pass: false, reason: `not a ${rule.noun} class` };

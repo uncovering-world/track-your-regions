@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { venueVerdict, museumRule, type VenueFacts, type VenueRule } from './venueTest.js';
+import { DISSOLVED_UNKNOWN, venueVerdict, museumRule, type VenueFacts, type VenueRule } from './venueTest.js';
 
 const MUSEUM_CLASSES = new Set(['Q33506', 'Q207694']); // museum, art museum
 const facts = (over: Partial<VenueFacts>): VenueFacts =>
@@ -24,6 +24,11 @@ describe('venueVerdict', () => {
     const v = venueVerdict(facts({ dissolved: '1951-01-01' }), museumRule(MUSEUM_CLASSES));
     expect(v.pass).toBe(false);
     expect((v as { reason: string }).reason).toContain('dissolved');
+  });
+
+  it('rejects a collection dissolved on an unknown date, and says so', () => {
+    const v = venueVerdict(facts({ dissolved: DISSOLVED_UNKNOWN }), museumRule(MUSEUM_CLASSES));
+    expect(v).toEqual({ pass: false, reason: 'dissolved, date unknown (P576)' });
   });
 
   it('rejects an entity with no coordinates of its own', () => {
