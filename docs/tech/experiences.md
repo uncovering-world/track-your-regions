@@ -595,16 +595,28 @@ it stands, what it is part of, whose collection, makers by label) and the
 containers (`subsetContainerFacts`) — with the values spelled as WDQS spells
 them (`sync/subset/values.ts`: best and standing statements, the `Special:FilePath`
 picture, the English article, the WKT point with its globe, the year) and the
-labels read in `LABEL_LANGS` order from `wikidata_labels`.
+labels read in `LABEL_LANGS` order from `wikidata_labels`. Art Museums' are in
+`sync/subset/museum.ts` (#1460) — the broad and class pools (`subsetWorkPool`:
+best-rank P31, the sitelinks floor, no point asked for), where a work says it
+is (`subsetVenueStatements`: P195 and P276 at every rank but deprecated, an
+ended one dropped, an unknown value kept with no venue), a candidate venue's
+details and edges, the museums an entity counts among its parts, what a venue
+holds (`subsetVenueHoldings`, from the claims' value index) and objects by id —
+with the kept entities and their labels read through `sync/subset/entities.ts`.
+A work the subset does not keep (no point, and no location, part or collection
+statement reaching a kept place, ADR-0105) is in none of their answers, where
+the live pool collects it and the pipeline counts it as held nowhere.
 
 **Which Wikidata a source's runs read** is `experience_sources.wikidata_reader`
 (`live` or `subset`), switched on the source's card in the sync panel
 (`WikidataReaderControls`, `PUT /api/admin/sync/sources/:sourceId/wikidata-reader`).
 The subset is offered only for a source every question of which has a twin
-(`SUBSET_READY_SOURCES`: Public Art so far), since a run that read some answers
-from the subset and the rest live would mix two dates of Wikidata. Such a run
-is handed `subsetOnlyDoor()`: marked, and failing by name if any question
-reaches SPARQL. A run switched to the subset before one is built stops at once
+(`SUBSET_READY_SOURCES`: Public Art and Art Museums so far), since a run that
+read some answers from the subset and the rest live would mix two dates of
+Wikidata. Such a run is handed `subsetOnlyDoor()` by `wikidataRunDoor`
+(`sync/subset/runDoor.ts`): marked, and failing by name if any question
+reaches SPARQL; the museum run then skips the pause it keeps between questions
+to the live service. A run switched to the subset before one is built stops at once
 and says so. A wrapper around a marked door is marked again (`subsetDoor`), or
 the fetchers behind it go live.
 
