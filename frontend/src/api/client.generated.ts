@@ -3625,6 +3625,18 @@ export interface DumpBuild {
   finishedAt: string | null;
 }
 
+export type DumpBuildBodyFrom = typeof DumpBuildBodyFrom[keyof typeof DumpBuildBodyFrom];
+
+
+export const DumpBuildBodyFrom = {
+  newest: 'newest',
+  local: 'local',
+} as const;
+
+export interface DumpBuildBody {
+  from?: DumpBuildBodyFrom;
+}
+
 /**
  * Whether a running build of the dump was asked to stop.
  */
@@ -3770,6 +3782,20 @@ export type DumpsDumpsItemElsewhere = {
   heartbeatAt: string;
 } | null;
 
+/**
+ * The newest local copy of the dump in DUMPS_DIR, which a build can read instead of the newest file the host lists (#1456); null without one.
+ */
+export type DumpsDumpsItemLocalCopy = {
+  fileName: string;
+  /** The date in the file name: YYYYMMDD, or YYYYMM for a month of counts. */
+  date: string;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  bytes: number;
+} | null;
+
 export type DumpsDumpsItem = {
   key: DumpsDumpsItemKey;
   /** Who publishes the dump: Wikidata, English Wikipedia, Wikimedia pageviews. */
@@ -3784,6 +3810,8 @@ export type DumpsDumpsItem = {
   keeps: DumpsDumpsItemKeeps;
   /** A build of this dump running in another process (a script, another server), which refuses a new build until it ends (#1463); null when none runs or this process runs it. */
   elsewhere: DumpsDumpsItemElsewhere;
+  /** The newest local copy of the dump in DUMPS_DIR, which a build can read instead of the newest file the host lists (#1456); null without one. */
+  localCopy: DumpsDumpsItemLocalCopy;
 };
 
 /**
@@ -14058,16 +14086,31 @@ export const getPostAdminDumpsByDumpBuildUrl = (dump: 'wikidata-entities' | 'wik
 
 /**
  * Requires an admin.
- * @summary Start a build that reads the newest complete file of a dump and verifies it against its host
+ * @summary Start a build that reads the newest complete file of a dump, or the local copy's, and verifies it against its host
  */
-export const postAdminDumpsByDumpBuild = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
+export const postAdminDumpsByDumpBuild = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user',
+    dumpBuildBody: DumpBuildBody, options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
 
-  return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpBuildUrl(dump),
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpBuildUrl(dump),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(dumpBuildBody)
   }
 );}
 
@@ -14083,16 +14126,31 @@ export const getPostAdminDumpsByDumpKeepUrl = (dump: 'wikidata-entities' | 'wiki
 
 /**
  * Requires an admin.
- * @summary Start a build that reads the newest complete file of a dump and keeps what is built from it, swapping it in whole
+ * @summary Start a build that reads the newest complete file of a dump, or the local copy's, and keeps what is built from it, swapping it in whole
  */
-export const postAdminDumpsByDumpKeep = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
+export const postAdminDumpsByDumpKeep = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user',
+    dumpBuildBody: DumpBuildBody, options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
 
-  return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpKeepUrl(dump),
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpKeepUrl(dump),
   {
     ...options,
-    method: 'POST'
-
-
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(dumpBuildBody)
   }
 );}
 
