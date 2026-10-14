@@ -120,10 +120,11 @@ and accepted by it.
 | [0098](0098-a-place-the-map-shows-in-use-is-refused-on-the-maps-entrance.md) | A place the map shows in use is refused on the map's entrance | Accepted | 2026-10-12 |
 | [0099](0099-a-rewrite-a-visitor-would-not-notice-passes-the-gate.md) | A rewrite a visitor would not notice passes the gate | Accepted | 2026-10-12 |
 | [0100](0100-a-serial-sites-components-are-places-part-of-the-site.md) | A serial site's components are places, part of the site | Accepted | 2026-10-13 |
-| [0101](0101-bulk-reads-come-from-public-dumps-and-wikidata-is-kept-as-a-wide-subset.md) | Bulk reads come from public dumps, and Wikidata is kept as a wide subset cut by entity | Accepted | 2026-10-13 |
+| [0101](0101-bulk-reads-come-from-public-dumps-and-wikidata-is-kept-as-a-wide-subset.md) | Bulk reads come from public dumps, and Wikidata is kept as a wide subset cut by entity | Accepted — decision 2 narrowed by [0105](0105-the-wikidata-subset-follows-containment-chains-and-is-kept-compact-and-swapped-in-whole.md) | 2026-10-13 |
 | [0102](0102-a-work-one-kind-refuses-as-held-by-a-place-is-handed-to-the-kind-that-holds-it.md) | A work one kind refuses as held by a place is handed to the kind that holds that place | Accepted | 2026-10-13 |
 | [0103](0103-a-museum-whose-famous-find-no-kind-shows-arrives-in-archaeology-held-for-a-curator.md) | A museum whose famous find no kind shows arrives in Archaeology held for a curator | Accepted | 2026-10-13 |
 | [0104](0104-the-map-is-a-third-signal-of-an-archaeology-museum-and-a-department-in-an-art-museum-is-refused.md) | The map is a third signal of an archaeology museum, and a department in an art museum is refused | Accepted | 2026-10-14 |
+| [0105](0105-the-wikidata-subset-follows-containment-chains-and-is-kept-compact-and-swapped-in-whole.md) | The Wikidata subset follows containment chains, and is kept compact and swapped in whole | Accepted | 2026-10-14 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
