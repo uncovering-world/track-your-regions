@@ -3724,6 +3724,8 @@ export interface DumpBuildProgress {
   buildId: number;
   /** When the build last said it is alive, every few seconds; null while it waits for the worker. */
   heartbeatAt: string | null;
+  /** Seconds the pass being read has left at its pace so far; null in its first minute, between passes and in a step that reads no file. */
+  etaSeconds: number | null;
 }
 
 /**
