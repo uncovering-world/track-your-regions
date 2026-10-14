@@ -58,6 +58,12 @@ export const Dumps = z.strictObject({
       built: z.strictObject({ dumpDate: z.string(), swappedAt: timestamp }).nullable()
         .describe('The build now in place: its dump date and when it was swapped in.'),
     }).nullable().describe('What a keeping build of this dump makes (the local Wikidata subset), or null where nothing is built from it yet.'),
+    elsewhere: z.strictObject({
+      buildId: z.number().int(),
+      fileName: z.string(),
+      startedAt: timestamp,
+      heartbeatAt: timestamp.describe('When the build last said it is alive; it beats every minute.'),
+    }).nullable().describe('A build of this dump running in another process (a script, another server), which refuses a new build until it ends (#1463); null when none runs or this process runs it.'),
   })),
   localCopy: z.boolean().describe('Whether builds keep a local copy (DUMPS_DIR) or read each file as a stream from its host.'),
 }).describe('The public dumps the catalogue reads, with their builds (ADR-0101).');
