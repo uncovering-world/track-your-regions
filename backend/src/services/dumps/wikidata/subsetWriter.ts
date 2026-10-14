@@ -5,7 +5,7 @@
  */
 
 import type { DumpConsumer } from '../read.js';
-import { compactEntity, type DumpEntity } from './compactEntity.js';
+import { compactEntity, type DumpEntity, storableJson } from './compactEntity.js';
 import { entityJson, entityOf, forEachMainItemValue } from './entityLine.js';
 import { IdSet } from './idSets.js';
 import { type TermsSpool, termsOf } from './labelsRing.js';
@@ -49,7 +49,7 @@ export class SubsetWriter implements DumpConsumer {
     this.batch.push({
       id: parsed.id,
       sitelinkCount: Object.keys(parsed.sitelinks ?? {}).length,
-      entity: JSON.stringify(compactEntity(parsed)),
+      entity: storableJson(JSON.stringify(compactEntity(parsed))),
     });
     if (this.batch.length >= BATCH) await this.flush();
   }

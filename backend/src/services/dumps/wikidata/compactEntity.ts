@@ -55,6 +55,40 @@ export interface CompactEntity {
   sitelinks: Record<string, string>;
 }
 
+// Postgres stores neither a NUL in `text` nor one in `jsonb` (`\u0000 cannot be
+// converted to text`), and `jsonb` refuses a surrogate with no partner, and the
+// dump holds both: one Arabic label ended in a NUL and stopped the first full
+// build of the 2026-10-05 dump after hours of its second pass. Neither is a
+// character anyone reads, so a NUL is dropped and a lone surrogate becomes
+// U+FFFD, the replacement character, wherever a string is kept.
+const NUL = /\0/g;
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+// What JSON.stringify writes for either: it escapes both, and only those (a
+// pair it writes as the character). A literal backslash before "u0000" in a
+// string also matches, which only costs the slow path below.
+const ESCAPED_UNSTORABLE = /\\u(?:0000|d[89a-f][0-9a-f]{2})/i;
+
+/** `text` as Postgres can store it: no NUL, no lone surrogate. */
+export function storableText(text: string): string {
+  return text.replace(NUL, '').replace(LONE_SURROGATE, '\uFFFD');
+}
+
+/** A parsed JSON value with every string in it, keys included, storable. */
+function storableValue(value: unknown): unknown {
+  if (typeof value === 'string') return storableText(value);
+  if (Array.isArray(value)) return value.map(storableValue);
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, inner]) => [storableText(key), storableValue(inner)]));
+  }
+  return value;
+}
+
+/** JSON as `jsonb` can store it: every string in it, keys included, storable; nearly every entity passes untouched. */
+export function storableJson(json: string): string {
+  if (!ESCAPED_UNSTORABLE.test(json)) return json;
+  return JSON.stringify(storableValue(JSON.parse(json)));
+}
+
 /** The languages the subset keeps labels and descriptions in; widening it needs no other change. */
 export const SUBSET_LANGUAGES = ['en', 'mul', 'en-gb', 'de', 'fr', 'es', 'it', 'nl'] as const;
 
