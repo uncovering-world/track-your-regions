@@ -14,12 +14,15 @@ export async function getDumps(): Promise<Dumps> {
   return getAdminDumps();
 }
 
-export async function startDumpBuild(dump: Parameters<typeof postAdminDumpsByDumpBuild>[0]): Promise<DumpBuildStarted> {
-  return postAdminDumpsByDumpBuild(dump);
+/** Where a build reads from: the newest file the host lists, or the local copy's own (#1456). */
+export type DumpBuildFrom = 'newest' | 'local';
+
+export async function startDumpBuild(dump: Parameters<typeof postAdminDumpsByDumpBuild>[0], from: DumpBuildFrom = 'newest'): Promise<DumpBuildStarted> {
+  return postAdminDumpsByDumpBuild(dump, { from });
 }
 
-export async function startDumpKeep(dump: Parameters<typeof postAdminDumpsByDumpKeep>[0]): Promise<DumpBuildStarted> {
-  return postAdminDumpsByDumpKeep(dump);
+export async function startDumpKeep(dump: Parameters<typeof postAdminDumpsByDumpKeep>[0], from: DumpBuildFrom = 'newest'): Promise<DumpBuildStarted> {
+  return postAdminDumpsByDumpKeep(dump, { from });
 }
 
 export async function cancelDumpBuild(dump: Parameters<typeof postAdminDumpsByDumpCancel>[0]): Promise<DumpBuildCancelled> {

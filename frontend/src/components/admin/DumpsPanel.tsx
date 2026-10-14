@@ -17,7 +17,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  cancelDumpBuild, getDumps, startDumpBuild, startDumpKeep, type DumpBuild, type DumpBuildProgress, type DumpsDumpsItem,
+  cancelDumpBuild, getDumps, startDumpBuild, startDumpKeep, type DumpBuild, type DumpBuildFrom, type DumpBuildProgress, type DumpsDumpsItem,
 } from '../../api/admin/dumps';
 import { queryKeys } from '../../api/queryKeys';
 import { formatDateTime, formatDuration, formatRelativeTime } from '../../utils/dateFormat';
@@ -128,6 +128,21 @@ function EarlierBuilds({ builds, datedBy }: { builds: DumpBuild[]; datedBy: Dump
   );
 }
 
+/** A copy's date as its name gives it (`20261005`, `202609`), as the ISO day `dumpDate` reads. */
+function copyIsoDate(date: string): string {
+  return date.length === 8 ? `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}` : `${date.slice(0, 4)}-${date.slice(4, 6)}-01`;
+}
+
+/** The newest local copy of the dump, which a build can read instead of downloading the newest file. */
+function LocalCopy({ dump }: { dump: DumpsDumpsItem }) {
+  if (!dump.localCopy) return null;
+  return (
+    <Typography variant="caption" color="text.secondary" display="block">
+      Local copy: {dumpDate(copyIsoDate(dump.localCopy.date), dump.datedBy)}, {size(dump.localCopy.bytes)}
+    </Typography>
+  );
+}
+
 /** What is built from the dump, and from which dump the build in place was made. */
 function Kept({ dump }: { dump: DumpsDumpsItem }) {
   if (!dump.keeps) return null;
@@ -159,8 +174,14 @@ function Elsewhere({ build }: { build: NonNullable<DumpsDumpsItem['elsewhere']> 
 function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
   const queryClient = useQueryClient();
   const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.admin.dumps });
-  const start = useMutation({ mutationFn: () => startDumpBuild(dump.key), onSettled: refresh });
-  const keep = useMutation({ mutationFn: () => startDumpKeep(dump.key), onSettled: refresh });
+  const start = useMutation({ mutationFn: (from: DumpBuildFrom) => startDumpBuild(dump.key, from), onSettled: refresh });
+  const keep = useMutation({ mutationFn: (from: DumpBuildFrom) => startDumpKeep(dump.key, from), onSettled: refresh });
+  const copy = dump.localCopy;
+  const copyDate = copy ? dumpDate(copyIsoDate(copy.date), dump.datedBy) : null;
+  // A newer file of a daily dump replaces the local copy: once verified, or first when the disk cannot hold both.
+  const replaces = copy && dump.datedBy === 'day'
+    ? `Downloads the newest dump if it is newer than the local copy of ${copyDate}. That copy is removed once the new one is verified, or before the download if the disk cannot hold both.`
+    : '';
   const cancel = useMutation({ mutationFn: () => cancelDumpBuild(dump.key), onSettled: refresh });
   const [open, setOpen] = useState(false);
   const running = inFlight(dump.progress);
@@ -176,6 +197,7 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
           <Typography variant="body2" fontWeight={500}>{dump.title}</Typography>
           <Typography variant="caption" color="text.secondary">{dump.about}</Typography>
           <Kept dump={dump} />
+          <LocalCopy dump={dump} />
         </TableCell>
         {running && dump.progress && <ProgressCells progress={dump.progress} />}
         {!running && dump.elsewhere && <Elsewhere build={dump.elsewhere} />}
@@ -191,9 +213,20 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
           {running && <Button size="small" color="inherit" onClick={() => cancel.mutate()} disabled={cancel.isPending}>Cancel</Button>}
           {!running && !dump.elsewhere && (
             <Box sx={{ display: 'inline-flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-end' }}>
-              <Button size="small" variant="outlined" onClick={() => start.mutate()} disabled={start.isPending}>Verify newest</Button>
+              <Tooltip title={replaces}>
+                <Button size="small" variant="outlined" onClick={() => start.mutate('newest')} disabled={start.isPending}>Verify newest</Button>
+              </Tooltip>
               {dump.keeps && (
-                <Button size="small" variant="contained" onClick={() => keep.mutate()} disabled={keep.isPending}>Build</Button>
+                <Tooltip title={replaces}>
+                  <Button size="small" variant="contained" onClick={() => keep.mutate('newest')} disabled={keep.isPending}>Build newest</Button>
+                </Tooltip>
+              )}
+              {dump.keeps && copy && (
+                <Tooltip title={`Build from ${copy.fileName} (${size(copy.bytes)}) without downloading the newest dump`}>
+                  <Button size="small" variant="contained" color="secondary" onClick={() => keep.mutate('local')} disabled={keep.isPending}>
+                    Build {copyDate} copy
+                  </Button>
+                </Tooltip>
               )}
             </Box>
           )}
