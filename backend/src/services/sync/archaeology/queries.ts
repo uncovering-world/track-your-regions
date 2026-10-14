@@ -52,6 +52,8 @@ import {
   type ArchaeologyTrees,
 } from './classes.js';
 import type { FindFacts } from './finds.js';
+import { readsSubset } from '../subset/reader.js';
+import { subsetFindFacts, subsetSiteFacts } from '../subset/archaeology.js';
 
 const CLASS_BATCH = 25;
 const ID_BATCH = 50;
@@ -214,6 +216,7 @@ export async function fetchFindFacts(
 ): Promise<Map<string, FindFacts>> {
   const out = new Map<string, FindFacts>();
   if (!qids.length) return out;
+  if (readsSubset(sparql)) return subsetFindFacts(qids);
   for (const qid of qids) out.set(qid, { classes: [], discoveryPlace: null });
 
   const rows = await sparql(`
@@ -320,6 +323,7 @@ export async function fetchSiteFacts(
   const out = new Map<string, SiteFactsRow>();
   const asked = qids.filter(isQid);
   if (!asked.length) return out;
+  if (readsSubset(sparql)) return subsetSiteFacts(asked);
   for (const qid of asked) {
     out.set(qid, { classes: [], worldHeritage: false, statesPopulation: false });
   }
