@@ -24,7 +24,7 @@ vi.mock('../../db/index.js', () => ({
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { placeVisibleSql } from '../../db/membership.js';
 import { upsertExperienceRecord, type ExperienceUpsertParams } from './experienceUpsert.js';
-import { METADATA_CLAIM_PREFIX, SYNC_OWNED_METADATA_KEYS } from './changeSet.js';
+import { SYNC_OWNED_METADATA_KEYS } from './changeSet.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedConnect = pool.connect as unknown as ReturnType<typeof vi.fn>;
@@ -619,32 +619,27 @@ describe('metadata is guarded per claimed key, not per column', () => {
     const [text] = upsert();
     // The whole-column guard stays for a claim on `metadata` itself...
     expect(text).toMatch(/curated_fields \? 'metadata'/);
-    // ...and a per-key claim re-applies just those keys over the source object.
-    expect(text).toMatch(/jsonb_array_elements_text\(experiences\.curated_fields\)/);
-    expect(text).toMatch(/LIKE 'metadata\.%'/);
-    // The prefix's length has to match how many characters get stripped:
-    // `substring(key FROM n)` keeps the (n-1)th character onward, so a prefix
-    // of length p needs n = p + 1. Deriving n from METADATA_CLAIM_PREFIX
-    // instead of writing the number 10 is what stops the two from silently
-    // drifting apart -- none of the regexes around this one would have
-    // noticed an off-by-one here: it would make every claimed key resolve to
-    // the wrong bare name (e.g. 'ebsite' instead of 'website'), the `WHERE
-    // experiences.metadata ? claimed.k` guard below would never find it in
-    // stored metadata, and no per-key claim would ever be re-applied again.
-    expect(text).toContain(`substring(key FROM ${METADATA_CLAIM_PREFIX.length + 1})`);
-    expect(text).toMatch(/jsonb_object_agg/);
-    // EXCLUDED.metadata must be the LEFT operand of `||` -- the source object is
-    // the base and the claimed keys are overlaid on top of it, which is what lets
-    // the claim win over the source's value for that one key. The four assertions
-    // above still match if the operands are swapped; only this one catches it.
-    expect(text).toMatch(/ELSE COALESCE\(EXCLUDED\.metadata, '\{\}'::jsonb\) END\) \|\| COALESCE\(\(\s*SELECT jsonb_object_agg/);
-    // This guard is load-bearing, not decoration: without it, `experiences.metadata
-    // -> claimed.k` is SQL NULL for a key the curator claimed but that never actually
-    // landed in stored metadata, jsonb_object_agg accepts a NULL *value* (only a NULL
-    // *key* throws), and the `||` merge above would overlay `"k": null` on top of
-    // whatever real value the source just sent -- clobbering it. Do not delete this
-    // assertion as noise; it is what stops that regression from going unnoticed.
-    expect(text).toMatch(/WHERE experiences\.metadata \? claimed\.k/);
+    // ...and a per-key claim re-applies just the keys bound as $30 —
+    // `claimedMetadataKeys`, the list the diff reads too — over the source
+    // object, which is the LEFT operand of `||` so the claim wins for its key.
+    expect(text).toMatch(/ELSE COALESCE\(EXCLUDED\.metadata, '\{\}'::jsonb\) END\) \|\| COALESCE\(\(\s*SELECT jsonb_object_agg\(claimed\.k, experiences\.metadata -> claimed\.k\)\s*FROM unnest\(\$30::text\[\]\) AS claimed\(k\)/);
+    expect(text).not.toMatch(/jsonb_array_elements_text\(experiences\.curated_fields\)/);
+  });
+
+  it('gives a claim on a major key one answer on both sides', async () => {
+    // A curator's `inDanger` against a source that says otherwise (#727): the
+    // statement is told to put the claimed key back, and the record says the
+    // stored value won on purpose, because both read the same list.
+    const claimed = { ...PARAMS.metadata, inDanger: true };
+    given(
+      storedRow({ curated_fields: ['metadata.inDanger'], metadata: claimed }),
+      writtenRow({ curated_fields: ['metadata.inDanger'], metadata: claimed }),
+    );
+    const outcome = await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
+
+    expect(upsert()[1][29]).toEqual(['inDanger']);
+    expect(outcome.changeSet.curatedConflicts.map(c => c.field)).toEqual(['metadata.inDanger']);
+    expect(outcome.changeSet.changedFields).toEqual([]);
   });
 });
 
@@ -674,11 +669,12 @@ describe('the keys a run computes about its own pass go past both guards', () =>
     // ignores, and the pair that disagreed would either ask about a value it had
     // just written or freeze a value nothing reports.
     expect(params[15]).toEqual([...SYNC_OWNED_METADATA_KEYS]);
-    // $16, which is what both metadata arms read it as; then the hold, the
+    // $16, which is what the refusing metadata arm reads it as; then the hold, the
     // membership's work, the site's extent and the place the lock found, which
     // are this statement's own, and the run's view of the place with its
     // picture's credit (#1246), and the items another id resolves to (#1248).
-    expect(params).toHaveLength(29);
+    // The last is the metadata keys the claims hold (`claimedMetadataKeys`).
+    expect(params).toHaveLength(30);
     expect(sql).not.toContain("'artworkCount'");
   });
 
@@ -697,19 +693,6 @@ describe('the keys a run computes about its own pass go past both guards', () =>
     // in, since jsonb_object_agg refuses a null key and accepts a null value.
     expect(arm).toContain('EXCLUDED.metadata -> owned.k');
     expect(arm).toContain('WHERE EXCLUDED.metadata ? owned.k');
-  });
-
-  it('keeps them out of the claimed-key re-application, as the diff does', async () => {
-    await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
-
-    const arm = assignmentsOf(upsert()[0]).get('metadata');
-    // `claimedMetadataKeys` drops the same keys on the diff's side. Left in
-    // here, a claim on a counter would put the stored value back over the
-    // source's while the diff reported nothing either way — a number no run
-    // could correct and no screen could show. Unreachable through
-    // `editExperience`, which offers three keys and none of them is a counter;
-    // pinned because the two sides have to agree by construction.
-    expect(arm).toContain('AND claimed.k <> ALL($16::text[])');
   });
 });
 

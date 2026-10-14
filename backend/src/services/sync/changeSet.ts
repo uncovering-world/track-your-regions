@@ -260,11 +260,10 @@ function sameMetadataValue(key: string, before: unknown, after: unknown): boolea
 
 /**
  * The `curated_fields` prefix for a per-key metadata claim (`metadata.website`,
- * never `metadata` itself). The upsert's SQL guard in `experienceUpsert.ts` parses the
- * same claims out of the same column and needs the identical prefix to find
- * them and to know how many characters to strip off the front -- one constant
- * shared by both, instead of the same literal spelled out independently in
- * more than one place, where the two could silently drift apart (#488).
+ * never `metadata` itself). Which keys such a claim reaches is
+ * `claimedMetadataKeys`, below; the constant is shared with the writers that
+ * build a claim's name (`editExperience`) or recognise a metadata entry
+ * (`publishHeldFields.ts`), so no second spelling of the prefix can drift (#488).
  */
 export const METADATA_CLAIM_PREFIX = 'metadata.';
 
@@ -355,6 +354,42 @@ export function claimKeyFor(field: string): string {
     ?? field;
 }
 
+/**
+ * The metadata keys a curator's per-key claims hold on a row, as bare key
+ * names: the keys the run puts back over the source's object, and the keys the
+ * diff files as the curator's rather than as applied (ADR-0077 decision 2).
+ *
+ * One declaration for every runtime that asks it. The upsert binds this list
+ * rather than parsing `curated_fields` in SQL, `metadataChanges` reads it to
+ * decide what a claim protects, and publishing a held proposal reads it to put
+ * the claimed keys back — so none of them can exclude a key the others honour.
+ *
+ * Two rules on top of the prefix, both facts about the stored row:
+ * - **A key the run computes about its own pass is never held**
+ *   (`SYNC_OWNED_METADATA_KEYS`): nobody can be right about a measurement, and
+ *   a claimed counter put back over the source's value would be a number no
+ *   run could ever correct.
+ * - **A key the row no longer carries is not held either.** Presence, not
+ *   truth — `Object.hasOwn`, as `'{"a":null}'::jsonb ? 'a'` is in SQL — so a
+ *   curator who deliberately cleared a value and still claims it stays
+ *   protected, while an orphaned claim falls through and the source's value
+ *   lands. Putting back a key the row lacks would overlay a null over what the
+ *   source just sent.
+ *
+ * A major key (`MAJOR_METADATA_KEYS`) is held like any other: a claim on
+ * `metadata.inDanger` keeps the curator's flag and is reported as theirs.
+ */
+export function claimedMetadataKeys(
+  curatedFields: readonly string[],
+  stored: Record<string, unknown> | null,
+): string[] {
+  if (stored === null) return [];
+  return curatedFields
+    .filter(claim => claim.startsWith(METADATA_CLAIM_PREFIX))
+    .map(claim => claim.slice(METADATA_CLAIM_PREFIX.length))
+    .filter(key => !isSyncOwned(key) && Object.hasOwn(stored, key));
+}
+
 interface RawDiff {
   field: string;
   old: unknown;
@@ -364,14 +399,14 @@ interface RawDiff {
    * Whether a claim protects this change, where the name alone cannot say.
    *
    * Every field but a metadata key answers this from `curated_fields` and
-   * `claimKeyFor`. A metadata key cannot: the upsert re-applies a per-key claim
-   * only while the stored row still carries that key (`experiences.metadata ?
-   * claimed.k` in `experienceUpsert.ts`), so an orphaned claim falls through and the
-   * source's value lands — filing it as a conflict would offer a curator
-   * "accept" on a value already applied. And a claim on the whole column
-   * protects every key under it, which no per-key name matches. Both are facts
-   * about the stored row, so the answer comes from `metadataChanges`, which has
-   * it, rather than from a name lookup that does not.
+   * `claimKeyFor`. A metadata key cannot: a per-key claim holds only the keys
+   * `claimedMetadataKeys` answers for the stored row — the list the upsert
+   * binds — so an orphaned claim falls through and the source's value lands,
+   * and filing it as a conflict would offer a curator "accept" on a value
+   * already applied. And a claim on the whole column protects every key under
+   * it, which no per-key name matches. Both are facts about the stored row, so
+   * the answer comes from `metadataChanges`, which has it, rather than from a
+   * name lookup that does not.
    *
    * It answers **protection at the diff, and nothing about the name**. The
    * per-key names a whole-column claim's entries now carry are ones no reader
@@ -432,39 +467,6 @@ function fieldSignificance(field: string): FieldSignificance {
 }
 
 /**
- * Keys a curator claimed individually, as bare key names.
- *
- * Two kinds drop out, for two different reasons — the two filters below carry
- * one each, and this is the only sentence recording either. A **sync-owned** key
- * raises no entry at all (`SYNC_OWNED_METADATA_KEYS`), so there is no entry for
- * a claim to attach to. A **major** key raises one every time it differs, in its
- * own loop below, and is excluded here because carrying it a second time would
- * push the same key twice — once as major, once as minor.
- *
- * The upsert's re-application of claimed keys carries the **sync-owned** half of
- * that exclusion and only it (`claimed.k <> ALL($16)`, where `$16` is
- * `SYNC_OWNED_METADATA_KEYS`; the SQL's own comment scopes itself to a claimed
- * counter). Without it one of the two would report a conflict over a value the
- * other had just written.
- *
- * The major half diverges, in the opposite direction and unreachably: a claim on
- * `metadata.inDanger` is dropped here, reported by the major loop with no
- * `protectedByClaim`, and checked by `claimKeyFor` against a whole-column claim
- * — so the changeset would call the source's value applied while the upsert
- * re-applied the curator's. Nothing writes such a claim (`editExperience` offers
- * `website`, `wikipediaUrl` and `imageCredit`), so it is a shape to know about
- * rather than a defect to see — tracked as #727 rather than fixed in a change
- * about something else.
- */
-function claimedMetadataKeys(curatedFields: string[]): string[] {
-  return curatedFields
-    .filter(key => key.startsWith(METADATA_CLAIM_PREFIX))
-    .map(key => key.slice(METADATA_CLAIM_PREFIX.length))
-    .filter(key => !(MAJOR_METADATA_KEYS as readonly string[]).includes(key))
-    .filter(key => !isSyncOwned(key));
-}
-
-/**
  * One side's value for a metadata key, absent where the side does not own it.
  *
  * `source[key]` is not that question. A key named `__proto__` reaches the
@@ -505,6 +507,13 @@ function metadataChanges(
   const changes: RawDiff[] = [];
   const left = before ?? {};
   const right = incoming ?? {};
+  // What the claims hold is the list the upsert binds for the same row
+  // (`claimedMetadataKeys`), so a key is reported as the curator's exactly
+  // where the write kept the curator's value — never by a name lookup, which
+  // would ask a whole-column question of a per-key name (#488).
+  const claimed = claimedMetadataKeys(curatedFields, before);
+  const wholeColumnClaimed = curatedFields.includes('metadata');
+  const isMajor = (key: string): boolean => (MAJOR_METADATA_KEYS as readonly string[]).includes(key);
 
   for (const key of MAJOR_METADATA_KEYS) {
     if (!jsonEquals(ownValue(left, key), ownValue(right, key))) {
@@ -513,35 +522,22 @@ function metadataChanges(
         old: ownValue(left, key),
         new: ownValue(right, key),
         significance: 'major',
+        protectedByClaim: wholeColumnClaimed || claimed.includes(key),
       });
     }
   }
 
-  // A claimed key is checked against its claim here rather than left to the
-  // generic lookup below, which would ask a whole-column question of a per-key
-  // name (#488). Since ADR-0039 every key is reported on its own regardless;
-  // what this loop still decides is that the claim is honoured, and on which
-  // condition.
-  //
-  // The filter mirrors the guard's own condition, not just its key: the SQL
-  // only re-applies a claimed key when the stored row still carries it
-  // (`experiences.metadata ? claimed.k` in experienceUpsert.ts). That is key presence,
-  // not value truth — `'{"a":null}'::jsonb ? 'a'` is true — so a curator who
-  // deliberately cleared a value and still claims it stays protected. `hasOwn`
-  // is presence too, which is what makes the two sides agree; a truthiness test
-  // would not (`!!null` is false). A claim whose key the row no longer has falls
-  // straight through in the upsert and the source's value gets written, so
-  // treating it as a conflict here would offer a curator "accept" on a value
-  // that is already applied. Unreachable today — nothing writes such an
-  // orphaned claim — but the two sides should agree by construction.
-  const claimed = claimedMetadataKeys(curatedFields).filter(key => Object.hasOwn(left, key));
+  // A claimed key that is not major, reported here rather than by the generic
+  // loop below; a major one was reported above, with its claim, and is left out
+  // so it is not pushed twice.
   for (const key of claimed) {
-    if (!jsonEquals(ownValue(left, key), ownValue(right, key))) {
+    if (!isMajor(key) && !jsonEquals(ownValue(left, key), ownValue(right, key))) {
       changes.push({
         field: `${METADATA_CLAIM_PREFIX}${key}`,
         old: ownValue(left, key),
         new: ownValue(right, key),
         significance: 'minor',
+        protectedByClaim: true,
       });
     }
   }
@@ -564,7 +560,6 @@ function metadataChanges(
   // protects nothing. Neither is knowable from a field name, so this decides it
   // — see `RawDiff.protectedByClaim`. The keys reported above are gone from this
   // loop, so what remains is protected only by a whole-column claim.
-  const wholeColumnClaimed = curatedFields.includes('metadata');
   const reported = new Set(ignoredKeys);
   for (const key of [...new Set([...Object.keys(left), ...Object.keys(right)])].sort()) {
     if (reported.has(key)) continue;

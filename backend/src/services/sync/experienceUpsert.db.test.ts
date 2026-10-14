@@ -319,3 +319,32 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     expect(another.changeSet.heldFields.map(f => f.field)).toEqual(['imageUrl', 'metadata.imageCredit']);
   });
 });
+
+describe('a claim on a major metadata key (#727, ADR-0077 decision 2)', () => {
+  it('keeps the curator\'s flag and records it as theirs, while an unclaimed key follows the source', async () => {
+    const site = (metadata: Record<string, unknown>) => ({
+      ...params(archaeology, NEW_SITE_QID, 'A new site'), metadata: { wikidataQid: NEW_SITE_QID, ...metadata },
+    });
+    // Created by the run, so its membership is still unread and the gate holds
+    // nothing: the write takes the arm that re-applies claimed keys.
+    const created = await upsertExperienceRecord(site({ inDanger: false, website: 'https://old.example' }));
+    await pool.query(
+      `UPDATE experiences
+          SET metadata = metadata || '{"inDanger": true}'::jsonb,
+              curated_fields = '["metadata.inDanger"]'::jsonb
+        WHERE id = $1`,
+      [created.experienceId],
+    );
+
+    const outcome = await upsertExperienceRecord(site({ inDanger: false, website: 'https://new.example' }));
+
+    const stored = await pool.query<{ metadata: Record<string, unknown> }>(
+      'SELECT metadata FROM experiences WHERE id = $1', [created.experienceId],
+    );
+    expect(stored.rows[0].metadata).toMatchObject({ inDanger: true, website: 'https://new.example' });
+    // The record says what the write did: the flag is the curator's, the link applied.
+    expect(outcome.changeSet.heldFields).toEqual([]);
+    expect(outcome.changeSet.curatedConflicts.map(f => f.field)).toEqual(['metadata.inDanger']);
+    expect(outcome.changeSet.changedFields.map(f => f.field)).toEqual(['metadata.website']);
+  });
+});

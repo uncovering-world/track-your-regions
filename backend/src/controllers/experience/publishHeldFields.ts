@@ -17,7 +17,7 @@
  */
 
 import {
-  CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX, NAME_LOCAL_CLAIM_PREFIX, claimKeyFor, METADATA_SET_KEYS,
+  CURATED_KEY_BY_FIELD, METADATA_CLAIM_PREFIX, NAME_LOCAL_CLAIM_PREFIX, claimKeyFor, claimedMetadataKeys, METADATA_SET_KEYS,
 } from '../../services/sync/changeSet.js';
 import type { ContentsByKind } from '../../services/sync/types.js';
 import {
@@ -301,13 +301,6 @@ function creditPin(
   return offered === JSON.stringify(stored.imageUrl ?? null) ? null : { value: stored.credit };
 }
 
-/** Keys a curator claimed individually, as bare key names. */
-function claimedMetadataKeys(claimed: string[]): string[] {
-  return claimed
-    .filter(key => key.startsWith(METADATA_CLAIM_PREFIX))
-    .map(key => key.slice(METADATA_CLAIM_PREFIX.length));
-}
-
 /**
  * The object a column's selected entries come to, before any rule on top of it.
  *
@@ -431,9 +424,9 @@ function nextMetadata(
   // its own (`editExperience` claims `metadata.imageCredit` where the edit put
   // a value in it) has answered this question already, and their value wins
   // over the rule above exactly as it wins over the catch-all.
-  for (const key of claimedMetadataKeys(claimed)) {
-    if (Object.hasOwn(left, key)) next[key] = left[key];
-  }
+  // The keys are the ones a run would put back for the same row
+  // (`claimedMetadataKeys`), so publishing and the run honour one list.
+  for (const key of claimedMetadataKeys(claimed, left)) next[key] = left[key];
   // The set-valued lists that hold people's names -- public art's `creators`
   // -- as a person would type them (#835), for the reason `nextNameLocal`
   // tidies: a proposal recorded before the writers tidied must not put a run

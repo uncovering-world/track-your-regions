@@ -78,7 +78,7 @@ import {
 } from '../../db/membership.js';
 import { pointHeldProposalAt } from './heldProposalPointer.js';
 import {
-  computeChangeSet, METADATA_CLAIM_PREFIX, METADATA_SET_KEYS, passingMetadataKeys, SYNC_OWNED_METADATA_KEYS,
+  claimedMetadataKeys, computeChangeSet, METADATA_SET_KEYS, passingMetadataKeys, SYNC_OWNED_METADATA_KEYS,
   type BoundarySnapshot, type ChangeSetResult, type ExperienceSnapshot,
 } from './changeSet.js';
 import { tidyLabel } from '@tyr/shared/labels';
@@ -575,8 +575,8 @@ async function writeUnderLock(
         -- false for those, so a guard spelled that way alone never fires and
         -- EXCLUDED replaces the object, curator's link included (#488). A claim
         -- on 'metadata' itself holds the whole
-        -- column; a per-key claim now re-applies just those keys over whatever
-        -- the source sent, so an unclaimed key still updates.
+        -- column; a per-key claim re-applies just the keys it holds over
+        -- whatever the source sent, so an unclaimed key still updates.
         --
         -- The keys a run computes about its own pass stand outside both guards:
         -- a claim cannot hold them because nobody can be right about a
@@ -603,17 +603,11 @@ async function writeUnderLock(
                      THEN COALESCE(EXCLUDED.metadata, '{}'::jsonb) - 'imageCredit'
                      ELSE COALESCE(EXCLUDED.metadata, '{}'::jsonb) END) || COALESCE((
                  SELECT jsonb_object_agg(claimed.k, experiences.metadata -> claimed.k)
-                 FROM (
-                   SELECT substring(key FROM ${METADATA_CLAIM_PREFIX.length + 1}) AS k
-                   FROM jsonb_array_elements_text(experiences.curated_fields) AS t(key)
-                   WHERE key LIKE '${METADATA_CLAIM_PREFIX}%'
-                 ) AS claimed
-                 -- The exclusion claimedMetadataKeys applies on the other side.
-                 -- Re-applying a claimed counter here would put the stored value
-                 -- back over the source's while the diff reported neither, and
-                 -- the row would keep a number no run could ever correct.
-                 WHERE experiences.metadata ? claimed.k
-                   AND claimed.k <> ALL($16::text[])
+                 FROM unnest($30::text[]) AS claimed(k)
+                 -- The keys the curator's per-key claims hold: worked out in
+                 -- TS by claimedMetadataKeys from the row read under the lock,
+                 -- the list the diff files as the curator's, so the two cannot
+                 -- disagree about a key (ADR-0077 decision 2).
                ), '{}'::jsonb)
                -- The credit follows the picture, and a claimed picture is the
                -- curator's: whatever a run says about who took a photograph, the
@@ -737,7 +731,7 @@ async function writeUnderLock(
       written.imageUrl,
       JSON.stringify(written.metadata),
       syncLogId,
-      // The key list the metadata arms read twice, bound once. A text[] rather
+      // The key list the refusing metadata arm merges, bound. A text[] rather
       // than a literal built into the statement, so the constant in
       // `changeSet.ts` stays the only place these names are written down.
       [...SYNC_OWNED_METADATA_KEYS],
@@ -762,6 +756,9 @@ async function writeUnderLock(
       held && stored
         ? passingMetadataKeys(stored.metadata, written.metadata, stored.curated_fields ?? [], stored.image_url === written.imageUrl)
         : [],
+      // The metadata keys the claims hold, off the locked row: the declaration
+      // the diff below reads too (ADR-0077 decision 2).
+      claimedMetadataKeys(stored?.curated_fields ?? [], stored?.metadata ?? null),
     ]
   );
 
