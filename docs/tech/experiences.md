@@ -606,6 +606,29 @@ with the kept entities and their labels read through `sync/subset/entities.ts`.
 A work the subset does not keep (no point, and no location, part or collection
 statement reaching a kept place, ADR-0105) is in none of their answers, where
 the live pool collects it and the pipeline counts it as held nowhere.
+Archaeology's own two are in `sync/subset/archaeology.ts` (#1462): what a find
+is and where it was dug up (`subsetFindFacts`: best P31, the first standing
+P189 with its label), and the facts a site is judged on (`subsetSiteFacts`: a
+World Heritage listing by P757 or P1435, a population other than no value);
+the rest of its questions are Public Art's and the museum's. On the subset, a
+dig OpenStreetMap names that the subset does not keep (`subsetKeeps`) is not
+read as an item with no articles: the entrance names it in the run's log
+(`keptBySubset` in `archaeology/siteEntrance.ts`) and asks nothing more about
+it. It is no refusal: the subset keeps every item with a coordinate, so such an
+item has none, and the live run leaves it out unnamed as well.
+
+**A row the subset cannot read is left as it is.** An item created, or given a
+coordinate, after the dump's date is in no answer the subset gives, which says
+nothing about the place. A run on the subset hands the orchestrator the
+source's rows whose items the subset does not keep and that a run listed on or
+after the dump's date (`unreadOnSubset` in `sync/subset/runDoor.ts`,
+`FetchResult.unread`): missing detection and the admission sweep leave them
+alone, a refused one is not re-admitted, the must-see badge's clear keeps an
+admitted one's badge, a curator's pin on one is neither asked about again nor
+settled, and the run's log names them. A row
+last listed before that date whose item the dump lacks had gone by then — a
+dump holds no redirects and no deleted items, so a merged or deleted item is
+simply absent — and missing detection reads it as the live run would.
 
 One value differs on purpose: a year before the common era. The query service
 numbers it astronomically where the date has year precision or finer. 250 BCE, `-0250`
@@ -627,12 +650,14 @@ still one year late.
 (`live` or `subset`), switched on the source's card in the sync panel
 (`WikidataReaderControls`, `PUT /api/admin/sync/sources/:sourceId/wikidata-reader`).
 The subset is offered only for a source every question of which has a twin
-(`SUBSET_READY_SOURCES`: Public Art and Art Museums so far), since a run that
+(`SUBSET_READY_SOURCES`: Public Art, Art Museums and Archaeology so far), since a run that
 read some answers from the subset and the rest live would mix two dates of
 Wikidata. Such a run is handed `subsetOnlyDoor()` by `wikidataRunDoor`
 (`sync/subset/runDoor.ts`): marked, and failing by name if any question
-reaches SPARQL; the museum run then skips the pause it keeps between questions
-to the live service. A run switched to the subset before one is built stops at once
+reaches SPARQL; the museum and archaeology runs then skip the pause they keep
+between questions to the live service. Archaeology takes the door through
+`subsetRunDoor` once for the run and hands it to every pass, since its
+fallback from the OpenStreetMap mirror to Overpass changes only the map. A run switched to the subset before one is built stops at once
 and says so. A wrapper around a marked door is marked again (`subsetDoor`), or
 the fetchers behind it go live.
 
@@ -650,7 +675,7 @@ after a build: a run prunes its source's answers a week past expiry.
 
 The generic sync lifecycle (progress init, already-running check, sync log creation, processing loop with cancel checks, final status, error handling, delayed cleanup) is implemented once in `syncOrchestrator.ts`, which holds the order of a run's phases while each phase's writes live in a module beside it (§ Shared modules). Each service provides a `SyncServiceConfig<T>` (`syncContract.ts`, with the shapes it returns) with domain-specific callbacks:
 
-- **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount, filtered?, withdrawalSkippedReason? }`, where `filtered` names entities the source offered that this kind cannot hold — a Wikidata collection answering a museum query. Those are counted apart from errors and leave the run's status alone; genuine pre-processing failures still go to `errorDetails`. `withdrawalSkippedReason` is a collector's own verdict that it saw too little of the contents it holds to say what left (the museum run's works floor, ADR-0044): recorded on the log row, handed to every `processItem` through the context, and the run is `partial` while it stands.
+- **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount, filtered?, withdrawalSkippedReason?, unread? }`, where `filtered` names entities the source offered that this kind cannot hold — a Wikidata collection answering a museum query. Those are counted apart from errors and leave the run's status alone; genuine pre-processing failures still go to `errorDetails`. `unread` names the source's rows the run could read nothing about (on the local Wikidata subset, an item newer than the dump): missing detection, the admission sweep, the must-see badge's clear and the questions about a curator's pin leave them as they are. `withdrawalSkippedReason` is a collector's own verdict that it saw too little of the contents it holds to say what left (the museum run's works floor, ADR-0044): recorded on the log row, handed to every `processItem` through the context, and the run is `partial` while it stands.
 - **`processItem(item, progress, context)`** — Process a single item and return a `ProcessItemResult`: the outcome (`'created'` / `'updated'` / `'unchanged'`), the change set, and whether the row had been flagged missing. `context` carries `dryRun`, so a service can skip its own writes in a preview, and `onLocationsChanged(experienceId)`, which a service calls **at the location write** to have the run place that experience before it ends. Called there rather than returned on the result on purpose: a service can throw after moving a point — the museum one upserts treasures afterwards — and a returned field would be lost with the throw while the point had already moved on disk. Throw to count as error.
 - **`afterItems(progress, context)`** (optional) — What the run does once every item is processed and before missing detection: a summary only the whole pass can make, such as the World Heritage run's account of its components' Wikidata items (#1269). A failure is logged and the run goes on.
 - **`getItemName(item)`** / **`getItemId(item)`** — Display name and external ID for progress messages and error reporting.
