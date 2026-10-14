@@ -47,3 +47,17 @@ export function formatDuration(start: string | null, end: string | null): string
   if (ms < 60000) return `${(ms / 1000).toFixed(1)}s`;
   return `${(ms / 60000).toFixed(1)}m`;
 }
+
+/**
+ * A time left, rounded the way a person says it: "about 1 h 10 min",
+ * "about 25 min", "under a minute". For an estimate, so never to the second.
+ */
+export function formatTimeLeft(seconds: number): string {
+  if (seconds < 60) return 'under a minute';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `about ${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = Math.round((minutes % 60) / 5) * 5;
+  if (rest === 60) return `about ${hours + 1} h`;
+  return rest === 0 ? `about ${hours} h` : `about ${hours} h ${rest} min`;
+}

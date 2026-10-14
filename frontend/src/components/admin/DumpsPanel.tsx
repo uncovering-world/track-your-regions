@@ -22,7 +22,7 @@ import {
   cancelDumpBuild, getDumps, startDumpBuild, startDumpKeep, type DumpBuild, type DumpBuildFrom, type DumpBuildProgress, type DumpsDumpsItem,
 } from '../../api/admin/dumps';
 import { queryKeys } from '../../api/queryKeys';
-import { formatDateTime, formatDuration, formatRelativeTime } from '../../utils/dateFormat';
+import { formatDateTime, formatDuration, formatRelativeTime, formatTimeLeft } from '../../utils/dateFormat';
 
 const GB = 1024 ** 3;
 const size = (bytes: number) => (bytes >= GB ? `${(bytes / GB).toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`);
@@ -104,6 +104,7 @@ function ProgressCells({ progress }: { progress: DumpBuildProgress }) {
       />
       {progress.heartbeatAt && (
         <Typography variant="caption" color="text.secondary" display="block">
+          {progress.etaSeconds !== null && `${formatTimeLeft(progress.etaSeconds)} left in this pass · `}
           Last seen alive {formatRelativeTime(progress.heartbeatAt)}
         </Typography>
       )}
