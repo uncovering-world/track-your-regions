@@ -3645,6 +3645,17 @@ export const DumpBuildProgressDump = {
   'pageviews-user': 'pageviews-user',
 } as const;
 
+/**
+ * A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds.
+ */
+export type DumpBuildProgressKind = typeof DumpBuildProgressKind[keyof typeof DumpBuildProgressKind];
+
+
+export const DumpBuildProgressKind = {
+  verify: 'verify',
+  keep: 'keep',
+} as const;
+
 export type DumpBuildProgressStatus = typeof DumpBuildProgressStatus[keyof typeof DumpBuildProgressStatus];
 
 
@@ -3667,6 +3678,8 @@ export type DumpBuildProgressFile = {
  */
 export interface DumpBuildProgress {
   dump: DumpBuildProgressDump;
+  /** A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds. */
+  kind: DumpBuildProgressKind;
   status: DumpBuildProgressStatus;
   message: string;
   file: DumpBuildProgressFile;
@@ -3720,6 +3733,24 @@ export const DumpsDumpsItemDatedBy = {
   month: 'month',
 } as const;
 
+/**
+ * The build now in place: its dump date and when it was swapped in.
+ */
+export type DumpsDumpsItemKeepsBuilt = {
+  dumpDate: string;
+  /** @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$ */
+  swappedAt: string;
+} | null;
+
+/**
+ * What a keeping build of this dump makes (the local Wikidata subset), or null where nothing is built from it yet.
+ */
+export type DumpsDumpsItemKeeps = {
+  title: string;
+  /** The build now in place: its dump date and when it was swapped in. */
+  built: DumpsDumpsItemKeepsBuilt;
+} | null;
+
 export type DumpsDumpsItem = {
   key: DumpsDumpsItemKey;
   /** Who publishes the dump: Wikidata, English Wikipedia, Wikimedia pageviews. */
@@ -3730,6 +3761,8 @@ export type DumpsDumpsItem = {
   about: string;
   progress: DumpBuildProgress | null;
   builds: DumpBuild[];
+  /** What a keeping build of this dump makes (the local Wikidata subset), or null where nothing is built from it yet. */
+  keeps: DumpsDumpsItemKeeps;
 };
 
 /**
@@ -14009,6 +14042,31 @@ export const getPostAdminDumpsByDumpBuildUrl = (dump: 'wikidata-entities' | 'wik
 export const postAdminDumpsByDumpBuild = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
 
   return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpBuildUrl(dump),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostAdminDumpsByDumpKeepUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user',) => {
+
+
+
+
+  return `/api/admin/dumps/${encodeURIComponent(String(dump))}/keep`
+}
+
+/**
+ * Requires an admin.
+ * @summary Start a build that reads the newest complete file of a dump and keeps what is built from it, swapping it in whole
+ */
+export const postAdminDumpsByDumpKeep = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
+
+  return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpKeepUrl(dump),
   {
     ...options,
     method: 'POST'

@@ -2,9 +2,10 @@
  * The public dumps the catalogue reads (ADR-0101, #1433), grouped by who
  * publishes them: for each, what it holds, how its last build ended, and a
  * button that reads its newest complete file from the host and verifies it.
- * Earlier builds open under the row. A verified build is what the dump-derived
- * tables will be built from (#1434, #1436, #1440); this slice reads and
- * verifies only.
+ * Earlier builds open under the row. A dump something is built from (the
+ * local Wikidata subset, #1434) also has a button that builds it, and its row
+ * says which dump the build in place was made from; readership and the
+ * Wikipedia tables come later (#1436, #1440).
  */
 
 import { Fragment, useState } from 'react';
@@ -16,7 +17,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  cancelDumpBuild, getDumps, startDumpBuild, type DumpBuild, type DumpBuildProgress, type DumpsDumpsItem,
+  cancelDumpBuild, getDumps, startDumpBuild, startDumpKeep, type DumpBuild, type DumpBuildProgress, type DumpsDumpsItem,
 } from '../../api/admin/dumps';
 import { queryKeys } from '../../api/queryKeys';
 import { formatDateTime, formatDuration, formatRelativeTime } from '../../utils/dateFormat';
@@ -127,16 +128,31 @@ function EarlierBuilds({ builds, datedBy }: { builds: DumpBuild[]; datedBy: Dump
   );
 }
 
+/** What is built from the dump, and from which dump the build in place was made. */
+function Kept({ dump }: { dump: DumpsDumpsItem }) {
+  if (!dump.keeps) return null;
+  const { title, built } = dump.keeps;
+  return (
+    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
+      {built
+        ? <>{title}: built from the dump of {dumpDate(built.dumpDate, dump.datedBy)}, {formatRelativeTime(built.swappedAt)}</>
+        : <>{title}: not built yet</>}
+    </Typography>
+  );
+}
+
 function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
   const queryClient = useQueryClient();
   const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.admin.dumps });
   const start = useMutation({ mutationFn: () => startDumpBuild(dump.key), onSettled: refresh });
+  const keep = useMutation({ mutationFn: () => startDumpKeep(dump.key), onSettled: refresh });
   const cancel = useMutation({ mutationFn: () => cancelDumpBuild(dump.key), onSettled: refresh });
   const [open, setOpen] = useState(false);
   const running = inFlight(dump.progress);
   // The build in flight is the progress cell; the rows are the builds that ended.
   const [last, ...earlier] = dump.builds.filter(build => build.status !== 'running');
-  const problem = start.isError ? (start.error as Error).message : (!running && last?.status !== 'success' && last?.error) || null;
+  const refused = start.error ?? keep.error;
+  const problem = refused ? (refused as Error).message : (!running && last?.status !== 'success' && last?.error) || null;
   const ruled = !problem && !open;
   return (
     <Fragment>
@@ -144,6 +160,7 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
         <TableCell>
           <Typography variant="body2" fontWeight={500}>{dump.title}</Typography>
           <Typography variant="caption" color="text.secondary">{dump.about}</Typography>
+          <Kept dump={dump} />
         </TableCell>
         {running && dump.progress && <ProgressCells progress={dump.progress} />}
         {!running && (
@@ -157,7 +174,14 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
         <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
           {running
             ? <Button size="small" color="inherit" onClick={() => cancel.mutate()} disabled={cancel.isPending}>Cancel</Button>
-            : <Button size="small" variant="outlined" onClick={() => start.mutate()} disabled={start.isPending}>Verify newest</Button>}
+            : (
+              <Box sx={{ display: 'inline-flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-end' }}>
+                <Button size="small" variant="outlined" onClick={() => start.mutate()} disabled={start.isPending}>Verify newest</Button>
+                {dump.keeps && (
+                  <Button size="small" variant="contained" onClick={() => keep.mutate()} disabled={keep.isPending}>Build</Button>
+                )}
+              </Box>
+            )}
           <Tooltip title={earlier.length ? 'Earlier builds' : 'No earlier builds'}>
             <span>
               <IconButton size="small" onClick={() => setOpen(!open)} disabled={!earlier.length} aria-label="Earlier builds">
