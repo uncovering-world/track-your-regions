@@ -425,6 +425,47 @@ describe('publicArtVerdict — what it refuses', () => {
   });
 });
 
+describe('publicArtVerdict — a work stranded outdoors on a venue no kind offers (#1444)', () => {
+  // The war museum's hill in Kyiv, Kingston Lacy's garden and the Cappella
+  // Sansevero: museums by class, none of them a place any kind offers.
+  const WAR_MUSEUM = inside('Q2457600', 'National Museum of the History of Ukraine in World War II', [MILITARY_MUSEUM]);
+  const KINGSTON_LACY = inside('Q1232310', 'Kingston Lacy', [MUSEUM]);
+  const SANSEVERO = inside('Q897839', 'Cappella Sansevero', [MUSEUM]);
+  const nothingOffered = new Set<string>();
+
+  it('keeps the Mother Ukraine Monument, a colossal statue on the grounds of a museum no kind offers', () => {
+    const v = publicArtVerdict(facts({ qid: 'Q142917', classes: [COLOSSAL_STATUE], containers: [WAR_MUSEUM] }), trees, nothingOffered);
+    expect(v.pass).toBe(true);
+  });
+
+  it('keeps the Philae obelisk in the garden of Kingston Lacy', () => {
+    const v = publicArtVerdict(facts({ qid: 'Q1245805', classes: [OBELISK], containers: [KINGSTON_LACY] }), trees, nothingOffered);
+    expect(v.pass).toBe(true);
+  });
+
+  it('keeps refusing the Veiled Christ: a sculpture in a hall is the venue\'s, offered or not', () => {
+    const v = publicArtVerdict(facts({ qid: 'Q3697674', classes: [SCULPTURE], containers: [SANSEVERO] }), trees, nothingOffered);
+    expect(reasonOf(v)).toBe('inside Cappella Sansevero: a work of a museum, not public art');
+  });
+
+  it('keeps refusing a colossal statue at a venue a kind offers, which that kind takes (ADR-0102)', () => {
+    const v = publicArtVerdict(facts({ qid: 'Q142917', classes: [COLOSSAL_STATUE], containers: [WAR_MUSEUM] }), trees, new Set(['Q2457600']));
+    expect(reasonOf(v)).toBe('inside National Museum of the History of Ukraine in World War II: a work of a museum, not public art');
+  });
+
+  it('still refuses a colossal statue its own statements put in a room of that museum', () => {
+    const room = inside('Q2', 'Hall of Glory', ['Q180516'], 'National Museum of the History of Ukraine in World War II');
+    const museum = inside('Q2457600', 'National Museum of the History of Ukraine in World War II', [MILITARY_MUSEUM], undefined, 'Q2');
+    const v = publicArtVerdict(facts({ qid: 'Q1', classes: [COLOSSAL_STATUE], containers: [room, museum] }), trees, nothingOffered);
+    expect(reasonOf(v)).toBe('inside Hall of Glory (National Museum of the History of Ukraine in World War II): a work indoors, not public art');
+  });
+
+  it('refuses as before when the run states no offered places', () => {
+    const v = publicArtVerdict(facts({ qid: 'Q142917', classes: [COLOSSAL_STATUE], containers: [WAR_MUSEUM] }), trees);
+    expect(v.pass).toBe(false);
+  });
+});
+
 describe('publicArtVerdict — what it admits', () => {
   it('admits a bare monument as a monument', () => {
     // Freedom Monument, Riga: monument.

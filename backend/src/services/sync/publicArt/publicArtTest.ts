@@ -21,6 +21,7 @@ import {
   KILL_CLASSES,
   VETO_CLASSES,
   INDOOR_CLASSES,
+  OUTDOOR_CLASSES,
   SITE_CLASSES,
   MONUMENT_CLASSES,
   type PublicArtTrees,
@@ -105,6 +106,8 @@ export type PublicArtResult =
 interface HeldElsewhere {
   reason: string;
   heldIn: string[];
+  /** Whether the place is a museum or a place of worship, a venue a works kind holds. */
+  venue?: true;
 }
 
 function named(classes: string[], of: Record<string, string>): string[] {
@@ -128,20 +131,22 @@ function named(classes: string[], of: Record<string, string>): string[] {
  * Sibelius Monument, which stands in a park — see `ownedElsewhere` for the
  * one case it is read.
  */
-function heldElsewhere(places: ContainerFact[], trees: PublicArtTrees): HeldElsewhere | null {
+function heldElsewhere(places: ContainerFact[], trees: PublicArtTrees, venues = true): HeldElsewhere | null {
   // The places from the one the reason names outward, nearest first: what a
   // works kind reads to find the venue it admits among them (ADR-0102).
   const from = (index: number): string[] => places.slice(index).map((c) => c.qid);
   // The building before the room: "inside Louvre Museum" is the reason a
   // curator can read, and the room is only reached for when no place in the
   // chain is a museum or a place of worship. Nearest first across both
-  // kinds: a chapel inside a museum complex names the chapel.
-  for (const [index, container] of places.entries()) {
+  // kinds: a chapel inside a museum complex names the chapel. A work stranded
+  // outdoors on a venue no kind offers skips this loop (`strandedOutdoors`)
+  // and is still asked about a room and a site.
+  for (const [index, container] of venues ? places.entries() : []) {
     if (container.classes.some((c) => trees.museum.has(c))) {
-      return { reason: `inside ${container.label}: a work of a museum, not public art`, heldIn: from(index) };
+      return { reason: `inside ${container.label}: a work of a museum, not public art`, heldIn: from(index), venue: true };
     }
     if (container.classes.some((c) => trees.worship.has(c))) {
-      return { reason: `inside ${container.label}: a work of a place of worship, not public art`, heldIn: from(index) };
+      return { reason: `inside ${container.label}: a work of a place of worship, not public art`, heldIn: from(index), venue: true };
     }
   }
   for (const [index, container] of places.entries()) {
@@ -259,13 +264,36 @@ function vetoes(classes: string[], trees: PublicArtTrees): string[] {
  * where it stands decides, and whose it is only when nothing says where it
  * stands.
  */
-function anothersWork(e: PublicArtFacts, trees: PublicArtTrees): HeldElsewhere | null {
+function anothersWork(e: PublicArtFacts, trees: PublicArtTrees, offered?: ReadonlySet<string>): HeldElsewhere | null {
   const { places, owners } = placesAndOwners(e.containers, trees);
-  return heldElsewhere(places, trees)
-    ?? (places.length ? null : ownedElsewhere([...owners, ...e.collections], trees));
+  const venue = heldElsewhere(places, trees);
+  // The room and the site are still asked of a work stranded outdoors: a
+  // colossal statue in a museum's hall is the hall's.
+  if (venue && offered && strandedOutdoors(venue, e.classes, offered)) return heldElsewhere(places, trees, false);
+  return venue ?? (places.length ? null : ownedElsewhere([...owners, ...e.collections], trees));
 }
 
-export function publicArtVerdict(e: PublicArtFacts, trees: PublicArtTrees): PublicArtResult {
+/**
+ * A work that stands outdoors on the grounds of a venue no other kind offers a
+ * reader stays public art (#1444): refused as the venue's, it would be on no
+ * card at all. The Mother Ukraine Monument stands on the hill of a war museum
+ * the catalogue holds in no kind. Where any place of the chain is offered, the
+ * refusal stands and the kind that offers it takes the work (ADR-0102). What
+ * stands outdoors by what it is is a colossal statue or an obelisk
+ * (`OUTDOOR_CLASSES`): a sculpture may be in a hall, and the Veiled Christ is;
+ * a memorial may be a plaque in a nave.
+ */
+function strandedOutdoors(held: HeldElsewhere, classes: string[], offered: ReadonlySet<string>): boolean {
+  if (!held.venue || held.heldIn.some((qid) => offered.has(qid))) return false;
+  return classes.some((c) => OUTDOOR_CLASSES[c]);
+}
+
+/**
+ * `offered` is the item ids of the places another kind offers a reader. Given, a
+ * work stranded outdoors on a venue none of them is stays this kind's
+ * (`strandedOutdoors`); omitted, every venue refusal stands.
+ */
+export function publicArtVerdict(e: PublicArtFacts, trees: PublicArtTrees, offered?: ReadonlySet<string>): PublicArtResult {
   // What it is, before whether it is ours: a kill class names the thing
   // better than "no public-art class" would, so it is asked first.
   if (e.classes.some((c) => trees.worship.has(c))) {
@@ -293,7 +321,7 @@ export function publicArtVerdict(e: PublicArtFacts, trees: PublicArtTrees): Publ
     return { pass: false, reason: 'not on Earth: its coordinate (P625) is on another globe' };
   }
 
-  const another = anothersWork(e, trees);
+  const another = anothersWork(e, trees, offered);
   if (another) {
     return another.heldIn.length
       ? { pass: false, reason: another.reason, heldIn: another.heldIn }

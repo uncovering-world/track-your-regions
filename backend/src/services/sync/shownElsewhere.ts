@@ -15,6 +15,23 @@ import { pool } from '../../db/index.js';
 import { MEMBERSHIPS, membershipOfferedSql } from '../../db/membership.js';
 import { linkedForReaderSql, publishedContentSql } from '../../db/readerPredicates.js';
 
+/**
+ * The ids every *other* source knows the places it offers a reader by: an
+ * admitted membership a curator has passed or that arrived ungated. Public Art
+ * reads it to tell a work held at a venue another kind offers, which that kind
+ * takes (ADR-0102), from one stranded on the grounds of a venue none offers
+ * (#1444). The asking source's own places are left out: a place only it
+ * offers has no other kind to take the work. A Wikidata source's ids are item
+ * ids; UNESCO's are its list numbers, which no chain of items ever names.
+ */
+export async function placesOtherSourcesOffer(sourceId: number): Promise<Set<string>> {
+  const result = await pool.query<{ external_id: string }>(
+    `SELECT DISTINCT m.external_id FROM ${MEMBERSHIPS} m WHERE m.source_id <> $1 AND ${membershipOfferedSql('m')}`,
+    [sourceId],
+  );
+  return new Set(result.rows.map((row) => row.external_id));
+}
+
 /** The item ids of the works a reader sees on the card of a place another source offers. */
 export async function worksShownByOtherSources(sourceId: number): Promise<Set<string>> {
   const result = await pool.query<{ external_id: string }>(
