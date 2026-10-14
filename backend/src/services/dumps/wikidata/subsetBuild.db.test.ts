@@ -1,4 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { pool } from '../../../db/index.js';
 import type { DumpFile } from '../catalog.js';
 import type { DumpConsumer } from '../read.js';
@@ -185,5 +188,23 @@ describe('a build of the local Wikidata subset (#1434)', () => {
     expect(await ids('wikidata_entities')).not.toContain(`Q${CAPITAL}`);
     const { rows } = await pool.query("SELECT tablename FROM pg_tables WHERE tablename LIKE 'wikidata_%_next'");
     expect(rows).toEqual([]);
+  });
+
+  it('reads the first pass back from beside a local copy instead of scanning the dump again (#1468)', async () => {
+    lines = DUMP;
+    const dir = mkdtempSync(join(tmpdir(), 'subset-'));
+    try {
+      const run = async () => {
+        pass = 0;
+        await buildSubset(file, { buildId: await newBuild(), dumpsDir: dir, signal: new AbortController().signal, onPhase: () => undefined });
+        return pass;
+      };
+      expect(await run()).toBe(2);
+      expect(existsSync(join(dir, `${file.fileName}.scope`))).toBe(true);
+      expect(await run()).toBe(1);
+      expect(await ids('wikidata_entities')).toContain(`Q${CAPITAL}`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

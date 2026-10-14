@@ -13,6 +13,9 @@
  * `"mainsnak":{"snaktype":"value","property":"P31","datavalue":{"value":{"entity-type":"item","numeric-id":5,...`
  * with no `hash`, which a qualifier's or a reference's snak always carries.
  * So a match is a statement's own value, never a qualifier's.
+ *
+ * What this reads decides the subset's scope, so a change to it raises
+ * `SCOPE_VERSION` (`scopeFile.ts`), or a kept first-pass result is reused.
  */
 
 export type EntityKind = 'item' | 'property';

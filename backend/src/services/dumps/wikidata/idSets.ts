@@ -27,6 +27,23 @@ export class IdSet {
     return this.count;
   }
 
+  /** The set as bytes, a bit per id, to be kept on disk (`IdSet.fromBytes`). */
+  toBytes(): Uint8Array {
+    let end = this.bits.length;
+    while (end > 0 && this.bits[end - 1] === 0) end -= 1;
+    return this.bits.slice(0, end);
+  }
+
+  static fromBytes(bytes: Uint8Array): IdSet {
+    const set = new IdSet();
+    set.bits = new Uint8Array(Math.max(bytes.length, 1 << 20));
+    set.bits.set(bytes);
+    for (const value of bytes) {
+      for (let v = value; v !== 0; v &= v - 1) set.count += 1;
+    }
+    return set;
+  }
+
   /** Every id in the set, ascending. */
   *[Symbol.iterator](): IterableIterator<number> {
     for (let byte = 0; byte < this.bits.length; byte += 1) {
