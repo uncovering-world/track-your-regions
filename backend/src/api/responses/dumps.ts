@@ -15,7 +15,7 @@ const timestamp = z.iso.datetime({ offset: true });
 export const DumpBuildProgress = z.strictObject({
   dump: z.enum(DUMP_KEYS),
   kind: z.enum(['verify', 'keep']).describe('A verify build reads and counts; a keeping build runs the dump\'s builder and swaps in what it builds.'),
-  status: z.enum(['resolving', 'reading', 'success', 'failed', 'cancelled']),
+  status: z.enum(['queued', 'resolving', 'reading']).describe('Queued for the dump worker, finding its file, or reading it (ADR-0106).'),
   message: z.string(),
   file: z.strictObject({
     fileName: z.string(),
@@ -25,20 +25,21 @@ export const DumpBuildProgress = z.strictObject({
   downloaded: z.number().int(),
   read: z.number().int(),
   lines: z.number().int(),
-  buildId: z.number().int().nullable(),
-}).describe('A dump build in flight, or the last one this process ran.');
+  buildId: z.number().int(),
+  heartbeatAt: timestamp.nullable().describe('When the build last said it is alive, every few seconds; null while it waits for the worker.'),
+}).describe('A dump build queued or running, read from its ledger row whatever process runs it.');
 export type DumpBuildProgress = z.infer<typeof DumpBuildProgress>;
 
 export const DumpBuild = z.strictObject({
   id: z.number().int(),
-  fileName: z.string(),
-  dumpDate: z.string(),
+  fileName: z.string().nullable().describe('Null for a build that ended before it found its file.'),
+  dumpDate: z.string().nullable(),
   mode: z.enum(CHECK_VALUES.dump_builds.mode),
   bytes: z.number().int(),
   lines: z.number().int(),
   checksumKind: z.enum(CHECK_VALUES.dump_builds.checksum_kind).nullable(),
   verified: z.boolean().describe('The published checksum matched, or, where none is published, the size and the end of stream did.'),
-  status: z.enum(CHECK_VALUES.dump_builds.status),
+  status: z.enum(CHECK_VALUES.dump_builds.status).exclude(['queued']),
   error: z.string().nullable(),
   startedAt: timestamp,
   finishedAt: timestamp.nullable(),
@@ -58,12 +59,6 @@ export const Dumps = z.strictObject({
       built: z.strictObject({ dumpDate: z.string(), swappedAt: timestamp }).nullable()
         .describe('The build now in place: its dump date and when it was swapped in.'),
     }).nullable().describe('What a keeping build of this dump makes (the local Wikidata subset), or null where nothing is built from it yet.'),
-    elsewhere: z.strictObject({
-      buildId: z.number().int(),
-      fileName: z.string(),
-      startedAt: timestamp,
-      heartbeatAt: timestamp.describe('When the build last said it is alive; it beats every minute.'),
-    }).nullable().describe('A build of this dump running in another process (a script, another server), which refuses a new build until it ends (#1463); null when none runs or this process runs it.'),
     localCopy: z.strictObject({
       fileName: z.string(),
       date: z.string().describe('The date in the file name: YYYYMMDD, or YYYYMM for a month of counts.'),
