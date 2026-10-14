@@ -39,7 +39,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /** A source as `getSources` selects it, its lines read out of `api_config`. */
 export type SourceRow = Pick<ExperienceSourcesRow,
-  'id' | 'name' | 'description' | 'is_active' | 'requires_curation' | 'last_sync_at'
+  'id' | 'name' | 'description' | 'is_active' | 'requires_curation' | 'wikidata_reader' | 'last_sync_at'
   | 'last_sync_status' | 'display_priority' | 'created_at'> & {
   enter_sitelinks: number | null;
   stay_sitelinks: number | null;
@@ -49,7 +49,7 @@ export type SourceRow = Pick<ExperienceSourcesRow,
 
 export function experienceSourceOf(
   row: SourceRow,
-  extra: { waiting: WaitingCounts | null; caches: boolean; repairsPictures: boolean; findsComponentItems: boolean },
+  extra: { waiting: WaitingCounts | null; caches: boolean; repairsPictures: boolean; findsComponentItems: boolean; subsetReady: boolean },
 ): ExperienceSource {
   return {
     id: row.id,
@@ -57,6 +57,7 @@ export function experienceSourceOf(
     description: row.description,
     is_active: row.is_active === true,
     requires_curation: row.requires_curation,
+    wikidataReader: row.wikidata_reader as CheckValue<'experience_sources', 'wikidata_reader'>,
     last_sync_at: isoOf(row.last_sync_at),
     last_sync_status: row.last_sync_status as CheckValue<'experience_sources', 'last_sync_status'> | null,
     display_priority: row.display_priority,
@@ -69,6 +70,7 @@ export function experienceSourceOf(
     caches: extra.caches,
     repairsPictures: extra.repairsPictures,
     findsComponentItems: extra.findsComponentItems,
+    subsetReady: extra.subsetReady,
   };
 }
 

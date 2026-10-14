@@ -11,7 +11,7 @@ import { defineRoute, IMAGE } from '../api/route.js';
 import {
   AssignmentCancelled, AssignmentStarted, AssignmentStatus, CuratorActivity, CuratorAssignmentCreated, EqualItemMerges,
   JevUsage,
-  ComponentItemSearchStarted, CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, PictureRepairStarted,
+  ComponentItemSearchStarted, CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, WikidataReaderSet, PictureRepairStarted,
   PlacementCounts,
   SourceLineSet, SourcesReordered, SyncCancelled, SyncChanges, SyncLogDetail, SyncLogs, SyncStarted, SyncStatus,
   UserSearchResults, WikidataCache, WikidataCacheCleared, WikidataCacheTtlSet,
@@ -29,6 +29,7 @@ import {
   getRegionAssignmentStatus, cancelRegionAssignment, getExperienceCounts,
 } from '../controllers/admin/syncController.js';
 import { setCurationGate } from '../controllers/admin/curationGateController.js';
+import { setWikidataReader } from '../controllers/admin/wikidataReaderController.js';
 import { setSourceLine } from '../controllers/admin/sourceLineController.js';
 import { mergePlacesSharingAnItem } from '../controllers/admin/equalItemMergeController.js';
 import { getJevUsage } from '../controllers/admin/jevUsageController.js';
@@ -46,7 +47,7 @@ import { authenticatedLimiter, expensiveAdminLimiter } from '../middleware/rateL
 import {
   addLearnedRuleBodySchema, adminUserSearchQuerySchema, aiRuleIdParamSchema, aiSettingKeyParamSchema,
   aiSettingValueBodySchema, applyRuleReviewBodySchema, assignmentIdParamSchema, cacheKindParamSchema,
-  cacheTtlBodySchema, clearCacheQuerySchema, createCuratorAssignmentBodySchema, curationGateBodySchema,
+  cacheTtlBodySchema, clearCacheQuerySchema, createCuratorAssignmentBodySchema, curationGateBodySchema, wikidataReaderBodySchema,
   curatorActivityQuerySchema, dataAssertionAcceptBodySchema, dumpBuildBodySchema, dumpKeyParamSchema, experienceCountsQuerySchema, hierarchyReviewBodySchema,
   logIdParamSchema, regionAssignmentStatusQuerySchema, reorderSourcesBodySchema, sourceIdParamSchema,
   sourceLineBodySchema, startRegionAssignmentBodySchema, startSyncBodySchema, syncChangesQuerySchema,
@@ -91,6 +92,17 @@ export const adminDeclaredRoutes = [
     body: curationGateBodySchema,
     response: CurationGateSet,
     handler: setCurationGate,
+  }),
+  // Which Wikidata a source's runs read (#1459): the live service, or the
+  // local subset built from the entities dump (ADR-0105). A property of the
+  // source, beside its gate and its line.
+  defineRoute({
+    ...ADMIN, method: 'put', path: '/sync/sources/:sourceId/wikidata-reader',
+    summary: 'Switch which Wikidata a source\'s runs read: the live query service or the local subset',
+    params: sourceIdParamSchema,
+    body: wikidataReaderBodySchema,
+    response: WikidataReaderSet,
+    handler: setWikidataReader,
   }),
   // A source's fame line (ADR-0023, ADR-0052): how many sitelinks a row needs
   // to enter the world tier and how few it may fall to before the tier lets it

@@ -1,8 +1,8 @@
 /**
  * Prints how the local Wikidata subset answers the questions the runs asked
  * the live service and cached (#1458): per question shape, how many agree and
- * what differs: a developer's check of the subset's answers. No run reads
- * the subset yet.
+ * what differs: a developer's check of the subset's answers, before a source
+ * is switched to it.
  *
  *   npm --prefix backend run subset:parity [-- --limit 200]
  */

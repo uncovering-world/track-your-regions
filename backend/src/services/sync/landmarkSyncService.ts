@@ -8,6 +8,9 @@
  * treasures — simpler than museums, and since #754 the same shape.
  */
 
+import { latestSubset, entitiesAreHeld } from '../dumps/wikidata/subsetTables.js';
+import { readsSubset, subsetOnlyDoor, wikidataReaderOf } from './subset/reader.js';
+import type { SparqlFn } from './wikidataQueries.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import type { SyncProgress, WikidataLandmark, ContentsByKind } from './types.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
@@ -77,6 +80,24 @@ function collectingSparql(
       progress.statusMessage = `${descriptor.label}: ${rows} rows, from cache`;
     },
   });
+}
+
+/**
+ * The door the run asks Wikidata through: the live service with its answers
+ * kept, or, for a source the admin switched to it (#1459), the local subset,
+ * through a door that refuses any question with no twin there. A subset that
+ * is not built stops the run before it asks anything.
+ */
+async function runDoor(progress: SyncProgress, refreshCache: boolean): Promise<SparqlFn> {
+  if (await wikidataReaderOf(LANDMARK_SOURCE_ID) !== 'subset') return collectingSparql(progress, refreshCache);
+  const built = await latestSubset();
+  if (!built || !(await entitiesAreHeld())) {
+    throw new Error('This source reads the local Wikidata subset, which is not built (or a database crash emptied it): build it under Public Dumps, or switch the source back to the live service');
+  }
+  progress.statusMessage = `Reading Wikidata from the local subset of the ${built.dumpDate} dump...`;
+  const door = subsetOnlyDoor();
+  if (!readsSubset(door)) throw new Error('The subset door lost its mark');
+  return door;
 }
 
 /**
@@ -194,7 +215,7 @@ async function fetchLandmarkItems(
   const offered = await placesOtherSourcesOffer(LANDMARK_SOURCE_ID);
 
   const { items, fetched, filtered } = await collectPublicArt({
-    sparql: collectingSparql(progress, refreshCache),
+    sparql: await runDoor(progress, refreshCache),
     phase: (message) => { progress.statusMessage = message; },
     step: async () => {
       if (progress.cancel) throw new Error('Sync cancelled');

@@ -4,6 +4,7 @@
  * Handles sync operations for experience sources (UNESCO, etc.)
  */
 
+import { SUBSET_READY_SOURCES } from '../../services/sync/subset/reader.js';
 import { mergeArrivalsOfRun } from '../experience/equalItemMerges.js';
 import type { z } from 'zod/v4';
 import type {
@@ -570,6 +571,7 @@ export async function getSources(): Promise<ExperienceSources> {
       description,
       is_active,
       requires_curation,
+      wikidata_reader,
       last_sync_at,
       last_sync_status,
       display_priority,
@@ -651,6 +653,9 @@ export async function getSources(): Promise<ExperienceSources> {
     // the World Heritage ones the Centre's terms do not let us show (ADR-0043).
     repairsPictures: source.id in PICTURE_REPAIRS,
     findsComponentItems: source.id in COMPONENT_ITEM_SEARCHES,
+    // Whether every question this source asks has a twin in the local subset,
+    // which decides whether its runs may be switched to read it (#1459).
+    subsetReady: SUBSET_READY_SOURCES.has(source.id),
   }));
 }
 

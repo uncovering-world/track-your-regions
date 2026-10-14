@@ -4262,6 +4262,66 @@
         }
       }
     },
+    "/api/admin/sync/sources/{sourceId}/wikidata-reader": {
+      "put": {
+        "operationId": "putAdminSyncSourcesBySourceIdWikidataReader",
+        "summary": "Switch which Wikidata a source's runs read: the live query service or the local subset",
+        "tags": [
+          "admin"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "sourceId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WikidataReaderBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WikidataReaderSet"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/sync/sources/{sourceId}/line": {
       "put": {
         "operationId": "putAdminSyncSourcesBySourceIdLine",
@@ -21722,6 +21782,18 @@
           "findsComponentItems": {
             "type": "boolean",
             "description": "Whether the panel can search Wikidata for the items of this source's components that no item records the reference of (#1272)."
+          },
+          "wikidataReader": {
+            "type": "string",
+            "enum": [
+              "live",
+              "subset"
+            ],
+            "description": "Which Wikidata the source's runs read: the live query service, or the local subset built from the entities dump (#1459, ADR-0105)."
+          },
+          "subsetReady": {
+            "type": "boolean",
+            "description": "Whether every question this source asks has a twin in the local subset, so its runs may be switched to read it."
           }
         },
         "required": [
@@ -21741,7 +21813,9 @@
           "waiting",
           "caches",
           "repairsPictures",
-          "findsComponentItems"
+          "findsComponentItems",
+          "wikidataReader",
+          "subsetReady"
         ],
         "additionalProperties": false,
         "description": "One active source, with its gate, its line and what it is holding."
@@ -32920,6 +32994,48 @@
         ],
         "additionalProperties": false,
         "description": "How long one kind stays fresh, changed."
+      },
+      "WikidataReaderBody": {
+        "type": "object",
+        "properties": {
+          "reader": {
+            "type": "string",
+            "enum": [
+              "live",
+              "subset"
+            ]
+          }
+        },
+        "required": [
+          "reader"
+        ]
+      },
+      "WikidataReaderSet": {
+        "type": "object",
+        "properties": {
+          "sourceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string"
+          },
+          "wikidataReader": {
+            "type": "string",
+            "enum": [
+              "live",
+              "subset"
+            ]
+          }
+        },
+        "required": [
+          "sourceId",
+          "name",
+          "wikidataReader"
+        ],
+        "additionalProperties": false,
+        "description": "Which Wikidata a source's runs read, switched."
       },
       "WikivoyageCache": {
         "type": "object",

@@ -44,6 +44,14 @@ vi.mock('./handOvers.js', () => ({
 }));
 vi.mock('./admission.js', () => ({ admittedExternalIds: vi.fn() }));
 vi.mock('./shownElsewhere.js', () => ({ placesOtherSourcesOffer: vi.fn().mockResolvedValue(new Set(['Q19675'])) }));
+vi.mock('./subset/reader.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./subset/reader.js')>()),
+  wikidataReaderOf: vi.fn().mockResolvedValue('live'),
+}));
+vi.mock('../dumps/wikidata/subsetTables.js', () => ({
+  latestSubset: vi.fn().mockResolvedValue(null),
+  entitiesAreHeld: vi.fn().mockResolvedValue(true),
+}));
 vi.mock('./wikidataUtils.js', () => ({
   delay: vi.fn(),
   WaitBudget: class WaitBudget {},
@@ -137,6 +145,23 @@ describe('syncLandmarks', () => {
     const plain = await configOf();
     await plain.fetchItems(progress(), []);
     expect(mockedWithCache.mock.calls[0][1]).toMatchObject({ sourceId: 3, enabled: true });
+  });
+
+  it('reads the local subset when the source is switched to it, through a door that asks the live service nothing (#1459)', async () => {
+    const { wikidataReaderOf, readsSubset } = await import('./subset/reader.js');
+    const { latestSubset } = await import('../dumps/wikidata/subsetTables.js');
+    vi.mocked(wikidataReaderOf).mockResolvedValue('subset');
+    vi.mocked(latestSubset).mockResolvedValue(null);
+    await expect((await configOf()).fetchItems(progress(), [])).rejects.toThrow(/not built/);
+
+    vi.mocked(latestSubset).mockResolvedValue({ dumpDate: '2026-10-05', swappedAt: new Date() });
+    mockedCollect.mockResolvedValue({ items: [], fetched: 0, filtered: [] });
+    await (await configOf()).fetchItems(progress(), []);
+    const door = mockedCollect.mock.calls.at(-1)![0].sparql;
+    expect(readsSubset(door)).toBe(true);
+    await expect(door('SELECT ?x WHERE {}', { kind: 'pool', label: 'a pool' })).rejects.toThrow(/asked the live service: a pool/);
+    expect(mockedWithCache).not.toHaveBeenCalled();
+    vi.mocked(wikidataReaderOf).mockResolvedValue('live');
   });
 
   it('writes what the rule read onto the row', async () => {
