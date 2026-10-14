@@ -12,7 +12,7 @@
 
 import { dumpNamed, type DumpDescriptor, type DumpFile, type DumpKey } from './catalog.js';
 import { fetchText, sizeOf } from './fetch.js';
-import { closeBuild, openBuild } from './ledger.js';
+import { BEAT_EVERY_MS, beat, closeBuild, closeOrphanedBuilds, liveBuildOf, openBuild } from './ledger.js';
 import { countLines, readDump, type ReadOptions } from './read.js';
 import { buildSubset } from './wikidata/subsetBuild.js';
 import { latestSubset } from './wikidata/subsetTables.js';
@@ -36,9 +36,12 @@ export function buildProgress(dump: DumpKey): DumpBuildProgress | null {
   return running.get(dump)?.progress ?? null;
 }
 
+/** Whether a build is still going: resolving its file or reading it. */
+export const inFlight = (progress: DumpBuildProgress): boolean => ['resolving', 'reading'].includes(progress.status);
+
 export function cancelBuild(dump: DumpKey): boolean {
   const entry = running.get(dump);
-  if (!entry || !['resolving', 'reading'].includes(entry.progress.status)) return false;
+  if (!entry || !inFlight(entry.progress)) return false;
   entry.controller.abort();
   return true;
 }
@@ -71,10 +74,30 @@ const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
 
 export const keeperOf = (key: DumpKey): Pick<Keeper, 'title' | 'latest'> | null => KEEPERS[key] ?? null;
 
-/** Start a build of `dump` in the background; refuses a second one of the same dump, and a keeping one of a dump with no builder. */
-export function startBuild(key: DumpKey, startedBy: number | null, kind: DumpBuildProgress['kind'] = 'verify'): DumpBuildProgress {
+export interface BuildRequest {
+  startedBy: number | null;
+  /** What runs the build (`openBuild`): the routes pass `SERVER_RUNNER`, anything else its own name. */
+  runner: string;
+  kind?: DumpBuildProgress['kind'];
+}
+
+/**
+ * Start a build of `dump` in the background. Refuses a keeping one of a dump
+ * with no builder, and a second one of the same dump, in this process or in
+ * any other whose build still beats (#1463): a build run by a script reads the
+ * same local copy, and a second download of a 156 GB dump beside it would
+ * fill the disk under both.
+ */
+export async function startBuild(key: DumpKey, { startedBy, runner, kind = 'verify' }: BuildRequest): Promise<DumpBuildProgress> {
+  if (!running.has(key) || !inFlight(running.get(key)!.progress)) {
+    await closeOrphanedBuilds({ dump: key });
+    const live = await liveBuildOf(key);
+    if (live) {
+      throw new Error(`A build of this dump is running in another process: build ${live.id}, ${live.file_name}, started ${live.started_at.toISOString()}`);
+    }
+  }
   const existing = running.get(key);
-  if (existing && ['resolving', 'reading'].includes(existing.progress.status)) {
+  if (existing && inFlight(existing.progress)) {
     throw new Error('A build of this dump is already running');
   }
   const descriptor = dumpNamed(key);
@@ -86,7 +109,7 @@ export function startBuild(key: DumpKey, startedBy: number | null, kind: DumpBui
   };
   const controller = new AbortController();
   running.set(key, { progress, controller });
-  void run(descriptor, progress, controller, startedBy);
+  void run(descriptor, progress, controller, startedBy, runner);
   return progress;
 }
 
@@ -113,7 +136,9 @@ async function run(
   progress: DumpBuildProgress,
   controller: AbortController,
   startedBy: number | null,
+  runner: string,
 ): Promise<void> {
+  let heart: NodeJS.Timeout | undefined;
   try {
     const file = await descriptor.resolve(
       url => fetchText(url, controller.signal), url => sizeOf(url, controller.signal),
@@ -121,8 +146,11 @@ async function run(
     if (!file) throw new Error('The host lists no complete file of this dump in its recent directories');
     progress.file = { fileName: file.fileName, date: file.date, expectedBytes: file.expectedBytes };
     const dir = dumpsDir();
-    const buildId = await openBuild(file, dir ? 'local' : 'stream', startedBy);
+    const buildId = await openBuild(file, dir ? 'local' : 'stream', startedBy, runner);
     progress.buildId = buildId;
+    heart = setInterval(() => {
+      beat(buildId).catch(error => console.error('[Dumps] Could not beat the build row:', error));
+    }, BEAT_EVERY_MS);
     progress.status = 'reading';
     progress.message = `Reading ${file.fileName}${dir ? ' into the local copy' : ' from the host'}...`;
     const options: ReadOptions = {
@@ -146,5 +174,7 @@ async function run(
     await closeBuild(buildId, { status: 'success', bytes: result.bytes, lines: result.lines, checksumActual: result.checksumActual, error: null });
   } catch (error) {
     await fail(progress, controller, error);
+  } finally {
+    clearInterval(heart);
   }
 }

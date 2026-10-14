@@ -81,7 +81,8 @@ const file: DumpFile = {
 
 async function newBuild(): Promise<number> {
   const result = await pool.query<{ id: number }>(
-    `INSERT INTO dump_builds (dump, file_name, dump_date, url, mode) VALUES ('wikidata-entities', $1, '2026-10-05', $2, 'local') RETURNING id`,
+    // Closed at once: only one build of a dump may be running, and this spec runs several in turn.
+    `INSERT INTO dump_builds (dump, file_name, dump_date, url, mode, status) VALUES ('wikidata-entities', $1, '2026-10-05', $2, 'local', 'success') RETURNING id`,
     [file.fileName, file.url],
   );
   return result.rows[0].id;

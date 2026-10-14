@@ -109,8 +109,8 @@ const startServer = async () => {
   }
 
   // A dump build the previous process was in the middle of (ADR-0101).
-  const { closeOrphanedBuilds } = await import('./services/dumps/ledger.js');
-  const orphanedBuilds = await closeOrphanedBuilds();
+  const { closeOrphanedBuilds, SERVER_RUNNER } = await import('./services/dumps/ledger.js');
+  const orphanedBuilds = await closeOrphanedBuilds({ runner: SERVER_RUNNER });
   if (orphanedBuilds > 0) {
     console.log(`🧹 Marked ${orphanedBuilds} stale dump build(s) as failed`);
   }
