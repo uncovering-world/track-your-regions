@@ -88,7 +88,9 @@ request's pushed head (`--base <head>`), which CI has already answered
 for. The slow lanes — the Semgrep and Trivy scans, the smoke, database
 and API lanes, Lighthouse — are CI's: it runs every one the change asks
 for on every pushed head, and a pull request is merged only when every
-check that ran on its head is green, not only the required ones. `npm
+check that ran on its head is green, not only the required ones (one
+exemption, the `review` check on a PR that changes `claude-review.yml`:
+`docs/tech/gates.md` § Before merging). `npm
 run gates -- run stack` marks what is still owed by hand, the
 measurements CI cannot hold — `perf:local` (Lighthouse on the real
 catalogue) on a change to what the browser loads, `perf:api` (the

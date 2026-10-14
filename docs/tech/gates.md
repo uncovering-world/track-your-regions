@@ -107,7 +107,12 @@ machine and finds nothing CI would not. So:
 - **On a red CI lane:** that lane alone, reproduced locally.
 - **Before merging:** every check that ran on the head is green. The slow
   lanes are not among the contexts branch protection requires, so this is the
-  rule that makes them count.
+  rule that makes them count. One check is exempt, and only on one kind of
+  pull request: on a PR that changes `.github/workflows/claude-review.yml`,
+  the `review` check fails by design with "reported success without running"
+  — the review action refuses a workflow that differs from `main`'s copy — and
+  the summary a `/review` comment brings answers for it instead (#483). Any
+  other failure of that check on such a PR counts as a red check.
 
 ```text
 $ npm run gates -- run stack
