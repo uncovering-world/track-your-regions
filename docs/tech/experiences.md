@@ -2628,10 +2628,21 @@ placement through the venue graph, which already holds its row and classes. The 
   (`wikipediaCategoryMembers.ts`, `readMembers`). The category is the second signal of the nature,
   and it is a **door** and not only a test: a museum Wikidata types bare `museum` is in no class
   pool and, holding no find the world has heard of, is named by nothing at all — which is half the
-  canon. The walk starts at `Category:Archaeological museums by country` and follows only the
-  subcategories whose own title matches that same rule, so the siblings of another kind
-  (`Byzantine museums in Greece`) are left where they are; it reads each category once behind a
-  visited set, stops four steps from the root, and asks two questions per category — the articles
+  canon. The walk starts at the bare `Category:Archaeological museums` (#889), where editors also file
+  museums directly: 60 articles on 2026-10-14, among them the Erebuni Museum, the National Museum of
+  Sudan and the national museums of Finland, Slovakia and Singapore. From there it follows only
+  `Archaeological museums by country` and the subcategories whose own title matches
+  `Archaeological museums in|of …` (`NATURE_WALK`), so the siblings of another kind (`Byzantine
+  museums in Greece`) are left where they are. **A subcategory it does not follow, named exactly
+  after an article with an item, is read as that article** (`shelves` in
+  `wikipediaCategoryMembers.ts`). Its shelf counts as one of the article's categories, which
+  `runDoors.ts` adds when the categories are read: `Category:History Museum of Armenia` sits in
+  `Archaeological museums`, while the article is filed under `History museums in Armenia`. **The
+  department shelves are walked too** (`DEPARTMENT_ROOTS`, `DEPARTMENT_WALK`, ADR-0104 decision 3):
+  `Museums of ancient …`, `Museums of the ancient Near East`, `Egyptological collections`,
+  `Pre-Columbian art museums` and `Mesoamerican art museums`, to their country level. Their articles
+  join the candidates and are judged by their own categories, classes and map. The walk reads each
+  category once behind a visited set, stops five steps from the root, and asks two questions per category — the articles
   with the Wikidata item each is about (`generator=categorymembers` with
   `prop=pageprops&ppprop=wikibase_item`) and the subcategories (`list=categorymembers`) — on the
   categories client's own transport, POST and page size `max`, every continuation followed. It has
@@ -2693,8 +2704,8 @@ would give the reason:
   museum on it — would otherwise walk in. An open-air excavation with a ticket office is somewhere
   you walk around whatever Wikipedia shelves it under: it is a site, and the site door admits it on
   its own terms (decision 4). **Natural history is a reason, not a veto** (ADR-0103 decision 3),
-  marked only where **neither signal of the nature answered**, because either one is enough and a
-  museum of both natures is a museum of both: the Naturhistorisches Museum Wien is typed `natural
+  marked only where **no signal of the nature answered** (the category, the class, the map), because
+  any one is enough and a museum of both natures is a museum of both: the Naturhistorisches Museum Wien is typed `natural
   history museum` and its article carries `Natural history museums in Austria` and `Geology museums
   in Austria` and nothing archaeological, so it has no nature (`{ nature: 'none', naturalHistory:
   true }`) and the verdict decides what the Venus of Willendorf makes of it; the Yorkshire Museum is
@@ -2702,8 +2713,8 @@ would give the reason:
   and `Museums of ancient Rome in the United Kingdom`, and its draw is Roman York, so the mark is
   never reached. Dry run 112 refused the Piacenza Civic Museum, typed both, on the unnarrowed
   veto; run 113 admits it.
-- **The English Wikipedia category**, `Archaeological museums in|of …` (`NATURE_CATEGORY`), before
-  the class, so that the reason a curator reads is the editorial judgement where there is one. It is
+- **The English Wikipedia category**, `Archaeological museums in|of …` or the bare `Archaeological
+  museums` (`NATURE_CATEGORY`), before the class, so that the reason a curator reads is the editorial judgement where there is one. It is
   the honest signal of what a museum is about and the one the class tree does not carry: it sits on
   the British Museum, the Pergamon Museum, the Neues Museum, the National Museum of Iraq, the Bardo
   and the Museo del Oro — every museum the class misses — and is absent from the Uffizi, the Prado,
@@ -2712,11 +2723,20 @@ would give the reason:
   walked as trees and floored with the roots themselves). The reason names the root's label rather
   than the subclass a row arrived by: what a curator checks is that Wikidata files the museum under
   `archaeological museum` at all.
+- **The map**, `museum=archaeological` on an OpenStreetMap object carrying the museum's item
+  (ADR-0104), with the reason `map: museum=archaeological`. The run asks the pass's map door once
+  for the `museum` tag of every museum row (`readMuseumMap` in `archaeology/museums.ts`, the same
+  door the site door reads, no geometry). The tag is precise and sparse. On 2026-10-14 it was on 23
+  of the 84 archaeology museums the source admits and on 1 of the 100 art museums Art Museums
+  admits, so it can admit, and its absence says nothing. It is the only signal the Altes Museum
+  carries: Wikidata types it `history museum` and `art museum`, and Wikipedia files it under
+  `Museums of ancient Greece in Germany`. A natural-history class is no mark against it.
 - **A department category last** (`DEPARTMENT_CATEGORIES` — `Museums of ancient …`, `Museums of the
   ancient Near East`, `Egyptological collections`, `Pre-Columbian art museums`, `Mesoamerican art
   museums`), and only when nothing above it matched: the Larco Museum carries `Pre-Columbian art
   museums` *and* `Archaeological museums in Peru`, and a department word beside a nature takes
-  nothing away.
+  nothing away. A department answer also says whether the map (`museum=art`) or an `ART_CLASSES`
+  class calls the museum an art museum (`artMuseum`), which the verdict reads (ADR-0104).
 
 **The verdict** (`museumVerdict`). A veto refuses the row by name. No signal at all refuses it
 too, unless it holds a find above the finds' line that **no other kind shows** (ADR-0103,
@@ -2749,7 +2769,13 @@ Pushkin Museum, the National Museum of Scotland — is **admitted with the run's
 `an antiquities department (category: …); is the exposition substantially archaeology?` goes into
 `metadata.admissionNote`, and the source's gate (ADR-0025) is what holds the arrival — there is no
 fourth curation state. The Hermitage's antiquities are among the world's best and it is still
-visited as an art museum; only a person can say which this is.
+visited as an art museum; only a person can say which this is. **Unless something calls it an art
+museum and nothing else brought it** (ADR-0104 decision 4): a department museum the map maps
+`museum=art`, or that carries a class the Art Museums kind reads as an art museum's (`ART_CLASSES`),
+is refused by name when it holds no famous find and the source does not admit it already. The
+department shelves name about twenty such museums, the Cleveland Museum of Art among them, and a
+curator would answer no to nearly all. The museums above are admitted already, so they keep the
+question.
 
 **`admitted_for` names the find that got the museum in**, and only where the museum's own fame did
 not: a row at or above the place line's *enter* count is there on its own account and names
@@ -2954,7 +2980,7 @@ whose log said success. The Action API's own refusals inside a 200 are read the 
 `query` at all is judged by the caller and not by the transport**, because that silence means two
 different things: for a batch of titles it is the same fifty museums read as category-less and it
 throws, while a category holding no articles of its own is answered in exactly that shape and is
-read as empty — the root `Archaeological museums by country`, which held 60 country categories and
+read as empty — the shelf `Archaeological museums by country`, which held 60 country categories and
 no article of its own on 2026-09-13, is one. The second caller is this module's sibling
 `wikipediaCategoryMembers.ts`, the walk described under *Who is judged at all*, which borrows this
 file's endpoint, retry rule and refusal wording rather than growing a second client with its own
@@ -3077,6 +3103,13 @@ belongs to #603.
 **Refusals**, in the words the *kept out* card shows:
 
 - `an archaeological park: a site, not a museum`, the one veto.
+- `an antiquities department in an art museum (map: museum=art, category: Egyptological collections
+  in the United States)`, for a museum whose only signal is a department category, which the map or
+  an `ART_CLASSES` class calls an art museum, holding no famous find and not yet admitted (ADR-0104 decision 4). On
+  2026-10-14 that described about twenty museums the department shelves name: Cleveland, Denver,
+  Houston, Toledo, the Metropolitan Museum and the Ny Carlsberg Glyptotek. The Hermitage, the
+  Vatican Museums and the Pushkin Museum are admitted already and stay held with the department
+  question, as does a department museum a famous find carries over the line.
 - `no museum class on Wikidata: a site, a castle or a city in Wikipedia's category — the site
   door's`, for what the editorial shelf named and Wikidata does not call a museum — said at or
   above the place line, and of a row the source already admits whatever its count (`lineStanding`
@@ -3149,8 +3182,8 @@ that each list holds what its name says, which the nature rule secures.
   The National Museum of Korea, typed `national museum` at 38 sitelinks and filed under `History
   museums in South Korea` and `Art museums and galleries in Seoul` (checked 2026-09-13), is not even
   a candidate: no road reaches it, so not a word is said about it. A museum with no English article
-  at all is judged by its Wikidata class alone, for want of anywhere to read the second signal.
-  What the two signals *do* reach
+  at all is judged by its Wikidata class and the map alone, for want of anywhere to read the category.
+  What the category and the class *do* reach
   the category door widened considerably — the Tokyo National Museum, which the survey had filed
   among the misses for holding a Hokusai print, entered on run 113 through `Archaeological museums
   in Japan`. That is the price and the reward of an editorial signal, and it is why a run's refusals
