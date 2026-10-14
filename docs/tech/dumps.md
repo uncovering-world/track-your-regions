@@ -4,10 +4,11 @@ The shared pipeline every bulk read goes through
 ([ADR-0101](../decisions/0101-bulk-reads-come-from-public-dumps-and-wikidata-is-kept-as-a-wide-subset.md)):
 it finds the newest complete file of a public dump, reads it line by line
 into a consumer, and lets the consumer keep what it built only once the file
-is verified. It holds no data of its own. A build that keeps something (the
-local Wikidata subset, #1434; the Wikipedia structure tables, #1440) is a
-consumer plugged into it; the one consumer that ships with the pipeline counts
-lines and keeps nothing, which is what the admin panel's *Verify newest* runs.
+is verified. It holds no data of its own. A build that keeps something is a
+builder plugged into it: the local Wikidata subset (§ The local Wikidata
+subset, ADR-0105) is the first, and the Wikipedia structure tables (#1440)
+and readership (#1436) come later. The counting consumer keeps nothing, which
+is what the admin panel's *Verify newest* runs.
 
 Code: `backend/src/services/dumps/` — `catalog.ts` (which dumps exist and how
 the newest complete file of each is found), `fetch.ts` (the door to the host),
@@ -116,8 +117,10 @@ are CC0; a table derived from the Wikipedia dumps is CC BY-SA and attributed.
 
 ## A build
 
-`startBuild(key, startedBy)` in `job.ts` resolves the newest complete file,
-opens a `dump_builds` row (`openBuild`), reads it, and closes the row
+`startBuild(key, startedBy, kind)` in `job.ts` resolves the newest complete file,
+opens a `dump_builds` row (`openBuild`), reads it — through the counting
+consumer for a `verify` build, through the dump's builder (`KEEPERS`) for a
+`keep` build, refused for a dump with none — and closes the row
 (`closeBuild`) as `success`, `failed` or `cancelled`. One build per dump runs
 at a time; a second start is refused. Progress — what is being resolved, the
 file, the bytes downloaded and read, the lines — is held in memory
@@ -131,6 +134,54 @@ bytes and lines read, the published and the computed checksum, the status
 and the error, who started it and when it finished. It is what says which
 dump a consumer's tables were built from.
 
+## The local Wikidata subset
+
+Code: `backend/src/services/dumps/wikidata/` —
+[ADR-0101](../decisions/0101-bulk-reads-come-from-public-dumps-and-wikidata-is-kept-as-a-wide-subset.md)
+decision 2 as narrowed by
+[ADR-0105](../decisions/0105-the-wikidata-subset-follows-containment-chains-and-is-kept-compact-and-swapped-in-whole.md).
+A `keep` build of `wikidata-entities` runs `buildSubset` (`subsetBuild.ts`),
+which reads the file twice through `readDump`, each pass verified:
+
+1. **Scope** (`scope.ts`). `ScopeCollector` scans every line without parsing
+   it (`entityLine.ts`: the entity's id, whether a main snak has a value for a
+   property, the items the main snaks name) and keeps ids and edges only, in
+   bit sets and typed arrays (`idSets.ts`). It keeps the seeds (a coordinate,
+   P625, or a class, P279), a seed's P31 classes and its place, part and
+   collection values (P131, P276, P361, P527, P195, P189), every item that
+   names a seed through one of those, every item whose chain of P276, P361 and
+   P195 reaches a coordinate within `CHAIN_DEPTH` steps with every item on the
+   way, and every property. `finish()` answers the kept set and its counts,
+   the bytes of the kept lines among them.
+2. **Write** (`subsetWriter.ts`). `SubsetWriter` parses each kept line,
+   writes its compact form (`compactEntity.ts`) to `wikidata_entities_next` in
+   batches, and gathers the items the kept ones name (the labels ring). Every
+   other item's labels and descriptions in `SUBSET_LANGUAGES` go to a gzip
+   spool beside the dump (`labelsRing.ts`, `TermsSpool`), read without
+   parsing the line.
+
+Then the ring's terms are read back from the spool into `wikidata_labels_next`,
+and `subsetTables.ts` derives the rest from the entities in SQL
+(`deriveFromEntities`, `deriveClassClosure`), gives each `_next` copy the live
+table's indexes (`indexNextTables`, read from the catalog, so `01-schema.sql`
+is their one statement), and swaps the copies in with one transaction
+(`swapIn`), recording the build in `wikidata_subset_builds`. A failure, or a
+cancel (honoured between the steps and inside each long statement), drops
+the copies; the spool is removed either way.
+
+| Table | Holds |
+|---|---|
+| `wikidata_entities` | Each kept entity's compact JSON (`lz4`, `toast_tuple_target = 128`) and its sitelink count |
+| `wikidata_claims` | A row per statement of `CLAIM_PROPERTIES`: rank (1, 0, −1), `value_item` for an item value (told by the property's datatype), `value` otherwise, qualifiers |
+| `wikidata_labels` | Labels and descriptions in `SUBSET_LANGUAGES`, of the kept entities and of the ring |
+| `wikidata_sitelinks` | Every sitelink of a kept entity |
+| `wikidata_class_closure` | Each class a kept item is an instance of, with itself and every class above it through non-deprecated P279 |
+| `wikidata_subset_builds` | The builds swapped in: the `dump_builds` row, the dump date, the counts |
+
+The five derived tables are `UNLOGGED`: rebuilt from the dump, they skip the
+write-ahead log, and a crash of the database empties them until the next
+build. Which dump a reader reads is the newest `wikidata_subset_builds` row.
+
 ## The admin panel
 
 Admin → **Public Dumps** (`frontend/src/components/admin/DumpsPanel.tsx`)
@@ -143,7 +194,10 @@ dump's date — a day, or for the pageview files the month their counts cover
 among its last three (`recentBuilds`) open under the row. *Verify newest* runs
 the counting consumer over the newest complete file and the row turns into its
 progress, polled every three seconds while the page is visible; *Cancel* stops
-it. The routes are `GET /api/admin/dumps`, `POST /api/admin/dumps/:dump/build`
-and `POST /api/admin/dumps/:dump/cancel`
+it. A dump something is built from (`keeps` in the list) also has *Build*,
+which starts a `keep` build, and its row names what is built and the dump date
+of the build in place, or says it was never built.
+The routes are `GET /api/admin/dumps`, `POST /api/admin/dumps/:dump/build`,
+`POST /api/admin/dumps/:dump/keep` and `POST /api/admin/dumps/:dump/cancel`
 (`backend/src/controllers/admin/dumpController.ts`);
 `docs/security/SECURITY.md` § Current Security Stack has their controls.
