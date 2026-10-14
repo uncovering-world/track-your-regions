@@ -1,0 +1,31 @@
+/**
+ * The dumps a build can keep something from, and what builds it (#1434):
+ * the local Wikidata subset from the entities dump. Readership and the
+ * Wikipedia tables bring theirs (#1436, #1440).
+ */
+
+import type { DumpFile, DumpKey } from './catalog.js';
+import type { ReadOptions } from './read.js';
+import { buildSubset } from './wikidata/subsetBuild.js';
+import { latestSubset } from './wikidata/subsetTables.js';
+
+export interface Kept {
+  /** The dump date of the build now in place, and when it was swapped in. */
+  dumpDate: string;
+  swappedAt: Date;
+}
+
+export interface Keeper {
+  /** What a keeping build of the dump makes, for the admin panel. */
+  title: string;
+  build(file: DumpFile, options: ReadOptions & { buildId: number; onPhase: (message: string) => void }):
+    Promise<{ bytes: number; lines: number; checksumActual: string | null }>;
+  /** The build now in place, if any. */
+  latest(): Promise<Kept | null>;
+}
+
+const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
+  'wikidata-entities': { title: 'The local Wikidata subset', build: buildSubset, latest: latestSubset },
+};
+
+export const keeperOf = (key: DumpKey): Keeper | null => KEEPERS[key] ?? null;
