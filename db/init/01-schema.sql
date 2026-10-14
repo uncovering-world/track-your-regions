@@ -2559,7 +2559,9 @@ CREATE TABLE IF NOT EXISTS experience_sources (
     last_sync_error TEXT,
     display_priority INTEGER NOT NULL DEFAULT 100,
     kind_id INTEGER REFERENCES experience_kinds(id),
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    -- Which Wikidata the source's runs read (#1459): live, or the local subset (ADR-0105).
+    wikidata_reader VARCHAR(10) NOT NULL DEFAULT 'live' CHECK (wikidata_reader IN ('live', 'subset'))
 );
 
 COMMENT ON TABLE experience_sources IS 'Sources: the lists a sync reads to fill a kind (ADR-0045 decision 3). One row per sync service, with its endpoint, config and gate.';

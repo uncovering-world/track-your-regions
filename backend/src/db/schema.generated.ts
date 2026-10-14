@@ -407,6 +407,7 @@ export interface ExperienceSourcesRow {
   display_priority: number;
   kind_id: number;
   created_at: Date | null;
+  wikidata_reader: string;
   new_badge_days: number;
   requires_curation: boolean;
 }
@@ -976,6 +977,7 @@ export const COLUMN_WIDTHS = {
     name: 255,
     api_endpoint: 1000,
     last_sync_status: 50,
+    wikidata_reader: 10,
   },
   experience_sync_changes: {
     external_id: 255,
@@ -1111,6 +1113,7 @@ export const CHECK_VALUES = {
   },
   experience_sources: {
     last_sync_status: ["success", "partial", "failed", "cancelled"],
+    wikidata_reader: ["live", "subset"],
   },
   experience_sync_changes: {
     change_type: ["created", "updated", "conflict", "held", "contents", "missing", "returned", "failed", "filtered"],
