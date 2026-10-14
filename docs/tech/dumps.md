@@ -11,7 +11,8 @@ lines and keeps nothing, which is what the admin panel's *Verify newest* runs.
 
 Code: `backend/src/services/dumps/` — `catalog.ts` (which dumps exist and how
 the newest complete file of each is found), `fetch.ts` (the door to the host),
-`read.ts` (reading and verifying), `job.ts` (the in-memory build and its
+`rangedDownload.ts` (a local copy over several connections), `read.ts`
+(reading and verifying), `job.ts` (the in-memory build and its
 progress), `ledger.ts` (the `dump_builds` table).
 
 ## The catalog
@@ -73,8 +74,18 @@ wherever the host offers both.
   starts from the beginning.
 - **A directory** (a container path under `/app/data`, e.g. `/app/data/dumps`)
   — the file is first brought to the host's full size in that directory
-  (`downloadTo` in `fetch.ts`), resuming a cut download with a `Range` request
-  from what is already on disk, then read from disk. A host that does not
+  (`downloadTo` in `fetch.ts`), then read from disk. Where the host names the
+  file's size, what is left is split into one range per connection the host
+  allows (`downloadRanges` in `rangedDownload.ts`; ranges under 64 MB are not
+  split off) and each range is written at its own offset in `<file>.part`,
+  with where every range has got to saved in `<file>.part.json`. A cut
+  download resumes each range where it stopped, and the file takes its own
+  name only once every range is written. `dumps.wikimedia.org` serves about
+  5 MB/s per connection, so three connections bring the 156 GB entities dump
+  in under 3 hours instead of about 8 (measured 2026-10-14). A copy from
+  before, written in order from byte 0, is continued from its end. Where the
+  host names no size, the rest is fetched in order over one connection with a
+  `Range` request from what is already on disk. A host that does not
   answer the range with `206` fails the build rather than appending a whole
   file to a partial one, except a `416` to a copy already at full size from a
   host that named no size: the copy is whole as far as the host can say, and
@@ -94,9 +105,10 @@ enforces the Wikimedia User-Agent policy; it publishes no `robots.txt`.
 `fetch.ts` holds at most `HOST_CONNECTIONS` (3) open per host from this
 process, sends the bot `userAgent()` with the purpose `public dump builds` on
 every request, follows redirects, and never retries: a failed request fails
-the build, and an admin starts it again. A build opens one connection, so a
-fourth build waits for a slot — possibly behind a read of hours — and a
-cancel ends that wait rather than leaving the build queued.
+the build, and an admin starts it again. A read opens one connection and a
+download into the local copy up to three, so another build waits for a slot —
+possibly behind a download or a read of hours — and a cancel ends that wait
+rather than leaving the build queued.
 
 What the files may be used for is the dump's own licence, and a table built
 from one carries it (ADR-0101): Wikidata's entities and the pageview counts
