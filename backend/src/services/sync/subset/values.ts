@@ -1,0 +1,82 @@
+/**
+ * How the live query service writes the values the syncs compare, made from
+ * the subset's compact entities (#1459, ADR-0105): which statements `wdt:`
+ * reads, which of them still stand, and the spellings of a picture, an
+ * English article, a coordinate and a year. A value spelled otherwise than
+ * WDQS spells it would read as a change on every row of every run.
+ */
+
+import type { CompactStatement, CompactValue } from '../../dumps/wikidata/compactEntity.js';
+
+/**
+ * The statements `wdt:` reads: the preferred ones where there are any, the
+ * normal ones otherwise, never a deprecated one. An unknown or no value
+ * counts in choosing the rank, as it does for WDQS.
+ */
+export function bestStatements(statements: CompactStatement[] | undefined): CompactStatement[] {
+  const all = statements ?? [];
+  const preferred = all.filter(statement => statement.rank === 'preferred');
+  return preferred.length ? preferred : all.filter(statement => statement.rank === undefined);
+}
+
+/** The best statements that still hold: none carries an end time (`pq:P582`), as `standing` in the live kit asks. */
+export function standingStatements(statements: CompactStatement[] | undefined): CompactStatement[] {
+  return bestStatements(statements).filter(statement => !statement.qualifiers?.P582?.length);
+}
+
+/** The item a value names, or null for a value that is no item id. */
+export function itemOf(value: CompactValue): string | null {
+  return typeof value === 'string' && /^Q\d+$/.test(value) ? value : null;
+}
+
+/** Every item the given statements name, in their order. */
+export function itemsOf(statements: CompactStatement[]): string[] {
+  return statements.map(statement => itemOf(statement.value)).filter((id): id is string => id !== null);
+}
+
+/** A Commons file's `Special:FilePath` URL as WDQS writes it: every character but the unreserved ones escaped. */
+export function pictureUrl(file: string): string {
+  const escaped = encodeURIComponent(file).replace(/[!'()*]/g, c => `%${c.charCodeAt(0).toString(16).toUpperCase()}`);
+  return `http://commons.wikimedia.org/wiki/Special:FilePath/${escaped}`;
+}
+
+/**
+ * An English Wikipedia article's URL as WDQS writes it (`schema:about`):
+ * spaces as underscores, escaped as MediaWiki's `wfUrlencode` escapes a
+ * title, which leaves `;:@$!*(),/~` as they are.
+ */
+export function articleUrl(title: string): string {
+  const escaped = encodeURIComponent(title.replace(/ /g, '_'))
+    .replace(/'/g, '%27')
+    .replace(/%3B|%40|%24|%21|%2A|%28|%29|%2C|%2F|%7E|%3A/gi, code => decodeURIComponent(code));
+  return `https://en.wikipedia.org/wiki/${escaped}`;
+}
+
+const EARTH = 'http://www.wikidata.org/entity/Q2';
+
+/** A coordinate as WDQS writes it (WKT), its globe in front where it is not the Earth. */
+export function wktOf(value: CompactValue): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const { latitude, longitude, globe } = value as { latitude?: number; longitude?: number; globe?: string };
+  if (typeof latitude !== 'number' || typeof longitude !== 'number') return null;
+  const point = `Point(${longitude} ${latitude})`;
+  return globe && globe !== EARTH ? `<${globe}> ${point}` : point;
+}
+
+/**
+ * The year of a time value as `YEAR()` gives it, BCE negative with no shift: Yazılıkaya's
+ * -1300 is -1300 in WDQS's answer too. Null for anything else.
+ */
+export function yearOf(value: CompactValue): number | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const time = (value as { time?: string }).time;
+  const match = typeof time === 'string' ? /^([+-])(\d+)-/.exec(time) : null;
+  if (!match) return null;
+  const year = Number(match[2]);
+  return match[1] === '-' ? -year : year;
+}
+
+/** A string value, or null. */
+export function textOf(value: CompactValue): string | null {
+  return typeof value === 'string' ? value : null;
+}

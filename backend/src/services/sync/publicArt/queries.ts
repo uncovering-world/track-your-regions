@@ -32,6 +32,10 @@ import {
   type SparqlFn,
   standing,
 } from '../wikidataQueries.js';
+import { readsSubset } from '../subset/reader.js';
+import {
+  subsetContainerFacts, subsetEntityFacts, subsetPoolOfClasses, subsetPoolOfIds,
+} from '../subset/publicArt.js';
 
 /**
  * The floor of the pool sits below the line a row *stays* above
@@ -181,6 +185,13 @@ export async function fetchBroadPool(
   root: { qid: string; label: string },
   limit = POOL_LIMIT,
 ): Promise<PoolEntity[]> {
+  if (readsSubset(run.sparql)) {
+    run.phase(`Reading ${root.label}s from the local Wikidata subset...`);
+    await run.step();
+    const pooled = await subsetPoolOfClasses([root.qid], POOL_MIN_SITELINKS);
+    run.phase(`Counting the Wikipedia editions of ${pooled.length} ${root.label}s...`);
+    return inWikipediaEditions(run.sparql, pooled, { floor: POOL_MIN_SITELINKS, before: run.step });
+  }
   const entities = new Map<string, PoolEntity>();
   for (let i = 0; i < POOL_BANDS.length; i++) {
     const band = POOL_BANDS[i];
@@ -222,6 +233,7 @@ export async function fetchEntitiesByIds(
   const asked = qids.filter(isQid);
   if (!asked.length) return [];
   const { sparql, step } = doorOf(door);
+  if (readsSubset(sparql)) return inWikipediaEditions(sparql, await subsetPoolOfIds(asked), { before: step });
   const rows = await sparql(`
     SELECT ${POOL_COLUMNS} WHERE {
       VALUES ?e { ${values(asked)} }
@@ -240,6 +252,9 @@ export async function fetchClassPool(
 ): Promise<PoolEntity[]> {
   if (!classQids.length) return [];
   const { sparql, step } = doorOf(door);
+  if (readsSubset(sparql)) {
+    return inWikipediaEditions(sparql, await subsetPoolOfClasses(classQids, POOL_MIN_SITELINKS), { floor: POOL_MIN_SITELINKS, before: step });
+  }
   const rows = await sparql(
     classPoolQuery(classQids, limit),
     { kind: 'pool', label: `pool: ${classQids.length} narrow classes` },
@@ -307,6 +322,7 @@ export async function fetchEntityFacts(
   sparql: SparqlFn,
   qids: string[],
 ): Promise<Map<string, EntityFacts>> {
+  if (readsSubset(sparql)) return subsetEntityFacts(qids);
   const out = new Map<string, EntityFacts>();
   if (!qids.length) return out;
   for (const qid of qids) out.set(qid, emptyFacts());
@@ -364,6 +380,7 @@ export async function fetchContainerFacts(
   sparql: SparqlFn,
   qids: string[],
 ): Promise<Map<string, ContainerFacts>> {
+  if (readsSubset(sparql)) return subsetContainerFacts(qids);
   const out = new Map<string, ContainerFacts>();
   if (!qids.length) return out;
 
