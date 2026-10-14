@@ -48,7 +48,23 @@ export interface DumpDescriptor {
   datedBy: 'day' | 'month';
   /** What the dump holds, for the admin panel. */
   about: string;
-  resolve(read: TextReader, size: SizeReader): Promise<DumpFile | null>;
+  /** Whether a name is one of the dump's dated files, which a local copy keeps (#1456). */
+  isFileName: (name: string) => boolean;
+  /**
+   * The newest complete file the host lists, or, with `only`, the newest of
+   * those whose name it accepts: a build from the local copy resolves the
+   * copy's own file, so its checksum and size are still the host's.
+   */
+  resolve(read: TextReader, size: SizeReader, only?: (fileName: string) => boolean): Promise<DumpFile | null>;
+}
+
+const DIGITS = /^\d+$/;
+
+/** `prefix`, then a date of `digits` digits, then `suffix`: the name of one of a dump's dated files. */
+function datedName(prefix: string, digits: number, suffix: string): (name: string) => boolean {
+  return name => name.length === prefix.length + digits + suffix.length
+    && name.startsWith(prefix) && name.endsWith(suffix)
+    && DIGITS.test(name.slice(prefix.length, prefix.length + digits));
 }
 
 /** A name the pipeline will write to disk or put in a URL: one path segment, nothing else. */
@@ -82,10 +98,11 @@ const DIRECTORIES_TRIED = 6;
 function wikidataJson(key: DumpKey, part: 'all' | 'lexemes', title: string, about: string): DumpDescriptor {
   const base = `${WIKIMEDIA_DUMPS}/wikidatawiki/entities`;
   return {
-    key, source: 'Wikidata', title, datedBy: 'day', about,
-    async resolve(read, size) {
+    key, source: 'Wikidata', title, datedBy: 'day', about, isFileName: datedName('wikidata-', 8, `-${part}.json.gz`),
+    async resolve(read, size, only) {
       for (const dir of datedDirectories(await read(`${base}/`)).slice(0, DIRECTORIES_TRIED)) {
         const fileName = safeFileName(`wikidata-${dir}-${part}.json.gz`);
+        if (only && !only(fileName)) continue;
         const sha1 = sha1Of(await read(`${base}/${dir}/wikidata-${dir}-sha1sums.txt`).catch(() => ''), fileName);
         if (!sha1) continue;
         const url = `${base}/${dir}/${fileName}`;
@@ -104,8 +121,10 @@ function enwikiTable(key: DumpKey, job: string, table: string, title: string, ab
   const base = `${WIKIMEDIA_DUMPS}/enwiki`;
   return {
     key, source: 'English Wikipedia', title, datedBy: 'day', about: `The ${table} table: ${about}`,
-    async resolve(read) {
+    isFileName: datedName('enwiki-', 8, `-${table}.sql.gz`),
+    async resolve(read, _size, only) {
       for (const dir of datedDirectories(await read(`${base}/`)).slice(0, DIRECTORIES_TRIED)) {
+        if (only && !only(`enwiki-${dir}-${table}.sql.gz`)) continue;
         let status: DumpStatus;
         try {
           status = JSON.parse(await read(`${base}/${dir}/dumpstatus.json`)) as DumpStatus;
@@ -132,13 +151,15 @@ const pageviews: DumpDescriptor = {
   title: 'Readers per article, by month',
   datedBy: 'month',
   about: 'Every article of every edition with its month total and daily counts, people only (ADR-0055). No checksum is published: the size and a clean end of the bz2 stream verify it.',
-  async resolve(read, size) {
+  isFileName: datedName('pageviews-', 6, '-user.bz2'),
+  async resolve(read, size, only) {
     const base = `${WIKIMEDIA_DUMPS}/other/pageview_complete/monthly`;
     const years = [...(await read(`${base}/`)).matchAll(/href="(\d{4})\/"/g)].map(m => m[1]).sort().reverse();
     for (const year of years.slice(0, 2)) {
       const months = [...(await read(`${base}/${year}/`)).matchAll(/href="(\d{4}-\d{2})\/"/g)].map(m => m[1]).sort().reverse();
       for (const month of months.slice(0, 3)) {
         const fileName = safeFileName(`pageviews-${month.replace('-', '')}-user.bz2`);
+        if (only && !only(fileName)) continue;
         const url = `${base}/${year}/${month}/${fileName}`;
         const bytes = await size(url);
         if (bytes === null) continue;

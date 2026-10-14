@@ -13,6 +13,7 @@
 import { dumpNamed, type DumpDescriptor, type DumpFile, type DumpKey } from './catalog.js';
 import { fetchText, sizeOf } from './fetch.js';
 import { BEAT_EVERY_MS, beat, closeBuild, closeOrphanedBuilds, liveBuildOf, openBuild } from './ledger.js';
+import { newestLocalCopy } from './localCopies.js';
 import { countLines, readDump, type ReadOptions } from './read.js';
 import { buildSubset } from './wikidata/subsetBuild.js';
 import { latestSubset } from './wikidata/subsetTables.js';
@@ -44,6 +45,21 @@ export function cancelBuild(dump: DumpKey): boolean {
   if (!entry || !inFlight(entry.progress)) return false;
   entry.controller.abort();
   return true;
+}
+
+/**
+ * Which file a build reads: the newest the host has finished publishing, or
+ * the one the local copy holds (#1456), so a copy downloaded for hours is
+ * built from even when a newer dump has appeared since.
+ */
+export type BuildFrom = 'newest' | 'local';
+
+/** The file name of the dump's newest local copy; refuses where there is none. */
+async function localCopyName(descriptor: DumpDescriptor): Promise<string> {
+  const dir = dumpsDir();
+  const copy = dir ? await newestLocalCopy(dir, descriptor.isFileName) : null;
+  if (!copy) throw new Error(`There is no local copy of ${descriptor.key} to build from`);
+  return copy.fileName;
 }
 
 /** Where a local copy is kept, if the deployment names one; absent, a build streams. */
@@ -79,6 +95,8 @@ export interface BuildRequest {
   /** What runs the build (`openBuild`): the routes pass `SERVER_RUNNER`, anything else its own name. */
   runner: string;
   kind?: DumpBuildProgress['kind'];
+  /** The newest file the host lists (the default), or the local copy's own. */
+  from?: BuildFrom;
 }
 
 /**
@@ -88,7 +106,7 @@ export interface BuildRequest {
  * same local copy, and a second download of a 156 GB dump beside it would
  * fill the disk under both.
  */
-export async function startBuild(key: DumpKey, { startedBy, runner, kind = 'verify' }: BuildRequest): Promise<DumpBuildProgress> {
+export async function startBuild(key: DumpKey, { startedBy, runner, kind = 'verify', from = 'newest' }: BuildRequest): Promise<DumpBuildProgress> {
   if (!running.has(key) || !inFlight(running.get(key)!.progress)) {
     await closeOrphanedBuilds({ dump: key });
     const live = await liveBuildOf(key);
@@ -103,13 +121,15 @@ export async function startBuild(key: DumpKey, { startedBy, runner, kind = 'veri
   const descriptor = dumpNamed(key);
   if (!descriptor) throw new Error(`No dump named ${key}`);
   if (kind === 'keep' && !KEEPERS[key]) throw new Error(`Nothing is built from ${key} yet`);
+  const only = from === 'local' ? await localCopyName(descriptor) : undefined;
   const progress: DumpBuildProgress = {
-    dump: key, kind, status: 'resolving', message: 'Finding the newest complete file...', file: null,
+    dump: key, kind, status: 'resolving', file: null,
+    message: only ? `Finding ${only} on the host...` : 'Finding the newest complete file...',
     downloaded: 0, read: 0, lines: 0, buildId: null,
   };
   const controller = new AbortController();
   running.set(key, { progress, controller });
-  void run(descriptor, progress, controller, startedBy, runner);
+  void run(descriptor, progress, controller, startedBy, runner, only);
   return progress;
 }
 
@@ -118,11 +138,13 @@ function verifiedMessage(file: DumpFile, lines: number, checksumActual: string |
   return `${file.fileName} verified: ${lines.toLocaleString('en')} lines, ${how}`;
 }
 
-async function fail(progress: DumpBuildProgress, controller: AbortController, error: unknown): Promise<void> {
+/** Close a build that did not end verified; what it did on the way (an older copy removed) is kept in its message. */
+async function fail(progress: DumpBuildProgress, controller: AbortController, error: unknown, notes: string[]): Promise<void> {
   const cancelled = controller.signal.aborted;
   progress.status = cancelled ? 'cancelled' : 'failed';
   let message = error instanceof Error ? error.message : String(error);
   if (cancelled) message = 'Cancelled.';
+  message = [message, ...notes].join('; ');
   progress.message = message;
   console.error('[Dumps] A build ended without a verified file:', progress.dump, progress.status, error);
   if (progress.buildId === null) return;
@@ -131,19 +153,46 @@ async function fail(progress: DumpBuildProgress, controller: AbortController, er
   }).catch(err => console.error('[Dumps] Could not close the build row:', err));
 }
 
+/** The file a build reads: the newest the host lists, or the local copy's own (`only`). */
+async function resolveFile(descriptor: DumpDescriptor, signal: AbortSignal, only?: string): Promise<DumpFile> {
+  const file = await descriptor.resolve(
+    url => fetchText(url, signal), url => sizeOf(url, signal), only ? name => name === only : undefined,
+  );
+  if (file) return file;
+  throw new Error(only
+    ? `The host no longer lists ${only} with its checksum, so the local copy cannot be verified`
+    : 'The host lists no complete file of this dump in its recent directories');
+}
+
+/** What the read reports to the panel's progress and the build's notes. */
+function readOptions(descriptor: DumpDescriptor, progress: DumpBuildProgress, signal: AbortSignal, notes: string[]): ReadOptions {
+  return {
+    dumpsDir: dumpsDir(),
+    signal,
+    onProgress: ({ downloaded, read, lines }) => {
+      progress.downloaded = downloaded;
+      progress.read = read;
+      progress.lines = lines;
+    },
+    onNote: note => {
+      notes.push(note);
+      console.log(`[Dumps] ${descriptor.key}: ${note}`);
+    },
+  };
+}
+
 async function run(
   descriptor: DumpDescriptor,
   progress: DumpBuildProgress,
   controller: AbortController,
   startedBy: number | null,
   runner: string,
+  only?: string,
 ): Promise<void> {
   let heart: NodeJS.Timeout | undefined;
+  const notes: string[] = [];
   try {
-    const file = await descriptor.resolve(
-      url => fetchText(url, controller.signal), url => sizeOf(url, controller.signal),
-    );
-    if (!file) throw new Error('The host lists no complete file of this dump in its recent directories');
+    const file = await resolveFile(descriptor, controller.signal, only);
     progress.file = { fileName: file.fileName, date: file.date, expectedBytes: file.expectedBytes };
     const dir = dumpsDir();
     const buildId = await openBuild(file, dir ? 'local' : 'stream', startedBy, runner);
@@ -153,15 +202,7 @@ async function run(
     }, BEAT_EVERY_MS);
     progress.status = 'reading';
     progress.message = `Reading ${file.fileName}${dir ? ' into the local copy' : ' from the host'}...`;
-    const options: ReadOptions = {
-      dumpsDir: dir,
-      signal: controller.signal,
-      onProgress: ({ downloaded, read, lines }) => {
-        progress.downloaded = downloaded;
-        progress.read = read;
-        progress.lines = lines;
-      },
-    };
+    const options = readOptions(descriptor, progress, controller.signal, notes);
     const keeper = progress.kind === 'keep' ? KEEPERS[descriptor.key] : undefined;
     const result = keeper
       ? await keeper.build(file, { ...options, buildId, onPhase: message => { progress.message = message; } })
@@ -169,11 +210,10 @@ async function run(
     progress.lines = result.lines;
     progress.read = result.bytes;
     progress.status = 'success';
-    progress.message = verifiedMessage(file, result.lines, result.checksumActual);
-    if (keeper) progress.message = `${progress.message}; built and swapped in`;
+    progress.message = [verifiedMessage(file, result.lines, result.checksumActual), ...(keeper ? ['built and swapped in'] : []), ...notes].join('; ');
     await closeBuild(buildId, { status: 'success', bytes: result.bytes, lines: result.lines, checksumActual: result.checksumActual, error: null });
   } catch (error) {
-    await fail(progress, controller, error);
+    await fail(progress, controller, error, notes);
   } finally {
     clearInterval(heart);
   }

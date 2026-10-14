@@ -9,12 +9,14 @@
 import type { z } from 'zod/v4';
 import type { DumpBuildCancelled, DumpBuildStarted, Dumps } from '../../api/responses/dumps.js';
 import { DUMPS } from '../../services/dumps/catalog.js';
+import { newestLocalCopy } from '../../services/dumps/localCopies.js';
 import { buildProgress, cancelBuild, inFlight, keeperOf, startBuild } from '../../services/dumps/job.js';
 import { closeOrphanedBuilds, liveBuildOf, recentBuilds, SERVER_RUNNER } from '../../services/dumps/ledger.js';
 import { createError } from '../../middleware/errorHandler.js';
-import type { dumpKeyParamSchema } from '../../types/index.js';
+import type { dumpBuildBodySchema, dumpKeyParamSchema } from '../../types/index.js';
 
 type DumpParams = z.output<typeof dumpKeyParamSchema>;
+type DumpBuildBody = z.output<typeof dumpBuildBodySchema>;
 
 async function keepsOf(key: Dumps['dumps'][number]['key']): Promise<Dumps['dumps'][number]['keeps']> {
   const keeper = keeperOf(key);
@@ -43,6 +45,8 @@ export async function listDumps(): Promise<Dumps> {
   const builds = await recentBuilds();
   const keeps = await Promise.all(DUMPS.map(dump => keepsOf(dump.key)));
   const elsewhere = await Promise.all(DUMPS.map(dump => elsewhereOf(dump.key)));
+  const dir = process.env.DUMPS_DIR?.trim();
+  const copies = await Promise.all(DUMPS.map(dump => (dir ? newestLocalCopy(dir, dump.isFileName) : null)));
   return {
     localCopy: Boolean(process.env.DUMPS_DIR?.trim()),
     dumps: DUMPS.map((dump, index) => ({
@@ -68,25 +72,26 @@ export async function listDumps(): Promise<Dumps> {
       })),
       keeps: keeps[index],
       elsewhere: elsewhere[index],
+      localCopy: copies[index],
     })),
   };
 }
 
 export async function startDumpBuild(
-  { params: { dump }, caller }: { params: DumpParams; caller: Express.User },
+  { params: { dump }, body: { from }, caller }: { params: DumpParams; body: DumpBuildBody; caller: Express.User },
 ): Promise<DumpBuildStarted> {
   try {
-    return { started: true, progress: await startBuild(dump, { startedBy: caller.id, runner: SERVER_RUNNER }) };
+    return { started: true, progress: await startBuild(dump, { startedBy: caller.id, runner: SERVER_RUNNER, from }) };
   } catch (error) {
     throw createError(error instanceof Error ? error.message : 'The build could not start', 409);
   }
 }
 
 export async function startDumpKeep(
-  { params: { dump }, caller }: { params: DumpParams; caller: Express.User },
+  { params: { dump }, body: { from }, caller }: { params: DumpParams; body: DumpBuildBody; caller: Express.User },
 ): Promise<DumpBuildStarted> {
   try {
-    return { started: true, progress: await startBuild(dump, { startedBy: caller.id, runner: SERVER_RUNNER, kind: 'keep' }) };
+    return { started: true, progress: await startBuild(dump, { startedBy: caller.id, runner: SERVER_RUNNER, kind: 'keep', from }) };
   } catch (error) {
     throw createError(error instanceof Error ? error.message : 'The build could not start', 409);
   }

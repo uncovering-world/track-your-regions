@@ -382,6 +382,11 @@ export const dumpKeyParamSchema = z.object({
   dump: z.enum(DUMP_KEYS),
 });
 
+/** Which file a dump build reads (#1456): the newest the host lists (the default), or the local copy's own. */
+export const dumpBuildBodySchema = z.object({
+  from: z.enum(['newest', 'local']).default('newest'),
+});
+
 /** A curator's choice between two sources' views of a place (#1246): per field, a membership or none to keep. */
 export const chooseViewsBodySchema = z.object({
   choices: z.array(z.object({
