@@ -14,62 +14,12 @@
 
 import { foldLabel } from '@tyr/shared/labels';
 import { pool } from '../../../db/index.js';
-import type { CompactEntity } from '../../dumps/wikidata/compactEntity.js';
 import type { ContainerFacts, EntityFacts, PoolEntity } from '../publicArt/queries.js';
-import { LABEL_LANGS, parseWktPoint, preferredCoordinate, preferredPicture } from '../wikidataUtils.js';
+import { parseWktPoint, preferredCoordinate, preferredPicture } from '../wikidataUtils.js';
+import { BEST, entitiesOf, termsOf, type Kept, type Terms } from './entities.js';
 import {
   articleUrl, bestStatements, itemsOf, pictureUrl, standingStatements, textOf, wktOf, yearOf,
 } from './values.js';
-
-const LANGUAGES = LABEL_LANGS.split(',');
-
-/** Claim `c` is one of its subject's best statements of its property: none outranks it. */
-const BEST = (alias: string) => `NOT EXISTS (
-  SELECT 1 FROM wikidata_claims h WHERE h.subject = ${alias}.subject AND h.property = ${alias}.property AND h.rank > ${alias}.rank)`;
-
-interface Kept {
-  sitelinks: number;
-  entity: CompactEntity;
-}
-
-async function entitiesOf(ids: string[]): Promise<Map<string, Kept>> {
-  if (!ids.length) return new Map();
-  const result = await pool.query<{ id: string; sitelink_count: number; entity: CompactEntity }>(
-    'SELECT id, sitelink_count, entity FROM wikidata_entities WHERE id = ANY($1::text[])',
-    [ids],
-  );
-  return new Map(result.rows.map(row => [row.id, { sitelinks: row.sitelink_count, entity: row.entity }]));
-}
-
-interface Terms {
-  label: string | null;
-  description: string | null;
-}
-
-/**
- * Each entity's label and description in the first of the label service's
- * languages that has one, as `SERVICE wikibase:label` answers; kept entities
- * and the labels ring both have theirs in `wikidata_labels`.
- */
-export async function termsOf(ids: string[]): Promise<Map<string, Terms>> {
-  const out = new Map<string, Terms>();
-  if (!ids.length) return out;
-  const result = await pool.query<{ id: string; language: string; label: string | null; description: string | null }>(
-    'SELECT id, language, label, description FROM wikidata_labels WHERE id = ANY($1::text[]) AND language = ANY($2::text[])',
-    [ids, LANGUAGES],
-  );
-  const byId = new Map<string, Map<string, { label: string | null; description: string | null }>>();
-  for (const row of result.rows) {
-    if (!byId.has(row.id)) byId.set(row.id, new Map());
-    byId.get(row.id)!.set(row.language, row);
-  }
-  for (const [id, languages] of byId) {
-    const first = (field: 'label' | 'description') =>
-      LANGUAGES.map(language => languages.get(language)?.[field] ?? null).find(value => value !== null) ?? null;
-    out.set(id, { label: first('label'), description: first('description') });
-  }
-  return out;
-}
 
 /** The pool row's facts about one kept entity; null for one with no point where a point is required. */
 function poolEntity(id: string, kept: Kept, terms: Map<string, Terms>, placeless: boolean): PoolEntity | null {
