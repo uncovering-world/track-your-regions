@@ -5,7 +5,9 @@
  * Earlier builds open under the row. A dump something is built from (the
  * local Wikidata subset, #1434) also has a button that builds it, and its row
  * says which dump the build in place was made from; readership and the
- * Wikipedia tables come later (#1436, #1440).
+ * Wikipedia tables come later (#1436, #1440). A button queues the build for
+ * the dump worker (ADR-0106); the row follows it through its ledger row until
+ * it ends, whatever restarts the backend in between.
  */
 
 import { Fragment, useState } from 'react';
@@ -25,7 +27,8 @@ import { formatDateTime, formatDuration, formatRelativeTime } from '../../utils/
 const GB = 1024 ** 3;
 const size = (bytes: number) => (bytes >= GB ? `${(bytes / GB).toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`);
 const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
-const inFlight = (progress: DumpBuildProgress | null) => progress?.status === 'resolving' || progress?.status === 'reading';
+/** A build queued for the dump worker or running in it (ADR-0106): the row follows it until it ends. */
+const inFlight = (progress: DumpBuildProgress | null) => progress !== null;
 
 /** A dump's date as what it stands for: the day of the dump, or the month its counts cover. */
 function dumpDate(date: string, datedBy: DumpsDumpsItem['datedBy']): string {
@@ -73,7 +76,9 @@ function BuildFigures({ build, datedBy }: { build: DumpBuild; datedBy: DumpsDump
   return (
     <>
       <TableCell>
-        <Tooltip title={build.fileName}><span>{dumpDate(build.dumpDate, datedBy)}</span></Tooltip>
+        {build.dumpDate
+          ? <Tooltip title={build.fileName ?? ''}><span>{dumpDate(build.dumpDate, datedBy)}</span></Tooltip>
+          : '—'}
       </TableCell>
       <TableCell align="right">{build.bytes > 0 ? size(build.bytes) : '—'}</TableCell>
       <TableCell align="right">
@@ -97,6 +102,11 @@ function ProgressCells({ progress }: { progress: DumpBuildProgress }) {
         variant={measured ? 'determinate' : 'indeterminate'}
         value={measured ? Math.min(100, (done / expected) * 100) : undefined}
       />
+      {progress.heartbeatAt && (
+        <Typography variant="caption" color="text.secondary" display="block">
+          Last seen alive {formatRelativeTime(progress.heartbeatAt)}
+        </Typography>
+      )}
       {progress.status === 'reading' && (
         <Typography variant="caption" color="text.secondary">
           {size(done)}{expected ? ` of ${size(expected)}` : ''} · {compact.format(progress.lines)} lines
@@ -156,21 +166,6 @@ function Kept({ dump }: { dump: DumpsDumpsItem }) {
   );
 }
 
-/** A build another process runs (a script, another server): followed by its heartbeat, never by this panel's progress. */
-function Elsewhere({ build }: { build: NonNullable<DumpsDumpsItem['elsewhere']> }) {
-  return (
-    <TableCell colSpan={5}>
-      <Typography variant="body2" sx={{ mb: 0.5 }}>
-        Building in another process since {formatDateTime(build.startedAt)} ({build.fileName})
-      </Typography>
-      <LinearProgress />
-      <Typography variant="caption" color="text.secondary">
-        Last seen alive {formatRelativeTime(build.heartbeatAt)}. A new build of this dump waits until it ends.
-      </Typography>
-    </TableCell>
-  );
-}
-
 function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
   const queryClient = useQueryClient();
   const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.admin.dumps });
@@ -200,8 +195,7 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
           <LocalCopy dump={dump} />
         </TableCell>
         {running && dump.progress && <ProgressCells progress={dump.progress} />}
-        {!running && dump.elsewhere && <Elsewhere build={dump.elsewhere} />}
-        {!running && !dump.elsewhere && (
+        {!running && (
           <>
             <TableCell>
               {last ? <Outcome build={last} /> : <Typography variant="body2" color="text.secondary">Never built</Typography>}
@@ -211,7 +205,7 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
         )}
         <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
           {running && <Button size="small" color="inherit" onClick={() => cancel.mutate()} disabled={cancel.isPending}>Cancel</Button>}
-          {!running && !dump.elsewhere && (
+          {!running && (
             <Box sx={{ display: 'inline-flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-end' }}>
               <Tooltip title={replaces}>
                 <Button size="small" variant="outlined" onClick={() => start.mutate('newest')} disabled={start.isPending}>Verify newest</Button>
@@ -291,12 +285,8 @@ export function DumpsPanel() {
   const dumps = useQuery({
     queryKey: queryKeys.admin.dumps,
     queryFn: getDumps,
-    // A build this process runs is polled every three seconds; one another process runs, by its minute heartbeat.
-    refetchInterval: (query) => {
-      const dumps = query.state.data?.dumps ?? [];
-      if (dumps.some(d => inFlight(d.progress))) return 3000;
-      return dumps.some(d => d.elsewhere) ? 30_000 : false;
-    },
+    // A queued or running build is polled every three seconds; the worker writes its progress every five.
+    refetchInterval: (query) => (query.state.data?.dumps.some(d => inFlight(d.progress)) ? 3000 : false),
   });
   if (dumps.isLoading) return <LinearProgress />;
   if (dumps.isError || !dumps.data) return <Alert severity="error">The dumps could not be read.</Alert>;
