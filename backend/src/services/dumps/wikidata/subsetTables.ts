@@ -129,10 +129,13 @@ export async function deriveFromEntities(signal: AbortSignal): Promise<void> {
   );
   await cancellable(
     signal,
+    // The languages of either term object. `->` and `||` bind alike and from
+    // the left, so each object is bracketed before the merge, or it reads as
+    // `(labels || entity)->'descriptions'`: the description languages alone.
     `INSERT INTO ${next('wikidata_labels')} (id, language, label, description)
      SELECT e.id, k.language, e.entity->'labels'->>k.language, e.entity->'descriptions'->>k.language
        FROM ${next('wikidata_entities')} e
-      CROSS JOIN LATERAL jsonb_object_keys(e.entity->'labels' || e.entity->'descriptions') AS k(language)`,
+      CROSS JOIN LATERAL jsonb_object_keys((e.entity->'labels') || (e.entity->'descriptions')) AS k(language)`,
   );
   await cancellable(
     signal,
