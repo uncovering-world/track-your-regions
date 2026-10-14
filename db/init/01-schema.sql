@@ -3937,9 +3937,10 @@ $$ LANGUAGE plpgsql;
 CREATE TABLE IF NOT EXISTS dump_builds (
     id SERIAL PRIMARY KEY,
     dump VARCHAR(60) NOT NULL,
-    file_name TEXT NOT NULL,
-    dump_date DATE NOT NULL,
-    url TEXT NOT NULL,
+    -- The file is known once the build resolves it; a queued build has none yet (#1467).
+    file_name TEXT,
+    dump_date DATE,
+    url TEXT,
     mode VARCHAR(10) NOT NULL CHECK (mode IN ('stream', 'local')),
     bytes BIGINT NOT NULL DEFAULT 0,
     expected_bytes BIGINT,
@@ -3947,19 +3948,25 @@ CREATE TABLE IF NOT EXISTS dump_builds (
     checksum_expected TEXT,
     checksum_actual TEXT,
     lines BIGINT NOT NULL DEFAULT 0,
-    status VARCHAR(20) NOT NULL DEFAULT 'running' CHECK (status IN ('running', 'success', 'failed', 'cancelled')),
+    status VARCHAR(20) NOT NULL DEFAULT 'running' CHECK (status IN ('queued', 'running', 'success', 'failed', 'cancelled')),
     error TEXT,
     started_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     finished_at TIMESTAMPTZ,
     heartbeat_at TIMESTAMPTZ,
-    runner TEXT
+    runner TEXT,
+    request JSONB,
+    progress JSONB,
+    cancel_requested_at TIMESTAMPTZ
 );
 CREATE INDEX IF NOT EXISTS idx_dump_builds_dump ON dump_builds(dump, started_at DESC);
--- At most one build of a dump runs, in any process (#1463).
-CREATE UNIQUE INDEX IF NOT EXISTS idx_dump_builds_one_running ON dump_builds(dump) WHERE status = 'running';
-COMMENT ON COLUMN dump_builds.heartbeat_at IS 'When the running build last said it is alive, every minute, whatever process runs it (#1463). A running row that has not beaten for five minutes is a build that stopped.';
-COMMENT ON COLUMN dump_builds.runner IS 'What runs the build: the backend on this host (server:<hostname>), or a script. A backend that starts closes the running rows of its own runner, which its previous run left.';
+-- At most one build of a dump is queued or running, in any process (#1463, #1467).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dump_builds_one_active ON dump_builds(dump) WHERE status IN ('queued', 'running');
+COMMENT ON COLUMN dump_builds.heartbeat_at IS 'When the running build last said it is alive, every few seconds, whatever process runs it (#1463). A running row that has not beaten for five minutes is a build that stopped.';
+COMMENT ON COLUMN dump_builds.runner IS 'What runs the build: the dump worker on this host (worker:<hostname>), or a script. A worker that starts closes the running rows of its own runner, which its previous run left.';
+COMMENT ON COLUMN dump_builds.request IS 'What the admin asked for (#1467): kind (verify or keep) and, for a build from the local copy, only (that copy''s file name), which the worker reads when it takes the queued build.';
+COMMENT ON COLUMN dump_builds.progress IS 'The running build''s progress as the panel shows it (#1467): phase message, bytes downloaded and read, lines; written by the worker with its heartbeat.';
+COMMENT ON COLUMN dump_builds.cancel_requested_at IS 'When an admin asked the build to stop (#1467); the worker reads it with its heartbeat and cancels.';
 COMMENT ON TABLE dump_builds IS 'A build of a public dump (ADR-0101): the dump, the dated file, stream or local copy, the checksum it was verified against (or its size and a clean end of stream where none is published), the lines read and the outcome. A consumer commits only after verification.';
 
 -- The local Wikidata subset (ADR-0101 decision 2, ADR-0105, #1434): the items

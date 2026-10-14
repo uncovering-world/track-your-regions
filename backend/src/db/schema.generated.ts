@@ -149,9 +149,9 @@ export interface DataAssertionAcceptancesRow {
 export interface DumpBuildsRow {
   id: number;
   dump: string;
-  file_name: string;
-  dump_date: Date;
-  url: string;
+  file_name: string | null;
+  dump_date: Date | null;
+  url: string | null;
   mode: string;
   bytes: string;
   expected_bytes: string | null;
@@ -166,6 +166,9 @@ export interface DumpBuildsRow {
   finished_at: Date | null;
   heartbeat_at: Date | null;
   runner: string | null;
+  request: unknown | null;
+  progress: unknown | null;
+  cancel_requested_at: Date | null;
 }
 
 /** The table `email_verification_tokens`. */
@@ -1073,7 +1076,7 @@ export const CHECK_VALUES = {
   dump_builds: {
     checksum_kind: ["md5", "sha1"],
     mode: ["stream", "local"],
-    status: ["running", "success", "failed", "cancelled"],
+    status: ["queued", "running", "success", "failed", "cancelled"],
   },
   experience_component_item_proposals: {
     answer: ["accepted", "refused"],
