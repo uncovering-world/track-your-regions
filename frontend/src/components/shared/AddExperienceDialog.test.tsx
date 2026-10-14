@@ -7,7 +7,7 @@
  * which the body splits out of one field — or, naming none, above the button.
  */
 
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -43,7 +43,7 @@ vi.mock('./LocationPicker', () => ({
 }));
 
 import { createManualExperience } from '../../api/curation';
-import { searchPlaces } from '../../api/geocode';
+import { searchPlaces, suggestImageUrl } from '../../api/geocode';
 import { ApiError } from '../../api/fetchUtils';
 import { AddExperienceDialog } from './AddExperienceDialog';
 
@@ -211,7 +211,7 @@ describe('a draft kept across a close', () => {
     expect(mockedSearch).not.toHaveBeenCalled();
 
     fireEvent.keyDown(nameBox(), { key: 'Enter' });
-    await waitFor(() => expect(mockedSearch).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(mockedSearch).toHaveBeenCalledWith('Minaret of Jam Afghanistan', 1));
   });
 
   it('drops a lookup still running when the name changes under it', async () => {
@@ -273,5 +273,213 @@ describe('a draft kept across a close', () => {
       name: 'Buddhas of Bamiyan', latitude: BAMIYAN.lat, longitude: BAMIYAN.lng,
     });
     mockedSearch.mockImplementation(async () => []);
+  });
+});
+
+/**
+ * The location a lookup fills in (#270): the matched item's own coordinate
+ * where the item is the place — no place was found, or the item is the one the
+ * found place links to — and the found place's point otherwise; a lookup that
+ * finds neither says so. The place search is asked with the region's name first and
+ * by the name alone when that finds nothing: *Europe*, the region the defect
+ * was found in, is no part of an address, and "Charles Bridge Europe" finds
+ * nothing.
+ */
+describe('the location a lookup fills in', () => {
+  const mockedSearch = searchPlaces as unknown as ReturnType<typeof vi.fn>;
+  const mockedSuggest = suggestImageUrl as unknown as ReturnType<typeof vi.fn>;
+  // Charles Bridge as Wikidata holds it (Q204871), with its coordinate (P625).
+  const CHARLES_BRIDGE = {
+    imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Prague%2007-2016%20View%20from%20Petrinska%20Tower%20img2.jpg',
+    source: 'wikidata_search',
+    entityLabel: 'Charles Bridge',
+    wikidataId: 'Q204871',
+    description: 'bridge in Prague, Czech Republic',
+    coordinates: { lat: 50.086388888889, lng: 14.411944444444 },
+  };
+  // The Mona Lisa (Q12418): a picture and a description, and no coordinate of its own.
+  const MONA_LISA = {
+    imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Mona%20Lisa%2C%20by%20Leonardo%20da%20Vinci%2C%20from%20C2RMF%20retouched.jpg',
+    source: 'wikidata_search',
+    entityLabel: 'Mona Lisa',
+    wikidataId: 'Q12418',
+    description: 'oil painting by Leonardo da Vinci in the Louvre, Paris',
+  };
+
+  beforeEach(() => {
+    mockedSearch.mockReset();
+    mockedSearch.mockImplementation(async () => []);
+    mockedSuggest.mockReset();
+  });
+  afterEach(() => {
+    mockedSuggest.mockImplementation(async () => { throw new Error('No image found'); });
+  });
+
+  function renderIn(regionName: string) {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <AddExperienceDialog open onClose={vi.fn()} regionId={7} regionName={regionName} defaultKindId={1} />
+      </QueryClientProvider>,
+    );
+  }
+  function lookUpIn(regionName: string, name: string) {
+    renderIn(regionName);
+    fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), { target: { value: name } });
+    fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
+  }
+  const lookUpInEurope = (name: string) => lookUpIn('Europe', name);
+
+  it("asks once, with the region's name, where the search can use it", async () => {
+    // What Nominatim answers for "Old Town Hall Czechia": Brno's, where the name
+    // alone finds the one in Hemel Hempstead.
+    const BRNO = { display_name: 'Stará radnice, Mečová, Brno-město', lat: 49.193013, lng: 16.6080704, type: 'townhall', wikidataId: 'Q439347' };
+    mockedSearch.mockImplementation(async (query: string) => (query === 'Old Town Hall Czechia' ? [BRNO] : []));
+    mockedSuggest.mockImplementation(async () => { throw new Error('No image found'); });
+    mockedCreate.mockResolvedValue({ id: 904 });
+    lookUpIn('Czechia', 'Old Town Hall');
+
+    expect(await screen.findByText(/Found: Stará radnice/)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
+    expect(mockedSearch.mock.calls).toEqual([['Old Town Hall Czechia', 1]]);
+    expect(mockedCreate.mock.calls[0][0]).toMatchObject({ latitude: BRNO.lat, longitude: BRNO.lng });
+  });
+
+  it("asks again by the name alone where the region's name finds nothing", async () => {
+    // Karlův most as Nominatim answers "Charles Bridge", linked to Q204871.
+    const KARLUV_MOST = { display_name: 'Karlův most, Křižovnické náměstí, Staré Město', lat: 50.0866258, lng: 14.4101485, type: 'bridge', wikidataId: 'Q204871' };
+    mockedSearch.mockImplementation(async (query: string) => (query === 'Charles Bridge' ? [KARLUV_MOST] : []));
+    mockedSuggest.mockImplementation(async () => ({ ...CHARLES_BRIDGE, source: 'wikidata_direct' }));
+    mockedCreate.mockResolvedValue({ id: 905 });
+    lookUpInEurope('Charles Bridge');
+
+    expect(await screen.findByText('Charles Bridge', { selector: 'strong' })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
+    expect(mockedSearch.mock.calls).toEqual([['Charles Bridge Europe', 1], ['Charles Bridge', 1]]);
+    expect(mockedSuggest).toHaveBeenCalledWith(expect.objectContaining({ wikidataId: 'Q204871' }));
+    // The item's own coordinate, not Nominatim's point for the same bridge.
+    expect(mockedCreate.mock.calls[0][0]).toMatchObject({ latitude: 50.086388888889, longitude: 14.411944444444 });
+  });
+
+  it("places the pin at the matched item's coordinate when the place search finds nothing", async () => {
+    mockedSuggest.mockImplementation(async () => CHARLES_BRIDGE);
+    mockedCreate.mockResolvedValue({ id: 903 });
+    lookUpInEurope('Charles Bridge');
+
+    expect(await screen.findByText('Charles Bridge', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.queryByText(/No location found/)).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
+    expect(mockedCreate.mock.calls[0][0]).toMatchObject({
+      name: 'Charles Bridge', latitude: 50.086388888889, longitude: 14.411944444444, regionId: 7,
+    });
+  });
+
+  it('says beside the match that no location was found, until the curator sets one', async () => {
+    mockedSuggest.mockImplementation(async () => MONA_LISA);
+    lookUpInEurope('Mona Lisa');
+
+    expect(await screen.findByText('Mona Lisa', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getByText(/No location found/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Create Experience' })).toBeDisabled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Drop pin' }));
+    expect(screen.queryByText(/No location found/)).not.toBeInTheDocument();
+  });
+
+  it('says no location was found when nothing matched at all', async () => {
+    mockedSuggest.mockImplementation(async () => { throw new Error('No image found'); });
+    lookUpInEurope('Charles Bridge');
+
+    expect(await screen.findByText(/No location found/)).toBeInTheDocument();
+  });
+
+  it('keeps a pin the curator drops while the lookup runs', async () => {
+    let answer!: (suggestion: typeof CHARLES_BRIDGE) => void;
+    mockedSuggest.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+    mockedCreate.mockResolvedValue({ id: 906 });
+    pin = { lat: 50.0865, lng: 14.4114 };
+    lookUpInEurope('Charles Bridge');
+
+    await waitFor(() => expect(mockedSuggest).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: 'Drop pin' }));
+    answer(CHARLES_BRIDGE);
+    expect(await screen.findByText('Charles Bridge', { selector: 'strong' })).toBeInTheDocument();
+
+    // The pin is the curator's, not the lookup's: a lookup asked again leaves it.
+    mockedSuggest.mockImplementation(async () => CHARLES_BRIDGE);
+    fireEvent.click(await screen.findByRole('button', { name: 'Look up again' }));
+    await waitFor(() => expect(mockedSuggest).toHaveBeenCalledTimes(2));
+    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
+    expect(mockedCreate.mock.calls[0][0]).toMatchObject({ latitude: pin.lat, longitude: pin.lng });
+  });
+
+  it("keeps the found place's point over an item matched by the bare name elsewhere", async () => {
+    // Brno's Old Town Hall as Nominatim answers "Old Town Hall Czechia", here
+    // without its wikidata tag; the name layer then matches Hanover's (Q439391).
+    const BRNO = { display_name: 'Stará radnice, Mečová, Brno-město', lat: 49.193013, lng: 16.6080704, type: 'townhall', wikidataId: null };
+    const HANOVER = {
+      imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/L1040840b%20Altes%20Rathaus%20Hannover%20v%20W.jpg',
+      source: 'wikidata_search',
+      entityLabel: 'Old Town Hall',
+      wikidataId: 'Q439391',
+      description: 'old town hall in Hanover, Germany',
+      coordinates: { lat: 52.37122549513791, lng: 9.736017726780437 },
+    };
+    mockedSearch.mockImplementation(async (query: string) => (query === 'Old Town Hall Czechia' ? [BRNO] : []));
+    mockedSuggest.mockImplementation(async () => HANOVER);
+    mockedCreate.mockResolvedValue({ id: 907 });
+    lookUpIn('Czechia', 'Old Town Hall');
+
+    // The match is still shown for the curator to judge; only the pin stays.
+    expect(await screen.findByText('(Q439391)', { exact: false })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
+    expect(mockedCreate.mock.calls[0][0]).toMatchObject({ latitude: BRNO.lat, longitude: BRNO.lng });
+  });
+
+  it("places the pin at the matched item's coordinate and keeps the curator's own picture", async () => {
+    const own = 'https://commons.wikimedia.org/wiki/Special:FilePath/Karl%C5%AFv%20most%20at%20dawn.jpg';
+    mockedSuggest.mockImplementation(async () => CHARLES_BRIDGE);
+    mockedCreate.mockResolvedValue({ id: 908 });
+    renderIn('Europe');
+    fireEvent.change(screen.getByRole('textbox', { name: /^Image URL/ }), { target: { value: own } });
+    fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), { target: { value: 'Charles Bridge' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
+
+    expect(await screen.findByText('Charles Bridge', { selector: 'strong' })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
+    expect(mockedCreate.mock.calls[0][0]).toMatchObject({
+      latitude: 50.086388888889, longitude: 14.411944444444, imageUrl: own,
+    });
+  });
+
+  it('does not suggest by an item a lookup took for another name', async () => {
+    // The Minaret of Jam as Nominatim answers it, linked to Q192981.
+    const JAM = { display_name: 'Minaret of Jam, Ghor, Afghanistan', lat: 34.3964, lng: 64.5161, type: 'tower', wikidataId: 'Q192981' };
+    mockedSearch.mockImplementation(async (query: string) => (query.startsWith('Minaret') ? [JAM] : []));
+    mockedSuggest.mockImplementation(async () => { throw new Error('No image found'); });
+    lookUpIn('Afghanistan', 'Minaret of Jam');
+    await waitFor(() => expect(mockedSuggest).toHaveBeenCalledTimes(1));
+
+    // A new name the place search finds nothing for: the minaret's id goes with it.
+    fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), { target: { value: 'Buddhas of Bamiyan' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Look up again' }));
+    await waitFor(() => expect(mockedSuggest).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Suggest' })).toBeEnabled());
+    fireEvent.click(screen.getByRole('button', { name: 'Suggest' }));
+
+    await waitFor(() => expect(mockedSuggest).toHaveBeenCalledTimes(3));
+    expect(mockedSuggest.mock.calls[2][0].wikidataId).toBeUndefined();
   });
 });
