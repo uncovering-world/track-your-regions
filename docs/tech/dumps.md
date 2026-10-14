@@ -117,21 +117,37 @@ are CC0; a table derived from the Wikipedia dumps is CC BY-SA and attributed.
 
 ## A build
 
-`startBuild(key, startedBy, kind)` in `job.ts` resolves the newest complete file,
+`startBuild` in `job.ts` resolves the newest complete file,
 opens a `dump_builds` row (`openBuild`), reads it — through the counting
 consumer for a `verify` build, through the dump's builder (`KEEPERS`) for a
 `keep` build, refused for a dump with none — and closes the row
-(`closeBuild`) as `success`, `failed` or `cancelled`. One build per dump runs
-at a time; a second start is refused. Progress — what is being resolved, the
-file, the bytes downloaded and read, the lines — is held in memory
-(`buildProgress`) and lost on a restart; startup marks a row left `running`
-by a stopped backend as `failed` (`closeOrphanedBuilds`, called from
-`backend/src/index.ts`).
+(`closeBuild`) as `success`, `failed` or `cancelled`. Progress — what is
+being resolved, the file, the bytes downloaded and read, the lines — is held
+in memory (`buildProgress`) and lost on a restart.
+
+One build per dump runs at a time, whatever process runs it (#1463). A running
+build beats its row's `heartbeat_at` every minute (`beat`, `BEAT_EVERY_MS`),
+and a start is refused while the dump has a `running` row that beat within the
+last five minutes (`liveBuildOf`): a build a script runs reads the same local
+copy, and a second download of the 156 GB entities dump beside it would fill
+the disk under both. The ledger holds the rule too: a unique index admits one
+`running` row per dump, so two starts that pass the check together cannot both
+open a build (`BuildAlreadyRunning`). Each row names what runs it (`runner`):
+this backend's builds are `server:<hostname>` (`SERVER_RUNNER`), and compose
+fixes the backend's host name (`hostname:` in `docker-compose.yml`) so it stays
+the same across a restart and a recreated container; anything else that opens
+a build (`openBuild`) names itself, a script inside that container included. A `running` row is closed as `failed`
+(`closeOrphanedBuilds`) when it stopped beating, and at startup
+(`backend/src/index.ts`) also at once when this backend's own previous run
+left it; the panel's list and a start of the dump close the stopped ones too.
+A build alive in another process is left alone and survives this one's
+restart.
 
 `dump_builds` (migration `095-a-dump-build-is-recorded.sql`) records each
 build: the dump, the file and its date, the mode (`stream` or `local`), the
 bytes and lines read, the published and the computed checksum, the status
-and the error, who started it and when it finished. It is what says which
+and the error, who started it, what runs it, when it last beat and when it
+finished. It is what says which
 dump a consumer's tables were built from.
 
 ## The local Wikidata subset
@@ -196,7 +212,10 @@ the counting consumer over the newest complete file and the row turns into its
 progress, polled every three seconds while the page is visible; *Cancel* stops
 it. A dump something is built from (`keeps` in the list) also has *Build*,
 which starts a `keep` build, and its row names what is built and the dump date
-of the build in place, or says it was never built.
+of the build in place, or says it was never built. A build of the dump that
+another process runs (`elsewhere` in the list) takes the row's progress cell,
+with when it started and when it last beat, and the row offers no button
+until it ends; the page polls every 30 seconds while one runs.
 The routes are `GET /api/admin/dumps`, `POST /api/admin/dumps/:dump/build`,
 `POST /api/admin/dumps/:dump/keep` and `POST /api/admin/dumps/:dump/cancel`
 (`backend/src/controllers/admin/dumpController.ts`);
