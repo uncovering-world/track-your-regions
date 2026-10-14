@@ -50,6 +50,7 @@ import { OSM_READER_VARIABLE, parseOsmReaderName } from './osm/readerChoice.js';
 import { readThroughOneDoor } from './osm/oneDoorPerRun.js';
 // Every door a pass asks through, built the same way for the mirror's pass and
 // for Overpass's (`archaeology/runDoors.ts`).
+import { subsetRunDoor } from './subset/runDoor.js';
 import { ARCHAEOLOGY_SOURCE_ID, doorsForAPass, LOG_PREFIX } from './archaeology/runDoors.js';
 // One item at a time, once the run has decided: the writers and what they were
 // told about this pass (`archaeology/writer.ts`).
@@ -113,10 +114,14 @@ async function fetchArchaeologyItems(
   // `overpass` — and, on the day the mirror fails, Overpass from the start. A
   // name that is no door at all ends the run before a question is sent:
   // `parseOsmReaderName` throws rather than reading a typo as the default.
+  // Wikidata from the local subset, where the admin switched the source to it
+  // (#1462): one door for every pass, since the map's fallback changes only
+  // the map.
+  const subset = await subsetRunDoor(ARCHAEOLOGY_SOURCE_ID, progress);
   const { result: collected, door: osmDoorName } = await readThroughOneDoor({
     preferred: parseOsmReaderName(process.env[OSM_READER_VARIABLE]),
     pass: (reader) => {
-      const doors = doorsForAPass(reader, progress, refreshCache);
+      const doors = doorsForAPass(reader, progress, refreshCache, subset);
       return {
         door: doors.osm,
         forget: doors.forgetOsm,
@@ -133,7 +138,8 @@ async function fetchArchaeologyItems(
           checkCancel: () => {
             if (progress.cancel) throw new Error('Sync cancelled');
           },
-          pause: () => delay(SPARQL_DELAY_MS),
+          // The pause spares the query service; the subset is our own database.
+          pause: subset ? undefined : () => delay(SPARQL_DELAY_MS),
         }),
       };
     },

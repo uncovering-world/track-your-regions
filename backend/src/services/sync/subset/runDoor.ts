@@ -11,7 +11,12 @@ import type { SparqlFn } from '../wikidataQueries.js';
 import { readsSubset, subsetOnlyDoor, wikidataReaderOf } from './reader.js';
 
 export async function wikidataRunDoor(sourceId: number, progress: SyncProgress, live: () => SparqlFn): Promise<SparqlFn> {
-  if (await wikidataReaderOf(sourceId) !== 'subset') return live();
+  return (await subsetRunDoor(sourceId, progress)) ?? live();
+}
+
+/** The subset's door for a source switched to it, or null for one that reads the live service. */
+export async function subsetRunDoor(sourceId: number, progress: SyncProgress): Promise<SparqlFn | null> {
+  if (await wikidataReaderOf(sourceId) !== 'subset') return null;
   const built = await latestSubset();
   if (!built || !(await entitiesAreHeld())) {
     throw new Error('This source reads the local Wikidata subset, which is not built (or a database crash emptied it): build it under Public Dumps, or switch the source back to the live service');

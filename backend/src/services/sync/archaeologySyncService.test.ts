@@ -82,6 +82,10 @@ vi.mock('./osm/readOsmObjects.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./osm/readOsmObjects.js')>()),
   readOsmObjects: vi.fn().mockResolvedValue(new Map()),
 }));
+vi.mock('../dumps/wikidata/subsetTables.js', () => ({
+  latestSubset: vi.fn().mockResolvedValue({ dumpDate: '2026-10-05', swappedAt: new Date() }),
+  entitiesAreHeld: vi.fn().mockResolvedValue(true),
+}));
 vi.mock('./museum/treasureWriter.js', () => ({
   upsertVenueTreasures: vi.fn().mockResolvedValue({
     added: [], withdrawn: [], returned: [], changed: [],
@@ -117,6 +121,7 @@ import { OsmAnswerFloorError } from './archaeology/sites.js';
 import { OsmDoorFailedError, OsmEmptyEnumerationError } from './osm/readOsmObjects.js';
 import { OsmBothDoorsFailedError } from './osm/oneDoorPerRun.js';
 import { upsertVenueTreasures } from './museum/treasureWriter.js';
+import { readsSubset } from './subset/reader.js';
 import { syncArchaeology } from './archaeologySyncService.js';
 import type { ProcessedContent, SyncProgress } from './types.js';
 
@@ -297,6 +302,20 @@ beforeEach(() => {
 });
 
 describe('what the archaeology run fetches', () => {
+  it('reads Wikidata from the local subset when the source is switched to it, with no pause (#1462)', async () => {
+    mockedQuery.mockImplementation(async (sql: string) => ({
+      rows: sql.includes('wikidata_reader') ? [{ wikidata_reader: 'subset' }] : [],
+    }));
+    mockedQuery.mockResolvedValueOnce(lineRow());
+    collected([museum()]);
+
+    await (await configOf()).fetchItems(progress(), []);
+
+    const deps = mockedCollect.mock.calls[0][0];
+    expect(readsSubset(deps.sparql)).toBe(true);
+    expect(deps.pause).toBeUndefined();
+  });
+
   it('reads both lines off the source row before collecting, and hands them to the collector', async () => {
     mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
     mockedAdmitted.mockResolvedValue(new Set([BRITISH_MUSEUM]));

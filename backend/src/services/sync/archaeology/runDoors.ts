@@ -21,6 +21,7 @@ import type { OsmReader, SiteEntrance } from './sites.js';
 import { fetchWikipediaCategories } from '../wikipediaCategories.js';
 import { resolveWikipediaArticles } from '../wikipediaArticles.js';
 import { fetchCategoryMembers } from '../wikipediaCategoryMembers.js';
+import type { SparqlFn } from '../wikidataQueries.js';
 import { DEPARTMENT_ROOTS, DEPARTMENT_WALK, NATURE_CATEGORY_ROOT, NATURE_WALK, OSM_DIG_TAGS } from './classes.js';
 import {
   delay,
@@ -240,11 +241,12 @@ export interface PassDoors {
  * per-item read cannot go through different doors.
  */
 export function doorsForAPass(
-  reader: OsmReaderName, progress: SyncProgress, refreshCache: boolean,
+  reader: OsmReaderName, progress: SyncProgress, refreshCache: boolean, subset: SparqlFn | null = null,
 ): PassDoors {
   const budget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
-  // Wikidata's first: each composes the run's cache over its send.
-  const sparql = collectingSparql(progress, refreshCache, budget);
+  // Wikidata's first: each composes the run's cache over its send. Or the
+  // local subset, where the admin switched the source to it (#1462).
+  const sparql = subset ?? collectingSparql(progress, refreshCache, budget);
   const { door, forget } = cachedOsmDoor(reader, progress, refreshCache, budget);
   // What the walk learns of a museum's own category, read back when the
   // museum's categories are (#889): written by one door, read by the other,
