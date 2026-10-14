@@ -19691,6 +19691,7 @@ export const getGetGeocodeSearchUrl = (params: GetGeocodeSearchParams,) => {
 }
 
 /**
+ * Requires a curator or an admin.
  * @summary Search places by name in OpenStreetMap's Nominatim, with their coordinates
  */
 export const getGeocodeSearch = async (params: GetGeocodeSearchParams, options?: Parameters<typeof apiFetch>[1]): Promise<PlaceSearch> => {
