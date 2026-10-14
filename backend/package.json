@@ -21,6 +21,7 @@
     "catalogue:coverage": "tsx src/scripts/catalogueCoverageReport.ts",
     "catalogue:coverage:lookup": "tsx src/scripts/catalogueCoverageLookup.ts",
     "pins:release-batch": "tsx src/scripts/releaseBatchPins.ts",
+    "subset:parity": "tsx src/scripts/subsetParity.ts",
     "db:types": "tsx src/db/generateSchemaTypes.ts",
     "knip": "knip --include files,dependencies,unlisted",
     "knip:full": "knip"
