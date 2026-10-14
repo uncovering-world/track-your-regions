@@ -107,6 +107,27 @@ museum at all — and what fails that is sent to the site door rather than pinne
 named 40 such rows, all of them at or above the place line, and said nothing about the rest,
 which are a country's whole archaeology and would bury a curator's real refusals.
 
+## What was measured (2026-10-14, #889)
+
+The walk read two more trees:
+
+- **The bare root.** `Category:Archaeological museums`, the parent of `by country`, holds 60
+  articles with an item filed there directly. Among them are the Erebuni Museum, the National
+  Museum of Sudan, the National Museum of Mali, the Rockefeller Archeological Museum, the National
+  Museum of Anthropology in Manila, and the national museums of Finland (28 sitelinks), Slovakia
+  (31) and Singapore (24). It also holds `Category:History Museum of Armenia`, a museum's own
+  category shelved where its article is not. The walk now starts at this root, and a subcategory
+  named after an article is read as that article (ADR-0104 decision 2).
+- **The department shelves.** `Museums of ancient Greece`, `Museums of ancient Rome`, `Museums of
+  the ancient Near East`, `Egyptological collections`, `Pre-Columbian art museums` and
+  `Mesoamerican art museums` name 400 articles to their country level. 182 of them carry no nature
+  category, and 43 of those are at or above the place line. About 27 of those are in no kind. They
+  are art museums with an Egyptian or classical gallery (Cleveland, Denver, Houston, Toledo,
+  Baltimore), natural history museums (the American Museum, the Field Museum), and a few
+  antiquities collections (the Altes Museum, Dumbarton Oaks). The shelves are walked as a door
+  (ADR-0104 decision 3). What each museum is comes from its own signals, OpenStreetMap's
+  `museum=*` tag among them.
+
 ## How the scorecard was read
 
 As for the two Wikidata records, § 6.2 of [`docs/tech/filling-a-kind.md`](../../tech/filling-a-kind.md)
@@ -145,6 +166,8 @@ carries (`userAgent()`, #864).
 
 - **A museum no editor has filed under the category**, which is a real gap rather than a rare
   one — the National Museum of Korea above, and every museum whose English article is a stub.
+  The map's `museum=archaeological` reaches some of these (ADR-0104 decision 1), but it is
+  sparse: it is on about a quarter of the archaeology museums the source admits.
 - **A museum with no English article at all.** The walk finds a museum *through* its article, so
   a row Wikidata answers for without an English sitelink is dropped rather than judged: the two
   reads disagree, and judging it would mean reading the categories of an article it does not
