@@ -3939,9 +3939,15 @@ CREATE TABLE IF NOT EXISTS dump_builds (
     error TEXT,
     started_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     started_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    finished_at TIMESTAMPTZ
+    finished_at TIMESTAMPTZ,
+    heartbeat_at TIMESTAMPTZ,
+    runner TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_dump_builds_dump ON dump_builds(dump, started_at DESC);
+-- At most one build of a dump runs, in any process (#1463).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dump_builds_one_running ON dump_builds(dump) WHERE status = 'running';
+COMMENT ON COLUMN dump_builds.heartbeat_at IS 'When the running build last said it is alive, every minute, whatever process runs it (#1463). A running row that has not beaten for five minutes is a build that stopped.';
+COMMENT ON COLUMN dump_builds.runner IS 'What runs the build: the backend on this host (server:<hostname>), or a script. A backend that starts closes the running rows of its own runner, which its previous run left.';
 COMMENT ON TABLE dump_builds IS 'A build of a public dump (ADR-0101): the dump, the dated file, stream or local copy, the checksum it was verified against (or its size and a clean end of stream where none is published), the lines read and the outcome. A consumer commits only after verification.';
 
 -- The local Wikidata subset (ADR-0101 decision 2, ADR-0105, #1434): the items

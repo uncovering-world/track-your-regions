@@ -164,6 +164,8 @@ export interface DumpBuildsRow {
   started_by: number | null;
   started_at: Date;
   finished_at: Date | null;
+  heartbeat_at: Date | null;
+  runner: string | null;
 }
 
 /** The table `email_verification_tokens`. */
