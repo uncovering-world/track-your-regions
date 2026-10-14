@@ -25,8 +25,10 @@ import { createInterface } from 'node:readline';
 import { PassThrough, Transform, type Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { createGunzip } from 'node:zlib';
-import { safeFileName, type DumpFile } from './catalog.js';
+import { dumpNamed, safeFileName, type DumpFile } from './catalog.js';
 import { downloadTo, openStream } from './fetch.js';
+import { freeBytes, olderCopies, removeCopies } from './localCopies.js';
+import { bytesHeld } from './rangedDownload.js';
 
 /** What a build does with the lines: kept only after `commit`, dropped by `abort`. */
 export interface DumpConsumer {
@@ -40,6 +42,8 @@ export interface ReadOptions {
   dumpsDir?: string;
   signal: AbortSignal;
   onProgress?: (progress: { downloaded: number; read: number; lines: number }) => void;
+  /** Something the build did beside reading that its admin should be told: an older copy removed. */
+  onNote?: (note: string) => void;
 }
 
 export interface ReadResult {
@@ -93,9 +97,30 @@ function decompressor(kind: DumpFile['compression']): Decompressor {
 const localPath = (file: DumpFile, options: ReadOptions) =>
   (options.dumpsDir ? join(options.dumpsDir, safeFileName(file.fileName)) : null);
 
+/**
+ * Remove the older copies of the dump before the download when the disk
+ * cannot hold what is left of this one beside them (#1456).
+ */
+async function makeRoom(file: DumpFile, dir: string, path: string, options: ReadOptions): Promise<void> {
+  if (file.expectedBytes === null) return;
+  const older = await olderCopies(dir, file.fileName, fileNamesOf(file));
+  if (older.length === 0) return;
+  const have = await bytesHeld(path, file.expectedBytes);
+  if (await freeBytes(dir) >= file.expectedBytes - have) return;
+  await removeCopies(dir, older);
+  options.onNote?.(`removed ${older.join(', ')} first: the disk could not hold ${file.fileName} beside it`);
+}
+
+/** The catalog's test for the dump's files, where the dump is one a newer file replaces; else none passes. */
+function fileNamesOf(file: DumpFile): (name: string) => boolean {
+  const descriptor = dumpNamed(file.key);
+  return descriptor?.datedBy === 'day' ? descriptor.isFileName : () => false;
+}
+
 /** The file's compressed bytes: a local copy brought to full size first, or the host's stream. */
 async function openSource(file: DumpFile, path: string | null, options: ReadOptions, onDownloaded: (n: number) => void): Promise<Readable> {
   if (!path) return openStream(file.url, options.signal);
+  await makeRoom(file, options.dumpsDir!, path, options);
   await downloadTo(file.url, path, options.signal, onDownloaded);
   return createReadStream(path);
 }
@@ -120,7 +145,9 @@ export async function readDump(file: DumpFile, consumer: DumpConsumer, options: 
       downloaded += n;
       options.onProgress?.({ downloaded, read: 0, lines: 0 });
     });
-    return await readSource(file, source, consumer, options, () => downloaded);
+    const result = await readSource(file, source, consumer, options, () => downloaded);
+    if (options.dumpsDir) await retireOlderCopies(file, options.dumpsDir, options);
+    return result;
   } catch (error) {
     source?.destroy();
     await consumer.abort();
@@ -129,6 +156,19 @@ export async function readDump(file: DumpFile, consumer: DumpConsumer, options: 
       throw new Error(`${(error as Error).message}; the local copy was deleted, and the next build downloads it again`, { cause: error });
     }
     throw error;
+  }
+}
+
+/** Once a copy is verified, the older copies of its dump go: two copies of the entities dump do not fit where one does. */
+async function retireOlderCopies(file: DumpFile, dir: string, options: ReadOptions): Promise<void> {
+  const older = await olderCopies(dir, file.fileName, fileNamesOf(file));
+  if (older.length === 0) return;
+  // The read is verified and committed: a copy that cannot be removed is said, never a failed build.
+  try {
+    await removeCopies(dir, older);
+    options.onNote?.(`removed the older ${older.join(', ')}`);
+  } catch (error) {
+    options.onNote?.(`could not remove the older ${older.join(', ')}: ${(error as Error).message}`);
   }
 }
 
