@@ -288,6 +288,13 @@ const MAJOR_FIELDS = new Set(['name', 'location', 'countryCodes']);
 /**
  * The `curated_fields` entry that protects a given change. Column names, because
  * that is what `experiences.curated_fields` holds.
+ *
+ * No metadata key is here, and no `metadata` either: a claim on metadata is
+ * always per key and named for it — `metadata.inDanger`, `metadata.website` —
+ * so `claimKeyFor`'s fallback answers every metadata entry with its own name,
+ * and a CHECK on `experiences.curated_fields` refuses the bare column name
+ * (ADR-0077 decision 3). A claim is then in the grain the run records, so every
+ * key a claim protects is a key a curator can be asked about.
  */
 export const CURATED_KEY_BY_FIELD: Record<string, string> = {
   name: 'name',
@@ -300,9 +307,6 @@ export const CURATED_KEY_BY_FIELD: Record<string, string> = {
   countryCodes: 'country_codes',
   countryNames: 'country_names',
   imageUrl: 'image_url',
-  metadata: 'metadata',
-  'metadata.inDanger': 'metadata',
-  'metadata.dateInscribed': 'metadata',
 };
 
 /**
@@ -403,31 +407,17 @@ interface RawDiff {
    * `claimedMetadataKeys` answers for the stored row — the list the upsert
    * binds — so an orphaned claim falls through and the source's value lands,
    * and filing it as a conflict would offer a curator "accept" on a value
-   * already applied. And a claim on the whole column protects every key under
-   * it, which no per-key name matches. Both are facts about the stored row, so
-   * the answer comes from `metadataChanges`, which has it, rather than from a
-   * name lookup that does not.
+   * already applied. That is a fact about the stored row, so the answer comes
+   * from `metadataChanges`, which has it, rather than from a name lookup that
+   * does not.
    *
-   * It answers **protection at the diff, and nothing about the name**. The
-   * per-key names a whole-column claim's entries now carry are ones no reader
-   * resolves back to it: the queue, `accept-source` and `decline-source` look a
-   * conflict's claim up through `claimKeyFor`, which sends `metadata.website` to
-   * itself, and `['metadata']` does not contain that — so such a conflict is
-   * recorded, protected, and asked nowhere.
-   *
-   * **Publishing is the fourth reader and loses more than the asking.** Its
-   * skip list is the same lookup (`publishHeldFields.ts`,
-   * `claimed.includes(claimKeyFor(field.field))`), so per-key entries under a
-   * whole-column claim are not skipped, land in `writable`, and are written key
-   * by key over a column the claim covers; the claimed-key re-application there
-   * filters on the same prefix and restores nothing. Reachable only for a claim
-   * made *after* the run, since a claim standing at diff time holds every key.
-   * So `experienceUpsert.ts` still keeps the column whole on `curated_fields ?
-   * 'metadata'` while publishing no longer does — which is why this flag's
-   * answer stops at the diff.
-   *
-   * Nothing writes a bare `metadata` claim today. Tracked as #729 rather than
-   * fixed in a change about something else.
+   * It answers **protection**; the name answers **addressability**, and the two
+   * agree because a metadata claim is always per key (ADR-0077 decision 3).
+   * Every reader of a conflict or a held entry — the queue, `accept-source`,
+   * `decline-source` and publishing's skip list — resolves its claim through
+   * `claimKeyFor`, which sends `metadata.<key>` to itself: the very claim that
+   * protected it. A claim on the whole column, which would protect every key
+   * while matching none of their names, is refused by the schema.
    */
   protectedByClaim?: boolean;
   /**
@@ -512,7 +502,6 @@ function metadataChanges(
   // where the write kept the curator's value — never by a name lookup, which
   // would ask a whole-column question of a per-key name (#488).
   const claimed = claimedMetadataKeys(curatedFields, before);
-  const wholeColumnClaimed = curatedFields.includes('metadata');
   const isMajor = (key: string): boolean => (MAJOR_METADATA_KEYS as readonly string[]).includes(key);
 
   for (const key of MAJOR_METADATA_KEYS) {
@@ -522,7 +511,7 @@ function metadataChanges(
         old: ownValue(left, key),
         new: ownValue(right, key),
         significance: 'major',
-        protectedByClaim: wholeColumnClaimed || claimed.includes(key),
+        protectedByClaim: claimed.includes(key),
       });
     }
   }
@@ -555,11 +544,10 @@ function metadataChanges(
   // trimmed of the keys reported above, or a curator would read a claimed value
   // inside a row marked applied beside the row saying it was refused (#488); with
   // one key per entry there is no shared payload to disagree with itself.
-  // A claim on the whole column protects every key under it, which no per-key
-  // name matches; and a per-key claim the stored row can no longer honour
-  // protects nothing. Neither is knowable from a field name, so this decides it
-  // — see `RawDiff.protectedByClaim`. The keys reported above are gone from this
-  // loop, so what remains is protected only by a whole-column claim.
+  // A per-key claim the stored row can no longer honour protects nothing, which
+  // is not knowable from a field name, so this decides it — see
+  // `RawDiff.protectedByClaim`. The claimed keys the row still carries were
+  // reported above, so nothing that remains is protected.
   const reported = new Set(ignoredKeys);
   for (const key of [...new Set([...Object.keys(left), ...Object.keys(right)])].sort()) {
     if (reported.has(key)) continue;
@@ -570,7 +558,7 @@ function metadataChanges(
       old: ownValue(left, key),
       new: ownValue(right, key),
       significance: 'minor',
-      protectedByClaim: wholeColumnClaimed,
+      protectedByClaim: false,
       ...(passed ? { passedTheGate: passed } : {}),
     });
   }
@@ -590,7 +578,7 @@ function creditMayPass(sameImage: boolean, curatedFields: string[]): boolean {
 /**
  * The metadata keys the upsert writes past the gate on a held row (#1353): the
  * per-key rewrites `metadataChanges` files as passed, by the same rule — so the
- * write and the record cannot disagree. None under a claim on the whole column.
+ * write and the record cannot disagree.
  */
 export function passingMetadataKeys(
   before: Record<string, unknown> | null,

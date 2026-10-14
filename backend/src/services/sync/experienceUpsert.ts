@@ -570,13 +570,12 @@ async function writeUnderLock(
         country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' OR ${HELD} THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
         country_names = CASE WHEN experiences.curated_fields ? 'country_names' OR ${HELD} THEN experiences.country_names ELSE EXCLUDED.country_names END,
         image_url = CASE WHEN experiences.curated_fields ? 'image_url' OR ${HELD} THEN experiences.image_url ELSE EXCLUDED.image_url END,
-        -- Two claim shapes reach this column. editExperience claims per key --
-        -- 'metadata.website', 'metadata.wikipediaUrl' -- and ? 'metadata' is
-        -- false for those, so a guard spelled that way alone never fires and
-        -- EXCLUDED replaces the object, curator's link included (#488). A claim
-        -- on 'metadata' itself holds the whole
-        -- column; a per-key claim re-applies just the keys it holds over
-        -- whatever the source sent, so an unclaimed key still updates.
+        -- A claim on this column is always per key -- 'metadata.website',
+        -- 'metadata.inDanger' -- and re-applies just that key over whatever the
+        -- source sent, so an unclaimed key still updates (#488). No claim holds
+        -- the whole column: the bare name is refused by a CHECK on
+        -- curated_fields, so a protected key is always one a curator can be
+        -- asked about (ADR-0077 decision 3). The first arm is the gate's hold.
         --
         -- The keys a run computes about its own pass stand outside both guards:
         -- a claim cannot hold them because nobody can be right about a
@@ -592,7 +591,7 @@ async function writeUnderLock(
         -- identical keys out of the diff, so nothing written here is reported as
         -- a change or waits on anybody.
         metadata = CASE
-          WHEN experiences.curated_fields ? 'metadata' OR ${HELD}
+          WHEN ${HELD}
             THEN COALESCE(experiences.metadata, '{}'::jsonb) || ${SYNC_OWNED_SLICE} || ${PASSING_SLICE}
           -- No credit beside no picture, whatever the params say: a run's
           -- credit is decided by creditToWrite, which sends none for a picture

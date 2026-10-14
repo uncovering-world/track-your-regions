@@ -617,8 +617,10 @@ describe('metadata is guarded per claimed key, not per column', () => {
     await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
 
     const [text] = upsert();
-    // The whole-column guard stays for a claim on `metadata` itself...
-    expect(text).toMatch(/curated_fields \? 'metadata'/);
+    // No claim holds the whole column (ADR-0077 decision 3): the arm that keeps
+    // the stored object is the gate's hold alone...
+    expect(text).not.toMatch(/curated_fields \? 'metadata'/);
+    expect(assignmentsOf(text).get('metadata')).toMatch(/^CASE\s+WHEN \(SELECT held FROM hold\)\s+THEN/);
     // ...and a per-key claim re-applies just the keys bound as $30 —
     // `claimedMetadataKeys`, the list the diff reads too — over the source
     // object, which is the LEFT operand of `||` so the claim wins for its key.
@@ -682,7 +684,7 @@ describe('the keys a run computes about its own pass go past both guards', () =>
     await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
 
     const arm = assignmentsOf(upsert()[0]).get('metadata');
-    // The arm a claim on the whole column or a hold takes. Without the merge it
+    // The arm a hold takes. Without the merge it
     // is `THEN experiences.metadata` and the counter never moves again — which
     // is the state the Louvre was found in, its stored sum four runs stale while
     // the queue asked about the difference every time.

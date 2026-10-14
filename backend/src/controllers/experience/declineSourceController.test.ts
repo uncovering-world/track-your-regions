@@ -104,6 +104,24 @@ describe('declineSourceValue', () => {
     }));
   });
 
+  it('reaches a conflict on a major metadata key through the claim named for it', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, source_id: 1 }] });
+    const danger = [{ sync_log_id: 9, changed_fields: [{ field: 'metadata.inDanger', new: false, curatedConflict: true }] }];
+    const { client, queries } = makeClient(['metadata.inDanger'], danger);
+    mockedConnect.mockResolvedValue(client);
+    const res = makeRes();
+
+    // A metadata claim names its key (ADR-0077 decision 3), so the conflict is
+    // still open under the claim that raised it, and the refusal is recorded.
+    await answerRoute(postDeclineSource,
+      { user: ADMIN, params: { id: '96' }, body: { fields: ['metadata.inDanger'], expectedSyncLogId: 9 } } as never,
+      res as never,
+    );
+
+    expect(queries.find(q => q.sql.includes('experience_conflict_decisions'))?.params).toContain('metadata.inDanger');
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ declined: ['metadata.inDanger'] }));
+  });
+
   it('records a name-carrying value as the catalogue stores a name', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, source_id: 1 }] });
     // The queue matches the refusal to the record by value, and every run

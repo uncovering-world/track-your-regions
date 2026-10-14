@@ -492,15 +492,16 @@ describe('getReviewQueue', () => {
   it('translates the changeset field name to the key curated_fields holds', async () => {
     await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
-    // 'shortDescription' is claimed as 'short_description', and
-    // 'metadata.inDanger' as plain 'metadata' — not a mechanical case change
+    // 'shortDescription' is claimed as 'short_description' — not a mechanical
+    // case change — while 'metadata.inDanger' is in no map at all: a metadata
+    // claim names its key (ADR-0077 decision 3), and the field falls back to it.
     // Counted back from the end: the tail is the key map, the families, the
     // acceptable fields and the page's ids, one shorter than it was when a
     // `LIMIT` and an `OFFSET` closed it.
     const [, conflictParams] = callMatching("'conflict' AS kind");
     const map = JSON.parse(String(conflictParams.at(-4)));
     expect(map.shortDescription).toBe('short_description');
-    expect(map['metadata.inDanger']).toBe('metadata');
+    expect(map['metadata.inDanger']).toBeUndefined();
   });
 
   it('resolves a per-language entry to the column its claim is stored under', async () => {
