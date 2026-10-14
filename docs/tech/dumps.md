@@ -178,9 +178,12 @@ backend and the worker talk only through the build's `dump_builds` row:
    `cancelled`, with what it did on the way (an older copy removed) in the
    message either way.
 3. **Followed.** Every `BEAT_EVERY_MS` (five seconds) the build writes its
-   progress — phase, message, bytes downloaded and read, lines — and its
-   heartbeat to the row (`beat`), and the panel reads them back
-   (`buildProgress`), whatever process runs the build.
+   progress — phase, message, bytes downloaded and read, lines, and the
+   time the pass being read has left at its pace so far (`PassClock`: none in
+   a pass's first minute, a new clock for each pass, none in a step that
+   reads no file) — and its heartbeat to the row (`beat`), and the panel reads
+   them back (`buildProgress`), whatever process runs the build, showing the
+   time left as "about 1 h 10 min left in this pass".
 4. **Stopped.** *Cancel* (`requestCancel`) closes a queued row at once and
    marks a running one (`cancel_requested_at`); the build reads the mark with
    its next heartbeat and ends as `cancelled`. A worker that stops (SIGTERM)
@@ -382,7 +385,7 @@ among its last three (`recentBuilds`) open under the row. *Verify newest* queues
 a build of the counting consumer over the newest complete file and the row
 turns into its progress, polled every three seconds while the page is visible:
 *Waiting for the dump worker* while it is queued, then the worker's phase, its
-bytes and lines, and when it was last seen alive; *Cancel* stops it, queued or
+bytes and lines, the time the pass has left, and when it was last seen alive; *Cancel* stops it, queued or
 running. A dump something is built from (`keeps` in the list) also has *Build
 newest*, which starts a `keep` build, and, where a local copy exists
 (`localCopy` in the list, shown under the row's description with its date and
