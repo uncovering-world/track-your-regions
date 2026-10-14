@@ -5524,6 +5524,14 @@ export const ImageSuggestionSource = {
 } as const;
 
 /**
+ * The item's own coordinate location (P625) at its best rank, when it states one on the Earth: where the place is, as Wikidata says.
+ */
+export type ImageSuggestionCoordinates = {
+  lat: number;
+  lng: number;
+};
+
+/**
  * A picture for a new experience, from the Wikidata item it most likely is.
  */
 export interface ImageSuggestion {
@@ -5538,6 +5546,8 @@ export interface ImageSuggestion {
   description?: string;
   /** The item's English Wikipedia article. */
   wikipediaUrl?: string;
+  /** The item's own coordinate location (P625) at its best rank, when it states one on the Earth: where the place is, as Wikidata says. */
+  coordinates?: ImageSuggestionCoordinates;
 }
 
 /**

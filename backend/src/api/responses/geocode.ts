@@ -2,7 +2,7 @@
  * What the place-search calls answer (ADR-0066): the success bodies of the
  * endpoints `frontend/src/api/geocode.ts` calls, declared once — places found
  * by name through Nominatim, and a picture suggested for a new experience from
- * Wikidata. The AI geocode that module also calls answers `AIGeocodeResult`, in
+ * Wikidata, with the item's own coordinate. The AI geocode that module also calls answers `AIGeocodeResult`, in
  * `ai.ts` beside this file, with the rest of what a model answers.
  *
  * Each exported schema is the type of the same name in the web's generated client, and
@@ -35,5 +35,7 @@ export const ImageSuggestion = z.strictObject({
   wikidataId: z.string(),
   description: z.string().optional().describe('The item\'s English description.'),
   wikipediaUrl: z.string().optional().describe('The item\'s English Wikipedia article.'),
+  coordinates: z.strictObject({ lat: z.number(), lng: z.number() }).optional()
+    .describe('The item\'s own coordinate location (P625) at its best rank, when it states one on the Earth: where the place is, as Wikidata says.'),
 }).describe('A picture for a new experience, from the Wikidata item it most likely is.');
 export type ImageSuggestion = z.infer<typeof ImageSuggestion>;
