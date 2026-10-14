@@ -85,6 +85,9 @@ services:
       # How many worker threads a subset build's passes run in (#1479). Empty:
       # every core but one; 0 runs the same code on the main thread.
       DUMP_WORKERS: ${DUMP_WORKERS:-}
+      # A path on the database's disk, which a subset build checks for room
+      # before it writes (#1466): the database's volume, mounted read-only below.
+      DB_DISK_DIR: /app/db-disk
     ports:
       - "127.0.0.1:${BACKEND_PORT:-3001}:3001"
     volumes:
@@ -127,6 +130,9 @@ services:
       - ./docs/tech/gates.md:/docs/tech/gates.md:ro,z
       - ./.github/workflows/ci.yml:/.github/workflows/ci.yml:ro,z
       - ${DATA_DIR:-./data}:/app/data:z
+      # The database's volume, read-only and only so its disk's free space can
+      # be read (DB_DISK_DIR above): the files in it are the postgres user's.
+      - postgres_data:/app/db-disk:ro
     depends_on:
       db:
         condition: service_healthy

@@ -65,6 +65,30 @@ export async function freeBytes(dir: string): Promise<number> {
   return stats.bavail * stats.bsize;
 }
 
+export interface Disk {
+  /** The device `stat` reports for the path. */
+  device: number;
+  /** The filesystem's size as `statfs` reports it: blocks of `bsize` bytes. */
+  blocks: number;
+  bsize: number;
+  free: number;
+}
+
+/** The disk `dir` is on, and the bytes free on it. */
+export async function diskOf(dir: string): Promise<Disk> {
+  const [stats, fs] = await Promise.all([stat(dir), statfs(dir)]);
+  return { device: stats.dev, blocks: fs.blocks, bsize: fs.bsize, free: fs.bavail * fs.bsize };
+}
+
+/**
+ * Whether two paths are on one disk: the same device, or the same filesystem
+ * size, which is what tells a container's overlay `/tmp` (an anonymous
+ * device) from the Docker volume beside it on the same host disk.
+ */
+export function sameDisk(a: Disk, b: Disk): boolean {
+  return a.device === b.device || (a.blocks === b.blocks && a.bsize === b.bsize);
+}
+
 export interface LocalCopy {
   fileName: string;
   /** The copy's date as its name gives it: `YYYYMMDD`, or `YYYYMM` for a month's counts. */

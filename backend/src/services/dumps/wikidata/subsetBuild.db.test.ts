@@ -36,6 +36,12 @@ vi.mock('../read.js', () => ({
   },
 }));
 
+const disk = vi.hoisted(() => ({ free: Number.MAX_SAFE_INTEGER }));
+vi.mock('../localCopies.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../localCopies.js')>()),
+  diskOf: async () => ({ device: 1, blocks: 1, bsize: 1, free: disk.free }),
+}));
+
 const { buildSubset } = await import('./subsetBuild.js');
 
 const LOUVRE_PALACE = 1075988;
@@ -196,6 +202,19 @@ describe('a build of the local Wikidata subset (#1434)', () => {
     });
     await expect(build).rejects.toThrow();
     expect(await ids('wikidata_entities')).not.toContain(`Q${CAPITAL}`);
+    const { rows } = await pool.query("SELECT tablename FROM pg_tables WHERE tablename LIKE 'wikidata_%_next'");
+    expect(rows).toEqual([]);
+  });
+
+  it('refuses the write pass when the disk cannot hold it, before any copy is made (#1466)', async () => {
+    lines = DUMP;
+    disk.free = 0;
+    try {
+      await expect(build()).rejects.toThrow(/but it has 0 GB/);
+    } finally {
+      disk.free = Number.MAX_SAFE_INTEGER;
+    }
+    expect(pass).toBe(1);
     const { rows } = await pool.query("SELECT tablename FROM pg_tables WHERE tablename LIKE 'wikidata_%_next'");
     expect(rows).toEqual([]);
   });
