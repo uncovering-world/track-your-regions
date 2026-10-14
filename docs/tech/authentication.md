@@ -51,6 +51,7 @@ The authentication system uses:
 - Manually assign/unassign experiences to regions
 - Create manual experiences (stored under **Curator Picks** source)
 - View curation audit history
+- Locate a place for an experience: the place search (Nominatim), AI geocoding and the image suggestion (`/api/geocode/*`)
 
 ## Environment Variables
 
