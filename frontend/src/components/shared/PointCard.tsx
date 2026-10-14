@@ -132,9 +132,12 @@ export function PointCard({
     const next = route[at + offset];
     if (next) onOpenPoint(next.id, locationLabel(next));
   };
-  const wikidata = wikidataItemUrl(point.wikidata_item);
-  const article = point.wikidata_item ? wikipediaArticleUrl(point.wikidata_item) : null;
-  const official = officialUrl ? safeHref(officialUrl) : null;
+  // All three through safeHref, the two built from a QID as much as the stored
+  // page: the rule is declared once, and `urlSafety.test.ts` reads every href in
+  // a module that carries a stored link as going through it.
+  const wikidata = safeHref(wikidataItemUrl(point.wikidata_item));
+  const article = safeHref(wikipediaArticleUrl(point.wikidata_item));
+  const official = safeHref(officialUrl);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column' }}>

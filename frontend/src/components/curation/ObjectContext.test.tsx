@@ -69,6 +69,42 @@ describe('ObjectContext', () => {
     expect(link).toHaveAttribute('target', '_blank');
   });
 
+  it('links neither page when the stored value is not a web address', () => {
+    // A sync writes both columns through no request schema, so a value the curator's
+    // form would refuse can still be stored. The card names no link for it rather than
+    // handing the value to an href.
+    render(<ObjectContext item={item({
+      region_names: ['Africa', 'Ethiopia', 'Tigray'],
+      website_url: 'javascript:alert(document.cookie)',
+      wikipedia_url: 'data:text/html,<script>alert(1)</script>',
+    })} />);
+
+    expect(screen.getByText('Tigray')).toBeInTheDocument();
+    expect(screen.queryByRole('link')).not.toBeInTheDocument();
+    expect(screen.queryByText('source page')).not.toBeInTheDocument();
+    expect(screen.queryByText('Wikipedia')).not.toBeInTheDocument();
+  });
+
+  it('links the page that is a web address and leaves out the one that is not', () => {
+    render(<ObjectContext item={item({
+      website_url: ' javascript:alert(1)',
+      wikipedia_url: 'https://en.wikipedia.org/wiki/Aksum',
+    })} />);
+
+    expect(screen.getByRole('link', { name: 'Wikipedia' })).toHaveAttribute(
+      'href', 'https://en.wikipedia.org/wiki/Aksum',
+    );
+    expect(screen.queryByRole('link', { name: 'source page' })).not.toBeInTheDocument();
+  });
+
+  it('renders nothing for an object whose only link is refused', () => {
+    // A refused link is not something the object has: the card stays away rather
+    // than drawing a frame around nothing.
+    const { container } = render(<ObjectContext item={item({ website_url: 'javascript:alert(1)' })} />);
+
+    expect(container).toBeEmptyDOMElement();
+  });
+
   it('renders nothing at all when the object carries none of it', () => {
     const { container } = render(<ObjectContext item={item()} />);
 
