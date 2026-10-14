@@ -141,6 +141,21 @@ function Kept({ dump }: { dump: DumpsDumpsItem }) {
   );
 }
 
+/** A build another process runs (a script, another server): followed by its heartbeat, never by this panel's progress. */
+function Elsewhere({ build }: { build: NonNullable<DumpsDumpsItem['elsewhere']> }) {
+  return (
+    <TableCell colSpan={5}>
+      <Typography variant="body2" sx={{ mb: 0.5 }}>
+        Building in another process since {formatDateTime(build.startedAt)} ({build.fileName})
+      </Typography>
+      <LinearProgress />
+      <Typography variant="caption" color="text.secondary">
+        Last seen alive {formatRelativeTime(build.heartbeatAt)}. A new build of this dump waits until it ends.
+      </Typography>
+    </TableCell>
+  );
+}
+
 function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
   const queryClient = useQueryClient();
   const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.admin.dumps });
@@ -163,7 +178,8 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
           <Kept dump={dump} />
         </TableCell>
         {running && dump.progress && <ProgressCells progress={dump.progress} />}
-        {!running && (
+        {!running && dump.elsewhere && <Elsewhere build={dump.elsewhere} />}
+        {!running && !dump.elsewhere && (
           <>
             <TableCell>
               {last ? <Outcome build={last} /> : <Typography variant="body2" color="text.secondary">Never built</Typography>}
@@ -172,16 +188,15 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
           </>
         )}
         <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
-          {running
-            ? <Button size="small" color="inherit" onClick={() => cancel.mutate()} disabled={cancel.isPending}>Cancel</Button>
-            : (
-              <Box sx={{ display: 'inline-flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-end' }}>
-                <Button size="small" variant="outlined" onClick={() => start.mutate()} disabled={start.isPending}>Verify newest</Button>
-                {dump.keeps && (
-                  <Button size="small" variant="contained" onClick={() => keep.mutate()} disabled={keep.isPending}>Build</Button>
-                )}
-              </Box>
-            )}
+          {running && <Button size="small" color="inherit" onClick={() => cancel.mutate()} disabled={cancel.isPending}>Cancel</Button>}
+          {!running && !dump.elsewhere && (
+            <Box sx={{ display: 'inline-flex', flexDirection: 'column', gap: 0.5, alignItems: 'flex-end' }}>
+              <Button size="small" variant="outlined" onClick={() => start.mutate()} disabled={start.isPending}>Verify newest</Button>
+              {dump.keeps && (
+                <Button size="small" variant="contained" onClick={() => keep.mutate()} disabled={keep.isPending}>Build</Button>
+              )}
+            </Box>
+          )}
           <Tooltip title={earlier.length ? 'Earlier builds' : 'No earlier builds'}>
             <span>
               <IconButton size="small" onClick={() => setOpen(!open)} disabled={!earlier.length} aria-label="Earlier builds">
@@ -243,7 +258,12 @@ export function DumpsPanel() {
   const dumps = useQuery({
     queryKey: queryKeys.admin.dumps,
     queryFn: getDumps,
-    refetchInterval: (query) => (query.state.data?.dumps.some(d => inFlight(d.progress)) ? 3000 : false),
+    // A build this process runs is polled every three seconds; one another process runs, by its minute heartbeat.
+    refetchInterval: (query) => {
+      const dumps = query.state.data?.dumps ?? [];
+      if (dumps.some(d => inFlight(d.progress))) return 3000;
+      return dumps.some(d => d.elsewhere) ? 30_000 : false;
+    },
   });
   if (dumps.isLoading) return <LinearProgress />;
   if (dumps.isError || !dumps.data) return <Alert severity="error">The dumps could not be read.</Alert>;
