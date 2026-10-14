@@ -22,7 +22,7 @@ import {
 } from '../api/responses/adminAi.js';
 import { DataAssertion, DataAssertionReport } from '../api/responses/dataAssertions.js';
 import { DumpBuildCancelled, DumpBuildStarted, Dumps } from '../api/responses/dumps.js';
-import { cancelDumpBuild, listDumps, startDumpBuild } from '../controllers/admin/dumpController.js';
+import { cancelDumpBuild, listDumps, startDumpBuild, startDumpKeep } from '../controllers/admin/dumpController.js';
 import {
   startSync, getSyncStatus, cancelSync, fixImages, findComponentItems, getSyncLogs, getWikidataCache, clearWikidataCache,
   setWikidataCacheTtl, getSyncLogDetails, getSyncLogChanges, getSources, reorderSources, startRegionAssignment,
@@ -141,7 +141,8 @@ export const adminDeclaredRoutes = [
     handler: fixImages,
   }),
   // The public dumps the catalogue reads (ADR-0101): each with its build in
-  // flight and its recent builds, a verify build of one, and stopping it. A
+  // flight and its recent builds, a verify build of one, a build that keeps what
+  // is made from it (#1434), and stopping either. A
   // build reads a file of up to 100 GB from its host, so it stands behind the
   // expensive-action limiter; the URL is the catalog's, never the caller's.
   defineRoute({
@@ -156,6 +157,13 @@ export const adminDeclaredRoutes = [
     params: dumpKeyParamSchema,
     response: DumpBuildStarted,
     handler: startDumpBuild,
+  }),
+  defineRoute({
+    ...ADMIN, method: 'post', path: '/dumps/:dump/keep', limiter: expensiveAdminLimiter,
+    summary: 'Start a build that reads the newest complete file of a dump and keeps what is built from it, swapping it in whole',
+    params: dumpKeyParamSchema,
+    response: DumpBuildStarted,
+    handler: startDumpKeep,
   }),
   defineRoute({
     ...ADMIN, method: 'post', path: '/dumps/:dump/cancel',

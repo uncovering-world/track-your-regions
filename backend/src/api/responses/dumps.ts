@@ -14,6 +14,7 @@ const timestamp = z.iso.datetime({ offset: true });
 
 export const DumpBuildProgress = z.strictObject({
   dump: z.enum(DUMP_KEYS),
+  kind: z.enum(['verify', 'keep']).describe('A verify build reads and counts; a keeping build runs the dump\'s builder and swaps in what it builds.'),
   status: z.enum(['resolving', 'reading', 'success', 'failed', 'cancelled']),
   message: z.string(),
   file: z.strictObject({
@@ -52,6 +53,11 @@ export const Dumps = z.strictObject({
     about: z.string(),
     progress: DumpBuildProgress.nullable(),
     builds: z.array(DumpBuild),
+    keeps: z.strictObject({
+      title: z.string(),
+      built: z.strictObject({ dumpDate: z.string(), swappedAt: timestamp }).nullable()
+        .describe('The build now in place: its dump date and when it was swapped in.'),
+    }).nullable().describe('What a keeping build of this dump makes (the local Wikidata subset), or null where nothing is built from it yet.'),
   })),
   localCopy: z.boolean().describe('Whether builds keep a local copy (DUMPS_DIR) or read each file as a stream from its host.'),
 }).describe('The public dumps the catalogue reads, with their builds (ADR-0101).');
