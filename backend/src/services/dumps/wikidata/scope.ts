@@ -17,7 +17,7 @@
  * says what keeping the scope would cost before anything is written.
  */
 
-import { EdgeList, IdSet } from './idSets.js';
+import { EdgeList, IdSet, Numbers } from './idSets.js';
 import { entityOf, forEachMainItemValue, hasMainValue } from './entityLine.js';
 
 const COORDINATE = 625;
@@ -70,7 +70,70 @@ export interface Scope {
   counts: ScopeCounts;
 }
 
-/** The first pass: feed it every line, then ask `finish()` for the scope. */
+/** What pass 1 learns from a batch of lines (`ScopeCollector.absorb`), in typed arrays a worker hands over whole. */
+export interface ScopeFacts {
+  /** Every line of the batch, entity or not. */
+  lines: number;
+  items: number;
+  /** The characters of every entity line. */
+  bytes: number;
+  properties: Uint32Array;
+  /** Item, line length; in pairs. */
+  sizes: Uint32Array;
+  coordinates: Uint32Array;
+  classes: Uint32Array;
+  /** Items a seed names as its class or through a place property. */
+  neighbours: Uint32Array;
+  /** From, to, place tag; in threes. */
+  edges: Uint32Array;
+}
+
+/**
+ * Pass 1's reading of a batch of lines, a pure function: a worker thread and
+ * the main thread run it alike (#1479).
+ */
+export function scopeFactsOf(lines: readonly string[]): ScopeFacts {
+  let items = 0;
+  let bytes = 0;
+  const properties = new Numbers();
+  const sizes = new Numbers();
+  const coordinates = new Numbers();
+  const classes = new Numbers();
+  const neighbours = new Numbers();
+  const edges = new Numbers();
+  for (const line of lines) {
+    const entity = entityOf(line);
+    if (!entity) continue;
+    bytes += line.length;
+    if (entity.kind === 'property') {
+      properties.push(entity.id);
+      continue;
+    }
+    items += 1;
+    sizes.push(entity.id);
+    sizes.push(line.length);
+    const coordinate = hasMainValue(line, COORDINATE);
+    const isClass = hasMainValue(line, SUBCLASS_OF);
+    if (coordinate) coordinates.push(entity.id);
+    if (isClass) classes.push(entity.id);
+    const seed = coordinate || isClass;
+    forEachMainItemValue(line, (property, item) => {
+      const tag = PLACE_TAG.get(property);
+      if (seed && (property === INSTANCE_OF || tag !== undefined)) neighbours.push(item);
+      if (tag !== undefined) {
+        edges.push(entity.id);
+        edges.push(item);
+        edges.push(tag);
+      }
+    });
+  }
+  return {
+    lines: lines.length, items, bytes, properties: properties.take(), sizes: sizes.take(), coordinates: coordinates.take(),
+    classes: classes.take(), neighbours: neighbours.take(), edges: edges.take(),
+  };
+}
+
+/** The first pass: feed it every line, or batches' facts (`absorb`), then ask `finish()` for the scope. */
 export class ScopeCollector {
   private readonly coordinates = new IdSet();
   private readonly classes = new IdSet();
@@ -82,21 +145,18 @@ export class ScopeCollector {
   private bytes = 0;
 
   line(line: string): void {
-    const entity = entityOf(line);
-    if (!entity) return;
-    this.bytes += line.length;
-    if (entity.kind === 'property') {
-      this.properties.add(entity.id);
-      return;
-    }
-    this.items += 1;
-    this.recordSize(entity.id, line.length);
-    const seed = this.classify(entity.id, line);
-    forEachMainItemValue(line, (property, item) => {
-      if (seed && (property === INSTANCE_OF || PLACE_TAG.has(property))) this.seedNeighbours.add(item);
-      const tag = PLACE_TAG.get(property);
-      if (tag !== undefined) this.edges.push(entity.id, item, tag);
-    });
+    this.absorb(scopeFactsOf([line]));
+  }
+
+  absorb(facts: ScopeFacts): void {
+    this.items += facts.items;
+    this.bytes += facts.bytes;
+    for (const id of facts.properties) this.properties.add(id);
+    for (let i = 0; i < facts.sizes.length; i += 2) this.recordSize(facts.sizes[i], facts.sizes[i + 1]);
+    for (const id of facts.coordinates) this.coordinates.add(id);
+    for (const id of facts.classes) this.classes.add(id);
+    for (const id of facts.neighbours) this.seedNeighbours.add(id);
+    for (let i = 0; i < facts.edges.length; i += 3) this.edges.push(facts.edges[i], facts.edges[i + 1], facts.edges[i + 2]);
   }
 
   finish(): Scope {
@@ -130,14 +190,6 @@ export class ScopeCollector {
       keptBytes: this.keptBytes(kept),
     };
     return { kept, properties: this.properties, counts };
-  }
-
-  private classify(id: number, line: string): boolean {
-    const coordinate = hasMainValue(line, COORDINATE);
-    const isClass = hasMainValue(line, SUBCLASS_OF);
-    if (coordinate) this.coordinates.add(id);
-    if (isClass) this.classes.add(id);
-    return coordinate || isClass;
   }
 
   /** Every item whose chain through location, part or collection reaches a coordinate within `CHAIN_DEPTH` steps. */
