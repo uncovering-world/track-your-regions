@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterAll, beforeAll } from 'vitest';
 import express from 'express';
-import cors from 'cors';
 import type { Server } from 'node:http';
 import { request } from 'node:http';
 import { AddressInfo } from 'node:net';
@@ -16,6 +15,7 @@ vi.mock('../services/authService.js', () => ({
 import { verifyAccessToken } from '../services/authService.js';
 import { optionalAuth, requireAuth } from './auth.js';
 import { publicReadLimiter, authenticatedLimiter } from './rateLimiter.js';
+import { apiCors } from './cors.js';
 
 const mockedVerify = verifyAccessToken as unknown as ReturnType<typeof vi.fn>;
 
@@ -104,7 +104,7 @@ describe('optionalAuth on the wire', () => {
     const app = express();
     // helmet does this for the real app; this one has no helmet.
     app.disable('x-powered-by');
-    app.use(cors({ origin: 'http://localhost:5173', credentials: true }));
+    app.use(apiCors('http://localhost:5173'));
     // The chain as the route files wire it: limiter, then identity, then
     // the handler. CodeQL's missing-rate-limiting query reads a route that
     // authorizes without a limiter ahead of it as a finding, fixture or not.
@@ -202,7 +202,7 @@ describe('requireAuth on the wire', () => {
     mockedVerify.mockReturnValue({ sub: 7, uuid: 'u', role: 'user' });
     const app = express();
     app.disable('x-powered-by');
-    app.use(cors({ origin: 'http://localhost:5173', credentials: true }));
+    app.use(apiCors('http://localhost:5173'));
     // The chain a `signed-in` declaration builds: limiter, then identity,
     // then the handler (`api/route.ts`).
     app.get('/mine', authenticatedLimiter, requireAuth, (_req, res) => {

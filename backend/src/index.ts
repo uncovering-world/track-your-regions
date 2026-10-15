@@ -18,13 +18,13 @@ if (process.env.NODE_ENV !== 'production') {
 import type { RawEnv } from './config/validateEnv.js';
 import 'express-async-errors';
 import express from 'express';
-import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import passport from 'passport';
 import { join } from 'path';
 import { existsSync, mkdirSync } from 'fs';
 import { responseCompression } from './middleware/compression.js';
+import { apiCors } from './middleware/cors.js';
 
 const app = express();
 const PORT = parseInt(process.env.BACKEND_PORT || '3001');
@@ -45,10 +45,7 @@ app.use(helmet({
 app.use(responseCompression());
 
 const FRONTEND_ORIGIN = process.env.FRONTEND_URL || 'http://localhost:5173';
-app.use(cors({
-  origin: FRONTEND_ORIGIN,
-  credentials: true,
-}));
+app.use(apiCors(FRONTEND_ORIGIN));
 
 // CSRF protection: verify Origin header on state-changing requests (ASVS V3.5.1)
 // This supplements SameSite=Strict cookies and CORS preflight
