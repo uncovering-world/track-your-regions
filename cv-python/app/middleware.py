@@ -13,10 +13,13 @@ from __future__ import annotations
 import os
 import sys
 import traceback
+from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
+from starlette.types import ASGIApp
 
 from .utils.image import InvalidImageBytes
 
@@ -51,11 +54,11 @@ class BodySizeLimitMiddleware(BaseHTTPMiddleware):
     proxy / ingress).
     """
 
-    def __init__(self, app, max_bytes: int):
+    def __init__(self, app: ASGIApp, max_bytes: int) -> None:
         super().__init__(app)
         self.max_bytes = max_bytes
 
-    async def dispatch(self, request: Request, call_next):
+    async def dispatch(self, request: Request, call_next: Callable[[Request], Awaitable[Response]]) -> Response:
         cl = request.headers.get("content-length")
         if cl is not None:
             try:
@@ -76,14 +79,14 @@ def install_exception_handlers(app: FastAPI) -> None:
     """
 
     @app.exception_handler(InvalidImageBytes)
-    async def _on_invalid_image(_request: Request, exc: InvalidImageBytes):
+    async def _on_invalid_image(_request: Request, exc: InvalidImageBytes) -> JSONResponse:
         # Safe to surface — the message is intentionally generic ("empty image
         # payload" / "unrecognised image format") and helps the caller fix the
         # request.
         return JSONResponse({"detail": str(exc)}, status_code=400)
 
     @app.exception_handler(Exception)
-    async def _on_unhandled(_request: Request, exc: Exception):
+    async def _on_unhandled(_request: Request, exc: Exception) -> JSONResponse:
         traceback.print_exception(type(exc), exc, exc.__traceback__, file=sys.stderr)
         return JSONResponse({"detail": "Internal error"}, status_code=500)
 

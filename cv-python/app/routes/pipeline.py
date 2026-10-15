@@ -4,7 +4,8 @@ import sys
 import threading
 import traceback
 import uuid
-from typing import Annotated, Any
+from collections.abc import Callable, Iterator
+from typing import Annotated, Any, Protocol
 
 import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -36,8 +37,19 @@ REVIEW_TIMEOUT_SECONDS = 600.0
 _pending_reviews: dict[str, tuple[threading.Event, list[Any]]] = {}
 _pending_reviews_lock = threading.Lock()
 
+# A worker's two callbacks and the worker itself, as `_ndjson_stream` runs it.
+Progress = Callable[[str], None]
 
-def _make_review_callback(q: queue.Queue):
+
+class AwaitReview(Protocol):
+    def __call__(self, kind: str, data: dict[str, Any], timeout: float = ...) -> dict[str, Any] | None:
+        """Ask the operator about `data` and block until the answer, or None on timeout."""
+
+
+Worker = Callable[[Progress, AwaitReview], dict[str, Any]]
+
+
+def _make_review_callback(q: queue.Queue[str | None]) -> AwaitReview:
     """Build a `await_review(kind, data, timeout)` closure bound to this worker's output queue.
 
     Emits a review-request message over NDJSON, then blocks this worker thread
@@ -75,7 +87,7 @@ def _make_review_callback(q: queue.Queue):
 
 
 @router.post("/respond/{review_id}")
-async def respond_to_review(review_id: str, body: dict[str, Any]):
+async def respond_to_review(review_id: str, body: dict[str, Any]) -> dict[str, bool]:
     """Deliver an operator decision to a worker thread blocked on await_review."""
     with _pending_reviews_lock:
         entry = _pending_reviews.get(review_id)
@@ -87,7 +99,7 @@ async def respond_to_review(review_id: str, body: dict[str, Any]):
     return {"ok": True}
 
 
-def _ndjson_stream(worker_fn):
+def _ndjson_stream(worker_fn: Worker) -> Iterator[str]:
     """Run worker_fn in a thread, yielding NDJSON progress / review / result lines.
 
     worker_fn receives (progress, await_review) callbacks.
@@ -98,14 +110,14 @@ def _ndjson_stream(worker_fn):
     It must return the final result dict.
     Final line is {"type":"result","data":{...}} or {"type":"error",...}.
     """
-    q: queue.Queue = queue.Queue()
+    q: queue.Queue[str | None] = queue.Queue()
 
-    def progress(step: str):
+    def progress(step: str) -> None:
         q.put(json.dumps({"type": "progress", "step": step}) + "\n")
 
     await_review = _make_review_callback(q)
 
-    def run():
+    def run() -> None:
         try:
             result = worker_fn(progress, await_review)
             q.put(json.dumps({"type": "result", "data": result}) + "\n")
@@ -131,13 +143,13 @@ def _ndjson_stream(worker_fn):
 async def phase1(
     image: Annotated[UploadFile, File(...)],
     params: Annotated[str, Form(...)],
-):
+) -> StreamingResponse:
     """Phase 1: Preprocess image + detect water. Streams NDJSON progress."""
     cfg = json.loads(params)
     image_bytes = await image.read()
     img = decode_image(image_bytes)
 
-    def worker(progress, await_review):
+    def worker(progress: Progress, await_review: AwaitReview) -> dict[str, Any]:
         return run_phase1(
             image=img,
             tw=cfg["tw"],
@@ -160,7 +172,7 @@ async def phase2(
     countryMask: Annotated[UploadFile, File(...)],
     params: Annotated[str, Form(...)],
     knownNoiseMask: Annotated[UploadFile | None, File()] = None,
-):
+) -> StreamingResponse:
     """Phase 2: K-means clustering + SLIC superpixels. Streams NDJSON progress."""
     cfg = json.loads(params)
     filtered = decode_image(await filteredImage.read())
@@ -181,7 +193,7 @@ async def phase2(
     n_clusters = cfg.get("numClusters", 12)
     random_seed = int(cfg.get("randomSeed", 0))
 
-    def worker(progress, _await_review):
+    def worker(progress: Progress, _await_review: AwaitReview) -> dict[str, Any]:
         progress("K-means clustering in CIELAB...")
         pixel_labels, color_centroids = kmeans_cielab(
             filtered,
@@ -246,7 +258,7 @@ async def match(
     pixelLabels: Annotated[UploadFile, File(...)],
     icpMask: Annotated[UploadFile, File(...)],
     params: Annotated[UploadFile, File(...)],
-):
+) -> StreamingResponse:
     """Match GADM divisions to color clusters via RANSAC affine estimation. Streams NDJSON progress."""
     cfg = json.loads(await params.read())
 
@@ -258,7 +270,7 @@ async def match(
 
     country_mask = (pl < 255).astype(np.uint8)
 
-    def worker(progress, _await_review):
+    def worker(progress: Progress, _await_review: AwaitReview) -> dict[str, Any]:
         return run_matching(
             pixel_labels=pl,
             icp_mask=icp,
@@ -284,7 +296,7 @@ async def match(
 @router.post("/phase3")
 async def phase3(
     params: str = Form(...),
-):
+) -> dict[str, Any]:
     """Phase 3: Division assignment — stub.
     ICP alignment and division assignment are handled by Node.js
     using the existing JS code with the Python-computed pixelLabels."""

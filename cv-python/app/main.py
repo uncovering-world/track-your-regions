@@ -18,9 +18,10 @@ app.include_router(pipeline_router)
 
 
 @app.get("/health")
-async def health():
+async def health() -> dict[str, str]:
     return {
         "status": "ok",
         "opencv": cv2.__version__,
-        "scikit_image": skimage.__version__,
+        # Read by name: scikit-image's stubs leave `__version__` undeclared.
+        "scikit_image": getattr(skimage, "__version__", "unknown"),
     }
