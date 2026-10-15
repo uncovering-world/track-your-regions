@@ -163,6 +163,18 @@ check now asserts against (`docs/tech/data-assertions.md`, boundaries).
 - tile rendering avoids on-the-fly reprojection/simplification
 - shared borders stay consistent across neighboring divisions
 
+## Where GADM alone falls short
+
+The mirror world view makes GADM the substrate everything else attaches to (ADR-0018), so each of its limits surfaces later as a puzzling defect somewhere else — a place that belongs to no region, a country with a hole in its middle. These are limits of the data, not of the code: no care in placement changes them. Measured on 2026-10-16 on the dev database, which holds GADM 4.1:
+
+- **Missing coverage.** The Spire of Dublin (53.34972, −6.26028), on O'Connell Street in the centre of a capital, is contained by no division. Ireland (division 213033) is present and valid — 82 385 vertices across 1 011 polygons — and the point lies 1 035 m outside it; none of Ireland's children contains it either. The catalogue's place sits in no region of any world view. Nobody would predict that a capital's centre falls outside its country, which is what makes it the example to remember.
+- **Coastline resolution.** The Island of Gorée is 14.0 m outside Senegal (division 325140) and the Sea Organ in Zadar 33.4 m outside Croatia (division 54664); neither is placed in any region either. The misses are metres, not kilometres, so widening a global tolerance is no answer: it would have to be wide enough for the worst coast and would then start placing points across narrow borders on land — which is why #469 proposes a snap a curator confirms, place by place, rather than a tolerance.
+- **Land-border resolution.** Inland the same coarseness runs the other way: near an internal border a site is placed by GADM's long straight chords rather than by where the border actually runs (#1054).
+- **Boundaries GADM does not carry.** GADM draws one set of lines. Contested and de facto boundaries are a world view's concern, drawn as custom boundaries (`docs/tech/world-views.md` § 4. Custom Boundaries (Partial Regions) — Crimea is its example), never something the base layer answers.
+- **Age.** A coastline is as old as the release that shipped it, and land reclaimed after it is outside every division until a re-import (§ Operational Notes). GADM 4.1 already holds the reclaimed land the catalogue was checked on: Saadiyat Island under the Louvre Abu Dhabi (division 368802), the Palm Jumeirah and Marina Bay in Singapore are all inside their divisions.
+
+What follows is that the base layer is supplemented rather than replaced, at two scales. For a single place, a curator's manual assignment puts it in a region's list whatever its point says — today's route for a place just outside a boundary or offshore (`docs/tech/experiences.md` § Region assignment) — and #469 (a curator-confirmed snap for the places just outside, the Spire, Gorée and the Sea Organ among them) and #470 (places at sea) are the planned ones. For a whole region, the world view is the mechanism: a region can take its geometry from somewhere other than its division — a drawn boundary, or a member's `custom_geom` (`docs/tech/world-views.md` § 4). Fixing the shape of a coast is the last resort, not the first, for a miss of 14 m. This section exists so the next person meets these limits as documentation rather than as a bug report.
+
 ## Operational Notes
 
 - First-time setup uses `db/init/01-schema.sql` + `db/init-db.py`
