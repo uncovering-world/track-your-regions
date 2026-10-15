@@ -49,11 +49,13 @@ export async function recordChangesetOrMark(
  * - this function's, some items errored. It goes to the log row and stops
  *   there; the run itself still reached `complete`, which is why the
  *   orchestrator maps everything that is not `failed` onto it.
- * - this function's again, the source's departures are unrecorded: the
- *   collector saw too little of the contents it holds to say what left
- *   (`withdrawalSkippedReason`, ADR-0044), with no item having errored at all.
- *   The "Withdrawals skipped" line on the run card is what tells this one from
- *   the other two at the chip.
+ * - this function's again, a guard left the catalogue as it was with no item
+ *   having errored at all: the collector saw too little of the contents it
+ *   holds to say what left (the withdrawal reason, ADR-0044), or the admission
+ *   sweep refused a run that admitted nothing or under half what the last one
+ *   did, so the places the kind's rule would delist stayed admitted (ADR-0024,
+ *   #751). The "Withdrawals skipped" or "Admission sweep skipped" line on the
+ *   run card is what tells this one from the other two at the chip.
  * - placement's — the run finished but placing what it moved did not. That one
  *   *is* a progress state, assigned later by `terminalStatus`.
  *
@@ -63,13 +65,17 @@ export async function recordChangesetOrMark(
  */
 export function computeFinalStatus(
   progress: SyncProgress,
-  withdrawalSkippedReason: string | null,
+  skipped: Pick<GuardSkips, 'withdrawal' | 'admissionSweep'>,
 ): 'success' | 'partial' | 'failed' {
   // A run that saw too little to say what left is not a success, whatever its
   // items did: the catalogue is correct, and the source's departures are
   // unrecorded (ADR-0044). Run 42 is the case — 291 works where the run before
-  // had 1906, every item unchanged, `success`.
-  if (progress.errors === 0) return withdrawalSkippedReason === null ? 'success' : 'partial';
+  // had 1906, every item unchanged, `success`. A run whose sweep was refused
+  // is the same: the kind's rule was not applied to what it no longer admits,
+  // and the collapse that refused it is what a person has to look at.
+  if (progress.errors === 0) {
+    return skipped.withdrawal === null && skipped.admissionSweep === null ? 'success' : 'partial';
+  }
   // A run that touched nothing at all failed; one that found everything already
   // current did not, even if a straggler errored.
   const seen = progress.created + progress.updated + progress.unchanged;
@@ -116,18 +122,18 @@ export function runCounters(
 /**
  * The line the admin panel shows over a finished run's bar.
  *
- * The withdrawal reason rides the sentence too: on a run with no errors it is
- * the whole of why the verdict says partial, and the panel shows this line
- * before it shows the log row.
+ * The withdrawal and sweep reasons ride the sentence too: on a run with no
+ * errors they are the whole of why the verdict says partial, and the panel
+ * shows this line before it shows the log row.
  */
 export function completionMessage(
   progress: SyncProgress,
   finalStatus: 'success' | 'partial' | 'failed',
-  withdrawalSkippedReason: string | null,
+  guards: Pick<GuardSkips, 'withdrawal' | 'admissionSweep'>,
 ): string {
   const verdict = finalStatus === 'success' ? 'Complete' : `Complete (${finalStatus})`;
-  const skipped = withdrawalSkippedReason === null
-    ? '' : `; withdrew nothing — ${withdrawalSkippedReason}`;
+  const skipped = (guards.withdrawal === null ? '' : `; withdrew nothing — ${guards.withdrawal}`)
+    + (guards.admissionSweep === null ? '' : `; delisted nothing — ${guards.admissionSweep}`);
   return `${verdict}: ${progress.created} created, ${progress.updated} updated, `
     + `${progress.unchanged} unchanged (${progress.held} held), ${progress.missing} missing, `
     + `${progress.errors} errors${skipped}`;
