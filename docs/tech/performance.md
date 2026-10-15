@@ -336,11 +336,14 @@ switched on:
   either page (549–563 kB of 782 kB), the admin, editor, curation and review
   code the visitor never ran; split out (#643), it finds 305 kB of 562 kB on
   the map view and 327 kB on Discover, most of it inside maplibre-gl.
-- The two fonts (Syne, Figtree; 54.8 kB) come from Google Fonts, the only
-  origin outside the repository's control that the shell touches. Lighthouse's
-  `third-party` resource row counts them together with the stack's own backend
-  and tile server, which are different origins too — which is why no budget
-  is set on that row: it would be gating the stack's shape, not a dependency.
+- The two fonts the first paint draws (Syne, Figtree; 54.8 kB of WOFF2) came
+  from Google Fonts, the only origin outside the repository's control that the
+  shell touched; since #653 they are served from the page's own origin
+  (`frontend/public/fonts/`, `docs/tech/shared-frontend-patterns.md` § Fonts)
+  and preloaded. Lighthouse's `third-party` resource row still counts the
+  stack's own backend and tile server, which are different origins — which is
+  why no budget is set on that row: it would be gating the stack's shape, not
+  a dependency.
 - A CORS **preflight** goes before every backend request that is not a
   simple one: the frontend and the backend are different origins in every
   stack this repository runs, and a request with a body names
@@ -743,7 +746,8 @@ unchanged, since only the overview tier was cut. They belong in the next full ru
 | map worker chunk, gzip (`size-limit`) | error | 142 kB | 135.2 kB baseline + ~5 % — the one payload Lighthouse's resource summary does not see |
 | stylesheet, gzip (`size-limit`) | error | 11.5 kB | 10.6 kB baseline + ~9 % |
 | `resource-summary:script:size` | error | 590 000 B | 562 066 B transferred — every script the page loads at startup, whatever its chunks are called (+ ~5 %; was 925 000 B until #643) |
-| `resource-summary:stylesheet:size` | error | 13 000 B | 12 377 B (the app's CSS plus the Google Fonts stylesheet) |
+| `resource-summary:stylesheet:size` | error | 12 100 B | 11 503 B, the app's CSS with the `@font-face` rules in it (#653; 13 000 B over 12 377 B before, when the Google Fonts stylesheet was a second one) |
+| `resource-summary:font:size` | error | 58 000 B | 55 300 B, the two Latin faces the first paint draws (Figtree and Syne, served first-party since #653). No `third-party` line beside it: on the fixture that row is 34 / 35 requests, every one the stack's own backend and tile server or the OpenStreetMap basemap, so a budget there would gate the stack's shape |
 | `resource-summary:total:size` | error | 805 000 B | 765 698 B on Discover, the heavier of the two (was 1 140 000 B until #643) |
 | `resource-summary:total:count` | error | 54 | 42 / 43 requests on the map view / Discover, measured once an anonymous read stopped paying a preflight (#1542; 47 / 48 under a budget of 60 before it, 38 / 43 before #643), with the same quarter of headroom — an N+1 shows up here as tens |
 | `largest-contentful-paint` | error | 2 000 ms | 1.33–1.49 s on the CI runner (1.38 / 1.39 s locally); network-simulated, so the least noisy timing |
@@ -753,7 +757,10 @@ unchanged, since only the overview tier was cut. They belong in the next full ru
 | `categories:performance` | warn | 0.8 | informational — the composite score moves ±5 points on identical hardware and is not a gate |
 
 The local run has its own file, `frontend/perf/lighthouse-budgets.local.json`,
-with the same script and stylesheet lines, a total-size line at 965 000 B
+with the same script and stylesheet lines, a font line at 85 000 B — the
+real catalogue's names reach past Latin-1 (Łódź, Plzeň), which fetches each
+family's Latin Extended file beside the Latin one, 80.3 kB for the two — a
+total-size line at 965 000 B
 (the map root's 916.9 kB — 562 kB of script at startup, then the favicon of
 #648 and the map's own tiles — plus the usual 5 %) and a request count of
 60 as errors, and every timing at `warn` set wide for a laptop (LCP 2.5 s,
