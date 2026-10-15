@@ -342,17 +342,21 @@ switched on:
   `third-party` resource row counts them together with the stack's own backend
   and tile server, which are different origins too — which is why no budget
   is set on that row: it would be gating the stack's shape, not a dependency.
-- Every backend read is preceded by a CORS **preflight**: the frontend and
-  the backend are different origins in every stack this repository runs,
-  and every request the web sends carries `Content-Type: application/json`
-  (a bodiless GET included), which is not CORS-safelisted. The backend
+- A CORS **preflight** goes before every backend request that is not a
+  simple one: the frontend and the backend are different origins in every
+  stack this repository runs, and a request with a body names
+  `Content-Type: application/json` and a signed-in one carries
+  `Authorization`, neither of them CORS-safelisted. An anonymous read sends
+  neither (#1542), so on the fixture's cold load the one preflight left is
+  the session refresh's `POST`. The backend
   answers a preflight with `Access-Control-Max-Age: 7200`
   (`PREFLIGHT_MAX_AGE_SECONDS` in `backend/src/middleware/cors.ts`; Chrome
   caps the cache at 7 200 s, Firefox at 86 400 s), so a session pays it once
   per URL rather than once per request — but the browser caches it per URL,
   and a cold load like the lane's asks each URL for the first time: on the
   lane's run of 2026-10-15 the fixture's map view and Discover each made 5
-  preflights, the same with the cache as without it (#652). A same-origin
+  preflights, the same with the cache as without it (#652), and 1 each once
+  anonymous reads stopped naming a content type (#1542). A same-origin
   deployment (#585, the API behind a reverse proxy on the page's own origin)
   removes preflights altogether; the dev and test stacks keep paying the
   cached one.
@@ -742,7 +746,7 @@ unchanged, since only the overview tier was cut. They belong in the next full ru
 | `resource-summary:script:size` | error | 590 000 B | 562 066 B transferred — every script the page loads at startup, whatever its chunks are called (+ ~5 %; was 925 000 B until #643) |
 | `resource-summary:stylesheet:size` | error | 13 000 B | 12 377 B (the app's CSS plus the Google Fonts stylesheet) |
 | `resource-summary:total:size` | error | 805 000 B | 765 698 B on Discover, the heavier of the two (was 1 140 000 B until #643) |
-| `resource-summary:total:count` | error | 60 | 47 / 48 requests, preflights and the chunks the split made included (38 / 43 before #643) — an N+1 shows up here as tens |
+| `resource-summary:total:count` | error | 54 | 42 / 43 requests on the map view / Discover, measured once an anonymous read stopped paying a preflight (#1542; 47 / 48 under a budget of 60 before it, 38 / 43 before #643), with the same quarter of headroom — an N+1 shows up here as tens |
 | `largest-contentful-paint` | error | 2 000 ms | 1.33–1.49 s on the CI runner (1.38 / 1.39 s locally); network-simulated, so the least noisy timing |
 | `total-blocking-time` | error | 300 ms | 0–128 ms on the CI runner (229 ms locally, quiet); the noisiest number the lane has, hence the widest headroom |
 | `cumulative-layout-shift` | error | 0.02 | 0.001–0.006 / 0.000 on the CI runner |

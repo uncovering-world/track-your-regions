@@ -39,9 +39,9 @@ describe('apiCors on the wire', () => {
     });
   }
 
-  // Every web request carries Content-Type: application/json, and a signed-in
-  // one Authorization too: neither is CORS-safelisted, which is what makes the
-  // browser ask before sending them.
+  // A request with a JSON body names Content-Type: application/json and a
+  // signed-in one carries Authorization: neither is CORS-safelisted, which is
+  // what makes the browser ask before sending them.
   const preflight = {
     origin: WEB,
     'access-control-request-method': 'GET',
