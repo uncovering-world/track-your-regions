@@ -12,6 +12,7 @@
 
 import type { PoolClient } from 'pg';
 import { pool } from '../../../db/index.js';
+import { arrayItemOf } from './compactEntity.js';
 
 /** The tables a build replaces, the entities first. */
 export const SUBSET_TABLES = [
@@ -72,19 +73,20 @@ export async function dropNextTables(): Promise<void> {
   for (const table of SUBSET_TABLES) await pool.query(`DROP TABLE IF EXISTS ${next(table)}`);
 }
 
-export interface EntityRow {
-  id: string;
-  sitelinkCount: number;
-  /** The compact entity, already JSON. */
-  entity: string;
-}
+/**
+ * A kept entity to insert: its compact JSON, or that JSON already quoted as an
+ * element of a Postgres array literal (`arrayItemOf`), as a worker thread
+ * makes it (#1479) — so the thread that inserts does not escape every quote
+ * of every entity, and the row crosses threads once, not twice.
+ */
+export type EntityRow = { id: string; sitelinkCount: number } & ({ entity: string } | { arrayItem: string });
 
 export async function insertEntities(rows: EntityRow[]): Promise<void> {
   if (rows.length === 0) return;
   await pool.query(
     `INSERT INTO ${next('wikidata_entities')} (id, sitelink_count, entity)
      SELECT * FROM unnest($1::text[], $2::int[], $3::jsonb[])`,
-    [rows.map(r => r.id), rows.map(r => r.sitelinkCount), rows.map(r => r.entity)],
+    [rows.map(r => r.id), rows.map(r => r.sitelinkCount), `{${rows.map(r => ('arrayItem' in r ? r.arrayItem : arrayItemOf(r.entity))).join(',')}}`],
   );
 }
 

@@ -7,7 +7,7 @@
  * is `scopeFactsOf` (`scope.ts`).
  */
 
-import { compactEntity, type DumpEntity, storableJson } from './compactEntity.js';
+import { arrayItemOf, compactEntity, type DumpEntity, storableJson } from './compactEntity.js';
 import { entityJson, entityOf, forEachMainItemValue } from './entityLine.js';
 import { type IdSet, Numbers } from './idSets.js';
 import { termsOf } from './labelsRing.js';
@@ -44,7 +44,7 @@ export function writeFactsOf(lines: readonly string[], kept: IdSet, properties: 
     rows.push({
       id: parsed.id,
       sitelinkCount: Object.keys(parsed.sitelinks ?? {}).length,
-      entity: storableJson(JSON.stringify(compactEntity(parsed))),
+      arrayItem: arrayItemOf(storableJson(JSON.stringify(compactEntity(parsed)))),
     });
   }
   return { lines: lines.length, rows, spool: spool.join(''), spooled: spool.length, ring: ring.take() };

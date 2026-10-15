@@ -89,6 +89,11 @@ export function storableJson(json: string): string {
   return JSON.stringify(storableValue(JSON.parse(json)));
 }
 
+/** A string as an element of a Postgres array literal: in double quotes, its backslashes and quotes escaped. */
+export function arrayItemOf(text: string): string {
+  return `"${text.replace(/[\\"]/g, '\\$&')}"`;
+}
+
 /** The languages the subset keeps labels and descriptions in; widening it needs no other change. */
 export const SUBSET_LANGUAGES = ['en', 'mul', 'en-gb', 'de', 'fr', 'es', 'it', 'nl'] as const;
 
