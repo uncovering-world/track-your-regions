@@ -145,9 +145,6 @@ export function kindColorExpression(): ExpressionSpecification {
 // Visited / Checked Status Colors
 // =============================================================================
 
-/** Green used for visited checkboxes and check-circle icons */
-export const VISITED_GREEN = '#22c55e';
-
 /** Amber used for partially visited (indeterminate) checkboxes */
 export const PARTIAL_AMBER = '#F59E0B';
 
