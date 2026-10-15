@@ -96,11 +96,13 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   // so the write-path rule does not hold every stored row. A refused value is not
   // linked, and the card names no link for it.
   const wikipediaHref = safeHref(item.wikipedia_url);
-  const sourcePageHref = safeHref(item.website_url);
+  // UNESCO's page about a World Heritage site, apart from the site's own (#1538).
+  const unescoHref = safeHref(item.unesco_url);
+  const officialSiteHref = safeHref(item.website_url);
 
   const madeOf = madeOfLabel(item.offered_locations, item.counted_works_total ?? undefined);
 
-  if (!thumbnail && !hasPoint && !madeOf && regions.length === 0 && !wikipediaHref && !sourcePageHref) return null;
+  if (!thumbnail && !hasPoint && !madeOf && regions.length === 0 && !wikipediaHref && !officialSiteHref && !unescoHref) return null;
 
   return (
     <Stack direction="row" spacing={1.5} sx={{ mb: 1.5 }} alignItems="flex-start">
@@ -173,9 +175,9 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
             {coordinateLabel(item.latitude as number, item.longitude as number)}
           </Button>
         )}
-        {(wikipediaHref || sourcePageHref) && (
-          // The article first: it is what a curator reads to judge the place, where
-          // the source's page is where the data came from. `rel` on every outbound
+        {(wikipediaHref || officialSiteHref || unescoHref) && (
+          // The article first: it is what a curator reads to judge the place; then
+          // the place's own site and, for a World Heritage site, UNESCO's page. `rel` on every outbound
           // link: these open a source's own site, and `noopener` is what keeps that
           // page from reaching back into this one.
           <Stack direction="row" spacing={1} sx={{ mt: 0.25 }}>
@@ -184,9 +186,15 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
                 Wikipedia
               </Link>
             )}
-            {sourcePageHref && (
-              <Link href={sourcePageHref} target="_blank" rel="noopener noreferrer" variant="caption" underline="hover">
-                source page
+            {/* Some items give UNESCO's page as their official website: one link, not two. */}
+            {officialSiteHref && officialSiteHref !== unescoHref && (
+              <Link href={officialSiteHref} target="_blank" rel="noopener noreferrer" variant="caption" underline="hover">
+                official site
+              </Link>
+            )}
+            {unescoHref && (
+              <Link href={unescoHref} target="_blank" rel="noopener noreferrer" variant="caption" underline="hover">
+                UNESCO page
               </Link>
             )}
           </Stack>
