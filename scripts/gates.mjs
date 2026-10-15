@@ -34,7 +34,7 @@ import { READ_EXTENSIONS } from './lint-line-pointers.mjs';
  * for the `runners` pattern.
  */
 const TOOL_SCRIPTS = [
-  'affected-specs.mjs', 'board.sh', 'catalogue-coverage.sh', 'ci-graph-measure.mjs', 'db-cli.sh', 'db-migrate.sh',
+  'affected-specs.mjs', 'board.sh', 'catalogue-coverage.sh', 'check-shrunk-files.mjs', 'ci-graph-measure.mjs', 'db-cli.sh', 'db-migrate.sh',
   'db-types.sh', 'gate-cache.mjs', 'gates.mjs', 'lib/db-env.sh', 'lint-line-pointers.mjs',
   'match-snapshot.sh', 'openapi-breaking.mjs', 'require-node-tools.sh', 'require-py-tools.sh',
   'require-python-312.sh', 'review-surface.mjs', 'scan-image.sh', 'scan-secrets.sh', 'setup.sh',
@@ -260,6 +260,7 @@ const RULE_PACKS = 'Semgrep fetches its rule packs from the registry on every ru
 const BASE_DOCUMENT = "it compares with the base's OpenAPI document, which is not in this tree";
 const VULNERABILITY_DATABASE = 'Trivy reads a vulnerability database and a base image that move under the same tree';
 const LINK_TARGETS = 'lychee resolves links to files of every type, and its input class holds the Markdown only';
+const BASE_SIZES = "it compares each file with its size at the base and reads the branch's commit messages, neither of which is in this tree";
 
 /**
  * `local` on a stack gate lists what of it is owed by hand as well as by CI
@@ -338,6 +339,10 @@ export const GATES = [
   // root install CI's check job runs unconditionally — so a prose-only change
   // still installs no package.
   { id: 'lint:pointers', tier: 'check', inputs: ['prose'], command: ['node', 'scripts/lint-line-pointers.mjs'], job: 'check', setup: 'docs' },
+  // A tracked file the change leaves empty or below a quarter of its bytes,
+  // unless a commit names it (#537): no other gate reads what a document holds.
+  // Every class, since a truncating write can land on any file.
+  { id: 'lint:shrunk', tier: 'check', inputs: INPUTS.map((input) => input.id), command: ['node', 'scripts/check-shrunk-files.mjs'], job: 'check', setup: 'docs', uncached: BASE_SIZES },
   { id: 'check:py', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'check:py'], job: 'check', setup: 'python', config: ['scripts/require-py-tools.sh', 'scripts/require-python-312.sh'] },
   { id: 'security:py:bandit', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'security:py:bandit'], job: 'check', setup: 'python', config: ['scripts/require-py-tools.sh', 'scripts/require-python-312.sh'] },
   { id: 'security:py:deps', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'security:py:deps'], job: 'check', setup: 'python', uncached: ADVISORIES, config: ['scripts/require-py-tools.sh', 'scripts/require-python-312.sh'] },

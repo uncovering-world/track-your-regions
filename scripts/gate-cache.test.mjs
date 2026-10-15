@@ -286,7 +286,7 @@ describe('when a run reuses nothing', () => {
       expect(g.uncached, g.id).toMatch(/\w{3,}.* /);
     }
     expect(GATES.filter((g) => g.uncached).map((g) => g.id)).toEqual([
-      'security:deps', 'lint:links', 'api:breaking', 'security:py:deps',
+      'security:deps', 'lint:links', 'api:breaking', 'lint:shrunk', 'security:py:deps',
       'security:scan', 'security:py:semgrep', 'security:image',
     ]);
   });
