@@ -275,6 +275,25 @@ async function writeCached(
 }
 
 /**
+ * How long an answer is kept past its expiry before a run of its source drops
+ * it (#627). No read uses an expired row, so the week is for a person: what a
+ * failed run had cached stays on the admin panel, counted as expired, long
+ * enough to be looked at, and the table stops growing by every answer any
+ * source ever gave.
+ */
+export const EXPIRED_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
+/** Drop one source's answers that expired more than `EXPIRED_GRACE_MS` ago. */
+export async function pruneExpired(sourceId: number): Promise<number> {
+  const result = await pool.query(
+    `DELETE FROM wikidata_query_cache
+      WHERE source_id = $1 AND expires_at < NOW() - ($2::bigint * INTERVAL '1 millisecond')`,
+    [sourceId, EXPIRED_GRACE_MS],
+  );
+  return result.rowCount ?? 0;
+}
+
+/**
  * Wrap a SPARQL door so its answers are kept and reused.
  *
  * The descriptor comes from the call site rather than being guessed from the
@@ -285,6 +304,12 @@ async function writeCached(
  * A query with no descriptor is not cached at all. That is the honest default
  * for a one-off question, and it keeps every existing caller behaving exactly as
  * it did.
+ *
+ * The first question the wrapper keeps or reads back also prunes the source's
+ * long-expired answers (`pruneExpired`): once per wrapper, so once for each
+ * cached door a run builds (Archaeology builds two per pass, and the second
+ * prune finds nothing), and only for a run that uses the cache. A prune that
+ * fails is logged and the run goes on, like a write that fails.
  */
 export function withCache(
   sparql: (query: string) => Promise<SparqlBinding[]>,
@@ -295,8 +320,16 @@ export function withCache(
     onHit?: (descriptor: CacheDescriptor, rows: number) => void;
   },
 ): (query: string, descriptor?: CacheDescriptor) => Promise<SparqlBinding[]> {
+  let pruned = false;
   return async (query, descriptor) => {
     if (!descriptor || !options.enabled) return sparql(query);
+
+    if (!pruned) {
+      pruned = true;
+      await pruneExpired(options.sourceId).catch((error: unknown) => {
+        console.warn('[Wikidata Cache] Prune failed, continuing:', (error as Error).message);
+      });
+    }
 
     const cached = await readCached(options.sourceId, query);
     if (cached) {
