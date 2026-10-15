@@ -17,22 +17,42 @@ import { at, dumpLine, item, unknown } from './dumpLineFixture.js';
 
 let lines: string[] = [];
 let failOnPass: number | null = null;
+/** On the failing pass, after how many pieces the read is cut, and with what. */
+let cut: { afterPieces: number; error: Error } | null = null;
 let pass = 0;
+/** The pieces handed to a chunk consumer on the last pass. */
+let handed = 0;
+const LINES_PER_PIECE = 3;
 
-vi.mock('../read.js', () => ({
+vi.mock('../read.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../read.js')>()),
   readDump: async (_file: DumpFile, consumer: DumpConsumer) => {
     pass += 1;
+    handed = 0;
+    const all = ['[', ...lines, ']'];
     try {
-      // As the read does: a consumer that splits lines itself gets the text in a piece.
-      if (consumer.chunk) await consumer.chunk(new TextEncoder().encode(`${['[', ...lines, ']'].join('\n')}\n`), 0);
-      else for (const line of ['[', ...lines, ']']) await consumer.line(line);
-      if (failOnPass === pass) throw new Error('the stream was cut');
+      // As the read does: a consumer that splits lines itself gets numbered
+      // pieces of the text, the same pieces on every read of the file.
+      if (consumer.chunk) {
+        for (let at = 0; at < all.length; at += LINES_PER_PIECE) {
+          if (failOnPass === pass && cut && handed === cut.afterPieces) {
+            // Let the pieces already handed be written before the cut lands.
+            await new Promise(resolve => setTimeout(resolve, 500));
+            throw cut.error;
+          }
+          await consumer.chunk(new TextEncoder().encode(`${all.slice(at, at + LINES_PER_PIECE).join('\n')}\n`), at / LINES_PER_PIECE);
+          handed += 1;
+        }
+      } else {
+        for (const line of all) await consumer.line(line);
+      }
+      if (failOnPass === pass && !cut) throw new Error('the stream was cut');
       await consumer.commit();
     } catch (error) {
       await consumer.abort();
       throw error;
     }
-    return { bytes: 1, lines: lines.length + 2, checksumActual: null };
+    return { bytes: 1, lines: all.length, checksumActual: null };
   },
 }));
 
@@ -101,10 +121,15 @@ async function newBuild(): Promise<number> {
   return result.rows[0].id;
 }
 
-async function build(): Promise<void> {
+async function build(notes: string[] = []): Promise<void> {
   pass = 0;
-  await buildSubset(file, { buildId: await newBuild(), signal: new AbortController().signal, onPhase: () => undefined });
+  await buildSubset(file, {
+    buildId: await newBuild(), signal: new AbortController().signal, onPhase: () => undefined, onNote: note => notes.push(note),
+  });
 }
+
+const nextTables = async () =>
+  (await pool.query<{ tablename: string }>("SELECT tablename FROM pg_tables WHERE tablename LIKE 'wikidata_%_next' ORDER BY tablename")).rows.map(r => r.tablename);
 
 const ids = async (table: string) => (await pool.query<{ id: string }>(`SELECT DISTINCT id FROM ${table}`)).rows.map(r => r.id).sort();
 
@@ -219,14 +244,85 @@ describe('a build of the local Wikidata subset (#1434)', () => {
     expect(rows).toEqual([]);
   });
 
-  it('leaves the subset in place when a build fails, with no half-built copy behind', async () => {
+  it('leaves the subset in place when a build fails in pass 2, and keeps what the pass wrote (#1493)', async () => {
     lines = DUMP;
     failOnPass = 2;
-    await expect(build()).rejects.toThrow('the stream was cut');
+    const notes: string[] = [];
+    await expect(build(notes)).rejects.toThrow('the stream was cut');
     failOnPass = null;
     expect(await ids('wikidata_entities')).not.toContain(`Q${CAPITAL}`);
-    const { rows } = await pool.query("SELECT tablename FROM pg_tables WHERE tablename LIKE 'wikidata_%_next'");
-    expect(rows).toEqual([]);
+    expect(await nextTables()).toContain('wikidata_build_pieces_next');
+    expect(notes).toContain('what pass 2 wrote is kept: the next build of this file picks up after it');
+  });
+
+  it('picks up after the pieces an earlier build wrote, and ends with what an uncut build makes (#1493)', async () => {
+    // The previous case left a build cut after its whole read; cut this one after two pieces.
+    lines = DUMP;
+    await pool.query("DROP TABLE IF EXISTS wikidata_build_pieces_next, wikidata_build_resume_next");
+    failOnPass = 2;
+    cut = { afterPieces: 2, error: new Error('the worker was stopped') };
+    await expect(build()).rejects.toThrow('the worker was stopped');
+    failOnPass = null;
+    cut = null;
+    const { rows: [{ count }] } = await pool.query<{ count: string }>('SELECT count(*) FROM wikidata_build_pieces_next');
+    expect(Number(count)).toBeGreaterThan(0);
+    expect(Number(count)).toBeLessThanOrEqual(2);
+
+    const notes: string[] = [];
+    await build(notes);
+    expect(notes.some(note => note.startsWith(`picked up after ${count} pieces`))).toBe(true);
+    expect(await nextTables()).toEqual([]);
+    expect(await ids('wikidata_entities')).toContain(`Q${CAPITAL}`);
+    // Each entity labelled once, though a piece written again spooled its terms twice.
+    const { rows } = await pool.query(`SELECT language, label FROM wikidata_labels WHERE id = 'Q${LEONARDO}' ORDER BY language`);
+    expect(rows).toEqual([{ language: 'en', label: 'Leonardo da Vinci' }, { language: 'fr', label: 'Léonard de Vinci' }]);
+    const { rows: [latest] } = await pool.query('SELECT counts FROM wikidata_subset_builds ORDER BY swapped_at DESC LIMIT 1');
+    const { rows: [first] } = await pool.query('SELECT counts FROM wikidata_subset_builds ORDER BY swapped_at LIMIT 1');
+    expect(latest.counts).toEqual(first.counts);
+  });
+
+  it('starts afresh after copies made for another file, scope or way of writing a line (#1493)', async () => {
+    lines = DUMP;
+    failOnPass = 2;
+    cut = { afterPieces: 2, error: new Error('the worker was stopped') };
+    await expect(build()).rejects.toThrow('the worker was stopped');
+    failOnPass = null;
+    cut = null;
+    // As a raised WRITE_VERSION, another checksum or another scope would read.
+    await pool.query("UPDATE wikidata_build_resume_next SET key = 'written by another version'");
+    const notes: string[] = [];
+    await build(notes);
+    expect(notes.some(note => note.startsWith('picked up after'))).toBe(false);
+    expect(await nextTables()).toEqual([]);
+    expect(await ids('wikidata_entities')).toContain(`Q${CAPITAL}`);
+  });
+
+  it('starts afresh when the copies are there and their spool is not (#1493)', async () => {
+    lines = DUMP;
+    failOnPass = 2;
+    // Past the third piece, whose Leonardo is spooled: the first two hold properties only.
+    cut = { afterPieces: 4, error: new Error('the worker was stopped') };
+    await expect(build()).rejects.toThrow('the worker was stopped');
+    failOnPass = null;
+    cut = null;
+    // As a recreated container loses the spool in its temporary directory.
+    rmSync(join(tmpdir(), `${file.fileName}.terms.gz`), { force: true });
+    const notes: string[] = [];
+    await build(notes);
+    expect(notes).toContain('an earlier build\'s copies were found without its spool: starting afresh');
+    expect(await nextTables()).toEqual([]);
+    const { rows } = await pool.query(`SELECT language, label FROM wikidata_labels WHERE id = 'Q${LEONARDO}' ORDER BY language`);
+    expect(rows).toEqual([{ language: 'en', label: 'Leonardo da Vinci' }, { language: 'fr', label: 'Léonard de Vinci' }]);
+  });
+
+  it('keeps nothing of a read the file did not pass, so no build picks up after it (#1493)', async () => {
+    lines = DUMP;
+    failOnPass = 2;
+    cut = { afterPieces: 2, error: Object.assign(new Error('incorrect header check'), { code: 'Z_DATA_ERROR' }) };
+    await expect(build()).rejects.toThrow('incorrect header check');
+    failOnPass = null;
+    cut = null;
+    expect(await nextTables()).toEqual([]);
   });
 
   it('reads the first pass back from beside a local copy instead of scanning the dump again (#1468)', async () => {

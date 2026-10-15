@@ -50,6 +50,13 @@ describe('room for the subset build to write (#1466)', () => {
     await expect(assertRoomToWrite('/app/data/dumps', counts, '/app/db-disk')).rejects.toThrow('about 100 GB to the disk of /app/data/dumps and /app/db-disk and keep 20 GB free, but it has 50 GB');
   });
 
+  it('asks only for what is left to write when a build picks up after an earlier one (#1493)', async () => {
+    disks.set('/app/data/dumps', { device: 1, blocks: 100, bsize: 4096, free: 31 * GB });
+    disks.set('/app/db-disk', { device: 2, blocks: 200, bsize: 4096, free: 40 * GB });
+    await expect(assertRoomToWrite('/app/data/dumps', counts, '/app/db-disk')).rejects.toThrow(/about 90 GB/);
+    await expect(assertRoomToWrite('/app/data/dumps', counts, '/app/db-disk', { tables: 80 * GB, spool: 8 * GB })).resolves.toEqual([]);
+  });
+
   it('says it could not check the database\'s disk when no path on it is named', async () => {
     disks.set('/app/data/dumps', { device: 1, blocks: 100, bsize: 4096, free: 500 * GB });
     // Empty, not undefined: undefined takes the default, DB_DISK_DIR, which compose sets.

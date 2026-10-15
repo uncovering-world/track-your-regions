@@ -27,7 +27,7 @@ function passOf(pass: PassInit): (lines: string[]) => { answer: unknown; transfe
   const properties = IdSet.overShared(pass.properties);
   return lines => {
     const facts = writeFactsOf(lines, kept, properties);
-    return { answer: facts, transfer: [facts.ring.buffer as ArrayBuffer] };
+    return { answer: facts, transfer: [facts.ring.buffer as ArrayBuffer, facts.spool.buffer as ArrayBuffer] };
   };
 }
 

@@ -3,10 +3,13 @@
  * written in its compact form, every other entity's terms spooled for the
  * labels ring, and the items the kept ones name gathered as the ring.
  *
- * The lines go to worker threads in batches (`linePool.ts`, #1479), which
- * parse and compact them (`writeFactsOf`); this thread only merges what they
- * answer and writes it. How many batches are in flight is bounded, waiting
- * on the database included, so a slow insert slows the read rather than
+ * The pieces of the dump go to worker threads (`linePool.ts`, #1479), which
+ * parse and compact them (`writeFactsOf`); this thread only writes what they
+ * answer. A piece is written whole or not at all (#1493): its terms are
+ * appended to the spool, then its rows and its record go in one transaction
+ * (`commitPiece`), so a build that picks up after a cut skips exactly the
+ * pieces it finds recorded. How many pieces are in flight is bounded, the
+ * database's share included, so a slow insert slows the read rather than
  * filling memory.
  */
 
@@ -15,15 +18,14 @@ import { IdSet } from './idSets.js';
 import type { TermsSpool } from './labelsRing.js';
 import { LinePool, workerCount } from './linePool.js';
 import { type WriteFacts, writeFactsOf } from './lineWork.js';
-import { insertRefusing, type Refusals } from './refusals.js';
+import type { Refusals } from './refusals.js';
 import type { Scope } from './scope.js';
-import { type EntityRow, insertEntities } from './subsetTables.js';
+import { commitPiece, type EntityRow, type PieceRecord, PIECES_IN_FLIGHT, type ResumeState } from './subsetTables.js';
 
-/** Rows per insert: a few megabytes of JSON. */
-const BATCH = 2000;
-/** Inserts in flight at once while the pass reads on: six measured 8 % faster than three on the dump's first 4 GB (#1479). */
-const IN_FLIGHT = 6;
-/** Lines a worker is handed at once, or fewer when they run long: the dump's first items run to megabytes each. */
+/** How a piece's rows and record are written: `commitPiece`, or a stand-in for a measurement or a spec. */
+export type WritePiece = (record: PieceRecord, rows: EntityRow[], refusals: Pick<Refusals, 'refuse'>) => Promise<number>;
+
+/** Lines a worker is handed at once on the line path, or fewer when they run long. */
 const LINES_PER_TASK = 1000;
 const CHARS_PER_TASK = 16_000_000;
 
@@ -36,23 +38,29 @@ export class SubsetWriter implements DumpConsumer {
   readonly ring = new IdSet();
   readonly counts: WriterCounts = { written: 0, spooled: 0 };
   private readonly pool: LinePool<WriteFacts>;
-  /** Batches handed to a worker and not yet merged, with what merging them waits on. */
+  /** Pieces handed to a worker and not yet written. */
   private readonly tasks = new Set<Promise<void>>();
   private readonly maxTasks: number;
+  private readonly done: ResumeState['pieces'];
   private lines: string[] = [];
   private chars = 0;
   private linesTaken = 0;
-  private batch: EntityRow[] = [];
-  private readonly inFlight = new Set<Promise<void>>();
+  /** The next piece's number on the line path, where the read numbers none. */
+  private nextPiece = 0;
   private failure: unknown = null;
+  /** Piece transactions open now, held under `PIECES_IN_FLIGHT` whatever the worker count. */
+  private committing = 0;
+  private readonly waitingToCommit: Array<() => void> = [];
 
   constructor(
     scope: Scope,
     private readonly spool: TermsSpool,
     /** The build's refused rows, entities and labels alike, under one budget. */
     private readonly refusals: Refusals,
-    /** Where the rows go; the table's insert, but a measurement can stand in for it. */
-    private readonly insert: (rows: EntityRow[]) => Promise<void> = insertEntities,
+    /** What an earlier build of the same file and scope wrote, to skip (#1493). */
+    resume: ResumeState | null = null,
+    /** Where a piece is written; the table's transaction, but a measurement can stand in for it. */
+    private readonly writePiece: WritePiece = commitPiece,
     workers = workerCount(),
   ) {
     const shared = workers > 0
@@ -60,6 +68,13 @@ export class SubsetWriter implements DumpConsumer {
       : { kept: new SharedArrayBuffer(1), properties: new SharedArrayBuffer(1) };
     this.pool = new LinePool<WriteFacts>(workers, { pass: 'write', ...shared }, lines => writeFactsOf(lines, scope.kept, scope.properties));
     this.maxTasks = Math.max(2, workers * 2);
+    this.done = resume?.pieces ?? new Map();
+    for (const piece of this.done.values()) {
+      for (const item of piece.ring) this.ring.add(item);
+      this.counts.written += piece.written;
+      this.counts.spooled += piece.spooled;
+      this.refusals.restore(piece.refused);
+    }
   }
 
   async line(line: string): Promise<void> {
@@ -69,11 +84,15 @@ export class SubsetWriter implements DumpConsumer {
     if (this.lines.length >= LINES_PER_TASK || this.chars >= CHARS_PER_TASK) await this.dispatch();
   }
 
-  /** A piece of the dump's text, split into lines by a worker (`readDump`'s chunk path). */
-  async chunk(text: Uint8Array): Promise<void> {
+  /** A piece of the dump's text, split into lines by a worker (`readDump`'s chunk path); skipped when already written. */
+  async chunk(text: Uint8Array, piece: number): Promise<void> {
     if (this.failure) throw this.failure;
-    await this.dispatch();
-    await this.send(text);
+    const written = this.done.get(piece);
+    if (written) {
+      this.linesTaken += written.lines;
+      return;
+    }
+    await this.send(text, piece);
   }
 
   lineCount(): number {
@@ -85,9 +104,6 @@ export class SubsetWriter implements DumpConsumer {
       await this.dispatch();
       await Promise.all(this.tasks);
       if (this.failure) throw this.failure;
-      await this.flush();
-      await Promise.all(this.inFlight);
-      if (this.failure) throw this.failure;
     } finally {
       await this.pool.close();
     }
@@ -95,49 +111,46 @@ export class SubsetWriter implements DumpConsumer {
 
   async abort(): Promise<void> {
     await this.pool.close();
-    await Promise.allSettled([...this.tasks, ...this.inFlight]);
+    await Promise.allSettled(this.tasks);
   }
 
-  /** Hand the lines gathered so far to a worker, once fewer than the bound are in flight. */
   private async dispatch(): Promise<void> {
     const lines = this.lines;
     this.lines = [];
     this.chars = 0;
-    if (lines.length > 0) await this.send(lines);
+    if (lines.length > 0) {
+      await this.send(lines, this.nextPiece);
+      this.nextPiece += 1;
+    }
   }
 
-  private async send(input: string[] | Uint8Array): Promise<void> {
+  private async send(input: string[] | Uint8Array, piece: number): Promise<void> {
     while (this.tasks.size >= this.maxTasks) await Promise.race(this.tasks);
     if (this.failure) throw this.failure;
     const task = this.pool.run(input)
-      .then(facts => this.merge(facts))
+      .then(facts => this.write(facts, piece))
       .catch((error: unknown) => { this.failure ??= error; })
       .finally(() => { this.tasks.delete(task); });
     this.tasks.add(task);
   }
 
-  private async merge(facts: WriteFacts): Promise<void> {
+  /** The piece's terms to the spool, then its rows and record in one transaction; only then is it counted. */
+  private async write(facts: WriteFacts, piece: number): Promise<void> {
+    const spoolEnd = await this.spool.append(facts.spool);
+    while (this.committing >= PIECES_IN_FLIGHT) await new Promise<void>(resolve => this.waitingToCommit.push(resolve));
+    this.committing += 1;
+    let written: number;
+    try {
+      written = await this.writePiece(
+        { piece, lines: facts.lines, spooled: facts.spooled, spoolEnd, ring: facts.ring }, facts.rows, this.refusals,
+      );
+    } finally {
+      this.committing -= 1;
+      this.waitingToCommit.shift()?.();
+    }
     this.linesTaken += facts.lines;
+    this.counts.written += written;
+    this.counts.spooled += facts.spooled;
     for (const item of facts.ring) this.ring.add(item);
-    if (facts.spooled > 0) {
-      await this.spool.writeText(facts.spool);
-      this.counts.spooled += facts.spooled;
-    }
-    for (const row of facts.rows) {
-      this.batch.push(row);
-      if (this.batch.length >= BATCH) await this.flush();
-    }
-  }
-
-  private async flush(): Promise<void> {
-    const rows = this.batch;
-    this.batch = [];
-    if (rows.length === 0) return;
-    while (this.inFlight.size >= IN_FLIGHT) await Promise.race(this.inFlight);
-    const insert = insertRefusing(rows, row => row.id, this.insert, this.refusals)
-      .then(written => { this.counts.written += written; })
-      .catch((error: unknown) => { this.failure ??= error; })
-      .finally(() => { this.inFlight.delete(insert); });
-    this.inFlight.add(insert);
   }
 }

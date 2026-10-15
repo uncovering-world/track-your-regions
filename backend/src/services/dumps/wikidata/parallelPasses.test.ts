@@ -69,9 +69,10 @@ async function writeOf(scope: Scope, workers: number, asText: boolean) {
   const dir = mkdtempSync(join(tmpdir(), 'parallel-passes-'));
   const spool = new TermsSpool(join(dir, 'terms.gz'));
   const rows: EntityRow[] = [];
-  const writer = new SubsetWriter(scope, spool, new Refusals(), async batch => { rows.push(...batch); }, workers);
+  await spool.open();
+  const writer = new SubsetWriter(scope, spool, new Refusals(), null, async (_record, batch) => { rows.push(...batch); return batch.length; }, workers);
   try {
-    if (asText) for (const piece of pieces()) await writer.chunk(piece);
+    if (asText) for (const [index, piece] of pieces().entries()) await writer.chunk(piece, index);
     else for (const line of LINES) await writer.line(line);
     await writer.commit();
     const terms: string[] = [];
