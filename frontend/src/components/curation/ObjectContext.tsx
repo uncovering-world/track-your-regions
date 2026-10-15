@@ -129,6 +129,10 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
         >
           <Box
             component="img"
+            // Keyed on the address: another object mounts a fresh <img>, which shows
+            // nothing until its own picture decodes, where a reused one keeps drawing
+            // the last object's photograph meanwhile (#844).
+            key={thumbnail}
             src={thumbnail}
             alt=""
             loading="lazy"
@@ -218,6 +222,8 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
             {!fullFailed && (
               <Box
                 component="img"
+                // Keyed like the card's thumbnail (#844).
+                key={image}
                 src={toThumbnailUrl(image, 960)}
                 alt={item.name}
                 sx={{ width: '100%', height: 'auto', display: 'block' }}

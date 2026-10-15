@@ -178,6 +178,10 @@ export function PointCard({
                 and the credit only with a picture that is on screen. */}
             <Box
               component="img"
+              // Keyed on the address: Prev and Next change the point on this
+              // same card, and a reused <img> would keep the last part's
+              // photograph under the next part's name until it decodes (#844).
+              key={pictureSrc}
               src={pictureSrc}
               alt={label}
               onError={() => setFailedSrc(pictureSrc)}

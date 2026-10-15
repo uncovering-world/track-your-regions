@@ -30,6 +30,17 @@ describe('PictureWithCredit', () => {
     expect(screen.getByRole('link', { name: 'Carl Montgomery' })).toBeInTheDocument();
   });
 
+  it("mounts a fresh picture for another address, so the last one's photograph is not drawn under it (#844)", () => {
+    const { rerender } = render(<PictureWithCredit url={PICTURE} credit={CREDIT} alt="Picture preview" />);
+    const first = screen.getByRole('img', { name: 'Picture preview' });
+
+    rerender(<PictureWithCredit url="http://commons.wikimedia.org/wiki/Special:FilePath/Louvre.jpg" credit={null} alt="Picture preview" />);
+
+    const second = screen.getByRole('img', { name: 'Picture preview' });
+    expect(second).not.toBe(first);
+    expect(first).not.toBeInTheDocument();
+  });
+
   it('reads a stored value in its legacy JSON-encoded shape, as the card does', () => {
     // `image_url` once held `{"url": …}`; `extractImageUrl` still reads it and the
     // expanded card draws it, so a preview that refused it would show a curator

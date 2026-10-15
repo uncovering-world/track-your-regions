@@ -24,10 +24,10 @@ export function useAuthBlobUrl(src: string | null | undefined): string | null {
   const [blobUrl, setBlobUrl] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!src) {
-      setBlobUrl(null);
-      return;
-    }
+    // Dropped before the next picture is read, not when it arrives: the old
+    // file under a new address is a picture of something else (#844).
+    setBlobUrl(null);
+    if (!src) return;
     let cancelled = false;
     let currentUrl: string | null = null;
 
