@@ -61,7 +61,12 @@ export class TermsSpool {
   }
 
   async write(terms: Terms): Promise<void> {
-    if (!this.gzip.write(`${JSON.stringify(terms)}\n`)) await once(this.gzip, 'drain');
+    await this.writeText(`${JSON.stringify(terms)}\n`);
+  }
+
+  /** Lines already written as the spool keeps them, a batch's worth at once (`writeFactsOf`). */
+  async writeText(text: string): Promise<void> {
+    if (!this.gzip.write(text)) await once(this.gzip, 'drain');
   }
 
   close(): Promise<void> {
