@@ -34,6 +34,10 @@ if (!built.rows[0]) {
   for (const report of reports) {
     console.log(`${report.shape}: ${report.agreeing} of ${report.questions} agree; ${report.onlyLive} keys only live, ${report.onlySubset} only in the subset`
       + (report.skipped > 0 ? `; ${report.skipped} older question(s) past --limit ${limit} not compared` : ''));
+    if (report.fetchedFrom && report.fetchedTo) {
+      const day = (date: Date) => date.toISOString().slice(0, 10);
+      console.log(`  live answers fetched ${day(report.fetchedFrom)} to ${day(report.fetchedTo)}, ${report.expired} of them past their expiry`);
+    }
     for (const example of report.examples) console.log(`  ${example}`);
   }
   console.log(`${notCompared} cached question(s) of shapes the subset does not answer yet`);

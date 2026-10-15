@@ -47,10 +47,10 @@ describe('the parity comparison (#1458)', () => {
     query.mockImplementation(async (sql: string, params?: unknown[]) => {
       if (/SELECT id, query_text/.test(sql)) {
         return { rows: [
-          { id: 3, query_text: 'SELECT ?c WHERE { ?c wdt:P279* wd:Q33506 }' },
-          { id: 2, query_text: 'SELECT ?c WHERE { ?c wdt:P279* wd:Q33506 }' },
-          { id: 1, query_text: 'SELECT ?c WHERE { ?c wdt:P279* wd:Q33506 }' },
-          { id: 9, query_text: 'SELECT ?x WHERE { ?x wdt:P17 wd:Q213 }' },
+          { id: 3, query_text: 'SELECT ?c WHERE { ?c wdt:P279* wd:Q33506 }', fetched_at: new Date('2026-10-02T10:00:00Z'), expired: true },
+          { id: 2, query_text: 'SELECT ?c WHERE { ?c wdt:P279* wd:Q33506 }', fetched_at: new Date('2026-09-20T10:00:00Z'), expired: true },
+          { id: 1, query_text: 'SELECT ?c WHERE { ?c wdt:P279* wd:Q33506 }', fetched_at: new Date('2026-09-01T10:00:00Z'), expired: true },
+          { id: 9, query_text: 'SELECT ?x WHERE { ?x wdt:P17 wd:Q213 }', fetched_at: new Date('2026-10-14T10:00:00Z'), expired: false },
         ] };
       }
       const id = (params ?? [])[0];
@@ -60,6 +60,12 @@ describe('the parity comparison (#1458)', () => {
     const { reports, notCompared } = await compareCached(2);
     const tree = reports.find(report => report.shape === 'class tree')!;
     expect(tree).toMatchObject({ questions: 2, agreeing: 1, skipped: 1, onlyLive: 0, onlySubset: 1 });
+    // Expired answers are compared, and the report says when they were fetched.
+    expect(tree).toMatchObject({
+      expired: 2, fetchedFrom: new Date('2026-09-20T10:00:00Z'), fetchedTo: new Date('2026-10-02T10:00:00Z'),
+    });
+    const listing = query.mock.calls.find(([sql]) => /SELECT id, query_text/.test(sql))![0];
+    expect(listing).not.toMatch(/expires_at > NOW\(\)/);
     expect(notCompared).toBe(1);
     // The answers of the two compared questions, and of no other.
     const answerReads = query.mock.calls.filter(([sql]) => /WHERE id = \$1/.test(sql)).map(([, params]) => params);

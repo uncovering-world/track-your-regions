@@ -71,7 +71,36 @@ export interface ShapeReport {
   onlySubset: number;
   /** Cached questions of this shape past the limit, not compared. */
   skipped: number;
+  /** When the compared answers were fetched, the oldest and the newest: what the dump's date is set against. */
+  fetchedFrom: Date | null;
+  fetchedTo: Date | null;
+  /** Of the compared answers, how many a run would no longer read. */
+  expired: number;
   examples: string[];
+}
+
+/** Count one compared answer's age into its shape's report. */
+function noteFetched(report: ShapeReport, row: { fetched_at: Date; expired: boolean }): void {
+  report.questions += 1;
+  if (row.expired) report.expired += 1;
+  if (!report.fetchedFrom || row.fetched_at < report.fetchedFrom) report.fetchedFrom = row.fetched_at;
+  if (!report.fetchedTo || row.fetched_at > report.fetchedTo) report.fetchedTo = row.fetched_at;
+}
+
+/** Ask the subset one cached question again and add how the two answers differ to the report. */
+async function compareOne(
+  report: ShapeReport, shape: Shape, asked: string[], rows: Array<Record<string, { value: string }>>,
+): Promise<void> {
+  const live = shape.live(rows);
+  const local = await shape.subset(asked);
+  const onlyLive = [...live].filter(key => !local.has(key));
+  const onlySubset = [...local].filter(key => !live.has(key));
+  if (onlyLive.length === 0 && onlySubset.length === 0) report.agreeing += 1;
+  report.onlyLive += onlyLive.length;
+  report.onlySubset += onlySubset.length;
+  if (report.examples.length < 10) {
+    report.examples.push(...[...onlyLive.map(k => `live only ${k}`), ...onlySubset.map(k => `subset only ${k}`)].slice(0, 3));
+  }
 }
 
 /**
@@ -79,14 +108,20 @@ export interface ShapeReport {
  * read, and count the rest. The query texts are read first and each answer
  * only when its question is compared, one at a time: a class tree's cached
  * answer runs to thousands of rows, and the cache holds every run's.
+ *
+ * Expired answers are compared too. A run no longer reads them, but each is
+ * still what the live service said on the day it was fetched, and the report
+ * gives those days beside the dump's, so a difference the dates explain is
+ * read as that.
  */
 export async function compareCached(limit = 200): Promise<{ reports: ShapeReport[]; notCompared: number }> {
-  const cached = await pool.query<{ id: number; query_text: string }>(
-    `SELECT id, query_text FROM wikidata_query_cache
-      WHERE kind IN ('classes', 'edges') AND (expires_at > NOW() OR expires_at IS NULL) ORDER BY fetched_at DESC`,
+  const cached = await pool.query<{ id: number; query_text: string; fetched_at: Date; expired: boolean }>(
+    `SELECT id, query_text, fetched_at, expires_at <= NOW() AS expired FROM wikidata_query_cache
+      WHERE kind IN ('classes', 'edges') ORDER BY fetched_at DESC`,
   );
-  const reports = new Map(SHAPES.map(shape => [shape.name, {
-    shape: shape.name, questions: 0, agreeing: 0, onlyLive: 0, onlySubset: 0, skipped: 0, examples: [] as string[],
+  const reports = new Map<string, ShapeReport>(SHAPES.map(shape => [shape.name, {
+    shape: shape.name, questions: 0, agreeing: 0, onlyLive: 0, onlySubset: 0, skipped: 0,
+    fetchedFrom: null, fetchedTo: null, expired: 0, examples: [],
   }]));
   let notCompared = 0;
   for (const row of cached.rows) {
@@ -105,15 +140,8 @@ export async function compareCached(limit = 200): Promise<{ reports: ShapeReport
     );
     // Gone between the two reads: a run replaced or pruned it.
     if (!answer.rows[0]) continue;
-    report.questions += 1;
-    const live = shape.live(answer.rows[0].result);
-    const local = await shape.subset(shape.asked(row.query_text)!);
-    const onlyLive = [...live].filter(key => !local.has(key));
-    const onlySubset = [...local].filter(key => !live.has(key));
-    if (onlyLive.length === 0 && onlySubset.length === 0) report.agreeing += 1;
-    report.onlyLive += onlyLive.length;
-    report.onlySubset += onlySubset.length;
-    if (report.examples.length < 10) report.examples.push(...[...onlyLive.map(k => `live only ${k}`), ...onlySubset.map(k => `subset only ${k}`)].slice(0, 3));
+    noteFetched(report, row);
+    await compareOne(report, shape, shape.asked(row.query_text)!, answer.rows[0].result);
   }
   return { reports: [...reports.values()], notCompared };
 }
