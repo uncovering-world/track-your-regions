@@ -121,7 +121,7 @@ const TILE_TARGETS = [
   { name: 'tile: world view root regions z5', url: `${MARTIN}/tile_world_view_root_regions/5/16/10?world_view_id=${WORLD_VIEW}` },
   { name: 'tile: region subregions z5', url: `${MARTIN}/tile_region_subregions/5/16/10?parent_id=${REGION}` },
   { name: 'tile: all leaf regions z3', url: `${MARTIN}/tile_world_view_all_leaf_regions/3/4/2?world_view_id=${WORLD_VIEW}` },
-  { name: 'tile: GADM root divisions z3', url: `${MARTIN}/tile_gadm_root_divisions/3/4/2` },
+  { name: 'tile: base-layer root divisions z3', url: `${MARTIN}/tile_root_divisions/3/4/2` },
 ].map((target) => ({ ...target, bustCache: true }));
 
 if (!Number.isInteger(RUNS) || RUNS < 1) {

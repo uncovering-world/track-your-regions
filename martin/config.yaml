@@ -6,7 +6,7 @@
 # `query_params json` pattern for parameters.
 #
 # Example tile requests:
-#   /tile_gadm_root_divisions/3/4/2
+#   /tile_root_divisions/3/4/2
 #   /tile_world_view_root_regions/3/4/2?world_view_id=5
 #   /tile_region_subregions/5/16/10?parent_id=15
 
@@ -35,7 +35,7 @@ postgres:
   # This does not make the tile server authorized: the functions remain public,
   # so a hidden world view's regions are still fetchable by id — and the default
   # world view by no id at all, since its map is GADM and
-  # tile_gadm_root_divisions takes no parameter. See
+  # tile_root_divisions takes no parameter. See
   # docs/security/SECURITY.md § Known Gaps.
   auto_publish:
     tables: false

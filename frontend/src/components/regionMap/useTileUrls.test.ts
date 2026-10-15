@@ -304,7 +304,7 @@ describe('useTileUrls — tileUrl', () => {
 
     const { result } = renderHook(() => useTileUrls('all-leaf', 'root'));
 
-    expect(result.current.tileUrl).toContain('tile_gadm_root_divisions');
+    expect(result.current.tileUrl).toContain('tile_root_divisions');
   });
 
   it('returns GADM subdivisions URL for non-custom world view with parent', () => {
@@ -313,7 +313,7 @@ describe('useTileUrls — tileUrl', () => {
 
     const { result } = renderHook(() => useTileUrls('all-leaf', 100));
 
-    expect(result.current.tileUrl).toContain('tile_gadm_subdivisions');
+    expect(result.current.tileUrl).toContain('tile_division_subdivisions');
     expect(scope(result.current.tileUrl).get('parent_id')).toBe('100');
   });
 });

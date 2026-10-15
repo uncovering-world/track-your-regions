@@ -133,6 +133,13 @@ CREATE TABLE IF NOT EXISTS administrative_divisions (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- gadm_uid keeps its provider's name on purpose (#625): it is GADM's own key
+-- for the one polygon a leaf was loaded from, written only by GADM's loader
+-- (db/init-db.py) and read only by the division-tree check. A base layer from
+-- another provider would carry its own key in a column of its own, rather than
+-- reuse this one under a neutral name that hides whose key it is.
+COMMENT ON COLUMN administrative_divisions.gadm_uid IS 'GADM UID of the single GeoPackage polygon a leaf division was loaded from (db/init-db.py); NULL on a division assembled from its children. Named for GADM on purpose: it is that dataset''s key, not a provider-neutral one.';
+
 -- Indexes for administrative_divisions
 CREATE INDEX IF NOT EXISTS idx_admin_divisions_parent ON administrative_divisions(parent_id);
 CREATE INDEX IF NOT EXISTS idx_admin_divisions_name ON administrative_divisions(name);
@@ -2159,10 +2166,12 @@ $$;
 COMMENT ON FUNCTION tile_region_subregions IS 'MVT tiles for subregions of a parent region. Query params: parent_id (required)';
 
 -- -----------------------------------------------------------------------------
--- Function: tile_gadm_root_divisions
--- Returns root-level GADM divisions (continents) as MVT
+-- Function: tile_root_divisions
+-- Returns the base layer's root divisions (continents) as MVT. The name says
+-- no provider: the base layer is whichever dataset administrative_divisions
+-- holds (ADR-0018), and this name is the public tile URL
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION tile_gadm_root_divisions(
+CREATE OR REPLACE FUNCTION tile_root_divisions(
     z integer,
     x integer,
     y integer,
@@ -2218,13 +2227,13 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION tile_gadm_root_divisions IS 'MVT tiles for root GADM divisions (continents)';
+COMMENT ON FUNCTION tile_root_divisions IS 'MVT tiles for the root divisions of the administrative base layer (continents)';
 
 -- -----------------------------------------------------------------------------
--- Function: tile_gadm_subdivisions
--- Returns subdivisions of a parent GADM division as MVT
+-- Function: tile_division_subdivisions
+-- Returns the subdivisions of a parent division as MVT
 -- -----------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION tile_gadm_subdivisions(
+CREATE OR REPLACE FUNCTION tile_division_subdivisions(
     z integer,
     x integer,
     y integer,
@@ -2287,7 +2296,7 @@ BEGIN
 END;
 $$;
 
-COMMENT ON FUNCTION tile_gadm_subdivisions IS 'MVT tiles for GADM subdivisions of a parent. Query params: parent_id (required)';
+COMMENT ON FUNCTION tile_division_subdivisions IS 'MVT tiles for the subdivisions of a parent division. Query params: parent_id (required)';
 
 -- -----------------------------------------------------------------------------
 -- Function: tile_region_islands
@@ -2463,8 +2472,8 @@ COMMENT ON FUNCTION tile_world_view_all_leaf_regions IS 'MVT tiles for all leaf 
 -- Grant execute permissions
 GRANT EXECUTE ON FUNCTION tile_world_view_root_regions TO PUBLIC;
 GRANT EXECUTE ON FUNCTION tile_region_subregions TO PUBLIC;
-GRANT EXECUTE ON FUNCTION tile_gadm_root_divisions TO PUBLIC;
-GRANT EXECUTE ON FUNCTION tile_gadm_subdivisions TO PUBLIC;
+GRANT EXECUTE ON FUNCTION tile_root_divisions TO PUBLIC;
+GRANT EXECUTE ON FUNCTION tile_division_subdivisions TO PUBLIC;
 GRANT EXECUTE ON FUNCTION tile_region_islands TO PUBLIC;
 GRANT EXECUTE ON FUNCTION tile_world_view_all_leaf_regions TO PUBLIC;
 

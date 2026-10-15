@@ -79,7 +79,7 @@ describe('a tile source given a malformed scope answers an empty tile', () => {
     ['tile_world_view_root_regions', 3, 4, 4, { world_view_id: 'abc' }],
     ['tile_world_view_all_leaf_regions', 3, 4, 4, { world_view_id: '' }],
     ['tile_region_subregions', 5, 16, 12, { parent_id: '1.5' }],
-    ['tile_gadm_subdivisions', 5, 16, 12, { parent_id: 'abc' }],
+    ['tile_division_subdivisions', 5, 16, 12, { parent_id: 'abc' }],
     ['tile_region_islands', 5, 16, 12, { world_view_id: 'abc' }],
     // Optional, so its absence means the whole world view; a malformed one
     // narrows to nothing rather than widening to that.
