@@ -9,7 +9,7 @@
  * - Multi-location support: shows location count and expandable locations
  */
 
-import { useCallback, useMemo, useState, useRef, useEffect } from 'react';
+import { useCallback, useMemo, useState, useRef, useEffect, useLayoutEffect } from 'react';
 import {
   lostHiddenLabel, outsideViewLabel,
   flattenGroups, expansionForSelection, rowIndexByExperienceId, experienceIdsInVisibleRange,
@@ -339,6 +339,22 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     [flatRows],
   );
 
+  // Where the list starts inside the scroll container, which is not its top: a
+  // curator gets the "add a kind" box above it (47 px on Europe). The
+  // virtualiser counts its range and `scrollToIndex` from the container's top,
+  // so it is given that distance, and a row scrolled to "start" lands at the
+  // container's top rather than that far below it (#556).
+  // `offsetTop` counts from the nearest positioned ancestor, which is why
+  // `RegionDescriptionSection` makes the scroll container `position: relative`.
+  // Measured after the commit that changes what sits above the list, rather
+  // than read during render, so a hover's re-render forces no layout.
+  const listRef = useRef<HTMLUListElement>(null);
+  const [scrollMargin, setScrollMargin] = useState(0);
+  const nothingInView = listedExperiences.length === 0 && activeExperiences.length > 0;
+  useLayoutEffect(() => {
+    setScrollMargin(listRef.current?.offsetTop ?? 0);
+  }, [experiencesLoading, hasCuratorScope, regionId, nothingInView]);
+
   const virtualizer = useVirtualizer({
     count: flatRows.length,
     getScrollElement: () => scrollContainerRef.current,
@@ -356,17 +372,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     // no estimate could cover both, which is what the measuring is for.
     estimateSize: (i) => (flatRows[i]?.kind === 'header' ? 46 : 62),
     getItemKey: getRowKey,
-    // No `scrollMargin` here, deliberately, and it is not free: the list is not
-    // the first thing in the scroll container — a curator gets the "add a
-    // kind" box above it — so the virtualiser's origin is the container's
-    // rather than the list's and its range is off by that distance, masked in
-    // practice by `overscan`. The documented remedy is the list's `offsetTop`,
-    // and here that reads 102 px where the true distance is 47: `offsetTop` counts
-    // from the nearest positioned ancestor, and the scroll container (the box
-    // `RegionDescriptionSection` hands down as `scrollContainerRef`) is
-    // `position: static`, so the count starts somewhere else entirely. A wrong margin shifts the range for every
-    // reader, where no margin shifts it only where the box appears — #556 makes
-    // the container the origin and measures it.
+    scrollMargin,
     overscan: 8,
   });
 
@@ -651,7 +657,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
           space, because an empty list under a region's name reads as "this region
           is empty" — which is false, and the notice below carries the count and
           the way back (#553). */}
-      {listedExperiences.length === 0 && activeExperiences.length > 0 && (
+      {nothingInView && (
         <Box sx={{ px: 2, py: 1.5 }}>
           <Typography variant="body2" color="text.secondary">
             Nothing in this view.
@@ -666,6 +672,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
           using a screen reader hears one item per row rather than a list whose
           items are nested inside anonymous boxes. */}
       <List
+        ref={listRef}
         disablePadding
         sx={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}
       >
@@ -677,7 +684,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
               key={virtualRow.key}
               virtualizer={virtualizer}
               index={virtualRow.index}
-              start={virtualRow.start}
+              start={virtualRow.start - virtualizer.options.scrollMargin}
             >
               {row.kind === 'header'
                 ? renderGroupHeader(row.group)
