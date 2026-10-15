@@ -11,8 +11,10 @@
  * description from the item; the location from the item's own coordinate
  * where the item is the place — Nominatim found none, or the item is the one
  * the found place links to — and from the found place's point otherwise
- * (`lookupLocation`). A lookup that finds no location says so beside the
- * match. It never runs as the curator types:
+ * (`lookupLocation`). An item the name search matched that is not the place
+ * found is a namesake elsewhere and fills none of them (`namesakeOf`): the
+ * outcome names it as not the place. A lookup that finds no location says so
+ * beside the match. It never runs as the curator types:
  * Nominatim's usage policy forbids auto-complete over its API, and a lookup
  * fired by a pause in typing searched a half-typed name. Pressed again
  * (*Look up again*), it overwrites what an earlier lookup filled in.
@@ -165,18 +167,33 @@ async function findPlace(
   return undefined;
 }
 
+/** A Wikidata item as the lookup outcome names it. */
+type ItemRef = { label: string; wikidataId: string };
+
 /**
  * What the last lookup found, under the name: the Wikidata item it matched, or
- * the place Nominatim found where no item was, and — beside either, or alone —
- * that it found no location, while the curator has set none.
+ * the place Nominatim found where no item was — with the namesake the name
+ * search matched instead, named as not the place — and, beside either or
+ * alone, that it found no location, while the curator has set none.
  */
-function LookupOutcome({ entity, found, locationMissed }: {
-  entity: { label: string; wikidataId: string } | null; found: string | null; locationMissed: boolean;
+function LookupOutcome({ entity, namesake, found, locationMissed }: {
+  entity: ItemRef | null; namesake: ItemRef | null; found: string | null; locationMissed: boolean;
 }) {
   if (!entity && !found && !locationMissed) return null;
   let match: React.ReactNode = null;
   if (entity) match = <>Matched: <strong>{entity.label}</strong> ({entity.wikidataId})</>;
-  else if (found) match = <>Found: {found}</>;
+  else if (found) {
+    match = (
+      <>
+        Found: {found}
+        {namesake && (
+          <Box component="span" sx={{ display: 'block' }}>
+            No item matched the place: <strong>{namesake.label}</strong> ({namesake.wikidataId}) only shares its name
+          </Box>
+        )}
+      </>
+    );
+  }
   return (
     <Box sx={{
       mt: 0.75,
@@ -337,7 +354,10 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
 
   const [autoFillLoading, setAutoFillLoading] = useState(false);
   const [autoFillInfo, setAutoFillInfo] = useState<string | null>(null);
-  const [autoFillEntity, setAutoFillEntity] = useState<{ label: string; wikidataId: string } | null>(null);
+  const [autoFillEntity, setAutoFillEntity] = useState<ItemRef | null>(null);
+  // The item the last lookup's name search matched and refused as another
+  // place (`namesakeOf`), named beside the place found.
+  const [namesake, setNamesake] = useState<ItemRef | null>(null);
   // The last lookup found no location for the name: neither the item nor
   // Nominatim gave one, and the curator had placed no pin.
   const [locationMissed, setLocationMissed] = useState(false);
@@ -346,7 +366,8 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
   // alike: the picture unless told to keep the curator's own, the description
   // and Wikipedia URL when the field is empty or was filled by an earlier
   // suggestion — so a re-lookup never leaves a stale auto-filled description
-  // behind, and a curator's own text stays.
+  // behind, and a curator's own text stays. The item applied is the match from
+  // then on, in place of any namesake the last lookup named.
   const applySuggestion = (suggestion: ImageSuggestion, keepPicture = false): void => {
     const current = stateRef.current.values;
     if (!keepPicture) {
@@ -354,6 +375,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
       imageAutoFilled.current = true;
     }
     setAutoFillEntity({ label: suggestion.entityLabel, wikidataId: suggestion.wikidataId });
+    setNamesake(null);
     if (suggestion.description && (!current.shortDescription || descAutoFilled.current)) {
       form.set('shortDescription', suggestion.description);
       descAutoFilled.current = true;
@@ -364,11 +386,36 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     }
   };
 
+  // What an earlier lookup filled in and this one has no item for — a namesake
+  // refused, or no item at all — is taken back, so *Look up again* never leaves
+  // another place's picture, description or link under the place it found. The
+  // curator's own stay.
+  const clearAutoFill = (): void => {
+    if (imageAutoFilled.current) {
+      form.set('imageUrl', '');
+      imageAutoFilled.current = false;
+    }
+    if (descAutoFilled.current) {
+      form.set('shortDescription', '');
+      descAutoFilled.current = false;
+    }
+    if (linkAutoFilled.current) {
+      form.set('wikipediaUrl', '');
+      linkAutoFilled.current = false;
+    }
+  };
+
   // --- Suggest mutation (for manual Suggest button) ---
+  // A Suggest answered after a lookup started is about the draft as it was
+  // before that lookup, which owns the fields now: its answer is dropped, or a
+  // namesake the lookup refused comes back through it.
   const suggestMutation = useMutation({
-    mutationFn: (params: { name?: string; lat?: number; lng?: number; wikidataId?: string }) =>
-      suggestImageUrl(params),
-    onSuccess: (suggestion) => applySuggestion(suggestion),
+    mutationFn: ({ generation: _generation, ...params }: {
+      name?: string; lat?: number; lng?: number; wikidataId?: string; generation: number;
+    }) => suggestImageUrl(params),
+    onSuccess: (suggestion, { generation }) => {
+      if (generation === autoFillGen.current) applySuggestion(suggestion);
+    },
   });
 
   // --- Core lookup logic, run by Look up ---
@@ -380,19 +427,28 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
   const pinnedCoords = (): { lat: number; lng: number } | null =>
     (coordsAutoFilled.current ? null : stateRef.current.values.coords);
 
-  // The location a lookup fills in. The item's own coordinate (P625) where
-  // the item is the place: Nominatim found none, or found the place and the
-  // item is the one it links to — then the coordinate is a statement about
-  // it, where Nominatim's point is a search's best guess. Otherwise the
-  // place's point wins: an item matched by the bare name ("Old Town Hall" —
-  // Hanover's, for Brno's) or by its distance to the point (a neighbour
-  // within two kilometres) is another place, shown as the match for the
-  // curator to judge but never moving the pin.
+  // The item the name search matched when Nominatim found a place and the
+  // item is not the one it links to: a namesake elsewhere ("Old Town Hall" —
+  // Hanover's, for Brno's), since that layer reads the bare name with no
+  // region and no point. It fills nothing — picture, description, link or
+  // location — and is named beside the place for the curator to judge. Where
+  // Nominatim found nothing, the name is all there is to go on, and the item
+  // the name search matched is taken as the place.
+  const namesakeOf = (place: PlaceResult | undefined, suggestion: ImageSuggestion): boolean =>
+    !!place && suggestion.source === 'wikidata_search' && suggestion.wikidataId !== place.wikidataId;
+
+  // The location a lookup fills in, from the item it applied (never a
+  // namesake). The item's own coordinate (P625) where the item is the place:
+  // Nominatim found none, or found the place and the item is the one it
+  // links to — then the coordinate is a statement about it, where Nominatim's
+  // point is a search's best guess. Otherwise the place's point wins: an item
+  // found by its distance to the point (a neighbour within two kilometres) is
+  // another place, shown as the match for the curator to judge but never
+  // moving the pin.
   const lookupLocation = (
-    place: PlaceResult | undefined, suggestion: ImageSuggestion | null,
+    place: PlaceResult | undefined, item: ImageSuggestion | null,
   ): { lat: number; lng: number } | null => {
-    const itemIsThePlace = !place || suggestion?.wikidataId === place.wikidataId;
-    if (suggestion?.coordinates && suggestion.source !== 'wikidata_spatial' && itemIsThePlace) return suggestion.coordinates;
+    if (item?.coordinates && item.source !== 'wikidata_spatial') return item.coordinates;
     return place ? { lat: place.lat, lng: place.lng } : null;
   };
 
@@ -432,9 +488,11 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     if (lookupName.length < 3) return;
 
     const generation = ++autoFillGen.current;
+    suggestMutation.reset();
     setAutoFillLoading(true);
     setAutoFillInfo(null);
     setAutoFillEntity(null);
+    setNamesake(null);
     setLocationMissed(false);
 
     try {
@@ -447,18 +505,24 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
 
       // Step 2: the item — its match, description and coordinate always, its
       // picture only where the curator has not set their own, before the
-      // lookup or while it ran.
+      // lookup or while it ran; a namesake's none of them.
       const suggestion = await suggestFor(lookupName, place, itemId);
       if (autoFillGen.current !== generation) return;
-      if (suggestion) {
-        applySuggestion(suggestion, imageIsCurators());
+      const elsewhere = suggestion && namesakeOf(place, suggestion) ? suggestion : null;
+      const item = elsewhere ? null : suggestion;
+      if (item) {
+        applySuggestion(item, imageIsCurators());
+        suggestMutation.reset();
+      } else {
+        clearAutoFill();
         suggestMutation.reset();
       }
+      if (elsewhere) setNamesake({ label: elsewhere.entityLabel, wikidataId: elsewhere.wikidataId });
 
       // Step 3: the location, unless the curator placed their own pin — before
       // the lookup or while it ran.
       if (!pinnedCoords()) {
-        const found = lookupLocation(place, suggestion);
+        const found = lookupLocation(place, item);
         form.set('coords', found);
         coordsAutoFilled.current = found !== null;
         setLocationMissed(found === null);
@@ -477,11 +541,17 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     // The answer on its way is about the name it was asked for, not this one.
     autoFillGen.current++;
     setAutoFillLoading(false);
+    // A Suggest on its way is about the old name too, and its answer is dropped
+    // (`onSuccess`): its state goes with it, or the image field would say
+    // *Found via* over a picture nobody filled.
+    if (suggestMutation.isPending) suggestMutation.reset();
     if (name.length >= 3) return;
     setAutoFillInfo(null);
     setAutoFillEntity(null);
+    setNamesake(null);
     setLocationMissed(false);
     autoFillDone.current = false;
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- a changed name is the event; the Suggest state is read as that change finds it
   }, [name]);
 
   // --- Look up, on the button or Enter: never as the curator types ---
@@ -546,6 +616,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     setWikidataId(null);
     setAutoFillInfo(null);
     setAutoFillEntity(null);
+    setNamesake(null);
     setLocationMissed(false);
     coordsAutoFilled.current = false;
     wikidataAutoFilled.current = false;
@@ -599,7 +670,9 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
                 }}
               />
               {!autoFillLoading && (
-                <LookupOutcome entity={autoFillEntity} found={autoFillInfo} locationMissed={showLocationMissed} />
+                <LookupOutcome
+                  entity={autoFillEntity} namesake={namesake} found={autoFillInfo} locationMissed={showLocationMissed}
+                />
               )}
             </Box>
 
@@ -683,6 +756,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
                     lat: coords?.lat,
                     lng: coords?.lng,
                     wikidataId: wikidataId ?? undefined,
+                    generation: autoFillGen.current,
                   })}
                   disabled={suggestMutation.isPending || (!name && !coords)}
                   sx={{ minWidth: 90, mt: 0.25 }}
