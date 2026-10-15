@@ -103,7 +103,7 @@ and accepted by it.
 | [0081](0081-a-kind-is-a-record-before-it-is-code-and-an-expectation-is-listed-before-the-catalogue-holds-it.md) | A kind is a record before it is code, and an expectation is listed before the catalogue holds it | Accepted | 2026-10-01 |
 | [0082](0082-a-fame-line-counts-wikipedia-language-editions.md) | A fame line counts Wikipedia language editions | Accepted | 2026-10-03 |
 | [0083](0083-a-no-to-a-moved-point-keeps-the-stored-pin.md) | A no to a moved point keeps the stored pin | Accepted | 2026-10-04 |
-| [0084](0084-a-place-belongs-to-no-source-and-no-kind.md) | A place belongs to no source and no kind | Accepted — decision 4 narrowed by [0085](0085-one-wikidata-item-is-one-reading-whichever-source-reads-it.md) | 2026-10-04 |
+| [0084](0084-a-place-belongs-to-no-source-and-no-kind.md) | A place belongs to no source and no kind | Accepted — decision 4 narrowed by [0085](0085-one-wikidata-item-is-one-reading-whichever-source-reads-it.md) and by [0109](0109-a-field-belongs-to-the-family-of-sources-that-brings-it.md) | 2026-10-04 |
 | [0085](0085-one-wikidata-item-is-one-reading-whichever-source-reads-it.md) | One Wikidata item is one reading, whichever source reads it | Accepted | 2026-10-05 |
 | [0086](0086-a-merge-is-a-record-that-moves-a-place-into-another-and-back.md) | A merge is a record that moves one place into another, and can move it back | Accepted — decision 3 narrowed by ADR-0088 and [0100](0100-a-serial-sites-components-are-places-part-of-the-site.md) | 2026-10-07 |
 | [0087](0087-jev-suggests-an-answer-on-a-curator-card-and-a-curator-decides.md) | Jev suggests an answer on a curator's card, and a curator decides | Accepted | 2026-10-08 |
@@ -128,6 +128,7 @@ and accepted by it.
 | [0106](0106-public-dump-builds-run-in-a-worker-process-queued-through-the-ledger.md) | Public dump builds run in a worker process, queued through the ledger | Accepted | 2026-10-14 |
 | [0107](0107-a-subset-build-cut-in-its-second-pass-is-picked-up-not-started-again.md) | A subset build cut in its second pass is picked up, not started again | Accepted | 2026-10-15 |
 | [0108](0108-gitleaks-reads-every-tracked-file-for-a-generic-credential.md) | gitleaks reads every tracked file for a generic credential | Accepted | 2026-10-15 |
+| [0109](0109-a-field-belongs-to-the-family-of-sources-that-brings-it.md) | A field belongs to the family of sources that brings it | Accepted | 2026-10-15 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

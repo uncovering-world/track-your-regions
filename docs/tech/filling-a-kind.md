@@ -121,6 +121,14 @@ is the museums' own, reused); the UNESCO list is the degenerate case in which th
   is worth seeing. Without either the cut has to come from elsewhere (§ 4, the fallback).
 - **Terms** that permit reading the list, storing what it says and showing it with attribution
   (§ 5), and an **access mode** the catalogue can pay for (§ 6.2).
+- **Its field family** ([ADR-0109](../decisions/0109-a-field-belongs-to-the-family-of-sources-that-brings-it.md)):
+  which of the place's fields it brings that the other sources of the same place do not. Its source
+  id goes into `SOURCE_FAMILY` (`services/sync/fieldFamilies.ts`) under the family whose fields it
+  brings, and a source that brings fields no family lists adds them to `FAMILY_FIELDS`, under a new
+  family where needed. A source in no family
+  writes its whole record over a place another source shares, as the Archaeology run did over
+  UNESCO's inscription facts before #1534. This family is the ownership sense of the word, not
+  § 7's families of sources.
 
 ## 4. Which kind of source each tier prefers, and why
 
