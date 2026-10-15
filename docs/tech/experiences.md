@@ -3804,9 +3804,16 @@ the correction has to send the flag as seen rather than infer it from the verdic
 
 `LifecycleChip` (`components/shared/LifecycleChip.tsx`) is on both card surfaces — Map mode's
 `ExperienceListItem` and Discover's `ExperienceCard` — since both read the same by-region
-response and a labelled row in one is an unexplained one in the other. The reveal affordance
-is Map mode only for now: Discover's list is filtered the same way, but has no place to put
-the control that would not compete with its kind filters.
+response and a labelled row in one is an unexplained one in the other. Both lists offer the
+reveal, as the same `NoticeLink` (`components/shared/`) at the end of the list, under the rows
+rather than beside the kind tags and the name filter, which choose what the list is about where
+this only adds to it. Map mode asks the server (`includeLost`, with its `lostHidden` count).
+Discover shows one kind at a time and that count is the whole region's, so it asks for the lost
+rows with the region and holds them back itself, by the rule `hideLostSql()` states
+(`existence` is `lost`), counting the open kind's (`lostInKind` in `useDiscoverExperiences`):
+the line never offers rows the kind's list would not gain, and showing them takes no second
+request (#609). The ask belongs to the region in both, so a curator can reveal a lost place in
+Discover and take its verdict back with *It does still exist*.
 
 ## API Endpoints
 
