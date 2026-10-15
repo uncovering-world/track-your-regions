@@ -295,6 +295,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r cv-python/requirements.txt -r cv-python/requirements-dev.txt
 
+      # test_text_detection.py runs the real EasyOCR reader, which fetches its
+      # detection and recognition models (~100 MB) from its own releases on
+      # first use; kept per requirements, since the easyocr pin names them.
+      - name: Cache EasyOCR models
+        uses: actions/cache@v4
+        with:
+          path: ~/.EasyOCR
+          key: easyocr-models-${{ hashFiles('cv-python/requirements.txt') }}
+
       - name: pytest
         run: pytest
         working-directory: cv-python
