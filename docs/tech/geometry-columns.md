@@ -192,7 +192,7 @@ budget is orthogonal to that and applies as it does everywhere else — these ro
 are hull regions, whose real geometry is every island they are made of.
 
 `world_view_id` is required on this source, the way `parent_id` is on
-`tile_region_subregions` and `tile_gadm_subdivisions`: `uses_hull` is the only other thing it filters on, so a
+`tile_region_subregions` and `tile_division_subdivisions`: `uses_hull` is the only other thing it filters on, so a
 request that named no world view answered with the islands of every hull region
 in the database — drawn over whichever world view was open, above the main
 source, and clickable there (#660). It answers an unscoped request with an empty
@@ -237,7 +237,7 @@ Zoom 9+:   geom_3857 — unless the row exceeds the 10 MB display budget, which
 
 Same contract as `regions`: a NULL rung means "not computed" and falls through to
 `geom_simplified_low_3857`, so a database that has not run the backfill renders
-as it did before. `tile_gadm_root_divisions` and `tile_gadm_subdivisions` both
+as it did before. `tile_root_divisions` and `tile_division_subdivisions` both
 follow this ladder.
 
 The display budget matters here and nowhere else. The eight root divisions weigh
@@ -657,7 +657,7 @@ geometry that is there. The two cheap rungs do follow, since that trigger sees
 every miss was permanent in the way the paragraph above describes. Enforcing it
 in the database ends the counting: `computeSingleMemberFastPath`,
 `computeRegionGeometryCore`, `recomputeRegionGeometry`,
-`runUnionPipelineSteps`, `updateRegionGeometry`, `resetRegionToGADM` and
+`runUnionPipelineSteps`, `updateRegionGeometry`, `resetRegionToMembers` and
 `createRegion` now write and nothing more, and a writer added tomorrow carries
 the rule without knowing it exists.
 

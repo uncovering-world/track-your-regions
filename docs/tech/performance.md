@@ -226,7 +226,7 @@ Martin tile function (`/tile_`) answered 2xx (Martin's 204 for an empty
 tile counts — it is still the map asking). The fragment is the family
 rather than one function because the root map asks for
 `tile_world_view_all_leaf_regions` on a custom world view and
-`tile_gadm_root_divisions` on the default one, and `--world-view 1` is a
+`tile_root_divisions` on the default one, and `--world-view 1` is a
 documented way to run the local lane. That one exists because a
 map whose tile worker has died still paints its raster basemap, mounts a
 canvas and reads as a loaded page to every timing in the file — which is
@@ -475,12 +475,12 @@ whatever gzip had saved.
 | `tile_world_view_root_regions/5/16/10` | 2.4 kB | gzip | 33 ms | 34 ms | 34 ms |
 | `tile_region_subregions/5/16/10?parent_id=6737` | 7.8 kB | gzip | 58 ms | 62 ms | 63 ms |
 | `tile_world_view_all_leaf_regions/3/4/2` | 44.7 kB | gzip | 157 ms | 223 ms | 225 ms |
-| `tile_gadm_root_divisions/3/4/2` | 5.0 kB | gzip | 54 ms | 83 ms | 433 ms |
+| `tile_root_divisions/3/4/2` | 5.0 kB | gzip | 54 ms | 83 ms | 433 ms |
 
 The tile timings are roughly double the first table's, and none of that is
 this change: that table was the second run of a probe whose cache-buster
 repeated from run to run, so it timed tiles Martin already held. These are
-generated tiles. The `tile_gadm_root_divisions` maximum of 433 ms is one
+generated tiles. The `tile_root_divisions` maximum of 433 ms is one
 sample of thirty against a p95 of 83 ms — the laptop, not the query.
 
 The locations read now includes one more cost when the probe runs against the
