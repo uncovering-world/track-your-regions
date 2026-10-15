@@ -125,9 +125,24 @@ function describePages(reportDir) {
         const total = resourceBytes(lhr, 'total');
         if (script !== null) parts.push(`script ${formatBytes(script)}`);
         if (total !== null) parts.push(`total ${formatBytes(total)}`);
+        const tools = toolVersions(lhr);
+        if (tools) parts.push(tools);
       }
       return `${pathOf(entry.url)} - ${parts.join(' | ')}`;
     });
+}
+
+/**
+ * Which Lighthouse measured the page, driving which Chromium (#656). A bump of
+ * either can move the numbers (Lighthouse revises its scoring between majors,
+ * a Chromium release changes what a long task costs), so every result names
+ * them, and a budget that moved on a bump reads as the bump's doing.
+ */
+function toolVersions(lhr) {
+  const lighthouse = typeof lhr.lighthouseVersion === 'string' ? `Lighthouse ${lhr.lighthouseVersion}` : null;
+  const chrome = /(?:Headless)?Chrome\/([\d.]+)/.exec(lhr.environment?.hostUserAgent ?? '')?.[1];
+  const parts = [lighthouse, chrome ? `Chrome ${chrome}` : null].filter(Boolean);
+  return parts.length > 0 ? parts.join(', ') : null;
 }
 
 /**
