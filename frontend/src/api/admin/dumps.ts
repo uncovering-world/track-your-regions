@@ -1,11 +1,12 @@
 /**
  * The public dumps the catalogue reads, their builds, a verify build of one
- * (ADR-0101, #1433) and a build that keeps what is made from it (#1434).
+ * (ADR-0101, #1433), a build that keeps what is made from it (#1434), and
+ * deriving what is kept again without the dump (#1526).
  */
 
 import type { DumpBuildCancelled, DumpBuildStarted, Dumps } from '../client.generated';
 import {
-  getAdminDumps, postAdminDumpsByDumpBuild, postAdminDumpsByDumpCancel, postAdminDumpsByDumpKeep,
+  getAdminDumps, postAdminDumpsByDumpBuild, postAdminDumpsByDumpCancel, postAdminDumpsByDumpKeep, postAdminDumpsByDumpRederive,
 } from '../client.generated';
 
 export type { DumpBuild, DumpBuildProgress, Dumps, DumpsDumpsItem, DumpsDumpsItemKey } from '../client.generated';
@@ -23,6 +24,10 @@ export async function startDumpBuild(dump: Parameters<typeof postAdminDumpsByDum
 
 export async function startDumpKeep(dump: Parameters<typeof postAdminDumpsByDumpKeep>[0], from: DumpBuildFrom = 'newest'): Promise<DumpBuildStarted> {
   return postAdminDumpsByDumpKeep(dump, { from });
+}
+
+export async function startDumpRederive(dump: Parameters<typeof postAdminDumpsByDumpRederive>[0]): Promise<DumpBuildStarted> {
+  return postAdminDumpsByDumpRederive(dump);
 }
 
 export async function cancelDumpBuild(dump: Parameters<typeof postAdminDumpsByDumpCancel>[0]): Promise<DumpBuildCancelled> {
