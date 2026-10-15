@@ -84,6 +84,7 @@ import {
 import { tidyLabel } from '@tyr/shared/labels';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { lockSourcedExperience } from '../../db/experienceWriter.js';
+import { keptForFamilies, otherFamiliesFields } from './fieldFamilies.js';
 import { contestedFields, keptAsStored } from './sourceView.js';
 
 export interface ExperienceUpsertParams {
@@ -336,7 +337,10 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
   const curatedFields = withTypeClaim(row.curated_fields, row.type_claimed);
   // What another source of the place contradicts is no proposal of this run's,
   // asked of the same views the run would ask (`sourceView.ts`).
-  const written = keptAsStored(params, row, await contestedFields(pool, row.id, params));
+  const written = keptForFamilies(
+    keptAsStored(params, row, await contestedFields(pool, row.id, params)),
+    row, await otherFamiliesFields(pool, row.id, params.sourceId),
+  );
   const incoming = snapshotFromParams(written, await measureExtent(pool, params.boundaryWkt));
 
   // What the run this preview stands in for would refuse to write, asked of the
@@ -501,11 +505,15 @@ async function writeUnderLock(
   )).rows[0] ?? null;
   const held = Boolean(stored?.was_held);
   // The run's record as the place will take it: a field another source of the
-  // place contradicts is kept as the place holds it (`sourceView.ts`). The run's
-  // own view of it is still recorded on its membership, from `params`.
+  // place contradicts is kept as the place holds it (`sourceView.ts`), and so is
+  // a field another family of sources brings (`fieldFamilies.ts`). The run's own
+  // view is still recorded on its membership, from `params`.
   const written = locked === null || stored === null
     ? params
-    : keptAsStored(params, stored, await contestedFields(client, locked.id, params));
+    : keptForFamilies(
+      keptAsStored(params, stored, await contestedFields(client, locked.id, params)),
+      stored, await otherFamiliesFields(client, locked.id, params.sourceId),
+    );
 
   const result = await client.query(
     `WITH gate AS (
