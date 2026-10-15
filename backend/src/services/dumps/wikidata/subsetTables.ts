@@ -11,7 +11,7 @@
  */
 
 import { availableParallelism } from 'node:os';
-import type { PoolClient } from 'pg';
+import type { PoolClient, QueryResultRow } from 'pg';
 import { pool } from '../../../db/index.js';
 import { arrayItemOf } from './compactEntity.js';
 import { insertRefusing, type Refusals } from './refusals.js';
@@ -39,7 +39,9 @@ export const CLAIM_PROPERTIES = [
  * when `signal` aborts: a derivation over the whole subset runs for many
  * minutes, and a cancel must not wait for it to end.
  */
-async function cancellable(signal: AbortSignal, sql: string, params: unknown[] = []): Promise<void> {
+async function cancellable<Row extends QueryResultRow = QueryResultRow>(
+  signal: AbortSignal, sql: string, params: unknown[] = [],
+): Promise<Row[]> {
   signal.throwIfAborted();
   const client = await pool.connect();
   let cancelling: Promise<unknown> = Promise.resolve();
@@ -48,8 +50,9 @@ async function cancellable(signal: AbortSignal, sql: string, params: unknown[] =
       .catch(() => undefined);
   };
   signal.addEventListener('abort', onAbort, { once: true });
+  let rows: Row[];
   try {
-    await client.query(sql, params);
+    rows = (await client.query<Row>(sql, params)).rows;
   } finally {
     signal.removeEventListener('abort', onAbort);
     // A cancel that lands after the statement ended would stop whatever runs
@@ -58,6 +61,7 @@ async function cancellable(signal: AbortSignal, sql: string, params: unknown[] =
     client.release(signal.aborted);
   }
   signal.throwIfAborted();
+  return rows;
 }
 
 /**
@@ -313,19 +317,30 @@ async function inParts(signal: AbortSignal, parts: number, params: unknown[], sq
  * which the kept property entities carry, and from an unknown or no value
  * (`{"somevalue": true}`, `{"novalue": true}`) by being a string: those stay
  * in `value`, so `value_item` only ever holds an id.
+ *
+ * Which of the claimed properties take an item is read once, before the
+ * parts start, and handed to each as a list (#1523). Joining the entities
+ * table for it instead had every part hash all of the table, which has no
+ * index yet: 24 million rows and tens of gigabytes of temporary files on a
+ * full build, to find a few dozen property entities.
  */
 export async function deriveFromEntities(signal: AbortSignal, parts = DERIVE_PARTS): Promise<void> {
-  await inParts(signal, parts, [CLAIM_PROPERTIES], at =>
+  const itemProperties = (await cancellable<{ id: string }>(
+    signal,
+    `SELECT id FROM ${next('wikidata_entities')}
+      WHERE id = ANY($1::text[]) AND entity->>'datatype' = 'wikibase-item'`,
+    [CLAIM_PROPERTIES],
+  )).map(row => row.id);
+  await inParts(signal, parts, [CLAIM_PROPERTIES, itemProperties], at =>
     `INSERT INTO ${next('wikidata_claims')} (subject, property, statement_id, rank, value_item, value, qualifiers)
      SELECT e.id, c.property, s->>'id',
             CASE s->>'rank' WHEN 'preferred' THEN 1 WHEN 'deprecated' THEN -1 ELSE 0 END,
-            CASE WHEN p.entity->>'datatype' = 'wikibase-item' AND jsonb_typeof(s->'value') = 'string' THEN s->>'value' END,
-            CASE WHEN p.entity->>'datatype' = 'wikibase-item' AND jsonb_typeof(s->'value') = 'string' THEN NULL ELSE s->'value' END,
+            CASE WHEN c.property = ANY($2::text[]) AND jsonb_typeof(s->'value') = 'string' THEN s->>'value' END,
+            CASE WHEN c.property = ANY($2::text[]) AND jsonb_typeof(s->'value') = 'string' THEN NULL ELSE s->'value' END,
             s->'qualifiers'
        FROM ${next('wikidata_entities')} e
       CROSS JOIN LATERAL jsonb_each(e.entity->'claims') AS c(property, statements)
       CROSS JOIN LATERAL jsonb_array_elements(c.statements) AS s
-       LEFT JOIN ${next('wikidata_entities')} p ON p.id = c.property
       WHERE e.id LIKE 'Q%' AND c.property = ANY($1::text[]) AND ${at}`);
   // The languages of either term object. `->` and `||` bind alike and from
   // the left, so each object is bracketed before the merge, or it reads as
