@@ -373,7 +373,9 @@ run_e2e_playwright() {
   # what actually makes the html reporter run. No explicit output-folder
   # option needed: CI=1 (set on the e2e service) already makes the html
   # reporter default open:'never', matching the config's explicit setting.
-  compose_test_profile exec -T e2e sh -lc "E2E_BASE_URL='http://frontend:5173' PLAYWRIGHT_JSON_OUTPUT_FILE='${report_path}' npx playwright test --project='${project_name}' --reporter=list,json,html --config=playwright.config.ts" || playwright_rc=$?
+  # E2E_FRONTEND_MODE tells the specs which shape the frontend was brought up
+  # in, so build-shape.smoke.spec.ts can prove the lane browsed that one.
+  compose_test_profile exec -T e2e sh -lc "E2E_BASE_URL='http://frontend:5173' E2E_FRONTEND_MODE='${FRONTEND_MODE:-dev}' PLAYWRIGHT_JSON_OUTPUT_FILE='${report_path}' npx playwright test --project='${project_name}' --reporter=list,json,html --config=playwright.config.ts" || playwright_rc=$?
   # The e2e image runs as root (no USER in frontend/Dockerfile.e2e), so
   # playwright-report/ and test-results/ - bind-mounted host directories -
   # come out root-owned. Reading them back (e.g. actions/upload-artifact)
