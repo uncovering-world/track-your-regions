@@ -5622,6 +5622,18 @@ export interface ImportStatus {
      * @maximum 9007199254740991
      */
   noCandidates?: number;
+  /**
+     * How many regions the matching phase looks at, under a policy that matches regions rather than countries.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  matchTotal?: number;
+  /**
+     * How many of those it has looked at.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  matchDone?: number;
   /** The world view the import creates, once it exists. */
   worldViewId?: number | null;
   /** Every imported world view, newest first, finished ones included. */
