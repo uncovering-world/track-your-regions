@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('../../utils/queryInvalidation', () => ({
@@ -421,7 +421,7 @@ describe('the location a lookup fills in', () => {
     expect(mockedCreate.mock.calls[0][0]).toMatchObject({ latitude: pin.lat, longitude: pin.lng });
   });
 
-  it("keeps the found place's point over an item matched by the bare name elsewhere", async () => {
+  it('fills nothing from an item matched by the bare name elsewhere', async () => {
     // Brno's Old Town Hall as Nominatim answers "Old Town Hall Czechia", here
     // without its wikidata tag; the name layer then matches Hanover's (Q439391).
     const BRNO = { display_name: 'Stará radnice, Mečová, Brno-město', lat: 49.193013, lng: 16.6080704, type: 'townhall', wikidataId: null };
@@ -431,6 +431,7 @@ describe('the location a lookup fills in', () => {
       entityLabel: 'Old Town Hall',
       wikidataId: 'Q439391',
       description: 'old town hall in Hanover, Germany',
+      wikipediaUrl: 'https://en.wikipedia.org/wiki/Old_Town_Hall_(Hanover)',
       coordinates: { lat: 52.37122549513791, lng: 9.736017726780437 },
     };
     mockedSearch.mockImplementation(async (query: string) => (query === 'Old Town Hall Czechia' ? [BRNO] : []));
@@ -438,12 +439,120 @@ describe('the location a lookup fills in', () => {
     mockedCreate.mockResolvedValue({ id: 907 });
     lookUpIn('Czechia', 'Old Town Hall');
 
-    // The match is still shown for the curator to judge; only the pin stays.
-    expect(await screen.findByText('(Q439391)', { exact: false })).toBeInTheDocument();
+    // The namesake is named for the curator to judge, never as the place's match.
+    expect(await screen.findByText(/No item matched the place/)).toBeInTheDocument();
+    expect(screen.getByText('(Q439391)', { exact: false })).toBeInTheDocument();
+    expect(screen.queryByText(/Matched:/)).not.toBeInTheDocument();
+    expect(screen.getByText(/Found: Stará radnice/)).toBeInTheDocument();
     fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
 
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
-    expect(mockedCreate.mock.calls[0][0]).toMatchObject({ latitude: BRNO.lat, longitude: BRNO.lng });
+    const sent = mockedCreate.mock.calls[0][0];
+    expect(sent).toMatchObject({ latitude: BRNO.lat, longitude: BRNO.lng });
+    expect(sent).not.toHaveProperty('imageUrl');
+    expect(sent).not.toHaveProperty('shortDescription');
+    expect(sent).not.toHaveProperty('wikipediaUrl');
+  });
+
+  it('takes back what an earlier lookup filled when the next finds only a namesake', async () => {
+    // The first lookup finds no place, so the name layer's Hanover hall is taken
+    // as the place; looked up again, Nominatim finds Brno's, and Hanover's
+    // picture, description and link must not stay under it.
+    const BRNO = { display_name: 'Stará radnice, Mečová, Brno-město', lat: 49.193013, lng: 16.6080704, type: 'townhall', wikidataId: null };
+    const HANOVER = {
+      imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/L1040840b%20Altes%20Rathaus%20Hannover%20v%20W.jpg',
+      source: 'wikidata_search',
+      entityLabel: 'Old Town Hall',
+      wikidataId: 'Q439391',
+      description: 'old town hall in Hanover, Germany',
+      wikipediaUrl: 'https://en.wikipedia.org/wiki/Old_Town_Hall_(Hanover)',
+      coordinates: { lat: 52.37122549513791, lng: 9.736017726780437 },
+    };
+    mockedSearch.mockImplementation(async () => []);
+    mockedSuggest.mockImplementation(async () => HANOVER);
+    mockedCreate.mockResolvedValue({ id: 909 });
+    lookUpIn('Czechia', 'Old Town Hall');
+    expect(await screen.findByText('Old Town Hall', { selector: 'strong' })).toBeInTheDocument();
+    expect(screen.getByText(/Matched:/)).toBeInTheDocument();
+
+    mockedSearch.mockImplementation(async (query: string) => (query === 'Old Town Hall Czechia' ? [BRNO] : []));
+    fireEvent.click(screen.getByRole('button', { name: 'Look up again' }));
+    expect(await screen.findByText(/No item matched the place/)).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
+    const sent = mockedCreate.mock.calls[0][0];
+    expect(sent).toMatchObject({ latitude: BRNO.lat, longitude: BRNO.lng });
+    expect(sent).not.toHaveProperty('imageUrl');
+    expect(sent).not.toHaveProperty('shortDescription');
+    expect(sent).not.toHaveProperty('wikipediaUrl');
+    mockedSearch.mockImplementation(async () => []);
+  });
+
+  it('drops a Suggest answer that arrives after a lookup started', async () => {
+    // Suggest is pressed, then Look up finds Brno and refuses Hanover's hall as
+    // a namesake; Suggest's answer, Hanover's, must not bring it back.
+    const BRNO = { display_name: 'Stará radnice, Mečová, Brno-město', lat: 49.193013, lng: 16.6080704, type: 'townhall', wikidataId: null };
+    const HANOVER = {
+      imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/L1040840b%20Altes%20Rathaus%20Hannover%20v%20W.jpg',
+      source: 'wikidata_search',
+      entityLabel: 'Old Town Hall',
+      wikidataId: 'Q439391',
+      description: 'old town hall in Hanover, Germany',
+      wikipediaUrl: 'https://en.wikipedia.org/wiki/Old_Town_Hall_(Hanover)',
+      coordinates: { lat: 52.37122549513791, lng: 9.736017726780437 },
+    };
+    let answerSuggest: (value: typeof HANOVER) => void = () => {};
+    mockedSuggest.mockImplementation(async () => HANOVER);
+    mockedSuggest.mockImplementationOnce(() => new Promise((resolve) => { answerSuggest = resolve; }));
+    mockedSearch.mockImplementation(async (query: string) => (query === 'Old Town Hall Czechia' ? [BRNO] : []));
+    mockedCreate.mockResolvedValue({ id: 910 });
+    renderIn('Czechia');
+    fireEvent.change(screen.getByRole('textbox', { name: /^Name/ }), { target: { value: 'Old Town Hall' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Suggest' }));
+    await waitFor(() => expect(mockedSuggest).toHaveBeenCalledTimes(1));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Look up' }));
+    expect(await screen.findByText(/No item matched the place/)).toBeInTheDocument();
+    await act(async () => { answerSuggest(HANOVER); });
+
+    expect(screen.getByText(/No item matched the place/)).toBeInTheDocument();
+    expect(screen.queryByText(/Matched:/)).not.toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Create Experience' }));
+    await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
+    const sent = mockedCreate.mock.calls[0][0];
+    expect(sent).not.toHaveProperty('imageUrl');
+    expect(sent).not.toHaveProperty('shortDescription');
+    expect(sent).not.toHaveProperty('wikipediaUrl');
+    mockedSearch.mockImplementation(async () => []);
+  });
+
+  it('drops a Suggest answer for a name edited while it ran, and says nothing was found', async () => {
+    const HANOVER = {
+      imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/L1040840b%20Altes%20Rathaus%20Hannover%20v%20W.jpg',
+      source: 'wikidata_search',
+      entityLabel: 'Old Town Hall',
+      wikidataId: 'Q439391',
+      description: 'old town hall in Hanover, Germany',
+      coordinates: { lat: 52.37122549513791, lng: 9.736017726780437 },
+    };
+    let answerSuggest: (value: typeof HANOVER) => void = () => {};
+    mockedSuggest.mockImplementationOnce(() => new Promise((resolve) => { answerSuggest = resolve; }));
+    renderIn('Czechia');
+    const nameField = screen.getByRole('textbox', { name: /^Name/ });
+    fireEvent.change(nameField, { target: { value: 'Old Town Hall' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Suggest' }));
+    await waitFor(() => expect(mockedSuggest).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(nameField, { target: { value: 'Old Town Hall Brno' } });
+    // The mutation's state reaches the screen a tick after its promise settles.
+    await act(async () => {
+      answerSuggest(HANOVER);
+      await new Promise(resolve => setTimeout(resolve, 20));
+    });
+
+    expect(screen.queryByText(/Found via/)).not.toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: /^Image URL/ })).toHaveValue('');
   });
 
   it("places the pin at the matched item's coordinate and keeps the curator's own picture", async () => {
