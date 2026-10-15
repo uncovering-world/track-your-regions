@@ -70,7 +70,10 @@ instead, each ending at a line's end and in memory of its own, so a worker
 thread can be given it without a copy; `lineCount` says how many lines it has
 taken. Every other consumer gets one call per line.
 
-gzip is decoded in-process (`createGunzip`). bzip2 runs as a child process,
+gzip is decoded in-process (`createGunzip`), in 1 MB pieces (`GUNZIP_CHUNK`):
+at zlib's default 16 KB the image's Node 22 decoded the entities dump at
+207 MB/s, at 1 MB at 392 MB/s, and the decoder bounds a subset build's passes
+once their work runs in worker threads. bzip2 runs as a child process,
 `/usr/bin/bzip2 -dc` by its absolute path, whose exit code is what says the
 stream ended cleanly: Node has no bzip2 of its own, and the Alpine image has
 no parallel decoder (no `lbzip2` or `pbzip2`), so a gzip file is preferred
