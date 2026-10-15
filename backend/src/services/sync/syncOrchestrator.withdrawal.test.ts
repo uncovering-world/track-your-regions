@@ -262,10 +262,10 @@ describe('a run whose admission sweep was skipped', () => {
     vi.clearAllMocks();
   });
 
-  it('records why on its row, beside the other guards, and leaves the verdict to them (#751)', async () => {
-    // The places the kind's rule would have delisted stayed admitted, which the
-    // card can say only if the row does; whether that alone makes the run
-    // partial is not decided here, so a run with no other fault is a success.
+  it('records why on its row, beside the other guards, and calls the run partial (#751)', async () => {
+    // The places the kind's rule would have delisted stayed admitted, after a
+    // run that admitted nothing or under half the last one: no item errored,
+    // and still not a success, as with a skipped withdrawal.
     const sweepReason = 'admitted 12 of the previous 100 (12%), below the 50% floor';
     (admissionSweepSkipReason as ReturnType<typeof vi.fn>).mockReturnValueOnce(sweepReason);
     const config = shortRun({
@@ -276,10 +276,13 @@ describe('a run whose admission sweep was skipped', () => {
     await orchestrateSync(config, 1);
 
     expect(updateSyncLog).toHaveBeenLastCalledWith(
-      TEST_SOURCE_ID, 42, 'success',
+      TEST_SOURCE_ID, 42, 'partial',
       expect.objectContaining({ admissionSweepSkippedReason: sweepReason, withdrawalSkippedReason: null }),
       undefined,
     );
+    const status = getSyncStatus(TEST_SOURCE_ID);
+    expect(status?.statusMessage).toContain('Complete (partial)');
+    expect(status?.statusMessage).toContain(`delisted nothing — ${sweepReason}`);
   });
 
   it('leaves the reason null where the sweep ran', async () => {

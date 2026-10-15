@@ -278,7 +278,7 @@ export async function orchestrateSync<T>(
     // Computed after that attempt: a run whose per-object record never landed is
     // not a clean run, whatever the items themselves did, and an operator
     // reading `success` over a missing changeset would be misled.
-    const finalStatus = computeFinalStatus(progress, withdrawalSkippedReason);
+    const finalStatus = computeFinalStatus(progress, skipped);
     // Everything that is not `failed` is a run that reached `complete`: the
     // log row's `partial` is not a progress state (`computeFinalStatus` names
     // the three things called `partial`).
@@ -288,7 +288,7 @@ export async function orchestrateSync<T>(
     // poller see `running: false` while it is still going — and read a status
     // the placement may be about to downgrade.
     finishedStatus = finalStatus === 'failed' ? 'failed' : 'complete';
-    progress.statusMessage = completionMessage(progress, finalStatus, withdrawalSkippedReason);
+    progress.statusMessage = completionMessage(progress, finalStatus, skipped);
 
     // Stopped before the close, so no progress write lands behind it.
     await progressWriter.close();
