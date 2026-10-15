@@ -47,9 +47,11 @@ interface Need {
  */
 export async function assertRoomToWrite(
   spoolDir: string, counts: Pick<ScopeCounts, 'bytes' | 'keptBytes'>, dbDir = process.env.DB_DISK_DIR?.trim() || undefined,
+  /** What an earlier build of the same file already wrote, which a build picking up after it (#1493) does not write again. */
+  written: { tables: number; spool: number } = { tables: 0, spool: 0 },
 ): Promise<string[]> {
-  const needs: Need[] = [{ dir: spoolDir, bytes: (counts.bytes - counts.keptBytes) * SPOOL_SHARE }];
-  if (dbDir) needs.push({ dir: dbDir, bytes: counts.keptBytes * TABLES_SHARE });
+  const needs: Need[] = [{ dir: spoolDir, bytes: Math.max(0, (counts.bytes - counts.keptBytes) * SPOOL_SHARE - written.spool) }];
+  if (dbDir) needs.push({ dir: dbDir, bytes: Math.max(0, counts.keptBytes * TABLES_SHARE - written.tables) });
   const disks: Array<{ disk: Disk; dir: string; need: number }> = [];
   for (const need of needs) {
     const disk = await diskOf(need.dir);

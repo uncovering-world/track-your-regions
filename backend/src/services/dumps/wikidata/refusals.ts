@@ -31,6 +31,11 @@ export class Refusals {
     }
   }
 
+  /** Count again what an earlier build of the same pass recorded (#1493); the budget holds over both. */
+  restore(refused: ReadonlyArray<{ id: string; reason: string }>): void {
+    for (const row of refused) this.refuse(row.id, new Error(row.reason));
+  }
+
   /** For the build's notes, or null when none was refused. */
   note(what: string): string | null {
     if (this.count === 0) return null;
@@ -45,7 +50,7 @@ export class Refusals {
  * written.
  */
 export async function insertRefusing<T>(
-  rows: T[], idOf: (row: T) => string, insert: (rows: T[]) => Promise<void>, refusals: Refusals,
+  rows: T[], idOf: (row: T) => string, insert: (rows: T[]) => Promise<void>, refusals: Pick<Refusals, 'refuse'>,
 ): Promise<number> {
   try {
     await insert(rows);

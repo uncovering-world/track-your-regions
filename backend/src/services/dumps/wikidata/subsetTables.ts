@@ -14,6 +14,7 @@ import { availableParallelism } from 'node:os';
 import type { PoolClient } from 'pg';
 import { pool } from '../../../db/index.js';
 import { arrayItemOf } from './compactEntity.js';
+import { insertRefusing, type Refusals } from './refusals.js';
 
 /** The tables a build replaces, the entities first. */
 export const SUBSET_TABLES = [
@@ -59,8 +60,23 @@ async function cancellable(signal: AbortSignal, sql: string, params: unknown[] =
   signal.throwIfAborted();
 }
 
+/**
+ * The build's own record of pass 2 (#1493), beside the `_next` copies and as
+ * unlogged as they are, so a database crash that empties them empties it too:
+ * which build the copies are for (`RESUME_TABLE`, its key), and every piece of
+ * the dump whose rows are written (`PIECES_TABLE`), with what the build keeps
+ * of it in memory — its lines, its rows written, its terms spooled and where
+ * the spool ended, the items its kept entities name (the labels ring) and the
+ * rows Postgres refused. A piece's record is written in the transaction that
+ * writes its rows, so a piece is either wholly done or not done at all.
+ */
+const RESUME_TABLE = 'wikidata_build_resume_next';
+/** How many piece transactions may be open at once: each holds a client of the pool the API shares (`db/index.ts`). */
+export const PIECES_IN_FLIGHT = 6;
+const PIECES_TABLE = 'wikidata_build_pieces_next';
+
 /** Empty `_next` copies of every table, made like the live ones but with no index yet: they load faster without. */
-export async function createNextTables(): Promise<void> {
+export async function createNextTables(resumeKey: string, spoolPath: string): Promise<void> {
   for (const table of SUBSET_TABLES) {
     await pool.query(`DROP TABLE IF EXISTS ${next(table)}`);
     await pool.query(
@@ -68,10 +84,151 @@ export async function createNextTables(): Promise<void> {
     );
   }
   await pool.query(`ALTER TABLE ${next('wikidata_entities')} SET (toast_tuple_target = 128)`);
+  await pool.query(`DROP TABLE IF EXISTS ${RESUME_TABLE}, ${PIECES_TABLE}`);
+  await pool.query(`CREATE UNLOGGED TABLE ${RESUME_TABLE} (key text NOT NULL, spool text NOT NULL)`);
+  await pool.query(`INSERT INTO ${RESUME_TABLE} (key, spool) VALUES ($1, $2)`, [resumeKey, spoolPath]);
+  await pool.query(
+    `CREATE UNLOGGED TABLE ${PIECES_TABLE} (
+       piece integer PRIMARY KEY, lines integer NOT NULL, written integer NOT NULL, spooled integer NOT NULL,
+       spool_end bigint NOT NULL, ring bytea NOT NULL, refused jsonb NOT NULL)`,
+  );
+}
+
+/** What a piece of pass 2 leaves behind once its rows are written. */
+export interface PieceRecord {
+  piece: number;
+  lines: number;
+  spooled: number;
+  /** The spool's size once this piece's terms were appended to it. */
+  spoolEnd: number;
+  ring: Uint32Array;
+}
+
+/** A refused row, for the build's notes. */
+export interface RefusedRow { id: string; reason: string }
+
+/**
+ * Write a piece's rows and its record in one transaction; answers how many
+ * rows were written. A batch Postgres refuses for its data is written again
+ * row by row inside the transaction, each attempt behind a savepoint, and the
+ * rows still refused are left out, counted in `refusals` and kept in the
+ * piece's record.
+ */
+export async function commitPiece(
+  record: PieceRecord, rows: EntityRow[], refusals: Pick<Refusals, 'refuse'>,
+): Promise<number> {
+  const client = await pool.connect();
+  let healthy = true;
+  try {
+    await client.query('BEGIN');
+    const refused: RefusedRow[] = [];
+    const own = { refuse: (id: string, error: unknown) => { refused.push({ id, reason: (error as Error).message }); refusals.refuse(id, error); } };
+    const behindSavepoint = async (batch: EntityRow[]) => {
+      await client.query('SAVEPOINT row_batch');
+      try {
+        await insertEntitiesOn(client, batch);
+        await client.query('RELEASE SAVEPOINT row_batch');
+      } catch (error) {
+        await client.query('ROLLBACK TO SAVEPOINT row_batch');
+        throw error;
+      }
+    };
+    let written = 0;
+    for (let at = 0; at < rows.length; at += ENTITY_BATCH) {
+      written += await insertRefusing(rows.slice(at, at + ENTITY_BATCH), row => row.id, behindSavepoint, own);
+    }
+    await client.query(
+      `INSERT INTO ${PIECES_TABLE} (piece, lines, written, spooled, spool_end, ring, refused) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [record.piece, record.lines, written, record.spooled, record.spoolEnd,
+        Buffer.from(record.ring.buffer, record.ring.byteOffset, record.ring.byteLength), JSON.stringify(refused)],
+    );
+    await client.query('COMMIT');
+    return written;
+  } catch (error) {
+    healthy = false;
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release(!healthy);
+  }
+}
+
+/** The spool an earlier build left beside its copies, whatever it was built from: removed when a build starts afresh. */
+export async function earlierSpool(): Promise<string | null> {
+  const present = await pool.query<{ ok: boolean }>('SELECT to_regclass($1) IS NOT NULL AS ok', [RESUME_TABLE]);
+  if (!present.rows[0]?.ok) return null;
+  const row = await pool.query<{ spool: string }>(`SELECT spool FROM ${RESUME_TABLE}`);
+  return row.rows[0]?.spool ?? null;
+}
+
+/** What the entities copy holds on disk now: what a build picking up after it does not write again. */
+export async function entitiesCopySize(): Promise<number> {
+  const result = await pool.query<{ size: string | null }>('SELECT pg_total_relation_size(to_regclass($1)) AS size', [next('wikidata_entities')]);
+  return Number(result.rows[0]?.size ?? 0);
+}
+
+/** What an earlier build of the same file and scope left to pick up after (#1493). */
+export interface ResumeState {
+  pieces: Map<number, { lines: number; written: number; spooled: number; ring: Uint32Array; refused: RefusedRow[] }>;
+  /** Where the spool's last written piece ended: what of the spool is kept. */
+  spoolEnd: number;
+}
+
+/**
+ * The pieces an earlier build wrote, when its `_next` copies are there and
+ * are for `resumeKey` (the same file and scope); else null, and the build
+ * starts afresh.
+ */
+export async function resumableBuild(resumeKey: string): Promise<ResumeState | null> {
+  const present = await pool.query<{ ok: boolean }>(
+    `SELECT to_regclass($1) IS NOT NULL AND to_regclass($2) IS NOT NULL AND to_regclass($3) IS NOT NULL AS ok`,
+    [RESUME_TABLE, PIECES_TABLE, next('wikidata_entities')],
+  );
+  if (!present.rows[0]?.ok) return null;
+  const key = await pool.query<{ key: string }>(`SELECT key FROM ${RESUME_TABLE}`);
+  if (key.rows.length !== 1 || key.rows[0].key !== resumeKey) return null;
+  const rows = await pool.query<{ piece: number; lines: number; written: number; spooled: number; spool_end: string; ring: Buffer; refused: RefusedRow[] }>(
+    `SELECT piece, lines, written, spooled, spool_end, ring, refused FROM ${PIECES_TABLE}`,
+  );
+  const state: ResumeState = { pieces: new Map(), spoolEnd: 0 };
+  for (const row of rows.rows) {
+    const ring = new Uint32Array(row.ring.byteLength / 4);
+    new Uint8Array(ring.buffer).set(row.ring);
+    state.pieces.set(row.piece, { lines: row.lines, written: row.written, spooled: row.spooled, ring, refused: row.refused });
+    state.spoolEnd = Math.max(state.spoolEnd, Number(row.spool_end));
+  }
+  return state;
+}
+
+/**
+ * Before a build picks up after its pass 2, undo what came after the pass:
+ * the tables derived from the entities are made empty again and the
+ * entities copy loses any index it was given, so the steps after the pass
+ * run once, on the whole.
+ */
+export async function resetAfterPassTwo(): Promise<void> {
+  for (const table of SUBSET_TABLES) {
+    if (table === 'wikidata_entities') continue;
+    await pool.query(`DROP TABLE IF EXISTS ${next(table)}`);
+    await pool.query(
+      `CREATE UNLOGGED TABLE ${next(table)} (LIKE ${table} INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING COMPRESSION INCLUDING STORAGE)`,
+    );
+  }
+  const client = await pool.connect();
+  try {
+    for (const index of await indexesOf(client, 'wikidata_entities')) {
+      await client.query(index.constraint
+        ? `ALTER TABLE ${next('wikidata_entities')} DROP CONSTRAINT IF EXISTS ${index.name}_next`
+        : `DROP INDEX IF EXISTS ${index.name}_next`);
+    }
+  } finally {
+    client.release();
+  }
 }
 
 export async function dropNextTables(): Promise<void> {
   for (const table of SUBSET_TABLES) await pool.query(`DROP TABLE IF EXISTS ${next(table)}`);
+  await pool.query(`DROP TABLE IF EXISTS ${RESUME_TABLE}, ${PIECES_TABLE}`);
 }
 
 /**
@@ -82,9 +239,12 @@ export async function dropNextTables(): Promise<void> {
  */
 export type EntityRow = { id: string; sitelinkCount: number } & ({ entity: string } | { arrayItem: string });
 
-export async function insertEntities(rows: EntityRow[]): Promise<void> {
+/** Rows per insert statement: a few megabytes of JSON. */
+const ENTITY_BATCH = 2000;
+
+async function insertEntitiesOn(client: PoolClient, rows: EntityRow[]): Promise<void> {
   if (rows.length === 0) return;
-  await pool.query(
+  await client.query(
     `INSERT INTO ${next('wikidata_entities')} (id, sitelink_count, entity)
      SELECT * FROM unnest($1::text[], $2::int[], $3::jsonb[])`,
     [rows.map(r => r.id), rows.map(r => r.sitelinkCount), `{${rows.map(r => ('arrayItem' in r ? r.arrayItem : arrayItemOf(r.entity))).join(',')}}`],
@@ -262,6 +422,7 @@ export async function swapIn(buildId: number, dumpDate: string, counts: Record<s
       await client.query(`ALTER TABLE ${next(table)} RENAME TO ${table}`);
       for (const index of indexes) await client.query(`ALTER INDEX ${index.name}_next RENAME TO ${index.name}`);
     }
+    await client.query(`DROP TABLE IF EXISTS ${RESUME_TABLE}, ${PIECES_TABLE}`);
     await client.query(
       'INSERT INTO wikidata_subset_builds (build_id, dump_date, counts) VALUES ($1, $2, $3)',
       [buildId, dumpDate, JSON.stringify(counts)],

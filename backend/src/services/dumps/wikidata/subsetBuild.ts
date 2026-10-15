@@ -13,11 +13,14 @@
  * Anything that fails leaves the live subset as it was.
  */
 
+import { rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DumpFile } from '../catalog.js';
-import { readDump, type ReadOptions } from '../read.js';
+import { isDamagedRead, PIECE_BYTES, readDump, type ReadOptions } from '../read.js';
 import { assertRoomToWrite } from './diskRoom.js';
+import { IdSet } from './idSets.js';
+import { WRITE_VERSION } from './lineWork.js';
 import { TermsSpool } from './labelsRing.js';
 import { insertRefusing, Refusals } from './refusals.js';
 import type { Scope, ScopeCounts } from './scope.js';
@@ -25,8 +28,8 @@ import { ScopeReader } from './scopeReader.js';
 import { loadScope, saveScope, scopePath } from './scopeFile.js';
 import { SubsetWriter } from './subsetWriter.js';
 import {
-  createNextTables, deriveClassClosure, deriveFromEntities, dropNextTables, indexNextTables, insertLabels,
-  type LabelRow, swapIn,
+  createNextTables, earlierSpool, entitiesCopySize, resetAfterPassTwo, resumableBuild, deriveClassClosure, deriveFromEntities, dropNextTables, indexNextTables, insertLabels,
+  type LabelRow, type ResumeState, swapIn,
 } from './subsetTables.js';
 
 export interface SubsetBuildOptions extends ReadOptions {
@@ -51,9 +54,12 @@ async function labelTheRing(
   let rows: LabelRow[] = [];
   let labelled = 0;
   const insert = (batch: LabelRow[]) => insertRefusing(batch, row => `${row.id}@${row.language}`, insertLabels, refusals);
+  // A piece written again after a cut (#1493) spooled its terms twice; each entity is labelled once.
+  const seen = new IdSet();
   for await (const { id, terms } of spool.read()) {
     signal.throwIfAborted();
-    if (!ring(Number(id.slice(1)))) continue;
+    const item = Number(id.slice(1));
+    if (!ring(item) || !seen.add(item)) continue;
     labelled += 1;
     for (const [language, [label, description]] of Object.entries(terms)) rows.push({ id, language, label, description });
     if (rows.length >= LABEL_BATCH) {
@@ -85,25 +91,71 @@ async function scopeOf(file: DumpFile, options: SubsetBuildOptions): Promise<Sco
   return scope;
 }
 
+/**
+ * What the `_next` copies of an earlier build must have been built from for
+ * this one to pick up after them: the same file, its checksum, the same
+ * scope (its counts, which the kept first pass reads back unchanged), the
+ * same grid of pieces, and the same way of writing a line (`WRITE_VERSION`),
+ * so rows of two versions of the code never end up in one subset.
+ */
+const resumeKeyOf = (file: DumpFile, scope: Scope) => JSON.stringify({
+  file: file.fileName, checksum: file.checksum?.value ?? null, scope: scope.counts, piece: PIECE_BYTES, write: WRITE_VERSION,
+});
+
+/** The size of the file at `path`, or 0 where there is none. */
+const sizeOf = async (path: string) => (await stat(path).catch(() => null))?.size ?? 0;
+
+/**
+ * What an earlier build of the same file left to pick up after, or null to
+ * start afresh, in which case an earlier build's spool elsewhere is removed.
+ */
+async function whatToPickUpAfter(resumeKey: string, spoolPath: string, options: SubsetBuildOptions): Promise<ResumeState | null> {
+  const resume = await resumableBuild(resumeKey);
+  // The spool in a temporary directory goes with a recreated container while
+  // the copies stay in the database: without the terms the records point to,
+  // the copies cannot be picked up after.
+  if (resume && await sizeOf(spoolPath) >= resume.spoolEnd) return resume;
+  if (resume) options.onNote?.('an earlier build\'s copies were found without its spool: starting afresh');
+  const stale = await earlierSpool();
+  if (stale && stale !== spoolPath) await rm(stale, { force: true });
+  // Copies no build can pick up after go now, before the disk check counts them as used.
+  await dropNextTables();
+  return null;
+}
+
 export async function buildSubset(file: DumpFile, options: SubsetBuildOptions): Promise<SubsetResult> {
-  const { onPhase } = options;
+  const { onPhase, signal } = options;
   const scope = await scopeOf(file, options);
 
+  // An earlier build of the same file and scope that was cut in pass 2 left
+  // its copies and its spool (#1493): this one picks up after the pieces it
+  // finds written, reading the file whole all the same, which verifies it.
+  const resumeKey = resumeKeyOf(file, scope);
   const spoolDir = options.dumpsDir ?? tmpdir();
-  for (const note of await assertRoomToWrite(spoolDir, scope.counts)) options.onNote?.(note);
-  const spool = new TermsSpool(join(spoolDir, `${file.fileName}.terms.gz`));
+  const spoolPath = join(spoolDir, `${file.fileName}.terms.gz`);
+  const resume = await whatToPickUpAfter(resumeKey, spoolPath, options);
+  const written = resume ? { tables: await entitiesCopySize(), spool: resume.spoolEnd } : undefined;
+  for (const note of await assertRoomToWrite(spoolDir, scope.counts, undefined, written)) options.onNote?.(note);
+  const spool = new TermsSpool(spoolPath);
+  let keep = false;
   try {
-    await createNextTables();
+    if (resume) {
+      await resetAfterPassTwo();
+      await spool.open(resume.spoolEnd);
+      options.onNote?.(`picked up after ${resume.pieces.size.toLocaleString('en')} pieces an earlier build of this file wrote`);
+    } else {
+      await createNextTables(resumeKey, spoolPath);
+      await spool.open();
+    }
     onPhase(`Pass 2 of 2: writing ${scope.counts.kept.toLocaleString('en')} items...`);
     // One budget for every row the build leaves out: `MAX_REFUSED` holds for entities and labels together.
     const refusals = new Refusals();
-    const writer = new SubsetWriter(scope, spool, refusals);
+    const writer = new SubsetWriter(scope, spool, refusals, resume);
     const read = await readDump(file, writer, options);
 
     // Past the reads, a cancel is honoured between steps and inside each
     // long statement, and always before the swap: a cancelled build keeps
     // nothing.
-    const { signal } = options;
     onPhase('Labelling the entities the kept items name...');
     const ring = (id: number) => writer.ring.has(id) && !scope.kept.has(id);
     const ringLabelled = await labelTheRing(spool, ring, signal, refusals);
@@ -126,9 +178,15 @@ export async function buildSubset(file: DumpFile, options: SubsetBuildOptions): 
     await swapIn(options.buildId, file.date, counts);
     return { ...read, counts };
   } catch (error) {
-    await dropNextTables().catch(() => undefined);
+    // What pass 2 wrote is kept for the next build of the same file to pick
+    // up after, unless the build was cancelled, which keeps nothing, or the
+    // file was not the host's, whose rows no build may reuse.
+    keep = !signal.aborted && !isDamagedRead(error);
+    if (keep) options.onNote?.('what pass 2 wrote is kept: the next build of this file picks up after it');
+    else await dropNextTables().catch(() => undefined);
     throw error;
   } finally {
-    await spool.remove();
+    if (keep) await spool.close().catch(() => undefined);
+    else await spool.remove();
   }
 }

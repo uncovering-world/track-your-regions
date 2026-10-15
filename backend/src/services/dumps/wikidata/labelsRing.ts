@@ -13,11 +13,10 @@
  * cannot hold that key unescaped.
  */
 
-import { createReadStream, createWriteStream, type WriteStream } from 'node:fs';
-import { rm } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { type FileHandle, open, rm, truncate } from 'node:fs/promises';
 import { createInterface } from 'node:readline';
-import { once } from 'node:events';
-import { createGunzip, createGzip } from 'node:zlib';
+import { createGunzip, gzipSync } from 'node:zlib';
 import { storableText, SUBSET_LANGUAGES } from './compactEntity.js';
 
 export interface Terms {
@@ -49,33 +48,49 @@ export function termsOf(id: string, line: string, languages: readonly string[] =
   return Object.keys(terms).length > 0 ? { id, terms } : null;
 }
 
-/** A gzip file of `Terms`, one JSON line each, written as the pass goes and read back once. */
+/**
+ * A gzip file of `Terms`, one JSON line each, written as the pass goes and
+ * read back once. It is a run of gzip members, one per piece of the pass,
+ * each made where the piece was read (a worker thread, #1479) and appended
+ * whole, so the file up to the end of any member is a valid spool: a build
+ * that picks up after a cut (#1493) truncates it to the end of the last
+ * member a written piece recorded, and reads every member as one stream.
+ */
 export class TermsSpool {
-  private readonly gzip = createGzip({ level: 1 });
-  private readonly file: WriteStream;
-  private closed: Promise<void> | null = null;
+  private bytes = 0;
+  private file: FileHandle | null = null;
+  /** The appends, one after another, so each member lands whole and in order. */
+  private writing: Promise<unknown> = Promise.resolve();
 
-  constructor(readonly path: string) {
-    this.file = createWriteStream(path);
-    this.gzip.pipe(this.file);
+  constructor(readonly path: string) {}
+
+  /** Start the spool empty, or keep the first `keep` bytes of the one already there. */
+  async open(keep = 0): Promise<void> {
+    if (keep > 0) await truncate(this.path, keep);
+    this.file = await open(this.path, keep > 0 ? 'a' : 'w');
+    this.bytes = keep;
+  }
+
+  /** Append one gzip member; answers the spool's size once it is written. */
+  append(member: Uint8Array): Promise<number> {
+    const appended = this.writing.then(async () => {
+      if (!this.file) throw new Error('The terms spool is not open');
+      if (member.length > 0) await this.file.write(member);
+      this.bytes += member.length;
+      return this.bytes;
+    });
+    this.writing = appended.catch(() => undefined);
+    return appended;
   }
 
   async write(terms: Terms): Promise<void> {
-    await this.writeText(`${JSON.stringify(terms)}\n`);
+    await this.append(gzipSync(`${JSON.stringify(terms)}\n`, { level: 1 }));
   }
 
-  /** Lines already written as the spool keeps them, a batch's worth at once (`writeFactsOf`). */
-  async writeText(text: string): Promise<void> {
-    if (!this.gzip.write(text)) await once(this.gzip, 'drain');
-  }
-
-  close(): Promise<void> {
-    this.closed ??= new Promise<void>((resolve, reject) => {
-      this.file.once('close', () => resolve());
-      this.file.once('error', reject);
-      this.gzip.end();
-    });
-    return this.closed;
+  async close(): Promise<void> {
+    await this.writing;
+    await this.file?.close();
+    this.file = null;
   }
 
   async *read(): AsyncGenerator<Terms> {
