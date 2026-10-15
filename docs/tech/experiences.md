@@ -607,6 +607,22 @@ A work the subset does not keep (no point, and no location, part or collection
 statement reaching a kept place, ADR-0105) is in none of their answers, where
 the live pool collects it and the pipeline counts it as held nowhere.
 
+One value differs on purpose: a year before the common era. The query service
+numbers it astronomically where the date has year precision or finer. 250 BCE, `-0250`
+in the item's JSON, is `YEAR()` -249 there; a decade, a century or anything
+coarser is not shifted. The subset reads the item's own year (`yearOf`), so
+the Lion Capital of Ashoka is 250 BCE and the Rosetta Stone 196 BCE. Migration
+106 corrected the years live runs had stored one year late where the subset
+holds the item, a curator's own year aside, so that a works kind's first run
+on the subset offers no one-year change (#1531). Every Wikidata kind stores a
+year from an inception: Public Art its places' `metadata.year`, and Art
+Museums, Archaeology and Places of worship their works' year, through the
+shared works collector. A live run of any of them after the migration writes
+the late year back, or, gated, offers each corrected row to a curator as a
+change. So 106 is run again by hand right before each kind still on the live
+service switches to the subset; it is re-runnable, and corrects only what is
+still one year late.
+
 **Which Wikidata a source's runs read** is `experience_sources.wikidata_reader`
 (`live` or `subset`), switched on the source's card in the sync panel
 (`WikidataReaderControls`, `PUT /api/admin/sync/sources/:sourceId/wikidata-reader`).
