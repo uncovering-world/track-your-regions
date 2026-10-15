@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { storableJson, storableText } from './compactEntity.js';
+import { arrayItemOf, storableJson, storableText } from './compactEntity.js';
 import { termsOf } from './labelsRing.js';
 
 /**
@@ -39,5 +39,9 @@ describe('a string the subset keeps', () => {
     const line = `{"type":"item","id":"Q42","labels":{"en":{"language":"en","value":${JSON.stringify('Douglas\0 Adams')}}},`
       + `"descriptions":{"en":{"language":"en","value":${JSON.stringify('writer \uD800')}}},"aliases":{}}`;
     expect(termsOf('Q42', line)).toEqual({ id: 'Q42', terms: { en: ['Douglas Adams', 'writer \uFFFD'] } });
+  });
+
+  it('quotes an entity as an element of a Postgres array literal, its backslashes and quotes escaped', () => {
+    expect(arrayItemOf('{"en":"Caf\\u00e9 \\"Le Dôme\\""}')).toBe('"{\\"en\\":\\"Caf\\\\u00e9 \\\\\\"Le Dôme\\\\\\"\\"}"');
   });
 });

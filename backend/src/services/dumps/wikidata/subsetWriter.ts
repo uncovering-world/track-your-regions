@@ -21,8 +21,8 @@ import { type EntityRow, insertEntities } from './subsetTables.js';
 
 /** Rows per insert: a few megabytes of JSON. */
 const BATCH = 2000;
-/** Inserts in flight at once while the pass reads on. */
-const IN_FLIGHT = 3;
+/** Inserts in flight at once while the pass reads on: six measured 8 % faster than three on the dump's first 4 GB (#1479). */
+const IN_FLIGHT = 6;
 /** Lines a worker is handed at once, or fewer when they run long: the dump's first items run to megabytes each. */
 const LINES_PER_TASK = 1000;
 const CHARS_PER_TASK = 16_000_000;
