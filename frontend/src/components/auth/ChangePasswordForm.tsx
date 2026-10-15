@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   CircularProgress,
-  TextField,
   Typography,
 } from '@mui/material';
 import { useAuth } from '../../hooks/useAuth';
@@ -14,6 +13,7 @@ import {
   PASSWORD_TOO_SHORT,
   PASSWORD_TOO_LONG,
 } from '../../constants/passwordRules';
+import { PasswordField } from '../shared/PasswordField';
 
 /**
  * The change-password form of a local account.
@@ -96,10 +96,9 @@ export function ChangePasswordForm() {
         </Alert>
       )}
 
-      <TextField
+      <PasswordField
         margin="dense"
         label="Current password"
-        type="password"
         name="current-password"
         autoComplete="current-password"
         fullWidth
@@ -108,10 +107,9 @@ export function ChangePasswordForm() {
         onChange={(e) => setCurrentPassword(e.target.value)}
         disabled={isSubmitting}
       />
-      <TextField
+      <PasswordField
         margin="dense"
         label="New password"
-        type="password"
         name="new-password"
         autoComplete="new-password"
         fullWidth
@@ -121,10 +119,9 @@ export function ChangePasswordForm() {
         disabled={isSubmitting}
         helperText={`Between ${MIN_PASSWORD_LENGTH} and ${MAX_PASSWORD_LENGTH} characters`}
       />
-      <TextField
+      <PasswordField
         margin="dense"
         label="Confirm new password"
-        type="password"
         name="confirm-new-password"
         autoComplete="new-password"
         fullWidth

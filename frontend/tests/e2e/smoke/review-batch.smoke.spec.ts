@@ -11,7 +11,7 @@ async function signIn(page: Page) {
   await page.goto('/');
   await page.getByRole('button', { name: 'Sign In' }).click();
   await page.getByLabel('Email').fill(CURATOR.email);
-  await page.getByLabel('Password').fill(CURATOR.password);
+  await page.getByLabel(/^Password/).fill(CURATOR.password);
   await page.getByRole('button', { name: 'Sign In', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Sign In' })).not.toBeVisible();
 

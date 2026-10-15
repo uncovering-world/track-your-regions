@@ -24,6 +24,7 @@ import {
   PASSWORD_TOO_SHORT,
   PASSWORD_TOO_LONG,
 } from '../../constants/passwordRules';
+import { PasswordField } from '../shared/PasswordField';
 
 interface RegisterDialogProps {
   open: boolean;
@@ -182,10 +183,10 @@ export function RegisterDialog({ open, onClose, onSwitchToLogin }: RegisterDialo
             onChange={(e) => setEmail(e.target.value)}
             disabled={isLoading}
           />
-          <TextField
+          <PasswordField
             margin="dense"
             label="Password"
-            type="password"
+            autoComplete="new-password"
             fullWidth
             required
             value={password}
@@ -193,10 +194,10 @@ export function RegisterDialog({ open, onClose, onSwitchToLogin }: RegisterDialo
             disabled={isLoading}
             helperText={`Between ${MIN_PASSWORD_LENGTH} and ${MAX_PASSWORD_LENGTH} characters`}
           />
-          <TextField
+          <PasswordField
             margin="dense"
             label="Confirm Password"
-            type="password"
+            autoComplete="new-password"
             fullWidth
             required
             value={confirmPassword}
