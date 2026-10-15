@@ -82,6 +82,15 @@ the upload UI can override it per import. See
 a policy choice rather than one algorithm, and `docs/tech/world-views.md`
 § "Matching policies" for what the descent's two properties buy.
 
+**Progress while matching** (#457). The country policy counts countries
+(`totalCountries`, `countriesMatched`), and the import panel draws "Matching
+countries: N/M" from them. The policies that match regions instead fill
+`matchTotal` (the regions the phase looks at) and `matchDone` (how many it
+has), and the panel draws "Matching regions: N/M" from those. The hierarchical
+descent is in-memory work over tens of thousands of nodes, so it hands the
+event loop a turn every `NODES_PER_YIELD` outcomes, and the backend keeps
+answering while it runs, the import's own status poll included.
+
 ## JSON Tree Validation
 
 Uploaded JSON trees are validated with a recursive Zod schema:
