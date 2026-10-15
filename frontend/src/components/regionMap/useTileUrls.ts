@@ -47,9 +47,9 @@ export function useTileUrls(
       }
     } else {
       if (viewingParentId === 'root') {
-        url = `${MARTIN_URL}/tile_gadm_root_divisions/{z}/{x}/{y}?_v=${tileVersion}`;
+        url = `${MARTIN_URL}/tile_root_divisions/{z}/{x}/{y}?_v=${tileVersion}`;
       } else {
-        url = `${MARTIN_URL}/tile_gadm_subdivisions/{z}/{x}/{y}?parent_id=${viewingParentId}${versionParam}`;
+        url = `${MARTIN_URL}/tile_division_subdivisions/{z}/{x}/{y}?parent_id=${viewingParentId}${versionParam}`;
       }
     }
 

@@ -81,8 +81,8 @@ const TILE_SOURCES: Record<string, TileSource> = {
     optional: [],
     filters: { parent_id: 'r.parent_region_id = p_parent_id' },
   },
-  tile_gadm_root_divisions: { required: [], optional: [], filters: {} },
-  tile_gadm_subdivisions: {
+  tile_root_divisions: { required: [], optional: [], filters: {} },
+  tile_division_subdivisions: {
     required: ['parent_id'],
     optional: [],
     filters: { parent_id: 'd.parent_id = p_parent_id' },
