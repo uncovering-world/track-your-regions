@@ -775,6 +775,7 @@ Signed-off-by: ...
 - Wrap at 72 characters
 - Reference related issues: `Closes #N` / `Fixes #N` (the change closes the issue), `Part of #N` (partial progress), or `Relates to #N` (loose association)
 - Always sign off (`-s`). Add a `Co-Authored-By:` trailer **only** for AI-assisted commits, never by default
+- A commit that leaves a tracked file empty, or cuts a file of 1 000 bytes or more to under a quarter of its size, names it on a line of its body with the reason: `Shrinks: backend/src/routes/adminRoutes.ts -- the routes are declarations now`. The `lint:shrunk` gate (`scripts/check-shrunk-files.mjs`, #537) stops such a change otherwise. No other gate reads what a file holds, so a write that truncated a document passes all of them. Deleting a file with `git rm` is a different diff and needs no line. A file that was empty at the base, such as a package's `__init__.py`, is never stopped
 
 ### Granular Commits
 
