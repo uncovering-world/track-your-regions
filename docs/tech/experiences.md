@@ -1809,7 +1809,15 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
 - Departures are marked, not deleted (ADR-0022), and since ADR-0044 that includes a work's link:
   before a single museum is written the run measures the **works coverage floor** — of the works
   the catalogue offers at the museums it admits, the share it places at an admitted museum, which
-  must reach 90 % (`worksCoverage.ts`) — and only a run that clears it marks the links of works it
+  must reach 90 % (`worksCoverage.ts`, [ADR-0110](../decisions/0110-a-works-floor-counts-the-sources-own-works-less-its-fame-decisions.md)).
+  Only the works the source itself placed count, or that no membership places
+  (`readPreviousPlacements` reads the source's own `experience_treasure_placements`, #1536), so the
+  Louvre's paintings are not Archaeology's to place again, nor its finds Art Museums'. A work the
+  run no longer places because its Wikipedia editions are now below the pools' floor of ten
+  (`POOL_MIN_SITELINKS`, counted by `fetchWikipediaEditions`) is the run's own decision, not an
+  under-fetch: it leaves the floor's base (`decided`) and is withdrawn like any other, with no
+  question to a curator, while a work no Wikipedia counts at all still counts as unseen. Only a run
+  that clears the floor marks the links of works it
   no longer places here (`linkWithdrawal.ts`, once per museum, after every work is written) —
   taking away the run's own placement and marking a link only once no membership places it. A
   run below the floor marks nothing, is `partial`, and says why in
@@ -2283,7 +2291,7 @@ rule and nothing about whether the building still stands, every run recomputes t
 from the whole pool, and belonging is the badge — written once admission is settled rather than per
 place (#760). A place is written as one experience with one point, its type in the column and
 repeated as a tag; its treasures go through the museums' own writer (`upsertVenueTreasures`), so
-ADR-0044 governs them unchanged — the run measures the works coverage floor before a single place
+ADR-0044 governs them as ADR-0110 narrows it — the run measures the works coverage floor before a single place
 is written and only a run that clears it marks the links of works it no longer places here.
 
 **What a run keeps** — five cache kinds (`CACHED_KINDS_BY_SOURCE[4]`): `classes` for the worship
@@ -3156,7 +3164,7 @@ the panel can tell a two-door source from a one-door one.
 
 **What the run writes.** One experience with one point per museum, `type` `museum` in the column and
 repeated as the second tag beside `archaeology` (#814), and its finds as treasures through the
-museums' own writer, so ADR-0044 governs them unchanged: the works-coverage floor is measured before
+museums' own writer, so ADR-0044 governs them as ADR-0110 narrows it: the works-coverage floor is measured before
 a single museum is written, over the same placements the diff was measured against, and only a run
 that cleared it marks the links of finds it no longer places here. A find this run places at another
 admitted museum keeps a visible link at the one it left until the new museum is read
