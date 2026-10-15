@@ -17,6 +17,7 @@ import GoogleIcon from '@mui/icons-material/Google';
 import AppleIcon from '@mui/icons-material/Apple';
 import { useAuth } from '../../hooks/useAuth';
 import { AuthError, getGoogleAuthUrl, getAppleAuthUrl, getLastGoogleEmail, clearLastGoogleEmail, resendVerification } from '../../api/auth';
+import { PasswordField } from '../shared/PasswordField';
 
 interface LoginDialogProps {
   open: boolean;
@@ -145,10 +146,10 @@ export function LoginDialog({ open, onClose, onSwitchToRegister }: LoginDialogPr
             onChange={(e) => setEmail(e.target.value)}
             disabled={isLoading}
           />
-          <TextField
+          <PasswordField
             margin="dense"
             label="Password"
-            type="password"
+            autoComplete="current-password"
             fullWidth
             required
             value={password}

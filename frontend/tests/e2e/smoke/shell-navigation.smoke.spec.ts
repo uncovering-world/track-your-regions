@@ -44,7 +44,7 @@ test.describe('Shell Navigation @smoke', () => {
     await page.getByRole('button', { name: 'Sign In' }).click();
     await expect(page.getByRole('heading', { name: 'Sign In' })).toBeVisible();
     await expect(page.getByLabel('Email')).toBeVisible();
-    await expect(page.getByLabel('Password')).toBeVisible();
+    await expect(page.getByLabel(/^Password/)).toBeVisible();
 
     await page.getByRole('button', { name: 'Cancel' }).click();
     await expect(page.getByRole('heading', { name: 'Sign In' })).not.toBeVisible();
