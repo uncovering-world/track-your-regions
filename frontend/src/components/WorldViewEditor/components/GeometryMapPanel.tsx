@@ -18,7 +18,7 @@ import {
   startWorldViewGeometryComputation,
   cancelWorldViewGeometryComputation,
   computeRegionGeometryWithProgress,
-  resetRegionToGADM,
+  resetRegionToMembers,
   fetchDisplayGeometryStatus,
   updateRegionGeometry,
   fetchRegionGeometry,
@@ -205,7 +205,7 @@ export function GeometryMapPanel({
     computationStatus, setComputationStatus,
     isComputingSingleRegion, setIsComputingSingleRegion,
     forceRecompute, setForceRecompute,
-    isResettingToGADM, setIsResettingToGADM,
+    isResettingToMembers, setIsResettingToMembers,
     skipSnapping, setSkipSnapping,
     displayGeomStatus, setDisplayGeomStatus,
     computeProgressLogs, setComputeProgressLogs,
@@ -297,19 +297,19 @@ export function GeometryMapPanel({
     setCustomBoundaryDialogOpen(true);
   }, [selectedRegion, selectedRegionGeometry]);
 
-  const handleResetToGADM = useCallback(async () => {
+  const handleResetToMembers = useCallback(async () => {
     if (!selectedRegion) return;
     if (!window.confirm('Reset boundaries to original divisions? Custom boundary will be removed.')) return;
-    setIsResettingToGADM(true);
+    setIsResettingToMembers(true);
     try {
-      await resetRegionToGADM(selectedRegion.id);
+      await resetRegionToMembers(selectedRegion.id);
       onSelectedRegionChange({ ...selectedRegion, isCustomBoundary: false });
       onInvalidateQueries({ regionGeometryId: selectedRegion.id, regions: true });
     } catch (e) {
       console.error('Failed to reset:', e);
       alert('Failed to reset boundaries');
-    } finally { setIsResettingToGADM(false); }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- setIsResettingToGADM setter is stable; deps listed are the actual trigger inputs
+    } finally { setIsResettingToMembers(false); }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- setIsResettingToMembers setter is stable; deps listed are the actual trigger inputs
   }, [selectedRegion, onSelectedRegionChange, onInvalidateQueries]);
 
   const handleBoundaryConfirm = useCallback(async (geometry: GeoJSON.Polygon | GeoJSON.MultiPolygon) => {
@@ -355,7 +355,7 @@ export function GeometryMapPanel({
           showOptions={showOptions}
           isComputing={isComputing}
           isComputingSingleRegion={isComputingSingleRegion}
-          isResettingToGADM={isResettingToGADM}
+          isResettingToMembers={isResettingToMembers}
           regionsCount={regions.length}
           geojsonHasFeatures={geojsonData.features.length > 0}
           toolBtnSx={toolBtnSx}
@@ -363,7 +363,7 @@ export function GeometryMapPanel({
           onToggleHull={onToggleHull}
           onComputeSingleRegion={handleComputeSingleRegion}
           onRedefineBoundaries={handleRedefineBoundaries}
-          onResetToGADM={handleResetToGADM}
+          onResetToMembers={handleResetToMembers}
           onSetDisplayMode={setDisplayMode}
           onSetShowOptions={setShowOptions}
           onOpenHullEditor={() => setHullEditorOpen(true)}

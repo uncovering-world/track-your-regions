@@ -87,7 +87,7 @@ export function computeRegionGeometryWithProgress(
   });
 }
 
-export async function resetRegionToGADM(regionId: number): Promise<RegionReset> {
+export async function resetRegionToMembers(regionId: number): Promise<RegionReset> {
   return postWorldViewsRegionsByRegionIdGeometryReset(regionId);
 }
 

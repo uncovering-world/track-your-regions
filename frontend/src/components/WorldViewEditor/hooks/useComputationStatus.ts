@@ -28,7 +28,7 @@ export function useComputationStatus({
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isComputingSingleRegion, setIsComputingSingleRegion] = useState(false);
   const [forceRecompute, setForceRecompute] = useState(false);
-  const [isResettingToGADM, setIsResettingToGADM] = useState(false);
+  const [isResettingToMembers, setIsResettingToMembers] = useState(false);
   const [skipSnapping, setSkipSnapping] = useState(true);  // Fast mode - skip expensive snapping (default: true)
 
   // Display geometry state
@@ -104,8 +104,8 @@ export function useComputationStatus({
     setIsComputingSingleRegion,
     forceRecompute,
     setForceRecompute,
-    isResettingToGADM,
-    setIsResettingToGADM,
+    isResettingToMembers,
+    setIsResettingToMembers,
     skipSnapping,
     setSkipSnapping,
     // Display geometry state

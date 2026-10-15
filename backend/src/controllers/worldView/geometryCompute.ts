@@ -170,14 +170,14 @@ export async function updateRegionGeometry(
 }
 
 /**
- * Reset a region's geometry to computed GADM boundaries
+ * Reset a region's geometry to the union of its members' boundaries
  * Clears custom boundary flag and recomputes from member divisions
  * Also updates 3857 projections and simplified versions for vector tiles
  */
-export async function resetRegionToGADM(
+export async function resetRegionToMembers(
   { params: { regionId } }: { params: z.output<typeof regionIdParamSchema> },
 ): Promise<RegionReset> {
-  console.log(`[ResetToGADM] Resetting region ${regionId} to GADM boundaries`);
+  console.log(`[ResetToMembers] Rebuilding region ${regionId} from its members`);
 
   // One transaction: the drawing is dropped only together with the outline
   // that replaces it (#689). The first UPDATE holds the region's row lock to
@@ -228,7 +228,7 @@ export async function resetRegionToGADM(
   return {
     reset: true,
     points,
-    message: 'Region reset to GADM boundaries',
+    message: 'Region rebuilt from its members',
   };
 }
 

@@ -28,7 +28,7 @@ export interface ActionToolbarProps {
   showOptions: boolean;
   isComputing: boolean;
   isComputingSingleRegion: boolean;
-  isResettingToGADM: boolean;
+  isResettingToMembers: boolean;
   regionsCount: number;
   geojsonHasFeatures: boolean;
   toolBtnSx: object;
@@ -36,7 +36,7 @@ export interface ActionToolbarProps {
   onToggleHull: (region: Region) => void;
   onComputeSingleRegion: () => void;
   onRedefineBoundaries: () => void;
-  onResetToGADM: () => void;
+  onResetToMembers: () => void;
   onSetDisplayMode: (m: DisplayMode) => void;
   onSetShowOptions: (s: boolean) => void;
   onOpenHullEditor: () => void;
@@ -73,22 +73,22 @@ function RegionInfoBadge({ selectedRegion, styles, onToggleHull }: {
   );
 }
 
-function ResetGadmButton({ isResettingToGADM, isComputingSingleRegion, onResetToGADM, toolBtnSx }: {
-  isResettingToGADM: boolean;
+function ResetToMembersButton({ isResettingToMembers, isComputingSingleRegion, onResetToMembers, toolBtnSx }: {
+  isResettingToMembers: boolean;
   isComputingSingleRegion: boolean;
-  onResetToGADM: () => void;
+  onResetToMembers: () => void;
   toolBtnSx: object;
 }) {
-  const startIcon = isResettingToGADM
+  const startIcon = isResettingToMembers
     ? <CircularProgress size={12} />
     : <RefreshIcon sx={{ fontSize: '16px !important' }} />;
   return (
-    <Tooltip title="Reset to original GADM divisions">
+    <Tooltip title="Drop the drawn outline and rebuild it from the region's divisions">
       <span>
         <Button
           size="small" variant="outlined" color="warning"
-          onClick={onResetToGADM}
-          disabled={isResettingToGADM || isComputingSingleRegion}
+          onClick={onResetToMembers}
+          disabled={isResettingToMembers || isComputingSingleRegion}
           startIcon={startIcon}
           sx={toolBtnSx}
         >
@@ -144,9 +144,9 @@ function HullDisplayControls({ displayMode, onSetDisplayMode, onOpenHullEditor, 
 function RegionToolbarContent(props: ActionToolbarProps & { selectedRegion: Region }) {
   const {
     selectedRegion, displayMode, showOptions,
-    isComputing, isComputingSingleRegion, isResettingToGADM,
+    isComputing, isComputingSingleRegion, isResettingToMembers,
     geojsonHasFeatures, toolBtnSx, styles,
-    onToggleHull, onComputeSingleRegion, onRedefineBoundaries, onResetToGADM,
+    onToggleHull, onComputeSingleRegion, onRedefineBoundaries, onResetToMembers,
     onSetDisplayMode, onSetShowOptions, onOpenHullEditor,
   } = props;
   const computeTooltip = geojsonHasFeatures ? 'Recompute geometry from divisions' : 'Compute geometry';
@@ -182,10 +182,10 @@ function RegionToolbarContent(props: ActionToolbarProps & { selectedRegion: Regi
         Redefine
       </Button>
       {selectedRegion.isCustomBoundary && (
-        <ResetGadmButton
-          isResettingToGADM={isResettingToGADM}
+        <ResetToMembersButton
+          isResettingToMembers={isResettingToMembers}
           isComputingSingleRegion={isComputingSingleRegion}
-          onResetToGADM={onResetToGADM}
+          onResetToMembers={onResetToMembers}
           toolBtnSx={toolBtnSx}
         />
       )}
