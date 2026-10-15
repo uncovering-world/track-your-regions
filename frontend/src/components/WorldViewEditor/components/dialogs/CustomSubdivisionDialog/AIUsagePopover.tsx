@@ -13,6 +13,7 @@ import {
 } from '@mui/material';
 import type { UsageStats, LastOperation } from './aiAssistTypes';
 import { getPercentage } from './useAIUsageTracking';
+import { plural } from '../../../../../utils/plural';
 
 interface AIUsagePopoverProps {
   anchorEl: HTMLElement | null;
@@ -62,7 +63,7 @@ export function AIUsagePopover({
                     sx={{ mr: 1 }}
                   />
                   <Typography variant="body2" component="span">
-                    {lastOperation.regionsCount} region{lastOperation.regionsCount > 1 ? 's' : ''}
+                    {plural(lastOperation.regionsCount, 'region')}
                   </Typography>
                 </Box>
                 <Box sx={{ textAlign: 'right' }}>
@@ -98,7 +99,7 @@ export function AIUsagePopover({
               {singleRequestStats.requests}
             </Typography>
             <Typography variant="body2">
-              {singleRequestStats.regionsProcessed || 0} region{(singleRequestStats.regionsProcessed || 0) !== 1 ? 's' : ''}
+              {plural(singleRequestStats.regionsProcessed || 0, 'region')}
             </Typography>
             <Typography variant="body2" color="primary" fontWeight="medium">
               ${singleRequestStats.totalCost.toFixed(4)}
@@ -124,7 +125,7 @@ export function AIUsagePopover({
               {batchRequestStats.requests}
             </Typography>
             <Typography variant="body2">
-              {batchRequestStats.regionsProcessed || 0} region{(batchRequestStats.regionsProcessed || 0) !== 1 ? 's' : ''}
+              {plural(batchRequestStats.regionsProcessed || 0, 'region')}
             </Typography>
             <Typography variant="body2" color="primary" fontWeight="medium">
               ${batchRequestStats.totalCost.toFixed(4)}
@@ -150,7 +151,7 @@ export function AIUsagePopover({
           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Box>
               <Typography variant="body2">
-                Total: {totalStats.requests} request{totalStats.requests !== 1 ? 's' : ''}, {totalStats.regionsProcessed || 0} region{(totalStats.regionsProcessed || 0) !== 1 ? 's' : ''}
+                Total: {plural(totalStats.requests, 'request')}, {plural(totalStats.regionsProcessed || 0, 'region')}
               </Typography>
               <Typography variant="caption">
                 {totalStats.tokens.toLocaleString()} tokens

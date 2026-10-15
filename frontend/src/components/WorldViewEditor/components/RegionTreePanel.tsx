@@ -41,6 +41,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { Region } from '../../../types';
 import type { RegionMember } from '../../../api/regions';
 import { useAppTheme } from '../../../theme';
+import { plural } from '../../../utils/plural';
 
 // ─── Props ──────────────────────────────────────────────────────────
 
@@ -200,7 +201,7 @@ function DraggableRegionItem({
           }
           secondary={hasChildren ? (
             <Typography sx={{ fontFamily: P.font.mono, fontSize: '0.6rem', color: P.dark.textMuted }}>
-              {childCount} subregion{childCount > 1 ? 's' : ''}
+              {plural(childCount, 'subregion')}
             </Typography>
           ) : undefined}
         />

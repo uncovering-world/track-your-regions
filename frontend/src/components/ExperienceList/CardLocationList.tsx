@@ -24,6 +24,7 @@ import {
   OUT_OF_REGION_INITIAL,
   hoverRevealsCappedPlace,
 } from './utils';
+import { plural } from '../../utils/plural';
 
 /**
  * "Show all 93 places", and the same control under the out-of-region list.
@@ -220,7 +221,7 @@ export function CardLocationList({
       )}
       {!isAuthenticated && (
         <Typography variant="caption" color="text.secondary" sx={{ mb: 1, display: 'block' }}>
-          {inRegionCount} location{inRegionCount !== 1 ? 's' : ''} in this region
+          {plural(inRegionCount, 'location')} in this region
         </Typography>
       )}
       {browsable && (

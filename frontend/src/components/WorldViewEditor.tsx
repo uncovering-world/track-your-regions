@@ -38,6 +38,7 @@ import { WorldViewHeader, RegionTreePanel, DivisionSearchPanel, GeometryMapPanel
 import { EditRefusedSnackbar } from './shared/EditRefusedSnackbar';
 import { useAppTheme } from '../theme';
 import { queryKeys } from '../api/queryKeys';
+import { plural } from '../utils/plural';
 
 interface WorldViewEditorProps {
   open: boolean;
@@ -292,7 +293,7 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
     const divisionMembers = regionMembers.filter(m => !m.isSubregion);
     if (divisionMembers.length === 0) return;
     if (!window.confirm(
-      `Split all ${divisionMembers.length} division${divisionMembers.length > 1 ? 's' : ''} into their children?\n\nThis will replace each division with its GADM subdivisions as subregions.`
+      `Split all ${plural(divisionMembers.length, 'division')} into their children?\n\nThis will replace each division with its GADM subdivisions as subregions.`
     )) return;
 
     setIsSplittingAllMembers(true);
@@ -636,7 +637,7 @@ export function WorldViewEditor({ open, onClose, worldView }: WorldViewEditorPro
             color: P.dark.textMuted,
             letterSpacing: '0.02em',
           }}>
-            {regions.length} region{regions.length !== 1 ? 's' : ''}
+            {plural(regions.length, 'region')}
           </Typography>
 
           {selectedRegion && (

@@ -56,6 +56,7 @@ import {
 import { useGapChildren } from './useGapChildren';
 import { frameGeoJson } from '../../utils/mapUtils';
 import { queryKeys } from '../../api/queryKeys';
+import { plural } from '../../utils/plural';
 
 interface CoverageResolveDialogProps {
   open: boolean;
@@ -544,7 +545,7 @@ export function CoverageResolveDialog({
             ) : (
               <>
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-                  {coverageData.gaps.length} gap{coverageData.gaps.length !== 1 ? 's' : ''} remaining
+                  {plural(coverageData.gaps.length, 'gap')} remaining
                   {coverageData.dismissedCount > 0 && ` (${coverageData.dismissedCount} dismissed)`}
                 </Typography>
 

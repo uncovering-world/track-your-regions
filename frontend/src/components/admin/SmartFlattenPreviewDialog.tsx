@@ -16,6 +16,7 @@ import { NavigationControl, Source, Layer, MapRef } from 'react-map-gl/maplibre'
 import { GuardedMap as MapGL } from '../shared/GuardedMap';
 import { frameGeoJson } from '../../utils/mapUtils';
 import { toThumbnailUrl } from '../../utils/imageUrl';
+import { plural } from '../../utils/plural';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
@@ -59,7 +60,7 @@ export function SmartFlattenPreviewDialog({
           <Box>
             <Typography variant="h6">Smart Flatten: {regionName}</Typography>
             <Typography variant="caption" color="text.secondary">
-              Will absorb {descendants} descendant{descendants !== 1 ? 's' : ''} ({divisions} division{divisions !== 1 ? 's' : ''})
+              Will absorb {plural(descendants, 'descendant')} ({plural(divisions, 'division')})
             </Typography>
           </Box>
           <IconButton onClick={onCancel} size="small">

@@ -14,6 +14,7 @@ import MapIcon from '@mui/icons-material/Map';
 import AcceptAndRejectRestIcon from '@mui/icons-material/DoneAll';
 import type { MatchSuggestion, MatchTreeNode } from '../../api/admin/worldViewImport';
 import { Tooltip, type ShadowInsertion } from './treeNodeShared';
+import { plural } from '../../utils/plural';
 
 /** Render a single assigned division (already accepted) */
 function AssignedDivisionRow({ div, regionId, onReject, onPreview, isMutating }: {
@@ -285,7 +286,7 @@ function AssignedDivisionsList({ node, divisionsExpanded, setDivisionsExpanded, 
       onClick={() => setDivisionsExpanded(true)}
       sx={{ cursor: 'pointer', '&:hover': { textDecoration: 'underline' } }}
     >
-      {node.assignedDivisions.length} division{node.assignedDivisions.length !== 1 ? 's' : ''}…
+      {plural(node.assignedDivisions.length, 'division')}…
     </Typography>
   );
 }
@@ -417,7 +418,7 @@ function SuggestionsBulkActions({ node, selectedDivIds, setSelectedDivIds, onAcc
           disabled={isMutating}
           sx={{ fontSize: '0.65rem', py: 0, minHeight: 0, textTransform: 'none' }}
         >
-          Reject {node.assignedDivisions.length > 0 ? 'remaining ' : 'all '}{node.suggestions.length} suggestion{node.suggestions.length > 1 ? 's' : ''}
+          Reject {node.assignedDivisions.length > 0 ? 'remaining ' : 'all '}{plural(node.suggestions.length, 'suggestion')}
         </Button>
       )}
     </>

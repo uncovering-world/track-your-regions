@@ -40,6 +40,7 @@ import OverlapCheckIcon from '@mui/icons-material/JoinInner';
 import type { ReactNode } from 'react';
 import type { MatchTreeNode } from '../../api/admin/worldViewImport';
 import { Tooltip } from './treeNodeShared';
+import { plural } from '../../utils/plural';
 
 interface TreeNodeActionsProps {
   node: MatchTreeNode;
@@ -744,7 +745,7 @@ export function TreeNodeActions({
       {/* Clear all assigned divisions (keep suggestions) */}
       <ActionIconButton
         show={role === 'country' && node.assignedDivisions.length > 0 && !!onClearMembers}
-        title={`Clear all ${node.assignedDivisions.length} assigned division${node.assignedDivisions.length > 1 ? 's' : ''}`}
+        title={`Clear all ${plural(node.assignedDivisions.length, 'assigned division')}`}
         onClick={() => onClearMembers?.(node.id)}
         loading={clearingMembersRegionId === node.id}
         disabled={isMutating || clearingMembersRegionId != null}

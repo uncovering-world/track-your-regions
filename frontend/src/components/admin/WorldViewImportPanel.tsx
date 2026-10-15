@@ -44,6 +44,7 @@ import { ImportSourcePanel } from './ImportSourcePanel';
 import { safeHref } from '../../utils/safeHref';
 import { deleteWorldView } from '../../api/worldViews';
 import { queryKeys } from '../../api/queryKeys';
+import { plural } from '../../utils/plural';
 
 type AnswerAction = { questionId: number; action: 'accept' | 'skip' | 'answer' | 'delete_rule'; answer?: string; ruleId?: number };
 
@@ -52,7 +53,7 @@ function ExtractedRegionsPreview({ regions }: { regions: RegionPreview[] }) {
   return (
     <Box sx={{ mt: 0.5, pl: 1, borderLeft: 2, borderColor: 'divider', mb: 1 }}>
       <Typography variant="caption" color="text.secondary">
-        AI extracted {regions.length} region{regions.length !== 1 ? 's' : ''}:
+        AI extracted {plural(regions.length, 'region')}:
       </Typography>
       {regions.map((r, i) => (
         <Typography key={i} variant="body2" sx={{ ml: 1 }}>
@@ -177,7 +178,7 @@ function InterviewQuestionsList({ pendingQuestions, answerMutation, answerError,
     <Box>
       <Typography variant="subtitle2" sx={{ mb: 1 }}>
         <QuestionIcon fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
-        {readyQuestions.length} AI question{readyQuestions.length !== 1 ? 's' : ''} for review
+        {plural(readyQuestions.length, 'AI question')} for review
       </Typography>
       <Stack spacing={1.5}>
         {readyQuestions.map(q => {

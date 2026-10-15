@@ -22,6 +22,7 @@ import * as turf from '@turf/turf';
 import { MAP_STYLE } from '../constants/mapStyles';
 import { frameGeoJson, smartFitBounds } from '../utils/mapUtils';
 import type { AnchorPoint, FocusBbox } from '../api/regions';
+import { plural } from '../utils/plural';
 
 type PolyFeature = GeoJSON.Feature<GeoJSON.Polygon | GeoJSON.MultiPolygon>;
 
@@ -293,7 +294,7 @@ export function CustomBoundaryDialog({
 
                 {drawingPoints.length > 0 && drawingPoints.length < 3 && (
                   <Typography variant="caption" color="text.secondary">
-                    Need {3 - drawingPoints.length} more point{3 - drawingPoints.length !== 1 ? 's' : ''}
+                    Need {plural(3 - drawingPoints.length, 'more point')}
                   </Typography>
                 )}
               </>

@@ -42,6 +42,7 @@ import { fetchDivisionGeometry } from '../../api/divisions';
 import type { GeoJSONGeometry } from '../../types';
 import { frameGeoJson } from '../../utils/mapUtils';
 import { toThumbnailUrl } from '../../utils/imageUrl';
+import { plural } from '../../utils/plural';
 
 const MAP_STYLE = 'https://basemaps.cartocdn.com/gl/positron-gl-style/style.json';
 
@@ -593,7 +594,7 @@ export function SmartSimplifyDialog({
                           </Typography>
                         </Typography>
                         <Typography variant="caption" color="text.secondary">
-                          Move {move.divisions.length} division{move.divisions.length !== 1 ? 's' : ''} to{' '}
+                          Move {plural(move.divisions.length, 'division')} to{' '}
                           <Typography component="span" variant="caption" fontWeight={600} sx={{ color: colorMap.get(move.ownerRegionId) ?? 'text.primary' }}>
                             {move.ownerRegionName}
                           </Typography>
@@ -671,7 +672,7 @@ export function SmartSimplifyDialog({
                         >
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                             <Typography variant="body2" fontWeight={500}>
-                              {anomaly.divisions.length} div{anomaly.divisions.length > 1 ? 's' : ''} of {anomaly.divisions[0]?.sourceRegionName}
+                              {plural(anomaly.divisions.length, 'div')} of {anomaly.divisions[0]?.sourceRegionName}
                             </Typography>
                             <Typography variant="caption" color="text.secondary">
                               ({anomaly.fragmentSize}/{anomaly.totalRegionSize} divisions)

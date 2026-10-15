@@ -37,6 +37,7 @@ import { useEditForm } from '../hooks/useEditForm';
 import { lazyChunk } from '../utils/lazyChunk';
 import { ChunkBoundary } from './shared/ChunkBoundary';
 import { queryKeys } from '../api/queryKeys';
+import { plural } from '../utils/plural';
 
 // The editor is an admin's tool: loaded the first time it is opened, so a
 // visitor's bundle carries none of it (#643).
@@ -349,16 +350,16 @@ export function HierarchySwitcher() {
                 This will permanently delete:
               </Typography>
               <Typography variant="body2">
-                &bull; {deleteImpact.regionCount} region{deleteImpact.regionCount !== 1 ? 's' : ''}
+                &bull; {plural(deleteImpact.regionCount, 'region')}
               </Typography>
               {deleteImpact.experienceAssignmentCount > 0 && (
                 <Typography variant="body2" color="warning.main">
-                  &bull; {deleteImpact.experienceAssignmentCount} experience-to-region assignment{deleteImpact.experienceAssignmentCount !== 1 ? 's' : ''}
+                  &bull; {plural(deleteImpact.experienceAssignmentCount, 'experience-to-region assignment')}
                 </Typography>
               )}
               {deleteImpact.userVisitCount > 0 && (
                 <Typography variant="body2" color="error.main">
-                  &bull; {deleteImpact.userVisitCount} user visit record{deleteImpact.userVisitCount !== 1 ? 's' : ''}
+                  &bull; {plural(deleteImpact.userVisitCount, 'user visit record')}
                 </Typography>
               )}
               <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>

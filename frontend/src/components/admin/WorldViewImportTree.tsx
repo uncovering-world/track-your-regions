@@ -59,6 +59,7 @@ import type { DivisionOverlaps } from '../../api/admin/worldViewImport';
 import { EditRefusedSnackbar } from '../shared/EditRefusedSnackbar';
 import { failedActionsError } from './suggestChildrenOutcome';
 import { queryKeys } from '../../api/queryKeys';
+import { plural } from '../../utils/plural';
 
 /** Find a child region's ID by name under a specific parent */
 function findChildIdByName(nodes: MatchTreeNode[], parentId: number, childName: string): number | undefined {
@@ -401,7 +402,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
         })}
         {shadowInsertions && shadowInsertions.length > 0 && (
           <Button size="small" startIcon={<GapsIcon />} onClick={nav.expandToShadows} color="info">
-            Show {shadowInsertions.length} Gap{shadowInsertions.length !== 1 ? 's' : ''} to Review
+            Show {plural(shadowInsertions.length, 'Gap')} to Review
           </Button>
         )}
         {renderNavSourceButton({
@@ -409,7 +410,7 @@ export function WorldViewImportTree({ worldViewId, onPreview, onPreviewUnion, on
           ids: nav.warningIds,
           label: 'warnings',
           icon: <WarningIcon />,
-          buttonText: `${nav.warningIds.length} Hierarchy Warning${nav.warningIds.length !== 1 ? 's' : ''}`,
+          buttonText: plural(nav.warningIds.length, 'Hierarchy Warning'),
           buttonSx: { color: 'warning.main' },
         })}
         {renderNavSourceButton({

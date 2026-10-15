@@ -42,11 +42,10 @@ describe('lostHiddenLabel', () => {
 
 describe('outsideViewLabel', () => {
   it('counts without pluralising "more"', () => {
-    // The trap is `plural(n, noun)`, this repository's shared helper — #546 is a
-    // standing push to use it at the 28 sites that still inline a suffix, and it
-    // renders "12 mores" here, because "more" does not take one. The first
-    // revision of this label did exactly that, and the singular hid it, since
-    // that is the form an eye checks. Both are pinned, so it goes red next time.
+    // The trap is `plural` (`utils/plural.ts`), the shared helper for every
+    // "N things", which would render "12 mores" here: "more" takes no suffix.
+    // Both forms are pinned, because the singular reads right either way and
+    // is the form an eye checks.
     expect(outsideViewLabel(1)).toBe('1 more in this region — show it');
     expect(outsideViewLabel(12)).toBe('12 more in this region — show them all');
   });
