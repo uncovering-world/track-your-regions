@@ -63,6 +63,8 @@ export interface ReadResult {
 
 /** How often, in lines, progress is reported and the cancel flag is looked at. */
 const PROGRESS_EVERY = 100_000;
+/** The size of the pieces the gzip decoder writes. */
+const GUNZIP_CHUNK = 1 << 20;
 /** The size of a piece of text a chunk consumer is handed, give or take a line. */
 const CHUNK_BYTES = 8 << 20;
 
@@ -84,7 +86,10 @@ interface Decompressor {
 
 function decompressor(kind: DumpFile['compression']): Decompressor {
   if (kind === 'gzip') {
-    const gunzip = createGunzip();
+    // In megabyte pieces: at zlib's default 16 KB the image's Node 22 decoded
+    // the entities dump at 207 MB/s, at 1 MB at 392 MB/s, and the decoder is
+    // what bounds a pass once its work runs in worker threads (#1479).
+    const gunzip = createGunzip({ chunkSize: GUNZIP_CHUNK });
     return { input: gunzip, output: gunzip, done: Promise.resolve(), stop: () => gunzip.destroy() };
   }
   // bzip2 is a child process: the image has no parallel decoder (no lbzip2 or
