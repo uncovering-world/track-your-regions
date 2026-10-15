@@ -242,6 +242,18 @@ went from 165 to 358 MB/s and pass 2 from 81 to 214 MB/s; from 60 GB in, from
 206 to 443 and from 196 to 475 MB/s, the decoder by then the limit. The scope,
 rows, spooled terms and ring are the same either way (`parallelPasses.test.ts`).
 
+Into a real Postgres the database's share shows: on the dump's first 4 GB,
+where nearly two thirds of the items are kept, pass 2 with its inserts ran at
+118 MB/s. Two changes took it to 143 MB/s: a worker quotes each entity as an
+element of the insert's array literal (`arrayItemOf`, `EntityRow.arrayItem`),
+so the main thread does not escape every quote of every entity, and six
+inserts are in flight instead of three (`IN_FLIGHT`). Beyond that the
+machine's cores are all busy. The derivations after the pass run as disjoint
+statements at once, one per core and at most four, since each holds a client
+of the pool the API shares (`deriveFromEntities`'s parts: the entities whose
+id hashes to each; a part that fails cancels the rest): on the same sample the claims, labels and sitelinks
+took 11 s instead of 22, which is about half an hour saved on a full build.
+
 Every string kept is one Postgres can store (`storableText`,
 `storableJson` in `compactEntity.ts`): `text` and `jsonb` hold no NUL, and
 `jsonb` no surrogate without its partner, and the dump holds both — an
