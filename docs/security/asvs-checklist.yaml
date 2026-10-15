@@ -359,7 +359,7 @@ chapters:
       desc: "No secrets in source code or config files"
       level: 1
       status: pass
-      notes: ".env excluded by .gitignore; .env.example has placeholder values only; no hardcoded secrets found"
+      notes: ".env excluded by .gitignore; .env.example has placeholder values only. The security:secrets gate (gitleaks over every tracked file, ADR-0108, #1504) fails any change that adds a generic credential or a provider key, findings redacted; GitHub push protection is on (2026-10-15)"
     V13.4.1:
       desc: "No sensitive data in error messages"
       level: 1
