@@ -35,18 +35,19 @@ ignore_missing_imports = true
 warn_unused_ignores = true
 warn_redundant_casts = true
 strict_equality = true
-# `disallow_untyped_defs` deliberately not enabled yet — first land the floor,
-# then ratchet via follow-up PRs (#1185). The
-# `app.cv.*` override below silences the numpy/cv2-stub noise on day one.
+# Every function outside `app.cv` declares its argument and return types
+# (#1185). `app.cv.*` is still skipped by the override below.
+disallow_untyped_defs = true
 
 [[tool.mypy.overrides]]
 module = ["cv2.*", "easyocr.*", "skimage.*", "scipy.*", "pyproj.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
-# Skip `app.cv.*` on day one. mypy follows imports from routes/utils into
-# `app.cv`, where numpy/cv2 stubs produce ~150 spurious findings that aren't
-# real bugs. Re-enable file-by-file as we add real type annotations.
+# `app.cv.*` is skipped: mypy follows imports from routes/utils into it, where
+# the numpy and cv2 stubs report findings that are not defects in this code.
+# Which of the two CV pipelines stays is #624's to decide, and the module is
+# typed once that is settled.
 module = "app.cv.*"
 follow_imports = "skip"
 ignore_errors = true
