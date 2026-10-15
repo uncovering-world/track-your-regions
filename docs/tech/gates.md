@@ -150,6 +150,26 @@ The distinction in the guard's own words is the one to carry: a gate the **map**
 skips had nothing to read, and a gate the **host** cannot run is a failure to
 report. They are printed differently because they mean different things.
 
+A gate whose image the **registry** refuses is the third case (#1316). Before a
+Docker gate runs, the runner pulls every image it pins by digest — in its npm
+scripts or in a runner file they run, as `api:breaking` keeps oasdiff in
+`scripts/openapi-breaking.mjs` — and that pin stays the one statement of the
+image's version (`imagesOf`); an image already on the host is not pulled
+again. A pull refused for a reason that is the environment's — Docker Hub's
+anonymous limit (`toomanyrequests`), a timeout, a refused or reset connection,
+a name that does not resolve (`REGISTRY_REFUSAL`) — stops the tier before the
+gate runs, with the registry's own line and exit 75 (`ENVIRONMENT_FAILED`,
+EX_TEMPFAIL):
+
+```text
+▶ lint:openapi  npm run lint:openapi
+lint:openapi could not run: the registry refused redocly/cli:…@sha256:… (toomanyrequests: You have reached your unauthenticated pull rate limit). That is the environment's failure, not the gate's verdict on the change: run it again once the registry answers.
+Failed: lint:openapi (the environment: the registry refused an image it runs; exit 75)
+```
+
+A pin that names no manifest is not among those reasons: that is the
+repository's error, and the gate runs and fails on it as itself.
+
 A tier whose gates all sit on untouched inputs prints the sentence rather than
 nothing at all — on a clean `main`, `npm run check` says
 
@@ -615,7 +635,11 @@ skipped where either is absent — a fork's pull request, or one Dependabot open
 Dependabot's own secrets rather than the repository's unless the two are set there as well — so
 such a run pulls anonymously, as every run did before; a token without a user would fail the
 login rather than fall back, which is why both are required. Only whether both are set reaches
-the job's environment, never the token.
+the job's environment, never the token. A pull the registry refuses all the same is named as
+the environment's failure only where the gate runs through the runner (§ The tiers, the
+registry's case): `npm run check`, which is what `Lint & Type Check` runs. The other four jobs
+call their gate's script or the compose stack directly, so a refusal there still reads as the
+job's own failure until its log is opened.
 
 Inside the `check` job the setup steps have keys of their own: the root `npm ci`
 is unconditional, because `lint:md` needs markdownlint from there and is the one
