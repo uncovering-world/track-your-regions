@@ -59,7 +59,9 @@ happens to fall on a block boundary. Only then is `consumer.commit()` called.
 Any failure — a mismatch, a network error, a decoder error, a consumer that
 throws, a cancel — destroys the source, stops the decoder (a bzip2 process is
 killed rather than left to notice its closed pipes) and calls
-`consumer.abort()`, so a consumer's half-built tables are never kept. The
+`consumer.abort()`, so a consumer is never left to commit what it half read;
+what of its work survives is its own call (the subset build keeps pass 2's
+for the next build to pick up after, ADR-0107). The
 read rejects with that failure: stopping the decoder breaks the text stream
 the line reader was reading, and the reader's late `error` is listened to and
 dropped, since an `error` nobody listens to ends the whole process and loses
@@ -289,7 +291,8 @@ where nearly two thirds of the items are kept, pass 2 with its inserts ran at
 118 MB/s. Two changes took it to 143 MB/s: a worker quotes each entity as an
 element of the insert's array literal (`arrayItemOf`, `EntityRow.arrayItem`),
 so the main thread does not escape every quote of every entity, and six
-inserts are in flight instead of three (`IN_FLIGHT`). Beyond that the
+inserts are in flight instead of three (now six piece transactions,
+`PIECES_IN_FLIGHT`). Beyond that the
 machine's cores are all busy. The derivations after the pass run as disjoint
 statements at once, one per core and at most four, since each holds a client
 of the pool the API shares (`deriveFromEntities`'s parts: the entities whose
@@ -313,9 +316,38 @@ and `subsetTables.ts` derives the rest from the entities in SQL
 (`deriveFromEntities`, `deriveClassClosure`), gives each `_next` copy the live
 table's indexes (`indexNextTables`, read from the catalog, so `01-schema.sql`
 is their one statement), and swaps the copies in with one transaction
-(`swapIn`), recording the build in `wikidata_subset_builds`. A failure, or a
-cancel (honoured between the steps and inside each long statement), drops
-the copies; the spool is removed either way.
+(`swapIn`), recording the build in `wikidata_subset_builds`. A cancel
+(honoured between the steps and inside each long statement) drops the copies
+and the spool, and so does a read of a file that is not the host's
+(`isDamagedRead`), whose rows no build may reuse.
+
+**A build cut after pass 2 began picks up where it stopped** (#1493). The
+read cuts its pieces on a fixed grid — each ends at the first line end at or
+past the next multiple of `PIECE_BYTES` (8 MB) of text — so every read of a
+file numbers the same pieces alike. Pass 2 writes a piece whole or not at all:
+a worker compresses the piece's terms into one gzip member, which is appended
+to the spool, and then the piece's rows and its record (its lines, rows
+written, terms spooled, where the spool ended, the items it named for the
+labels ring, the rows refused) go in one transaction (`commitPiece`, into the
+unlogged `wikidata_build_pieces_next` beside the copies), no more than
+`PIECES_IN_FLIGHT` of them open at once, since each holds a client of the
+pool the API shares. Any other failure — a refused statement, a worker that
+ended — keeps the copies, the record and the spool (ADR-0107, narrowing
+ADR-0105 decision 4). The next build of the same file finds them when
+`wikidata_build_resume_next` holds its key: the file's name and checksum,
+the scope's counts, `PIECE_BYTES` and `WRITE_VERSION` (`lineWork.ts`,
+raised by hand with any change to what pass 2 writes from a line), so rows
+of two versions never meet — and when the spool is still there at least as
+long as the records say; a spool in a temporary directory goes with a
+recreated container, and then the build starts afresh, removing an earlier
+build's spool kept elsewhere. Picking up, it empties the derived copies,
+drops any index the entities copy got, cuts the spool back to where the last
+recorded piece ended, restores the counts, ring and refusals from the
+records, asks the disk only for what is left to write (`assertRoomToWrite`'s
+`written`), and reads the file whole — which verifies it — handing on only
+the pieces not recorded. A piece that spooled its terms twice is labelled
+once. A crash of the database empties the unlogged record with the copies,
+and the build starts afresh.
 
 | Table | Holds |
 |---|---|
