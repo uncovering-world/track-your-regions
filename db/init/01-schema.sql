@@ -2760,6 +2760,7 @@ COMMENT ON COLUMN experience_sync_logs.component_items IS 'A World Heritage run'
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS total_filtered INTEGER DEFAULT 0;
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS total_held INTEGER DEFAULT 0;
 ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS withdrawal_skipped_reason TEXT;
+ALTER TABLE experience_sync_logs ADD COLUMN IF NOT EXISTS admission_sweep_skipped_reason TEXT;
 
 COMMENT ON COLUMN experience_sync_logs.total_updated IS 'Rows whose fields actually changed. Runs before migration 009 counted every row that passed through ON CONFLICT, changed or not — the two are not comparable.';
 COMMENT ON COLUMN experience_sync_logs.total_unchanged IS 'Rows the run wrote nothing to. Two kinds: ones that turned out identical, and ones the run proposed a change to and was refused - a curated_fields claim (each claimed field counted again in total_curated_conflicts) or the source''s gate holding a row a reader can already see (the row counted again in total_held). Counted here, never stored per object.';
@@ -2768,6 +2769,7 @@ COMMENT ON COLUMN experience_sync_logs.is_dry_run IS 'TRUE for preview runs: the
 COMMENT ON COLUMN experience_sync_logs.total_filtered IS 'Entities the source offered that are not of the kind this source fills — e.g. a Wikidata collection with no physical address answering a museum query. Not errors: nothing failed, and the run stays successful.';
 COMMENT ON COLUMN experience_sync_logs.detection_skipped_reason IS 'Why missing-object detection did not run: ranked source, force run, cancelled, errors, or coverage below the floor. Every value missingDetectionSkipReason() produces lands here.';
 COMMENT ON COLUMN experience_sync_logs.withdrawal_skipped_reason IS 'Why this run marked none of the works its museums stopped holding: works coverage below the floor (ADR-0044). Every value worksCoverageSkipReason() produces lands here, and a run carrying one is partial, never success. NULL where withdrawals were applied, and on every run of a source whose contents need no floor: points are paired per object, not measured per pool.';
+COMMENT ON COLUMN experience_sync_logs.admission_sweep_skipped_reason IS 'Why this run''s admission sweep delisted nothing the run''s own rule would have (ADR-0024): cancelled, errors, nothing admitted, or an admitted set below half the previous one. NULL when the sweep ran, when the source does not recompute membership, or on runs from before the column (#751).';
 
 -- A run writes where it stands to its row as it goes (#1131), and its running
 -- counts to the total_* columns above: a restart then leaves a row that says
