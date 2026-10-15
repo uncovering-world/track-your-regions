@@ -82,6 +82,9 @@ services:
       # a directory inside /app/data, e.g. /app/data/dumps. Empty, a build reads
       # the file straight from the host as a stream and keeps nothing on disk.
       DUMPS_DIR: ${DUMPS_DIR:-}
+      # How many worker threads a subset build's passes run in (#1479). Empty:
+      # every core but one; 0 runs the same code on the main thread.
+      DUMP_WORKERS: ${DUMP_WORKERS:-}
     ports:
       - "127.0.0.1:${BACKEND_PORT:-3001}:3001"
     volumes:

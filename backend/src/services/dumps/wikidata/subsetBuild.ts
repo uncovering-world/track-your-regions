@@ -19,7 +19,8 @@ import type { DumpFile } from '../catalog.js';
 import { readDump, type ReadOptions } from '../read.js';
 import { TermsSpool } from './labelsRing.js';
 import { insertRefusing, Refusals } from './refusals.js';
-import { ScopeCollector, type Scope, type ScopeCounts } from './scope.js';
+import type { Scope, ScopeCounts } from './scope.js';
+import { ScopeReader } from './scopeReader.js';
 import { loadScope, saveScope, scopePath } from './scopeFile.js';
 import { SubsetWriter } from './subsetWriter.js';
 import {
@@ -76,11 +77,9 @@ async function scopeOf(file: DumpFile, options: SubsetBuildOptions): Promise<Sco
     return earlier;
   }
   options.onPhase('Pass 1 of 2: finding what the subset keeps...');
-  const collector = new ScopeCollector();
-  await readDump(file, {
-    line: line => collector.line(line), commit: async () => undefined, abort: async () => undefined,
-  }, options);
-  const scope = collector.finish();
+  const reader = new ScopeReader();
+  await readDump(file, reader, options);
+  const scope = reader.collector.finish();
   if (path) await saveScope(path, file, scope);
   return scope;
 }
