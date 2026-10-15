@@ -308,6 +308,9 @@ statements at once, one per core and at most four, since each holds a client
 of the pool the API shares (`deriveFromEntities`'s parts: the entities whose
 id hashes to each; a part that fails cancels the rest): on the same sample the claims, labels and sitelinks
 took 11 s instead of 22, which is about half an hour saved on a full build.
+Which claimed properties take an item is read once before the parts start and
+handed to each as a list, rather than joined from the entities table: that
+table has no index yet, and the join had each part hash all of it (#1523).
 
 Every string kept is one Postgres can store (`storableText`,
 `storableJson` in `compactEntity.ts`): `text` and `jsonb` hold no NUL, and
