@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { hoverRevealsCappedPlace, lostHiddenLabel, outsideViewLabel } from './utils';
+import { hoverRevealsCappedPlace, outsideViewLabel } from './utils';
+import { lostHiddenLabel } from '../shared/lostNotice';
 import { ExperienceListItem } from './ExperienceListItem';
 import { ExperienceExpandedDetails } from './ExperienceExpandedDetails';
 import { LocationRow } from './LocationRow';

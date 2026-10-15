@@ -51,21 +51,6 @@ export function computeVisitedStatus(visitedLocations: number, totalLocations: n
 }
 
 /**
- * "3 in this region no longer exist — show them", with the singular English wants.
- *
- * "In this region", not "here": the count is the region's, from the same read
- * that fetched the rows, while the list beside it answers about the map's view
- * (#553). Said as "here" it promised rows the view then filtered out — a reader
- * zoomed into Prague clicking it for three lost objects in Rome saw nothing
- * appear. The way to them is the other notice, which now counts them too.
- */
-export function lostHiddenLabel(count: number): string {
-  const verb = count === 1 ? 'exists' : 'exist';
-  const them = count === 1 ? 'it' : 'them';
-  return `${count} in this region no longer ${verb} — show ${them}`;
-}
-
-/**
  * "12 more in this region — show them all", the way back from a filtered list (#553).
  *
  * The count is what the view is hiding, not what it holds: a reader who has
