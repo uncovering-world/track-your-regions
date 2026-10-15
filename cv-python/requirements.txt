@@ -19,9 +19,6 @@ scipy==1.14.1
 # GHSA-5rvq-cxj2-64vf, GHSA-6jv3-5f52-599m. >=0.0.31 also adds stricter input
 # validation (rejects negative Content-Length, bounds header-name size).
 python-multipart==0.0.31
-# easyocr transitively pulls torch, currently flagged by GHSA-rrmf-rvhw-rf47
-# (low, torch.jit.script memory corruption, no fixed release). Ignored in the
-# security:py:deps npm script — see docs/security/SECURITY.md "Known Gaps".
 easyocr==1.7.2
 # segment-anything==1.0 dropped: pulls torch 1.8.1 (2021) with multiple critical
 # RCE/heap-overflow CVEs and no available patch path. Add back in rebuild/41-43

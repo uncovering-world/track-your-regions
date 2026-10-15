@@ -58,7 +58,7 @@ for tool in "${missing[@]}"; do
     ruff)      commands+=("ruff check --no-cache ." "ruff format --no-cache --check .") ;;
     mypy)      commands+=("mypy app") ;;
     bandit)    commands+=("bandit -r app -c pyproject.toml") ;;
-    pip-audit) commands+=("pip-audit -r requirements.txt --ignore-vuln GHSA-rrmf-rvhw-rf47") ;;
+    pip-audit) commands+=("pip-audit -r requirements.txt") ;;
     # Two lanes: cv-python's own tests, and db/, which tests the part of the
     # GADM loader that needs neither a database nor GDAL (#665). Naming only the
     # first would print a command that leaves a gate un-run, which is the
