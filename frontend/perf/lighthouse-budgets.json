@@ -37,7 +37,7 @@
     "resource-summary:total:count": [
       "error",
       {
-        "maxNumericValue": 60
+        "maxNumericValue": 54
       }
     ],
     "largest-contentful-paint": [
