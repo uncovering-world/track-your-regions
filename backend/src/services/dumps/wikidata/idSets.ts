@@ -5,7 +5,7 @@
  */
 
 export class IdSet {
-  private bits = new Uint8Array(1 << 20);
+  private bits: Uint8Array<ArrayBufferLike> = new Uint8Array(1 << 20);
   private count = 0;
 
   add(id: number): boolean {
@@ -32,6 +32,24 @@ export class IdSet {
     let end = this.bits.length;
     while (end > 0 && this.bits[end - 1] === 0) end -= 1;
     return this.bits.slice(0, end);
+  }
+
+  /**
+   * The set's bits in memory a worker thread can read without a copy
+   * (`IdSet.overShared`); the set is not changed after this.
+   */
+  toShared(): SharedArrayBuffer {
+    const bytes = this.toBytes();
+    const shared = new SharedArrayBuffer(Math.max(bytes.length, 1));
+    new Uint8Array(shared).set(bytes);
+    return shared;
+  }
+
+  /** A set over `shared`'s bits, as `toShared` made them: read-only, its size not counted. */
+  static overShared(shared: SharedArrayBuffer): IdSet {
+    const set = new IdSet();
+    set.bits = new Uint8Array(shared);
+    return set;
   }
 
   static fromBytes(bytes: Uint8Array): IdSet {
@@ -96,5 +114,25 @@ export class EdgeList {
     this.from = from;
     this.to = to;
     this.tag = tag;
+  }
+}
+
+/** A growing list of 32-bit numbers, handed over as a typed array: what a worker sends back. */
+export class Numbers {
+  private values = new Uint32Array(1024);
+  private length = 0;
+
+  push(value: number): void {
+    if (this.length === this.values.length) {
+      const grown = new Uint32Array(this.values.length * 2);
+      grown.set(this.values);
+      this.values = grown;
+    }
+    this.values[this.length] = value;
+    this.length += 1;
+  }
+
+  take(): Uint32Array {
+    return this.values.slice(0, this.length);
   }
 }
