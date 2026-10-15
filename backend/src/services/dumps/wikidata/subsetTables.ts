@@ -10,6 +10,7 @@
  * over the dump.
  */
 
+import { availableParallelism } from 'node:os';
 import type { PoolClient } from 'pg';
 import { pool } from '../../../db/index.js';
 import { arrayItemOf } from './compactEntity.js';
@@ -107,15 +108,54 @@ export async function insertLabels(rows: LabelRow[]): Promise<void> {
 }
 
 /**
+ * How many disjoint statements a derivation runs at once, each on a client
+ * and a core of its own: as one statement, deriving the claims of a full
+ * build's entities took the better part of an hour (22 s for 192 MB of
+ * entities, #1479). A part is the entities whose id hashes to it, so the
+ * parts never overlap and together are the whole. At most four: each holds a
+ * client of the pool the API shares (`db/index.ts`) for minutes, and the
+ * cores counted are the backend's, not the database's.
+ */
+const DERIVE_PARTS = Math.min(4, Math.max(1, availableParallelism()));
+
+/**
+ * Run the statement `sql(at)` makes once per part, all at once; `at` is the
+ * condition that picks a part's entities, over the two parameters after
+ * `params`. A part that fails cancels the others and is the error thrown, so
+ * no statement is left inserting into a table the failed build drops.
+ */
+async function inParts(signal: AbortSignal, parts: number, params: unknown[], sql: (at: string) => string): Promise<void> {
+  // An abort that came before this would never reach `follow` below.
+  signal.throwIfAborted();
+  // bigint: abs() of the one int hashtext() can answer with no positive twin would overflow.
+  const at = `abs(hashtext(e.id)::bigint) % $${params.length + 1} = $${params.length + 2}`;
+  const local = new AbortController();
+  const follow = () => local.abort(signal.reason);
+  signal.addEventListener('abort', follow, { once: true });
+  let first: unknown = null;
+  try {
+    const settled = await Promise.allSettled(Array.from({ length: parts }, (_, part) =>
+      cancellable(local.signal, sql(at), [...params, parts, part]).catch((error: unknown) => {
+        first ??= error;
+        local.abort(error);
+        throw error;
+      })));
+    if (settled.some(outcome => outcome.status === 'rejected')) throw first;
+  } finally {
+    signal.removeEventListener('abort', follow);
+  }
+  signal.throwIfAborted();
+}
+
+/**
  * The claims, the kept entities' labels and the sitelinks, derived from the
  * entities. An item value is told from a string by its property's datatype,
  * which the kept property entities carry, and from an unknown or no value
  * (`{"somevalue": true}`, `{"novalue": true}`) by being a string: those stay
  * in `value`, so `value_item` only ever holds an id.
  */
-export async function deriveFromEntities(signal: AbortSignal): Promise<void> {
-  await cancellable(
-    signal,
+export async function deriveFromEntities(signal: AbortSignal, parts = DERIVE_PARTS): Promise<void> {
+  await inParts(signal, parts, [CLAIM_PROPERTIES], at =>
     `INSERT INTO ${next('wikidata_claims')} (subject, property, statement_id, rank, value_item, value, qualifiers)
      SELECT e.id, c.property, s->>'id',
             CASE s->>'rank' WHEN 'preferred' THEN 1 WHEN 'deprecated' THEN -1 ELSE 0 END,
@@ -126,26 +166,22 @@ export async function deriveFromEntities(signal: AbortSignal): Promise<void> {
       CROSS JOIN LATERAL jsonb_each(e.entity->'claims') AS c(property, statements)
       CROSS JOIN LATERAL jsonb_array_elements(c.statements) AS s
        LEFT JOIN ${next('wikidata_entities')} p ON p.id = c.property
-      WHERE e.id LIKE 'Q%' AND c.property = ANY($1::text[])`,
-    [CLAIM_PROPERTIES],
-  );
-  await cancellable(
-    signal,
-    // The languages of either term object. `->` and `||` bind alike and from
-    // the left, so each object is bracketed before the merge, or it reads as
-    // `(labels || entity)->'descriptions'`: the description languages alone.
+      WHERE e.id LIKE 'Q%' AND c.property = ANY($1::text[]) AND ${at}`);
+  // The languages of either term object. `->` and `||` bind alike and from
+  // the left, so each object is bracketed before the merge, or it reads as
+  // `(labels || entity)->'descriptions'`: the description languages alone.
+  await inParts(signal, parts, [], at =>
     `INSERT INTO ${next('wikidata_labels')} (id, language, label, description)
      SELECT e.id, k.language, e.entity->'labels'->>k.language, e.entity->'descriptions'->>k.language
        FROM ${next('wikidata_entities')} e
-      CROSS JOIN LATERAL jsonb_object_keys((e.entity->'labels') || (e.entity->'descriptions')) AS k(language)`,
-  );
-  await cancellable(
-    signal,
+      CROSS JOIN LATERAL jsonb_object_keys((e.entity->'labels') || (e.entity->'descriptions')) AS k(language)
+      WHERE ${at}`);
+  await inParts(signal, parts, [], at =>
     `INSERT INTO ${next('wikidata_sitelinks')} (id, site, title)
      SELECT e.id, l.site, l.title
        FROM ${next('wikidata_entities')} e
-      CROSS JOIN LATERAL jsonb_each_text(e.entity->'sitelinks') AS l(site, title)`,
-  );
+      CROSS JOIN LATERAL jsonb_each_text(e.entity->'sitelinks') AS l(site, title)
+      WHERE ${at}`);
 }
 
 /**
