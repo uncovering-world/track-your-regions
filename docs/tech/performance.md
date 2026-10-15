@@ -344,9 +344,18 @@ switched on:
   is set on that row: it would be gating the stack's shape, not a dependency.
 - Every backend read is preceded by a CORS **preflight**: the frontend and
   the backend are different origins in every stack this repository runs,
-  so 39 requests are roughly 20 round trips. A same-origin deployment
-  (#585, reverse proxy) removes them; until then the request count reads
-  double.
+  and every request the web sends carries `Content-Type: application/json`
+  (a bodiless GET included), which is not CORS-safelisted. The backend
+  answers a preflight with `Access-Control-Max-Age: 7200`
+  (`PREFLIGHT_MAX_AGE_SECONDS` in `backend/src/middleware/cors.ts`; Chrome
+  caps the cache at 7 200 s, Firefox at 86 400 s), so a session pays it once
+  per URL rather than once per request — but the browser caches it per URL,
+  and a cold load like the lane's asks each URL for the first time: on the
+  lane's run of 2026-10-15 the fixture's map view and Discover each made 5
+  preflights, the same with the cache as without it (#652). A same-origin
+  deployment (#585, the API behind a reverse proxy on the page's own origin)
+  removes preflights altogether; the dev and test stacks keep paying the
+  cached one.
 - 11–15 long tasks, the longest 180 ms, all inside the entry chunk's
   evaluation — TBT is the bundle being parsed, not the map being drawn.
 
