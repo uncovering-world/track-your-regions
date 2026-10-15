@@ -10,10 +10,11 @@
  * experiences (`missingDetection.ts`), which this source, being `ranked`,
  * never reaches.
  *
- * **Measured on works, per pool** (ADR-0044). Of the works the catalogue offers
- * at the museums this run admits, how many does the run place at an admitted
- * museum — any of them. Three choices are inside that sentence, and each was
- * the wrong way round once:
+ * **Measured on works, per pool** (ADR-0044, narrowed by ADR-0110). Of the
+ * works the source itself placed and the catalogue still offers at the museums
+ * this run admits, less those the run's own fame line now refuses, how many
+ * does the run place at an admitted museum — any of them. Three choices are
+ * inside that sentence, and each was the wrong way round once:
  *
  * - *Works, not links.* A work re-homed from one admitted museum to another is
  *   seen; only the link moves. Measured on links, a placement-rule change would
@@ -35,7 +36,8 @@
  * two consecutive short runs are refused twice rather than believed the second
  * time. The cost is stated in the ADR: a change that legitimately drops more
  * than a tenth of the works at admitted museums in one run is refused too, and
- * a person has to read the reason.
+ * a person has to read the reason, except a drop the run's own fame line
+ * decides, which leaves the base (ADR-0110).
  */
 
 /**
@@ -50,11 +52,19 @@ export const WORKS_COVERAGE_MIN = 0.9;
 export interface WorksCoverageInput {
   /**
    * Where the catalogue offers each work: work id → the venues holding it, as
-   * `readPreviousPlacements` reads it — offered links only.
+   * `readPreviousPlacements` reads it — offered links the source itself placed,
+   * or that no membership places.
    */
   stored: Record<string, ReadonlyArray<string>>;
   /** The museums this run admits, each with every work it places there. */
   admitted: ReadonlyArray<{ qid: string; works: ReadonlyArray<string> }>;
+  /**
+   * Works the run no longer places because its own rule refuses them, not
+   * because it failed to see them (#1536): a work now below the kind's fame
+   * floor. They leave the floor's base, so their withdrawal is not mistaken for
+   * an under-fetch.
+   */
+  decided?: ReadonlySet<string>;
 }
 
 export interface WorksCoverage {
@@ -77,6 +87,7 @@ export function measureWorksCoverage(input: WorksCoverageInput): WorksCoverage {
   let seen = 0;
   for (const [work, venues] of Object.entries(input.stored)) {
     if (!venues.some((venue) => admitted.has(venue))) continue;
+    if (input.decided?.has(work)) continue;
     stored++;
     if (placed.has(work)) seen++;
   }

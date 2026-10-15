@@ -136,6 +136,18 @@ describe('worksCoverageSkipReason', () => {
     expect(worksCoverageSkipReason(short, 'places')).toContain('3 places it admits');
   });
 
+  it('leaves a work the run refused by its own rule out of the base (#1536)', () => {
+    // The run placed three of ten; seven were below the fame floor, its own decision.
+    const decided = input({ admitted: [
+      { qid: LOUVRE, works: ['Q12418'] },
+      { qid: ORSAY, works: ['Q79906'] },
+      { qid: PRADO, works: ['Q1219008'] },
+    ] });
+    const refused = new Set(Object.keys(decided.stored).filter(w => !['Q12418', 'Q79906', 'Q1219008'].includes(w)));
+    expect(measureWorksCoverage({ ...decided, decided: refused })).toEqual({ stored: 3, seen: 3, museums: 3 });
+    expect(worksCoverageSkipReason({ ...decided, decided: refused }, 'museums')).toBeNull();
+  });
+
   it('allows withdrawal at exactly the floor', () => {
     // 9 of 10 is the floor, not below it — a boundary that has to be pinned
     // because `<` and `<=` both read as plausible.
