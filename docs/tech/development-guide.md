@@ -432,7 +432,7 @@ For detailed exports and usage guidance, see [shared-frontend-patterns.md](share
 
 Before writing any inline UI pattern, check `frontend/src/components/shared/` and `frontend/src/utils/`. If a shared solution exists, use it. If you're writing something that 2+ components will need, extract it to shared before duplicating.
 
-For example: use `<LoadingSpinner />` instead of writing another centered `CircularProgress`, or `VISITED_GREEN` from `kindColors` instead of hardcoding a hex color.
+For example: use `<LoadingSpinner />` instead of writing another centered `CircularProgress`, or the theme's `success.main` for the visited green instead of hardcoding a hex color.
 
 The full inventory of shared components and utilities — including a "use this, not that" reference table — is in [shared-frontend-patterns.md](shared-frontend-patterns.md). Keep that doc updated when extracting new shared code.
 
