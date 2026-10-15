@@ -1091,8 +1091,10 @@ The **admission sweep** has a floor of its own as well (ADR-0024): `admissionSwe
 refuses a cancelled run, one with errors, one that admitted nothing and one whose admitted set
 fell below half the previous one, and the places the kind's rule would have delisted then stay
 admitted. Its refusal lands in `experience_sync_logs.admission_sweep_skipped_reason` (#751) and
-the run card shows it as "Admission sweep skipped" beside the other two; like detection's it
-leaves the run's verdict as it was. The three reasons travel together as `GuardSkips`
+the run card shows it as "Admission sweep skipped" beside the other two. Like withdrawal's and
+unlike detection's it makes the run `partial`, and the completion line says "delisted nothing" with
+the reason: the kind's rule was not applied to what the run no longer admits, and the collapse that
+refused the sweep is what a person has to look at (`computeFinalStatus`). The three reasons travel together as `GuardSkips`
 (`runLog.ts`), so the row a failed run leaves keeps every one that was decided before the failure.
 
 **Dry runs** (`POST /sync/sources/:id/start` with `{"dryRun": true}`) walk the same path and
