@@ -259,6 +259,22 @@ export function ReviewPage() {
     );
   }
 
+  // The search and the source chip narrow the answered blocks as they narrow the questions;
+  // the region, the run and the kind of question do not, since they choose among open
+  // questions and these are answers (`getReviewQueue`). Said where a block is open and one
+  // of those is set, so a narrowed page never reads as though they reached it.
+  const unreached = [
+    address.regionId !== null && 'the region',
+    address.runId !== null && 'the run',
+    address.kinds.length > 0 && 'the kind of question',
+  ].filter((name): name is string => Boolean(name));
+  const unreachedPhrase = unreached.length > 1
+    ? unreached.slice(0, -1).join(', ') + ' and ' + unreached.at(-1)
+    : unreached[0];
+  const unfiltered = unreached.length === 0
+    ? null
+    : `Not narrowed by ${unreachedPhrase} you chose — only the search and the source reach this block.`;
+
   /**
    * The three lists of answered work, which are not questions and do not join `rows`.
    *
@@ -502,8 +518,12 @@ export function ReviewPage() {
             label={list.label}
             count={list.count}
             explanation={list.explanation}
+            unfiltered={unfiltered}
             pager={pagerOver(list.kind)}
           >
+            {queue.answeredFailed(list.kind) && (
+              <Alert severity="error">Could not load this page of the list. Previous goes back to the one before.</Alert>
+            )}
             {list.items.map(list.card)}
           </AnsweredSection>
         ))}

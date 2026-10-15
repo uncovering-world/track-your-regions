@@ -20,13 +20,15 @@
 import { useState } from 'react';
 import { Button, Divider, Stack, Typography } from '@mui/material';
 
-export function AnsweredSection({ label, count, explanation, children, pager }: {
+export function AnsweredSection({ label, count, explanation, unfiltered, children, pager }: {
   /** The noun the toggle offers, in the page's own words: "what you have kept out". */
   label: string;
   /** How many the block holds. Shown on the toggle, so the size is known before opening. */
   count: number;
   /** Why the block exists at all — which is what makes it something other than clutter. */
   explanation: string;
+  /** Which of the filters the curator set do not narrow this block, said only when one is set. */
+  unfiltered?: string | null;
   children: React.ReactNode;
   /** This kind's own pager, rendered under the rows when the kind has another page. */
   pager?: React.ReactNode;
@@ -44,6 +46,11 @@ export function AnsweredSection({ label, count, explanation, children, pager }: 
           <Typography variant="body2" color="text.secondary" sx={{ mt: 1, mb: 2 }}>
             {explanation}
           </Typography>
+          {unfiltered && (
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontStyle: 'italic' }}>
+              {unfiltered}
+            </Typography>
+          )}
           <Stack spacing={2}>{children}</Stack>
           {pager}
         </>

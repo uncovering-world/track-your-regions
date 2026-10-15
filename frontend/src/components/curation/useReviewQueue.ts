@@ -10,20 +10,18 @@
  * pager — which is why an offset lives in this hook's state while the cursor does not.
  * `refusedParts` (#859) is the third of them and behaves identically.
  *
- * The counts, the facets and all three answered lists are read off the **first** page: each is
- * stated once over the whole filtered union, and a later page repeats it unchanged.
+ * The counts and the facets are read off the **first** page: each is stated once over the
+ * whole filtered union, and a later page repeats it unchanged.
  *
- * **Paging an answered list restarts the union at its first page**, and it is a real cost
- * rather than a subtlety: the three offsets sit in the infinite query's key, because they are
- * sent with every request and one endpoint answers both models. Change one and React Query
- * has a different query — the pages a curator loaded with *Show more* are dropped and
- * re-read from the cursor's start, while the answered block they were actually paging moves
- * by one. It is tolerable only because the three lists are collapsed sections a curator opens
- * to look something up rather than the list they work down, and because the reload is a
- * refetch of pages the server would answer identically. The fix is not a smaller query key —
- * the offsets genuinely change what the endpoint returns — but a read of its own for the three
- * lists that are not open questions, which is filed as a follow-up rather than folded into
- * this change.
+ * **The answered lists have a read of their own** (#840). The questions' infinite query is
+ * keyed on the filters alone and always asks for the answered lists' first pages, so paging
+ * an answered block never touches the pages a curator loaded with *Show more*. A list at its
+ * first page is read off the questions' first page — no second request. Once one is paged, a
+ * query of its own asks the same endpoint at the three offsets, keyed on the filters and the
+ * offsets alone, and a paged list is read from it; it still answers a first page of
+ * questions, which this read ignores, and that is the price of not having an endpoint of its
+ * own for a block a curator opens to look something up. Its failure is the paged block's own
+ * (`answeredFailed`), so the rest of the page stands.
  *
  * Split out of `ReviewPage.tsx` because they are two jobs: this is what the server holds,
  * and the page is what the curator does with it — the selection, the notice line and the
@@ -31,7 +29,7 @@
  */
 
 import { useMemo, useState } from 'react';
-import { keepPreviousData, useInfiniteQuery } from '@tanstack/react-query';
+import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import {
   fetchReviewQueue,
   type QueueFacets, type ReviewQueue, type ReviewQueueItem, type ReviewQueueKind,
@@ -79,6 +77,8 @@ export interface ReviewQueueRead {
   more: () => void;
   /** Where one answered list is paged to, and whether more waits behind it. */
   pageOf: (kind: ReviewQueueKind) => AnsweredPage;
+  /** The paged list's own read failed, so its block cannot show the page it was moved to. */
+  answeredFailed: (kind: ReviewQueueKind) => boolean;
   /** Moves one answered list by `by` pages, never below zero. */
   step: (kind: ReviewQueueKind, by: number) => void;
 }
@@ -119,10 +119,8 @@ export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
     // `row` is out of the key deliberately: opening a question must not re-read the list
     // it was opened from. The object is hashed by value, so the address re-rendering with
     // an equal one refetches nothing.
-    queryKey: queryKeys.curation.reviewQueue(filters, keptOutOffset, answeredWithdrawalsOffset, refusedPartsOffset),
-    queryFn: ({ pageParam }) => fetchReviewQueue({
-      ...filters, cursor: pageParam, keptOutOffset, answeredWithdrawalsOffset, refusedPartsOffset,
-    }),
+    queryKey: queryKeys.curation.reviewQueue('questions', filters),
+    queryFn: ({ pageParam }) => fetchReviewQueue({ ...filters, cursor: pageParam }),
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last: ReviewQueue) => last.paging?.nextCursor ?? undefined,
     // The previous filter's answer stays on screen until the new one arrives, rather than
@@ -136,14 +134,37 @@ export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
   const rows = useMemo(() => (pages ?? []).flatMap(page => queueRows(page)), [pages]);
   const first = pages?.[0];
 
+  // The answered lists once one of them is paged, and only then: at the first pages they
+  // are the questions' first page's own. Under `reviewQueueAll`, so an answer that
+  // invalidates the queue re-reads these too.
+  const paged = keptOutOffset + answeredWithdrawalsOffset + refusedPartsOffset > 0;
+  const { data: answeredPage, isError: answeredError } = useQuery({
+    queryKey: queryKeys.curation.reviewQueue(
+      'answered', filters, keptOutOffset, answeredWithdrawalsOffset, refusedPartsOffset,
+    ),
+    queryFn: () => fetchReviewQueue({
+      ...filters, keptOutOffset, answeredWithdrawalsOffset, refusedPartsOffset,
+    }),
+    enabled: paged,
+    // The block keeps the page it showed until the next one arrives: the previous answered
+    // page of *this* filter, or the first pages the questions carry. React Query hands over
+    // the last query that held data whatever its key, which can be another filter's page,
+    // with its answers live on it.
+    placeholderData: (previous, previousQuery) => (
+      previousQuery && JSON.stringify(previousQuery.queryKey[3]) === filterKey ? previous : first
+    ),
+  });
+  /** A paged list reads its own query; a list at its first page, the questions' first page. */
+  const sourceOf = (kind: ReviewQueueKind) => ((offsets[kind] ?? 0) > 0 ? answeredPage : first);
+
   return {
     rows,
     total: first?.total ?? 0,
     pageSize: first?.limit ?? 25,
     facets: first?.facets,
-    keptOut: first?.keptOut ?? [],
-    answeredWithdrawals: first?.answeredWithdrawals ?? [],
-    refusedParts: first?.refusedParts ?? [],
+    keptOut: sourceOf('keptOut')?.keptOut ?? [],
+    answeredWithdrawals: sourceOf('answeredWithdrawals')?.answeredWithdrawals ?? [],
+    refusedParts: sourceOf('refusedParts')?.refusedParts ?? [],
     filterKey,
     stale: isPlaceholderData,
     isLoading,
@@ -152,7 +173,8 @@ export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
     hasMore: hasNextPage,
     loadingMore: isFetchingNextPage,
     more: () => { void fetchNextPage(); },
-    pageOf: kind => first?.paging?.[kind] ?? { offset: 0, hasMore: false },
+    pageOf: kind => sourceOf(kind)?.paging?.[kind] ?? { offset: offsets[kind] ?? 0, hasMore: false },
+    answeredFailed: kind => (offsets[kind] ?? 0) > 0 && answeredError,
     step: (kind, by) => setOffsets(o => ({
       ...o, [kind]: Math.max(0, (o[kind] ?? 0) + by * (first?.limit ?? 25)),
     })),
