@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import type { DumpFile } from './catalog.js';
 import {
-  activeBuildOf, beat, BuildAlreadyRunning, claimNextBuild, closeBuild, closeOrphanedBuilds, enqueueBuild,
+  activeBuildOf, beat, BuildAlreadyRunning, claimNextBuild, closeBuild, closeOrphanedBuilds, enqueueBuild, failBuildsOf,
   recentBuilds, recordFile, requestCancel,
 } from './ledger.js';
 
@@ -82,6 +82,14 @@ describe('the dump build ledger (ADR-0106)', () => {
     expect(await row(mine)).toMatchObject({ status: 'failed' });
     expect(await row(theirs)).toMatchObject({ status: 'running' });
     expect(await row(queued)).toMatchObject({ status: 'queued' });
+  });
+
+  it("records why a worker ended on the build it ran, and on no other runner's", async () => {
+    const mine = await running('enwiki-page', 'worker:me');
+    const theirs = await running('enwiki-langlinks', 'worker:other');
+    expect(await failBuildsOf('worker:me', 'The dump worker ended on an uncaught exception: Error: Premature close')).toBe(1);
+    expect(await row(mine)).toMatchObject({ status: 'failed', error: 'The dump worker ended on an uncaught exception: Error: Premature close' });
+    expect(await row(theirs)).toMatchObject({ status: 'running' });
   });
 
   it('shows the panel the newest three builds of a dump, newest first', async () => {

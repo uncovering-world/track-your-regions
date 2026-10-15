@@ -149,6 +149,10 @@ services:
     # A stable name across restarts and recreates: the worker's runner.
     hostname: ${STACK_NAME:-tyr-ng}-dump-worker
     ports: !reset []
+    # Back after a crash, which closed the build it ran with the cause
+    # (backend/src/worker.ts), to take the next queued one. Five tries, so a
+    # stack whose database is down does not keep starting it.
+    restart: on-failure:5
     depends_on:
       db:
         condition: service_healthy
