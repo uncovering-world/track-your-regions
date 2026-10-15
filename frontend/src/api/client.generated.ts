@@ -9307,6 +9307,11 @@ export interface SyncLog {
      * @nullable
      */
   withdrawal_skipped_reason: string | null;
+  /**
+     * Why the run's admission sweep delisted nothing its own rule would have: cancelled, errors, nothing admitted, or an admitted set below half the previous one (ADR-0024).
+     * @nullable
+     */
+  admission_sweep_skipped_reason: string | null;
   triggered_by: number | null;
   /** @nullable */
   triggered_by_name: string | null;
@@ -9402,6 +9407,11 @@ export interface SyncLogDetail {
      * @nullable
      */
   withdrawal_skipped_reason: string | null;
+  /**
+     * Why the run's admission sweep delisted nothing its own rule would have: cancelled, errors, nothing admitted, or an admitted set below half the previous one (ADR-0024).
+     * @nullable
+     */
+  admission_sweep_skipped_reason: string | null;
   triggered_by: number | null;
   /** @nullable */
   triggered_by_name: string | null;

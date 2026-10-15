@@ -211,18 +211,15 @@ interface SyncLogDialogProps {
 /**
  * What a run declined to do, and why: one line per guard that refused it.
  *
- * Two guards leave a reason on the log row. Missing detection guards the
- * objects — a listing's floor — and withdrawal guards a museum's works — the
- * pool's floor (ADR-0044). Kept apart rather than folded into one sentence
- * because they answer different questions, "did anything get delisted" and
- * "did anything leave a museum", and a museum run always carries the first
- * (its source is ranked) while carrying the second only on a run that saw too
- * little. Folded, the second would hide behind the first on every run.
- *
- * A third guard refuses a run the same way and is absent here on purpose: the
- * admission sweep's reason (ADR-0024, `admissionSweepSkipReason`) reaches only
- * the backend console, so no card can show it. This is the set of guards with
- * a column, not the set of guards; a sweep given a column joins the list.
+ * Three guards leave a reason on the log row. Missing detection guards the
+ * objects — a listing's floor — withdrawal guards a museum's works — the
+ * pool's floor (ADR-0044) — and the admission sweep guards the places the
+ * kind's own rule would delist (ADR-0024). Kept apart rather than folded into
+ * one sentence because they answer different questions, "did anything get
+ * delisted", "did anything leave a museum" and "was the rule applied to what
+ * the run admitted", and a museum run always carries the first (its source is
+ * ranked) while carrying the others only on a run that went wrong or saw too
+ * little. Folded, those would hide behind the first on every run.
  *
  * Exported for its test, like `changesetNote`: the lines are the whole of what
  * the card says about a refusal.
@@ -234,6 +231,9 @@ export function skippedNotes(log: SyncLog): Array<{ label: string; reason: strin
   }
   if (log.withdrawal_skipped_reason) {
     notes.push({ label: 'Withdrawals skipped', reason: log.withdrawal_skipped_reason });
+  }
+  if (log.admission_sweep_skipped_reason) {
+    notes.push({ label: 'Admission sweep skipped', reason: log.admission_sweep_skipped_reason });
   }
   return notes;
 }

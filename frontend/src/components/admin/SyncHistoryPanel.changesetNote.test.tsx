@@ -41,6 +41,7 @@ function log(overrides: Partial<SyncLog> = {}) {
     is_dry_run: false,
     detection_skipped_reason: null,
     withdrawal_skipped_reason: null,
+    admission_sweep_skipped_reason: null,
     has_changeset: false,
     changeset_lost: false,
     stopped_by_restart: false,
@@ -191,6 +192,18 @@ describe('skippedNotes', () => {
     expect(notes).toEqual([
       { label: 'Missing detection skipped', reason: expect.stringContaining('source is ranked') },
       { label: 'Withdrawals skipped', reason: expect.stringContaining('291 of the 1301 works') },
+    ]);
+  });
+
+  it('names a skipped admission sweep beside the other guards (#751)', () => {
+    const notes = skippedNotes(log({
+      detection_skipped_reason: 'source is ranked, not authoritative: absence means a lower rank, not a delisting',
+      admission_sweep_skipped_reason: 'admitted 12 of the previous 100 (12%), below the 50% floor',
+    }));
+
+    expect(notes).toEqual([
+      { label: 'Missing detection skipped', reason: expect.stringContaining('source is ranked') },
+      { label: 'Admission sweep skipped', reason: expect.stringContaining('below the 50% floor') },
     ]);
   });
 
