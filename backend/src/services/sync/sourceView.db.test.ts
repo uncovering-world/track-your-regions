@@ -121,8 +121,10 @@ describe('a source\'s view of a place (ADR-0084)', () => {
     const stored = await place();
     expect(stored.image_url).toBe(WORSHIP_PICTURE);
     expect(stored.credit).toEqual(CREDIT);
-    // No proposal: the disagreement is the queue's, not a change this run made or held.
-    expect(outcome.changeSet.changedFields).toEqual([]);
+    // No proposal about the picture: the disagreement is the queue's, not a
+    // change this run made or held. The official names are UNESCO's own
+    // (ADR-0109): the worship run left them, so they arrive with this run.
+    expect(outcome.changeSet.changedFields.map(f => f.field)).toEqual(['nameLocal.en']);
     expect(outcome.changeSet.heldFields).toEqual([]);
   });
 

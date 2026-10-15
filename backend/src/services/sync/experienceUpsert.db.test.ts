@@ -42,10 +42,14 @@ const params = (sourceId: number, externalId: string, name: string): ExperienceU
   metadata: { wikidataQid: externalId },
 });
 
+const ACROPOLIS = 9442;
+const ACROPOLIS_QID = 'Q9442-acropolis-fixture';
+const ACROPOLIS_WHC = '9442-whc-fixture';
+
 async function clear(): Promise<void> {
   await pool.query(
-    `DELETE FROM experiences WHERE id = $1 OR external_id = ANY($2::text[])`,
-    [LOUVRE, [LOUVRE_QID, NEW_SITE_QID]],
+    `DELETE FROM experiences WHERE id = ANY($1::int[]) OR external_id = ANY($2::text[])`,
+    [[LOUVRE, ACROPOLIS], [LOUVRE_QID, NEW_SITE_QID, ACROPOLIS_WHC]],
   );
 }
 
@@ -346,5 +350,86 @@ describe('a claim on a major metadata key (#727, ADR-0077 decision 2)', () => {
     expect(outcome.changeSet.heldFields).toEqual([]);
     expect(outcome.changeSet.curatedConflicts.map(f => f.field)).toEqual(['metadata.inDanger']);
     expect(outcome.changeSet.changedFields.map(f => f.field)).toEqual(['metadata.website']);
+  });
+});
+
+describe('a field another family of sources brings (ADR-0109, #1534)', () => {
+  const UNESCO_FACTS = { dateInscribed: '1987', inDanger: false, criteria: '(i)(ii)(iii)(iv)(vi)', region: 'Europe and North America' };
+  const UNESCO_NAMES = { en: 'Acropolis, Athens', fr: "Acropole d'Athènes", ru: 'Афинский Акрополь' };
+  const UNESCO_TEXT = 'The Acropolis of Athens and its monuments are universal symbols of the classical spirit.';
+
+  beforeEach(async () => {
+    const unesco = await sourceNamed('UNESCO World Heritage Sites');
+    const arch = await sourceNamed('Archaeology');
+    await pool.query(
+      `INSERT INTO experiences (id, source_id, external_id, name, name_local, short_description, country_codes, metadata, location)
+       VALUES ($1, $2, $3, 'Acropolis, Athens', $4, $5, '{GR}', $6, ST_SetSRID(ST_MakePoint(23.7262, 37.9715), 4326))`,
+      [ACROPOLIS, unesco.id, ACROPOLIS_WHC, JSON.stringify(UNESCO_NAMES), UNESCO_TEXT,
+        JSON.stringify({ ...UNESCO_FACTS, wikidataQid: ACROPOLIS_QID, wikidataClasses: ['Q570116'] })],
+    );
+    await pool.query(
+      `INSERT INTO experience_kind_memberships
+         (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       VALUES ($1, $2, $3, $4, 'auto', NOW()), ($1, $5, $6, $7, 'auto', NOW())`,
+      [ACROPOLIS, unesco.kind_id, unesco.id, ACROPOLIS_WHC, arch.kind_id, arch.id, ACROPOLIS_QID],
+    );
+  });
+
+  const stored = async () => (await pool.query<{
+    name_local: Record<string, string>; short_description: string | null; country_codes: string[]; metadata: Record<string, unknown>;
+  }>('SELECT name_local, short_description, country_codes, metadata FROM experiences WHERE id = $1', [ACROPOLIS])).rows[0];
+  const proposed = (outcome: Awaited<ReturnType<typeof upsertExperienceRecord>>) =>
+    [...outcome.changeSet.changedFields, ...outcome.changeSet.heldFields].map(f => f.field);
+
+  it('is neither written nor proposed by an Archaeology run on a World Heritage site', async () => {
+    const outcome = await upsertExperienceRecord({
+      ...params(archaeology, ACROPOLIS_QID, 'Acropolis, Athens'),
+      nameLocal: { en: 'Acropolis of Athens' },
+      countryCodes: [],
+      lon: 23.7262,
+      lat: 37.9715,
+      metadata: { wikidataQid: ACROPOLIS_QID, wikidataClasses: ['Q570116', 'Q839954'] },
+    });
+
+    expect(await stored()).toMatchObject({
+      name_local: UNESCO_NAMES, short_description: UNESCO_TEXT, country_codes: ['GR'],
+      metadata: { ...UNESCO_FACTS, wikidataClasses: ['Q570116', 'Q839954'] },
+    });
+    expect(proposed(outcome)).not.toEqual(expect.arrayContaining(['nameLocal.fr']));
+    for (const field of ['shortDescription', 'countryCodes', 'metadata.dateInscribed', 'metadata.inDanger', 'metadata.criteria', 'metadata.region']) {
+      expect(proposed(outcome)).not.toContain(field);
+    }
+  });
+
+  it('is neither written nor proposed by a UNESCO run, the other way round', async () => {
+    const unesco = await sourceNamed('UNESCO World Heritage Sites');
+    await upsertExperienceRecord({
+      ...params(unesco.id, ACROPOLIS_WHC, 'Acropolis, Athens'),
+      nameLocal: UNESCO_NAMES,
+      shortDescription: UNESCO_TEXT,
+      countryCodes: ['GR'],
+      lon: 23.7262,
+      lat: 37.9715,
+      metadata: { ...UNESCO_FACTS, dateInscribed: '1987' },
+    });
+
+    expect((await stored()).metadata).toMatchObject({ wikidataQid: ACROPOLIS_QID, wikidataClasses: ['Q570116'] });
+  });
+
+  it('follows the run again, through the gate, once the other family no longer lists the place', async () => {
+    await pool.query(
+      `UPDATE experience_kind_memberships SET missing_since = NOW() WHERE experience_id = $1 AND external_id = $2`,
+      [ACROPOLIS, ACROPOLIS_WHC],
+    );
+    const outcome = await upsertExperienceRecord({
+      ...params(archaeology, ACROPOLIS_QID, 'Acropolis, Athens'),
+      countryCodes: [],
+      lon: 23.7262,
+      lat: 37.9715,
+      metadata: { wikidataQid: ACROPOLIS_QID },
+    });
+
+    // The place readers see is behind Archaeology's gate: the run's view is a proposal again.
+    expect(proposed(outcome)).toEqual(expect.arrayContaining(['metadata.dateInscribed', 'countryCodes']));
   });
 });
