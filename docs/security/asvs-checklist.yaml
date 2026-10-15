@@ -210,7 +210,7 @@ chapters:
       desc: "Password fields use type=password"
       level: 1
       status: pass
-      notes: "MUI TextField with type='password' used in login/register forms and the change-password form on /account"
+      notes: "Every password field (sign-in, registration, the change-password form on /account) is the shared PasswordField: masked by default and again on its form's submit, with a show / hide button that reveals only its own field on the person's request, as V6.2.6 allows (#1062). Sign-in sets autocomplete=current-password, registration new-password"
     V6.2.7:
       desc: "Paste and password managers allowed"
       level: 1
