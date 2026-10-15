@@ -465,6 +465,30 @@ describe('useNavigation world view fetching', () => {
     await waitFor(() => expect(result.current.selectedWorldView?.id).toBe(42));
   });
 
+  it('gives the selected world view as the refetched list holds it, so a rename shows (#284)', async () => {
+    const wrapWith = makeWrapper('/wv/2');
+    authState.isLoading = false;
+    authState.isAdmin = true;
+    authState.user = { id: 1 };
+    mockFetchWorldViews.mockResolvedValue([PUBLIC_WV, OTHER_WV]);
+
+    const { result } = renderHook(() => useNavigation(), { wrapper: wrapWith });
+    await waitFor(() => expect(result.current.selectedWorldView?.name).toBe('Wikivoyage Regions'));
+
+    // What the editor's save does: write, then invalidate the list.
+    mockFetchWorldViews.mockResolvedValue([
+      { ...PUBLIC_WV, name: 'Wikivoyage', description: 'Regions as travellers split them' },
+      OTHER_WV,
+    ]);
+    act(() => {
+      wrapWith.queryClient.invalidateQueries({ queryKey: ['worldViews'] }).catch(() => {});
+    });
+
+    await waitFor(() => expect(result.current.selectedWorldView?.name).toBe('Wikivoyage'));
+    expect(result.current.selectedWorldView?.description).toBe('Regions as travellers split them');
+    expect(result.current.worldViews.find((w) => w.id === 2)).toBe(result.current.selectedWorldView);
+  });
+
   it('drops a world view from the address when it is not visible', async () => {
     // A bookmarked /wv/5 opened after the session ends. The selection corrects
     // to a visible world view; the URL has to follow, or the address bar keeps

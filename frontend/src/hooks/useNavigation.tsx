@@ -439,9 +439,19 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // The selection keeps the object it was picked as, while the list is what the
+  // server says now: a rename refetches the list, so a reader gets the selected
+  // world view as the list holds it, or the editor and the picker keep showing
+  // the old name (#284). One the list does not hold yet — just created, the
+  // list still in flight — is read as selected.
+  const currentWorldView = useMemo(
+    () => worldViews.find((w) => w.id === selectedWorldView?.id) ?? selectedWorldView,
+    [worldViews, selectedWorldView],
+  );
+
   const value: NavigationContextType = useMemo(() => ({
     worldViews,
-    selectedWorldView,
+    selectedWorldView: currentWorldView,
     selectedWorldViewId,
     setSelectedWorldView: handleSetSelectedWorldView,
     isCustomWorldView,
@@ -458,7 +468,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     rootRegionsLoading,
   }), [
     worldViews,
-    selectedWorldView,
+    currentWorldView,
     selectedWorldViewId,
     handleSetSelectedWorldView,
     isCustomWorldView,
