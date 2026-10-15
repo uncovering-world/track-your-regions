@@ -23,6 +23,7 @@ import {
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import WikiIcon from '@mui/icons-material/MenuBook';
 import WebsiteIcon from '@mui/icons-material/Language';
+import HeritagePageIcon from '@mui/icons-material/AccountBalance';
 import LocationIcon from '@mui/icons-material/LocationOn';
 import UnrejectIcon from '@mui/icons-material/Undo';
 import CurateIcon from '@mui/icons-material/Tune';
@@ -446,6 +447,8 @@ function ExperienceExpandedDetailsComponent({
           // value offers no button at all.
           const wikiUrl = safeHref(typeof metadata?.wikipediaUrl === 'string' ? metadata.wikipediaUrl : null);
           const websiteUrl = safeHref(typeof metadata?.website === 'string' ? metadata.website : null);
+          // UNESCO's page about a World Heritage site, beside the site's own (#1538).
+          const unescoUrl = safeHref(typeof metadata?.unescoUrl === 'string' ? metadata.unescoUrl : null);
 
           return (
             <>
@@ -454,9 +457,14 @@ function ExperienceExpandedDetailsComponent({
                   <WikiIcon fontSize="small" />
                 </IconButton>
               )}
-              {websiteUrl && websiteUrl !== wikiUrl && (
+              {websiteUrl && websiteUrl !== wikiUrl && websiteUrl !== unescoUrl && (
                 <IconButton size="small" component="a" href={websiteUrl} target="_blank" rel="noopener noreferrer" title="Official website">
                   <WebsiteIcon fontSize="small" />
+                </IconButton>
+              )}
+              {unescoUrl && (
+                <IconButton size="small" component="a" href={unescoUrl} target="_blank" rel="noopener noreferrer" title="UNESCO World Heritage page">
+                  <HeritagePageIcon fontSize="small" />
                 </IconButton>
               )}
             </>

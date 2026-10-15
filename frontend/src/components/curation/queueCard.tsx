@@ -35,7 +35,7 @@ export function ItemHeader({ item, kinds = [item.kind_name] }: {
     <>
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }} flexWrap="wrap">
         <Typography variant="subtitle1" sx={{ fontWeight: 600 }}>{item.name}</Typography>
-        <SourceId id={item.external_id} kind={item.kind_name} sourcePage={item.website_url} />
+        <SourceId id={item.external_id} kind={item.kind_name} sourcePage={item.unesco_url ?? item.website_url} />
         {kinds.map(kind => <Chip key={kind} label={kind} size="small" variant="outlined" />)}
       </Stack>
       <ObjectContext item={item} />

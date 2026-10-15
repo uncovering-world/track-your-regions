@@ -74,9 +74,11 @@ export function PointCard({
 }: PointCardProps) {
   // Held as *which* picture failed, so a step to the next part tries its own.
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
-  // The object's own page — a World Heritage site's on the UNESCO portal — off
-  // the read the object's card already makes and caches.
+  // The object's pages, off the read the object's card already makes and
+  // caches: a World Heritage site's page at UNESCO, and the site's own website
+  // where a source gave one (#1538).
   const { data: details } = useQuery(experienceDetailsQuery(object.id));
+  const unescoUrl = typeof details?.metadata?.unescoUrl === 'string' ? details.metadata.unescoUrl : null;
   const officialUrl = typeof details?.metadata?.website === 'string' ? details.metadata.website : null;
   const points = useQuery({
     queryKey: queryKeys.experience.locations(object.id),
@@ -131,11 +133,12 @@ export function PointCard({
     const next = route[at + offset];
     if (next) onOpenPoint(next.id, locationLabel(next));
   };
-  // All three through safeHref, the two built from a QID as much as the stored
+  // Every one through safeHref, the two built from a QID as much as the stored
   // page: the rule is declared once, and `urlSafety.test.ts` reads every href in
   // a module that carries a stored link as going through it.
   const wikidata = safeHref(wikidataItemUrl(point.wikidata_item));
   const article = safeHref(wikipediaArticleUrl(point.wikidata_item));
+  const unescoPage = safeHref(unescoUrl);
   const official = safeHref(officialUrl);
 
   return (
@@ -225,7 +228,7 @@ export function PointCard({
 
         {point.description && <Typography variant="body2">{point.description}</Typography>}
 
-        {(wikidata || article || official) && (
+        {(wikidata || article || official || unescoPage) && (
           <Stack direction="row" sx={{ gap: 2, flexWrap: 'wrap' }}>
             {article && (
               <Link href={article} target="_blank" rel="noopener noreferrer" variant="body2">Wikipedia</Link>
@@ -235,9 +238,15 @@ export function PointCard({
                 Wikidata {point.wikidata_item}
               </Link>
             )}
-            {official && (
+            {unescoPage && (
+              <Link href={unescoPage} target="_blank" rel="noopener noreferrer" variant="body2">
+                UNESCO page
+              </Link>
+            )}
+            {/* Some items give UNESCO's page as their official website: one link, not two. */}
+            {official && official !== unescoPage && (
               <Link href={official} target="_blank" rel="noopener noreferrer" variant="body2">
-                The site's own page
+                Official website
               </Link>
             )}
           </Stack>

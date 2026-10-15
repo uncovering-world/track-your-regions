@@ -29,10 +29,12 @@ import { wikidataItemUrl } from '../../utils/wikidataLinks';
  * `metadata.website` is the museum's own site, which says nothing about how
  * Wikidata knows it. Any other id opens the stored source page only when that
  * page's address carries the id as a path segment: every World Heritage row's
- * `website` is `whc.unesco.org/en/list/<id>`, which is the Centre's page *about*
+ * `unescoUrl` is `whc.unesco.org/en/list/<id>`, which is the Centre's page *about*
  * that id, while a page that merely belongs to the object is not a page about the
  * id and would send a curator to a homepage under a number. A segment and not a
- * substring, so the page of site 7380 is not offered as the page of 738.
+ * substring, so the page of site 7380 is not offered as the page of 738. The
+ * World Heritage page is `metadata.unescoUrl` since #1538, and the card hands
+ * it in before the site's own website.
  */
 export function sourceIdHref(id: string, sourcePage: string | null | undefined): string | null {
   const item = wikidataItemUrl(id);
@@ -45,7 +47,7 @@ export function sourceIdHref(id: string, sourcePage: string | null | undefined):
 export function SourceId({ id, kind, sourcePage }: {
   id: string;
   kind: string;
-  /** The row's stored source page (`metadata.website`), for an id that page names. */
+  /** The row's stored source page (`metadata.unescoUrl`, else `metadata.website`), for an id that page names. */
   sourcePage?: string | null;
 }) {
   const [copied, setCopied] = useState(false);

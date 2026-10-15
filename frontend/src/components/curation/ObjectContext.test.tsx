@@ -37,7 +37,7 @@ describe('ObjectContext', () => {
       image_url: 'http://commons.wikimedia.org/wiki/Special:FilePath/Aksum%20stelae.jpg',
       latitude: 14.1303,
       longitude: 38.7186,
-      website_url: 'https://whc.unesco.org/en/list/15',
+      unesco_url: 'https://whc.unesco.org/en/list/15',
       wikipedia_url: 'https://en.wikipedia.org/wiki/Aksum',
       region_names: ['Africa', 'Ethiopia', 'Tigray'],
     })} />);
@@ -53,18 +53,27 @@ describe('ObjectContext', () => {
     const point = screen.getByRole('button', { name: /14\.1303, 38\.7186/ });
     expect(point).toBeInTheDocument();
     expect(point.closest('a')).toBeNull();
-    expect(screen.getByRole('link', { name: 'source page' })).toHaveAttribute(
+    expect(screen.getByRole('link', { name: 'UNESCO page' })).toHaveAttribute(
       'href', 'https://whc.unesco.org/en/list/15',
     );
     expect(screen.getByText('Tigray')).toBeInTheDocument();
   });
 
+  it('offers one link where the official website is UNESCO\'s page (#1538)', () => {
+    render(<ObjectContext item={item({
+      unesco_url: 'https://whc.unesco.org/en/list/15',
+      website_url: 'https://whc.unesco.org/en/list/15',
+    })} />);
+    expect(screen.getByRole('link', { name: 'UNESCO page' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'official site' })).not.toBeInTheDocument();
+  });
+
   it('opens an outbound link without handing it this page', () => {
-    render(<ObjectContext item={item({ website_url: 'https://whc.unesco.org/en/list/15' })} />);
+    render(<ObjectContext item={item({ unesco_url: 'https://whc.unesco.org/en/list/15' })} />);
 
     // These go to a source's own site, and `noopener` is what stops that page reaching
     // back into the tab a curator is deciding in.
-    const link = screen.getByRole('link', { name: 'source page' });
+    const link = screen.getByRole('link', { name: 'UNESCO page' });
     expect(link).toHaveAttribute('rel', expect.stringContaining('noopener'));
     expect(link).toHaveAttribute('target', '_blank');
   });
@@ -81,7 +90,7 @@ describe('ObjectContext', () => {
 
     expect(screen.getByText('Tigray')).toBeInTheDocument();
     expect(screen.queryByRole('link')).not.toBeInTheDocument();
-    expect(screen.queryByText('source page')).not.toBeInTheDocument();
+    expect(screen.queryByText('official site')).not.toBeInTheDocument();
     expect(screen.queryByText('Wikipedia')).not.toBeInTheDocument();
   });
 
@@ -94,7 +103,7 @@ describe('ObjectContext', () => {
     expect(screen.getByRole('link', { name: 'Wikipedia' })).toHaveAttribute(
       'href', 'https://en.wikipedia.org/wiki/Aksum',
     );
-    expect(screen.queryByRole('link', { name: 'source page' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'official site' })).not.toBeInTheDocument();
   });
 
   it('renders nothing for an object whose only link is refused', () => {

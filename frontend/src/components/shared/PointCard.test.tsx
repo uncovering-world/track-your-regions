@@ -13,7 +13,7 @@ vi.mock('../../api/experiences', () => ({ fetchExperienceLocations: vi.fn() }));
 vi.mock('../../api/experienceCardQueries', () => ({
   experienceDetailsQuery: (id: number) => ({
     queryKey: ['experience', id],
-    queryFn: async () => ({ id, metadata: { website: 'https://whc.unesco.org/en/list/1363' } }),
+    queryFn: async () => ({ id, metadata: { unescoUrl: 'https://whc.unesco.org/en/list/1363' } }),
   }),
 }));
 
@@ -75,7 +75,7 @@ describe('PointCard', () => {
     expect(screen.getByText(/Kantonsarchäologie Aargau/)).toBeInTheDocument();
     expect(screen.getByText('archaeological site in Seengen in the canton of Aargau, Switzerland')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Wikidata Q3477679' })).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q3477679');
-    expect(await screen.findByRole('link', { name: "The site's own page" }))
+    expect(await screen.findByRole('link', { name: 'UNESCO page' }))
       .toHaveAttribute('href', 'https://whc.unesco.org/en/list/1363');
     // The steps count the parts a visitor sees, not the unread one a curator would.
     expect(screen.getByText('2 of 3')).toBeInTheDocument();

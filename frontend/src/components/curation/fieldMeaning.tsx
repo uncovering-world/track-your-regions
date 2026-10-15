@@ -532,8 +532,14 @@ const MEANINGS: Record<string, FieldMeaning> = {
     },
   },
   'metadata.website': {
-    label: 'source page',
-    what: 'The object’s page at the source — for a World Heritage property, whc.unesco.org, where the official description, maps and documents are.',
+    label: 'official website',
+    what: 'The place’s own website, as Wikidata states it — where a traveller finds opening hours and tickets.',
+    whenItChanges: SOURCE_LINK_CHANGE,
+    render: urlLabel,
+  },
+  'metadata.unescoUrl': {
+    label: 'UNESCO page',
+    what: 'The World Heritage Centre’s page about the site, on whc.unesco.org, where the official description, maps and documents are.',
     whenItChanges: SOURCE_LINK_CHANGE,
     render: urlLabel,
   },

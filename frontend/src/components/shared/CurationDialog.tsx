@@ -313,7 +313,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
           />
           <TextField
             label="Website URL"
-            {...form.field('websiteUrl', { helperText: 'Official site (UNESCO page, museum site, etc.)' })}
+            {...form.field('websiteUrl', { helperText: 'The place’s own website (a UNESCO site’s World Heritage page is kept apart)' })}
             fullWidth
             size="small"
             placeholder="https://..."

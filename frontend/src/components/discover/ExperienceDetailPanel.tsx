@@ -20,6 +20,7 @@ import {
 import CloseIcon from '@mui/icons-material/Close';
 import MenuBookIcon from '@mui/icons-material/MenuBook';
 import LanguageIcon from '@mui/icons-material/Language';
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import TuneIcon from '@mui/icons-material/Tune';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useQuery } from '@tanstack/react-query';
@@ -439,6 +440,8 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
             // value offers no button at all.
             const wikiUrl = safeHref(typeof metadata?.wikipediaUrl === 'string' ? metadata.wikipediaUrl : null);
             const websiteUrl = safeHref(typeof metadata?.website === 'string' ? metadata.website : null);
+            // UNESCO's page about a World Heritage site, beside the site's own (#1538).
+            const unescoUrl = safeHref(typeof metadata?.unescoUrl === 'string' ? metadata.unescoUrl : null);
 
             return (
               <>
@@ -447,9 +450,14 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
                     Wikipedia
                   </Button>
                 )}
-                {websiteUrl && websiteUrl !== wikiUrl && (
+                {websiteUrl && websiteUrl !== wikiUrl && websiteUrl !== unescoUrl && (
                   <Button variant="text" size="small" startIcon={<LanguageIcon />} component="a" href={websiteUrl} target="_blank" rel="noopener noreferrer">
-                    Website
+                    Official website
+                  </Button>
+                )}
+                {unescoUrl && (
+                  <Button variant="text" size="small" startIcon={<AccountBalanceIcon />} component="a" href={unescoUrl} target="_blank" rel="noopener noreferrer">
+                    UNESCO page
                   </Button>
                 )}
               </>
