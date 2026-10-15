@@ -498,7 +498,7 @@ function PanelLocationRow({
               : `${label} — mark as visited`,
           }}
           onChange={() => loc.isVisited ? onUnmarkLocation(loc.id) : onMarkLocation(loc.id)}
-          sx={{ p: 0.5, '&.Mui-checked': { color: '#22c55e' } }}
+          sx={{ p: 0.5, '&.Mui-checked': { color: 'success.main' } }}
         />
       )}
     </Box>

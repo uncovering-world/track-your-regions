@@ -26,7 +26,6 @@ import { locationLabel, pointFullName, pointOfRow } from '../../utils/locationLa
 import { CopyNameButton } from '../shared/CopyNameButton';
 import { claimLabel } from '../../utils/placeClaims';
 import { resolveLocationColor } from './utils';
-import { VISITED_GREEN } from '../../utils/kindColors';
 
 /** What a row needs of a place — the card's own display shape, not the API's. */
 export interface LocationRowData {
@@ -199,7 +198,7 @@ function LocationRowComponent({
                   checked={location.isVisited}
                   size="small"
                   onChange={() => onVisitedToggle(location.id, location.isVisited)}
-                  sx={{ '&.Mui-checked': { color: VISITED_GREEN } }}
+                  sx={{ '&.Mui-checked': { color: 'success.main' } }}
                 />
               )}
             </Box>

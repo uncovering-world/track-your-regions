@@ -418,7 +418,7 @@ function ExperienceListItemComponent({
                     size="small"
                     onClick={handleMarkAll}
                     disabled={isLoading}
-                    sx={{ p: 0.25, color: '#10B981' }}
+                    sx={{ p: 0.25, color: 'success.main' }}
                   >
                     <AddIcon sx={{ fontSize: 16 }} />
                   </IconButton>

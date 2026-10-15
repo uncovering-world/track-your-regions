@@ -38,7 +38,6 @@ import { safeHref } from '../../utils/safeHref';
 import { CopyNameButton } from './CopyNameButton';
 import { ImageCreditLine } from './ImageCreditLine';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
-import { VISITED_GREEN } from '../../utils/kindColors';
 
 /** The object the part belongs to, as the surface that opened the card knows it. */
 export interface PointCardObject {
@@ -255,7 +254,7 @@ export function PointCard({
                 size="small"
                 checked={visited.isVisited}
                 onChange={visited.onToggle}
-                sx={{ '&.Mui-checked': { color: VISITED_GREEN } }}
+                sx={{ '&.Mui-checked': { color: 'success.main' } }}
               />
             )}
             label={<Typography variant="body2">I have been to {label}</Typography>}

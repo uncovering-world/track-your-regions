@@ -12,7 +12,6 @@ import { PlaceLink } from '../shared/PlaceLink';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
 import { claimLabel } from '../../utils/workClaims';
-import { VISITED_GREEN } from '../../utils/kindColors';
 import type { WorkKind } from '../../utils/worksByKind';
 import { useWorkKinds } from '../../hooks/useWorkKinds';
 import { WorkKindChips, WorkKindDots } from '../shared/WorkKindChips';
@@ -76,7 +75,7 @@ function ArtworkRow({ content, placeKinds, isViewed, isAuthenticated, onToggleVi
               : `${content.name} — mark as seen`,
           }}
           onClick={onToggleViewed}
-          sx={{ p: 0.25, flexShrink: 0, '&.Mui-checked': { color: VISITED_GREEN } }}
+          sx={{ p: 0.25, flexShrink: 0, '&.Mui-checked': { color: 'success.main' } }}
         />
       )}
       <WorkThumbnail

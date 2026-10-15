@@ -10,7 +10,7 @@ import TuneIcon from '@mui/icons-material/Tune';
 import BlockIcon from '@mui/icons-material/Block';
 import PlaceIcon from '@mui/icons-material/Place';
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
-import { experienceColors, shortKindName, VISITED_GREEN } from '../../utils/kindColors';
+import { experienceColors, shortKindName } from '../../utils/kindColors';
 import { inDangerLabel } from '../../utils/dangerLabel';
 import type { Experience } from '../../api/experiences';
 import { LifecycleChip } from '../shared/LifecycleChip';
@@ -165,7 +165,7 @@ export function ExperienceCard({
               bottom: 1,
               right: 1,
               fontSize: 14,
-              color: VISITED_GREEN,
+              color: 'success.main',
               bgcolor: 'white',
               borderRadius: '50%',
             }}
@@ -291,7 +291,7 @@ export function ExperienceCard({
             }}
             sx={{
               p: 0.25,
-              '&.Mui-checked': { color: '#22c55e' },
+              '&.Mui-checked': { color: 'success.main' },
             }}
           />
         )}

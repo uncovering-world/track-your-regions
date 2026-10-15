@@ -8,7 +8,7 @@ import {
   styled,
 } from '@mui/material';
 import PlaceIcon from '@mui/icons-material/Place';
-import { VISITED_GREEN, PARTIAL_AMBER } from '../../utils/kindColors';
+import { PARTIAL_AMBER } from '../../utils/kindColors';
 
 /**
  * The row's chrome as classes made once, not as `sx` objects made per row.
@@ -61,11 +61,11 @@ export const VisitIcon = styled(ListItemIcon)({
   '&[data-partial="true"]': { minWidth: 72 },
 });
 
-export const VisitCheckbox = styled(Checkbox)({
+export const VisitCheckbox = styled(Checkbox)(({ theme }) => ({
   color: 'var(--tyr-row-color)',
-  '&.Mui-checked': { color: VISITED_GREEN },
+  '&.Mui-checked': { color: theme.palette.success.main },
   '&.MuiCheckbox-indeterminate': { color: PARTIAL_AMBER },
-});
+}));
 
 export const KindIcon = styled(ListItemIcon)({ minWidth: 32 });
 

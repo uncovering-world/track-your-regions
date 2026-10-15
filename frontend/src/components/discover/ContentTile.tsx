@@ -8,7 +8,6 @@ import { creditLabel, ImageCreditLine } from '../shared/ImageCreditLine';
 import { PlaceLink } from '../shared/PlaceLink';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
-import { VISITED_GREEN } from '../../utils/kindColors';
 import type { WorkKind } from '../../utils/worksByKind';
 import { WorkKindDots } from '../shared/WorkKindChips';
 
@@ -105,7 +104,7 @@ export function ContentTile({ content, placeKinds, isViewed, isAuthenticated, on
               top: 2,
               right: 2,
               fontSize: 16,
-              color: VISITED_GREEN,
+              color: 'success.main',
               bgcolor: 'white',
               borderRadius: '50%',
             }}
