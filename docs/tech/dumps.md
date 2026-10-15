@@ -184,7 +184,14 @@ backend and the worker talk only through the build's `dump_builds` row:
 4. **Stopped.** *Cancel* (`requestCancel`) closes a queued row at once and
    marks a running one (`cancel_requested_at`); the build reads the mark with
    its next heartbeat and ends as `cancelled`. A worker that stops (SIGTERM)
-   ends its build as `failed`, saying to start it again.
+   ends its build as `failed`, saying to start it again. A worker ended by an
+   error nothing caught first closes the builds it runs as `failed` with that
+   error's message (`failBuildsOf`, `backend/src/worker.ts`; the stack goes to
+   the log only), then exits with 1; compose starts it again
+   (`restart: on-failure:5`) to take the next queued build, and never the
+   failed one, which the admin starts again. Docker keeps that count while the
+   container exists: after five crashes the worker stays down, and queued
+   builds wait until `docker compose up -d dump-worker` recreates it.
 
 One build per dump is queued or running at a time, whatever process runs it
 (#1463): a unique index admits one such row per dump, and a second request is
