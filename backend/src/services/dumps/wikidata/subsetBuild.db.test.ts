@@ -24,7 +24,7 @@ vi.mock('../read.js', () => ({
     pass += 1;
     try {
       // As the read does: a consumer that splits lines itself gets the text in a piece.
-      if (consumer.chunk) await consumer.chunk(new TextEncoder().encode(`${['[', ...lines, ']'].join('\n')}\n`));
+      if (consumer.chunk) await consumer.chunk(new TextEncoder().encode(`${['[', ...lines, ']'].join('\n')}\n`), 0);
       else for (const line of ['[', ...lines, ']']) await consumer.line(line);
       if (failOnPass === pass) throw new Error('the stream was cut');
       await consumer.commit();
