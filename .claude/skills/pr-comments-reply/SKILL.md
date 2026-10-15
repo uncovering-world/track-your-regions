@@ -75,11 +75,13 @@ Ask the user to confirm before posting. The user may want to edit individual rep
 
 ### 6. Post replies
 
-Use the GitHub API to post each reply. For inline review comments, reply in the comment thread:
+Use the GitHub API to post each reply. For inline review comments, reply in the comment thread — a new review comment on the pull request that names the comment it answers:
 
 ```bash
-gh api repos/{owner}/{repo}/pulls/comments/{comment_id}/replies -f body="..."
+gh api repos/{owner}/{repo}/pulls/{number}/comments -F in_reply_to={comment_id} -f body="..."
 ```
+
+The pull request's number is part of the path: `pulls/comments/{comment_id}/replies` without it answers 404.
 
 For PR-level or issue-style comments:
 
