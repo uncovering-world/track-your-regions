@@ -137,8 +137,10 @@ describe("Jev's judgement of a site's candidate component items (#1272)", () => 
         { proposalId: proposals.buciumi, judgement: 'same', confidence: 0.88 },
       ],
     });
-    // 1000 tokens over three questions: 334, 333, 333.
-    expect((await stored()).map(row => row.input_tokens)).toEqual([334, 333, 333]);
+    // 1000 tokens over three questions: 334 for the first asked, 333 each for
+    // the others. Read by item: one INSERT ... SELECT gives its rows no id order.
+    expect(Object.fromEntries((await stored()).map(row => [row.wikidata_item, row.input_tokens])))
+      .toEqual({ [BOLOGA_FORT]: 334, [BOLOGA_TOWER]: 333, [BUCIUMI_FORT]: 333 });
 
     const second = await ask();
     expect(mockedAsk).toHaveBeenCalledTimes(1);
