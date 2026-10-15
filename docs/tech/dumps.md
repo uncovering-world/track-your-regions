@@ -165,7 +165,8 @@ so an edit, a `git pull` or a restart of the backend does not stop it. The
 backend and the worker talk only through the build's `dump_builds` row:
 
 1. **Queued.** `startBuild` in `buildQueue.ts` checks the request — a keeping
-   build needs a builder (`keeperOf` in `keepers.ts`), a build from the local
+   build needs a builder (`keeperOf` in `keepers.ts`), a re-derive a builder
+   that can derive again and a build of it in place, a build from the local
    copy needs one — and queues a row (`enqueueBuild`) holding what was asked
    for (`request`: the kind, and the local copy's file to keep to).
 2. **Taken.** The worker (`workLoop` in `dumpWorker.ts`, entry
@@ -174,7 +175,8 @@ backend and the worker talk only through the build's `dump_builds` row:
    (`claimNextBuild`, `FOR UPDATE SKIP LOCKED`) and runs it (`runBuild` in
    `buildRun.ts`): it resolves the file and records it (`recordFile`), reads it
    through the counting consumer for a `verify` build or the dump's builder for
-   a `keep` build, and closes the row (`closeBuild`) as `success`, `failed` or
+   a `keep` build — a `rederive` finds and reads no file, and runs the
+   builder's derivation alone (`Keeper.rederive`) — and closes the row (`closeBuild`) as `success`, `failed` or
    `cancelled`, with what it did on the way (an older copy removed) in the
    message either way.
 3. **Followed.** Every `BEAT_EVERY_MS` (five seconds) the build writes its
@@ -334,6 +336,27 @@ is their one statement), and swaps the copies in with one transaction
 and the spool, and so does a read of a file that is not the host's
 (`isDamagedRead`), whose rows no build may reuse.
 
+**The derived tables can be made again without the dump** (#1526). A change
+to how the claims, labels, sitelinks or class closure are derived from the
+entities needs the derivation, not the two passes over the file: a
+`rederive` build (`rederiveSubset` in `subsetBuild.ts`) makes empty `_next`
+copies of the four derived tables alone (`createDerivedNextTables`), carries
+the ring's labels over from the live table (`carryRingLabels`: the labels of
+ids that are not kept entities, which a build reads from the dump's terms),
+derives the rest from the live `wikidata_entities` (`deriveFromEntities`
+given that table), indexes the copies and swaps the four in alone (`swapIn`'s
+`only`), recording the build under the dump date and counts of the one whose
+entities it read (`latestSubsetCounts`). It first asks the database's disk
+for what the live derived tables take (`derivedTablesSize`,
+`assertRoomForCopies`). A failure or a cancel drops its copies alone
+(`dropDerivedNextTables`): the entities copy, the record and the spool a cut
+keeping build left stay, and the next build of that file still picks up
+after it. A re-derive is enough for a change to the SQL that derives, and
+for a property added to `CLAIM_PROPERTIES`, since a compact entity keeps
+every claim it had. A change to what pass 2 writes from a line
+(`WRITE_VERSION`), to the scope or to `SUBSET_LANGUAGES` still needs a build
+from the dump: the entities, and the ring's labels, are what it would change.
+
 **A build cut after pass 2 began picks up where it stopped** (#1493). The
 read cuts its pieces on a fixed grid — each ends at the first line end at or
 past the next multiple of `PIECE_BYTES` (8 MB) of text — so every read of a
@@ -392,11 +415,22 @@ bytes and lines, the time the pass has left, and when it was last seen alive; *C
 running. A dump something is built from (`keeps` in the list) also has *Build
 newest*, which starts a `keep` build, and, where a local copy exists
 (`localCopy` in the list, shown under the row's description with its date and
-size), *Build \<date\> copy*, which starts one from that copy. Such a row
+size), *Build \<date\> copy*, which starts one from that copy. Where a build
+is in place, *Derive again* starts a `rederive` (#1526), which reads no file.
+The row's last build stays the last that read a file; the re-derive has a
+line of its own under what is built (*Last derived again …*, with its outcome
+when it did not succeed), and among the earlier builds it says *Derived* and
+*Derived again from the subset in place*. `recentBuilds` keeps the last three
+of each, so re-derives never push the file builds out. A re-derive is refused
+where the entities table is empty, as a crash of the database leaves it
+(unlogged) while the record of the build says a subset is in place, and a
+worker that meets a kind of build it does not know fails it rather than
+reading a file. Such a row
 also names what is built and the dump date of the build in place, or says it
 was never built. While a build of the dump is queued or running, the row offers no other
 button.
 The routes are `GET /api/admin/dumps`, `POST /api/admin/dumps/:dump/build`,
-`POST /api/admin/dumps/:dump/keep` and `POST /api/admin/dumps/:dump/cancel`
+`POST /api/admin/dumps/:dump/keep`, `POST /api/admin/dumps/:dump/rederive`
+and `POST /api/admin/dumps/:dump/cancel`
 (`backend/src/controllers/admin/dumpController.ts`);
 `docs/security/SECURITY.md` § Current Security Stack has their controls.
