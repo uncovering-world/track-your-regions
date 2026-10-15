@@ -279,7 +279,7 @@ The Python service has a smaller surface than the Node backend but introduces ne
   geometry stays fetchable by tile id regardless of `is_public`. Five of the six published sources
   now take an id and answer a request that names none with an empty tile, and one that names a
   value that is not an id the same way, never a 500 with the database's error text (#664); the sixth,
-  `tile_gadm_root_divisions`, takes none by design and draws the root GADM divisions for every
+  `tile_root_divisions`, takes none by design and draws the root GADM divisions for every
   caller alike. But the five do not all take the *world view's* id, so what a caller has to know
   differs by source. The three that answer for one world view take its id: `tile_region_islands`
   since #660 (the one the map itself drew unscoped), `tile_world_view_root_regions` and
@@ -289,8 +289,8 @@ The Python service has a smaller surface than the Node backend but introduces ne
   `tile_region_subregions` reads the same table and takes a **region** id instead, with no
   world-view filter at all, so a hidden world view's subtree is reachable from any region id
   inside it without its own id ever being known. And the **default** world view is behind no id
-  whatsoever: its map is GADM itself, drawn by `tile_gadm_root_divisions`, which takes no
-  parameter, and `tile_gadm_subdivisions`, which takes a division id — so a default world view
+  whatsoever: its map is GADM itself, drawn by `tile_root_divisions`, which takes no
+  parameter, and `tile_division_subdivisions`, which takes a division id — so a default world view
   whose `is_public` is false is served unauthenticated with nothing to know. `is_public` governs
   it exactly as it governs any other world view and `is_default` carries no visibility meaning of
   its own, which is what makes that a reachable state rather than a hypothetical one

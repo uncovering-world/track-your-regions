@@ -521,7 +521,7 @@ below, and each is scoped to the level on screen (`useRegionMetadata`):
 | World-view root | `tile_world_view_all_leaf_regions`, with the root-region borders overlaid | none — the root regions are already in hand, from `useNavigation` |
 | A region with subregions | `tile_region_subregions` | its children, `GET /api/world-views/regions/:id/subregions` |
 | A leaf region | `tile_region_subregions` of its parent | its siblings — the same read, under the same React Query key `RegionList` uses, so one request answers both |
-| GADM root / a division | `tile_gadm_root_divisions` / `tile_gadm_subdivisions` | the divisions at that level |
+| GADM root / a division | `tile_root_divisions` / `tile_division_subdivisions` | the divisions at that level |
 
 The root row is the one worth stating. Drawing *every* leaf region of the world
 view at the root is deliberate — the visitor is meant to see the whole world as

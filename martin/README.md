@@ -127,8 +127,8 @@ curl -s localhost:3000/catalog | jq '.tiles | keys'
 | `/tile_world_view_root_regions/{z}/{x}/{y}` | `world_view_id` (required) | Root regions for a world view |
 | `/tile_world_view_all_leaf_regions/{z}/{x}/{y}` | `world_view_id` (required) | All leaf regions (no subregions) for a world view |
 | `/tile_region_subregions/{z}/{x}/{y}` | `parent_id` (required) | Subregions of a parent |
-| `/tile_gadm_root_divisions/{z}/{x}/{y}` | - | Root GADM divisions |
-| `/tile_gadm_subdivisions/{z}/{x}/{y}` | `parent_id` (required) | GADM subdivisions of a parent |
+| `/tile_root_divisions/{z}/{x}/{y}` | - | Root divisions of the base layer |
+| `/tile_division_subdivisions/{z}/{x}/{y}` | `parent_id` (required) | Subdivisions of a parent division |
 | `/tile_region_islands/{z}/{x}/{y}` | `world_view_id` (required), `parent_id` (optional) | Real island boundaries for archipelagos |
 
 **Required** means the function answers a request that omits the parameter with
@@ -138,7 +138,7 @@ the function body, which enforces it; in the function's own `COMMENT`, which is
 what `\df+` shows; and in the table above. `tileScopeGuards.test.ts` holds all
 three to each other, this table included — a row edited here without the
 function moving with it fails that test. A source that takes no parameter
-(`/tile_gadm_root_divisions`) draws the same thing for every caller by
+(`/tile_root_divisions`) draws the same thing for every caller by
 definition. Until #662 the two world-view sources were the exception: they
 filtered on `p_world_view_id IS NULL OR …`, so a request naming no world view
 answered with all of them at once.
@@ -159,7 +159,7 @@ malformed values.
 
 ```bash
 # Get a tile at zoom 3, x=4, y=2
-curl http://localhost:3000/tile_gadm_root_divisions/3/4/2
+curl http://localhost:3000/tile_root_divisions/3/4/2
 
 # Get root regions for world view 2
 curl "http://localhost:3000/tile_world_view_root_regions/3/4/2?world_view_id=2"
