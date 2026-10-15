@@ -64,6 +64,12 @@ the line reader was reading, and the reader's late `error` is listened to and
 dropped, since an `error` nobody listens to ends the whole process and loses
 the failure that stopped the read.
 
+A consumer that splits lines itself (`DumpConsumer.chunk`, the subset
+build's two passes) is handed the decompressed text in pieces of about 8 MB
+instead, each ending at a line's end and in memory of its own, so a worker
+thread can be given it without a copy; `lineCount` says how many lines it has
+taken. Every other consumer gets one call per line.
+
 gzip is decoded in-process (`createGunzip`). bzip2 runs as a child process,
 `/usr/bin/bzip2 -dc` by its absolute path, whose exit code is what says the
 stream ended cleanly: Node has no bzip2 of its own, and the Alpine image has
@@ -215,6 +221,26 @@ which reads the file twice through `readDump`, each pass verified:
    other item's labels and descriptions in `SUBSET_LANGUAGES` go to a gzip
    spool beside the dump (`labelsRing.ts`, `TermsSpool`), read without
    parsing the line.
+
+Both passes run in worker threads (`linePool.ts`, #1479): the main thread
+decompresses, hashes and hands pieces of text to a pool of workers, every core
+but one by default (`DUMP_WORKERS` sets it; `0` runs the same code on the main
+thread). A worker splits the piece into lines (`textLines.ts`) and runs the
+pass's pure function on them — `scopeFactsOf` (`scope.ts`) or `writeFactsOf`
+(`lineWork.ts`) — and answers in typed arrays and strings; pass 2's scope sets
+are read in shared memory (`IdSet.toShared`). The main thread only merges. Pass
+1's answers are absorbed in the order of the dump (`ScopeReader`), since the
+chain walk follows its edges in the order they arrived; pass 2's in any order.
+How many pieces are in flight is bounded, waiting on the database included, so
+a slow insert slows the read instead of filling memory. A worker under tsx is
+started from a line that registers tsx in it, since a loader passed in
+`execArgv` does not reach a worker on the image's Node 22.
+
+On 4 GB of the 2026-10-05 dump's JSON, on this repository's development
+machine (two cores, four threads), with no database: from its start, pass 1
+went from 165 to 358 MB/s and pass 2 from 81 to 214 MB/s; from 60 GB in, from
+206 to 443 and from 196 to 475 MB/s, the decoder by then the limit. The scope,
+rows, spooled terms and ring are the same either way (`parallelPasses.test.ts`).
 
 Every string kept is one Postgres can store (`storableText`,
 `storableJson` in `compactEntity.ts`): `text` and `jsonb` hold no NUL, and
