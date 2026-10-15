@@ -157,10 +157,16 @@ export async function requireFreshToken(): Promise<string | null> {
  * A request's headers, with the token given. A caller's own `Authorization`
  * wins: `getCurrentUser` sends the token the OAuth flow has just received,
  * before it is the in-memory one (ADR-0073 decision 2).
+ *
+ * `Content-Type` goes only on a request with a body. `application/json` is not
+ * a CORS-safelisted type, so on a bodiless GET it made every read a
+ * non-simple request and cost an anonymous reader a preflight before each one
+ * (#1542); without it, and without a token, the read is a simple request. The
+ * generated client names the type itself on every call that sends JSON.
  */
 function buildJsonHeaders(options?: RequestInit, token: string | null = accessToken): Headers {
   const headers = new Headers(options?.headers);
-  if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  if (options?.body != null && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
   if (token && !headers.has('Authorization')) headers.set('Authorization', `Bearer ${token}`);
   return headers;
 }
