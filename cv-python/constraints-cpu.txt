@@ -1,0 +1,13 @@
+# The CPU builds of the torch pins in requirements.txt. Install with
+#   pip install -r requirements.txt -c constraints-cpu.txt
+# PyPI's Linux torch wheel is the CUDA build and pulls the CUDA runtime and
+# triton with it (about 5.3 GB of the image), for code that never touches a
+# GPU. PyTorch's CPU index publishes the same release as `+cpu`. The index is
+# named here rather than in requirements.txt so that `pip-audit -r
+# requirements.txt` still resolves torch from PyPI and audits it: pip-audit
+# cannot look a `+cpu` version up and would skip it. macOS has no `+cpu`
+# wheel; its PyPI wheel is CPU-only already. Bump together with the pins in
+# requirements.txt.
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch==2.14.1+cpu; sys_platform != "darwin"
+torchvision==0.29.1+cpu; sys_platform != "darwin"

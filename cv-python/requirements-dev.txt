@@ -1,5 +1,7 @@
 # Dev-only tooling for cv-python. Not installed into the production image.
-# Run `pip install -r requirements.txt -r requirements-dev.txt` for local dev.
+# For local dev run `npm run setup:py:dev`, or `pip install -r requirements.txt
+# -r requirements-dev.txt -c constraints-cpu.txt` (the constraints keep torch
+# to its CPU build).
 
 # Lint + format
 ruff==0.8.4

@@ -20,6 +20,11 @@ scipy==1.14.1
 # validation (rejects negative Content-Length, bounds header-name size).
 python-multipart==0.0.31
 easyocr==1.7.2
+# EasyOCR is torch's only consumer, and it runs with gpu=False
+# (app/cv/text_detection.py). These are the versions pip-audit checks; every
+# install takes them as CPU builds through constraints-cpu.txt.
+torch==2.14.1
+torchvision==0.29.1
 # segment-anything==1.0 dropped: pulls torch 1.8.1 (2021) with multiple critical
 # RCE/heap-overflow CVEs and no available patch path. Add back in rebuild/41-43
 # from a maintained fork (e.g. ultralytics-sam) when actually used.
