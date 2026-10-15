@@ -13,6 +13,13 @@
 # there. `--ignore-unfixed` is the load-bearing one: without it the gate blocks
 # on CVEs with no released patch, which cv-python cannot act on — its Dockerfile
 # already runs `apt-get upgrade` at build time.
+#
+# The script builds the image it scans, under its own tag, so an image built
+# by hand under that tag is replaced before the scan. CI builds on a fresh
+# runner with no layer cache; here `--pull` takes the base image's current
+# digest and APT_REFRESH reruns the Dockerfile's upgrade step, so the scan
+# reads the patches the archive offers today rather than the ones a cached
+# layer kept (#565). The pip layer before it stays cached.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -27,7 +34,7 @@ IMAGE_TAG="track-your-regions/cv-python:scan"
 # together with the CI pin.
 TRIVY_IMAGE="aquasec/trivy@sha256:be1190afcb28352bfddc4ddeb71470835d16462af68d310f9f4bca710961a41e"  # v0.70.0
 
-docker build -t "$IMAGE_TAG" ./cv-python
+docker build --pull --build-arg "APT_REFRESH=$(date -u +%s)" -t "$IMAGE_TAG" ./cv-python
 
 # Disk-backed, not /tmp. The image is ~8.6 GB (easyocr pulls torch, which pulls
 # the CUDA runtime set), and on Fedora /tmp is a RAM-backed tmpfs capped at half
