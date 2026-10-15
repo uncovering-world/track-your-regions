@@ -3566,6 +3566,18 @@ export interface DivisionsRemoved {
   removed: number;
 }
 
+/**
+ * A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds; a re-derive derives the kept build's tables again from what it holds, reading no file (#1526).
+ */
+export type DumpBuildKind = typeof DumpBuildKind[keyof typeof DumpBuildKind];
+
+
+export const DumpBuildKind = {
+  verify: 'verify',
+  keep: 'keep',
+  rederive: 'rederive',
+} as const;
+
 export type DumpBuildMode = typeof DumpBuildMode[keyof typeof DumpBuildMode];
 
 
@@ -3601,6 +3613,8 @@ export interface DumpBuild {
      * @maximum 9007199254740991
      */
   id: number;
+  /** A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds; a re-derive derives the kept build's tables again from what it holds, reading no file (#1526). */
+  kind: DumpBuildKind;
   /**
      * Null for a build that ended before it found its file.
      * @nullable
@@ -3620,7 +3634,7 @@ export interface DumpBuild {
      */
   lines: number;
   checksumKind: DumpBuildChecksumKind;
-  /** The published checksum matched, or, where none is published, the size and the end of stream did. */
+  /** The published checksum matched, or, where none is published, the size and the end of stream did; never for a re-derive, which reads no file. */
   verified: boolean;
   status: DumpBuildStatus;
   /** @nullable */
@@ -3663,7 +3677,7 @@ export const DumpBuildProgressDump = {
 } as const;
 
 /**
- * A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds.
+ * A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds; a re-derive derives the kept build's tables again from what it holds, reading no file (#1526).
  */
 export type DumpBuildProgressKind = typeof DumpBuildProgressKind[keyof typeof DumpBuildProgressKind];
 
@@ -3671,10 +3685,11 @@ export type DumpBuildProgressKind = typeof DumpBuildProgressKind[keyof typeof Du
 export const DumpBuildProgressKind = {
   verify: 'verify',
   keep: 'keep',
+  rederive: 'rederive',
 } as const;
 
 /**
- * Queued for the dump worker, finding its file, or reading it (ADR-0106).
+ * Queued for the dump worker, finding its file, reading it (ADR-0106), or deriving the kept tables again, which reads no file (#1526).
  */
 export type DumpBuildProgressStatus = typeof DumpBuildProgressStatus[keyof typeof DumpBuildProgressStatus];
 
@@ -3683,6 +3698,7 @@ export const DumpBuildProgressStatus = {
   queued: 'queued',
   resolving: 'resolving',
   reading: 'reading',
+  deriving: 'deriving',
 } as const;
 
 export type DumpBuildProgressFile = {
@@ -3696,9 +3712,9 @@ export type DumpBuildProgressFile = {
  */
 export interface DumpBuildProgress {
   dump: DumpBuildProgressDump;
-  /** A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds. */
+  /** A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds; a re-derive derives the kept build's tables again from what it holds, reading no file (#1526). */
   kind: DumpBuildProgressKind;
-  /** Queued for the dump worker, finding its file, or reading it (ADR-0106). */
+  /** Queued for the dump worker, finding its file, reading it (ADR-0106), or deriving the kept tables again, which reads no file (#1526). */
   status: DumpBuildProgressStatus;
   message: string;
   file: DumpBuildProgressFile;
@@ -14177,6 +14193,31 @@ return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpKeepUrl(dump),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(dumpBuildBody)
+  }
+);}
+
+
+
+export const getPostAdminDumpsByDumpRederiveUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user',) => {
+
+
+
+
+  return `/api/admin/dumps/${encodeURIComponent(String(dump))}/rederive`
+}
+
+/**
+ * Requires an admin.
+ * @summary Start deriving the tables kept from a dump again from what the build in place holds, without reading the dump, swapping them in whole
+ */
+export const postAdminDumpsByDumpRederive = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
+
+  return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpRederiveUrl(dump),
+  {
+    ...options,
+    method: 'POST'
+
+
   }
 );}
 

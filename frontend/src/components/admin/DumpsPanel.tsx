@@ -19,7 +19,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  cancelDumpBuild, getDumps, startDumpBuild, startDumpKeep, type DumpBuild, type DumpBuildFrom, type DumpBuildProgress, type DumpsDumpsItem,
+  cancelDumpBuild, getDumps, startDumpBuild, startDumpKeep, startDumpRederive, type DumpBuild, type DumpBuildFrom, type DumpBuildProgress, type DumpsDumpsItem,
 } from '../../api/admin/dumps';
 import { queryKeys } from '../../api/queryKeys';
 import { formatDateTime, formatDuration, formatRelativeTime, formatTimeLeft } from '../../utils/dateFormat';
@@ -53,9 +53,9 @@ const OUTCOME: Record<DumpBuild['status'], { label: string; color: 'success' | '
   running: { label: 'Running', color: 'default' },
 };
 
-/** What a verified build was checked against, in the words of the check. */
+/** What a verified build was checked against, in the words of the check; a re-derive reads no file to check. */
 function checkedBy(build: DumpBuild): string {
-  if (build.status !== 'success') return '—';
+  if (build.status !== 'success' || build.kind === 'rederive') return '—';
   return build.checksumKind ? `${build.checksumKind} matched` : 'size matched';
 }
 
@@ -63,7 +63,11 @@ function Outcome({ build }: { build: DumpBuild }) {
   const when = build.finishedAt ?? build.startedAt;
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-      <Chip size="small" label={OUTCOME[build.status].label} color={OUTCOME[build.status].color} />
+      <Chip
+        size="small"
+        label={build.kind === 'rederive' && build.status === 'success' ? 'Derived' : OUTCOME[build.status].label}
+        color={OUTCOME[build.status].color}
+      />
       <Tooltip title={formatDateTime(when)}>
         <Typography variant="body2" color="text.secondary">{formatRelativeTime(when)}</Typography>
       </Tooltip>
@@ -117,6 +121,11 @@ function ProgressCells({ progress }: { progress: DumpBuildProgress }) {
   );
 }
 
+function howBuilt(build: DumpBuild): string {
+  if (build.kind === 'rederive') return 'Derived again from the subset in place';
+  return build.mode === 'local' ? 'From the local copy' : 'Streamed from the host';
+}
+
 function EarlierBuilds({ builds, datedBy }: { builds: DumpBuild[]; datedBy: DumpsDumpsItem['datedBy'] }) {
   return (
     <Table size="small" sx={{ mb: 1, tableLayout: 'fixed' }}>
@@ -125,7 +134,7 @@ function EarlierBuilds({ builds, datedBy }: { builds: DumpBuild[]; datedBy: Dump
         {builds.map(build => (
           <TableRow key={build.id} sx={{ verticalAlign: 'top', '& > td': { color: 'text.secondary' } }}>
             <TableCell>
-              {build.mode === 'local' ? 'From the local copy' : 'Streamed from the host'}
+              {howBuilt(build)}
               {build.finishedAt && `${build.status === 'success' ? ' in' : ', ended after'} ${formatDuration(build.startedAt, build.finishedAt)}`}
               {build.error && <Typography variant="caption" color="error" display="block">{build.error}</Typography>}
             </TableCell>
@@ -154,15 +163,21 @@ function LocalCopy({ dump }: { dump: DumpsDumpsItem }) {
   );
 }
 
-/** What is built from the dump, and from which dump the build in place was made. */
-function Kept({ dump }: { dump: DumpsDumpsItem }) {
+/** What is built from the dump, from which dump the build in place was made, and when it was last derived again (#1526). */
+function Kept({ dump, derived }: { dump: DumpsDumpsItem; derived: DumpBuild | undefined }) {
   if (!dump.keeps) return null;
   const { title, built } = dump.keeps;
   return (
     <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
       {built
-        ? <>{title}: built from the dump of {dumpDate(built.dumpDate, dump.datedBy)}, {formatRelativeTime(built.swappedAt)}</>
+        ? <>{title}: built from the dump of {dumpDate(built.dumpDate, dump.datedBy)}, swapped in {formatRelativeTime(built.swappedAt)}</>
         : <>{title}: not built yet</>}
+      {derived && (
+        <Box component="span" display="block">
+          Last derived again {formatRelativeTime(derived.finishedAt ?? derived.startedAt)}
+          {derived.status !== 'success' && ` (${OUTCOME[derived.status].label.toLowerCase()})`}
+        </Box>
+      )}
     </Typography>
   );
 }
@@ -172,6 +187,7 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
   const refresh = () => queryClient.invalidateQueries({ queryKey: queryKeys.admin.dumps });
   const start = useMutation({ mutationFn: (from: DumpBuildFrom) => startDumpBuild(dump.key, from), onSettled: refresh });
   const keep = useMutation({ mutationFn: (from: DumpBuildFrom) => startDumpKeep(dump.key, from), onSettled: refresh });
+  const rederive = useMutation({ mutationFn: () => startDumpRederive(dump.key), onSettled: refresh });
   const copy = dump.localCopy;
   const copyDate = copy ? dumpDate(copyIsoDate(copy.date), dump.datedBy) : null;
   // A newer file of a daily dump replaces the local copy: once verified, or first when the disk cannot hold both.
@@ -181,10 +197,15 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
   const cancel = useMutation({ mutationFn: () => cancelDumpBuild(dump.key), onSettled: refresh });
   const [open, setOpen] = useState(false);
   const running = inFlight(dump.progress);
-  // The build in flight is the progress cell; the rows are the builds that ended.
-  const [last, ...earlier] = dump.builds.filter(build => build.status !== 'running');
-  const refused = start.error ?? keep.error;
-  const problem = refused ? (refused as Error).message : (!running && last?.status !== 'success' && last?.error) || null;
+  // The build in flight is the progress cell; the rows are the builds that ended. The row's
+  // last build is the last that read a file: a re-derive reads none, and has its own line.
+  const ended = dump.builds.filter(build => build.status !== 'running');
+  const last = ended.find(build => build.kind !== 'rederive');
+  const derived = ended.find(build => build.kind === 'rederive');
+  const earlier = ended.filter(build => build !== last);
+  const newest = ended[0];
+  const refused = start.error ?? keep.error ?? rederive.error;
+  const problem = refused ? (refused as Error).message : (!running && newest?.status !== 'success' && newest?.error) || null;
   const ruled = !problem && !open;
   return (
     <Fragment>
@@ -192,7 +213,7 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
         <TableCell>
           <Typography variant="body2" fontWeight={500}>{dump.title}</Typography>
           <Typography variant="caption" color="text.secondary">{dump.about}</Typography>
-          <Kept dump={dump} />
+          <Kept dump={dump} derived={derived} />
           <LocalCopy dump={dump} />
         </TableCell>
         {running && dump.progress && <ProgressCells progress={dump.progress} />}
@@ -220,6 +241,13 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
                 <Tooltip title={`Build from ${copy.fileName} (${size(copy.bytes)}) without downloading the newest dump`}>
                   <Button size="small" variant="contained" color="secondary" onClick={() => keep.mutate('local')} disabled={keep.isPending}>
                     Build {copyDate} copy
+                  </Button>
+                </Tooltip>
+              )}
+              {dump.keeps?.built && (
+                <Tooltip title="Rebuild the claims, labels, links and class tree from the items the subset already holds, without reading the dump again: for a change to how they are made">
+                  <Button size="small" variant="outlined" color="secondary" onClick={() => rederive.mutate()} disabled={rederive.isPending}>
+                    Derive again
                   </Button>
                 </Tooltip>
               )}
