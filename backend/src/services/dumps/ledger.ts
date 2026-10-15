@@ -156,6 +156,20 @@ export async function closeOrphanedBuilds(options: { runner?: string } = {}): Pr
   return result.rowCount ?? 0;
 }
 
+/**
+ * Close the builds `runner` is running as failed with `error`: what a dump
+ * worker records on its way out when something it did not catch ends it, so
+ * the row says why rather than only that its process ended.
+ */
+export async function failBuildsOf(runner: string, error: string): Promise<number> {
+  const result = await pool.query(
+    `UPDATE dump_builds SET status = 'failed', error = $2, finished_at = NOW()
+      WHERE status = 'running' AND runner = $1`,
+    [runner, error.slice(0, 2000)],
+  );
+  return result.rowCount ?? 0;
+}
+
 export type ActiveBuild = Pick<DumpBuildRow,
   'id' | 'status' | 'request' | 'progress' | 'file_name' | 'dump_date' | 'expected_bytes' | 'started_at' | 'heartbeat_at' | 'runner' | 'cancel_requested_at'>;
 

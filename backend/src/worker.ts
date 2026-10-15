@@ -15,6 +15,25 @@ config({ path: resolve(process.cwd(), '../.env') });
 
 const { pool } = await import('./db/index.js');
 const { workLoop, WORKER_RUNNER } = await import('./services/dumps/dumpWorker.js');
+const { failBuildsOf } = await import('./services/dumps/ledger.js');
+
+// Something no build caught ends the worker, but not before the builds it
+// runs say why (#1467, #1488): the row gets the error's message, the log its
+// stack, which the admin panel must not be sent. The first such error ends
+// the worker; any that follow while the row is written are logged only.
+// Compose starts the worker again (`restart: on-failure:5`).
+let ending = false;
+const end = (what: string) => (error: unknown) => {
+  console.error('[Dumps] Worker ended by %s: %s', what, error instanceof Error ? error.stack ?? error.message : String(error));
+  if (ending) return;
+  ending = true;
+  const message = error instanceof Error ? error.message : String(error);
+  failBuildsOf(WORKER_RUNNER, `The dump worker ended on ${what}: ${message}`)
+    .catch(recordError => console.error('[Dumps] Could not record why the worker ended:', recordError))
+    .finally(() => process.exit(1));
+};
+process.on('uncaughtException', end('an uncaught exception'));
+process.on('unhandledRejection', end('an unhandled rejection'));
 
 const stop = new AbortController();
 for (const signal of ['SIGTERM', 'SIGINT'] as const) {
