@@ -112,7 +112,7 @@ done
     echo "    -e PYTHONDONTWRITEBYTECODE=1 \\"
     echo "    -e COVERAGE_FILE=/tmp/.coverage \\"
     echo "    -v \"$(dirname "$SCRIPT_DIR"):/w:z\" -w /w/cv-python python:3.12-slim \\"
-    printf "    sh -c 'pip install -q -r requirements.txt -r requirements-dev.txt"
+    printf "    sh -c 'pip install -q -r requirements.txt -r requirements-dev.txt -c constraints-cpu.txt"
     for cmd in "${commands[@]}"; do
       printf " \\\\\n         && %s" "$cmd"
     done

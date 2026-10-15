@@ -35,7 +35,7 @@
     "review:surface": "node scripts/review-surface.mjs",
     "gates": "node scripts/gates.mjs",
     "typecheck": "npm --prefix backend run typecheck && npm --prefix frontend run typecheck && npm --prefix packages/shared run typecheck",
-    "setup:py:dev": "./scripts/require-python-312.sh && cd cv-python && python3.12 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt",
+    "setup:py:dev": "./scripts/require-python-312.sh && cd cv-python && python3.12 -m venv .venv && .venv/bin/pip install --upgrade pip && .venv/bin/pip install -r requirements.txt -r requirements-dev.txt -c constraints-cpu.txt",
     "lint:py": "./scripts/require-py-tools.sh ruff && cd cv-python && .venv/bin/ruff check --no-cache .",
     "lint:py:fix": "./scripts/require-py-tools.sh ruff && cd cv-python && .venv/bin/ruff check --no-cache --fix .",
     "format:py": "./scripts/require-py-tools.sh ruff && cd cv-python && .venv/bin/ruff format --no-cache --check .",

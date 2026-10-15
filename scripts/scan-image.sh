@@ -36,10 +36,10 @@ TRIVY_IMAGE="aquasec/trivy@sha256:be1190afcb28352bfddc4ddeb71470835d16462af68d31
 
 docker build --pull --build-arg "APT_REFRESH=$(date -u +%s)" -t "$IMAGE_TAG" ./cv-python
 
-# Disk-backed, not /tmp. The image is ~8.6 GB (easyocr pulls torch, which pulls
-# the CUDA runtime set), and on Fedora /tmp is a RAM-backed tmpfs capped at half
-# of memory — measured here as 9.7 GB total, so the tarball alone would take
-# most of it, in RAM, for the length of the scan. /var/tmp is on real disk on
+# Disk-backed, not /tmp. The image is ~2.1 GB (torch is its CPU build,
+# cv-python/constraints-cpu.txt; it was ~9.7 GB with the CUDA runtime), and on
+# Fedora /tmp is a RAM-backed tmpfs capped at half of memory, so the tarball
+# would sit in RAM for the length of the scan. /var/tmp is on real disk on
 # both Fedora and Debian; an explicit TMPDIR still wins.
 tarball="$(mktemp --tmpdir="${TMPDIR:-/var/tmp}" tyr-cv-python-scan.XXXXXX.tar)"
 cleanup() { rm -f "$tarball"; }

@@ -197,6 +197,7 @@ jobs:
           cache-dependency-path: |
             cv-python/requirements.txt
             cv-python/requirements-dev.txt
+            cv-python/constraints-cpu.txt
 
       # The root install is this job's alone, and it is unconditional because
       # of one gate: `lint:md` needs markdownlint from here, and it is the gate
@@ -289,11 +290,12 @@ jobs:
           cache-dependency-path: |
             cv-python/requirements.txt
             cv-python/requirements-dev.txt
+            cv-python/constraints-cpu.txt
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r cv-python/requirements.txt -r cv-python/requirements-dev.txt
+          pip install -r cv-python/requirements.txt -r cv-python/requirements-dev.txt -c cv-python/constraints-cpu.txt
 
       # test_text_detection.py runs the real EasyOCR reader, which fetches its
       # detection and recognition models (~100 MB) from its own releases on

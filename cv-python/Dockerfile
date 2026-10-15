@@ -1,7 +1,8 @@
 FROM python:3.12-slim
 WORKDIR /app
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements.txt constraints-cpu.txt ./
+# The constraints swap torch for its CPU build (constraints-cpu.txt).
+RUN pip install --no-cache-dir -r requirements.txt -c constraints-cpu.txt
 # Pull Debian security patches at build time so the image isn't pinned to
 # whatever package set Docker Hub last baked into python:3.12-slim. See #393.
 # A cached layer keeps the patches of the day it was built, so the local scan
