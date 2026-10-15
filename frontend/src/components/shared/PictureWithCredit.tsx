@@ -59,6 +59,10 @@ export function PictureWithCredit({ url, credit, alt, width = 250 }: PictureWith
     <Box sx={{ mt: 1 }}>
       <Box
         component="img"
+        // Keyed on the address: another object mounts a fresh <img>, which shows
+        // nothing until its own picture decodes, where a reused one keeps drawing
+        // the last object's photograph meanwhile (#844).
+        key={src}
         src={src}
         alt={alt}
         sx={{ display: 'block', maxWidth: 200, maxHeight: 120, borderRadius: 1, objectFit: 'cover' }}

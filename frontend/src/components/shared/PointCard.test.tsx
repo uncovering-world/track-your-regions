@@ -90,6 +90,22 @@ describe('PointCard', () => {
     expect(screen.queryByRole('link', { name: /Wikidata/ })).not.toBeInTheDocument();
   });
 
+  it("mounts a fresh picture when the card steps to another part, so the last part's photograph is not drawn under it (#844)", async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const card = (pointId: number) => (
+      <QueryClientProvider client={client}>
+        <PointCard object={SITE} pointId={pointId} onBack={vi.fn()} onOpenPoint={vi.fn()} onPointGone={vi.fn()} />
+      </QueryClientProvider>
+    );
+    const { rerender } = render(card(8189));
+    const riesi = await screen.findByRole('img', { name: 'Riesi' });
+
+    rerender(card(8192));
+    const spitz = await screen.findByRole('img', { name: 'Spitz' });
+    expect(spitz).not.toBe(riesi);
+    expect(riesi).not.toBeInTheDocument();
+  });
+
   it('steps to the next part and back to the object', async () => {
     const { onOpenPoint, onBack } = renderCard(8189);
     await screen.findByRole('heading', { name: 'Riesi' });

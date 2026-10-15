@@ -45,6 +45,10 @@ export function DiscoverHoverCard() {
       {picture && (
         <Box
           component="img"
+          // Keyed on the address: another object mounts a fresh <img>, which shows
+          // nothing until its own picture decodes, where a reused one keeps drawing
+          // the last object's photograph meanwhile (#844).
+          key={picture}
           src={picture}
           alt={hoverPreview.experienceName}
           sx={{
