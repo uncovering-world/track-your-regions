@@ -24,7 +24,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import {
-  withCache, setCacheTtl, forgetCached, CACHED_KINDS_BY_SOURCE, DEFAULT_TTL_MS,
+  withCache, setCacheTtl, forgetCached, CACHED_KINDS_BY_SOURCE, DEFAULT_TTL_MS, EXPIRED_GRACE_MS,
 } from './wikidataCache.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
@@ -268,5 +268,47 @@ describe('forgetCached', () => {
   it('sends nothing when there is nothing to forget', async () => {
     expect(await forgetCached(5, [])).toBe(0);
     expect(mockedQuery).not.toHaveBeenCalled();
+  });
+});
+
+describe('pruning answers long past their expiry (#627)', () => {
+  beforeEach(() => {
+    mockedQuery.mockReset();
+    mockedQuery.mockImplementation(async (sql: string) => (
+      sql.includes('SELECT result') ? { rows: [{ result: ROWS }] } : { rows: [], rowCount: 0 }
+    ));
+  });
+
+  const prunes = () => mockedQuery.mock.calls.filter(([sql]) => String(sql).includes('DELETE FROM wikidata_query_cache'));
+
+  it("drops the source's answers a week past expiry, once per cached door, on the first question it answers", async () => {
+    const cached = withCache(vi.fn(async () => ROWS), { sourceId: MUSEUM, enabled: true });
+    await cached('SELECT ?a {}', { kind: 'classes', label: 'one' });
+    await cached('SELECT ?b {}', { kind: 'classes', label: 'two' });
+
+    expect(prunes()).toHaveLength(1);
+    const [sql, params] = prunes()[0];
+    expect(sql).toContain('source_id = $1');
+    expect(sql).toContain('expires_at < NOW()');
+    expect(params).toEqual([MUSEUM, EXPIRED_GRACE_MS]);
+    expect(EXPIRED_GRACE_MS).toBe(7 * 24 * 60 * 60 * 1000);
+  });
+
+  it('prunes nothing for a run that does not use the cache', async () => {
+    await withCache(vi.fn(async () => ROWS), { sourceId: MUSEUM, enabled: false })('SELECT ?a {}', { kind: 'classes', label: 'one' });
+    await withCache(vi.fn(async () => ROWS), { sourceId: MUSEUM, enabled: true })('SELECT ?a {}');
+
+    expect(prunes()).toHaveLength(0);
+  });
+
+  it('answers the run when the prune fails', async () => {
+    mockedQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('DELETE FROM wikidata_query_cache')) throw new Error('db hiccup');
+      return sql.includes('SELECT result') ? { rows: [{ result: ROWS }] } : { rows: [], rowCount: 0 };
+    });
+
+    const rows = await withCache(vi.fn(async () => ROWS), { sourceId: MUSEUM, enabled: true })('SELECT ?a {}', { kind: 'classes', label: 'one' });
+
+    expect(rows).toEqual(ROWS);
   });
 });
