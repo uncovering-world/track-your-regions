@@ -24,7 +24,13 @@
     "resource-summary:stylesheet:size": [
       "error",
       {
-        "maxNumericValue": 13000
+        "maxNumericValue": 12100
+      }
+    ],
+    "resource-summary:font:size": [
+      "error",
+      {
+        "maxNumericValue": 85000
       }
     ],
     "resource-summary:total:size": [
