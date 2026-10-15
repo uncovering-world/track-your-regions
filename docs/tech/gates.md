@@ -787,13 +787,16 @@ A branch that does not compile still reads its tsc error in
 spends the smoke lane's and Lighthouse's minutes, a cost the window above
 never incurred.
 
-**The frontend is built twice per run, and stays that way.** `Build` runs
+**Each lane that needs the build builds its own, and stays that way.** `Build` runs
 `vite build` on the runner: its *Build frontend* step took 11–16 s across 12
 green runs on 2026-09-28. `Performance (Lighthouse)` runs `vite build` again,
 inside the stack's frontend container in preview mode. In one run that day,
 the container started and the frontend answered 22 s later, while Lighthouse
-itself ran for 5.7 minutes. `E2E Smoke` browses the dev server and builds no
-bundle. The two bundles are not the same file: `VITE_API_URL` and
+itself ran for 5.7 minutes. `E2E Smoke` browses a build of its own too, in its
+own stack's frontend container (`FRONTEND_MODE=preview`,
+`docs/tech/development-guide.md` § The shape the smoke lane browses), so a run
+that asks for both lanes builds the bundle three times. The bundles are not the
+same file: `VITE_API_URL` and
 `VITE_MARTIN_URL` are read at build time, and the one Lighthouse measures
 carries the test stack's in-network hostnames. Sharing a build would mean
 building it once with the stack's environment and mounting it into the preview

@@ -477,9 +477,9 @@ chunk does not move, since 4.x carried the same code as a string inside it.
 ### The guard
 
 Nothing in the unit suites can see this (happy-dom has neither WebGL nor
-workers), and the smoke lane browses the dev server, where the URL resolves.
-The performance lane loads the production build, so that is where it is
-asserted: the map view's `urls` entry in both budgets files expects a 2xx
+workers). CI's smoke lane loads the production build (#654), but it asserts a
+painted canvas, which a dead tile worker still paints; the performance lane
+asserts the tile request, so that is where it is guarded: the map view's `urls` entry in both budgets files expects a 2xx
 request to a Martin tile function (`/tile_`)
 (`docs/tech/performance.md` § The local run, and `perf/assertions.mjs` §
 `pageExpectations`). A worker that dies again fails that lane by name.
