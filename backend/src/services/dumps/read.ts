@@ -38,9 +38,11 @@ export interface DumpConsumer {
    * read hands it the decompressed text in pieces of several megabytes, each
    * ending at a line's end and owning its memory, so a piece can be handed to
    * a worker whole; `line` is then never called, and `lineCount` says how
-   * many lines it has taken so far.
+   * many lines it has taken so far. `piece` numbers the pieces in the order
+   * of the file, and a read of the same file cuts the same pieces (#1493), so
+   * a consumer can know which it has already done.
    */
-  chunk?(text: Uint8Array): Promise<void>;
+  chunk?(text: Uint8Array, piece: number): Promise<void>;
   lineCount?(): number;
   commit(): Promise<void>;
   abort(): Promise<void>;
@@ -53,6 +55,8 @@ export interface ReadOptions {
   onProgress?: (progress: { downloaded: number; read: number; lines: number }) => void;
   /** Something the build did beside reading that its admin should be told: an older copy removed. */
   onNote?: (note: string) => void;
+  /** The grid a chunk consumer's pieces are cut on; `PIECE_BYTES` unless a spec needs small pieces. */
+  pieceBytes?: number;
 }
 
 export interface ReadResult {
@@ -65,8 +69,8 @@ export interface ReadResult {
 const PROGRESS_EVERY = 100_000;
 /** The size of the pieces the gzip decoder writes. */
 const GUNZIP_CHUNK = 1 << 20;
-/** The size of a piece of text a chunk consumer is handed, give or take a line. */
-const CHUNK_BYTES = 8 << 20;
+/** The grid a chunk consumer's pieces are cut on: a piece is about this size, give or take a line. */
+export const PIECE_BYTES = 8 << 20;
 
 /** The bytes read are not the host's file: a checksum or size mismatch, or a stream the decoder refused. */
 class DamagedFile extends Error {}
@@ -74,6 +78,10 @@ class DamagedFile extends Error {}
 /** zlib names its refusals of a damaged or truncated stream `Z_DATA_ERROR`, `Z_BUF_ERROR`, ... */
 const isDamage = (error: unknown) =>
   error instanceof DamagedFile || /^Z_/.test(String((error as NodeJS.ErrnoException | null)?.code ?? ''));
+
+/** Whether a read failed because the file is not the host's: what a consumer must not pick up after (#1493). */
+export const isDamagedRead = (error: unknown): boolean =>
+  isDamage(error) || isDamage((error as { cause?: unknown } | null)?.cause);
 
 interface Decompressor {
   input: NodeJS.WritableStream;
@@ -227,7 +235,7 @@ async function decode(
     options.onProgress?.({ downloaded: downloaded(), read: bytes, lines });
   };
   const lines = consumer.chunk
-    ? await feedChunks(text, consumer as ChunkConsumer, progress)
+    ? await feedChunks(text, consumer as ChunkConsumer, progress, options.pieceBytes ?? PIECE_BYTES)
     : await feedLines(text, consumer, progress);
   // The decoder's own verdict first: a bzip2 that refused the stream also
   // breaks the pipe that fed it, and that error says less.
@@ -267,33 +275,56 @@ async function feedLines(text: Readable, consumer: DumpConsumer, progress: (line
 type ChunkConsumer = DumpConsumer & Required<Pick<DumpConsumer, 'chunk' | 'lineCount'>>;
 
 /**
- * Hand the consumer the text in pieces of about `CHUNK_BYTES`, each ending at
- * a line's end and in memory of its own (a worker can be given it without a
- * copy); what follows the last line end waits for the next piece. Answers how
- * many lines the consumer took.
+ * Hand the consumer the text in pieces, each ending at a line's end and in
+ * memory of its own (a worker can be given it without a copy). A piece ends
+ * at the first line end at or past the next multiple of `pieceBytes` in the
+ * text: a fixed grid, so a read of the same file cuts the same pieces with
+ * the same numbers whatever sizes the decoder hands over, and a build can
+ * pick up after the pieces it already wrote (#1493). Answers how many lines
+ * the consumer took.
  */
-async function feedChunks(text: Readable, consumer: ChunkConsumer, progress: (lines: number) => void): Promise<number> {
-  let pieces: Buffer[] = [];
+async function feedChunks(
+  text: Readable, consumer: ChunkConsumer, progress: (lines: number) => void, pieceBytes: number,
+): Promise<number> {
+  let gathered: Buffer[] = [];
   let size = 0;
-  const hand = async (final: boolean) => {
-    const whole = Buffer.allocUnsafeSlow(size);
-    let at = 0;
-    for (const piece of pieces) at += piece.copy(whole, at);
-    const end = final ? size : whole.lastIndexOf(10) + 1;
-    // A line longer than a piece waits for the rest of itself.
-    if (end === 0) return;
-    pieces = end < size ? [Buffer.from(whole.subarray(end))] : [];
+  /** Bytes of text handed over so far: where the next piece starts. */
+  let handed = 0;
+  let piece = 0;
+  /** Hand over the next piece if the text gathered reaches its end; answers whether it did. */
+  const hand = async (final: boolean): Promise<boolean> => {
+    if (size === 0) return false;
+    // Nothing is joined before the text reaches the grid point: the decoder hands over 1 MB at a time.
+    if (!final && handed + size < (piece + 1) * pieceBytes) return false;
+    const whole = gathered.length === 1 ? gathered[0] : Buffer.concat(gathered, size);
+    let end = size;
+    if (!final) {
+      const gridAt = Math.max(0, (piece + 1) * pieceBytes - handed - 1);
+      if (gridAt >= size) return false;
+      end = whole.indexOf(10, gridAt) + 1;
+      // The line that crosses the grid point is not whole yet.
+      if (end === 0) {
+        gathered = [whole];
+        return false;
+      }
+    }
+    const own = Buffer.allocUnsafeSlow(end);
+    whole.copy(own, 0, 0, end);
+    gathered = end < size ? [Buffer.from(whole.subarray(end))] : [];
     size -= end;
-    await consumer.chunk(whole.subarray(0, end));
+    handed += end;
+    await consumer.chunk(own, piece);
+    piece += 1;
     progress(consumer.lineCount());
+    return true;
   };
   try {
-    for await (const piece of text) {
-      pieces.push(piece as Buffer);
-      size += (piece as Buffer).length;
-      if (size >= CHUNK_BYTES) await hand(false);
+    for await (const chunk of text) {
+      gathered.push(chunk as Buffer);
+      size += (chunk as Buffer).length;
+      while (await hand(false));
     }
-    if (size > 0) await hand(true);
+    await hand(true);
   } finally {
     // As in `feedLines`: a read left early stops the decoder, which breaks the
     // text stream; its late 'error' must not end the process.

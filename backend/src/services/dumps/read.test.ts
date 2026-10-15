@@ -135,6 +135,32 @@ describe('reading a dump through the pipeline', () => {
     }
   });
 
+  it('cuts the same numbered pieces on a fixed grid whatever sizes the decoder hands over (#1493)', async () => {
+    const piecesOf = async (path: string) => {
+      const pieces: Array<{ piece: number; text: string }> = [];
+      const consumer = {
+        ...recording(),
+        chunk: async (text: Uint8Array, piece: number) => { pieces.push({ piece, text: Buffer.from(text).toString() }); },
+        lineCount: () => 0,
+      };
+      await readDump(file(path), consumer, { signal: signal(), pieceBytes: 10_000 });
+      return pieces;
+    };
+    const gz = await piecesOf('/whole.json.gz');
+    expect(await piecesOf('/whole.bz2')).toEqual(gz);
+    expect(gz.map(p => p.piece)).toEqual(gz.map((_, index) => index));
+    expect(gz.map(p => p.text).join('')).toBe(TEXT);
+    let start = 0;
+    for (const { piece, text } of gz.slice(0, -1)) {
+      const end = start + text.length;
+      // Each piece ends at the first line end at or past its grid point.
+      expect(text.endsWith('\n')).toBe(true);
+      expect(end).toBeGreaterThanOrEqual((piece + 1) * 10_000);
+      expect(TEXT.lastIndexOf('\n', end - 2) + 1).toBeLessThan((piece + 1) * 10_000);
+      start = end;
+    }
+  });
+
   it("counts the lines a consumer in worker threads took once they have all answered", async () => {
     // Pieces still in flight when the read ends are counted by the commit's wait, not before it.
     const reader = new ScopeReader(2);
