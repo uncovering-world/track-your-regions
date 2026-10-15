@@ -51,8 +51,9 @@ export function RegionDescriptionSection({ onClose }: RegionDescriptionSectionPr
         </Box>
       </Box>
 
-      {/* Experience list grouped by source - scrollable */}
-      <Box ref={scrollContainerRef} sx={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
+      {/* Experience list grouped by source - scrollable. Positioned, so that it
+          is the offset parent the list measures its scroll margin against. */}
+      <Box ref={scrollContainerRef} sx={{ flex: 1, overflowY: 'auto', minHeight: 0, position: 'relative' }}>
         <ExperienceList scrollContainerRef={scrollContainerRef} />
       </Box>
     </Paper>
