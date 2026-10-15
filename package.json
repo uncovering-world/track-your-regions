@@ -98,7 +98,7 @@
     "security:deps": "cd backend && npm audit --audit-level=moderate --omit=dev && cd ../frontend && npm audit --audit-level=moderate --omit=dev && cd ../packages/shared && npm audit --audit-level=moderate --omit=dev",
     "security:py:bandit": "./scripts/require-py-tools.sh bandit && cd cv-python && .venv/bin/bandit -r app -c pyproject.toml",
     "security:py:semgrep": "docker run --rm -v \"${PWD}:/src:z\" semgrep/semgrep:1.171.0@sha256:bdf7013b2c3634a487671158da77c554f531742326b543a9464d2adf6c433ac8 semgrep scan --config p/python --config p/owasp-top-ten --config p/secrets --config p/default --error /src/cv-python",
-    "security:py:deps": "./scripts/require-py-tools.sh pip-audit && cd cv-python && .venv/bin/pip-audit -r requirements.txt --ignore-vuln GHSA-rrmf-rvhw-rf47",
+    "security:py:deps": "./scripts/require-py-tools.sh pip-audit && cd cv-python && .venv/bin/pip-audit -r requirements.txt",
     "security:py:all": "npm run security:py:bandit && npm run security:py:semgrep && npm run security:py:deps",
     "security:image": "./scripts/scan-image.sh",
     "security:all": "node scripts/gates.mjs run check && node scripts/gates.mjs run scan",
