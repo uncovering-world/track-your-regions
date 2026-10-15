@@ -189,13 +189,21 @@ let hadRunnerFailure = false;
 
 // docker-compose.yml reads FRONTEND_MODE when the frontend container is
 // created, so a mode a step needs has to reach the `up` that creates it.
-// Unset means the dev server, which is what every other lane browses.
-const stackEnv = steps.some((step) => step.frontendMode === 'preview')
-  ? { FRONTEND_MODE: 'preview' }
-  : {};
+// The performance lane always measures the build; any other lane browses the
+// dev server unless FRONTEND_MODE=preview is set for the run, which is how CI
+// runs the smoke lane on the build a visitor gets (#654,
+// docs/tech/development-guide.md § The shape the smoke lane browses).
+const frontendMode = steps.some((step) => step.frontendMode === 'preview')
+  || process.env.FRONTEND_MODE === 'preview'
+  ? 'preview'
+  : 'dev';
+const stackEnv = { FRONTEND_MODE: frontendMode };
 
 if (RUN_CONTAINER_TESTS) {
-  printSectionHeader('Preparing Test Environment', 'Starting shared test services');
+  printSectionHeader(
+    'Preparing Test Environment',
+    `Starting shared test services (frontend: ${frontendMode === 'preview' ? 'the production build' : 'the dev server'})`,
+  );
   const upExitCode = await runCommand(TEST_STACK_SCRIPT, ['up'], { cwd: ROOT_DIR, env: stackEnv });
   if (upExitCode !== 0) {
     printError('Failed to prepare test environment.');
