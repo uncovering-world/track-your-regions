@@ -28,8 +28,8 @@ const row = async (id: number) => (await pool.query('SELECT * FROM dump_builds W
 const progress = { phase: 'reading' as const, message: 'Reading...', downloaded: 10, read: 5, lines: 2, etaSeconds: 600 };
 
 /** A build queued and taken by `runner`, as the worker takes one. */
-async function running(dump: string, runner = 'worker:fixture'): Promise<number> {
-  await enqueueBuild(dump, 'local', { kind: 'verify' }, null);
+async function running(dump: string, runner = 'worker:fixture', kind: 'verify' | 'rederive' = 'verify'): Promise<number> {
+  await enqueueBuild(dump, 'local', { kind }, null);
   const claimed = await claimNextBuild(runner);
   return claimed!.id;
 }
@@ -101,6 +101,23 @@ describe('the dump build ledger (ADR-0106)', () => {
     }
     const shown = (await recentBuilds()).filter(build => build.dump === 'enwiki-langlinks').map(build => build.id);
     expect(shown).toEqual([ids[3], ids[2], ids[1]]);
+  });
+
+  it('keeps the file builds shown however many re-derives followed them (#1526)', async () => {
+    const files: number[] = [];
+    const derives: number[] = [];
+    for (let n = 0; n < 2; n += 1) {
+      const id = await running('enwiki-categorylinks');
+      await closeBuild(id, { status: 'success', bytes: 1, lines: 1, checksumActual: null, error: null });
+      files.push(id);
+    }
+    for (let n = 0; n < 4; n += 1) {
+      const id = await running('enwiki-categorylinks', 'worker:fixture', 'rederive');
+      await closeBuild(id, { status: 'success', bytes: 0, lines: 0, checksumActual: null, error: null });
+      derives.push(id);
+    }
+    const shown = (await recentBuilds()).filter(build => build.dump === 'enwiki-categorylinks').map(build => build.id);
+    expect(shown).toEqual([derives[3], derives[2], derives[1], files[1], files[0]]);
   });
 
   it('refuses a status or a mode the ledger does not know', async () => {

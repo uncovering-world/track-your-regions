@@ -62,7 +62,7 @@ vi.mock('../localCopies.js', async (importOriginal) => ({
   diskOf: async () => ({ device: 1, blocks: 1, bsize: 1, free: disk.free }),
 }));
 
-const { buildSubset } = await import('./subsetBuild.js');
+const { buildSubset, rederiveSubset } = await import('./subsetBuild.js');
 
 const LOUVRE_PALACE = 1075988;
 const LOUVRE = 19675;
@@ -341,5 +341,77 @@ describe('a build of the local Wikidata subset (#1434)', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('deriving the subset again from the entities in place (#1526)', () => {
+  const rederive = async (signal = new AbortController().signal, onPhase: (message: string) => void = () => undefined) =>
+    rederiveSubset({ buildId: await newBuild(), signal, onPhase });
+  const rows = async (sql: string) => (await pool.query(sql)).rows;
+  const derived = async () => ({
+    claims: await rows('SELECT subject, property, statement_id, rank, value_item, value FROM wikidata_claims ORDER BY statement_id'),
+    labels: await rows('SELECT id, language, label, description FROM wikidata_labels ORDER BY id, language'),
+    sitelinks: await rows('SELECT id, site, title FROM wikidata_sitelinks ORDER BY id, site'),
+    closure: await rows('SELECT class, ancestor FROM wikidata_class_closure ORDER BY class, ancestor'),
+  });
+
+  it('makes the tables a build from the dump makes, the ring\'s labels carried over, and records itself', async () => {
+    lines = DUMP;
+    await build();
+    const fromTheDump = await derived();
+    const { rows: [before] } = await pool.query('SELECT dump_date::text, counts FROM wikidata_subset_builds ORDER BY swapped_at DESC LIMIT 1');
+    // As a change to a derivation finds them: tables that no longer say what the entities do.
+    await pool.query("DELETE FROM wikidata_claims WHERE property = 'P276'");
+    await pool.query('TRUNCATE wikidata_class_closure');
+    pass = 0;
+    await rederive();
+    expect(pass).toBe(0);
+    expect(await derived()).toEqual(fromTheDump);
+    expect(fromTheDump.labels).toContainEqual({ id: `Q${LEONARDO}`, language: 'fr', label: 'Léonard de Vinci', description: null });
+    const { rows: indexes } = await pool.query("SELECT indexname FROM pg_indexes WHERE tablename = 'wikidata_claims' ORDER BY indexname");
+    expect(indexes.map(r => r.indexname)).toEqual(['idx_wikidata_claims_subject', 'idx_wikidata_claims_value_item']);
+    const { rows: [after] } = await pool.query('SELECT dump_date::text, counts FROM wikidata_subset_builds ORDER BY swapped_at DESC LIMIT 1');
+    expect(after).toEqual(before);
+    expect(await nextTables()).toEqual([]);
+  });
+
+  it('leaves the subset and a cut build\'s copies as they were when it is cancelled', async () => {
+    lines = DUMP;
+    failOnPass = 2;
+    cut = { afterPieces: 2, error: new Error('the worker was stopped') };
+    await expect(build()).rejects.toThrow('the worker was stopped');
+    failOnPass = null;
+    cut = null;
+    const kept = await nextTables();
+    const before = await derived();
+    const controller = new AbortController();
+    await expect(rederive(controller.signal, message => { if (message.startsWith('Walking')) controller.abort(); })).rejects.toThrow();
+    expect(await derived()).toEqual(before);
+    expect(await nextTables()).toEqual(kept.filter(table => ['wikidata_entities_next', 'wikidata_build_pieces_next', 'wikidata_build_resume_next'].includes(table)));
+    expect(await nextTables()).toContain('wikidata_build_pieces_next');
+    // The next build of the file still picks up after the cut one.
+    const notes: string[] = [];
+    await build(notes);
+    expect(notes.some(note => note.startsWith('picked up after'))).toBe(true);
+  });
+
+  it('refuses where the database\'s disk cannot hold the copies, before any is made', async () => {
+    disk.free = 0;
+    // The test stack names no path on the database's disk; the disk itself is the mocked one.
+    process.env.DB_DISK_DIR = tmpdir();
+    try {
+      await expect(rederive()).rejects.toThrow(/Deriving the tables again would write about .* but it has 0 GB/);
+    } finally {
+      disk.free = Number.MAX_SAFE_INTEGER;
+      delete process.env.DB_DISK_DIR;
+    }
+    expect(await nextTables()).toEqual([]);
+  });
+
+  it('refuses over entities a crash of the database emptied, though the record says a subset is in place', async () => {
+    // Unlogged: a crash truncates the table and leaves the logged wikidata_subset_builds row.
+    await pool.query('TRUNCATE wikidata_entities');
+    await expect(rederive()).rejects.toThrow(/entities are empty/);
+    expect(await nextTables()).toEqual([]);
   });
 });

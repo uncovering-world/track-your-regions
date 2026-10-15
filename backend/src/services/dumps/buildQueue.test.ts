@@ -15,7 +15,10 @@ const ledger = vi.hoisted(() => ({
 vi.mock('./ledger.js', () => ledger);
 const copies = vi.hoisted(() => ({ newest: null as null | { fileName: string } }));
 vi.mock('./localCopies.js', () => ({ newestLocalCopy: async () => copies.newest }));
-vi.mock('./keepers.js', () => ({ keeperOf: (key: string) => (key === 'wikidata-entities' ? { title: 'subset' } : null) }));
+const kept = vi.hoisted(() => ({ latest: vi.fn(async () => null as null | { dumpDate: string }) }));
+vi.mock('./keepers.js', () => ({
+  keeperOf: (key: string) => (key === 'wikidata-entities' ? { title: 'subset', rederive: vi.fn(), latest: kept.latest } : null),
+}));
 
 const { buildProgress, startBuild } = await import('./buildQueue.js');
 
@@ -34,6 +37,20 @@ describe('queuing a dump build (ADR-0106)', () => {
   it('refuses a keeping build of a dump nothing is built from', async () => {
     await expect(startBuild('enwiki-page', { startedBy: 1, kind: 'keep' })).rejects.toThrow(/Nothing is built from enwiki-page/);
     expect(ledger.enqueueBuild).not.toHaveBeenCalled();
+  });
+
+  it('refuses to derive again where nothing is built yet, or nothing is built from the dump (#1526)', async () => {
+    await expect(startBuild('wikidata-entities', { startedBy: 1, kind: 'rederive' })).rejects.toThrow(/build it from the dump first/);
+    await expect(startBuild('enwiki-page', { startedBy: 1, kind: 'rederive' })).rejects.toThrow(/can be derived again/);
+    expect(ledger.enqueueBuild).not.toHaveBeenCalled();
+  });
+
+  it('queues a re-derive with no file to read, whatever the local copy (#1526)', async () => {
+    kept.latest.mockResolvedValue({ dumpDate: '2026-10-05' });
+    ledger.activeBuildOf.mockResolvedValue(queuedRow({ kind: 'rederive' }));
+    const progress = await startBuild('wikidata-entities', { startedBy: 7, kind: 'rederive', from: 'local' });
+    expect(ledger.enqueueBuild).toHaveBeenCalledWith('wikidata-entities', 'local', { kind: 'rederive' }, 7);
+    expect(progress).toMatchObject({ status: 'queued', kind: 'rederive' });
   });
 
   it('refuses a build from a local copy that is not there', async () => {

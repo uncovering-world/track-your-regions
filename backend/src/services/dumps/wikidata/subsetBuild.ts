@@ -18,7 +18,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { DumpFile } from '../catalog.js';
 import { isDamagedRead, PIECE_BYTES, readDump, type ReadOptions } from '../read.js';
-import { assertRoomToWrite } from './diskRoom.js';
+import { assertRoomForCopies, assertRoomToWrite } from './diskRoom.js';
 import { IdSet } from './idSets.js';
 import { WRITE_VERSION } from './lineWork.js';
 import { TermsSpool } from './labelsRing.js';
@@ -28,7 +28,8 @@ import { ScopeReader } from './scopeReader.js';
 import { loadScope, saveScope, scopePath } from './scopeFile.js';
 import { SubsetWriter } from './subsetWriter.js';
 import {
-  createNextTables, earlierSpool, entitiesCopySize, resetAfterPassTwo, resumableBuild, deriveClassClosure, deriveFromEntities, dropNextTables, indexNextTables, insertLabels,
+  carryRingLabels, createDerivedNextTables, createNextTables, DERIVED_TABLES, derivedTablesSize, dropDerivedNextTables, earlierSpool, entitiesAreHeld, entitiesCopySize,
+  latestSubsetCounts, resetAfterPassTwo, resumableBuild, deriveClassClosure, deriveFromEntities, dropNextTables, indexNextTables, insertLabels,
   type LabelRow, type ResumeState, swapIn,
 } from './subsetTables.js';
 
@@ -188,5 +189,49 @@ export async function buildSubset(file: DumpFile, options: SubsetBuildOptions): 
   } finally {
     if (keep) await spool.close().catch(() => undefined);
     else await spool.remove();
+  }
+}
+
+export interface RederiveOptions {
+  buildId: number;
+  signal: AbortSignal;
+  onPhase: (message: string) => void;
+  onNote?: (note: string) => void;
+}
+
+/**
+ * Derive the claims, labels, sitelinks and class closure again from the
+ * entities in place, without reading the dump (#1526): what a change to a
+ * derivation needs, in the time the derive takes rather than the passes'.
+ * The ring's labels come from the dump's terms, which this does not read, so
+ * they are carried over from the live table. The derived tables are swapped
+ * in alone, and the build is recorded under the dump date and counts of the
+ * one whose entities it read. Anything that fails leaves the live subset as
+ * it was, and a cut keeping build's entities copy where it was.
+ */
+export async function rederiveSubset({ buildId, signal, onPhase, onNote }: RederiveOptions): Promise<void> {
+  const latest = await latestSubsetCounts();
+  if (!latest) throw new Error('There is no subset in place to derive again: build it from the dump first');
+  if (!await entitiesAreHeld()) {
+    throw new Error('The subset\'s entities are empty, as a crash of the database leaves them: build it from the dump again');
+  }
+  for (const note of await assertRoomForCopies(await derivedTablesSize())) onNote?.(note);
+  try {
+    await createDerivedNextTables();
+    onPhase('Carrying the labels of the entities the kept items name...');
+    await carryRingLabels(signal);
+    onPhase('Deriving the claims, labels and sitelinks...');
+    await deriveFromEntities(signal, undefined, 'wikidata_entities');
+    onPhase('Indexing...');
+    await indexNextTables(signal, ['wikidata_claims', 'wikidata_labels', 'wikidata_sitelinks']);
+    onPhase('Walking the class tree...');
+    await deriveClassClosure(signal);
+    await indexNextTables(signal, ['wikidata_class_closure']);
+    signal.throwIfAborted();
+    onPhase('Swapping the derived tables in...');
+    await swapIn(buildId, latest.dumpDate, latest.counts, DERIVED_TABLES);
+  } catch (error) {
+    await dropDerivedNextTables().catch(() => undefined);
+    throw error;
   }
 }

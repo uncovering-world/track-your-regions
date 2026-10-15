@@ -18,16 +18,24 @@ export type DumpBuildRow = Omit<DumpBuildsRow, 'mode' | 'status' | 'checksum_kin
   checksum_kind: CheckValue<'dump_builds', 'checksum_kind'> | null;
 };
 
+/**
+ * What a build does: `verify` reads and counts; `keep` runs the dump's
+ * builder and keeps what it builds; `rederive` derives the kept build's
+ * tables again from what it holds, reading no file (#1526).
+ */
+export type BuildKind = 'verify' | 'keep' | 'rederive';
+
 /** What an admin asked for, which the worker reads when it takes the build. */
 export interface BuildRequestRecord {
-  kind: 'verify' | 'keep';
+  kind: BuildKind;
   /** The local copy's file to read; absent, the newest file the host lists. */
   only?: string;
 }
 
 /** What the panel shows of a running build, written with each heartbeat. */
 export interface BuildProgressRecord {
-  phase: 'resolving' | 'reading';
+  /** Finding the file, reading it, or deriving from what is kept (a `rederive`, which reads none). */
+  phase: 'resolving' | 'reading' | 'deriving';
   message: string;
   downloaded: number;
   read: number;
@@ -126,11 +134,17 @@ export async function closeBuild(
   );
 }
 
-/** The newest builds of each dump, for the admin panel. */
+/**
+ * The newest builds of each dump, for the admin panel: `perDump` of those that
+ * read a file and as many re-derives (#1526), so re-derives never push the
+ * file builds out.
+ */
 export async function recentBuilds(perDump = 3): Promise<DumpBuildRow[]> {
   const result = await pool.query<DumpBuildRow>(
     `SELECT * FROM (
-       SELECT b.*, row_number() OVER (PARTITION BY b.dump ORDER BY b.started_at DESC, b.id DESC) AS rn
+       SELECT b.*, row_number() OVER (
+                PARTITION BY b.dump, b.request->>'kind' IS NOT DISTINCT FROM 'rederive'
+                ORDER BY b.started_at DESC, b.id DESC) AS rn
          FROM dump_builds b) ranked
       WHERE rn <= $1
       ORDER BY dump, started_at DESC, id DESC`,

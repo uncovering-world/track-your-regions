@@ -1,7 +1,8 @@
 /**
  * The admin panel's dump page (ADR-0101, #1433): the dumps the catalogue
  * reads, a verify build of one, a build that keeps what is made from it (the
- * local Wikidata subset, #1434), and stopping either. A build is queued for
+ * local Wikidata subset, #1434), deriving what is kept again without the dump
+ * (#1526), and stopping any of them. A build is queued for
  * the dump worker and followed through its ledger row (ADR-0106). The URL a
  * build fetches comes from the catalog alone (`services/dumps/catalog.ts`); a
  * caller names a dump by its key, which the route's schema holds to the
@@ -14,7 +15,9 @@ import { DUMPS } from '../../services/dumps/catalog.js';
 import { newestLocalCopy } from '../../services/dumps/localCopies.js';
 import { buildProgress, cancelBuild, isoDay, startBuild, type DumpBuildProgress } from '../../services/dumps/buildQueue.js';
 import { keeperOf } from '../../services/dumps/keepers.js';
-import { closeOrphanedBuilds, recentBuilds } from '../../services/dumps/ledger.js';
+import {
+  closeOrphanedBuilds, recentBuilds, type BuildKind, type BuildRequestRecord, type DumpBuildRow,
+} from '../../services/dumps/ledger.js';
 import { createError } from '../../middleware/errorHandler.js';
 import type { dumpBuildBodySchema, dumpKeyParamSchema } from '../../types/index.js';
 
@@ -32,6 +35,9 @@ const wireProgress = (progress: DumpBuildProgress | null): Dumps['dumps'][number
   ? { ...progress, heartbeatAt: progress.heartbeatAt?.toISOString() ?? null }
   : null);
 
+
+// A row from before migration 101 asked for nothing: it was a verify or keep build the old code ran.
+const kindOf = (build: DumpBuildRow): BuildKind => (build.request as BuildRequestRecord | null)?.kind ?? 'verify';
 
 export async function listDumps(): Promise<Dumps> {
   // A build that stopped beating shows as the failure it is, not as running.
@@ -52,13 +58,14 @@ export async function listDumps(): Promise<Dumps> {
       progress: wireProgress(progress[index]),
       builds: builds.filter(build => build.dump === dump.key && build.status !== 'queued').map(build => ({
         id: build.id,
+        kind: kindOf(build),
         fileName: build.file_name,
         dumpDate: build.dump_date === null ? null : isoDay(build.dump_date),
         mode: build.mode,
         bytes: Number(build.bytes),
         lines: Number(build.lines),
         checksumKind: build.checksum_kind,
-        verified: build.status === 'success',
+        verified: build.status === 'success' && kindOf(build) !== 'rederive',
         status: build.status as Exclude<typeof build.status, 'queued'>,
         error: build.error,
         startedAt: build.started_at.toISOString(),
@@ -85,6 +92,16 @@ export async function startDumpKeep(
 ): Promise<DumpBuildStarted> {
   try {
     return { started: true, progress: wireProgress(await startBuild(dump, { startedBy: caller.id, kind: 'keep', from }))! };
+  } catch (error) {
+    throw createError(error instanceof Error ? error.message : 'The build could not start', 409);
+  }
+}
+
+export async function startDumpRederive(
+  { params: { dump }, caller }: { params: DumpParams; caller: Express.User },
+): Promise<DumpBuildStarted> {
+  try {
+    return { started: true, progress: wireProgress(await startBuild(dump, { startedBy: caller.id, kind: 'rederive' }))! };
   } catch (error) {
     throw createError(error instanceof Error ? error.message : 'The build could not start', 409);
   }

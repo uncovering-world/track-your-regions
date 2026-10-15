@@ -22,7 +22,7 @@ import {
 } from '../api/responses/adminAi.js';
 import { DataAssertion, DataAssertionReport } from '../api/responses/dataAssertions.js';
 import { DumpBuildCancelled, DumpBuildStarted, Dumps } from '../api/responses/dumps.js';
-import { cancelDumpBuild, listDumps, startDumpBuild, startDumpKeep } from '../controllers/admin/dumpController.js';
+import { cancelDumpBuild, listDumps, startDumpBuild, startDumpKeep, startDumpRederive } from '../controllers/admin/dumpController.js';
 import {
   startSync, getSyncStatus, cancelSync, fixImages, findComponentItems, getSyncLogs, getWikidataCache, clearWikidataCache,
   setWikidataCacheTtl, getSyncLogDetails, getSyncLogChanges, getSources, reorderSources, startRegionAssignment,
@@ -142,7 +142,7 @@ export const adminDeclaredRoutes = [
   }),
   // The public dumps the catalogue reads (ADR-0101): each with its build in
   // flight and its recent builds, a verify build of one, a build that keeps what
-  // is made from it (#1434), and stopping either. A
+  // is made from it (#1434), deriving that again (#1526), and stopping any. A
   // build reads a file of up to 100 GB from its host, so it stands behind the
   // expensive-action limiter; the URL is the catalog's, never the caller's.
   defineRoute({
@@ -166,6 +166,14 @@ export const adminDeclaredRoutes = [
     body: dumpBuildBodySchema,
     response: DumpBuildStarted,
     handler: startDumpKeep,
+  }),
+  // Reads no file, but rewrites tables of tens of gigabytes: the same limiter.
+  defineRoute({
+    ...ADMIN, method: 'post', path: '/dumps/:dump/rederive', limiter: expensiveAdminLimiter,
+    summary: 'Start deriving the tables kept from a dump again from what the build in place holds, without reading the dump, swapping them in whole',
+    params: dumpKeyParamSchema,
+    response: DumpBuildStarted,
+    handler: startDumpRederive,
   }),
   defineRoute({
     ...ADMIN, method: 'post', path: '/dumps/:dump/cancel',

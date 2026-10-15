@@ -74,3 +74,19 @@ export async function assertRoomToWrite(
   }
   return dbDir ? [] : ['the database\'s disk was not checked: DB_DISK_DIR names no path on it'];
 }
+
+/**
+ * Throws where the database's disk cannot hold `bytes` more and the headroom:
+ * what a re-derive writes (#1526), a copy of each derived table beside the
+ * live one, which it measures on the live tables rather than estimates.
+ */
+export async function assertRoomForCopies(bytes: number, dbDir = process.env.DB_DISK_DIR?.trim() || undefined): Promise<string[]> {
+  if (!dbDir) return ['the database\'s disk was not checked: DB_DISK_DIR names no path on it'];
+  const { free } = await diskOf(dbDir);
+  if (free < bytes + HEADROOM) {
+    throw new Error(
+      `Deriving the tables again would write about ${gb(bytes)} to the disk of ${dbDir} and keep ${gb(HEADROOM)} free, but it has ${gb(free)}: free some space and try again`,
+    );
+  }
+  return [];
+}

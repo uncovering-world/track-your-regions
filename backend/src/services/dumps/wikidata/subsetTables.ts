@@ -22,6 +22,9 @@ export const SUBSET_TABLES = [
 ] as const;
 type SubsetTable = typeof SUBSET_TABLES[number];
 
+/** The tables derived from the entities in SQL: what a re-derive rebuilds without the dump (#1526). */
+export const DERIVED_TABLES = SUBSET_TABLES.filter(table => table !== 'wikidata_entities');
+
 const next = (table: SubsetTable) => `${table}_next`;
 
 /**
@@ -171,6 +174,15 @@ export async function entitiesCopySize(): Promise<number> {
   return Number(result.rows[0]?.size ?? 0);
 }
 
+/** What the live derived tables take on disk, indexes included: what a re-derive writes again (#1526). */
+export async function derivedTablesSize(): Promise<number> {
+  const result = await pool.query<{ size: string | null }>(
+    'SELECT sum(pg_total_relation_size(to_regclass(t))) AS size FROM unnest($1::text[]) AS t',
+    [DERIVED_TABLES],
+  );
+  return Number(result.rows[0]?.size ?? 0);
+}
+
 /** What an earlier build of the same file and scope left to pick up after (#1493). */
 export interface ResumeState {
   pieces: Map<number, { lines: number; written: number; spooled: number; ring: Uint32Array; refused: RefusedRow[] }>;
@@ -211,13 +223,7 @@ export async function resumableBuild(resumeKey: string): Promise<ResumeState | n
  * run once, on the whole.
  */
 export async function resetAfterPassTwo(): Promise<void> {
-  for (const table of SUBSET_TABLES) {
-    if (table === 'wikidata_entities') continue;
-    await pool.query(`DROP TABLE IF EXISTS ${next(table)}`);
-    await pool.query(
-      `CREATE UNLOGGED TABLE ${next(table)} (LIKE ${table} INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING COMPRESSION INCLUDING STORAGE)`,
-    );
-  }
+  await createDerivedNextTables();
   const client = await pool.connect();
   try {
     for (const index of await indexesOf(client, 'wikidata_entities')) {
@@ -228,6 +234,21 @@ export async function resetAfterPassTwo(): Promise<void> {
   } finally {
     client.release();
   }
+}
+
+/** Empty `_next` copies of the derived tables alone, with no index yet. */
+export async function createDerivedNextTables(): Promise<void> {
+  for (const table of DERIVED_TABLES) {
+    await pool.query(`DROP TABLE IF EXISTS ${next(table)}`);
+    await pool.query(
+      `CREATE UNLOGGED TABLE ${next(table)} (LIKE ${table} INCLUDING DEFAULTS INCLUDING CONSTRAINTS INCLUDING COMPRESSION INCLUDING STORAGE)`,
+    );
+  }
+}
+
+/** Drop the derived tables' `_next` copies, leaving an entities copy and its record for the build that may pick up after it. */
+export async function dropDerivedNextTables(): Promise<void> {
+  for (const table of DERIVED_TABLES) await pool.query(`DROP TABLE IF EXISTS ${next(table)}`);
 }
 
 export async function dropNextTables(): Promise<void> {
@@ -324,10 +345,15 @@ async function inParts(signal: AbortSignal, parts: number, params: unknown[], sq
  * index yet: 24 million rows and tens of gigabytes of temporary files on a
  * full build, to find a few dozen property entities.
  */
-export async function deriveFromEntities(signal: AbortSignal, parts = DERIVE_PARTS): Promise<void> {
+export async function deriveFromEntities(
+  signal: AbortSignal,
+  parts = DERIVE_PARTS,
+  /** The entities copy a build wrote, or the live table a re-derive reads (#1526). */
+  entities: string = next('wikidata_entities'),
+): Promise<void> {
   const itemProperties = (await cancellable<{ id: string }>(
     signal,
-    `SELECT id FROM ${next('wikidata_entities')}
+    `SELECT id FROM ${entities}
       WHERE id = ANY($1::text[]) AND entity->>'datatype' = 'wikibase-item'`,
     [CLAIM_PROPERTIES],
   )).map(row => row.id);
@@ -338,7 +364,7 @@ export async function deriveFromEntities(signal: AbortSignal, parts = DERIVE_PAR
             CASE WHEN c.property = ANY($2::text[]) AND jsonb_typeof(s->'value') = 'string' THEN s->>'value' END,
             CASE WHEN c.property = ANY($2::text[]) AND jsonb_typeof(s->'value') = 'string' THEN NULL ELSE s->'value' END,
             s->'qualifiers'
-       FROM ${next('wikidata_entities')} e
+       FROM ${entities} e
       CROSS JOIN LATERAL jsonb_each(e.entity->'claims') AS c(property, statements)
       CROSS JOIN LATERAL jsonb_array_elements(c.statements) AS s
       WHERE e.id LIKE 'Q%' AND c.property = ANY($1::text[]) AND ${at}`);
@@ -348,13 +374,13 @@ export async function deriveFromEntities(signal: AbortSignal, parts = DERIVE_PAR
   await inParts(signal, parts, [], at =>
     `INSERT INTO ${next('wikidata_labels')} (id, language, label, description)
      SELECT e.id, k.language, e.entity->'labels'->>k.language, e.entity->'descriptions'->>k.language
-       FROM ${next('wikidata_entities')} e
+       FROM ${entities} e
       CROSS JOIN LATERAL jsonb_object_keys((e.entity->'labels') || (e.entity->'descriptions')) AS k(language)
       WHERE ${at}`);
   await inParts(signal, parts, [], at =>
     `INSERT INTO ${next('wikidata_sitelinks')} (id, site, title)
      SELECT e.id, l.site, l.title
-       FROM ${next('wikidata_entities')} e
+       FROM ${entities} e
       CROSS JOIN LATERAL jsonb_each_text(e.entity->'sitelinks') AS l(site, title)
       WHERE ${at}`);
 }
@@ -426,18 +452,24 @@ export async function indexNextTables(signal: AbortSignal, only: readonly Subset
   for (const statement of statements) await cancellable(signal, statement);
 }
 
-/** Replace the live tables with their `_next` copies and record the build, in one transaction. */
-export async function swapIn(buildId: number, dumpDate: string, counts: Record<string, number>): Promise<void> {
+/**
+ * Replace the live tables with their `_next` copies and record the build, in
+ * one transaction. A re-derive swaps the derived tables alone (#1526), and
+ * leaves the record a cut build keeps for the next build of its file.
+ */
+export async function swapIn(
+  buildId: number, dumpDate: string, counts: Record<string, number>, only: readonly SubsetTable[] = SUBSET_TABLES,
+): Promise<void> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    for (const table of SUBSET_TABLES) {
+    for (const table of only) {
       const indexes = await indexesOf(client, table);
       await client.query(`DROP TABLE ${table}`);
       await client.query(`ALTER TABLE ${next(table)} RENAME TO ${table}`);
       for (const index of indexes) await client.query(`ALTER INDEX ${index.name}_next RENAME TO ${index.name}`);
     }
-    await client.query(`DROP TABLE IF EXISTS ${RESUME_TABLE}, ${PIECES_TABLE}`);
+    if (only.includes('wikidata_entities')) await client.query(`DROP TABLE IF EXISTS ${RESUME_TABLE}, ${PIECES_TABLE}`);
     await client.query(
       'INSERT INTO wikidata_subset_builds (build_id, dump_date, counts) VALUES ($1, $2, $3)',
       [buildId, dumpDate, JSON.stringify(counts)],
@@ -449,6 +481,40 @@ export async function swapIn(buildId: number, dumpDate: string, counts: Record<s
   } finally {
     client.release();
   }
+}
+
+/**
+ * The labels of the ring, the entities the kept items name without keeping
+ * them, carried from the live table into its `_next` copy: they come from the
+ * dump's terms (`labelTheRing`), which a re-derive does not read (#1526). A
+ * live label whose id is a kept entity is derived again from that entity.
+ */
+export async function carryRingLabels(signal: AbortSignal): Promise<void> {
+  await cancellable(
+    signal,
+    `INSERT INTO ${next('wikidata_labels')} (id, language, label, description)
+     SELECT l.id, l.language, l.label, l.description FROM wikidata_labels l
+      WHERE NOT EXISTS (SELECT 1 FROM wikidata_entities e WHERE e.id = l.id)`,
+  );
+}
+
+/**
+ * Whether the entities table holds any row. It is unlogged (ADR-0105 decision
+ * 5): a crash of the database empties it while the logged record of the build
+ * still says a subset is in place.
+ */
+export async function entitiesAreHeld(): Promise<boolean> {
+  const result = await pool.query<{ held: boolean }>('SELECT EXISTS (SELECT 1 FROM wikidata_entities) AS held');
+  return Boolean(result.rows[0]?.held);
+}
+
+/** The counts the subset now in place was recorded with, or null where none is. */
+export async function latestSubsetCounts(): Promise<{ dumpDate: string; counts: Record<string, number> } | null> {
+  const result = await pool.query<{ dump_date: string; counts: Record<string, number> }>(
+    `SELECT to_char(dump_date, 'YYYY-MM-DD') AS dump_date, counts FROM wikidata_subset_builds
+      ORDER BY swapped_at DESC LIMIT 1`,
+  );
+  return result.rows[0] ? { dumpDate: result.rows[0].dump_date, counts: result.rows[0].counts } : null;
 }
 
 /** The subset build now in place, if any. */
