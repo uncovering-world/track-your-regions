@@ -1015,6 +1015,29 @@ npm run test:api       # Schemathesis against the same stack's backend, as each 
 npm run perf:local     # the production build on the dev stack's own data: size, Lighthouse, the probe
 ```
 
+### The shape the smoke lane browses
+
+The test stack's frontend comes up in one of two shapes: the dev server
+(unbundled modules, HMR) or the production build (`vite build` served by
+`vite preview`), chosen by `FRONTEND_MODE` when the stack starts
+(`frontend/docker-entrypoint.sh`). `npm run test:e2e:smoke` browses the dev
+server by default; `FRONTEND_MODE=preview npm run test:e2e:smoke` browses the
+build, and the wrapper prints which one it started. `build-shape.smoke.spec.ts`
+proves the run browsed the shape it asked for, on the document the server
+sends: the dev server marks its title "(dev server)" and loads `/@vite/client`,
+the build does neither. The live tab title cannot tell them apart, since the
+app rewrites it in both shapes once it mounts (#654, #1549).
+
+**CI runs the smoke lane on the build, instead of the dev server, not beside
+it.** The build is what a visitor gets: an environment variable baked in at
+build time, a side effect tree-shaken away, an import that resolves
+differently under rolldown's chunking — each passes a run on the dev server
+and reaches a visitor. What only the dev server has, HMR and the unbundled
+module graph, is what a developer meets within seconds of `npm run dev`, so a
+second job for it would pay a stack's minutes to report what nobody misses.
+The `E2E Smoke` job sets `FRONTEND_MODE=preview` job-wide, so its database and
+API steps find the stack in the shape the smoke step left it in.
+
 ### Reading a smoke result
 
 The smoke lane gives a spec that fails a second attempt before calling it

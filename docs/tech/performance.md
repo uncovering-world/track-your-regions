@@ -234,10 +234,9 @@ exactly what maplibre-gl 6's bundled worker did on its first production
 build (#849: the worker's URL resolved against the entry chunk, to a file
 the build never emits) while every test the repository had stayed green.
 The unit suites run in happy-dom, which has neither WebGL nor workers; the
-smoke lane asserts a painted canvas against the **dev server**, where the
-worker's URL resolves; and this lane is the only one that loads the
-production build at all — so this is where "the map asked for its regions"
-has to be said. Both lanes are the same runner and the same file shape
+smoke lane loads the production build in CI too (#654), but what it asserts
+is a painted canvas, which a dead tile worker still paints — so this lane is
+where "the map asked for its regions" has to be said. Both lanes are the same runner and the same file shape
 (`frontend/perf/assertions.mjs` § `pageExpectations`), so the CI budgets and
 the local ones each name the tile function on their map URL. The frontend's port comes from `.env` like the world
 view comes from the flag (`{port}` in the local budgets' URLs). The switch
