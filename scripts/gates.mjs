@@ -37,7 +37,7 @@ const TOOL_SCRIPTS = [
   'affected-specs.mjs', 'board.sh', 'catalogue-coverage.sh', 'ci-graph-measure.mjs', 'db-cli.sh', 'db-migrate.sh',
   'db-types.sh', 'gate-cache.mjs', 'gates.mjs', 'lib/db-env.sh', 'lint-line-pointers.mjs',
   'match-snapshot.sh', 'openapi-breaking.mjs', 'require-node-tools.sh', 'require-py-tools.sh',
-  'require-python-312.sh', 'review-surface.mjs', 'scan-image.sh', 'setup.sh',
+  'require-python-312.sh', 'review-surface.mjs', 'scan-image.sh', 'scan-secrets.sh', 'setup.sh',
   'setup-integrations.sh', 'test-db-migrate.sh',
 ].map((name) => name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
 
@@ -309,6 +309,10 @@ export const GATES = [
   // backend/node_modules; the database is Docker, which every runner has.
   { id: 'db:types', tier: 'check', inputs: ['schema'], command: ['npm', 'run', 'db:types:check'], job: 'check', setup: 'node' },
   { id: 'security:deps', tier: 'check', inputs: ['node-deps'], command: ['npm', 'run', 'security:deps'], job: 'check', setup: 'node', uncached: ADVISORIES },
+  // gitleaks over every file git tracks (ADR-0108, #1504): a generic
+  // credential in any file type, which Semgrep's p/secrets and GitHub's own
+  // scanning do not read. Every class, since a secret can be pasted anywhere.
+  { id: 'security:secrets', tier: 'check', inputs: INPUTS.map((input) => input.id), command: ['npm', 'run', 'security:secrets'], job: 'check', setup: 'docker', config: ['.gitleaks.toml', 'scripts/scan-secrets.sh'] },
   { id: 'lint:shell', tier: 'check', inputs: ['shell'], command: ['npm', 'run', 'lint:shell'], job: 'check', setup: 'docker' },
   { id: 'lint:docker', tier: 'check', inputs: ['docker'], command: ['npm', 'run', 'lint:docker'], job: 'check', setup: 'docker' },
   { id: 'lint:actions', tier: 'check', inputs: ['workflows'], command: ['npm', 'run', 'lint:actions'], job: 'check', setup: 'docker' },

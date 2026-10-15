@@ -5,7 +5,7 @@ describe('registerSchema', () => {
   it('accepts valid register payload', () => {
     const result = registerSchema.safeParse({
       email: 'user@example.com',
-      password: 'StrongPass123',
+      password: 'StrongPass123', // gitleaks:allow -- a test password
       displayName: 'Test User',
     });
     expect(result.success).toBe(true);
@@ -23,7 +23,7 @@ describe('registerSchema', () => {
   it('refuses a display name of spaces, which would show as a blank curator (#998)', () => {
     const result = registerSchema.safeParse({
       email: 'user@example.com',
-      password: 'StrongPass123',
+      password: 'StrongPass123', // gitleaks:allow -- a test password
       displayName: '   ',
     });
     expect(result.success).toBe(false);
@@ -32,7 +32,7 @@ describe('registerSchema', () => {
   it('stores the display name trimmed', () => {
     const result = registerSchema.safeParse({
       email: 'user@example.com',
-      password: 'StrongPass123',
+      password: 'StrongPass123', // gitleaks:allow -- a test password
       displayName: '  Ada Lovelace ',
     });
     expect(result.success && result.data.displayName).toBe('Ada Lovelace');

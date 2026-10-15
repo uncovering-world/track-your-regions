@@ -20,7 +20,7 @@ describe('runCreateAdmin', () => {
   it('creates a verified admin when none exists', async () => {
     findUserByEmail.mockResolvedValue(null);
     createUser.mockResolvedValue({ id: 1, email: 'a@b.com' });
-    const res = await runCreateAdmin({ email: 'A@b.com', displayName: 'A', password: 'StrongPass123' });
+    const res = await runCreateAdmin({ email: 'A@b.com', displayName: 'A', password: 'StrongPass123' }); // gitleaks:allow -- a test password
     expect(res.created).toBe(true);
     expect(hashPassword).toHaveBeenCalledWith('StrongPass123');
     expect(createUser).toHaveBeenCalledWith(expect.objectContaining({

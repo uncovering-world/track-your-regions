@@ -1,0 +1,16 @@
+# gitleaks over every file git tracks (ADR-0108, #1504): its default rules,
+# which find a generic key or password by keyword and entropy as well as the
+# providers' formats, and one rule of this repository's own.
+
+[extend]
+useDefault = true
+
+# A password written into a connection URI: postgres://user:<password>@host.
+# No default rule reads one. A URI whose password is an interpolation
+# (${DB_PASSWORD}) or a placeholder in angle brackets is not a password.
+[[rules]]
+id = "password-in-connection-uri"
+description = "A password written into a connection URI"
+regex = '''\b[a-zA-Z][a-zA-Z0-9+.-]{1,20}://[^\s:/@'"`]{1,64}:([^\s:/@'"`${}<>]{4,128})@[^\s'"`]'''
+secretGroup = 1
+keywords = ["://"]
