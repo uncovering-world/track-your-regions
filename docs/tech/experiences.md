@@ -1087,6 +1087,14 @@ to every `processItem` through `SyncRunContext.withdrawalSkippedReason`, so the 
 nothing behind it; a source that leaves the field out is unchanged, since points are paired per
 object and need no floor.
 
+The **admission sweep** has a floor of its own as well (ADR-0024): `admissionSweepSkipReason`
+refuses a cancelled run, one with errors, one that admitted nothing and one whose admitted set
+fell below half the previous one, and the places the kind's rule would have delisted then stay
+admitted. Its refusal lands in `experience_sync_logs.admission_sweep_skipped_reason` (#751) and
+the run card shows it as "Admission sweep skipped" beside the other two; like detection's it
+leaves the run's verdict as it was. The three reasons travel together as `GuardSkips`
+(`runLog.ts`), so the row a failed run leaves keeps every one that was decided before the failure.
+
 **Dry runs** (`POST /sync/sources/:id/start` with `{"dryRun": true}`) walk the same path and
 write the log and changeset with `is_dry_run = true`, but touch no experiences, locations,
 treasures or images. Dry-run logs are excluded from every "latest run" query, so a preview
@@ -3290,9 +3298,9 @@ run that already reached `failed` or `cancelled` keeps that status, since both a
 their own and survive nowhere else in the row. The write is narrow, `status` and
 `error_details` only: `updateSyncLog` rewrites every stat column, and this caller has correct
 values for none of them — `total_fetched` is the source's item count rather than the processed
-one, `detection_skipped_reason` is `detectMissing`'s answer, and `withdrawal_skipped_reason` is
-the collector's floor's inside `fetchItems` (ADR-0044), neither of which anything here
-recomputes.
+one, `detection_skipped_reason` is `detectMissing`'s answer, `withdrawal_skipped_reason` is
+the collector's floor's inside `fetchItems` (ADR-0044) and `admission_sweep_skipped_reason` is
+the sweep's floor's, none of which anything here recomputes.
 
 The full rebuild (`assignExperiencesToRegions`, `POST /api/admin/experiences/assign-regions`)
 stays an admin action, for the case that genuinely needs it: **a region changed** — its geometry,
