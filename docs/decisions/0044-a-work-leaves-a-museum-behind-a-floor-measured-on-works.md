@@ -1,7 +1,7 @@
 # ADR-0044: A work leaves a museum by a mark, behind a floor measured on works
 
 **Date:** 2026-09-02
-**Status:** Accepted
+**Status:** Accepted — decision 2 narrowed by [ADR-0110](0110-a-works-floor-counts-the-sources-own-works-less-its-fame-decisions.md)
 
 ---
 
