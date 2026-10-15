@@ -3,7 +3,8 @@
  * the subset's compact entities (#1459, ADR-0105): which statements `wdt:`
  * reads, which of them still stand, and the spellings of a picture, an
  * English article, a coordinate and a year. A value spelled otherwise than
- * WDQS spells it would read as a change on every row of every run.
+ * WDQS spells it would read as a change on every row of every run, with one
+ * exception kept on purpose: a year before the common era (`yearOf`).
  */
 
 import type { CompactStatement, CompactValue } from '../../dumps/wikidata/compactEntity.js';
@@ -78,8 +79,12 @@ export function wktOf(value: CompactValue): string | null {
 }
 
 /**
- * The year of a time value as `YEAR()` gives it, BCE negative with no shift: Yazılıkaya's
- * -1300 is -1300 in WDQS's answer too. Null for anything else.
+ * The item's own year of a time value, before the common era negative: the Lion
+ * Capital of Ashoka's `-0250` is -250. WDQS's `YEAR()` adds one to such a year
+ * where the date has year precision or finer (-249 there), and leaves a coarser one as
+ * it is (Yazılıkaya's century-precision -1300); the item's own is the one a
+ * reader is told, and migration 106 brought the stored years to it (#1531).
+ * Null for anything else.
  */
 export function yearOf(value: CompactValue): number | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
