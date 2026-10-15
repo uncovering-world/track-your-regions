@@ -29402,6 +29402,13 @@
               "null"
             ]
           },
+          "unesco_url": {
+            "description": "UNESCO's page about a World Heritage site, apart from the site's own website (#1538).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "wikipedia_url": {
             "type": [
               "string",

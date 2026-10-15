@@ -43,6 +43,8 @@ export interface QueueRow {
   latitude?: number | null;
   longitude?: number | null;
   website_url?: string | null;
+  /** UNESCO's page about a World Heritage site (#1538), apart from the site's own. */
+  unesco_url?: string | null;
   wikipedia_url?: string | null;
   region_names?: string[] | null;
   admission_note?: string | null;
@@ -162,6 +164,7 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     latitude: row.latitude,
     longitude: row.longitude,
     website_url: row.website_url,
+    unesco_url: row.unesco_url,
     wikipedia_url: row.wikipedia_url,
     region_names: row.region_names,
     admission_note: row.admission_note,

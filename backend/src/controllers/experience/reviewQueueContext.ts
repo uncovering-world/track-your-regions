@@ -75,6 +75,7 @@ export function objectContextSelectSql(alias = 'e'): string {
           ST_Y(${alias}.location) AS latitude,
           ST_X(${alias}.location) AS longitude,
           ${alias}.metadata->>'website' AS website_url,
+          ${alias}.metadata->>'unescoUrl' AS unesco_url,
           ${alias}.metadata->>'wikipediaUrl' AS wikipedia_url,
           -- The run's own question about a row it could not settle by its rule
           -- (ADR-0058): an art museum with an antiquities department is a

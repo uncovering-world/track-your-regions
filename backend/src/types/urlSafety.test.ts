@@ -229,8 +229,8 @@ describe('the rule the curation controller shares with the schema', () => {
   it('holds a picture to its host and its file type, and a link to neither', () => {
     // The two rules answer different questions: a link may point anywhere a
     // reader can follow, a picture is drawn on our page under somebody's
-    // licence. `metadata.website` is a UNESCO page on every one of the 1272
-    // rows, and has to stay one.
+    // licence. A World Heritage site's UNESCO page (`metadata.unescoUrl`) is a
+    // link to whc.unesco.org, and has to stay one.
     expect(isStorableHttpUrl('https://whc.unesco.org/en/list/274')).toBe(true);
     expect(isDisplayablePictureUrl('https://whc.unesco.org/document/141884')).toBe(false);
     expect(isDisplayablePictureUrl('https://commons.wikimedia.org/wiki/Special:FilePath/A.pdf')).toBe(false);
@@ -728,16 +728,17 @@ describe('the rule is declared once', () => {
 
   /**
    * A stored link: a region's source page, a picture credit's licence and
-   * details pages, and an experience's own site and Wikipedia article, by the
+   * details pages, and an experience's own site, its UNESCO page and its Wikipedia article, by the
    * names every prop and every row carry them under.
    */
-  const storedLink = /\b(?:sourceUrl|source_url|licenseUrl|detailsUrl|website|website_url|wikipediaUrl|wikipedia_url)\b/;
+  const storedLink = /\b(?:sourceUrl|source_url|licenseUrl|detailsUrl|website|website_url|unescoUrl|unesco_url|wikipediaUrl|wikipedia_url)\b/;
 
   it('reads a module by every name a stored link travels under', () => {
     // The two shapes an experience's links take on the way to a link: the
     // metadata keys the detail read serves, and the review queue's columns.
     for (const carrier of [
       'metadata.website', 'metadata?.wikipediaUrl', 'item.website_url', 'item.wikipedia_url',
+      'metadata?.unescoUrl', 'item.unesco_url',
       'node.sourceUrl', 'credit.licenseUrl', 'credit.detailsUrl',
     ]) {
       expect(storedLink.test(carrier), carrier).toBe(true);
