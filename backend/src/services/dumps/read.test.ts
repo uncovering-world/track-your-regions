@@ -9,6 +9,7 @@ import { gzipSync } from 'node:zlib';
 import type { DumpFile } from './catalog.js';
 import { openStream } from './fetch.js';
 import { countLines, readDump, type DumpConsumer } from './read.js';
+import { ScopeReader } from './wikidata/scopeReader.js';
 
 /**
  * The pipeline's reading and verifying (ADR-0101 decision 4), against a local
@@ -112,6 +113,35 @@ describe('reading a dump through the pipeline', () => {
     expect(consumer.outcome).toBe('committed');
   });
 
+  it('hands a consumer that splits lines itself the text in pieces that end at a line end', async () => {
+    for (const path of ['/whole.json.gz', '/whole.bz2']) {
+      const consumer = recording();
+      const pieces: Buffer[] = [];
+      let taken = 0;
+      const chunked = {
+        ...consumer,
+        line: () => { throw new Error('a chunk consumer is never handed a line'); },
+        chunk: async (text: Uint8Array) => {
+          expect(text.at(-1)).toBe(10);
+          pieces.push(Buffer.from(text));
+          taken += Buffer.from(text).toString().split('\n').length - 1;
+        },
+        lineCount: () => taken,
+      };
+      const result = await readDump(file(path, { expectedBytes: path.endsWith('.bz2') ? BZ2.length : GZ.length }), chunked, { signal: signal() });
+      expect(Buffer.concat(pieces).toString()).toBe(TEXT);
+      expect(result.lines).toBe(LINES.length);
+      expect(consumer.outcome).toBe('committed');
+    }
+  });
+
+  it("counts the lines a consumer in worker threads took once they have all answered", async () => {
+    // Pieces still in flight when the read ends are counted by the commit's wait, not before it.
+    const reader = new ScopeReader(2);
+    const result = await readDump(file('/whole.json.gz', { expectedBytes: GZ.length }), reader, { signal: signal() });
+    expect(result.lines).toBe(LINES.length);
+  });
+
   it("rejects with the consumer's own error when it throws mid-file, and the process keeps running", async () => {
     // Stopping the decoder after the line loop has left must not reach the
     // line reader as an unhandled 'error' event: that ended the whole backend
@@ -122,6 +152,8 @@ describe('reading a dump through the pipeline', () => {
       const failing = { ...consumer, line: () => { seen += 1; if (seen === 1200) throw new Error('the database refused a row'); } };
       await expect(readDump(file(path), failing, { signal: signal() })).rejects.toThrow('the database refused a row');
       expect(consumer.outcome).toBe('aborted');
+      const failingChunks = { ...consumer, chunk: async () => { throw new Error('a worker refused the piece'); }, lineCount: () => 0 };
+      await expect(readDump(file(path), failingChunks, { signal: signal() })).rejects.toThrow('a worker refused the piece');
     }
     // An 'error' emitted after the rejection surfaces on a later tick.
     await new Promise(resolve => setTimeout(resolve, 50));

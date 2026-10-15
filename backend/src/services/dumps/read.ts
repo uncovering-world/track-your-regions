@@ -33,6 +33,15 @@ import { bytesHeld } from './rangedDownload.js';
 /** What a build does with the lines: kept only after `commit`, dropped by `abort`. */
 export interface DumpConsumer {
   line(text: string): void | Promise<void>;
+  /**
+   * A consumer that splits the lines itself, in worker threads (#1479): the
+   * read hands it the decompressed text in pieces of several megabytes, each
+   * ending at a line's end and owning its memory, so a piece can be handed to
+   * a worker whole; `line` is then never called, and `lineCount` says how
+   * many lines it has taken so far.
+   */
+  chunk?(text: Uint8Array): Promise<void>;
+  lineCount?(): number;
   commit(): Promise<void>;
   abort(): Promise<void>;
 }
@@ -54,6 +63,8 @@ export interface ReadResult {
 
 /** How often, in lines, progress is reported and the cancel flag is looked at. */
 const PROGRESS_EVERY = 100_000;
+/** The size of a piece of text a chunk consumer is handed, give or take a line. */
+const CHUNK_BYTES = 8 << 20;
 
 /** The bytes read are not the host's file: a checksum or size mismatch, or a stream the decoder refused. */
 class DamagedFile extends Error {}
@@ -206,16 +217,35 @@ async function decode(
   // Awaited together below; a consumer that throws first must not leave them unhandled.
   for (const stage of [fed, drained, decoded]) stage.catch(() => undefined);
 
+  const progress = (lines: number) => {
+    if (signal.aborted) throw new Error('Cancelled');
+    options.onProgress?.({ downloaded: downloaded(), read: bytes, lines });
+  };
+  const lines = consumer.chunk
+    ? await feedChunks(text, consumer as ChunkConsumer, progress)
+    : await feedLines(text, consumer, progress);
+  // The decoder's own verdict first: a bzip2 that refused the stream also
+  // breaks the pipe that fed it, and that error says less.
+  await decoded;
+  await Promise.all([fed, drained]);
+  if (signal.aborted) throw new Error('Cancelled');
+  const checksumActual = hash ? hash.digest('hex') : null;
+  verify(file, bytes, checksumActual);
+  await consumer.commit();
+  // A chunk consumer counts a piece's lines once a worker has answered for
+  // it, so its count is whole only after the commit has waited for them all.
+  return { bytes, lines: consumer.lineCount ? consumer.lineCount() : lines, checksumActual };
+}
+
+/** Hand the consumer every line, one call each; answers how many there were. */
+async function feedLines(text: Readable, consumer: DumpConsumer, progress: (lines: number) => void): Promise<number> {
   let lines = 0;
   const reader = createInterface({ input: text, crlfDelay: Infinity });
   try {
     for await (const line of reader) {
       await consumer.line(line);
       lines += 1;
-      if (lines % PROGRESS_EVERY === 0) {
-        if (signal.aborted) throw new Error('Cancelled');
-        options.onProgress?.({ downloaded: downloaded(), read: bytes, lines });
-      }
+      if (lines % PROGRESS_EVERY === 0) progress(lines);
     }
   } finally {
     // A loop left early (a consumer that threw, a cancel) is followed by the
@@ -226,15 +256,45 @@ async function decode(
     reader.on('error', () => undefined);
     reader.close();
   }
-  // The decoder's own verdict first: a bzip2 that refused the stream also
-  // breaks the pipe that fed it, and that error says less.
-  await decoded;
-  await Promise.all([fed, drained]);
-  if (signal.aborted) throw new Error('Cancelled');
-  const checksumActual = hash ? hash.digest('hex') : null;
-  verify(file, bytes, checksumActual);
-  await consumer.commit();
-  return { bytes, lines, checksumActual };
+  return lines;
+}
+
+type ChunkConsumer = DumpConsumer & Required<Pick<DumpConsumer, 'chunk' | 'lineCount'>>;
+
+/**
+ * Hand the consumer the text in pieces of about `CHUNK_BYTES`, each ending at
+ * a line's end and in memory of its own (a worker can be given it without a
+ * copy); what follows the last line end waits for the next piece. Answers how
+ * many lines the consumer took.
+ */
+async function feedChunks(text: Readable, consumer: ChunkConsumer, progress: (lines: number) => void): Promise<number> {
+  let pieces: Buffer[] = [];
+  let size = 0;
+  const hand = async (final: boolean) => {
+    const whole = Buffer.allocUnsafeSlow(size);
+    let at = 0;
+    for (const piece of pieces) at += piece.copy(whole, at);
+    const end = final ? size : whole.lastIndexOf(10) + 1;
+    // A line longer than a piece waits for the rest of itself.
+    if (end === 0) return;
+    pieces = end < size ? [Buffer.from(whole.subarray(end))] : [];
+    size -= end;
+    await consumer.chunk(whole.subarray(0, end));
+    progress(consumer.lineCount());
+  };
+  try {
+    for await (const piece of text) {
+      pieces.push(piece as Buffer);
+      size += (piece as Buffer).length;
+      if (size >= CHUNK_BYTES) await hand(false);
+    }
+    if (size > 0) await hand(true);
+  } finally {
+    // As in `feedLines`: a read left early stops the decoder, which breaks the
+    // text stream; its late 'error' must not end the process.
+    text.on('error', () => undefined);
+  }
+  return consumer.lineCount();
 }
 
 /** The verify build's consumer: counts the lines and keeps nothing. */
