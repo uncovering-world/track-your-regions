@@ -38,6 +38,7 @@ import {
 } from '../../api/admin';
 import { formatDateTime } from '../../utils/dateFormat';
 import { queryKeys } from '../../api/queryKeys';
+import { plural } from '../../utils/plural';
 
 /**
  * What each kind is, and why its lifetime is what it is.
@@ -106,11 +107,6 @@ function sizeOf(bytes: number): string {
 function summarise(kind: WikidataCacheKind): string {
   const answers = plural(kind.entries, 'answer');
   return `${answers}, ${kind.rows} rows, ${sizeOf(kind.bytes)}`;
-}
-
-/** The repo has no shared pluraliser on this side, and three call sites want one. */
-function plural(n: number, noun: string): string {
-  return `${n} ${noun}${n === 1 ? '' : 's'}`;
 }
 
 function KindRow({ kind, busy, onClear, onSetTtl }: {

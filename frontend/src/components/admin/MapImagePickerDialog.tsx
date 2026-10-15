@@ -20,6 +20,7 @@ import {
 } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
 import { toThumbnailUrl } from '../../utils/imageUrl';
+import { plural } from '../../utils/plural';
 
 interface MapImagePickerDialogProps {
   open: boolean;
@@ -71,7 +72,7 @@ export function MapImagePickerDialog({
       <DialogTitle>
         Select Region Map
         <Typography variant="body2" color="text.secondary">
-          {regionName} — {visibleCandidates.length} candidate{visibleCandidates.length !== 1 ? 's' : ''}
+          {regionName} — {plural(visibleCandidates.length, 'candidate')}
         </Typography>
       </DialogTitle>
       <DialogContent dividers>

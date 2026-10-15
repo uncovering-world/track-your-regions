@@ -27,6 +27,7 @@ import FolderCopyIcon from '@mui/icons-material/FolderCopy';
 import type { Region } from '../../../../types';
 import type { RegionMember } from '../../../../api/regions';
 import { fetchSubdivisions, fetchDivisionUsageCounts, fetchRegionMembers } from '../../../../api';
+import { plural } from '../../../../utils/plural';
 
 export interface ChildToAdd {
   id: number;
@@ -383,7 +384,7 @@ export function AddChildrenDialog({
             {showAssignments && unassignedExistingRegions.length > 0 && (
               <Alert severity="info" sx={{ mt: 1 }}>
                 <Typography variant="caption">
-                  {unassignedExistingRegions.length} existing region{unassignedExistingRegions.length > 1 ? 's' : ''} without assignment:{' '}
+                  {plural(unassignedExistingRegions.length, 'existing region')} without assignment:{' '}
                   {unassignedExistingRegions.map(r => r.name).join(', ')}
                 </Typography>
               </Alert>

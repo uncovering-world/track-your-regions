@@ -54,6 +54,7 @@ import { WorldViewImportTree } from './WorldViewImportTree';
 import { CoverageResolveDialog } from './CoverageResolveDialog';
 import { type ShadowInsertion } from './treeNodeShared';
 import { queryKeys } from '../../api/queryKeys';
+import { plural } from '../../utils/plural';
 
 export type { ShadowInsertion };
 
@@ -366,9 +367,8 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
 
   const handleViewMap = useCallback(async (regionId: number, context: { wikidataId?: string; regionMapUrl?: string; regionMapLabel?: string; regionName: string; divisionIds: number[] }) => {
     const hasDivisions = context.divisionIds.length > 0;
-    const divSuffix = context.divisionIds.length > 1 ? 's' : '';
     const previewName = hasDivisions
-      ? `${context.regionName} — ${context.divisionIds.length} division${divSuffix}`
+      ? `${context.regionName} — ${plural(context.divisionIds.length, 'division')}`
       : context.regionName;
     setPreviewDivision({
       name: previewName,

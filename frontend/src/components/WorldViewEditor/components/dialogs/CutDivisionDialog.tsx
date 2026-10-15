@@ -40,6 +40,7 @@ import {
   isSinglePolygon,
   type CutPart,
 } from './polygonCutUtils';
+import { plural } from '../../../../utils/plural';
 
 // Re-export CutPart for external use
 export type { CutPart } from './polygonCutUtils';
@@ -726,7 +727,7 @@ export function CutDivisionDialog({
           onClick={() => onConfirm(cutParts)}
           disabled={cutParts.length === 0}
         >
-          Use {cutParts.length} Part{cutParts.length !== 1 ? 's' : ''}
+          Use {plural(cutParts.length, 'Part')}
         </Button>
       </DialogActions>
     </Dialog>

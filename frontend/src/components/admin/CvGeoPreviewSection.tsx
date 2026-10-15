@@ -26,6 +26,7 @@ import type {
   DivisionAssignment as ClientDivAssignment,
 } from '../../utils/spatialAnomalyDetector';
 import { frameGeoJson } from '../../utils/mapUtils';
+import { plural } from '../../utils/plural';
 
 // ─── Geo Preview (map + source image) ───────────────────────────────────────
 
@@ -288,7 +289,7 @@ export function CvGeoPreviewSection({ cvMatchDialog, setCVMatchDialog, highlight
       <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>Region Assignment Preview</Typography>
       {cvMatchDialog.spatialAnomalies && cvMatchDialog.spatialAnomalies.length > 0 && (
         <Alert severity="warning" sx={{ mb: 1, py: 0, fontSize: '0.8rem' }}>
-          {cvMatchDialog.spatialAnomalies.length} potential exclave{cvMatchDialog.spatialAnomalies.length > 1 ? 's' : ''} detected
+          {plural(cvMatchDialog.spatialAnomalies.length, 'potential exclave')} detected
           — divisions that would be disconnected from their region. Review assignments before accepting.
         </Alert>
       )}
