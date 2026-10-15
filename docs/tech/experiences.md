@@ -596,7 +596,11 @@ is marked again (`subsetDoor`), or the fetchers behind it go live.
 subset again the questions the runs cached in `wikidata_query_cache` that it
 can read (`SHAPES`), the newest `--limit` of each shape (200 unless given), and
 prints per shape how many agree, which item ids differ and how many older
-questions the limit left uncompared.
+questions the limit left uncompared. Expired answers are compared too: a run
+no longer reads them, but each is what the live service said on the day it was
+fetched, and the report gives those days and how many were past their expiry,
+so a difference the dates explain reads as that. Run it before any sync run
+after a build: a run prunes its source's answers a week past expiry.
 
 ### Sync orchestrator
 
