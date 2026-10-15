@@ -35,6 +35,8 @@ describe('parseLighthouseResults', () => {
         { url: URL, isRepresentativeRun: true, jsonPath: '/app/lighthouse-report/wv-9001-run2.report.json', summary: { performance: 0.94 } },
       ],
       'wv-9001-run2.report.json': {
+        lighthouseVersion: '13.4.1',
+        environment: { hostUserAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/145.0.7632.6 Safari/537.36' },
         audits: {
           'largest-contentful-paint': { numericValue: 2150 },
           'resource-summary': { details: { items: [{ resourceType: 'total', transferSize: 912327 }, { resourceType: 'script', transferSize: 782659 }] } },
@@ -51,7 +53,8 @@ describe('parseLighthouseResults', () => {
       '[error] resource-summary:total:count on /wv/9001: 61 requests (<= 60 requests)',
       '[warn] largest-contentful-paint on /wv/9001: 2.15 s (<= 2.00 s)',
     ]);
-    expect(result.files).toEqual(['/wv/9001 - perf 94 | LCP 2.15 s | script 782.7 kB | total 912.3 kB']);
+    // The tools that measured it, so a number moved by a bump is not read as the code's (#656).
+    expect(result.files).toEqual(['/wv/9001 - perf 94 | LCP 2.15 s | script 782.7 kB | total 912.3 kB | Lighthouse 13.4.1, Chrome 145.0.7632.6']);
   });
 
   it('reports a missing or unreadable results file as a failure, not an empty pass', () => {
