@@ -3951,11 +3951,13 @@ reads `experience_sources` by `id` for `new_badge_days`, and the personal clause
 `user_new_badge_views` by `(user_id, experience_id)`. The `published_at` comparison itself is on
 the row already being returned.
 
-`idx_experience_sync_logs_latest` (`source_id, completed_at DESC, id DESC`) was built for the
-predicate this replaced, and `isNewSql` no longer reads `experience_sync_logs` at all — `grep -rn
-"completed_at DESC" backend/src` returns nothing. Whether the index earns its keep for other
-queries is a separate question; what matters here is that the chip is no longer the reason it
-exists, so nothing about the chip should be read from it.
+`isNewSql` reads no sync log at all. The index the predicate it replaced was built on,
+`idx_experience_sync_logs_latest` (`source_id, completed_at DESC, id DESC`), is gone (migration
+104, #620): no reader of `experience_sync_logs` looks runs up by `(source_id, completed_at)`.
+Each reaches its rows by `source_id` (`idx_experience_sync_logs_source`) or by `id` (the
+primary key); the review queue's two sorts on `completed_at` (`refusedKeysSql` in
+`reviewQueueKeys.ts`, `facetsSql` in `reviewQueueFacets.ts`) run over rows already reached by
+id.
 
 The `completed_at`-versus-id warning that used to live here went with the clause it was about: a
 run that starts earlier can finish later, so ordering runs by id could name a months-old run as
