@@ -10,6 +10,7 @@ import App from './App';
 // Before ./index.css so app styles keep overriding MapLibre's, as they did when
 // this stylesheet arrived from a CDN <link> in index.html.
 import 'maplibre-gl/dist/maplibre-gl.css';
+import './fonts.css';
 import './index.css';
 
 // maplibre-gl 6 parses vector tiles in a worker it loads as a real URL —
