@@ -63,7 +63,7 @@ vi.mock('./missingDetection.js', () => ({
 }));
 
 import { updateSyncLog } from './syncUtils.js';
-import { markRefused, restoreAdmission } from './admission.js';
+import { admissionSweepSkipReason, markRefused, restoreAdmission } from './admission.js';
 import { missingDetectionSkipReason } from './missingDetection.js';
 
 const TEST_SOURCE_ID = 999;
@@ -252,6 +252,46 @@ describe('a run whose detection was skipped and then failed', () => {
         detectionSkippedReason: 'source is ranked', withdrawalSkippedReason: REASON,
       }),
       expect.anything(),
+    );
+  });
+});
+
+describe('a run whose admission sweep was skipped', () => {
+  beforeEach(() => {
+    runningSyncs.clear();
+    vi.clearAllMocks();
+  });
+
+  it('records why on its row, beside the other guards, and leaves the verdict to them (#751)', async () => {
+    // The places the kind's rule would have delisted stayed admitted, which the
+    // card can say only if the row does; whether that alone makes the run
+    // partial is not decided here, so a run with no other fault is a success.
+    const sweepReason = 'admitted 12 of the previous 100 (12%), below the 50% floor';
+    (admissionSweepSkipReason as ReturnType<typeof vi.fn>).mockReturnValueOnce(sweepReason);
+    const config = shortRun({
+      recomputesMembership: true,
+      fetchItems: vi.fn().mockResolvedValue({ items: [{ id: '1', name: 'Louvre' }], fetchedCount: 1 }),
+    });
+
+    await orchestrateSync(config, 1);
+
+    expect(updateSyncLog).toHaveBeenLastCalledWith(
+      TEST_SOURCE_ID, 42, 'success',
+      expect.objectContaining({ admissionSweepSkippedReason: sweepReason, withdrawalSkippedReason: null }),
+      undefined,
+    );
+  });
+
+  it('leaves the reason null where the sweep ran', async () => {
+    await orchestrateSync(shortRun({
+      recomputesMembership: true,
+      fetchItems: vi.fn().mockResolvedValue({ items: [{ id: '1', name: 'Louvre' }], fetchedCount: 1 }),
+    }), 1);
+
+    expect(updateSyncLog).toHaveBeenLastCalledWith(
+      TEST_SOURCE_ID, 42, 'success',
+      expect.objectContaining({ admissionSweepSkippedReason: null }),
+      undefined,
     );
   });
 });

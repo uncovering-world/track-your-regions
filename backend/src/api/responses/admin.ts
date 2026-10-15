@@ -268,6 +268,8 @@ export const SyncLog = z.strictObject({
   detection_skipped_reason: z.string().nullable(),
   withdrawal_skipped_reason: z.string().nullable()
     .describe('Why the run marked none of the works its museums stopped holding: the works coverage floor refused it (ADR-0044).'),
+  admission_sweep_skipped_reason: z.string().nullable()
+    .describe("Why the run's admission sweep delisted nothing its own rule would have: cancelled, errors, nothing admitted, or an admitted set below half the previous one (ADR-0024)."),
   triggered_by: z.number().int().nullable(),
   triggered_by_name: z.string().nullable(),
   has_changeset: z.boolean().describe('False on runs that predate change provenance, whose counters mean something else.'),
