@@ -70,7 +70,8 @@ run-perf`, which:
    the reports are how a budget is re-read when it is ratcheted);
 4. `scripts/lighthouse-summary.mjs` turns the results into the lane
    summary `test-report.mjs` prints: one line per page with the score, LCP,
-   TBT, CLS, TTI and script/total transfer, and one line per assertion that
+   TBT, CLS, TTI, script/total transfer and the Lighthouse and Chrome
+   versions that measured it (`toolVersions`), and one line per assertion that
    spoke.
 
 Two properties of the measurement are deliberate and worth knowing before
@@ -781,6 +782,16 @@ The rule:
 - **Raising a budget needs a stated reason in the pull request** — what
   grew, why it is worth it, and what the visitor gets for it. "The gate
   went red" is not a reason.
+- **A bump of the lane's tools re-measures the baseline before its pull
+  request merges.** Lighthouse revises its scoring between majors and a
+  Chromium release changes what a long task costs, so a budget that turns red
+  or gains headroom on a `lighthouse` bump or on a new Playwright image
+  (`frontend/Dockerfile.e2e`, which carries the Chromium) is the tools'
+  doing, not the code's. Every result's page line names both
+  (`Lighthouse 13.4.1, Chrome 145.0.…`, written by `toolVersions` in `scripts/lighthouse-summary.mjs`),
+  and a budget moved on a bump says so in its "Set from" cell (#656). The
+  baselines in the table above were measured with Lighthouse 13.4.1 driving
+  the Chromium of `mcr.microsoft.com/playwright:v1.58.2-jammy`.
 - **Bytes are `error` from the day they are set.** They are deterministic.
   **Timings start at `warn`** when a page is first measured and move to
   `error` once CI runs have shown where they sit — a timing budget copied

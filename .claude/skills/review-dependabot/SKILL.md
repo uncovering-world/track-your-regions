@@ -233,6 +233,8 @@ gh pr checks <number>
 
 Note whether CI passes, fails, or is pending.
 
+**A bump of the performance lane's own tools** (`lighthouse` in `frontend/package.json`, or the Playwright image `frontend/Dockerfile.e2e` starts from, which carries the Chromium Lighthouse drives) can move every number the lane measures without a line of the product changing. Before such a PR merges, its lane result is read as a new baseline, not as a verdict on code: each page line names the Lighthouse and Chrome versions it was measured with, and a budget moved on the bump is recorded as moved on the bump (`docs/tech/performance.md` § Budgets and the ratchet rule).
+
 ### 3. Deep-dive for concerning updates
 
 For any PR with a major version bump, CI failure, or breaking changes listed in the changelog, do a **real impact analysis**:
