@@ -127,6 +127,7 @@ and accepted by it.
 | [0105](0105-the-wikidata-subset-follows-containment-chains-and-is-kept-compact-and-swapped-in-whole.md) | The Wikidata subset follows containment chains, and is kept compact and swapped in whole | Accepted — decision 4 narrowed by [0107](0107-a-subset-build-cut-in-its-second-pass-is-picked-up-not-started-again.md) | 2026-10-14 |
 | [0106](0106-public-dump-builds-run-in-a-worker-process-queued-through-the-ledger.md) | Public dump builds run in a worker process, queued through the ledger | Accepted | 2026-10-14 |
 | [0107](0107-a-subset-build-cut-in-its-second-pass-is-picked-up-not-started-again.md) | A subset build cut in its second pass is picked up, not started again | Accepted | 2026-10-15 |
+| [0108](0108-gitleaks-reads-every-tracked-file-for-a-generic-credential.md) | gitleaks reads every tracked file for a generic credential | Accepted | 2026-10-15 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
