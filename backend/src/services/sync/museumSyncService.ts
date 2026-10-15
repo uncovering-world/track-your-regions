@@ -34,6 +34,8 @@ import {
   type SparqlBinding,
 } from './wikidataUtils.js';
 import { upsertVenueTreasures } from './museum/treasureWriter.js';
+import { POOL_MIN_SITELINKS } from './museum/queries.js';
+import { fetchWikipediaEditions, type SparqlFn } from './wikidataQueries.js';
 import { measureWorksCoverage, worksCoverageSkipReason } from './museum/worksCoverage.js';
 import {
   fetchCommonsCredits,
@@ -105,6 +107,30 @@ function collectingSparql(
 // =============================================================================
 
 /**
+ * The works this source placed at a museum the run admits, no longer placed,
+ * whose Wikipedia editions are now below the pools' floor (#1536). An edition
+ * count of 0 is no reading at all and is left to the floor.
+ */
+async function belowFameFloor(
+  sparql: SparqlFn,
+  stored: Record<string, string[]>,
+  placed: ReadonlyMap<string, unknown>,
+  admitted: ReadonlySet<string>,
+  /** Paced and cancellable like every other question of the run. */
+  before: () => Promise<void>,
+): Promise<Set<string>> {
+  const unplaced = Object.entries(stored)
+    .filter(([work, venues]) => !placed.has(work) && venues.some((venue) => admitted.has(venue)))
+    .map(([work]) => work);
+  if (!unplaced.length) return new Set();
+  const editions = await fetchWikipediaEditions(sparql, unplaced, before);
+  return new Set(unplaced.filter((work) => {
+    const count = editions.get(work) ?? 0;
+    return count > 0 && count < POOL_MIN_SITELINKS;
+  }));
+}
+
+/**
  * Where the last run left each work.
  *
  * Read from what is actually stored rather than from a record of the previous proposal, because
@@ -112,7 +138,9 @@ function collectingSparql(
  * museum this run no longer names is the thing worth printing — and, since ADR-0044, the thing
  * the coverage floor is measured against and the withdrawal arm then marks.
  *
- * Offered links only. A link an earlier run already marked is not a placement the catalogue
+ * Offered links this source placed (#1536): a work another kind placed at the same venue is not
+ * this run's to place again, so the floor would count it unseen on every run. Offered only: a
+ * link an earlier run already marked is not a placement the catalogue
  * shows, so it is neither something this run can withdraw again nor something its floor should
  * count as still held: measured with the marked rows in, a museum whose works really left would
  * drag the ratio down on every later run, for works nobody sees. The literal rather than the
@@ -131,7 +159,14 @@ export async function readPreviousPlacements(sourceId: number): Promise<Record<s
        JOIN treasures t ON t.id = et.treasure_id
        JOIN ${MEMBERSHIPS} sm ON sm.experience_id = et.experience_id
       WHERE sm.source_id = $1
-        AND et.missing_since IS NULL`,
+        AND et.missing_since IS NULL
+        -- The source's own placement (#1536): a work another kind placed at the
+        -- same venue is that kind's to see again, not this run's. A link no
+        -- membership places is the run's as well, the scope the withdrawal arm
+        -- marks in (linkWithdrawal.ts).
+        AND (EXISTS (SELECT 1 FROM experience_treasure_placements p
+                      WHERE p.link_id = et.id AND p.membership_id = sm.id)
+             OR NOT EXISTS (SELECT 1 FROM experience_treasure_placements p WHERE p.link_id = et.id))`,
     [sourceId],
   );
   const placements: Record<string, string[]> = {};
@@ -258,12 +293,22 @@ async function fetchMuseumItems(
       placedThisRun.set(work, venues);
     }
   }
-  const measured = measureWorksCoverage(coverage);
+  // A work the run no longer places because it is now below the fame floor
+  // every path into an art museum uses is the run's own decision, not a work
+  // it failed to see (#1536): it leaves the floor's base and is withdrawn.
+  // Counted with the reader the pools count with; an item it finds in no
+  // Wikipedia at all is not counted (a deleted item, or one the subset does
+  // not hold), so the floor still guards it.
+  const decided = await belowFameFloor(sparql, previousPlacements, placedThisRun, new Set(coverage.admitted.map((m) => m.qid)), async () => {
+    if (progress.cancel) throw new Error('Sync cancelled');
+    if (!readsSubset(sparql)) await delay(SPARQL_DELAY_MS);
+  });
+  const measured = measureWorksCoverage({ ...coverage, decided });
   console.log(
     `${LOG_PREFIX} Works coverage: ${measured.seen} of ${measured.stored} works offered at the `
-    + `${measured.museums} admitted museums placed again`,
+    + `${measured.museums} admitted museums placed again; ${decided.size} below the fame floor left the floor's base`,
   );
-  const withdrawalSkippedReason = worksCoverageSkipReason(coverage, 'museums');
+  const withdrawalSkippedReason = worksCoverageSkipReason({ ...coverage, decided }, 'museums');
 
   // Whose photographs these are. Asked after the collection rather than during
   // it: only the admitted venues are worth crediting, which is a handful of

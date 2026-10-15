@@ -35,6 +35,11 @@ describe('readPreviousPlacements', () => {
     // named by the id the source knows it by (ADR-0084).
     expect(sql).toContain('sm.source_id = $1');
     expect(sql).toContain('sm.external_id AS venue');
+    // And only what this source placed there (#1536): the Louvre's paintings
+    // are not Archaeology's to see again.
+    expect(sql).toContain('p.membership_id = sm.id');
+    // A link nobody places is still the run's, as the withdrawal arm reads it.
+    expect(sql).toContain('OR NOT EXISTS (SELECT 1 FROM experience_treasure_placements p WHERE p.link_id = et.id)');
     expect(params).toEqual([2]);
   });
 

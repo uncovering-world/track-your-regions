@@ -31,8 +31,14 @@ vi.mock('./wikidataCache.js', () => ({
   withCache: vi.fn((door: unknown) => door),
 }));
 vi.mock('./pictureRepair.js', () => ({ writeFoundPicture: vi.fn() }));
+// The works' Wikipedia editions, by work; none counted unless a case says so (#1536).
+const editions = vi.hoisted(() => ({ fetchWikipediaEditions: vi.fn(async () => new Map<string, number>()) }));
+vi.mock('./wikidataQueries.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./wikidataQueries.js')>()),
+  fetchWikipediaEditions: editions.fetchWikipediaEditions,
+}));
 vi.mock('./museum/pipeline.js', () => ({ collectTier1Museums: vi.fn() }));
-vi.mock('./museum/queries.js', () => ({ fetchEntityDetails: vi.fn(), isQid: vi.fn() }));
+vi.mock('./museum/queries.js', () => ({ fetchEntityDetails: vi.fn(), isQid: vi.fn(), POOL_MIN_SITELINKS: 10 }));
 vi.mock('./wikidataUtils.js', () => ({
   delay: vi.fn(),
   WaitBudget: class WaitBudget {},
@@ -132,6 +138,25 @@ describe('the museum run and its floor', () => {
     expect(mockedCollect.mock.calls[0][0].previousPlacements).toEqual(
       Object.fromEntries(STORED.map(({ work }) => [work, [LOUVRE]])),
     );
+  });
+
+  it('withdraws the works now below the fame floor rather than reading them as unseen (#1536)', async () => {
+    // Khafre Enthroned's case: nine Wikipedia editions under a floor of ten.
+    // The run refused them itself; one work it did not see, at no count, still counts.
+    mockedQuery.mockResolvedValueOnce({ rows: STORED });
+    editions.fetchWikipediaEditions.mockResolvedValueOnce(new Map(
+      STORED.slice(1, 9).map(({ work }) => [work, 9] as [string, number]),
+    ));
+    mockedCollect.mockResolvedValueOnce({
+      items: [museum(LOUVRE, ['Q1000'])], fetched: 291, filtered: [],
+      diff: { moved: [], gained: [], lost: [], dropped: [] },
+    });
+
+    const result = await (await configOf()).fetchItems(progress(), []);
+
+    // Q1001–Q1008 are decided; of the two left, Q1000 is placed and Q1009 unseen: 50 %.
+    expect(editions.fetchWikipediaEditions).toHaveBeenCalledWith(expect.anything(), STORED.slice(1).map(({ work }) => work), expect.any(Function));
+    expect(result.withdrawalSkippedReason).toContain('1 of the 2 works');
   });
 
   it('vouches for a run that placed the works again', async () => {

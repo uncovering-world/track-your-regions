@@ -34,7 +34,7 @@ vi.mock('./wikidataCache.js', () => ({
 vi.mock('./pictureRepair.js', () => ({ writeFoundPicture: vi.fn() }));
 vi.mock('./worship/pipeline.js', () => ({ collectPlacesOfWorship: vi.fn() }));
 vi.mock('./museum/pipeline.js', () => ({ collectTier1Museums: vi.fn() }));
-vi.mock('./museum/queries.js', () => ({ fetchEntityDetails: vi.fn(), isQid: vi.fn() }));
+vi.mock('./museum/queries.js', () => ({ fetchEntityDetails: vi.fn(), isQid: vi.fn(), POOL_MIN_SITELINKS: 10 }));
 vi.mock('./pinQuestion.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./pinQuestion.js')>()),
   // The run's questions about a curator's pin read and write the database (#1367).

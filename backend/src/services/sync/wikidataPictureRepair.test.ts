@@ -16,7 +16,7 @@ vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn().mockResolvedValue({ rows: [] }) },
 }));
 vi.mock('./pictureRepair.js', () => ({ writeFoundPicture: vi.fn() }));
-vi.mock('./museum/queries.js', () => ({ fetchEntityDetails: vi.fn(), isQid: vi.fn() }));
+vi.mock('./museum/queries.js', () => ({ fetchEntityDetails: vi.fn(), isQid: vi.fn(), POOL_MIN_SITELINKS: 10 }));
 vi.mock('./imageCredit.js', () => ({ fetchCommonsCredits: vi.fn().mockResolvedValue(new Map()) }));
 vi.mock('./wikidataUtils.js', () => ({
   delay: vi.fn(),
