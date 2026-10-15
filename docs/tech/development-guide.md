@@ -282,7 +282,6 @@ components/
 │   ├── CardLocationList.tsx  ← the open card's lists of places, and their caps
 │   ├── GroupHeader.tsx
 │   ├── LocationRow.tsx       ← one place inside an open card
-│   ├── NoticeLink.tsx
 │   ├── PlacesCountChip.tsx   ← the count, and the fold it offers
 │   ├── RejectedSection.tsx
 │   ├── VisitedStatusButton.tsx
