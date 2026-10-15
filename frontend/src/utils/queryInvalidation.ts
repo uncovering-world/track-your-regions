@@ -23,11 +23,10 @@ export function invalidateExperiences(
     // The location batch answers for the rows the list is showing, so anything
     // that changes which rows those are — a rejection, a lifecycle verdict or
     // its correction — leaves it stale. The full key is region, `includeLost`
-    // and `includeChildren` — three entries today, since Map mode reads a region
-    // without its descendants under either `includeLost` and Discover reads it
-    // with them and without lost rows — and this prefix match
-    // reaches every one of them: naming more of the key would clear one and
-    // leave the rest to answer the next question with the old set.
+    // and `includeChildren`, and every combination of the two is a separate
+    // entry; this prefix match reaches all of them, where naming more of the key
+    // would clear one and leave the rest to answer the next question with the
+    // old set.
     queryClient.invalidateQueries({ queryKey: queryKeys.experiences.regionLocationsIn(opts.regionId) });
   }
   queryClient.invalidateQueries({ queryKey: queryKeys.discover.experiencesAll });

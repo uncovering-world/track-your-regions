@@ -62,6 +62,12 @@ interface DiscoverExperienceViewProps {
   /** The place's own row for a row shown in one kind — what the curation dialog answers about (#1289). */
   placeRowOf: (row: Experience) => Experience;
   isLoading: boolean;
+  /** The open kind's rows, lost ones included: a change here is a new set to frame, a reveal is not. */
+  experienceSet: Experience[] | undefined;
+  /** Places of the open kind that no longer exist, held back unless `showLost` (#609). */
+  lostInKind: number;
+  showLost: boolean;
+  onShowLost: (show: boolean) => void;
   onBack: () => void;
   onSelectExperience: (id: number) => void;
   /** Open one of the open object's places on its own card, from its dot (#1271); absent for a one-place object. */
@@ -78,6 +84,10 @@ export function DiscoverExperienceView({
   experiences,
   placeRowOf,
   isLoading,
+  experienceSet,
+  lostInKind,
+  showLost,
+  onShowLost,
   onBack,
   onSelectExperience,
   onOpenPoint,
@@ -93,7 +103,11 @@ export function DiscoverExperienceView({
   // hand assignment writes, with no places at all: drawn as the single stand-in
   // pin this whole change exists to remove.
   const { locationsByExperience, locationsResolved } =
-    useRegionLocations(activeView?.regionId ?? null, false, true);
+    // Lost places' points come with the batch whether or not they are shown, as
+    // their rows do (`useDiscoverExperiences`): the markers are built for the
+    // rows on show, so the extra points draw nothing until revealed, and
+    // revealing asks for nothing new.
+    useRegionLocations(activeView?.regionId ?? null, true, true);
   // Discover holds its own folds: it is a separate reading of the region, and a
   // fold is about what this reader is looking at now rather than a preference.
   const { collapsedExperienceIds, toggleCollapsedExperience } =
@@ -181,8 +195,8 @@ export function DiscoverExperienceView({
   }, [selectedExperienceId, collapsedExperienceIds, experiences, placesOfSelected]);
   foldedSelectionRef.current = foldedSelection;
 
-  /** The experiences array this map last framed, so a redraw does not re-frame. */
-  const fittedForRef = useRef<Experience[] | null>(null);
+  /** The set this map last framed, so a redraw — or a reveal of lost places — does not re-frame. */
+  const fittedForRef = useRef<Experience[] | null | undefined>(null);
   /** What was selected on the previous run, to tell a deselection from a redraw. */
   const lastSelectedRef = useRef<number | null>(null);
   /** Whether the frame this map is holding was drawn with the places in hand. */
@@ -365,7 +379,7 @@ export function DiscoverExperienceView({
       // Closing a detail panel still re-frames the region, which is the one other
       // thing this fit was doing: that is a reader saying "show me the set again",
       // and dropping it with the fold would have been collateral.
-      const isNewSet = fittedForRef.current !== experiences;
+      const isNewSet = fittedForRef.current !== experienceSet;
       // The second fit waits on a separate, slower query, and the map is fully
       // interactive meanwhile — so it loses to a reader who has already moved it.
       // A new set still frames: that is a new region, and nothing on screen is
@@ -376,7 +390,7 @@ export function DiscoverExperienceView({
       lastSelectedRef.current = selectedExperienceId;
       if (markerData.features.length > 0 && !selectedExperienceId
           && (isNewSet || firstWithPlaces || justDeselected)) {
-        fittedForRef.current = experiences;
+        fittedForRef.current = experienceSet;
         fittedWithPlacesRef.current = locationsResolved;
         movedByReaderRef.current = false;
         frameGeoJson(map, markerData, { padding: 40, maxZoom: 10, duration: 800 });
@@ -394,7 +408,7 @@ export function DiscoverExperienceView({
     // own snapshot and each evaluating the fit.
     map.on('load', updateData);
     return () => { map.off('load', updateData); };
-  }, [experiences, selectedExperienceId, locationsByExperience, collapsedExperienceIds, locationsResolved, activeView?.kindId]);
+  }, [experiences, experienceSet, selectedExperienceId, locationsByExperience, collapsedExperienceIds, locationsResolved, activeView?.kindId]);
 
   // ── Update highlight markers + delayed flyTo ──
   useEffect(() => {
@@ -574,6 +588,9 @@ export function DiscoverExperienceView({
           experiences={experiences}
           filteredExperiences={filteredExperiences}
           isLoading={isLoading}
+          lostInKind={lostInKind}
+          showLost={showLost}
+          onShowLost={onShowLost}
           search={search}
           setSearch={setSearch}
           shortKindName={shortKindName}

@@ -15,7 +15,7 @@
  */
 
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import type { Experience } from '../../api/experiences';
 import { HoverProvider, useHoverActions } from '../../hooks/useHoverContext';
 import { DiscoverExperienceList, DiscoverExperienceRow } from './DiscoverExperienceList';
@@ -81,7 +81,7 @@ function GrabActions() {
   return null;
 }
 
-function renderList(count: number) {
+function renderList(count: number, lost: { lostInKind?: number; showLost?: boolean; onShowLost?: (show: boolean) => void } = {}) {
   for (const key of Object.keys(cardRenders)) delete cardRenders[Number(key)];
   const experiences = Array.from({ length: count }, (_, i) => experienceOf(i + 1));
   const noop = () => {};
@@ -93,6 +93,9 @@ function renderList(count: number) {
         experiences={experiences}
         filteredExperiences={experiences}
         isLoading={false}
+        lostInKind={lost.lostInKind ?? 0}
+        showLost={lost.showLost ?? false}
+        onShowLost={lost.onShowLost ?? noop}
         search=""
         setSearch={noop}
         shortKindName="UNESCO"
@@ -151,5 +154,31 @@ describe('the windowed Discover card list', () => {
     expect(cardRenders[1]).toBe(before[1] + 2);
     expect(cardRenders[2]).toBe(before[2] + 1);
     expect(cardRenders[3]).toBe(before[3]);
+  });
+});
+
+describe("the Discover list's way back to places that no longer exist (#609)", () => {
+  it('offers nothing where the kind holds none', () => {
+    renderList(3);
+    expect(screen.queryByText(/no longer exist/)).toBeNull();
+  });
+
+  it('counts what revealing would add, and asks for it', () => {
+    const onShowLost = vi.fn();
+    renderList(3, { lostInKind: 2, onShowLost });
+    fireEvent.click(screen.getByRole('button', { name: '2 in this region no longer exist — show them' }));
+    expect(onShowLost).toHaveBeenCalledWith(true);
+  });
+
+  it('offers nothing under a kind with none, even once the region has them shown', () => {
+    renderList(3, { lostInKind: 0, showLost: true });
+    expect(screen.queryByText(/no longer exist/)).toBeNull();
+  });
+
+  it('turns into the way to hide them again once shown', () => {
+    const onShowLost = vi.fn();
+    renderList(3, { lostInKind: 2, showLost: true, onShowLost });
+    fireEvent.click(screen.getByRole('button', { name: 'Hide places that no longer exist' }));
+    expect(onShowLost).toHaveBeenCalledWith(false);
   });
 });

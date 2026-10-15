@@ -52,10 +52,8 @@ describe('invalidateExperiences', () => {
     // prefix matching. Asserted against a real client, so the guarantee is the
     // library's actual behaviour rather than our reading of it.
     const client = new QueryClient();
-    // The three the app writes: Map mode's two `includeLost` variants without
-    // descendants, and Discover's descendant-recursive one, which hardcodes
-    // `includeLost: false`. The fourth combination is seeded too, because a
-    // prefix must not depend on which combinations happen to have call sites.
+    // Every `includeLost` × `includeChildren` combination, whichever of them
+    // have call sites today: a prefix must not depend on that.
     client.setQueryData(['region-locations', 7, false, false], ['pin']);
     client.setQueryData(['region-locations', 7, true, false], ['pin', 'lost pin']);
     client.setQueryData(['region-locations', 7, false, true], ['pin', 'descendant pin']);
