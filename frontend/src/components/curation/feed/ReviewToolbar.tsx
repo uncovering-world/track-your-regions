@@ -203,6 +203,7 @@ export function ReviewToolbar({
           options={regions}
           pending={pending}
           onToggle={toggleRegion}
+          single
         />
         <RunChip
           runs={facets?.run ?? []}

@@ -10,12 +10,14 @@
  * not on offer.
  *
  * A row toggles the filter on the click. There is no Apply button: the chip is
- * the filter, not a draft of one.
+ * the filter, not a draft of one. A chip whose values exclude each other — the
+ * address carries one region — says so: its rows are radios, read out as such,
+ * where the multi-select chips' rows are checkboxes.
  */
 
 import { useState } from 'react';
 import {
-  Box, Checkbox, Chip, Menu, MenuItem, Typography,
+  Box, Checkbox, Chip, Menu, MenuItem, Radio, Typography,
 } from '@mui/material';
 import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
 import type { SxProps, Theme } from '@mui/material';
@@ -44,7 +46,7 @@ export const COUNT_SX: SxProps<Theme> = {
 };
 
 export function FilterChip({
-  label, value, active, options, onToggle, pending = false,
+  label, value, active, options, onToggle, pending = false, single = false,
 }: {
   label: string;
   /** The values currently picked, as the chip says them; `''` when none are. */
@@ -58,7 +60,11 @@ export function FilterChip({
    * — and only the caller knows which.
    */
   pending?: boolean;
+  /** One value at most: the rows are a radio set (`menuitemradio`) rather than checkboxes. */
+  single?: boolean;
 }) {
+  const Indicator = single ? Radio : Checkbox;
+
   const [anchor, setAnchor] = useState<HTMLElement | null>(null);
 
   return (
@@ -91,20 +97,20 @@ export function FilterChip({
         {options.map(option => (
           <MenuItem
             key={option.key}
-            role="menuitemcheckbox"
+            role={single ? 'menuitemradio' : 'menuitemcheckbox'}
             aria-checked={option.checked}
             onClick={() => onToggle(option.key)}
             sx={{ opacity: option.count === 0 && !option.checked ? 0.55 : 1 }}
           >
-            <Checkbox
+            <Indicator
               size="small"
               checked={option.checked}
               disableRipple
               readOnly
               sx={{ p: 0, mr: 1 }}
-              // The row carries the checkbox semantics (menuitemcheckbox); the
-              // box itself is the indicator, and naming it again would read the
-              // label twice.
+              // The row carries the semantics (menuitemcheckbox or
+              // menuitemradio); the control itself is the indicator, and naming
+              // it again would read the label twice.
               inputProps={{ tabIndex: -1, 'aria-hidden': true }}
             />
             {option.swatch && (

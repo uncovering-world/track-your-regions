@@ -14,7 +14,7 @@ import {
   describe, it, expect, vi,
 } from 'vitest';
 import {
-  render, screen, fireEvent, act,
+  render, screen, fireEvent, act, cleanup,
 } from '@testing-library/react';
 import type { QueueFacets } from '../../../api/reviewQueue';
 import type { ReviewAddress } from '../../../utils/appUrl';
@@ -167,22 +167,40 @@ describe('ReviewToolbar', () => {
     expect(asked(onChange, address)).toEqual({ sourceIds: [] });
   });
 
+  it('reads the region rows as a radio set and the source and question rows as checkboxes (#841)', () => {
+    renderToolbar();
+
+    // The address carries one region and any number of sources and questions.
+    openChip('Region');
+    expect(screen.getAllByRole('menuitemradio').length).toBeGreaterThan(0);
+    expect(screen.queryAllByRole('menuitemcheckbox')).toEqual([]);
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+
+    for (const chip of ['Source', 'Question']) {
+      cleanup();
+      renderToolbar();
+      openChip(chip);
+      expect(screen.getAllByRole('menuitemcheckbox').length).toBeGreaterThan(0);
+      expect(screen.queryAllByRole('menuitemradio')).toEqual([]);
+    }
+  });
+
   it('names the world view only where a root name repeats', () => {
     renderToolbar();
 
     openChip('Region');
-    expect(screen.getByRole('menuitemcheckbox', { name: /Europe · Administrative/ })).toBeInTheDocument();
-    expect(screen.getByRole('menuitemcheckbox', { name: /Europe · Wikivoyage Regions/ })).toBeInTheDocument();
+    expect(screen.getByRole('menuitemradio', { name: /Europe · Administrative/ })).toBeInTheDocument();
+    expect(screen.getByRole('menuitemradio', { name: /Europe · Wikivoyage Regions/ })).toBeInTheDocument();
     // One Asia, so its name identifies it and the world view would be noise.
-    expect(screen.getByRole('menuitemcheckbox', { name: /^Asia/ })).toBeInTheDocument();
-    expect(screen.queryByRole('menuitemcheckbox', { name: /Asia · Administrative/ })).toBeNull();
+    expect(screen.getByRole('menuitemradio', { name: /^Asia/ })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitemradio', { name: /Asia · Administrative/ })).toBeNull();
   });
 
   it('picks one region at a time, the unplaced bucket included', () => {
     const { onChange } = renderToolbar();
 
     openChip('Region');
-    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Unplaced/ }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Unplaced/ }));
 
     expect(asked(onChange)).toEqual({ regionId: 'none' });
   });
@@ -192,7 +210,7 @@ describe('ReviewToolbar', () => {
     const { onChange } = renderToolbar({ address });
 
     openChip('Region');
-    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Europe · Administrative/ }));
+    fireEvent.click(screen.getByRole('menuitemradio', { name: /Europe · Administrative/ }));
 
     expect(asked(onChange, address)).toEqual({ regionId: null });
   });
