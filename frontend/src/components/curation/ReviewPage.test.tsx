@@ -44,7 +44,7 @@ import { setExperienceState } from '../../api/curation';
 import { setRunAside, bringRunBack } from '../../api/reviewQueue';
 import {
   shaped, renderQueue, openRow, at, navType, goBack,
-  ASKED_AT, NO_FACETS, ARRIVAL, CONFLICT, MISSING,
+  ASKED_AT, NO_FACETS, ARRIVAL, CONFLICT, MISSING, KEPT_OUT,
 } from './reviewQueueFixtures';
 
 const mockedState = setExperienceState as unknown as ReturnType<typeof vi.fn>;
@@ -409,6 +409,74 @@ describe('ReviewPage', () => {
     // Appended, not replaced: the page a curator has already read stays under them.
     expect(await screen.findByRole('button', { name: /Site 78/ })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Dresden Elbe Valley/ })).toBeInTheDocument();
+  });
+
+  it('pages an answered block without dropping the questions loaded under Show more (#840)', async () => {
+    // The answered lists are read on their own once one is paged, so the questions'
+    // pages stay as loaded; at their first pages they come with the questions' first page.
+    const WALLACE = { ...KEPT_OUT, id: 6222, external_id: 'Q1327919', name: 'Wallace Collection' };
+    mockedFetch.mockImplementation(async (params: { cursor?: string; keptOutOffset?: number }) => {
+      if (params.keptOutOffset) {
+        return { keptOut: [WALLACE], limit: 1, paging: { keptOut: { offset: 1, hasMore: false } } };
+      }
+      if (params.cursor) return { missing: [{ ...MISSING, id: 78, name: 'Site 78' }], limit: 1, total: 2 };
+      return {
+        missing: [MISSING], keptOut: [KEPT_OUT], limit: 1, total: 2,
+        paging: { nextCursor: '2026-09-05T10:00:00Z|4|77', keptOut: { offset: 0, hasMore: true } },
+      };
+    });
+    renderQueue();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
+    expect(await screen.findByRole('button', { name: /Site 78/ })).toBeInTheDocument();
+    const questionReads = mockedFetch.mock.calls.length;
+
+    fireEvent.click(screen.getByRole('button', { name: /show what you have kept out/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+
+    expect(await screen.findByText(/Wallace Collection/)).toBeInTheDocument();
+    expect(mockedFetch).toHaveBeenLastCalledWith(expect.objectContaining({ keptOutOffset: 1 }));
+    expect(mockedFetch.mock.calls.length).toBe(questionReads + 1);
+    // Both pages of questions are still there.
+    expect(screen.getByRole('button', { name: /Site 78/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Dresden Elbe Valley/ })).toBeInTheDocument();
+  });
+
+  it("says a paged answered block's page failed inside the block, and keeps the rest of the page", async () => {
+    mockedFetch.mockImplementation(async (params: { keptOutOffset?: number }) => {
+      if (params.keptOutOffset) throw new Error('timeout');
+      return {
+        missing: [MISSING], keptOut: [KEPT_OUT], limit: 1, total: 1,
+        paging: { keptOut: { offset: 0, hasMore: true } },
+      };
+    });
+    renderQueue();
+
+    fireEvent.click(await screen.findByRole('button', { name: /show what you have kept out/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
+
+    expect(await screen.findByText(/Could not load this page of the list/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Previous' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: /Dresden Elbe Valley/ })).toBeInTheDocument();
+    expect(screen.queryByText(/Could not load the review queue/)).toBeNull();
+  });
+
+  it('says which filters do not narrow an answered block, and only when one is set', async () => {
+    mockedFetch.mockResolvedValue({ missing: [MISSING], keptOut: [KEPT_OUT], limit: 25 });
+    renderQueue('/review?region=6737&run=98');
+
+    fireEvent.click(await screen.findByRole('button', { name: /show what you have kept out/i }));
+    expect(screen.getByText(
+      'Not narrowed by the region and the run you chose — only the search and the source reach this block.',
+    )).toBeInTheDocument();
+  });
+
+  it('adds no such line under the search alone, which does narrow the block', async () => {
+    mockedFetch.mockResolvedValue({ missing: [MISSING], keptOut: [KEPT_OUT], limit: 25 });
+    renderQueue('/review?q=british');
+
+    fireEvent.click(await screen.findByRole('button', { name: /show what you have kept out/i }));
+    expect(screen.queryByText(/Not narrowed by/)).toBeNull();
   });
 
   it('offers no paging when one page holds everything', async () => {
