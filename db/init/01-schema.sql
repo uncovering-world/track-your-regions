@@ -2798,16 +2798,6 @@ ALTER TABLE experience_sync_logs ALTER COLUMN unplaced_experience_ids SET DEFAUL
 
 COMMENT ON COLUMN experience_sync_logs.unplaced_experience_ids IS 'The objects whose points this run moved and that are not yet placed in their regions (#1152). Written with the run''s progress, emptied when placement succeeds, taken over by the source''s next real run, and read by the startup sweep, which marks a closed run still naming any partial. Empty on a preview, which moves nothing; NULL on runs from before the column.';
 
--- Built for the "New" chip's per-row lookup of the latest completed non-dry run
--- of a source, which #529 deleted: the chip now counts from published_at and
--- reads no sync log at all. Kept because dropping an index is its own decision
--- with its own measurement, but nothing about the chip should be read from it.
--- Declared here rather than beside the other sync-log indexes above because it
--- reads is_dry_run, which the ALTER just above adds.
-CREATE INDEX IF NOT EXISTS idx_experience_sync_logs_latest
-    ON experience_sync_logs(source_id, completed_at DESC, id DESC)
-    WHERE is_dry_run = FALSE AND completed_at IS NOT NULL;
-
 -- =============================================================================
 -- Experience Change Provenance (issue #480)
 -- =============================================================================
