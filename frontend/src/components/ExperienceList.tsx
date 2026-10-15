@@ -11,7 +11,7 @@
 
 import { useCallback, useMemo, useState, useRef, useEffect, useLayoutEffect } from 'react';
 import {
-  lostHiddenLabel, outsideViewLabel,
+  outsideViewLabel,
   flattenGroups, expansionForSelection, rowIndexByExperienceId, experienceIdsInVisibleRange,
   type ExperienceGroupLike,
 } from './ExperienceList/utils';
@@ -20,7 +20,8 @@ import { useListScrollAnchor } from './ExperienceList/useListScrollAnchor';
 import { cardAboveGroups, echoRows, groupByEveryKind } from './ExperienceList/kindRows';
 import { useOpenedKind } from './ExperienceList/useOpenedKind';
 import { GroupHeader } from './ExperienceList/GroupHeader';
-import { NoticeLink } from './ExperienceList/NoticeLink';
+import { NoticeLink } from './shared/NoticeLink';
+import { HIDE_LOST_LABEL, lostHiddenLabel } from './shared/lostNotice';
 import { RejectedSection } from './ExperienceList/RejectedSection';
 import {
   Box,
@@ -546,7 +547,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // region is on screen, so neither line usually appears at all.
   const lostNotice = lostHidden > 0 || showLost ? (
     <NoticeLink
-      label={showLost ? 'Hide places that no longer exist' : lostHiddenLabel(lostHidden)}
+      label={showLost ? HIDE_LOST_LABEL : lostHiddenLabel(lostHidden)}
       onClick={() => setShowLost(!showLost)}
     />
   ) : null;
