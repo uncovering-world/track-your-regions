@@ -190,6 +190,8 @@ export interface SyncLogStats {
    * works floor (ADR-0044). A run carrying one is `partial`, never `success`.
    */
   withdrawalSkippedReason?: string | null;
+  /** Why the admission sweep delisted nothing this run's rule would have (ADR-0024, #751). */
+  admissionSweepSkippedReason?: string | null;
 }
 
 /**
@@ -221,14 +223,15 @@ export async function updateSyncLog(
       detection_skipped_reason = $11,
       total_filtered = $12,
       total_held = $13,
-      withdrawal_skipped_reason = $14
+      withdrawal_skipped_reason = $14,
+      admission_sweep_skipped_reason = $15
      WHERE id = $1
      RETURNING is_dry_run`,
     [logId, status, stats.fetched, stats.created, stats.updated, stats.errors,
      errorDetails ? JSON.stringify(errorDetails) : null,
      stats.unchanged, stats.missing, stats.curatedConflicts,
      stats.detectionSkippedReason ?? null, stats.filtered, stats.held,
-     stats.withdrawalSkippedReason ?? null]
+     stats.withdrawalSkippedReason ?? null, stats.admissionSweepSkippedReason ?? null]
   );
 
   if (result.rows[0]?.is_dry_run) return;

@@ -31295,6 +31295,13 @@
               "null"
             ]
           },
+          "admission_sweep_skipped_reason": {
+            "description": "Why the run's admission sweep delisted nothing its own rule would have: cancelled, errors, nothing admitted, or an admitted set below half the previous one (ADR-0024).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "triggered_by": {
             "anyOf": [
               {
@@ -31345,6 +31352,7 @@
           "is_dry_run",
           "detection_skipped_reason",
           "withdrawal_skipped_reason",
+          "admission_sweep_skipped_reason",
           "triggered_by",
           "triggered_by_name",
           "has_changeset",
@@ -31467,6 +31475,13 @@
               "null"
             ]
           },
+          "admission_sweep_skipped_reason": {
+            "description": "Why the run's admission sweep delisted nothing its own rule would have: cancelled, errors, nothing admitted, or an admitted set below half the previous one (ADR-0024).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "triggered_by": {
             "anyOf": [
               {
@@ -31540,6 +31555,7 @@
           "is_dry_run",
           "detection_skipped_reason",
           "withdrawal_skipped_reason",
+          "admission_sweep_skipped_reason",
           "triggered_by",
           "triggered_by_name",
           "has_changeset",

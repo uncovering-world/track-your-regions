@@ -77,15 +77,25 @@ export function computeFinalStatus(
 }
 
 /**
- * The counters and the two guards' verdicts a log row is closed with, whichever
+ * Why each of the run's three guards did nothing, or null where it ran or never
+ * got its turn: missing detection's coverage floor, the works floor that keeps
+ * withdrawals back (ADR-0044), and the admission sweep's floor (ADR-0024).
+ */
+export interface GuardSkips {
+  detection: string | null;
+  withdrawal: string | null;
+  admissionSweep: string | null;
+}
+
+/**
+ * The counters and the guards' verdicts a log row is closed with, whichever
  * way the run ended. `fetched` is the caller's: what the source handed over on
  * a finished run, how many items the loop was given on a failed one.
  */
 export function runCounters(
   progress: SyncProgress,
   fetched: number,
-  detectionSkippedReason: string | null,
-  withdrawalSkippedReason: string | null,
+  skipped: GuardSkips,
 ): SyncLogStats {
   return {
     fetched,
@@ -97,8 +107,9 @@ export function runCounters(
     held: progress.held,
     filtered: progress.filtered,
     errors: progress.errors,
-    detectionSkippedReason,
-    withdrawalSkippedReason,
+    detectionSkippedReason: skipped.detection,
+    withdrawalSkippedReason: skipped.withdrawal,
+    admissionSweepSkippedReason: skipped.admissionSweep,
   };
 }
 
@@ -133,13 +144,12 @@ export async function recordSyncFailure(
   // the database outage that lands a run here would reject `updateSyncLog`, so
   // a verdict produced in here could never be relied on to come back.
   verdict: Exclude<RunVerdict, 'complete'>,
-  // The two guards' verdicts, kept on the row a failed run leaves too: a run
-  // that skipped detection or withdrawal and then died is both, and a card
-  // reading only `failed` over a NULL would not say why nothing was delisted
-  // or withdrawn before the failure. Null where the step that produces each
-  // never ran — the fetch for the withdrawal reason, detection for its own.
-  detectionSkippedReason: string | null,
-  withdrawalSkippedReason: string | null,
+  // The guards' verdicts, kept on the row a failed run leaves too: a run that
+  // skipped detection, withdrawal or the sweep and then died is both, and a
+  // card reading only `failed` over a NULL would not say why nothing was
+  // delisted, withdrawn or swept before the failure. Null where the step that
+  // produces each never ran.
+  skipped: GuardSkips,
 ): Promise<void> {
   const errorMsg = err instanceof Error ? err.message : String(err);
   // Logged first: every write below awaits, and the outage that brought the
@@ -173,7 +183,7 @@ export async function recordSyncFailure(
       console.error('%s Failed to record changeset:', config.logPrefix, msg);
     }
     await updateSyncLog(config.sourceId, progress.logId, verdict, runCounters(
-      progress, progress.total, detectionSkippedReason, withdrawalSkippedReason,
+      progress, progress.total, skipped,
     ), errorDetails);
     if (failed) progress.statusMessage = sentenceFor(err, 'its entry in the sync history has the cause.');
   }

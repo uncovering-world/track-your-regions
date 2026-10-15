@@ -111,7 +111,8 @@ export async function badgeAdmitted<T>(
  * source that does not recompute its membership skips nothing and sweeps
  * nothing, and a caller told only the reason would read that silence as a run
  * that decided every row it did not name. `swept` is the one any such caller
- * has to ask; `skipReason` is for the line in the log.
+ * has to ask; `skipReason` is the run row's reason for the card
+ * (`admission_sweep_skipped_reason`, #751) and the line in the log.
  */
 export interface SweepOutcome {
   /** Whether `markNotAdmitted` really decided the rows this run did not name. */

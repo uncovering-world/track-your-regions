@@ -28,6 +28,7 @@ import {
   completionMessage,
   computeFinalStatus,
   recordChangesetOrMark,
+  type GuardSkips,
   recordSyncFailure,
   runCounters,
 } from './runLog.js';
@@ -182,14 +183,13 @@ export async function orchestrateSync<T>(
   // success path already did — a throw from updateSyncLog would otherwise
   // insert every row twice.
   let changesRecorded = false;
-  // The two guards' verdicts, held outside the try so the failure path can
-  // record them too: a run that skipped detection or withdrawal and then died
-  // would otherwise leave NULL on its row, and the card could not say why
-  // nothing was delisted or withdrawn before it failed. Every museum run
+  // The guards' verdicts, held outside the try so the failure path can record
+  // them too: a run that skipped detection, withdrawal or the sweep and then
+  // died would otherwise leave NULL on its row, and the card could not say why
+  // nothing was delisted, withdrawn or swept before it failed. Every museum run
   // carries the first (its source is ranked), so the shape is the common one
   // and only the throw is rare.
-  let detectionSkippedReason: string | null = null;
-  let withdrawalSkippedReason: string | null = null;
+  const skipped: GuardSkips = { detection: null, withdrawal: null, admissionSweep: null };
 
   try {
     progress.logId = await createSyncLog(sourceId, triggeredBy, dryRun);
@@ -203,7 +203,8 @@ export async function orchestrateSync<T>(
 
     const fetched = await config.fetchItems(progress, errorDetails);
     const { items, fetchedCount, filtered } = fetched;
-    withdrawalSkippedReason = fetched.withdrawalSkippedReason ?? null;
+    const withdrawalSkippedReason = fetched.withdrawalSkippedReason ?? null;
+    skipped.withdrawal = withdrawalSkippedReason;
     // fetchItems may append pre-processing errors before the loop counts errors itself
     progress.errors = errorDetails.length;
     if (withdrawalSkippedReason !== null) {
@@ -258,13 +259,14 @@ export async function orchestrateSync<T>(
       console.error('%s The run\'s after-items step failed:', logPrefix, error);
     });
 
-    detectionSkippedReason = await detectMissing(
+    skipped.detection = await detectMissing(
       config, progress, previousActiveCount, seenCount, changes, seenExternalIds,
     );
 
     const sweep = await applyAdmissionSweep(
       config, progress, seenExternalIds, previousAdmittedCount, changes,
     );
+    skipped.admissionSweep = sweep.skipReason;
     if (sweep.skipReason !== null) {
       console.log(`${logPrefix} Admission sweep skipped: ${sweep.skipReason}`);
     }
@@ -291,7 +293,7 @@ export async function orchestrateSync<T>(
     // Stopped before the close, so no progress write lands behind it.
     await progressWriter.close();
     await updateSyncLog(sourceId, progress.logId, finalStatus, runCounters(
-      progress, fetchedCount, detectionSkippedReason, withdrawalSkippedReason,
+      progress, fetchedCount, skipped,
     ), errorDetails.length > 0 ? errorDetails : undefined);
 
     console.log(`${logPrefix} Complete: created=${progress.created}, updated=${progress.updated}, unchanged=${progress.unchanged}, held=${progress.held}, missing=${progress.missing}, errors=${progress.errors}`);
@@ -306,7 +308,7 @@ export async function orchestrateSync<T>(
     await progressWriter.close();
     await recordSyncFailure(
       config, progress, err, errorDetails, changes, changesRecorded, finishedStatus,
-      detectionSkippedReason, withdrawalSkippedReason);
+      skipped);
     throw err;
   } finally {
     // Both paths above have closed it already; this is for a path that forgot.

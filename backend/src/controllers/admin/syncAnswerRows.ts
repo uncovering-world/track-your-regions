@@ -79,7 +79,7 @@ export function experienceSourceOf(
 /** A run as the log reads select it (`SYNC_LOG_COLUMNS_SQL` in `syncController.ts`). */
 export type SyncLogRow = Pick<ExperienceSyncLogsRow,
   'id' | 'source_id' | 'started_at' | 'completed_at' | 'status' | 'is_dry_run' | 'detection_skipped_reason'
-  | 'withdrawal_skipped_reason' | 'triggered_by'> & {
+  | 'withdrawal_skipped_reason' | 'admission_sweep_skipped_reason' | 'triggered_by'> & {
   /** Read through `COALESCE(…, 0)`: nullable columns that no writer leaves null. */
   total_fetched: number;
   total_created: number;
@@ -118,6 +118,7 @@ export function syncLogOf(row: SyncLogRow): SyncLog {
     is_dry_run: row.is_dry_run,
     detection_skipped_reason: row.detection_skipped_reason,
     withdrawal_skipped_reason: row.withdrawal_skipped_reason,
+    admission_sweep_skipped_reason: row.admission_sweep_skipped_reason,
     triggered_by: row.triggered_by,
     triggered_by_name: row.triggered_by_name,
     has_changeset: row.has_changeset,

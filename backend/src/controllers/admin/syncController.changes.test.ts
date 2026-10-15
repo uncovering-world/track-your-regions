@@ -48,7 +48,7 @@ const LOG_ROW = {
   started_at: new Date('2026-09-20T08:00:00Z'), completed_at: new Date('2026-09-20T08:14:00Z'), status: 'success',
   total_fetched: 1248, total_created: 0, total_updated: 3, total_unchanged: 1245, total_missing: 0,
   total_curated_conflicts: 0, total_held: 0, total_filtered: 0, total_errors: 0, is_dry_run: false,
-  detection_skipped_reason: null, withdrawal_skipped_reason: null, triggered_by: 1, triggered_by_name: 'admin',
+  detection_skipped_reason: null, withdrawal_skipped_reason: null, admission_sweep_skipped_reason: null, triggered_by: 1, triggered_by_name: 'admin',
   has_changeset: true, changeset_lost: false, stopped_by_restart: false, error_details: null,
 };
 
