@@ -19,6 +19,8 @@ import {
   packageChanges,
   parseArgs,
   renderTable,
+  ENVIRONMENT_FAILED,
+  imagesOf,
   runTier,
   UNREAD,
 } from './gates.mjs';
@@ -819,6 +821,35 @@ describe('what the runner says it did', () => {
       if (before === undefined) delete process.env.TEST_REPORT_RELATED;
       else process.env.TEST_REPORT_RELATED = before;
     }
+  });
+
+  it('pulls a Docker gate\'s pinned images first, and names a registry\'s refusal as the environment\'s (#1316)', () => {
+    const docs = decide({ paths: ['docs/tech/x.md'] });
+    const links = docs.gates.find((gate) => gate.id === 'lint:links');
+    expect(imagesOf(links)).toEqual([expect.stringMatching(/^lycheeverse\/lychee:[\w.-]+@sha256:[0-9a-f]{64}$/)]);
+    expect(imagesOf(docs.gates.find((gate) => gate.id === 'lint:md'))).toEqual([]);
+    // A pin a runner script keeps rather than its npm script: oasdiff, and the scanner spelled without a tag.
+    const docker = (script) => ({ setup: 'docker', command: ['npm', 'run', script] });
+    expect(imagesOf(docker('api:breaking'))).toEqual([expect.stringMatching(/^tufin\/oasdiff:v[\d.]+@sha256:[0-9a-f]{64}$/)]);
+    expect(imagesOf(docker('security:image'))).toEqual([expect.stringMatching(/^aquasec\/trivy@sha256:[0-9a-f]{64}$/)]);
+
+    // The tier runs lint:md, then lint:links: inspect (absent), pull (refused).
+    const refused = fakeSpawn([
+      { status: 0 },
+      { status: 1 },
+      { status: 1, stderr: 'Error response from daemon: toomanyrequests: You have reached your unauthenticated pull rate limit' },
+    ]);
+    const run = capture(docs, 'check', { spawn: refused });
+    expect(run.code).toBe(ENVIRONMENT_FAILED);
+    expect(run.printed).toContain('lint:links could not run: the registry refused lycheeverse/lychee');
+    expect(run.printed).toContain('the environment: the registry refused an image it runs');
+    expect(refused.calls.some((call) => call.startsWith('npm run lint:links'))).toBe(false);
+
+    // A pin that names no manifest is the repository's error: the gate runs and fails on it.
+    const unknown = fakeSpawn([{ status: 0 }, { status: 1 }, { status: 1, stderr: 'manifest unknown' }, { status: 125 }]);
+    const pinned = capture(docs, 'check', { spawn: unknown });
+    expect(pinned.code).toBe(125);
+    expect(pinned.printed).toContain('Failed: lint:links (exit 125)');
   });
 
   it('says so loudly when the tier has nothing to run', () => {

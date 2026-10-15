@@ -1047,6 +1047,58 @@ export function parseArgs(argv) {
 }
 
 /**
+ * An image a gate runs, pinned by digest: `name:tag@sha256:…` in a root npm
+ * script, or a bare `name@sha256:…` with the version in a comment, as a runner
+ * script may spell it.
+ */
+const PINNED_IMAGE = /[a-z0-9][\w./-]*(?::[\w.-]+)?@sha256:[0-9a-f]{64}/g;
+
+/** The repository scripts an npm script runs by path (`node scripts/openapi-breaking.mjs`). */
+const RUNNER_FILE = /scripts\/[\w./-]+\.(?:mjs|js|sh)\b/g;
+
+/**
+ * The pinned images a Docker gate runs, what has to be pulled before it can
+ * say anything: those its npm scripts name, and those named in the runner
+ * files the scripts run, where `api:breaking` keeps its oasdiff pin.
+ */
+export function imagesOf(gate, scripts = rootScripts(), read = rootFile) {
+  if (gate.setup !== 'docker') return [];
+  const texts = [...gateScripts(gate, scripts)].map((name) => String(scripts[name] ?? ''));
+  const files = new Set(texts.flatMap((text) => text.match(RUNNER_FILE) ?? []));
+  for (const file of files) texts.push(read(file));
+  return [...new Set(texts.flatMap((text) => text.match(PINNED_IMAGE) ?? []))];
+}
+
+/**
+ * What a registry or the network answers when it refuses a pull for no fault
+ * of the change: Docker Hub's anonymous limit (`toomanyrequests`), a timeout,
+ * a refused or reset connection, a name that does not resolve. A pin that
+ * names no manifest is not among them: that is the repository's error, and
+ * the gate runs and fails on it.
+ */
+const REGISTRY_REFUSAL = /toomanyrequests|rate limit|TLS handshake timeout|i\/o timeout|connection (?:refused|reset)|no such host|unexpected status|Client\.Timeout/i;
+
+/** The exit a run ends with when the environment, not a gate, failed (EX_TEMPFAIL): run it again later. */
+export const ENVIRONMENT_FAILED = 75;
+
+/**
+ * Pull the images a Docker gate runs before it runs (#1316), and answer the
+ * refusal that is the environment's, if any. An image already on the host is
+ * not pulled again; a host without Docker answers no refusal and the gate
+ * reports that itself.
+ */
+function registryRefusal(gate, spawn) {
+  for (const image of imagesOf(gate)) {
+    if (spawn('docker', ['image', 'inspect', '--format', '.', image], { stdio: 'ignore' }).status === 0) continue;
+    const pulled = spawn('docker', ['pull', '--quiet', image], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    if (pulled.status === 0) continue;
+    const said = `${pulled.stderr ?? ''}${pulled.stdout ?? ''}`.trim();
+    if (REGISTRY_REFUSAL.test(said)) return { image, said: said.split('\n').filter(Boolean).at(-1) };
+  }
+  return null;
+}
+
+/**
  * Run one tier's applicable gates, stopping at the first failure (impure).
  *
  * Returns the exit code rather than taking it: what a gate did is the caller's
@@ -1125,6 +1177,15 @@ export function runTier(decision, tier, { all = false, spawn = spawnSync, base, 
       continue;
     }
     console.log(`▶ ${gate.id}  ${gate.command.join(' ')}`);
+    const refusal = registryRefusal(gate, spawn);
+    if (refusal) {
+      console.error(
+        `${gate.id} could not run: the registry refused ${refusal.image} (${refusal.said}). `
+        + 'That is the environment\'s failure, not the gate\'s verdict on the change: run it again once the registry answers.',
+      );
+      failed = { gate, code: ENVIRONMENT_FAILED, environment: true };
+      break;
+    }
     if (selection) {
       console.log(`  ${selection.whole ? 'whole lane' : 'affected specs'}: ${selection.why}`);
     }
@@ -1174,7 +1235,9 @@ export function runTier(decision, tier, { all = false, spawn = spawnSync, base, 
     // Unconditionally: when the last gate of a tier is the one that failed
     // there is nothing left to not run, and `Ran: a, b, c` on its own is the
     // same text a clean run prints.
-    console.log(`Failed: ${failed.gate.id} (exit ${failed.code})`);
+    console.log(failed.environment
+      ? `Failed: ${failed.gate.id} (the environment: the registry refused an image it runs; exit ${failed.code})`
+      : `Failed: ${failed.gate.id} (exit ${failed.code})`);
     const notRun = selected.slice(selected.indexOf(failed.gate) + 1).map((gate) => gate.id);
     if (notRun.length) {
       console.log(`Not run (stopped after ${failed.gate.id} failed): ${notRun.join(', ')}`);
