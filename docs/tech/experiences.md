@@ -4242,7 +4242,9 @@ the union, so they keep their own statement and their own offset. **Two of the f
 them**, as predicates of their own on the object's row: the source chip and the search, because a
 curator narrowing the queue to one source, or looking for one object by name, means the whole
 page. The region, the run and the set-aside do not — a run is what a question was asked *by* and
-these are answers, and neither list is counted in the facets a chip states.
+these are answers, and neither list is counted in the facets a chip states. The page says so: an
+open answered block, under a region, a run or a kind of question, carries the line "Not narrowed
+by the region … you chose — only the search and the source reach this block" (#840).
 
 Measured on the development catalogue (2026-09-07, admin scope): 1 621 open questions — 1 451
 held, 118 refused, 52 arrivals, 11 contents, no conflict, and nothing withdrawn or missing. The
@@ -5302,7 +5304,14 @@ independently, so `held` carries its own `missing_since IS NULL` guard rather th
 
 The queue pages by cursor (`limit` default 25, 100 at most): one *Show more* at the foot of the
 list asks for the next page at `paging.nextCursor` and appends it, and the three answered lists
-below it keep their own Previous / Show more on their own offsets. The toolbar prints the whole number
+below it keep their own Previous / Show more on their own offsets. **The answered lists are read on
+their own** (`useReviewQueue`, #840): the questions' infinite query is keyed on the filters alone,
+so paging an answered block never re-reads the pages *Show more* loaded. While every answered list
+is at its first page they come with the questions' first page; once one is paged, a query of its
+own asks the same endpoint at the three offsets, keyed on the filters and the offsets, and keeps
+the page it showed until the next one arrives. It answers a first page of questions too, which
+that read ignores. A filter change sets the three offsets back to the first page in the same
+render, so the new filter is never asked at an old offset. The toolbar prints the whole number
 under the filter — `1,621 open` — and the list's own accessible name says how much of it is
 loaded (`25 of 1,621 questions loaded`, the container's `aria-label` rather than text on the
 screen). A day or question heading carries a count only once every page is loaded: a page holds
