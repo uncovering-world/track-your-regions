@@ -1,7 +1,8 @@
 /**
  * Running one queued dump build in the dump worker (ADR-0106): the file is
  * resolved, the dump is read through the counting consumer (`verify`) or the
- * dump's builder (`keep`), and the row is closed with the outcome. Every
+ * dump's builder (`keep`), and the row is closed with the outcome; a
+ * `rederive` reads no file and runs the builder's derivation alone. Every
  * `BEAT_EVERY_MS` the build writes its progress and heartbeat to its row,
  * which is how the panel follows it, and learns whether an admin asked it to
  * stop.
@@ -80,6 +81,12 @@ export async function runBuild(claimed: ClaimedBuild, stop: AbortSignal): Promis
     const descriptor = dumpNamed(claimed.dump);
     if (!descriptor) throw new Error(`No dump named ${claimed.dump}`);
     const { kind, only } = claimed.request;
+    if (kind === 'rederive') {
+      await rederive(claimed, descriptor, progress, controller.signal, notes);
+      return;
+    }
+    // A kind this code does not know reads no file: counting it as a verify would download the dump.
+    if (kind !== 'keep' && kind !== 'verify') throw new Error(`This dump worker does not know a ${String(kind)} build; recreate it to run the current code`);
     if (only) progress.message = `Finding ${only} on the host...`;
     await beat(claimed.id, progress);
     const file = await resolveFile(descriptor, controller.signal, only);
@@ -105,6 +112,28 @@ export async function runBuild(claimed: ClaimedBuild, stop: AbortSignal): Promis
     clearInterval(heart);
     stop.removeEventListener('abort', onStop);
   }
+}
+
+/** Derive the kept build's tables again from what it holds (#1526), and close the row: there is no file to verify. */
+async function rederive(
+  claimed: ClaimedBuild, descriptor: DumpDescriptor, progress: BuildProgressRecord, signal: AbortSignal, notes: string[],
+): Promise<void> {
+  const keeper = keeperOf(descriptor.key);
+  if (!keeper?.rederive) throw new Error(`Nothing built from ${descriptor.key} can be derived again`);
+  progress.phase = 'deriving';
+  progress.message = 'Deriving the tables again from what is kept...';
+  await beat(claimed.id, progress);
+  await keeper.rederive({
+    buildId: claimed.id,
+    signal,
+    onPhase: message => { progress.message = message; },
+    onNote: note => {
+      notes.push(note);
+      console.log(`[Dumps] ${descriptor.key}: ${note}`);
+    },
+  });
+  console.log(`[Dumps] ${descriptor.key}: ${['derived again and swapped in', ...notes].join('; ')}`);
+  await closeBuild(claimed.id, { status: 'success', bytes: 0, lines: 0, checksumActual: null, error: null });
 }
 
 /** Close a build that did not end verified; what it did on the way (an older copy removed) is kept in its message. */

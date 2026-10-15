@@ -19,7 +19,8 @@ const FILE = {
   date: '2026-10-12', checksum: { kind: 'sha1', value: 'a'.repeat(40) }, expectedBytes: 1, compression: 'gzip',
 };
 vi.mock('./catalog.js', () => ({ dumpNamed: (key: string) => ({ key, resolve: async () => FILE }) }));
-vi.mock('./keepers.js', () => ({ keeperOf: () => null }));
+const keepers = vi.hoisted(() => ({ rederive: vi.fn(async (_options: { buildId: number; onNote?: (note: string) => void }) => undefined) }));
+vi.mock('./keepers.js', () => ({ keeperOf: (key: string) => (key === 'wikidata-entities' ? { rederive: keepers.rederive } : null) }));
 const read = vi.hoisted(() => ({ readDump: vi.fn() }));
 vi.mock('./read.js', () => ({ readDump: read.readDump, countLines: () => ({}) }));
 
@@ -40,6 +41,34 @@ describe('a build in the dump worker (ADR-0106)', () => {
     await runBuild(claimed, new AbortController().signal);
     expect(ledger.recordFile).toHaveBeenCalledWith(9, FILE);
     expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'success', lines: 3 }));
+  });
+
+  it('derives again without finding or reading a file, and closes as a success (#1526)', async () => {
+    await runBuild({ id: 9, dump: 'wikidata-entities', request: { kind: 'rederive' } }, new AbortController().signal);
+    expect(keepers.rederive).toHaveBeenCalledWith(expect.objectContaining({ buildId: 9 }));
+    expect(read.readDump).not.toHaveBeenCalled();
+    expect(ledger.recordFile).not.toHaveBeenCalled();
+    expect(ledger.beat).toHaveBeenCalledWith(9, expect.objectContaining({ phase: 'deriving' }));
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, { status: 'success', bytes: 0, lines: 0, checksumActual: null, error: null });
+  });
+
+  it('fails a kind of build it does not know rather than reading the file as a verify (#1526)', async () => {
+    await runBuild({ id: 9, dump: 'wikidata-entities', request: { kind: 'compact' as never } }, new AbortController().signal);
+    expect(read.readDump).not.toHaveBeenCalled();
+    expect(ledger.recordFile).not.toHaveBeenCalled();
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'failed', error: expect.stringMatching(/does not know a compact build/) }));
+  });
+
+  it('closes a re-derive that failed with what it noted on the way (#1526)', async () => {
+    keepers.rederive.mockImplementation(async ({ onNote }) => {
+      onNote?.('the database\'s disk was not checked: DB_DISK_DIR names no path on it');
+      throw new Error('There is no subset in place to derive again: build it from the dump first');
+    });
+    await runBuild({ id: 9, dump: 'wikidata-entities', request: { kind: 'rederive' } }, new AbortController().signal);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
+      status: 'failed',
+      error: 'There is no subset in place to derive again: build it from the dump first; the database\'s disk was not checked: DB_DISK_DIR names no path on it',
+    }));
   });
 
   it('keeps what a failed build did on the way in the failure', async () => {

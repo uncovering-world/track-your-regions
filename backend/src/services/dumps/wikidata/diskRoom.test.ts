@@ -12,7 +12,7 @@ vi.mock('../localCopies.js', async (importOriginal) => ({
   diskOf: async (dir: string) => disks.get(dir)!,
 }));
 
-const { assertRoomToWrite } = await import('./diskRoom.js');
+const { assertRoomForCopies, assertRoomToWrite } = await import('./diskRoom.js');
 
 const GB = 1024 ** 3;
 // 200 GB of kept lines make 90 GB of tables; 2,000 GB of others make a 10 GB spool.
@@ -63,5 +63,22 @@ describe('room for the subset build to write (#1466)', () => {
     await expect(assertRoomToWrite('/app/data/dumps', counts, '')).resolves.toEqual([
       'the database\'s disk was not checked: DB_DISK_DIR names no path on it',
     ]);
+  });
+});
+
+describe('room for a re-derive\'s copies of the derived tables (#1526)', () => {
+  it('lets it write what the live tables take when the database\'s disk holds that and the headroom', async () => {
+    disks.set('/app/db-disk', { device: 2, blocks: 200, bsize: 4096, free: 71 * GB });
+    await expect(assertRoomForCopies(50 * GB, '/app/db-disk')).resolves.toEqual([]);
+  });
+
+  it('refuses, naming the figures, when it cannot', async () => {
+    disks.set('/app/db-disk', { device: 2, blocks: 200, bsize: 4096, free: 69 * GB });
+    await expect(assertRoomForCopies(50 * GB, '/app/db-disk'))
+      .rejects.toThrow('Deriving the tables again would write about 50 GB to the disk of /app/db-disk and keep 20 GB free, but it has 69 GB');
+  });
+
+  it('says it could not check when no path on the database\'s disk is named', async () => {
+    await expect(assertRoomForCopies(50 * GB, '')).resolves.toEqual(['the database\'s disk was not checked: DB_DISK_DIR names no path on it']);
   });
 });

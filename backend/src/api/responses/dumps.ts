@@ -12,10 +12,15 @@ import { DUMP_KEYS } from '../../services/dumps/catalog.js';
 const timestamp = z.iso.datetime({ offset: true });
 
 
+const BuildKind = z.enum(['verify', 'keep', 'rederive']).describe(
+  'A verify build reads and counts; a keeping build runs the dump\'s builder and swaps in what it builds; a re-derive derives the kept build\'s tables again from what it holds, reading no file (#1526).',
+);
+
 export const DumpBuildProgress = z.strictObject({
   dump: z.enum(DUMP_KEYS),
-  kind: z.enum(['verify', 'keep']).describe('A verify build reads and counts; a keeping build runs the dump\'s builder and swaps in what it builds.'),
-  status: z.enum(['queued', 'resolving', 'reading']).describe('Queued for the dump worker, finding its file, or reading it (ADR-0106).'),
+  kind: BuildKind,
+  status: z.enum(['queued', 'resolving', 'reading', 'deriving'])
+    .describe('Queued for the dump worker, finding its file, reading it (ADR-0106), or deriving the kept tables again, which reads no file (#1526).'),
   message: z.string(),
   file: z.strictObject({
     fileName: z.string(),
@@ -34,13 +39,14 @@ export type DumpBuildProgress = z.infer<typeof DumpBuildProgress>;
 
 export const DumpBuild = z.strictObject({
   id: z.number().int(),
+  kind: BuildKind,
   fileName: z.string().nullable().describe('Null for a build that ended before it found its file.'),
   dumpDate: z.string().nullable(),
   mode: z.enum(CHECK_VALUES.dump_builds.mode),
   bytes: z.number().int(),
   lines: z.number().int(),
   checksumKind: z.enum(CHECK_VALUES.dump_builds.checksum_kind).nullable(),
-  verified: z.boolean().describe('The published checksum matched, or, where none is published, the size and the end of stream did.'),
+  verified: z.boolean().describe('The published checksum matched, or, where none is published, the size and the end of stream did; never for a re-derive, which reads no file.'),
   status: z.enum(CHECK_VALUES.dump_builds.status).exclude(['queued']),
   error: z.string().nullable(),
   startedAt: timestamp,

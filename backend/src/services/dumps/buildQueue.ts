@@ -6,15 +6,14 @@
  */
 
 import { dumpNamed, type DumpDescriptor, type DumpFile, type DumpKey } from './catalog.js';
-import { activeBuildOf, closeOrphanedBuilds, enqueueBuild, requestCancel, type ActiveBuild } from './ledger.js';
+import { activeBuildOf, closeOrphanedBuilds, enqueueBuild, requestCancel, type ActiveBuild, type BuildKind, type BuildProgressRecord } from './ledger.js';
 import { keeperOf } from './keepers.js';
 import { newestLocalCopy } from './localCopies.js';
 
 export interface DumpBuildProgress {
   dump: DumpKey;
-  /** `verify` reads and counts; `keep` runs the dump's builder and keeps what it builds. */
-  kind: 'verify' | 'keep';
-  status: 'queued' | 'resolving' | 'reading';
+  kind: BuildKind;
+  status: 'queued' | BuildProgressRecord['phase'];
   message: string;
   file: Pick<DumpFile, 'fileName' | 'date' | 'expectedBytes'> | null;
   downloaded: number;
@@ -50,10 +49,8 @@ async function localCopyName(descriptor: DumpDescriptor): Promise<string> {
 
 function progressOf(dump: DumpKey, build: ActiveBuild): DumpBuildProgress {
   // A row from before migration 101 asked for nothing: it was a verify or keep build the old code ran.
-  const request = build.request as { kind: 'verify' | 'keep' } | null;
-  const progress = build.progress as {
-    phase: 'resolving' | 'reading'; message: string; downloaded: number; read: number; lines: number; etaSeconds?: number | null;
-  } | null;
+  const request = build.request as { kind: BuildKind } | null;
+  const progress = build.progress as Omit<BuildProgressRecord, 'etaSeconds'> & { etaSeconds?: number | null } | null;
   const queued = build.status === 'queued';
   return {
     dump,
@@ -92,15 +89,23 @@ export interface BuildRequest {
 
 /**
  * Queue a build of `dump` for the worker. Refuses a keeping one of a dump
- * with no builder, one from a local copy that is not there, and a second one
- * of a dump with a build queued or running in any process (#1463): a second
- * download of a 156 GB dump beside the first would fill the disk under both.
+ * with no builder, a re-derive with nothing kept to derive from, one from a
+ * local copy that is not there, and a second one of a dump with a build
+ * queued or running in any process (#1463): a second download of a 156 GB
+ * dump beside the first would fill the disk under both, and a re-derive
+ * beside a build would swap tables in under it.
  */
 export async function startBuild(key: DumpKey, { startedBy, kind = 'verify', from = 'newest' }: BuildRequest): Promise<DumpBuildProgress> {
   const descriptor = dumpNamed(key);
   if (!descriptor) throw new Error(`No dump named ${key}`);
-  if (kind === 'keep' && !keeperOf(key)) throw new Error(`Nothing is built from ${key} yet`);
-  const only = from === 'local' ? await localCopyName(descriptor) : undefined;
+  const keeper = keeperOf(key);
+  if (kind === 'keep' && !keeper) throw new Error(`Nothing is built from ${key} yet`);
+  if (kind === 'rederive') {
+    if (!keeper?.rederive) throw new Error(`Nothing built from ${key} can be derived again`);
+    if (!await keeper.latest()) throw new Error(`Nothing is built from ${key} yet: build it from the dump first`);
+  }
+  // A re-derive reads no file.
+  const only = from === 'local' && kind !== 'rederive' ? await localCopyName(descriptor) : undefined;
   await closeOrphanedBuilds();
   await enqueueBuild(key, dumpsDir() ? 'local' : 'stream', { kind, ...(only ? { only } : {}) }, startedBy);
   const progress = await buildProgress(key);
