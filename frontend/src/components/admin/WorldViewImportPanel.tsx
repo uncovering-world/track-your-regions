@@ -626,6 +626,20 @@ export function WorldViewImportPanel() {
                   </Typography>
                 </Box>
               )}
+              {/* A policy that matches regions rather than countries (#457). Only an
+                  import's status carries these; a Wikivoyage extraction matches by country. */}
+              {isRunning && activeStatus.status === 'matching' && (activeStatus.totalCountries ?? 0) === 0
+                && 'matchTotal' in activeStatus && (activeStatus.matchTotal ?? 0) > 0 && (
+                <Box>
+                  <LinearProgress
+                    variant="determinate"
+                    value={((activeStatus.matchDone ?? 0) / (activeStatus.matchTotal ?? 1)) * 100}
+                  />
+                  <Typography variant="caption" color="text.secondary">
+                    Matching regions: {activeStatus.matchDone ?? 0}/{activeStatus.matchTotal}
+                  </Typography>
+                </Box>
+              )}
 
               {/* Stats chips */}
               {(isComplete || (isRunning && (activeStatus.status === 'matching' || activeStatus.status === 'importing'))) && (
