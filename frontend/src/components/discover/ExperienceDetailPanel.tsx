@@ -140,10 +140,11 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
   const totalLocations = locationsData?.totalLocations || 0;
   const isMultiLocation = totalLocations > 1;
 
-  // The region's batch, as Discover's map reads it (the same key, so no second
-  // request): the region path and whether each part lies in the region.
+  // The region's batch, as Discover's map reads it — lost places' points
+  // included (#609) — so the same key and no second request: the region path and
+  // whether each part lies in the region, a revealed lost place's parts too.
   const { address } = useAppAddress();
-  const { locationsByExperience } = useRegionLocations(address?.regionId ?? null, false, true);
+  const { locationsByExperience } = useRegionLocations(address?.regionId ?? null, true, true);
   const regionPlaces = locationsByExperience[experience.id];
 
   // Build location list: use public locations as base, overlay visited status when authenticated

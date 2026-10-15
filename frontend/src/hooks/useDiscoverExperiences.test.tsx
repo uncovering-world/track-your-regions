@@ -46,6 +46,7 @@ vi.mock('../api/experiences', async (importOriginal) => {
     fetchExperienceKinds: vi.fn().mockResolvedValue([
       { id: 1, name: 'World Heritage Sites' },
       { id: 2, name: 'Art Museums', is_active: true },
+      { id: 3, name: 'Public Art & Monuments', is_active: true },
     ]),
     fetchExperiencesByRegion: mockFetchByRegion,
     fetchExperience: mockFetchOne,
@@ -369,5 +370,58 @@ describe('useDiscoverExperiences — a place former in one of its kinds (#1289)'
     expect(shown.source_membership).toBe('former');
     // The dialog answers the place, whose own listing is present.
     expect(result.current.discover.placeRowOf(shown).source_membership).toBe('present');
+  });
+});
+
+describe('useDiscoverExperiences — places that no longer exist (#609)', () => {
+  const kindRow = (id: number, name: string, kindId: number, kindName: string, existence: 'extant' | 'lost') => ({
+    id, name, type: null, kind_id: kindId, kind_name: kindName, kind_priority: kindId, existence,
+    kinds: [{ kind_id: kindId, kind_name: kindName, kind_priority: kindId, type: null, source_id: kindId, external_id: String(id) }],
+  } as unknown as Experience);
+  // Valletta: the Triton Fountain stands; the Royal Opera House was destroyed in 1942.
+  const TRITON = kindRow(9101, 'Triton Fountain', 3, 'Public Art & Monuments', 'extant');
+  const OPERA = kindRow(9102, 'Royal Opera House, Valletta', 3, 'Public Art & Monuments', 'lost');
+  const TEMPLES = kindRow(9103, 'Megalithic Temples of Malta', 1, 'World Heritage Sites', 'extant');
+
+  beforeEach(() => {
+    mockFetchByRegion.mockResolvedValue({ experiences: [TRITON, OPERA, TEMPLES], total: 3, lostHidden: 0 });
+  });
+
+  it('asks for them, holds them back, and counts what the open kind would gain', async () => {
+    const { result } = renderAt('/discover/wv/5/r/7100?kind=3');
+
+    await waitFor(() => expect(result.current.discover.experiences.map(e => e.name)).toEqual(['Triton Fountain']));
+    expect(result.current.discover.lostInKind).toBe(1);
+    expect(result.current.discover.showLost).toBe(false);
+    expect(mockFetchByRegion).toHaveBeenCalledWith(7100, expect.objectContaining({ includeLost: true }));
+  });
+
+  it('shows them when asked, without asking the server again', async () => {
+    const { result } = renderAt('/discover/wv/5/r/7100?kind=3');
+    await waitFor(() => expect(result.current.discover.experiences).toHaveLength(1));
+    const calls = mockFetchByRegion.mock.calls.length;
+
+    act(() => result.current.discover.setShowLost(true));
+
+    expect(result.current.discover.experiences.map(e => e.name)).toEqual(['Triton Fountain', 'Royal Opera House, Valletta']);
+    expect(mockFetchByRegion.mock.calls.length).toBe(calls);
+  });
+
+  it('keeps the set a map frames when they are shown, so the map does not fly back out', async () => {
+    const { result } = renderAt('/discover/wv/5/r/7100?kind=3');
+    await waitFor(() => expect(result.current.discover.experiences).toHaveLength(1));
+    const set = result.current.discover.experienceSet;
+
+    act(() => result.current.discover.setShowLost(true));
+
+    expect(result.current.discover.experiences).toHaveLength(2);
+    expect(result.current.discover.experienceSet).toBe(set);
+  });
+
+  it("offers nothing under a kind whose places all stand, whatever another kind holds", async () => {
+    const { result } = renderAt('/discover/wv/5/r/7100?kind=1');
+
+    await waitFor(() => expect(result.current.discover.experiences.map(e => e.name)).toEqual(['Megalithic Temples of Malta']));
+    expect(result.current.discover.lostInKind).toBe(0);
   });
 });

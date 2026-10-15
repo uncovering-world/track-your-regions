@@ -20,7 +20,7 @@
  */
 
 import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
-import { useMemo, useCallback, useEffect } from 'react';
+import { useMemo, useCallback, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import {
   fetchExperienceRegionCounts,
@@ -166,6 +166,7 @@ export function useDiscoverExperiences() {
     queryFn: () => fetchExperiencesByRegion(selectedRegion!.id, {
       includeChildren: true,
       limit: WHOLE_REGION_LIMIT,
+      includeLost: true,
     }),
     enabled: selectedRegion !== null && (listOpen || addressedExperienceId !== null),
     staleTime: 120000,
@@ -183,9 +184,40 @@ export function useDiscoverExperiences() {
     },
   });
 
-  const experiences = useMemo(
-    () => experiencesData?.experiences ?? [],
-    [experiencesData?.experiences],
+  // Places that no longer exist come with the answer and are held back here,
+  // by the rule the server applies when asked to hide them (`existence` is
+  // `lost`, `hideLostSql`). Discover shows one kind at a time, and the server's
+  // `lostHidden` counts the whole region, so a line offering "3 no longer exist"
+  // under World Heritage Sites could reveal none of them; counted here, it says
+  // what this kind's list would gain. They are few — almost no region holds
+  // one — so asking for them costs nothing worth a second request, and showing
+  // them takes none (#609). The ask belongs to the region, as in Map mode:
+  // stored as the region it was made for, so a new region starts hidden.
+  const [lostShownFor, setLostShownFor] = useState<number | null>(null);
+  const showLost = lostShownFor !== null && lostShownFor === selectedRegion?.id;
+  const setShowLost = useCallback(
+    (show: boolean) => setLostShownFor(show ? selectedRegion?.id ?? null : null),
+    [selectedRegion?.id],
+  );
+  const shownRows = useMemo(
+    () => experiencesData && (showLost
+      ? experiencesData.experiences
+      : experiencesData.experiences.filter(e => e.existence !== 'lost')),
+    [experiencesData, showLost],
+  );
+  const experiences = useMemo(() => shownRows ?? [], [shownRows]);
+  /**
+   * The open kind's rows with the lost ones in them: what a map frames as a new
+   * set. Revealing or hiding the lost ones changes `experiences` and not this,
+   * so the map does not fly back out to the region when a reader asks to see
+   * what used to be there. Stable while the answer is (React Query shares
+   * equal results).
+   */
+  const experienceSet = experiencesData?.experiences;
+  /** Places of the open kind that no longer exist — what revealing them adds. */
+  const lostInKind = useMemo(
+    () => (experiencesData?.experiences ?? []).filter(e => e.existence === 'lost').length,
+    [experiencesData],
   );
 
   // The places themselves, as the region answered them: a row above is the place
@@ -198,6 +230,7 @@ export function useDiscoverExperiences() {
     queryFn: () => fetchExperiencesByRegion(selectedRegion!.id, {
       includeChildren: true,
       limit: WHOLE_REGION_LIMIT,
+      includeLost: true,
     }),
     enabled: selectedRegion !== null && (listOpen || addressedExperienceId !== null),
     staleTime: 120000,
@@ -225,7 +258,7 @@ export function useDiscoverExperiences() {
   const selectedExperienceId = activeView ? addressedExperienceId : null;
   const addressedObject = addressedExperienceId === null
     ? undefined
-    : experiencesData?.experiences.find(e => e.id === addressedExperienceId);
+    : shownRows?.find(e => e.id === addressedExperienceId);
   const unkindedMissing = address !== null && addressedExperienceId !== null && kindId === null
     && kinds.length > 0 && experiencesData !== undefined && addressedObject === undefined;
   const listMissing = address !== null && selectedExperienceId !== null && experiencesData !== undefined
@@ -392,6 +425,10 @@ export function useDiscoverExperiences() {
     experiences,
     placeRowOf,
     experiencesLoading,
+    experienceSet,
+    lostInKind,
+    showLost,
+    setShowLost,
 
     // Detail panel
     selectedExperienceId,

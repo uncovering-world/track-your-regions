@@ -29,6 +29,8 @@ import { useAuth } from '../../hooks/useAuth';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { EmptyState } from '../shared/EmptyState';
 import { VirtualRow } from '../shared/VirtualRow';
+import { NoticeLink } from '../shared/NoticeLink';
+import { HIDE_LOST_LABEL, lostHiddenLabel } from '../shared/lostNotice';
 import { ExperienceCard } from './ExperienceCard';
 
 interface DiscoverExperienceRowProps {
@@ -87,6 +89,10 @@ interface DiscoverExperienceListProps {
   experiences: Experience[];
   filteredExperiences: Experience[];
   isLoading: boolean;
+  /** Places of the open kind that no longer exist, held back unless `showLost` (#609). */
+  lostInKind: number;
+  showLost: boolean;
+  onShowLost: (show: boolean) => void;
   search: string;
   setSearch: (value: string) => void;
   shortKindName: string | null;
@@ -109,6 +115,9 @@ export function DiscoverExperienceList({
   experiences,
   filteredExperiences,
   isLoading,
+  lostInKind,
+  showLost,
+  onShowLost,
   search,
   setSearch,
   shortKindName,
@@ -326,6 +335,18 @@ export function DiscoverExperienceList({
                   );
                 })}
               </List>
+            )}
+            {/* The way back to places that no longer exist, at the end of the
+                list as in Map mode: under the rows rather than beside the kind
+                tags and the name filter, which choose what the list is about,
+                where this only adds to it (#609). Offered only where the open kind
+                holds one: `lostInKind` counts them shown or not, and the ask is the
+                region's, so a kind with none must not offer to hide them. */}
+            {!isLoading && lostInKind > 0 && (
+              <NoticeLink
+                label={showLost ? HIDE_LOST_LABEL : lostHiddenLabel(lostInKind)}
+                onClick={() => onShowLost(!showLost)}
+              />
             )}
           </Box>
         </Box>

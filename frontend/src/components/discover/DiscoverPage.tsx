@@ -56,6 +56,10 @@ export function DiscoverPage() {
     experiences,
     experiencesLoading,
     placeRowOf,
+    experienceSet,
+    lostInKind,
+    showLost,
+    setShowLost,
     selectedExperienceId,
     setSelectedExperienceId,
     selectedPointId,
@@ -293,6 +297,10 @@ export function DiscoverPage() {
           experiences={experiences}
           placeRowOf={placeRowOf}
           isLoading={experiencesLoading}
+          experienceSet={experienceSet}
+          lostInKind={lostInKind}
+          showLost={showLost}
+          onShowLost={setShowLost}
           onBack={closeExperienceView}
           onSelectExperience={setSelectedExperienceId}
           onOpenPoint={openPointByDot}
