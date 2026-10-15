@@ -405,10 +405,12 @@ file a gate reads outside its classes is in that gate's `config`, the way a
 target's own settings are its input in Nx, and asks for that gate alone:
 
 - `.madgerc` asks for `lint:circular`, `.markdownlint-cli2.jsonc` for `lint:md`,
-  `.semgrepignore` for the two Semgrep scans;
+  `.semgrepignore` for the two Semgrep scans, `.gitleaks.toml` for the secrets
+  scan;
 - a tool guard (`scripts/require-node-tools.sh`, `scripts/require-py-tools.sh`,
-  `scripts/require-python-312.sh`) asks for the gates whose script calls it, and
-  `scripts/scan-image.sh` for the image scan;
+  `scripts/require-python-312.sh`) asks for the gates whose script calls it,
+  `scripts/scan-image.sh` for the image scan and `scripts/scan-secrets.sh` for
+  the secrets scan;
 - the root `package-lock.json` asks for the two gates that run a root tool,
   `lint:circular` and `lint:md`;
 - `docs/tech/gates.md`, `ci.yml` and the root `package.json` ask for
@@ -465,7 +467,7 @@ by hand. The first spec is what makes sure the file is placed at all.
 | `database` | `/^db\/(?!catalogue-coverage\/.*\.jsonl$)/` | The schema, the migrations and the loaders: what a database is built from. The backend unit lane reads db/ through repoFile() — schema parity, the migration ledger, the trigger guards — and the stack lanes stand on it. No lint, typecheck or web gate reads it. |
 | `tiles` | `martin/` | Martin's configuration. The backend unit lane asserts on the tile sources it publishes, and the smoke and Lighthouse lanes draw them. |
 | `scripts` | `scripts/` | The repository's own scripts and their specs, whole: the tooling specs run in the backend unit lane, and two of its specs scan the tree for anything that switches the geometry triggers off. |
-| `runners` | `/^scripts\/(?!.*\.test\.mjs$)(?!(?:affected-specs\.mjs\|board\.sh\|catalogue-coverage\.sh\|ci-graph-measure\.mjs\|db-cli\.sh\|db-migrate\.sh\|db-types\.sh\|gate-cache\.mjs\|gates\.mjs\|lib\/db-env\.sh\|lint-line-pointers\.mjs\|match-snapshot\.sh\|openapi-breaking\.mjs\|require-node-tools\.sh\|require-py-tools\.sh\|require-python-312\.sh\|review-surface\.mjs\|scan-image\.sh\|setup\.sh\|setup-integrations\.sh\|test-db-migrate\.sh)$)/` | The scripts the unit and stack lanes run through: test-report.mjs, test-stack.sh, the report parsers the web's specs import, the API contract and performance runners. Everything under scripts/ but the specs and the tools no lane executes, so a new script counts as a runner until it is named a tool. |
+| `runners` | `/^scripts\/(?!.*\.test\.mjs$)(?!(?:affected-specs\.mjs\|board\.sh\|catalogue-coverage\.sh\|ci-graph-measure\.mjs\|db-cli\.sh\|db-migrate\.sh\|db-types\.sh\|gate-cache\.mjs\|gates\.mjs\|lib\/db-env\.sh\|lint-line-pointers\.mjs\|match-snapshot\.sh\|openapi-breaking\.mjs\|require-node-tools\.sh\|require-py-tools\.sh\|require-python-312\.sh\|review-surface\.mjs\|scan-image\.sh\|scan-secrets\.sh\|setup\.sh\|setup-integrations\.sh\|test-db-migrate\.sh)$)/` | The scripts the unit and stack lanes run through: test-report.mjs, test-stack.sh, the report parsers the web's specs import, the API contract and performance runners. Everything under scripts/ but the specs and the tools no lane executes, so a new script counts as a runner until it is named a tool. |
 | `compose` | `docker-compose.yml`, `docker-compose.test.yml`, `.env.example` | What the containers are: the dev and test stacks, the unit lanes' container shape and the variables they read. Every lane that runs in a container reads it; no lint or typecheck does. |
 | `python` | `cv-python/` | The computer-vision service is its own interpreter, its own dependency set and its own image; no Node gate reads it except the Semgrep scan pointed at the whole checkout. |
 | `db-python` | `/^db\/.*\.py$/`, `db/pyproject.toml`, `db/requirements.txt` | The GADM loaders live in db/ but are run by pytest, so they are an input to the Python test lane without being an input to cv-python’s lint. |
@@ -495,6 +497,7 @@ by hand. The first spec is what makes sure the file is placed at all.
 | `lint:circular` | check | `backend`, `web`, `shared`; reads `.madgerc`, `package-lock.json`, `scripts/require-node-tools.sh` | `npm run lint:circular` | check | on the same inputs |
 | `db:types` | check | `schema` | `npm run db:types:check` | check | on the same inputs |
 | `security:deps` | check | `node-deps` | `npm run security:deps` | check | never: its answer reads an advisory database that changes while the tree does not |
+| `security:secrets` | check | `backend`, `web`, `shared`, `database`, `tiles`, `scripts`, `runners`, `compose`, `python`, `db-python`, `coverage`, `schema`, `node-deps`, `docs`, `shell`, `docker`, `workflows`, `prose`, `api-contract`; reads `.gitleaks.toml`, `scripts/scan-secrets.sh` | `npm run security:secrets` | check | on the same inputs |
 | `lint:shell` | check | `shell` | `npm run lint:shell` | check | on the same inputs |
 | `lint:docker` | check | `docker` | `npm run lint:docker` | check | on the same inputs |
 | `lint:actions` | check | `workflows` | `npm run lint:actions` | check | on the same inputs |

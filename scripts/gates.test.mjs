@@ -55,11 +55,11 @@ function outputs(paths) {
 }
 
 describe('what a change asks for', () => {
-  it('asks only the docs gates for a change of prose', () => {
-    expect(applying(['docs/tech/x.md'])).toEqual(['lint:md', 'lint:links', 'lint:pointers']);
+  it('asks only the docs gates and the secrets scan for a change of prose', () => {
+    expect(applying(['docs/tech/x.md'])).toEqual(['security:secrets', 'lint:md', 'lint:links', 'lint:pointers']);
 
     // This is the case #783 was filed for: a Markdown-only pull request asks
-    // for the docs gates and nothing else. The check job still runs — it is
+    // for the docs gates and the secrets scan, which reads every file. The check job still runs — it is
     // where the docs pass lives — and installs no package for it.
     const out = outputs(['docs/tech/x.md']);
     expect(out.job_check).toBe('true');
@@ -70,12 +70,12 @@ describe('what a change asks for', () => {
     }
   });
 
-  it('asks the workflow lint and the pointer pass, and nothing else, for a workflow that is not ci.yml', () => {
+  it('asks the workflow lint, the pointer pass and the secrets scan, and nothing else, for a workflow that is not ci.yml', () => {
     // Every workflow is in the class, the three `claude-*.yml` included: a
     // workflow is checked by nothing else, so a mistake in one is otherwise
     // found by the run that hits it, on the branch it is already merged to.
     // The pointer pass reads a workflow's `#` lines as it reads any prose.
-    expect(applying(['.github/workflows/claude-review.yml'])).toEqual(['lint:actions', 'lint:pointers']);
+    expect(applying(['.github/workflows/claude-review.yml'])).toEqual(['security:secrets', 'lint:actions', 'lint:pointers']);
 
     // Docker is the lint's whole toolchain and the pointer pass needs only the
     // root install the check job runs unconditionally, so the check job starts
@@ -99,6 +99,7 @@ describe('what a change asks for', () => {
       'typecheck:backend',
       'knip:backend',
       'lint:circular',
+      'security:secrets',
       'lint:pointers',
       'test:backend',
       'security:scan',
@@ -126,6 +127,7 @@ describe('what a change asks for', () => {
       'typecheck:frontend',
       'knip:frontend',
       'lint:circular',
+      'security:secrets',
       'api:client',
       'lint:pointers',
       'test:backend',
@@ -159,6 +161,7 @@ describe('what a change asks for', () => {
     // No lint, typecheck or web gate reads db/; the backend unit lane reads
     // it as text and the stack lanes build on it.
     expect(applying(['db/migrations/060-x.sql'])).toEqual([
+      'security:secrets',
       'lint:pointers',
       'test:backend',
       'security:scan',
@@ -206,6 +209,7 @@ describe('what a change asks for', () => {
     // it reads any prose: those two are the non-Python gates a cv-python
     // change asks for.
     expect(applying(['cv-python/app/a.py'])).toEqual([
+      'security:secrets',
       'lint:pointers',
       'check:py',
       'security:py:bandit',
@@ -231,17 +235,19 @@ describe('what a change asks for', () => {
     // files.test.ts is the one spec that reads the committed register, regions
     // and lists, and it runs in that lane; nothing of the stack tier reads them.
     // The Node Semgrep scan does: `.semgrepignore` leaves `.jsonl` in, and its
-    // `p/secrets` pack is what would find a credential an agent copied in.
+    // `p/secrets` pack is what would find a provider's key an agent copied in;
+    // gitleaks reads every file for a generic one, so the check job starts.
     for (const path of [
       'db/catalogue-coverage/expectations/rome.jsonl',
       'db/catalogue-coverage/kinds.jsonl',
       'db/catalogue-coverage/regions.jsonl',
     ]) {
-      expect(applying([path]), path).toEqual(['test:backend', 'security:scan']);
+      expect(applying([path]), path).toEqual(['security:secrets', 'test:backend', 'security:scan']);
       const out = outputs([path]);
       expect(out.job_test, path).toBe('true');
       expect(out.job_security_node, path).toBe('true');
-      for (const job of ['job_check', 'job_build', 'job_security_python', 'job_trivy', 'job_smoke', 'job_perf']) {
+      expect(out.job_check, path).toBe('true');
+      for (const job of ['job_build', 'job_security_python', 'job_trivy', 'job_smoke', 'job_perf']) {
         expect(out[job], `${path} ${job}`).toBe('false');
       }
     }
@@ -294,7 +300,7 @@ describe('what a change asks for', () => {
     expect(scan).not.toContain('test:e2e:smoke');
     expect(applying(['scripts/require-py-tools.sh'])).toEqual(expect.arrayContaining(['check:py', 'test:py']));
     // The map's own document: the docs gates, and the spec that pins its tables.
-    expect(applying(['docs/tech/gates.md'])).toEqual(['lint:md', 'lint:links', 'lint:pointers', 'test:backend']);
+    expect(applying(['docs/tech/gates.md'])).toEqual(['security:secrets', 'lint:md', 'lint:links', 'lint:pointers', 'test:backend']);
   });
 
   it('asks a changed npm script of the root manifest for the gates that run it', () => {
@@ -833,8 +839,11 @@ describe('what the runner says it did', () => {
     expect(imagesOf(docker('api:breaking'))).toEqual([expect.stringMatching(/^tufin\/oasdiff:v[\d.]+@sha256:[0-9a-f]{64}$/)]);
     expect(imagesOf(docker('security:image'))).toEqual([expect.stringMatching(/^aquasec\/trivy@sha256:[0-9a-f]{64}$/)]);
 
-    // The tier runs lint:md, then lint:links: inspect (absent), pull (refused).
+    // The tier runs security:secrets (its image on the host, then the scan),
+    // lint:md, then lint:links: inspect (absent), pull (refused).
     const refused = fakeSpawn([
+      { status: 0 },
+      { status: 0 },
       { status: 0 },
       { status: 1 },
       { status: 1, stderr: 'Error response from daemon: toomanyrequests: You have reached your unauthenticated pull rate limit' },
@@ -846,7 +855,7 @@ describe('what the runner says it did', () => {
     expect(refused.calls.some((call) => call.startsWith('npm run lint:links'))).toBe(false);
 
     // A pin that names no manifest is the repository's error: the gate runs and fails on it.
-    const unknown = fakeSpawn([{ status: 0 }, { status: 1 }, { status: 1, stderr: 'manifest unknown' }, { status: 125 }]);
+    const unknown = fakeSpawn([{ status: 0 }, { status: 0 }, { status: 0 }, { status: 1 }, { status: 1, stderr: 'manifest unknown' }, { status: 125 }]);
     const pinned = capture(docs, 'check', { spawn: unknown });
     expect(pinned.code).toBe(125);
     expect(pinned.printed).toContain('Failed: lint:links (exit 125)');

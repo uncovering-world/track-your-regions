@@ -319,7 +319,7 @@ curl -X POST http://localhost:3001/api/auth/login \
 
 ```bash
 curl http://localhost:3001/api/world-views \
-  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+  -H "Authorization: Bearer $ACCESS_TOKEN"
 ```
 
 #### Refresh Tokens

@@ -258,7 +258,7 @@ describe('a picture the server fetches for itself', () => {
       .toBe('https://commons.wikimedia.org/wiki/Special:FilePath/A.png');
     expect(pictureFetchUrl('https://commons.wikimedia.org:8443/wiki/Special:FilePath/A.png'))
       .toBe('https://commons.wikimedia.org/wiki/Special:FilePath/A.png');
-    expect(pictureFetchUrl('https://user:secret@commons.wikimedia.org/wiki/Special:FilePath/A.png'))
+    expect(pictureFetchUrl('https://user:secret@commons.wikimedia.org/wiki/Special:FilePath/A.png')) // gitleaks:allow -- credentials the spec strips
       .toBe('https://commons.wikimedia.org/wiki/Special:FilePath/A.png');
   });
 
