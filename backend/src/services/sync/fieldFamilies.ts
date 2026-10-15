@@ -38,19 +38,20 @@ export interface FamilyFields {
  * The fields each family brings and no other does, read off the places one
  * source holds alone on 2026-10-15. UNESCO's official names in its six
  * languages, its own text, the states party and the facts of the inscription.
- * Wikidata's item, classes, fame and the counts a run makes of it. The
- * website, the Wikipedia article and the country names are written by both
+ * Wikidata's item, the place's own website, its classes, fame and the counts a
+ * run makes of it. UNESCO's page about a site is its own key (`unescoUrl`,
+ * #1538). The Wikipedia article and the country names are written by both
  * families and listed for neither.
  */
 export const FAMILY_FIELDS: Readonly<Record<SourceFamily, FamilyFields>> = {
   unesco: {
     columns: ['nameLocal', 'shortDescription', 'countryCodes'],
-    metadata: ['dateInscribed', 'inDanger', 'dangerList', 'criteria', 'region', 'transboundary', 'areaHectares'],
+    metadata: ['dateInscribed', 'inDanger', 'dangerList', 'criteria', 'region', 'transboundary', 'areaHectares', 'unescoUrl'],
   },
   wikidata: {
     columns: [],
     metadata: [
-      'wikidataQid', 'sitelinksCount', 'wikidataClasses', 'wikidataArtwork', 'year', 'creators', 'creator', 'type',
+      'website', 'wikidataQid', 'sitelinksCount', 'wikidataClasses', 'wikidataArtwork', 'year', 'creators', 'creator', 'type',
       'artworkCount', 'totalArtworkSitelinks', 'admissionNote', 'osm', 'archaeologyNature', 'wikipediaCategories',
     ],
   },

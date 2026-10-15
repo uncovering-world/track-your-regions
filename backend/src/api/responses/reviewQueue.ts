@@ -328,6 +328,7 @@ export const ReviewQueueItem = z.strictObject({
   latitude: z.number().nullable().optional(),
   longitude: z.number().nullable().optional(),
   website_url: z.string().nullable().optional(),
+  unesco_url: z.string().nullable().optional().describe("UNESCO's page about a World Heritage site, apart from the site's own website (#1538)."),
   wikipedia_url: z.string().nullable().optional(),
   region_names: z.array(z.string()).nullable().optional(),
   seen_in: z.array(z.string()).optional().describe(

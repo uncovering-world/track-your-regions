@@ -164,9 +164,11 @@ describe('the picture a site is shown with', () => {
     expect(transformRecord(sited({ category: 'Mixed' }))?.type).toBe('mixed');
   });
 
-  it('links to the property page instead, which those terms invite', () => {
-    expect(transformRecord(sited({ id_no: '208' }))?.metadata.website)
-      .toBe('https://whc.unesco.org/en/list/208');
+  it('links to the property page instead, which those terms invite, as UNESCO\'s own link (#1538)', () => {
+    const metadata = transformRecord(sited({ id_no: '208' }))?.metadata;
+    expect(metadata?.unescoUrl).toBe('https://whc.unesco.org/en/list/208');
+    // The site's own website is the Wikidata kinds' to bring, not this page.
+    expect(metadata).not.toHaveProperty('website');
   });
 
   it('shows the Commons picture Wikidata states, with whoever took it', () => {

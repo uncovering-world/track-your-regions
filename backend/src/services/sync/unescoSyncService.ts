@@ -380,7 +380,9 @@ function meanLongitude(locations: ParsedLocation[]): number {
  * and that a site may "only link to, not replicate" its content. So the picture
  * comes from Wikimedia Commons through `unescoWikidata.ts`, whose licences are
  * written to be reused with the author named, and the link the terms invite is
- * `metadata.website`, which every one of these rows carries (ADR-0043, #557).
+ * `metadata.unescoUrl`, which every one of these rows carries (ADR-0043, #557).
+ * It is UNESCO's page about the site, never the site's own: that is
+ * `metadata.website`, which the Wikidata kinds bring (#1538).
  */
 export function transformRecord(
   record: UnescoApiRecord,
@@ -404,7 +406,7 @@ export function transformRecord(
     region: record.region,
     areaHectares: record.area_hectares,
     transboundary: isSet(record.transboundary),
-    website: `https://whc.unesco.org/en/list/${record.id_no}`,
+    unescoUrl: `https://whc.unesco.org/en/list/${record.id_no}`,
     wikipediaUrl: facts.article,
     // Through `creditToWrite` like the other two collectors, and for the reason
     // this source makes sharpest: it carries more of the catalogue's photographs

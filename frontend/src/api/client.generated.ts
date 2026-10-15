@@ -8472,6 +8472,11 @@ export interface ReviewQueueItem {
   longitude?: number | null;
   /** @nullable */
   website_url?: string | null;
+  /**
+     * UNESCO's page about a World Heritage site, apart from the site's own website (#1538).
+     * @nullable
+     */
+  unesco_url?: string | null;
   /** @nullable */
   wikipedia_url?: string | null;
   region_names?: string[] | null;
