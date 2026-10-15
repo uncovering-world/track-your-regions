@@ -56,7 +56,7 @@ function outputs(paths) {
 
 describe('what a change asks for', () => {
   it('asks only the docs gates and the secrets scan for a change of prose', () => {
-    expect(applying(['docs/tech/x.md'])).toEqual(['security:secrets', 'lint:md', 'lint:links', 'lint:pointers']);
+    expect(applying(['docs/tech/x.md'])).toEqual(['security:secrets', 'lint:md', 'lint:links', 'lint:pointers', 'lint:shrunk']);
 
     // This is the case #783 was filed for: a Markdown-only pull request asks
     // for the docs gates and the secrets scan, which reads every file. The check job still runs — it is
@@ -75,7 +75,7 @@ describe('what a change asks for', () => {
     // workflow is checked by nothing else, so a mistake in one is otherwise
     // found by the run that hits it, on the branch it is already merged to.
     // The pointer pass reads a workflow's `#` lines as it reads any prose.
-    expect(applying(['.github/workflows/claude-review.yml'])).toEqual(['security:secrets', 'lint:actions', 'lint:pointers']);
+    expect(applying(['.github/workflows/claude-review.yml'])).toEqual(['security:secrets', 'lint:actions', 'lint:pointers', 'lint:shrunk']);
 
     // Docker is the lint's whole toolchain and the pointer pass needs only the
     // root install the check job runs unconditionally, so the check job starts
@@ -101,6 +101,7 @@ describe('what a change asks for', () => {
       'lint:circular',
       'security:secrets',
       'lint:pointers',
+      'lint:shrunk',
       'test:backend',
       'security:scan',
       'build',
@@ -130,6 +131,7 @@ describe('what a change asks for', () => {
       'security:secrets',
       'api:client',
       'lint:pointers',
+      'lint:shrunk',
       'test:backend',
       'test:frontend',
       'security:scan',
@@ -163,6 +165,7 @@ describe('what a change asks for', () => {
     expect(applying(['db/migrations/060-x.sql'])).toEqual([
       'security:secrets',
       'lint:pointers',
+      'lint:shrunk',
       'test:backend',
       'security:scan',
       'test:e2e:smoke',
@@ -211,6 +214,7 @@ describe('what a change asks for', () => {
     expect(applying(['cv-python/app/a.py'])).toEqual([
       'security:secrets',
       'lint:pointers',
+      'lint:shrunk',
       'check:py',
       'security:py:bandit',
       'security:py:deps',
@@ -242,7 +246,7 @@ describe('what a change asks for', () => {
       'db/catalogue-coverage/kinds.jsonl',
       'db/catalogue-coverage/regions.jsonl',
     ]) {
-      expect(applying([path]), path).toEqual(['security:secrets', 'test:backend', 'security:scan']);
+      expect(applying([path]), path).toEqual(['security:secrets', 'lint:shrunk', 'test:backend', 'security:scan']);
       const out = outputs([path]);
       expect(out.job_test, path).toBe('true');
       expect(out.job_security_node, path).toBe('true');
@@ -300,7 +304,7 @@ describe('what a change asks for', () => {
     expect(scan).not.toContain('test:e2e:smoke');
     expect(applying(['scripts/require-py-tools.sh'])).toEqual(expect.arrayContaining(['check:py', 'test:py']));
     // The map's own document: the docs gates, and the spec that pins its tables.
-    expect(applying(['docs/tech/gates.md'])).toEqual(['security:secrets', 'lint:md', 'lint:links', 'lint:pointers', 'test:backend']);
+    expect(applying(['docs/tech/gates.md'])).toEqual(['security:secrets', 'lint:md', 'lint:links', 'lint:pointers', 'lint:shrunk', 'test:backend']);
   });
 
   it('asks a changed npm script of the root manifest for the gates that run it', () => {

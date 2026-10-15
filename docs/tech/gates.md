@@ -30,16 +30,19 @@ Inputs touched: docs
 check lint:backend          skipped  inputs untouched: backend, shared
 check lint:frontend         skipped  inputs untouched: web, shared
 …
+check security:secrets      runs     inputs touched: docs, prose
+…
 check lint:md               runs     inputs touched: docs
 check lint:links            runs     inputs touched: docs
 check lint:pointers         runs     inputs touched: prose
+check lint:shrunk           runs     inputs touched: docs, prose
 …
 stack test:e2e:smoke        skipped  inputs untouched: backend, web, shared, database, tiles, runners, compose
 stack perf                  skipped  inputs untouched: backend, web, shared, database, tiles, runners, compose
 ```
 
-`lint:md`, `lint:links` and `lint:pointers` run, and every other one names the input class it did not see
-move. Three shapes of answer are worth recognising:
+`security:secrets`, `lint:md`, `lint:links`, `lint:pointers` and `lint:shrunk` run, and every other one
+names the input class it did not see move. Three shapes of answer are worth recognising:
 
 - **`inputs touched: <class>`** — the gate runs, and the class says which of its
   inputs moved.
@@ -174,7 +177,7 @@ A tier whose gates all sit on untouched inputs prints the sentence rather than
 nothing at all — on a clean `main`, `npm run check` says
 
 ```text
-Nothing to run for tier check: no changed path is an input to lint:backend, lint:frontend, typecheck:backend, typecheck:frontend, knip:backend, knip:frontend, lint:shared, typecheck:shared, knip:shared, lint:circular, db:types, security:deps, lint:shell, lint:docker, lint:actions, lint:md, lint:links, lint:openapi, api:breaking, api:client, lint:pointers, check:py, security:py:bandit, security:py:deps. `--all` runs every gate.
+Nothing to run for tier check: no changed path is an input to lint:backend, lint:frontend, typecheck:backend, typecheck:frontend, knip:backend, knip:frontend, lint:shared, typecheck:shared, knip:shared, lint:circular, db:types, security:deps, security:secrets, lint:shell, lint:docker, lint:actions, lint:md, lint:links, lint:openapi, api:breaking, api:client, lint:pointers, lint:shrunk, check:py, security:py:bandit, security:py:deps. `--all` runs every gate.
 ```
 
 and exits 0. That is the one line this runner exists to print: a gate that did
@@ -467,7 +470,7 @@ by hand. The first spec is what makes sure the file is placed at all.
 | `database` | `/^db\/(?!catalogue-coverage\/.*\.jsonl$)/` | The schema, the migrations and the loaders: what a database is built from. The backend unit lane reads db/ through repoFile() — schema parity, the migration ledger, the trigger guards — and the stack lanes stand on it. No lint, typecheck or web gate reads it. |
 | `tiles` | `martin/` | Martin's configuration. The backend unit lane asserts on the tile sources it publishes, and the smoke and Lighthouse lanes draw them. |
 | `scripts` | `scripts/` | The repository's own scripts and their specs, whole: the tooling specs run in the backend unit lane, and two of its specs scan the tree for anything that switches the geometry triggers off. |
-| `runners` | `/^scripts\/(?!.*\.test\.mjs$)(?!(?:affected-specs\.mjs\|board\.sh\|catalogue-coverage\.sh\|ci-graph-measure\.mjs\|db-cli\.sh\|db-migrate\.sh\|db-types\.sh\|gate-cache\.mjs\|gates\.mjs\|lib\/db-env\.sh\|lint-line-pointers\.mjs\|match-snapshot\.sh\|openapi-breaking\.mjs\|require-node-tools\.sh\|require-py-tools\.sh\|require-python-312\.sh\|review-surface\.mjs\|scan-image\.sh\|scan-secrets\.sh\|setup\.sh\|setup-integrations\.sh\|test-db-migrate\.sh)$)/` | The scripts the unit and stack lanes run through: test-report.mjs, test-stack.sh, the report parsers the web's specs import, the API contract and performance runners. Everything under scripts/ but the specs and the tools no lane executes, so a new script counts as a runner until it is named a tool. |
+| `runners` | `/^scripts\/(?!.*\.test\.mjs$)(?!(?:affected-specs\.mjs\|board\.sh\|catalogue-coverage\.sh\|check-shrunk-files\.mjs\|ci-graph-measure\.mjs\|db-cli\.sh\|db-migrate\.sh\|db-types\.sh\|gate-cache\.mjs\|gates\.mjs\|lib\/db-env\.sh\|lint-line-pointers\.mjs\|match-snapshot\.sh\|openapi-breaking\.mjs\|require-node-tools\.sh\|require-py-tools\.sh\|require-python-312\.sh\|review-surface\.mjs\|scan-image\.sh\|scan-secrets\.sh\|setup\.sh\|setup-integrations\.sh\|test-db-migrate\.sh)$)/` | The scripts the unit and stack lanes run through: test-report.mjs, test-stack.sh, the report parsers the web's specs import, the API contract and performance runners. Everything under scripts/ but the specs and the tools no lane executes, so a new script counts as a runner until it is named a tool. |
 | `compose` | `docker-compose.yml`, `docker-compose.test.yml`, `.env.example` | What the containers are: the dev and test stacks, the unit lanes' container shape and the variables they read. Every lane that runs in a container reads it; no lint or typecheck does. |
 | `python` | `cv-python/` | The computer-vision service is its own interpreter, its own dependency set and its own image; no Node gate reads it except the Semgrep scan pointed at the whole checkout. |
 | `db-python` | `/^db\/.*\.py$/`, `db/pyproject.toml`, `db/requirements.txt` | The GADM loaders live in db/ but are run by pytest, so they are an input to the Python test lane without being an input to cv-python’s lint. |
@@ -507,6 +510,7 @@ by hand. The first spec is what makes sure the file is placed at all.
 | `api:breaking` | check | `api-contract` | `npm run api:breaking` | check | never: it compares with the base's OpenAPI document, which is not in this tree |
 | `api:client` | check | `api-contract`, `web`, `shared`, `node-deps` | `npm --prefix frontend run api:client:check` | check | on the same inputs |
 | `lint:pointers` | check | `prose` | `node scripts/lint-line-pointers.mjs` | check | on the same inputs |
+| `lint:shrunk` | check | `backend`, `web`, `shared`, `database`, `tiles`, `scripts`, `runners`, `compose`, `python`, `db-python`, `coverage`, `schema`, `node-deps`, `docs`, `shell`, `docker`, `workflows`, `prose`, `api-contract` | `node scripts/check-shrunk-files.mjs` | check | never: it compares each file with its size at the base and reads the branch's commit messages, neither of which is in this tree |
 | `check:py` | check | `python`; reads `scripts/require-py-tools.sh`, `scripts/require-python-312.sh` | `npm run check:py` | check | on the same inputs |
 | `security:py:bandit` | check | `python`; reads `scripts/require-py-tools.sh`, `scripts/require-python-312.sh` | `npm run security:py:bandit` | check | on the same inputs |
 | `security:py:deps` | check | `python`; reads `scripts/require-py-tools.sh`, `scripts/require-python-312.sh` | `npm run security:py:deps` | check | never: its answer reads an advisory database that changes while the tree does not |
