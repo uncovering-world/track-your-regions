@@ -4,7 +4,7 @@ import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { worldViewRoutes } from '../../routes/worldViewRoutes.js';
 
 /** The declared routes these specs answer through (ADR-0071). */
-const resetRegionToGADMRoute = routeAt(worldViewRoutes, '/regions/:regionId/geometry/reset', 'post');
+const resetRegionToMembersRoute = routeAt(worldViewRoutes, '/regions/:regionId/geometry/reset', 'post');
 
 const clientQuery = vi.fn();
 const release = vi.fn();
@@ -37,7 +37,7 @@ function statements(): string[] {
  * (#689): clearing the flag and writing the union are one transaction, whose
  * first UPDATE holds the region's row lock until the commit.
  */
-describe('resetRegionToGADM', () => {
+describe('resetRegionToMembers', () => {
   beforeEach(() => {
     clientQuery.mockReset();
     release.mockReset();
@@ -48,7 +48,7 @@ describe('resetRegionToGADM', () => {
       (String(sql).includes('SET geom') ? { rows: [{ points: 120 }] } : { rows: [] }));
     const res = answer();
 
-    await answerRoute(resetRegionToGADMRoute, req, res as unknown as Response);
+    await answerRoute(resetRegionToMembersRoute, req, res as unknown as Response);
 
     expect(res.body).toMatchObject({ reset: true, points: 120 });
     expect(statements()).toEqual(['BEGIN', 'UPDATE regions', 'WITH direct_member_geoms AS (', 'COMMIT']);
@@ -62,7 +62,7 @@ describe('resetRegionToGADM', () => {
     });
     const res = answer();
 
-    await answerRoute(resetRegionToGADMRoute, req, res as unknown as Response).catch(() => undefined);
+    await answerRoute(resetRegionToMembersRoute, req, res as unknown as Response).catch(() => undefined);
 
     expect(statements()).not.toContain('COMMIT');
     expect(release).toHaveBeenCalledTimes(1);
@@ -72,7 +72,7 @@ describe('resetRegionToGADM', () => {
     clientQuery.mockResolvedValue({ rows: [] });
     const res = answer();
 
-    await answerRoute(resetRegionToGADMRoute, req, res as unknown as Response);
+    await answerRoute(resetRegionToMembersRoute, req, res as unknown as Response);
 
     expect(res.statusCode).toBe(200);
     expect(res.body).toMatchObject({ reset: true, points: 0 });

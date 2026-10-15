@@ -350,7 +350,7 @@ export async function saveDrawnOutline(
  * inside this statement (ADR-0035).
  *
  * Skips a hand-drawn boundary (is_custom_boundary): its shape is drawn, not
- * derived, and resetRegionToGADM is the explicit way to drop it (#283).
+ * derived, and resetRegionToMembers is the explicit way to drop it (#283).
  *
  * It runs in the transaction of the change it answers for, so the clearing
  * commits or rolls back with it (#1026). A lock timeout or a deadlock is not

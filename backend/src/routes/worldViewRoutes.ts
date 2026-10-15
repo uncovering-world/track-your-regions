@@ -63,7 +63,7 @@ import {
   regenerateDisplayGeometries,
   getRegionGeometry,
   updateRegionGeometry,
-  resetRegionToGADM,
+  resetRegionToMembers,
   computeSingleRegionGeometrySSE,
   computeWorldViewGeometries,
   getComputationStatus,
@@ -383,7 +383,7 @@ export const worldViewRoutes = [
     summary: 'Drop the hand-drawn outline and hull of a region and rebuild it from its members',
     params: regionIdParamSchema,
     response: RegionReset,
-    handler: resetRegionToGADM,
+    handler: resetRegionToMembers,
   }),
 
   // Hull preview and save (with custom parameters)

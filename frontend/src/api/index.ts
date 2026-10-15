@@ -53,7 +53,7 @@ export {
 // Re-export Geometry API
 export {
   computeRegionGeometryWithProgress,
-  resetRegionToGADM,
+  resetRegionToMembers,
   startWorldViewGeometryComputation,
   fetchWorldViewComputationStatus,
   cancelWorldViewGeometryComputation,

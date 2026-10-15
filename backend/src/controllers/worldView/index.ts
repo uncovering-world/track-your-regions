@@ -49,7 +49,7 @@ export {
 export {
   regenerateDisplayGeometries,
   updateRegionGeometry,
-  resetRegionToGADM,
+  resetRegionToMembers,
 } from './geometryCompute.js';
 
 // Geometry Compute with SSE streaming
