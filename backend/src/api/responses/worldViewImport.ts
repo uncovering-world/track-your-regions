@@ -39,6 +39,9 @@ export const ImportStatus = z.strictObject({
   countriesMatched: z.number().int().optional(),
   subdivisionsDrilled: z.number().int().optional(),
   noCandidates: z.number().int().optional(),
+  matchTotal: z.number().int().optional()
+    .describe('How many regions the matching phase looks at, under a policy that matches regions rather than countries.'),
+  matchDone: z.number().int().optional().describe('How many of those it has looked at.'),
   worldViewId: z.number().int().nullable().optional().describe('The world view the import creates, once it exists.'),
   importedWorldViews: z.array(ImportedWorldView).describe('Every imported world view, newest first, finished ones included.'),
 }).describe('The latest import as it stands, and the imported world views. Only `running` and the list are sent while no import is known since the server started.');

@@ -194,6 +194,24 @@ describe('matchHierarchical', () => {
     expect(progress.status).toBe('cancelled');
   });
 
+  it('stops matching the siblings left when a cancel lands during a yield (#457)', async () => {
+    const siblings = Array.from({ length: 450 }, (_, i) => ({ id: 1000 + i, name: `Nowhere ${i}`, parent_region_id: 100 }));
+    mockPoolQuery.mockImplementation((sql: string) => {
+      if (sql.includes('administrative_divisions')) return Promise.resolve({ rows: DIVISIONS });
+      if (sql.includes('FROM regions')) return Promise.resolve({ rows: [{ id: 100, name: 'Europe', parent_region_id: null }, ...siblings] });
+      return Promise.resolve({ rows: [] });
+    });
+    mockClientQuery.mockResolvedValue({ rows: [] });
+
+    const progress = createInitialProgress();
+    // As an admin's cancel reads: set while the descent waits at its yield after the 200th region.
+    Object.defineProperty(progress, 'cancel', { get: () => (progress.matchDone ?? 0) >= 200 });
+    await matchHierarchical(1, progress);
+
+    expect(progress.matchDone).toBe(200);
+    expect(progress.status).toBe('cancelled');
+  });
+
   it('prefers the shallower of two identically-named divisions in the widened pool', async () => {
     // "Flanders" is not among Europe's direct children, so this widens to the
     // subtree — and two divisions there carry the name, at depth 2 (21, under
@@ -212,6 +230,27 @@ describe('matchHierarchical', () => {
       { id: 102, name: 'Flanders', parent_region_id: 101 },
     ]);
     expect(bindings.get(102)).toBe(21);
+  });
+
+  it('reports how many regions it will look at and how many it has, whatever matched (#457)', async () => {
+    mockPoolQuery.mockImplementation((sql: string) => {
+      if (sql.includes('administrative_divisions')) return Promise.resolve({ rows: DIVISIONS });
+      if (sql.includes('FROM regions')) return Promise.resolve({ rows: [
+        { id: 100, name: 'Europe', parent_region_id: null },
+        { id: 101, name: 'France', parent_region_id: 100 },
+        { id: 102, name: 'Nowhere Land', parent_region_id: 100 },
+      ] });
+      return Promise.resolve({ rows: [] });
+    });
+    mockClientQuery.mockResolvedValue({ rows: [] });
+
+    const progress = createInitialProgress();
+    await matchHierarchical(1, progress);
+
+    // The panel's region bar: three nodes, every one looked at, matched or not.
+    expect(progress.matchTotal).toBe(3);
+    expect(progress.matchDone).toBe(3);
+    expect(progress.totalCountries).toBe(0);
   });
 
   it('writes nothing outside a transaction', async () => {

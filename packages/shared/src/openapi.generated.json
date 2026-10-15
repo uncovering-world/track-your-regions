@@ -23639,6 +23639,18 @@
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
           },
+          "matchTotal": {
+            "description": "How many regions the matching phase looks at, under a policy that matches regions rather than countries.",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "matchDone": {
+            "description": "How many of those it has looked at.",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
           "worldViewId": {
             "description": "The world view the import creates, once it exists.",
             "anyOf": [

@@ -66,6 +66,14 @@ export interface ImportProgress {
   countriesMatched: number;
   subdivisionsDrilled: number;
   noCandidates: number;
+  /**
+   * The matching phase's own progress, whatever the policy (#457): how many
+   * regions it will look at and how many it has. The country policy counts
+   * countries instead (`totalCountries`, `countriesMatched`) and leaves these
+   * at zero.
+   */
+  matchTotal: number;
+  matchDone: number;
   worldViewId: number | null;
 }
 
@@ -104,6 +112,8 @@ export function createInitialProgress(): ImportProgress {
     countriesMatched: 0,
     subdivisionsDrilled: 0,
     noCandidates: 0,
+    matchTotal: 0,
+    matchDone: 0,
     worldViewId: null,
   };
 }

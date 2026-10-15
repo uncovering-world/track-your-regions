@@ -138,7 +138,8 @@ export async function matchLeafRegions(
   const { allRegions, ancestorsByRegionId } = await loadRegionsAndAncestors(worldViewId);
 
   const leafCount = allRegions.filter(r => r.is_leaf).length;
-  progress.totalCountries = leafCount; // legacy: use totalCountries for leaf count
+  progress.matchTotal = allRegions.length;
+  progress.matchDone = 0;
   progress.statusMessage = `Matching ${allRegions.length} regions (${leafCount} leaves)...`;
   console.log(`[WV Matcher] Pre-loading complete. Found ${allRegions.length} regions (${leafCount} leaves) to match`);
 
@@ -153,6 +154,7 @@ export async function matchLeafRegions(
 
     const region = allRegions[i];
     progress.matchedRegions = i + 1;
+    progress.matchDone = i + 1;
     if ((i + 1) % 200 === 0) {
       progress.statusMessage = `Matching regions... ${i + 1}/${allRegions.length}`;
     }

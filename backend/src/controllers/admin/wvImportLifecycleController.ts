@@ -168,6 +168,8 @@ export async function getWorldViewImportStatus(): Promise<ImportStatus> {
       countriesMatched: progress.countriesMatched,
       subdivisionsDrilled: progress.subdivisionsDrilled,
       noCandidates: progress.noCandidates,
+      matchTotal: progress.matchTotal,
+      matchDone: progress.matchDone,
       worldViewId: progress.worldViewId,
       importedWorldViews,
     };

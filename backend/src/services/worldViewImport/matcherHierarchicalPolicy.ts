@@ -184,6 +184,21 @@ interface DescentContext {
   progress: ImportProgress;
 }
 
+/** How many nodes the descent resolves between two yields to the event loop. */
+const NODES_PER_YIELD = 200;
+
+/**
+ * Hand the event loop a turn every `NODES_PER_YIELD` outcomes: the descent is
+ * in-memory work over tens of thousands of nodes, and the backend keeps
+ * answering while it runs, the import's own status poll included (#457).
+ */
+async function yieldNow(ctx: DescentContext): Promise<void> {
+  ctx.progress.matchDone = ctx.outcomes.length;
+  if (ctx.outcomes.length % NODES_PER_YIELD === 0) await new Promise<void>(resolve => setImmediate(resolve));
+}
+
+const countNodes = (nodes: ImportNode[]): number => nodes.reduce((sum, node) => sum + 1 + countNodes(node.children), 0);
+
 /**
  * Resolve one sibling group against an ancestor's division, then recurse.
  *
@@ -192,7 +207,7 @@ interface DescentContext {
  * resolves becomes the anchor for its own children; a node that does not passes
  * the anchor it was given straight through — that is the transparency.
  */
-function descend(nodes: ImportNode[], anchorId: number | null, ctx: DescentContext): void {
+async function descend(nodes: ImportNode[], anchorId: number | null, ctx: DescentContext): Promise<void> {
   // Mirrors the country policy's per-node check (matcherCountryPolicy.ts). Without
   // it a cancelled import runs the whole descent and commits every row, while
   // runImport takes its cancelled branch and never advances import_runs to
@@ -215,11 +230,14 @@ function descend(nodes: ImportNode[], anchorId: number | null, ctx: DescentConte
   }
 
   for (const node of nodes) {
+    // A cancel lands during a yield: the siblings left are not matched either.
+    if (ctx.progress.cancel) return;
     const entry = bound.get(node.id);
     if (entry) {
       outcomes.push({ id: node.id, matchStatus: 'auto_matched', divisionId: entry.id, suggestions: [] });
       ctx.progress.matchedRegions++;
-      descend(node.children, entry.id, ctx);
+      await yieldNow(ctx);
+      await descend(node.children, entry.id, ctx);
     } else {
       // No division claimed. Offer whatever the anchor's children were as review
       // candidates, then pass the anchor down unchanged so the subtree survives.
@@ -230,7 +248,8 @@ function descend(nodes: ImportNode[], anchorId: number | null, ctx: DescentConte
         suggestions,
       });
       ctx.progress.noCandidates++;
-      descend(node.children, anchorId, ctx);
+      await yieldNow(ctx);
+      await descend(node.children, anchorId, ctx);
     }
   }
 }
@@ -294,7 +313,9 @@ export async function matchHierarchical(
   const ctx: DescentContext = { gadm, claimed: new Set<number>(), outcomes: [], progress };
   ctx.progress.matchedRegions = 0;
   ctx.progress.noCandidates = 0;
-  descend(roots, null, ctx);
+  ctx.progress.matchTotal = countNodes(roots);
+  ctx.progress.matchDone = 0;
+  await descend(roots, null, ctx);
 
   if (progress.cancel) {
     progress.status = 'cancelled';
@@ -306,12 +327,9 @@ export async function matchHierarchical(
   progress.statusMessage = 'Writing match results...';
   await writeOutcomes(ctx.outcomes);
 
-  // Region-named counters, because that is what this policy resolves. The
-  // country-named ones (`countriesMatched`, `totalCountries`,
-  // `subdivisionsDrilled`) are deliberately left alone: the import panel gates
-  // its "Matching countries: N/M" bar on `totalCountries > 0`, so leaving it at
-  // zero hides a progress bar that would otherwise count regions under a
-  // country label. See #457.
+  // Region-named counters, because that is what this policy resolves; the
+  // country-named ones stay at zero, and the panel draws the region bar from
+  // `matchTotal` / `matchDone` instead (#457).
   progress.totalRegions = ctx.outcomes.length;
 
   const seconds = ((Date.now() - startTime) / 1000).toFixed(1);
