@@ -202,6 +202,18 @@ dependency, so the stylesheet now comes from the package via `main.tsx`. That
 drops a third-party runtime dependency and closes the gap where the hard-pinned
 CDN version could drift from the one in `package.json`.
 
+The web fonts went the same way (#653): Syne, Figtree and JetBrains Mono were
+loaded from Google Fonts, so every page view sent the visitor's IP address to
+Google (LG München I, 3 O 17493/20, found a site liable for exactly that). They
+are served from the page's own origin now (`frontend/public/fonts/`, with their
+OFL texts), so the shell — the page, its scripts, stylesheets and fonts —
+contacts no third-party origin. What a page draws still can: the visitor's map
+fetches its basemap tiles from `tile.openstreetmap.org` and its label glyphs from
+`fonts.openmaptiles.org` (`MAP_STYLE`, `frontend/src/constants/mapStyles.ts`),
+the admin's and editor's preview maps their basemap from
+`basemaps.cartocdn.com`, and the pictures come from Wikimedia Commons
+(ADR-0043).
+
 ## cv-python Hardening (V5/V8/V13/V16)
 
 The Python service has a smaller surface than the Node backend but introduces new V5 (file upload) territory and a V8 boundary (intra-cluster traffic):
