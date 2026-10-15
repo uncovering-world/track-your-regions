@@ -124,8 +124,9 @@ and accepted by it.
 | [0102](0102-a-work-one-kind-refuses-as-held-by-a-place-is-handed-to-the-kind-that-holds-it.md) | A work one kind refuses as held by a place is handed to the kind that holds that place | Accepted | 2026-10-13 |
 | [0103](0103-a-museum-whose-famous-find-no-kind-shows-arrives-in-archaeology-held-for-a-curator.md) | A museum whose famous find no kind shows arrives in Archaeology held for a curator | Accepted | 2026-10-13 |
 | [0104](0104-the-map-is-a-third-signal-of-an-archaeology-museum-and-a-department-in-an-art-museum-is-refused.md) | The map is a third signal of an archaeology museum, and a department in an art museum is refused | Accepted | 2026-10-14 |
-| [0105](0105-the-wikidata-subset-follows-containment-chains-and-is-kept-compact-and-swapped-in-whole.md) | The Wikidata subset follows containment chains, and is kept compact and swapped in whole | Accepted | 2026-10-14 |
+| [0105](0105-the-wikidata-subset-follows-containment-chains-and-is-kept-compact-and-swapped-in-whole.md) | The Wikidata subset follows containment chains, and is kept compact and swapped in whole | Accepted — decision 4 narrowed by [0107](0107-a-subset-build-cut-in-its-second-pass-is-picked-up-not-started-again.md) | 2026-10-14 |
 | [0106](0106-public-dump-builds-run-in-a-worker-process-queued-through-the-ledger.md) | Public dump builds run in a worker process, queued through the ledger | Accepted | 2026-10-14 |
+| [0107](0107-a-subset-build-cut-in-its-second-pass-is-picked-up-not-started-again.md) | A subset build cut in its second pass is picked up, not started again | Accepted | 2026-10-15 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
