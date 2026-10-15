@@ -463,6 +463,12 @@ jobs:
     timeout-minutes: 20
     env:
       DOCKERHUB_LOGIN: ${{ secrets.DOCKERHUB_TOKEN != '' && secrets.DOCKERHUB_USER != '' }}
+      # The smoke specs browse the production build, the shape a visitor gets,
+      # rather than the dev server (#654, docs/tech/development-guide.md § The
+      # shape the smoke lane browses). Job-wide, so the database and API steps
+      # below find the stack in the shape the smoke step left it in instead of
+      # recreating the frontend for a lane that never reads it.
+      FRONTEND_MODE: preview
     steps:
       - uses: actions/checkout@v4
         with:
