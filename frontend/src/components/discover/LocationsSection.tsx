@@ -35,7 +35,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { subscribeToHoverTarget, useHoverActions, useHoverSelector } from '../../hooks/useHoverContext';
 import { EmptyState } from '../shared/EmptyState';
 import { locationLabel, pointFullName, pointOfRow } from '../../utils/locationLabel';
-import { CopyNameButton } from '../shared/CopyNameButton';
+import { CopyNameButton } from '../shared/CopyButton';
 import { claimLabel } from '../../utils/placeClaims';
 import { foldLabel } from '@tyr/shared/labels';
 import { filterParts, groupParts } from '../../utils/partGroups';
