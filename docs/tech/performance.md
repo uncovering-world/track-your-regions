@@ -436,8 +436,9 @@ calibrated on the CI runner instead.
 
 What the map root downloads now, largest first: 562.4 kB of script — the
 entry chunk and the map library, since the admin screens became chunks of
-their own (#643) — the 86.1 kB favicon (#648), then its own map tiles — 85.1 kB for
-the z1 tile over Eurasia and two more near 36 kB. No API read is among
+their own (#643) — then its own map tiles — 85.1 kB for the z1 tile over
+Eurasia and two more near 36 kB. The favicon was 86.1 kB until #648 cut it to
+the two sizes a tab draws; on 2026-10-16 the page fetched the 32 px PNG, 2.5 kB. No API read is among
 them. The 135.2 kB worker chunk maplibre-gl 6 loads is downloaded too, and
 does not appear here: Lighthouse's resource summary does not see a worker's
 own fetch.
@@ -445,10 +446,8 @@ own fetch.
 The first run on real data found three things the fixture could not show,
 each filed with its numbers. Two are settled: every backend response went
 out uncompressed (#650), and the map root read every leaf region in the
-world view (#649). The third stands:
-
-- **`favicon.ico` is 86 kB**, fetched on every page, and now the
-  second-largest transfer on both pages after the entry chunk. #648.
+world view (#649). The third, an 86 kB `favicon.ico` fetched on every page,
+was settled by #648.
 
 ### Backend latency — 2026-08-25
 
@@ -762,7 +761,10 @@ real catalogue's names reach past Latin-1 (Łódź, Plzeň), which fetches each
 family's Latin Extended file beside the Latin one, 80.3 kB for the two — a
 total-size line at 965 000 B
 (the map root's 916.9 kB — 562 kB of script at startup, then the favicon of
-#648 and the map's own tiles — plus the usual 5 %) and a request count of
+#648 and the map's own tiles — plus the usual 5 %; on 2026-10-16, with the
+favicon cut to 2.5 kB, the page measured 939.6 kB, its 84 kB saving outrun by
+what the page gained since the line was set, so the line stays where it is,
+2.7 % above the page) and a request count of
 60 as errors, and every timing at `warn` set wide for a laptop (LCP 2.5 s,
 TBT 1.2 s, CLS 0.02, TTI 3.5 s, score 0.5): the local run's bytes gate, its
 timings inform.
