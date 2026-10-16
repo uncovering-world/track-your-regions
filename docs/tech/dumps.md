@@ -180,12 +180,16 @@ backend and the worker talk only through the build's `dump_builds` row:
    `cancelled`, with what it did on the way (an older copy removed) in the
    message either way.
 3. **Followed.** Every `BEAT_EVERY_MS` (five seconds) the build writes its
-   progress — phase, message, bytes downloaded and read, lines, and the
-   time the pass being read has left at its pace so far (`PassClock`: none in
-   a pass's first minute, a new clock for each pass, none in a step that
-   reads no file) — and its heartbeat to the row (`beat`), and the panel reads
-   them back (`buildProgress`), whatever process runs the build, showing the
-   time left as "about 1 h 10 min left in this pass".
+   progress — phase, message, bytes downloaded and read, what the read is
+   measured against (`total`), lines, when the step running now started
+   (`stepStartedAt`), and the time the step has left at its pace so far
+   (`PassClock`: none in a step's first minute, a new clock for each step,
+   none in a step that reads no file) — and its heartbeat to the row (`beat`),
+   and the panel reads them back (`buildProgress`), whatever process runs the
+   build, showing the time left as "about 1 h 10 min left in it". A step is
+   named by its message before a colon (`stepName`); a new step resets what
+   is measured and starts its clock, while a message of the same step only
+   says more.
 4. **Stopped.** *Cancel* (`requestCancel`) closes a queued row at once and
    marks a running one (`cancel_requested_at`); the build reads the mark with
    its next heartbeat and ends as `cancelled`. A worker that stops (SIGTERM)
@@ -224,7 +228,8 @@ read, the published and the computed checksum, the status (`queued`,
 what runs it, its progress and when it last beat, a cancel asked for, and when
 it finished. A build that ended well says what it did in `outcome` (#1527):
 what it verified and kept, how long each step took (`StepTimes` in
-`stepTimes.ts`, read off the phase messages the build reports), and what it
+`stepTimes.ts`, read off the phase messages the build reports; a step under a
+second is left out), and what it
 did on the way, such as an older copy removed. It is what says which dump a consumer's tables were built from.
 
 ## The local Wikidata subset
@@ -402,6 +407,29 @@ The five derived tables are `UNLOGGED`: rebuilt from the dump, they skip the
 write-ahead log, and a crash of the database empties them until the next
 build. Which dump a reader reads is the newest `wikidata_subset_builds` row.
 
+### What each step reports
+
+The steps after the two passes run for minutes to hours on the whole dump,
+and each says what it is doing while it does it (#1519):
+
+- **Labelling the entities the kept items name** reads the terms spool and
+  reports its compressed bytes read of its size (`onMeasure`), with the time
+  left, as a pass reports the dump.
+- **Deriving the claims, labels and sitelinks** says which of its three
+  statements runs and how many of its parts have ended (`deriveFromEntities`:
+  "claims, 2 of 4 parts done"); the parts run at once.
+- **Indexing** says which index of how many it builds, and every five seconds
+  that index's own phase and share from `pg_stat_progress_create_index`
+  ("index 3 of 7, idx_wikidata_claims_subject: building index: scanning
+  table, 45 %", `indexNextTables`). The class tree's index is reported the
+  same way under *Walking the class tree*.
+- **Walking the class tree** is one statement, with no measure of its own.
+
+Every step shows when it started, so a step with no measure still reads as
+alive. The worker beats every five seconds whatever step it is in: the panel
+says a build whose last beat is more than a minute old may have stopped,
+rather than showing it as slow.
+
 ## Trying a change on a sample
 
 A build of the subset reads the whole entities dump twice, about ten hours on
@@ -417,7 +445,8 @@ the derivations, the worker — is tried on a sample first (#1527):
    once whole. The sample is named `sample-16gb-<copy's name>`: the catalog's
    test for the dump's files refuses that name, so nothing that replaces or
    removes older copies of the dump touches it, and a build of the dump never
-   reads it. A new cut removes the dump's earlier samples once it is whole,
+   reads it. While it cuts, its bar measures the entities taken against the
+   sample's size, and its row keeps the copy's bytes read. A new cut removes the dump's earlier samples once it is whole,
    with what builds of them left beside them, so the directory holds one
    sample of a dump as it holds one copy.
 2. **Try the build.** A `trial` build (`tryOnSample`) runs the dump's builder
@@ -488,7 +517,9 @@ last trial has a line of its own under the sample (*Last trial …*, with its
 `outcome`: what it kept and how long each step took), and among the earlier
 builds a sample says *Cut* and a trial *Tried*, each with its outcome.
 `recentBuilds` keeps the last three of each of these kinds as well. While a build of the dump is queued or running, the row offers no other
-button.
+button; it shows the step's message, its measure when it has one, when the
+step started and when the worker was last seen alive, or, after a minute
+with no beat, that the worker may have stopped.
 The routes are `GET /api/admin/dumps`, `POST /api/admin/dumps/:dump/build`,
 `POST /api/admin/dumps/:dump/keep`, `POST /api/admin/dumps/:dump/rederive`,
 `POST /api/admin/dumps/:dump/sample`, `POST /api/admin/dumps/:dump/trial`
