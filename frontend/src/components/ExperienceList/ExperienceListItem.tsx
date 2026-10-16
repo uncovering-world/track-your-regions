@@ -22,6 +22,7 @@ import { FindsOnViewChip } from '../shared/FindsOnViewChip';
 import { experienceColor } from '../../utils/kindColors';
 import { placeHasExtent } from '../../utils/placeKinds';
 import { preloadCardImage } from '../../utils/imagePreload';
+import { endsTextSelectionIn } from '../../utils/textSelection';
 import { useExperienceCardReady } from '../../hooks/useExperienceCardReady';
 import { subscribeToHoverTarget, useHoverActions } from '../../hooks/useHoverContext';
 import {
@@ -384,7 +385,8 @@ function ExperienceListItemComponent({
           warmTimer.current = null;
           onLeave();
         }}
-        onClick={() => onClick(experience)}
+        // A drag that selected the name is not a toggle (#1190).
+        onClick={(event) => { if (!endsTextSelectionIn(event.currentTarget)) onClick(experience); }}
       >
         {/* Checkbox for visited status + batch buttons when partial.
             Disabled until the batch settles, and for a stronger reason than the
@@ -499,7 +501,18 @@ function ExperienceListItemComponent({
             the chevron already occupied, so waiting costs no movement at all —
             which is the point: the card opens once, at its final size, rather than
             opening early and growing three times underneath the reader. */}
-        {expandIndicator}
+        {/* The row's explicit toggle, named and stating whether the card is open,
+            since the row itself is a click target a keyboard cannot reach. */}
+        <IconButton
+          size="small"
+          aria-expanded={isSelected}
+          aria-label={isSelected ? `Close ${experience.name}` : `Open ${experience.name}`}
+          disableRipple
+          onClick={(event) => { event.stopPropagation(); onClick(experience); }}
+          sx={{ p: 0.25, color: 'action.active' }}
+        >
+          {expandIndicator}
+        </IconButton>
       </RowItem>
 
       {/* Rendered directly, with no `Collapse` around it. There is no animation to
