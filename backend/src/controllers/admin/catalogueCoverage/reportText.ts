@@ -5,7 +5,7 @@
  * tools, and a column of numbers survives both.
  */
 
-import type { CoverageReport, ExpectationResult, LiveKindGaps, NearbyPoint, Verdict } from './report.js';
+import { causeWords, type CoverageReport, type ExpectationResult, type LiveKindGaps, type NearbyPoint, type Verdict } from './report.js';
 
 const VERDICT_WORDS: Record<Verdict, string> = {
   offered: 'offered to a reader',
@@ -55,8 +55,14 @@ function missingLine(missing: LiveKindGaps['wellKnownMissing'][number]): string 
 function liveKindLines(kind: LiveKindGaps): string[] {
   const line = kind.line === null ? 'no sitelinks line' : `line: ${kind.line} sitelinks`;
   const lines = [`${kind.name} [${kind.slug}; ${line}]: ${kind.offered} of ${kind.expected} expected are offered`];
-  if (kind.wellKnownMissing.length > 0) {
-    lines.push(kind.line === null ? '    absent:' : '    absent and at or over the line:', ...kind.wellKnownMissing.map(missingLine));
+  // The judged are counted and the rest named: a person reads what nobody has answered for.
+  const unjudged = kind.wellKnownMissing.filter(missing => missing.judgement === null);
+  if (unjudged.length > 0) {
+    lines.push(kind.line === null ? '    absent, not judged:' : '    absent and at or over the line, not judged:', ...unjudged.map(missingLine));
+  }
+  if (kind.judgedByCause.length > 0) {
+    const judged = kind.wellKnownMissing.length - unjudged.length;
+    lines.push(`    absent and judged: ${judged}: ${kind.judgedByCause.map(causeWords).join('; ')}`);
   }
   if (kind.belowLineMissing > 0) lines.push(`    absent and under the line: ${kind.belowLineMissing}`);
   return lines;
@@ -64,6 +70,20 @@ function liveKindLines(kind: LiveKindGaps): string[] {
 
 function liveLines(report: CoverageReport): string[] {
   return ['What each live kind lacks of what is expected of it', '', ...report.liveKinds.flatMap(liveKindLines)];
+}
+
+/** The judgements whose gap has closed: each a line to remove from the ledger. */
+function staleLines(report: CoverageReport): string[] {
+  if (report.staleJudgements.length === 0) return [];
+  return [
+    'Judgements whose gap has closed: the kind offers the entry now, so the line comes out of judgements.jsonl',
+    '',
+    ...report.staleJudgements.map((stale) => {
+      const owner = stale.issue === null ? '' : ` (#${stale.issue})`;
+      return `${stale.regionSlug}: ${stale.name} under ${stale.kindSlug} -> ${stale.cause}${owner}, judged ${stale.judged}`;
+    }),
+    '',
+  ];
 }
 
 /** A catalogue point at an expectation's spot: the place, its named point where it has one, and how far. */
@@ -93,6 +113,7 @@ export function renderCoverageReport(report: CoverageReport): string {
     '',
     ...liveLines(report),
     '',
+    ...staleLines(report),
     ...judgedLines(
       'Something else stands at the spot: for a person to judge, never counted as found',
       sameSpot,
