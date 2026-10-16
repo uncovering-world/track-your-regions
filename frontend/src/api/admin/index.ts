@@ -94,11 +94,12 @@ export async function fixPictures(sourceId: number): Promise<PictureRepairStarte
 
 /**
  * Search Wikidata for the items of a source's components that no item records
- * the reference of (#1272). Writes proposals only: each waits for a curator's
- * answer. Reports through the same status endpoint a sync does.
+ * the reference of (#1272), for every site or for the one `experienceId` names
+ * (#1429). Writes proposals only: each waits for a curator's answer. Reports
+ * through the same status endpoint a sync does.
  */
-export async function findComponentItems(sourceId: number): Promise<ComponentItemSearchStarted> {
-  return postAdminSyncSourcesBySourceIdFindComponentItems(sourceId);
+export async function findComponentItems(sourceId: number, experienceId?: number): Promise<ComponentItemSearchStarted> {
+  return postAdminSyncSourcesBySourceIdFindComponentItems(sourceId, experienceId === undefined ? undefined : { experienceId });
 }
 
 /**

@@ -37,6 +37,8 @@ import {
   answerComponentItems, suggestComponentItems, type AnswerComponentItemsBody, type ComponentItemSuggestions,
 } from '../../api/curation';
 import { queryKeys } from '../../api/queryKeys';
+import { findComponentItems } from '../../api/admin';
+import { useAuth } from '../../hooks/useAuth';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { plural } from '../../utils/plural';
@@ -44,6 +46,9 @@ import { wikidataItemUrl } from '../../utils/wikidataLinks';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ComponentItemsMap, MAP_HEIGHT, type MapFocus, type SitePoint } from './ComponentItemsMap';
 import { ItemHeader, messageFor } from './queueCard';
+
+/** The source whose components the search reads: UNESCO's World Heritage sites. */
+const UNESCO_SOURCE_ID = 1;
 
 type Candidate = NonNullable<ReviewQueueItem['component_items']>[number];
 type Answer = AnswerComponentItemsBody['answers'][number]['answer'];
@@ -250,6 +255,11 @@ export function ComponentItemsCard({ item, onDone }: {
   const lookedAt = candidates.find(c => c.proposalId === looked) ?? candidates.find(c => focusOf(c) !== null);
   const focus = useMemo(() => (lookedAt ? focusOf(lookedAt) : null), [lookedAt]);
 
+  // The same search the admin panel runs, narrowed to this site (#1429), and
+  // behind the same role: a curator who corrected a point asks an admin.
+  const { isAdmin } = useAuth();
+  const searchAgain = useMutation({ mutationFn: () => findComponentItems(UNESCO_SOURCE_ID, item.id) });
+
   const save = useMutation({
     mutationFn: () => answerComponentItems(item.id, answered),
     onSettled: (data, error) => onDone(error ? messageFor(item, error) : outcomeOf(item.name, data!), item.id),
@@ -361,7 +371,7 @@ export function ComponentItemsCard({ item, onDone }: {
           })}
         </Stack>
 
-        <Stack direction="row" spacing={1.5} sx={{ mt: 2 }} flexWrap="wrap">
+        <Stack direction="row" spacing={1.5} sx={{ mt: 2 }} flexWrap="wrap" alignItems="center">
           <Button variant="contained" disabled={answered.length === 0 || save.isPending} onClick={() => save.mutate()}>
             {answered.length === 0 ? 'Save answers' : `Save ${plural(answered.length, 'answer')}`}
           </Button>
@@ -374,6 +384,21 @@ export function ComponentItemsCard({ item, onDone }: {
             <Button variant="outlined" disabled={sureLeft === 0 || save.isPending} onClick={confirmSure}>
               Confirm {plural(sure.length, 'candidate')} Jev is sure of
             </Button>
+          )}
+          {isAdmin && (
+            <Button variant="text" disabled={searchAgain.isPending || searchAgain.isSuccess} onClick={() => searchAgain.mutate()}>
+              Search this site again
+            </Button>
+          )}
+          {searchAgain.isSuccess && (
+            <Typography variant="body2" color="text.secondary">
+              Searching this site's components; the queue shows what it finds once the pass ends.
+            </Typography>
+          )}
+          {searchAgain.isError && (
+            <Typography variant="body2" color="error">
+              {searchAgain.error instanceof Error ? searchAgain.error.message : 'The search could not start.'}
+            </Typography>
           )}
         </Stack>
       </CardContent>

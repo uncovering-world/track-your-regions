@@ -11,8 +11,12 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 
 vi.mock('../../api/curation', () => ({ answerComponentItems: vi.fn(), suggestComponentItems: vi.fn() }));
+vi.mock('../../api/admin', () => ({ findComponentItems: vi.fn() }));
+const auth = vi.hoisted(() => ({ isAdmin: false }));
+vi.mock('../../hooks/useAuth', () => ({ useAuth: () => auth }));
 
 import { answerComponentItems, suggestComponentItems } from '../../api/curation';
+import { findComponentItems } from '../../api/admin';
 import { ComponentItemsCard } from './ComponentItemsCard';
 
 const mockedAnswer = answerComponentItems as unknown as ReturnType<typeof vi.fn>;
@@ -158,6 +162,30 @@ describe("a site's candidate component items", () => {
     await waitFor(() => expect(onDone).toHaveBeenCalledWith(
       'Frontiers of the Roman Empire – Dacia: 1 item confirmed, 1 candidate turned down', 9850,
     ));
+  });
+});
+
+describe("searching one site's components again (#1429)", () => {
+  beforeEach(() => {
+    vi.mocked(findComponentItems).mockReset().mockResolvedValue({ started: true, message: 'Searching.' });
+    mockedSuggest.mockResolvedValue({ configured: false, suggestions: [] });
+  });
+
+  it("offers an admin the search narrowed to this site, and says it is running", async () => {
+    auth.isAdmin = true;
+    renderCard();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Search this site again' }));
+
+    await waitFor(() => expect(findComponentItems).toHaveBeenCalledWith(1, 9850));
+    expect(await screen.findByText(/Searching this site's components/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Search this site again' })).toBeDisabled();
+  });
+
+  it('offers it to no one the whole pass is not offered to', () => {
+    auth.isAdmin = false;
+    renderCard();
+    expect(screen.queryByRole('button', { name: 'Search this site again' })).toBeNull();
   });
 });
 
