@@ -51,6 +51,19 @@ Without a subcommand, run `status`.
   ```
 
   Every body edit is followed by its journal comment, in the same step.
+- **A session works its queue autonomously** (the maintainer's decision, 2026-10-16, #1596).
+  It does all of this without asking:
+  - takes the current item;
+  - builds it (`/feature` or `/fix`);
+  - opens the pull request by every guideline (`/pr-create`);
+  - babysits the review and CI;
+  - merges the pull request itself once `/pr-create` § 8 *Done* holds. An item whose issue is
+    *Human-led* is the exception: the maintainer leads it and tests it by hand, so its PR is
+    merged only after the maintainer says the test passed;
+  - marks the item done with that merge as its evidence, and starts the next item.
+
+  It asks the maintainer only what is the maintainer's: product questions, and the calls the
+  rule above reserves.
 - **A session that stops working a queue releases it.** It sets *Owner* to `released` with
   the time, writes an `owner` entry saying where the work stopped, and moves the queue's board
   Status back (`scripts/board.sh status <n> Backlog`). A queue whose owner
