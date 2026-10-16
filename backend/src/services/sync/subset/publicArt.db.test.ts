@@ -23,6 +23,14 @@ const ROOM_325 = 'Q19119449';
 const SULLY_WING = 'Q17309954';
 const PALACE = 'Q1075988';
 const FRANCE = 'Q142';
+// Louise Bourgeois's Maman (Q180887), cast in Bilbao (Q8692), Ottawa (Q1930), London (Q84)
+// and Tokyo's Minato (Q190088), each cast a P625 with its host as P518, and four P17s —
+// Spain (Q29), Canada (Q16), the United Kingdom (Q145), Japan (Q17) — tied to none (#1533).
+const MAMAN = 'Q180887';
+const CASTS: Array<[host: string, country: string, latitude: number, longitude: number]> = [
+  ['Q8692', 'Q29', 43.269189, -2.932958], ['Q1930', 'Q16', 45.429333, -75.697277],
+  ['Q84', 'Q145', 51.507694, -0.099333], ['Q190088', 'Q17', 35.6610104, 139.7296602],
+];
 
 const statement = (id: string, value: unknown, extra: Record<string, unknown> = {}) => ({ id, value, ...extra });
 const point = (latitude: number, longitude: number) => ({
@@ -50,6 +58,15 @@ const ENTITIES: Array<[string, number, Record<string, unknown>]> = [
     sitelinks: { enwiki: 'Mona Lisa' },
   }],
   [ROOM_325, 0, { claims: { P276: [statement('R1', SULLY_WING)] }, sitelinks: {} }],
+  [MAMAN, 30, {
+    claims: {
+      P625: CASTS.map(([host, , lat, lon], i) => statement(`X${i}`, point(lat, lon), { qualifiers: { P518: [host] } })),
+      P17: CASTS.map(([, country], i) => statement(`C${i}`, country)),
+    },
+    sitelinks: {},
+  }],
+  ...CASTS.map(([host, country]): [string, number, Record<string, unknown>] =>
+    [host, 0, { claims: { P17: [statement(`${host}-P17`, country)] }, sitelinks: {} }]),
 ];
 
 beforeAll(async () => {
@@ -74,6 +91,9 @@ beforeAll(async () => {
        ($2, 'en', 'France', NULL), ($3, 'it', 'Leonardo da Vinci', NULL), ($4, 'en', 'Room 325', NULL)`,
     [LOUVRE, FRANCE, LEONARDO, ROOM_325],
   );
+  for (const [, country] of CASTS) {
+    await pool.query(`INSERT INTO wikidata_labels (id, language, label) VALUES ($1, 'en', $2)`, [country, `country ${country}`]);
+  }
 });
 
 afterAll(async () => {
@@ -91,6 +111,13 @@ describe('Public Art read from the subset (#1459)', () => {
       countryLabel: 'France', articleUrl: 'https://en.wikipedia.org/wiki/Louvre', website: 'https://www.louvre.fr/', year: 1793,
     });
     expect(await fetchClassPool(door, [PAINTING])).toEqual([]);
+  });
+
+  it('names a work in several places in the country of the cast it is drawn at (#1533)', async () => {
+    const [maman] = await fetchEntitiesByIds(door, [MAMAN]);
+    const drawn = CASTS.find(([, , lat, lon]) => lat === maman.lat && lon === maman.lon);
+    expect(drawn).toBeDefined();
+    expect(maman.countryLabel).toBe(`country ${drawn![1]}`);
   });
 
   it('answers an entity asked for by id with no point, placeless', async () => {

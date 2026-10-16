@@ -5,32 +5,43 @@
  * answers what its live twin in `publicArt/queries.ts` answers, read from the
  * kept entities (ADR-0105) by the spellings in `values.ts`.
  *
- * A multi-valued fact the pool row carries one of — the country, the
- * website, the year — is the first best statement's, where the live answer is
- * whichever row came first; the picture and the point are folded over every
- * best statement by the rule every reader keeps (`preferredPicture`,
- * `preferredCoordinate`), as the live parse folds them over its rows.
+ * A multi-valued fact the pool row carries one of — the website, the year —
+ * is the first best statement's, where the live answer is whichever row came
+ * first; the picture and the point are folded over every best statement by
+ * the rule every reader keeps (`preferredPicture`, `preferredCoordinate`), as
+ * the live parse folds them over its rows; the country is `countryOfPlace`'s,
+ * from every best country and the parts (P518) the kept point's statements
+ * name, each part's countries read from its own kept entity. A part the
+ * subset did not keep has no country here, where the live query reads one.
  */
 
 import { foldLabel } from '@tyr/shared/labels';
 import { pool } from '../../../db/index.js';
 import type { ContainerFacts, EntityFacts, PoolEntity } from '../publicArt/queries.js';
+import { countryOfPlace } from '../publicArt/countryOfPlace.js';
 import { parseWktPoint, preferredCoordinate, preferredPicture } from '../wikidataUtils.js';
 import { BEST, entitiesOf, termsOf, type Kept, type Terms } from './entities.js';
 import {
-  articleUrl, bestStatements, itemsOf, pictureUrl, standingStatements, textOf, wktOf, yearOf,
+  articleUrl, bestStatements, itemOf, itemsOf, pictureUrl, standingStatements, textOf, wktOf, yearOf,
 } from './values.js';
+import type { CompactStatement } from '../../dumps/wikidata/compactEntity.js';
 
 /** The pool row's facts about one kept entity; null for one with no point where a point is required. */
-function poolEntity(id: string, kept: Kept, terms: Map<string, Terms>, placeless: boolean): PoolEntity | null {
+function poolEntity(
+  id: string, kept: Kept, terms: Map<string, Terms>, partCountries: Map<string, string[]>, placeless: boolean,
+): PoolEntity | null {
   const { claims } = kept.entity;
-  const wkt = bestStatements(claims.P625).map(s => wktOf(s.value)).filter((w): w is string => w !== null && parseWktPoint(w) !== null)
-    .reduce<string | null>((kept, next) => preferredCoordinate(kept, next), null);
+  const points = bestStatements(claims.P625).filter(s => parseWktPoint(wktOf(s.value) ?? '') !== null);
+  const wkt = points.map(s => wktOf(s.value)!).reduce<string | null>((kept, next) => preferredCoordinate(kept, next), null);
   if (!wkt && !placeless) return null;
   const picture = bestStatements(claims.P18).map(s => textOf(s.value)).filter((f): f is string => f !== null)
     .reduce<string | null>((kept, file) => preferredPicture(kept, pictureUrl(file)), null);
   const at = wkt ? parseWktPoint(wkt) : null;
-  const country = itemsOf(bestStatements(claims.P17))[0];
+  const parts = points.filter(s => wktOf(s.value) === wkt).flatMap(partsOf);
+  const country = countryOfPlace(
+    itemsOf(bestStatements(claims.P17)),
+    parts.length ? new Set(parts.flatMap(part => partCountries.get(part) ?? [])) : null,
+  );
   const enwiki = kept.entity.sitelinks.enwiki;
   return {
     qid: id,
@@ -48,11 +59,19 @@ function poolEntity(id: string, kept: Kept, terms: Map<string, Terms>, placeless
   };
 }
 
+/** The items a coordinate statement says it applies to (`pq:P518`). */
+function partsOf(statement: CompactStatement): string[] {
+  return (statement.qualifiers?.P518 ?? []).map(itemOf).filter((id): id is string => id !== null);
+}
+
 async function poolOf(ids: string[], placeless: boolean): Promise<PoolEntity[]> {
   const kept = await entitiesOf(ids);
-  const countries = [...kept.values()].flatMap(({ entity }) => itemsOf(bestStatements(entity.claims.P17)).slice(0, 1));
+  const parts = await entitiesOf([...kept.values()].flatMap(({ entity }) => bestStatements(entity.claims.P625).flatMap(partsOf)));
+  const partCountries = new Map([...parts].map(([id, { entity }]) => [id, itemsOf(bestStatements(entity.claims.P17))]));
+  const countries = [...kept.values()].flatMap(({ entity }) => itemsOf(bestStatements(entity.claims.P17)));
   const terms = await termsOf([...kept.keys(), ...countries]);
-  return [...kept].map(([id, entity]) => poolEntity(id, entity, terms, placeless)).filter((e): e is PoolEntity => e !== null);
+  return [...kept].map(([id, entity]) => poolEntity(id, entity, terms, partCountries, placeless))
+    .filter((e): e is PoolEntity => e !== null);
 }
 
 /**

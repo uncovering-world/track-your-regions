@@ -53,6 +53,34 @@ describe('fetchClassPool', () => {
     }
   });
 
+  it('names a work in several places in the country of the cast it is drawn at (#1533)', async () => {
+    // Louise Bourgeois's Maman (Q180887): four casts, each a P625 qualified with its host
+    // (P518), and four P17s tied to none of them, so the answer cross-multiplies the two.
+    // Tokyo's point is the most precisely written, so it is the one kept, and Japan is
+    // the last of the four countries, never the first.
+    const casts = [
+      ['Point(-2.932958 43.269189)', 'Q8692', 'Spain'], ['Point(-75.697277 45.429333)', 'Q1930', 'Canada'],
+      ['Point(-0.099333 51.507694)', 'Q84', 'United Kingdom'], ['Point(139.7296602 35.6610104)', 'Q190088', 'Japan'],
+    ];
+    const rows: SparqlBinding[] = casts.flatMap(([coord, host, hostCountry]) => casts.map(([, , country]) => ({
+      e: ref('Q180887'), eLabel: { value: 'Maman' }, coord: { value: coord }, sl: { value: '30' },
+      countryLabel: { value: country }, part: ref(host), partCountryLabel: { value: hostCountry },
+    })));
+    const [maman] = await fetchClassPool(answer(rows), ['Q860861']);
+    expect([maman.lat, maman.lon]).toEqual([35.6610104, 139.7296602]);
+    expect(maman.countryLabel).toBe('Japan');
+  });
+
+  it('keeps the first country of a place stated in two at one point', async () => {
+    // The Stutthof camp (Q326193) is stated in Poland and in Nazi Germany at one point:
+    // which country of the two is #757's question, not a cast's.
+    const at = { e: ref('Q326193'), eLabel: { value: 'Stutthof concentration camp' },
+      coord: { value: 'Point(19.1525 54.3292)' }, sl: { value: '50' } };
+    const rows = [{ ...at, countryLabel: { value: 'Poland' } }, { ...at, countryLabel: { value: 'Nazi Germany' } }];
+    const [camp] = await fetchClassPool(answer(rows), ['Q152081']);
+    expect(camp.countryLabel).toBe('Poland');
+  });
+
   it('reads a coordinate on another globe as not on Earth', async () => {
     // Fallen Astronaut: its P625 carries the Moon's IRI in front of the point.
     const rows: SparqlBinding[] = [{
