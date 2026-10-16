@@ -2255,6 +2255,151 @@
         }
       }
     },
+    "/api/world-views/regions/{regionId}/image-overlay": {
+      "get": {
+        "operationId": "getWorldViewsRegionsByRegionIdImageOverlay",
+        "summary": "Get a region's reference map: the image an admin calibrated under its divisions",
+        "tags": [
+          "world-views"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "regionId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegionImageOverlay"
+                }
+              }
+            }
+          },
+          "204": {
+            "description": "There is none."
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putWorldViewsRegionsByRegionIdImageOverlay",
+        "summary": "Keep a region's reference map, replacing the one it had",
+        "tags": [
+          "world-views"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "regionId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegionImageOverlayBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Done; there is no body."
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteWorldViewsRegionsByRegionIdImageOverlay",
+        "summary": "Take a region's reference map away",
+        "tags": [
+          "world-views"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "regionId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Done; there is no body."
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/world-views/regions/{regionId}/members/move": {
       "post": {
         "operationId": "postWorldViewsRegionsByRegionIdMembersMove",
@@ -28722,6 +28867,235 @@
           "anchorPoint"
         ],
         "additionalProperties": false
+      },
+      "RegionImageOverlay": {
+        "type": "object",
+        "properties": {
+          "regionId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "imageDataUrl": {
+            "type": "string",
+            "description": "The image as a base64 data URL: PNG, JPEG or WebP."
+          },
+          "imageName": {
+            "type": "string"
+          },
+          "imageWidth": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "imageHeight": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "corners": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              },
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              },
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              },
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number"
+                  },
+                  {
+                    "type": "number"
+                  }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              }
+            ],
+            "items": false,
+            "minItems": 4,
+            "maxItems": 4,
+            "description": "Where the image's corners lie, [lng, lat] each: top left, top right, bottom right, bottom left."
+          },
+          "opacity": {
+            "type": "number"
+          },
+          "updatedAt": {
+            "type": "string",
+            "description": "When it was last saved, ISO 8601."
+          }
+        },
+        "required": [
+          "regionId",
+          "imageDataUrl",
+          "imageName",
+          "imageWidth",
+          "imageHeight",
+          "corners",
+          "opacity",
+          "updatedAt"
+        ],
+        "additionalProperties": false,
+        "description": "A region's reference map in the Create Subregions dialog (#595): an admin's working material, never shown to a visitor."
+      },
+      "RegionImageOverlayBody": {
+        "type": "object",
+        "properties": {
+          "imageDataUrl": {
+            "type": "string",
+            "maxLength": 13981078,
+            "pattern": "^data:image\\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$"
+          },
+          "imageName": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "imageWidth": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "imageHeight": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100000
+          },
+          "corners": {
+            "type": "array",
+            "prefixItems": [
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": -360,
+                    "maximum": 360
+                  },
+                  {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              },
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": -360,
+                    "maximum": 360
+                  },
+                  {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              },
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": -360,
+                    "maximum": 360
+                  },
+                  {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              },
+              {
+                "type": "array",
+                "prefixItems": [
+                  {
+                    "type": "number",
+                    "minimum": -360,
+                    "maximum": 360
+                  },
+                  {
+                    "type": "number",
+                    "minimum": -90,
+                    "maximum": 90
+                  }
+                ],
+                "items": false,
+                "minItems": 2,
+                "maxItems": 2
+              }
+            ],
+            "items": false,
+            "minItems": 4,
+            "maxItems": 4
+          },
+          "opacity": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        },
+        "required": [
+          "imageDataUrl",
+          "imageName",
+          "imageWidth",
+          "imageHeight",
+          "corners",
+          "opacity"
+        ]
       },
       "RegionMember": {
         "type": "object",

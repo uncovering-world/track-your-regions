@@ -28,6 +28,7 @@ import {
   MemberMoved,
   Region,
   RegionGeometry,
+  RegionImageOverlay,
   RegionMembers,
   Regions,
   RegionSearchResults,
@@ -71,6 +72,9 @@ import {
   previewHullGeometry,
   saveHullGeometry,
   getSavedHullParams,
+  getRegionImageOverlay,
+  saveRegionImageOverlay,
+  deleteRegionImageOverlay,
 } from '../controllers/worldView/index.js';
 import { publicReadLimiter } from '../middleware/rateLimiter.js';
 import {
@@ -97,6 +101,7 @@ import {
   computeSSEQuerySchema,
   regenerateDisplayQuerySchema,
   regionGeometryDetailQuerySchema,
+  regionImageOverlayBodySchema,
 } from '../types/index.js';
 
 export const worldViewRoutes = [
@@ -312,6 +317,33 @@ export const worldViewRoutes = [
     body: removeDivisionsFromRegionBodySchema,
     response: DivisionsRemoved,
     handler: removeDivisionsFromRegion,
+  }),
+  // A region's reference map in the Create Subregions dialog (#595, ADR-0113):
+  // an admin's working material, so even its read is the admins'.
+  defineRoute({
+    method: 'get', path: '/regions/:regionId/image-overlay', access: 'admin', cache: 'no-store',
+    summary: "Get a region's reference map: the image an admin calibrated under its divisions",
+    params: regionIdParamSchema,
+    response: RegionImageOverlay,
+    noContent: true,
+    handler: getRegionImageOverlay,
+  }),
+  defineRoute({
+    method: 'put', path: '/regions/:regionId/image-overlay', access: 'admin', cache: 'no-store',
+    summary: "Keep a region's reference map, replacing the one it had",
+    params: regionIdParamSchema,
+    body: regionImageOverlayBodySchema,
+    response: NO_BODY,
+    noContent: true,
+    handler: saveRegionImageOverlay,
+  }),
+  defineRoute({
+    method: 'delete', path: '/regions/:regionId/image-overlay', access: 'admin', cache: 'no-store',
+    summary: "Take a region's reference map away",
+    params: regionIdParamSchema,
+    response: NO_BODY,
+    noContent: true,
+    handler: deleteRegionImageOverlay,
   }),
   defineRoute({
     method: 'post', path: '/regions/:regionId/members/move', access: 'admin', cache: 'no-store',

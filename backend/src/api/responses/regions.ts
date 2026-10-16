@@ -222,3 +222,18 @@ export const DescendantMemberGeometries = z.strictObject({
   features: z.array(DescendantMemberGeometry),
 }).describe('The division members of every region beneath a region, drawn as read-only context in the editor.');
 export type DescendantMemberGeometries = z.infer<typeof DescendantMemberGeometries>;
+
+export const RegionImageOverlay = z.strictObject({
+  regionId: z.number().int(),
+  imageDataUrl: z.string().describe('The image as a base64 data URL: PNG, JPEG or WebP.'),
+  imageName: z.string(),
+  imageWidth: z.number().int(),
+  imageHeight: z.number().int(),
+  corners: z.tuple([
+    z.tuple([z.number(), z.number()]), z.tuple([z.number(), z.number()]),
+    z.tuple([z.number(), z.number()]), z.tuple([z.number(), z.number()]),
+  ]).describe("Where the image's corners lie, [lng, lat] each: top left, top right, bottom right, bottom left."),
+  opacity: z.number(),
+  updatedAt: z.string().describe('When it was last saved, ISO 8601.'),
+}).describe("A region's reference map in the Create Subregions dialog (#595): an admin's working material, never shown to a visitor.");
+export type RegionImageOverlay = z.infer<typeof RegionImageOverlay>;

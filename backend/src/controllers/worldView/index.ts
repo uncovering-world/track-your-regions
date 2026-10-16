@@ -69,6 +69,12 @@ export {
   getSavedHullParams,
 } from './hullOperations.js';
 
+// A region's reference map in the Create Subregions dialog (#595)
+export {
+  getRegionImageOverlay,
+  saveRegionImageOverlay,
+  deleteRegionImageOverlay,
+} from './regionImageOverlay.js';
 
 // Types (for advanced use cases)
 export type { ComputationProgress } from './types.js';
