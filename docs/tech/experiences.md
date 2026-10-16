@@ -4156,8 +4156,8 @@ source id beside an object's name (`SourceId.tsx`) is a link where a page names 
 a Wikidata QID opens the item, a World Heritage number opens the Centre's own page for it,
 which is the row's `metadata.unescoUrl` on every UNESCO row (the card hands it in before the place's own `metadata.website`, #1538) and is offered only when that
 page's path carries the id as a segment (`sourceIdHref`, through `safeHref`) — with the
-copy as an icon beside it; an id nothing names, a curator-created row's say, stays the copy
-button it was. The Wikipedia link on an object's card is the **stored** article and nothing
+copy as an icon beside it (`CopyButton`); an id nothing names, a curator-created row's say,
+stays selectable text with the copy beside it. The Wikipedia link on an object's card is the **stored** article and nothing
 else: all five experience syncs store the English sitelink, so a museum with a QID and no
 stored article is one whose object has *no* English article (Wikidata, 2026-09-05: 0 of the
 7 such museums on the development catalogue; 5 have an article in another language), and a
