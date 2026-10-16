@@ -9210,6 +9210,7 @@ export interface StartRegionAssignmentBody {
 export interface StartSyncBody {
   dryRun?: boolean;
   refreshCache?: boolean;
+  askAboutPins?: boolean;
 }
 
 /**
@@ -9734,6 +9735,8 @@ export interface SyncStarted {
   dryRun: boolean;
   /** Answers the source gave before are not used, so the collection runs at full length. */
   refreshCache: boolean;
+  /** Every curator's pin on admission the run disagrees with is asked about again (#1370). */
+  askAboutPins: boolean;
   message: string;
 }
 

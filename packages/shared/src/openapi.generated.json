@@ -31917,6 +31917,9 @@
           },
           "refreshCache": {
             "type": "boolean"
+          },
+          "askAboutPins": {
+            "type": "boolean"
           }
         }
       },
@@ -32965,6 +32968,10 @@
             "type": "boolean",
             "description": "Answers the source gave before are not used, so the collection runs at full length."
           },
+          "askAboutPins": {
+            "type": "boolean",
+            "description": "Every curator's pin on admission the run disagrees with is asked about again (#1370)."
+          },
           "message": {
             "type": "string"
           }
@@ -32975,6 +32982,7 @@
           "sourceName",
           "dryRun",
           "refreshCache",
+          "askAboutPins",
           "message"
         ],
         "additionalProperties": false,

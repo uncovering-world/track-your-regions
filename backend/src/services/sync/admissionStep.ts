@@ -17,9 +17,9 @@ import {
   restoreAdmission,
   unmarkIconic,
 } from './admission.js';
-import { asksAgain, pinnedRows, writePinQuestions, type PinQuestion, type RunView } from './pinQuestion.js';
+import { asksAgain, pinnedRows, stillAsks, writePinQuestions, type PinQuestion, type RunView } from './pinQuestion.js';
 import type { SyncServiceConfig } from './syncContract.js';
-import type { SyncProgress } from './types.js';
+import type { PinTally, SyncProgress } from './types.js';
 
 /**
  * The reason recorded against a row the run simply did not admit, as opposed to
@@ -194,7 +194,10 @@ export async function applyAdmissionSweep<T>(
  * it win —, the rule's reason where it named the row and turned it down, and
  * the sweep's reason where the sweep decided the rows it did not name. A row
  * it said nothing about keeps whatever was asked before. Whether that is a
- * question is `asksAgain`'s.
+ * question is `asksAgain`'s — or, on a run an admin started to ask again about
+ * the source's pins (#1370), every pin it disagrees with, the ones whose reason
+ * is the one the curator answered included. What it said of them is tallied on
+ * `progress.pins` for the run's closing line.
  */
 export async function questionPins<T>(
   config: SyncServiceConfig<T>,
@@ -204,6 +207,8 @@ export async function questionPins<T>(
   sweep: SweepOutcome,
   /** Rows the run could not read (#1462): no view of theirs, so a pin on one keeps what was asked before. */
   unread: string[] = [],
+  /** Ask about every pin the run disagrees with, not only those whose reason changed (#1370). */
+  askAll = false,
 ): Promise<void> {
   if (progress.logId === null) return;
   const notRead = new Set(unread);
@@ -219,16 +224,24 @@ export async function questionPins<T>(
 
   const asked: PinQuestion[] = [];
   const settled: number[] = [];
+  const tally: PinTally = { asked: 0, agreed: 0, standing: 0 };
   for (const pin of await pinnedRows(config.sourceId)) {
     const now = viewOf(pin.externalId);
     if (now === null) continue;
     const answered = pin.answeredVerdict === null ? null : { verdict: pin.answeredVerdict, reason: pin.answeredReason };
-    if (asksAgain({ answer: pin.answer, answered }, now)) {
+    const disagrees = now.verdict !== pin.answer;
+    // A question the run still says stays: one a run started to ask again
+    // raised is a question an ordinary run would not have asked, and waits
+    // for its curator rather than being withdrawn (`stillAsks`).
+    if (disagrees && (askAll || stillAsks(pin.question, now) || asksAgain({ answer: pin.answer, answered }, now))) {
+      tally.asked += 1;
       asked.push({ membershipId: pin.membershipId, ...now, read: pin });
       console.log(`${config.logPrefix} Asking again about the pin on ${pin.name} (${pin.externalId}): ${now.reason ?? 'admitted'}`);
     } else {
+      tally[disagrees ? 'standing' : 'agreed'] += 1;
       settled.push(pin.membershipId);
     }
   }
+  progress.pins = tally;
   await writePinQuestions(asked, settled, progress.logId, progress.dryRun);
 }

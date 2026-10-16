@@ -11,7 +11,7 @@
 import { readsSubset } from './subset/reader.js';
 import { unreadOnSubset, wikidataRunDoor } from './subset/runDoor.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
-import type { SyncProgress, WikidataLandmark, ContentsByKind } from './types.js';
+import type { SyncProgress, WikidataLandmark, ContentsByKind, SyncRunOptions } from './types.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { FetchResult, ProcessItemResult, SyncRunContext } from './syncContract.js';
 import { admittedExternalIds } from './admission.js';
@@ -236,7 +236,7 @@ async function fetchLandmarkItems(
  */
 export function syncLandmarks(
   triggeredBy: number | null,
-  options: { dryRun?: boolean; refreshCache?: boolean } = {},
+  options: SyncRunOptions = {},
 ): Promise<void> {
   return orchestrateSync<WikidataLandmark>({
     sourceId: LANDMARK_SOURCE_ID,

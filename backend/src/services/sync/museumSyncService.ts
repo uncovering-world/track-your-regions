@@ -20,6 +20,7 @@ import type {
   SyncProgress,
   CollectedMuseum,
   ContentsDelta,
+  SyncRunOptions,
 } from './types.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import { collectTier1Museums } from './museum/pipeline.js';
@@ -491,7 +492,7 @@ async function processMuseum(
  */
 export function syncMuseums(
   triggeredBy: number | null,
-  options: { dryRun?: boolean; refreshCache?: boolean } = {},
+  options: SyncRunOptions = {},
 ): Promise<void> {
   return orchestrateSync<CollectedMuseum>({
     sourceId: MUSEUM_SOURCE_ID,

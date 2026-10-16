@@ -153,6 +153,51 @@ describe("a run's question about a curator's admission pin (#1367)", () => {
   });
 });
 
+describe("a run started to ask again about the source's pins (#1370)", () => {
+  const runWith = async (refusals: { externalId: string; reason: string }[], admitted: string[], askAll: boolean) => {
+    const progress = { logId: syncLogId, dryRun: false } as SyncProgress;
+    await questionPins({ ...config, sourceId }, progress, refusals, admitted, { swept: false, skipReason: null }, [], askAll);
+    return progress.pins;
+  };
+
+  it('asks about a pin it disagrees with in the very words the curator answered', async () => {
+    expect(await runWith([{ externalId: QID, reason: ANSWERED }], [], true)).toEqual({ asked: 1, agreed: 0, standing: 0 });
+    expect(await membership()).toMatchObject({
+      admission: 'admitted', admission_question_verdict: 'refused', admission_question_reason: ANSWERED,
+    });
+  });
+
+  it('leaves such a pin standing on an ordinary run, and counts it', async () => {
+    expect(await runWith([{ externalId: QID, reason: ANSWERED }], [], false)).toEqual({ asked: 0, agreed: 0, standing: 1 });
+    expect((await membership()).admission_question_verdict).toBeNull();
+  });
+
+  it('keeps the question it raised through the ordinary runs after it, until a curator answers', async () => {
+    await runWith([{ externalId: QID, reason: ANSWERED }], [], true);
+    const raised = await membership();
+    expect(await runWith([{ externalId: QID, reason: ANSWERED }], [], false)).toEqual({ asked: 1, agreed: 0, standing: 0 });
+    expect(await membership()).toMatchObject({
+      admission_question_verdict: 'refused', admission_question_reason: ANSWERED, admission_questioned_at: raised.admission_questioned_at,
+    });
+    // Once the rule comes round to the curator, the question closes as any does.
+    expect(await runWith([], [QID], false)).toEqual({ asked: 0, agreed: 1, standing: 0 });
+    expect((await membership()).admission_question_verdict).toBeNull();
+  });
+
+  it('closes a question an ordinary run raised once a run says the answered words again', async () => {
+    // Reason A answered; a run refuses for B and asks; the next refuses for A again.
+    await runWith([{ externalId: QID, reason: 'site, not a venue: museum' }], [], false);
+    expect((await membership()).admission_question_reason).toBe('site, not a venue: museum');
+    expect(await runWith([{ externalId: QID, reason: ANSWERED }], [], false)).toEqual({ asked: 0, agreed: 0, standing: 1 });
+    expect((await membership()).admission_question_verdict).toBeNull();
+  });
+
+  it('asks nothing about a pin it agrees with, and counts it', async () => {
+    expect(await runWith([], [QID], true)).toEqual({ asked: 0, agreed: 1, standing: 0 });
+    expect((await membership()).admission_question_verdict).toBeNull();
+  });
+});
+
 describe('a question stands only on a pinned row', () => {
   it('is refused by the schema on a row nobody pinned', async () => {
     await pool.query("UPDATE experience_kind_memberships SET curated_fields = '[]' WHERE experience_id = $1", [GARDNER]);

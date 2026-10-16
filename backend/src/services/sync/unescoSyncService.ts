@@ -45,6 +45,7 @@ import type {
   ProcessedExperience,
   ParsedLocation,
   ContentsByKind,
+  SyncRunOptions,
 } from './types.js';
 
 const UNESCO_SOURCE_ID = 1; // Seeded in migration
@@ -539,7 +540,7 @@ async function upsertExperienceLocations(
  */
 export function syncUnescoSites(
   triggeredBy: number | null,
-  options: { dryRun?: boolean } = {},
+  options: SyncRunOptions = {},
 ): Promise<void> {
   // Shared state between fetchItems and processItem via closure
   let facts: WorldHeritageIndex;

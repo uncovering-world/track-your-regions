@@ -75,6 +75,7 @@ export const SyncStarted = z.strictObject({
   sourceName: z.string(),
   dryRun: z.boolean().describe('A preview: the changeset is recorded, experiences are not written.'),
   refreshCache: z.boolean().describe('Answers the source gave before are not used, so the collection runs at full length.'),
+  askAboutPins: z.boolean().describe('Every curator\'s pin on admission the run disagrees with is asked about again (#1370).'),
   message: z.string(),
 }).describe('A run of one source, started in the background.');
 export type SyncStarted = z.infer<typeof SyncStarted>;

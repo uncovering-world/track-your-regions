@@ -33,7 +33,7 @@ import {
   runCounters,
 } from './runLog.js';
 import type { SyncRunContext, SyncServiceConfig } from './syncContract.js';
-import type { SyncProgress, RunVerdict, ErrorDetail } from './types.js';
+import type { SyncProgress, RunVerdict, ErrorDetail, SyncRunOptions } from './types.js';
 import { runningSyncs, isTerminalSyncStatus } from './types.js';
 
 // =============================================================================
@@ -156,7 +156,7 @@ async function detectMissing<T>(
 export async function orchestrateSync<T>(
   config: SyncServiceConfig<T>,
   triggeredBy: number | null,
-  options: { dryRun?: boolean } = {},
+  options: SyncRunOptions = {},
 ): Promise<void> {
   const { sourceId, logPrefix } = config;
   const dryRun = options.dryRun ?? false;
@@ -276,7 +276,7 @@ export async function orchestrateSync<T>(
       console.log(`${logPrefix} Admission sweep skipped: ${sweep.skipReason}`);
     }
     await badgeAdmitted(config, progress, seenExternalIds, items, sweep.swept, unread);
-    await questionPins(config, progress, filtered ?? [], seenExternalIds, sweep, unread);
+    await questionPins(config, progress, filtered ?? [], seenExternalIds, sweep, unread, options.askAboutPins === true);
 
     changesRecorded = await recordChangesetOrMark(changes, errorDetails, progress, logPrefix);
 

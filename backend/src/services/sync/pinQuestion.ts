@@ -66,6 +66,20 @@ export interface PinnedRow {
   answer: Admission;
   answeredVerdict: Admission | null;
   answeredReason: string | null;
+  /** The question standing on the pin, waiting for a curator; null where none does. */
+  question: RunView | null;
+}
+
+/**
+ * Whether the run still says the question standing on a pin (#1370): the
+ * same verdict, the same reason with its counts folded. Such a question stays
+ * even where `asksAgain` would not raise it — one a run started to ask again
+ * put in the words the curator answered — while one the run has moved off
+ * closes as before.
+ */
+export function stillAsks(question: RunView | null, now: RunView): boolean {
+  return question !== null && question.verdict === now.verdict
+    && foldedReason(question.reason) === foldedReason(now.reason);
 }
 
 /**
@@ -77,8 +91,10 @@ export async function pinnedRows(sourceId: number): Promise<PinnedRow[]> {
   const result = await pool.query<{
     id: number; external_id: string; name: string; membership_id: number; admission: Admission;
     admission_pin_verdict: Admission | null; admission_pin_reason: string | null;
+    admission_question_verdict: Admission | null; admission_question_reason: string | null;
   }>(
-    `SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.admission, m.admission_pin_verdict, m.admission_pin_reason
+    `SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.admission, m.admission_pin_verdict, m.admission_pin_reason,
+            m.admission_question_verdict, m.admission_question_reason
        FROM ${sourcePlacesSql('e', 'm')}
       WHERE m.source_id = $1 AND e.is_manual = FALSE AND ${admissionPinnedSql('m')}`,
     [sourceId],
@@ -86,6 +102,8 @@ export async function pinnedRows(sourceId: number): Promise<PinnedRow[]> {
   return result.rows.map((row) => ({
     id: row.id, externalId: row.external_id, name: row.name, membershipId: row.membership_id,
     answer: row.admission, answeredVerdict: row.admission_pin_verdict, answeredReason: row.admission_pin_reason,
+    question: row.admission_question_verdict === null
+      ? null : { verdict: row.admission_question_verdict, reason: row.admission_question_reason },
   }));
 }
 

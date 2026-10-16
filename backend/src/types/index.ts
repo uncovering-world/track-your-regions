@@ -459,6 +459,13 @@ export const startSyncBodySchema = z.object({
    * hour for museums — which is why it is a deliberate click and not a default.
    */
   refreshCache: z.boolean().optional(),
+  /**
+   * Ask again about every curator's pin on admission the run disagrees with
+   * (#1370), not only those whose reason has changed since the pin: after a
+   * source's rule changes, the deliberate answers are put to a curator again
+   * rather than kept or erased unread.
+   */
+  askAboutPins: z.boolean().optional(),
 });
 
 /**

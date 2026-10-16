@@ -37,7 +37,7 @@
 
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { FetchResult } from './syncContract.js';
-import type { SyncProgress } from './types.js';
+import type { SyncProgress, SyncRunOptions } from './types.js';
 import { admittedExternalIds } from './admission.js';
 import { worksShownByOtherSources } from './shownElsewhere.js';
 import { contentsLine, readSourceLine } from './sourceLine.js';
@@ -231,7 +231,7 @@ async function fetchArchaeologyItems(
  */
 export function syncArchaeology(
   triggeredBy: number | null,
-  options: { dryRun?: boolean; refreshCache?: boolean } = {},
+  options: SyncRunOptions = {},
 ): Promise<void> {
   return orchestrateSync<CollectedArchaeologyItem>({
     sourceId: ARCHAEOLOGY_SOURCE_ID,

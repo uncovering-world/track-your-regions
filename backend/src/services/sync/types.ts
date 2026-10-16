@@ -46,6 +46,30 @@ export interface SyncProgress {
   logId: number | null;  // ID of the sync log entry in DB
   /** A preview run: the changeset is computed, experiences are not written. */
   dryRun: boolean;
+  /**
+   * What the run said of the curators' pins on admission (#1370), once it has:
+   * how many it asked about again, how many it agrees with, and how many it
+   * disagrees with in the very words the curator answered, left standing.
+   */
+  pins?: PinTally;
+}
+
+/** What a run said of the source's pins on admission (#1370). */
+export interface PinTally {
+  asked: number;
+  agreed: number;
+  standing: number;
+}
+
+/**
+ * How a run of a source is started from the admin panel: a preview, a full
+ * collection that uses nothing kept, and whether to ask again about every pin
+ * it disagrees with (#1370), not only the ones whose reason has changed.
+ */
+export interface SyncRunOptions {
+  dryRun?: boolean;
+  refreshCache?: boolean;
+  askAboutPins?: boolean;
 }
 
 /**

@@ -36,7 +36,7 @@ import {
   type SyncChangeRow,
   type SyncLogRow,
 } from './syncAnswerRows.js';
-import { isTerminalSyncStatus } from '../../services/sync/types.js';
+import { isTerminalSyncStatus, type SyncRunOptions } from '../../services/sync/types.js';
 import { heldRunStatusOf, idleStatusOf, rowRunStatusOf } from './syncStatusAnswer.js';
 import { CHANGESET_LOST_MARKER, stoppedByRestartSql } from '../../services/sync/syncLogMarkers.js';
 import { readLatestSyncLog } from '../../services/sync/syncUtils.js';
@@ -101,7 +101,7 @@ const COMPONENT_ITEM_SEARCHES: Record<number, typeof findUnescoComponentItems> =
 /** Registry mapping source IDs to their sync functions */
 const syncRegistry: Record<
   number,
-  (triggeredBy: number | null, options: { dryRun?: boolean; refreshCache?: boolean }) => Promise<void>
+  (triggeredBy: number | null, options: SyncRunOptions) => Promise<void>
 > = {
   1: syncUnescoSites,
   2: syncMuseums,
@@ -144,12 +144,15 @@ export async function startSync(
   // the cache is always about *this* attempt — the source published something a
   // moment ago, or a cached answer is suspected of being wrong.
   const refreshCache = body.refreshCache === true;
+  // Asked for when a rule has changed (#1370): every pin the run disagrees with
+  // becomes a question, not only the ones whose reason moved.
+  const askAboutPins = body.askAboutPins === true;
 
   // Start sync based on source type
   const syncFn = syncRegistry[sourceId];
   if (!syncFn) throw badRequest(`Sync not implemented for source: ${source.rows[0].name}`);
 
-  syncFn(triggeredBy, { dryRun, refreshCache })
+  syncFn(triggeredBy, { dryRun, refreshCache, askAboutPins })
     .catch((err) => {
       console.error('[Sync Controller] Sync error for source %s:', sourceId, err);
     })
@@ -172,21 +175,25 @@ export async function startSync(
     sourceName: source.rows[0].name,
     dryRun,
     refreshCache,
-    message: buildStartMessage({ dryRun, refreshCache }),
+    askAboutPins,
+    message: buildStartMessage({ dryRun, refreshCache, askAboutPins }),
   };
 }
 
-function buildStartMessage(mode: { dryRun: boolean; refreshCache: boolean }): string {
+function buildStartMessage(mode: { dryRun: boolean; refreshCache: boolean; askAboutPins: boolean }): string {
   // The cache half is said second and always, because it changes how long the
   // run takes rather than what it writes: a curator who asked for fresh answers
   // and sees the usual quarter-hour should know the two are connected.
   const cache = mode.refreshCache
     ? ' Cached answers from the source are ignored, so the collection runs at full length.'
     : '';
+  const pins = mode.askAboutPins
+    ? ' Every pinned row the run disagrees with is asked about again.'
+    : '';
   if (mode.dryRun) {
-    return `Dry run started: the changeset will be recorded, experiences will not be written.${cache}`;
+    return `Dry run started: the changeset will be recorded, experiences will not be written.${cache}${mode.askAboutPins ? ' The pins it would ask about again are counted, not asked.' : ''}`;
   }
-  return `Sync started. Poll /status endpoint for progress.${cache}`;
+  return `Sync started. Poll /status endpoint for progress.${cache}${pins}`;
 }
 
 /**
