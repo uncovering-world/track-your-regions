@@ -9,7 +9,7 @@
 
 import { defineRoute, IMAGE } from '../api/route.js';
 import {
-  AssignmentCancelled, AssignmentStarted, AssignmentStatus, CuratorActivity, CuratorAssignmentCreated, EqualItemMerges,
+  AssignmentCancelled, AssignmentStarted, AssignmentStatus, CurationActivity, CuratorActivity, CuratorAssignmentCreated, EqualItemMerges,
   JevUsage,
   ComponentItemSearchStarted, CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, WikidataReaderSet, PictureRepairStarted,
   PlacementCounts,
@@ -35,8 +35,9 @@ import { mergePlacesSharingAnItem } from '../controllers/admin/equalItemMergeCon
 import { getJevUsage } from '../controllers/admin/jevUsageController.js';
 import { acceptDataAssertion, getDataAssertions } from '../controllers/admin/dataAssertionsController.js';
 import {
-  listCurators, createCuratorAssignment, revokeCuratorAssignment, getCuratorActivity,
+  listCurators, createCuratorAssignment, revokeCuratorAssignment,
 } from '../controllers/admin/curatorController.js';
+import { getCuratorActivity, getCurationActivity } from '../controllers/admin/curationActivityController.js';
 import { searchUsers } from '../controllers/admin/userSearchController.js';
 import {
   getAISettings, updateAISetting, getAIUsage, updatePricing, getLearnedRules, addLearnedRule, deleteLearnedRule,
@@ -48,7 +49,7 @@ import {
   addLearnedRuleBodySchema, adminUserSearchQuerySchema, aiRuleIdParamSchema, aiSettingKeyParamSchema,
   aiSettingValueBodySchema, applyRuleReviewBodySchema, assignmentIdParamSchema, cacheKindParamSchema,
   cacheTtlBodySchema, clearCacheQuerySchema, createCuratorAssignmentBodySchema, curationGateBodySchema, wikidataReaderBodySchema,
-  curatorActivityQuerySchema, dataAssertionAcceptBodySchema, dumpBuildBodySchema, dumpKeyParamSchema, experienceCountsQuerySchema, hierarchyReviewBodySchema,
+  curationActivityQuerySchema, curatorActivityQuerySchema, dataAssertionAcceptBodySchema, dumpBuildBodySchema, dumpKeyParamSchema, experienceCountsQuerySchema, hierarchyReviewBodySchema,
   logIdParamSchema, regionAssignmentStatusQuerySchema, reorderSourcesBodySchema, sourceIdParamSchema,
   sourceLineBodySchema, startRegionAssignmentBodySchema, startSyncBodySchema, syncChangesQuerySchema,
   syncLogsQuerySchema, userIdParamSchema, worldViewIdParamSchema,
@@ -388,6 +389,14 @@ export const adminDeclaredRoutes = [
     query: curatorActivityQuerySchema,
     response: CuratorActivity,
     handler: getCuratorActivity,
+  }),
+  // Every curator's activity, filterable (#611)
+  defineRoute({
+    ...ADMIN, method: 'get', path: '/curation-activity',
+    summary: 'List the curation actions every curator has taken, newest first, filtered by action, curator, region and date',
+    query: curationActivityQuerySchema,
+    response: CurationActivity,
+    handler: getCurationActivity,
   }),
   // Find an account to promote to curator
   defineRoute({

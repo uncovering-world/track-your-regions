@@ -452,7 +452,10 @@ export const CuratorActivityEntry = z.strictObject({
   experience_name: z.string(),
   region_id: z.number().int().nullable(),
   region_name: z.string().nullable(),
-}).describe('One act of a curator\'s, on one experience.');
+  curator_id: z.number().int().nullable()
+    .describe('Who acted; null for an act a sync run took itself (a `merged`).'),
+  curator_name: z.string().nullable(),
+}).describe('One act of the curation log, on one experience.');
 export type CuratorActivityEntry = z.infer<typeof CuratorActivityEntry>;
 
 export const CuratorActivity = z.strictObject({
@@ -460,8 +463,19 @@ export const CuratorActivity = z.strictObject({
   total: z.number().int(),
   limit: z.number().int(),
   offset: z.number().int(),
-}).describe('A page of what one curator did.');
+}).describe('A page of the curation log: what one curator did, or what every curator did.');
 export type CuratorActivity = z.infer<typeof CuratorActivity>;
+
+export const CurationActivityActor = z.strictObject({
+  id: z.number().int(),
+  name: z.string().nullable(),
+}).describe('Someone the curation log names as having acted.');
+
+export const CurationActivity = CuratorActivity.extend({
+  curators: z.array(CurationActivityActor)
+    .describe('Everyone the log names as having acted, by name: a curator whose scope was revoked included.'),
+}).describe('A page of what every curator did, and who can be narrowed to.');
+export type CurationActivity = z.infer<typeof CurationActivity>;
 
 export const UserSearchResult = z.strictObject({
   id: z.number().int(),

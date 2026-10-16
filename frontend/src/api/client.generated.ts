@@ -2738,6 +2738,116 @@ export interface CreateWorldViewBody {
   source?: string;
 }
 
+export type CuratorActivityEntryAction = typeof CuratorActivityEntryAction[keyof typeof CuratorActivityEntryAction];
+
+
+export const CuratorActivityEntryAction = {
+  created: 'created',
+  rejected: 'rejected',
+  unrejected: 'unrejected',
+  edited: 'edited',
+  added_to_region: 'added_to_region',
+  removed_from_region: 'removed_from_region',
+  marked_former: 'marked_former',
+  marked_lost: 'marked_lost',
+  state_restored: 'state_restored',
+  accepted_source: 'accepted_source',
+  declined_source: 'declined_source',
+  declined_held: 'declined_held',
+  missing_dismissed: 'missing_dismissed',
+  admission_confirmed: 'admission_confirmed',
+  admission_overridden: 'admission_overridden',
+  published: 'published',
+  location_marked_former: 'location_marked_former',
+  location_marked_lost: 'location_marked_lost',
+  location_state_restored: 'location_state_restored',
+  location_missing_dismissed: 'location_missing_dismissed',
+  location_edited: 'location_edited',
+  work_edited: 'work_edited',
+  arrival_refused: 'arrival_refused',
+  contents_refused: 'contents_refused',
+  contents_unrefused: 'contents_unrefused',
+  merged: 'merged',
+  merge_undone: 'merge_undone',
+  views_chosen: 'views_chosen',
+  component_items_answered: 'component_items_answered',
+  component_item_taken_back: 'component_item_taken_back',
+  admission_pin_released: 'admission_pin_released',
+  admission_pin_kept: 'admission_pin_kept',
+  admission_pin_handed_back: 'admission_pin_handed_back',
+} as const;
+
+/**
+ * What the act changed, in the shape its action writes.
+ */
+export type CuratorActivityEntryDetails = {[key: string]: unknown} | null;
+
+/**
+ * One act of the curation log, on one experience.
+ */
+export interface CuratorActivityEntry {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  action: CuratorActivityEntryAction;
+  created_at: string | null;
+  /** What the act changed, in the shape its action writes. */
+  details: CuratorActivityEntryDetails;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experience_id: number;
+  experience_name: string;
+  region_id: number | null;
+  /** @nullable */
+  region_name: string | null;
+  /** Who acted; null for an act a sync run took itself (a `merged`). */
+  curator_id: number | null;
+  /** @nullable */
+  curator_name: string | null;
+}
+
+/**
+ * Someone the curation log names as having acted.
+ */
+export interface CurationActivityActor {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  /** @nullable */
+  name: string | null;
+}
+
+/**
+ * A page of what every curator did, and who can be narrowed to.
+ */
+export interface CurationActivity {
+  /** Newest first. */
+  activity: CuratorActivityEntry[];
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  total: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  limit: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  offset: number;
+  /** Everyone the log names as having acted, by name: a curator whose scope was revoked included. */
+  curators: CurationActivityActor[];
+}
+
 export interface CurationGateBody {
   requiresCuration: boolean;
 }
@@ -2835,76 +2945,8 @@ export interface CurationLogEntry {
  */
 export type CurationLog = CurationLogEntry[];
 
-export type CuratorActivityEntryAction = typeof CuratorActivityEntryAction[keyof typeof CuratorActivityEntryAction];
-
-
-export const CuratorActivityEntryAction = {
-  created: 'created',
-  rejected: 'rejected',
-  unrejected: 'unrejected',
-  edited: 'edited',
-  added_to_region: 'added_to_region',
-  removed_from_region: 'removed_from_region',
-  marked_former: 'marked_former',
-  marked_lost: 'marked_lost',
-  state_restored: 'state_restored',
-  accepted_source: 'accepted_source',
-  declined_source: 'declined_source',
-  declined_held: 'declined_held',
-  missing_dismissed: 'missing_dismissed',
-  admission_confirmed: 'admission_confirmed',
-  admission_overridden: 'admission_overridden',
-  published: 'published',
-  location_marked_former: 'location_marked_former',
-  location_marked_lost: 'location_marked_lost',
-  location_state_restored: 'location_state_restored',
-  location_missing_dismissed: 'location_missing_dismissed',
-  location_edited: 'location_edited',
-  work_edited: 'work_edited',
-  arrival_refused: 'arrival_refused',
-  contents_refused: 'contents_refused',
-  contents_unrefused: 'contents_unrefused',
-  merged: 'merged',
-  merge_undone: 'merge_undone',
-  views_chosen: 'views_chosen',
-  component_items_answered: 'component_items_answered',
-  component_item_taken_back: 'component_item_taken_back',
-  admission_pin_released: 'admission_pin_released',
-  admission_pin_kept: 'admission_pin_kept',
-  admission_pin_handed_back: 'admission_pin_handed_back',
-} as const;
-
 /**
- * What the act changed, in the shape its action writes.
- */
-export type CuratorActivityEntryDetails = {[key: string]: unknown} | null;
-
-/**
- * One act of a curator's, on one experience.
- */
-export interface CuratorActivityEntry {
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  id: number;
-  action: CuratorActivityEntryAction;
-  created_at: string | null;
-  /** What the act changed, in the shape its action writes. */
-  details: CuratorActivityEntryDetails;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  experience_id: number;
-  experience_name: string;
-  region_id: number | null;
-  /** @nullable */
-  region_name: string | null;
-}
-
-/**
- * A page of what one curator did.
+ * A page of the curation log: what one curator did, or what every curator did.
  */
 export interface CuratorActivity {
   /** Newest first. */
@@ -11100,7 +11142,131 @@ limit?: number;
  * @maximum 9007199254740991
  */
 offset?: number;
+action?: GetAdminCuratorsByUserIdActivityAction;
+/**
+ * @maximum 2147483647
+ * @exclusiveMinimum 0
+ */
+regionId?: number;
+/**
+ * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+ */
+since?: string;
+/**
+ * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+ */
+before?: string;
 };
+
+export type GetAdminCuratorsByUserIdActivityAction = typeof GetAdminCuratorsByUserIdActivityAction[keyof typeof GetAdminCuratorsByUserIdActivityAction];
+
+
+export const GetAdminCuratorsByUserIdActivityAction = {
+  created: 'created',
+  rejected: 'rejected',
+  unrejected: 'unrejected',
+  edited: 'edited',
+  added_to_region: 'added_to_region',
+  removed_from_region: 'removed_from_region',
+  marked_former: 'marked_former',
+  marked_lost: 'marked_lost',
+  state_restored: 'state_restored',
+  accepted_source: 'accepted_source',
+  declined_source: 'declined_source',
+  declined_held: 'declined_held',
+  missing_dismissed: 'missing_dismissed',
+  admission_confirmed: 'admission_confirmed',
+  admission_overridden: 'admission_overridden',
+  published: 'published',
+  location_marked_former: 'location_marked_former',
+  location_marked_lost: 'location_marked_lost',
+  location_state_restored: 'location_state_restored',
+  location_missing_dismissed: 'location_missing_dismissed',
+  location_edited: 'location_edited',
+  work_edited: 'work_edited',
+  arrival_refused: 'arrival_refused',
+  contents_refused: 'contents_refused',
+  contents_unrefused: 'contents_unrefused',
+  merged: 'merged',
+  merge_undone: 'merge_undone',
+  views_chosen: 'views_chosen',
+  component_items_answered: 'component_items_answered',
+  component_item_taken_back: 'component_item_taken_back',
+  admission_pin_released: 'admission_pin_released',
+  admission_pin_kept: 'admission_pin_kept',
+  admission_pin_handed_back: 'admission_pin_handed_back',
+} as const;
+
+export type GetAdminCurationActivityParams = {
+/**
+ * @minimum 1
+ * @maximum 200
+ */
+limit?: number;
+/**
+ * @minimum 0
+ * @maximum 9007199254740991
+ */
+offset?: number;
+action?: GetAdminCurationActivityAction;
+/**
+ * @maximum 2147483647
+ * @exclusiveMinimum 0
+ */
+regionId?: number;
+/**
+ * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+ */
+since?: string;
+/**
+ * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+ */
+before?: string;
+/**
+ * @maximum 2147483647
+ * @exclusiveMinimum 0
+ */
+curatorId?: number;
+};
+
+export type GetAdminCurationActivityAction = typeof GetAdminCurationActivityAction[keyof typeof GetAdminCurationActivityAction];
+
+
+export const GetAdminCurationActivityAction = {
+  created: 'created',
+  rejected: 'rejected',
+  unrejected: 'unrejected',
+  edited: 'edited',
+  added_to_region: 'added_to_region',
+  removed_from_region: 'removed_from_region',
+  marked_former: 'marked_former',
+  marked_lost: 'marked_lost',
+  state_restored: 'state_restored',
+  accepted_source: 'accepted_source',
+  declined_source: 'declined_source',
+  declined_held: 'declined_held',
+  missing_dismissed: 'missing_dismissed',
+  admission_confirmed: 'admission_confirmed',
+  admission_overridden: 'admission_overridden',
+  published: 'published',
+  location_marked_former: 'location_marked_former',
+  location_marked_lost: 'location_marked_lost',
+  location_state_restored: 'location_state_restored',
+  location_missing_dismissed: 'location_missing_dismissed',
+  location_edited: 'location_edited',
+  work_edited: 'work_edited',
+  arrival_refused: 'arrival_refused',
+  contents_refused: 'contents_refused',
+  contents_unrefused: 'contents_unrefused',
+  merged: 'merged',
+  merge_undone: 'merge_undone',
+  views_chosen: 'views_chosen',
+  component_items_answered: 'component_items_answered',
+  component_item_taken_back: 'component_item_taken_back',
+  admission_pin_released: 'admission_pin_released',
+  admission_pin_kept: 'admission_pin_kept',
+  admission_pin_handed_back: 'admission_pin_handed_back',
+} as const;
 
 export type GetAdminUsersSearchParams = {
 /**
@@ -14941,6 +15107,38 @@ export const getAdminCuratorsByUserIdActivity = async (userId: number,
     params?: GetAdminCuratorsByUserIdActivityParams, options?: Parameters<typeof apiFetch>[1]): Promise<CuratorActivity> => {
 
   return apiFetch<CuratorActivity>(getGetAdminCuratorsByUserIdActivityUrl(userId,params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getGetAdminCurationActivityUrl = (params?: GetAdminCurationActivityParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/admin/curation-activity?${stringifiedParams}` : `/api/admin/curation-activity`
+}
+
+/**
+ * Requires an admin.
+ * @summary List the curation actions every curator has taken, newest first, filtered by action, curator, region and date
+ */
+export const getAdminCurationActivity = async (params?: GetAdminCurationActivityParams, options?: Parameters<typeof apiFetch>[1]): Promise<CurationActivity> => {
+
+  return apiFetch<CurationActivity>(getGetAdminCurationActivityUrl(params),
   {
     ...options,
     method: 'GET'
