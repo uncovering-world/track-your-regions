@@ -1,8 +1,10 @@
 /**
  * What the latency probe (scripts/perf-api.mjs) says about a run besides its
  * numbers: the precondition it checks before measuring, and why each endpoint
- * that failed did. Kept apart from the probe, which measures as soon as it is
- * loaded, so a spec can import it.
+ * that failed did, how it reads its arguments and how it ranks its samples.
+ * Kept apart from the probe, which measures as soon as it is loaded, so a spec
+ * can import it; a bad argument is thrown here and the probe turns it into its
+ * exit.
  */
 
 /**
@@ -45,4 +47,58 @@ export function failureLines(results) {
   return results
     .filter((result) => result.failures > 0)
     .map((result) => `  ${result.name}: ${failureReason(result.status)}`);
+}
+
+const OPTIONS_WITH_VALUE = new Set(['api', 'martin', 'world-view', 'region', 'runs']);
+
+/** Errors name the option, never what was typed after it. */
+export function parseArgs(argv) {
+  const parsed = {};
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === '--json') {
+      parsed.json = true;
+      continue;
+    }
+    const key = arg.startsWith('--') ? arg.slice(2) : '';
+    if (!OPTIONS_WITH_VALUE.has(key)) {
+      throw new Error(`Unexpected argument at position ${i + 1}; options are --api, --martin, --world-view, --region, --runs, --json`);
+    }
+    const value = argv[i + 1];
+    if (value === undefined || value.startsWith('--')) {
+      throw new Error(`--${key} needs a value`);
+    }
+    parsed[key] = value;
+    i += 1;
+  }
+  return parsed;
+}
+
+/**
+ * Only the origin is kept: a path, query or credentials typed into --api
+ * would otherwise be echoed into the output. The error message names the
+ * flag and not the value, for the same reason.
+ */
+export function originOf(value, flag) {
+  try {
+    return new URL(value).origin;
+  } catch {
+    throw new Error(`${flag} must be a URL`);
+  }
+}
+
+/**
+ * Linear interpolation between ranks (R-7, what spreadsheets and NumPy
+ * compute), so that at thirty samples p95 sits between the second-highest
+ * and the highest rather than being the maximum under another name - which
+ * is what nearest-rank gives for every sample count below twenty.
+ */
+export function percentile(sorted, p) {
+  if (sorted.length === 0) {
+    return null;
+  }
+  const position = (p / 100) * (sorted.length - 1);
+  const lower = Math.floor(position);
+  const upper = Math.ceil(position);
+  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
 }
