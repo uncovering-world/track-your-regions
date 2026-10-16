@@ -17,3 +17,5 @@
 {"slug": "addis-ababa", "name": "Addis Ababa", "country": "Ethiopia", "lat": 9.01, "lon": 38.76, "radius_km": 120, "surveyed": "2026-10-02"}
 {"slug": "havana", "name": "Havana", "country": "Cuba", "lat": 23.137, "lon": -82.358, "radius_km": 80, "surveyed": "2026-10-02"}
 {"slug": "salvador", "name": "Salvador da Bahia", "country": "Brazil", "lat": -12.973, "lon": -38.51, "radius_km": 85, "surveyed": "2026-10-02"}
+{"slug": "berlin", "name": "Berlin", "country": "Germany", "lat": 52.52, "lon": 13.405, "radius_km": 40, "surveyed": "2026-10-16"}
+{"slug": "moscow", "name": "Moscow", "country": "Russia", "lat": 55.756, "lon": 37.617, "radius_km": 75, "surveyed": "2026-10-16"}
