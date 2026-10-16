@@ -388,11 +388,10 @@ export function DumpsPanel() {
     <Box>
       <Typography variant="h4" gutterBottom>Public Dumps</Typography>
       <Typography color="text.secondary" sx={{ mb: 3, maxWidth: 900 }}>
-        Bulk reads come from these files rather than from the live services (ADR-0101). <em>Verify newest</em> reads
-        the newest file its host has finished publishing and checks it against the published checksum, or its size
-        where none is published. {dumps.data.localCopy
-          ? 'Builds keep a local copy, so a cut download resumes.'
-          : 'No local copy is configured (DUMPS_DIR), so each build streams the file from its host.'}
+        The catalogue reads Wikidata and Wikipedia in bulk from these published files, instead of asking their
+        live services. <em>Verify newest</em> downloads the latest file and checks that it arrived whole. {dumps.data.localCopy
+          ? 'A download that stops picks up where it left off.'
+          : 'This server keeps no copy of the files (DUMPS_DIR is not set), so every build downloads its file again.'}
       </Typography>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         {sources.map(source => (
