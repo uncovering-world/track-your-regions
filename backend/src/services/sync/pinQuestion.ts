@@ -116,7 +116,7 @@ export interface PinQuestion {
 }
 
 /** `reason` with its numbers folded, as `foldedReason` folds one, in SQL. */
-function foldedReasonSql(reason: string): string {
+export function foldedReasonSql(reason: string): string {
   return `btrim(regexp_replace(${reason}, '\\d+', '#', 'g'))`;
 }
 

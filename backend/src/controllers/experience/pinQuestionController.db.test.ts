@@ -87,9 +87,23 @@ describe("a run's question about a pin, in the queue", () => {
       id: FARNESINA, membership_id: membershipId,
       pin_question: expect.objectContaining({
         answer: 'admitted', answeredReason: ANSWERED, askedVerdict: 'refused', askedReason: ASKED,
-        note: 'Raphael’s frescoes are the point',
+        note: 'Raphael’s frescoes are the point', restated: false,
       }),
     })]);
+  });
+
+  it('says when the run asks again in the words the curator answered over (#1370)', async () => {
+    // A run started to ask again about the pins: the same refusal, its counts aside.
+    await pool.query(
+      `UPDATE experience_kind_memberships SET admission_pin_reason = '17 sitelinks: below the line',
+              admission_question_reason = '19 sitelinks: below the line' WHERE id = $1`,
+      [membershipId],
+    );
+    const queue = await getReviewQueue({
+      query: reviewQueueQuerySchema.parse({ q: NAME }),
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    });
+    expect(queue.pinQuestions?.[0]?.pin_question).toMatchObject({ restated: true });
   });
 });
 
