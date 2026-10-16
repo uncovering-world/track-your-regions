@@ -90,6 +90,18 @@ describe('LocationRow', () => {
     expect(await screen.findByTestId('ErrorOutlineIcon')).toBeInTheDocument();
   });
 
+  it('hands its own point to a maps app, named for the place (#1194)', () => {
+    renderRow();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Open Prehistoric Pile Dwellings around the Alps — See (1363-061) in maps' }));
+
+    // The row's point, not one point standing for the whole site; jsdom is no Apple or Android device.
+    expect(screen.getByRole('menuitem', { name: 'OpenStreetMap' }))
+      .toHaveAttribute('href', 'https://www.openstreetmap.org/?mlat=47.5&mlon=9.4#map=17/47.5/9.4');
+    expect(screen.getByRole('menuitem', { name: 'Google Maps' }))
+      .toHaveAttribute('href', 'https://www.google.com/maps/search/?api=1&query=47.5,9.4');
+  });
+
   it('names a part its source left unnamed by its reference', () => {
     // The Via Appia's parts, which UNESCO leaves unnamed.
     renderRow({ location: { ...see, name: null, externalRef: '1708-003' }, objectName: 'Via Appia' });

@@ -24,6 +24,7 @@ import LocationIcon from '@mui/icons-material/LocationOn';
 import FixPlaceIcon from '@mui/icons-material/EditLocationAlt';
 import { locationLabel, pointFullName, pointOfRow } from '../../utils/locationLabel';
 import { CopyNameButton } from '../shared/CopyButton';
+import { OpenInMapsLink } from '../shared/OpenInMapsLink';
 import { claimLabel } from '../../utils/placeClaims';
 import { resolveLocationColor } from './utils';
 
@@ -126,14 +127,17 @@ function LocationRowComponent({
           {...opener.row}
           sx={{
             py: 0.5, opacity: 0.4, bgcolor: 'grey.100', cursor: dimmedCursor(opener),
-            '& .place-fix, & .place-copy': { opacity: 0, transition: 'opacity 0.15s ease' },
-            '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy': { opacity: 1 },
+            '& .place-fix, & .place-copy, & .place-maps': { opacity: 0, transition: 'opacity 0.15s ease' },
+            '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy, &:hover .place-maps, &:focus-within .place-maps, & .place-maps[aria-expanded="true"]': { opacity: 1 },
+            // A touch screen has no hover to reveal them: the row's actions stay shown there.
+            '@media (hover: none)': { '& .place-fix, & .place-copy, & .place-maps': { opacity: 1 } },
           }}
           // A place outside the region is still a place a curator is looking at,
           // and a place a reader may want the name of.
           secondaryAction={(
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <CopyNameButton fullName={fullName} className="place-copy" />
+              <OpenInMapsLink point={location} label={fullName} compact className="place-maps" />
               {onCorrect && <FixPlaceButton location={location} onCorrect={onCorrect} />}
             </Box>
           )}
@@ -182,8 +186,10 @@ function LocationRowComponent({
           // row under the pointer, the one holding keyboard focus, or the one lit
           // from the map — thirty rows do not carry thirty pencils. Opacity, not
           // display: the button stays in the tab order, which is what reveals it.
-          '& .place-fix, & .place-copy': { opacity: hovered ? 1 : 0, transition: 'opacity 0.15s ease' },
-          '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy': { opacity: 1 },
+          '& .place-fix, & .place-copy, & .place-maps': { opacity: hovered ? 1 : 0, transition: 'opacity 0.15s ease' },
+          '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy, &:hover .place-maps, &:focus-within .place-maps, & .place-maps[aria-expanded="true"]': { opacity: 1 },
+          // A touch screen has no hover to reveal them: the row's actions stay shown there.
+          '@media (hover: none)': { '& .place-fix, & .place-copy, & .place-maps': { opacity: 1 } },
         }}
         onMouseEnter={() => onHover(location.id)}
         {...opener.row}
@@ -191,6 +197,7 @@ function LocationRowComponent({
           (
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
               <CopyNameButton fullName={fullName} className="place-copy" />
+              <OpenInMapsLink point={location} label={fullName} compact className="place-maps" />
               {onCorrect && <FixPlaceButton location={location} onCorrect={onCorrect} />}
               {showCheckbox && (
                 <Checkbox

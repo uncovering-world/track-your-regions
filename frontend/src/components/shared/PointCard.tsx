@@ -36,6 +36,7 @@ import { pointPicture } from '../../utils/pointPicture';
 import { wikidataItemUrl, wikipediaArticleUrl } from '../../utils/wikidataLinks';
 import { safeHref } from '../../utils/safeHref';
 import { CopyNameButton } from './CopyButton';
+import { OpenInMapsLink } from './OpenInMapsLink';
 import { ImageCreditLine } from './ImageCreditLine';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 
@@ -228,29 +229,30 @@ export function PointCard({
 
         {point.description && <Typography variant="body2">{point.description}</Typography>}
 
-        {(wikidata || article || official || unescoPage) && (
-          <Stack direction="row" sx={{ gap: 2, flexWrap: 'wrap' }}>
-            {article && (
-              <Link href={article} target="_blank" rel="noopener noreferrer" variant="body2">Wikipedia</Link>
-            )}
-            {wikidata && (
-              <Link href={wikidata} target="_blank" rel="noopener noreferrer" variant="body2">
-                Wikidata {point.wikidata_item}
-              </Link>
-            )}
-            {unescoPage && (
-              <Link href={unescoPage} target="_blank" rel="noopener noreferrer" variant="body2">
-                UNESCO page
-              </Link>
-            )}
-            {/* Some items give UNESCO's page as their official website: one link, not two. */}
-            {official && official !== unescoPage && (
-              <Link href={official} target="_blank" rel="noopener noreferrer" variant="body2">
-                Official website
-              </Link>
-            )}
-          </Stack>
-        )}
+        <Stack direction="row" alignItems="center" sx={{ gap: 2, flexWrap: 'wrap', '&:empty': { display: 'none' } }}>
+          {article && (
+            <Link href={article} target="_blank" rel="noopener noreferrer" variant="body2">Wikipedia</Link>
+          )}
+          {wikidata && (
+            <Link href={wikidata} target="_blank" rel="noopener noreferrer" variant="body2">
+              Wikidata {point.wikidata_item}
+            </Link>
+          )}
+          {unescoPage && (
+            <Link href={unescoPage} target="_blank" rel="noopener noreferrer" variant="body2">
+              UNESCO page
+            </Link>
+          )}
+          {/* Some items give UNESCO's page as their official website: one link, not two. */}
+          {official && official !== unescoPage && (
+            <Link href={official} target="_blank" rel="noopener noreferrer" variant="body2">
+              Official website
+            </Link>
+          )}
+          {/* The part's own point, to the visitor's maps app (#1194): the row it was
+              opened from offered it, and the part's card does too. */}
+          <OpenInMapsLink point={point} label={pointFullName(object.name, point)} />
+        </Stack>
 
         {/* The visit is recorded on the place, as a part's row records it; whether
             the whole site counts as visited is a question of its own (#768). Not on
