@@ -14,7 +14,7 @@ import { offeredLocationSql, publishedContentSql } from '../../../db/readerPredi
 import { countedMembershipSql } from '../../experience/experienceCounts.js';
 import { venuesShowingSql } from '../../experience/siteFinds.js';
 import { buildCoverageReport } from './report.js';
-import { coverageSql, type CoverageFacts, type ExpectationRow, type KindRow } from './reportQueries.js';
+import { coverageSql, type CoverageFacts, type ExpectationRow, type JudgementRow, type KindRow } from './reportQueries.js';
 import { renderCoverageReport } from './reportText.js';
 
 const kind = (over: Partial<KindRow>): KindRow => ({
@@ -43,7 +43,12 @@ const facts = (over: Partial<CoverageFacts>): CoverageFacts => ({
   expectations: [],
   matches: [],
   nearby: [],
+  judgements: [],
   ...over,
+});
+const judged = (slug: string, cause: string, issue: number | null, over: Partial<JudgementRow> = {}): JudgementRow => ({
+  region_slug: 'cusco-region', entry_slug: slug, kind_slug: 'archaeology', row_wikidata_id: null, cause, issue_number: issue, judged: '2026-10-16',
+  note: `Judged ${slug}.`, ...over,
 });
 const at = (slug: string) => ({ region_slug: 'cusco-region', slug });
 const verdictOf = (report: ReturnType<typeof buildCoverageReport>, slug: string) =>
@@ -209,6 +214,85 @@ describe('what a live kind lacks', () => {
   it('counts a work offered wherever the catalogue shows it', () => {
     expect(gaps('notable-works')).toMatchObject({ expected: 2, offered: 1 });
     expect(gaps('notable-works')?.wellKnownMissing.map(missing => missing.name)).toEqual(['mask']);
+  });
+
+  it('carries no judgement and counts none where the ledger has no line', () => {
+    expect(gaps('archaeology')?.wellKnownMissing.map(missing => missing.judgement)).toEqual([null, null]);
+    expect(gaps('archaeology')?.judgedByCause).toEqual([]);
+    expect(report.staleJudgements).toEqual([]);
+  });
+});
+
+describe('what a person has judged', () => {
+  const report = buildCoverageReport(facts({
+    expectations: [
+      entry('machu-picchu', { sitelinks: 150 }),
+      entry('ollantaytambo', { sitelinks: 40 }),
+      entry('pisac', { sitelinks: 28 }),
+      entry('moray', { sitelinks: 18 }),
+      // Filed under two live kinds, offered by one: a gap per kind, judged apart.
+      entry('arch', { kinds: ['archaeology', 'public-art'], sitelinks: 49 }),
+      entry('soumaya', { kinds: ['art-museums'], sitelinks: 31 }),
+      entry('house-museum', { kinds: ['art-museums'], sitelinks: 4 }),
+      entry('gallery', { kinds: ['art-museums'], sitelinks: 2 }),
+    ],
+    matches: [
+      { ...at('machu-picchu'), catalogue_name: 'Machu Picchu', kind_id: 5, offered: true },
+      { ...at('arch'), catalogue_name: 'Arch', kind_id: 5, offered: true },
+    ],
+    judgements: [
+      judged('ollantaytambo', 'rule-defect', 1160),
+      judged('moray', 'rule-defect', 1160),
+      judged('arch', 'offered-elsewhere', null, { kind_slug: 'public-art' }),
+      judged('soumaya', 'door-missing', 628, { kind_slug: 'art-museums' }),
+      judged('house-museum', 'door-missing', 628, { kind_slug: 'art-museums', judged: '2026-10-01' }),
+      judged('gallery', 'not-a-must', null, { kind_slug: 'art-museums' }),
+      // Judged when it was absent; the kind offers it now.
+      judged('machu-picchu', 'rule-defect', 1160),
+      judged('', 'not-a-must', null, { entry_slug: null, kind_slug: null, row_wikidata_id: 'Q96000099' }),
+    ],
+  }));
+  const gaps = (slug: string) => report.liveKinds.find(live => live.slug === slug);
+
+  it('puts the ledger\'s line on the gap it judges, and leaves an unjudged one bare', () => {
+    expect(gaps('archaeology')?.wellKnownMissing.map(missing => [missing.slug, missing.judgement?.cause ?? null])).toEqual([
+      ['ollantaytambo', 'rule-defect'],
+      ['pisac', null],
+    ]);
+    expect(gaps('art-museums')?.wellKnownMissing.map(missing => missing.judgement)).toEqual([
+      { cause: 'door-missing', issue: 628, judged: '2026-10-16', note: 'Judged soumaya.' },
+      { cause: 'door-missing', issue: 628, judged: '2026-10-01', note: 'Judged house-museum.' },
+      { cause: 'not-a-must', issue: null, judged: '2026-10-16', note: 'Judged gallery.' },
+    ]);
+  });
+
+  it('keeps a judgement to the kind it names: the arch is judged under Public Art and would be bare under Archaeology', () => {
+    expect(gaps('public-art')?.wellKnownMissing.map(missing => [missing.slug, missing.judgement?.cause ?? null])).toEqual([['arch', 'offered-elsewhere']]);
+    // Archaeology offers the arch, so it is not among its gaps at all; were a run to lose it, the gap would be bare there.
+    expect(gaps('archaeology')?.wellKnownMissing.map(missing => missing.slug)).not.toContain('arch');
+  });
+
+  it('counts the judged among what a kind lacks by cause, naming each cause\'s issues once', () => {
+    expect(gaps('art-museums')?.judgedByCause).toEqual([
+      { cause: 'door-missing', count: 2, issues: [628] },
+      { cause: 'not-a-must', count: 1, issues: [] },
+    ]);
+    // Moray sits under the line: judged, but not among the well-known rows the kind lists.
+    expect(gaps('archaeology')?.judgedByCause).toEqual([{ cause: 'rule-defect', count: 1, issues: [1160] }]);
+  });
+
+  it('calls stale a judgement whose kind offers the entry now, and none on a gap lacked under the line', () => {
+    expect(report.staleJudgements).toEqual([
+      {
+        regionSlug: 'cusco-region', slug: 'machu-picchu', name: 'machu-picchu', kindSlug: 'archaeology', kindName: 'Archaeology',
+        cause: 'rule-defect', issue: 1160, judged: '2026-10-16', note: 'Judged machu-picchu.',
+      },
+    ]);
+  });
+
+  it('counts a judgement on a catalogue row and joins it to no gap', () => {
+    expect(report.rowJudgements).toBe(1);
+    expect(report.liveKinds.flatMap(live => live.wellKnownMissing).filter(missing => missing.judgement !== null)).toHaveLength(5);
   });
 });
 

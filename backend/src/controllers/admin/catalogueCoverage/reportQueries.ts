@@ -15,7 +15,7 @@ import { pool } from '../../../db/index.js';
 import { MEMBERSHIPS } from '../../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
 import type {
-  CoverageExpectationsRow, CoverageKindsRow, CoverageRegionsRow, ExperienceLocationsRow, ExperiencesRow,
+  CoverageExpectationsRow, CoverageJudgementsRow, CoverageKindsRow, CoverageRegionsRow, ExperienceLocationsRow, ExperiencesRow,
 } from '../../../db/schema.generated.js';
 import { countedMembershipSql } from '../../experience/experienceCounts.js';
 import { venuesShowingSql } from '../../experience/siteFinds.js';
@@ -50,12 +50,16 @@ export interface NearbyRow {
   metres: number;
 }
 
+/** One line of the judgement ledger as loaded; `judged` as a date string. */
+export type JudgementRow = Pick<CoverageJudgementsRow, 'region_slug' | 'entry_slug' | 'kind_slug' | 'row_wikidata_id' | 'cause' | 'issue_number' | 'note'> & { judged: string };
+
 export interface CoverageFacts {
   kinds: KindRow[];
   regions: RegionRow[];
   expectations: ExpectationRow[];
   matches: MatchRow[];
   nearby: NearbyRow[];
+  judgements: JudgementRow[];
 }
 
 const KINDS_SQL = `
@@ -138,21 +142,32 @@ const NEARBY_SQL = `
      AND EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id AND ${countedMembershipSql('m', 'e')})
    ORDER BY x.region_slug, x.slug, metres, e.name`;
 
+/** The ledger as loaded (ADR-0116): every judgement of the regions asked for, entries and rows alike. */
+const JUDGEMENTS_SQL = `
+  SELECT j.region_slug, j.entry_slug, j.kind_slug, j.row_wikidata_id, j.cause, j.issue_number,
+         to_char(j.judged, 'YYYY-MM-DD') AS judged, j.note
+    FROM coverage_judgements j
+   WHERE ($1::text[] IS NULL OR j.region_slug = ANY($1))
+   ORDER BY j.region_slug, j.entry_slug NULLS LAST, j.kind_slug, j.row_wikidata_id`;
+
 /** How near a catalogue point must be to count as standing at an expectation's spot. */
 export const SAME_SPOT_METRES = 250;
 
 /** Read everything the report is built from, for every region or for `regionSlugs`. */
 export async function readCoverageFacts(regionSlugs?: string[]): Promise<CoverageFacts> {
   const only = regionSlugs ?? null;
-  const [kinds, regions, expectations, matches, nearby] = await Promise.all([
+  const [kinds, regions, expectations, matches, nearby, judgements] = await Promise.all([
     pool.query<KindRow>(KINDS_SQL),
     pool.query<RegionRow>(REGIONS_SQL, [only]),
     pool.query<ExpectationRow>(EXPECTATIONS_SQL, [only]),
     pool.query<MatchRow>(MATCHES_SQL, [only]),
     pool.query<NearbyRow>(NEARBY_SQL, [only, SAME_SPOT_METRES]),
+    pool.query<JudgementRow>(JUDGEMENTS_SQL, [only]),
   ]);
-  return { kinds: kinds.rows, regions: regions.rows, expectations: expectations.rows, matches: matches.rows, nearby: nearby.rows };
+  return {
+    kinds: kinds.rows, regions: regions.rows, expectations: expectations.rows, matches: matches.rows, nearby: nearby.rows, judgements: judgements.rows,
+  };
 }
 
 /** The statements, for the spec that holds them to the fragments they compose. */
-export const coverageSql = { KINDS_SQL, REGIONS_SQL, EXPECTATIONS_SQL, MATCHES_SQL, NEARBY_SQL };
+export const coverageSql = { KINDS_SQL, REGIONS_SQL, EXPECTATIONS_SQL, MATCHES_SQL, NEARBY_SQL, JUDGEMENTS_SQL };

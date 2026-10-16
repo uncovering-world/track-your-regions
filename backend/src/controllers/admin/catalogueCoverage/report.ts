@@ -8,14 +8,17 @@
  * - per region, how many expectations stand in each verdict;
  * - per proposed kind, how much the surveys expect of it: the recommendation of
  *   what to build, which an issue cites and no code acts on;
- * - per live kind, the expected things it lacks, the well-known ones by name.
+ * - per live kind, the expected things it lacks, the well-known ones by name, each
+ *   with the judgement a person recorded on its gap in the committed ledger, where
+ *   there is one (ADR-0116), and the judgements whose gap has since closed.
  */
 
+import type { Cause } from '../../../services/catalogueCoverage/files.js';
 import { ICONIC_SITELINKS } from '../../../services/sync/museum/tier1.js';
 import { ENTER_SITELINKS } from '../../../services/sync/publicArt/pipeline.js';
 import {
   readCoverageFacts,
-  type CoverageFacts, type ExpectationRow, type KindRow, type MatchRow, type NearbyRow,
+  type CoverageFacts, type ExpectationRow, type JudgementRow, type KindRow, type MatchRow, type NearbyRow,
 } from './reportQueries.js';
 
 /**
@@ -38,6 +41,14 @@ export type Verdict = (typeof VERDICTS)[number];
 /** One offered catalogue point at an expectation's spot. */
 export type NearbyPoint = Pick<NearbyRow, 'place' | 'point' | 'metres'>;
 
+/** What a person judged about a gap, from the committed ledger (ADR-0116). */
+export interface Judgement {
+  cause: Cause;
+  issue: number | null;
+  judged: string;
+  note: string;
+}
+
 export interface ExpectationResult {
   regionSlug: string;
   slug: string;
@@ -52,6 +63,11 @@ export interface ExpectationResult {
   /** Offered catalogue points at its spot, nearest first; filled only for `same_spot`. */
   nearby: NearbyPoint[];
 }
+
+/** One absent entry of a live kind, with the ledger's line on that gap where a person has judged it. */
+export type MissingEntry = Pick<ExpectationResult, 'regionSlug' | 'slug' | 'name' | 'sitelinks' | 'sourceCount' | 'verdict'> & {
+  judgement: Judgement | null;
+};
 
 export interface RegionCoverage {
   slug: string;
@@ -87,10 +103,34 @@ export interface LiveKindGaps {
   line: number | null;
   expected: number;
   offered: number;
-  /** Absent from this kind and at or over its line (every absent one, where there is no line), by name. */
-  wellKnownMissing: Pick<ExpectationResult, 'regionSlug' | 'name' | 'sitelinks' | 'sourceCount' | 'verdict'>[];
+  /** Absent from this kind and at or over its line (every absent one, where there is no line), by name, judged or not. */
+  wellKnownMissing: MissingEntry[];
+  /** Of `wellKnownMissing`, how many a person has judged under each cause, and the issues those judgements name. */
+  judgedByCause: JudgedCause[];
   /** Absent from this kind and under its line: the regional tier's to hold. */
   belowLineMissing: number;
+}
+
+export interface JudgedCause {
+  cause: Cause;
+  count: number;
+  issues: number[];
+}
+
+/** One cause's share of the judged, with the issues the judgements name: `90 door-missing (#628)`. */
+export function causeWords(judged: JudgedCause): string {
+  const issues = judged.issues.map(issue => `#${issue}`).join(', ');
+  const owners = judged.issues.length > 0 ? ` (${issues})` : '';
+  return `${judged.count} ${judged.cause}${owners}`;
+}
+
+/** A judgement on a gap its kind no longer has: the kind offers the entry, and the line is to be removed. */
+export interface StaleJudgement extends Judgement {
+  regionSlug: string;
+  slug: string;
+  name: string;
+  kindSlug: string;
+  kindName: string;
 }
 
 export interface CoverageReport {
@@ -98,6 +138,9 @@ export interface CoverageReport {
   proposedKinds: ProposedKindDemand[];
   liveKinds: LiveKindGaps[];
   expectations: ExpectationResult[];
+  staleJudgements: StaleJudgement[];
+  /** Judgements on catalogue rows no entry names (#1601): loaded and counted, read by nothing yet. */
+  rowJudgements: number;
 }
 
 const EXAMPLES = 5;
@@ -164,10 +207,31 @@ function distinctPoints(near: NearbyRow[]): NearbyPoint[] {
 const byRenown = (a: ExpectationResult, b: ExpectationResult): number =>
   b.sourceCount - a.sourceCount || (b.sitelinks ?? -1) - (a.sitelinks ?? -1) || a.name.localeCompare(b.name);
 
+const toJudgement = (row: JudgementRow): Judgement =>
+  ({ cause: row.cause as Cause, issue: row.issue_number, judged: row.judged, note: row.note });
+
+/** How many of `missing` a person has judged under each cause, in the order of the causes' first appearance by renown. */
+function judgedByCause(missing: Pick<MissingEntry, 'judgement'>[]): JudgedCause[] {
+  const counted = new Map<Cause, JudgedCause>();
+  for (const { judgement } of missing) {
+    if (!judgement) continue;
+    const entry = counted.get(judgement.cause) ?? { cause: judgement.cause, count: 0, issues: [] };
+    entry.count += 1;
+    if (judgement.issue !== null && !entry.issues.includes(judgement.issue)) entry.issues.push(judgement.issue);
+    counted.set(judgement.cause, entry);
+  }
+  return [...counted.values()].map(entry => ({ ...entry, issues: [...entry.issues].sort((a, b) => a - b) }));
+}
+
 export function buildCoverageReport(facts: CoverageFacts): CoverageReport {
   const kinds = new Map(facts.kinds.map(kind => [kind.slug, kind]));
   const matches = group(facts.matches);
   const nearby = group(facts.nearby);
+  // A judgement on a gap is found by the entry and the kind whose gap it is: an entry filed
+  // under two live kinds has two gaps, judged apart. One on a catalogue row has no entry to join.
+  const gapKey = (regionSlug: string, slug: string, kindSlug: string) => `${regionSlug}\n${slug}\n${kindSlug}`;
+  const onEntries = facts.judgements.filter(row => row.entry_slug !== null && row.kind_slug !== null);
+  const judgements = new Map(onEntries.map(row => [gapKey(row.region_slug, row.entry_slug as string, row.kind_slug as string), toJudgement(row)]));
 
   const expectations: ExpectationResult[] = facts.expectations.map((entry) => {
     const own = matches.get(key(entry)) ?? [];
@@ -186,6 +250,7 @@ export function buildCoverageReport(facts: CoverageFacts): CoverageReport {
       nearby: verdict === 'same_spot' ? distinctPoints(near) : [],
     };
   });
+  const names = new Map(expectations.map(result => [`${result.regionSlug}\n${result.slug}`, result.name]));
 
   const regions: RegionCoverage[] = facts.regions.map((region) => {
     const own = expectations.filter(result => result.regionSlug === region.slug);
@@ -215,27 +280,48 @@ export function buildCoverageReport(facts: CoverageFacts): CoverageReport {
     .filter(demand => demand.expected > 0)
     .sort((a, b) => b.regions - a.regions || b.expected - a.expected || a.slug.localeCompare(b.slug));
 
+  // A gap a live kind still has, over or under the line: a judgement on any other gap is stale.
+  const stillLacked = new Set<string>();
   const liveKinds: LiveKindGaps[] = facts.kinds
     .filter(kind => kind.status === 'live')
     .map((kind) => {
       const filed = filedUnder(kind);
       const absent = filed.filter(result => !offeredIn(result, kind));
+      for (const result of absent) stillLacked.add(gapKey(result.regionSlug, result.slug, kind.slug));
       const line = lineOf(kind);
       const wellKnown = absent.filter(result => line === null || (result.sitelinks ?? 0) >= line);
+      const wellKnownMissing: MissingEntry[] = [...wellKnown].sort(byRenown)
+        .map(({ regionSlug, slug, name, sitelinks, sourceCount, verdict }) => ({
+          regionSlug, slug, name, sitelinks, sourceCount, verdict, judgement: judgements.get(gapKey(regionSlug, slug, kind.slug)) ?? null,
+        }));
       return {
         slug: kind.slug,
         name: kind.name,
         line,
         expected: filed.length,
         offered: filed.length - absent.length,
-        wellKnownMissing: [...wellKnown].sort(byRenown)
-          .map(({ regionSlug, name, sitelinks, sourceCount, verdict }) => ({ regionSlug, name, sitelinks, sourceCount, verdict })),
+        wellKnownMissing,
+        judgedByCause: judgedByCause(wellKnownMissing),
         belowLineMissing: absent.length - wellKnown.length,
       };
     })
     .sort((a, b) => a.slug.localeCompare(b.slug));
 
-  return { regions, proposedKinds, liveKinds, expectations };
+  const staleJudgements: StaleJudgement[] = onEntries
+    .filter(row => !stillLacked.has(gapKey(row.region_slug, row.entry_slug as string, row.kind_slug as string)))
+    .map(row => ({
+      ...toJudgement(row),
+      regionSlug: row.region_slug,
+      slug: row.entry_slug as string,
+      name: names.get(`${row.region_slug}\n${row.entry_slug}`) ?? (row.entry_slug as string),
+      kindSlug: row.kind_slug as string,
+      kindName: kinds.get(row.kind_slug as string)?.name ?? (row.kind_slug as string),
+    }));
+
+  return {
+    regions, proposedKinds, liveKinds, expectations, staleJudgements,
+    rowJudgements: facts.judgements.filter(row => row.row_wikidata_id !== null).length,
+  };
 }
 
 /** The report over what is loaded now, for every region or for `regionSlugs`. */

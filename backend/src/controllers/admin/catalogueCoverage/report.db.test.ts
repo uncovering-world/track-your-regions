@@ -38,6 +38,7 @@ async function clearCatalogue(): Promise<void> {
 }
 
 async function clearExpectations(): Promise<void> {
+  await pool.query('DELETE FROM coverage_judgements');
   await pool.query('DELETE FROM coverage_expectation_kinds');
   await pool.query('DELETE FROM coverage_expectations');
   await pool.query('DELETE FROM coverage_regions');
@@ -112,6 +113,11 @@ async function files(): Promise<CoverageFiles> {
       entry('festival', { type: 'event', kinds: ['festivals-and-events'] }),
       entry('not-sorted', { type: 'activity', kinds: [] }),
     ]]]),
+    judgements: [
+      { region: REGION, entry: 'refused-dig', kind: 'archaeology', row: null, cause: 'rule-defect', issue: 1160, judged: '2026-10-16', note: 'Refused on a class the door should admit.' },
+      { region: REGION, entry: 'offered-dig', kind: 'archaeology', row: null, cause: 'door-missing', issue: 881, judged: '2026-10-01', note: 'Judged before the run that admitted it.' },
+      { region: REGION, entry: null, kind: null, row: 'Q96000099', cause: 'not-a-must', issue: null, judged: '2026-10-16', note: 'A row no guide names (#1601).' },
+    ],
   };
 }
 
@@ -197,5 +203,15 @@ describe('the coverage report on a real database', () => {
     expect(archaeology).toMatchObject({ expected: 7, offered: 2 });
     expect(archaeology?.wellKnownMissing.map(missing => missing.name)).toEqual(['three-hundred-metres-away']);
     expect(archaeology?.belowLineMissing).toBe(4);
+  });
+
+  it('reads the ledger: the refused dig carries its judgement under Archaeology, the offered one\'s is stale, the row one is counted', () => {
+    const archaeology = report.liveKinds.find(kind => kind.slug === 'archaeology');
+    // Under the line, so counted rather than listed: the judgement is found through the stale test instead.
+    expect(archaeology?.wellKnownMissing.map(missing => missing.judgement)).toEqual([null]);
+    expect(report.staleJudgements.map(stale => [stale.slug, stale.kindSlug, stale.cause, stale.issue, stale.judged])).toEqual([
+      ['offered-dig', 'archaeology', 'door-missing', 881, '2026-10-01'],
+    ]);
+    expect(report.rowJudgements).toBe(1);
   });
 });
