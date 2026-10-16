@@ -18,7 +18,7 @@
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { FetchResult, ProcessItemResult, SyncRunContext } from './syncContract.js';
-import type { SyncProgress, ContentsDelta } from './types.js';
+import type { SyncProgress, ContentsDelta, SyncRunOptions } from './types.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import { admittedExternalIds } from './admission.js';
 import { contentsLine, readSourceLine, type LinePair } from './sourceLine.js';
@@ -382,7 +382,7 @@ async function processPlace(
  */
 export function syncPlacesOfWorship(
   triggeredBy: number | null,
-  options: { dryRun?: boolean; refreshCache?: boolean } = {},
+  options: SyncRunOptions = {},
 ): Promise<void> {
   return orchestrateSync<CollectedPlaceOfWorship>({
     sourceId: WORSHIP_SOURCE_ID,

@@ -386,7 +386,7 @@ describe('orchestrateSync changeset recording', () => {
     // row it did not name"; a row the run could not read was not decided.
     vi.mocked(pinnedRows).mockResolvedValueOnce([{
       id: 9, externalId: 'Q9', name: 'A dig newer than the dump', membershipId: 90,
-      answer: 'admitted', answeredVerdict: 'admitted', answeredReason: null,
+      answer: 'admitted', answeredVerdict: 'admitted', answeredReason: null, question: null,
     }]);
     await orchestrateSync(makeConfig({
       recomputesMembership: true,

@@ -13,7 +13,7 @@ import { sentenceFor } from '../../api/readerFacingError.js';
 import { recordSyncChanges, type ChangeRecord } from './changeRecorder.js';
 import { CHANGESET_LOST_MARKER } from './syncLogMarkers.js';
 import type { SyncServiceConfig } from './syncContract.js';
-import type { SyncProgress, RunVerdict, ErrorDetail } from './types.js';
+import type { SyncProgress, RunVerdict, ErrorDetail, PinTally } from './types.js';
 
 /**
  * Persist the per-object changeset, or leave a marker saying it was lost.
@@ -136,7 +136,18 @@ export function completionMessage(
     + (guards.admissionSweep === null ? '' : `; delisted nothing — ${guards.admissionSweep}`);
   return `${verdict}: ${progress.created} created, ${progress.updated} updated, `
     + `${progress.unchanged} unchanged (${progress.held} held), ${progress.missing} missing, `
-    + `${progress.errors} errors${skipped}`;
+    + `${progress.errors} errors${skipped}${pinsSentence(progress.pins, progress.dryRun)}`;
+}
+
+/**
+ * What the run said of the curators' pins on admission (#1370), for its closing
+ * line: nothing where the source has no pin the run read.
+ */
+export function pinsSentence(pins: PinTally | undefined, dryRun = false): string {
+  if (!pins || pins.asked + pins.agreed + pins.standing === 0) return '';
+  const standing = pins.standing ? `, ${pins.standing} left as the curator answered` : '';
+  // A preview writes no question, so its history says what it would have asked.
+  return `; pins: ${pins.asked} ${dryRun ? 'would be asked' : 'asked'} about again, ${pins.agreed} agreed with${standing}`;
 }
 
 export async function recordSyncFailure(
