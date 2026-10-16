@@ -56,6 +56,11 @@ Alternative to the map overlay for reference images. When a region has a `region
 
 The side image panel supports the eyedropper color picker for sampling colors.
 
+The calibrated map is the region's, kept in the database (`region_image_overlays`, ADR-0113): it
+opens the same for every admin, is saved whenever the image dialog applies it, and the map tab's
+*Remove the reference map* button takes it away, after asking, since the map is every admin's. `docs/tech/STATE-MANAGEMENT.md` says where the
+rest of the dialog's state lives.
+
 ## Eyedropper color picker
 
 Extracted into `useImageColorPicker.ts`. Lets admins sample pixel colors from the reference image to color-code subdivision groups:

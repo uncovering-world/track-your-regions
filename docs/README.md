@@ -38,7 +38,7 @@ decided. § Where things live says what goes where.
 | [geometry-columns.md](tech/geometry-columns.md) | Geometry system reference — pipeline rules, columns, triggers, functions, tile cache |
 | [hull-geometry.md](tech/hull-geometry.md) | Hull visualization for scattered regions, concave hull generation |
 | [gadm-mapping.md](tech/gadm-mapping.md) | GADM database structure and integration |
-| [STATE-MANAGEMENT.md](tech/STATE-MANAGEMENT.md) | Frontend state: React Query, localStorage, Zustand considerations |
+| [STATE-MANAGEMENT.md](tech/STATE-MANAGEMENT.md) | Where the Create Subregions dialog keeps its state: the database, the browser |
 | [rate-limiting.md](tech/rate-limiting.md) | Rate limiting tiers, per-endpoint strategy, adding limiters to new routes |
 | [hacking.md](tech/hacking.md) | Practical engineering guide for local debugging and safe changes |
 | [development-guide.md](tech/development-guide.md) | Code organization conventions, splitting patterns, commit hygiene |

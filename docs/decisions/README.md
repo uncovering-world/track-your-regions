@@ -132,6 +132,7 @@ and accepted by it.
 | [0110](0110-a-works-floor-counts-the-sources-own-works-less-its-fame-decisions.md) | A works floor counts the source's own works, less what its fame line decides | Accepted | 2026-10-15 |
 | [0111](0111-a-shared-field-that-names-a-familys-own-field-goes-with-it.md) | A shared field that names another family's own field goes with that field | Accepted | 2026-10-16 |
 | [0112](0112-a-handed-over-work-its-statements-place-nowhere-goes-where-the-refusal-named.md) | A handed-over work its own statements place nowhere goes where the refusal named | Accepted | 2026-10-16 |
+| [0113](0113-a-regions-reference-map-is-kept-in-the-database-as-raster-bytes.md) | A region's reference map is kept in the database, as raster bytes | Accepted | 2026-10-16 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
