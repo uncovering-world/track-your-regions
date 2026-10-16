@@ -143,7 +143,6 @@ function registryRefusal(gate, spawn) {
  * not the lane's pass, so it is never recorded; a whole pass already recorded
  * answers for it.
  */
-// eslint-disable-next-line sonarjs/cognitive-complexity -- the gate tooling as it stood when scripts/ was first linted (#655); splitting it changes the runner's control flow and is #1552, pinned by its specs
 export function runTier(decision, tier, { all = false, spawn = spawnSync, base, cache = null, select = null } = {}) {
   const gates = decision.gates.filter((gate) => gate.tier === tier);
 
@@ -155,17 +154,7 @@ export function runTier(decision, tier, { all = false, spawn = spawnSync, base, 
   if (decision.everything) console.log(`${decision.reason}\n`);
   if (decision.ciNote) console.log(`${decision.ciNote}\n`);
 
-  if (tier === 'stack') {
-    console.log('The stack tier, lane by lane — CI runs every lane this change asks for on every pushed head:\n');
-    // Each line says whether the lane is owed here, left to CI, or not asked
-    // for at all, and why (#1379). A local run of a lane CI also runs repeats
-    // it; only a lane that measures what CI cannot hold is owed by hand.
-    for (const gate of stackVerdicts(decision)) {
-      console.log(`  ${gate.verdict.padEnd(10)} ${gate.id.padEnd(16)} ${gate.command.join(' ')}  (${gate.reason})`);
-    }
-    console.log('\nA lane marked "run here" is typed by hand; a lane CI reports red is reproduced here on its own.');
-    return 2;
-  }
+  if (tier === 'stack') return printStack(decision);
 
   const selected = gates.filter((gate) => all || gate.applies);
   if (selected.length === 0) {
@@ -176,70 +165,98 @@ export function runTier(decision, tier, { all = false, spawn = spawnSync, base, 
     return 0;
   }
 
-  const ran = [];
-  const reused = [];
-  const unrecorded = [];
-  const reachedNone = [];
-  let failed = null;
+  const run = { ran: [], reused: [], unrecorded: [], reachedNone: [], failed: null };
   for (const gate of selected) {
-    const lookup = cache && !gate.uncached ? cache.lookup(gate) : null;
-    if (lookup?.pass) {
-      const { passedAt, rev } = lookup.pass;
-      console.log(`✓ ${gate.id}  reused: passed on these inputs at ${passedAt} (${rev})`);
-      reused.push(`${gate.id} (${passedAt}, ${rev})`);
-      continue;
-    }
-    const selection = select ? select(gate) : null;
-    if (selection?.none) {
-      console.log(`○ ${gate.id}  affected specs: ${selection.why}`);
-      reachedNone.push(gate.id);
-      continue;
-    }
-    console.log(`▶ ${gate.id}  ${gate.command.join(' ')}`);
-    const refusal = registryRefusal(gate, spawn);
-    if (refusal) {
-      console.error(
-        `${gate.id} could not run: the registry refused ${refusal.image} (${refusal.said}). `
-        + 'That is the environment\'s failure, not the gate\'s verdict on the change: run it again once the registry answers.',
-      );
-      failed = { gate, code: ENVIRONMENT_FAILED, environment: true };
-      break;
-    }
-    if (selection) {
-      console.log(`  ${selection.whole ? 'whole lane' : 'affected specs'}: ${selection.why}`);
-    }
-    // A selection reaches the lane only through these two variables, so a
-    // run that is not selected clears them: one inherited from a shell, or
-    // from a selected run this one is nested in, would narrow the lane while
-    // it reported itself whole.
-    const { TEST_REPORT_RELATED, TEST_REPORT_SPEC_TOTAL, ...inherited } = process.env;
-    const selecting = selection?.env !== undefined;
-    const narrowed = selecting || TEST_REPORT_RELATED !== undefined || TEST_REPORT_SPEC_TOTAL !== undefined;
-    let env = narrowed ? { ...inherited, ...(selection?.env ?? {}) } : process.env;
-    // `null` is what `parseArgs` leaves where no `--base` was given; only a
-    // string was given, and an empty one is given too (`resolveBase`).
-    if (typeof base === 'string') env = { ...env, GATES_BASE: base };
-    const result = spawn(gate.command[0], gate.command.slice(1), { stdio: 'inherit', env });
-    ran.push(gate.id);
-    // A gate killed by a signal, or one whose binary is not there, has no
-    // status; neither of those is a pass. Both also produce no output of their
-    // own under `stdio: 'inherit'` — the child never got far enough to write
-    // any — so the reason has to be said here or it is said nowhere.
-    if (result.error) console.error(`${gate.id} could not run: ${result.error.message}`);
-    else if (result.signal) console.error(`${gate.id} was killed by ${result.signal}.`);
-    const code = result.status ?? 1;
-    if (code !== 0) {
-      failed = { gate, code };
-      break;
-    }
-    if (lookup && !(selection && !selection.whole) && !cache.settle(gate, lookup.key)) {
-      unrecorded.push(gate.id);
-    }
+    run.failed = runGate(gate, run, { spawn, base, cache, select });
+    if (run.failed) break;
   }
+  printSummary(run, gates, selected);
+  return run.failed ? run.failed.code : 0;
+}
 
-  // Reading order: what ran, what was reused, what broke, what never got its
-  // turn, and last what this change never asked for. The failure sits next to
-  // the run rather than under a Skipped block thirteen gates long.
+/** The stack tier, listed lane by lane and never run (#1379); its exit is 2. */
+function printStack(decision) {
+  console.log('The stack tier, lane by lane — CI runs every lane this change asks for on every pushed head:\n');
+  // Each line says whether the lane is owed here, left to CI, or not asked
+  // for at all, and why (#1379). A local run of a lane CI also runs repeats
+  // it; only a lane that measures what CI cannot hold is owed by hand.
+  for (const gate of stackVerdicts(decision)) {
+    console.log(`  ${gate.verdict.padEnd(10)} ${gate.id.padEnd(16)} ${gate.command.join(' ')}  (${gate.reason})`);
+  }
+  console.log('\nA lane marked "run here" is typed by hand; a lane CI reports red is reproduced here on its own.');
+  return 2;
+}
+
+/**
+ * Run one gate of a tier, or reuse its recorded pass, or leave it unstarted
+ * when the change reaches no spec of its lane, recording which on `run`.
+ * Returns the failure that stops the tier, or null.
+ */
+function runGate(gate, run, { spawn, base, cache, select }) {
+  const lookup = cache && !gate.uncached ? cache.lookup(gate) : null;
+  if (lookup?.pass) {
+    const { passedAt, rev } = lookup.pass;
+    console.log(`✓ ${gate.id}  reused: passed on these inputs at ${passedAt} (${rev})`);
+    run.reused.push(`${gate.id} (${passedAt}, ${rev})`);
+    return null;
+  }
+  const selection = select ? select(gate) : null;
+  if (selection?.none) {
+    console.log(`○ ${gate.id}  affected specs: ${selection.why}`);
+    run.reachedNone.push(gate.id);
+    return null;
+  }
+  console.log(`▶ ${gate.id}  ${gate.command.join(' ')}`);
+  const refusal = registryRefusal(gate, spawn);
+  if (refusal) {
+    console.error(
+      `${gate.id} could not run: the registry refused ${refusal.image} (${refusal.said}). `
+      + 'That is the environment\'s failure, not the gate\'s verdict on the change: run it again once the registry answers.',
+    );
+    return { gate, code: ENVIRONMENT_FAILED, environment: true };
+  }
+  if (selection) {
+    console.log(`  ${selection.whole ? 'whole lane' : 'affected specs'}: ${selection.why}`);
+  }
+  const result = spawn(gate.command[0], gate.command.slice(1), { stdio: 'inherit', env: gateEnv(selection, base) });
+  run.ran.push(gate.id);
+  // A gate killed by a signal, or one whose binary is not there, has no
+  // status; neither of those is a pass. Both also produce no output of their
+  // own under `stdio: 'inherit'` — the child never got far enough to write
+  // any — so the reason has to be said here or it is said nowhere.
+  if (result.error) console.error(`${gate.id} could not run: ${result.error.message}`);
+  else if (result.signal) console.error(`${gate.id} was killed by ${result.signal}.`);
+  const code = result.status ?? 1;
+  if (code !== 0) return { gate, code };
+  if (lookup && !(selection && !selection.whole) && !cache.settle(gate, lookup.key)) {
+    run.unrecorded.push(gate.id);
+  }
+  return null;
+}
+
+/**
+ * The environment a gate runs in. A selection reaches the lane only through
+ * `TEST_REPORT_RELATED` and `TEST_REPORT_SPEC_TOTAL`, so a run that is not
+ * selected clears them: one inherited from a shell, or from a selected run
+ * this one is nested in, would narrow the lane while it reported itself whole.
+ */
+function gateEnv(selection, base) {
+  const { TEST_REPORT_RELATED, TEST_REPORT_SPEC_TOTAL, ...inherited } = process.env;
+  const selecting = selection?.env !== undefined;
+  const narrowed = selecting || TEST_REPORT_RELATED !== undefined || TEST_REPORT_SPEC_TOTAL !== undefined;
+  const env = narrowed ? { ...inherited, ...(selection?.env ?? {}) } : process.env;
+  // `null` is what `parseArgs` leaves where no `--base` was given; only a
+  // string was given, and an empty one is given too (`resolveBase`).
+  return typeof base === 'string' ? { ...env, GATES_BASE: base } : env;
+}
+
+/**
+ * What a tier did, in reading order: what ran, what was reused, what broke,
+ * what never got its turn, and last what this change never asked for. The
+ * failure sits next to the run rather than under a Skipped block thirteen
+ * gates long.
+ */
+function printSummary({ ran, reused, unrecorded, reachedNone, failed }, gates, selected) {
   console.log(`\nRan: ${ran.length ? ran.join(', ') : 'none'}`);
   if (reused.length) {
     console.log(`Reused (passed on the same inputs, not run again): ${reused.join(', ')}`);
@@ -250,44 +267,33 @@ export function runTier(decision, tier, { all = false, spawn = spawnSync, base, 
   if (reachedNone.length) {
     console.log(`Not started (the change reaches no spec of the lane): ${reachedNone.join(', ')}`);
   }
-  if (failed) {
-    // Unconditionally: when the last gate of a tier is the one that failed
-    // there is nothing left to not run, and `Ran: a, b, c` on its own is the
-    // same text a clean run prints.
-    console.log(failed.environment
-      ? `Failed: ${failed.gate.id} (the environment: the registry refused an image it runs; exit ${failed.code})`
-      : `Failed: ${failed.gate.id} (exit ${failed.code})`);
-    const notRun = selected.slice(selected.indexOf(failed.gate) + 1).map((gate) => gate.id);
-    if (notRun.length) {
-      console.log(`Not run (stopped after ${failed.gate.id} failed): ${notRun.join(', ')}`);
-    }
-  }
+  if (failed) printFailure(failed, selected);
   const skipped = gates.filter((gate) => !selected.includes(gate));
   if (skipped.length) {
     console.log('Skipped (inputs untouched):');
     for (const gate of skipped) console.log(`  ${gate.id.padEnd(20)} ${gate.why}`);
   }
-  return failed ? failed.code : 0;
 }
 
-// eslint-disable-next-line sonarjs/cognitive-complexity -- the gate tooling as it stood when scripts/ was first linted (#655); splitting it changes the runner's control flow and is #1552, pinned by its specs
-export function printList(decision, changed, rev) {
-  if (changed.paths === null) console.log(decision.reason);
-  else {
-    const scope = rev === 'HEAD' ? ' + working tree' : '';
-    const against = changed.from === 'tree'
-      ? 'no ancestor of the branch any more: what differs from its tree'
-      : `merge-base ${changed.mergeBase.slice(0, 7)}`;
-    console.log(`Change against ${changed.base} (${against})${scope}: ${changed.paths.length} paths`);
-    console.log(
-      decision.inputs.size
-        ? `Inputs touched: ${[...decision.inputs].join(', ')}`
-        : 'No changed path is an input to any gate.',
-    );
-    if (decision.everything) console.log(decision.reason);
-    if (decision.ciNote) console.log(decision.ciNote);
+/**
+ * The gate that stopped the tier and the ones it left unrun. Printed
+ * unconditionally: when the last gate of a tier is the one that failed there
+ * is nothing left to not run, and `Ran: a, b, c` on its own is the same text a
+ * clean run prints.
+ */
+function printFailure(failed, selected) {
+  console.log(failed.environment
+    ? `Failed: ${failed.gate.id} (the environment: the registry refused an image it runs; exit ${failed.code})`
+    : `Failed: ${failed.gate.id} (exit ${failed.code})`);
+  const notRun = selected.slice(selected.indexOf(failed.gate) + 1).map((gate) => gate.id);
+  if (notRun.length) {
+    console.log(`Not run (stopped after ${failed.gate.id} failed): ${notRun.join(', ')}`);
   }
+}
 
+/** What `npm run gates` prints: the change it read, then every gate with its verdict and reason. */
+export function printList(decision, changed, rev) {
+  printChange(decision, changed, rev);
   console.log('');
   for (const gate of decision.gates) {
     const verdict = gate.applies ? 'runs' : 'skipped';
@@ -296,6 +302,26 @@ export function printList(decision, changed, rev) {
   if (decision.unclassified.length) {
     console.log(`\nNot an input to any gate: ${decision.unclassified.join(', ')}`);
   }
+}
+
+/** The listing's head: what the change was measured against and which inputs it touched. */
+function printChange(decision, changed, rev) {
+  if (changed.paths === null) {
+    console.log(decision.reason);
+    return;
+  }
+  const scope = rev === 'HEAD' ? ' + working tree' : '';
+  const against = changed.from === 'tree'
+    ? 'no ancestor of the branch any more: what differs from its tree'
+    : `merge-base ${changed.mergeBase.slice(0, 7)}`;
+  console.log(`Change against ${changed.base} (${against})${scope}: ${changed.paths.length} paths`);
+  console.log(
+    decision.inputs.size
+      ? `Inputs touched: ${[...decision.inputs].join(', ')}`
+      : 'No changed path is an input to any gate.',
+  );
+  if (decision.everything) console.log(decision.reason);
+  if (decision.ciNote) console.log(decision.ciNote);
 }
 
 /**

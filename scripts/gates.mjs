@@ -689,7 +689,6 @@ const USAGE = [
  * on with a default. A misread argument here is the worst kind of wrong: it
  * degrades into "nothing to run", which looks exactly like a clean gate.
  */
-// eslint-disable-next-line sonarjs/cognitive-complexity -- the gate tooling as it stood when scripts/ was first linted (#655); splitting it changes the runner's control flow and is #1552, pinned by its specs
 export function parseArgs(argv) {
   const args = { mode: 'list', tier: null, all: false, noCache: false, affected: false, base: null, rev: 'HEAD' };
   let modeSetBy = null;
@@ -711,25 +710,35 @@ export function parseArgs(argv) {
     const arg = argv[i];
     if (arg === 'run') {
       setMode('run', 'run');
-      const tier = argv[i + 1];
-      if (tier === undefined || tier.startsWith('--')) {
-        throw new Error(`run needs a tier: ${TIERS.join(', ')}.`);
-      }
-      if (!TIERS.includes(tier)) {
-        throw new Error(`"${tier}" is not a tier. Pick one of: ${TIERS.join(', ')}.`);
-      }
-      args.tier = tier;
+      args.tier = tierOf(argv[i + 1]);
       i += 1;
-    } else if (arg === '--json') setMode('json', '--json');
-    else if (arg === '--github-output') setMode('github-output', '--github-output');
-    else if (arg === '--table') setMode('table', '--table');
-    else if (arg === '--all') args.all = true;
-    else if (arg === '--no-cache') args.noCache = true;
-    else if (arg === '--affected') args.affected = true;
-    else if (arg === '--base') args.base = value(++i, '--base');
-    else if (arg === '--rev') args.rev = value(++i, '--rev');
+    } else if (Object.hasOwn(MODE_FLAGS, arg)) setMode(MODE_FLAGS[arg], arg);
+    else if (Object.hasOwn(SWITCHES, arg)) args[SWITCHES[arg]] = true;
+    else if (Object.hasOwn(VALUED, arg)) args[VALUED[arg]] = value(++i, arg);
     else throw new Error(`Unknown argument "${arg}".`);
   }
+  refuseCombinations(args);
+  return args;
+}
+
+/** The flags that pick an output mode, the switches, and the flags that take a value. */
+const MODE_FLAGS = { '--json': 'json', '--github-output': 'github-output', '--table': 'table' };
+const SWITCHES = { '--all': 'all', '--no-cache': 'noCache', '--affected': 'affected' };
+const VALUED = { '--base': 'base', '--rev': 'rev' };
+
+/** The tier `run` was given, refused when it is missing or not one of `TIERS`. */
+function tierOf(tier) {
+  if (tier === undefined || tier.startsWith('--')) {
+    throw new Error(`run needs a tier: ${TIERS.join(', ')}.`);
+  }
+  if (!TIERS.includes(tier)) {
+    throw new Error(`"${tier}" is not a tier. Pick one of: ${TIERS.join(', ')}.`);
+  }
+  return tier;
+}
+
+/** Refuse a flag given where it means nothing, rather than letting it read as obeyed. */
+function refuseCombinations(args) {
   // `--all` widens what `run` runs and means nothing to the other modes. Taking
   // it silently would let `gates.mjs --all` read as "everything ran".
   if (args.all && args.mode !== 'run') {
@@ -744,7 +753,6 @@ export function parseArgs(argv) {
     throw new Error('--affected only means something with `run test`.');
   }
   if (args.affected && args.all) throw new Error('Pick one: --affected or --all.');
-  return args;
 }
 
 

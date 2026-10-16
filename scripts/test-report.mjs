@@ -243,15 +243,9 @@ if (RUN_CONTAINER_TESTS && process.env.TEST_REPORT_KEEP_ENV !== '1') {
 
 process.exit(summary.ok && !hadRunnerFailure ? 0 : 1);
 
-// eslint-disable-next-line sonarjs/cognitive-complexity -- the gate tooling as it stood when scripts/ was first linted (#655); splitting it changes the runner's control flow and is #1552, pinned by its specs
 async function runStep(step, activeMode, index) {
   const token = `${Date.now()}-${index}-${randomBytes(4).toString('hex')}`;
   const jsonPath = path.join(RESULTS_DIR, `${activeMode}-${step.id}-${token}.json`);
-
-  let command;
-  let args;
-  let env = {};
-  let cwd = ROOT_DIR;
 
   // The affected selection (scripts/affected-specs.mjs): the paths to hand
   // `vitest related`, set by `gates.mjs run test --affected`. Only the host
@@ -260,35 +254,9 @@ async function runStep(step, activeMode, index) {
   if (related && RUN_CONTAINER_TESTS) {
     console.log(`${step.label}: the container shape runs the whole lane; the affected selection needs TEST_REPORT_LOCAL=1.`);
   }
-
-  if (RUN_CONTAINER_TESTS) {
-    const stackCommand = STEP_CONTAINER_COMMAND[step.id];
-    if (!stackCommand) {
-      throw new Error(`No container command configured for step "${step.id}"`);
-    }
-    command = TEST_STACK_SCRIPT;
-    args = [stackCommand, jsonPath];
-    env = { ...stackEnv, TEST_STACK_SKIP_UP: '1' };
-  } else {
-    const packageCwd = path.join(ROOT_DIR, step.packageDir);
-    cwd = packageCwd;
-    if (step.kind === 'vitest') {
-      command = resolveLocalBinary(step.packageDir, 'vitest');
-      args = related && !step.coverage
-        ? ['related', ...related, '--run', '--passWithNoTests']
-        : ['run'];
-      args.push('--reporter=default', '--reporter=json', `--outputFile=${jsonPath}`);
-      if (step.coverage) {
-        args.push('--coverage');
-      }
-    } else {
-      // Only the unit lanes have a host shape. The playwright and lighthouse
-      // ones are `containerOnly` and were refused before anything started, so
-      // there is deliberately no host arm for them to fall into: a branch
-      // that quietly ran the wrong stack is what #432 was.
-      throw new Error(`Unsupported step kind on the host: ${step.kind}`);
-    }
-  }
+  const { command, args, env, cwd } = RUN_CONTAINER_TESTS
+    ? containerCommand(step, jsonPath)
+    : hostCommand(step, jsonPath, related);
 
   const exitCode = await runCommand(command, args, { cwd, env });
   const parsed = parseStepReport(step, jsonPath);
@@ -317,6 +285,44 @@ async function runStep(step, activeMode, index) {
     exitCode,
     ok: exitCode === 0 && parsed.ok,
     reportPath: jsonPath,
+  };
+}
+
+/** The isolated test stack's command for a lane, writing its report to `jsonPath`. */
+function containerCommand(step, jsonPath) {
+  const stackCommand = STEP_CONTAINER_COMMAND[step.id];
+  if (!stackCommand) {
+    throw new Error(`No container command configured for step "${step.id}"`);
+  }
+  return {
+    command: TEST_STACK_SCRIPT,
+    args: [stackCommand, jsonPath],
+    env: { ...stackEnv, TEST_STACK_SKIP_UP: '1' },
+    cwd: ROOT_DIR,
+  };
+}
+
+/** The host's command for a unit lane: the whole lane, or `vitest related` on the affected selection. */
+function hostCommand(step, jsonPath, related) {
+  if (step.kind !== 'vitest') {
+    // Only the unit lanes have a host shape. The playwright and lighthouse
+    // ones are `containerOnly` and were refused before anything started, so
+    // there is deliberately no host arm for them to fall into: a branch
+    // that quietly ran the wrong stack is what #432 was.
+    throw new Error(`Unsupported step kind on the host: ${step.kind}`);
+  }
+  const args = related && !step.coverage
+    ? ['related', ...related, '--run', '--passWithNoTests']
+    : ['run'];
+  args.push('--reporter=default', '--reporter=json', `--outputFile=${jsonPath}`);
+  if (step.coverage) {
+    args.push('--coverage');
+  }
+  return {
+    command: resolveLocalBinary(step.packageDir, 'vitest'),
+    args,
+    env: {},
+    cwd: path.join(ROOT_DIR, step.packageDir),
   };
 }
 
