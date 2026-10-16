@@ -455,6 +455,7 @@ export const ReviewQueue = z.strictObject({
   paging: z.strictObject({
     cursor: z.string().nullable(),
     nextCursor: z.string().nullable(),
+    from: z.string().nullable().describe('The key a page opened mid-list began with (at a linked row, or from `from`), to read the list again from; null at its top.'),
     keptOut: paged,
     answeredWithdrawals: paged,
     refusedParts: paged,

@@ -74,8 +74,20 @@ function queueFilters(query: ReviewQueueQuery, limit: number): QueueFilters {
     showAside: query.aside === 'show',
     sort: query.sort === 'question' ? 'question' : 'date',
     cursor: query.cursor,
+    from: query.from,
+    row: linkedRow(query.row),
     limit,
   };
+}
+
+/** The question a link names, or nothing when its kind or id is not one the queue can hold. */
+function linkedRow(row: string | undefined): QueueFilters['row'] {
+  if (row === undefined) return undefined;
+  const [kind, id] = row.split(':');
+  const n = Number(id);
+  return (QUEUE_KINDS as readonly string[]).includes(kind) && n >= 1 && n <= PG_INTEGER_MAX
+    ? { kind: kind as QueueKind, id: n }
+    : undefined;
 }
 
 /**
@@ -236,7 +248,7 @@ export async function getReviewQueue(
     ? ''
     : `AND e.name ILIKE $${answeredParams.length} ESCAPE '\\'`;
 
-  const { keys, nextCursor, total, facets } = await queryQueueKeys({ userId, isAdmin, filters });
+  const { keys, nextCursor, from, total, facets } = await queryQueueKeys({ userId, isAdmin, filters });
 
   /** The ids of one class on this page. */
   const idsOf = (kind: QueueKind): number[] => keys.filter(k => k.kind === kind).map(k => k.id);
@@ -601,6 +613,7 @@ export async function getReviewQueue(
     paging: {
       cursor: filters.cursor ?? null,
       nextCursor,
+      from,
       keptOut: { offset: offsets.keptOut, hasMore: keptOutPage.hasMore },
       answeredWithdrawals: {
         offset: offsets.answeredWithdrawals, hasMore: answeredPage.hasMore,
