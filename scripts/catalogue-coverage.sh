@@ -2,7 +2,7 @@
 # The catalogue-coverage commands, run against the active database (ADR-0081).
 #
 #   scripts/catalogue-coverage.sh load [--dir <path>]
-#       read db/catalogue-coverage/, refuse a wrong line, and replace the four
+#       read db/catalogue-coverage/, refuse a wrong line, and replace the
 #       coverage tables with it in one transaction
 #   scripts/catalogue-coverage.sh report [--region <slug>]... [--json]
 #       print what the catalogue holds of what is expected, which proposed kind

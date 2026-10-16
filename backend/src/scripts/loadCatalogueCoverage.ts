@@ -27,7 +27,7 @@ async function main(): Promise<void> {
   console.log(`Loading ${dir} into ${process.env.DB_HOST || 'localhost'}:${process.env.DB_PORT || '5432'}/${process.env.DB_NAME || 'track_regions'}`);
   try {
     const summary = await runLoadCatalogueCoverage(dir);
-    console.log(`Loaded ${summary.kinds} kinds, ${summary.regions} regions, ${summary.expectations} expectations, ${summary.filings} filings under a kind.`);
+    console.log(`Loaded ${summary.kinds} kinds, ${summary.regions} regions, ${summary.expectations} expectations, ${summary.filings} filings under a kind, ${summary.judgements} judgements.`);
   } catch (error) {
     if (error instanceof CoverageFilesError || error instanceof CoverageRegisterMismatch) {
       console.error(error.message);

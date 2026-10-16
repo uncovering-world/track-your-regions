@@ -1,5 +1,5 @@
 /**
- * The load replaces four tables a report may be reading, so what it must never
+ * The load replaces the coverage tables a report may be reading, so what it must never
  * do is the point: never empty them when the register and the catalogue's kinds
  * disagree, never leave them half filled, never spread the statements over
  * connections. Which rows land is asked of a real database in `load.db.test.ts`.
@@ -44,6 +44,10 @@ const FILES: CoverageFiles = {
       unesco: null, venue: null, sources: 3, sitelinks: null, lat: null, lon: null, note: '',
     },
   ]]]),
+  judgements: [
+    { region: 'cusco-region', entry: 'moray', kind: 'archaeology', row: null, cause: 'rule-defect', issue: 1160, judged: '2026-10-16', note: 'Typed an archaeological site with 18 sitelinks; never asked by a run.' },
+    { region: 'cusco-region', entry: null, kind: null, row: 'Q2003624', cause: 'not-a-must', issue: null, judged: '2026-10-16', note: 'A chapel no guide names.' },
+  ],
 };
 
 function makeClient(failOn?: RegExp) {
@@ -76,6 +80,7 @@ describe('replaceCoverage', () => {
     expect(order).toEqual([
       'BEGIN',
       'SELECT id, name FROM experience_kinds ORDER BY id',
+      'DELETE FROM coverage_judgements',
       'DELETE FROM coverage_expectation_kinds',
       'DELETE FROM coverage_expectations',
       'DELETE FROM coverage_regions',
@@ -84,11 +89,12 @@ describe('replaceCoverage', () => {
       'INSERT INTO coverage_regions',
       'INSERT INTO coverage_expectations',
       'INSERT INTO coverage_expectation_kinds',
+      'INSERT INTO coverage_judgements',
       'COMMIT',
     ]);
     expect(mockedPoolQuery, 'nothing goes through the pool: a pooled BEGIN pins nothing').not.toHaveBeenCalled();
     expect(client.release).toHaveBeenCalledWith(undefined);
-    expect(summary).toEqual({ kinds: 3, regions: 1, expectations: 2, filings: 1 });
+    expect(summary).toEqual({ kinds: 3, regions: 1, expectations: 2, filings: 1, judgements: 2 });
   });
 
   it('sends each table its own columns, a point as text and no point as null', async () => {
@@ -110,6 +116,12 @@ describe('replaceCoverage', () => {
     });
     expect(cuy).toMatchObject({ wikidata_id: null, location: null });
     expect(sent('coverage_expectation_kinds')).toEqual([{ region_slug: 'cusco-region', expectation_slug: 'moray', kind_slug: 'archaeology' }]);
+    const [onEntry, onRow] = sent('coverage_judgements');
+    expect(onEntry).toEqual({
+      region_slug: 'cusco-region', entry_slug: 'moray', kind_slug: 'archaeology', row_wikidata_id: null, cause: 'rule-defect', issue_number: 1160,
+      judged: '2026-10-16', note: 'Typed an archaeological site with 18 sitelinks; never asked by a run.',
+    });
+    expect(onRow).toMatchObject({ entry_slug: null, kind_slug: null, row_wikidata_id: 'Q2003624', cause: 'not-a-must', issue_number: null });
   });
 
   it('deletes nothing when a catalogue kind has no live record', async () => {
