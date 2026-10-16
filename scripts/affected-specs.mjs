@@ -110,7 +110,6 @@ const under = (prefixes, path) => prefixes.some((prefix) =>
  * directory — the changed modules of its trees and every text-reading spec.
  * Empty targets mean no spec of the lane reaches the change.
  */
-// eslint-disable-next-line sonarjs/cognitive-complexity -- the gate tooling as it stood when scripts/ was first linted (#655); splitting it changes the runner's control flow and is #1552, pinned by its specs
 export function selectSpecs({ lane, changed, exists, textReaders, loaders = [] }) {
   const spec = LANES[lane];
   const own = changed.filter((path) => !path.includes('#'));
@@ -118,19 +117,9 @@ export function selectSpecs({ lane, changed, exists, textReaders, loaders = [] }
   const config = own.find((path) => spec.config.includes(path));
   if (config) return { whole: true, why: `${config} configures every spec of the lane` };
 
-  const modules = [];
-  let textChanged = false;
-  for (const path of own) {
-    if (under(spec.roots, path)) {
-      if (!exists(path)) return { whole: true, why: `${path} was deleted or moved, so the graph cannot find its importers` };
-      if (!FOLLOWED.test(path)) {
-        return { whole: true, why: `${path} is data a module may read at run time, which the import graph cannot follow` };
-      }
-      modules.push(path);
-    } else if (under(spec.textTrees, path)) {
-      textChanged = true;
-    }
-  }
+  const read = readChanges(spec, own, exists);
+  if (read.whole) return read;
+  const { modules, textChanged } = read;
   // The compose files shape the lane's container rather than any module or
   // text a spec reads, so no selection can answer for them.
   const container = own.find((path) => CONTAINER_FILES.includes(path));
@@ -146,13 +135,40 @@ export function selectSpecs({ lane, changed, exists, textReaders, loaders = [] }
   const relative = [...new Set([...modules, ...readers, ...loading])]
     .map((path) => relativeTo(spec.dir, path))
     .sort();
-  const why = [
-    `${modules.length} changed module${modules.length === 1 ? '' : 's'} of the lane's trees`,
-    `${readers.length} spec${readers.length === 1 ? '' : 's'} that read files as text`
+  return { whole: false, targets: relative, why: selectionWhy(modules, readers, loading, textChanged) };
+}
+
+/**
+ * The changed modules of the lane's trees and whether a file its text readers
+ * read changed — or the whole lane, for a module the graph cannot follow: one
+ * deleted or moved, or data a module reads at run time.
+ */
+function readChanges(spec, own, exists) {
+  const modules = [];
+  let textChanged = false;
+  for (const path of own) {
+    if (under(spec.roots, path)) {
+      if (!exists(path)) return { whole: true, why: `${path} was deleted or moved, so the graph cannot find its importers` };
+      if (!FOLLOWED.test(path)) {
+        return { whole: true, why: `${path} is data a module may read at run time, which the import graph cannot follow` };
+      }
+      modules.push(path);
+    } else if (under(spec.textTrees, path)) {
+      textChanged = true;
+    }
+  }
+  return { modules, textChanged };
+}
+
+/** What a selection is made of, in words. */
+function selectionWhy(modules, readers, loading, textChanged) {
+  const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+  return [
+    `${plural(modules.length, 'changed module')} of the lane's trees`,
+    `${plural(readers.length, 'spec')} that read files as text`
       + (textChanged ? ', which a change to the files they read asks for' : ''),
-    ...(loading.length ? [`the importers of ${loading.length} module loader${loading.length === 1 ? '' : 's'}`] : []),
+    ...(loading.length ? [`the importers of ${plural(loading.length, 'module loader')}`] : []),
   ].join(', and ');
-  return { whole: false, targets: relative, why };
 }
 
 /**

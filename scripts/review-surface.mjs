@@ -113,75 +113,87 @@ export function substitutionOf(before, after) {
  * headers naming two paths — is one file and not two; a pure rename, which
  * carries no `---`/`+++` at all, is named by its `rename to` line.
  */
-// eslint-disable-next-line sonarjs/cognitive-complexity -- the gate tooling as it stood when scripts/ was first linted (#655); splitting it changes the runner's control flow and is #1552, pinned by its specs
 function parseFiles(diff) {
-  const files = [];
-  let current = null;
-  let inHeader = false;
-
-  /** Whichever of the header's names the file should be counted under. */
-  const resolve = (file) => {
-    const path = file.plus ?? file.minus ?? file.renameTo ?? file.fromCommand;
-    file.path = path;
-    file.kind = classifyFile(path);
-    file.area = areaOf(path);
-  };
-
-  const open = (line) => {
-    // `diff --git a/<path> b/<path>` — the fallback name, used when the file has
-    // no `+++` header of its own (a pure rename, a mode change, a binary file).
-    const named = line.slice('diff --git '.length);
-    const half = Math.floor(named.length / 2);
-    const fromCommand =
-      named[half] === ' ' ? named.slice(half + 1).replace(/^b\//, '') : named.split(' b/').pop();
-    current = { fromCommand, plus: null, minus: null, renameTo: null, hunks: [] };
-    files.push(current);
-    inHeader = true;
-  };
-
-  let deleted = [];
-  let added = [];
-  const flush = () => {
-    if (deleted.length || added.length) current.hunks.push({ deleted, added });
-    deleted = [];
-    added = [];
-  };
-
+  const state = { files: [], current: null, inHeader: false, deleted: [], added: [] };
   for (const line of diff.split('\n')) {
-    if (line.startsWith('diff --git ')) {
-      if (current) {
-        flush();
-        resolve(current);
-      }
-      open(line);
-    } else if (!current) {
-      continue;
-    } else if (inHeader && line.startsWith('+++ ')) {
-      const named = line.slice(4).trim();
-      if (named !== '/dev/null') current.plus = named.replace(/^b\//, '');
-    } else if (inHeader && line.startsWith('--- ')) {
-      const named = line.slice(4).trim();
-      if (named !== '/dev/null') current.minus = named.replace(/^a\//, '');
-    } else if (inHeader && line.startsWith('rename to ')) {
-      current.renameTo = line.slice('rename to '.length).trim();
-    } else if (line.startsWith('@@')) {
-      if (inHeader) {
-        resolve(current);
-        inHeader = false;
-      }
-      flush();
-    } else if (!inHeader && (line[0] === '+' || line[0] === '-')) {
-      const raw = line.slice(1);
-      if (isMeaningful(raw.trim(), current.kind)) (line[0] === '+' ? added : deleted).push(raw);
-    } else if (!inHeader) {
-      flush();
-    }
+    if (line.startsWith('diff --git ')) openFile(state, line);
+    else if (!state.current) continue;
+    else if (state.inHeader && readHeader(state.current, line)) continue;
+    else if (line.startsWith('@@')) startHunk(state);
+    else if (!state.inHeader) readBody(state, line);
   }
-  if (current) {
-    flush();
-    if (inHeader) resolve(current);
+  if (state.current) {
+    flushHunk(state);
+    if (state.inHeader) resolveFile(state.current);
   }
-  return files;
+  return state.files;
+}
+
+/** Whichever of the header's names the file should be counted under. */
+function resolveFile(file) {
+  const path = file.plus ?? file.minus ?? file.renameTo ?? file.fromCommand;
+  file.path = path;
+  file.kind = classifyFile(path);
+  file.area = areaOf(path);
+}
+
+/** Close the file being read, if any, and open the one a `diff --git` line names. */
+function openFile(state, line) {
+  if (state.current) {
+    flushHunk(state);
+    resolveFile(state.current);
+  }
+  // `diff --git a/<path> b/<path>` — the fallback name, used when the file has
+  // no `+++` header of its own (a pure rename, a mode change, a binary file).
+  const named = line.slice('diff --git '.length);
+  const half = Math.floor(named.length / 2);
+  const fromCommand =
+    named[half] === ' ' ? named.slice(half + 1).replace(/^b\//, '') : named.split(' b/').pop();
+  state.current = { fromCommand, plus: null, minus: null, renameTo: null, hunks: [] };
+  state.files.push(state.current);
+  state.inHeader = true;
+}
+
+/** Read a `+++`, `---` or `rename to` header line onto the file; false for any other line. */
+function readHeader(file, line) {
+  if (line.startsWith('+++ ')) {
+    const named = line.slice(4).trim();
+    if (named !== '/dev/null') file.plus = named.replace(/^b\//, '');
+  } else if (line.startsWith('--- ')) {
+    const named = line.slice(4).trim();
+    if (named !== '/dev/null') file.minus = named.replace(/^a\//, '');
+  } else if (line.startsWith('rename to ')) {
+    file.renameTo = line.slice('rename to '.length).trim();
+  } else {
+    return false;
+  }
+  return true;
+}
+
+/** An `@@` line: the header, if still open, is over, and a new hunk begins. */
+function startHunk(state) {
+  if (state.inHeader) {
+    resolveFile(state.current);
+    state.inHeader = false;
+  }
+  flushHunk(state);
+}
+
+/** A line of a hunk: a changed line that counts joins it, context ends it. */
+function readBody(state, line) {
+  if (line[0] === '+' || line[0] === '-') {
+    const raw = line.slice(1);
+    if (isMeaningful(raw.trim(), state.current.kind)) (line[0] === '+' ? state.added : state.deleted).push(raw);
+  } else {
+    flushHunk(state);
+  }
+}
+
+/** Keep the run of changed lines read so far as a hunk of the file, and start a new one. */
+function flushHunk(state) {
+  if (state.deleted.length || state.added.length) state.current.hunks.push({ deleted: state.deleted, added: state.added });
+  state.deleted = [];
+  state.added = [];
 }
 
 /**
@@ -269,82 +281,14 @@ function roundAreas(entries, total) {
  * Measure one unified diff. Pure: the caller supplies the text, so the same
  * function serves the CLI, the tests and any replay of an old branch.
  */
-// eslint-disable-next-line sonarjs/cognitive-complexity -- the gate tooling as it stood when scripts/ was first linted (#655); splitting it changes the runner's control flow and is #1552, pinned by its specs
 export function measureSurface(diff) {
   const files = parseFiles(diff);
-
-  // Pass one: which substitutions recur often enough to read as a sweep. Only
-  // code counts here — a phrase reworded in ten paragraphs of prose is ten
-  // decisions, not one.
-  const occurrences = new Map();
-  for (const file of files) {
-    if (file.kind !== 'code') continue;
-    for (const hunk of file.hunks) {
-      const paired = Math.min(hunk.deleted.length, hunk.added.length);
-      for (let i = 0; i < paired; i += 1) {
-        const substitution = substitutionOf(hunk.deleted[i], hunk.added[i]);
-        if (substitution) occurrences.set(substitution, (occurrences.get(substitution) ?? 0) + 1);
-      }
-    }
-  }
+  const occurrences = countSubstitutions(files);
   const sweeping = new Set(
     [...occurrences].filter(([, n]) => n >= MECHANICAL_MIN_OCCURRENCES).map(([s]) => s),
   );
-
-  // Pass two: set the mechanical lines aside, then collect what is left as
-  // line records, so the move pairing can tell a re-indentation from a block
-  // that crossed into another file.
-  const sides = {};
-  const mechanicalLines = [];
-  let mechanical = 0;
-  let generated = 0;
-
-  for (const file of files) {
-    const { kind, path, area } = file;
-    for (const hunk of file.hunks) {
-      if (kind === 'generated') {
-        generated += hunk.deleted.length + hunk.added.length;
-        continue;
-      }
-      const mechanicalAt = new Set();
-      if (kind === 'code') {
-        const paired = Math.min(hunk.deleted.length, hunk.added.length);
-        for (let i = 0; i < paired; i += 1) {
-          const substitution = substitutionOf(hunk.deleted[i], hunk.added[i]);
-          if (substitution && sweeping.has(substitution)) {
-            mechanicalAt.add(i);
-            mechanical += 2;
-            mechanicalLines.push({ area }, { area });
-          }
-        }
-      }
-      sides[kind] ??= { added: [], deleted: [] };
-      const record = (raw) => ({ raw, trimmed: raw.trim(), path, area });
-      hunk.added.forEach((raw, i) => {
-        if (!mechanicalAt.has(i)) sides[kind].added.push(record(raw));
-      });
-      hunk.deleted.forEach((raw, i) => {
-        if (!mechanicalAt.has(i)) sides[kind].deleted.push(record(raw));
-      });
-    }
-  }
-
-  const counted = {};
-  const byArea = new Map();
-  let moved = 0;
-  // Areas are attributed **after** the pairing and at the weight the line
-  // carries, so the breakdown is in the surface's own unit and sums to it. It
-  // is what /pr-create offers as a seam: an area that is all moved lines is not
-  // work and must not read as the widest one, and 200 lines of prose must not
-  // outrank 150 of code when they cost the same review.
-  const attribute = (area, weight) => byArea.set(area, (byArea.get(area) ?? 0) + weight);
-  for (const line of mechanicalLines) attribute(line.area, MECHANICAL_WEIGHT);
-  for (const [kind, side] of Object.entries(sides)) {
-    const paired = pairMoves(side.added, side.deleted);
-    moved += paired.moved;
-    counted[kind] = paired.survivors.length;
-    for (const line of paired.survivors) attribute(line.area, WEIGHT[kind]);
-  }
+  const { sides, mechanicalLines, mechanical, generated } = setMechanicalAside(files, sweeping);
+  const { counted, byArea, moved } = weighLines(sides, mechanicalLines);
 
   const code = counted.code ?? 0;
   const docs = counted.docs ?? 0;
@@ -373,6 +317,93 @@ export function measureSurface(diff) {
       .sort((a, b) => b[1] - a[1])
       .map(([s, n]) => ({ from: s.split('\u0000')[0], to: s.split('\u0000')[1], lines: n })),
   };
+}
+
+/**
+ * Pass one: which substitutions recur often enough to read as a sweep, with how
+ * often each does. Only code counts here — a phrase reworded in ten paragraphs
+ * of prose is ten decisions, not one.
+ */
+function countSubstitutions(files) {
+  const occurrences = new Map();
+  for (const file of files) {
+    if (file.kind !== 'code') continue;
+    for (const hunk of file.hunks) {
+      const paired = Math.min(hunk.deleted.length, hunk.added.length);
+      for (let i = 0; i < paired; i += 1) {
+        const substitution = substitutionOf(hunk.deleted[i], hunk.added[i]);
+        if (substitution) occurrences.set(substitution, (occurrences.get(substitution) ?? 0) + 1);
+      }
+    }
+  }
+  return occurrences;
+}
+
+/**
+ * Pass two: set the mechanical lines aside, then collect what is left as line
+ * records, so the move pairing can tell a re-indentation from a block that
+ * crossed into another file. Generated output is only counted.
+ */
+function setMechanicalAside(files, sweeping) {
+  const sides = {};
+  const mechanicalLines = [];
+  let generated = 0;
+
+  for (const file of files) {
+    const { kind, path, area } = file;
+    for (const hunk of file.hunks) {
+      if (kind === 'generated') {
+        generated += hunk.deleted.length + hunk.added.length;
+        continue;
+      }
+      const mechanicalAt = kind === 'code' ? sweptPairs(hunk, sweeping) : new Set();
+      mechanicalAt.forEach(() => mechanicalLines.push({ area }, { area }));
+      sides[kind] ??= { added: [], deleted: [] };
+      const record = (raw) => ({ raw, trimmed: raw.trim(), path, area });
+      hunk.added.forEach((raw, i) => {
+        if (!mechanicalAt.has(i)) sides[kind].added.push(record(raw));
+      });
+      hunk.deleted.forEach((raw, i) => {
+        if (!mechanicalAt.has(i)) sides[kind].deleted.push(record(raw));
+      });
+    }
+  }
+  return { sides, mechanicalLines, mechanical: mechanicalLines.length, generated };
+}
+
+/** The positions in a hunk whose deleted and added line are one sweep's substitution. */
+function sweptPairs(hunk, sweeping) {
+  const at = new Set();
+  const paired = Math.min(hunk.deleted.length, hunk.added.length);
+  for (let i = 0; i < paired; i += 1) {
+    const substitution = substitutionOf(hunk.deleted[i], hunk.added[i]);
+    if (substitution && sweeping.has(substitution)) at.add(i);
+  }
+  return at;
+}
+
+/**
+ * Pair the moves out of each kind's lines and weigh what survives, by area.
+ *
+ * Areas are attributed **after** the pairing and at the weight the line
+ * carries, so the breakdown is in the surface's own unit and sums to it. It is
+ * what /pr-create offers as a seam: an area that is all moved lines is not work
+ * and must not read as the widest one, and 200 lines of prose must not outrank
+ * 150 of code when they cost the same review.
+ */
+function weighLines(sides, mechanicalLines) {
+  const counted = {};
+  const byArea = new Map();
+  let moved = 0;
+  const attribute = (area, weight) => byArea.set(area, (byArea.get(area) ?? 0) + weight);
+  for (const line of mechanicalLines) attribute(line.area, MECHANICAL_WEIGHT);
+  for (const [kind, side] of Object.entries(sides)) {
+    const paired = pairMoves(side.added, side.deleted);
+    moved += paired.moved;
+    counted[kind] = paired.survivors.length;
+    for (const line of paired.survivors) attribute(line.area, WEIGHT[kind]);
+  }
+  return { counted, byArea, moved };
 }
 
 /**
