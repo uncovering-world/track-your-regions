@@ -617,11 +617,25 @@ reader, something else at its spot, or offered under another kind. Beside the ro
 per live kind says how many of the expected it offers and how many it lacks under its line,
 which are the regional tier's and are counted rather than listed.
 
-On the development catalogue on 2026-10-16 it found 156: the Museum of Contemporary Art
-Australia, the Palacio de Bellas Artes and 125 more entries filed under Art Museums,
-Ollantaytambo and Pisac among 16 archaeological sites, and Lucy among 4 works. It is an invariant, so its number can be
-accepted, and a run that loses a place every guide names makes it grow; so does a list that
-was extended, which a person tells apart from a loss by reading the rows.
+A row is a gap nobody has answered for. Once a person has judged why it stands, in the
+committed ledger `db/catalogue-coverage/judgements.jsonl` (`docs/tech/catalogue-coverage.md`
+§ `judgements.jsonl`, ADR-0116), the row is gone and the kind's line counts it by its cause with
+the issue that owns it: a defect of a rule that runs today, a door no rule has yet, a kind the
+product does not have, a part of a place the catalogue offers, a reader finding it under
+another kind, or not a must. A judgement is one entry under one kind, so an entry two kinds
+lack is judged twice or listed under the kind nobody judged it for. A judgement whose kind
+offers the entry now comes back as a row of its own, said as the line to remove from the
+ledger, so the ledger never describes a catalogue that is gone; such a row is the third way the
+count grows, beside a place lost and a list extended.
+
+On the development catalogue on 2026-10-16 it found 156 before the ledger existed: the Museum of
+Contemporary Art Australia, the Palacio de Bellas Artes and 125 more entries filed under Art
+Museums, Ollantaytambo and Pisac among 16 archaeological sites, and Lucy among 4 works. The
+ledger judged 152 of them the same day, 106 of them museums that wait on the regional tier
+(#628) and 14 defects across six issues, corrected one list and left 3 that wait for a
+curator. It is an invariant,
+so its number can be accepted, and a run that loses a place every guide names makes it grow; so
+does a list that was extended, which a person tells apart from a loss by reading the rows.
 
 It decides nothing itself: its rows are the coverage report's `liveKinds`, so the command and
 the panel cannot disagree. That makes it a computed check (`ComputedAssertion` in

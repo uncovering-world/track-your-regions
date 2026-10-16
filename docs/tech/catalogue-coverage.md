@@ -23,7 +23,8 @@ line, changed through a pull request.
 db/catalogue-coverage/
 ├── kinds.jsonl                  ← the register of kinds of experience, live and proposed
 ├── regions.jsonl                ← the surveyed regions
-└── expectations/<region>.jsonl  ← what a traveller expects in that region
+├── expectations/<region>.jsonl  ← what a traveller expects in that region
+└── judgements.jsonl             ← why each gap between the lists and the catalogue stands, judged once (ADR-0116)
 ```
 
 No directory is named `coverage/`: `.gitignore` ignores that name, and a file under it is
@@ -105,6 +106,50 @@ Which source named an entry is not in the file. A guide's selection is its publi
 (`docs/tech/filling-a-kind.md` § 5), so the committed entry carries the count and the record
 of which sources stays under `docs/local/`.
 
+### `judgements.jsonl`: the ledger
+
+One line per gap a person has judged
+([ADR-0116](../decisions/0116-a-gap-the-catalogue-carries-is-judged-once-in-a-committed-ledger-by-cause.md)):
+an entry of a region's list and the live kind that does not offer it, or a catalogue row the
+region offers that no entry names. A judgement says why the gap stands, so the report and the
+coverage check can count it by cause and stop listing it as needing a person. An entry filed
+under two live kinds has a gap, and a line, per kind: the Arch of Constantine, offered by
+Archaeology and absent from Public Art, is judged under Public Art alone, and a run that lost it
+would show it bare under Archaeology.
+
+| Field | Meaning |
+|---|---|
+| `region` | The surveyed region's slug |
+| `entry` | The slug of the entry in that region's list, or `null` when the subject is a catalogue row |
+| `kind` | The live kind whose gap is judged: the entry is filed under it and it does not offer the entry; `null` when the subject is a catalogue row |
+| `row` | The Wikidata id of a catalogue row the region offers and no entry names (#1601), or `null` when the subject is an entry |
+| `cause` | One of the closed vocabulary below |
+| `issue` | The issue that owns the cause, or `null`; a `rule-defect` and a `door-missing` always name one |
+| `judged` | The date of the judgement, which is the date of the catalogue it was made against |
+| `note` | Why, in a sentence a later reader can check: what the run recorded, what Wikidata says, what stands beside it |
+
+The causes, stated in the schema's `CHECK` and read from it by the files' reader:
+
+| Cause | Meaning |
+|---|---|
+| `rule-defect` | A rule the product runs today should have admitted it: the Villa Farnesina, refused as a villa although an iconic work names it |
+| `door-missing` | No rule the product runs would admit it yet: a museum with no work over the works line waits for the regional tier of Art Museums (#628) |
+| `kind-missing` | A traveller looks for it under a kind the register has and the product does not; the note names the kind, and the entry is filed under it |
+| `part-of-offered` | The catalogue offers the place it is part of: the Vatican Pinacoteca inside the Vatican Museums, a gallery of the Palace Museum |
+| `offered-elsewhere` | A reader finds it under the kind the product's rules give it to: the Arch of Constantine under Archaeology, not Public Art (ADR-0102) |
+| `not-a-must` | A visitor misses nothing by the kind not offering it: a commercial gallery, a printmaking workshop |
+
+A line, in full:
+
+```json
+{"region": "rome", "entry": "villa-farnesina", "kind": "art-museums", "row": null, "cause": "rule-defect", "issue": 1614, "judged": "2026-10-16", "note": "Held and refused as a villa since 2026-08-07 although Raphael's Galatea, over the works line, names it."}
+```
+
+A judgement is about the catalogue's rules, never about the list: where a finding is the list's
+fault, an identifier that is the wrong one of two items or a filing a traveller would not make,
+the list is corrected and nothing is judged. A held entry that waits for a curator is not
+judged either; the review queue answers it.
+
 ## What the reader refuses
 
 `readCoverageFiles` in `backend/src/services/catalogueCoverage/files.ts` reads the directory
@@ -131,7 +176,13 @@ It refuses:
 - an entry with a UNESCO id that is not filed under `world-heritage`, and an entry filed there
   without one. `world-heritage` is the inscribed property itself, so one entry of a list
   carries its id. A component of a serial property, such as one temple of Kyoto's, is filed
-  under what it is.
+  under what it is;
+- in the ledger: a judgement that names both an entry and a row, or neither; an entry with no
+  kind, under a kind the register lacks or only proposes, or under a kind the entry is not
+  filed under; a catalogue row that names a kind; a cause outside the vocabulary; a
+  `rule-defect` or a `door-missing` with no issue; a region no list has; an entry its region's
+  list does not hold; a gap judged twice; an empty note. A directory with no `judgements.jsonl`
+  has judged nothing and is not wrong.
 
 Two regions may hold the same place: Nara is a day trip from more than one city.
 
@@ -167,17 +218,23 @@ Two regions may hold the same place: Nara is a day trip from more than one city.
   language editions of one article, count once towards an entry's `sources`.
 - **A kind is never renamed by editing its slug in place** without changing every entry filed
   under it in the same change; the reader refuses the leftover.
+- **A gap is judged once, in the ledger, and the judgement names its cause and its owner.** A
+  defect gets an issue when none owns it yet, and the judgement names it; the next finding of
+  the same cause names the same issue. A finding that turns out to be the list's fault corrects
+  the list instead. A judgement is removed when the report calls it stale, or when the issue it
+  names has closed.
 
 ## The tables
 
-`coverage_kinds`, `coverage_regions`, `coverage_expectations` and
-`coverage_expectation_kinds` hold a copy of the files, so that the comparison with the
-catalogue is a join. They are declared in `db/init/01-schema.sql` and
+`coverage_kinds`, `coverage_regions`, `coverage_expectations`,
+`coverage_expectation_kinds` and `coverage_judgements` hold a copy of the files, so that the
+comparison with the catalogue is a join. They are declared in `db/init/01-schema.sql` and
 `db/migrations/068-catalogue-coverage.sql`, which create them and load nothing;
-`069-coverage-kinds-in-venue.sql` adds `coverage_kinds.in_venue` to a database that has them.
+`069-coverage-kinds-in-venue.sql` adds `coverage_kinds.in_venue` to a database that has them,
+and `114-coverage-judgements.sql` the ledger's table.
 
 - **One writer.** `replaceCoverage` in `backend/src/services/catalogueCoverage/load.ts`
-  empties all four and fills them from what the reader returned, in one transaction. Nobody
+  empties all five and fills them from what the reader returned, in one transaction. Nobody
   edits a row by hand: the next load would undo it.
 - **Apart from `experience_kinds`.** That table is what a traveller browses by. A proposed
   kind lives only in `coverage_kinds`; a live kind's record there points at its
@@ -268,14 +325,26 @@ inscribed is the whole rule, and Art Museums, which admits a museum through a wo
 so the museum's own sitelinks are not what the kind asks of it. An entry a reader
 sees under another kind is still absent from this one, and the report says so.
 
+**What a person has judged.** Each absent entry of a kind carries the ledger's line on that
+gap, where there is one; a line judges one entry under one kind, and the same entry absent
+from another live kind is bare there. The text names the absent entries nobody has judged and
+counts the judged by cause, with the issues the judgements name: `absent and judged: 100: 90
+door-missing (#628); 6 rule-defect (#1614, #1617); 4 not-a-must`. A judgement whose kind
+offers the entry now, over or under the line, is stale: its gap has closed, and the report
+lists it as a line to remove from `judgements.jsonl`. A judgement on a catalogue row (#1601)
+is loaded and counted and read by nothing yet. Whether a judgement's issue has closed is not
+the report's to know; the `/coverage-check` skill asks GitHub for the issues the ledger names.
+
 ## In Catalogue Checks
 
 `expected-and-well-known-yet-not-offered` (`dataAssertions/coverageAssertions.ts`) says
 the report's *What each live kind lacks* in the panel: one row per live kind and absent entry
-at or over that kind's line, the most named first, and one line per live kind saying how many
-of the expected it offers and how many it lacks under the line. It runs `coverageReport()` and
-decides nothing of its own, so the command and the panel cannot disagree. With nothing loaded
-it reports nothing as missing and says the lists have not been loaded.
+at or over that kind's line that nobody has judged, the most named first, then one row per stale
+judgement, said as the line to remove; and one line per live kind saying how many of the
+expected it offers, how many it lacks under the line, and how many of what it lacks are judged
+under each cause, with their issues, and how many wait for a person. It runs `coverageReport()`
+and decides nothing of its own, so the command and the panel cannot disagree. With nothing
+loaded it reports nothing as missing and says the lists have not been loaded.
 
 ## How the lists of 2026-10-02 were compiled
 
