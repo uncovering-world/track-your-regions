@@ -10,6 +10,7 @@ import { parseBbox } from '../db/bboxEnvelopes.js';
 import { CHECK_VALUES, COLUMN_WIDTHS } from '../db/schema.generated.js';
 import { foldLabel, tidyLabel } from '@tyr/shared/labels';
 import { WHOLE_REGION_LIMIT } from '@tyr/shared/catalogue';
+import { CURATION_LOG_ACTIONS } from '@tyr/shared/curationLog';
 import { safeImageUrlSchema, safeUrlSchema } from './urlSchemas.js';
 import { pictureFetchUrl, PICTURE_FETCH_URL_MESSAGE } from './urlSafety.js';
 import { POINTS_DETAILS } from '../controllers/experience/worldPointsVocabulary.js';
@@ -1051,9 +1052,24 @@ export const createCuratorAssignmentBodySchema = z.object({
   notes: z.string().max(1000).optional(),
 });
 
+/**
+ * What a read of the curation log narrows by (#611). Every filter composes
+ * with the others and with the page: `regionId` keeps the acts on a place in
+ * that region or below it, or naming such a region; `since` is inclusive and
+ * `before` exclusive, both instants, so the screen sends its own midnights.
+ */
 export const curatorActivityQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(200).default(50),
   offset: z.coerce.number().int().min(0).default(0),
+  action: z.enum(CURATION_LOG_ACTIONS).optional(),
+  regionId: rowIdSchema.optional(),
+  since: z.iso.datetime({ offset: true }).optional(),
+  before: z.iso.datetime({ offset: true }).optional(),
+});
+
+/** The feed across every curator: the same filters, and one author to narrow to. */
+export const curationActivityQuerySchema = curatorActivityQuerySchema.extend({
+  curatorId: rowIdSchema.optional(),
 });
 
 export const adminUserSearchQuerySchema = z.object({

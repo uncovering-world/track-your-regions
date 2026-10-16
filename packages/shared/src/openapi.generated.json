@@ -5888,6 +5888,75 @@
               "minimum": 0,
               "maximum": 9007199254740991
             }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "created",
+                "rejected",
+                "unrejected",
+                "edited",
+                "added_to_region",
+                "removed_from_region",
+                "marked_former",
+                "marked_lost",
+                "state_restored",
+                "accepted_source",
+                "declined_source",
+                "declined_held",
+                "missing_dismissed",
+                "admission_confirmed",
+                "admission_overridden",
+                "published",
+                "location_marked_former",
+                "location_marked_lost",
+                "location_state_restored",
+                "location_missing_dismissed",
+                "location_edited",
+                "work_edited",
+                "arrival_refused",
+                "contents_refused",
+                "contents_unrefused",
+                "merged",
+                "merge_undone",
+                "views_chosen",
+                "component_items_answered",
+                "component_item_taken_back",
+                "admission_pin_released",
+                "admission_pin_kept",
+                "admission_pin_handed_back"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "regionId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            }
           }
         ],
         "responses": {
@@ -5897,6 +5966,144 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/CuratorActivity"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/curation-activity": {
+      "get": {
+        "operationId": "getAdminCurationActivity",
+        "summary": "List the curation actions every curator has taken, newest first, filtered by action, curator, region and date",
+        "tags": [
+          "admin"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "default": 50,
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 200
+            }
+          },
+          {
+            "in": "query",
+            "name": "offset",
+            "schema": {
+              "default": 0,
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            }
+          },
+          {
+            "in": "query",
+            "name": "action",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "created",
+                "rejected",
+                "unrejected",
+                "edited",
+                "added_to_region",
+                "removed_from_region",
+                "marked_former",
+                "marked_lost",
+                "state_restored",
+                "accepted_source",
+                "declined_source",
+                "declined_held",
+                "missing_dismissed",
+                "admission_confirmed",
+                "admission_overridden",
+                "published",
+                "location_marked_former",
+                "location_marked_lost",
+                "location_state_restored",
+                "location_missing_dismissed",
+                "location_edited",
+                "work_edited",
+                "arrival_refused",
+                "contents_refused",
+                "contents_unrefused",
+                "merged",
+                "merge_undone",
+                "views_chosen",
+                "component_items_answered",
+                "component_item_taken_back",
+                "admission_pin_released",
+                "admission_pin_kept",
+                "admission_pin_handed_back"
+              ]
+            }
+          },
+          {
+            "in": "query",
+            "name": "regionId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          },
+          {
+            "in": "query",
+            "name": "since",
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "before",
+            "schema": {
+              "type": "string",
+              "format": "date-time",
+              "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "curatorId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CurationActivity"
                 }
               }
             }
@@ -18349,6 +18556,71 @@
         "additionalProperties": false,
         "description": "A subregion an edit created for a division."
       },
+      "CurationActivity": {
+        "type": "object",
+        "properties": {
+          "activity": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CuratorActivityEntry"
+            },
+            "description": "Newest first."
+          },
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "offset": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "curators": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CurationActivityActor"
+            },
+            "description": "Everyone the log names as having acted, by name: a curator whose scope was revoked included."
+          }
+        },
+        "required": [
+          "activity",
+          "total",
+          "limit",
+          "offset",
+          "curators"
+        ],
+        "additionalProperties": false,
+        "description": "A page of what every curator did, and who can be narrowed to."
+      },
+      "CurationActivityActor": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "name"
+        ],
+        "additionalProperties": false,
+        "description": "Someone the curation log names as having acted."
+      },
       "CurationGateBody": {
         "type": "object",
         "properties": {
@@ -18557,7 +18829,7 @@
           "offset"
         ],
         "additionalProperties": false,
-        "description": "A page of what one curator did."
+        "description": "A page of the curation log: what one curator did, or what every curator did."
       },
       "CuratorActivityEntry": {
         "type": "object",
@@ -18657,6 +18929,25 @@
               "string",
               "null"
             ]
+          },
+          "curator_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Who acted; null for an act a sync run took itself (a `merged`)."
+          },
+          "curator_name": {
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -18667,10 +18958,12 @@
           "experience_id",
           "experience_name",
           "region_id",
-          "region_name"
+          "region_name",
+          "curator_id",
+          "curator_name"
         ],
         "additionalProperties": false,
-        "description": "One act of a curator's, on one experience."
+        "description": "One act of the curation log, on one experience."
       },
       "CuratorAssignmentCreated": {
         "type": "object",

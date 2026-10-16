@@ -7,21 +7,17 @@
 
 import type { z } from 'zod/v4';
 import type {
-  CuratorActivity,
   CuratorAssignmentCreated,
   CuratorAssignmentRevoked,
   Curators,
-  CuratorActivityEntry,
   CuratorInfo,
 } from '../../api/responses/admin.js';
 import type { CuratorScope } from '../../api/responses/auth.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import type {
-  ExperienceCurationLogRow, ExperiencesRow, RegionsRow, UsersRow,
-} from '../../db/schema.generated.js';
+import type { UsersRow } from '../../db/schema.generated.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
 import type {
-  assignmentIdParamSchema, createCuratorAssignmentBodySchema, curatorActivityQuerySchema, userIdParamSchema,
+  assignmentIdParamSchema, createCuratorAssignmentBodySchema,
 } from '../../types/index.js';
 import { CURATOR_SCOPES_SQL, curatorScopeOf, type CuratorScopeOfUserRow } from './curatorScopeRows.js';
 
@@ -302,69 +298,5 @@ export async function revokeCuratorAssignment(
     userId,
     remainingAssignments: remaining,
     roleReverted,
-  };
-}
-
-/** One act of the log as the activity read selects it. */
-type ActivityRow = Pick<ExperienceCurationLogRow, 'id' | 'details' | 'created_at' | 'region_id'> & {
-  action: CuratorActivityEntry['action'];
-  experience_id: ExperiencesRow['id'];
-  experience_name: ExperiencesRow['name'];
-  region_name: RegionsRow['name'] | null;
-};
-
-/** Key by key, the timestamp as the wire carries it and `details` as the object its action wrote. */
-function activityEntryOf(row: ActivityRow): CuratorActivityEntry {
-  return {
-    id: row.id,
-    action: row.action,
-    created_at: row.created_at === null ? null : row.created_at.toISOString(),
-    details: row.details as CuratorActivityEntry['details'],
-    experience_id: row.experience_id,
-    experience_name: row.experience_name,
-    region_id: row.region_id,
-    region_name: row.region_name,
-  };
-}
-
-/**
- * Get curator activity log
- * GET /api/admin/curators/:userId/activity
- * Query: limit, offset
- */
-export async function getCuratorActivity(
-  { params: { userId }, query: { limit, offset } }: {
-    params: z.output<typeof userIdParamSchema>; query: z.output<typeof curatorActivityQuerySchema>;
-  },
-): Promise<CuratorActivity> {
-
-  const result = await pool.query<ActivityRow>(`
-    SELECT
-      cl.id,
-      cl.action,
-      cl.created_at,
-      cl.details,
-      e.id as experience_id,
-      e.name as experience_name,
-      r.id as region_id,
-      r.name as region_name
-    FROM experience_curation_log cl
-    JOIN experiences e ON cl.experience_id = e.id
-    LEFT JOIN regions r ON cl.region_id = r.id
-    WHERE cl.curator_id = $1
-    ORDER BY cl.created_at DESC
-    LIMIT $2 OFFSET $3
-  `, [userId, limit, offset]);
-
-  const countResult = await pool.query(
-    'SELECT COUNT(*) FROM experience_curation_log WHERE curator_id = $1',
-    [userId],
-  );
-
-  return {
-    activity: result.rows.map(activityEntryOf),
-    total: parseInt(countResult.rows[0].count),
-    limit,
-    offset,
   };
 }
