@@ -20,11 +20,12 @@ import { safeFileName, type DumpFile, type DumpKey } from './catalog.js';
 import { copyOf } from './localCopies.js';
 
 /**
- * The JSON a sample keeps. The dump begins with the oldest items, which are
- * among the largest, so a sample keeps fewer of them than its share of the
- * file would say.
+ * The JSON a sample keeps, sized so a trial takes about ten minutes: a
+ * trial's time grows with the JSON it reads. The dump begins with the oldest
+ * items, which are among the largest, so a sample keeps fewer of them than
+ * its share of the file would say.
  */
-export const SAMPLE_JSON_BYTES = 4 * 1024 ** 3;
+export const SAMPLE_JSON_BYTES = 16 * 1024 ** 3;
 
 const SAMPLE_NAME = /^sample-(\d+)gb-(.+)$/;
 
