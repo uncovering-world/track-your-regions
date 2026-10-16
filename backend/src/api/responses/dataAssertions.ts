@@ -17,7 +17,7 @@
 
 import { z } from 'zod/v4';
 
-export const AssertionArea = z.enum(['places', 'regions', 'boundaries', 'objects', 'pictures'])
+export const AssertionArea = z.enum(['places', 'regions', 'boundaries', 'objects', 'pictures', 'coverage'])
   .describe('What an assertion is about, so a growing list stays readable.');
 export type AssertionArea = z.infer<typeof AssertionArea>;
 
@@ -25,8 +25,8 @@ export const AssertionKind = z.enum(['invariant', 'watch'])
   .describe('An `invariant` may match nothing; a `watch` is a number to watch rather than a debt, and cannot be accepted.');
 export type AssertionKind = z.infer<typeof AssertionKind>;
 
-export const AssertionStatus = z.enum(['clear', 'holding', 'improved', 'regressed', 'unanswered', 'watch', 'error'])
-  .describe('What today\'s number means beside the accepted one. `holding` is debt somebody has answered for; `unanswered` is a rule nobody has answered for yet.');
+export const AssertionStatus = z.enum(['clear', 'holding', 'improved', 'regressed', 'unanswered', 'watch', 'unavailable', 'error'])
+  .describe('What today\'s number means beside the accepted one. `holding` is debt somebody has answered for; `unanswered` is a rule nobody has answered for yet; `unavailable` is a check with nothing to read yet, such as lists nobody loaded.');
 export type AssertionStatus = z.infer<typeof AssertionStatus>;
 
 export const DataAssertion = z.strictObject({
@@ -41,7 +41,8 @@ export const DataAssertion = z.strictObject({
   acceptedAt: z.iso.datetime({ offset: true }).nullable(),
   acceptedBy: z.string().nullable().describe('The display name of whoever accepted it, where the account still exists.'),
   sample: z.array(z.string()).describe('Up to ten rows, each already said the way a person would say it.'),
-  error: z.string().nullable().describe('Why the assertion\'s statement did not run, where it did not.'),
+  context: z.array(z.string()).describe('Lines said beside the rows whatever their number, such as how much of the whole they are; empty for most checks.'),
+  error: z.string().nullable().describe('Why the assertion did not run, where it did not: a failure, or (status `unavailable`) what it is waiting for.'),
   needsAttention: z.boolean(),
 }).describe('One assertion over the catalogue: what it found, and what was accepted.');
 export type DataAssertion = z.infer<typeof DataAssertion>;

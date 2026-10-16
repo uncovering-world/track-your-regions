@@ -68,13 +68,14 @@ import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
 import { PICTURE_HOSTS, PICTURE_EXTENSIONS } from '@tyr/shared/pictures';
 
 import { count, text } from './assertion.js';
-import type { AssertionRow, CatalogueAssertion } from './assertion.js';
+import type { AnyAssertion, AssertionRow, CatalogueAssertion } from './assertion.js';
+import { coverageAssertions } from './coverageAssertions.js';
 import { divisionTreeAssertions } from './divisionTreeAssertions.js';
 import { objectAssertions } from './objectAssertions.js';
 import { workAssertions } from './workAssertions.js';
 import { regionGeometryAssertions } from './regionGeometryAssertions.js';
 
-export type { AssertionRow, CatalogueAssertion } from './assertion.js';
+export type { AnyAssertion, AssertionRow, CatalogueAssertion } from './assertion.js';
 
 /**
  * Metres to millimetres, because the case this file exists for is 12 mm and
@@ -750,4 +751,14 @@ export const catalogueAssertions: CatalogueAssertion[] = [
   ...workAssertions,
   pictureTheProductMayNotShow,
   pictureWithNobodyCredited,
+];
+
+/**
+ * Every check the panel reports: the statements above, then the checks a
+ * decision in code answers, which come last because they ask what the catalogue
+ * lacks rather than what its rows mean.
+ */
+export const everyAssertion: AnyAssertion[] = [
+  ...catalogueAssertions,
+  ...coverageAssertions,
 ];

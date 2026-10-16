@@ -22,7 +22,7 @@ import type { DataAssertion, DataAssertionReport } from '../../api/responses/dat
 import { pool } from '../../db/index.js';
 import { badRequest, failure, notFound } from '../../middleware/errorHandler.js';
 import type { dataAssertionAcceptBodySchema } from '../../types/index.js';
-import { catalogueAssertions } from './dataAssertions/catalogueAssertions.js';
+import { everyAssertion } from './dataAssertions/catalogueAssertions.js';
 import {
   assess,
   readAcceptedNumbers,
@@ -145,7 +145,7 @@ export async function getDataAssertions(): Promise<DataAssertionReport> {
 export async function acceptDataAssertion(
   { body: { assertionId }, caller }: { body: z.output<typeof dataAssertionAcceptBodySchema>; caller: Express.User },
 ): Promise<DataAssertion> {
-  const assertion = catalogueAssertions.find(candidate => candidate.id === assertionId);
+  const assertion = everyAssertion.find(candidate => candidate.id === assertionId);
   if (!assertion) throw notFound('No such assertion');
   if (assertion.kind === 'watch') throw badRequest('A watch has nothing to accept: its count is not a debt');
   const userId = caller.id;

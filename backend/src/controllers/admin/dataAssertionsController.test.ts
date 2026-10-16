@@ -15,7 +15,7 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import type { AuthenticatedRequest } from '../../middleware/auth.js';
-import { catalogueAssertions } from './dataAssertions/catalogueAssertions.js';
+import { everyAssertion } from './dataAssertions/catalogueAssertions.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
 
@@ -72,7 +72,7 @@ describe('the report', () => {
     const body = res.body as { assertions: { id: string }[]; needsAttention: number };
     // A panel showing only the assertions in trouble leaves an admin unable to
     // tell "nothing is wrong" from "nothing ran".
-    expect(body.assertions.map(a => a.id)).toEqual(catalogueAssertions.map(a => a.id));
+    expect(body.assertions.map(a => a.id)).toEqual(everyAssertion.map(a => a.id));
     expect(body.needsAttention).toBe(0);
   });
 });
@@ -91,7 +91,7 @@ describe('a database whose ledger is not there yet', () => {
 
     const body = res.body as { assertions: unknown[]; acceptancesUnavailable: string | null };
     expect(res.statusCode).toBe(200);
-    expect(body.assertions).toHaveLength(catalogueAssertions.length);
+    expect(body.assertions).toHaveLength(everyAssertion.length);
     expect(body.acceptancesUnavailable).toMatch(/031-data-assertion-acceptances\.sql/);
   });
 

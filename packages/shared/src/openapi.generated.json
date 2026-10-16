@@ -16026,7 +16026,8 @@
           "regions",
           "boundaries",
           "objects",
-          "pictures"
+          "pictures",
+          "coverage"
         ],
         "description": "What an assertion is about, so a growing list stays readable."
       },
@@ -16047,9 +16048,10 @@
           "regressed",
           "unanswered",
           "watch",
+          "unavailable",
           "error"
         ],
-        "description": "What today's number means beside the accepted one. `holding` is debt somebody has answered for; `unanswered` is a rule nobody has answered for yet."
+        "description": "What today's number means beside the accepted one. `holding` is debt somebody has answered for; `unanswered` is a rule nobody has answered for yet; `unavailable` is a check with nothing to read yet, such as lists nobody loaded."
       },
       "AssignExperienceBody": {
         "type": "object",
@@ -19780,8 +19782,15 @@
             },
             "description": "Up to ten rows, each already said the way a person would say it."
           },
+          "context": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Lines said beside the rows whatever their number, such as how much of the whole they are; empty for most checks."
+          },
           "error": {
-            "description": "Why the assertion's statement did not run, where it did not.",
+            "description": "Why the assertion did not run, where it did not: a failure, or (status `unavailable`) what it is waiting for.",
             "type": [
               "string",
               "null"
@@ -19803,6 +19812,7 @@
           "acceptedAt",
           "acceptedBy",
           "sample",
+          "context",
           "error",
           "needsAttention"
         ],

@@ -24,7 +24,7 @@ import {
   heldFieldAnsweredSql, heldFieldRefusedSql, heldPartRefusedSql,
 } from '../../experience/heldDecisions.js';
 import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
-import { catalogueAssertions } from './catalogueAssertions.js';
+import { catalogueAssertions, everyAssertion } from './catalogueAssertions.js';
 import { PICTURE_HOSTS, PICTURE_EXTENSIONS } from '@tyr/shared/pictures';
 
 const byId = (id: string) => {
@@ -37,7 +37,7 @@ const collapse = (sql: string) => sql.replace(/\s+/g, ' ');
 
 describe('the catalogue assertions as a set', () => {
   it('gives every assertion an id of its own, since a report is read by id', () => {
-    const ids = catalogueAssertions.map(a => a.id);
+    const ids = everyAssertion.map(a => a.id);
     expect(new Set(ids).size).toBe(ids.length);
   });
 
@@ -53,7 +53,7 @@ describe('the catalogue assertions as a set', () => {
     // row already stands is expected, not debt. The fifth is #1444's: a work a
     // museum gave back, or one lost to history, is rightly on no card, and the
     // number moving is what says a refusal took a museum's works with it.
-    const watches = catalogueAssertions.filter(a => a.kind === 'watch').map(a => a.id);
+    const watches = everyAssertion.filter(a => a.kind === 'watch').map(a => a.id);
     expect(watches).toEqual([
       'visits-on-places-no-reader-is-shown', 'anchor-far-from-its-region',
       'work-makers-unconfirmed', 'archaeology-site-twin-of-a-world-heritage-row', 'work-no-offered-place-holds',
@@ -61,13 +61,13 @@ describe('the catalogue assertions as a set', () => {
   });
 
   it('gives every assertion an area, since the list is expected to outgrow one screen', () => {
-    for (const assertion of catalogueAssertions) {
-      expect(['places', 'regions', 'boundaries', 'objects', 'pictures']).toContain(assertion.area);
+    for (const assertion of everyAssertion) {
+      expect(['places', 'regions', 'boundaries', 'objects', 'pictures', 'coverage']).toContain(assertion.area);
     }
   });
 
   it('says what a matching row means, so a report can be acted on without this file', () => {
-    for (const assertion of catalogueAssertions) {
+    for (const assertion of everyAssertion) {
       expect(assertion.meaning.length).toBeGreaterThan(0);
       expect(assertion.title.length).toBeGreaterThan(0);
     }
