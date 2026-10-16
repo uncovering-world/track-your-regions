@@ -36,6 +36,7 @@ import { readsSubset } from '../subset/reader.js';
 import {
   subsetContainerFacts, subsetEntityFacts, subsetPoolOfClasses, subsetPoolOfIds,
 } from '../subset/publicArt.js';
+import { countryOfPlace } from './countryOfPlace.js';
 
 /**
  * The floor of the pool sits below the line a row *stays* above
@@ -96,11 +97,13 @@ const POOL_DETAILS = `
       OPTIONAL { ?e wdt:P18 ?img }
       OPTIONAL { ?e wdt:P571 ?inception }
       OPTIONAL { ?e wdt:P17 ?country }
+      OPTIONAL { ?e p:P625 ?coordStatement . ?coordStatement a wikibase:BestRank ; ps:P625 ?coord ; pq:P518 ?part .
+                 OPTIONAL { ?part wdt:P17 ?partCountry } }
       OPTIONAL { ?e wdt:P856 ?site }
       OPTIONAL { ?article schema:about ?e ; schema:isPartOf <https://en.wikipedia.org/> }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }`;
 
-const POOL_COLUMNS = '?e ?eLabel ?eDescription ?coord ?sl ?img ?countryLabel ?article ?site (YEAR(?inception) AS ?year)';
+const POOL_COLUMNS = '?e ?eLabel ?eDescription ?coord ?sl ?img ?countryLabel ?part ?partCountryLabel ?article ?site (YEAR(?inception) AS ?year)';
 
 function bandedPoolQuery(rootQid: string, band: Band, limit: number): string {
   return `${HINT_PREFIX}
@@ -125,6 +128,29 @@ function classPoolQuery(classQids: string[], limit: number): string {
     LIMIT ${limit}`;
 }
 
+/** Every country an entity's rows name, and per point the countries of the parts it applies to. */
+interface CountryReading {
+  countries: string[];
+  parts: Map<string, Set<string>>;
+}
+
+/** One more row of an entity folded into what its rows say about its country. */
+function readCountry(reading: CountryReading | undefined, row: SparqlBinding, wkt: string | null): CountryReading {
+  const next = reading ?? { countries: [], parts: new Map<string, Set<string>>() };
+  if (row.countryLabel?.value) next.countries.push(row.countryLabel.value);
+  if (wkt && row.part?.value) {
+    const named = next.parts.get(wkt) ?? new Set<string>();
+    if (row.partCountryLabel?.value) named.add(row.partCountryLabel.value);
+    next.parts.set(wkt, named);
+  }
+  return next;
+}
+
+/** The country of an entity drawn at `point`, by `countryOfPlace`. */
+function countryAt(reading: CountryReading | undefined, point: string | null): string | null {
+  return countryOfPlace(reading?.countries ?? [], (point && reading?.parts.get(point)) || null);
+}
+
 /**
  * The entities one answer names, one entry each.
  *
@@ -132,9 +158,11 @@ function classPoolQuery(classQids: string[], limit: number): string {
  * coordinates or two countries. The picture and the coordinate are folded over
  * every row by the one rule every Wikidata reader keeps (`preferredPicture`,
  * `preferredCoordinate`, #1246), so a place two sources read is one picture and
- * one point whichever query asked; the rest is the first row's, since any row
- * answers it. A row whose coordinate does not parse is
- * dropped where the query asked for `P625` — that is a malformed literal, not
+ * one point whichever query asked. The country is `countryOfPlace`'s, from
+ * every country the rows name and the parts the kept point applies to, so a
+ * work in several places is named in the country of the cast it is drawn at.
+ * The rest is the first row's, since any row answers it. A row whose
+ * coordinate does not parse is dropped where the query asked for `P625` — that is a malformed literal, not
  * a missing fact — and kept placeless where it did not (`placeless`), so an
  * admitted row Wikidata still answers for but no longer places is refused by
  * name rather than left to the sweep.
@@ -142,6 +170,7 @@ function classPoolQuery(classQids: string[], limit: number): string {
 function parsePool(rows: SparqlBinding[], options: { placeless?: boolean } = {}): PoolEntity[] {
   const out = new Map<string, PoolEntity>();
   const kept = new Map<string, PreferredValues>();
+  const countries = new Map<string, CountryReading>();
   for (const row of rows) {
     const qid = extractQid(row.e?.value ?? '');
     if (!isQid(qid)) continue;
@@ -149,24 +178,29 @@ function parsePool(rows: SparqlBinding[], options: { placeless?: boolean } = {})
     const coord = parseWktPoint(wkt);
     if (!coord && !options.placeless) continue;
     kept.set(qid, foldPreferred(kept.get(qid), row.img?.value || null, coord ? wkt : null));
+    countries.set(qid, readCountry(countries.get(qid), row, coord ? wkt : null));
     if (out.has(qid)) continue;
     out.set(qid, {
       qid,
       label: row.eLabel?.value || qid,
       description: row.eDescription?.value || null,
-      // The picture and the point are the item's kept ones, written below.
+      // The picture and the point are the item's kept ones, and the country
+      // the one the point agrees with, all written below.
       lat: null,
       lon: null,
       onEarth: true,
       imageUrl: null,
       sitelinks: parseInt(row.sl?.value || '0', 10),
-      countryLabel: row.countryLabel?.value || null,
+      countryLabel: null,
       articleUrl: row.article?.value || null,
       website: row.site?.value || null,
       year: row.year?.value ? parseInt(row.year.value, 10) : null,
     });
   }
   applyPreferred(out, kept);
+  for (const [qid, entity] of out) {
+    entity.countryLabel = countryAt(countries.get(qid), kept.get(qid)?.wkt ?? null);
+  }
   return [...out.values()];
 }
 
