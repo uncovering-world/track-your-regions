@@ -5,6 +5,7 @@
  * sync instances across duplicate regions, handle-as-grouping (country-level matching).
  */
 
+import { computeGeoSimilarityIfNeeded } from '../../services/worldViewImport/geoshapeCache.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { isVisitedRegionDelete, visitedRegionRefusal, visitsOn } from '../../db/regionVisits.js';
 import type { InstancesSynced } from '../../api/responses/worldViewImport.js';
@@ -21,7 +22,6 @@ import {
   type ImportStateSnapshot,
   type SuggestionSnapshot,
   undoEntries,
-  computeGeoSimilarityIfNeeded,
 } from './wvImportUtils.js';
 import { beginRegionTransaction, deleteRegions, invalidateRegionGeometry, lockSubtree } from '../../db/regionWriter.js';
 import type { AreaGeometry } from '../../api/responses/regions.js';

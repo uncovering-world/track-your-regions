@@ -42,7 +42,7 @@ import { findRegionsSection } from '../../services/wikivoyageExtract/parser.js';
 import type { WikiSection } from '../../services/wikivoyageExtract/types.js';
 import { geoshapeMatchRegion } from '../../services/worldViewImport/geoshapeCoverage.js';
 import { pointMatchRegion } from '../../services/worldViewImport/pointMatcher.js';
-import { computeGeoSimilarityIfNeeded } from './wvImportUtils.js';
+import { computeGeoSimilarityIfNeeded } from '../../services/worldViewImport/geoshapeCache.js';
 import type { z } from 'zod/v4';
 import { badRequest, createError, failure, notFound } from '../../middleware/errorHandler.js';
 import type {
