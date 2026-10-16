@@ -309,7 +309,7 @@ export function DiscoverExperienceList({
             <Box sx={{ px: 1.5, py: 0.5, borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}>
               <TextField
                 size="small"
-                placeholder="Filter by name or country..."
+                placeholder="Filter by name..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 fullWidth

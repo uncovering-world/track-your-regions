@@ -272,11 +272,7 @@ export function DiscoverExperienceView({
   const filteredExperiences = useMemo(() => {
     const needle = foldLabel(search);
     if (!needle) return typedExperiences;
-    return typedExperiences.filter(
-      (exp) =>
-        foldLabel(exp.name).includes(needle) ||
-        exp.country_names?.some((c) => foldLabel(c).includes(needle)),
-    );
+    return typedExperiences.filter((exp) => foldLabel(exp.name).includes(needle));
   }, [typedExperiences, search]);
 
   // New-badge impressions moved into `DiscoverExperienceList` with the window:
