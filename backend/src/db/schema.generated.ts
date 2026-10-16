@@ -631,6 +631,12 @@ export interface RegionMemberEffectiveGeomRow {
   division_name: string | null;
 }
 
+/** The table `region_member_group_assignments`. */
+export interface RegionMemberGroupAssignmentsRow {
+  region_member_id: number;
+  group_id: number;
+}
+
 /** The table `region_members`. */
 export interface RegionMembersRow {
   id: number;
@@ -651,6 +657,16 @@ export interface RegionRenderGeomRow {
   is_custom_boundary: boolean | null;
   anchor_point: string | null;
   focus_bbox: number[] | null;
+}
+
+/** The table `region_subdivision_groups`. */
+export interface RegionSubdivisionGroupsRow {
+  id: number;
+  region_id: number;
+  name: string;
+  color: string | null;
+  existing_region_id: number | null;
+  sort_order: number;
 }
 
 /** The table `regions`. */
