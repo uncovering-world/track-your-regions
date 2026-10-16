@@ -27,6 +27,15 @@ const FRANCE = 'Q142';
 // and Tokyo's Minato (Q190088), each cast a P625 with its host as P518, and four P17s —
 // Spain (Q29), Canada (Q16), the United Kingdom (Q145), Japan (Q17) — tied to none (#1533).
 const MAMAN = 'Q180887';
+// The Stutthof camp (Q326193): its statement of Nazi Germany (Q7318) ends in 1945, Poland
+// (Q36) stands; Nazi Germany itself carries a dissolution (P576, a claims row). Mediolanum (Q729978) is
+// stated in Ancient Rome (Q1747689) alone, which is dissolved too (#757).
+const STUTTHOF = 'Q326193';
+const MEDIOLANUM = 'Q729978';
+// The Moslavina monument (Q75822) is stated in Yugoslavia (Q36704) first and Croatia (Q224),
+// neither statement ended: only Yugoslavia's own dissolution tells them apart.
+const MOSLAVINA = 'Q75822';
+const ENDED_1945 = { time: '+1945-05-08T00:00:00Z', precision: 11 };
 const CASTS: Array<[host: string, country: string, latitude: number, longitude: number]> = [
   ['Q8692', 'Q29', 43.269189, -2.932958], ['Q1930', 'Q16', 45.429333, -75.697277],
   ['Q84', 'Q145', 51.507694, -0.099333], ['Q190088', 'Q17', 35.6610104, 139.7296602],
@@ -65,6 +74,21 @@ const ENTITIES: Array<[string, number, Record<string, unknown>]> = [
     },
     sitelinks: {},
   }],
+  [STUTTHOF, 50, {
+    claims: {
+      P625: [statement('S1', point(54.3292, 19.1525))],
+      P17: [statement('S2', 'Q7318', { qualifiers: { P582: [ENDED_1945] } }), statement('S3', 'Q36')],
+    },
+    sitelinks: {},
+  }],
+  [MOSLAVINA, 20, {
+    claims: { P625: [statement('V1', point(45.6, 16.6))], P17: [statement('V2', 'Q36704'), statement('V3', 'Q224')] },
+    sitelinks: {},
+  }],
+  [MEDIOLANUM, 40, {
+    claims: { P625: [statement('M1', point(45.4642, 9.19))], P17: [statement('M2', 'Q1747689')] },
+    sitelinks: {},
+  }],
   ...CASTS.map(([host, country]): [string, number, Record<string, unknown>] =>
     [host, 0, { claims: { P17: [statement(`${host}-P17`, country)] }, sitelinks: {} }]),
 ];
@@ -75,6 +99,13 @@ beforeAll(async () => {
     await pool.query('INSERT INTO wikidata_entities (id, sitelink_count, entity) VALUES ($1, $2, $3)',
       [id, sitelinks, JSON.stringify({ id, labels: {}, descriptions: {}, ...body })]);
   }
+  // A state's dissolution is read from the claims table (`dissolvedAmong`).
+  await pool.query(
+    `INSERT INTO wikidata_claims (subject, property, statement_id, rank, value_item, value) VALUES
+       ('Q7318', 'P576', 'G1', 0, NULL, $1), ('Q1747689', 'P576', 'G2', 0, NULL, $2), ('Q36704', 'P576', 'G3', 0, NULL, $3)`,
+    [JSON.stringify(ENDED_1945), JSON.stringify({ time: '-0026-01-16T00:00:00Z', precision: 11 }),
+      JSON.stringify({ time: '+1992-04-27T00:00:00Z', precision: 11 })],
+  );
   await pool.query(
     `INSERT INTO wikidata_claims (subject, property, statement_id, rank, value_item, value) VALUES
        ($1, 'P31', 'L1', 0, $2, NULL), ($1, 'P625', 'L2', 0, NULL, $3), ($4, 'P31', 'M1', 0, $5, NULL)`,
@@ -91,6 +122,11 @@ beforeAll(async () => {
        ($2, 'en', 'France', NULL), ($3, 'it', 'Leonardo da Vinci', NULL), ($4, 'en', 'Room 325', NULL)`,
     [LOUVRE, FRANCE, LEONARDO, ROOM_325],
   );
+  for (const [country, label] of [
+    ['Q7318', 'Nazi Germany'], ['Q36', 'Poland'], ['Q1747689', 'Ancient Rome'], ['Q36704', 'Yugoslavia'], ['Q224', 'Croatia'],
+  ]) {
+    await pool.query(`INSERT INTO wikidata_labels (id, language, label) VALUES ($1, 'en', $2)`, [country, label]);
+  }
   for (const [, country] of CASTS) {
     await pool.query(`INSERT INTO wikidata_labels (id, language, label) VALUES ($1, 'en', $2)`, [country, `country ${country}`]);
   }
@@ -118,6 +154,14 @@ describe('Public Art read from the subset (#1459)', () => {
     const drawn = CASTS.find(([, , lat, lon]) => lat === maman.lat && lon === maman.lon);
     expect(drawn).toBeDefined();
     expect(maman.countryLabel).toBe(`country ${drawn![1]}`);
+  });
+
+  it('names the country a place is in today, and keeps a gone one where there is no other (#757)', async () => {
+    const places = await fetchEntitiesByIds(door, [STUTTHOF, MOSLAVINA, MEDIOLANUM]);
+    const country = (qid: string) => places.find(place => place.qid === qid)?.countryLabel;
+    expect(country(STUTTHOF)).toBe('Poland');
+    expect(country(MOSLAVINA)).toBe('Croatia');
+    expect(country(MEDIOLANUM)).toBe('Ancient Rome');
   });
 
   it('answers an entity asked for by id with no point, placeless', async () => {

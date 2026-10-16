@@ -71,14 +71,27 @@ describe('fetchClassPool', () => {
     expect(maman.countryLabel).toBe('Japan');
   });
 
-  it('keeps the first country of a place stated in two at one point', async () => {
-    // The Stutthof camp (Q326193) is stated in Poland and in Nazi Germany at one point:
-    // which country of the two is #757's question, not a cast's.
+  it('names the country a place is in today, not a state that is gone (#757)', async () => {
+    // The Stutthof camp (Q326193) is stated in Nazi Germany, its statement ended in 1945, and
+    // in Poland; the answer lists Nazi Germany first.
     const at = { e: ref('Q326193'), eLabel: { value: 'Stutthof concentration camp' },
       coord: { value: 'Point(19.1525 54.3292)' }, sl: { value: '50' } };
-    const rows = [{ ...at, countryLabel: { value: 'Poland' } }, { ...at, countryLabel: { value: 'Nazi Germany' } }];
+    const rows = [
+      { ...at, countryLabel: { value: 'Nazi Germany' }, countryEnded: { value: '1945-05-08T00:00:00Z' } },
+      { ...at, countryLabel: { value: 'Poland' } },
+    ];
     const [camp] = await fetchClassPool(answer(rows), ['Q152081']);
     expect(camp.countryLabel).toBe('Poland');
+  });
+
+  it('keeps a country that is gone where it is the only kind a place has (#757)', async () => {
+    // Mediolanum (Q729978) is stated in Ancient Rome alone: better that than no country.
+    const rows = [{
+      e: ref('Q729978'), eLabel: { value: 'Mediolanum' }, coord: { value: 'Point(9.19 45.4642)' }, sl: { value: '40' },
+      countryLabel: { value: 'Ancient Rome' }, countryDissolved: { value: '-0026-01-16T00:00:00Z' },
+    }];
+    const [city] = await fetchClassPool(answer(rows), ['Q839954']);
+    expect(city.countryLabel).toBe('Ancient Rome');
   });
 
   it('reads a coordinate on another globe as not on Earth', async () => {
