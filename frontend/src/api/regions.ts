@@ -4,11 +4,12 @@
 
 import type {
   ChildDivisionsAdded, DescendantMemberGeometries, DivisionsAdded, DivisionsRemoved, DivisionUsageCounts, MemberGeometries,
-  MemberMoved, Region, RegionGeometry, RegionMembers, Regions, RegionSearchResults, SubregionFlattened,
+  MemberMoved, Region, RegionGeometry, RegionImageOverlay, RegionMembers, Regions, RegionSearchResults, SubregionFlattened,
   SubregionsExpanded,
 } from './client.generated';
 import {
-  deleteWorldViewsRegionsByRegionId, deleteWorldViewsRegionsByRegionIdMembers, getWorldViewsByWorldViewIdRegions,
+  deleteWorldViewsRegionsByRegionId, deleteWorldViewsRegionsByRegionIdImageOverlay, deleteWorldViewsRegionsByRegionIdMembers,
+  getWorldViewsByWorldViewIdRegions, getWorldViewsRegionsByRegionIdImageOverlay, putWorldViewsRegionsByRegionIdImageOverlay,
   getWorldViewsByWorldViewIdRegionsRoot, getWorldViewsByWorldViewIdRegionsSearch,
   getWorldViewsRegionsByRegionIdAncestors, getWorldViewsRegionsByRegionIdGeometry, getWorldViewsRegionsByRegionIdMembers,
   getWorldViewsRegionsByRegionIdMembersDescendantGeometries, getWorldViewsRegionsByRegionIdMembersGeometries,
@@ -16,7 +17,8 @@ import {
   postWorldViewsRegionsByParentRegionIdFlattenBySubregionId, postWorldViewsRegionsByRegionIdExpand,
   postWorldViewsRegionsByRegionIdMembers, postWorldViewsRegionsByRegionIdMembersByDivisionIdAddChildren,
   postWorldViewsRegionsByRegionIdMembersMove, putWorldViewsRegionsByRegionId, putWorldViewsRegionsByRegionIdGeometry,
-  type AddChildDivisionsBody, type AddDivisionsToRegionBody, type CreateRegionBody, type UpdateRegionBody,
+  type AddChildDivisionsBody, type AddDivisionsToRegionBody, type CreateRegionBody, type RegionImageOverlayBody,
+  type UpdateRegionBody,
 } from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
@@ -28,7 +30,8 @@ import {
 export type {
   AnchorPoint, AreaGeometry, ChildDivisionsAdded, CreatedSubregion, DescendantMemberGeometries, DescendantMemberGeometry,
   DivisionsAdded, DivisionsRemoved, DivisionUsageCounts, FocusBbox, MemberGeometries, MemberGeometry, MemberMoved,
-  RegionGeometry, RegionGeometryProperties, RegionMember, RegionMembers, RegionMemberType, Regions, RegionSearchResult,
+  RegionGeometry, RegionGeometryProperties, RegionImageOverlay, RegionImageOverlayBody, RegionMember, RegionMembers,
+  RegionMemberType, Regions, RegionSearchResult,
   RegionSearchResults, SubregionFlattened, SubregionsExpanded, UpdateRegionBody,
 } from './client.generated';
 
@@ -177,4 +180,23 @@ export async function fetchDivisionUsageCounts(
 ): Promise<DivisionUsageCounts> {
   if (divisionIds.length === 0) return {};
   return postWorldViewsByWorldViewIdDivisionUsage(worldViewId, { divisionIds });
+}
+
+// =============================================================================
+// Reference map (#595)
+// =============================================================================
+
+/** A region's reference map in the Create Subregions dialog, or null where it has none (a 204). */
+export async function fetchRegionImageOverlay(regionId: number): Promise<RegionImageOverlay | null> {
+  return (await getWorldViewsRegionsByRegionIdImageOverlay(regionId)) ?? null;
+}
+
+/** Keep a region's reference map, replacing the one it had; answered with no body. */
+export async function saveRegionImageOverlay(regionId: number, body: RegionImageOverlayBody): Promise<void> {
+  await putWorldViewsRegionsByRegionIdImageOverlay(regionId, body);
+}
+
+/** Take a region's reference map away. */
+export async function deleteRegionImageOverlay(regionId: number): Promise<void> {
+  await deleteWorldViewsRegionsByRegionIdImageOverlay(regionId);
 }

@@ -25,6 +25,7 @@ import LayersIcon from '@mui/icons-material/Layers';
 import VerticalSplitIcon from '@mui/icons-material/VerticalSplit';
 import VerticalAlignTopIcon from '@mui/icons-material/VerticalAlignTop';
 import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { NavigationControl, type MapRef } from 'react-map-gl/maplibre';
 import { GuardedMap as Map } from '../../../../shared/GuardedMap';
 import type { Region } from '../../../../../types';
@@ -62,7 +63,10 @@ interface MapViewTabProps {
   setEditingGroupName: (name: string) => void;
   onSplitsApplied?: () => void;
   imageOverlaySettings: ImageOverlaySettings | null;
-  setImageOverlaySettings: React.Dispatch<React.SetStateAction<ImageOverlaySettings | null>>;
+  /** Show a calibrated reference map and keep it for the region (#595). */
+  onApplyImageOverlay: (settings: ImageOverlaySettings) => unknown;
+  /** Take the region's reference map away. */
+  onRemoveImageOverlay: () => unknown;
   /** Region map URL for one-click overlay loading */
   regionMapUrl?: string | null;
 }
@@ -77,7 +81,8 @@ export function MapViewTab({
   setEditingGroupName,
   onSplitsApplied,
   imageOverlaySettings,
-  setImageOverlaySettings,
+  onApplyImageOverlay,
+  onRemoveImageOverlay,
   regionMapUrl,
 }: MapViewTabProps) {
   const mapRef = useRef<MapRef>(null);
@@ -333,6 +338,22 @@ export function MapViewTab({
               </Tooltip>
             );
           })()}
+          {imageOverlaySettings && (
+            <Tooltip title="Remove the reference map for every admin">
+              <IconButton
+                size="small"
+                aria-label="Remove the reference map"
+                onClick={() => {
+                  // One click would otherwise take away a calibration every admin shares.
+                  if (window.confirm(`Remove the reference map of ${selectedRegion?.name ?? 'this region'} for every admin?`)) {
+                    void onRemoveImageOverlay();
+                  }
+                }}
+              >
+                <DeleteOutlineIcon fontSize="small" />
+              </IconButton>
+            </Tooltip>
+          )}
           {imageOverlaySettings && (
             <ToggleButtonGroup
               value={imageDisplayMode}
@@ -628,7 +649,7 @@ export function MapViewTab({
       <ImageOverlayDialog
         open={imageOverlayDialogOpen}
         onClose={() => setImageOverlayDialogOpen(false)}
-        onApply={(settings) => setImageOverlaySettings(settings)}
+        onApply={(settings) => { void onApplyImageOverlay(settings); }}
         initialCenter={getMapCenter()}
         initialZoom={4}
         existingSettings={imageOverlaySettings}
