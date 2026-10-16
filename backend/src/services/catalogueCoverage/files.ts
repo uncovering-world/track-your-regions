@@ -2,7 +2,8 @@
  * The catalogue-coverage files, read and held to their format (ADR-0081).
  *
  * `db/catalogue-coverage/` holds the register of kinds of experience, the surveyed
- * regions, and per region the list of what a traveller expects there. The files are
+ * regions, per region the list of what a traveller expects there, and the ledger of
+ * the gaps between the lists and the catalogue that a person has judged (ADR-0116). The files are
  * the source of truth and are written by hand and by a survey, so this reader is the
  * one place that refuses a wrong line: it reads everything, collects every problem
  * with its file and line, and throws them together, since a list of a thousand
@@ -82,15 +83,48 @@ const expectationSchema = z.strictObject({
   note: z.string(),
 });
 
+/**
+ * Why a gap stands (ADR-0116). Closed, so the report can count by it; a cause that fits none of
+ * these is a reason to extend the vocabulary in a pull request, never a free-text cause.
+ */
+export const CAUSES = CHECK_VALUES.coverage_judgements.cause;
+export type Cause = (typeof CAUSES)[number];
+
+/** The causes that name their owner: a defect is fixed somewhere, a door is built somewhere. */
+export const OWNED_CAUSES: ReadonlySet<Cause> = new Set<Cause>(['rule-defect', 'door-missing']);
+
+const judgementSchema = z.strictObject({
+  region: slug,
+  /** The entry of the region's list a live kind does not offer; null when the subject is a catalogue row. */
+  entry: slug.nullable(),
+  /**
+   * The live kind whose gap is judged: the entry is filed under it and it does not offer the entry.
+   * An entry filed under two live kinds has a gap, and a line, per kind. Null on a catalogue row.
+   */
+  kind: slug.nullable(),
+  /** A catalogue row the region offers and no entry names (#1601), by its Wikidata id; null when the subject is an entry. */
+  row: wikidataId.nullable(),
+  cause: z.enum(CAUSES),
+  /** The issue that owns the cause, where one does. A defect and a door name theirs. */
+  issue: z.number().int().positive().nullable(),
+  /** The date the judgement was made, which is the date of the catalogue it was made against. */
+  judged: z.iso.date(),
+  /** Why, in a sentence a later reader can check. */
+  note: text,
+});
+
 export type CoverageKind = z.infer<typeof kindSchema>;
 export type CoverageRegion = z.infer<typeof regionSchema>;
 export type CoverageExpectation = z.infer<typeof expectationSchema>;
+export type CoverageJudgement = z.infer<typeof judgementSchema>;
 
 export interface CoverageFiles {
   kinds: CoverageKind[];
   regions: CoverageRegion[];
   /** Each region's list, by the region's slug, in file order. */
   expectations: Map<string, CoverageExpectation[]>;
+  /** The judgement ledger, in file order; empty when there is no `judgements.jsonl`. */
+  judgements: CoverageJudgement[];
 }
 
 /** Everything wrong with the files, one sentence per problem, each naming its file and line. */
@@ -111,12 +145,15 @@ const WORLD_HERITAGE = 'world-heritage';
 
 interface Row<T> { value: T; line: number }
 
-/** One file's lines, each parsed and held to `schema`; a line that fails is reported and left out. */
-function readLines<T>(dir: string, file: string, schema: z.ZodType<T>, problems: string[]): Row<T>[] {
+/**
+ * One file's lines, each parsed and held to `schema`; a line that fails is reported and left out.
+ * A missing file is a problem, unless the file is one the directory may do without (`optional`).
+ */
+function readLines<T>(dir: string, file: string, schema: z.ZodType<T>, problems: string[], optional = false): Row<T>[] {
   const path = join(dir, file);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- the caller's directory and a name this module spells or lists from it
   if (!existsSync(path)) {
-    problems.push(`${file}: the file is missing`);
+    if (!optional) problems.push(`${file}: the file is missing`);
     return [];
   }
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- same path as above
@@ -260,6 +297,75 @@ function checkList(file: string, rows: Row<CoverageExpectation>[], kinds: Map<st
   return kept;
 }
 
+/** What a judgement on an entry says against the lists: the entry exists, and the kind is live and holds it. */
+function checkJudgedEntry(judgement: CoverageJudgement, kinds: Map<string, CoverageKind>, entries: CoverageExpectation[]): string[] {
+  const entry = entries.find(candidate => candidate.slug === judgement.entry);
+  if (!entry) return [`${judgement.region} has no entry ${judgement.entry}`];
+  if (judgement.kind === null) return [`${judgement.entry} names no kind: a gap is an entry and the live kind that does not offer it`];
+  const kind = kinds.get(judgement.kind);
+  if (!kind) return [`${judgement.entry} is judged under ${judgement.kind}, which the register does not have`];
+  if (kind.status !== 'live') return [`${judgement.entry} is judged under ${judgement.kind}, which is only proposed: a gap is a live kind's`];
+  if (!entry.kinds.includes(judgement.kind)) return [`${judgement.entry} is not filed under ${judgement.kind}`];
+  return [];
+}
+
+/**
+ * What one judgement says against the lists and against itself: it names one subject, an entry
+ * of a list a region has with the live kind that lacks it, or a catalogue row on its own; and a
+ * cause that has an owner names it.
+ */
+function checkJudgement(
+  judgement: CoverageJudgement,
+  kinds: Map<string, CoverageKind>,
+  regions: Map<string, CoverageRegion>,
+  expectations: Map<string, CoverageExpectation[]>,
+): string[] {
+  const found: string[] = [];
+  if ((judgement.entry === null) === (judgement.row === null)) {
+    found.push('a judgement names an entry or a catalogue row, one of the two');
+  }
+  if (judgement.row !== null && judgement.kind !== null) {
+    found.push(`${judgement.row} is a catalogue row and names a kind: a row is judged on its own, not under a kind`);
+  }
+  if (OWNED_CAUSES.has(judgement.cause) && judgement.issue === null) {
+    found.push(`${judgement.cause} names the issue that owns it`);
+  }
+  if (!regions.has(judgement.region)) {
+    found.push(`no region ${judgement.region} in regions.jsonl`);
+  } else if (judgement.entry !== null) {
+    found.push(...checkJudgedEntry(judgement, kinds, expectations.get(judgement.region) ?? []));
+  }
+  return found;
+}
+
+/** Each judgement held to `checkJudgement`, and no gap judged twice. */
+function checkJudgements(
+  rows: Row<CoverageJudgement>[],
+  kinds: Map<string, CoverageKind>,
+  regions: Map<string, CoverageRegion>,
+  expectations: Map<string, CoverageExpectation[]>,
+  problems: string[],
+): CoverageJudgement[] {
+  const subjects = new Map<string, number>();
+  const kept: CoverageJudgement[] = [];
+  for (const { value: judgement, line } of rows) {
+    const at = `judgements.jsonl line ${line}`;
+    // A judgement is checked whatever it clashes with, so one pass over the problems fixes the line.
+    const own = checkJudgement(judgement, kinds, regions, expectations);
+    const subject = judgement.entry === null ? judgement.row ?? '' : `${judgement.entry} under ${judgement.kind}`;
+    const key = `${judgement.region}\n${subject}`;
+    const usedOn = subjects.get(key);
+    if (usedOn !== undefined) {
+      problems.push(`${at}: ${subject} of ${judgement.region} is already judged on line ${usedOn}`, ...own.map(problem => `${at}: ${problem}`));
+      continue;
+    }
+    subjects.set(key, line);
+    problems.push(...own.map(problem => `${at}: ${problem}`));
+    kept.push(judgement);
+  }
+  return kept;
+}
+
 /**
  * Read `dir` (the checkout's `db/catalogue-coverage`) whole.
  *
@@ -304,6 +410,10 @@ export function readCoverageFiles(dir: string): CoverageFiles {
     }
   }
 
+  // The ledger is read after the lists, since a judgement names an entry of one; a directory
+  // with no ledger yet has judged nothing.
+  const judgements = checkJudgements(readLines(dir, 'judgements.jsonl', judgementSchema, problems, true), kinds, regions, expectations, problems);
+
   if (problems.length > 0) throw new CoverageFilesError(problems);
-  return { kinds: kindRows.map(row => row.value), regions: [...regions.values()], expectations };
+  return { kinds: kindRows.map(row => row.value), regions: [...regions.values()], expectations, judgements };
 }

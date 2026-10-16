@@ -40,7 +40,12 @@ afterEach(() => {
   for (const dir of made.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function files(parts: { kinds?: Line[] | string; regions?: Line[] | string; expectations?: Record<string, Line[] | string> }): string {
+const judgement = (over: Line = {}): Line => ({
+  region: 'cusco-region', entry: 'moray', kind: 'archaeology', row: null, cause: 'rule-defect', issue: 1160, judged: '2026-10-16',
+  note: 'Typed an archaeological site; never asked by a run.', ...over,
+});
+
+function files(parts: { kinds?: Line[] | string; regions?: Line[] | string; expectations?: Record<string, Line[] | string>; judgements?: Line[] | string }): string {
   const dir = mkdtempSync(join(tmpdir(), 'coverage-files-'));
   made.push(dir);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- under the temporary directory this spec just made
@@ -55,6 +60,8 @@ function files(parts: { kinds?: Line[] | string; regions?: Line[] | string; expe
     // eslint-disable-next-line security/detect-non-literal-fs-filename -- under the temporary directory this spec just made
     writeFileSync(join(dir, 'expectations', `${region}.jsonl`), text(lines));
   }
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- under the temporary directory this spec just made
+  if (parts.judgements !== undefined) writeFileSync(join(dir, 'judgements.jsonl'), text(parts.judgements));
   return dir;
 }
 
@@ -78,6 +85,94 @@ describe('reading a well-formed set of files', () => {
 
   it('accepts an entry filed under no kind: it is waiting to be sorted, not wrong', () => {
     expect(problemsOf(files({ expectations: { 'cusco-region': [entry({ kinds: [] })] } }))).toEqual([]);
+  });
+
+  it('reads a directory with no ledger as one that has judged nothing', () => {
+    expect(readCoverageFiles(files({})).judgements).toEqual([]);
+  });
+});
+
+describe('the judgement ledger', () => {
+  it('returns each judgement, on an entry of a list under one of its live kinds or on a catalogue row', () => {
+    const onRow = judgement({ entry: null, kind: null, row: 'Q2003624', cause: 'not-a-must', issue: null, note: 'A chapel no guide names.' });
+    const read = readCoverageFiles(files({ judgements: [judgement(), onRow] }));
+    expect(read.judgements.map(j => [j.entry, j.kind, j.row, j.cause, j.issue])).toEqual([
+      ['moray', 'archaeology', null, 'rule-defect', 1160], [null, null, 'Q2003624', 'not-a-must', null],
+    ]);
+  });
+
+  it('takes a judgement per kind on an entry filed under two live kinds: each kind\'s gap is its own', () => {
+    const judgements = [
+      judgement({ entry: 'machu-picchu', kind: 'archaeology' }),
+      judgement({ entry: 'machu-picchu', kind: 'world-heritage', cause: 'not-a-must', issue: null }),
+    ];
+    expect(problemsOf(files({ judgements }))).toEqual([]);
+  });
+
+  it('refuses a judgement on a catalogue row that names a kind: a row is judged on its own', () => {
+    const rowWithKind = judgement({ entry: null, kind: 'archaeology', row: 'Q2003624', cause: 'not-a-must', issue: null });
+    expect(problemsOf(files({ judgements: [rowWithKind] }))).toEqual([
+      'judgements.jsonl line 1: Q2003624 is a catalogue row and names a kind: a row is judged on its own, not under a kind',
+    ]);
+  });
+
+  it('refuses a judgement on an entry that names no kind, a kind that is only proposed, or a kind the entry is not filed under', () => {
+    expect(problemsOf(files({ judgements: [judgement({ kind: null })] }))).toEqual([
+      'judgements.jsonl line 1: moray names no kind: a gap is an entry and the live kind that does not offer it',
+    ]);
+    expect(problemsOf(files({ judgements: [judgement({ kind: 'markets' })] }))).toEqual([
+      'judgements.jsonl line 1: moray is judged under markets, which is only proposed: a gap is a live kind\'s',
+    ]);
+    expect(problemsOf(files({ judgements: [judgement({ kind: 'world-heritage' })] }))).toEqual([
+      'judgements.jsonl line 1: moray is not filed under world-heritage',
+    ]);
+    expect(problemsOf(files({ judgements: [judgement({ kind: 'digs' })] }))).toEqual([
+      'judgements.jsonl line 1: moray is judged under digs, which the register does not have',
+    ]);
+  });
+
+  it('refuses a cause outside the vocabulary, since the report counts by it', () => {
+    expect(problemsOf(files({ judgements: [judgement({ cause: 'meh' })] }))).toEqual([expect.stringMatching(/^judgements\.jsonl line 1: cause: /)]);
+  });
+
+  it('refuses a judgement that names both an entry and a row, or neither', () => {
+    const both = files({ judgements: [judgement({ row: 'Q2003624' })] });
+    expect(problemsOf(both)).toEqual([
+      'judgements.jsonl line 1: a judgement names an entry or a catalogue row, one of the two',
+      'judgements.jsonl line 1: Q2003624 is a catalogue row and names a kind: a row is judged on its own, not under a kind',
+    ]);
+    const neither = files({ judgements: [judgement({ entry: null })] });
+    expect(problemsOf(neither)).toEqual(['judgements.jsonl line 1: a judgement names an entry or a catalogue row, one of the two']);
+  });
+
+  it('refuses a defect or a missing door without the issue that owns it, and takes the other causes without one', () => {
+    expect(problemsOf(files({ judgements: [judgement({ issue: null })] }))).toEqual(['judgements.jsonl line 1: rule-defect names the issue that owns it']);
+    expect(problemsOf(files({ judgements: [judgement({ cause: 'door-missing', issue: null })] }))).toEqual(['judgements.jsonl line 1: door-missing names the issue that owns it']);
+    expect(problemsOf(files({ judgements: [judgement({ cause: 'part-of-offered', issue: null })] }))).toEqual([]);
+  });
+
+  it('refuses a region no list has and an entry its list does not hold', () => {
+    expect(problemsOf(files({ judgements: [judgement({ region: 'rome' })] }))).toEqual(['judgements.jsonl line 1: no region rome in regions.jsonl']);
+    expect(problemsOf(files({ judgements: [judgement({ entry: 'tipon' })] }))).toEqual(['judgements.jsonl line 1: cusco-region has no entry tipon']);
+  });
+
+  it('refuses a gap judged twice, naming the first line, and says what else is wrong with the second', () => {
+    const twice = files({ judgements: [judgement(), judgement({ cause: 'not-a-must', issue: null })] });
+    expect(problemsOf(twice)).toEqual(['judgements.jsonl line 2: moray under archaeology of cusco-region is already judged on line 1']);
+    const twiceAndWrong = files({ judgements: [judgement(), judgement({ issue: null })] });
+    expect(problemsOf(twiceAndWrong)).toEqual([
+      'judgements.jsonl line 2: moray under archaeology of cusco-region is already judged on line 1',
+      'judgements.jsonl line 2: rule-defect names the issue that owns it',
+    ]);
+    const rowTwice = files({ judgements: [
+      judgement({ entry: null, kind: null, row: 'Q2003624', cause: 'not-a-must', issue: null }),
+      judgement({ entry: null, kind: null, row: 'Q2003624', cause: 'not-a-must', issue: null }),
+    ] });
+    expect(problemsOf(rowTwice)).toEqual(['judgements.jsonl line 2: Q2003624 of cusco-region is already judged on line 1']);
+  });
+
+  it('refuses an empty note: a judgement nobody can read later judges nothing', () => {
+    expect(problemsOf(files({ judgements: [judgement({ note: '' })] }))).toEqual([expect.stringMatching(/^judgements\.jsonl line 1: note: /)]);
   });
 });
 

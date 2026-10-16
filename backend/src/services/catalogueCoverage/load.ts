@@ -1,9 +1,9 @@
 /**
  * The catalogue-coverage tables, replaced whole from the files (ADR-0081).
  *
- * `coverage_kinds`, `coverage_regions`, `coverage_expectations` and
- * `coverage_expectation_kinds` are a copy of `db/catalogue-coverage/`. This is
- * their one writer: it empties all four and fills them from what
+ * `coverage_kinds`, `coverage_regions`, `coverage_expectations`,
+ * `coverage_expectation_kinds` and `coverage_judgements` (ADR-0116) are a copy
+ * of `db/catalogue-coverage/`. This is their one writer: it empties all five and fills them from what
  * `readCoverageFiles` returned, in one transaction, so a reader of the tables
  * sees the previous files or these and never a mixture, and a load that fails
  * leaves the previous content standing.
@@ -23,6 +23,7 @@ export interface CoverageLoadSummary {
   regions: number;
   expectations: number;
   filings: number;
+  judgements: number;
 }
 
 /** The register and `experience_kinds` do not describe the same live kinds. */
@@ -97,7 +98,19 @@ async function fill(client: PoolClient, files: CoverageFiles): Promise<CoverageL
   const filings = [...files.expectations].flatMap(([regionSlug, entries]) => entries.flatMap(entry =>
     entry.kinds.map(kindSlug => ({ region_slug: regionSlug, expectation_slug: entry.slug, kind_slug: kindSlug }))));
 
+  const judgements = files.judgements.map(judgement => ({
+    region_slug: judgement.region,
+    entry_slug: judgement.entry,
+    kind_slug: judgement.kind,
+    row_wikidata_id: judgement.row,
+    cause: judgement.cause,
+    issue_number: judgement.issue,
+    judged: judgement.judged,
+    note: judgement.note,
+  }));
+
   // Children first, so no row is ever left pointing at a parent that is gone.
+  await client.query('DELETE FROM coverage_judgements');
   await client.query('DELETE FROM coverage_expectation_kinds');
   await client.query('DELETE FROM coverage_expectations');
   await client.query('DELETE FROM coverage_regions');
@@ -139,11 +152,20 @@ async function fill(client: PoolClient, files: CoverageFiles): Promise<CoverageL
          AS sent(region_slug text, expectation_slug text, kind_slug text)`,
     [JSON.stringify(filings)],
   );
-  return { kinds: kinds.length, regions: regions.length, expectations: expectations.length, filings: filings.length };
+  await client.query(
+    `INSERT INTO coverage_judgements (region_slug, entry_slug, kind_slug, row_wikidata_id, cause, issue_number, judged, note)
+     SELECT region_slug, entry_slug, kind_slug, row_wikidata_id, cause, issue_number, judged, note
+       FROM jsonb_to_recordset($1::jsonb)
+         AS sent(region_slug text, entry_slug text, kind_slug text, row_wikidata_id text, cause text, issue_number integer, judged date, note text)`,
+    [JSON.stringify(judgements)],
+  );
+  return {
+    kinds: kinds.length, regions: regions.length, expectations: expectations.length, filings: filings.length, judgements: judgements.length,
+  };
 }
 
 /**
- * Replace the four tables with `files`.
+ * Replace the coverage tables with `files`.
  *
  * @throws CoverageRegisterMismatch before anything is deleted, when the register
  *   and `experience_kinds` disagree.

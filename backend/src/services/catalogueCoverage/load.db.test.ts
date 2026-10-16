@@ -8,7 +8,7 @@ import { CoverageRegisterMismatch, replaceCoverage } from './load.js';
  * PostgreSQL: a second load leaves nothing of the first, and a load the
  * database refuses leaves the previous content exactly as it was.
  *
- * These four tables have one writer and no other owner of rows, so this spec
+ * The coverage tables have one writer and no other owner of rows, so this spec
  * and the report's empty them rather than delete rows of their own; the lane
  * runs its files one after another.
  */
@@ -39,15 +39,21 @@ const entry = (slug: string, kinds: string[]): CoverageFiles['expectations'] ext
   sources: 3, sitelinks: 18, lat: -13.33, lon: -72.197, note: '',
 });
 
-async function files(regionSlug: string, slugs: string[], filedUnder = 'markets'): Promise<CoverageFiles> {
+const judgementOn = (regionSlug: string, slug: string, kind: string): CoverageFiles['judgements'][number] => ({
+  region: regionSlug, entry: slug, kind, row: null, cause: 'door-missing', issue: 628, judged: '2026-10-16', note: 'Waits for the regional tier.',
+});
+
+async function files(regionSlug: string, slugs: string[], filedUnder = 'markets', judged: string[] = []): Promise<CoverageFiles> {
   return {
     kinds: [...await liveKinds(), MARKETS, NOTABLE_WORKS],
     regions: [{ slug: regionSlug, name: regionSlug, country: 'Peru', lat: -13.532, lon: -71.967, radius_km: 110, surveyed: '2026-10-01' }],
     expectations: new Map([[regionSlug, slugs.map(slug => entry(slug, [filedUnder]))]]),
+    judgements: judged.map(slug => judgementOn(regionSlug, slug, filedUnder)),
   };
 }
 
 async function empty(): Promise<void> {
+  await pool.query('DELETE FROM coverage_judgements');
   await pool.query('DELETE FROM coverage_expectation_kinds');
   await pool.query('DELETE FROM coverage_expectations');
   await pool.query('DELETE FROM coverage_regions');
@@ -90,13 +96,33 @@ describe('replacing the catalogue-coverage tables', () => {
     expect(flags.rows).toEqual([{ slug: 'markets', in_venue: false }, { slug: 'notable-works', in_venue: true }]);
   });
 
+  it('writes a judgement against its entry and kind, and the database refuses one on a filing the list does not hold', async () => {
+    await replaceCoverage(await files('first-region', ['moray'], 'markets', ['moray']));
+
+    const judged = await pool.query<{ entry_slug: string; kind_slug: string; cause: string; issue_number: number; judged: string }>(
+      `SELECT j.entry_slug, j.kind_slug, j.cause, j.issue_number, to_char(j.judged, 'YYYY-MM-DD') AS judged
+         FROM coverage_judgements j
+         JOIN coverage_expectation_kinds xk ON (xk.region_slug, xk.expectation_slug, xk.kind_slug) = (j.region_slug, j.entry_slug, j.kind_slug)`,
+    );
+    expect(judged.rows).toEqual([{ entry_slug: 'moray', kind_slug: 'markets', cause: 'door-missing', issue_number: 628, judged: '2026-10-16' }]);
+
+    // The files' reader would have refused these; the foreign keys are the second guard.
+    await expect(replaceCoverage(await files('first-region', ['moray'], 'markets', ['tipon']))).rejects.toThrow();
+    const otherKind = await files('first-region', ['moray'], 'markets', ['moray']);
+    otherKind.judgements[0].kind = 'notable-works';
+    await expect(replaceCoverage(otherKind)).rejects.toThrow();
+    expect(await loaded()).toEqual(['first-region/moray']);
+  });
+
   it('leaves nothing of the load before', async () => {
-    await replaceCoverage(await files('first-region', ['moray', 'tipon']));
+    await replaceCoverage(await files('first-region', ['moray', 'tipon'], 'markets', ['moray']));
     await replaceCoverage(await files('second-region', ['bondi']));
 
     expect(await loaded()).toEqual(['second-region/bondi']);
     const regions = await pool.query<{ slug: string }>('SELECT slug FROM coverage_regions');
     expect(regions.rows).toEqual([{ slug: 'second-region' }]);
+    const judgements = await pool.query('SELECT 1 FROM coverage_judgements');
+    expect(judgements.rowCount).toBe(0);
   });
 
   it('leaves the load before standing when the database refuses the new one', async () => {
