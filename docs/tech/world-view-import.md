@@ -681,7 +681,7 @@ Admin panel section "WorldView Import" (`WorldViewImportPanel.tsx`) with these v
 4. Click "Fetch from Wikivoyage" — the extraction pipeline runs automatically (20-40 min). Always uses country-based matching
 5. After all phases complete, click "Review Matches"
 6. Accept auto-matches in bulk, review suggestions individually
-7. Open the WorldView in WorldViewEditor for geometry work
+7. Click "Compute Geometries" in the review, beside Close Review, to draw the regions (the world view's background job, `POST /world-views/:id/compute-geometries`, with its progress, cancel and error count in the alert under the stats); the WorldView Editor has the same job for later geometry work
 
 ### JSON File Upload
 
@@ -696,7 +696,8 @@ Admin panel section "WorldView Import" (`WorldViewImportPanel.tsx`) with these v
 1. Open Admin Panel → WorldView Import, select "Administrative base layer" from the source selector
 2. Enter a WorldView name (default: "Administrative"), a provider label (names the dataset currently loaded), and a depth (1-3, default 2) — see "Base Layer Import" in `docs/tech/world-views.md` for what depth controls and the measured match outcome
 3. Click "Import base layer" — matches under the `hierarchical` policy (ADR-0019), which resolved all 3831 regions of a depth-2 mirror
-4. Continue with match review as above
+4. When it completes, the import card offers **Compute Geometries** below Review Matches (`ComputeGeometriesOffer`, `WorldViewGeometryCompute.tsx`, #621): every region of a mirror is one division, so its outlines can be drawn before any review. The button starts the same background job the review and the editor start, and the alert under it reports its progress, its error count, a job that stopped (in red) and, if it cannot start, the server's reason. A screen that opens while the job runs — the card after the review, or the review after the card — follows it rather than offering a second start. It is offered rather than started on its own: a continent-sized union can time out (#459), and the admin should be on the screen that reports it. An import of another source offers nothing here, since its matches are reviewed first
+5. Continue with match review as above
 
 ## AI Review Children
 
@@ -803,6 +804,5 @@ Zod validation schemas: `wvImportClusterReviewBodySchema`, `wvImportClusterHighl
 
 ## Future Enhancements
 
-- Auto-trigger geometry computation after matching
 - Incremental updates (re-import without losing manual matches)
 - Smarter matching via Wikidata IDs and spatial proximity
