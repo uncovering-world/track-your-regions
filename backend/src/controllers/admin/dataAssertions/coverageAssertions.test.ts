@@ -19,14 +19,21 @@ import { coverageAssertions, coverageFindings, NOT_LOADED } from './coverageAsse
 
 const [check] = coverageAssertions;
 
+type Missing = LiveKindGaps['wellKnownMissing'][number];
+
 function liveKind(over: Partial<LiveKindGaps>): LiveKindGaps {
   return {
     slug: 'archaeology', name: 'Archaeology', line: 22, expected: 0, offered: 0,
-    wellKnownMissing: [], belowLineMissing: 0, ...over,
+    wellKnownMissing: [], judgedByCause: [], belowLineMissing: 0, ...over,
   };
 }
 
-function report(liveKinds: LiveKindGaps[], expectations = 1): CoverageReport {
+function missing(regionSlug: string, name: string, over: Partial<Missing>): Missing {
+  const slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  return { regionSlug, slug, name, sitelinks: null, sourceCount: 2, verdict: 'missing_live', judgement: null, ...over };
+}
+
+function report(liveKinds: LiveKindGaps[], expectations = 1, stale: CoverageReport['staleJudgements'] = []): CoverageReport {
   return {
     regions: [
       { slug: 'cusco-region', name: 'Cusco region', country: 'Peru', surveyed: '2026-10-02', total: 1, counts: {} as never },
@@ -35,21 +42,23 @@ function report(liveKinds: LiveKindGaps[], expectations = 1): CoverageReport {
     proposedKinds: [],
     liveKinds,
     expectations: Array.from({ length: expectations }, () => ({}) as never),
+    staleJudgements: stale,
+    rowJudgements: 0,
   };
 }
 
 const archaeology = liveKind({
   expected: 213, offered: 81, belowLineMissing: 116,
   wellKnownMissing: [
-    { regionSlug: 'cusco-region', name: 'Ollantaytambo', sitelinks: 40, sourceCount: 6, verdict: 'missing_live' },
-    { regionSlug: 'cusco-region', name: 'Pisac', sitelinks: 28, sourceCount: 6, verdict: 'held' },
+    missing('cusco-region', 'Ollantaytambo', { sitelinks: 40, sourceCount: 6 }),
+    missing('cusco-region', 'Pisac', { sitelinks: 28, sourceCount: 6, verdict: 'held' }),
   ],
 });
 
 const artMuseums = liveKind({
   slug: 'art-museums', name: 'Art Museums', line: null, expected: 135, offered: 8,
   wellKnownMissing: [
-    { regionSlug: 'mexico-city', name: 'Museo Frida Kahlo', sitelinks: 30, sourceCount: 7, verdict: 'missing_live' },
+    missing('mexico-city', 'Museo Frida Kahlo', { sitelinks: 30, sourceCount: 7 }),
   ],
 });
 
@@ -72,7 +81,7 @@ describe('the findings', () => {
   it('says where a reader does find an entry another kind offers', () => {
     const { rows } = coverageFindings(report([liveKind({
       slug: 'art-museums', name: 'Art Museums', line: null, expected: 1,
-      wellKnownMissing: [{ regionSlug: 'rome', name: 'Sistine Chapel', sitelinks: 90, sourceCount: 7, verdict: 'offered' }],
+      wellKnownMissing: [missing('rome', 'Sistine Chapel', { sitelinks: 90, sourceCount: 7, verdict: 'offered' })],
     })]));
 
     // A region the report does not name is said by its slug rather than dropped.
@@ -83,7 +92,7 @@ describe('the findings', () => {
   it('leaves the sitelinks out where Wikidata gave none', () => {
     const { rows } = coverageFindings(report([liveKind({
       expected: 1,
-      wellKnownMissing: [{ regionSlug: 'cusco-region', name: 'Tipón', sitelinks: null, sourceCount: 3, verdict: 'same_spot' }],
+      wellKnownMissing: [missing('cusco-region', 'Tipón', { sourceCount: 3, verdict: 'same_spot' })],
     })]));
 
     expect(check.describe(rows[0])).toBe('Tipón (Cusco region), named by 3 sources: Archaeology does not offer it, '
@@ -93,10 +102,61 @@ describe('the findings', () => {
   it('says a name that carries control characters on one line', () => {
     const { rows } = coverageFindings(report([liveKind({
       expected: 1,
-      wellKnownMissing: [{ regionSlug: 'cusco-region', name: 'Moray\nInjected', sitelinks: 18, sourceCount: 4, verdict: 'missing_live' }],
+      wellKnownMissing: [missing('cusco-region', 'Moray\nInjected', { sitelinks: 18, sourceCount: 4 })],
     })]));
 
     expect(check.describe(rows[0])).not.toMatch(/\n/);
+  });
+});
+
+describe('what a person has judged', () => {
+  const judgedMuseums = liveKind({
+    slug: 'art-museums', name: 'Art Museums', line: null, expected: 135, offered: 8,
+    wellKnownMissing: [
+      missing('mexico-city', 'Museo Frida Kahlo', { sitelinks: 30, sourceCount: 7, judgement: { cause: 'door-missing', issue: 628, judged: '2026-10-16', note: 'Waits for the regional tier.' } }),
+      missing('mexico-city', 'Museo Soumaya', { sitelinks: 28, sourceCount: 5, judgement: { cause: 'rule-defect', issue: 1620, judged: '2026-10-16', note: 'Typed a museum network.' } }),
+      missing('mexico-city', 'Museo Jumex', { sitelinks: 4, sourceCount: 5 }),
+    ],
+    judgedByCause: [{ cause: 'door-missing', count: 1, issues: [628] }, { cause: 'rule-defect', count: 1, issues: [1620] }],
+  });
+
+  it('lists only the rows nobody has judged, and counts the judged by cause beside them', () => {
+    const { rows, context } = coverageFindings(report([judgedMuseums]));
+
+    expect(rows.map(row => check.describe(row))).toEqual([
+      'Museo Jumex (Mexico City), named by 5 sources, 4 sitelinks: Art Museums does not offer it, and the catalogue does not hold it.',
+    ]);
+    expect(context).toEqual([
+      'Art Museums offers 8 of the 135 expected of it; it draws no sitelinks line, so all 3 it lacks are listed. '
+        + '2 of them are judged: 1 door-missing (#628); 1 rule-defect (#1620); 1 waits for a person.',
+    ]);
+  });
+
+  it('lists a judgement whose gap has closed as a line to remove, after the findings', () => {
+    const { rows } = coverageFindings(report([judgedMuseums], 1, [
+      { regionSlug: 'cusco-region', slug: 'moray', name: 'Moray', kindSlug: 'archaeology', kindName: 'Archaeology', cause: 'rule-defect', issue: 1160, judged: '2026-10-16', note: 'Never asked.' },
+      { regionSlug: 'cusco-region', slug: 'mask', name: 'Mask', kindSlug: 'notable-works', kindName: 'Notable works', cause: 'not-a-must', issue: null, judged: '2026-10-16', note: 'A copy.' },
+    ]));
+
+    expect(rows.map(row => check.describe(row))).toEqual([
+      'Museo Jumex (Mexico City), named by 5 sources, 4 sitelinks: Art Museums does not offer it, and the catalogue does not hold it.',
+      'Moray (Cusco region): judged rule-defect (#1160) on 2026-10-16, and Archaeology offers it now: '
+        + 'the line comes out of judgements.jsonl.',
+      'Mask (Cusco region): judged not-a-must on 2026-10-16, and Notable works offers it now: '
+        + 'the line comes out of judgements.jsonl.',
+    ]);
+  });
+
+  it('says a kind whose every gap is judged has none waiting', () => {
+    const allJudged = liveKind({
+      expected: 2, offered: 1,
+      wellKnownMissing: [missing('cusco-region', 'Ollantaytambo', { sitelinks: 40, sourceCount: 6, judgement: { cause: 'rule-defect', issue: 1160, judged: '2026-10-16', note: 'A town item.' } })],
+      judgedByCause: [{ cause: 'rule-defect', count: 1, issues: [1160] }],
+    });
+    const { rows, context } = coverageFindings(report([allJudged]));
+
+    expect(rows).toEqual([]);
+    expect(context[0]).toMatch(/ 1 of them is judged: 1 rule-defect \(#1160\); none waits for a person\.$/);
   });
 });
 
@@ -116,7 +176,7 @@ describe('the lines beside the rows', () => {
   it('says a kind lacks nothing under its line when all it lacks is well known', () => {
     const { context } = coverageFindings(report([liveKind({
       expected: 10, offered: 9, belowLineMissing: 0,
-      wellKnownMissing: [{ regionSlug: 'cusco-region', name: 'Ollantaytambo', sitelinks: 40, sourceCount: 6, verdict: 'missing_live' }],
+      wellKnownMissing: [missing('cusco-region', 'Ollantaytambo', { sitelinks: 40, sourceCount: 6 })],
     })]));
 
     expect(context).toEqual([
