@@ -35,6 +35,7 @@ function assertion(overrides: Partial<DataAssertion> = {}): DataAssertion {
     acceptedAt: '2026-08-24T10:00:00.000Z',
     acceptedBy: 'Nikolay',
     sample: ['Aldabra Atoll (185): in Seychelles, and in no region (experience 300)'],
+    context: [],
     error: null,
     needsAttention: false,
     ...overrides,
@@ -104,6 +105,34 @@ describe('CatalogueChecksPanel', () => {
     // An assertion answering nothing is not an assertion that passed.
     expect(await screen.findByText(/relation does not exist/)).toBeInTheDocument();
     expect(screen.getByText(/did not run/)).toBeInTheDocument();
+  });
+
+  it('says what a coverage check measures beside its rows, under its own heading', async () => {
+    renderPanel([assertion({
+      id: 'expected-and-well-known-yet-not-offered', area: 'coverage',
+      title: 'A place or work travellers are sent to that its kind does not offer',
+      status: 'unanswered', found: 16, accepted: null, acceptedAt: null, acceptedBy: null, needsAttention: true,
+      sample: ['Ollantaytambo (Cusco region), named by 6 sources, 40 sitelinks: Archaeology does not offer it.'],
+      context: ['Archaeology offers 81 of the 213 expected of it.'],
+    })]);
+
+    expect(await screen.findByText('What travellers expect')).toBeInTheDocument();
+    expect(screen.getByText('Archaeology offers 81 of the 213 expected of it.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Accept 16 as carried/ })).toBeInTheDocument();
+  });
+
+  it('says lists nobody loaded have nothing to read, neither clear nor broken, and offers no accept', async () => {
+    renderPanel([assertion({
+      area: 'coverage', status: 'unavailable', found: 0, sample: [], accepted: null, acceptedAt: null,
+      acceptedBy: null, error: 'The expectation lists have not been loaded, so nothing is reported missing.',
+    })]);
+
+    expect(await screen.findByText(/have not been loaded/)).toBeInTheDocument();
+    expect(screen.getByText('nothing to read yet')).toBeInTheDocument();
+    expect(screen.getByText('no count yet')).toBeInTheDocument();
+    expect(screen.queryByText(/^clear$/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/did not run/)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Accept/ })).not.toBeInTheDocument();
   });
 
   it('says what to apply when the record of accepted numbers is missing', async () => {

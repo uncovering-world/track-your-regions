@@ -852,6 +852,7 @@ export const AssertionArea = {
   boundaries: 'boundaries',
   objects: 'objects',
   pictures: 'pictures',
+  coverage: 'coverage',
 } as const;
 
 /**
@@ -866,7 +867,7 @@ export const AssertionKind = {
 } as const;
 
 /**
- * What today's number means beside the accepted one. `holding` is debt somebody has answered for; `unanswered` is a rule nobody has answered for yet.
+ * What today's number means beside the accepted one. `holding` is debt somebody has answered for; `unanswered` is a rule nobody has answered for yet; `unavailable` is a check with nothing to read yet, such as lists nobody loaded.
  */
 export type AssertionStatus = typeof AssertionStatus[keyof typeof AssertionStatus];
 
@@ -878,6 +879,7 @@ export const AssertionStatus = {
   regressed: 'regressed',
   unanswered: 'unanswered',
   watch: 'watch',
+  unavailable: 'unavailable',
   error: 'error',
 } as const;
 
@@ -3121,8 +3123,10 @@ export interface DataAssertion {
   acceptedBy: string | null;
   /** Up to ten rows, each already said the way a person would say it. */
   sample: string[];
+  /** Lines said beside the rows whatever their number, such as how much of the whole they are; empty for most checks. */
+  context: string[];
   /**
-     * Why the assertion's statement did not run, where it did not.
+     * Why the assertion did not run, where it did not: a failure, or (status `unavailable`) what it is waiting for.
      * @nullable
      */
   error: string | null;
