@@ -135,6 +135,7 @@ and accepted by it.
 | [0113](0113-a-regions-reference-map-is-kept-in-the-database-as-raster-bytes.md) | A region's reference map is kept in the database, as raster bytes | Accepted | 2026-10-16 |
 | [0114](0114-work-is-held-in-queues-one-issue-per-goal.md) | Work is held in queues, one issue per goal, with a checkable end and a journal | Accepted | 2026-10-16 |
 | [0115](0115-a-point-is-offered-to-several-maps-the-devices-own-first.md) | A point is offered to several maps, the device's own first | Accepted | 2026-10-16 |
+| [0116](0116-a-gap-the-catalogue-carries-is-judged-once-in-a-committed-ledger-by-cause.md) | A gap the catalogue carries is judged once, in a committed ledger by cause | Accepted | 2026-10-16 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

@@ -44,12 +44,21 @@ Do not decide by distance alone. Show the user the ones you could not settle.
 
 ### 4. What each live kind lacks
 
-For every entry the section names. Under a kind with a sitelinks line those are the absent entries at or over it. World Heritage and Art Museums have no line, since neither admits a place on its own sitelinks, and the section names every absent entry of theirs, the most named first:
+For every entry the section names as absent and not judged. Under a kind with a sitelinks line those are the absent entries at or over it. World Heritage and Art Museums have no line, since neither admits a place on its own sitelinks, and the section names every absent entry of theirs, the most named first. Each is judged once, into `db/catalogue-coverage/judgements.jsonl` (ADR-0116; the format and the causes are `docs/tech/catalogue-coverage.md` § `judgements.jsonl`), never into a comment:
 
-- **Offered through another kind.** The entry is filed under two kinds and one holds it. Check that the second filing is one a traveller would make; if it is not, remove it from the list. If it is, the place belongs to both kinds and the gap is real.
-- **Absent.** A well-known place the kind's own rule should admit. Find out why before proposing anything: read the item with the lookup's `facts` (its classes, its coordinates, its sitelinks) and look for the source's refusal in the run's changeset. Then search the open issues (`gh issue list --state open --limit 500 --search "<place or cause>"`). A cause an issue already owns gets the place as a named example: show the user the comment and post it when they agree. A cause no issue owns is a bug to propose with `/issue-create`, the place named in its Description; that skill's own confirmation is where the user says yes. Nothing is posted or filed before the user has seen it.
+- **Offered through another kind.** The entry is filed under two kinds and one holds it. Check that the second filing is one a traveller would make; if it is not, remove it from the list and judge nothing. If it is, and the product's rules give the thing to the kind that offers it (ADR-0102), judge it `offered-elsewhere`.
+- **Absent.** Find out why before judging: read the item with the lookup's `facts` (its classes, its coordinates, its sitelinks) and look for the source's refusal in the run's changeset (`experience_sync_changes` by the item's id). Then:
+  - the catalogue offers the place it is part of, or the run folded it into one: `part-of-offered`;
+  - the list's identifier is the wrong one of two items, a building and the museum inside it: name the other in the entry's `same_as` and judge nothing;
+  - a rule that runs today should have admitted it: `rule-defect`, with the issue that owns the rule. Search the open issues (`gh issue list --state open --limit 500 --search "<place or cause>"`); a cause an issue already owns gets the place as a named example in a comment there, and a cause no issue owns gets an issue through `/issue-create`, the place named in its Description. Several places of one cause are one issue, never one each;
+  - no rule the product runs would admit it yet, the regional tier or readership: `door-missing`, with that door's issue (#628 for a museum with no work over the works line, #881 for a dig, #1436 for readership);
+  - a traveller would look for it under a kind the register has and the product does not: `kind-missing`, the kind named in the note and added to the entry's filing;
+  - a visitor misses nothing by the kind not offering it, a commercial gallery, a workshop: `not-a-must`.
+- **Held.** A place waiting for a curator is the review queue's and is not judged; one a rule refused is judged like an absent one.
 
-The count under the line is the regional tier's: name the count, file nothing per place. For Art Museums read the names from the top and stop where a traveller would: a museum is absent because no work it holds is over the works' line, which is one cause and one issue (#628), not one per museum.
+The count under the line is the regional tier's: name the count, judge nothing per place.
+
+Then read the two things the ledger cannot see on its own. The report's section *Judgements whose gap has closed* lists the lines to remove: remove each. And for every issue the ledger names, `gh issue view <n> --json state -q .state`; a judgement whose issue is closed is stale too: the gap is either closed with it, or open again under another cause.
 
 ### 5. What the surveys expect of proposed kinds
 
@@ -67,4 +76,4 @@ Say for each kind what a member of it is. A kind of dish, festival or route asks
 
 ### 7. Report
 
-Tell the user, in this order: the share offered and what moved since the last report; the defects found, each with its issue; the proposed kinds in the report's order with their issues and any change of priority proposed; what was changed in the list files. Changes to the list files are committed through `/commit`, as data.
+Tell the user, in this order: the share offered and what moved since the last report; the judgements made, by cause, and the defects among them with their issues; the stale judgements removed; the proposed kinds in the report's order with their issues and any change of priority proposed; what was changed in the list files. Changes to the ledger and the list files are committed through `/commit`, as data.
