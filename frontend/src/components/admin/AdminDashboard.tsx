@@ -29,6 +29,7 @@ import DashboardIcon from '@mui/icons-material/Dashboard';
 import MenuIcon from '@mui/icons-material/Menu';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CuratorIcon from '@mui/icons-material/SupervisorAccount';
+import ActivityIcon from '@mui/icons-material/ManageHistory';
 import PublicIcon from '@mui/icons-material/Public';
 import AIIcon from '@mui/icons-material/SmartToy';
 import RulesIcon from '@mui/icons-material/Gavel';
@@ -40,6 +41,7 @@ import { SyncPanel } from './SyncPanel';
 import { SyncHistoryPanel } from './SyncHistoryPanel';
 import { AssignmentPanel } from './AssignmentPanel';
 import { CuratorPanel } from './CuratorPanel';
+import { CurationActivityPanel } from './CurationActivityPanel';
 import { WorldViewImportPanel } from './WorldViewImportPanel';
 import { AISettingsPanel } from './AISettingsPanel';
 import { CVSettingsPanel } from './CVSettingsPanel';
@@ -49,7 +51,7 @@ import { DumpsPanel } from './DumpsPanel';
 
 const DRAWER_WIDTH = 240;
 
-type AdminSection = 'overview' | 'sync' | 'assignment' | 'history' | 'checks' | 'dumps' | 'curators' | 'ai' | 'cv' | 'extractionRules' | 'wvImport';
+type AdminSection = 'overview' | 'sync' | 'assignment' | 'history' | 'checks' | 'dumps' | 'curators' | 'activity' | 'ai' | 'cv' | 'extractionRules' | 'wvImport';
 
 export function AdminDashboard() {
   const { isAdmin, isLoading } = useAuth();
@@ -95,6 +97,7 @@ export function AdminDashboard() {
     { id: 'checks', label: 'Catalogue Checks', icon: <ChecksIcon /> },
     { id: 'dumps', label: 'Public Dumps', icon: <DumpsIcon /> },
     { id: 'curators', label: 'Curators', icon: <CuratorIcon /> },
+    { id: 'activity', label: 'Curation Activity', icon: <ActivityIcon /> },
     { id: 'ai', label: 'AI Settings', icon: <AIIcon /> },
     { id: 'cv', label: 'CV Settings', icon: <CVIcon /> },
     { id: 'extractionRules', label: 'Learned Rules', icon: <RulesIcon /> },
@@ -152,6 +155,8 @@ export function AdminDashboard() {
         return <DumpsPanel />;
       case 'curators':
         return <CuratorPanel />;
+      case 'activity':
+        return <CurationActivityPanel />;
       case 'ai':
         return <AISettingsPanel />;
       case 'cv':

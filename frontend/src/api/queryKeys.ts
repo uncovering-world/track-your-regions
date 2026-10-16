@@ -155,6 +155,7 @@ export const queryKeys = {
     dumps: ['admin', 'dumps'] as const,
     curators: ['admin', 'curators'] as const,
     curatorActivity: (userId: Id) => ['admin', 'curatorActivity', userId] as const,
+    curationActivity: (filters: object) => ['admin', 'curationActivity', filters] as const,
     userSearch: (query: string) => ['admin', 'userSearch', query] as const,
     regionSearch: (worldViewId: Id, query: string) => ['admin', 'regionSearch', worldViewId, query] as const,
     coverageRegionSearch: (worldViewId: Id, query: string) =>
