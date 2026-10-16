@@ -5,7 +5,7 @@
  * for imported regions. Uses the hierarchical tree view.
  */
 
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import {
   Alert,
   Box,
@@ -14,7 +14,6 @@ import {
   Card,
   CardContent,
   Chip,
-  LinearProgress,
   Stack,
   Tooltip,
   Dialog,
@@ -23,12 +22,7 @@ import {
   DialogActions,
 } from '@mui/material';
 import { fetchDivisionGeometry } from '../../api/divisions';
-import {
-  startWorldViewGeometryComputation,
-  fetchWorldViewComputationStatus,
-  cancelWorldViewGeometryComputation,
-  type ComputationStatus,
-} from '../../api/geometry';
+import { GeomComputationAlert, useWorldViewGeometryCompute } from './WorldViewGeometryCompute';
 import { DivisionPreviewDialog } from '../WorldViewEditor/components/dialogs/DivisionPreviewDialog';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -62,14 +56,6 @@ interface WorldViewImportReviewProps {
   worldViewId: number;
   onFinalize?: () => void;
 }
-
-// Geometry computation progress Alert — extracted to reduce parent cognitive complexity.
-// What it shows is the computation's status as the server answers it, with the
-// counts it draws made definite; `computed` is the status's `progress`, the
-// regions processed so far.
-type GeomStatus = Required<Pick<ComputationStatus, 'percent' | 'total' | 'errors'>>
-  & Pick<ComputationStatus, 'currentRegion' | 'status'>
-  & { computed: number };
 
 type PreviewDivisionState = {
   divisionId?: number;
@@ -220,43 +206,6 @@ function usePreviewMutations(worldViewId: number, onDone: () => void) {
     previewAcceptSelectedRejectRestMutation,
     previewRejectSelectedMutation,
   };
-}
-
-function GeomComputationAlert({
-  geomStatus, geomComputing, onCancel,
-}: {
-  geomStatus: GeomStatus;
-  geomComputing: boolean;
-  onCancel: () => void;
-}) {
-  let severity: 'info' | 'warning' | 'success';
-  if (geomComputing) severity = 'info';
-  else if (geomStatus.errors > 0) severity = 'warning';
-  else severity = 'success';
-
-  const currentRegionSuffix = geomStatus.currentRegion ? ` — ${geomStatus.currentRegion}` : '';
-  const errorsSuffix = geomStatus.errors > 0 ? `, ${geomStatus.errors} errors` : '';
-  const statusLabel = geomStatus.status ?? 'Complete';
-  const progressText = geomComputing
-    ? `Computing geometries... ${geomStatus.computed}/${geomStatus.total}${currentRegionSuffix}`
-    : `${statusLabel} — ${geomStatus.computed} computed${errorsSuffix}`;
-
-  return (
-    <Alert
-      severity={severity}
-      sx={{ mb: 2 }}
-      action={geomComputing ? (
-        <Button color="inherit" size="small" onClick={onCancel}>Cancel</Button>
-      ) : undefined}
-    >
-      <Box sx={{ width: '100%' }}>
-        <Typography variant="body2">{progressText}</Typography>
-        {geomComputing && (
-          <LinearProgress variant="determinate" value={geomStatus.percent} sx={{ mt: 0.5 }} />
-        )}
-      </Box>
-    </Alert>
-  );
 }
 
 export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImportReviewProps) {
@@ -529,62 +478,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
 
   const rematchRunning = rematchStatus?.status === 'matching';
 
-  // ── Geometry computation (polling-based) ──────────────────────────────────
-  const [geomComputing, setGeomComputing] = useState(false);
-  const [geomStatus, setGeomStatus] = useState<GeomStatus | null>(null);
-  const geomPollRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  const stopGeomPolling = useCallback(() => {
-    if (geomPollRef.current) { clearInterval(geomPollRef.current); geomPollRef.current = null; }
-  }, []);
-
-  // Cleanup on unmount
-  useEffect(() => stopGeomPolling, [stopGeomPolling]);
-
-  const startGeomPolling = useCallback(() => {
-    stopGeomPolling();
-    setGeomComputing(true);
-    geomPollRef.current = setInterval(async () => {
-      try {
-        const s = await fetchWorldViewComputationStatus(worldViewId);
-        setGeomStatus({
-          percent: s.percent ?? 0,
-          computed: s.progress ?? 0,
-          total: s.total ?? 0,
-          errors: s.errors ?? 0,
-          currentRegion: s.currentRegion,
-          status: s.status,
-        });
-        if (!s.running) {
-          stopGeomPolling();
-          setGeomComputing(false);
-        }
-      } catch {
-        stopGeomPolling();
-        setGeomComputing(false);
-      }
-    }, 1500);
-  }, [worldViewId, stopGeomPolling]);
-
-  const handleComputeGeometries = useCallback(async () => {
-    try {
-      const result = await startWorldViewGeometryComputation(worldViewId, false, true);
-      if (result.started) {
-        setGeomStatus({ percent: 0, computed: 0, total: result.total ?? 0, errors: 0, status: 'Starting...' });
-        startGeomPolling();
-      } else {
-        setGeomStatus({ percent: 100, computed: result.alreadyComputed ?? 0, total: result.total ?? 0, errors: 0, status: result.message });
-      }
-    } catch (err) {
-      console.error('Failed to start geometry computation:', err);
-    }
-  }, [worldViewId, startGeomPolling]);
-
-  const handleCancelGeomComputation = useCallback(async () => {
-    try {
-      await cancelWorldViewGeometryComputation(worldViewId);
-    } catch { /* poll will detect stopped state */ }
-  }, [worldViewId]);
+  const geomCompute = useWorldViewGeometryCompute(worldViewId);
 
   const matchingDone = stats
     && stats.needs_review_blocking === 0
@@ -724,10 +618,10 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
         </Tooltip>
         <Button
           variant="outlined"
-          onClick={handleComputeGeometries}
-          disabled={geomComputing || rematchRunning}
+          onClick={geomCompute.start}
+          disabled={geomCompute.computing || rematchRunning}
         >
-          {geomComputing ? 'Computing...' : 'Compute Geometries'}
+          {geomCompute.computing ? 'Computing...' : 'Compute Geometries'}
         </Button>
         <Tooltip title={closeReviewTooltip}>
           <span>
@@ -773,13 +667,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
       )}
 
       {/* Geometry computation progress */}
-      {geomStatus && (
-        <GeomComputationAlert
-          geomStatus={geomStatus}
-          geomComputing={geomComputing}
-          onCancel={handleCancelGeomComputation}
-        />
-      )}
+      <GeomComputationAlert compute={geomCompute} />
 
       {/* Hierarchy warnings banner */}
       {stats && stats.hierarchy_warnings_count > 0 && (
