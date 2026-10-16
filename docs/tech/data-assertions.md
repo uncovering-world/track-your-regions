@@ -82,6 +82,7 @@ accepted debt, and a fresh checkout of the code inherits none.
 | objects | A work no place a reader is offered holds | watch |
 | pictures | A stored picture on a host whose terms do not let us show it | invariant |
 | pictures | A picture shown with nobody credited | invariant |
+| coverage | A place or work travellers are sent to, well known by its kind's own rule, that the kind does not offer | invariant |
 
 **A work no place a reader is offered holds** (`workAssertions.ts`, #1444) is
 what a refusal by one kind can take from every kind. A work is shown only on the
@@ -603,6 +604,34 @@ call had to leave (`publishHeldFields.ts`, `creditPin`). So the credit really is
 still waiting, and treating "answered" as settled would send an admin to go and
 find a photographer the queue is one click from naming.
 
+### What travellers expect
+
+Every other check asks whether the rows the catalogue holds mean what the product says. The
+coverage check (`coverageAssertions.ts`, #1162) asks what it does not hold, over the survey
+lists of `docs/tech/catalogue-coverage.md` once they are loaded: what two or more independent
+guides recommend in each surveyed region. A row is an expected place or work that a live kind
+does not offer although it is at or over that kind's own sitelinks line, or any one at all for
+World Heritage and Art Museums, which draw none. It names the region, how many sources named
+it, its sitelinks, and where it stands instead: not in the catalogue, held and seen by no
+reader, something else at its spot, or offered under another kind. Beside the rows, one line
+per live kind says how many of the expected it offers and how many it lacks under its line,
+which are the regional tier's and are counted rather than listed.
+
+On the development catalogue on 2026-10-16 it found 156: the Museum of Contemporary Art
+Australia, the Palacio de Bellas Artes and 125 more entries filed under Art Museums,
+Ollantaytambo and Pisac among 16 archaeological sites, and Lucy among 4 works. It is an invariant, so its number can be
+accepted, and a run that loses a place every guide names makes it grow; so does a list that
+was extended, which a person tells apart from a loss by reading the rows.
+
+It decides nothing itself: its rows are the coverage report's `liveKinds`, so the command and
+the panel cannot disagree. That makes it a computed check (`ComputedAssertion` in
+`assertion.ts`) rather than a statement, because the rule of what a kind lacks is TypeScript
+in `catalogueCoverage/report.ts`, and a copy of it in SQL would be a second rule. With the
+tables empty it reports nothing as missing and is shown as *nothing to read yet* (`unavailable`),
+with the sentence that the lists have not been loaded: neither clear, since nothing was read,
+nor failed, since nothing is broken, and never counted as needing a person. It is not a CI lane,
+since it reads a live catalogue and lists a developer loads.
+
 ## Adding an assertion
 
 Write a `CatalogueAssertion` — an id, an area, the sentence a person reads,
@@ -628,6 +657,13 @@ the type and the row helpers come from `assertion.ts` rather than from the
 registry, so the two files do not import each other; and the tests live beside
 the rules, with `catalogueAssertions.test.ts` keeping only what it asserts about
 the set as a whole (unique ids, an area each, which rules are watches).
+
+A check whose rule already has an owner in code rather than in SQL is a
+`ComputedAssertion`: the same fields with `collect` in place of the query,
+answering the rows and the lines said beside them (`context`). It goes in
+`everyAssertion`, after the statements, and throws `AssertionUnavailable` with
+the sentence an admin reads when it has nothing to read yet. The coverage check
+is one.
 
 Two rules about the SQL:
 
