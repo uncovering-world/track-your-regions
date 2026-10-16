@@ -121,7 +121,7 @@ and accepted by it.
 | [0099](0099-a-rewrite-a-visitor-would-not-notice-passes-the-gate.md) | A rewrite a visitor would not notice passes the gate | Accepted | 2026-10-12 |
 | [0100](0100-a-serial-sites-components-are-places-part-of-the-site.md) | A serial site's components are places, part of the site | Accepted | 2026-10-13 |
 | [0101](0101-bulk-reads-come-from-public-dumps-and-wikidata-is-kept-as-a-wide-subset.md) | Bulk reads come from public dumps, and Wikidata is kept as a wide subset cut by entity | Accepted — decision 2 narrowed by [0105](0105-the-wikidata-subset-follows-containment-chains-and-is-kept-compact-and-swapped-in-whole.md) | 2026-10-13 |
-| [0102](0102-a-work-one-kind-refuses-as-held-by-a-place-is-handed-to-the-kind-that-holds-it.md) | A work one kind refuses as held by a place is handed to the kind that holds that place | Accepted | 2026-10-13 |
+| [0102](0102-a-work-one-kind-refuses-as-held-by-a-place-is-handed-to-the-kind-that-holds-it.md) | A work one kind refuses as held by a place is handed to the kind that holds that place | Accepted — decision 2 narrowed by [0112](0112-a-handed-over-work-its-statements-place-nowhere-goes-where-the-refusal-named.md) | 2026-10-13 |
 | [0103](0103-a-museum-whose-famous-find-no-kind-shows-arrives-in-archaeology-held-for-a-curator.md) | A museum whose famous find no kind shows arrives in Archaeology held for a curator | Accepted | 2026-10-13 |
 | [0104](0104-the-map-is-a-third-signal-of-an-archaeology-museum-and-a-department-in-an-art-museum-is-refused.md) | The map is a third signal of an archaeology museum, and a department in an art museum is refused | Accepted | 2026-10-14 |
 | [0105](0105-the-wikidata-subset-follows-containment-chains-and-is-kept-compact-and-swapped-in-whole.md) | The Wikidata subset follows containment chains, and is kept compact and swapped in whole | Accepted — decision 4 narrowed by [0107](0107-a-subset-build-cut-in-its-second-pass-is-picked-up-not-started-again.md) | 2026-10-14 |
@@ -131,6 +131,7 @@ and accepted by it.
 | [0109](0109-a-field-belongs-to-the-family-of-sources-that-brings-it.md) | A field belongs to the family of sources that brings it | Accepted — decisions 1 and 3 narrowed by [0111](0111-a-shared-field-that-names-a-familys-own-field-goes-with-it.md) | 2026-10-15 |
 | [0110](0110-a-works-floor-counts-the-sources-own-works-less-its-fame-decisions.md) | A works floor counts the source's own works, less what its fame line decides | Accepted | 2026-10-15 |
 | [0111](0111-a-shared-field-that-names-a-familys-own-field-goes-with-it.md) | A shared field that names another family's own field goes with that field | Accepted | 2026-10-16 |
+| [0112](0112-a-handed-over-work-its-statements-place-nowhere-goes-where-the-refusal-named.md) | A handed-over work its own statements place nowhere goes where the refusal named | Accepted | 2026-10-16 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
