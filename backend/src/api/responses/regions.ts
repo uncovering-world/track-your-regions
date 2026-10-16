@@ -237,3 +237,13 @@ export const RegionImageOverlay = z.strictObject({
   updatedAt: z.string().describe('When it was last saved, ISO 8601.'),
 }).describe("A region's reference map in the Create Subregions dialog (#595): an admin's working material, never shown to a visitor.");
 export type RegionImageOverlay = z.infer<typeof RegionImageOverlay>;
+
+export const RegionSubdivisionGroups = z.strictObject({
+  groups: z.array(z.strictObject({
+    name: z.string(),
+    color: z.string().nullable().describe('The colour picked for the group, #rrggbb; null for the palette\'s.'),
+    existingRegionId: z.number().int().nullable().describe('The child region the group fills instead of a new one.'),
+    memberRowIds: z.array(z.number().int()).describe('The region_members rows in the group: only rows still in the region.'),
+  })),
+}).describe("A region's groups in the Create Subregions dialog (#595), in their order: an admin's working material.");
+export type RegionSubdivisionGroups = z.infer<typeof RegionSubdivisionGroups>;

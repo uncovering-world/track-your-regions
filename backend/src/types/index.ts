@@ -1167,6 +1167,20 @@ export const regionImageOverlayBodySchema = z.object({
   opacity: z.number().min(0).max(1),
 });
 
+/**
+ * The groups of the Create Subregions dialog as it saves them (#595): in their
+ * order, each with its name, colour, the child region it fills if any, and the
+ * member rows in it. The whole set replaces the region's groups.
+ */
+export const regionSubdivisionGroupsBodySchema = z.object({
+  groups: z.array(z.object({
+    name: z.string().trim().min(1).max(255),
+    color: z.string().regex(/^#[0-9a-fA-F]{6}$/, 'color must be #rrggbb').nullable().optional(),
+    existingRegionId: bodyRowIdSchema.nullable().optional(),
+    memberRowIds: z.array(bodyRowIdSchema).max(20000),
+  })).max(500),
+});
+
 export const removeDivisionsFromRegionBodySchema = z.object({
   divisionIds: z.array(bodyRowIdSchema).optional(),
   memberRowIds: z.array(bodyRowIdSchema).optional(),

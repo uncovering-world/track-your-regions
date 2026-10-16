@@ -76,6 +76,13 @@ export {
   deleteRegionImageOverlay,
 } from './regionImageOverlay.js';
 
+// A region's groups in the Create Subregions dialog (#595)
+export {
+  getRegionSubdivisionGroups,
+  saveRegionSubdivisionGroups,
+  deleteRegionSubdivisionGroups,
+} from './regionSubdivisionGroups.js';
+
 // Types (for advanced use cases)
 export type { ComputationProgress } from './types.js';
 export { runningComputations } from './types.js';
