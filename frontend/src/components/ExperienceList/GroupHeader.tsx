@@ -8,11 +8,13 @@
  * reads and every handler it calls belongs to the list.
  */
 
-import { ListItem, ListItemButton, ListItemText, Typography, Tooltip, IconButton } from '@mui/material';
+import { Box, Chip, ListItem, ListItemButton, ListItemText, Typography, Tooltip, IconButton } from '@mui/material';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import AddIcon from '@mui/icons-material/Add';
 import type { ExperienceGroupLike } from './utils';
+import type { TypeChoice } from '../../utils/typeChoices';
+import { typeLabelFor } from '../../utils/experienceTypes';
 
 interface GroupHeaderProps {
   group: ExperienceGroupLike;
@@ -25,10 +27,19 @@ interface GroupHeaderProps {
   regionTotal: number | null;
   canAdd: boolean;
   onAdd: () => void;
+  /** The types the kind's rows hold (`typeChoices`), drawn as chips on an open group; none when fewer than two. */
+  types?: TypeChoice[];
+  /** The type the group is narrowed to, or null for every type. */
+  activeType?: string | null;
+  onType?: (type: string | null) => void;
+  /** How many rows the group holds before a type narrows it, for the "All" chip. */
+  allCount?: number;
+  /** The kind, whose own vocabulary labels a chip (`typeLabelFor`). */
+  kindId?: number | null;
 }
 
 export function GroupHeader({
-  group, expanded, onToggle, regionTotal, canAdd, onAdd,
+  group, expanded, onToggle, regionTotal, canAdd, onAdd, types = [], activeType = null, onType, allCount, kindId = null,
 }: GroupHeaderProps) {
   // Both numbers while the view is filtering: "12 of 467" says what is here *and*
   // that the kind holds more, which one number cannot (#553).
@@ -38,7 +49,7 @@ export function GroupHeader({
   // "Top ", so "Add new art museums" needs nothing stripped (#818).
   const addLabel = `Add new ${group.kindName.toLowerCase()}`;
 
-  return (
+  const header = (
     <ListItem
       component="div"
       disablePadding
@@ -85,5 +96,26 @@ export function GroupHeader({
         </Tooltip>
       )}
     </ListItem>
+  );
+  if (!expanded || types.length === 0 || !onType) return header;
+  // An open group of several types narrows to one, as Discover's list does (#589):
+  // the rows and the map's pins follow, and the choice resets with the region.
+  return (
+    <Box>
+      {header}
+      <Box role="group" aria-label={`Narrow ${group.kindName} to one type`}
+        sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, px: 2, py: 0.75, borderBottom: '1px solid', borderColor: 'divider' }}>
+        <Chip size="small" label={`All ${allCount ?? shown}`}
+          variant={activeType === null ? 'filled' : 'outlined'} color={activeType === null ? 'primary' : 'default'}
+          onClick={() => onType(null)} aria-pressed={activeType === null} />
+        {types.map(choice => (
+          <Chip key={choice.type} size="small" label={`${typeLabelFor(kindId, choice.type)} ${choice.count}`}
+            variant={activeType === choice.type ? 'filled' : 'outlined'}
+            color={activeType === choice.type ? 'primary' : 'default'}
+            onClick={() => onType(activeType === choice.type ? null : choice.type)}
+            aria-pressed={activeType === choice.type} />
+        ))}
+      </Box>
+    </Box>
   );
 }

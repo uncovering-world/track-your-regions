@@ -25,6 +25,7 @@ import { useCollapsedExperiences } from './useCollapsedExperiences';
 import { useFoldedCard } from './useFoldedCard';
 import { HoverProvider } from './useHoverContext';
 import type { ViewBounds } from '../utils/viewBounds';
+import { effectiveKindTypes, kindTypeIndex, type KindTypeEntry } from '../utils/kindTypeIndex';
 import { queryKeys } from '../api/queryKeys';
 
 // Re-export image utilities from their canonical location for backward compatibility
@@ -94,6 +95,13 @@ interface ExperienceContextType {
   expandedKindNames: Set<string>;
   setExpandedKindNames: (names: Set<string>) => void;
 
+  /** The type each kind's group is narrowed to, by kind name (#589), only while the kind still offers it; a kind absent from it shows every type. */
+  kindTypes: ReadonlyMap<string, string>;
+  /** Per kind name, its id, the types its places offer and how many places it holds (`kindTypeIndex`). */
+  kindTypeIndex: ReadonlyMap<string, KindTypeEntry>;
+  /** Narrow one kind's group to a type, or show all of it again with `null`. */
+  setKindType: (kindName: string, type: string | null) => void;
+
   /** Objects this reader asked to see as a single pin rather than as their places. */
   collapsedExperienceIds: ReadonlySet<number>;
   toggleCollapsedExperience: (id: number) => void;
@@ -116,6 +124,9 @@ export interface ArtworkPreview {
   credit?: ImageCredit | null;
 }
 
+/** No kind narrowed to a type: one shared instance, so an unchanged choice keeps its identity. */
+const NO_KIND_TYPES: ReadonlyMap<string, string> = new Map();
+
 const ExperienceContext = createContext<ExperienceContextType | null>(null);
 
 
@@ -136,6 +147,19 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   const selectedPointId = selectedExperienceId !== null ? (address?.pointId ?? null) : null;
   const [flyToExperienceId, setFlyToExperienceId] = useState<number | null>(null);
   const [expandedKindNames, setExpandedKindNames] = useState<Set<string>>(new Set());
+  // Held for the region it was chosen in, as the view below is: a type chosen in
+  // Lazio says nothing about Toscana's list, and carrying it over would narrow the
+  // new list for the render before anything reset it.
+  const [typesFor, setTypesFor] = useState<{ regionId: number | null; types: ReadonlyMap<string, string> } | null>(null);
+  const chosenKindTypes = typesFor !== null && typesFor.regionId === regionId ? typesFor.types : NO_KIND_TYPES;
+  const setKindType = useCallback((kindName: string, type: string | null) => {
+    setTypesFor(prev => {
+      const next = new Map(prev !== null && prev.regionId === regionId ? prev.types : NO_KIND_TYPES);
+      if (type === null) next.delete(kindName);
+      else next.set(kindName, type);
+      return { regionId, types: next };
+    });
+  }, [regionId]);
   const [artworkPreview, setArtworkPreview] = useState<ArtworkPreview | null>(null);
   // Held for the region it was measured in: a view belongs to the map that was
   // showing that region, and carrying it into the next one would filter the new
@@ -176,6 +200,12 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
   });
 
   const experiences = useMemo(() => data?.experiences || [], [data?.experiences]);
+  // What each kind offers to narrow by, off the region's whole list, and the choices
+  // that still hold against it: the list and the map read the one answer (#589).
+  // The rows the list groups: a curator's answer also carries rejected places, which
+  // no group lists, so they offer no chip and count toward none.
+  const typeIndex = useMemo(() => kindTypeIndex(experiences.filter(exp => !exp.is_rejected)), [experiences]);
+  const kindTypes = useMemo(() => effectiveKindTypes(typeIndex, chosenKindTypes), [typeIndex, chosenKindTypes]);
 
   // A card this list does not hold — hidden, rejected, in another region, or
   // not there at all — is dropped from the address once the list has answered,
@@ -319,11 +349,14 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     getExperienceById,
     expandedKindNames,
     setExpandedKindNames,
+    kindTypes,
+    kindTypeIndex: typeIndex,
+    setKindType,
     collapsedExperienceIds,
     toggleCollapsedExperience,
     artworkPreview,
     setArtworkPreview,
-  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, setSelectedExperienceId, toggleSelectedExperience, selectedPointId, openPoint, closePoint, dropPoint, arrivedAtExperienceId, settleArrival, flyToExperienceId, triggerFlyTo, clearFlyTo, getExperienceById, expandedKindNames, collapsedExperienceIds, toggleCollapsedExperience, artworkPreview]);
+  }), [data, isLoading, experiences, lostHidden, showLost, setShowLost, regionId, isExploring, viewBounds, setViewBounds, selectedExperienceId, setSelectedExperienceId, toggleSelectedExperience, selectedPointId, openPoint, closePoint, dropPoint, arrivedAtExperienceId, settleArrival, flyToExperienceId, triggerFlyTo, clearFlyTo, getExperienceById, expandedKindNames, kindTypes, typeIndex, setKindType, collapsedExperienceIds, toggleCollapsedExperience, artworkPreview]);
 
   return (
     <ExperienceContext.Provider value={value}>
