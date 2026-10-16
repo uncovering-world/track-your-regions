@@ -21,7 +21,7 @@
 import { foldLabel } from '@tyr/shared/labels';
 import { pool } from '../../../db/index.js';
 import type { ContainerFacts, EntityFacts, PoolEntity } from '../publicArt/queries.js';
-import { countryOfPlace, standingCountries, type PlaceCountry } from '../publicArt/countryOfPlace.js';
+import { countryOfPlace, openCountries, standingCountries, type PlaceCountry } from '../publicArt/countryOfPlace.js';
 import { parseWktPoint, preferredCoordinate, preferredPicture } from '../wikidataUtils.js';
 import { BEST, entitiesOf, termsOf, type Kept, type Terms } from './entities.js';
 import {
@@ -45,10 +45,9 @@ function poolEntity(
     const country = itemOf(statement.value);
     return country ? [{ country, stands: !hasEnded(statement) && !around.dissolved.has(country) }] : [];
   });
-  const country = countryOfPlace(
-    standingCountries(countries),
-    parts.length ? new Set(parts.flatMap(part => around.partCountries.get(part) ?? [])) : null,
-  );
+  const partCountries = parts.length ? new Set(parts.flatMap(part => around.partCountries.get(part) ?? [])) : null;
+  const country = countryOfPlace(standingCountries(countries), partCountries);
+  const open = openCountries(countries, partCountries);
   const enwiki = kept.entity.sitelinks.enwiki;
   return {
     qid: id,
@@ -60,6 +59,10 @@ function poolEntity(
     imageUrl: picture,
     sitelinks: kept.sitelinks,
     countryLabel: country ? terms.get(country)?.label ?? null : null,
+    countryOptions: open && {
+      candidates: open.keys.map(qid => ({ qid, label: terms.get(qid)?.label ?? qid })),
+      noneStands: open.noneStands,
+    },
     articleUrl: enwiki ? articleUrl(enwiki) : null,
     website: bestStatements(claims.P856).map(s => textOf(s.value)).find(Boolean) ?? null,
     year: bestStatements(claims.P571).map(s => yearOf(s.value)).find(year => year !== null) ?? null,

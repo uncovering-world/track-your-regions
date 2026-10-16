@@ -4,7 +4,7 @@
  * globe it is on, and the facts pass grouped by entity.
  */
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import {
   fetchClassPool,
   fetchEntitiesByIds,
@@ -16,6 +16,10 @@ import {
 import type { SparqlFn } from '../wikidataQueries.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 import { answeringWith } from '../wikipediaEditionsFixture.js';
+
+// Where the point settles an open country is the database's question (countryByPoint.ts,
+// its own specs); here the parse is asked what it leaves open.
+vi.mock('./countryByPoint.js', () => ({ settleCountriesByPoint: async (entities: unknown) => entities }));
 
 const ENTITY = 'http://www.wikidata.org/entity/';
 const ref = (qid: string) => ({ value: `${ENTITY}${qid}` });
@@ -84,14 +88,30 @@ describe('fetchClassPool', () => {
     expect(camp.countryLabel).toBe('Poland');
   });
 
-  it('keeps a country that is gone where it is the only kind a place has (#757)', async () => {
-    // Mediolanum (Q729978) is stated in Ancient Rome alone: better that than no country.
+  it('keeps a gone country, and leaves the point to name the one the place is in (#757, #1564)', async () => {
+    // Mediolanum (Q729978) is stated in Ancient Rome alone: the parse keeps it rather than
+    // no country, and says no country stands, for its point in Milan to settle.
     const rows = [{
       e: ref('Q729978'), eLabel: { value: 'Mediolanum' }, coord: { value: 'Point(9.19 45.4642)' }, sl: { value: '40' },
-      countryLabel: { value: 'Ancient Rome' }, countryDissolved: { value: '-0026-01-16T00:00:00Z' },
+      country: ref('Q1747689'), countryLabel: { value: 'Ancient Rome' }, countryDissolved: { value: '-0026-01-16T00:00:00Z' },
     }];
     const [city] = await fetchClassPool(answer(rows), ['Q839954']);
     expect(city.countryLabel).toBe('Ancient Rome');
+    expect(city.countryOptions).toEqual({ candidates: [{ qid: 'Q1747689', label: 'Ancient Rome' }], noneStands: true });
+  });
+
+  it('leaves two standing countries to the point, each with its item (#1564)', async () => {
+    // The Basilica of Sant'Ambrogio (Q1071570): Wikidata lists Russia (Q159) before Italy (Q38).
+    const at = { e: ref('Q1071570'), eLabel: { value: "Basilica of Sant'Ambrogio" },
+      coord: { value: 'Point(9.1756 45.4623)' }, sl: { value: '40' } };
+    const rows = [
+      { ...at, country: ref('Q159'), countryLabel: { value: 'Russia' } },
+      { ...at, country: ref('Q38'), countryLabel: { value: 'Italy' } },
+    ];
+    const [basilica] = await fetchClassPool(answer(rows), ['Q163687']);
+    expect(basilica.countryOptions).toEqual({
+      candidates: [{ qid: 'Q159', label: 'Russia' }, { qid: 'Q38', label: 'Italy' }], noneStands: false,
+    });
   });
 
   it('reads a coordinate on another globe as not on Earth', async () => {

@@ -35,6 +35,21 @@ const MEDIOLANUM = 'Q729978';
 // The Moslavina monument (Q75822) is stated in Yugoslavia (Q36704) first and Croatia (Q224),
 // neither statement ended: only Yugoslavia's own dissolution tells them apart.
 const MOSLAVINA = 'Q75822';
+// The Basilica of Sant'Ambrogio in Milan (Q1071570): Wikidata lists Russia (Q159) before Italy
+// (Q38), both standing. Its point and Mediolanum's lie in a fixture comune of Milan, in a fixture
+// Italy under a fixture Europe, ids of their own (#1564).
+const SANT_AMBROGIO = 'Q1071570';
+const GADM_IDS = [990001, 990002, 990003, 990004, 990005, 990006, 990007, 990008];
+const MILAN_BOX = 'MULTIPOLYGON(((9.05 45.40, 9.30 45.40, 9.30 45.55, 9.05 45.55, 9.05 45.40)))';
+// Australia is filed at GADM's root, its states under it; Xi'an sits in China under Asia.
+const MELBOURNE_BOX = 'MULTIPOLYGON(((144.80 -37.95, 145.10 -37.95, 145.10 -37.70, 144.80 -37.70, 144.80 -37.95)))';
+const XIAN_BOX = 'MULTIPOLYGON(((108.80 34.15, 109.10 34.15, 109.10 34.40, 108.80 34.40, 108.80 34.15)))';
+// Fixture items, ids of their own: a place in Melbourne and one in Xi'an, each stated only in a
+// state that is gone (#1564); the People's Republic of China (Q148) is a sovereign state here.
+const MELBOURNE_SITE = 'Q99001';
+const XIAN_SITE = 'Q99002';
+const GONE_COLONY = 'Q99011';
+const GONE_DYNASTY = 'Q99012';
 const ENDED_1945 = { time: '+1945-05-08T00:00:00Z', precision: 11 };
 const CASTS: Array<[host: string, country: string, latitude: number, longitude: number]> = [
   ['Q8692', 'Q29', 43.269189, -2.932958], ['Q1930', 'Q16', 45.429333, -75.697277],
@@ -85,6 +100,18 @@ const ENTITIES: Array<[string, number, Record<string, unknown>]> = [
     claims: { P625: [statement('V1', point(45.6, 16.6))], P17: [statement('V2', 'Q36704'), statement('V3', 'Q224')] },
     sitelinks: {},
   }],
+  [SANT_AMBROGIO, 40, {
+    claims: { P625: [statement('A1', point(45.4623, 9.1756))], P17: [statement('A2', 'Q159'), statement('A3', 'Q38')] },
+    sitelinks: {},
+  }],
+  [MELBOURNE_SITE, 40, {
+    claims: { P625: [statement('W1', point(-37.81, 144.96))], P17: [statement('W2', GONE_COLONY)] },
+    sitelinks: {},
+  }],
+  [XIAN_SITE, 40, {
+    claims: { P625: [statement('W3', point(34.26, 108.94))], P17: [statement('W4', GONE_DYNASTY)] },
+    sitelinks: {},
+  }],
   [MEDIOLANUM, 40, {
     claims: { P625: [statement('M1', point(45.4642, 9.19))], P17: [statement('M2', 'Q1747689')] },
     sitelinks: {},
@@ -95,6 +122,23 @@ const ENTITIES: Array<[string, number, Record<string, unknown>]> = [
 
 beforeAll(async () => {
   await pool.query('TRUNCATE wikidata_entities, wikidata_claims, wikidata_labels, wikidata_sitelinks');
+  await pool.query('DELETE FROM administrative_divisions WHERE id = ANY($1::int[])', [[...GADM_IDS].reverse()]);
+  await pool.query(
+    `INSERT INTO administrative_divisions (id, name, parent_id, has_children, geom) VALUES
+       ($1, 'Europe', NULL, true, ST_GeomFromText($4, 4326)),
+       ($2, 'Italy', $1, true, ST_GeomFromText($4, 4326)),
+       ($3, 'Milano (fixture)', $2, false, ST_GeomFromText($4, 4326))`,
+    [...GADM_IDS.slice(0, 3), MILAN_BOX],
+  );
+  await pool.query(
+    `INSERT INTO administrative_divisions (id, name, parent_id, has_children, geom) VALUES
+       ($1, 'Australia', NULL, true, ST_GeomFromText($6, 4326)),
+       ($2, 'Victoria (fixture)', $1, false, ST_GeomFromText($6, 4326)),
+       ($3, 'Asia', NULL, true, ST_GeomFromText($7, 4326)),
+       ($4, 'China', $3, true, ST_GeomFromText($7, 4326)),
+       ($5, 'Xi''an (fixture)', $4, false, ST_GeomFromText($7, 4326))`,
+    [...GADM_IDS.slice(3), MELBOURNE_BOX, XIAN_BOX],
+  );
   for (const [id, sitelinks, body] of ENTITIES) {
     await pool.query('INSERT INTO wikidata_entities (id, sitelink_count, entity) VALUES ($1, $2, $3)',
       [id, sitelinks, JSON.stringify({ id, labels: {}, descriptions: {}, ...body })]);
@@ -102,9 +146,10 @@ beforeAll(async () => {
   // A state's dissolution is read from the claims table (`dissolvedAmong`).
   await pool.query(
     `INSERT INTO wikidata_claims (subject, property, statement_id, rank, value_item, value) VALUES
-       ('Q7318', 'P576', 'G1', 0, NULL, $1), ('Q1747689', 'P576', 'G2', 0, NULL, $2), ('Q36704', 'P576', 'G3', 0, NULL, $3)`,
+       ('Q7318', 'P576', 'G1', 0, NULL, $1), ('Q1747689', 'P576', 'G2', 0, NULL, $2), ('Q36704', 'P576', 'G3', 0, NULL, $3),
+       ($4, 'P576', 'G4', 0, NULL, $1), ($5, 'P576', 'G5', 0, NULL, $2), ('Q148', 'P31', 'S1', 0, 'Q3624078', NULL)`,
     [JSON.stringify(ENDED_1945), JSON.stringify({ time: '-0026-01-16T00:00:00Z', precision: 11 }),
-      JSON.stringify({ time: '+1992-04-27T00:00:00Z', precision: 11 })],
+      JSON.stringify({ time: '+1992-04-27T00:00:00Z', precision: 11 }), GONE_COLONY, GONE_DYNASTY],
   );
   await pool.query(
     `INSERT INTO wikidata_claims (subject, property, statement_id, rank, value_item, value) VALUES
@@ -124,6 +169,7 @@ beforeAll(async () => {
   );
   for (const [country, label] of [
     ['Q7318', 'Nazi Germany'], ['Q36', 'Poland'], ['Q1747689', 'Ancient Rome'], ['Q36704', 'Yugoslavia'], ['Q224', 'Croatia'],
+    ['Q159', 'Russia'], ['Q38', 'Italy'], ['Q148', "People's Republic of China"],
   ]) {
     await pool.query(`INSERT INTO wikidata_labels (id, language, label) VALUES ($1, 'en', $2)`, [country, label]);
   }
@@ -134,6 +180,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await pool.query('TRUNCATE wikidata_entities, wikidata_claims, wikidata_labels, wikidata_sitelinks');
+  await pool.query('DELETE FROM administrative_divisions WHERE id = ANY($1::int[])', [[...GADM_IDS].reverse()]);
   await pool.end();
 });
 
@@ -156,12 +203,27 @@ describe('Public Art read from the subset (#1459)', () => {
     expect(maman.countryLabel).toBe(`country ${drawn![1]}`);
   });
 
-  it('names the country a place is in today, and keeps a gone one where there is no other (#757)', async () => {
+  it('names the country a place is in today, and the point\'s where none stands (#757, #1564)', async () => {
     const places = await fetchEntitiesByIds(door, [STUTTHOF, MOSLAVINA, MEDIOLANUM]);
     const country = (qid: string) => places.find(place => place.qid === qid)?.countryLabel;
     expect(country(STUTTHOF)).toBe('Poland');
     expect(country(MOSLAVINA)).toBe('Croatia');
-    expect(country(MEDIOLANUM)).toBe('Ancient Rome');
+    // Stated only in Ancient Rome, it is named for the GADM country its point lies in (#1564).
+    expect(country(MEDIOLANUM)).toBe('Italy');
+  });
+
+  it("names a place with no standing country for its point's country, a root-level one included, as the state it names (#1564)", async () => {
+    await pool.query(`INSERT INTO wikidata_labels (id, language, label) VALUES ('Q148', 'de', 'China')`);
+    const places = await fetchEntitiesByIds(door, [MELBOURNE_SITE, XIAN_SITE]);
+    const country = (qid: string) => places.find(place => place.qid === qid)?.countryLabel;
+    // Australia is the root itself, not its state; China is written as the sovereign state.
+    expect(country(MELBOURNE_SITE)).toBe('Australia');
+    expect(country(XIAN_SITE)).toBe("People's Republic of China");
+  });
+
+  it('names a place stated in two standing countries for the one that holds its point (#1564)', async () => {
+    const [basilica] = await fetchEntitiesByIds(door, [SANT_AMBROGIO]);
+    expect(basilica.countryLabel).toBe('Italy');
   });
 
   it('answers an entity asked for by id with no point, placeless', async () => {
