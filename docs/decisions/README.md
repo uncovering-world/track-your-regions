@@ -133,6 +133,7 @@ and accepted by it.
 | [0111](0111-a-shared-field-that-names-a-familys-own-field-goes-with-it.md) | A shared field that names another family's own field goes with that field | Accepted | 2026-10-16 |
 | [0112](0112-a-handed-over-work-its-statements-place-nowhere-goes-where-the-refusal-named.md) | A handed-over work its own statements place nowhere goes where the refusal named | Accepted | 2026-10-16 |
 | [0113](0113-a-regions-reference-map-is-kept-in-the-database-as-raster-bytes.md) | A region's reference map is kept in the database, as raster bytes | Accepted | 2026-10-16 |
+| [0114](0114-work-is-held-in-queues-one-issue-per-goal.md) | Work is held in queues, one issue per goal, with a checkable end and a journal | Accepted | 2026-10-16 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
