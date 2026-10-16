@@ -651,6 +651,11 @@ export default [
       'security/detect-unsafe-regex': 'off',
       // The same ceiling as src/.
       'max-lines': ['error', { max: 800, skipBlankLines: true, skipComments: true }],
+      // Plain JavaScript has no type checker to say a name is not in scope, so
+      // a helper left behind when code moves between modules would surface
+      // only as a ReferenceError on the path that calls it — often an error
+      // path no spec walks.
+      'no-undef': 'error',
     },
   },
 ];
