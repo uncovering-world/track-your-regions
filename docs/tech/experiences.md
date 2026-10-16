@@ -471,7 +471,7 @@ trusting that reading the first fix would be enough to generalise it.
 
 Treasures are independently trackable things inside venue experiences. Currently implemented for museum artworks. Treasures have a many-to-many relationship with venues via `experience_treasures` junction table; iconic treasures are called **highlights** (`is_iconic` flag). See [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md) for the full concept.
 
-- `treasures`: globally unique treasures (artworks, artifacts), keyed by `external_id`
+- `treasures`: globally unique treasures (artworks, artifacts), keyed by `external_id`. No Wikipedia article is stored for a work: the card links one through Wikidata's redirect from that id (`wikipediaArticleUrl`; `docs/tech/experience-map-ui.md` § A work names its Wikipedia article, #1191)
 - `experience_treasures`: many-to-many junction linking treasures to venue experiences. A link
   carries `missing_since` (ADR-0044): set by a run that cleared the works coverage floor and no
   longer places the work here, cleared by any run that places it here again, never deleted — the
