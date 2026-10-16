@@ -15,9 +15,10 @@
 
 import { rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { basename, join } from 'node:path';
 import type { DumpFile } from '../catalog.js';
 import { isDamagedRead, PIECE_BYTES, readDump, type ReadOptions } from '../read.js';
+import { sampleOf } from '../samples.js';
 import { assertRoomForCopies, assertRoomToWrite } from './diskRoom.js';
 import { IdSet } from './idSets.js';
 import { WRITE_VERSION } from './lineWork.js';
@@ -29,7 +30,7 @@ import { loadScope, saveScope, scopePath } from './scopeFile.js';
 import { SubsetWriter } from './subsetWriter.js';
 import {
   carryRingLabels, createDerivedNextTables, createNextTables, DERIVED_TABLES, derivedTablesSize, dropDerivedNextTables, earlierSpool, entitiesAreHeld, entitiesCopySize,
-  latestSubsetCounts, resetAfterPassTwo, resumableBuild, deriveClassClosure, deriveFromEntities, dropNextTables, indexNextTables, insertLabels,
+  latestSubsetCounts, nextTablesSize, resetAfterPassTwo, resumableBuild, deriveClassClosure, deriveFromEntities, dropNextTables, indexNextTables, insertLabels,
   type LabelRow, type ResumeState, swapIn,
 } from './subsetTables.js';
 
@@ -37,6 +38,12 @@ export interface SubsetBuildOptions extends ReadOptions {
   buildId: number;
   /** What the build is doing now, for the admin panel. */
   onPhase: (message: string) => void;
+  /**
+   * A trial of the build (#1527): every step runs into the copies, which are
+   * then dropped instead of swapped in, so the subset the runs read is never
+   * touched.
+   */
+  trial?: boolean;
 }
 
 export interface SubsetResult {
@@ -44,6 +51,20 @@ export interface SubsetResult {
   lines: number;
   checksumActual: string | null;
   counts: ScopeCounts & { written: number; ring: number; ringLabelled: number; refused: number };
+  /** What the build kept and what its tables took, in words, for its row. */
+  summary: string;
+}
+
+const GB = 1024 ** 3;
+const gb = (bytes: number) => `${(bytes / GB).toFixed(2)} GB`;
+
+/** What a build kept and what its copies took on disk, against the kept lines' bytes the disk check estimates from. */
+function summaryOf(counts: SubsetResult['counts'], tableBytes: number): string {
+  const n = (value: number) => value.toLocaleString('en');
+  const share = counts.keptBytes > 0 ? (tableBytes / counts.keptBytes).toFixed(3) : '—';
+  return `kept ${n(counts.kept)} of ${n(counts.items)} items (${n(counts.seeds)} seeds), wrote ${n(counts.written)}, `
+    + `labelled ${n(counts.ringLabelled)} of the ${n(counts.ring)} entities they name, refused ${n(counts.refused)}; `
+    + `the tables took ${gb(tableBytes)}, ${share} of the kept lines' ${gb(counts.keptBytes)}`;
 }
 
 const LABEL_BATCH = 5000;
@@ -75,10 +96,12 @@ async function labelTheRing(
 /**
  * The first pass: what the subset keeps. With a local copy, its result is kept
  * beside the dump (#1468), and a build of the same file reads it back instead
- * of scanning the dump again; the second pass still verifies the file.
+ * of scanning the dump again; the second pass still verifies the file. A
+ * trial always scans: the first pass's code is part of what it tries, and its
+ * time one of the steps it reports.
  */
 async function scopeOf(file: DumpFile, options: SubsetBuildOptions): Promise<Scope> {
-  const path = options.dumpsDir ? scopePath(options.dumpsDir, file) : null;
+  const path = options.dumpsDir && !options.trial ? scopePath(options.dumpsDir, file) : null;
   const earlier = path ? await loadScope(path, file) : null;
   if (earlier) {
     options.onPhase(`Pass 1 of 2: read from an earlier build of ${file.fileName}, ${earlier.counts.kept.toLocaleString('en')} items`);
@@ -109,9 +132,10 @@ const sizeOf = async (path: string) => (await stat(path).catch(() => null))?.siz
 /**
  * What an earlier build of the same file left to pick up after, or null to
  * start afresh, in which case an earlier build's spool elsewhere is removed.
+ * A trial always starts afresh: what it reports is every step, run whole.
  */
 async function whatToPickUpAfter(resumeKey: string, spoolPath: string, options: SubsetBuildOptions): Promise<ResumeState | null> {
-  const resume = await resumableBuild(resumeKey);
+  const resume = options.trial ? null : await resumableBuild(resumeKey);
   // The spool in a temporary directory goes with a recreated container while
   // the copies stay in the database: without the terms the records point to,
   // the copies cannot be picked up after.
@@ -124,8 +148,21 @@ async function whatToPickUpAfter(resumeKey: string, spoolPath: string, options: 
   return null;
 }
 
+/**
+ * Whether a trial would throw away the copies a build of the dump left to be
+ * picked up after (#1493). A trial's own leftovers, from one stopped before it
+ * could drop them, no build picks up after, and the next trial drops them.
+ */
+async function trialWouldDiscard(): Promise<boolean> {
+  const left = await earlierSpool();
+  return left !== null && sampleOf(basename(left)) === null;
+}
+
 export async function buildSubset(file: DumpFile, options: SubsetBuildOptions): Promise<SubsetResult> {
   const { onPhase, signal } = options;
+  if (options.trial && await trialWouldDiscard()) {
+    throw new Error('A build cut in its second pass left its copies for the next build of its file to pick up after: a trial would throw them away. Finish that build first.');
+  }
   const scope = await scopeOf(file, options);
 
   // An earlier build of the same file and scope that was cut in pass 2 left
@@ -174,15 +211,22 @@ export async function buildSubset(file: DumpFile, options: SubsetBuildOptions): 
       ...scope.counts, written: writer.counts.written, ring: writer.ring.size, ringLabelled,
       refused: refusals.count,
     };
+    const summary = summaryOf(counts, await nextTablesSize());
     signal.throwIfAborted();
+    if (options.trial) {
+      onPhase('Throwing the trial\'s tables away...');
+      await dropNextTables();
+      return { ...read, counts, summary };
+    }
     onPhase('Swapping the new subset in...');
     await swapIn(options.buildId, file.date, counts);
-    return { ...read, counts };
+    return { ...read, counts, summary };
   } catch (error) {
     // What pass 2 wrote is kept for the next build of the same file to pick
     // up after, unless the build was cancelled, which keeps nothing, or the
-    // file was not the host's, whose rows no build may reuse.
-    keep = !signal.aborted && !isDamagedRead(error);
+    // file was not the host's, whose rows no build may reuse, or the build
+    // was a trial, which keeps nothing either.
+    keep = !signal.aborted && !isDamagedRead(error) && !options.trial;
     if (keep) options.onNote?.('what pass 2 wrote is kept: the next build of this file picks up after it');
     else await dropNextTables().catch(() => undefined);
     throw error;

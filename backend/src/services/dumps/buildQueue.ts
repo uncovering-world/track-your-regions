@@ -9,6 +9,7 @@ import { dumpNamed, type DumpDescriptor, type DumpFile, type DumpKey } from './c
 import { activeBuildOf, closeOrphanedBuilds, enqueueBuild, requestCancel, type ActiveBuild, type BuildKind, type BuildProgressRecord } from './ledger.js';
 import { keeperOf } from './keepers.js';
 import { newestLocalCopy } from './localCopies.js';
+import { newestSample } from './samples.js';
 
 export interface DumpBuildProgress {
   dump: DumpKey;
@@ -45,6 +46,22 @@ async function localCopyName(descriptor: DumpDescriptor): Promise<string> {
   const copy = dir ? await newestLocalCopy(dir, descriptor.isFileName) : null;
   if (!copy) throw new Error(`There is no local copy of ${descriptor.key} to build from`);
   return copy.fileName;
+}
+
+/** The file name of the dump's newest sample (#1527); refuses where there is none. */
+async function sampleName(descriptor: DumpDescriptor): Promise<string> {
+  const dir = dumpsDir();
+  const sample = dir ? await newestSample(dir, descriptor.isFileName) : null;
+  if (!sample) throw new Error(`There is no sample of ${descriptor.key} to try the build on: cut one from the local copy first`);
+  return sample.fileName;
+}
+
+/** The local file a build reads, by its kind: the local copy, the sample a trial reads, or none. */
+async function localFileOf(descriptor: DumpDescriptor, kind: BuildKind, from: BuildFrom): Promise<string | undefined> {
+  if (kind === 'trial') return sampleName(descriptor);
+  if (kind === 'sample' || (from === 'local' && kind !== 'rederive')) return localCopyName(descriptor);
+  // A re-derive reads no file.
+  return undefined;
 }
 
 function progressOf(dump: DumpKey, build: ActiveBuild): DumpBuildProgress {
@@ -88,24 +105,23 @@ export interface BuildRequest {
 }
 
 /**
- * Queue a build of `dump` for the worker. Refuses a keeping one of a dump
- * with no builder, a re-derive with nothing kept to derive from, one from a
- * local copy that is not there, and a second one of a dump with a build
- * queued or running in any process (#1463): a second download of a 156 GB
- * dump beside the first would fill the disk under both, and a re-derive
- * beside a build would swap tables in under it.
+ * Queue a build of `dump` for the worker. Refuses a keeping one, a sample or
+ * a trial of a dump with no builder, a re-derive with nothing kept to derive
+ * from, one from a local copy or a sample that is not there, and a second one
+ * of a dump with a build queued or running in any process (#1463): a second
+ * download of a 156 GB dump beside the first would fill the disk under both,
+ * and a re-derive beside a build would swap tables in under it.
  */
 export async function startBuild(key: DumpKey, { startedBy, kind = 'verify', from = 'newest' }: BuildRequest): Promise<DumpBuildProgress> {
   const descriptor = dumpNamed(key);
   if (!descriptor) throw new Error(`No dump named ${key}`);
   const keeper = keeperOf(key);
-  if (kind === 'keep' && !keeper) throw new Error(`Nothing is built from ${key} yet`);
+  if ((kind === 'keep' || kind === 'sample' || kind === 'trial') && !keeper) throw new Error(`Nothing is built from ${key} yet`);
   if (kind === 'rederive') {
     if (!keeper?.rederive) throw new Error(`Nothing built from ${key} can be derived again`);
     if (!await keeper.latest()) throw new Error(`Nothing is built from ${key} yet: build it from the dump first`);
   }
-  // A re-derive reads no file.
-  const only = from === 'local' && kind !== 'rederive' ? await localCopyName(descriptor) : undefined;
+  const only = await localFileOf(descriptor, kind, from);
   await closeOrphanedBuilds();
   await enqueueBuild(key, dumpsDir() ? 'local' : 'stream', { kind, ...(only ? { only } : {}) }, startedBy);
   const progress = await buildProgress(key);

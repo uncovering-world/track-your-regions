@@ -24,6 +24,19 @@ let pass = 0;
 let handed = 0;
 const LINES_PER_PIECE = 3;
 
+// A build here starts its worker threads afresh for each pass, which takes seconds on a loaded
+// machine, and several cases run two or three builds.
+vi.setConfig({ testTimeout: 30_000 });
+
+/** Wait until `count` pieces are recorded, as long as the workers take to start under load. */
+async function piecesWritten(count: number): Promise<void> {
+  for (let waited = 0; waited < 20_000; waited += 100) {
+    const { rows: [row] } = await pool.query<{ n: number }>('SELECT count(*)::int AS n FROM wikidata_build_pieces_next');
+    if (row.n >= count) return;
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+}
+
 vi.mock('../read.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../read.js')>()),
   readDump: async (_file: DumpFile, consumer: DumpConsumer) => {
@@ -36,8 +49,9 @@ vi.mock('../read.js', async (importOriginal) => ({
       if (consumer.chunk) {
         for (let at = 0; at < all.length; at += LINES_PER_PIECE) {
           if (failOnPass === pass && cut && handed === cut.afterPieces) {
-            // Let the pieces already handed be written before the cut lands.
-            await new Promise(resolve => setTimeout(resolve, 500));
+            // Let the pieces already handed be written before the cut lands: a cut
+            // stops the workers, and a piece a worker has not answered for is lost.
+            await piecesWritten(cut.afterPieces);
             throw cut.error;
           }
           await consumer.chunk(new TextEncoder().encode(`${all.slice(at, at + LINES_PER_PIECE).join('\n')}\n`), at / LINES_PER_PIECE);
@@ -63,6 +77,7 @@ vi.mock('../localCopies.js', async (importOriginal) => ({
 }));
 
 const { buildSubset, rederiveSubset } = await import('./subsetBuild.js');
+const { createNextTables } = await import('./subsetTables.js');
 
 const LOUVRE_PALACE = 1075988;
 const LOUVRE = 19675;
@@ -231,6 +246,34 @@ describe('a build of the local Wikidata subset (#1434)', () => {
     expect(rows).toEqual([]);
   });
 
+  it('runs every step of a trial into copies and drops them, leaving the subset in place as it was (#1527)', async () => {
+    lines = DUMP;
+    const swapped = async () => (await pool.query<{ n: number }>('SELECT count(*)::int AS n FROM wikidata_subset_builds')).rows[0].n;
+    const before = await swapped();
+    pass = 0;
+    const phases: string[] = [];
+    const result = await buildSubset(file, {
+      buildId: await newBuild(), signal: new AbortController().signal, onPhase: message => phases.push(message), trial: true,
+    });
+    expect(phases).toContain('Walking the class tree...');
+    expect(phases.at(-1)).toBe('Throwing the trial\'s tables away...');
+    expect(result.summary).toMatch(/^kept \d+ of \d+ items .*the tables took \d+\.\d+ GB/);
+    // The trial read the capital; the subset in place, built without it, is untouched.
+    expect(await ids('wikidata_entities')).not.toContain(`Q${CAPITAL}`);
+    expect(await swapped()).toBe(before);
+    expect(await nextTables()).toEqual([]);
+  });
+
+  it('drops what a trial stopped before its end left, and runs (#1527)', async () => {
+    // As a worker killed mid-trial leaves it: the copies, and the sample's spool named as theirs.
+    await createNextTables('a trial that never ended', '/dumps/sample-4gb-wikidata-20261005-all.json.gz.terms.gz');
+    pass = 0;
+    await buildSubset({ ...file, fileName: 'sample-4gb-subset-fixture-all.json.gz' }, {
+      buildId: await newBuild(), signal: new AbortController().signal, onPhase: () => undefined, trial: true,
+    });
+    expect(await nextTables()).toEqual([]);
+  });
+
   it('refuses the write pass when the disk cannot hold it, before any copy is made (#1466)', async () => {
     lines = DUMP;
     disk.free = 0;
@@ -253,6 +296,15 @@ describe('a build of the local Wikidata subset (#1434)', () => {
     expect(await ids('wikidata_entities')).not.toContain(`Q${CAPITAL}`);
     expect(await nextTables()).toContain('wikidata_build_pieces_next');
     expect(notes).toContain('what pass 2 wrote is kept: the next build of this file picks up after it');
+  });
+
+  it('refuses a trial while a cut build\'s copies wait for the next build of its file (#1527)', async () => {
+    const waiting = await nextTables();
+    pass = 0;
+    await expect(buildSubset({ ...file, fileName: 'sample-4gb-subset-fixture-all.json.gz' }, {
+      buildId: await newBuild(), signal: new AbortController().signal, onPhase: () => undefined, trial: true,
+    })).rejects.toThrow(/Finish that build first/);
+    expect(await nextTables()).toEqual(waiting);
   });
 
   it('picks up after the pieces an earlier build wrote, and ends with what an uncut build makes (#1493)', async () => {

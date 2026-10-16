@@ -21,14 +21,16 @@ export type DumpBuildRow = Omit<DumpBuildsRow, 'mode' | 'status' | 'checksum_kin
 /**
  * What a build does: `verify` reads and counts; `keep` runs the dump's
  * builder and keeps what it builds; `rederive` derives the kept build's
- * tables again from what it holds, reading no file (#1526).
+ * tables again from what it holds, reading no file (#1526); `sample` cuts a
+ * sample of the local copy, and `trial` runs the builder on that sample and
+ * keeps nothing (#1527).
  */
-export type BuildKind = 'verify' | 'keep' | 'rederive';
+export type BuildKind = 'verify' | 'keep' | 'rederive' | 'sample' | 'trial';
 
 /** What an admin asked for, which the worker reads when it takes the build. */
 export interface BuildRequestRecord {
   kind: BuildKind;
-  /** The local copy's file to read; absent, the newest file the host lists. */
+  /** The local file to read: the local copy, or the sample a trial reads; absent, the newest file the host lists. */
   only?: string;
 }
 
@@ -125,25 +127,29 @@ export async function requestCancel(dump: string): Promise<boolean> {
 
 export async function closeBuild(
   id: number,
-  outcome: { status: Exclude<DumpBuildRow['status'], 'running' | 'queued'>; bytes: number; lines: number; checksumActual: string | null; error: string | null },
+  end: {
+    status: Exclude<DumpBuildRow['status'], 'running' | 'queued'>; bytes: number; lines: number; checksumActual: string | null; error: string | null;
+    /** What a build that ended well did, in words (#1527). */
+    outcome?: string | null;
+  },
 ): Promise<void> {
   await pool.query(
-    `UPDATE dump_builds SET status = $2, bytes = $3, lines = $4, checksum_actual = $5, error = $6, finished_at = NOW()
+    `UPDATE dump_builds SET status = $2, bytes = $3, lines = $4, checksum_actual = $5, error = $6, outcome = $7, finished_at = NOW()
       WHERE id = $1`,
-    [id, outcome.status, outcome.bytes, outcome.lines, outcome.checksumActual, outcome.error],
+    [id, end.status, end.bytes, end.lines, end.checksumActual, end.error, end.outcome ?? null],
   );
 }
 
 /**
  * The newest builds of each dump, for the admin panel: `perDump` of those that
- * read a file and as many re-derives (#1526), so re-derives never push the
- * file builds out.
+ * read the dump's file, and as many of each kind that does not (re-derives,
+ * #1526; samples and trials, #1527), so these never push the file builds out.
  */
 export async function recentBuilds(perDump = 3): Promise<DumpBuildRow[]> {
   const result = await pool.query<DumpBuildRow>(
     `SELECT * FROM (
        SELECT b.*, row_number() OVER (
-                PARTITION BY b.dump, b.request->>'kind' IS NOT DISTINCT FROM 'rederive'
+                PARTITION BY b.dump, CASE WHEN b.request->>'kind' IN ('rederive', 'sample', 'trial') THEN b.request->>'kind' END
                 ORDER BY b.started_at DESC, b.id DESC) AS rn
          FROM dump_builds b) ranked
       WHERE rn <= $1

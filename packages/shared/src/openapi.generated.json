@@ -4822,6 +4822,120 @@
         }
       }
     },
+    "/api/admin/dumps/{dump}/sample": {
+      "post": {
+        "operationId": "postAdminDumpsByDumpSample",
+        "summary": "Start cutting a sample of the first part of a dump's local copy, kept beside it, for a trial of the build",
+        "tags": [
+          "admin"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dump",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "wikidata-entities",
+                "wikidata-lexemes",
+                "enwiki-page",
+                "enwiki-page-props",
+                "enwiki-categorylinks",
+                "enwiki-langlinks",
+                "pageviews-user"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DumpBuildStarted"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/admin/dumps/{dump}/trial": {
+      "post": {
+        "operationId": "postAdminDumpsByDumpTrial",
+        "summary": "Start a trial of the build on the dump's sample: every step runs into copies that are then dropped, never swapped in",
+        "tags": [
+          "admin"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dump",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "wikidata-entities",
+                "wikidata-lexemes",
+                "enwiki-page",
+                "enwiki-page-props",
+                "enwiki-categorylinks",
+                "enwiki-langlinks",
+                "pageviews-user"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DumpBuildStarted"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/dumps/{dump}/cancel": {
       "post": {
         "operationId": "postAdminDumpsByDumpCancel",
@@ -20288,9 +20402,11 @@
             "enum": [
               "verify",
               "keep",
-              "rederive"
+              "rederive",
+              "sample",
+              "trial"
             ],
-            "description": "A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds; a re-derive derives the kept build's tables again from what it holds, reading no file (#1526)."
+            "description": "A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds; a re-derive derives the kept build's tables again from what it holds, reading no file (#1526); a sample build cuts the first part of the local copy, and a trial runs the builder on that sample and keeps nothing (#1527)."
           },
           "fileName": {
             "description": "Null for a build that ended before it found its file.",
@@ -20338,7 +20454,7 @@
           },
           "verified": {
             "type": "boolean",
-            "description": "The published checksum matched, or, where none is published, the size and the end of stream did; never for a re-derive, which reads no file."
+            "description": "The published checksum matched, or, where none is published, the size and the end of stream did; never for a re-derive, which reads no file, nor for a sample or a trial, which read no file of the host's."
           },
           "status": {
             "type": "string",
@@ -20350,6 +20466,13 @@
             ]
           },
           "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "outcome": {
+            "description": "What a build that ended well did, in words: what it kept, how long each step took, an older copy removed (#1527); null otherwise.",
             "type": [
               "string",
               "null"
@@ -20385,6 +20508,7 @@
           "verified",
           "status",
           "error",
+          "outcome",
           "startedAt",
           "finishedAt"
         ],
@@ -20437,9 +20561,11 @@
             "enum": [
               "verify",
               "keep",
-              "rederive"
+              "rederive",
+              "sample",
+              "trial"
             ],
-            "description": "A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds; a re-derive derives the kept build's tables again from what it holds, reading no file (#1526)."
+            "description": "A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds; a re-derive derives the kept build's tables again from what it holds, reading no file (#1526); a sample build cuts the first part of the local copy, and a trial runs the builder on that sample and keeps nothing (#1527)."
           },
           "status": {
             "type": "string",
@@ -20702,6 +20828,42 @@
                     }
                   ],
                   "description": "The newest local copy of the dump in DUMPS_DIR, which a build can read instead of the newest file the host lists (#1456); null without one."
+                },
+                "sample": {
+                  "anyOf": [
+                    {
+                      "type": "object",
+                      "properties": {
+                        "fileName": {
+                          "type": "string"
+                        },
+                        "of": {
+                          "type": "string",
+                          "description": "The local copy it was cut from."
+                        },
+                        "date": {
+                          "type": "string",
+                          "description": "The dump date of that copy, YYYY-MM-DD."
+                        },
+                        "bytes": {
+                          "type": "integer",
+                          "minimum": -9007199254740991,
+                          "maximum": 9007199254740991
+                        }
+                      },
+                      "required": [
+                        "fileName",
+                        "of",
+                        "date",
+                        "bytes"
+                      ],
+                      "additionalProperties": false
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The newest sample of the dump in DUMPS_DIR, which a trial builds from and throws away (#1527); null without one."
                 }
               },
               "required": [
@@ -20713,7 +20875,8 @@
                 "progress",
                 "builds",
                 "keeps",
-                "localCopy"
+                "localCopy",
+                "sample"
               ],
               "additionalProperties": false
             }

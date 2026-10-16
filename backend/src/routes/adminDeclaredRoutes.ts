@@ -22,7 +22,9 @@ import {
 } from '../api/responses/adminAi.js';
 import { DataAssertion, DataAssertionReport } from '../api/responses/dataAssertions.js';
 import { DumpBuildCancelled, DumpBuildStarted, Dumps } from '../api/responses/dumps.js';
-import { cancelDumpBuild, listDumps, startDumpBuild, startDumpKeep, startDumpRederive } from '../controllers/admin/dumpController.js';
+import {
+  cancelDumpBuild, listDumps, startDumpBuild, startDumpKeep, startDumpRederive, startDumpSample, startDumpTrial,
+} from '../controllers/admin/dumpController.js';
 import {
   startSync, getSyncStatus, cancelSync, fixImages, findComponentItems, getSyncLogs, getWikidataCache, clearWikidataCache,
   setWikidataCacheTtl, getSyncLogDetails, getSyncLogChanges, getSources, reorderSources, startRegionAssignment,
@@ -155,7 +157,8 @@ export const adminDeclaredRoutes = [
   }),
   // The public dumps the catalogue reads (ADR-0101): each with its build in
   // flight and its recent builds, a verify build of one, a build that keeps what
-  // is made from it (#1434), deriving that again (#1526), and stopping any. A
+  // is made from it (#1434), deriving that again (#1526), a sample of the local
+  // copy and a trial of the build on it (#1527), and stopping any. A
   // build reads a file of up to 100 GB from its host, so it stands behind the
   // expensive-action limiter; the URL is the catalog's, never the caller's.
   defineRoute({
@@ -187,6 +190,21 @@ export const adminDeclaredRoutes = [
     params: dumpKeyParamSchema,
     response: DumpBuildStarted,
     handler: startDumpRederive,
+  }),
+  // A sample reads gigabytes of the local copy and a trial writes tables beside the subset: the same limiter.
+  defineRoute({
+    ...ADMIN, method: 'post', path: '/dumps/:dump/sample', limiter: expensiveAdminLimiter,
+    summary: 'Start cutting a sample of the first part of a dump\'s local copy, kept beside it, for a trial of the build',
+    params: dumpKeyParamSchema,
+    response: DumpBuildStarted,
+    handler: startDumpSample,
+  }),
+  defineRoute({
+    ...ADMIN, method: 'post', path: '/dumps/:dump/trial', limiter: expensiveAdminLimiter,
+    summary: 'Start a trial of the build on the dump\'s sample: every step runs into copies that are then dropped, never swapped in',
+    params: dumpKeyParamSchema,
+    response: DumpBuildStarted,
+    handler: startDumpTrial,
   }),
   defineRoute({
     ...ADMIN, method: 'post', path: '/dumps/:dump/cancel',

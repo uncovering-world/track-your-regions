@@ -15,6 +15,8 @@ import { dumpsDir } from './buildQueue.js';
 import { keeperOf } from './keepers.js';
 import { PassClock } from './passClock.js';
 import { countLines, readDump, type ReadOptions } from './read.js';
+import { cutSample, SAMPLE_JSON_BYTES, sampleFile, sampleIn } from './samples.js';
+import { StepTimes } from './stepTimes.js';
 
 function verifiedMessage(file: DumpFile, lines: number, checksumActual: string | null): string {
   const how = checksumActual ? `${file.checksum?.kind} matches the host's` : 'size and stream end match the host\'s';
@@ -77,35 +79,41 @@ export async function runBuild(claimed: ClaimedBuild, stop: AbortSignal): Promis
       .then(({ cancelRequested }) => { if (cancelRequested) controller.abort(new Error('Cancelled.')); })
       .catch(error => console.error('[Dumps] Could not beat the build row:', error));
   }, BEAT_EVERY_MS);
+  // Every step a build names, timed, for the row of a build that ends well (#1527).
+  const steps = new StepTimes();
+  const onPhase = (message: string) => {
+    progress.message = message;
+    steps.phase(message);
+  };
+  const close = async (result: { bytes: number; lines: number; checksumActual: string | null }, said: string[]) => {
+    const timed = steps.summary();
+    const outcome = [...said, ...(timed ? [`steps: ${timed}`] : []), ...notes].join('; ');
+    console.log(`[Dumps] ${claimed.dump}: ${outcome}`);
+    await closeBuild(claimed.id, { status: 'success', ...result, error: null, outcome });
+  };
   try {
     const descriptor = dumpNamed(claimed.dump);
     if (!descriptor) throw new Error(`No dump named ${claimed.dump}`);
     const { kind, only } = claimed.request;
     if (kind === 'rederive') {
-      await rederive(claimed, descriptor, progress, controller.signal, notes);
+      await rederive(claimed, descriptor, progress, controller.signal, notes, onPhase);
+      await close({ bytes: 0, lines: 0, checksumActual: null }, ['derived again and swapped in']);
+      return;
+    }
+    if (kind === 'sample') {
+      const cut = await cutFrom(claimed, descriptor, progress, controller.signal, only);
+      await close(cut.result, [cut.said]);
+      return;
+    }
+    if (kind === 'trial') {
+      const trial = await tryOnSample(claimed, descriptor, progress, controller.signal, notes, clock, onPhase, only);
+      await close(trial, [`tried the build on ${only}`, ...(trial.summary ? [trial.summary] : []), 'nothing was swapped in']);
       return;
     }
     // A kind this code does not know reads no file: counting it as a verify would download the dump.
     if (kind !== 'keep' && kind !== 'verify') throw new Error(`This dump worker does not know a ${String(kind)} build; recreate it to run the current code`);
-    if (only) progress.message = `Finding ${only} on the host...`;
-    await beat(claimed.id, progress);
-    const file = await resolveFile(descriptor, controller.signal, only);
-    await recordFile(claimed.id, file);
-    progress.phase = 'reading';
-    progress.message = `Reading ${file.fileName}${dumpsDir() ? ' into the local copy' : ' from the host'}...`;
-    const options = readOptions(descriptor, progress, controller.signal, notes, clock, file.expectedBytes);
-    const keeper = kind === 'keep' ? keeperOf(descriptor.key) : null;
-    const result = keeper
-      ? await keeper.build(file, {
-        ...options,
-        buildId: claimed.id,
-        // A new step: a pass starts its own clock, and a step that reads no file has no estimate.
-        onPhase: message => { progress.message = message; progress.etaSeconds = null; clock.reset(); },
-      })
-      : await readDump(file, countLines(), options);
-    const message = [verifiedMessage(file, result.lines, result.checksumActual), ...(keeper ? ['built and swapped in'] : []), ...notes].join('; ');
-    console.log(`[Dumps] ${descriptor.key}: ${message}`);
-    await closeBuild(claimed.id, { status: 'success', bytes: result.bytes, lines: result.lines, checksumActual: result.checksumActual, error: null });
+    const read = await readTheDump(claimed, descriptor, progress, controller.signal, notes, clock, onPhase);
+    await close(read.result, read.said);
   } catch (error) {
     await fail(claimed, controller.signal, error, progress, notes);
   } finally {
@@ -114,9 +122,37 @@ export async function runBuild(claimed: ClaimedBuild, stop: AbortSignal): Promis
   }
 }
 
-/** Derive the kept build's tables again from what it holds (#1526), and close the row: there is no file to verify. */
+/** Verify the dump's file, or, for a `keep`, build from it and swap the result in. */
+async function readTheDump(
+  claimed: ClaimedBuild, descriptor: DumpDescriptor, progress: BuildProgressRecord, signal: AbortSignal, notes: string[],
+  clock: PassClock, onPhase: (message: string) => void,
+): Promise<{ result: { bytes: number; lines: number; checksumActual: string | null }; said: string[] }> {
+  const { kind, only } = claimed.request;
+  if (only) progress.message = `Finding ${only} on the host...`;
+  await beat(claimed.id, progress);
+  const file = await resolveFile(descriptor, signal, only);
+  await recordFile(claimed.id, file);
+  progress.phase = 'reading';
+  progress.message = `Reading ${file.fileName}${dumpsDir() ? ' into the local copy' : ' from the host'}...`;
+  const options = readOptions(descriptor, progress, signal, notes, clock, file.expectedBytes);
+  const keeper = kind === 'keep' ? keeperOf(descriptor.key) : null;
+  const built = keeper
+    ? await keeper.build(file, {
+      ...options,
+      buildId: claimed.id,
+      // A new step: a pass starts its own clock, and a step that reads no file has no estimate.
+      onPhase: message => { onPhase(message); progress.etaSeconds = null; clock.reset(); },
+    })
+    : null;
+  const result = built ?? await readDump(file, countLines(), options);
+  const said = [verifiedMessage(file, result.lines, result.checksumActual), ...(built ? ['built and swapped in', ...(built.summary ? [built.summary] : [])] : [])];
+  return { result, said };
+}
+
+/** Derive the kept build's tables again from what it holds (#1526): there is no file to verify. */
 async function rederive(
   claimed: ClaimedBuild, descriptor: DumpDescriptor, progress: BuildProgressRecord, signal: AbortSignal, notes: string[],
+  onPhase: (message: string) => void,
 ): Promise<void> {
   const keeper = keeperOf(descriptor.key);
   if (!keeper?.rederive) throw new Error(`Nothing built from ${descriptor.key} can be derived again`);
@@ -126,14 +162,69 @@ async function rederive(
   await keeper.rederive({
     buildId: claimed.id,
     signal,
-    onPhase: message => { progress.message = message; },
+    onPhase,
     onNote: note => {
       notes.push(note);
       console.log(`[Dumps] ${descriptor.key}: ${note}`);
     },
   });
-  console.log(`[Dumps] ${descriptor.key}: ${['derived again and swapped in', ...notes].join('; ')}`);
-  await closeBuild(claimed.id, { status: 'success', bytes: 0, lines: 0, checksumActual: null, error: null });
+}
+
+const GB = 1024 ** 3;
+const gb = (bytes: number) => `${(bytes / GB).toFixed(1)} GB`;
+
+/** The local directory a build of a local file needs: a deployment without one keeps no copy to read. */
+function localDir(): string {
+  const dir = dumpsDir();
+  if (!dir) throw new Error('No local copy is kept here (DUMPS_DIR is not set)');
+  return dir;
+}
+
+/** Cut a sample of the local copy `only` (#1527), and record it as the build's file. */
+async function cutFrom(
+  claimed: ClaimedBuild, descriptor: DumpDescriptor, progress: BuildProgressRecord, signal: AbortSignal, only: string | undefined,
+): Promise<{ result: { bytes: number; lines: number; checksumActual: null }; said: string }> {
+  if (!only) throw new Error('A sample is cut from a local copy, and none was named');
+  progress.phase = 'reading';
+  progress.message = `Cutting a sample of ${only}...`;
+  await beat(claimed.id, progress);
+  const cut = await cutSample(localDir(), only, {
+    signal,
+    onProgress: ({ read, taken, lines }) => {
+      progress.read = read;
+      progress.lines = lines;
+      progress.message = `Cutting a sample of ${only}: ${gb(taken)} of ${gb(SAMPLE_JSON_BYTES)} of its entities...`;
+    },
+  });
+  await recordFile(claimed.id, sampleFile(descriptor.key, cut.sample));
+  return {
+    result: { bytes: cut.read, lines: cut.lines, checksumActual: null },
+    said: `cut ${cut.sample.fileName} (${gb(cut.sample.bytes)}, ${cut.lines.toLocaleString('en')} lines) from the first ${gb(cut.read)} of ${only}`,
+  };
+}
+
+/** Run the dump's builder on the sample `only` and keep nothing (#1527). */
+async function tryOnSample(
+  claimed: ClaimedBuild, descriptor: DumpDescriptor, progress: BuildProgressRecord, signal: AbortSignal, notes: string[],
+  clock: PassClock, onPhase: (message: string) => void, only: string | undefined,
+): Promise<{ bytes: number; lines: number; checksumActual: string | null; summary?: string }> {
+  const keeper = keeperOf(descriptor.key);
+  if (!keeper) throw new Error(`Nothing is built from ${descriptor.key} yet`);
+  if (!only) throw new Error('A trial reads a sample, and none was named');
+  const dir = localDir();
+  const sample = await sampleIn(dir, only);
+  const file = sampleFile(descriptor.key, sample);
+  await recordFile(claimed.id, file);
+  progress.phase = 'reading';
+  progress.message = `Reading ${only}...`;
+  const options = readOptions(descriptor, progress, signal, notes, clock, file.expectedBytes);
+  return keeper.build(file, {
+    ...options,
+    held: true,
+    trial: true,
+    buildId: claimed.id,
+    onPhase: message => { onPhase(message); progress.etaSeconds = null; clock.reset(); },
+  });
 }
 
 /** Close a build that did not end verified; what it did on the way (an older copy removed) is kept in its message. */

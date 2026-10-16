@@ -18,8 +18,9 @@ export interface Kept {
 export interface Keeper {
   /** What a keeping build of the dump makes, for the admin panel. */
   title: string;
-  build(file: DumpFile, options: ReadOptions & { buildId: number; onPhase: (message: string) => void }):
-    Promise<{ bytes: number; lines: number; checksumActual: string | null }>;
+  /** Build from `file` and swap the result in, or, as a `trial`, build and throw it away (#1527). */
+  build(file: DumpFile, options: ReadOptions & { buildId: number; onPhase: (message: string) => void; trial?: boolean }):
+    Promise<{ bytes: number; lines: number; checksumActual: string | null; summary?: string }>;
   /** Derive the build in place's tables again from what it holds, without the dump (#1526). */
   rederive?(options: RederiveOptions): Promise<void>;
   /** The build now in place, if any. */

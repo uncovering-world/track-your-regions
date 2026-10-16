@@ -174,6 +174,15 @@ export async function entitiesCopySize(): Promise<number> {
   return Number(result.rows[0]?.size ?? 0);
 }
 
+/** What the copies of every subset table take on disk, indexes included: what a build wrote (#1527). */
+export async function nextTablesSize(): Promise<number> {
+  const result = await pool.query<{ size: string | null }>(
+    'SELECT sum(pg_total_relation_size(to_regclass(t))) AS size FROM unnest($1::text[]) AS t',
+    [SUBSET_TABLES.map(next)],
+  );
+  return Number(result.rows[0]?.size ?? 0);
+}
+
 /** What the live derived tables take on disk, indexes included: what a re-derive writes again (#1526). */
 export async function derivedTablesSize(): Promise<number> {
   const result = await pool.query<{ size: string | null }>(
