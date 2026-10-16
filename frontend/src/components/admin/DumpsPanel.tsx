@@ -104,26 +104,39 @@ function BuildFigures({ build, datedBy }: { build: DumpBuild; datedBy: DumpsDump
   );
 }
 
+/**
+ * How long the dump worker may go without beating before the row says it may have stopped: it
+ * beats every five seconds whatever step it is in, so a minute of silence is not a slow step.
+ */
+const SILENT_FOR_MS = 60_000;
+
 function ProgressCells({ progress }: { progress: DumpBuildProgress }) {
-  const expected = progress.file?.expectedBytes ?? null;
+  // What the step's bar is measured against: the dump's file in a pass, the terms spool while labelling, the sample's size while cutting one (#1519).
+  const total = progress.total;
   const done = Math.max(progress.read, progress.downloaded);
-  const measured = progress.status === 'reading' && expected !== null;
+  const measured = total !== null && total > 0;
+  const silent = progress.heartbeatAt !== null && Date.now() - new Date(progress.heartbeatAt).getTime() > SILENT_FOR_MS;
   return (
     <TableCell colSpan={5}>
       <Typography variant="body2" sx={{ mb: 0.5 }}>{progress.message}</Typography>
       <LinearProgress
         variant={measured ? 'determinate' : 'indeterminate'}
-        value={measured ? Math.min(100, (done / expected) * 100) : undefined}
+        value={measured ? Math.min(100, (done / total) * 100) : undefined}
       />
       {progress.heartbeatAt && (
-        <Typography variant="caption" color="text.secondary" display="block">
-          {progress.etaSeconds !== null && `${formatTimeLeft(progress.etaSeconds)} left in this pass · `}
-          Last seen alive {formatRelativeTime(progress.heartbeatAt)}
+        <Typography variant="caption" color={silent ? 'error' : 'text.secondary'} display="block">
+          {silent
+            ? `No word from the dump worker since ${formatRelativeTime(progress.heartbeatAt)}: it may have stopped`
+            : <>
+              {progress.stepStartedAt && `This step started ${formatRelativeTime(progress.stepStartedAt)} · `}
+              {progress.etaSeconds !== null && `${formatTimeLeft(progress.etaSeconds)} left in it · `}
+              Last seen alive {formatRelativeTime(progress.heartbeatAt)}
+            </>}
         </Typography>
       )}
-      {progress.status === 'reading' && (
+      {done > 0 && (
         <Typography variant="caption" color="text.secondary">
-          {size(done)}{expected ? ` of ${size(expected)}` : ''} · {compact.format(progress.lines)} lines
+          {size(done)}{measured ? ` of ${size(total)}` : ''}{progress.lines > 0 ? ` · ${compact.format(progress.lines)} lines` : ''}
         </Typography>
       )}
     </TableCell>
