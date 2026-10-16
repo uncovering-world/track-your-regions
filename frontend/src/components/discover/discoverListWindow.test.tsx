@@ -81,7 +81,17 @@ function GrabActions() {
   return null;
 }
 
-function renderList(count: number, lost: { lostInKind?: number; showLost?: boolean; onShowLost?: (show: boolean) => void } = {}) {
+function renderList(
+  count: number,
+  lost: { lostInKind?: number; showLost?: boolean; onShowLost?: (show: boolean) => void } = {},
+  typed: {
+    types?: { type: string; count: number }[];
+    typeFilter?: string | null;
+    setTypeFilter?: (type: string | null) => void;
+    /** How many of the rows the narrowing keeps; all of them unless given. */
+    kept?: number;
+  } = {},
+) {
   for (const key of Object.keys(cardRenders)) delete cardRenders[Number(key)];
   const experiences = Array.from({ length: count }, (_, i) => experienceOf(i + 1));
   const noop = () => {};
@@ -91,7 +101,10 @@ function renderList(count: number, lost: { lostInKind?: number; showLost?: boole
       <DiscoverExperienceList
         activeView={{ regionId: 1, regionName: 'Europe', kindId: 1, kindName: 'UNESCO World Heritage Sites' }}
         experiences={experiences}
-        filteredExperiences={experiences}
+        filteredExperiences={experiences.slice(0, typed.kept ?? count)}
+        types={typed.types ?? []}
+        typeFilter={typed.typeFilter ?? null}
+        setTypeFilter={typed.setTypeFilter ?? noop}
         isLoading={false}
         lostInKind={lost.lostInKind ?? 0}
         showLost={lost.showLost ?? false}
@@ -115,6 +128,32 @@ function renderList(count: number, lost: { lostInKind?: number; showLost?: boole
     </HoverProvider>,
   );
 }
+
+describe("the list's types (#589)", () => {
+  it('offers each type with the rows it keeps, and narrows to the one pressed', () => {
+    const setTypeFilter = vi.fn();
+    renderList(12, {}, { types: [{ type: 'cultural', count: 9 }, { type: 'natural', count: 3 }], setTypeFilter });
+
+    expect(screen.getByRole('button', { name: 'All 12' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Natural 3' }));
+    expect(setTypeFilter).toHaveBeenCalledWith('natural');
+  });
+
+  it('says how many rows the type keeps of the whole list, and offers the way back', () => {
+    const setTypeFilter = vi.fn();
+    renderList(12, {}, { types: [{ type: 'cultural', count: 9 }, { type: 'natural', count: 3 }], typeFilter: 'natural', setTypeFilter, kept: 3 });
+
+    expect(screen.getByText(/^3 of 12 experiences/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Natural 3' })).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('button', { name: 'Natural 3' }));
+    expect(setTypeFilter).toHaveBeenCalledWith(null);
+  });
+
+  it('offers no types where the kind has none to choose between', () => {
+    renderList(5);
+    expect(screen.queryByRole('group', { name: 'Narrow to one type' })).toBeNull();
+  });
+});
 
 describe('the windowed Discover card list', () => {
   it('mounts the window, not the region: 683 experiences, a handful of rows', () => {

@@ -13,7 +13,7 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import {
-  Box, Typography, IconButton, TextField, InputAdornment, Button, List,
+  Box, Typography, IconButton, TextField, InputAdornment, Button, List, Chip,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import SearchIcon from '@mui/icons-material/Search';
@@ -32,6 +32,8 @@ import { VirtualRow } from '../shared/VirtualRow';
 import { NoticeLink } from '../shared/NoticeLink';
 import { HIDE_LOST_LABEL, lostHiddenLabel } from '../shared/lostNotice';
 import { ExperienceCard } from './ExperienceCard';
+import type { TypeChoice } from '../../utils/typeChoices';
+import { typeLabelFor } from '../../utils/experienceTypes';
 
 interface DiscoverExperienceRowProps {
   experience: Experience;
@@ -95,6 +97,10 @@ interface DiscoverExperienceListProps {
   onShowLost: (show: boolean) => void;
   search: string;
   setSearch: (value: string) => void;
+  /** The types the list can be narrowed to, with how many rows each keeps; empty for none (#589). */
+  types: TypeChoice[];
+  typeFilter: string | null;
+  setTypeFilter: (type: string | null) => void;
   shortKindName: string | null;
   rejectedCount: number;
   hasCuratorScope: boolean;
@@ -120,6 +126,9 @@ export function DiscoverExperienceList({
   onShowLost,
   search,
   setSearch,
+  types,
+  typeFilter,
+  setTypeFilter,
   shortKindName,
   rejectedCount,
   hasCuratorScope,
@@ -243,7 +252,7 @@ export function DiscoverExperienceList({
               <Typography variant="caption" color="text.secondary">
                 {(() => {
                   if (isLoading) return 'Loading...';
-                  const ofTotal = search ? ` of ${experiences.length}` : '';
+                  const ofTotal = search || typeFilter ? ` of ${experiences.length}` : '';
                   return `${filteredExperiences.length}${ofTotal} experiences`;
                 })()}
                 {hasCuratorScope && rejectedCount > 0 && (
@@ -265,6 +274,35 @@ export function DiscoverExperienceList({
               </Button>
             )}
           </Box>
+
+          {/* The kind's types, each with how many of the list's rows it keeps (#589). */}
+          {types.length > 0 && (
+            <Box
+              role="group"
+              aria-label="Narrow to one type"
+              sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, px: 1.5, py: 0.75, borderBottom: '1px solid', borderColor: 'divider', flexShrink: 0 }}
+            >
+              <Chip
+                size="small"
+                label={`All ${experiences.length}`}
+                variant={typeFilter === null ? 'filled' : 'outlined'}
+                color={typeFilter === null ? 'primary' : 'default'}
+                onClick={() => setTypeFilter(null)}
+                aria-pressed={typeFilter === null}
+              />
+              {types.map(choice => (
+                <Chip
+                  key={choice.type}
+                  size="small"
+                  label={`${typeLabelFor(activeView.kindId, choice.type)} ${choice.count}`}
+                  variant={typeFilter === choice.type ? 'filled' : 'outlined'}
+                  color={typeFilter === choice.type ? 'primary' : 'default'}
+                  onClick={() => setTypeFilter(typeFilter === choice.type ? null : choice.type)}
+                  aria-pressed={typeFilter === choice.type}
+                />
+              ))}
+            </Box>
+          )}
 
           {/* Search (only for 15+ experiences) */}
           {experiences.length > 15 && (
@@ -302,7 +340,7 @@ export function DiscoverExperienceList({
           <Box ref={scrollContainerRef} sx={{ flex: 1, overflowY: 'auto' }}>
             {isLoading && <LoadingSpinner size={24} padding="16px 0" />}
             {!isLoading && filteredExperiences.length === 0 && (
-              <EmptyState message={search ? 'No experiences match your filter.' : 'No experiences found.'} />
+              <EmptyState message={search || typeFilter ? 'No experiences match your filter.' : 'No experiences found.'} />
             )}
             {!isLoading && filteredExperiences.length > 0 && (
               <List

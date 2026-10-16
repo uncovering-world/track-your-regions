@@ -93,6 +93,11 @@ export function typeOptionsFor(kindId: number | null | undefined): TypeOption[] 
   return kindId != null ? VOCABULARY_BY_KIND[kindId]?.options ?? [] : [];
 }
 
+/** A type as the kind's vocabulary names it ("cultural" reads "Cultural"), its own value where the kind has no word for it. */
+export function typeLabelFor(kindId: number | null | undefined, value: string): string {
+  return typeOptionsFor(kindId).find(option => option.value === value)?.label ?? value;
+}
+
 /** The Archaeology kind, whose holdings were dug up rather than made for a wall. */
 const ARCHAEOLOGY_KIND_ID = 5;
 
