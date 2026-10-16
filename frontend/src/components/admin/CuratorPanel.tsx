@@ -27,13 +27,7 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableRow,
   Autocomplete,
-  Collapse,
 } from '@mui/material';
 import DeleteIcon from '@mui/icons-material/Delete';
 import HistoryIcon from '@mui/icons-material/History';
@@ -41,8 +35,6 @@ import PersonAddIcon from '@mui/icons-material/PersonAdd';
 import PublicIcon from '@mui/icons-material/Public';
 import MapIcon from '@mui/icons-material/Map';
 import SourceIcon from '@mui/icons-material/Source';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   listCurators,
@@ -52,13 +44,11 @@ import {
   searchUsers,
   getSources,
 } from '../../api/admin';
-import { fetchWorldViews } from '../../api/worldViews';
-import { useAuth } from '../../hooks/useAuth';
-import { searchRegions, type RegionSearchResult } from '../../api/regions';
-import type { CuratorInfo, CuratorScope, CuratorActivityEntry } from '../../api/admin';
-import { formatDateTime } from '../../utils/dateFormat';
+import type { RegionSearchResult } from '../../api/regions';
+import type { CuratorInfo, CuratorScope } from '../../api/admin';
+import { CurationActivityTable } from './CurationActivityTable';
+import { RegionSearchPicker } from './RegionSearchPicker';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
-import { actionLabel } from '../shared/curationLog';
 import { displayNameOf } from '../../utils/displayName';
 import { queryKeys } from '../../api/queryKeys';
 
@@ -261,7 +251,6 @@ function ScopeChip({
 // =============================================================================
 
 function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const { user } = useAuth();
   const queryClient = useQueryClient();
 
   // User search
@@ -279,30 +268,11 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
   const [selectedSourceId, setSelectedSourceId] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
 
-  // Region search
-  const [regionQuery, setRegionQuery] = useState('');
-  const [selectedWorldViewId, setSelectedWorldViewId] = useState<number | null>(null);
-
   // Queries
   const { data: userResults, isFetching: isSearchingUsers } = useQuery({
     queryKey: queryKeys.admin.userSearch(userQuery),
     queryFn: () => searchUsers(userQuery),
     enabled: userQuery.length >= 2,
-  });
-
-  const { data: worldViews } = useQuery({
-    // Same rule as useNavigation: this list is filtered by visibility, so it
-    // is cached per identity. Sharing the key also shares the entry, which is
-    // why this no longer refetches what navigation already has.
-    queryKey: queryKeys.worldViews.forCaller(user?.id),
-    queryFn: fetchWorldViews,
-    enabled: open && scopeType === 'region',
-  });
-
-  const { data: regionResults, isFetching: isSearchingRegions } = useQuery({
-    queryKey: queryKeys.admin.regionSearch(selectedWorldViewId, regionQuery),
-    queryFn: () => searchRegions(selectedWorldViewId!, regionQuery),
-    enabled: !!selectedWorldViewId && regionQuery.length >= 2,
   });
 
   const { data: sources } = useQuery({
@@ -326,8 +296,6 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
     setSelectedRegion(null);
     setSelectedSourceId(null);
     setNotes('');
-    setRegionQuery('');
-    setSelectedWorldViewId(null);
     onClose();
   }, [onClose]);
 
@@ -348,12 +316,6 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
     (scopeType === 'global' ||
       (scopeType === 'region' && selectedRegion) ||
       (scopeType === 'source' && selectedSourceId));
-
-  // Auto-select first world view
-  if (worldViews?.length && !selectedWorldViewId) {
-    const custom = worldViews.find((wv) => !(wv as { isDefault?: boolean }).isDefault);
-    setSelectedWorldViewId(custom?.id ?? worldViews[0].id);
-  }
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
@@ -408,58 +370,7 @@ function AddCuratorDialog({ open, onClose }: { open: boolean; onClose: () => voi
 
           {/* Region Scope: World View + Region Search */}
           {scopeType === 'region' && (
-            <>
-              {worldViews && worldViews.length > 1 && (
-                <FormControl fullWidth size="small">
-                  <InputLabel>World View</InputLabel>
-                  <Select
-                    value={selectedWorldViewId ?? ''}
-                    label="World View"
-                    onChange={(e) => {
-                      setSelectedWorldViewId(Number(e.target.value));
-                      setSelectedRegion(null);
-                      setRegionQuery('');
-                    }}
-                  >
-                    {worldViews.map((wv) => (
-                      <MenuItem key={wv.id} value={wv.id}>
-                        {wv.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              )}
-
-              <Autocomplete
-                options={regionResults ?? []}
-                getOptionLabel={(opt) => opt.path || opt.name}
-                value={selectedRegion}
-                onChange={(_, value) => setSelectedRegion(value)}
-                onInputChange={(_, value) => setRegionQuery(value)}
-                loading={isSearchingRegions}
-                disabled={!selectedWorldViewId}
-                renderOption={(props, opt) => (
-                  <li {...props} key={opt.id}>
-                    <Box>
-                      <Typography variant="body2">{opt.name}</Typography>
-                      {opt.path && opt.path !== opt.name && (
-                        <Typography variant="caption" color="text.secondary">
-                          {opt.path}
-                        </Typography>
-                      )}
-                    </Box>
-                  </li>
-                )}
-                renderInput={(params) => (
-                  <TextField
-                    {...params}
-                    label="Search Region"
-                    placeholder="Type region name..."
-                    required
-                  />
-                )}
-              />
-            </>
+            <RegionSearchPicker value={selectedRegion} onChange={setSelectedRegion} required />
           )}
 
           {/* Source Scope: Source Dropdown */}
@@ -529,8 +440,6 @@ function ActivityDialog({
   userId: number | null;
   onClose: () => void;
 }) {
-  const [expanded, setExpanded] = useState<number | null>(null);
-
   const { data, isLoading } = useQuery({
     queryKey: queryKeys.admin.curatorActivity(userId),
     queryFn: () => getCuratorActivity(userId!),
@@ -547,113 +456,11 @@ function ActivityDialog({
             No curation activity recorded yet.
           </Typography>
         )}
-        {!isLoading && data?.activity.length ? (
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Action</TableCell>
-                <TableCell>Experience</TableCell>
-                <TableCell>Region</TableCell>
-                <TableCell>Date</TableCell>
-                <TableCell width={40} />
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {data.activity.map((entry) => (
-                <ActivityRow
-                  key={entry.id}
-                  entry={entry}
-                  expanded={expanded === entry.id}
-                  onToggle={() => setExpanded(expanded === entry.id ? null : entry.id)}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        ) : null}
+        {!isLoading && data?.activity.length ? <CurationActivityTable activity={data.activity} /> : null}
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose}>Close</Button>
       </DialogActions>
     </Dialog>
-  );
-}
-
-// =============================================================================
-// Activity Row
-// =============================================================================
-
-function ActivityRow({
-  entry,
-  expanded,
-  onToggle,
-}: {
-  entry: CuratorActivityEntry;
-  expanded: boolean;
-  onToggle: () => void;
-}) {
-  // The same words the object's own History uses, from the same table. This screen
-  // asks a different question — what has this curator done, rather than what was done
-  // to this object — but the rows are the rows, and it had its own six-entry colour map
-  // and `action.replace(/_/g, ' ')`, which named fourteen of the twenty acts as
-  // "admission overridden" and "location marked former". Two renderings of one act is
-  // how the two came to disagree, and one of them is enough (#691).
-  //
-  // The detail below stays raw JSON: an admin reading a curator's trail is auditing it,
-  // and the whole payload is the point. `formatLogDetails` says what a curator meant;
-  // this says what was written.
-  const named = actionLabel(entry.action);
-
-  return (
-    <>
-      <TableRow hover>
-        <TableCell>
-          <Chip
-            label={named?.label ?? entry.action.replace(/_/g, ' ')}
-            size="small"
-            variant="outlined"
-            sx={named ? {
-              color: named.color,
-              bgcolor: `${named.color}14`,
-              borderColor: `${named.color}55`,
-            } : undefined}
-          />
-        </TableCell>
-        <TableCell>
-          <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
-            {entry.experience_name}
-          </Typography>
-        </TableCell>
-        <TableCell>
-          <Typography variant="body2" color="text.secondary">
-            {entry.region_name || '—'}
-          </Typography>
-        </TableCell>
-        <TableCell>
-          <Typography variant="caption">
-            {formatDateTime(entry.created_at)}
-          </Typography>
-        </TableCell>
-        <TableCell>
-          {entry.details && (
-            <IconButton size="small" onClick={onToggle}>
-              {expanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
-            </IconButton>
-          )}
-        </TableCell>
-      </TableRow>
-      {entry.details && (
-        <TableRow>
-          <TableCell colSpan={5} sx={{ py: 0, borderBottom: expanded ? undefined : 'none' }}>
-            <Collapse in={expanded}>
-              <Box sx={{ py: 1, px: 2, bgcolor: 'grey.50', borderRadius: 1, my: 0.5 }}>
-                <Typography variant="caption" component="pre" sx={{ whiteSpace: 'pre-wrap', fontFamily: 'monospace' }}>
-                  {JSON.stringify(entry.details, null, 2)}
-                </Typography>
-              </Box>
-            </Collapse>
-          </TableCell>
-        </TableRow>
-      )}
-    </>
   );
 }
