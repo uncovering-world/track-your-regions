@@ -22,6 +22,8 @@ export function countryOfPlace(
 /** One of a place's best countries, and whether it still holds today. */
 export interface PlaceCountry {
   country: string;
+  /** The country's item, where the reader keys countries by something else (the live query keys them by label). */
+  qid?: string;
   /** Some statement of it carries no end time (`P582`), and the state was not dissolved (`P576`). */
   stands: boolean;
 }
@@ -35,10 +37,44 @@ export interface PlaceCountry {
  * in Nazi Germany (ended 1945) and Poland; the Moslavina monument in Croatia
  * and Yugoslavia (dissolved 1992). A traveller standing there is in Turkey,
  * Poland and Croatia, which is the one statement neither ended nor naming a
- * state that is gone. A place stated only in states that are gone — Mediolanum
- * in Ancient Rome — keeps them rather than losing its country.
+ * state that is gone. A place stated only in states that are gone keeps them
+ * here, for its point to settle (`openCountries`, then `settleCountriesByPoint`,
+ * #1564): Mediolanum, stated only in Ancient Rome, ends up in Italy.
  */
 export function standingCountries(countries: readonly PlaceCountry[]): string[] {
   const standing = countries.filter(c => c.stands).map(c => c.country);
   return standing.length ? standing : countries.map(c => c.country);
+}
+
+/** A country a place may be named in, as the reader knows it: its item, and its label. */
+export interface CountryOption {
+  qid: string | null;
+  label: string;
+}
+
+/**
+ * What the place's own statements leave for its point to decide (#1564): the
+ * candidates, and whether any of them still stands.
+ */
+export interface CountryOptions {
+  candidates: CountryOption[];
+  noneStands: boolean;
+}
+
+/**
+ * Whether the statements leave the country open, and among which of them.
+ * Open when more than one country stands and no part of the point picked one —
+ * Wikidata lists Russia before Italy on the Basilica of Sant'Ambrogio in Milan,
+ * and statement order cannot tell an error from a second country — or when none
+ * stands at all, as Mediolanum stands only in Ancient Rome. Null when the
+ * statements decided: one standing country, or the part the point applies to.
+ * The answer is in the reader's own keys, as `countries` gives them.
+ */
+export function openCountries(
+  countries: readonly PlaceCountry[], partCountries: ReadonlySet<string> | null,
+): { keys: string[]; noneStands: boolean } | null {
+  const noneStands = countries.length > 0 && !countries.some(c => c.stands);
+  const keys = [...new Set(standingCountries(countries))];
+  if (noneStands) return { keys, noneStands };
+  return keys.length > 1 && partCountries === null ? { keys, noneStands } : null;
 }

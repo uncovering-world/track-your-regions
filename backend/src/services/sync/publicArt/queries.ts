@@ -36,7 +36,10 @@ import { readsSubset } from '../subset/reader.js';
 import {
   subsetContainerFacts, subsetEntityFacts, subsetPoolOfClasses, subsetPoolOfIds,
 } from '../subset/publicArt.js';
-import { countryOfPlace, standingCountries, type PlaceCountry } from './countryOfPlace.js';
+import {
+  countryOfPlace, openCountries, standingCountries, type CountryOptions, type PlaceCountry,
+} from './countryOfPlace.js';
+import { settleCountriesByPoint } from './countryByPoint.js';
 
 /**
  * The floor of the pool sits below the line a row *stays* above
@@ -87,6 +90,8 @@ export interface PoolEntity {
   imageUrl: string | null;
   sitelinks: number;
   countryLabel: string | null;
+  /** What the place's statements left open, for its point to settle (`settleCountriesByPoint`, #1564). */
+  countryOptions?: CountryOptions | null;
   articleUrl: string | null;
   website: string | null;
   year: number | null;
@@ -105,7 +110,7 @@ const POOL_DETAILS = `
       OPTIONAL { ?article schema:about ?e ; schema:isPartOf <https://en.wikipedia.org/> }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }`;
 
-const POOL_COLUMNS = '?e ?eLabel ?eDescription ?coord ?sl ?img ?countryLabel ?countryEnded ?countryDissolved ?part ?partCountryLabel ?article ?site (YEAR(?inception) AS ?year)';
+const POOL_COLUMNS = '?e ?eLabel ?eDescription ?coord ?sl ?img ?country ?countryLabel ?countryEnded ?countryDissolved ?part ?partCountryLabel ?article ?site (YEAR(?inception) AS ?year)';
 
 function bandedPoolQuery(rootQid: string, band: Band, limit: number): string {
   return `${HINT_PREFIX}
@@ -140,7 +145,9 @@ interface CountryReading {
 function readCountry(reading: CountryReading | undefined, row: SparqlBinding, wkt: string | null): CountryReading {
   const next = reading ?? { countries: [], parts: new Map<string, Set<string>>() };
   if (row.countryLabel?.value) {
-    next.countries.push({ country: row.countryLabel.value, stands: !row.countryEnded && !row.countryDissolved });
+    next.countries.push({
+      country: row.countryLabel.value, qid: extractQid(row.country?.value ?? ''), stands: !row.countryEnded && !row.countryDissolved,
+    });
   }
   if (wkt && row.part?.value) {
     const named = next.parts.get(wkt) ?? new Set<string>();
@@ -153,6 +160,14 @@ function readCountry(reading: CountryReading | undefined, row: SparqlBinding, wk
 /** The country of an entity drawn at `point`: of the countries that stand today, `countryOfPlace`'s. */
 function countryAt(reading: CountryReading | undefined, point: string | null): string | null {
   return countryOfPlace(standingCountries(reading?.countries ?? []), (point && reading?.parts.get(point)) || null);
+}
+
+/** What the statements leave for the point to settle, each candidate with its item. */
+function countryOptionsAt(reading: CountryReading | undefined, point: string | null): CountryOptions | null {
+  const open = openCountries(reading?.countries ?? [], (point && reading?.parts.get(point)) || null);
+  if (!open) return null;
+  const qidOf = new Map((reading?.countries ?? []).map(c => [c.country, c.qid && isQid(c.qid) ? c.qid : null]));
+  return { candidates: open.keys.map(label => ({ label, qid: qidOf.get(label) ?? null })), noneStands: open.noneStands };
 }
 
 /**
@@ -207,6 +222,7 @@ function parsePool(rows: SparqlBinding[], options: { placeless?: boolean } = {})
   applyPreferred(out, kept);
   for (const [qid, entity] of out) {
     entity.countryLabel = countryAt(countries.get(qid), kept.get(qid)?.wkt ?? null);
+    entity.countryOptions = countryOptionsAt(countries.get(qid), kept.get(qid)?.wkt ?? null);
   }
   return [...out.values()];
 }
@@ -231,7 +247,7 @@ export async function fetchBroadPool(
     await run.step();
     const pooled = await subsetPoolOfClasses([root.qid], POOL_MIN_SITELINKS);
     run.phase(`Counting the Wikipedia editions of ${pooled.length} ${root.label}s...`);
-    return inWikipediaEditions(run.sparql, pooled, { floor: POOL_MIN_SITELINKS, before: run.step });
+    return settleCountriesByPoint(await inWikipediaEditions(run.sparql, pooled, { floor: POOL_MIN_SITELINKS, before: run.step }));
   }
   const entities = new Map<string, PoolEntity>();
   for (let i = 0; i < POOL_BANDS.length; i++) {
@@ -246,7 +262,7 @@ export async function fetchBroadPool(
     for (const entity of parsePool(rows)) entities.set(entity.qid, entity);
   }
   run.phase(`Counting the Wikipedia editions of ${entities.size} ${root.label}s...`);
-  return inWikipediaEditions(run.sparql, [...entities.values()], { floor: POOL_MIN_SITELINKS, before: run.step });
+  return settleCountriesByPoint(await inWikipediaEditions(run.sparql, [...entities.values()], { floor: POOL_MIN_SITELINKS, before: run.step }));
 }
 
 /**
@@ -274,7 +290,7 @@ export async function fetchEntitiesByIds(
   const asked = qids.filter(isQid);
   if (!asked.length) return [];
   const { sparql, step } = doorOf(door);
-  if (readsSubset(sparql)) return inWikipediaEditions(sparql, await subsetPoolOfIds(asked), { before: step });
+  if (readsSubset(sparql)) return settleCountriesByPoint(await inWikipediaEditions(sparql, await subsetPoolOfIds(asked), { before: step }));
   const rows = await sparql(`
     SELECT ${POOL_COLUMNS} WHERE {
       VALUES ?e { ${values(asked)} }
@@ -282,7 +298,7 @@ export async function fetchEntitiesByIds(
       OPTIONAL { ?e wdt:P625 ?coord }${POOL_DETAILS}
     }`, { kind: 'pool', label: `${about}: ${asked.length}` });
   // No floor: these rows are asked about because the line may refuse them.
-  return inWikipediaEditions(sparql, parsePool(rows, { placeless: true }), { before: step });
+  return settleCountriesByPoint(await inWikipediaEditions(sparql, parsePool(rows, { placeless: true }), { before: step }));
 }
 
 /** Entities of a batch of narrow classes, taken whole. */
@@ -294,14 +310,14 @@ export async function fetchClassPool(
   if (!classQids.length) return [];
   const { sparql, step } = doorOf(door);
   if (readsSubset(sparql)) {
-    return inWikipediaEditions(sparql, await subsetPoolOfClasses(classQids, POOL_MIN_SITELINKS), { floor: POOL_MIN_SITELINKS, before: step });
+    return settleCountriesByPoint(await inWikipediaEditions(sparql, await subsetPoolOfClasses(classQids, POOL_MIN_SITELINKS), { floor: POOL_MIN_SITELINKS, before: step }));
   }
   const rows = await sparql(
     classPoolQuery(classQids, limit),
     { kind: 'pool', label: `pool: ${classQids.length} narrow classes` },
   );
   failIfTruncated(rows, limit, `pool: ${classQids.length} narrow classes`);
-  return inWikipediaEditions(sparql, parsePool(rows), { floor: POOL_MIN_SITELINKS, before: step });
+  return settleCountriesByPoint(await inWikipediaEditions(sparql, parsePool(rows), { floor: POOL_MIN_SITELINKS, before: step }));
 }
 
 // =============================================================================

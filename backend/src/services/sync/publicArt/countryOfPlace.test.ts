@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { countryOfPlace, standingCountries } from './countryOfPlace.js';
+import { countryOfPlace, openCountries, standingCountries } from './countryOfPlace.js';
 
 describe('countryOfPlace (#1533)', () => {
   it('keeps the first country where the point names no part, and one no part needs', () => {
@@ -28,5 +28,20 @@ describe('standingCountries (#757)', () => {
     // Mediolanum is stated in Ancient Rome (Q1747689) alone.
     expect(standingCountries([{ country: 'Q1747689', stands: false }])).toEqual(['Q1747689']);
     expect(standingCountries([])).toEqual([]);
+  });
+});
+
+describe('openCountries (#1564)', () => {
+  it('opens two standing countries no part chose between', () => {
+    // Sant'Ambrogio: Russia (Q159) and Italy (Q38), both standing.
+    expect(openCountries([{ country: 'Q159', stands: true }, { country: 'Q38', stands: true }], null))
+      .toEqual({ keys: ['Q159', 'Q38'], noneStands: false });
+  });
+
+  it('opens a place where no country stands, and settles one standing country or a part', () => {
+    expect(openCountries([{ country: 'Q1747689', stands: false }], null)).toEqual({ keys: ['Q1747689'], noneStands: true });
+    expect(openCountries([{ country: 'Q38', stands: true }, { country: 'Q2277', stands: false }], null)).toBeNull();
+    expect(openCountries([{ country: 'Q29', stands: true }, { country: 'Q145', stands: true }], new Set(['Q145']))).toBeNull();
+    expect(openCountries([], null)).toBeNull();
   });
 });
