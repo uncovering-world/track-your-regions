@@ -18,10 +18,11 @@
  * - anything else asks: a put-back refused for another reason, a confirmed
  *   refusal the rule would now admit.
  *
- * Reasons are compared with their numbers folded. A reason carries the
+ * Reasons are compared as `foldedReason` folds them. A reason carries the
  * measurements it was decided on — "17 sitelinks: below the world tier's line
  * (22 to enter, 18 to stay)", "painting-share: 3 painting(s) vs 9 sculptural
- * work(s)" — and a count that ticks is not a new reason.
+ * work(s)" — and a count that ticks is not a new reason, nor is the measure's
+ * other name ("16 Wikipedia editions: …", #1589).
  */
 
 import type { Admission } from '@tyr/shared/lifecycle';
@@ -42,9 +43,16 @@ export interface PinnedView {
   answered: RunView | null;
 }
 
-/** A reason with every run of digits folded to one mark. */
+/**
+ * The rule's words for one measure, as they have changed (#1589): the fame
+ * line counted every sitelink until #1240 counted Wikipedia editions, and a
+ * reason in either words is the same reason.
+ */
+const MEASURE_WORDS = /\b(?:sitelinks?|Wikipedia editions?)\b/gi;
+
+/** A reason with every run of digits folded to one mark, and the measure's words to one word. */
 export function foldedReason(reason: string | null): string | null {
-  return reason === null ? null : reason.replace(/\d+/g, '#').trim();
+  return reason === null ? null : reason.replace(/\d+/g, '#').replace(MEASURE_WORDS, 'editions').trim();
 }
 
 /** Whether a run's view of a pinned membership is a question for the curator. */
@@ -72,7 +80,7 @@ export interface PinnedRow {
 
 /**
  * Whether the run still says the question standing on a pin (#1370): the
- * same verdict, the same reason with its counts folded. Such a question stays
+ * same verdict, the same reason as `foldedReason` folds it. Such a question stays
  * even where `asksAgain` would not raise it — one a run started to ask again
  * put in the words the curator answered — while one the run has moved off
  * closes as before.
@@ -115,9 +123,9 @@ export interface PinQuestion {
   read: Pick<PinnedRow, 'answer' | 'answeredVerdict' | 'answeredReason'>;
 }
 
-/** `reason` with its numbers folded, as `foldedReason` folds one, in SQL. */
+/** `reason` folded as `foldedReason` folds one — the numbers and the measure's words — in SQL. */
 export function foldedReasonSql(reason: string): string {
-  return `btrim(regexp_replace(${reason}, '\\d+', '#', 'g'))`;
+  return `btrim(regexp_replace(regexp_replace(${reason}, '\\d+', '#', 'g'), '\\m(sitelinks?|Wikipedia editions?)\\M', 'editions', 'gi'))`;
 }
 
 /**
@@ -125,7 +133,7 @@ export function foldedReasonSql(reason: string): string {
  * pins it no longer disagrees with (#1367). The row's admission is left as the
  * curator left it; what the run says is written beside it, for the review
  * queue. A question the run asks again keeps the date it was first asked, its
- * reason compared as `asksAgain` compares one, numbers folded. A question is
+ * reason compared as `asksAgain` compares one, through `foldedReason`. A question is
  * written only where the pin is still the one the run read — the curator's
  * answer and the view it answered — so a pin released or answered while the
  * run ran is not asked about with a question computed against the old one.

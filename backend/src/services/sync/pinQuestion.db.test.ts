@@ -103,6 +103,17 @@ describe("a run's question about a curator's admission pin (#1367)", () => {
     expect((await membership()).admission_question_verdict).toBeNull();
   });
 
+  it("asks nothing when only the rule's word for the measure changed (#1589)", async () => {
+    // The Warsaw Uprising Monument's pin, answered before #1240 renamed the measure.
+    await pool.query(
+      `UPDATE experience_kind_memberships SET admission_pin_reason = $2 WHERE experience_id = $1`,
+      [GARDNER, "17 sitelinks: below the world tier's line (22 to enter, 18 to stay)"],
+    );
+    await run([{ externalId: QID, reason: "16 Wikipedia editions: below the world tier's line (22 to enter, 18 to stay)" }], []);
+
+    expect((await membership()).admission_question_verdict).toBeNull();
+  });
+
   it('closes the question once the rule admits what the curator put back', async () => {
     await run([{ externalId: QID, reason: 'site, not a venue: museum' }], []);
     await run([], [QID]);

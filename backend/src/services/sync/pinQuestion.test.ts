@@ -64,4 +64,17 @@ describe('a reason with its numbers folded', () => {
       .toBe('not an art museum — painting-share: # painting(s) vs # sculptural work(s)');
     expect(foldedReason(null)).toBeNull();
   });
+
+  it('reads the measure the same in either of the words the rule has used for it (#1589)', () => {
+    // Warsaw Uprising Monument: put back over the first, and asked about in the second since #1240.
+    const answered = "17 sitelinks: below the world tier's line (22 to enter, 18 to stay)";
+    const now = "16 Wikipedia editions: below the world tier's line (22 to enter, 18 to stay)";
+    expect(foldedReason(now)).toBe(foldedReason(answered));
+    expect(foldedReason('1 Wikipedia edition: below the line')).toBe(foldedReason('1 sitelink: below the line'));
+    expect(asksAgain({ answer: 'admitted', answered: { verdict: 'refused', reason: answered } }, { verdict: 'refused', reason: now }))
+      .toBe(false);
+    // A reason that differs in substance is still a question.
+    expect(asksAgain({ answer: 'admitted', answered: { verdict: 'refused', reason: answered } }, { verdict: 'refused', reason: 'site, not a venue: museum' }))
+      .toBe(true);
+  });
 });
