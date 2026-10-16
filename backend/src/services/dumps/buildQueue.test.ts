@@ -15,6 +15,8 @@ const ledger = vi.hoisted(() => ({
 vi.mock('./ledger.js', () => ledger);
 const copies = vi.hoisted(() => ({ newest: null as null | { fileName: string } }));
 vi.mock('./localCopies.js', () => ({ newestLocalCopy: async () => copies.newest }));
+const samples = vi.hoisted(() => ({ newest: null as null | { fileName: string } }));
+vi.mock('./samples.js', () => ({ newestSample: async () => samples.newest }));
 const kept = vi.hoisted(() => ({ latest: vi.fn(async () => null as null | { dumpDate: string }) }));
 vi.mock('./keepers.js', () => ({
   keeperOf: (key: string) => (key === 'wikidata-entities' ? { title: 'subset', rederive: vi.fn(), latest: kept.latest } : null),
@@ -30,10 +32,31 @@ const queuedRow = (request: Record<string, unknown>) => ({
 beforeEach(() => {
   vi.clearAllMocks();
   copies.newest = null;
+  samples.newest = null;
   process.env.DUMPS_DIR = '/app/data/dumps';
 });
 
 describe('queuing a dump build (ADR-0106)', () => {
+  it('cuts a sample from the local copy, and refuses one without a copy or a builder (#1527)', async () => {
+    await expect(startBuild('wikidata-entities', { startedBy: 1, kind: 'sample' })).rejects.toThrow(/no local copy of wikidata-entities/);
+    await expect(startBuild('enwiki-page', { startedBy: 1, kind: 'sample' })).rejects.toThrow(/Nothing is built from enwiki-page/);
+    copies.newest = { fileName: 'wikidata-20261005-all.json.gz' };
+    ledger.activeBuildOf.mockResolvedValue(queuedRow({ kind: 'sample' }));
+    await startBuild('wikidata-entities', { startedBy: 1, kind: 'sample' });
+    expect(ledger.enqueueBuild).toHaveBeenCalledWith('wikidata-entities', 'local', { kind: 'sample', only: 'wikidata-20261005-all.json.gz' }, 1);
+  });
+
+  it('tries the build on the newest sample, and refuses where none was cut (#1527)', async () => {
+    copies.newest = { fileName: 'wikidata-20261005-all.json.gz' };
+    await expect(startBuild('wikidata-entities', { startedBy: 1, kind: 'trial' })).rejects.toThrow(/no sample of wikidata-entities/);
+    samples.newest = { fileName: 'sample-4gb-wikidata-20261005-all.json.gz' };
+    ledger.activeBuildOf.mockResolvedValue(queuedRow({ kind: 'trial' }));
+    await startBuild('wikidata-entities', { startedBy: 1, kind: 'trial' });
+    expect(ledger.enqueueBuild).toHaveBeenCalledWith(
+      'wikidata-entities', 'local', { kind: 'trial', only: 'sample-4gb-wikidata-20261005-all.json.gz' }, 1,
+    );
+  });
+
   it('refuses a keeping build of a dump nothing is built from', async () => {
     await expect(startBuild('enwiki-page', { startedBy: 1, kind: 'keep' })).rejects.toThrow(/Nothing is built from enwiki-page/);
     expect(ledger.enqueueBuild).not.toHaveBeenCalled();

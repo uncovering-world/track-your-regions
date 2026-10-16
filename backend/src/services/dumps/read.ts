@@ -57,6 +57,12 @@ export interface ReadOptions {
   onNote?: (note: string) => void;
   /** The grid a chunk consumer's pieces are cut on; `PIECE_BYTES` unless a spec needs small pieces. */
   pieceBytes?: number;
+  /**
+   * The file is in `dumpsDir` and nowhere else, as a sample is (#1527): it is
+   * read as it is, never downloaded, and no older copy of the dump is
+   * removed for it.
+   */
+  held?: boolean;
 }
 
 export interface ReadResult {
@@ -144,6 +150,7 @@ function fileNamesOf(file: DumpFile): (name: string) => boolean {
 /** The file's compressed bytes: a local copy brought to full size first, or the host's stream. */
 async function openSource(file: DumpFile, path: string | null, options: ReadOptions, onDownloaded: (n: number) => void): Promise<Readable> {
   if (!path) return openStream(file.url, options.signal);
+  if (options.held) return createReadStream(path);
   await makeRoom(file, options.dumpsDir!, path, options);
   await downloadTo(file.url, path, options.signal, onDownloaded);
   return createReadStream(path);
@@ -170,14 +177,15 @@ export async function readDump(file: DumpFile, consumer: DumpConsumer, options: 
       options.onProgress?.({ downloaded, read: 0, lines: 0 });
     });
     const result = await readSource(file, source, consumer, options, () => downloaded);
-    if (options.dumpsDir) await retireOlderCopies(file, options.dumpsDir, options);
+    if (options.dumpsDir && !options.held) await retireOlderCopies(file, options.dumpsDir, options);
     return result;
   } catch (error) {
     source?.destroy();
     await consumer.abort();
     if (path && isDamage(error) && !signal.aborted) {
       await rm(path, { force: true });
-      throw new Error(`${(error as Error).message}; the local copy was deleted, and the next build downloads it again`, { cause: error });
+      const next = options.held ? 'cut it again to read it' : 'the next build downloads it again';
+      throw new Error(`${(error as Error).message}; the local copy was deleted, and ${next}`, { cause: error });
     }
     throw error;
   }

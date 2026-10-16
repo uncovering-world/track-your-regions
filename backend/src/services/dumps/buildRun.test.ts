@@ -19,8 +19,19 @@ const FILE = {
   date: '2026-10-12', checksum: { kind: 'sha1', value: 'a'.repeat(40) }, expectedBytes: 1, compression: 'gzip',
 };
 vi.mock('./catalog.js', () => ({ dumpNamed: (key: string) => ({ key, resolve: async () => FILE }) }));
-const keepers = vi.hoisted(() => ({ rederive: vi.fn(async (_options: { buildId: number; onNote?: (note: string) => void }) => undefined) }));
-vi.mock('./keepers.js', () => ({ keeperOf: (key: string) => (key === 'wikidata-entities' ? { rederive: keepers.rederive } : null) }));
+const keepers = vi.hoisted(() => ({
+  rederive: vi.fn(async (_options: { buildId: number; onNote?: (note: string) => void; onPhase: (m: string) => void }) => undefined),
+  build: vi.fn(),
+}));
+vi.mock('./keepers.js', () => ({
+  keeperOf: (key: string) => (key === 'wikidata-entities' ? { rederive: keepers.rederive, build: keepers.build } : null),
+}));
+const SAMPLE = { fileName: 'sample-4gb-wikidata-20261005-all.json.gz', of: 'wikidata-20261005-all.json.gz', date: '2026-10-05', bytes: 400 };
+const SAMPLE_FILE = { key: 'wikidata-entities', fileName: SAMPLE.fileName, url: '', date: SAMPLE.date, checksum: null, expectedBytes: 400, compression: 'gzip' };
+const samples = vi.hoisted(() => ({ cutSample: vi.fn(), sampleIn: vi.fn() }));
+vi.mock('./samples.js', () => ({
+  cutSample: samples.cutSample, sampleIn: samples.sampleIn, sampleFile: () => SAMPLE_FILE, SAMPLE_JSON_BYTES: 4 * 1024 ** 3,
+}));
 const read = vi.hoisted(() => ({ readDump: vi.fn() }));
 vi.mock('./read.js', () => ({ readDump: read.readDump, countLines: () => ({}) }));
 
@@ -32,8 +43,14 @@ const untilAborted = async (_file: unknown, _consumer: unknown, options: { signa
   await new Promise((_resolve, reject) => options.signal.addEventListener('abort', () => reject(options.signal.reason)));
 };
 
-beforeEach(() => vi.clearAllMocks());
-afterEach(() => vi.useRealTimers());
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.stubEnv('DUMPS_DIR', '/dumps');
+});
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
+});
 
 describe('a build in the dump worker (ADR-0106)', () => {
   it('closes a verified build as a success, with the file recorded', async () => {
@@ -49,7 +66,52 @@ describe('a build in the dump worker (ADR-0106)', () => {
     expect(read.readDump).not.toHaveBeenCalled();
     expect(ledger.recordFile).not.toHaveBeenCalled();
     expect(ledger.beat).toHaveBeenCalledWith(9, expect.objectContaining({ phase: 'deriving' }));
-    expect(ledger.closeBuild).toHaveBeenCalledWith(9, { status: 'success', bytes: 0, lines: 0, checksumActual: null, error: null });
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, {
+      status: 'success', bytes: 0, lines: 0, checksumActual: null, error: null, outcome: 'derived again and swapped in',
+    });
+  });
+
+  it('says how long each step took in the row of a build that ended well (#1527)', async () => {
+    vi.useFakeTimers({ now: 0 });
+    keepers.rederive.mockImplementation(async ({ onPhase }) => {
+      onPhase('Deriving the claims, labels and sitelinks...');
+      vi.setSystemTime(65_000);
+      onPhase('Indexing...');
+      vi.setSystemTime(70_000);
+    });
+    await runBuild({ id: 9, dump: 'wikidata-entities', request: { kind: 'rederive' } }, new AbortController().signal);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
+      outcome: 'derived again and swapped in; steps: Deriving the claims, labels and sitelinks 1 min 5 s, Indexing 5 s',
+    }));
+  });
+
+  it('cuts a sample of the local copy named, records it as the file, and says what it cut (#1527)', async () => {
+    samples.cutSample.mockResolvedValue({ sample: SAMPLE, lines: 1200, read: 300 * 1024 ** 2 });
+    await runBuild({ id: 9, dump: 'wikidata-entities', request: { kind: 'sample', only: SAMPLE.of } }, new AbortController().signal);
+    expect(samples.cutSample).toHaveBeenCalledWith('/dumps', SAMPLE.of, expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(read.readDump).not.toHaveBeenCalled();
+    expect(ledger.recordFile).toHaveBeenCalledWith(9, SAMPLE_FILE);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
+      status: 'success', lines: 1200, outcome: expect.stringMatching(/^cut sample-4gb-wikidata-20261005-all\.json\.gz \(0\.0 GB, 1,200 lines\) from the first 0\.3 GB/),
+    }));
+  });
+
+  it('tries the build on the sample, read from disk only, and swaps nothing in (#1527)', async () => {
+    samples.sampleIn.mockResolvedValue(SAMPLE);
+    keepers.build.mockResolvedValue({ bytes: 400, lines: 1200, checksumActual: null, summary: 'kept 10 of 1,200 items' });
+    await runBuild({ id: 9, dump: 'wikidata-entities', request: { kind: 'trial', only: SAMPLE.fileName } }, new AbortController().signal);
+    expect(samples.sampleIn).toHaveBeenCalledWith('/dumps', SAMPLE.fileName);
+    expect(keepers.build).toHaveBeenCalledWith(SAMPLE_FILE, expect.objectContaining({ trial: true, held: true, buildId: 9 }));
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
+      status: 'success', outcome: `tried the build on ${SAMPLE.fileName}; kept 10 of 1,200 items; nothing was swapped in`,
+    }));
+  });
+
+  it('refuses a sample or a trial where no local copy is kept (#1527)', async () => {
+    vi.stubEnv('DUMPS_DIR', '');
+    await runBuild({ id: 9, dump: 'wikidata-entities', request: { kind: 'trial', only: SAMPLE.fileName } }, new AbortController().signal);
+    expect(keepers.build).not.toHaveBeenCalled();
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'failed', error: expect.stringMatching(/DUMPS_DIR is not set/) }));
   });
 
   it('fails a kind of build it does not know rather than reading the file as a verify (#1526)', async () => {

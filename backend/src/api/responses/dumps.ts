@@ -12,8 +12,8 @@ import { DUMP_KEYS } from '../../services/dumps/catalog.js';
 const timestamp = z.iso.datetime({ offset: true });
 
 
-const BuildKind = z.enum(['verify', 'keep', 'rederive']).describe(
-  'A verify build reads and counts; a keeping build runs the dump\'s builder and swaps in what it builds; a re-derive derives the kept build\'s tables again from what it holds, reading no file (#1526).',
+const BuildKind = z.enum(['verify', 'keep', 'rederive', 'sample', 'trial']).describe(
+  'A verify build reads and counts; a keeping build runs the dump\'s builder and swaps in what it builds; a re-derive derives the kept build\'s tables again from what it holds, reading no file (#1526); a sample build cuts the first part of the local copy, and a trial runs the builder on that sample and keeps nothing (#1527).',
 );
 
 export const DumpBuildProgress = z.strictObject({
@@ -46,9 +46,10 @@ export const DumpBuild = z.strictObject({
   bytes: z.number().int(),
   lines: z.number().int(),
   checksumKind: z.enum(CHECK_VALUES.dump_builds.checksum_kind).nullable(),
-  verified: z.boolean().describe('The published checksum matched, or, where none is published, the size and the end of stream did; never for a re-derive, which reads no file.'),
+  verified: z.boolean().describe('The published checksum matched, or, where none is published, the size and the end of stream did; never for a re-derive, which reads no file, nor for a sample or a trial, which read no file of the host\'s.'),
   status: z.enum(CHECK_VALUES.dump_builds.status).exclude(['queued']),
   error: z.string().nullable(),
+  outcome: z.string().nullable().describe('What a build that ended well did, in words: what it kept, how long each step took, an older copy removed (#1527); null otherwise.'),
   startedAt: timestamp,
   finishedAt: timestamp.nullable(),
 }).describe('One build of a dump, from the ledger.');
@@ -72,6 +73,12 @@ export const Dumps = z.strictObject({
       date: z.string().describe('The date in the file name: YYYYMMDD, or YYYYMM for a month of counts.'),
       bytes: z.number().int(),
     }).nullable().describe('The newest local copy of the dump in DUMPS_DIR, which a build can read instead of the newest file the host lists (#1456); null without one.'),
+    sample: z.strictObject({
+      fileName: z.string(),
+      of: z.string().describe('The local copy it was cut from.'),
+      date: z.string().describe('The dump date of that copy, YYYY-MM-DD.'),
+      bytes: z.number().int(),
+    }).nullable().describe('The newest sample of the dump in DUMPS_DIR, which a trial builds from and throws away (#1527); null without one.'),
   })),
   localCopy: z.boolean().describe('Whether builds keep a local copy (DUMPS_DIR) or read each file as a stream from its host.'),
 }).describe('The public dumps the catalogue reads, with their builds (ADR-0101).');

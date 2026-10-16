@@ -169,6 +169,7 @@ export interface DumpBuildsRow {
   request: unknown | null;
   progress: unknown | null;
   cancel_requested_at: Date | null;
+  outcome: string | null;
 }
 
 /** The table `email_verification_tokens`. */

@@ -2,7 +2,8 @@
  * The admin panel's dump page (ADR-0101, #1433): the dumps the catalogue
  * reads, a verify build of one, a build that keeps what is made from it (the
  * local Wikidata subset, #1434), deriving what is kept again without the dump
- * (#1526), and stopping any of them. A build is queued for
+ * (#1526), cutting a sample of the local copy and trying the build on it
+ * (#1527), and stopping any of them. A build is queued for
  * the dump worker and followed through its ledger row (ADR-0106). The URL a
  * build fetches comes from the catalog alone (`services/dumps/catalog.ts`); a
  * caller names a dump by its key, which the route's schema holds to the
@@ -13,6 +14,7 @@ import type { z } from 'zod/v4';
 import type { DumpBuildCancelled, DumpBuildStarted, Dumps } from '../../api/responses/dumps.js';
 import { DUMPS } from '../../services/dumps/catalog.js';
 import { newestLocalCopy } from '../../services/dumps/localCopies.js';
+import { newestSample } from '../../services/dumps/samples.js';
 import { buildProgress, cancelBuild, isoDay, startBuild, type DumpBuildProgress } from '../../services/dumps/buildQueue.js';
 import { keeperOf } from '../../services/dumps/keepers.js';
 import {
@@ -47,6 +49,7 @@ export async function listDumps(): Promise<Dumps> {
   const progress = await Promise.all(DUMPS.map(dump => buildProgress(dump.key)));
   const dir = process.env.DUMPS_DIR?.trim();
   const copies = await Promise.all(DUMPS.map(dump => (dir ? newestLocalCopy(dir, dump.isFileName) : null)));
+  const samples = await Promise.all(DUMPS.map(dump => (dir && keeperOf(dump.key) ? newestSample(dir, dump.isFileName) : null)));
   return {
     localCopy: Boolean(process.env.DUMPS_DIR?.trim()),
     dumps: DUMPS.map((dump, index) => ({
@@ -65,14 +68,16 @@ export async function listDumps(): Promise<Dumps> {
         bytes: Number(build.bytes),
         lines: Number(build.lines),
         checksumKind: build.checksum_kind,
-        verified: build.status === 'success' && kindOf(build) !== 'rederive',
+        verified: build.status === 'success' && (kindOf(build) === 'verify' || kindOf(build) === 'keep'),
         status: build.status as Exclude<typeof build.status, 'queued'>,
         error: build.error,
+        outcome: build.outcome,
         startedAt: build.started_at.toISOString(),
         finishedAt: build.finished_at?.toISOString() ?? null,
       })),
       keeps: keeps[index],
       localCopy: copies[index],
+      sample: samples[index],
     })),
   };
 }
@@ -102,6 +107,28 @@ export async function startDumpRederive(
 ): Promise<DumpBuildStarted> {
   try {
     return { started: true, progress: wireProgress(await startBuild(dump, { startedBy: caller.id, kind: 'rederive' }))! };
+  } catch (error) {
+    throw createError(error instanceof Error ? error.message : 'The build could not start', 409);
+  }
+}
+
+/** Cut a sample of the dump's local copy (#1527). */
+export async function startDumpSample(
+  { params: { dump }, caller }: { params: DumpParams; caller: Express.User },
+): Promise<DumpBuildStarted> {
+  try {
+    return { started: true, progress: wireProgress(await startBuild(dump, { startedBy: caller.id, kind: 'sample' }))! };
+  } catch (error) {
+    throw createError(error instanceof Error ? error.message : 'The build could not start', 409);
+  }
+}
+
+/** Try the dump's build on its sample, keeping nothing (#1527). */
+export async function startDumpTrial(
+  { params: { dump }, caller }: { params: DumpParams; caller: Express.User },
+): Promise<DumpBuildStarted> {
+  try {
+    return { started: true, progress: wireProgress(await startBuild(dump, { startedBy: caller.id, kind: 'trial' }))! };
   } catch (error) {
     throw createError(error instanceof Error ? error.message : 'The build could not start', 409);
   }
