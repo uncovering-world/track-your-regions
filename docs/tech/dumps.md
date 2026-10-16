@@ -409,12 +409,12 @@ the 2026-10-05 dump. A change to the build — the scope rules, the compact form
 the derivations, the worker — is tried on a sample first (#1527):
 
 1. **Cut a sample.** A `sample` build (`cutFrom` in `buildRun.ts`,
-   `cutSample` in `samples.ts`) copies the first `SAMPLE_JSON_BYTES` (4 GB) of
+   `cutSample` in `samples.ts`) copies the first `SAMPLE_JSON_BYTES` (16 GB) of
    the local copy's entities into a file of its own beside it, closed as a
    valid JSON array (`CutAt`: the line the limit falls in is finished, its
    trailing comma dropped, and a `]` line follows) and gzipped. It reads the
    copy only as far as the cut, and writes under a temporary name it renames
-   once whole. The sample is named `sample-4gb-<copy's name>`: the catalog's
+   once whole. The sample is named `sample-16gb-<copy's name>`: the catalog's
    test for the dump's files refuses that name, so nothing that replaces or
    removes older copies of the dump touches it, and a build of the dump never
    reads it. A new cut removes the dump's earlier samples once it is whole,
@@ -436,6 +436,12 @@ the derivations, the worker — is tried on a sample first (#1527):
    tables against the kept lines' bytes the disk check estimates from
    (`TABLES_SHARE`), and how long each step took — which is how a change that
    makes a step slower shows before a full build pays for it.
+
+The sample's size is set so a trial takes about ten minutes. On the
+2026-10-05 dump, on this repository's development machine, a 4 GB sample was
+cut in 1 min 36 s and its trial took 2 min 35 s (pass 1 40 s, pass 2 1 min
+21 s, deriving 24 s, indexing 9 s); a trial's time grows with the JSON it
+reads, so the sample is four times that.
 
 A trial is refused, before its first pass, while a build of the dump cut in
 its second pass waits for the next build of its file to pick up after it
