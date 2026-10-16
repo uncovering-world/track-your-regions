@@ -14,7 +14,7 @@
 
 import { Fragment, useState } from 'react';
 import {
-  Alert, Box, Button, Chip, Collapse, IconButton, LinearProgress, Paper, Table, TableBody, TableCell,
+  Accordion, AccordionDetails, AccordionSummary, Alert, Box, Button, Chip, Collapse, IconButton, LinearProgress, Paper, Table, TableBody, TableCell,
   TableContainer, TableHead, TableRow, Tooltip, Typography,
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
@@ -25,22 +25,9 @@ import {
   type DumpBuild, type DumpBuildFrom, type DumpBuildProgress, type DumpsDumpsItem,
 } from '../../api/admin/dumps';
 import { queryKeys } from '../../api/queryKeys';
-import { formatDateTime, formatDuration, formatRelativeTime, formatTimeLeft } from '../../utils/dateFormat';
-
-const GB = 1024 ** 3;
-const size = (bytes: number) => (bytes >= GB ? `${(bytes / GB).toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`);
-const compact = new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 });
-/** A build queued for the dump worker or running in it (ADR-0106): the row follows it until it ends. */
-const inFlight = (progress: DumpBuildProgress | null) => progress !== null;
-
-/** A dump's date as what it stands for: the day of the dump, or the month its counts cover. */
-function dumpDate(date: string, datedBy: DumpsDumpsItem['datedBy']): string {
-  const [year, month, day] = date.split('-').map(Number);
-  const value = new Date(Date.UTC(year, month - 1, day));
-  return datedBy === 'month'
-    ? value.toLocaleDateString('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' })
-    : value.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-}
+import { BuildProgressDetails, compact, dumpDate, inFlight, size } from './DumpBuildProgress';
+import { WikidataCopyCard } from './WikidataCopyCard';
+import { formatDateTime, formatDuration, formatRelativeTime } from '../../utils/dateFormat';
 
 /** One column grid for every table on the page, so the groups and the earlier builds line up. */
 const COLUMN_WIDTHS = ['34%', '14%', '10%', '8%', '7%', '11%', '16%'];
@@ -104,41 +91,10 @@ function BuildFigures({ build, datedBy }: { build: DumpBuild; datedBy: DumpsDump
   );
 }
 
-/**
- * How long the dump worker may go without beating before the row says it may have stopped: it
- * beats every five seconds whatever step it is in, so a minute of silence is not a slow step.
- */
-const SILENT_FOR_MS = 60_000;
-
 function ProgressCells({ progress }: { progress: DumpBuildProgress }) {
-  // What the step's bar is measured against: the dump's file in a pass, the terms spool while labelling, the sample's size while cutting one (#1519).
-  const total = progress.total;
-  const done = Math.max(progress.read, progress.downloaded);
-  const measured = total !== null && total > 0;
-  const silent = progress.heartbeatAt !== null && Date.now() - new Date(progress.heartbeatAt).getTime() > SILENT_FOR_MS;
   return (
     <TableCell colSpan={5}>
-      <Typography variant="body2" sx={{ mb: 0.5 }}>{progress.message}</Typography>
-      <LinearProgress
-        variant={measured ? 'determinate' : 'indeterminate'}
-        value={measured ? Math.min(100, (done / total) * 100) : undefined}
-      />
-      {progress.heartbeatAt && (
-        <Typography variant="caption" color={silent ? 'error' : 'text.secondary'} display="block">
-          {silent
-            ? `No word from the dump worker since ${formatRelativeTime(progress.heartbeatAt)}: it may have stopped`
-            : <>
-              {progress.stepStartedAt && `This step started ${formatRelativeTime(progress.stepStartedAt)} · `}
-              {progress.etaSeconds !== null && `${formatTimeLeft(progress.etaSeconds)} left in it · `}
-              Last seen alive {formatRelativeTime(progress.heartbeatAt)}
-            </>}
-        </Typography>
-      )}
-      {done > 0 && (
-        <Typography variant="caption" color="text.secondary">
-          {size(done)}{measured ? ` of ${size(total)}` : ''}{progress.lines > 0 ? ` · ${compact.format(progress.lines)} lines` : ''}
-        </Typography>
-      )}
+      <BuildProgressDetails progress={progress} />
     </TableCell>
   );
 }
@@ -378,7 +334,12 @@ export function DumpsPanel() {
     queryKey: queryKeys.admin.dumps,
     queryFn: getDumps,
     // A queued or running build is polled every three seconds; the worker writes its progress every five.
-    refetchInterval: (query) => (query.state.data?.dumps.some(d => inFlight(d.progress)) ? 3000 : false),
+    // While the backend has not yet asked the host for its newest dump, every ten, until it has (#1583).
+    refetchInterval: (query) => {
+      const all = query.state.data?.dumps ?? [];
+      if (all.some(d => inFlight(d.progress))) return 3000;
+      return all.some(d => d.keeps?.newestChecked === 'not-yet') ? 10_000 : false;
+    },
   });
   if (dumps.isLoading) return <LinearProgress />;
   if (dumps.isError || !dumps.data) return <Alert severity="error">The dumps could not be read.</Alert>;
@@ -388,16 +349,34 @@ export function DumpsPanel() {
     <Box>
       <Typography variant="h4" gutterBottom>Public Dumps</Typography>
       <Typography color="text.secondary" sx={{ mb: 3, maxWidth: 900 }}>
-        The catalogue reads Wikidata and Wikipedia in bulk from these published files, instead of asking their
-        live services. <em>Verify newest</em> downloads the latest file and checks that it arrived whole. {dumps.data.localCopy
-          ? 'A download that stops picks up where it left off.'
-          : 'This server keeps no copy of the files (DUMPS_DIR is not set), so every build downloads its file again.'}
+        The catalogue keeps its own copies of what Wikidata publishes, so syncs never wait on a live service.
       </Typography>
-      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-        {sources.map(source => (
-          <SourceTable key={source} source={source} dumps={all.filter(dump => dump.source === source)} />
-        ))}
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 4 }}>
+        {all.filter(dump => dump.keeps).map(dump => <WikidataCopyCard key={dump.key} dump={dump} />)}
       </Box>
+      {/* Every dump, every build and its history: for a change to how a copy is made (#1583). */}
+      <Accordion disableGutters variant="outlined" sx={{ maxWidth: 1200 }}>
+        <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+          <Box>
+            <Typography>For developers</Typography>
+            <Typography variant="caption" color="text.secondary">
+              Every dump the catalogue reads, its builds, and the tools for trying a change to how a copy is made.
+            </Typography>
+          </Box>
+        </AccordionSummary>
+        <AccordionDetails>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            <em>Verify newest</em> downloads the latest file and checks that it arrived whole. {dumps.data.localCopy
+              ? 'A download that stops picks up where it left off.'
+              : 'This server keeps no copy of the files (DUMPS_DIR is not set), so every build downloads its file again.'}
+          </Typography>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+            {sources.map(source => (
+              <SourceTable key={source} source={source} dumps={all.filter(dump => dump.source === source)} />
+            ))}
+          </Box>
+        </AccordionDetails>
+      </Accordion>
     </Box>
   );
 }

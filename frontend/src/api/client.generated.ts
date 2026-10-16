@@ -3841,12 +3841,46 @@ export type DumpsDumpsItemKeepsBuilt = {
 } | null;
 
 /**
+ * What the copy needs (#1583): nothing; a re-derive, the code now making its derived tables differently; a build from the newer dump the host lists; or a build from the dump, none being in place or the code now keeping or writing it differently.
+ */
+export type DumpsDumpsItemKeepsNeeds = typeof DumpsDumpsItemKeepsNeeds[keyof typeof DumpsDumpsItemKeepsNeeds];
+
+
+export const DumpsDumpsItemKeepsNeeds = {
+  nothing: 'nothing',
+  recompute: 'recompute',
+  'newer-dump': 'newer-dump',
+  rebuild: 'rebuild',
+} as const;
+
+/**
+ * Whether the host has been asked for its newest dump since the backend started, and whether it answered the last time.
+ */
+export type DumpsDumpsItemKeepsNewestChecked = typeof DumpsDumpsItemKeepsNewestChecked[keyof typeof DumpsDumpsItemKeepsNewestChecked];
+
+
+export const DumpsDumpsItemKeepsNewestChecked = {
+  'not-yet': 'not-yet',
+  answered: 'answered',
+  unreachable: 'unreachable',
+} as const;
+
+/**
  * What a keeping build of this dump makes (the local Wikidata subset), or null where nothing is built from it yet.
  */
 export type DumpsDumpsItemKeeps = {
   title: string;
   /** The build now in place: its dump date and when it was swapped in. */
   built: DumpsDumpsItemKeepsBuilt;
+  /** What the copy needs (#1583): nothing; a re-derive, the code now making its derived tables differently; a build from the newer dump the host lists; or a build from the dump, none being in place or the code now keeping or writing it differently. */
+  needs: DumpsDumpsItemKeepsNeeds;
+  /**
+     * The newest complete dump the host lists, YYYY-MM-DD, as last learnt (asked at most once a day); null while not known.
+     * @nullable
+     */
+  newestDumpDate: string | null;
+  /** Whether the host has been asked for its newest dump since the backend started, and whether it answered the last time. */
+  newestChecked: DumpsDumpsItemKeepsNewestChecked;
 } | null;
 
 /**
