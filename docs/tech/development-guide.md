@@ -91,7 +91,10 @@ controllers/
 │   ├── experienceVisitController.ts  ← mark/unmark visited
 │   ├── experienceLocationController.ts
 │   ├── experienceTreasureController.ts
-│   └── curationController.ts
+│   ├── curationRegionController.ts  ← reject, unreject, assign, unassign
+│   ├── curationEditController.ts    ← a curator's edit of a place's fields
+│   ├── curationLogController.ts     ← a place's curation history
+│   └── manualExperienceController.ts ← a place a curator creates by hand
 ├── worldView/
 │   ├── index.ts                      ← barrel: named re-exports
 │   ├── regionCrud.ts
@@ -193,7 +196,7 @@ services/
 - After any change to `db/init/01-schema.sql`, run `npm run db:types` and commit the regenerated file. `npm run db:types:check` is the gate that fails otherwise (it needs Docker: a fresh database is built from `db/init` and read back, about half a minute).
 - **Never** concatenate user input into SQL strings.
 - When you need `SET`/`RESET` to apply to the same connection as your query, use `const client = await pool.connect()` + `client.query()` + `client.release()`. `pool.query()` grabs a random connection each time.
-- **A transaction is pinned to one client, always.** `pool.query('BEGIN')` is not a transaction: pg.Pool checks out an arbitrary idle client, runs the BEGIN on it and releases it with the transaction still open. The statements that follow may land on other connections, and a *different request* that checks out the leaked client runs its own writes inside that stray transaction — to be rolled back with it. The shape, as in `curationController.ts`'s `editExperience`:
+- **A transaction is pinned to one client, always.** `pool.query('BEGIN')` is not a transaction: pg.Pool checks out an arbitrary idle client, runs the BEGIN on it and releases it with the transaction still open. The statements that follow may land on other connections, and a *different request* that checks out the leaked client runs its own writes inside that stray transaction — to be rolled back with it. The shape, as in `curationEditController.ts`'s `editExperience`:
 
   ```ts
   const client = await pool.connect();
