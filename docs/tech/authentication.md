@@ -249,7 +249,11 @@ does not remove an administrator's role-based authority.
 
 The same list supplies the entry point to each person's activity log.
 `GET /api/admin/curators/:userId/activity` reads by author id without
-requiring that author to have an assignment. Both reads remain behind
+requiring that author to have an assignment, and so does the feed across
+curators, `GET /api/admin/curation-activity` (#611). The feed's curator menu
+is not this directory but everyone the log names as having acted, since an
+audit is often of a curator whose last scope was revoked and who the
+directory no longer lists. Both reads remain behind
 `requireAuth` and `requireAdmin`; listing an administrator does not
 change who may read the directory or its activity logs. Future curator
 selectors should reuse this directory rather than enumerate assignments.
