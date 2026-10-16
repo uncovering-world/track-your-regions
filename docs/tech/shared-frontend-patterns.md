@@ -144,6 +144,16 @@ Quick-reference for reusable components and utilities. Use these instead of writ
 | Get a token for a request whose endpoint answers 401 for a reason of its own | `requireFreshToken()` — `null` for a spent token, so "your session is over" is decided before the request and never confused with what the endpoint meant. Note what it does *not* refuse: a token merely inside the 60s refresh margin still goes, because `refreshSession()` returns `null` for a 429 and a network blip as readily as for a rejected refresh, and treating that as a dead session signs people out of live ones | `ensureFreshToken()`, which hands back a dead token as readily as a live one — right for its SSE callers, whose stream fails the same way either way, and wrong for anyone who needs to tell the two apart. Which is which depends on the caller, so the pair is two names rather than one contract read two ways — `fetchUtils.token.test.ts` pins where they part |
 | Type what a call answers | The type the generated client (`src/api/client.generated.ts`) carries for the backend's response schema, imported from the call's module in `frontend/src/api/`, which re-exports it (ADR-0066, ADR-0073). If the call's answer has no schema yet, declare the schema on the backend first (development guide § API Layer) | An interface in `frontend/src/api/` or in a component that restates the answer. That is the copy that drifted four times on PR #525. A narrower view of an answer is a `Pick` of the generated type |
 
+## Icon buttons
+
+A screen reader announces a button by its accessible name and nothing else, and an `IconButton` whose child is only an icon has no name of its own (#564). Every one carries an `aria-label` phrased as the action it takes — "Close", "Delete part", "Copy hierarchy to clipboard" — or, for a toggle, the action it will take now (`{isExpanded ? 'Collapse' : 'Expand'}`).
+
+- **A `Tooltip` directly around the button names it**: MUI sets the tooltip's string title as the child's `aria-label`, so the label is not repeated there.
+- **A `Tooltip` around a `span` around the button does not**: the name lands on the `span`, which no keyboard reaches (the `span` is there so a disabled button still shows its tooltip). The button inside carries its own `aria-label`, usually the tooltip's words.
+- **A `title` attribute is not a name**: browsers fall back to it only when nothing else names the element, and not on every keyboard and reader combination. Where one is kept, it is the hover hint beside the `aria-label`.
+
+`no-restricted-syntax` in `frontend/eslint.config.mjs` refuses an `IconButton` with neither an `aria-label` nor a `Tooltip` directly around it; a spread is let through, since it may carry the label.
+
 ## Fonts
 
 The three typefaces — Syne (display, headings), Figtree (the interface) and JetBrains Mono (code, ids) — are served from the page's own origin: the WOFF2 files and each family's SIL Open Font License text in `frontend/public/fonts/`, their `@font-face` rules in `frontend/src/fonts.css` (imported by `main.tsx` ahead of `index.css`), and the `font` tokens in `frontend/src/theme/theme.ts` naming the families. No page asks a third-party origin for a font (#653).
