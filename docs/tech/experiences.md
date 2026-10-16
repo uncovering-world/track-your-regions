@@ -4375,7 +4375,10 @@ named the row and turned it down, the sweep's reason where the sweep decided the
 name, and nothing — the row keeps whatever was asked — where it said nothing. Reasons are
 compared with every run of digits folded (`foldedReason`), since a reason carries the counts it
 was decided on ("17 sitelinks: below the world tier's line …") and a count that ticks is not a
-new reason. The pin holds silently when the run says what it answered, when the rule has come
+new reason; the measure's two names, "sitelinks" and "Wikipedia editions" since #1240, are folded
+to one word as well, so the Warsaw Uprising Monument, answered over "17 sitelinks: …", is not asked
+about over "16 Wikipedia editions: …" (#1589; migration 113 closed the questions runs had raised
+for the rename alone). The pin holds silently when the run says what it answered, when the rule has come
 round to the curator's own answer (a put-back it now admits, an arrival a curator refused that
 it now refuses), and when it refuses a confirmed refusal in other words, which keeps the row out
 either way; otherwise — a put-back refused for another reason, a confirmed refusal the rule
@@ -4397,7 +4400,7 @@ moved. *Ask again about pins* on a source's card starts an ordinary run with `as
 pin it disagrees with, the silent ones included; nothing is released, each waits in the review
 queue as above — through the ordinary runs after it too, since a run keeps a question standing
 while it still says that question (`stillAsks`, `pinQuestion.ts`: the same verdict, the same
-reason with its counts folded), and one it has moved off closes as before. The queue marks such a
+reason as `foldedReason` folds it), and one it has moved off closes as before. The queue marks such a
 question (`restated` on `pin_question`, the same folded comparison in SQL), and the card says the run
 was asked to look again and still says what the curator answered over, rather than "says something
 else" over the very words they answered. Every run tallies what it said of the pins it read (`progress.pins`: asked about
