@@ -30,7 +30,7 @@ import { loadScope, saveScope, scopePath } from './scopeFile.js';
 import { SubsetWriter } from './subsetWriter.js';
 import {
   carryRingLabels, createDerivedNextTables, createNextTables, DERIVED_TABLES, derivedTablesSize, dropDerivedNextTables, earlierSpool, entitiesAreHeld, entitiesCopySize,
-  latestSubsetCounts, nextTablesSize, resetAfterPassTwo, resumableBuild, deriveClassClosure, deriveFromEntities, dropNextTables, indexNextTables, insertLabels,
+  latestSubsetCounts, nextTablesSize, resetAfterPassTwo, type StepReport, resumableBuild, deriveClassClosure, deriveFromEntities, dropNextTables, indexNextTables, insertLabels,
   type LabelRow, type ResumeState, swapIn,
 } from './subsetTables.js';
 
@@ -44,6 +44,8 @@ export interface SubsetBuildOptions extends ReadOptions {
    * touched.
    */
   trial?: boolean;
+  /** How far a step that reads a file of its own has got: the labelling's terms spool (#1519). */
+  onMeasure?: (read: number, total: number) => void;
 }
 
 export interface SubsetResult {
@@ -69,16 +71,21 @@ function summaryOf(counts: SubsetResult['counts'], tableBytes: number): string {
 
 const LABEL_BATCH = 5000;
 
+/** What a step says while it runs, under the step's own name: the name before the colon is what times it (`stepTimes.ts`). */
+const inStep = (onPhase: (message: string) => void, step: string): StepReport => detail => onPhase(`${step}: ${detail}...`);
+
 /** Insert the spooled terms of every entity the ring holds; answers how many entities got one. */
 async function labelTheRing(
   spool: TermsSpool, ring: (id: number) => boolean, signal: AbortSignal, refusals: Refusals,
+  onMeasure?: (read: number, total: number) => void,
 ): Promise<number> {
   let rows: LabelRow[] = [];
   let labelled = 0;
   const insert = (batch: LabelRow[]) => insertRefusing(batch, row => `${row.id}@${row.language}`, insertLabels, refusals);
   // A piece written again after a cut (#1493) spooled its terms twice; each entity is labelled once.
   const seen = new IdSet();
-  for await (const { id, terms } of spool.read()) {
+  const total = (await stat(spool.path).catch(() => null))?.size ?? 0;
+  for await (const { id, terms } of spool.read(read => onMeasure?.(read, total))) {
     signal.throwIfAborted();
     const item = Number(id.slice(1));
     if (!ring(item) || !seen.add(item)) continue;
@@ -196,16 +203,16 @@ export async function buildSubset(file: DumpFile, options: SubsetBuildOptions): 
     // nothing.
     onPhase('Labelling the entities the kept items name...');
     const ring = (id: number) => writer.ring.has(id) && !scope.kept.has(id);
-    const ringLabelled = await labelTheRing(spool, ring, signal, refusals);
+    const ringLabelled = await labelTheRing(spool, ring, signal, refusals, options.onMeasure);
     const refused = refusals.note('rows (an entity, or a label as id@language)');
     if (refused) options.onNote?.(refused);
     onPhase('Deriving the claims, labels and sitelinks...');
-    await deriveFromEntities(signal);
+    await deriveFromEntities(signal, undefined, undefined, inStep(onPhase, 'Deriving the claims, labels and sitelinks'));
     onPhase('Indexing...');
-    await indexNextTables(signal, ['wikidata_entities', 'wikidata_claims', 'wikidata_labels', 'wikidata_sitelinks']);
+    await indexNextTables(signal, ['wikidata_entities', 'wikidata_claims', 'wikidata_labels', 'wikidata_sitelinks'], inStep(onPhase, 'Indexing'));
     onPhase('Walking the class tree...');
     await deriveClassClosure(signal);
-    await indexNextTables(signal, ['wikidata_class_closure']);
+    await indexNextTables(signal, ['wikidata_class_closure'], inStep(onPhase, 'Walking the class tree'));
 
     const counts = {
       ...scope.counts, written: writer.counts.written, ring: writer.ring.size, ringLabelled,
@@ -265,12 +272,12 @@ export async function rederiveSubset({ buildId, signal, onPhase, onNote }: Reder
     onPhase('Carrying the labels of the entities the kept items name...');
     await carryRingLabels(signal);
     onPhase('Deriving the claims, labels and sitelinks...');
-    await deriveFromEntities(signal, undefined, 'wikidata_entities');
+    await deriveFromEntities(signal, undefined, 'wikidata_entities', inStep(onPhase, 'Deriving the claims, labels and sitelinks'));
     onPhase('Indexing...');
-    await indexNextTables(signal, ['wikidata_claims', 'wikidata_labels', 'wikidata_sitelinks']);
+    await indexNextTables(signal, ['wikidata_claims', 'wikidata_labels', 'wikidata_sitelinks'], inStep(onPhase, 'Indexing'));
     onPhase('Walking the class tree...');
     await deriveClassClosure(signal);
-    await indexNextTables(signal, ['wikidata_class_closure']);
+    await indexNextTables(signal, ['wikidata_class_closure'], inStep(onPhase, 'Walking the class tree'));
     signal.throwIfAborted();
     onPhase('Swapping the derived tables in...');
     await swapIn(buildId, latest.dumpDate, latest.counts, DERIVED_TABLES);

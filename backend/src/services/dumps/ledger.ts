@@ -42,8 +42,12 @@ export interface BuildProgressRecord {
   downloaded: number;
   read: number;
   lines: number;
-  /** Seconds the pass being read has left at its pace so far (`PassClock`); null while there is no telling. */
+  /** Seconds the step has left at its pace so far, for a step that reads a file (`PassClock`); null while there is no telling. */
   etaSeconds: number | null;
+  /** What the step's `read` is measured against: the dump's file in a pass, the terms spool while labelling, the sample's size while cutting one; null in a step with no measure (#1519). */
+  total?: number | null;
+  /** When the step running now started, so a step with no measure of its own still reads as alive (#1519). */
+  stepStartedAt?: string | null;
 }
 
 /** How often a running build says it is alive and how far it got (#1463, #1467). */

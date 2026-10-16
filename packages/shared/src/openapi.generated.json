@@ -20669,7 +20669,33 @@
                 "type": "null"
               }
             ],
-            "description": "Seconds the pass being read has left at its pace so far; null in its first minute, between passes and in a step that reads no file."
+            "description": "Seconds the step has left at its pace so far, for a step that reads a file (a pass over the dump, the labelling's terms spool); null in its first minute and in a step that reads none."
+          },
+          "total": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "What read is measured against: the dump's file in a pass, the terms spool while labelling, the sample's size while cutting one; null in a step with no measure (#1519)."
+          },
+          "stepStartedAt": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time",
+                "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "When the step running now started, so a step with no measure of its own reads as alive; null while queued (#1519)."
           }
         },
         "required": [
@@ -20683,7 +20709,9 @@
           "lines",
           "buildId",
           "heartbeatAt",
-          "etaSeconds"
+          "etaSeconds",
+          "total",
+          "stepStartedAt"
         ],
         "additionalProperties": false,
         "description": "A dump build queued or running, read from its ledger row whatever process runs it."

@@ -44,9 +44,12 @@ export const CLAIM_PROPERTIES = [
  */
 async function cancellable<Row extends QueryResultRow = QueryResultRow>(
   signal: AbortSignal, sql: string, params: unknown[] = [],
+  /** Hears the backend the statement runs on, so its progress can be read while it runs. */
+  onBackend?: (pid: number) => void,
 ): Promise<Row[]> {
   signal.throwIfAborted();
   const client = await pool.connect();
+  onBackend?.((client as PoolClient & { processID: number }).processID);
   let cancelling: Promise<unknown> = Promise.resolve();
   const onAbort = () => {
     cancelling = pool.query('SELECT pg_cancel_backend($1)', [(client as PoolClient & { processID: number }).processID])
@@ -318,7 +321,12 @@ const DERIVE_PARTS = Math.min(4, Math.max(1, availableParallelism()));
  * `params`. A part that fails cancels the others and is the error thrown, so
  * no statement is left inserting into a table the failed build drops.
  */
-async function inParts(signal: AbortSignal, parts: number, params: unknown[], sql: (at: string) => string): Promise<void> {
+/** What a long step says while it runs: which of its statements, how far (#1519). */
+export type StepReport = (detail: string) => void;
+
+async function inParts(
+  signal: AbortSignal, parts: number, params: unknown[], sql: (at: string) => string, onPartDone?: (done: number) => void,
+): Promise<void> {
   // An abort that came before this would never reach `follow` below.
   signal.throwIfAborted();
   // bigint: abs() of the one int hashtext() can answer with no positive twin would overflow.
@@ -327,9 +335,14 @@ async function inParts(signal: AbortSignal, parts: number, params: unknown[], sq
   const follow = () => local.abort(signal.reason);
   signal.addEventListener('abort', follow, { once: true });
   let first: unknown = null;
+  let done = 0;
   try {
     const settled = await Promise.allSettled(Array.from({ length: parts }, (_, part) =>
-      cancellable(local.signal, sql(at), [...params, parts, part]).catch((error: unknown) => {
+      cancellable(local.signal, sql(at), [...params, parts, part]).then(rows => {
+        done += 1;
+        onPartDone?.(done);
+        return rows;
+      }, (error: unknown) => {
         first ??= error;
         local.abort(error);
         throw error;
@@ -359,13 +372,17 @@ export async function deriveFromEntities(
   parts = DERIVE_PARTS,
   /** The entities copy a build wrote, or the live table a re-derive reads (#1526). */
   entities: string = next('wikidata_entities'),
+  report?: StepReport,
 ): Promise<void> {
+  // The parts of a statement run at once, so what is said is how many have ended.
+  const say = (what: string) => (done: number) => report?.(`${what}, ${done} of ${parts} parts done`);
   const itemProperties = (await cancellable<{ id: string }>(
     signal,
     `SELECT id FROM ${entities}
       WHERE id = ANY($1::text[]) AND entity->>'datatype' = 'wikibase-item'`,
     [CLAIM_PROPERTIES],
   )).map(row => row.id);
+  say('claims')(0);
   await inParts(signal, parts, [CLAIM_PROPERTIES, itemProperties], at =>
     `INSERT INTO ${next('wikidata_claims')} (subject, property, statement_id, rank, value_item, value, qualifiers)
      SELECT e.id, c.property, s->>'id',
@@ -376,22 +393,24 @@ export async function deriveFromEntities(
        FROM ${entities} e
       CROSS JOIN LATERAL jsonb_each(e.entity->'claims') AS c(property, statements)
       CROSS JOIN LATERAL jsonb_array_elements(c.statements) AS s
-      WHERE e.id LIKE 'Q%' AND c.property = ANY($1::text[]) AND ${at}`);
+      WHERE e.id LIKE 'Q%' AND c.property = ANY($1::text[]) AND ${at}`, say('claims'));
   // The languages of either term object. `->` and `||` bind alike and from
   // the left, so each object is bracketed before the merge, or it reads as
   // `(labels || entity)->'descriptions'`: the description languages alone.
+  say('labels')(0);
   await inParts(signal, parts, [], at =>
     `INSERT INTO ${next('wikidata_labels')} (id, language, label, description)
      SELECT e.id, k.language, e.entity->'labels'->>k.language, e.entity->'descriptions'->>k.language
        FROM ${entities} e
       CROSS JOIN LATERAL jsonb_object_keys((e.entity->'labels') || (e.entity->'descriptions')) AS k(language)
-      WHERE ${at}`);
+      WHERE ${at}`, say('labels'));
+  say('sitelinks')(0);
   await inParts(signal, parts, [], at =>
     `INSERT INTO ${next('wikidata_sitelinks')} (id, site, title)
      SELECT e.id, l.site, l.title
        FROM ${entities} e
       CROSS JOIN LATERAL jsonb_each_text(e.entity->'sitelinks') AS l(site, title)
-      WHERE ${at}`);
+      WHERE ${at}`, say('sitelinks'));
 }
 
 /**
@@ -442,23 +461,57 @@ async function indexesOf(client: PoolClient, table: SubsetTable): Promise<IndexD
 }
 
 /** Give each `_next` copy the indexes its live table has, under the live names with `_next` appended. */
-export async function indexNextTables(signal: AbortSignal, only: readonly SubsetTable[] = SUBSET_TABLES): Promise<void> {
-  const statements: string[] = [];
+/** How often a running index's progress is read back, for the step's report. */
+const INDEX_PROGRESS_EVERY_MS = 5_000;
+
+/** What `pg_stat_progress_create_index` says of the index the backend `pid` is building, in words. */
+async function indexProgress(pid: number): Promise<string | null> {
+  const { rows: [row] } = await pool.query<{ phase: string; blocks_done: string; blocks_total: string; tuples_done: string; tuples_total: string }>(
+    'SELECT phase, blocks_done, blocks_total, tuples_done, tuples_total FROM pg_stat_progress_create_index WHERE pid = $1',
+    [pid],
+  );
+  if (!row) return null;
+  const share = (done: string, total: string) => (Number(total) > 0 ? `, ${Math.floor((Number(done) / Number(total)) * 100)} %` : '');
+  return `${row.phase}${share(row.blocks_done, row.blocks_total) || share(row.tuples_done, row.tuples_total)}`;
+}
+
+export async function indexNextTables(signal: AbortSignal, only: readonly SubsetTable[] = SUBSET_TABLES, report?: StepReport): Promise<void> {
+  const statements: { name: string; sql: string }[] = [];
   const client = await pool.connect();
   try {
     for (const table of only) {
       for (const index of await indexesOf(client, table)) {
-        statements.push(index.constraint
-          ? `ALTER TABLE ${next(table)} ADD CONSTRAINT ${index.name}_next ${index.definition}`
-          : index.definition
-            .replace(`INDEX ${index.name} ON`, `INDEX ${index.name}_next ON`)
-            .replace(`ON public.${table} `, `ON public.${next(table)} `));
+        statements.push({
+          name: index.name,
+          sql: index.constraint
+            ? `ALTER TABLE ${next(table)} ADD CONSTRAINT ${index.name}_next ${index.definition}`
+            : index.definition
+              .replace(`INDEX ${index.name} ON`, `INDEX ${index.name}_next ON`)
+              .replace(`ON public.${table} `, `ON public.${next(table)} `),
+        });
       }
     }
   } finally {
     client.release();
   }
-  for (const statement of statements) await cancellable(signal, statement);
+  for (const [at, statement] of statements.entries()) {
+    const which = `index ${at + 1} of ${statements.length}, ${statement.name}`;
+    report?.(which);
+    let pid: number | null = null;
+    // A reading still on its way when the index ends would name this step after the next one began.
+    let building = true;
+    // The index's own phase, read while it builds: one statement can take minutes on the entities copy.
+    const poll = report ? setInterval(() => {
+      if (pid === null) return;
+      indexProgress(pid).then(phase => { if (phase && building) report(`${which}: ${phase}`); }).catch(() => undefined);
+    }, INDEX_PROGRESS_EVERY_MS) : null;
+    try {
+      await cancellable(signal, statement.sql, [], backend => { pid = backend; });
+    } finally {
+      building = false;
+      if (poll) clearInterval(poll);
+    }
+  }
 }
 
 /**

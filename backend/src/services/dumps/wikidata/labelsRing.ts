@@ -93,9 +93,12 @@ export class TermsSpool {
     this.file = null;
   }
 
-  async *read(): AsyncGenerator<Terms> {
+  /** Read the spool back; `onBytes` hears how many of its compressed bytes have been read so far. */
+  async *read(onBytes?: (read: number) => void): AsyncGenerator<Terms> {
     await this.close();
-    const lines = createInterface({ input: createReadStream(this.path).pipe(createGunzip()), crlfDelay: Infinity });
+    const file = createReadStream(this.path);
+    if (onBytes) file.on('data', () => onBytes(file.bytesRead));
+    const lines = createInterface({ input: file.pipe(createGunzip()), crlfDelay: Infinity });
     for await (const line of lines) if (line) yield JSON.parse(line) as Terms;
   }
 
