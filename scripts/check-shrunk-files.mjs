@@ -20,7 +20,7 @@ import { execFileSync } from 'node:child_process';
 import { lstatSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { changedPaths } from './gates.mjs';
+import { changedPaths } from './gates-base.mjs';
 import { repoFile } from './repo-root.mjs';
 
 /** Below this share of its bytes at the base, a file has shrunk. */

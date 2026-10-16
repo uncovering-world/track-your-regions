@@ -653,12 +653,4 @@ export default [
       'max-lines': ['error', { max: 800, skipBlankLines: true, skipComments: true }],
     },
   },
-  // The gate map and its spec are past that ceiling as they stood when the
-  // scripts were first linted; splitting them is #1552.
-  {
-    files: ['scripts/gates.mjs', 'scripts/gates.test.mjs'],
-    rules: {
-      'max-lines': 'off',
-    },
-  },
 ];
