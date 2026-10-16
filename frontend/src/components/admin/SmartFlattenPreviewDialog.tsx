@@ -63,7 +63,7 @@ export function SmartFlattenPreviewDialog({
               Will absorb {plural(descendants, 'descendant')} ({plural(divisions, 'division')})
             </Typography>
           </Box>
-          <IconButton onClick={onCancel} size="small">
+          <IconButton aria-label="Close" onClick={onCancel} size="small">
             <CloseIcon />
           </IconButton>
         </Box>

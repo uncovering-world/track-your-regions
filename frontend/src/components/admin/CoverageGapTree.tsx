@@ -118,7 +118,7 @@ export function GapNodeRow({
       >
         {/* Expand toggle */}
         {hasSubtree && !isApplied ? (
-          <IconButton
+          <IconButton aria-label={isExpanded ? 'Collapse' : 'Expand'}
             size="small"
             onClick={(e) => { e.stopPropagation(); onToggleExpand(gap.id); }}
             sx={{ p: 0.25 }}
@@ -149,7 +149,7 @@ export function GapNodeRow({
             <>
               <Tooltip title="Geo-suggest (find nearest region)">
                 <span>
-                  <IconButton
+                  <IconButton aria-label="Geo-suggest (find nearest region)"
                     size="small"
                     onClick={(e) => { e.stopPropagation(); onGeoSuggest(gap.id, gap.name); }}
                     disabled={geoSuggestPending}
@@ -171,7 +171,7 @@ export function GapNodeRow({
               )}
               <Tooltip title="Dismiss">
                 <span>
-                  <IconButton
+                  <IconButton aria-label="Dismiss"
                     size="small"
                     onClick={(e) => { e.stopPropagation(); onDismiss(gap.id); }}
                     disabled={dismissPending}
@@ -287,7 +287,7 @@ function SubtreeNodeRow({
         onClick={() => !isApplied && onSelect(node.id)}
       >
         {hasChildren && !isApplied ? (
-          <IconButton
+          <IconButton aria-label={isExpanded ? 'Collapse' : 'Expand'}
             size="small"
             onClick={(e) => { e.stopPropagation(); onToggleExpand(node.id); }}
             sx={{ p: 0.25 }}
@@ -316,7 +316,7 @@ function SubtreeNodeRow({
             <>
               <Tooltip title="Geo-suggest (find nearest region)">
                 <span>
-                  <IconButton
+                  <IconButton aria-label="Geo-suggest (find nearest region)"
                     size="small"
                     onClick={(e) => { e.stopPropagation(); onGeoSuggest(node.id, node.name); }}
                     disabled={geoSuggestPending}

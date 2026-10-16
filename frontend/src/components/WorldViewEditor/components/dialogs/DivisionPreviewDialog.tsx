@@ -483,7 +483,7 @@ export function DivisionPreviewDialog({
               </Typography>
             )}
           </Box>
-          <IconButton onClick={onClose} size="small">
+          <IconButton aria-label="Close" onClick={onClose} size="small">
             <CloseIcon />
           </IconButton>
         </Box>

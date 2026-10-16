@@ -108,7 +108,7 @@ export function AIReviewDrawer({
           >
             Regenerate
           </Button>
-          <IconButton size="small" onClick={() => setActiveReviewKey(null)}>
+          <IconButton aria-label="Close" size="small" onClick={() => setActiveReviewKey(null)}>
             <CloseIcon />
           </IconButton>
         </Box>

@@ -212,7 +212,7 @@ export function AIDivisionList({
                   {isUnassigned && !suggestionData?.suggestion && (
                     <Tooltip title={quotaError ? "AI credits exhausted" : "Ask AI for suggestion"}>
                       <span>
-                        <IconButton
+                        <IconButton aria-label="Ask AI for a suggestion"
                           size="small"
                           onClick={() => onAskAI(division)}
                           disabled={suggestionData?.loading || !!quotaError}
@@ -271,7 +271,7 @@ export function AIDivisionList({
 
                   {/* Show details toggle */}
                   {suggestionData?.suggestion && (
-                    <IconButton size="small" onClick={() => toggleExpanded(divisionKey)}>
+                    <IconButton aria-label={isExpanded ? 'Collapse' : 'Expand'} size="small" onClick={() => toggleExpanded(divisionKey)}>
                       {isExpanded ? <ExpandLessIcon fontSize="small" /> : <ExpandMoreIcon fontSize="small" />}
                     </IconButton>
                   )}

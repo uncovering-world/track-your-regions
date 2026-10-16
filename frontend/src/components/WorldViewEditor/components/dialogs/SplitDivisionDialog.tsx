@@ -267,7 +267,7 @@ export function SplitDivisionDialog({
                       <ListItem
                         key={idx}
                         secondaryAction={
-                          <IconButton
+                          <IconButton aria-label="Delete part"
                             size="small"
                             onClick={() => setSplitParts(prev => removeSplitPartAtIndex(prev, idx))}
                           >

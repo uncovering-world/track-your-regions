@@ -241,7 +241,7 @@ export function ExtractionRulesPanel() {
                           </Tooltip>
                         </TableCell>
                         <TableCell>
-                          <IconButton
+                          <IconButton aria-label="Delete rule"
                             size="small"
                             onClick={() => deleteRuleMutation.mutate(rule.id)}
                             disabled={deleteRuleMutation.isPending || reviewResult != null}

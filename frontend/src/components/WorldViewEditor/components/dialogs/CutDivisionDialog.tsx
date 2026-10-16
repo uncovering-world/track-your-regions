@@ -418,7 +418,7 @@ export function CutDivisionDialog({
 
             <Tooltip title="Undo last point">
               <span>
-                <IconButton onClick={handleUndo} disabled={drawingPoints.length === 0} size="small">
+                <IconButton aria-label="Undo last point" onClick={handleUndo} disabled={drawingPoints.length === 0} size="small">
                   <UndoIcon />
                 </IconButton>
               </span>
@@ -426,7 +426,7 @@ export function CutDivisionDialog({
 
             <Tooltip title="Clear all">
               <span>
-                <IconButton onClick={handleClear} disabled={drawingPoints.length === 0} size="small">
+                <IconButton aria-label="Clear all points" onClick={handleClear} disabled={drawingPoints.length === 0} size="small">
                   <DeleteIcon />
                 </IconButton>
               </span>
@@ -671,7 +671,7 @@ export function CutDivisionDialog({
                   <ListItem
                     key={idx}
                     secondaryAction={
-                      <IconButton size="small" onClick={() => handleDeletePart(idx)}>
+                      <IconButton aria-label="Delete part" size="small" onClick={() => handleDeletePart(idx)}>
                         <DeleteIcon fontSize="small" />
                       </IconButton>
                     }

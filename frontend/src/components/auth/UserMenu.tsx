@@ -98,7 +98,7 @@ export function UserMenu() {
 
   return (
     <>
-      <IconButton
+      <IconButton aria-label="Account menu"
         onClick={handleMenuOpen}
         size="small"
         sx={{ ml: 1 }}

@@ -375,7 +375,7 @@ export function SmartSimplifyDialog({
               {titleStatus(loading, error, moves, spatialAnomalies, pendingMoves)}
             </Typography>
           </Box>
-          <IconButton onClick={onClose} size="small">
+          <IconButton aria-label="Close" onClick={onClose} size="small">
             <CloseIcon />
           </IconButton>
         </Box>

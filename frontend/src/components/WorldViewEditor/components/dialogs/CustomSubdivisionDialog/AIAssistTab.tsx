@@ -311,7 +311,7 @@ export function AIAssistTab({
         </Button>
 
         {Object.keys(groupDescriptions).length > 0 && (
-          <IconButton
+          <IconButton aria-label={showDescriptions ? 'Hide descriptions' : 'Show descriptions'}
             size="small"
             onClick={toggleShowDescriptions}
           >

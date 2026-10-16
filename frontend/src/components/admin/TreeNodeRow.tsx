@@ -236,7 +236,7 @@ function ExpandToggle({
   return (
     <Box sx={{ width: 28, flexShrink: 0 }}>
       {hasChildren ? (
-        <IconButton size="small" onClick={onClick} sx={{ p: 0.25 }}>
+        <IconButton aria-label={isExpanded ? 'Collapse' : 'Expand'} size="small" onClick={onClick} sx={{ p: 0.25 }}>
           {isExpanded ? <ExpandIcon fontSize="small" /> : <CollapseRightIcon fontSize="small" />}
         </IconButton>
       ) : null}

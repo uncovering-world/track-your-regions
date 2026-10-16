@@ -182,7 +182,7 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
                 })}
               </Select>
               {!isExcluded && (
-                <IconButton
+                <IconButton aria-label="Exclude (not a region)"
                   size="small"
                   title="Exclude (not a region)"
                   color="error"
@@ -218,7 +218,7 @@ export function CvClusterReviewSection({ cvMatchDialog, setCVMatchDialog }: CvCl
                 </Select>
               )}
               {isKept && c.componentCount > 1 && (
-                <IconButton
+                <IconButton aria-label={`Split into ${c.componentCount} disconnected parts`}
                   size="small"
                   title={`Split into ${c.componentCount} disconnected parts`}
                   color="warning"

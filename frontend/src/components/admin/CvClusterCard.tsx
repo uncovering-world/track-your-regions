@@ -79,7 +79,7 @@ export function ClusterCard({
             {Math.round(cluster.pixelShare * 100)}% · {cluster.divisions.length} div
             {cluster.unsplittable.length > 0 && ` · ${cluster.unsplittable.length} unsplittable`}
           </Typography>
-          <IconButton
+          <IconButton aria-label="Highlight on map"
             size="small"
             title="Highlight on map"
             onClick={() => setHighlightClusterId(prev => prev === cluster.clusterId ? null : cluster.clusterId)}

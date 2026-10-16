@@ -284,7 +284,7 @@ export function MapViewTab({
           />
           <Tooltip title="Add new group">
             <span>
-              <IconButton
+              <IconButton aria-label="Add new group"
                 size="small"
                 onClick={handleCreateGroupFromMap}
                 disabled={!newGroupNameInMap.trim() || subdivisionGroups.some(g => g.name === newGroupNameInMap.trim())}
@@ -368,7 +368,7 @@ export function MapViewTab({
             return (
             <Tooltip title={eyedropperTooltip}>
               <span>
-                <IconButton
+                <IconButton aria-label="Pick a color from the image"
                   size="small"
                   color={eyedropperActive ? 'primary' : 'default'}
                   onClick={activateEyedropper}

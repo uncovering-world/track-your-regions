@@ -207,7 +207,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
         <Typography variant="subtitle1" sx={{ fontWeight: 600, flex: 1 }} noWrap>
           {experience.name}
         </Typography>
-        <IconButton size="small" onClick={onClose}>
+        <IconButton aria-label="Close" size="small" onClick={onClose}>
           <CloseIcon />
         </IconButton>
       </Box>

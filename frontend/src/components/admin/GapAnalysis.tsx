@@ -98,7 +98,7 @@ export function NavControls({ label, idx, total, onPrev, onNext, onClose }: {
       <Button size="small" endIcon={<NextIcon />} onClick={onNext} disabled={idx >= total - 1}>
         Next
       </Button>
-      <IconButton size="small" onClick={onClose} sx={{ p: 0.25 }}>
+      <IconButton aria-label="Close" size="small" onClick={onClose} sx={{ p: 0.25 }}>
         <CloseNavIcon fontSize="small" />
       </IconButton>
     </>
@@ -242,7 +242,7 @@ function MoveToSearch({ worldViewId, isMutating, hasGapChildren, onSelect, onClo
       >
         Move{hasGapChildren ? ' all' : ''}
       </Button>
-      <IconButton size="small" onClick={onClose} sx={{ p: 0.25 }}>
+      <IconButton aria-label="Close" size="small" onClick={onClose} sx={{ p: 0.25 }}>
         <CloseIcon sx={{ fontSize: 16 }} />
       </IconButton>
     </Box>

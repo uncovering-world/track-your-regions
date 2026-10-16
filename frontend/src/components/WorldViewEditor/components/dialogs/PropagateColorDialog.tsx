@@ -105,7 +105,7 @@ export function PropagateColorDialog({
             dense
           >
             {hasChildren && (
-              <IconButton
+              <IconButton aria-label={expanded.has(regionItem.id) ? 'Collapse' : 'Expand'}
                 size="small"
                 onClick={(e) => {
                   e.stopPropagation();
