@@ -729,3 +729,96 @@ describe('invalidateTileCache', () => {
     await waitFor(() => expect(result.current.tileVersion).toBe(4));
   });
 });
+
+/**
+ * Discover lists a world view's regions, and the default world view — GADM's
+ * division tree — owns none (#466). An admin's first pick is the default on the
+ * map, where it is exactly right; on Discover it drew a blank picker over "No
+ * regions with experiences at this level".
+ */
+describe('the world view Discover picks (#466)', () => {
+  const GADM = { id: 1, name: 'GADM', isDefault: true, isPublic: false };
+
+  beforeEach(() => {
+    mockFetchWorldViews.mockReset();
+    authState.isLoading = false;
+    authState.isAdmin = true;
+    authState.user = { id: 1 };
+  });
+
+  it("opens an admin's Discover on a world view it can show, and names it", async () => {
+    mockFetchWorldViews.mockResolvedValue([GADM, OTHER_WV]);
+    const { result } = renderHook(
+      () => ({ nav: useNavigation(), at: useLocation().pathname }),
+      { wrapper: makeWrapper('/discover') },
+    );
+
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(7));
+    await waitFor(() => expect(result.current.at).toBe('/discover/wv/7'));
+  });
+
+  it('moves off the default when an admin carries it from the map into Discover', async () => {
+    mockFetchWorldViews.mockResolvedValue([GADM, OTHER_WV]);
+    const { result } = renderHook(
+      () => ({ nav: useNavigation(), at: useLocation().pathname, navigate: useNavigate() }),
+      { wrapper: makeWrapper('/') },
+    );
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(1));
+
+    act(() => { result.current.navigate('/discover'); });
+
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(7));
+    await waitFor(() => expect(result.current.at).toBe('/discover/wv/7'));
+  });
+
+  it('reads an address naming the default on Discover as one it cannot show', async () => {
+    mockFetchWorldViews.mockResolvedValue([GADM, OTHER_WV]);
+    const { result } = renderHook(
+      () => ({ nav: useNavigation(), at: useLocation().pathname }),
+      { wrapper: makeWrapper('/discover/wv/1') },
+    );
+
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(7));
+    await waitFor(() => expect(result.current.at).toBe('/discover/wv/7'));
+  });
+
+  it('follows Back with the tile version the list holds after a refetch (ADR-0075)', async () => {
+    // A boundary saved on world view 7 refetches the list with the same ids and its tile
+    // version moved from 3 to 4; Back onto it after a switch must ask for version 4.
+    mockFetchWorldViews.mockResolvedValue([GADM, { ...OTHER_WV, tileVersion: 3 }, { ...PUBLIC_WV, tileVersion: 1 }]);
+    const { result } = renderHook(
+      () => ({ nav: useNavigation(), at: useLocation().pathname, navigate: useNavigate() }),
+      { wrapper: makeWrapper('/wv/7') },
+    );
+    await waitFor(() => expect(result.current.nav.tileVersion).toBe(3));
+
+    mockFetchWorldViews.mockResolvedValue([GADM, { ...OTHER_WV, tileVersion: 4 }, { ...PUBLIC_WV, tileVersion: 1 }]);
+    await act(() => result.current.nav.invalidateTileCache());
+    await waitFor(() => expect(result.current.nav.tileVersion).toBe(4));
+
+    act(() => { result.current.nav.setSelectedWorldView({ ...PUBLIC_WV, tileVersion: 1 } as never); });
+    await waitFor(() => expect(result.current.at).toBe('/wv/2'));
+    act(() => { result.current.navigate(-1); });
+
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(7));
+    expect(result.current.nav.tileVersion).toBe(4);
+  });
+
+  it('offers on Discover the world views it reconciles among', async () => {
+    mockFetchWorldViews.mockResolvedValue([GADM, OTHER_WV]);
+    const { result } = renderHook(() => useNavigation(), { wrapper: makeWrapper('/discover') });
+    await waitFor(() => expect(result.current.worldViewsHere.map(w => w.id)).toEqual([7]));
+  });
+
+  it('keeps the default on Discover when it is the only world view there is', async () => {
+    mockFetchWorldViews.mockResolvedValue([GADM]);
+    const { result } = renderHook(
+      () => ({ nav: useNavigation(), at: useLocation().pathname }),
+      { wrapper: makeWrapper('/discover') },
+    );
+
+    await waitFor(() => expect(result.current.nav.selectedWorldView?.id).toBe(1));
+    await new Promise(resolve => setTimeout(resolve, 30));
+    expect(result.current.at).toBe('/discover');
+  });
+});

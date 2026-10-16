@@ -31,6 +31,7 @@ import {
 } from '../api/experiences';
 import type { Region } from '../types';
 import { useNavigation } from './useNavigation';
+import type { WorldView } from '../api/worldViews';
 import { useAppAddress } from './useAppAddress';
 import { useFoldedCard, type FoldedInto } from './useFoldedCard';
 import type { AppAddress } from '../utils/appUrl';
@@ -53,7 +54,7 @@ export interface DiscoverBreadcrumb {
 
 export function useDiscoverExperiences() {
   const {
-    selectedWorldView, selectedWorldViewId, worldViews, setSelectedWorldView,
+    selectedWorldView, selectedWorldViewId, worldViewsHere, setSelectedWorldView,
     selectedRegion, setSelectedRegion, regionBreadcrumbs,
   } = useNavigation();
   const { address, go } = useAppAddress();
@@ -394,13 +395,13 @@ export function useDiscoverExperiences() {
   // Discover's to do: it derives from the region `useNavigation` clears on a
   // switch, in the same commit, so no render escapes with the new world view
   // and the old level.
-  const changeWorldView = useCallback((wv: typeof worldViews[0]) => {
+  const changeWorldView = useCallback((wv: WorldView) => {
     setSelectedWorldView(wv);
   }, [setSelectedWorldView]);
 
   return {
     // World view
-    worldViews,
+    worldViewsHere,
     selectedWorldView,
     selectedWorldViewId,
     changeWorldView,

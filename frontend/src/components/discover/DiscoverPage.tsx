@@ -39,7 +39,7 @@ const DETAIL_PANEL_WIDTH = 480;
 
 export function DiscoverPage() {
   const {
-    worldViews,
+    worldViewsHere,
     selectedWorldView,
     changeWorldView,
     breadcrumbs,
@@ -139,11 +139,6 @@ export function DiscoverPage() {
   const placeName = activeView?.regionName ?? breadcrumbs[breadcrumbs.length - 1]?.regionName;
   useDocumentTitle([selectedExperience?.name, placeName].filter(Boolean).join(' · ') || null);
 
-  const availableWorldViews = useMemo(
-    () => worldViews.filter(wv => !wv.isDefault),
-    [worldViews],
-  );
-
   // Curation dialog state (for detail panel curate button)
   const [detailCurationTarget, setDetailCurationTarget] = useState<Experience | null>(null);
 
@@ -176,19 +171,19 @@ export function DiscoverPage() {
         }}
       >
         {/* World view selector */}
-        {availableWorldViews.length > 1 && (
+        {worldViewsHere.length > 1 && (
           <Box sx={{ px: 1.5, py: 1, borderBottom: '1px solid', borderColor: 'divider' }}>
             <Select
               value={selectedWorldView?.id || ''}
               onChange={(e) => {
-                const wv = availableWorldViews.find(w => w.id === e.target.value);
+                const wv = worldViewsHere.find(w => w.id === e.target.value);
                 if (wv) changeWorldView(wv);
               }}
               size="small"
               fullWidth
               sx={{ fontSize: '0.85rem' }}
             >
-              {availableWorldViews.map(wv => (
+              {worldViewsHere.map(wv => (
                 <MenuItem key={wv.id} value={wv.id} sx={{ fontSize: '0.85rem' }}>
                   {wv.name}
                 </MenuItem>
