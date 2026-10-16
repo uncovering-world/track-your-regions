@@ -23,8 +23,12 @@ export interface DumpBuildProgress {
   buildId: number;
   /** When the build last said it is alive; null while it waits for the worker. */
   heartbeatAt: Date | null;
-  /** Seconds the pass being read has left at its pace so far; null while there is no telling. */
+  /** Seconds the step has left at its pace so far, for a step that reads a file; null while there is no telling. */
   etaSeconds: number | null;
+  /** What `read` is measured against: the dump's file in a pass, the terms spool while labelling, the sample's size while cutting one; null in a step with no measure (#1519). */
+  total: number | null;
+  /** When the step running now started; null while the build is queued. */
+  stepStartedAt: Date | null;
 }
 
 /**
@@ -83,6 +87,8 @@ function progressOf(dump: DumpKey, build: ActiveBuild): DumpBuildProgress {
     buildId: build.id,
     heartbeatAt: queued ? null : build.heartbeat_at,
     etaSeconds: progress?.etaSeconds ?? null,
+    total: progress?.total ?? null,
+    stepStartedAt: !queued && progress?.stepStartedAt ? new Date(progress.stepStartedAt) : null,
   };
 }
 

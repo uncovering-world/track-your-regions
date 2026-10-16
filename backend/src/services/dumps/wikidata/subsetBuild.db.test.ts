@@ -252,10 +252,16 @@ describe('a build of the local Wikidata subset (#1434)', () => {
     const before = await swapped();
     pass = 0;
     const phases: string[] = [];
+    const measured: Array<[number, number]> = [];
     const result = await buildSubset(file, {
       buildId: await newBuild(), signal: new AbortController().signal, onPhase: message => phases.push(message), trial: true,
+      onMeasure: (read, total) => measured.push([read, total]),
     });
     expect(phases).toContain('Walking the class tree...');
+    // What each long step says while it runs (#1519): the parts of a derivation, the index being built, the spool read.
+    expect(phases.some(phase => /^Deriving the claims, labels and sitelinks: sitelinks, (\d+) of \1 parts done\.\.\.$/.test(phase))).toBe(true);
+    expect(phases.some(phase => /^Indexing: index 1 of \d+, \w+\.\.\.$/.test(phase))).toBe(true);
+    expect(measured.at(-1)?.[0]).toBe(measured.at(-1)?.[1]);
     expect(phases.at(-1)).toBe('Throwing the trial\'s tables away...');
     expect(result.summary).toMatch(/^kept \d+ of \d+ items .*the tables took \d+\.\d+ GB/);
     // The trial read the capital; the subset in place, built without it, is untouched.

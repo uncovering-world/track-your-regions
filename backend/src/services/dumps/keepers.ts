@@ -19,7 +19,11 @@ export interface Keeper {
   /** What a keeping build of the dump makes, for the admin panel. */
   title: string;
   /** Build from `file` and swap the result in, or, as a `trial`, build and throw it away (#1527). */
-  build(file: DumpFile, options: ReadOptions & { buildId: number; onPhase: (message: string) => void; trial?: boolean }):
+  build(file: DumpFile, options: ReadOptions & {
+    buildId: number; onPhase: (message: string) => void; trial?: boolean;
+    /** How far a step that reads a file of its own has got (#1519). */
+    onMeasure?: (read: number, total: number) => void;
+  }):
     Promise<{ bytes: number; lines: number; checksumActual: string | null; summary?: string }>;
   /** Derive the build in place's tables again from what it holds, without the dump (#1526). */
   rederive?(options: RederiveOptions): Promise<void>;

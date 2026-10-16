@@ -33,7 +33,10 @@ export const DumpBuildProgress = z.strictObject({
   buildId: z.number().int(),
   heartbeatAt: timestamp.nullable().describe('When the build last said it is alive, every few seconds; null while it waits for the worker.'),
   etaSeconds: z.number().int().nullable()
-    .describe('Seconds the pass being read has left at its pace so far; null in its first minute, between passes and in a step that reads no file.'),
+    .describe('Seconds the step has left at its pace so far, for a step that reads a file (a pass over the dump, the labelling\'s terms spool); null in its first minute and in a step that reads none.'),
+  total: z.number().int().nullable()
+    .describe('What read is measured against: the dump\'s file in a pass, the terms spool while labelling, the sample\'s size while cutting one; null in a step with no measure (#1519).'),
+  stepStartedAt: timestamp.nullable().describe('When the step running now started, so a step with no measure of its own reads as alive; null while queued (#1519).'),
 }).describe('A dump build queued or running, read from its ledger row whatever process runs it.');
 export type DumpBuildProgress = z.infer<typeof DumpBuildProgress>;
 

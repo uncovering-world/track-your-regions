@@ -56,6 +56,8 @@ describe('a build in the dump worker (ADR-0106)', () => {
   it('closes a verified build as a success, with the file recorded', async () => {
     read.readDump.mockResolvedValue({ bytes: 1, lines: 3, checksumActual: 'a'.repeat(40) });
     await runBuild(claimed, new AbortController().signal);
+    // A verify names its steps itself, so its row says when the one running started (#1519).
+    expect(ledger.beat).toHaveBeenCalledWith(9, expect.objectContaining({ stepStartedAt: expect.any(String) }));
     expect(ledger.recordFile).toHaveBeenCalledWith(9, FILE);
     expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'success', lines: 3 }));
   });
@@ -83,6 +85,49 @@ describe('a build in the dump worker (ADR-0106)', () => {
     expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
       outcome: 'derived again and swapped in; steps: Deriving the claims, labels and sitelinks 1 min 5 s, Indexing 5 s',
     }));
+  });
+
+  it('starts each step with its time and nothing measured, and measures what the step reads (#1519)', async () => {
+    vi.useFakeTimers({ now: Date.parse('2026-10-15T15:00:00Z') });
+    const beats: Array<Record<string, unknown>> = [];
+    ledger.beat.mockImplementation(async (_id: number, progress: object) => {
+      beats.push({ ...progress });
+      return { cancelRequested: false };
+    });
+    read.readDump.mockResolvedValue({ bytes: 1, lines: 3, checksumActual: 'a'.repeat(40) });
+    keepers.build.mockImplementation(async (_file: unknown, options: {
+      onPhase: (m: string) => void; onMeasure: (read: number, total: number) => void;
+    }) => {
+      options.onPhase('Labelling the entities the kept items name...');
+      options.onMeasure(2_000, 8_000);
+      await vi.advanceTimersByTimeAsync(5_000);
+      vi.setSystemTime(Date.parse('2026-10-15T15:10:00Z'));
+      options.onPhase('Indexing...');
+      options.onPhase('Indexing: index 1 of 6, idx_wikidata_claims_subject...');
+      await vi.advanceTimersByTimeAsync(5_000);
+      return { bytes: 1, lines: 3, checksumActual: 'a'.repeat(40) };
+    });
+    await runBuild({ id: 9, dump: 'wikidata-entities', request: { kind: 'keep' } }, new AbortController().signal);
+    const labelling = beats.find(beat => String(beat.message).startsWith('Labelling'));
+    expect(labelling).toMatchObject({ read: 2_000, total: 8_000, stepStartedAt: '2026-10-15T15:00:00.000Z' });
+    expect(beats.at(-1)).toMatchObject({
+      message: 'Indexing: index 1 of 6, idx_wikidata_claims_subject...', read: 0, total: null, stepStartedAt: '2026-10-15T15:10:00.000Z',
+    });
+  });
+
+  it('records what it read of its file when it fails in a later step, not that step\'s measure (#1519)', async () => {
+    keepers.build.mockImplementation(async (_file: unknown, options: {
+      onPhase: (m: string) => void; onMeasure: (read: number, total: number) => void; onProgress: (p: object) => void;
+    }) => {
+      options.onPhase('Pass 2 of 2: writing 9 items...');
+      options.onProgress({ downloaded: 0, read: 500, lines: 7 });
+      options.onPhase('Labelling the entities the kept items name...');
+      options.onMeasure(80, 90);
+      options.onPhase('Deriving the claims, labels and sitelinks...');
+      throw new Error('the database went away');
+    });
+    await runBuild({ id: 9, dump: 'wikidata-entities', request: { kind: 'keep' } }, new AbortController().signal);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'failed', bytes: 500, lines: 7 }));
   });
 
   it('cuts a sample of the local copy named, records it as the file, and says what it cut (#1527)', async () => {

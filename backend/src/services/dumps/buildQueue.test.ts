@@ -100,6 +100,24 @@ describe('queuing a dump build (ADR-0106)', () => {
     });
   });
 
+  it('reads what a step measures and when it started, and neither from a row written before them (#1519)', async () => {
+    ledger.activeBuildOf.mockResolvedValue({
+      ...queuedRow({ kind: 'keep' }), status: 'running', heartbeat_at: new Date(),
+      progress: {
+        phase: 'reading', message: 'Labelling the entities the kept items name...', downloaded: 0, read: 3_140_000_000, lines: 0,
+        etaSeconds: 300, total: 5_350_000_000, stepStartedAt: '2026-10-15T15:00:00.000Z',
+      },
+    });
+    expect(await buildProgress('wikidata-entities')).toMatchObject({
+      read: 3_140_000_000, total: 5_350_000_000, stepStartedAt: new Date('2026-10-15T15:00:00Z'),
+    });
+    ledger.activeBuildOf.mockResolvedValue({
+      ...queuedRow({ kind: 'keep' }), status: 'running', heartbeat_at: new Date(),
+      progress: { phase: 'reading', message: 'Indexing...', downloaded: 0, read: 0, lines: 0, etaSeconds: null },
+    });
+    expect(await buildProgress('wikidata-entities')).toMatchObject({ total: null, stepStartedAt: null });
+  });
+
   it('reads a row from before the queue, which asked for nothing, as a verify build', async () => {
     ledger.activeBuildOf.mockResolvedValue({ ...queuedRow({}), request: null, status: 'running', heartbeat_at: new Date() });
     expect(await buildProgress('wikidata-entities')).toMatchObject({ kind: 'verify', status: 'resolving' });

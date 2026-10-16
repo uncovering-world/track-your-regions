@@ -34,7 +34,7 @@ async function keepsOf(key: Dumps['dumps'][number]['key']): Promise<Dumps['dumps
 }
 
 const wireProgress = (progress: DumpBuildProgress | null): Dumps['dumps'][number]['progress'] => (progress
-  ? { ...progress, heartbeatAt: progress.heartbeatAt?.toISOString() ?? null }
+  ? { ...progress, heartbeatAt: progress.heartbeatAt?.toISOString() ?? null, stepStartedAt: progress.stepStartedAt?.toISOString() ?? null }
   : null);
 
 

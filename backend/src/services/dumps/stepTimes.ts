@@ -28,18 +28,23 @@ export class StepTimes {
 
   constructor(private readonly now: () => number = Date.now) {}
 
-  /** A phase message: a new step unless it names the one running. */
-  phase(message: string): void {
+  /** A phase message: a new step unless it names the one running. Answers whether a step started. */
+  phase(message: string): boolean {
     const name = stepName(message);
-    if (this.current?.name === name) return;
+    if (this.current?.name === name) return false;
     this.end();
     this.current = { name, at: this.now() };
+    return true;
   }
 
-  /** The steps so far, the one running closed now; empty when no step was named. */
+  /**
+   * The steps so far, the one running closed now; empty when no step was named. A step that
+   * took under a second is left out: it is a step the next one replaced at once, such as the
+   * worker's own first message before the keeper names its first pass.
+   */
   summary(): string {
     this.end();
-    return this.done.map(step => `${step.name} ${spoken(step.ms)}`).join(', ');
+    return this.done.filter(step => step.ms >= 1000).map(step => `${step.name} ${spoken(step.ms)}`).join(', ');
   }
 
   private end(): void {
