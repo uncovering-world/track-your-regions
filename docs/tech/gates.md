@@ -177,8 +177,10 @@ A tier whose gates all sit on untouched inputs prints the sentence rather than
 nothing at all — on a clean `main`, `npm run check` says
 
 ```text
-Nothing to run for tier check: no changed path is an input to lint:backend, lint:frontend, typecheck:backend, typecheck:frontend, knip:backend, knip:frontend, lint:shared, typecheck:shared, knip:shared, lint:circular, db:types, security:deps, security:secrets, lint:shell, lint:docker, lint:actions, lint:md, lint:links, lint:openapi, api:breaking, api:client, lint:pointers, lint:shrunk, check:py, security:py:bandit, security:py:deps. `--all` runs every gate.
+Nothing to run for tier check: no changed path is an input to lint:backend, lint:frontend, …, security:py:deps. `--all` runs every gate.
 ```
+
+— naming every check-tier gate, in the map's order.
 
 and exits 0. That is the one line this runner exists to print: a gate that did
 not run has to say so, because silence and success look identical in a log.
@@ -497,6 +499,7 @@ by hand. The first spec is what makes sure the file is placed at all.
 | `lint:shared` | check | `shared` | `npm --prefix packages/shared run lint` | check | on the same inputs |
 | `typecheck:shared` | check | `shared` | `npm --prefix packages/shared run typecheck` | check | on the same inputs |
 | `knip:shared` | check | `shared` | `npm --prefix packages/shared run knip` | check | on the same inputs |
+| `lint:scripts` | check | `scripts`; reads `backend/eslint.config.mjs`, `backend/package-lock.json` | `npm run lint:scripts` | check | on the same inputs |
 | `lint:circular` | check | `backend`, `web`, `shared`; reads `.madgerc`, `package-lock.json`, `scripts/require-node-tools.sh` | `npm run lint:circular` | check | on the same inputs |
 | `db:types` | check | `schema` | `npm run db:types:check` | check | on the same inputs |
 | `security:deps` | check | `node-deps` | `npm run security:deps` | check | never: its answer reads an advisory database that changes while the tree does not |

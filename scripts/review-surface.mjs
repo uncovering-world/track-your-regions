@@ -80,7 +80,7 @@ function isMeaningful(trimmed, kind) {
   return kind === 'docs' ? !PROSE_COMMENT_OPENER.test(trimmed) : !CODE_COMMENT_OPENER.test(trimmed);
 }
 
-const tokenize = (line) => line.match(/[A-Za-z0-9_]+|\S/g) ?? [];
+const tokenize = (line) => line.match(/\w+|\S/g) ?? [];
 
 /**
  * The one substitution that turns `before` into `after`, or null when the two
@@ -113,6 +113,7 @@ export function substitutionOf(before, after) {
  * headers naming two paths — is one file and not two; a pure rename, which
  * carries no `---`/`+++` at all, is named by its `rename to` line.
  */
+// eslint-disable-next-line sonarjs/cognitive-complexity -- the gate tooling as it stood when scripts/ was first linted (#655); splitting it changes the runner's control flow and is #1552, pinned by its specs
 function parseFiles(diff) {
   const files = [];
   let current = null;
@@ -268,6 +269,7 @@ function roundAreas(entries, total) {
  * Measure one unified diff. Pure: the caller supplies the text, so the same
  * function serves the CLI, the tests and any replay of an old branch.
  */
+// eslint-disable-next-line sonarjs/cognitive-complexity -- the gate tooling as it stood when scripts/ was first linted (#655); splitting it changes the runner's control flow and is #1552, pinned by its specs
 export function measureSurface(diff) {
   const files = parseFiles(diff);
 

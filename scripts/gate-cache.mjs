@@ -86,7 +86,7 @@ export function hashWorkingTree(wanted, top = topLevel()) {
     }
     if (stat.isSymbolicLink()) {
       const target = readlinkSync(path.join(top, file));
-      hashes.set(file, `link:${createHash('sha1').update(target).digest('hex')}`);
+      hashes.set(file, `link:${createHash('sha256').update(target).digest('hex')}`);
     } else if (stat.isFile()) regular.push(file);
   }
   if (regular.length) {

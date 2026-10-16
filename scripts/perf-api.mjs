@@ -151,7 +151,8 @@ if (options.json) {
 } else {
   printTable(results);
   if (!roots.ok) {
-    process.stdout.write(`\nThe root regions of world view ${WORLD_VIEW} could not be read (${roots.status === 0 ? 'no answer' : `answered ${roots.status}`}), so whether each has a geometry was not checked.\n`);
+    const answer = roots.status === 0 ? 'no answer' : 'answered ' + roots.status;
+    process.stdout.write(`\nThe root regions of world view ${WORLD_VIEW} could not be read (${answer}), so whether each has a geometry was not checked.\n`);
   } else if (emptyRoots.length > 0) {
     process.stdout.write(`\n${rootsWithoutGeometrySentence(WORLD_VIEW, emptyRoots)}\n`);
   }

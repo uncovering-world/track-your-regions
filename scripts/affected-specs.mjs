@@ -110,6 +110,7 @@ const under = (prefixes, path) => prefixes.some((prefix) =>
  * directory — the changed modules of its trees and every text-reading spec.
  * Empty targets mean no spec of the lane reaches the change.
  */
+// eslint-disable-next-line sonarjs/cognitive-complexity -- the gate tooling as it stood when scripts/ was first linted (#655); splitting it changes the runner's control flow and is #1552, pinned by its specs
 export function selectSpecs({ lane, changed, exists, textReaders, loaders = [] }) {
   const spec = LANES[lane];
   const own = changed.filter((path) => !path.includes('#'));

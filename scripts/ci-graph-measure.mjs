@@ -183,7 +183,8 @@ export function report({ since, until, runs }) {
   lines.push('|------|-----|---------------------------|----------------|--------------------------|-------------------------|');
   for (const gated of GATED) {
     const e = edgeEffect(completed, gated);
-    lines.push(`| ${e.job} | ${e.ran} | ${fmt(e.delayP50)} / ${fmt(e.delayP90)} | ${e.lastToFinish} | ${e.redGateRuns.length}${e.redGateRuns.length ? ` (${e.redGateRuns.join(', ')})` : ''} | ${fmt(e.savedPerRedGate)} |`);
+    const redRuns = e.redGateRuns.length ? ' (' + e.redGateRuns.join(', ') + ')' : '';
+    lines.push(`| ${e.job} | ${e.ran} | ${fmt(e.delayP50)} / ${fmt(e.delayP90)} | ${e.lastToFinish} | ${e.redGateRuns.length}${redRuns} | ${fmt(e.savedPerRedGate)} |`);
   }
   return lines.join('\n');
 }

@@ -35,7 +35,8 @@ describe('the key a pass is kept under', () => {
   });
 
   it('moves when a file the gate reads is deleted', () => {
-    const { 'frontend/src/components/curation/ReviewPage.tsx': _gone, ...rest } = BASE_TREE;
+    const rest = { ...BASE_TREE };
+    delete rest['frontend/src/components/curation/ReviewPage.tsx'];
     expect(keyOf('test:frontend', tree(rest))).not.toBe(keyOf('test:frontend', tree(BASE_TREE)));
   });
 
