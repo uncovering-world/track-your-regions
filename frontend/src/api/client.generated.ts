@@ -3609,7 +3609,7 @@ export interface DivisionsRemoved {
 }
 
 /**
- * A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds; a re-derive derives the kept build's tables again from what it holds, reading no file (#1526).
+ * A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds; a re-derive derives the kept build's tables again from what it holds, reading no file (#1526); a sample build cuts the first part of the local copy, and a trial runs the builder on that sample and keeps nothing (#1527).
  */
 export type DumpBuildKind = typeof DumpBuildKind[keyof typeof DumpBuildKind];
 
@@ -3618,6 +3618,8 @@ export const DumpBuildKind = {
   verify: 'verify',
   keep: 'keep',
   rederive: 'rederive',
+  sample: 'sample',
+  trial: 'trial',
 } as const;
 
 export type DumpBuildMode = typeof DumpBuildMode[keyof typeof DumpBuildMode];
@@ -3655,7 +3657,7 @@ export interface DumpBuild {
      * @maximum 9007199254740991
      */
   id: number;
-  /** A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds; a re-derive derives the kept build's tables again from what it holds, reading no file (#1526). */
+  /** A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds; a re-derive derives the kept build's tables again from what it holds, reading no file (#1526); a sample build cuts the first part of the local copy, and a trial runs the builder on that sample and keeps nothing (#1527). */
   kind: DumpBuildKind;
   /**
      * Null for a build that ended before it found its file.
@@ -3676,11 +3678,16 @@ export interface DumpBuild {
      */
   lines: number;
   checksumKind: DumpBuildChecksumKind;
-  /** The published checksum matched, or, where none is published, the size and the end of stream did; never for a re-derive, which reads no file. */
+  /** The published checksum matched, or, where none is published, the size and the end of stream did; never for a re-derive, which reads no file, nor for a sample or a trial, which read no file of the host's. */
   verified: boolean;
   status: DumpBuildStatus;
   /** @nullable */
   error: string | null;
+  /**
+     * What a build that ended well did, in words: what it kept, how long each step took, an older copy removed (#1527); null otherwise.
+     * @nullable
+     */
+  outcome: string | null;
   /** @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$ */
   startedAt: string;
   finishedAt: string | null;
@@ -3719,7 +3726,7 @@ export const DumpBuildProgressDump = {
 } as const;
 
 /**
- * A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds; a re-derive derives the kept build's tables again from what it holds, reading no file (#1526).
+ * A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds; a re-derive derives the kept build's tables again from what it holds, reading no file (#1526); a sample build cuts the first part of the local copy, and a trial runs the builder on that sample and keeps nothing (#1527).
  */
 export type DumpBuildProgressKind = typeof DumpBuildProgressKind[keyof typeof DumpBuildProgressKind];
 
@@ -3728,6 +3735,8 @@ export const DumpBuildProgressKind = {
   verify: 'verify',
   keep: 'keep',
   rederive: 'rederive',
+  sample: 'sample',
+  trial: 'trial',
 } as const;
 
 /**
@@ -3754,7 +3763,7 @@ export type DumpBuildProgressFile = {
  */
 export interface DumpBuildProgress {
   dump: DumpBuildProgressDump;
-  /** A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds; a re-derive derives the kept build's tables again from what it holds, reading no file (#1526). */
+  /** A verify build reads and counts; a keeping build runs the dump's builder and swaps in what it builds; a re-derive derives the kept build's tables again from what it holds, reading no file (#1526); a sample build cuts the first part of the local copy, and a trial runs the builder on that sample and keeps nothing (#1527). */
   kind: DumpBuildProgressKind;
   /** Queued for the dump worker, finding its file, reading it (ADR-0106), or deriving the kept tables again, which reads no file (#1526). */
   status: DumpBuildProgressStatus;
@@ -3850,6 +3859,22 @@ export type DumpsDumpsItemLocalCopy = {
   bytes: number;
 } | null;
 
+/**
+ * The newest sample of the dump in DUMPS_DIR, which a trial builds from and throws away (#1527); null without one.
+ */
+export type DumpsDumpsItemSample = {
+  fileName: string;
+  /** The local copy it was cut from. */
+  of: string;
+  /** The dump date of that copy, YYYY-MM-DD. */
+  date: string;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  bytes: number;
+} | null;
+
 export type DumpsDumpsItem = {
   key: DumpsDumpsItemKey;
   /** Who publishes the dump: Wikidata, English Wikipedia, Wikimedia pageviews. */
@@ -3864,6 +3889,8 @@ export type DumpsDumpsItem = {
   keeps: DumpsDumpsItemKeeps;
   /** The newest local copy of the dump in DUMPS_DIR, which a build can read instead of the newest file the host lists (#1456); null without one. */
   localCopy: DumpsDumpsItemLocalCopy;
+  /** The newest sample of the dump in DUMPS_DIR, which a trial builds from and throws away (#1527); null without one. */
+  sample: DumpsDumpsItemSample;
 };
 
 /**
@@ -14486,6 +14513,56 @@ export const getPostAdminDumpsByDumpRederiveUrl = (dump: 'wikidata-entities' | '
 export const postAdminDumpsByDumpRederive = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
 
   return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpRederiveUrl(dump),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostAdminDumpsByDumpSampleUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user',) => {
+
+
+
+
+  return `/api/admin/dumps/${encodeURIComponent(String(dump))}/sample`
+}
+
+/**
+ * Requires an admin.
+ * @summary Start cutting a sample of the first part of a dump's local copy, kept beside it, for a trial of the build
+ */
+export const postAdminDumpsByDumpSample = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
+
+  return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpSampleUrl(dump),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostAdminDumpsByDumpTrialUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user',) => {
+
+
+
+
+  return `/api/admin/dumps/${encodeURIComponent(String(dump))}/trial`
+}
+
+/**
+ * Requires an admin.
+ * @summary Start a trial of the build on the dump's sample: every step runs into copies that are then dropped, never swapped in
+ */
+export const postAdminDumpsByDumpTrial = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
+
+  return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpTrialUrl(dump),
   {
     ...options,
     method: 'POST'
