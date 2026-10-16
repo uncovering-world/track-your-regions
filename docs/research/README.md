@@ -19,3 +19,4 @@ and says so in its first lines.
 |---|---|
 | [2026-10-10 — Which open sources give a World Heritage component its picture and description](2026-10-10-sources-for-a-parts-picture-and-description.md) | #1306, #1337, #1339, #1340, #1341 |
 | [2026-10-12 — What the single coordinate of a serial World Heritage site means](2026-10-12-what-a-serial-sites-single-coordinate-means.md) | #1354, ADR-0095 |
+| [2026-10-16 — How a card lets a visitor copy, share and follow a place's facts](2026-10-16-how-a-card-lets-a-visitor-copy-and-share.md) | #1188, #1190, #1191, #1192, #1193, #1194, #1195, #1196 |
