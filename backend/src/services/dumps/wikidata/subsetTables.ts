@@ -15,6 +15,7 @@ import type { PoolClient, QueryResultRow } from 'pg';
 import { pool } from '../../../db/index.js';
 import { arrayItemOf } from './compactEntity.js';
 import { insertRefusing, type Refusals } from './refusals.js';
+import { whatTheCopyNeeds, type BuildRules, type CopyNeeds } from './buildRules.js';
 
 /** The tables a build replaces, the entities first. */
 export const SUBSET_TABLES = [
@@ -520,7 +521,7 @@ export async function indexNextTables(signal: AbortSignal, only: readonly Subset
  * leaves the record a cut build keeps for the next build of its file.
  */
 export async function swapIn(
-  buildId: number, dumpDate: string, counts: Record<string, number>, only: readonly SubsetTable[] = SUBSET_TABLES,
+  buildId: number, dumpDate: string, counts: Record<string, number>, rules: BuildRules, only: readonly SubsetTable[] = SUBSET_TABLES,
 ): Promise<void> {
   const client = await pool.connect();
   try {
@@ -533,8 +534,8 @@ export async function swapIn(
     }
     if (only.includes('wikidata_entities')) await client.query(`DROP TABLE IF EXISTS ${RESUME_TABLE}, ${PIECES_TABLE}`);
     await client.query(
-      'INSERT INTO wikidata_subset_builds (build_id, dump_date, counts) VALUES ($1, $2, $3)',
-      [buildId, dumpDate, JSON.stringify(counts)],
+      'INSERT INTO wikidata_subset_builds (build_id, dump_date, counts, rules) VALUES ($1, $2, $3, $4)',
+      [buildId, dumpDate, JSON.stringify(counts), JSON.stringify(rules)],
     );
     await client.query('COMMIT');
   } catch (error) {
@@ -570,21 +571,22 @@ export async function entitiesAreHeld(): Promise<boolean> {
   return Boolean(result.rows[0]?.held);
 }
 
-/** The counts the subset now in place was recorded with, or null where none is. */
-export async function latestSubsetCounts(): Promise<{ dumpDate: string; counts: Record<string, number> } | null> {
-  const result = await pool.query<{ dump_date: string; counts: Record<string, number> }>(
-    `SELECT to_char(dump_date, 'YYYY-MM-DD') AS dump_date, counts FROM wikidata_subset_builds
-      ORDER BY swapped_at DESC LIMIT 1`,
-  );
-  return result.rows[0] ? { dumpDate: result.rows[0].dump_date, counts: result.rows[0].counts } : null;
-}
-
-/** The subset build now in place, if any. */
-export async function latestSubset(): Promise<{ dumpDate: string; swappedAt: Date } | null> {
-  const result = await pool.query<{ dump_date: string; swapped_at: Date }>(
-    `SELECT to_char(dump_date, 'YYYY-MM-DD') AS dump_date, swapped_at FROM wikidata_subset_builds
+/** The counts and rules the subset now in place was recorded with, or null where none is. */
+export async function latestSubsetCounts(): Promise<{ dumpDate: string; counts: Record<string, number>; rules: BuildRules | null } | null> {
+  const result = await pool.query<{ dump_date: string; counts: Record<string, number>; rules: BuildRules | null }>(
+    `SELECT to_char(dump_date, 'YYYY-MM-DD') AS dump_date, counts, rules FROM wikidata_subset_builds
       ORDER BY swapped_at DESC LIMIT 1`,
   );
   const row = result.rows[0];
-  return row ? { dumpDate: row.dump_date, swappedAt: row.swapped_at } : null;
+  return row ? { dumpDate: row.dump_date, counts: row.counts, rules: row.rules } : null;
+}
+
+/** The subset build now in place, if any, with what it needs to match the code (#1583). */
+export async function latestSubset(): Promise<{ dumpDate: string; swappedAt: Date; needs: CopyNeeds } | null> {
+  const result = await pool.query<{ dump_date: string; swapped_at: Date; rules: BuildRules | null }>(
+    `SELECT to_char(dump_date, 'YYYY-MM-DD') AS dump_date, swapped_at, rules FROM wikidata_subset_builds
+      ORDER BY swapped_at DESC LIMIT 1`,
+  );
+  const row = result.rows[0];
+  return row ? { dumpDate: row.dump_date, swappedAt: row.swapped_at, needs: whatTheCopyNeeds(row.rules) } : null;
 }

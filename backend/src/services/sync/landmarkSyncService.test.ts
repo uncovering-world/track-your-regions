@@ -155,7 +155,7 @@ describe('syncLandmarks', () => {
     vi.mocked(latestSubset).mockResolvedValue(null);
     await expect((await configOf()).fetchItems(progress(), [])).rejects.toThrow(/not built/);
 
-    vi.mocked(latestSubset).mockResolvedValue({ dumpDate: '2026-10-05', swappedAt: new Date() });
+    vi.mocked(latestSubset).mockResolvedValue({ dumpDate: '2026-10-05', swappedAt: new Date(), needs: 'nothing' });
     mockedCollect.mockResolvedValue({ items: [], fetched: 0, filtered: [] });
     // A row whose item the subset does not keep: left as it is, and named (#1462).
     const unread = [{ externalId: 'Q130000001', name: 'A statue newer than the dump' }];

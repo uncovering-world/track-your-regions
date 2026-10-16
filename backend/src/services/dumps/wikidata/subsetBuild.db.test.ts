@@ -78,6 +78,8 @@ vi.mock('../localCopies.js', async (importOriginal) => ({
 
 const { buildSubset, rederiveSubset } = await import('./subsetBuild.js');
 const { createNextTables } = await import('./subsetTables.js');
+const { currentRules, whatTheCopyNeeds } = await import('./buildRules.js');
+type BuildRules = import('./buildRules.js').BuildRules;
 
 const LOUVRE_PALACE = 1075988;
 const LOUVRE = 19675;
@@ -431,6 +433,11 @@ describe('deriving the subset again from the entities in place (#1526)', () => {
     const { rows: [after] } = await pool.query('SELECT dump_date::text, counts FROM wikidata_subset_builds ORDER BY swapped_at DESC LIMIT 1');
     expect(after).toEqual(before);
     expect(await nextTables()).toEqual([]);
+    // Each records the rules it was made under (#1583): the build the code's own, the re-derive the build's
+    // scope and writing with this code's derivations, so the copy reads as current either way.
+    const { rows: rules } = await pool.query<{ rules: BuildRules }>('SELECT rules FROM wikidata_subset_builds ORDER BY swapped_at DESC LIMIT 2');
+    expect(rules.map(r => r.rules)).toEqual([currentRules(), currentRules()]);
+    expect(whatTheCopyNeeds(rules[0].rules)).toBe('nothing');
   });
 
   it('leaves the subset and a cut build\'s copies as they were when it is cancelled', async () => {

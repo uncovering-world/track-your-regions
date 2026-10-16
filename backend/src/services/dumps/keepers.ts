@@ -7,12 +7,15 @@
 import type { DumpFile, DumpKey } from './catalog.js';
 import type { ReadOptions } from './read.js';
 import { buildSubset, rederiveSubset, type RederiveOptions } from './wikidata/subsetBuild.js';
+import type { CopyNeeds } from './wikidata/buildRules.js';
 import { latestSubset } from './wikidata/subsetTables.js';
 
 export interface Kept {
   /** The dump date of the build now in place, and when it was swapped in. */
   dumpDate: string;
   swappedAt: Date;
+  /** What it needs to match the code's rules (#1583): nothing, a re-derive, or a build from the dump. */
+  needs: CopyNeeds;
 }
 
 export interface Keeper {
@@ -36,3 +39,16 @@ const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
 };
 
 export const keeperOf = (key: DumpKey): Keeper | null => KEEPERS[key] ?? null;
+
+/**
+ * What the copy built from a dump needs, for the admin (#1583): a build from
+ * the dump where none is in place, where the code now keeps or writes it
+ * differently, or where the host has a newer dump than the one it was built
+ * from (`newest`, as last learnt); a re-derive where only the derived tables
+ * are made differently.
+ */
+export function whatTheKeptNeeds(built: Kept | null, newest: string | null): 'nothing' | 'recompute' | 'newer-dump' | 'rebuild' {
+  if (!built || built.needs === 'rebuild') return 'rebuild';
+  if (newest !== null && newest > built.dumpDate) return 'newer-dump';
+  return built.needs;
+}

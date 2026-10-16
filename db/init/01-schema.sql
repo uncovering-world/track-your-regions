@@ -3984,8 +3984,10 @@ CREATE TABLE IF NOT EXISTS wikidata_subset_builds (
     build_id INTEGER PRIMARY KEY REFERENCES dump_builds(id),
     dump_date DATE NOT NULL,
     counts JSONB NOT NULL,
-    swapped_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    swapped_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    rules JSONB
 );
+COMMENT ON COLUMN wikidata_subset_builds.rules IS 'The versions of the rules the build was made under (#1583): scope (the first pass''s version and rules), write (how a line is written), derive (how the derived tables are made). Null on a build from before they were recorded, read as current.';
 COMMENT ON TABLE wikidata_subset_builds IS 'Each build of the local Wikidata subset that was swapped in (ADR-0105): the dump build it read, the dump date, and what it kept. The newest row is what the wikidata_* tables hold.';
 
 CREATE UNLOGGED TABLE IF NOT EXISTS wikidata_entities (

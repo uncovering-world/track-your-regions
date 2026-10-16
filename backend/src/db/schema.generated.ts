@@ -870,6 +870,7 @@ export interface WikidataSubsetBuildsRow {
   dump_date: Date;
   counts: unknown;
   swapped_at: Date;
+  rules: unknown | null;
 }
 
 /** The table `world_views`. */

@@ -33,6 +33,7 @@ import {
   latestSubsetCounts, nextTablesSize, resetAfterPassTwo, type StepReport, resumableBuild, deriveClassClosure, deriveFromEntities, dropNextTables, indexNextTables, insertLabels,
   type LabelRow, type ResumeState, swapIn,
 } from './subsetTables.js';
+import { currentRules, DERIVE_VERSION } from './buildRules.js';
 
 export interface SubsetBuildOptions extends ReadOptions {
   buildId: number;
@@ -226,7 +227,7 @@ export async function buildSubset(file: DumpFile, options: SubsetBuildOptions): 
       return { ...read, counts, summary };
     }
     onPhase('Swapping the new subset in...');
-    await swapIn(options.buildId, file.date, counts);
+    await swapIn(options.buildId, file.date, counts, currentRules());
     return { ...read, counts, summary };
   } catch (error) {
     // What pass 2 wrote is kept for the next build of the same file to pick
@@ -280,7 +281,8 @@ export async function rederiveSubset({ buildId, signal, onPhase, onNote }: Reder
     await indexNextTables(signal, ['wikidata_class_closure'], inStep(onPhase, 'Walking the class tree'));
     signal.throwIfAborted();
     onPhase('Swapping the derived tables in...');
-    await swapIn(buildId, latest.dumpDate, latest.counts, DERIVED_TABLES);
+    // The entities are the build's in place, so are what kept and wrote them; the derivations are this code's.
+    await swapIn(buildId, latest.dumpDate, latest.counts, { ...(latest.rules ?? currentRules()), derive: DERIVE_VERSION }, DERIVED_TABLES);
   } catch (error) {
     await dropDerivedNextTables().catch(() => undefined);
     throw error;

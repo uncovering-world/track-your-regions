@@ -70,6 +70,12 @@ export const Dumps = z.strictObject({
       title: z.string(),
       built: z.strictObject({ dumpDate: z.string(), swappedAt: timestamp }).nullable()
         .describe('The build now in place: its dump date and when it was swapped in.'),
+      needs: z.enum(['nothing', 'recompute', 'newer-dump', 'rebuild'])
+        .describe('What the copy needs (#1583): nothing; a re-derive, the code now making its derived tables differently; a build from the newer dump the host lists; or a build from the dump, none being in place or the code now keeping or writing it differently.'),
+      newestDumpDate: z.string().nullable()
+        .describe('The newest complete dump the host lists, YYYY-MM-DD, as last learnt (asked at most once a day); null while not known.'),
+      newestChecked: z.enum(['not-yet', 'answered', 'unreachable'])
+        .describe('Whether the host has been asked for its newest dump since the backend started, and whether it answered the last time.'),
     }).nullable().describe('What a keeping build of this dump makes (the local Wikidata subset), or null where nothing is built from it yet.'),
     localCopy: z.strictObject({
       fileName: z.string(),
