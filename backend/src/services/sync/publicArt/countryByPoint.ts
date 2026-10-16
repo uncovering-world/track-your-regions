@@ -9,9 +9,13 @@
  * countries, a border GADM leaves open), the readers' own choice stays. When no
  * country stands at all it is the GADM country itself: Mediolanum, stated only in
  * Ancient Rome, is in Italy. A point in no GADM country (at sea, on another globe)
- * changes nothing. Where the GADM country itself is the answer it is written as
- * the sovereign state (`P31` sovereign state, Q3624078, as the local subset keeps
- * them) one of whose labels is GADM's name, in the label the readers give it —
+ * changes nothing. A country no statement ended stands only as one of today's
+ * states (#1575): a sovereign state, or the GADM country itself — Denmark
+ * (Q35), the constituent country a Danish church is stated in — so Shechem, stated only in the
+ * United Kingdom of Israel, is named by its point too. Where the GADM country
+ * itself is the answer it is written as the sovereign state (`P31` sovereign
+ * state, Q3624078, as the local subset keeps them) one of whose labels is GADM's
+ * name, in the label the readers give it —
  * Chang'an, stated only in dynasties that are gone, reads "People's Republic of
  * China" like every other Chinese place rather than GADM's "China" — and in GADM's
  * spelling only when no state matches. The same set answers every read, so a
@@ -45,15 +49,20 @@ function matching(
 
 /**
  * The candidate whose names include the GADM country's; when no candidate
- * stands, the GADM country itself, written as the sovereign state among
- * `states` it names where one matches; or null to keep the readers' choice.
+ * stands, or none that does is a sovereign state and none is GADM's country
+ * (#1575: Shechem's United Kingdom of Israel, an item the reader holds nothing
+ * of), the GADM country itself, written as the sovereign state among `states`
+ * it names where one matches; or null to keep the readers' choice.
  */
 export function chooseByPoint(
   options: CountryOptions, gadmCountry: string, namesOf: ReadonlyMap<string, readonly string[]>,
   states: readonly CountryOption[] = [],
 ): string | null {
-  if (options.noneStands) return matching(states, gadmCountry, namesOf)?.label ?? gadmCountry;
-  return matching(options.candidates, gadmCountry, namesOf)?.label ?? null;
+  const gadm = () => matching(states, gadmCountry, namesOf)?.label ?? gadmCountry;
+  if (options.noneStands) return gadm();
+  const candidate = matching(options.candidates, gadmCountry, namesOf);
+  if (candidate) return candidate.label;
+  return options.candidates.some(c => c.sovereign) ? null : gadm();
 }
 
 /**
@@ -108,7 +117,7 @@ async function sovereignStates(): Promise<CountryOption[]> {
   );
   const ids = result.rows.map(row => row.subject);
   const terms = await termsOf(ids);
-  return ids.map(qid => ({ qid, label: terms.get(qid)?.label ?? qid }));
+  return ids.map(qid => ({ qid, label: terms.get(qid)?.label ?? qid, sovereign: true }));
 }
 
 /** Every label the local subset keeps for each item, in any language. */
@@ -127,8 +136,9 @@ export async function settleCountriesByPoint(entities: PoolEntity[]): Promise<Po
   const open = entities.filter(e => e.countryOptions && e.lat !== null && e.lon !== null && e.onEarth);
   if (!open.length) return entities;
   // The words a GADM country is written in when it is the answer itself, read
-  // only when some place has no standing country.
-  const states = open.some(e => e.countryOptions!.noneStands) ? await sovereignStates() : [];
+  // only when some place may need it: no standing country, or no sovereign one.
+  const states = open.some(e => e.countryOptions!.noneStands || !e.countryOptions!.candidates.some(c => c.sovereign))
+    ? await sovereignStates() : [];
   const candidateItems = open.flatMap(e => e.countryOptions!.candidates.flatMap(c => (c.qid ? [c.qid] : [])));
   const [countries, names] = await Promise.all([
     gadmCountriesAt(open.map(e => ({ key: e.qid, lon: e.lon!, lat: e.lat! }))),

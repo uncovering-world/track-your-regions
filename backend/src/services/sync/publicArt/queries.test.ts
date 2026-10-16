@@ -82,7 +82,7 @@ describe('fetchClassPool', () => {
       coord: { value: 'Point(19.1525 54.3292)' }, sl: { value: '50' } };
     const rows = [
       { ...at, countryLabel: { value: 'Nazi Germany' }, countryEnded: { value: '1945-05-08T00:00:00Z' } },
-      { ...at, countryLabel: { value: 'Poland' } },
+      { ...at, countryLabel: { value: 'Poland' }, countrySovereign: ref('Q3624078') },
     ];
     const [camp] = await fetchClassPool(answer(rows), ['Q152081']);
     expect(camp.countryLabel).toBe('Poland');
@@ -97,7 +97,7 @@ describe('fetchClassPool', () => {
     }];
     const [city] = await fetchClassPool(answer(rows), ['Q839954']);
     expect(city.countryLabel).toBe('Ancient Rome');
-    expect(city.countryOptions).toEqual({ candidates: [{ qid: 'Q1747689', label: 'Ancient Rome' }], noneStands: true });
+    expect(city.countryOptions).toEqual({ candidates: [{ qid: 'Q1747689', label: 'Ancient Rome', sovereign: false }], noneStands: true });
   });
 
   it('leaves two standing countries to the point, each with its item (#1564)', async () => {
@@ -105,12 +105,26 @@ describe('fetchClassPool', () => {
     const at = { e: ref('Q1071570'), eLabel: { value: "Basilica of Sant'Ambrogio" },
       coord: { value: 'Point(9.1756 45.4623)' }, sl: { value: '40' } };
     const rows = [
-      { ...at, country: ref('Q159'), countryLabel: { value: 'Russia' } },
-      { ...at, country: ref('Q38'), countryLabel: { value: 'Italy' } },
+      { ...at, country: ref('Q159'), countryLabel: { value: 'Russia' }, countrySovereign: ref('Q3624078') },
+      { ...at, country: ref('Q38'), countryLabel: { value: 'Italy' }, countrySovereign: ref('Q3624078') },
     ];
     const [basilica] = await fetchClassPool(answer(rows), ['Q163687']);
     expect(basilica.countryOptions).toEqual({
-      candidates: [{ qid: 'Q159', label: 'Russia' }, { qid: 'Q38', label: 'Italy' }], noneStands: false,
+      candidates: [{ qid: 'Q159', label: 'Russia', sovereign: true }, { qid: 'Q38', label: 'Italy', sovereign: true }],
+      noneStands: false,
+    });
+  });
+
+  it('leaves a country that is no state of today to the point, though nothing ended it (#1575)', async () => {
+    // Shechem (Q7951237) is stated in the United Kingdom of Israel (Q3185305), an ancient state;
+    // whatever its dissolution, it is no sovereign state, so the point in Nablus decides.
+    const rows = [{
+      e: ref('Q7951237'), eLabel: { value: 'Shechem' }, coord: { value: 'Point(35.2819 32.2136)' }, sl: { value: '30' },
+      country: ref('Q3185305'), countryLabel: { value: 'United Kingdom of Israel' },
+    }];
+    const [shechem] = await fetchClassPool(answer(rows), ['Q839954']);
+    expect(shechem.countryOptions).toEqual({
+      candidates: [{ qid: 'Q3185305', label: 'United Kingdom of Israel', sovereign: false }], noneStands: false,
     });
   });
 

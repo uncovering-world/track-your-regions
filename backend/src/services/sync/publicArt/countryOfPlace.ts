@@ -26,11 +26,17 @@ export interface PlaceCountry {
   qid?: string;
   /** Some statement of it carries no end time (`P582`), and the state was not dissolved (`P576`). */
   stands: boolean;
+  /** The item is a sovereign state (`P31` Q3624078): one of the states of today, not a kingdom of antiquity. */
+  sovereign: boolean;
 }
 
+/** A country that is one of today's states: not ended, not dissolved, and sovereign (#1575). */
+const today = (c: PlaceCountry) => c.stands && c.sovereign;
+
 /**
- * The countries a place is in today (#757): the ones that still hold, or,
- * when none does, every one as before.
+ * The countries a place is in today (#757): the sovereign states that still
+ * hold; failing those, every country no statement ended (#1575), which its
+ * point then judges (`openCountries`); failing those, every one as before.
  *
  * Wikidata states a site in each state it has belonged to, at the same rank:
  * Ephesus in the Roman Empire, the Seljuk Empire and Turkey; the Stutthof camp
@@ -42,14 +48,17 @@ export interface PlaceCountry {
  * #1564): Mediolanum, stated only in Ancient Rome, ends up in Italy.
  */
 export function standingCountries(countries: readonly PlaceCountry[]): string[] {
-  const standing = countries.filter(c => c.stands).map(c => c.country);
-  return standing.length ? standing : countries.map(c => c.country);
+  for (const tier of [countries.filter(today), countries.filter(c => c.stands)]) {
+    if (tier.length) return tier.map(c => c.country);
+  }
+  return countries.map(c => c.country);
 }
 
-/** A country a place may be named in, as the reader knows it: its item, and its label. */
+/** A country a place may be named in, as the reader knows it: its item, its label, and whether it is a sovereign state. */
 export interface CountryOption {
   qid: string | null;
   label: string;
+  sovereign: boolean;
 }
 
 /**
@@ -66,15 +75,23 @@ export interface CountryOptions {
  * Open when more than one country stands and no part of the point picked one —
  * Wikidata lists Russia before Italy on the Basilica of Sant'Ambrogio in Milan,
  * and statement order cannot tell an error from a second country — or when none
- * stands at all, as Mediolanum stands only in Ancient Rome. Null when the
- * statements decided: one standing country, or the part the point applies to.
- * The answer is in the reader's own keys, as `countries` gives them.
+ * stands at all, as Mediolanum stands only in Ancient Rome. Open too when a
+ * country no statement ended is no sovereign state (#1575): Denmark (Q35) a
+ * Danish church is stated in is today's country, the United Kingdom of
+ * Israel Shechem is stated in is not, an item the reader holds nothing of may
+ * be either, and only the point can tell them apart. Null when the statements
+ * decided: one standing sovereign state, or the part the point applies to. The
+ * answer is in the reader's own keys, as `countries` gives them, with the keys
+ * that are sovereign states.
  */
 export function openCountries(
   countries: readonly PlaceCountry[], partCountries: ReadonlySet<string> | null,
-): { keys: string[]; noneStands: boolean } | null {
+): { keys: string[]; noneStands: boolean; sovereign: Set<string> } | null {
   const noneStands = countries.length > 0 && !countries.some(c => c.stands);
-  const keys = [...new Set(standingCountries(countries))];
-  if (noneStands) return { keys, noneStands };
-  return keys.length > 1 && partCountries === null ? { keys, noneStands } : null;
+  const sovereign = new Set(countries.filter(c => c.sovereign).map(c => c.country));
+  if (noneStands) return { keys: [...new Set(countries.map(c => c.country))], noneStands, sovereign };
+  const keys = [...new Set(countries.filter(c => c.stands).map(c => c.country))];
+  const unsure = countries.some(c => c.stands && !c.sovereign);
+  const todays = new Set(countries.filter(today).map(c => c.country));
+  return unsure || (todays.size > 1 && partCountries === null) ? { keys, noneStands, sovereign } : null;
 }

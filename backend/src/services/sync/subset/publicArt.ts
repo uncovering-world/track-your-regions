@@ -43,7 +43,9 @@ function poolEntity(
   const parts = points.filter(s => wktOf(s.value) === wkt).flatMap(partsOf);
   const countries = bestStatements(claims.P17).flatMap((statement): PlaceCountry[] => {
     const country = itemOf(statement.value);
-    return country ? [{ country, stands: !hasEnded(statement) && !around.dissolved.has(country) }] : [];
+    return country
+      ? [{ country, stands: !hasEnded(statement) && !around.dissolved.has(country), sovereign: around.sovereign.has(country) }]
+      : [];
   });
   const partCountries = parts.length ? new Set(parts.flatMap(part => around.partCountries.get(part) ?? [])) : null;
   const country = countryOfPlace(standingCountries(countries), partCountries);
@@ -60,7 +62,7 @@ function poolEntity(
     sitelinks: kept.sitelinks,
     countryLabel: country ? terms.get(country)?.label ?? null : null,
     countryOptions: open && {
-      candidates: open.keys.map(qid => ({ qid, label: terms.get(qid)?.label ?? qid })),
+      candidates: open.keys.map(qid => ({ qid, label: terms.get(qid)?.label ?? qid, sovereign: open.sovereign.has(qid) })),
       noneStands: open.noneStands,
     },
     articleUrl: enwiki ? articleUrl(enwiki) : null,
@@ -79,6 +81,8 @@ interface Around {
   partCountries: Map<string, string[]>;
   /** States with a best dissolution date (`P576`), as `wdt:P576` reads them. */
   dissolved: Set<string>;
+  /** States of today: sovereign (best `P31` Q3624078), as `wdt:P31` reads them (#1575). */
+  sovereign: Set<string>;
 }
 
 /**
@@ -98,14 +102,30 @@ async function dissolvedAmong(ids: string[]): Promise<Set<string>> {
   return new Set(result.rows.map(row => row.subject));
 }
 
+/**
+ * The states among `ids` that are sovereign states (best `P31` Q3624078), the
+ * states of today; an item the subset holds only as a label, or not at all,
+ * says nothing and is none of them.
+ */
+async function sovereignAmong(ids: string[]): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  const result = await pool.query<{ subject: string }>(
+    `SELECT DISTINCT c.subject FROM wikidata_claims c
+      WHERE c.property = 'P31' AND c.value_item = 'Q3624078' AND c.subject = ANY($1::text[]) AND c.rank >= 0 AND ${BEST('c')}`,
+    [ids],
+  );
+  return new Set(result.rows.map(row => row.subject));
+}
+
 async function poolOf(ids: string[], placeless: boolean): Promise<PoolEntity[]> {
   const kept = await entitiesOf(ids);
   const parts = [...new Set([...kept.values()].flatMap(({ entity }) => bestStatements(entity.claims.P625).flatMap(partsOf)))];
   const countries = [...new Set([...kept.values()].flatMap(({ entity }) => itemsOf(bestStatements(entity.claims.P17))))];
-  const [partEntities, dissolved] = await Promise.all([entitiesOf(parts), dissolvedAmong(countries)]);
+  const [partEntities, dissolved, sovereign] = await Promise.all([entitiesOf(parts), dissolvedAmong(countries), sovereignAmong(countries)]);
   const around: Around = {
     partCountries: new Map([...partEntities].map(([id, { entity }]) => [id, itemsOf(bestStatements(entity.claims.P17))])),
     dissolved,
+    sovereign,
   };
   const terms = await termsOf([...kept.keys(), ...countries]);
   return [...kept].map(([id, entity]) => poolEntity(id, entity, terms, around, placeless))

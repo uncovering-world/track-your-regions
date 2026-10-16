@@ -103,14 +103,15 @@ const POOL_DETAILS = `
       OPTIONAL { ?e wdt:P571 ?inception }
       OPTIONAL { ?e p:P17 ?countryStatement . ?countryStatement a wikibase:BestRank ; ps:P17 ?country .
                  OPTIONAL { ?countryStatement pq:P582 ?countryEnded }
-                 OPTIONAL { ?country wdt:P576 ?countryDissolved } }
+                 OPTIONAL { ?country wdt:P576 ?countryDissolved }
+                 OPTIONAL { ?country wdt:P31 ?countrySovereign FILTER(?countrySovereign = wd:Q3624078) } }
       OPTIONAL { ?e p:P625 ?coordStatement . ?coordStatement a wikibase:BestRank ; ps:P625 ?coord ; pq:P518 ?part .
                  OPTIONAL { ?part wdt:P17 ?partCountry } }
       OPTIONAL { ?e wdt:P856 ?site }
       OPTIONAL { ?article schema:about ?e ; schema:isPartOf <https://en.wikipedia.org/> }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }`;
 
-const POOL_COLUMNS = '?e ?eLabel ?eDescription ?coord ?sl ?img ?country ?countryLabel ?countryEnded ?countryDissolved ?part ?partCountryLabel ?article ?site (YEAR(?inception) AS ?year)';
+const POOL_COLUMNS = '?e ?eLabel ?eDescription ?coord ?sl ?img ?country ?countryLabel ?countryEnded ?countryDissolved ?countrySovereign ?part ?partCountryLabel ?article ?site (YEAR(?inception) AS ?year)';
 
 function bandedPoolQuery(rootQid: string, band: Band, limit: number): string {
   return `${HINT_PREFIX}
@@ -147,6 +148,7 @@ function readCountry(reading: CountryReading | undefined, row: SparqlBinding, wk
   if (row.countryLabel?.value) {
     next.countries.push({
       country: row.countryLabel.value, qid: extractQid(row.country?.value ?? ''), stands: !row.countryEnded && !row.countryDissolved,
+      sovereign: Boolean(row.countrySovereign),
     });
   }
   if (wkt && row.part?.value) {
@@ -167,7 +169,10 @@ function countryOptionsAt(reading: CountryReading | undefined, point: string | n
   const open = openCountries(reading?.countries ?? [], (point && reading?.parts.get(point)) || null);
   if (!open) return null;
   const qidOf = new Map((reading?.countries ?? []).map(c => [c.country, c.qid && isQid(c.qid) ? c.qid : null]));
-  return { candidates: open.keys.map(label => ({ label, qid: qidOf.get(label) ?? null })), noneStands: open.noneStands };
+  return {
+    candidates: open.keys.map(label => ({ label, qid: qidOf.get(label) ?? null, sovereign: open.sovereign.has(label) })),
+    noneStands: open.noneStands,
+  };
 }
 
 /**
@@ -179,7 +184,8 @@ function countryOptionsAt(reading: CountryReading | undefined, point: string | n
  * `preferredCoordinate`, #1246), so a place two sources read is one picture and
  * one point whichever query asked. The country is `countryOfPlace`'s, from
  * the countries the rows name that stand today (a best `P17` statement with
- * no `?countryEnded`, of a state with no `?countryDissolved`, folded by
+ * no `?countryEnded`, of a state with no `?countryDissolved` that is a sovereign
+ * state of today (`?countrySovereign`, #1575), folded by
  * `standingCountries`) and the parts the kept point applies to, so a work in
  * several places is named in the country of the cast it is drawn at and a
  * camp in the state it is in now.
