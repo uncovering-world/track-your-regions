@@ -8,7 +8,17 @@
 
 import { useEffect } from 'react';
 
-const APP_TITLE = 'Track Your Regions';
+/**
+ * The title the served document arrived with, read once before anything renames
+ * the tab. On the production build that is "Track Your Regions"; the dev server
+ * serves "Track Your Regions (dev server)" (`devServerTitle` in vite.config.ts), so
+ * a person looking at the tab knows which shape is open — and composing with it,
+ * rather than with a literal, keeps that mark once the app names a place (#1549).
+ */
+const APP_TITLE: string = import.meta.hot?.data?.appTitle ?? (document.title || 'Track Your Regions');
+// A hot update re-evaluates this module while a place is named, and would read
+// the composed title as the bare one; the first reading is carried across it.
+if (import.meta.hot?.data) import.meta.hot.data.appTitle = APP_TITLE;
 
 export function useDocumentTitle(title: string | null): void {
   useEffect(() => {
