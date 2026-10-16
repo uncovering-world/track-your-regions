@@ -3943,7 +3943,8 @@ Every endpoint `frontend/src/api/curation.ts` calls answers through a schema in 
 | GET | `/api/admin/curators` — answers `Curators` (`authentication.md` § Administrators in the curator directory) |
 | POST | `/api/admin/curators` — answers `CuratorAssignmentCreated` |
 | DELETE | `/api/admin/curators/:assignmentId` — answers `CuratorAssignmentRevoked` |
-| GET | `/api/admin/curators/:userId/activity` — answers `CuratorActivity`, each entry mapped key by key |
+| GET | `/api/admin/curators/:userId/activity` — answers `CuratorActivity`, each entry mapped key by key, with who acted (`curator_id`, `curator_name`). Takes the feed's filters below but the curator |
+| GET | `/api/admin/curation-activity` — the feed across every curator (#611), answering `CurationActivity` (`CuratorActivity` and `curators`), newest first with the id breaking a tie. Filters compose with each other and with `limit` / `offset`: `action` (the curation log's vocabulary), `curatorId`, `regionId` (an act on a place assigned to that region or below it, or one naming such a region), `since` (inclusive) and `before` (exclusive), both instants. A `merged` row the catalogue wrote itself has no curator. The feed also answers `curators`, everyone the log names as having acted (a curator whose scope was revoked included), which is its curator menu. Both reads are `readCurationActivity` (`controllers/admin/curationActivityController.ts`) |
 | GET | `/api/admin/users/search` — answers `UserSearchResults`, up to twenty accounts |
 
 Every row above answers through a schema in `backend/src/api/responses/admin.ts` (ADR-0066), and so do Catalogue Checks' (`docs/tech/data-assertions.md` § Where it sits). The sync screens' answers are mapped key by key in `controllers/admin/syncAnswerRows.ts`:
