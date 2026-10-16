@@ -476,3 +476,24 @@ export async function computeGeoSimilarityForRegion(
     await markNoCandidatesIfAllRejected(client, regionId);
   }
 }
+
+/**
+ * After a search or match adds suggestions, compute geo similarity if the region
+ * now has more than one suggestion not rejected. The manual match buttons and the
+ * automatic spatial pass (`spatialPass.ts`, #622) both call it, so a suggestion is
+ * scored, and a perfect one auto-accepted, the same way whoever asked.
+ */
+export async function computeGeoSimilarityIfNeeded(regionId: number): Promise<void> {
+  const sugResult = await pool.query(
+    `SELECT division_id AS "divisionId" FROM region_match_suggestions WHERE region_id = $1 AND rejected = false`,
+    [regionId],
+  );
+  if (sugResult.rows.length <= 1) return;
+
+  const client = await pool.connect();
+  try {
+    await computeGeoSimilarityForRegion(client, regionId, sugResult.rows as Array<{ divisionId: number }>);
+  } finally {
+    client.release();
+  }
+}
