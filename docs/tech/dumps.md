@@ -214,14 +214,18 @@ too. A queued row waits for a worker: a stack without one shows it waiting.
 The worker runs the code it started with: a change to the build reaches it on
 `docker compose restart dump-worker`, which stops the build it is running.
 
-`dump_builds` (migrations `095-a-dump-build-is-recorded.sql`, `100-…` and
-`101-a-dump-build-is-queued-for-the-worker.sql`) records each build: the dump,
+`dump_builds` (migrations `095-a-dump-build-is-recorded.sql`, `100-…`,
+`101-a-dump-build-is-queued-for-the-worker.sql` and
+`109-a-dump-build-says-what-it-did.sql`) records each build: the dump,
 what was asked for, the file and its date once resolved (none for a build that
 ended before it found one), the mode (`stream` or `local`), the bytes and lines
 read, the published and the computed checksum, the status (`queued`,
 `running`, `success`, `failed`, `cancelled`) and the error, who started it,
 what runs it, its progress and when it last beat, a cancel asked for, and when
-it finished. It is what says which dump a consumer's tables were built from.
+it finished. A build that ended well says what it did in `outcome` (#1527):
+what it verified and kept, how long each step took (`StepTimes` in
+`stepTimes.ts`, read off the phase messages the build reports), and what it
+did on the way, such as an older copy removed. It is what says which dump a consumer's tables were built from.
 
 ## The local Wikidata subset
 
@@ -398,6 +402,50 @@ The five derived tables are `UNLOGGED`: rebuilt from the dump, they skip the
 write-ahead log, and a crash of the database empties them until the next
 build. Which dump a reader reads is the newest `wikidata_subset_builds` row.
 
+## Trying a change on a sample
+
+A build of the subset reads the whole entities dump twice, about ten hours on
+the 2026-10-05 dump. A change to the build — the scope rules, the compact form,
+the derivations, the worker — is tried on a sample first (#1527):
+
+1. **Cut a sample.** A `sample` build (`cutFrom` in `buildRun.ts`,
+   `cutSample` in `samples.ts`) copies the first `SAMPLE_JSON_BYTES` (4 GB) of
+   the local copy's entities into a file of its own beside it, closed as a
+   valid JSON array (`CutAt`: the line the limit falls in is finished, its
+   trailing comma dropped, and a `]` line follows) and gzipped. It reads the
+   copy only as far as the cut, and writes under a temporary name it renames
+   once whole. The sample is named `sample-4gb-<copy's name>`: the catalog's
+   test for the dump's files refuses that name, so nothing that replaces or
+   removes older copies of the dump touches it, and a build of the dump never
+   reads it. A new cut removes the dump's earlier samples once it is whole,
+   with what builds of them left beside them, so the directory holds one
+   sample of a dump as it holds one copy.
+2. **Try the build.** A `trial` build (`tryOnSample`) runs the dump's builder
+   on the newest sample with `trial` set (`buildSubset`): both passes, the
+   labels ring, the derivations and the indexes run into the `_next` copies
+   as a real build's do, and the copies are then dropped instead of swapped
+   in. The subset the runs read is never touched, so a trial can run on the
+   deployment whose catalogue reads that subset. A trial always runs every
+   step whole: it neither reads back a first pass kept beside the sample nor
+   picks up after an earlier trial's copies, since the code of each step is
+   what it tries and each step's time what it reports. The sample is read from disk
+   only (`held` in `ReadOptions`): it has no host to download from and no
+   published checksum, so its size and a clean end of the gzip stream are
+   what the read checks.
+3. **Read the result.** The trial's row says what it kept, the size of its
+   tables against the kept lines' bytes the disk check estimates from
+   (`TABLES_SHARE`), and how long each step took — which is how a change that
+   makes a step slower shows before a full build pays for it.
+
+A trial is refused, before its first pass, while a build of the dump cut in
+its second pass waits for the next build of its file to pick up after it
+(#1493): its copies share the `_next` tables, and the trial would throw them
+away. A trial's own leftovers — from one the worker's end stopped before it
+could drop them — no build picks up after, and the next trial drops them. The dump begins with the oldest
+items, which are among the largest and the most often kept, so a sample keeps
+a larger share of its lines than the whole dump does, and its time per
+gigabyte is not the whole dump's.
+
 ## The admin panel
 
 Admin → **Public Dumps** (`frontend/src/components/admin/DumpsPanel.tsx`)
@@ -427,10 +475,17 @@ where the entities table is empty, as a crash of the database leaves it
 worker that meets a kind of build it does not know fails it rather than
 reading a file. Such a row
 also names what is built and the dump date of the build in place, or says it
-was never built. While a build of the dump is queued or running, the row offers no other
+was never built. Where a local copy exists, *Cut a sample* starts a `sample`
+build, and once a sample exists (`sample` in the list, shown under the row
+with the copy's date and its size), *Try the build* starts a `trial`. The
+last trial has a line of its own under the sample (*Last trial …*, with its
+`outcome`: what it kept and how long each step took), and among the earlier
+builds a sample says *Cut* and a trial *Tried*, each with its outcome.
+`recentBuilds` keeps the last three of each of these kinds as well. While a build of the dump is queued or running, the row offers no other
 button.
 The routes are `GET /api/admin/dumps`, `POST /api/admin/dumps/:dump/build`,
-`POST /api/admin/dumps/:dump/keep`, `POST /api/admin/dumps/:dump/rederive`
+`POST /api/admin/dumps/:dump/keep`, `POST /api/admin/dumps/:dump/rederive`,
+`POST /api/admin/dumps/:dump/sample`, `POST /api/admin/dumps/:dump/trial`
 and `POST /api/admin/dumps/:dump/cancel`
 (`backend/src/controllers/admin/dumpController.ts`);
 `docs/security/SECURITY.md` § Current Security Stack has their controls.
