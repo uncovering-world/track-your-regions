@@ -16,11 +16,19 @@ vi.mock('./matcher.js', () => ({
 vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn().mockResolvedValue({ rows: [] }) },
 }));
+vi.mock('./spatialPass.js', () => ({
+  runSpatialPass: vi.fn().mockResolvedValue({ considered: 0, seeded: 0, accepted: 0, stoppedAfter: null }),
+  spatialSentence: vi.fn().mockReturnValue(''),
+}));
 
 import { startBaseLayerImport } from './index.js';
 import { buildBaseLayerTree } from './baseLayerImporter.js';
 import { importTree } from './importer.js';
 import { matchCountryLevel, matchHierarchical } from './matcher.js';
+import { pool } from '../../db/index.js';
+import { runSpatialPass } from './spatialPass.js';
+import { createInitialProgress } from './types.js';
+import { runMatchingPolicy } from './index.js';
 
 const mockedBuild = buildBaseLayerTree as unknown as ReturnType<typeof vi.fn>;
 const mockedImport = importTree as unknown as ReturnType<typeof vi.fn>;
@@ -72,5 +80,62 @@ describe('startBaseLayerImport', () => {
     const opId = await startBaseLayerImport({ name: 'Administrative', providerLabel: 'Dataset 1.0', maxDepth: 2 });
 
     expect(opId).toMatch(/^wv-import-\d+$/);
+  });
+});
+
+/**
+ * A cancel during the spatial pass (#622) stops the scoring and nothing else: the
+ * policy's results are written by then, so the run finishes and the import is
+ * marked ready for review rather than left in 'matching'.
+ */
+describe('a cancel during the spatial pass', () => {
+  it('finishes the match phase rather than cancelling it', async () => {
+    const progress = createInitialProgress();
+    (runSpatialPass as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      progress.cancel = true;
+      return { considered: 3, seeded: 0, accepted: 0, stoppedAfter: 1 };
+    });
+
+    const outcome = await runMatchingPolicy('hierarchical', 77, progress);
+
+    expect(outcome.cancelled).toBe(false);
+    expect(outcome.spatial?.stoppedAfter).toBe(1);
+  });
+
+  it('keeps a cancel the policy saw as a cancel, and runs no pass after it', async () => {
+    const progress = createInitialProgress();
+    mockedHierarchicalMatch.mockImplementationOnce(async () => { progress.cancel = true; });
+    (runSpatialPass as unknown as ReturnType<typeof vi.fn>).mockClear();
+
+    const outcome = await runMatchingPolicy('hierarchical', 77, progress);
+
+    expect(outcome).toEqual({ cancelled: true, spatial: null });
+    expect(runSpatialPass).not.toHaveBeenCalled();
+  });
+
+  it("puts the policy's own message back once the pass has used the line", async () => {
+    const progress = createInitialProgress();
+    mockedHierarchicalMatch.mockImplementationOnce(async () => { progress.statusMessage = 'Hierarchical match complete: 41 matched'; });
+    (runSpatialPass as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(async () => {
+      progress.statusMessage = 'Spatial pass: 3 of 3 leaves with a Wikidata id';
+      return { considered: 3, seeded: 0, accepted: 0, stoppedAfter: null };
+    });
+
+    await runMatchingPolicy('hierarchical', 77, progress);
+
+    expect(progress.statusMessage).toBe('Hierarchical match complete: 41 matched');
+  });
+
+  it('marks an import ready for review after a cancel during the pass', async () => {
+    const query = pool.query as unknown as ReturnType<typeof vi.fn>;
+    query.mockClear();
+    (runSpatialPass as unknown as ReturnType<typeof vi.fn>).mockImplementationOnce(async (_id: number, progress: { cancel: boolean }) => {
+      progress.cancel = true;
+      return { considered: 3, seeded: 0, accepted: 0, stoppedAfter: 1 };
+    });
+
+    await startBaseLayerImport({ name: 'Administrative', providerLabel: 'Dataset 1.0', maxDepth: 2 });
+
+    await vi.waitFor(() => expect(query.mock.calls.some(([sql]) => String(sql).includes("SET status = 'reviewing'"))).toBe(true));
   });
 });

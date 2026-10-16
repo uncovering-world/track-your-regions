@@ -133,6 +133,8 @@ interface GeoshapeSuggestion {
 interface GeoshapeMatchResult {
   found: number;
   suggestions: GeoshapeSuggestion[];
+  /** No geoshape could be had for the region's item: the case the point scorer stands in for (#622). */
+  geoshapeUnavailable?: true;
   totalCoverage?: number;
   scopeAncestorName?: string;
   nextScope?: { ancestorId: number; ancestorName: string };
@@ -823,7 +825,7 @@ export async function geoshapeMatchRegion(
 
   // 2. Ensure geoshape is cached; bail if unavailable
   const available = await ensureGeoshapeAvailable(wikidataId, regionId, sourceUrl);
-  if (!available) return { found: 0, suggestions: [] };
+  if (!available) return { found: 0, suggestions: [], geoshapeUnavailable: true };
 
   // 3. Resolve scope from ancestor chain
   const ancestors = await loadAncestorChain(regionId);
