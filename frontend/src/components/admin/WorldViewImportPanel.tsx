@@ -40,6 +40,7 @@ import {
 } from '../../api/admin/wikivoyageExtract';
 import type { PendingQuestion, RegionPreview } from '../../api/admin/wikivoyageExtract';
 import { WorldViewImportReview } from './WorldViewImportReview';
+import { ComputeGeometriesOffer } from './WorldViewGeometryCompute';
 import { ImportSourcePanel } from './ImportSourcePanel';
 import { safeHref } from '../../utils/safeHref';
 import { deleteWorldView } from '../../api/worldViews';
@@ -339,6 +340,12 @@ function QuestionCard({ q, isAnswering, showCustomInputOpen, customAnswer, onSho
   );
 }
 
+/** The world view an import created, when it is a base-layer mirror; null otherwise. */
+function baseLayerImported(imported: { id: number; sourceType: string }[], worldViewId: number | null | undefined): number | null {
+  const created = imported.find(wv => wv.id === worldViewId);
+  return created?.sourceType.startsWith('base_layer') ? created.id : null;
+}
+
 export function WorldViewImportPanel() {
   const queryClient = useQueryClient();
   const [name, setName] = useState('Wikivoyage Regions');
@@ -434,6 +441,13 @@ export function WorldViewImportPanel() {
 
   // Determine which world view to review
   const activeWorldViewId = activeStatus?.worldViewId ?? reviewWorldViewId;
+
+  // A base-layer mirror is one region per division, so once its matching completes
+  // the regions can be drawn straight away: the screen offers the computation there,
+  // rather than leaving it to a button in the review or the editor (#621). Offered,
+  // not started — a continent-sized union can time out (#459), and the admin should
+  // be watching when it does.
+  const offerGeometry = isComplete ? baseLayerImported(importedWorldViews, activeStatus?.worldViewId) : null;
 
   // Show match review if requested
   if (showReview && activeWorldViewId) {
@@ -707,6 +721,7 @@ export function WorldViewImportPanel() {
                   </Button>
                 )}
               </Box>
+              {offerGeometry !== null && <ComputeGeometriesOffer worldViewId={offerGeometry} />}
             </Stack>
           </CardContent>
         </Card>

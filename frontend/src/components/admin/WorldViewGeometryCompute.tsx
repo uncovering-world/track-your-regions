@@ -4,8 +4,9 @@
  * polled while it runs, and one alert that says how far it got, how many regions
  * failed, and why it could not start.
  *
- * Out of the match review, which offers it beside Close Review, so another
- * import screen can offer the same job and say the same thing about it.
+ * Shared by the import panel, which offers it once a base-layer import's matching
+ * completes (#621), and the match review, which offers it beside Close Review, so
+ * both say the same thing about the same job.
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -16,6 +17,7 @@ import {
   startWorldViewGeometryComputation,
   type ComputationStatus,
 } from '../../api/geometry';
+import { ApiError } from '../../api/fetchUtils';
 
 // What the alert shows is the computation's status as the server answers it, with
 // the counts it draws made definite; `computed` is the status's `progress`, the
@@ -33,7 +35,7 @@ export interface WorldViewGeometryCompute {
   cancel: () => void;
 }
 
-export function useWorldViewGeometryCompute(worldViewId: number | null): WorldViewGeometryCompute {
+export function useWorldViewGeometryCompute(worldViewId: number): WorldViewGeometryCompute {
   const [computing, setComputing] = useState(false);
   const [status, setStatus] = useState<GeomStatus | null>(null);
   const [startError, setStartError] = useState<string | null>(null);
@@ -46,20 +48,22 @@ export function useWorldViewGeometryCompute(worldViewId: number | null): WorldVi
   // Cleanup on unmount
   useEffect(() => stopPolling, [stopPolling]);
 
-  const startPolling = useCallback((id: number) => {
+  const show = useCallback((s: ComputationStatus) => setStatus({
+    percent: s.percent ?? 0,
+    computed: s.progress ?? 0,
+    total: s.total ?? 0,
+    errors: s.errors ?? 0,
+    currentRegion: s.currentRegion,
+    status: s.status,
+  }), []);
+
+  const startPolling = useCallback(() => {
     stopPolling();
     setComputing(true);
     pollRef.current = setInterval(async () => {
       try {
-        const s = await fetchWorldViewComputationStatus(id);
-        setStatus({
-          percent: s.percent ?? 0,
-          computed: s.progress ?? 0,
-          total: s.total ?? 0,
-          errors: s.errors ?? 0,
-          currentRegion: s.currentRegion,
-          status: s.status,
-        });
+        const s = await fetchWorldViewComputationStatus(worldViewId);
+        show(s);
         if (!s.running) {
           stopPolling();
           setComputing(false);
@@ -69,26 +73,39 @@ export function useWorldViewGeometryCompute(worldViewId: number | null): WorldVi
         setComputing(false);
       }
     }, 1500);
-  }, [stopPolling]);
+  }, [worldViewId, show, stopPolling]);
+
+  // A job started from another screen — the import card, then Review Matches, or
+  // the other way round — is still the world view's job: a screen that mounts while
+  // it runs follows it rather than offering a second start the server would refuse.
+  useEffect(() => {
+    let cancelled = false;
+    fetchWorldViewComputationStatus(worldViewId).then((s) => {
+      if (cancelled || !s.running) return;
+      show(s);
+      startPolling();
+    }).catch(() => { /* no status to follow; the button stays offered */ });
+    return () => { cancelled = true; };
+  }, [worldViewId, show, startPolling]);
 
   const start = useCallback(async () => {
-    if (worldViewId === null) return;
     setStartError(null);
     try {
       const result = await startWorldViewGeometryComputation(worldViewId, false, true);
       if (result.started) {
         setStatus({ percent: 0, computed: 0, total: result.total ?? 0, errors: 0, status: 'Starting...' });
-        startPolling(worldViewId);
+        startPolling();
       } else {
         setStatus({ percent: 100, computed: result.alreadyComputed ?? 0, total: result.total ?? 0, errors: 0, status: result.message });
       }
     } catch (err) {
+      // One already running is followed, not reported as a failure.
+      if (err instanceof ApiError && err.status === 409) { startPolling(); return; }
       setStartError(err instanceof Error ? err.message : 'Geometry computation could not be started');
     }
   }, [worldViewId, startPolling]);
 
   const cancel = useCallback(async () => {
-    if (worldViewId === null) return;
     try {
       await cancelWorldViewGeometryComputation(worldViewId);
     } catch { /* poll will detect stopped state */ }
@@ -109,8 +126,12 @@ export function GeomComputationAlert({ compute }: { compute: WorldViewGeometryCo
   if (startError) return <Alert severity="error" sx={{ mb: 2 }}>{startError}</Alert>;
   if (!status) return null;
 
-  let severity: 'info' | 'warning' | 'success';
+  // A job that stopped is reported by its status (`Error: the computation stopped…`),
+  // with its error count still at zero: drawn as a success, it would hide the one
+  // outcome this alert exists to show.
+  let severity: 'info' | 'warning' | 'success' | 'error';
   if (computing) severity = 'info';
+  else if (status.status?.startsWith('Error:')) severity = 'error';
   else if (status.errors > 0) severity = 'warning';
   else severity = 'success';
 
@@ -139,3 +160,18 @@ export function GeomComputationAlert({ compute }: { compute: WorldViewGeometryCo
   );
 }
 
+/** The computation offered on its own, with what it reports underneath: a finished base-layer import's next step. */
+export function ComputeGeometriesOffer({ worldViewId }: { worldViewId: number }) {
+  const compute = useWorldViewGeometryCompute(worldViewId);
+  return (
+    <Box>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        Every region of this mirror is one division, so its outlines can be drawn now.
+      </Typography>
+      <Button variant="outlined" onClick={compute.start} disabled={compute.computing} sx={{ mb: 1 }}>
+        {compute.computing ? 'Computing...' : 'Compute Geometries'}
+      </Button>
+      <GeomComputationAlert compute={compute} />
+    </Box>
+  );
+}
