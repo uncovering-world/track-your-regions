@@ -55,7 +55,7 @@ export function readerRegionsJsonSql(experienceIdExpr: string): string {
           -- — so it has to name the regions whose own lists will hold it.
           AND ${readerRegionMembershipSql('er.experience_id')}
           -- And not a pair a curator turned down. A rejection leaves the
-          -- membership row standing (curationController.ts upserts into
+          -- membership row standing (curationRegionController.ts upserts into
           -- experience_rejections and deletes nothing), while every
           -- region-facing read drops the pair -- the region list and its count
           -- through experienceRegionQuery.ts's rejectionFilter, region-counts

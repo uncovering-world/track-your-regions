@@ -746,7 +746,7 @@ export async function reorderSources(
   { body: { sourceIds } }: { body: z.output<typeof reorderSourcesBodySchema> },
 ): Promise<SourcesReordered> {
 
-  // One client, not pool.query('BEGIN') — see the note in curationController:
+  // One client, not pool.query('BEGIN') — see the note in curationEditController:
   // pg.Pool hands out an arbitrary idle client per call, so a transaction has
   // to be pinned or its statements land on different connections. The order is
   // written one row at a time, so a half-applied run leaves two sources sharing

@@ -7,7 +7,7 @@ import sonarjs from 'eslint-plugin-sonarjs';
 /** What to do instead, said once for both spellings of the mistake below. */
 const PINNED_TRANSACTION = "pool.query() does not pin a connection. Open the transaction on one client: "
   + "const client = await pool.connect(); await client.query('BEGIN'); ... client.release(unusable) "
-  + "— see editExperience in controllers/experience/curationController.ts.";
+  + "— see editExperience in controllers/experience/curationEditController.ts.";
 
 /**
  * The verbs that only mean anything on the connection that opened them.
@@ -33,8 +33,8 @@ const TRANSACTION_RULES = [
     // it with the transaction still open: the statements that follow may
     // land on other connections, and another request that checks out that
     // client runs its own writes inside the stray transaction — to be
-    // rolled back with it. The rule exists because the prose form of it,
-    // written in curationController, outlived four call sites (#532).
+    // rolled back with it. The rule is held here rather than in a comment
+    // beside one call site, which four others did not follow (#532).
     selector: `CallExpression[callee.object.name='pool'][callee.property.name='query'] > Literal[value=/^\\s*${TX_VERBS}\\b/i]`,
     message: PINNED_TRANSACTION,
   },

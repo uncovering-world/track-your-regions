@@ -3,7 +3,7 @@ import { pool } from '../../db/index.js';
 import { mergePlaces, undoMerge } from './placeMerge.js';
 import { mergeArrivalsOfRun, mergeEqualItems } from './equalItemMerges.js';
 import { getExperience } from './experienceQueryController.js';
-import { getCurationLog } from './curationController.js';
+import { getCurationLog } from './curationLogController.js';
 
 /**
  * A merge of two places and its undo (#1247, ADR-0046, ADR-0086), executed

@@ -314,7 +314,7 @@ export async function markAllLocationsVisited(
   if (locationsResult.rows.length === 0) throw notFound('Experience not found or has no locations in this region');
 
   // Mark locations as visited in a single transaction, on one client — see the
-  // note in curationController: pg.Pool hands out an arbitrary idle client per
+  // note in curationEditController: pg.Pool hands out an arbitrary idle client per
   // call, so a transaction has to be pinned or its statements land on different
   // connections, and the BEGIN goes back to the pool with nothing to close it.
   const client = await pool.connect();
