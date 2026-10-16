@@ -82,6 +82,16 @@ describe('PointCard', () => {
     expect(screen.queryByText(/whole site's picture/)).not.toBeInTheDocument();
   });
 
+  it("hands the part's own point to a maps app (#1194)", async () => {
+    renderCard(8189);
+    expect(await screen.findByRole('heading', { name: 'Riesi' })).toBeInTheDocument();
+    // jsdom is no Apple or Android device, so the link is OpenStreetMap's.
+    expect(screen.getByRole('link', { name: 'OpenStreetMap' }))
+      .toHaveAttribute('href', 'https://www.openstreetmap.org/?mlat=47.3&mlon=8.2#map=17/47.3/8.2');
+    expect(screen.getByRole('link', { name: 'Google Maps' }))
+      .toHaveAttribute('href', 'https://www.google.com/maps/search/?api=1&query=47.3,8.2');
+  });
+
   it("shows the whole site's picture, said to be the site's, for a part with none", async () => {
     renderCard(8192);
     expect(await screen.findByRole('heading', { name: 'Spitz' })).toBeInTheDocument();

@@ -36,6 +36,7 @@ import { subscribeToHoverTarget, useHoverActions, useHoverSelector } from '../..
 import { EmptyState } from '../shared/EmptyState';
 import { locationLabel, pointFullName, pointOfRow } from '../../utils/locationLabel';
 import { CopyNameButton } from '../shared/CopyButton';
+import { OpenInMapsLink } from '../shared/OpenInMapsLink';
 import { claimLabel } from '../../utils/placeClaims';
 import { foldLabel } from '@tyr/shared/labels';
 import { filterParts, groupParts } from '../../utils/partGroups';
@@ -432,8 +433,10 @@ function PanelLocationRow({
         cursor: 'default',
         // The curator's action shows for the row under the pointer, holding
         // keyboard focus, or lit from the map — the same rule as Map mode's row.
-        '& .place-fix, & .place-copy': { opacity: isHovered ? 1 : 0, transition: 'opacity 0.15s ease' },
-        '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy': { opacity: 1 },
+        '& .place-fix, & .place-copy, & .place-maps': { opacity: isHovered ? 1 : 0, transition: 'opacity 0.15s ease' },
+        '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy, &:hover .place-maps, &:focus-within .place-maps, & .place-maps[aria-expanded="true"]': { opacity: 1 },
+        // A touch screen has no hover to reveal them: the row's actions stay shown there.
+        '@media (hover: none)': { '& .place-fix, & .place-copy, & .place-maps': { opacity: 1 } },
         ...(isHovered && {
           bgcolor: 'action.selected',
           borderLeft: '3px solid',
@@ -476,6 +479,7 @@ function PanelLocationRow({
         </Typography>
       )}
       <CopyNameButton fullName={pointFullName(objectName, point)} className="place-copy" />
+      <OpenInMapsLink point={loc} label={pointFullName(objectName, point)} compact className="place-maps" />
       {onCorrect && (
         <Tooltip title="Move or rename this place">
           {/* Named for the place, as the checkbox beside it is: a list of thirty bare

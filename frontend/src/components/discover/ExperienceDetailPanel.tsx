@@ -45,6 +45,7 @@ import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContex
 
 import { experienceColors } from '../../utils/kindColors';
 import { PlaceLinks } from '../shared/PlaceLinks';
+import { OpenInMapsLink } from '../shared/OpenInMapsLink';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';
 import { ContentsSection } from './ContentsSection';
@@ -429,6 +430,8 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
             </Button>
           )}
           <PlaceLinks metadata={details?.metadata} />
+          {/* A place of one point goes to a maps app from here, one of several from each row (#1194). */}
+          {displayLocations.length === 1 && <OpenInMapsLink point={displayLocations[0]} label={experience.name} />}
         </Box>
       </Box>
     </Box>

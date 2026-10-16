@@ -41,6 +41,7 @@ import { experienceContentsQuery, experienceDetailsQuery, siteFindsQuery } from 
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';
 import { PlaceLinks } from '../shared/PlaceLinks';
+import { OpenInMapsLink } from '../shared/OpenInMapsLink';
 import { ShareButton } from '../shared/ShareButton';
 import { ArtworksList } from './ArtworksList';
 import { SiteFindsList } from './SiteFindsList';
@@ -156,6 +157,8 @@ function ExperienceExpandedDetailsComponent({
       regionPath: loc.region_path,
     }));
   }, [locations, isLocationVisited]);
+
+  const onlyPoint = totalLocations === 1 ? locationsWithRegionInfo[0] ?? null : null;
 
   // Split into in-region and out-of-region
   const inRegionLocs = useMemo(
@@ -363,6 +366,9 @@ function ExperienceExpandedDetailsComponent({
       {/* The place's pages, in words, on a line of their own (#1190). */}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1, ml: -0.5, '&:empty': { display: 'none' } }}>
         <PlaceLinks metadata={details?.metadata} />
+        {/* A place of one point goes to a maps app from here; a place of several,
+            from each place's row (#1194). */}
+        {onlyPoint && <OpenInMapsLink point={onlyPoint} label={experience.name} />}
       </Box>
 
       {/* What was dug up here and where a traveller sees it — a site's
