@@ -83,6 +83,8 @@ export const SCALAR_TYPES: Record<string, string> = {
   // ST_X/ST_Y in the statement, never parses the column.
   geometry: 'string',
   geography: 'string',
+  // pg hands back a bytea column as a Node Buffer, the bytes themselves.
+  bytea: 'Buffer',
 };
 
 const IDENTIFIER = /^[A-Za-z_]\w*$/;

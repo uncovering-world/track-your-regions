@@ -40,10 +40,12 @@ const SAMPLES: Record<string, string> = {
   jsonb: "'{\"a\":1}'::jsonb",
   geometry: 'ST_SetSRID(ST_MakePoint(1, 2), 4326)',
   geography: 'ST_SetSRID(ST_MakePoint(1, 2), 4326)::geography',
+  bytea: "'\\x89504e47'::bytea",
 };
 
 function describeValue(value: unknown): string {
   if (value instanceof Date) return 'Date';
+  if (Buffer.isBuffer(value)) return 'Buffer';
   if (Array.isArray(value)) return 'array';
   return typeof value;
 }
