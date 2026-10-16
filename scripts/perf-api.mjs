@@ -51,16 +51,22 @@ import { performance } from 'node:perf_hooks';
 import { setTimeout as sleep } from 'node:timers/promises';
 import http from 'node:http';
 import https from 'node:https';
-import { failureLines, rootsWithoutGeometry, rootsWithoutGeometrySentence } from './perf-api-report.mjs';
+import {
+  failureLines, originOf, parseArgs, percentile, rootsWithoutGeometry, rootsWithoutGeometrySentence,
+} from './perf-api-report.mjs';
 
-// Declared before the first call below: a `const` further down the module
-// is in its temporal dead zone when top-level code runs, and the parser is
-// the first thing that does.
-const OPTIONS_WITH_VALUE = new Set(['api', 'martin', 'world-view', 'region', 'runs']);
+/** The arguments, or the sentence that says which one is wrong, then out. */
+function orFail(read) {
+  try {
+    return read();
+  } catch (error) {
+    return fail(error.message);
+  }
+}
 
-const options = parseArgs(process.argv.slice(2));
-const API = originOf(options.api ?? 'http://localhost:3001', '--api');
-const MARTIN = originOf(options.martin ?? 'http://localhost:3000', '--martin');
+const options = orFail(() => parseArgs(process.argv.slice(2)));
+const API = orFail(() => originOf(options.api ?? 'http://localhost:3001', '--api'));
+const MARTIN = orFail(() => originOf(options.martin ?? 'http://localhost:3000', '--martin'));
 const WORLD_VIEW = options['world-view'] ?? '5';
 const REGION = options.region ?? '6737';
 const RUNS = Number(options.runs ?? 30);
@@ -291,22 +297,6 @@ function fetchOnce(url) {
   });
 }
 
-/**
- * Linear interpolation between ranks (R-7, what spreadsheets and NumPy
- * compute), so that at thirty samples p95 sits between the second-highest
- * and the highest rather than being the maximum under another name - which
- * is what nearest-rank gives for every sample count below twenty.
- */
-function percentile(sorted, p) {
-  if (sorted.length === 0) {
-    return null;
-  }
-  const position = (p / 100) * (sorted.length - 1);
-  const lower = Math.floor(position);
-  const upper = Math.ceil(position);
-  return sorted[lower] + (sorted[upper] - sorted[lower]) * (position - lower);
-}
-
 function printTable(rows) {
   const header = ['endpoint', 'ok', 'status', 'wire bytes', 'enc', 'p50 ms', 'p95 ms', 'max ms'];
   const ms = (value) => (value === null ? '-' : value.toFixed(0));
@@ -327,42 +317,6 @@ function printTable(rows) {
   for (const row of table) {
     process.stdout.write(`${line(row)}\n`);
   }
-}
-
-/**
- * Only the origin is kept: a path, query or credentials typed into --api
- * would otherwise be echoed into the output. The error message names the
- * flag and not the value, for the same reason.
- */
-function originOf(value, flag) {
-  try {
-    return new URL(value).origin;
-  } catch {
-    return fail(`${flag} must be a URL`);
-  }
-}
-
-/** Errors name the option, never what was typed after it. */
-function parseArgs(argv) {
-  const parsed = {};
-  for (let i = 0; i < argv.length; i += 1) {
-    const arg = argv[i];
-    if (arg === '--json') {
-      parsed.json = true;
-      continue;
-    }
-    const key = arg.startsWith('--') ? arg.slice(2) : '';
-    if (!OPTIONS_WITH_VALUE.has(key)) {
-      fail(`Unexpected argument at position ${i + 1}; options are --api, --martin, --world-view, --region, --runs, --json`);
-    }
-    const value = argv[i + 1];
-    if (value === undefined || value.startsWith('--')) {
-      fail(`--${key} needs a value`);
-    }
-    parsed[key] = value;
-    i += 1;
-  }
-  return parsed;
 }
 
 function fail(message) {
