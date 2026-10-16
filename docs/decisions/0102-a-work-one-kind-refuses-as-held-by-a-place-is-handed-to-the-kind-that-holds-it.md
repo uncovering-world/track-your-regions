@@ -1,7 +1,7 @@
 # ADR-0102: A work one kind refuses as held by a place is handed to the kind that holds that place
 
 **Date:** 2026-10-13
-**Status:** Accepted
+**Status:** Accepted — decision 2 narrowed by [ADR-0112](0112-a-handed-over-work-its-statements-place-nowhere-goes-where-the-refusal-named.md)
 
 ---
 

@@ -2125,7 +2125,13 @@ beside it or not):
   one an earlier round or the pool refused, once a round finds it there. The work is placed by the
   kind's resolver, only at a place the refusal named or a venue folded into one, and written under
   the venue's own membership, so the venue's runs keep and
-  withdraw it like any link (ADR-0084), and no run writes another kind's rows. The venue's changeset
+  withdraw it like any link (ADR-0084), and no run writes another kind's rows. A handed-over work
+  the kind's own pool already holds, but whose own statements place it at no venue the kind
+  admits, goes to the admitted place the refusal named ([ADR-0112](../decisions/0112-a-handed-over-work-its-statements-place-nowhere-goes-where-the-refusal-named.md), #1557), the one case where the place is not the resolver's. The refusal followed a chain those
+  statements do not: the Unknown Warrior is *part of* (P361) Westminster Abbey, and Bamberg
+  Cathedral carries a dissolution (P576, 1081) that belongs to its first building, so the
+  resolver refuses it as a venue though the kind admits it as a place. A work nobody can see stays
+  unseen. The venue's changeset
   names it: the work added carries `handed_by` (the refusing kind and its reason), which the run's
   report reads as "gained Bamberg Horseman (handed over by Public Art & Monuments: inside Bamberg
   Cathedral: …)". A hand-over is read only after the refusing run has recorded it, so the next run
