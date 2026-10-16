@@ -15,7 +15,7 @@ implemented, and the rules that keep it honest. The decision behind it is
 | `/wv/5/r/6737-europe/e/1234-stonehenge` | Map, that region, card 1234 open in the explore panel |
 | `/wv/2/r/7200-aargau/e/418-prehistoric-pile-dwellings-around-the-alps/p/8189-riesi` | …that object's part 8189, Riesi, open on its own card in the object's place (#1271) |
 | `/wv/5?kind=5` | Map, no region: that kind's places across the whole world |
-| `/discover` | Discover, the default world view |
+| `/discover` | Discover, the default world view — replaced at once by the first world view Discover can show, since the default owns no regions (#466) |
 | `/discover/wv/5` | Discover, world view 5, the tree at its root |
 | `/discover/wv/5/r/7100-malta` | Discover, the tree standing at Malta |
 | `/discover/wv/5/r/7100-malta?kind=1` | Discover, Malta's UNESCO list open, the tree at Malta's parent |
@@ -51,6 +51,14 @@ the state a chip click produces, since chips sit on the rows of a level. Without
 a list open, the tree stands at the region itself.
 
 The default world view writes no segment: `/` and `/discover` are its addresses.
+Discover cannot show it — it lists a world view's regions, and the default is
+GADM's division tree, which owns none — so on Discover the reconciliation in
+`useNavigation` picks, follows and keeps a selection only among the custom world
+views while one exists (`worldViewsShownOn`, #466), and Discover's picker offers the same list (`worldViewsHere`): an admin opening `/discover`, or
+carrying the default in from the map, lands on `/discover/wv/5` with a
+`replace`, and `/discover/wv/1` reads as a world view the page cannot show. The
+map is unchanged — the default stays an admin's first pick there — and the
+place stays shared, so the map then shows the world view Discover chose.
 GADM administrative divisions are **not** addressed at all — the built-in
 administrative hierarchy is admin-only and appears in no visitor surface (see
 ADR-0034 § Alternatives).
