@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -242,8 +243,9 @@ if (RUN_CONTAINER_TESTS && process.env.TEST_REPORT_KEEP_ENV !== '1') {
 
 process.exit(summary.ok && !hadRunnerFailure ? 0 : 1);
 
+// eslint-disable-next-line sonarjs/cognitive-complexity -- the gate tooling as it stood when scripts/ was first linted (#655); splitting it changes the runner's control flow and is #1552, pinned by its specs
 async function runStep(step, activeMode, index) {
-  const token = `${Date.now()}-${index}-${Math.random().toString(16).slice(2, 10)}`;
+  const token = `${Date.now()}-${index}-${randomBytes(4).toString('hex')}`;
   const jsonPath = path.join(RESULTS_DIR, `${activeMode}-${step.id}-${token}.json`);
 
   let command;
@@ -293,7 +295,8 @@ async function runStep(step, activeMode, index) {
   const selected = related && !RUN_CONTAINER_TESTS && step.kind === 'vitest' && !step.coverage;
   if (selected) {
     const total = process.env.TEST_REPORT_SPEC_TOTAL;
-    console.log(`${step.label}: ran ${parsed.files.length}${total ? ` of ${total}` : ''} spec files, the affected selection.`);
+    const ofTotal = total ? ' of ' + total : '';
+    console.log(`${step.label}: ran ${parsed.files.length}${ofTotal} spec files, the affected selection.`);
   }
   // A selection no spec of the lane imports is an answer, not a failure: the
   // change reaches none of them. Said as such, so an empty run never reads as

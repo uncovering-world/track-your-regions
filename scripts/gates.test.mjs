@@ -1074,9 +1074,12 @@ describe('the map against the repository', () => {
       const named = [...text.matchAll(/(?:\.\/)?(scripts\/[\w./-]+\.(?:sh|mjs)|\.[\w.-]+rc[\w.]*)/g)]
         .map(([, path]) => path);
       const reads = keyBelongs(gate);
+      const matches = (pattern, path) => {
+        if (pattern instanceof RegExp) return pattern.test(path);
+        return pattern.endsWith('/') ? path.startsWith(pattern) : path === pattern;
+      };
       const placed = (path) => (gate.config ?? []).includes(path)
-        || gate.inputs.some((id) => INPUTS.find((input) => input.id === id).paths.some((pattern) =>
-          (pattern instanceof RegExp ? pattern.test(path) : pattern.endsWith('/') ? path.startsWith(pattern) : path === pattern)));
+        || gate.inputs.some((id) => INPUTS.find((input) => input.id === id).paths.some((pattern) => matches(pattern, path)));
       for (const path of named) {
         expect(placed(path), `${gate.id} runs ${path} and does not read it`).toBe(true);
         expect(reads(path), `${gate.id}'s cache key leaves out ${path}`).toBe(true);

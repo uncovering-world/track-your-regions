@@ -59,7 +59,7 @@ export function parseVitestReport(filePath) {
     );
     const failed = asNumber(data.numFailedTests, 0);
     const skipped = asNumber(data.numPendingTests, 0) + asNumber(data.numTodoTests, 0);
-    // `passed > 0`, not `total > 0`: `numTotalTests` counts pending and todo,
+    // `passed > 0`, not `total > 0`: `numTotalTests` counts pending and to-do specs,
     // so a suite where everything is skipped — a `describe.skip` left behind,
     // a guard on a missing fixture — would satisfy a total-based check while
     // having executed nothing. The verdict has to rest on tests that actually

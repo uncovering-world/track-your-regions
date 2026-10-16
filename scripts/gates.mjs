@@ -303,6 +303,8 @@ export const GATES = [
   { id: 'lint:shared', tier: 'check', inputs: ['shared'], command: ['npm', '--prefix', 'packages/shared', 'run', 'lint'], job: 'check', setup: 'node' },
   { id: 'typecheck:shared', tier: 'check', inputs: ['shared'], command: ['npm', '--prefix', 'packages/shared', 'run', 'typecheck'], job: 'check', setup: 'node' },
   { id: 'knip:shared', tier: 'check', inputs: ['shared'], command: ['npm', '--prefix', 'packages/shared', 'run', 'knip'], job: 'check', setup: 'node' },
+  // The repository's own scripts, under the backend's presets from the root (#655).
+  { id: 'lint:scripts', tier: 'check', inputs: ['scripts'], command: ['npm', 'run', 'lint:scripts'], job: 'check', setup: 'node', config: ['backend/eslint.config.mjs', 'backend/package-lock.json'] },
   { id: 'lint:circular', tier: 'check', inputs: ['backend', 'web', 'shared'], command: ['npm', 'run', 'lint:circular'], job: 'check', setup: 'node', config: ['.madgerc', 'package-lock.json', 'scripts/require-node-tools.sh'] },
   // Stands a fresh Postgres up from db/init, regenerates the row types and
   // diffs them against the committed file (ADR-0064): a schema edit without
@@ -702,12 +704,11 @@ export function renderTable() {
     if (gate.tier === 'stack') return 'never: run by hand';
     return gate.uncached ? `never: ${gate.uncached}` : 'on the same inputs';
   };
-  const gateRows = GATES.map(
-    (gate) =>
-      `| ${code(gate.id)} | ${gate.tier} | ${codes(gate.inputs)}`
-      + `${gate.config ? `; reads ${codes(gate.config)}` : ''} |`
-      + ` ${code(gate.command.join(' '))} | ${gate.job} | ${cell(reuse(gate))} |`,
-  );
+  const gateRows = GATES.map((gate) => {
+    const reads = gate.config ? '; reads ' + codes(gate.config) : '';
+    return `| ${code(gate.id)} | ${gate.tier} | ${codes(gate.inputs)}${reads} |`
+      + ` ${code(gate.command.join(' '))} | ${gate.job} | ${cell(reuse(gate))} |`;
+  });
   const unreadRows = UNREAD.map((entry) => `| ${code(entry.path)} | ${cell(entry.why)} |`);
   return [
     '### Inputs',
@@ -998,6 +999,7 @@ const USAGE = [
  * on with a default. A misread argument here is the worst kind of wrong: it
  * degrades into "nothing to run", which looks exactly like a clean gate.
  */
+// eslint-disable-next-line sonarjs/cognitive-complexity -- the gate tooling as it stood when scripts/ was first linted (#655); splitting it changes the runner's control flow and is #1552, pinned by its specs
 export function parseArgs(argv) {
   const args = { mode: 'list', tier: null, all: false, noCache: false, affected: false, base: null, rev: 'HEAD' };
   let modeSetBy = null;
@@ -1134,6 +1136,7 @@ function registryRefusal(gate, spawn) {
  * not the lane's pass, so it is never recorded; a whole pass already recorded
  * answers for it.
  */
+// eslint-disable-next-line sonarjs/cognitive-complexity -- the gate tooling as it stood when scripts/ was first linted (#655); splitting it changes the runner's control flow and is #1552, pinned by its specs
 export function runTier(decision, tier, { all = false, spawn = spawnSync, base, cache = null, select = null } = {}) {
   const gates = decision.gates.filter((gate) => gate.tier === tier);
 
@@ -1260,6 +1263,7 @@ export function runTier(decision, tier, { all = false, spawn = spawnSync, base, 
   return failed ? failed.code : 0;
 }
 
+// eslint-disable-next-line sonarjs/cognitive-complexity -- the gate tooling as it stood when scripts/ was first linted (#655); splitting it changes the runner's control flow and is #1552, pinned by its specs
 function printList(decision, changed, rev) {
   if (changed.paths === null) console.log(decision.reason);
   else {

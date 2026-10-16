@@ -608,4 +608,57 @@ export default [
       'max-lines': 'off',
     },
   },
+  // The repository's own scripts (#655): plain ESM run by Node from the root.
+  // This config is where they are linted because the backend unit lane is
+  // where their specs already run (vitest.config.ts includes
+  // ../scripts/**/*.test.mjs). The pattern names the root's `scripts/`, so it
+  // matches only when ESLint runs from the root with this file as --config,
+  // which makes the root the base path: `npm run lint:scripts`. Run from
+  // backend/, as `npm run lint` is, nothing here matches.
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: 'module',
+      globals: {
+        ...globals.node,
+      },
+    },
+    rules: {
+      // The same reading as src/ above, plus the rest siblings: the scripts
+      // drop variables from an environment they pass on by destructuring them
+      // away (`const { GIT_DIR, ...env } = process.env`).
+      '@typescript-eslint/no-unused-vars': ['warn', {
+        argsIgnorePattern: '^_',
+        varsIgnorePattern: '^_',
+        ignoreRestSiblings: true,
+      }],
+      // Every index is one of the script's own keys (a gate id, an input
+      // class, a lane name) or a field of a report it reads; none is a
+      // request's.
+      'security/detect-object-injection': 'off',
+      // A script's job is to read and write the repository's own files and
+      // reports, at paths built from the repository's layout and its own
+      // arguments; the rule would fire on every fs call with nothing to say.
+      'security/detect-non-literal-fs-filename': 'off',
+      // git, docker, npm and node are found on PATH by design: the scripts run
+      // on a developer's machine and on CI runners, whose tool locations differ.
+      'sonarjs/no-os-command-from-path': 'off',
+      // Every pattern here reads the repository's own files, a tool's report or
+      // a spec's fixture; none sees text from outside, so backtracking has no
+      // attacker to serve.
+      'sonarjs/slow-regex': 'off',
+      'security/detect-unsafe-regex': 'off',
+      // The same ceiling as src/.
+      'max-lines': ['error', { max: 800, skipBlankLines: true, skipComments: true }],
+    },
+  },
+  // The gate map and its spec are past that ceiling as they stood when the
+  // scripts were first linted; splitting them is #1552.
+  {
+    files: ['scripts/gates.mjs', 'scripts/gates.test.mjs'],
+    rules: {
+      'max-lines': 'off',
+    },
+  },
 ];

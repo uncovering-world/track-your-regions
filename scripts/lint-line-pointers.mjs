@@ -34,6 +34,7 @@ import { fileURLToPath } from 'node:url';
  * after its scheme's colon, a path segment after a slash — so a link to a
  * file with a line in it is not read as a pointer twice over.
  */
+// eslint-disable-next-line sonarjs/regex-complexity -- one token on purpose: the lookbehind, the path and the extension list have to match together, or a pointer inside a URL reads twice (above)
 export const LINE_POINTER = /(?<![\w./:-])[\w./-]+\.(?:md|tsx?|[cm]?js|sql|sh|py|ya?ml):\d+(?:-\d+)?\b/g;
 
 /** The extensions living prose is written in or beside. Markdown is prose; the rest carry comments. */
