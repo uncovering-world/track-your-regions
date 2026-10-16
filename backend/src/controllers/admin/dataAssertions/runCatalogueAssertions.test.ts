@@ -15,6 +15,7 @@ vi.mock('../../../db/index.js', () => ({
 }));
 
 import { pool } from '../../../db/index.js';
+import { AssertionUnavailable, type ComputedAssertion } from './assertion.js';
 import type { CatalogueAssertion } from './catalogueAssertions.js';
 import {
   SAMPLE_ROWS,
@@ -39,6 +40,11 @@ function assertion(id: string, over: Partial<CatalogueAssertion> = {}): Catalogu
     describe: row => `${id} row ${String(row.id)}`,
     ...over,
   };
+}
+
+function computed(id: string, collect: ComputedAssertion['collect']): ComputedAssertion {
+  const { area, title, kind, meaning, describe: say } = assertion(id);
+  return { id, area, title, kind, meaning, describe: say, collect };
 }
 
 const rows = (n: number) => Array.from({ length: n }, (_, i) => ({ id: i + 1 }));
@@ -71,6 +77,43 @@ describe('running the assertions', () => {
 
     expect(outcomes[0].error?.message).toMatch(/does not exist/);
     expect(outcomes[1].rows).toHaveLength(1);
+  });
+
+  it('asks a computed assertion its own owner, not the pool, and keeps what it says beside the rows', async () => {
+    const outcomes = await runCatalogueAssertions([
+      computed('coverage', async () => ({ rows: rows(3), context: ['Archaeology offers 81 of the 213 expected of it.'] })),
+    ]);
+
+    expect(mockedQuery).not.toHaveBeenCalled();
+    const [entry] = toReport(assess(outcomes, {}));
+    expect(entry.found).toBe(3);
+    expect(entry.context).toEqual(['Archaeology offers 81 of the 213 expected of it.']);
+    expect(entry.status).toBe('unanswered');
+  });
+
+  it('reports a computed assertion with nothing to read as unavailable, in its own words, asking nobody', async () => {
+    const outcomes = await runCatalogueAssertions([
+      computed('coverage', async () => { throw new AssertionUnavailable('The lists have not been loaded.'); }),
+    ]);
+    const [entry] = toReport(assess(outcomes, {}));
+
+    // Not clear: tables nobody loaded are not a clean catalogue. Not an error
+    // either: nothing is broken, and a red badge on every fresh database would
+    // teach an admin to ignore the badge.
+    expect(entry.status).toBe('unavailable');
+    expect(entry.needsAttention).toBe(false);
+    expect(entry.error).toBe('The lists have not been loaded.');
+    expect(entry.found).toBe(0);
+  });
+
+  it('says a computed assertion that failed did not run, never with the failure\'s own text', async () => {
+    const outcomes = await runCatalogueAssertions([
+      computed('coverage', async () => { throw new Error('relation "coverage_kinds" does not exist'); }),
+    ]);
+    const [entry] = toReport(assess(outcomes, {}));
+
+    expect(entry.status).toBe('error');
+    expect(entry.error).toBe('The check could not run: its query failed, and the server log has the cause.');
   });
 });
 
@@ -177,6 +220,7 @@ describe('the report the panel receives', () => {
     const [entry] = toReport(assess([{ assertion: assertion('rule'), rows: rows(1) }], {}));
     expect(entry.sample[0]).toBe('rule row 1');
     expect(entry.meaning).toBe('what rule means');
+    expect(entry.context).toEqual([]);
   });
 
   it('carries who accepted the number and when', () => {

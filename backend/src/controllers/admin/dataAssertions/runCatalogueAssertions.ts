@@ -21,8 +21,8 @@
 
 import type { AssertionStatus, DataAssertion } from '../../../api/responses/dataAssertions.js';
 import { pool } from '../../../db/index.js';
-import type { AssertionRow, CatalogueAssertion } from './catalogueAssertions.js';
-import { catalogueAssertions } from './catalogueAssertions.js';
+import { AssertionUnavailable, type AnyAssertion, type AssertionRow } from './assertion.js';
+import { everyAssertion } from './catalogueAssertions.js';
 
 /**
  * How many violating rows travel to the panel per assertion.
@@ -47,9 +47,11 @@ export interface AcceptedNumber {
 export type AcceptedNumbers = Record<string, AcceptedNumber>;
 
 export interface AssertionOutcome {
-  assertion: CatalogueAssertion;
+  assertion: AnyAssertion;
   /** Every matching row, whatever the report chooses to send. */
   rows: AssertionRow[];
+  /** What a computed assertion says beside its rows; a statement has none. */
+  context?: string[];
   /** What went wrong, for an assertion whose query could not run at all. */
   error?: Error;
 }
@@ -128,7 +130,8 @@ async function readLedger(): Promise<AcceptedNumbers> {
 /**
  * Run every assertion and answer with what each found.
  *
- * One statement per assertion on the shared pool, in order, and no transaction:
+ * One statement per assertion on the shared pool, in order, and no transaction
+ * (a computed assertion reads through its own owner instead):
  * these are reads of a resting state, and wrapping them would hold a snapshot
  * open across a scan of the whole catalogue for no gain.
  *
@@ -138,15 +141,22 @@ async function readLedger(): Promise<AcceptedNumbers> {
  * other answer plus a named failure is more of that than one stack trace.
  */
 export async function runCatalogueAssertions(
-  assertions: CatalogueAssertion[] = catalogueAssertions,
+  assertions: AnyAssertion[] = everyAssertion,
 ): Promise<AssertionOutcome[]> {
   const outcomes: AssertionOutcome[] = [];
   for (const assertion of assertions) {
     try {
-      const result = await pool.query(assertion.sql);
-      outcomes.push({ assertion, rows: result.rows as AssertionRow[] });
+      if ('collect' in assertion) {
+        outcomes.push({ assertion, ...await assertion.collect() });
+      } else {
+        const result = await pool.query(assertion.sql);
+        outcomes.push({ assertion, rows: result.rows as AssertionRow[] });
+      }
     } catch (error) {
-      console.error('[Catalogue Checks] %s could not run:', assertion.id, error);
+      // Nothing to read is a state of the database, not a fault of the server.
+      if (!(error instanceof AssertionUnavailable)) {
+        console.error('[Catalogue Checks] %s could not run:', assertion.id, error);
+      }
       outcomes.push({
         assertion,
         rows: [],
@@ -163,6 +173,8 @@ export async function runCatalogueAssertions(
  * columns, so it goes to the server log instead (#1021).
  */
 export function couldNotRun(error: Error): string {
+  // Written for the admin by the assertion that had nothing to read.
+  if (error instanceof AssertionUnavailable) return error.message;
   // 57014, query_canceled: the statement timeout.
   return (error as { code?: string }).code === '57014'
     ? 'The check could not run: its query timed out.'
@@ -170,6 +182,7 @@ export function couldNotRun(error: Error): string {
 }
 
 function statusOf(outcome: AssertionOutcome, accepted: AcceptedNumber | undefined): AssertionStatus {
+  if (outcome.error instanceof AssertionUnavailable) return 'unavailable';
   if (outcome.error) return 'error';
   if (outcome.assertion.kind === 'watch') return 'watch';
   const found = outcome.rows.length;
@@ -228,6 +241,7 @@ export function toReport(results: AssertionResult[]): DataAssertion[] {
     acceptedAt: result.accepted?.acceptedAt.toISOString() ?? null,
     acceptedBy: result.accepted?.acceptedBy ?? null,
     sample: result.rows.slice(0, SAMPLE_ROWS).map(row => result.assertion.describe(row)),
+    context: result.context ?? [],
     error: result.error ? couldNotRun(result.error) : null,
     needsAttention: needsAttention(result.status),
   }));

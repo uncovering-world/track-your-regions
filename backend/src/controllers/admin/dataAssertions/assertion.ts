@@ -24,7 +24,8 @@ import type { AssertionArea, AssertionKind } from '../../../api/responses/dataAs
 /** A row of a violation, as `pg` hands it back. */
 export type AssertionRow = Record<string, unknown>;
 
-export interface CatalogueAssertion {
+/** What every assertion is, whether a statement or a computation finds its rows. */
+interface AssertionBase {
   /**
    * Stable across runs and across a rename of the sentence beside it, so two
    * reports of the same database can be compared by something other than
@@ -61,10 +62,41 @@ export interface CatalogueAssertion {
   kind: AssertionKind;
   /** What a matching row means, and who has to do what about it. */
   meaning: string;
-  sql: string;
   /** One matching row, said the way a person would say it. */
   describe: (row: AssertionRow) => string;
 }
+
+/** An assertion whose rows are what one statement over the catalogue returns. */
+export interface CatalogueAssertion extends AssertionBase {
+  sql: string;
+}
+
+/** What a computed assertion found, and the lines that put its rows in proportion. */
+export interface Collected {
+  rows: AssertionRow[];
+  /** Said beside the rows whatever their number: how much of the whole they are. */
+  context: string[];
+}
+
+/**
+ * An assertion whose rows a decision in code finds, where the rule already has
+ * one owner that is not a statement: the coverage report decides what a kind
+ * lacks in TypeScript (`catalogueCoverage/report.ts`), and a second copy of that
+ * decision in SQL would be a second rule.
+ */
+export interface ComputedAssertion extends AssertionBase {
+  collect: () => Promise<Collected>;
+}
+
+export type AnyAssertion = CatalogueAssertion | ComputedAssertion;
+
+/**
+ * A computed assertion that has nothing to read, with the sentence an admin is
+ * told instead of a count. It is reported as `unavailable`: never as clear, so
+ * a table nobody loaded does not read as a clean catalogue, and never as a
+ * failure, since nothing is broken.
+ */
+export class AssertionUnavailable extends Error {}
 
 export const text = (row: AssertionRow, key: string): string =>
   String(row[key] ?? '').replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ');
