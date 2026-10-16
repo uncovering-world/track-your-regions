@@ -1332,7 +1332,12 @@ path needs.
   `componentItemQueries.ts`). Started from the World Heritage source's card in the admin panel
   (*Find component items*, `POST /api/admin/sync/sources/:sourceId/find-component-items`,
   `findUnescoComponentItems` in `componentItemJob.ts`), not from the run, whose job is to record
-  what UNESCO states. It reads the standing component points with no item and no claim on one, and
+  what UNESCO states. It can be narrowed to one site (#1429): `?experienceId=` names a site of the
+  source (any other id answers 404), given from the source's card (*One site (id)*) or from that
+  site's component-items card (*Search this site again*, shown to admins, the pass's own role). The
+  narrowed pass asks about that site's own areas and writes and clears proposals for its points
+  only (`FinderOptions.siteId`); every rule is the whole pass's, the classes a site is judged by
+  are still learned from the whole catalogue, and QLever's manners and its refusal are unchanged. It reads the standing component points with no item and no claim on one, and
   asks Wikidata by these rules, each a reason the curator reads on the card:
   - **part of the site** (`part_of`) — an item that says it is part of one of the site's own items
     (P361), with or without a World Heritage reference of its own — one the reader matched is a
