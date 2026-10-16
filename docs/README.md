@@ -114,13 +114,14 @@ the one statement of the rule; `CLAUDE.md`, the development guide and the comman
 | What | Home | Lifetime |
 |------|------|----------|
 | **Intent**: what to do, why, its priority and order | GitHub issues. The roadmap is the open milestones (each with an exit criterion), a theme is an Epic, a far-off idea is a Low Epic with no milestone | until done |
+| **The order of the work toward a goal**: its items, their reasons, who holds it, what it claims, and how the order changed | a queue: one issue labelled `queue`, with its journal in the comments ([ADR-0114](decisions/0114-work-is-held-in-queues-one-issue-per-goal.md), `/queue`) | until its *Done when* holds |
 | **What exists** | `docs/tech/`, `docs/security/`, `docs/sources/` | updated with the code that changes it |
 | **The product, as it is and where it is heading** | `docs/vision/` (the direction in words; each step of it is an issue) | updated with every user-facing change |
 | **Decisions** | `docs/decisions/` (an ADR is a Draft inside its pull request, then Accepted) | immutable once Accepted |
 | **Research a decision rests on** | `docs/research/YYYY-MM-DD-slug.md`, only when an issue or ADR cites it ([README](research/README.md)) | immutable |
 | **The working plan of issue N** | `docs/local/plans/<N>-slug.md` | from the start of the work to its merge: then what was not built is filed as issues, and the plan is deleted or archived |
 | **A research draft** | `docs/local/research/<topic>/` | until it is published or dropped |
-| **One session's state** | `docs/local/sessions/YYYY-MM-DD.md` | the session |
+| **One session's state**: its scratch, never the order of the work, which is its queue's | `docs/local/sessions/YYYY-MM-DD.md` | the session |
 | **An unsorted note** | `docs/local/inbox/` | until `/issue-upload` turns it into issues or a document |
 | **Finished or stale local files** | `docs/local/archive/` | until `/docs-sweep` deletes them |
 | **How an agent should work** (feedback, gotchas, references) | the agent's own memory | living; never project status |
