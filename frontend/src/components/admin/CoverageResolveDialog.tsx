@@ -480,7 +480,7 @@ export function CoverageResolveDialog({
         </Typography>
         <Tooltip title="Re-check coverage">
           <span>
-            <IconButton
+            <IconButton aria-label="Re-check coverage"
               size="small"
               onClick={onRecheck}
               disabled={coverageChecking}

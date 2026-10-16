@@ -130,7 +130,7 @@ export function ActionStrip({
           }}>
             {selectedMember.name}
           </Typography>
-          <IconButton size="small" onClick={onClearMember} sx={{ p: 0.25, ...stripIconSx }}>
+          <IconButton aria-label="Clear the selected member" size="small" onClick={onClearMember} sx={{ p: 0.25, ...stripIconSx }}>
             <CloseIcon sx={{ fontSize: 14 }} />
           </IconButton>
         </Box>
@@ -209,7 +209,7 @@ export function ActionStrip({
         <Box sx={{ ml: 'auto' }}>
           <Tooltip title={selectedMember.isSubregion ? 'Delete subregion' : 'Remove member'}>
             <span>
-              <IconButton
+              <IconButton aria-label={selectedMember.isSubregion ? 'Delete subregion' : 'Remove member'}
                 size="small"
                 onClick={() => onRemoveMember(selectedMember)}
                 disabled={removeMemberPending || deletePending}
@@ -292,7 +292,7 @@ export function ActionStrip({
       {hasChildRegions && (
         <Tooltip title="Apply this region's color to all children">
           <span>
-            <IconButton
+            <IconButton aria-label="Apply this region's color to all children"
               size="small"
               onClick={() => onPropagateColor(selectedRegion)}
               disabled={updateRegionPending}

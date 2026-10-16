@@ -577,7 +577,7 @@ export default function ClusterPaintEditor({
                 {pcts.get(entry.label)?.toFixed(1) ?? '0.0'}%
               </Typography>
             </Box>
-            <IconButton size="small" onClick={(e) => { e.stopPropagation(); removeCluster(entry.label); }}>
+            <IconButton aria-label="Remove cluster" size="small" onClick={(e) => { e.stopPropagation(); removeCluster(entry.label); }}>
               <DeleteIcon fontSize="small" />
             </IconButton>
           </Box>

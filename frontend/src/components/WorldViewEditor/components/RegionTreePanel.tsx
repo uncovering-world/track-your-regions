@@ -128,10 +128,10 @@ function DraggableRegionItem({
       secondaryAction={
         isSelected ? (
           <Box sx={{ display: 'flex', gap: 0.25 }}>
-            <IconButton size="small" onClick={(e) => { e.stopPropagation(); onEdit(); }} sx={sxTokens.darkIconBtn}>
+            <IconButton aria-label="Edit region" size="small" onClick={(e) => { e.stopPropagation(); onEdit(); }} sx={sxTokens.darkIconBtn}>
               <EditIcon sx={{ fontSize: 14 }} />
             </IconButton>
-            <IconButton size="small" onClick={(e) => { e.stopPropagation(); onDelete(); }} sx={{ ...sxTokens.darkIconBtn, '&:hover': { color: P.accent.danger, bgcolor: P.dark.bgHover } }}>
+            <IconButton aria-label="Delete region" size="small" onClick={(e) => { e.stopPropagation(); onDelete(); }} sx={{ ...sxTokens.darkIconBtn, '&:hover': { color: P.accent.danger, bgcolor: P.dark.bgHover } }}>
               <DeleteIcon sx={{ fontSize: 14 }} />
             </IconButton>
           </Box>
@@ -164,7 +164,7 @@ function DraggableRegionItem({
 
         {/* Expand/collapse */}
         {hasChildren ? (
-          <IconButton
+          <IconButton aria-label={isExpanded ? 'Collapse' : 'Expand'}
             size="small"
             onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
             sx={{ mr: 0.25, p: 0.25, color: P.dark.textMuted }}
@@ -455,7 +455,7 @@ export function RegionTreePanel({
           </Tooltip>
           <Tooltip title="Copy hierarchy to clipboard">
             <span>
-              <IconButton
+              <IconButton aria-label="Copy hierarchy to clipboard"
                 size="small"
                 onClick={() => navigator.clipboard.writeText(buildRegionHierarchyText(regions || []))}
                 disabled={!regions?.length}
@@ -515,7 +515,7 @@ export function RegionTreePanel({
               }}
             />
           </Tooltip>
-          <IconButton
+          <IconButton aria-label="Add region"
             size="small"
             onClick={handleCreateRegion}
             disabled={!newRegionName.trim() || createRegionPending}

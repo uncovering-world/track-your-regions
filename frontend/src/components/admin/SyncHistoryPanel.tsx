@@ -195,7 +195,7 @@ function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
       </TableCell>
       <TableCell>{displayNameOf(log.triggered_by_name) ?? 'System'}</TableCell>
       <TableCell>
-        <IconButton size="small" onClick={onViewDetails}>
+        <IconButton aria-label="View run details" size="small" onClick={onViewDetails}>
           <InfoIcon />
         </IconButton>
       </TableCell>

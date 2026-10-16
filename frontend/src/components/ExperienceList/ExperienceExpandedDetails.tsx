@@ -453,17 +453,17 @@ function ExperienceExpandedDetailsComponent({
           return (
             <>
               {wikiUrl && (
-                <IconButton size="small" component="a" href={wikiUrl} target="_blank" rel="noopener noreferrer" title="Wikipedia">
+                <IconButton aria-label="Wikipedia article" size="small" component="a" href={wikiUrl} target="_blank" rel="noopener noreferrer" title="Wikipedia">
                   <WikiIcon fontSize="small" />
                 </IconButton>
               )}
               {websiteUrl && websiteUrl !== wikiUrl && websiteUrl !== unescoUrl && (
-                <IconButton size="small" component="a" href={websiteUrl} target="_blank" rel="noopener noreferrer" title="Official website">
+                <IconButton aria-label="Official website" size="small" component="a" href={websiteUrl} target="_blank" rel="noopener noreferrer" title="Official website">
                   <WebsiteIcon fontSize="small" />
                 </IconButton>
               )}
               {unescoUrl && (
-                <IconButton size="small" component="a" href={unescoUrl} target="_blank" rel="noopener noreferrer" title="UNESCO World Heritage page">
+                <IconButton aria-label="UNESCO World Heritage page" size="small" component="a" href={unescoUrl} target="_blank" rel="noopener noreferrer" title="UNESCO World Heritage page">
                   <HeritagePageIcon fontSize="small" />
                 </IconButton>
               )}

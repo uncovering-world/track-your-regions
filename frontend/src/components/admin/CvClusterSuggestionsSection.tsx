@@ -192,7 +192,7 @@ export function CvClusterSuggestionsSection({
         >
           AI Suggest
         </Button>
-        <IconButton
+        <IconButton aria-label="Change AI model"
           size="small"
           title={aiModelOverride ? `Model: ${aiModelOverride} (local override)` : 'Change AI model'}
           sx={{ width: 24, height: 24 }}

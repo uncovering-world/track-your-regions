@@ -169,7 +169,7 @@ export function GroupCard({
               </IconButton>
             </Tooltip>
           )}
-          <IconButton size="small" onClick={handleDelete}>
+          <IconButton aria-label="Delete group" size="small" onClick={handleDelete}>
             <DeleteIcon fontSize="small" />
           </IconButton>
         </Box>

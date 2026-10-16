@@ -268,7 +268,7 @@ export function SubdivisionDialog({
             dense
           >
             {node.hasSubregions && (
-              <IconButton
+              <IconButton aria-label={node.expanded ? 'Collapse' : 'Expand'}
                 size="small"
                 onClick={(e) => {
                   e.stopPropagation();

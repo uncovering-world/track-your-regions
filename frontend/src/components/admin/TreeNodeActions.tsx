@@ -137,7 +137,7 @@ function SearchActionButtons({ nodeId, wikidataId, nodeGeocodeMsg, nodeGeocodeNe
     <>
       <Tooltip title={nodeGeocodeMsg ?? 'Geocode match'}>
         <span>
-          <IconButton
+          <IconButton aria-label="Geocode match"
             size="small"
             onClick={() => onGeocodeMatch(nodeId)}
             disabled={isMutating || anySearching}
@@ -152,7 +152,7 @@ function SearchActionButtons({ nodeId, wikidataId, nodeGeocodeMsg, nodeGeocodeNe
       </Tooltip>
       <Tooltip title={!wikidataId ? 'No Wikidata ID' : 'Geoshape match (spatial)'}>
         <span>
-          <IconButton
+          <IconButton aria-label="Geoshape match (spatial)"
             size="small"
             onClick={() => onGeoshapeMatch(nodeId)}
             disabled={isMutating || anySearching || !wikidataId}
@@ -167,7 +167,7 @@ function SearchActionButtons({ nodeId, wikidataId, nodeGeocodeMsg, nodeGeocodeNe
       </Tooltip>
       <Tooltip title={!wikidataId ? 'No Wikidata ID' : 'Point match (Wikivoyage markers)'}>
         <span>
-          <IconButton
+          <IconButton aria-label="Point match (Wikivoyage markers)"
             size="small"
             onClick={() => onPointMatch(nodeId)}
             disabled={isMutating || anySearching || !wikidataId}
@@ -218,7 +218,7 @@ function SearchActionButtons({ nodeId, wikidataId, nodeGeocodeMsg, nodeGeocodeNe
       )}
       <Tooltip title="DB search">
         <span>
-          <IconButton
+          <IconButton aria-label="DB search"
             size="small"
             onClick={() => onDBSearch(nodeId)}
             disabled={isMutating || anySearching}
@@ -233,7 +233,7 @@ function SearchActionButtons({ nodeId, wikidataId, nodeGeocodeMsg, nodeGeocodeNe
       </Tooltip>
       <Tooltip title="AI match">
         <span>
-          <IconButton
+          <IconButton aria-label="AI match"
             size="small"
             onClick={() => onAIMatch(nodeId)}
             disabled={isMutating || anySearching}
@@ -273,7 +273,7 @@ function ActionIconButton({
   return (
     <Tooltip title={title}>
       <span>
-        <IconButton size="small" onClick={onClick} disabled={disabled} sx={{ p: 0.25 }}>
+        <IconButton aria-label={title} size="small" onClick={onClick} disabled={disabled} sx={{ p: 0.25 }}>
           {loading ? <CircularProgress size={loadingSize} /> : icon}
         </IconButton>
       </span>

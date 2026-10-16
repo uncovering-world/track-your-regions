@@ -261,7 +261,7 @@ export function CustomBoundaryDialog({
               <>
                 <Tooltip title="Undo last point">
                   <span>
-                    <IconButton
+                    <IconButton aria-label="Undo last point"
                       onClick={handleUndo}
                       disabled={drawingPoints.length === 0}
                       size="small"
@@ -273,7 +273,7 @@ export function CustomBoundaryDialog({
 
                 <Tooltip title="Clear all points">
                   <span>
-                    <IconButton
+                    <IconButton aria-label="Clear all points"
                       onClick={handleClear}
                       disabled={drawingPoints.length === 0}
                       size="small"

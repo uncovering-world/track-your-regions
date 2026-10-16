@@ -37,7 +37,7 @@ function AssignedDivisionRow({ div, regionId, onReject, onPreview, isMutating }:
       </Tooltip>
       <Tooltip title="Reject">
         <span>
-        <IconButton size="small" color="error" onClick={() => onReject(regionId, div.divisionId)} disabled={isMutating} sx={{ p: 0.25 }}>
+        <IconButton aria-label="Reject" size="small" color="error" onClick={() => onReject(regionId, div.divisionId)} disabled={isMutating} sx={{ p: 0.25 }}>
           <CloseIcon sx={{ fontSize: 16 }} />
         </IconButton>
         </span>

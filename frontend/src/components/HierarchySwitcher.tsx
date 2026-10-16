@@ -169,7 +169,7 @@ export function HierarchySwitcher() {
         {/* Admin-only: actions menu */}
         {isAdmin && (
           <>
-            <IconButton onClick={(e) => setAdminMenuEl(e.currentTarget)} size="small">
+            <IconButton aria-label="World view actions" onClick={(e) => setAdminMenuEl(e.currentTarget)} size="small">
               <MoreVertIcon />
             </IconButton>
             <Menu

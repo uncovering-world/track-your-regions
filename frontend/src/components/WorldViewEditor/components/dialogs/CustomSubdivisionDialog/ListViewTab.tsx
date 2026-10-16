@@ -212,7 +212,7 @@ export function ListViewTab({
               </Tooltip>
               <Tooltip title="Copy group paths to clipboard">
                 <span>
-                  <IconButton
+                  <IconButton aria-label="Copy group paths to clipboard"
                     size="small"
                     onClick={() => {
                       const basePath = selectedRegion?.name || '';

@@ -457,7 +457,7 @@ export function OverlapResolutionDialog({
           Division Overlaps — {parentRegionName}
           <Chip label={`${resolvedCount}/${totalCount} resolved`} size="small" color={resolvedCount === totalCount ? 'success' : 'default'} sx={{ ml: 1.5 }} />
         </Typography>
-        <IconButton onClick={onClose} size="small"><CloseIcon /></IconButton>
+        <IconButton aria-label="Close" onClick={onClose} size="small"><CloseIcon /></IconButton>
       </DialogTitle>
 
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, p: 1.5, overflow: 'hidden' }}>

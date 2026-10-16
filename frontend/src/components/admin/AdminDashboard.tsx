@@ -107,7 +107,7 @@ export function AdminDashboard() {
   const drawerContent = (
     <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
       <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 1 }}>
-        <IconButton component="a" href="/" size="small">
+        <IconButton aria-label="Back to the map" component="a" href="/" size="small">
           <ArrowBackIcon />
         </IconButton>
         <Typography variant="h6" noWrap>
@@ -176,7 +176,7 @@ export function AdminDashboard() {
       {isMobile && (
         <AppBar position="fixed" sx={{ zIndex: theme.zIndex.drawer + 1 }}>
           <Toolbar>
-            <IconButton
+            <IconButton aria-label="Open the admin menu"
               color="inherit"
               edge="start"
               onClick={handleDrawerToggle}
