@@ -565,6 +565,20 @@ export interface RegionGeomPiecesRow {
   geom: string;
 }
 
+/** The table `region_image_overlays`. */
+export interface RegionImageOverlaysRow {
+  region_id: number;
+  image: Buffer;
+  image_type: string;
+  image_name: string;
+  image_width: number;
+  image_height: number;
+  corners: unknown;
+  opacity: number;
+  updated_by: number | null;
+  updated_at: Date;
+}
+
 /** The table `region_import_state`. */
 export interface RegionImportStateRow {
   region_id: number;
@@ -1140,6 +1154,9 @@ export const CHECK_VALUES = {
   },
   import_runs: {
     status: ["running", "matching", "reviewing", "failed"],
+  },
+  region_image_overlays: {
+    image_type: ["image/png", "image/jpeg", "image/webp"],
   },
   region_import_state: {
     match_status: ["no_candidates", "needs_review", "auto_matched", "manual_matched", "children_matched", "suggested"],

@@ -4390,6 +4390,29 @@ CREATE INDEX IF NOT EXISTS idx_rmi_region ON region_map_images(region_id);
 
 COMMENT ON TABLE region_map_images IS 'Candidate map images for imported regions (from Wikimedia Commons etc.)';
 
+-- The reference map an admin lays under a region in the Create Subregions dialog
+-- (#595, ADR-0113): one per region, calibrated by its four corners. Working
+-- material of the world view editor, read and written by admins only and never
+-- shown to a visitor, so it is not a picture in ADR-0043's sense. Raster only
+-- and at most 10 MB: the dialog turns any other image into a PNG before saving.
+CREATE TABLE IF NOT EXISTS region_image_overlays (
+    region_id INTEGER PRIMARY KEY REFERENCES regions(id) ON DELETE CASCADE,
+    image BYTEA NOT NULL CHECK (octet_length(image) BETWEEN 1 AND 10485760),
+    image_type TEXT NOT NULL CHECK (image_type IN ('image/png', 'image/jpeg', 'image/webp')),
+    image_name TEXT NOT NULL CHECK (length(image_name) BETWEEN 1 AND 255),
+    image_width INTEGER NOT NULL CHECK (image_width > 0),
+    image_height INTEGER NOT NULL CHECK (image_height > 0),
+    corners JSONB NOT NULL CHECK (jsonb_typeof(corners) = 'array' AND jsonb_array_length(corners) = 4),
+    opacity REAL NOT NULL CHECK (opacity >= 0 AND opacity <= 1),
+    updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE region_image_overlays IS 'The reference map an admin calibrates under a region in the Create Subregions dialog (#595, ADR-0113): one per region, admin-only working material, never shown to a visitor.';
+COMMENT ON COLUMN region_image_overlays.image IS 'The image''s bytes: PNG, JPEG or WebP (image_type), checked by their signature on write, at most 10 MB.';
+COMMENT ON COLUMN region_image_overlays.corners IS 'Where the image''s corners lie on the map, as four [lng, lat] pairs in MapLibre''s image-source order: top left, top right, bottom right, bottom left.';
+COMMENT ON COLUMN region_image_overlays.opacity IS 'How opaque the image is drawn over the map, 0 to 1.';
+
 -- Wikidata geoshape cache (geometry for geoshape-based GADM matching)
 -- Cache-first proxy: filled from maps.wikimedia.org and from composite unions of
 -- child entity geoshapes. Keyed by Wikidata QID or "commons:{filename}".
