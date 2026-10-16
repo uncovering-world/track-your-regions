@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -11,6 +11,7 @@ import {
   Tab,
   Box,
   Chip,
+  Alert,
 } from '@mui/material';
 import MapIcon from '@mui/icons-material/Map';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
@@ -38,6 +39,9 @@ import type { ImageOverlaySettings } from './ImageOverlayDialog';
 import { legacyOverlay, STORAGE_KEY_PREFIX } from './overlayStorage';
 import { useRegionImageOverlay } from './useRegionImageOverlay';
 import { ReferenceMapNotices } from './ReferenceMapNotices';
+import { deleteRegionSubdivisionGroups, fetchRegionSubdivisionGroups } from '../../../../../api/regions';
+import { carriedGroups, forgetLegacyGroups, groupsFromDb, legacyGroups, unassignedAmong } from './groupsStorage';
+import { useSubdivisionGroupsSync } from './useSubdivisionGroupsSync';
 import { queryKeys } from '../../../../../api/queryKeys';
 
 export type { SubdivisionGroup } from './types';
@@ -93,7 +97,10 @@ const updateMemberFromDb = (storedMember: RegionMember, dbMembers: RegionMember[
 /**
  * Check if a DB member exists in stored state (unassigned or any group)
  */
-const memberExistsInStored = (dbMember: RegionMember, stored: SavedDialogState): boolean => {
+const memberExistsInStored = (
+  dbMember: RegionMember,
+  stored: { unassignedDivisions: RegionMember[]; subdivisionGroups: SubdivisionGroup[] },
+): boolean => {
   const inUnassigned = stored.unassignedDivisions.some(s => {
     if (dbMember.memberRowId && s.memberRowId) {
       return dbMember.memberRowId === s.memberRowId;
@@ -127,16 +134,21 @@ const memberExistsInStored = (dbMember: RegionMember, stored: SavedDialogState):
  * a reset kept while its Keep or Discard offer was unanswered (#595).
  */
 const isDialogState = (state: Partial<SavedDialogState> | null): state is SavedDialogState =>
-  Array.isArray(state?.unassignedDivisions) && Array.isArray(state?.subdivisionGroups);
+  typeof state?.savedAt === 'string';
+
+/** A saved state with nothing in it, for validating an earlier session's groups alone. */
+const emptySavedState = (): SavedDialogState => ({
+  aiSuggestions: [], activeTab: 0, savedAt: '', singleRequestStats: emptyStats(), batchRequestStats: emptyStats(), lastOperation: null,
+});
 
 /**
  * Validate stored state against actual DB members.
  * Only division members (not subregions) belong in the dialog.
  */
 const validateStoredState = (
-  stored: SavedDialogState,
+  stored: SavedDialogState & { unassignedDivisions: RegionMember[]; subdivisionGroups: SubdivisionGroup[] },
   dbMembers: RegionMember[]
-): SavedDialogState => {
+): SavedDialogState & { unassignedDivisions: RegionMember[]; subdivisionGroups: SubdivisionGroup[] } => {
   // Only divisions belong in the dialog — subregions are child regions shown as target groups
   const divisionMembers = dbMembers.filter(m => !m.isSubregion);
 
@@ -175,8 +187,12 @@ const validateStoredState = (
 
 // Serializable state for persistence
 interface SavedDialogState {
-  unassignedDivisions: RegionMember[];
-  subdivisionGroups: SubdivisionGroup[];
+  /**
+   * Only what an earlier session kept here before the database held the
+   * groups (#595): adopted once into a database that has none, then forgotten.
+   */
+  unassignedDivisions?: RegionMember[];
+  subdivisionGroups?: SubdivisionGroup[];
   aiSuggestions: Array<[number, RegionSuggestion]>;
   /**
    * Only a map an earlier session kept here before the database held it
@@ -239,6 +255,11 @@ export function CustomSubdivisionDialog({
   const [aiSuggestions, setAiSuggestions] = useState<Map<number, RegionSuggestion>>(new Map());
   // The reference map is the database's (#595), not this browser's saved state.
   const overlay = useRegionImageOverlay(selectedRegion?.id ?? null, open);
+  // The groups are the database's too (#595), saved as they change.
+  const groupsSync = useSubdivisionGroupsSync(selectedRegion?.id ?? null, open, subdivisionGroups);
+  // Which opening a load belongs to: one for an earlier region, or for a
+  // dialog since closed, lands nowhere.
+  const loadGeneration = useRef(0);
   const imageOverlaySettings = overlay.settings;
 
   // Usage stats (lifted from AIAssistTab for persistence)
@@ -260,9 +281,10 @@ export function CustomSubdivisionDialog({
     const key = getStorageKey();
     if (!key) return;
 
+    // The groups are the database's (#595); the entry keeps what is this
+    // browser's, and an earlier session's groups untouched until they are adopted.
     const state: SavedDialogState = {
-      unassignedDivisions,
-      subdivisionGroups,
+      ...(selectedRegion ? carriedGroups(selectedRegion.id) as Partial<SavedDialogState> : {}),
       aiSuggestions: Array.from(aiSuggestions.entries()),
       imageOverlaySettings: selectedRegion ? legacyOverlay(selectedRegion.id).settings : null,
       activeTab,
@@ -282,7 +304,7 @@ export function CustomSubdivisionDialog({
     } catch (e) {
       console.error('Failed to save state:', e);
     }
-  }, [getStorageKey, selectedRegion, unassignedDivisions, subdivisionGroups, aiSuggestions, activeTab, singleRequestStats, batchRequestStats, lastOperation]);
+  }, [getStorageKey, selectedRegion, aiSuggestions, activeTab, singleRequestStats, batchRequestStats, lastOperation]);
 
   // Restore state from localStorage
   const restoreState = useCallback(() => {
@@ -296,8 +318,6 @@ export function CustomSubdivisionDialog({
       const state: SavedDialogState = JSON.parse(saved);
       if (!isDialogState(state)) return false;
 
-      setUnassignedDivisions(state.unassignedDivisions);
-      setSubdivisionGroups(state.subdivisionGroups);
       setAiSuggestions(new Map(state.aiSuggestions));
       setActiveTab(state.activeTab);
       setLastSavedAt(state.savedAt);
@@ -363,69 +383,56 @@ export function CustomSubdivisionDialog({
     const divisions = regionMembers.filter(m => !m.isSubregion);
     setUnassignedDivisions(divisions);
 
-    // Check if there's saved state for this region and restore it (with validation)
+    // The groups come from the database (#595); what else this browser saved
+    // for the region (AI suggestions, the tab, usage counts) from its entry.
+    const regionId = selectedRegion.id;
     const key = getStorageKey();
-    if (key && localStorage.getItem(key)) {
-      fetchRegionMembers(selectedRegion.id)
-        .then(dbMembers => {
-          try {
-            const saved = localStorage.getItem(key);
-            if (!saved) return;
+    const withChildren = (groups: SubdivisionGroup[]): SubdivisionGroup[] => {
+      const represented = new Set(groups.map(g => g.existingRegionId).filter(Boolean));
+      const missing = existingChildren.filter(r => !represented.has(r.id));
+      return [...groups, ...missing.map(r => ({ name: r.name, members: [] as RegionMember[], existingRegionId: r.id }))];
+    };
+    setSubdivisionGroups(withChildren([]));
+    const generation = ++loadGeneration.current;
+    Promise.all([fetchRegionMembers(regionId), fetchRegionSubdivisionGroups(regionId)])
+      .then(([dbMembers, stored]) => {
+        if (generation !== loadGeneration.current) return;
+        const divisionMembers = dbMembers.filter(m => !m.isSubregion);
+        // An earlier session's groups, kept only in this browser, become the
+        // region's when the database holds none; then the browser forgets them.
+        const legacy = stored.groups.length === 0 ? legacyGroups(regionId) : null;
+        const groups = withChildren(legacy
+          ? validateStoredState({ ...emptySavedState(), unassignedDivisions: [], subdivisionGroups: legacy }, dbMembers).subdivisionGroups
+          : groupsFromDb(stored, divisionMembers));
+        setSubdivisionGroups(groups);
+        setUnassignedDivisions(unassignedAmong(divisionMembers, groups));
+        // Adopted groups stay in the browser until the database holds them;
+        // beside the database's own, the browser's copy is only stale.
+        if (legacy) groupsSync.settle(groups, { save: true, onSaved: () => forgetLegacyGroups(regionId) });
+        else {
+          forgetLegacyGroups(regionId);
+          groupsSync.settle(groups);
+        }
 
-            let state: SavedDialogState = JSON.parse(saved);
-            if (!isDialogState(state)) return;
-            state = validateStoredState(state, dbMembers);
-
-            setUnassignedDivisions(state.unassignedDivisions);
-
-            // Merge saved groups with existing child regions:
-            // - Restore saved groups (preserving assignments)
-            // - Add any existing child regions not already represented
-            const restoredGroups = state.subdivisionGroups;
-            if (existingChildren.length > 0) {
-              const existingRegionIds = new Set(restoredGroups.map(g => g.existingRegionId).filter(Boolean));
-              const missingChildren = existingChildren.filter(r => !existingRegionIds.has(r.id));
-              setSubdivisionGroups([
-                ...restoredGroups,
-                ...missingChildren.map(r => ({ name: r.name, members: [], existingRegionId: r.id })),
-              ]);
-            } else {
-              setSubdivisionGroups(restoredGroups);
-            }
-
-            setAiSuggestions(new Map(state.aiSuggestions));
-            setActiveTab(state.activeTab);
-            setLastSavedAt(state.savedAt);
-            setHasSavedState(true);
-
-            if (state.singleRequestStats) setSingleRequestStats(state.singleRequestStats);
-            if (state.batchRequestStats) setBatchRequestStats(state.batchRequestStats);
-            if (state.lastOperation) {
-              setLastOperation({
-                ...state.lastOperation,
-                timestamp: new Date(state.lastOperation.timestamp),
-              });
-            }
-          } catch (e) {
-            console.error('Failed to restore state:', e);
-          }
-        })
-        .catch(e => {
-          console.error('Failed to fetch DB members for validation:', e);
-          restoreState();
-        });
-    } else {
-      // No saved state — pre-populate groups from existing child regions (e.g., from WorldView import)
-      if (existingChildren.length > 0) {
-        setSubdivisionGroups(existingChildren.map(r => ({
-          name: r.name,
-          members: [],
-          existingRegionId: r.id,
-        })));
-      } else {
-        setSubdivisionGroups([]);
-      }
-    }
+        const saved = key ? localStorage.getItem(key) : null;
+        const state = saved ? JSON.parse(saved) as Partial<SavedDialogState> : null;
+        if (!isDialogState(state)) return;
+        setAiSuggestions(new Map(state.aiSuggestions));
+        setActiveTab(state.activeTab);
+        setLastSavedAt(state.savedAt);
+        setHasSavedState(true);
+        if (state.singleRequestStats) setSingleRequestStats(state.singleRequestStats);
+        if (state.batchRequestStats) setBatchRequestStats(state.batchRequestStats);
+        if (state.lastOperation) {
+          setLastOperation({ ...state.lastOperation, timestamp: new Date(state.lastOperation.timestamp) });
+        }
+      })
+      .catch(e => {
+        if (generation !== loadGeneration.current) return;
+        // Nothing is saved over groups that could not be read: the sync waits for a settle.
+        console.error('Failed to read the region\'s members or groups:', e);
+        restoreState();
+      });
 
     setLastRestoredRegionId(selectedRegion.id);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- regionMembers changes on every render; we only want to init on open/region change
@@ -452,6 +459,7 @@ export function CustomSubdivisionDialog({
   useEffect(() => {
     if (!open) {
       setLastRestoredRegionId(null);
+      loadGeneration.current += 1;
     }
   }, [open]);
 
@@ -488,17 +496,22 @@ export function CustomSubdivisionDialog({
     if (!window.confirm(`Quick Expand: Create ${divisionCount} subregions (one for each division)?`)) return;
 
     setIsQuickExpanding(true);
+    // No save of the groups may land after they are dropped below.
+    await groupsSync.stop();
     try {
       await expandToSubregions(selectedRegion.id, { inheritColor: true });
       queryClient.invalidateQueries({ queryKey: queryKeys.regions.list(worldViewId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.regions.members(selectedRegion.id) });
+      // Every member is a subregion of its own now, so the groups have nothing left to hold.
+      await deleteRegionSubdivisionGroups(selectedRegion.id).catch(e => console.error('Failed to drop the groups:', e));
       onComplete();
     } catch (e) {
       console.error('Failed to quick expand:', e);
+      groupsSync.resume();
     } finally {
       setIsQuickExpanding(false);
     }
-  }, [selectedRegion, unassignedDivisions, subdivisionGroups, worldViewId, queryClient, onComplete]);
+  }, [selectedRegion, unassignedDivisions, subdivisionGroups, worldViewId, queryClient, onComplete, groupsSync]);
 
   // Create subregions from groups
   const handleCreateSubregions = useCallback(async () => {
@@ -545,6 +558,8 @@ export function CustomSubdivisionDialog({
     };
 
     setIsCreating(true);
+    // No save of the groups may land after they are dropped below.
+    await groupsSync.stop();
     try {
       const dbMembers = await fetchRegionMembers(sourceRegionId);
       const memberLookup = buildMemberLookup(dbMembers);
@@ -561,14 +576,17 @@ export function CustomSubdivisionDialog({
       queryClient.invalidateQueries({ queryKey: queryKeys.regions.members(sourceRegionId) });
 
       clearSavedState();
+      // The groups are subregions now; kept, they would come back as empty groups.
+      await deleteRegionSubdivisionGroups(sourceRegionId).catch(e => console.error('Failed to drop the groups:', e));
       onComplete();
     } catch (e) {
       console.error('Failed to create subregions:', e);
+      groupsSync.resume();
       alert('Failed to create subregions');
     } finally {
       setIsCreating(false);
     }
-  }, [selectedRegion, subdivisionGroups, worldViewId, queryClient, clearSavedState, onComplete]);
+  }, [selectedRegion, subdivisionGroups, worldViewId, queryClient, clearSavedState, onComplete, groupsSync]);
 
   const aiTabDisabled = aiAvailable === false;
 
@@ -613,6 +631,7 @@ export function CustomSubdivisionDialog({
         </DialogTitle>
         <DialogContent>
           <ReferenceMapNotices overlay={overlay} regionName={selectedRegion?.name} />
+          {groupsSync.error && <Alert severity="warning" sx={{ mb: 2 }}>{groupsSync.error}</Alert>}
           <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 2 }}>
             <Tab label="List View" />
             <Tab label="Map View" icon={<MapIcon fontSize="small" />} iconPosition="start" />
