@@ -522,6 +522,15 @@ export const reviewQueueQuerySchema = z.object({
   aside: z.enum(['show']).optional(),
   sort: z.enum(['date', 'question']).default('date'),
   cursor: z.string().max(200).optional(),
+  // The question a link names, `kind:id` in the answer's own words
+  // (`waiting:126`, `conflict:2`): with no cursor, the first page opens one key
+  // before it (#843). A kind it does not know or an id out of int4 is dropped
+  // by the controller, as a filter word is.
+  row: z.string().max(60).regex(/^[a-z]+(-[a-z]+)*:\d+$/).optional(),
+  // Where a list opened at a row began (`paging.from` of the page that answered it):
+  // the first page read again from that key, inclusive, so answering the linked row
+  // leaves the list where it was. A cursor wins over it, and it over a row.
+  from: z.string().max(200).optional(),
   limit: z.coerce.number().int().min(1).max(100).default(25),
   keptOutOffset: z.coerce.number().int().min(0).default(0),
   answeredWithdrawalsOffset: z.coerce.number().int().min(0).default(0),

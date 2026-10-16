@@ -12306,6 +12306,23 @@
           },
           {
             "in": "query",
+            "name": "row",
+            "schema": {
+              "type": "string",
+              "maxLength": 60,
+              "pattern": "^[a-z]+(-[a-z]+)*:\\d+$"
+            }
+          },
+          {
+            "in": "query",
+            "name": "from",
+            "schema": {
+              "type": "string",
+              "maxLength": 200
+            }
+          },
+          {
+            "in": "query",
             "name": "limit",
             "schema": {
               "default": 25,
@@ -29200,6 +29217,13 @@
                   "null"
                 ]
               },
+              "from": {
+                "description": "The key a page opened mid-list began with (at a linked row, or from `from`), to read the list again from; null at its top.",
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
               "keptOut": {
                 "type": "object",
                 "properties": {
@@ -29258,6 +29282,7 @@
             "required": [
               "cursor",
               "nextCursor",
+              "from",
               "keptOut",
               "answeredWithdrawals",
               "refusedParts"

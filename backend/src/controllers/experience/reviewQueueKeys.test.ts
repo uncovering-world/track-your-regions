@@ -266,6 +266,65 @@ describe('queryQueueKeys', () => {
       .toBeNull();
   });
 
+  it('opens the first page one key before a linked row, by the filters the page lists (#843)', async () => {
+    await queryQueueKeys({ ...base, filters: { ...base.filters, row: { kind: 'waiting', id: 126 } } });
+    const [sql, params] = lastCall();
+    const anchor = between(sql, ', anchor AS (', ', page_start AS (');
+    expect(anchor).toMatch(/k\.kind = \$\d+ AND k\.id = \$\d+/);
+    expect(params).toContain('waiting');
+    expect(params).toContain(126);
+    // The key before it: the order turned round, its first row.
+    const start = between(sql, ', page_start AS (', ', page_rows AS (');
+    expect(start).toContain("ORDER BY COALESCE(k.asked_at, '-infinity') ASC, k.rank DESC, k.id DESC");
+    expect(start).toContain('LIMIT 1');
+    // A row the filters exclude anchors nothing: the page is then the list's top.
+    expect(between(sql, ', page_rows AS (', 'ORDER BY COALESCE(asked_at')).toContain('NOT EXISTS (SELECT 1 FROM page_start)');
+  });
+
+  it("reads a link's row in the answer's words, and drops one it cannot hold (#843)", async () => {
+    const ask = async (row: string) => {
+      mockedQuery.mockClear();
+      await answerRoute(getReviewQueue,
+        { user: { id: 1, role: 'admin' as const }, query: { sort: 'date', limit: 25, row } } as never,
+        { json: vi.fn(), status: vi.fn().mockReturnThis() } as never,
+      ).catch(() => undefined);
+      return lastCall();
+    };
+    const [linked, linkedParams] = await ask('component-items:3210');
+    expect(linked).toContain('page_start');
+    expect(linkedParams).toContain('component-items');
+    expect(linkedParams).toContain(3210);
+    // `conflicts` is the page's own word for a row, not the server's; an id past int4 fits no key.
+    expect((await ask('conflicts:12'))[0]).not.toContain('page_start');
+    expect((await ask('waiting:99999999999'))[0]).not.toContain('page_start');
+  });
+
+  it('reads a list again from the key it opened at, inclusive, before any row (#843)', async () => {
+    const from = encodeCursor({ askedAt: '2026-09-05T19:01:19.748023+00:00', rank: KIND_RANK.waiting, id: 599 });
+    await queryQueueKeys({ ...base, filters: { ...base.filters, from, row: { kind: 'waiting', id: 600 } } });
+    const [sql, params] = lastCall();
+    expect(sql).not.toContain('page_start');
+    expect(sql).toMatch(/NOT \(COALESCE\(k\.asked_at, '-infinity'\) > COALESCE\(\$\d+::timestamptz/);
+    expect(params).toContain('2026-09-05T19:01:19.748023+00:00');
+    expect(params).toContain(599);
+    // Asked whether anything listed comes before the page, to say where it began.
+    expect(sql).toContain('AS midway');
+    expect(sql).not.toContain('false AS midway');
+  });
+
+  it('asks nothing about where a page began when it opens at the top', async () => {
+    await queryQueueKeys(base);
+    expect(lastCall()[0]).toContain('false AS midway');
+  });
+
+  it('pages by the cursor, not the linked row, once there is one', async () => {
+    const cursor = encodeCursor({ askedAt: null, rank: 2, id: 600 });
+    await queryQueueKeys({ ...base, filters: { ...base.filters, cursor, row: { kind: 'waiting', id: 126 } } });
+    const [sql, params] = lastCall();
+    expect(sql).not.toContain('page_start');
+    expect(params).not.toContain(126);
+  });
+
   it('ignores a cursor it cannot read rather than answering an error', async () => {
     await queryQueueKeys({ ...base, filters: { ...base.filters, cursor: 'not-a-cursor' } });
     expect(lastCall()[0]).not.toContain('::timestamptz');

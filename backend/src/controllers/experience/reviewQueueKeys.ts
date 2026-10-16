@@ -100,6 +100,20 @@ export interface QueueFilters {
   showAside?: boolean;
   sort: 'date' | 'question';
   cursor?: string;
+  /**
+   * The question a link names (`?row=waiting:126`, ADR-0051 decision 5). Read only
+   * when there is no cursor: the first page then opens one key before it, so the
+   * list arrives with the row on it and the row above for context (#843). A row
+   * the filters exclude anchors nothing, and the first page is the list's top.
+   */
+  row?: { kind: QueueKind; id: number };
+  /**
+   * Where a list opened at a row began, as the page that answered it said
+   * (`from` in the result): the first page read again from that key, inclusive.
+   * What a refetch asks once the linked row may have been answered, so the list
+   * stays where it was (#843). A cursor wins over it, and it over a row.
+   */
+  from?: string;
   limit: number;
 }
 
@@ -440,6 +454,40 @@ function cursorSql(sort: 'date' | 'question', at: string, rank: string, id: stri
 }
 
 /**
+ * The rows the order places strictly before `ref`'s: the keyset predicate turned
+ * round, over `k`. What finds the key above a linked row (#843).
+ */
+function beforeSql(sort: 'date' | 'question', ref: string): string {
+  return beforeKeySql(sort, `${ref}.asked_at`, `${ref}.rank`, `${ref}.id`);
+}
+
+/** The same, against a key given as three expressions (a bound cursor's values). */
+function beforeKeySql(sort: 'date' | 'question', at: string, rank: string, id: string): string {
+  const stored = `COALESCE(k.asked_at, '-infinity')`;
+  const given = `COALESCE(${at}::timestamptz, '-infinity')`;
+  return sort === 'date'
+    ? `(${stored} > ${given}
+        OR (${stored} = ${given} AND k.rank < ${rank})
+        OR (${stored} = ${given} AND k.rank = ${rank} AND k.id < ${id}))`
+    : `(k.rank < ${rank}
+        OR (k.rank = ${rank} AND ${stored} > ${given})
+        OR (k.rank = ${rank} AND ${stored} = ${given} AND k.id < ${id}))`;
+}
+
+/** The rows at or after `ref`'s in the order, over `k`: a page that begins with `ref`. */
+function atOrAfterSql(sort: 'date' | 'question', ref: string): string {
+  return `NOT ${beforeSql(sort, ref)}`;
+}
+
+/** The order turned round, so the first row is the one immediately before. */
+function reverseOrderSql(sort: 'date' | 'question'): string {
+  const date = `COALESCE(k.asked_at, '-infinity') ASC`;
+  return sort === 'date'
+    ? `${date}, k.rank DESC, k.id DESC`
+    : `k.rank DESC, ${date}, k.id DESC`;
+}
+
+/**
  * A search reaches the database as one parameter, its wildcards escaped.
  *
  * A curator typing `100%` is looking for a name with a per-cent sign in it, not
@@ -465,6 +513,10 @@ interface Bound {
   aside: string;
   cursor: string;
   regionCte: string;
+  /** The linked row and the key before it, when a page opens at a row (#843); '' otherwise. */
+  anchorCte: string;
+  /** Whether a listed key comes before the page's first: asked only of a page that opened mid-list. */
+  midway: string;
   limit: string;
 }
 
@@ -475,7 +527,9 @@ function boundFilters(filters: QueueFilters, bind: (value: unknown) => string): 
   const subs = kinds.filter(k => (WAITING_SUBS as readonly string[]).includes(k));
   const cursor = filters.cursor === undefined ? null : decodeCursor(filters.cursor);
   const region = regionFilter(filters.regionId, bind);
-  return {
+  const from = cursor === null && filters.from !== undefined ? decodeCursor(filters.from) : null;
+  const anchored = cursor === null && from === null && filters.row !== undefined;
+  const bound = {
     source: filters.sourceIds?.length
       ? `k.source_ids && ${bind(filters.sourceIds)}::int[]` : 'TRUE',
     // Both arrays, always, when a kind chip is set: the five top kinds are
@@ -492,11 +546,51 @@ function boundFilters(filters: QueueFilters, bind: (value: unknown) => string): 
       ? 'TRUE'
       : `NOT EXISTS (SELECT 1 FROM curator_queue_set_aside sa
                       WHERE sa.user_id = ${USER_ID} AND sa.sync_log_id = k.run_id)`,
-    cursor: cursor === null
-      ? 'TRUE'
-      : cursorSql(filters.sort, bind(cursor.askedAt), bind(cursor.rank), bind(cursor.id)),
+    cursor: 'TRUE',
+    anchorCte: '',
+    midway: 'false',
     limit: bind(filters.limit + 1),
   };
+  const listed = () => `${bound.source} AND ${bound.kind} AND ${bound.region} AND ${bound.run}`;
+  if (from !== null || anchored) {
+    bound.midway = `EXISTS (
+      SELECT 1 FROM scoped k, (SELECT * FROM page_rows p ORDER BY ${orderSql(filters.sort, 'p.')} LIMIT 1) f
+       WHERE ${listed()} AND ${beforeSql(filters.sort, 'f')})`;
+  }
+  if (from !== null) {
+    bound.cursor = `NOT ${beforeKeySql(filters.sort, bind(from.askedAt), bind(from.rank), bind(from.id))}`;
+  }
+  if (cursor !== null) {
+    bound.cursor = cursorSql(filters.sort, bind(cursor.askedAt), bind(cursor.rank), bind(cursor.id));
+  }
+  if (anchored) {
+    // No anchor (the row is filtered out or answered) is the list's top.
+    bound.cursor = `(NOT EXISTS (SELECT 1 FROM page_start)
+      OR EXISTS (SELECT 1 FROM page_start s WHERE ${atOrAfterSql(filters.sort, 's')}))`;
+    // The linked key as the filters list it, then the one the order places right
+    // before it — or the linked key itself when it is the first, or when a page of
+    // one has no room for the key before it.
+    const pageStart = filters.limit === 1 ? 'SELECT a.asked_at, a.rank, a.id FROM anchor a' : `
+    SELECT * FROM (
+      SELECT k.asked_at, k.rank, k.id FROM scoped k, anchor a
+      WHERE ${listed()} AND ${beforeSql(filters.sort, 'a')}
+      ORDER BY ${reverseOrderSql(filters.sort)}
+      LIMIT 1
+    ) before_anchor
+    UNION ALL
+    SELECT a.asked_at, a.rank, a.id FROM anchor a
+    WHERE NOT EXISTS (
+      SELECT 1 FROM scoped k WHERE ${listed()} AND ${beforeSql(filters.sort, 'a')}
+    )`;
+    bound.anchorCte = `
+, anchor AS (
+    SELECT k.asked_at, k.rank, k.id FROM scoped k
+    WHERE ${listed()} AND k.kind = ${bind(filters.row!.kind)} AND k.id = ${bind(filters.row!.id)}
+  )
+, page_start AS (${pageStart}
+  )`;
+  }
+  return bound;
 }
 
 /**
@@ -538,6 +632,7 @@ function resultSql(f: Bound, sort: 'date' | 'question'): string {
 SELECT (SELECT json_agg(p ORDER BY ${orderSql(sort, 'p.')}) FROM page_rows p) AS page,
        (SELECT count(*)::int FROM scoped k
          WHERE ${f.source} AND ${f.kind} AND ${f.region} AND ${f.run}) AS total,
+       ${f.midway} AS midway,
        ${FACETS_JSON_SQL} AS facets`;
 }
 
@@ -618,7 +713,7 @@ export function queueScopeSql(isAdmin: boolean, sourceExpr: 'e.source_id' | 'm.s
  */
 export async function queryQueueKeys(
   { userId, isAdmin, filters }: { userId: number; isAdmin: boolean; filters: QueueFilters },
-): Promise<{ keys: QueueKey[]; nextCursor: string | null; total: number; facets: QueueFacets }> {
+): Promise<{ keys: QueueKey[]; nextCursor: string | null; from: string | null; total: number; facets: QueueFacets }> {
   const params: unknown[] = [userId];
   const bind = (value: unknown): string => {
     params.push(value);
@@ -652,7 +747,7 @@ export async function queryQueueKeys(
   )
 , scoped AS (
     SELECT k.* FROM searched k WHERE ${f.aside}
-  )${f.regionCte}${regionRootsCte(USER_ID)}
+  )${f.regionCte}${regionRootsCte(USER_ID)}${f.anchorCte}
 , page_rows AS (
     SELECT k.kind, k.rank, k.id, k.run_id, k.asked_at, k.subs
     FROM scoped k
@@ -662,7 +757,9 @@ export async function queryQueueKeys(
   )${facetsSql(f, USER_ID)}${resultSql(f, filters.sort)}`;
 
   const { rows } = await pool.query(sql, params);
-  const row = (rows[0] ?? {}) as { page?: KeyRow[] | null; total?: number; facets?: Partial<QueueFacets> | null };
+  const row = (rows[0] ?? {}) as {
+    page?: KeyRow[] | null; total?: number; midway?: boolean; facets?: Partial<QueueFacets> | null;
+  };
   const page = row.page ?? [];
   // One row more than the page was asked for, so "is there another page" is
   // answered by the rows rather than by a second count.
@@ -672,14 +769,15 @@ export async function queryQueueKeys(
   // Built from the row rather than from the key: the cursor keeps the stored
   // text of the timestamp, which `askedAt` has already rounded to milliseconds.
   const last = pageRows[pageRows.length - 1];
+  const firstRow = pageRows[0];
+  const keyOf = (k: KeyRow) => encodeCursor({ askedAt: cursorDate(k.asked_at), rank: k.rank ?? KIND_RANK[k.kind], id: k.id });
   const facets = row.facets ?? {};
   return {
     keys,
-    nextCursor: hasMore && last
-      ? encodeCursor({
-        askedAt: cursorDate(last.asked_at), rank: last.rank ?? KIND_RANK[last.kind], id: last.id,
-      })
-      : null,
+    nextCursor: hasMore && last ? keyOf(last) : null,
+    // The key a page opened mid-list began with, so the list can be read again from
+    // there once the row it was opened at is answered; null at the list's top.
+    from: row.midway && firstRow ? keyOf(firstRow) : null,
     total: Number(row.total ?? 0),
     facets: { ...EMPTY_FACETS, ...facets },
   };
