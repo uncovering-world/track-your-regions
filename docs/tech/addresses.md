@@ -293,6 +293,7 @@ round trip. The test is what stops a parameter being added in one direction only
 - The document `<title>` names the place — `useDocumentTitle`, wired by
   `MainDisplay` and `DiscoverPage` — so share previews and history entries read
   it. (Open Graph tags need a server-rendered head and are not here.)
+- A card offers its own address to send (#1192): *Share* on Map mode's card (`ShareButton`, `components/shared/`) hands `navigator.share` the address and the place's name, or copies the address and says "Link copied" where the browser has no share sheet. The address is built by `cardUrl` in `utils/appUrl.ts` — the page's region, the card's id and slug, no part, never the viewport or anything personal (§ What is not addressed) — and the button is not offered where the page names no region of a world view, since no address there could name the card. A cancelled share says nothing; one that fails otherwise says "Could not share" and offers *Copy link* as a fresh click, because the sheet has spent the click's activation that Safari's clipboard asks for.
 - Focus lands in the card a link named, once it opens: `ExperienceList` focuses
   the arriving row, so a keyboard or screen-reader visitor is put in what the
   link named rather than at the top of the page. The group holding that card is
