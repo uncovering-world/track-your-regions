@@ -1025,8 +1025,9 @@ server by default; `FRONTEND_MODE=preview npm run test:e2e:smoke` browses the
 build, and the wrapper prints which one it started. `build-shape.smoke.spec.ts`
 proves the run browsed the shape it asked for, on the document the server
 sends: the dev server marks its title "(dev server)" and loads `/@vite/client`,
-the build does neither. The live tab title cannot tell them apart, since the
-app rewrites it in both shapes once it mounts (#654, #1549).
+the build does neither — read from what the server sent rather than from the
+live tab, which keeps the mark too (`useDocumentTitle` composes with it, #1549),
+so the proof does not rest on the app's own code (#654).
 
 **CI runs the smoke lane on the build, instead of the dev server, not beside
 it.** The build is what a visitor gets: an environment variable baked in at
