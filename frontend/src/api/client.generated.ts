@@ -3791,8 +3791,12 @@ export interface DumpBuildProgress {
   buildId: number;
   /** When the build last said it is alive, every few seconds; null while it waits for the worker. */
   heartbeatAt: string | null;
-  /** Seconds the pass being read has left at its pace so far; null in its first minute, between passes and in a step that reads no file. */
+  /** Seconds the step has left at its pace so far, for a step that reads a file (a pass over the dump, the labelling's terms spool); null in its first minute and in a step that reads none. */
   etaSeconds: number | null;
+  /** What read is measured against: the dump's file in a pass, the terms spool while labelling, the sample's size while cutting one; null in a step with no measure (#1519). */
+  total: number | null;
+  /** When the step running now started, so a step with no measure of its own reads as alive; null while queued (#1519). */
+  stepStartedAt: string | null;
 }
 
 /**
