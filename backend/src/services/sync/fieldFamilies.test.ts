@@ -11,12 +11,14 @@ const STORED = {
   name_local: { en: 'Acropolis, Athens', fr: "Acropole d'Athènes" },
   short_description: 'The Acropolis of Athens and its monuments are universal symbols of the classical spirit.',
   country_codes: ['GR'],
+  country_names: ['Greece'],
   metadata: { dateInscribed: '1987', inDanger: false, wikidataQid: 'Q131013' },
 };
 const RUN = {
   nameLocal: { en: 'Acropolis of Athens' },
   shortDescription: null,
   countryCodes: [],
+  countryNames: ['Hellenic Republic'],
   metadata: { wikidataQid: 'Q131013', website: 'https://odysseus.culture.gr/' },
 };
 
@@ -26,6 +28,7 @@ describe('keeping the fields another family of sources brings (#1534)', () => {
       nameLocal: STORED.name_local,
       shortDescription: STORED.short_description,
       countryCodes: ['GR'],
+      countryNames: ['Greece'],
       metadata: { wikidataQid: 'Q131013', website: 'https://odysseus.culture.gr/', dateInscribed: '1987', inDanger: false },
     });
   });
