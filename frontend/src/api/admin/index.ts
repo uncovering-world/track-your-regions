@@ -5,14 +5,14 @@
  */
 
 import type {
-  AssignmentCancelled, AssignmentStarted, AssignmentStatus, ComponentItemSearchStarted, CuratorActivity, CuratorAssignmentCreated,
-  CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, WikidataReaderSet, PictureRepairStarted, PlacementCounts,
+  AssignmentCancelled, AssignmentStarted, AssignmentStatus, ComponentItemSearchStarted, CurationActivity, CuratorActivity,
+  CuratorAssignmentCreated, CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, WikidataReaderSet, PictureRepairStarted, PlacementCounts,
   PublishWaitingResult, SourceLineSet, SourcesReordered, SyncCancelled, SyncChanges, SyncLogDetail, SyncLogs,
   SyncStarted, SyncStatus, UserSearchResults, WikidataCache, WikidataCacheCleared, WikidataCacheTtlSet,
 } from '../client.generated';
 import {
   deleteAdminCuratorsByAssignmentId, deleteAdminSyncSourcesBySourceIdCache, getAdminCurators,
-  getAdminCuratorsByUserIdActivity, getAdminExperiencesAssignRegionsStatus, getAdminExperiencesCountsByRegion,
+  getAdminCurationActivity, getAdminCuratorsByUserIdActivity, getAdminExperiencesAssignRegionsStatus, getAdminExperiencesCountsByRegion,
   getAdminImageProxy,
   getAdminSyncLogs, getAdminSyncLogsByLogId, getAdminSyncLogsByLogIdChanges, getAdminSyncSources,
   getAdminSyncSourcesBySourceIdCache, getAdminSyncSourcesBySourceIdStatus, getAdminUsersSearch, postAdminCurators,
@@ -20,7 +20,8 @@ import {
   postAdminSyncSourcesBySourceIdFindComponentItems, postAdminSyncSourcesBySourceIdFixImages,
   postAdminSyncSourcesBySourceIdStart, postExperiencesSourcesBySourceIdPublishWaiting, putAdminSyncSourcesBySourceIdCacheByKindTtl,
   putAdminSyncSourcesBySourceIdCurationGate, putAdminSyncSourcesBySourceIdWikidataReader, putAdminSyncSourcesBySourceIdLine, putAdminSyncSourcesReorder,
-  type CreateCuratorAssignmentBody, type GetAdminSyncLogsByLogIdChangesParams, type SourceLineBody,
+  type CreateCuratorAssignmentBody, type GetAdminCurationActivityParams, type GetAdminSyncLogsByLogIdChangesParams,
+  type SourceLineBody,
 } from '../client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
@@ -319,6 +320,17 @@ export async function getCuratorActivity(
   offset = 0,
 ): Promise<CuratorActivity> {
   return getAdminCuratorsByUserIdActivity(userId, { limit, offset });
+}
+
+/** What the curation activity feed narrows by (#611): every filter is optional and they compose. */
+export type CurationActivityFilters = GetAdminCurationActivityParams;
+
+/**
+ * Every curator's acts, newest first, filtered (#611). `since` and `before` are
+ * instants, so the caller sends the midnights of the days it means.
+ */
+export async function getCurationActivity(filters: CurationActivityFilters): Promise<CurationActivity> {
+  return getAdminCurationActivity(filters);
 }
 
 /**
