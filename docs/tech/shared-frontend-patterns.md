@@ -155,6 +155,25 @@ A screen reader announces a button by its accessible name and nothing else, and 
 
 `no-restricted-syntax` in `frontend/eslint.config.mjs` refuses an `IconButton` with neither an `aria-label` nor a `Tooltip` directly around it; a spread is let through, since it may carry the label.
 
+## Text on screen
+
+What a visitor, a curator or an admin reads names no development record:
+no ADR, no issue or pull request number, no file or symbol. None of these
+means anything on screen or can be followed from the app (#1506). A screen
+says what is happening and what the person can do, in the words of their
+role. A licence credit stays, in plain words: "© OpenStreetMap contributors,
+under the ODbL licence".
+
+The frontend lint refuses a record in JSX text, a string literal or a
+template's text (`SCREEN_TEXT_SELECTORS` in `frontend/eslint.config.mjs`):
+- an ADR number;
+- an issue number in brackets, `(#523)`;
+- an issue number of four digits or more.
+
+A three-digit colour such as `'2px solid #999'` is neither, and a string that
+is a colour alone, such as `'#0008'`, is let through. Comments keep their
+references.
+
 ## Fonts
 
 The three typefaces — Syne (display, headings), Figtree (the interface) and JetBrains Mono (code, ids) — are served from the page's own origin: the WOFF2 files and each family's SIL Open Font License text in `frontend/public/fonts/`, their `@font-face` rules in `frontend/src/fonts.css` (imported by `main.tsx` ahead of `index.css`), and the `font` tokens in `frontend/src/theme/theme.ts` naming the families. No page asks a third-party origin for a font (#653).
