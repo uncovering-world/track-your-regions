@@ -179,7 +179,8 @@ the ways a curator reaches it.
 `parseReviewUrl` and `buildReviewUrl` sit in `appUrl.ts` beside
 `parseAppUrl`/`buildAppUrl` — a sibling grammar rather than an extension of it:
 no path segments, and every word is one `GET /api/experiences/review/queue`
-already reads, except `row`, which the API does not need and a deep link does.
+already reads. `row` is read too, once: the first page of a list the address opens
+asks for the page that holds it (below).
 They are in the same module for the same reason the first pair is, with a
 round-trip test of their own.
 
@@ -228,13 +229,29 @@ still applies. The leniency runs on into the endpoint the address is asked with:
 a filter word the server's vocabulary does not know is dropped rather than
 answered 400, and a `cursor` it cannot read opens the first page.
 
-**A `row` resolves only within the pages loaded so far.** One that names no row
-in them is replaced by the first row of the list, and the address bar goes with
-it — whether the question was answered by somebody else or simply sits further
-down a backlog the page has not paged to. A page holds 25 rows, so a link into a
-batch larger than that lands on its own row only when the row is on the first
-page; the list the link named is still the list that opens. Making the server
-open the page a named `row` is *on* is issue #843.
+**A `row` opens the page it is on** (#843). The first read of a list the address
+opens sends the row as the queue's `row` parameter, in the server's words
+(`serverRowOf`: the page's `conflicts:88` is the server's `conflict:88`), and the
+keys phase opens that page one key before the row — the row on screen with the
+one above it for context, *Show more* paging on from there. A link into run 98's
+batch of 1 255 lands on Cologne Cathedral wherever in it the cathedral sits. Only
+the first read carries it: a curator clicking another row re-reads nothing. The
+page that answered says where it began (`paging.from`, the exact key of its first
+row when anything listed comes before it), and a refetch after an answer reads
+the list again from that key rather than from the row — the row the link named is
+usually the one just answered, and read again at it the list would open at its
+top, away from the question after it. Once every question from that key down is
+answered, the page read there holds nothing and the list is read from its top
+instead, rather than calling the queue empty. While the list starts past its
+top, a day heading counts nothing, since the rows above are not loaded, and a
+*Show the questions above* line over the first row reads the list from its top.
+A link followed into the open page names a row the list may not hold: a row it
+does not hold opens the list there the same way (the row the list was opened at
+is part of its query key, `useReviewQueue`), while a row it holds is a click and
+reads nothing. A row the
+filters leave out — answered by somebody else, outside a chip — anchors nothing:
+the list opens at its top, and the row in the address is replaced by the first
+row of the list, which is how the address bar says so.
 
 ## Where it lives
 
