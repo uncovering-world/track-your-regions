@@ -36,6 +36,7 @@ import { useDiscoverMap } from './useDiscoverMap';
 import { useDiscoverHover } from './useDiscoverHover';
 import { frameGeoJson } from '../../utils/mapUtils';
 import { foldLabel } from '@tyr/shared/labels';
+import { narrowToType, offeredType, typeChoices } from '../../utils/typeChoices';
 
 /**
  * A set of places as one shape to frame. `LngLatBounds.extend` was the
@@ -256,25 +257,36 @@ export function DiscoverExperienceView({
         .replace('Places of worship', 'Worship')
     : '';
 
+  // The type the list is narrowed to (#589): like the kind, it chooses what the
+  // list is about, so the map's pins follow it; the name filter below only
+  // narrows the rows. A choice the rows no longer offer — the lost places it
+  // lived on hidden again — narrows nothing, since no chip would be left to
+  // take it back.
+  const [typeFilter, setTypeFilter] = useState<string | null>(null);
+  const types = useMemo(() => typeChoices(experiences), [experiences]);
+  const activeType = offeredType(types, typeFilter);
+  const typedExperiences = useMemo(() => narrowToType(experiences, activeType), [experiences, activeType]);
+
   // Client-side search filtering. Both sides folded, so a search finds what
   // the screen shows whatever the row holds (#835).
   const filteredExperiences = useMemo(() => {
     const needle = foldLabel(search);
-    if (!needle) return experiences;
-    return experiences.filter(
+    if (!needle) return typedExperiences;
+    return typedExperiences.filter(
       (exp) =>
         foldLabel(exp.name).includes(needle) ||
         exp.country_names?.some((c) => foldLabel(c).includes(needle)),
     );
-  }, [experiences, search]);
+  }, [typedExperiences, search]);
 
   // New-badge impressions moved into `DiscoverExperienceList` with the window:
   // what a reader was shown is now what the window has held, and only the list
   // knows its window.
 
-  // Reset search when active view changes
+  // Reset search and type when active view changes
   useEffect(() => {
     setSearch('');
+    setTypeFilter(null);
   }, [activeView?.regionId, activeView?.kindId]);
 
   const openPointRef = useRef<((locationId: number) => void) | null>(null);
@@ -343,7 +355,7 @@ export function DiscoverExperienceView({
 
       // Hide selected experience's main marker — its locations are shown as highlight dots
       // Also exclude rejected experiences from map markers
-      const visibleExperiences = experiences.filter(exp =>
+      const visibleExperiences = typedExperiences.filter(exp =>
         !exp.is_rejected && (selectedExperienceId == null || exp.id !== selectedExperienceId)
       );
 
@@ -408,7 +420,7 @@ export function DiscoverExperienceView({
     // own snapshot and each evaluating the fit.
     map.on('load', updateData);
     return () => { map.off('load', updateData); };
-  }, [experiences, experienceSet, selectedExperienceId, locationsByExperience, collapsedExperienceIds, locationsResolved, activeView?.kindId]);
+  }, [typedExperiences, experienceSet, selectedExperienceId, locationsByExperience, collapsedExperienceIds, locationsResolved, activeView?.kindId]);
 
   // ── Update highlight markers + delayed flyTo ──
   useEffect(() => {
@@ -593,6 +605,9 @@ export function DiscoverExperienceView({
           onShowLost={onShowLost}
           search={search}
           setSearch={setSearch}
+          types={types}
+          typeFilter={activeType}
+          setTypeFilter={setTypeFilter}
           shortKindName={shortKindName}
           rejectedCount={rejectedCount}
           hasCuratorScope={hasCuratorScope}
