@@ -35,12 +35,12 @@ import {
 import { useQueryClient } from '@tanstack/react-query';
 import { formatRelativeTime } from '../../../../../utils/dateFormat';
 import type { ImageOverlaySettings } from './ImageOverlayDialog';
+import { legacyOverlay, STORAGE_KEY_PREFIX } from './overlayStorage';
+import { useRegionImageOverlay } from './useRegionImageOverlay';
+import { ReferenceMapNotices } from './ReferenceMapNotices';
 import { queryKeys } from '../../../../../api/queryKeys';
 
 export type { SubdivisionGroup } from './types';
-
-// Storage key prefix for localStorage
-const STORAGE_KEY_PREFIX = 'custom-subdivision-dialog-state-';
 
 // Empty stats helper
 const emptyStats = (): UsageStats => ({ tokens: 0, inputCost: 0, outputCost: 0, webSearchCost: 0, totalCost: 0, requests: 0, regionsProcessed: 0 });
@@ -123,6 +123,13 @@ const memberExistsInStored = (dbMember: RegionMember, stored: SavedDialogState):
 };
 
 /**
+ * Whether a saved entry holds the dialog's state, and not only a reference map
+ * a reset kept while its Keep or Discard offer was unanswered (#595).
+ */
+const isDialogState = (state: Partial<SavedDialogState> | null): state is SavedDialogState =>
+  Array.isArray(state?.unassignedDivisions) && Array.isArray(state?.subdivisionGroups);
+
+/**
  * Validate stored state against actual DB members.
  * Only division members (not subregions) belong in the dialog.
  */
@@ -171,7 +178,11 @@ interface SavedDialogState {
   unassignedDivisions: RegionMember[];
   subdivisionGroups: SubdivisionGroup[];
   aiSuggestions: Array<[number, RegionSuggestion]>;
-  imageOverlaySettings: ImageOverlaySettings | null;
+  /**
+   * Only a map an earlier session kept here before the database held it
+   * (#595): carried forward untouched until the admin keeps or discards it.
+   */
+  imageOverlaySettings?: ImageOverlaySettings | null;
   activeTab: number;
   savedAt: string;
   singleRequestStats: UsageStats;
@@ -226,7 +237,9 @@ export function CustomSubdivisionDialog({
 
   // Lifted state for persistence across tab switches
   const [aiSuggestions, setAiSuggestions] = useState<Map<number, RegionSuggestion>>(new Map());
-  const [imageOverlaySettings, setImageOverlaySettings] = useState<ImageOverlaySettings | null>(null);
+  // The reference map is the database's (#595), not this browser's saved state.
+  const overlay = useRegionImageOverlay(selectedRegion?.id ?? null, open);
+  const imageOverlaySettings = overlay.settings;
 
   // Usage stats (lifted from AIAssistTab for persistence)
   const [singleRequestStats, setSingleRequestStats] = useState<UsageStats>(emptyStats());
@@ -251,7 +264,7 @@ export function CustomSubdivisionDialog({
       unassignedDivisions,
       subdivisionGroups,
       aiSuggestions: Array.from(aiSuggestions.entries()),
-      imageOverlaySettings,
+      imageOverlaySettings: selectedRegion ? legacyOverlay(selectedRegion.id).settings : null,
       activeTab,
       savedAt: new Date().toISOString(),
       singleRequestStats,
@@ -269,7 +282,7 @@ export function CustomSubdivisionDialog({
     } catch (e) {
       console.error('Failed to save state:', e);
     }
-  }, [getStorageKey, unassignedDivisions, subdivisionGroups, aiSuggestions, imageOverlaySettings, activeTab, singleRequestStats, batchRequestStats, lastOperation]);
+  }, [getStorageKey, selectedRegion, unassignedDivisions, subdivisionGroups, aiSuggestions, activeTab, singleRequestStats, batchRequestStats, lastOperation]);
 
   // Restore state from localStorage
   const restoreState = useCallback(() => {
@@ -281,11 +294,11 @@ export function CustomSubdivisionDialog({
       if (!saved) return false;
 
       const state: SavedDialogState = JSON.parse(saved);
+      if (!isDialogState(state)) return false;
 
       setUnassignedDivisions(state.unassignedDivisions);
       setSubdivisionGroups(state.subdivisionGroups);
       setAiSuggestions(new Map(state.aiSuggestions));
-      setImageOverlaySettings(state.imageOverlaySettings);
       setActiveTab(state.activeTab);
       setLastSavedAt(state.savedAt);
       setHasSavedState(true);
@@ -310,11 +323,14 @@ export function CustomSubdivisionDialog({
   const clearSavedState = useCallback(() => {
     const key = getStorageKey();
     if (key) {
-      localStorage.removeItem(key);
+      // A reference map still waiting for the admin's Keep or Discard (#595)
+      // outlives a reset: it is the admin's to drop, not the reset's.
+      if (overlay.legacy) localStorage.setItem(key, JSON.stringify({ imageOverlaySettings: overlay.legacy }));
+      else localStorage.removeItem(key);
       setHasSavedState(false);
       setLastSavedAt(null);
     }
-  }, [getStorageKey]);
+  }, [getStorageKey, overlay.legacy]);
 
   // Check AI availability when dialog opens
   useEffect(() => {
@@ -336,7 +352,6 @@ export function CustomSubdivisionDialog({
 
     // Reset local state first
     setAiSuggestions(new Map());
-    setImageOverlaySettings(null);
     setSingleRequestStats(emptyStats());
     setBatchRequestStats(emptyStats());
     setLastOperation(null);
@@ -358,6 +373,7 @@ export function CustomSubdivisionDialog({
             if (!saved) return;
 
             let state: SavedDialogState = JSON.parse(saved);
+            if (!isDialogState(state)) return;
             state = validateStoredState(state, dbMembers);
 
             setUnassignedDivisions(state.unassignedDivisions);
@@ -378,7 +394,6 @@ export function CustomSubdivisionDialog({
             }
 
             setAiSuggestions(new Map(state.aiSuggestions));
-            setImageOverlaySettings(state.imageOverlaySettings);
             setActiveTab(state.activeTab);
             setLastSavedAt(state.savedAt);
             setHasSavedState(true);
@@ -449,7 +464,7 @@ export function CustomSubdivisionDialog({
     }, 1000);
 
     return () => clearTimeout(timer);
-  }, [open, selectedRegion, unassignedDivisions, subdivisionGroups, aiSuggestions, imageOverlaySettings, activeTab, singleRequestStats, batchRequestStats, lastOperation, saveState]);
+  }, [open, selectedRegion, unassignedDivisions, subdivisionGroups, aiSuggestions, activeTab, singleRequestStats, batchRequestStats, lastOperation, saveState]);
 
   // Preview a division's geometry
   const handlePreviewDivision = useCallback(async (div: RegionMember) => {
@@ -597,6 +612,7 @@ export function CustomSubdivisionDialog({
           </Box>
         </DialogTitle>
         <DialogContent>
+          <ReferenceMapNotices overlay={overlay} regionName={selectedRegion?.name} />
           <Tabs value={activeTab} onChange={(_, v) => setActiveTab(v)} sx={{ mb: 2 }}>
             <Tab label="List View" />
             <Tab label="Map View" icon={<MapIcon fontSize="small" />} iconPosition="start" />
@@ -644,7 +660,8 @@ export function CustomSubdivisionDialog({
               setEditingGroupName={setEditingGroupName}
               onSplitsApplied={onSplitsApplied}
               imageOverlaySettings={imageOverlaySettings}
-              setImageOverlaySettings={setImageOverlaySettings}
+              onApplyImageOverlay={overlay.apply}
+              onRemoveImageOverlay={overlay.remove}
               regionMapUrl={selectedRegion?.regionMapUrl}
             />
           )}
