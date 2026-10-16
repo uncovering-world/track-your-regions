@@ -4,11 +4,13 @@
 
 import type {
   ChildDivisionsAdded, DescendantMemberGeometries, DivisionsAdded, DivisionsRemoved, DivisionUsageCounts, MemberGeometries,
-  MemberMoved, Region, RegionGeometry, RegionImageOverlay, RegionMembers, Regions, RegionSearchResults, SubregionFlattened,
-  SubregionsExpanded,
+  MemberMoved, Region, RegionGeometry, RegionImageOverlay, RegionMembers, Regions, RegionSearchResults,
+  RegionSubdivisionGroups, SubregionFlattened, SubregionsExpanded,
 } from './client.generated';
 import {
   deleteWorldViewsRegionsByRegionId, deleteWorldViewsRegionsByRegionIdImageOverlay, deleteWorldViewsRegionsByRegionIdMembers,
+  deleteWorldViewsRegionsByRegionIdSubdivisionGroups, getWorldViewsRegionsByRegionIdSubdivisionGroups,
+  putWorldViewsRegionsByRegionIdSubdivisionGroups,
   getWorldViewsByWorldViewIdRegions, getWorldViewsRegionsByRegionIdImageOverlay, putWorldViewsRegionsByRegionIdImageOverlay,
   getWorldViewsByWorldViewIdRegionsRoot, getWorldViewsByWorldViewIdRegionsSearch,
   getWorldViewsRegionsByRegionIdAncestors, getWorldViewsRegionsByRegionIdGeometry, getWorldViewsRegionsByRegionIdMembers,
@@ -18,7 +20,7 @@ import {
   postWorldViewsRegionsByRegionIdMembers, postWorldViewsRegionsByRegionIdMembersByDivisionIdAddChildren,
   postWorldViewsRegionsByRegionIdMembersMove, putWorldViewsRegionsByRegionId, putWorldViewsRegionsByRegionIdGeometry,
   type AddChildDivisionsBody, type AddDivisionsToRegionBody, type CreateRegionBody, type RegionImageOverlayBody,
-  type UpdateRegionBody,
+  type RegionSubdivisionGroupsBody, type UpdateRegionBody,
 } from './client.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
@@ -31,6 +33,7 @@ export type {
   AnchorPoint, AreaGeometry, ChildDivisionsAdded, CreatedSubregion, DescendantMemberGeometries, DescendantMemberGeometry,
   DivisionsAdded, DivisionsRemoved, DivisionUsageCounts, FocusBbox, MemberGeometries, MemberGeometry, MemberMoved,
   RegionGeometry, RegionGeometryProperties, RegionImageOverlay, RegionImageOverlayBody, RegionMember, RegionMembers,
+  RegionSubdivisionGroups, RegionSubdivisionGroupsBody,
   RegionMemberType, Regions, RegionSearchResult,
   RegionSearchResults, SubregionFlattened, SubregionsExpanded, UpdateRegionBody,
 } from './client.generated';
@@ -199,4 +202,23 @@ export async function saveRegionImageOverlay(regionId: number, body: RegionImage
 /** Take a region's reference map away. */
 export async function deleteRegionImageOverlay(regionId: number): Promise<void> {
   await deleteWorldViewsRegionsByRegionIdImageOverlay(regionId);
+}
+
+// =============================================================================
+// Subdivision groups (#595)
+// =============================================================================
+
+/** A region's groups in the Create Subregions dialog, in their order. */
+export async function fetchRegionSubdivisionGroups(regionId: number): Promise<RegionSubdivisionGroups> {
+  return getWorldViewsRegionsByRegionIdSubdivisionGroups(regionId);
+}
+
+/** Replace a region's groups with these. */
+export async function saveRegionSubdivisionGroups(regionId: number, body: RegionSubdivisionGroupsBody): Promise<void> {
+  await putWorldViewsRegionsByRegionIdSubdivisionGroups(regionId, body);
+}
+
+/** Drop a region's groups, once they are subregions. */
+export async function deleteRegionSubdivisionGroups(regionId: number): Promise<void> {
+  await deleteWorldViewsRegionsByRegionIdSubdivisionGroups(regionId);
 }
