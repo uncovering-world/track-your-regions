@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   buildAppUrl,
   buildReviewUrl,
+  cardUrl,
   EMPTY_REVIEW,
   legacyRedirect,
   normaliseReviewQ,
@@ -399,5 +400,26 @@ describe('review address', () => {
       const url = new URL(buildReviewUrl(address), 'http://x');
       expect(parseReviewUrl(url.search)).toEqual(address);
     });
+  });
+});
+
+/** The address a card's *Share* sends (#1192). */
+describe('cardUrl', () => {
+  const brugge = { id: 850, name: 'Historic Centre of Brugge' };
+
+  it("names the card under the page's region, with both slugs", () => {
+    expect(cardUrl('/wv/5/r/6782-vlaanderen', '', brugge))
+      .toBe('/wv/5/r/6782-vlaanderen/e/850-historic-centre-of-brugge');
+  });
+
+  it('names the object, not the part whose card was open', () => {
+    expect(cardUrl('/wv/5/r/6782-vlaanderen/e/850-historic-centre-of-brugge/p/12-belfry', '', brugge))
+      .toBe('/wv/5/r/6782-vlaanderen/e/850-historic-centre-of-brugge');
+  });
+
+  it('names nothing where the page names no region of a world view', () => {
+    expect(cardUrl('/', '', brugge)).toBeNull();
+    expect(cardUrl('/wv/5', '', brugge)).toBeNull();
+    expect(cardUrl('/review', '', brugge)).toBeNull();
   });
 });

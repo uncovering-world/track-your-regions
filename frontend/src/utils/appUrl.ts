@@ -192,6 +192,21 @@ export function buildAppUrl(
   return `${path}${query}`;
 }
 
+/**
+ * The address of one card under the page's own region, to send someone (#1192):
+ * the region the page names, the card's id with its slug, and no part. Null
+ * where the page names no region of a world view — the default view writes no
+ * segment, so no address there could name the card.
+ */
+export function cardUrl(pathname: string, search: string, card: { id: number; name: string }): string | null {
+  const address = parseAppUrl(pathname, search);
+  if (!address || address.worldViewId === null || address.regionId === null) return null;
+  return buildAppUrl(
+    { ...address, experienceId: card.id, pointId: null },
+    { region: slugsOf(pathname).region, experience: card.name },
+  );
+}
+
 function withSlug(id: number, name: string | null | undefined): string {
   const slug = name ? slugify(name) : '';
   return slug ? `${id}-${slug}` : String(id);
