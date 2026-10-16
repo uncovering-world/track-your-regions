@@ -56,9 +56,10 @@ const KIND_NOTE: Record<RowKind, string> = {
     + 'description follow — and your choice is kept through every run; turning one down keeps it from being '
     + 'offered again.',
   'pin-question': 'A curator — perhaps you — answered whether this place belongs in this list and pinned the answer, '
-    + 'so every run kept it as they left it. A run now says something else — it turns the place down for a different reason, '
-    + 'or its rule would now take in what you kept out. Nothing has changed for visitors yet: keep your answer, or '
-    + 'let the rule decide.',
+    + 'so every run kept it as they left it. A run asks about it again: either it says something else — it turns the '
+    + 'place down for a different reason, or its rule would now take in what you kept out — or an admin asked for every '
+    + 'such answer to be looked at again after the rule changed, and the run still says what you answered over. Nothing '
+    + 'has changed for visitors yet: keep your answer, or let the rule decide.',
 };
 
 /** The note above a kind whose source stopped listing a place other sources still list (#1264). */

@@ -67,7 +67,7 @@ function PinRow({ pin, regionId, showName }: { pin: AdmissionPin; regionId: numb
       )}
       {pin.questioned && (
         <Typography variant="caption" color="warning.main" display="block">
-          A run no longer agrees with this answer — it is asked on the review page.
+          A run asks again about this answer — on the review page.
         </Typography>
       )}
       {handBack.isError && (

@@ -74,7 +74,7 @@ describe('admission pins', () => {
     // A kept-out answer agreed with the rule; a put-back stood against it.
     expect(screen.getByText('as the rule had decided:')).toBeTruthy();
     expect(screen.getByText('against the rule’s objection:')).toBeTruthy();
-    expect(screen.getByText(/A run no longer agrees with this answer/)).toBeTruthy();
+    expect(screen.getByText(/A run asks again about this answer/)).toBeTruthy();
   });
 
   it("offers no hand-back on a curator's own refusal of an arrival, and says the put-back is its way back", async () => {
