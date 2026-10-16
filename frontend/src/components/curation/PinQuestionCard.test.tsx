@@ -1,5 +1,5 @@
 /**
- * A run no longer agrees with a pinned answer (#1367). Villa Farnesina was put
+ * A run asks again about a pinned answer (#1367, #1370). Villa Farnesina was put
  * back into Art Museums on 2026-08-08 over "probe: site class villa"; the run of
  * 2026-10-07 refuses it as "site, not a venue: villa — named by Galatea (25
  * sitelinks)". The card names both, and its two answers send what it showed.
@@ -23,7 +23,7 @@ const FARNESINA = {
   pin_question: {
     answer: 'admitted', answeredVerdict: 'refused', answeredReason: 'probe: site class villa — put back by the kept-out card',
     askedVerdict: 'refused', askedReason: 'site, not a venue: villa — named by Galatea (25 sitelinks)',
-    askedAt: '2026-10-07T09:12:00Z', answeredAt: '2026-08-08T14:00:00Z', note: 'Raphael’s frescoes are the point',
+    askedAt: '2026-10-07T09:12:00Z', restated: false, answeredAt: '2026-08-08T14:00:00Z', note: 'Raphael’s frescoes are the point',
   },
 } as unknown as ReviewQueueItem;
 
@@ -75,5 +75,31 @@ describe('a pin a run no longer agrees with', () => {
     expect(screen.getByText(/You kept it out/)).toBeTruthy();
     expect(screen.getByText('The rule would now admit it to Art Museums.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Let the rule decide — admit it' })).toBeTruthy();
+  });
+
+  it('says a question asked again on request is the answered words, not a change (#1370)', () => {
+    // The Gardner: put back over "its famous works cannot be seen", and an admin's run to ask
+    // again about the pins says the same.
+    const reason = 'its famous works cannot be seen — The Storm on the Sea of Galilee (whereabouts unknown)';
+    show([{
+      ...FARNESINA, name: 'Isabella Stewart Gardner Museum',
+      pin_question: { ...FARNESINA.pin_question!, answeredReason: reason, askedReason: reason, restated: true },
+    } as ReviewQueueItem]);
+    expect(screen.getByText(/was asked to look again at the answers pinned against the rule, and still says what you answered over/)).toBeTruthy();
+    expect(screen.queryByText(/says something else/)).toBeNull();
+    // The reason is shown once, as what the curator answered over.
+    expect(screen.getAllByText(/The Storm on the Sea of Galilee/)).toHaveLength(1);
+  });
+
+  it("still says the rule would admit what the curator kept out, when that is asked again (#1370)", () => {
+    show([{
+      ...FARNESINA, name: 'British Museum',
+      pin_question: {
+        ...FARNESINA.pin_question!, answer: 'refused', answeredVerdict: 'admitted', answeredReason: null,
+        askedVerdict: 'admitted', askedReason: null, restated: true,
+      },
+    } as ReviewQueueItem]);
+    expect(screen.getByText(/still says what you answered over/)).toBeTruthy();
+    expect(screen.getByText('The rule would now admit it to Art Museums.')).toBeTruthy();
   });
 });

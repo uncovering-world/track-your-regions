@@ -1,9 +1,10 @@
 /**
- * A run no longer agrees with an answer a curator pinned (#1367): the curator
- * put a place back over its rule, or kept it out, and a later run says
- * something else — it refuses the place for another reason, or its rule would
- * now admit what the curator kept out. The place stays as the curator left it
- * until someone answers here.
+ * A run asks again about an answer a curator pinned (#1367): the curator put a
+ * place back over its rule, or kept it out, and a later run says something
+ * else — it refuses the place for another reason, or its rule would now admit
+ * what the curator kept out — or, on an admin's request after a rule changed
+ * (#1370), still says what the curator answered over (`restated`). The place
+ * stays as the curator left it until someone answers here.
  *
  * The card puts the two side by side, in the order a curator reads them: what
  * they answered, when, and why; what they answered it against; what the run
@@ -96,16 +97,29 @@ function PinSection({ item, membershipId, question, heading, onDone }: {
         </Stack>
       )}
 
-      <Typography variant="body2" sx={{ fontWeight: 600, mt: 1 }}>
-        A run on {formatDateTime(question.askedAt)} says something else:
-      </Typography>
-      {admits
+      {question.restated
         ? (
-          <Typography variant="body2" sx={{ mb: 1 }}>
-            The rule would now admit it to {item.kind_name}.
+          // Asked again on request (#1370): the run still says what was answered
+          // over, so repeating its reason would read as a change it is not.
+          <Typography variant="body2" sx={{ fontWeight: 600, mt: 1, mb: 1 }}>
+            A run on {formatDateTime(question.askedAt)} was asked to look again at the answers pinned against the
+            rule, and still says what you answered over. Keep your answer, or let the rule have its way now.
           </Typography>
         )
-        : <RefusalLine reason={question.askedReason} name={item.name} />}
+        : (
+          <Typography variant="body2" sx={{ fontWeight: 600, mt: 1 }}>
+            A run on {formatDateTime(question.askedAt)} says something else:
+          </Typography>
+        )}
+      {/* An admission is said either way: for a refused arrival asked again it is
+          the only statement of what the curator kept out, since no "objection
+          then" line precedes it. A refusal's reason, restated, was shown above. */}
+      {admits && (
+        <Typography variant="body2" sx={{ mb: 1 }}>
+          The rule would now admit it to {item.kind_name}.
+        </Typography>
+      )}
+      {!admits && !question.restated && <RefusalLine reason={question.askedReason} name={item.name} />}
 
       <TextField
         size="small"

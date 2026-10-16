@@ -39,7 +39,7 @@ const KIND_HEADING: Record<RowKind, string> = {
   refused: 'Our own rule for this list turned these down',
   missing: 'Gone from the source',
   'component-items': 'Components with candidate Wikidata items',
-  'pin-question': 'A run no longer agrees with an answer you pinned',
+  'pin-question': 'A run asks again about an answer you pinned',
 };
 
 /** A group's heading a transition in `rows` opens — never computed for a row that continues its predecessor's group. */

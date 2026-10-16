@@ -58,7 +58,7 @@ const QUESTION: Record<RowKind, string> = {
   waiting: 'waiting to be published',
   withdrawn: 'lost places it is made of',
   'component-items': 'candidate items for its components',
-  'pin-question': 'a run no longer agrees with a pin',
+  'pin-question': 'a run asks again about a pin',
 };
 
 /** The server's word for a question kind, mapped to this file's own — only `conflict` differs. */

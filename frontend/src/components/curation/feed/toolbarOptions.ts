@@ -82,7 +82,7 @@ const KIND_OPTIONS: Array<{ key: string; label: string; short: string; swatch: s
   },
   {
     key: 'pin-question',
-    label: 'Pins a run no longer agrees with',
+    label: 'Pins a run asks again about',
     short: 'questioned pins',
     swatch: KIND_COLOR['pin-question'],
   },
