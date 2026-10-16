@@ -116,6 +116,17 @@ export default [
           selector,
           message: 'Build query keys with queryKeys (src/api/queryKeys.ts, #790), not a literal array.',
         })),
+        // A screen reader announces an icon-only button by its accessible name and
+        // nothing else (#564). An IconButton carries one as `aria-label`, unless it
+        // sits directly in a Tooltip, which names its child; one inside a `span`
+        // inside a Tooltip is not named by it. A spread may carry the label, so it
+        // is let through. docs/tech/shared-frontend-patterns.md § Icon buttons.
+        {
+          selector: "JSXOpeningElement[name.name='IconButton']:not(:has(JSXAttribute[name.name=/^aria-label/]))"
+            + ':not(:has(JSXSpreadAttribute))'
+            + ":not(JSXElement[openingElement.name.name='Tooltip'] > JSXElement > JSXOpeningElement)",
+          message: 'An icon-only IconButton needs an aria-label naming its action (#564), or a Tooltip directly around it.',
+        },
       ],
       // SonarJS: disable genuine false positives only
       'sonarjs/pseudo-random': 'off', // Math.random is fine for non-crypto uses (e.g., jitter)
