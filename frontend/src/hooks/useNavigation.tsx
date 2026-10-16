@@ -15,6 +15,8 @@ export type { SelectRegionOptions } from './useAddressedRegion';
 interface NavigationContextType {
   // World View
   worldViews: WorldView[];
+  /** The world views this page can show and a picker on it offers (`worldViewsShownOn`, #466). */
+  worldViewsHere: WorldView[];
   selectedWorldView: WorldView | null;
   selectedWorldViewId: number | null; // Available immediately from URL before full object loads
   setSelectedWorldView: (worldView: WorldView) => void;
@@ -45,6 +47,21 @@ interface NavigationContextType {
 
 const NavigationContext = createContext<NavigationContextType | null>(null);
 
+
+/**
+ * The world views a page can show (#466). Discover lists a world view's
+ * regions, and the default one — GADM's division tree — owns none: picked
+ * there, an admin got a blank picker over "No regions with experiences at
+ * this level". So on Discover the default is no choice while a custom world
+ * view exists. The map shows every one, the default first for an admin, which
+ * is why the rule is the page's and not the list's. The reconciliation picks,
+ * follows and keeps a selection only among these, and Discover's picker offers
+ * these, so the two cannot disagree.
+ */
+export function worldViewsShownOn(worldViews: WorldView[], mode: string | null): WorldView[] {
+  const custom = worldViews.filter((w) => !w.isDefault);
+  return mode === 'discover' && custom.length > 0 ? custom : worldViews;
+}
 
 /**
  * Which world view to show when the current one is absent from the visible list:
@@ -200,6 +217,10 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
    * writes; the reconciliation effect depends on them.
    */
   const mode = address?.mode ?? null;
+  // For the picker; the reconciliation computes its own from the list it reads
+  // when it runs, which a refetch keeping the same ids does not re-trigger.
+  const worldViewsHere = useMemo(() => worldViewsShownOn(worldViews, mode), [worldViews, mode]);
+
   const writeWorldView = useCallback((worldView: WorldView | null, replace: boolean) => {
     if (mode === null) return;
     go({
@@ -377,12 +398,15 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     // at all — a default one writes none — and falls through to the guard below.
     // Read once per run, and only past the guards above, so an address that
     // moves while the list is still in flight is still pending when it lands.
+    // Read from the list as it is now, so a refetch that kept the ids hands the
+    // world view on with its new tile version (ADR-0075).
+    const shownHere = worldViewsShownOn(worldViews, mode);
     const urlChanged = urlWorldViewId !== lastSeenUrlWorldViewId.current;
     lastSeenUrlWorldViewId.current = urlWorldViewId;
 
-    if (followUrlWorldView(worldViews, urlChanged)) return;
+    if (followUrlWorldView(shownHere, urlChanged)) return;
 
-    if (selectedWorldView && worldViews.some((w: WorldView) => w.id === selectedWorldView.id)) {
+    if (selectedWorldView && shownHere.some((w: WorldView) => w.id === selectedWorldView.id)) {
       // The selection stands — but the address has to name it wherever there is
       // an address to name it in, and two paths arrive here without one.
       //
@@ -404,7 +428,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       return;
     }
 
-    const worldView = pickWorldView(worldViews, urlWorldViewId, isAdmin);
+    const worldView = pickWorldView(shownHere, urlWorldViewId, isAdmin);
     if (!worldView) return;
 
     if (selectedWorldView) {
@@ -423,7 +447,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
       adoptWorldView(worldView);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- worldViews by id, not identity
-  }, [worldViewsLoaded, worldViewsFetching, visibleWorldViewIds, isAdmin, selectedWorldView,
+  }, [worldViewsLoaded, worldViewsFetching, visibleWorldViewIds, mode, isAdmin, selectedWorldView,
       urlWorldViewId, address, writeWorldView, dropWorldView, followUrlWorldView, adoptWorldView]);
 
   // A switch the visitor made: pushed, so Back returns to the world view they left.
@@ -451,6 +475,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
 
   const value: NavigationContextType = useMemo(() => ({
     worldViews,
+    worldViewsHere,
     selectedWorldView: currentWorldView,
     selectedWorldViewId,
     setSelectedWorldView: handleSetSelectedWorldView,
@@ -468,6 +493,7 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
     rootRegionsLoading,
   }), [
     worldViews,
+    worldViewsHere,
     currentWorldView,
     selectedWorldViewId,
     handleSetSelectedWorldView,
