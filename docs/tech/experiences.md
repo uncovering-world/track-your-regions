@@ -4389,6 +4389,19 @@ closes it. The two answers to it are the membership writer's: `keepAdmissionPin`
 answer what the run now says, and `releaseAdmissionPin` writes the rule's verdict, admission or
 refusal, in the pin's place.
 
+**Asking again about every pin** (#1370). A pin the run disagrees with in the very words the
+curator answered holds silently, which is right run to run and wrong after a source's rule has
+changed: the answers given on purpose then deserve a second look as much as the ones whose reason
+moved. *Ask again about pins* on a source's card starts an ordinary run with `askAboutPins`
+(`POST /api/admin/sync/sources/:sourceId/start`), and that run's `questionPins` asks about every
+pin it disagrees with, the silent ones included; nothing is released, each waits in the review
+queue as above — through the ordinary runs after it too, since a run keeps a question standing
+while it still says that question (`stillAsks`, `pinQuestion.ts`: the same verdict, the same
+reason with its counts folded), and one it has moved off closes as before. Every run tallies what it said of the pins it read (`progress.pins`: asked about
+again, agreed with, left as the curator answered) and closes its line with it (`pinsSentence`,
+`runLog.ts`), which the run's log row keeps as its status message. A dry run counts the questions,
+writes none, and says they would be asked.
+
 **Answered withdrawals** — the same thing one level down, returned as `answeredWithdrawals`
 and collapsed beside the kept-out block. A verdict on a point is what removes it from the
 `withdrawn` card: that query asks about a flagged point whose two axes are still clean, so
