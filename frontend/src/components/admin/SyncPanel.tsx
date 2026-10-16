@@ -235,6 +235,15 @@ function SourceCard({ source }: SourceCardProps) {
     onSuccess: beginRun('sync'),
   });
 
+  // The same run again, asking a curator again about every pin on admission it
+  // disagrees with (#1370) — after a rule has changed, the deliberate answers
+  // as well as the ones whose reason moved. Its own button: an ordinary run
+  // keeps a pin it disagrees with in the curator's own words.
+  const askPinsMutation = useMutation({
+    mutationFn: () => startSync(source.id, { askAboutPins: true }),
+    onSuccess: beginRun('sync'),
+  });
+
   // Not a sync: this one writes the rows straight away, because what it repairs
   // is the catalogue rather than what the source says. It reports through the
   // same status endpoint, so the panel follows it the same way.
@@ -257,7 +266,8 @@ function SourceCard({ source }: SourceCardProps) {
   });
 
   const isStarting = startMutation.isPending || dryRunMutation.isPending
-    || refreshMutation.isPending || fixPicturesMutation.isPending || findComponentItemsMutation.isPending;
+    || refreshMutation.isPending || askPinsMutation.isPending || fixPicturesMutation.isPending
+    || findComponentItemsMutation.isPending;
 
   const cancelMutation = useMutation({
     mutationFn: () => cancelSync(source.id),
@@ -382,6 +392,11 @@ function SourceCard({ source }: SourceCardProps) {
             Failed to start sync without cache: {(refreshMutation.error as Error)?.message}
           </Alert>
         )}
+        {askPinsMutation.isError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            Failed to start the run that asks again about pins: {(askPinsMutation.error as Error)?.message}
+          </Alert>
+        )}
         {fixPicturesMutation.isError && (
           <Alert severity="error" sx={{ mb: 2 }}>
             Failed to start the picture repair: {(fixPicturesMutation.error as Error)?.message}
@@ -488,6 +503,17 @@ function SourceCard({ source }: SourceCardProps) {
               </Tooltip>
               </>
               )}
+              <Tooltip title="An ordinary sync that also asks a curator again about every row pinned in or out of this source against its rule, where the run still disagrees — after a rule has changed, the answers given on purpose as well. Nothing is released: each pin waits in the review queue with who set it, when, its note and the run's reason. The closing line says how many it asked about and how many it agrees with.">
+                <span>
+                  <Button
+                    variant="outlined"
+                    onClick={() => askPinsMutation.mutate()}
+                    disabled={!source.is_active || isStarting}
+                  >
+                    Ask again about pins
+                  </Button>
+                </span>
+              </Tooltip>
               {/* Its own button rather than part of a sync, because it is a
                   different decision: a sync proposes and this writes. Offered
                   where the server says it acts — the museums' missing pictures,

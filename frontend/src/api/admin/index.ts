@@ -69,11 +69,12 @@ export async function getSources(): Promise<ExperienceSources> {
  */
 export async function startSync(
   sourceId: number,
-  options: { dryRun?: boolean; refreshCache?: boolean } = {},
+  options: { dryRun?: boolean; refreshCache?: boolean; askAboutPins?: boolean } = {},
 ): Promise<SyncStarted> {
   return postAdminSyncSourcesBySourceIdStart(sourceId, {
     dryRun: options.dryRun ?? false,
     refreshCache: options.refreshCache ?? false,
+    askAboutPins: options.askAboutPins ?? false,
   });
 }
 
