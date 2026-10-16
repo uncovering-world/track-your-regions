@@ -21,9 +21,6 @@ import {
   Alert,
 } from '@mui/material';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import WikiIcon from '@mui/icons-material/MenuBook';
-import WebsiteIcon from '@mui/icons-material/Language';
-import HeritagePageIcon from '@mui/icons-material/AccountBalance';
 import LocationIcon from '@mui/icons-material/LocationOn';
 import UnrejectIcon from '@mui/icons-material/Undo';
 import CurateIcon from '@mui/icons-material/Tune';
@@ -31,7 +28,6 @@ import RemoveFromRegionIcon from '@mui/icons-material/LinkOff';
 import { useQuery } from '@tanstack/react-query';
 import { cardImageUrl, isImagePreloaded, preloadImage } from '../../utils/imagePreload';
 import { inDangerLabel } from '../../utils/dangerLabel';
-import { safeHref } from '../../utils/safeHref';
 import { useAuth } from '../../hooks/useAuth';
 import {
   type Experience,
@@ -42,6 +38,7 @@ import type { VisitedStatus } from '../../api/visited';
 import { experienceContentsQuery, experienceDetailsQuery, siteFindsQuery } from '../../api/experienceCardQueries';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';
+import { PlaceLinks } from '../shared/PlaceLinks';
 import { ArtworksList } from './ArtworksList';
 import { SiteFindsList } from './SiteFindsList';
 import { VisitedStatusButton } from './VisitedStatusButton';
@@ -357,6 +354,11 @@ function ExperienceExpandedDetailsComponent({
         </Typography>
       )}
 
+      {/* The place's pages, in words, on a line of their own (#1190). */}
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1, ml: -0.5, '&:empty': { display: 'none' } }}>
+        <PlaceLinks metadata={details?.metadata} />
+      </Box>
+
       {/* What was dug up here and where a traveller sees it — a site's
           counterpart of the works list below, which a site never has. */}
       {findsData && findsData.finds.length > 0 && (
@@ -437,36 +439,6 @@ function ExperienceExpandedDetailsComponent({
             totalCount={totalLocations}
           />
         )}
-        {(() => {
-          const metadata = details?.metadata;
-          // Decided where they meet the DOM: a sync writes both keys through no request
-          // schema, so the write-path rule does not hold every stored row. A refused
-          // value offers no button at all.
-          const wikiUrl = safeHref(typeof metadata?.wikipediaUrl === 'string' ? metadata.wikipediaUrl : null);
-          const websiteUrl = safeHref(typeof metadata?.website === 'string' ? metadata.website : null);
-          // UNESCO's page about a World Heritage site, beside the site's own (#1538).
-          const unescoUrl = safeHref(typeof metadata?.unescoUrl === 'string' ? metadata.unescoUrl : null);
-
-          return (
-            <>
-              {wikiUrl && (
-                <IconButton aria-label="Wikipedia article" size="small" component="a" href={wikiUrl} target="_blank" rel="noopener noreferrer" title="Wikipedia">
-                  <WikiIcon fontSize="small" />
-                </IconButton>
-              )}
-              {websiteUrl && websiteUrl !== wikiUrl && websiteUrl !== unescoUrl && (
-                <IconButton aria-label="Official website" size="small" component="a" href={websiteUrl} target="_blank" rel="noopener noreferrer" title="Official website">
-                  <WebsiteIcon fontSize="small" />
-                </IconButton>
-              )}
-              {unescoUrl && (
-                <IconButton aria-label="UNESCO World Heritage page" size="small" component="a" href={unescoUrl} target="_blank" rel="noopener noreferrer" title="UNESCO World Heritage page">
-                  <HeritagePageIcon fontSize="small" />
-                </IconButton>
-              )}
-            </>
-          );
-        })()}
 
         {/* Curator actions */}
         {onCurate && !isRejected && (

@@ -18,9 +18,6 @@ import {
   Alert,
 } from '@mui/material';
 import CloseIcon from '@mui/icons-material/Close';
-import MenuBookIcon from '@mui/icons-material/MenuBook';
-import LanguageIcon from '@mui/icons-material/Language';
-import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import TuneIcon from '@mui/icons-material/Tune';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { useQuery } from '@tanstack/react-query';
@@ -47,12 +44,12 @@ import {
 import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContext';
 
 import { experienceColors } from '../../utils/kindColors';
+import { PlaceLinks } from '../shared/PlaceLinks';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';
 import { ContentsSection } from './ContentsSection';
 import { locationLabel, pointOfRow } from '../../utils/locationLabel';
 import { inDangerLabel } from '../../utils/dangerLabel';
-import { safeHref } from '../../utils/safeHref';
 import { queryKeys } from '../../api/queryKeys';
 
 interface ExperienceDetailPanelProps {
@@ -431,36 +428,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
               Curate
             </Button>
           )}
-          {(() => {
-            const metadata = details?.metadata;
-            // Decided where they meet the DOM: a sync writes both keys through no request
-            // schema, so the write-path rule does not hold every stored row. A refused
-            // value offers no button at all.
-            const wikiUrl = safeHref(typeof metadata?.wikipediaUrl === 'string' ? metadata.wikipediaUrl : null);
-            const websiteUrl = safeHref(typeof metadata?.website === 'string' ? metadata.website : null);
-            // UNESCO's page about a World Heritage site, beside the site's own (#1538).
-            const unescoUrl = safeHref(typeof metadata?.unescoUrl === 'string' ? metadata.unescoUrl : null);
-
-            return (
-              <>
-                {wikiUrl && (
-                  <Button variant="text" size="small" startIcon={<MenuBookIcon />} component="a" href={wikiUrl} target="_blank" rel="noopener noreferrer">
-                    Wikipedia
-                  </Button>
-                )}
-                {websiteUrl && websiteUrl !== wikiUrl && websiteUrl !== unescoUrl && (
-                  <Button variant="text" size="small" startIcon={<LanguageIcon />} component="a" href={websiteUrl} target="_blank" rel="noopener noreferrer">
-                    Official website
-                  </Button>
-                )}
-                {unescoUrl && (
-                  <Button variant="text" size="small" startIcon={<AccountBalanceIcon />} component="a" href={unescoUrl} target="_blank" rel="noopener noreferrer">
-                    UNESCO page
-                  </Button>
-                )}
-              </>
-            );
-          })()}
+          <PlaceLinks metadata={details?.metadata} />
         </Box>
       </Box>
     </Box>
