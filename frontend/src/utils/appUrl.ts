@@ -232,8 +232,8 @@ export function legacyRedirect(pathname: string, search: string): string | null 
  * it, and this pair is a sibling to `parseAppUrl`/`buildAppUrl` rather than an
  * extension of them: no path segments, only query parameters, in the words
  * `GET /api/experiences/review/queue` already reads (`q`, `sort`, `source`,
- * `kind`, `region`, `run`, `aside`, plus `row` for the selected card, which the
- * API does not need but a deep link and a set-aside both do).
+ * `kind`, `region`, `run`, `aside`, and `row` for the selected card, which the
+ * first read of a list sends as the queue's `row` so a link opens on its page, #843).
  */
 export interface ReviewAddress {
   /** '' when absent. Trimmed and capped at 100 characters — the API's own `q` limit, enforced on both the read and the write. */

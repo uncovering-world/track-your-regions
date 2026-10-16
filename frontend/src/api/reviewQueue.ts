@@ -38,11 +38,16 @@ export type ReviewQueueKind = 'keptOut' | 'answeredWithdrawals' | 'refusedParts'
  * What needs a curator's judgement, within their scope — a filtered,
  * ordered, cursor-paged page (ADR-0051). `params` is the review page's
  * address (`ReviewAddress`) plus the cursor and the three offsets the answered
- * lists still page by; `row` names the selected card for a deep link and is
- * not a request parameter, so it is not sent here.
+ * lists still page by. The address's `row` names the selected card and is not
+ * sent with every read: `anchor`, the same question in the server's words, is
+ * sent once, for the first page of a list a link opened (#843).
  */
 export async function fetchReviewQueue(params: ReviewAddress & {
   cursor?: string;
+  /** `kind:id` in the answer's own words: open the first page one key before this question. */
+  anchor?: string;
+  /** Where a list opened at a row began (`paging.from`): its first page read again from there. */
+  from?: string;
   limit?: number;
   keptOutOffset?: number;
   answeredWithdrawalsOffset?: number;
@@ -59,6 +64,8 @@ export async function fetchReviewQueue(params: ReviewAddress & {
     run: params.runId ?? undefined,
     aside: params.showAside ? 'show' : undefined,
     cursor: params.cursor || undefined,
+    row: params.anchor || undefined,
+    from: params.from || undefined,
     limit: params.limit,
     keptOutOffset: params.keptOutOffset || undefined,
     answeredWithdrawalsOffset: params.answeredWithdrawalsOffset || undefined,

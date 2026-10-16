@@ -417,6 +417,8 @@ export function ReviewPage() {
               sort={address.sort}
               today={dayOf(new Date().toISOString())}
               hasMore={queue.hasMore}
+              startsPastTop={queue.startsPastTop}
+              onTop={() => { lastIndex.current = 0; queue.openAtTop(); }}
               loadingMore={queue.loadingMore}
               onMore={queue.more}
               total={total}

@@ -8298,6 +8298,11 @@ export type ReviewQueuePaging = {
   cursor: string | null;
   /** @nullable */
   nextCursor: string | null;
+  /**
+     * The key a page opened mid-list began with (at a linked row, or from `from`), to read the list again from; null at its top.
+     * @nullable
+     */
+  from: string | null;
   keptOut: ReviewQueuePagingKeptOut;
   answeredWithdrawals: ReviewQueuePagingAnsweredWithdrawals;
   refusedParts: ReviewQueuePagingRefusedParts;
@@ -11290,6 +11295,15 @@ sort?: GetExperiencesReviewQueueSort;
  * @maxLength 200
  */
 cursor?: string;
+/**
+ * @maxLength 60
+ * @pattern ^[a-z]+(-[a-z]+)*:\d+$
+ */
+row?: string;
+/**
+ * @maxLength 200
+ */
+from?: string;
 /**
  * @minimum 1
  * @maximum 100

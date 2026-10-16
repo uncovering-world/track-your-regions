@@ -286,12 +286,20 @@ function AddressProbe() {
         {`${location.pathname}${location.search}`}
       </div>
       <button type="button" onClick={() => navigate(-1)}>history back</button>
+      <button type="button" onClick={() => navigate(linkTarget)}>follow link</button>
     </div>
   );
 }
 
 /** The browser's Back, as a test can press it. */
 export const goBack = () => fireEvent.click(screen.getByRole('button', { name: 'history back' }));
+
+let linkTarget = '/review';
+/** A link elsewhere in the app followed into the open page: a push, as a click on one is. */
+export function followLink(to: string) {
+  linkTarget = to;
+  fireEvent.click(screen.getByRole('button', { name: 'follow link' }));
+}
 
 export const at = () => screen.getByTestId('address').textContent;
 export const navType = () => screen.getByTestId('address').getAttribute('data-nav');
