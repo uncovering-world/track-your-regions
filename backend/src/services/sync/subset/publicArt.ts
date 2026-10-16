@@ -10,25 +10,28 @@
  * first; the picture and the point are folded over every best statement by
  * the rule every reader keeps (`preferredPicture`, `preferredCoordinate`), as
  * the live parse folds them over its rows; the country is `countryOfPlace`'s,
- * from every best country and the parts (P518) the kept point's statements
- * name, each part's countries read from its own kept entity. A part the
- * subset did not keep has no country here, where the live query reads one.
+ * from the best countries that stand today (`standingCountries`: a statement
+ * with no end time, `P582`, of a state the claims table shows no dissolution
+ * for, `P576`) and the parts (P518) the kept point's statements name, each
+ * part's countries read from its own kept entity. A part or a state the
+ * subset did not keep has no country, or no dissolution, here, where the live
+ * query reads one.
  */
 
 import { foldLabel } from '@tyr/shared/labels';
 import { pool } from '../../../db/index.js';
 import type { ContainerFacts, EntityFacts, PoolEntity } from '../publicArt/queries.js';
-import { countryOfPlace } from '../publicArt/countryOfPlace.js';
+import { countryOfPlace, standingCountries, type PlaceCountry } from '../publicArt/countryOfPlace.js';
 import { parseWktPoint, preferredCoordinate, preferredPicture } from '../wikidataUtils.js';
 import { BEST, entitiesOf, termsOf, type Kept, type Terms } from './entities.js';
 import {
-  articleUrl, bestStatements, itemOf, itemsOf, pictureUrl, standingStatements, textOf, wktOf, yearOf,
+  articleUrl, bestStatements, hasEnded, itemOf, itemsOf, pictureUrl, standingStatements, textOf, wktOf, yearOf,
 } from './values.js';
 import type { CompactStatement } from '../../dumps/wikidata/compactEntity.js';
 
 /** The pool row's facts about one kept entity; null for one with no point where a point is required. */
 function poolEntity(
-  id: string, kept: Kept, terms: Map<string, Terms>, partCountries: Map<string, string[]>, placeless: boolean,
+  id: string, kept: Kept, terms: Map<string, Terms>, around: Around, placeless: boolean,
 ): PoolEntity | null {
   const { claims } = kept.entity;
   const points = bestStatements(claims.P625).filter(s => parseWktPoint(wktOf(s.value) ?? '') !== null);
@@ -38,9 +41,13 @@ function poolEntity(
     .reduce<string | null>((kept, file) => preferredPicture(kept, pictureUrl(file)), null);
   const at = wkt ? parseWktPoint(wkt) : null;
   const parts = points.filter(s => wktOf(s.value) === wkt).flatMap(partsOf);
+  const countries = bestStatements(claims.P17).flatMap((statement): PlaceCountry[] => {
+    const country = itemOf(statement.value);
+    return country ? [{ country, stands: !hasEnded(statement) && !around.dissolved.has(country) }] : [];
+  });
   const country = countryOfPlace(
-    itemsOf(bestStatements(claims.P17)),
-    parts.length ? new Set(parts.flatMap(part => partCountries.get(part) ?? [])) : null,
+    standingCountries(countries),
+    parts.length ? new Set(parts.flatMap(part => around.partCountries.get(part) ?? [])) : null,
   );
   const enwiki = kept.entity.sitelinks.enwiki;
   return {
@@ -64,13 +71,41 @@ function partsOf(statement: CompactStatement): string[] {
   return (statement.qualifiers?.P518 ?? []).map(itemOf).filter((id): id is string => id !== null);
 }
 
+/** What a place's country is read against: its parts' countries, and the states that are gone. */
+interface Around {
+  partCountries: Map<string, string[]>;
+  /** States with a best dissolution date (`P576`), as `wdt:P576` reads them. */
+  dissolved: Set<string>;
+}
+
+/**
+ * The states among `ids` with a dissolution date, read from the claims table
+ * rather than from the states' entities: a pool names the largest items in
+ * Wikidata as countries, and only this one statement of each is needed. Best
+ * rank, and a no-value statement is none, as `wdt:P576` reads them.
+ */
+async function dissolvedAmong(ids: string[]): Promise<Set<string>> {
+  if (!ids.length) return new Set();
+  const result = await pool.query<{ subject: string }>(
+    `SELECT DISTINCT c.subject FROM wikidata_claims c
+      WHERE c.property = 'P576' AND c.subject = ANY($1::text[]) AND c.rank >= 0 AND ${BEST('c')}
+        AND c.value IS DISTINCT FROM '{"novalue": true}'::jsonb`,
+    [ids],
+  );
+  return new Set(result.rows.map(row => row.subject));
+}
+
 async function poolOf(ids: string[], placeless: boolean): Promise<PoolEntity[]> {
   const kept = await entitiesOf(ids);
-  const parts = await entitiesOf([...kept.values()].flatMap(({ entity }) => bestStatements(entity.claims.P625).flatMap(partsOf)));
-  const partCountries = new Map([...parts].map(([id, { entity }]) => [id, itemsOf(bestStatements(entity.claims.P17))]));
-  const countries = [...kept.values()].flatMap(({ entity }) => itemsOf(bestStatements(entity.claims.P17)));
+  const parts = [...new Set([...kept.values()].flatMap(({ entity }) => bestStatements(entity.claims.P625).flatMap(partsOf)))];
+  const countries = [...new Set([...kept.values()].flatMap(({ entity }) => itemsOf(bestStatements(entity.claims.P17))))];
+  const [partEntities, dissolved] = await Promise.all([entitiesOf(parts), dissolvedAmong(countries)]);
+  const around: Around = {
+    partCountries: new Map([...partEntities].map(([id, { entity }]) => [id, itemsOf(bestStatements(entity.claims.P17))])),
+    dissolved,
+  };
   const terms = await termsOf([...kept.keys(), ...countries]);
-  return [...kept].map(([id, entity]) => poolEntity(id, entity, terms, partCountries, placeless))
+  return [...kept].map(([id, entity]) => poolEntity(id, entity, terms, around, placeless))
     .filter((e): e is PoolEntity => e !== null);
 }
 

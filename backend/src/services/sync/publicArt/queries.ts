@@ -36,7 +36,7 @@ import { readsSubset } from '../subset/reader.js';
 import {
   subsetContainerFacts, subsetEntityFacts, subsetPoolOfClasses, subsetPoolOfIds,
 } from '../subset/publicArt.js';
-import { countryOfPlace } from './countryOfPlace.js';
+import { countryOfPlace, standingCountries, type PlaceCountry } from './countryOfPlace.js';
 
 /**
  * The floor of the pool sits below the line a row *stays* above
@@ -96,14 +96,16 @@ export interface PoolEntity {
 const POOL_DETAILS = `
       OPTIONAL { ?e wdt:P18 ?img }
       OPTIONAL { ?e wdt:P571 ?inception }
-      OPTIONAL { ?e wdt:P17 ?country }
+      OPTIONAL { ?e p:P17 ?countryStatement . ?countryStatement a wikibase:BestRank ; ps:P17 ?country .
+                 OPTIONAL { ?countryStatement pq:P582 ?countryEnded }
+                 OPTIONAL { ?country wdt:P576 ?countryDissolved } }
       OPTIONAL { ?e p:P625 ?coordStatement . ?coordStatement a wikibase:BestRank ; ps:P625 ?coord ; pq:P518 ?part .
                  OPTIONAL { ?part wdt:P17 ?partCountry } }
       OPTIONAL { ?e wdt:P856 ?site }
       OPTIONAL { ?article schema:about ?e ; schema:isPartOf <https://en.wikipedia.org/> }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }`;
 
-const POOL_COLUMNS = '?e ?eLabel ?eDescription ?coord ?sl ?img ?countryLabel ?part ?partCountryLabel ?article ?site (YEAR(?inception) AS ?year)';
+const POOL_COLUMNS = '?e ?eLabel ?eDescription ?coord ?sl ?img ?countryLabel ?countryEnded ?countryDissolved ?part ?partCountryLabel ?article ?site (YEAR(?inception) AS ?year)';
 
 function bandedPoolQuery(rootQid: string, band: Band, limit: number): string {
   return `${HINT_PREFIX}
@@ -130,14 +132,16 @@ function classPoolQuery(classQids: string[], limit: number): string {
 
 /** Every country an entity's rows name, and per point the countries of the parts it applies to. */
 interface CountryReading {
-  countries: string[];
+  countries: PlaceCountry[];
   parts: Map<string, Set<string>>;
 }
 
 /** One more row of an entity folded into what its rows say about its country. */
 function readCountry(reading: CountryReading | undefined, row: SparqlBinding, wkt: string | null): CountryReading {
   const next = reading ?? { countries: [], parts: new Map<string, Set<string>>() };
-  if (row.countryLabel?.value) next.countries.push(row.countryLabel.value);
+  if (row.countryLabel?.value) {
+    next.countries.push({ country: row.countryLabel.value, stands: !row.countryEnded && !row.countryDissolved });
+  }
   if (wkt && row.part?.value) {
     const named = next.parts.get(wkt) ?? new Set<string>();
     if (row.partCountryLabel?.value) named.add(row.partCountryLabel.value);
@@ -146,9 +150,9 @@ function readCountry(reading: CountryReading | undefined, row: SparqlBinding, wk
   return next;
 }
 
-/** The country of an entity drawn at `point`, by `countryOfPlace`. */
+/** The country of an entity drawn at `point`: of the countries that stand today, `countryOfPlace`'s. */
 function countryAt(reading: CountryReading | undefined, point: string | null): string | null {
-  return countryOfPlace(reading?.countries ?? [], (point && reading?.parts.get(point)) || null);
+  return countryOfPlace(standingCountries(reading?.countries ?? []), (point && reading?.parts.get(point)) || null);
 }
 
 /**
@@ -159,8 +163,11 @@ function countryAt(reading: CountryReading | undefined, point: string | null): s
  * every row by the one rule every Wikidata reader keeps (`preferredPicture`,
  * `preferredCoordinate`, #1246), so a place two sources read is one picture and
  * one point whichever query asked. The country is `countryOfPlace`'s, from
- * every country the rows name and the parts the kept point applies to, so a
- * work in several places is named in the country of the cast it is drawn at.
+ * the countries the rows name that stand today (a best `P17` statement with
+ * no `?countryEnded`, of a state with no `?countryDissolved`, folded by
+ * `standingCountries`) and the parts the kept point applies to, so a work in
+ * several places is named in the country of the cast it is drawn at and a
+ * camp in the state it is in now.
  * The rest is the first row's, since any row answers it. A row whose
  * coordinate does not parse is dropped where the query asked for `P625` — that is a malformed literal, not
  * a missing fact — and kept placeless where it did not (`placeless`), so an
