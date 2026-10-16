@@ -20,7 +20,8 @@ describe('CopyButton', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Copy Q637248' }));
 
     expect(writeText).toHaveBeenCalledWith('Q637248');
-    expect(await screen.findByRole('status')).toHaveTextContent(COPIED_TEXT);
+    // The region is there, empty, before the write answers: wait for its words, not for it.
+    await vi.waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(COPIED_TEXT));
   });
 
   it('says it could not copy when the browser refuses', async () => {
@@ -29,7 +30,7 @@ describe('CopyButton', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy Q637248' }));
 
-    expect(await screen.findByRole('status')).toHaveTextContent(COPY_FAILED_TEXT);
+    await vi.waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(COPY_FAILED_TEXT));
   });
 
   it('says so too where there is no clipboard at all', async () => {
@@ -38,6 +39,6 @@ describe('CopyButton', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Copy Q637248' }));
 
-    expect(await screen.findByRole('status')).toHaveTextContent(COPY_FAILED_TEXT);
+    await vi.waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(COPY_FAILED_TEXT));
   });
 });

@@ -31,7 +31,9 @@ describe('ShareButton', () => {
     press();
 
     expect(share).toHaveBeenCalledWith({ title: TITLE, url: URL });
-    await vi.waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(''));
+    // The region is empty at render, so it is read only once the share has answered.
+    await act(async () => {});
+    expect(screen.getByRole('status')).toHaveTextContent('');
   });
 
   it('says nothing when the visitor cancels the sheet, and clears what a failure said', async () => {
@@ -40,7 +42,8 @@ describe('ShareButton', () => {
       .mockRejectedValueOnce(new DOMException('cancelled', 'AbortError'));
     stub('share', share);
     press();
-    expect(await screen.findByRole('status')).toHaveTextContent(COULD_NOT_SHARE_TEXT);
+    // The region is there, empty, before the share answers: wait for its words, not for it.
+    await vi.waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(COULD_NOT_SHARE_TEXT));
 
     fireEvent.click(screen.getByRole('button', { name: 'Share' }));
     // Every pending rejection and the render it causes, before anything is read.
@@ -57,7 +60,7 @@ describe('ShareButton', () => {
     stub('clipboard', { writeText });
     press();
 
-    expect(await screen.findByRole('status')).toHaveTextContent(COULD_NOT_SHARE_TEXT);
+    await vi.waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(COULD_NOT_SHARE_TEXT));
     // The failed sheet does not copy on its own: its click's activation is spent.
     expect(writeText).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
