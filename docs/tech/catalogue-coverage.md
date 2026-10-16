@@ -5,7 +5,10 @@ lacks most. The decision is
 [ADR-0081](../decisions/0081-a-kind-is-a-record-before-it-is-code-and-an-expectation-is-listed-before-the-catalogue-holds-it.md);
 this document describes what exists.
 
-It is a development tool. The maintainer and an agent read it, and it has no screen.
+It is a development tool. The maintainer and an agent read it through the commands below.
+One part of it has a screen: what each live kind lacks is a check in Catalogue Checks
+(`docs/tech/data-assertions.md` § What travellers expect), so an admin sees a place every
+guide names go missing after a run.
 
 Catalogue Checks (`docs/tech/data-assertions.md`) asks whether the rows the catalogue holds
 mean what the product says they mean. This asks the other question: what the catalogue does
@@ -264,6 +267,15 @@ Two kinds have none, and every absent entry of theirs is named: World Heritage, 
 inscribed is the whole rule, and Art Museums, which admits a museum through a work it holds,
 so the museum's own sitelinks are not what the kind asks of it. An entry a reader
 sees under another kind is still absent from this one, and the report says so.
+
+## In Catalogue Checks
+
+`expected-and-well-known-yet-not-offered` (`dataAssertions/coverageAssertions.ts`) says
+the report's *What each live kind lacks* in the panel: one row per live kind and absent entry
+at or over that kind's line, the most named first, and one line per live kind saying how many
+of the expected it offers and how many it lacks under the line. It runs `coverageReport()` and
+decides nothing of its own, so the command and the panel cannot disagree. With nothing loaded
+it reports nothing as missing and says the lists have not been loaded.
 
 ## How the lists of 2026-10-02 were compiled
 
