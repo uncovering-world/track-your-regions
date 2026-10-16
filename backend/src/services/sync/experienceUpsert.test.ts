@@ -787,9 +787,10 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     // `short_description`'s arm.
     // `tags` is not in this list, and its absence is the point of the test
     // below this one: derived labels nobody reads are written past the gate.
+    // `country_codes` and `country_names` are not either, for the same reason (#1579).
     for (const column of [
       'name', 'name_local', 'description', 'short_description',
-      'location', 'country_codes', 'country_names', 'image_url', 'metadata',
+      'location', 'image_url', 'metadata',
       // `boundary` and `area_km2` are deliberately **not** here — the extent
       // follows the source through the gate, and the test below says why. Every
       // other content column a run writes belongs on this list the moment it
@@ -810,20 +811,21 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     expect(typeArm).toContain('THEN experience_kind_memberships.type ELSE EXCLUDED.type END');
   });
 
-  it('writes tags past the gate and keeps them behind a claim', async () => {
+  it('writes tags and a place\'s countries past the gate and keeps them behind a claim', async () => {
     await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
 
-    const arm = assignmentsOf(upsert()[0]).get('tags');
-    // Derived from facts the row stores by name and returned by no reader-facing
-    // read, so the gate has nothing to protect: held, they filed 3785 rows that
-    // restated the row beside them (#570). The claim stays, because a curator
-    // can set tags through the edit endpoint and a person's write is not a
-    // measurement. Both halves examined, since an arm that dropped the claim
+    // Tags are derived from facts the row stores by name and returned by no
+    // reader-facing read, so the gate has nothing to protect: held, they filed
+    // 3785 rows that restated the row beside them (#570). A place's countries are
+    // drawn on no reader's screen either (#1579). The claim stays, because a
+    // curator can set these through the edit endpoint and a person's write is not
+    // a measurement. Both halves examined, since an arm that dropped the claim
     // with the hold would also pass a test that only checked the hold was gone.
-    expect(arm).toBeDefined();
-    expect(arm).not.toContain(HOLD);
-    expect(arm).toContain("experiences.curated_fields ? 'tags'");
-    expect(arm).toMatch(/THEN experiences\.tags ELSE EXCLUDED\.tags END/);
+    for (const column of ['tags', 'country_codes', 'country_names']) {
+      const arm = assignmentsOf(upsert()[0]).get(column) ?? '';
+      expect(arm, column).not.toContain(HOLD);
+      expect(arm).toMatch(new RegExp(`experiences\\.curated_fields \\? '${column}' THEN experiences\\.${column} ELSE EXCLUDED\\.${column} END`));
+    }
   });
 
   it('tells the statement the answer the locked read gave, once', async () => {

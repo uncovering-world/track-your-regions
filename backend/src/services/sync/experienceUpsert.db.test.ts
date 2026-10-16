@@ -260,6 +260,43 @@ describe('the anchor of a place of several points (ADR-0095)', () => {
   });
 });
 
+describe("a place's countries, which no reader sees (#1579)", () => {
+  it('are written on a verified place without retiring its verification or asking a curator', async () => {
+    const created = await upsertExperienceRecord(params(artMuseums, NEW_SITE_QID, 'A new site'));
+    await pool.query(
+      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+        WHERE experience_id = $1 AND source_id = $2`,
+      [created.experienceId, artMuseums],
+    );
+    const gated = (await pool.query<{ r: boolean }>('SELECT requires_curation AS r FROM experience_sources WHERE id = $1', [artMuseums])).rows[0].r;
+    const log = (await pool.query<{ id: number }>(
+      `INSERT INTO experience_sync_logs (source_id, status, started_at, is_dry_run)
+       VALUES ($1, 'running', NOW(), FALSE) RETURNING id`, [artMuseums],
+    )).rows[0].id;
+    try {
+      // Ungated, the source whose writes would otherwise retire a verification; then gated, the one that would hold.
+      for (const requiresCuration of [false, true]) {
+        await pool.query('UPDATE experience_sources SET requires_curation = $2 WHERE id = $1', [artMuseums, requiresCuration]);
+        const country = requiresCuration ? 'Monaco' : 'Belgium';
+        await upsertExperienceRecord(
+          { ...params(artMuseums, NEW_SITE_QID, 'A new site'), countryNames: [country], countryCodes: [] }, { syncLogId: log },
+        );
+        const row = (await pool.query<{ names: string[]; state: string; pointer: number | null }>(
+          `SELECT e.country_names AS names, m.curation_state AS state, m.pending_change_sync_log_id AS pointer
+             FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
+            WHERE e.id = $1`,
+          [created.experienceId, artMuseums],
+        )).rows[0];
+        expect(row).toEqual({ names: [country], state: 'verified', pointer: null });
+      }
+    } finally {
+      await pool.query('UPDATE experience_sources SET requires_curation = $2 WHERE id = $1', [artMuseums, gated]);
+      await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
+      await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [log]);
+    }
+  });
+});
+
 describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
   // Wood Buffalo National Park's picture credit as Commons now reads it, and the
   // Danube Limes' area re-measured: on a place readers see, under a gated source.

@@ -677,9 +677,11 @@ function collectDifferences(
   // value the source disagrees with is therefore kept and not reported either
   // -- there is no decision in it, since nobody reads the outcome (#570).
 
+  // A place's countries are shown to no reader (`UNSEEN_FIELDS`): written past
+  // the gate, recorded rather than asked, as the upsert writes them.
   for (const field of ['countryCodes', 'countryNames'] as const) {
     if (!setEquals(before[field], incoming[field])) {
-      diffs.push({ field, old: before[field], new: incoming[field], significance: fieldSignificance(field) });
+      diffs.push({ field, old: before[field], new: incoming[field], significance: fieldSignificance(field), pastTheGate: true });
     }
   }
 
@@ -707,6 +709,16 @@ function collectDifferences(
 
   return diffs;
 }
+
+/**
+ * A place's fields no reader sees (#1579): its countries. The world view the
+ * reader browses says where a place is, and which state a disputed or a
+ * vanished one belongs to is the question of points of view (#587), not one a
+ * curator can settle card by card. A change to one is written past the gate,
+ * and is no reason to retire a curator's verification either, since nothing a
+ * reader sees moved; a curator's claim still keeps it.
+ */
+export const UNSEEN_FIELDS: ReadonlySet<string> = new Set(['countryCodes', 'countryNames']);
 
 /** Which of the three buckets one difference lands in, and as what (`computeChangeSet`). */
 function filed(

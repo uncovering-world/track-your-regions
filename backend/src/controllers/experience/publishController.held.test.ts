@@ -325,16 +325,17 @@ describe('publishing a held proposal', () => {
     const diff = computeChangeSet(BEFORE_SNAPSHOT, CHANGED_SNAPSHOT, [], true);
     const proposal = diff.heldFields;
     const names = proposal.map(field => field.field);
-    // Nothing may have slipped into the applied bucket, or this test would be
-    // feeding the writer fields no card ever showed.
-    expect(diff.changedFields).toEqual([]);
+    // Nothing else may have slipped into the applied bucket, or this test would
+    // be feeding the writer fields no card ever showed. A place's countries are
+    // written past the gate, since no reader sees them (#1579).
+    expect(diff.changedFields.map(field => field.field).sort()).toEqual(['countryCodes', 'countryNames']);
     // A guard on the fixture, not on the code: a snapshot pair that stopped
     // differing everywhere would quietly narrow what this test covers. `tags`
-    // is not in the list because no run proposes it any more (#570); the test
-    // below keeps the writer able to apply the rows earlier runs filed.
+    // and the countries are not in the list because no run proposes them any
+    // more (#570, #1579); the tests above and below keep the writer able to
+    // apply the rows earlier runs filed.
     expect(names).toEqual(expect.arrayContaining(
-      ['name', 'description', 'shortDescription', 'type',
-        'location', 'countryCodes', 'countryNames', 'imageUrl']));
+      ['name', 'description', 'shortDescription', 'type', 'location', 'imageUrl']));
     // Metadata arrives one key at a time, never as a catch-all: a key is a fact
     // and a fact is answered on its own. So what has to be writable is each key
     // by name, which is also the direction that catches a key the differ can

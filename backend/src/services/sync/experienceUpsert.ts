@@ -78,7 +78,7 @@ import {
 } from '../../db/membership.js';
 import { pointHeldProposalAt } from './heldProposalPointer.js';
 import {
-  claimedMetadataKeys, computeChangeSet, METADATA_SET_KEYS, passingMetadataKeys, SYNC_OWNED_METADATA_KEYS,
+  claimedMetadataKeys, computeChangeSet, METADATA_SET_KEYS, passingMetadataKeys, SYNC_OWNED_METADATA_KEYS, UNSEEN_FIELDS,
   type BoundarySnapshot, type ChangeSetResult, type ExperienceSnapshot,
 } from './changeSet.js';
 import { tidyLabel } from '@tyr/shared/labels';
@@ -575,8 +575,10 @@ async function writeUnderLock(
         location = CASE WHEN experiences.curated_fields ? 'location' THEN experiences.location
                         WHEN $28::boolean THEN EXCLUDED.location
                         WHEN ${HELD} THEN experiences.location ELSE EXCLUDED.location END,
-        country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' OR ${HELD} THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
-        country_names = CASE WHEN experiences.curated_fields ? 'country_names' OR ${HELD} THEN experiences.country_names ELSE EXCLUDED.country_names END,
+        -- A place's countries are shown to no reader (#1579): written past the
+        -- gate, recorded as written; a curator's claim still keeps them.
+        country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
+        country_names = CASE WHEN experiences.curated_fields ? 'country_names' THEN experiences.country_names ELSE EXCLUDED.country_names END,
         image_url = CASE WHEN experiences.curated_fields ? 'image_url' OR ${HELD} THEN experiences.image_url ELSE EXCLUDED.image_url END,
         -- A claim on this column is always per key -- 'metadata.website',
         -- 'metadata.inDanger' -- and re-applies just that key over whatever the
@@ -804,9 +806,9 @@ async function writeUnderLock(
   // anchor moving is the run's own bookkeeping (ADR-0095), and a rewrite that
   // passed the gate changes nothing a visitor would notice (#1353) — written and
   // recorded, but neither a proposal for the pointer nor a reason to demote a
-  // verified membership.
+  // verified membership. Nor does a field no reader sees (`UNSEEN_FIELDS`, #1579).
   const wroteContent = changeSet.changedFields.some(
-    f => !(f.field === 'location' && params.locationIsAnchor) && !f.passedTheGate,
+    f => !(f.field === 'location' && params.locationIsAnchor) && !f.passedTheGate && !UNSEEN_FIELDS.has(f.field),
   );
   // The pointer follows every proposal this statement refused, not only the ones
   // it wrote — and both kinds of refusal are proposals. A field a curator claimed
