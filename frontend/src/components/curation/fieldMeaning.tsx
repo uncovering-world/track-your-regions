@@ -392,7 +392,7 @@ const MEANINGS: Record<string, FieldMeaning> = {
   },
   boundary: {
     label: 'extent',
-    what: 'The outline OpenStreetMap draws around an archaeological site — the shape on the map and the area on the card, offered under ODbL with the map’s credit (ADR-0059).',
+    what: 'The site’s outline on the map and the area on its card, as traced on OpenStreetMap. © OpenStreetMap contributors, under the ODbL licence.',
     whenItChanges: 'Somebody re-traced the polygon on OpenStreetMap, or another object now carries the tag the rule reads. Written past the gate: an outline is what somebody surveyed, not a claim about the place — look at the shape on the map if the area moved by much.',
     render: extentValueLabel,
     // The hash decided the change, not the area, so two tracings can read the
