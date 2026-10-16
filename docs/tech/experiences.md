@@ -3817,7 +3817,7 @@ the correction has to send the flag as seen rather than infer it from the verdic
 `ExperienceListItem` and Discover's `ExperienceCard` — since both read the same by-region
 response and a labelled row in one is an unexplained one in the other. Both lists offer the
 reveal, as the same `NoticeLink` (`components/shared/`) at the end of the list, under the rows
-rather than beside the kind tags and the name filter, which choose what the list is about where
+rather than beside the kind tags, the type chips and the name filter, which choose what the list is about where
 this only adds to it. Map mode asks the server (`includeLost`, with its `lostHidden` count).
 Discover shows one kind at a time and that count is the whole region's, so it asks for the lost
 rows with the region and holds them back itself, by the rule `hideLostSql()` states
@@ -3825,6 +3825,8 @@ rows with the region and holds them back itself, by the rule `hideLostSql()` sta
 the line never offers rows the kind's list would not gain, and showing them takes no second
 request (#609). The ask belongs to the region in both, so a curator can reveal a lost place in
 Discover and take its verdict back with *It does still exist*.
+
+**Discover's type chips** (#589, `typeChoices`, `offeredType` and `narrowToType` in `frontend/src/utils/typeChoices.ts`, drawn by `DiscoverExperienceList`). A kind's list offers its rows' types (`type`, the membership's, #1253) as chips named by the kind's vocabulary (`typeLabelFor`, `experienceTypes.ts`), the most common first, each with how many of the list's rows it keeps, and *All* with the list's own count. A list whose rows are all of one type, or of none, offers none. The choice narrows the rows and the map's pins (`DiscoverExperienceView` builds the markers from the narrowed rows), like the kind, while the name filter narrows only the rows; the heading says how many rows the two leave of the list (`n of N`). It is held in the view and reset with the region or the kind; a choice the rows no longer offer — a type only lost places held, the lost places hidden again — narrows nothing (`offeredType`), since no chip would be left to take it back. The list is filtered on the client: the by-region read already answers the whole region (`WHOLE_REGION_LIMIT`), so the counts are the rows themselves and the read needs no parameter.
 
 ## API Endpoints
 
