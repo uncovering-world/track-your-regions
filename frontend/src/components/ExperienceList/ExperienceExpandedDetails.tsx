@@ -26,8 +26,10 @@ import UnrejectIcon from '@mui/icons-material/Undo';
 import CurateIcon from '@mui/icons-material/Tune';
 import RemoveFromRegionIcon from '@mui/icons-material/LinkOff';
 import { useQuery } from '@tanstack/react-query';
+import { useLocation } from 'react-router';
 import { cardImageUrl, isImagePreloaded, preloadImage } from '../../utils/imagePreload';
 import { inDangerLabel } from '../../utils/dangerLabel';
+import { cardUrl } from '../../utils/appUrl';
 import { useAuth } from '../../hooks/useAuth';
 import {
   type Experience,
@@ -39,6 +41,7 @@ import { experienceContentsQuery, experienceDetailsQuery, siteFindsQuery } from 
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';
 import { PlaceLinks } from '../shared/PlaceLinks';
+import { ShareButton } from '../shared/ShareButton';
 import { ArtworksList } from './ArtworksList';
 import { SiteFindsList } from './SiteFindsList';
 import { VisitedStatusButton } from './VisitedStatusButton';
@@ -108,6 +111,9 @@ function ExperienceExpandedDetailsComponent({
   isRejected,
 }: ExperienceExpandedDetailsProps) {
   const { isAuthenticated } = useAuth();
+  const { pathname, search } = useLocation();
+  const sharePath = cardUrl(pathname, search, experience);
+  const shareUrl = sharePath && `${window.location.origin}${sharePath}`;
 
   // These two decide part of the card's height, so the card is not mounted until
   // they have answered — `useExperienceCardReady` waits on the same keys, which is
@@ -439,6 +445,9 @@ function ExperienceExpandedDetailsComponent({
             totalCount={totalLocations}
           />
         )}
+        {/* The visitor's second verb, beside the first: send the place (#1192).
+            Only where the page's address can name this card. */}
+        {shareUrl && <ShareButton url={shareUrl} title={experience.name} />}
 
         {/* Curator actions */}
         {onCurate && !isRejected && (

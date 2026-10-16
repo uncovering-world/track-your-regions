@@ -22,8 +22,17 @@ const COPIED_MS = 1500;
 export const COPIED_TEXT = 'Copied';
 export const COPY_FAILED_TEXT = 'Could not copy — select the text instead';
 
+/**
+ * Writes `text` to the clipboard, true when it landed. A page served without a
+ * secure context, or a browser that refuses, has no clipboard to write to.
+ */
+export function writeToClipboard(text: string): Promise<boolean> {
+  if (!navigator.clipboard) return Promise.resolve(false);
+  return navigator.clipboard.writeText(text).then(() => true, () => false);
+}
+
 /** Present to a screen reader and to nobody else, as MUI's own `visuallyHidden` is. */
-const SPOKEN_ONLY = {
+export const SPOKEN_ONLY = {
   border: 0, clip: 'rect(0 0 0 0)', height: '1px', margin: '-1px', overflow: 'hidden',
   padding: 0, position: 'absolute', whiteSpace: 'nowrap', width: '1px',
 } as const;
@@ -50,13 +59,8 @@ export function CopyButton({ text, label, tooltip, compact = false, className }:
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(() => setOutcome(null), COPIED_MS);
     };
-    // A page served without a secure context, or a browser that refuses, has no
-    // clipboard to write to: the button says so rather than looking as if it had.
-    if (!navigator.clipboard) {
-      show('failed');
-      return;
-    }
-    navigator.clipboard.writeText(text).then(() => show('copied'), () => show('failed'));
+    // Where the browser refuses, the button says so rather than looking as if it had.
+    writeToClipboard(text).then((landed) => show(landed ? 'copied' : 'failed'));
   };
 
   const iconSx = compact ? { fontSize: 12 } : undefined;
