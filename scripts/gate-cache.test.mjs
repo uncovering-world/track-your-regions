@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { gateKey, hashWorkingTree, readPass, recordPass, runtimeOf } from './gate-cache.mjs';
-import { GATES, cacheFor, decide, keyBelongs, runTier } from './gates.mjs';
+import { GATES, cacheFor, decide, keyBelongs } from './gates.mjs';
+import { runTier } from './gates-run.mjs';
 
 const gate = (id) => GATES.find((g) => g.id === id);
 

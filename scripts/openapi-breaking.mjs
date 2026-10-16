@@ -22,7 +22,7 @@ import { execFileSync, spawnSync } from 'node:child_process';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { changedPaths } from './gates.mjs';
+import { changedPaths } from './gates-base.mjs';
 import { repoFile } from './repo-root.mjs';
 
 export const DOCUMENT = 'packages/shared/src/openapi.generated.json';
