@@ -94,6 +94,18 @@ export interface CoverageExpectationsRow {
   note: string;
 }
 
+/** The table `coverage_judgements`. */
+export interface CoverageJudgementsRow {
+  region_slug: string;
+  entry_slug: string | null;
+  kind_slug: string | null;
+  row_wikidata_id: string | null;
+  cause: string;
+  issue_number: number | null;
+  judged: Date;
+  note: string;
+}
+
 /** The table `coverage_kinds`. */
 export interface CoverageKindsRow {
   slug: string;
@@ -921,6 +933,13 @@ export const COLUMN_WIDTHS = {
     wikidata_id: 20,
     unesco_id: 20,
   },
+  coverage_judgements: {
+    region_slug: 80,
+    entry_slug: 120,
+    kind_slug: 80,
+    row_wikidata_id: 20,
+    cause: 20,
+  },
   coverage_kinds: {
     slug: 80,
     name: 255,
@@ -1100,6 +1119,9 @@ export const COLUMN_WIDTHS = {
 export const CHECK_VALUES = {
   coverage_expectations: {
     type: ["place", "work", "food", "drink", "event", "route", "activity", "title", "person", "species", "object", "sound"],
+  },
+  coverage_judgements: {
+    cause: ["rule-defect", "door-missing", "kind-missing", "part-of-offered", "offered-elsewhere", "not-a-must"],
   },
   coverage_kinds: {
     form: ["place", "work", "food", "drink", "event", "route", "activity", "title", "person", "species", "object", "sound"],

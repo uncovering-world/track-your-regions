@@ -4621,7 +4621,7 @@ COMMENT ON COLUMN data_assertion_acceptances.accepted_count IS 'The number the a
 -- A copy of the files in db/catalogue-coverage/, which are the source of truth:
 -- the register of kinds of experience, the surveyed regions, and what a
 -- traveller expects in each. scripts/catalogue-coverage.sh load replaces the
--- content of all four tables from the files in one transaction, and nothing
+-- content of the coverage tables from the files in one transaction, and nothing
 -- else writes them. They exist so that the comparison with the catalogue is a
 -- join, not a script that reads two things.
 --
@@ -4702,6 +4702,42 @@ COMMENT ON TABLE coverage_expectations IS 'What two or more independent sources 
 COMMENT ON COLUMN coverage_expectations.same_as IS 'Other Wikidata items that are this same place: a building and the museum inside it.';
 COMMENT ON COLUMN coverage_expectations.source_count IS 'How many sources named the entry. Which ones is not published.';
 COMMENT ON TABLE coverage_expectation_kinds IS 'The kinds of the register an expectation is filed under. An expectation with no row here is not sorted yet.';
+
+-- A gap the coverage report found, judged once by cause (ADR-0116): a copy of
+-- db/catalogue-coverage/judgements.jsonl, loaded with the coverage tables above.
+-- The subject is an entry of a region's list and the live kind that does not
+-- offer it (an entry filed under two live kinds has a gap per kind), or a
+-- catalogue row the region offers and no entry names, by its Wikidata id; one
+-- of the two. A defect and a missing door name the issue that owns them.
+CREATE TABLE IF NOT EXISTS coverage_judgements (
+    region_slug VARCHAR(80) NOT NULL REFERENCES coverage_regions(slug) ON DELETE CASCADE,
+    entry_slug VARCHAR(120),
+    kind_slug VARCHAR(80) REFERENCES coverage_kinds(slug) ON DELETE CASCADE,
+    row_wikidata_id VARCHAR(20) CHECK (row_wikidata_id ~ '^Q[1-9][0-9]*$'),
+    cause VARCHAR(20) NOT NULL CHECK (cause IN ('rule-defect', 'door-missing', 'kind-missing', 'part-of-offered', 'offered-elsewhere', 'not-a-must')),
+    issue_number INTEGER CHECK (issue_number > 0),
+    judged DATE NOT NULL,
+    note TEXT NOT NULL CHECK (note <> ''),
+    CONSTRAINT coverage_judgements_one_subject CHECK ((entry_slug IS NULL) <> (row_wikidata_id IS NULL)),
+    CONSTRAINT coverage_judgements_entry_names_kind CHECK ((entry_slug IS NULL) = (kind_slug IS NULL)),
+    CONSTRAINT coverage_judgements_cause_owned CHECK (cause NOT IN ('rule-defect', 'door-missing') OR issue_number IS NOT NULL),
+    CONSTRAINT coverage_judgements_entry FOREIGN KEY (region_slug, entry_slug) REFERENCES coverage_expectations(region_slug, slug) ON DELETE CASCADE,
+    CONSTRAINT coverage_judgements_filing FOREIGN KEY (region_slug, entry_slug, kind_slug) REFERENCES coverage_expectation_kinds(region_slug, expectation_slug, kind_slug) ON DELETE CASCADE
+);
+
+-- A subject is judged once: one line per entry and kind, one per catalogue row.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_coverage_judgements_entry
+    ON coverage_judgements(region_slug, entry_slug, kind_slug) WHERE entry_slug IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_coverage_judgements_row
+    ON coverage_judgements(region_slug, row_wikidata_id) WHERE row_wikidata_id IS NOT NULL;
+
+COMMENT ON TABLE coverage_judgements IS 'A gap the coverage report found, judged once by cause, loaded from db/catalogue-coverage/judgements.jsonl (ADR-0116). A copy: the file is the source of truth.';
+COMMENT ON COLUMN coverage_judgements.entry_slug IS 'The entry of the region''s survey list a live kind does not offer; null when the subject is a catalogue row.';
+COMMENT ON COLUMN coverage_judgements.kind_slug IS 'The live kind whose gap is judged: the entry is filed under it and it does not offer the entry. An entry filed under two live kinds has a gap, and a line, per kind.';
+COMMENT ON COLUMN coverage_judgements.row_wikidata_id IS 'The catalogue row the region offers and no entry names, by its Wikidata id; null when the subject is an entry.';
+COMMENT ON COLUMN coverage_judgements.cause IS 'Why the gap stands, from the closed vocabulary the report counts by. A rule-defect and a door-missing name their issue.';
+COMMENT ON COLUMN coverage_judgements.issue_number IS 'The issue that owns the cause, where one does.';
+COMMENT ON COLUMN coverage_judgements.judged IS 'The date the judgement was made, which is the date of the catalogue it was made against.';
 
 -- =============================================================================
 -- Schema Complete
