@@ -16,9 +16,8 @@
  * a page names it, with the copy beside it as an icon: two affordances, one chip.
  */
 
-import { useState } from 'react';
-import { IconButton, Link, Stack, Tooltip, Typography } from '@mui/material';
-import ContentCopyIcon from '@mui/icons-material/ContentCopy';
+import { Link, Stack, Tooltip, Typography } from '@mui/material';
+import { CopyButton } from '../shared/CopyButton';
 import { safeHref } from '../../utils/safeHref';
 import { wikidataItemUrl } from '../../utils/wikidataLinks';
 
@@ -50,53 +49,26 @@ export function SourceId({ id, kind, sourcePage }: {
   /** The row's stored source page (`metadata.unescoUrl`, else `metadata.website`), for an id that page names. */
   sourcePage?: string | null;
 }) {
-  const [copied, setCopied] = useState(false);
   // Through safeHref although sourceIdHref answers only an https literal or a page
   // safeHref already kept: the rule is declared once, and `urlSafety.test.ts` reads
   // every href in a module that carries a stored link as going through it.
   const href = safeHref(sourceIdHref(id, sourcePage));
-
-  const copy = async () => {
-    try {
-      await navigator.clipboard.writeText(id);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard access can be refused — an insecure origin, a denied permission. The id
-      // stays selectable by hand, so the failure costs the shortcut and not the number.
-      setCopied(false);
-    }
-  };
+  const copy = (
+    <CopyButton text={id} label={`Copy ${id}`} tooltip="Copy the id — quote it when reporting a row." compact />
+  );
 
   if (!href) {
-    // Nothing names this id — a curator-created row's own, say — so the chip is what it
-    // was: the id, and one click copies it.
+    // Nothing names this id — a curator-created row's own, say — so the chip is the
+    // id, selectable as text, and the copy beside it.
     return (
-      <Tooltip
-        title={copied
-          ? 'Copied'
-          : `How ${kind} knows this object. Click to copy — quote it when reporting a row.`}
-        describeChild
-      >
-        <Typography
-          component="button"
-          type="button"
-          variant="caption"
-          color="text.secondary"
-          onClick={copy}
-          sx={{
-            border: 0,
-            background: 'none',
-            p: 0,
-            cursor: 'pointer',
-            font: 'inherit',
-            fontSize: '0.75rem',
-            textDecoration: 'underline dotted',
-          }}
-        >
-          {id}
-        </Typography>
-      </Tooltip>
+      <Stack direction="row" alignItems="center" spacing={0.25}>
+        <Tooltip title={`How ${kind} knows this object — quote it when reporting a row.`} describeChild>
+          <Typography variant="caption" color="text.secondary" sx={{ textDecoration: 'underline dotted' }}>
+            {id}
+          </Typography>
+        </Tooltip>
+        {copy}
+      </Stack>
     );
   }
 
@@ -120,11 +92,7 @@ export function SourceId({ id, kind, sourcePage }: {
           {id}
         </Link>
       </Tooltip>
-      <Tooltip title={copied ? 'Copied' : 'Copy the id — quote it when reporting a row.'} describeChild>
-        <IconButton size="small" aria-label={`Copy ${id}`} onClick={copy} sx={{ p: 0.25 }}>
-          <ContentCopyIcon sx={{ fontSize: 12 }} />
-        </IconButton>
-      </Tooltip>
+      {copy}
     </Stack>
   );
 }

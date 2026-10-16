@@ -35,7 +35,7 @@ import { locationLabel, pointFullName } from '../../utils/locationLabel';
 import { pointPicture } from '../../utils/pointPicture';
 import { wikidataItemUrl, wikipediaArticleUrl } from '../../utils/wikidataLinks';
 import { safeHref } from '../../utils/safeHref';
-import { CopyNameButton } from './CopyNameButton';
+import { CopyNameButton } from './CopyButton';
 import { ImageCreditLine } from './ImageCreditLine';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 

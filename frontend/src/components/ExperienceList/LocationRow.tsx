@@ -23,7 +23,7 @@ import { Box, ListItem, ListItemIcon, ListItemText, Checkbox, IconButton, Toolti
 import LocationIcon from '@mui/icons-material/LocationOn';
 import FixPlaceIcon from '@mui/icons-material/EditLocationAlt';
 import { locationLabel, pointFullName, pointOfRow } from '../../utils/locationLabel';
-import { CopyNameButton } from '../shared/CopyNameButton';
+import { CopyNameButton } from '../shared/CopyButton';
 import { claimLabel } from '../../utils/placeClaims';
 import { resolveLocationColor } from './utils';
 

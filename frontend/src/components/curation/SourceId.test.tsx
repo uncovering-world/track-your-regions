@@ -70,11 +70,12 @@ describe('SourceId', () => {
     expect(screen.getByRole('button', { name: 'Copy 738' })).toBeInTheDocument();
   });
 
-  it('keeps an id nothing names as the thing to copy, and links it nowhere', () => {
+  it('keeps an id nothing names as text to copy, and links it nowhere', () => {
     render(<SourceId id="manual-12" kind="Art Museums" />);
 
     expect(screen.queryByRole('link')).toBeNull();
-    // The id itself is the copy control, as it was before the chip could open anything.
-    expect(screen.getByRole('button', { name: 'manual-12' })).toBeInTheDocument();
+    // The id is selectable text, with the one copy control beside it (#1190).
+    expect(screen.getByText('manual-12')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Copy manual-12' })).toBeInTheDocument();
   });
 });
