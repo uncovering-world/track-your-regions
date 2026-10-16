@@ -121,7 +121,7 @@ async function insertAssignmentAndPromote(
   body: AssignmentInput,
   assignedBy: number,
 ): Promise<{ id: number; assignedAt: Date | null; rolePromoted: boolean }> {
-  // One client, not pool.query('BEGIN') — see the note in curationController:
+  // One client, not pool.query('BEGIN') — see the note in curationEditController:
   // pg.Pool hands out an arbitrary idle client per call, so a transaction has
   // to be pinned or its statements land on different connections. The scope row
   // and the promotion that answers for it are the pair this holds together: a

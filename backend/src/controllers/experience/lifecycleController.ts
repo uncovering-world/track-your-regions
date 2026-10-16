@@ -127,7 +127,7 @@ export async function answerStateUnderLock(
     return answerKindListingUnderLock(experienceId, userId, logRegionId, { ...answer, membershipId: answer.membershipId });
   }
   const { membership, existence, note, expected } = answer;
-  // One client, not pool.query('BEGIN') — see the note in curationController:
+  // One client, not pool.query('BEGIN') — see the note in curationEditController:
   // pg.Pool hands out an arbitrary idle client per call, so a transaction has
   // to be pinned or its statements land on different connections.
   const client = await pool.connect();

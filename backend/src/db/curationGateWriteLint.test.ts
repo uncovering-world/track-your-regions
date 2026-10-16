@@ -70,7 +70,7 @@ describe('the curation gate lint rules', () => {
       'src/controllers/experience/lifecycleController.ts'],
     ['a spelled membership insert in a handler', MEMBERSHIP,
       'export const q = `INSERT INTO experience_kind_memberships (experience_id, kind_id) VALUES ($1, $2)`;\n',
-      'src/controllers/experience/curationController.ts'],
+      'src/controllers/experience/manualExperienceController.ts'],
     ['an interpolated membership delete in a service', MEMBERSHIP,
       MEMBERSHIPS_IMPORT + 'export const q = `DELETE FROM ${MEMBERSHIPS} WHERE experience_id = $1`;\n',
       'src/services/lint-fixture.ts'],
