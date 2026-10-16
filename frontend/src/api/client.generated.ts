@@ -6930,6 +6930,8 @@ export interface PinQuestion {
      * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
      */
   askedAt: string;
+  /** The run says what the curator answered over, in the same words: asked again on request after a rule changed (#1370), not because the rule moved. */
+  restated: boolean;
   /** When the curator gave the answer the pin stands on. */
   answeredAt: string | null;
   /**

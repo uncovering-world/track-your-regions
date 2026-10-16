@@ -17,6 +17,7 @@ import { KINDS, MEMBERSHIPS } from '../../db/membership.js';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
 import { pinQuestionOpenSql } from './reviewQueuePredicates.js';
+import { foldedReasonSql } from '../../services/sync/pinQuestion.js';
 
 /** The filters every card statement of the page carries, and the parameters they bind. */
 export interface PinQuestionContext {
@@ -59,6 +60,10 @@ export async function queryPinQuestions(ids: number[], ctx: PinQuestionContext):
              'askedVerdict', m.admission_question_verdict,
              'askedReason', m.admission_question_reason,
              'askedAt', m.admission_questioned_at,
+             -- The run says the answered words again: a question raised by a
+             -- run started to ask again about the pins (#1370), not a change.
+             'restated', m.admission_question_verdict IS NOT DISTINCT FROM m.admission_pin_verdict
+                         AND ${foldedReasonSql('m.admission_question_reason')} IS NOT DISTINCT FROM ${foldedReasonSql('m.admission_pin_reason')},
              'answeredAt', COALESCE(pinned_by.at, e.state_decided_at),
              'note', CASE WHEN pinned_by.at IS NOT NULL THEN pinned_by.note ELSE e.state_note END
            ) AS pin_question

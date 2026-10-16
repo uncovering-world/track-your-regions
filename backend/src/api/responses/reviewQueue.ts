@@ -303,6 +303,7 @@ export const PinQuestion = z.strictObject({
   askedVerdict: Verdict.describe('What a run says now.'),
   askedReason: z.string().nullable().describe('Its reason for a refusal; null for an admission.'),
   askedAt: timestamp.describe('When a run first asked this question.'),
+  restated: z.boolean().describe('The run says what the curator answered over, in the same words: asked again on request after a rule changed (#1370), not because the rule moved.'),
   answeredAt: timestamp.nullable().describe("When the curator gave the answer the pin stands on."),
   note: z.string().nullable().describe('The note given with it.'),
 }).describe("A curator's admission pin a run no longer agrees with (#1367).");
