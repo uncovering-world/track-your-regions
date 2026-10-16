@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Box, ButtonBase, Typography, Checkbox, IconButton, Tooltip } from '@mui/material';
+import { Box, ButtonBase, Typography, Checkbox, IconButton, Link, Tooltip } from '@mui/material';
 import EditNoteIcon from '@mui/icons-material/EditNote';
 import { useExperienceContext, toThumbnailUrl } from '../../hooks/useExperienceContext';
 import { useAuth } from '../../hooks/useAuth';
@@ -11,6 +11,8 @@ import { WorkThumbnail } from '../shared/WorkThumbnail';
 import { PlaceLink } from '../shared/PlaceLink';
 import { creatorsBrief } from '../../utils/creatorList';
 import { yearLabel } from '../../utils/yearLabel';
+import { safeHref } from '../../utils/safeHref';
+import { wikipediaArticleUrl } from '../../utils/wikidataLinks';
 import { claimLabel } from '../../utils/workClaims';
 import type { WorkKind } from '../../utils/worksByKind';
 import { useWorkKinds } from '../../hooks/useWorkKinds';
@@ -44,6 +46,9 @@ function ArtworkRow({ content, placeKinds, isViewed, isAuthenticated, onToggleVi
   // `WorksPreview` state; it guards the next source rather than this one, since
   // every treasure image stored today is a Commons `Special:FilePath` URL.
   const url = content.image_url ? toThumbnailUrl(content.image_url) : '';
+  // Wikidata's own redirect, resolved at the click (`wikipediaArticleUrl`): nothing
+  // stored, and none for a curator-created work, whose id is no Wikidata item.
+  const article = safeHref(wikipediaArticleUrl(content.external_id));
 
   return (
     <Box
@@ -104,14 +109,27 @@ function ArtworkRow({ content, placeKinds, isViewed, isAuthenticated, onToggleVi
           {placeKinds && <WorkKindDots kindIds={content.kind_ids} placeKinds={placeKinds} />}
           {content.name}
         </Typography>
-        <Typography variant="caption" color="text.secondary" noWrap>
-          {[creatorsBrief(content.artists, content.artists_curated),
-            // Not the stored integer: the Borghese Gladiator was carved around
-            // 100 BC, and the stored -100 is not what the works preview beside
-            // this row spells (`yearLabel`).
-            yearLabel(content.year), content.treasure_type]
-            .filter(Boolean).join(' · ')}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 0.5, minWidth: 0 }}>
+          <Typography variant="caption" color="text.secondary" noWrap sx={{ minWidth: 0 }}>
+            {[creatorsBrief(content.artists, content.artists_curated),
+              // Not the stored integer: the Borghese Gladiator was carved around
+              // 100 BC, and the stored -100 is not what the works preview beside
+              // this row spells (`yearLabel`).
+              yearLabel(content.year), content.treasure_type]
+              .filter(Boolean).join(' · ')}
+          </Typography>
+          {/* The work's article, in words and kept whole at the end of the line
+              (#1191); the name above stays plain text, so it can be selected. */}
+          {article && (
+            // Named for the work, keeping the word on screen (WCAG 2.5.3): a museum's
+            // card lists dozens, and a links list of "Wikipedia" alone names none.
+            <Link href={article} target="_blank" rel="noopener noreferrer" variant="caption"
+              aria-label={`${content.name} on Wikipedia`}
+              onClick={(event) => event.stopPropagation()} sx={{ flexShrink: 0 }}>
+              Wikipedia
+            </Link>
+          )}
+        </Box>
         {/* Where it was dug up, for the works that were: an archaeology
             museum's holdings are objects taken from somewhere, and a row naming
             only the museum tells a traveller the smaller half of what the thing

@@ -427,3 +427,22 @@ describe('a place in several kinds lists its works once, chosen by kind (#1263)'
     expect(screen.queryByLabelText(/Held by/)).toBeNull();
   });
 });
+
+/** A work's Wikipedia article on the visitor's row (#1191). */
+describe("a work's article", () => {
+  it("offers Madonna with Canon Joris van der Paele's article through Wikidata's redirect", () => {
+    renderList([work({ name: 'Madonna with Canon Joris van der Paele', external_id: 'Q2480921' })]);
+
+    const link = screen.getByRole('link', { name: 'Madonna with Canon Joris van der Paele on Wikipedia' });
+    expect(link).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Special:GoToLinkedPage/enwiki/Q2480921');
+    expect(link).toHaveAttribute('target', '_blank');
+    // The name stays plain text, so it can be selected and copied.
+    expect(screen.getByText('Madonna with Canon Joris van der Paele').closest('a')).toBeNull();
+  });
+
+  it("offers none for a curator-created work, whose id is no Wikidata item", () => {
+    renderList([work({ external_id: 'manual-31' })]);
+
+    expect(screen.queryByRole('link', { name: /Wikipedia/ })).toBeNull();
+  });
+});
