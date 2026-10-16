@@ -73,6 +73,18 @@ const ROW_KIND: Record<QueueOrderEntry['kind'], RowKind> = {
   'pin-question': 'pin-question',
 };
 
+/**
+ * A row's key (`conflicts:12`, `waiting:126`) in the server's words (`conflict:12`):
+ * what the address names, as the queue's `row` parameter reads it (#843). Null for a
+ * key no question kind answers to.
+ */
+export function serverRowOf(key: string | null): string | null {
+  if (key === null) return null;
+  const [kind, id] = key.split(':');
+  const server = (Object.keys(ROW_KIND) as Array<QueueOrderEntry['kind']>).find(k => ROW_KIND[k] === kind);
+  return server && /^\d+$/.test(id ?? '') ? `${server}:${id}` : null;
+}
+
 const warnedKeys = new Set<string>();
 
 /** A key `order` named that no hydrated row answers to — logged once per key, never thrown on. */

@@ -14,7 +14,7 @@
  * whole filtered union, and a later page repeats it unchanged.
  *
  * **The answered lists have a read of their own** (#840). The questions' infinite query is
- * keyed on the filters alone and always asks for the answered lists' first pages, so paging
+ * keyed on the filters and the row a link opened the list at, and always asks for the answered lists' first pages, so paging
  * an answered block never touches the pages a curator loaded with *Show more*. A list at its
  * first page is read off the questions' first page — no second request. Once one is paged, a
  * query of its own asks the same endpoint at the three offsets, keyed on the filters and the
@@ -28,15 +28,21 @@
  * layout.
  */
 
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import {
   fetchReviewQueue,
   type QueueFacets, type ReviewQueue, type ReviewQueueItem, type ReviewQueueKind,
 } from '../../api/reviewQueue';
 import type { ReviewAddress } from '../../utils/appUrl';
-import { queueRows, type QueueRow } from './queueRows';
+import { queueRows, serverRowOf, type QueueRow } from './queueRows';
 import { queryKeys } from '../../api/queryKeys';
+
+/** Where a page of questions starts: after a cursor, or, for a linked list's first page, at a row. */
+interface QueuePageParam {
+  cursor?: string;
+  anchor?: string;
+}
 
 /** How far an answered list has been paged, and whether anything waits behind it. */
 export interface AnsweredPage {
@@ -81,6 +87,14 @@ export interface ReviewQueueRead {
   answeredFailed: (kind: ReviewQueueKind) => boolean;
   /** Moves one answered list by `by` pages, never below zero. */
   step: (kind: ReviewQueueKind, by: number) => void;
+  /**
+   * The list was opened at a linked row past its top, so the rows above it are not
+   * loaded and *Show more* will not load them: a heading may not count a group as
+   * whole even once every later page is in.
+   */
+  startsPastTop: boolean;
+  /** Reads the list again from its top, for the questions above the row a link opened it at. */
+  openAtTop: () => void;
 }
 
 export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
@@ -107,22 +121,59 @@ export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
   // read with the offsets already cleared. (`ReviewPage`'s reset of its selection
   // index is an effect because a ref is not a query key; this is.)
   const [lastFilterKey, setLastFilterKey] = useState(filterKey);
+  // The row the list was opened at, or null for its top: a link's row, or the row kept
+  // through a change of order. It is in the query key, so a link to a row the list does
+  // not hold reads a list that starts there (below), while a click on a loaded row moves
+  // nothing.
+  const [opening, setOpening] = useState<string | null>(address.row);
+  const [lastRow, setLastRow] = useState(address.row);
+  // Where the list a link opened began, as its first page said (`paging.from`): the first
+  // page is read again from that key rather than from the row, which an answer takes out
+  // of the list — read again at the row, the list would open at its top, away from the
+  // question after it. Per list, so a new one starts from its own row.
+  const fromRef = useRef<{ list: string; from: string } | null>(null);
   if (lastFilterKey !== filterKey) {
     setLastFilterKey(filterKey);
     setOffsets({});
+    setOpening(address.row);
   }
+  const list = JSON.stringify([filters, opening]);
 
   const {
     data, isLoading, isPlaceholderData, isError, error,
     hasNextPage, isFetchingNextPage, fetchNextPage,
   } = useInfiniteQuery({
     // `row` is out of the key deliberately: opening a question must not re-read the list
-    // it was opened from. The object is hashed by value, so the address re-rendering with
+    // it was opened from. `opening` is in it, and moves only for a link (below). The object is hashed by value, so the address re-rendering with
     // an equal one refetches nothing.
-    queryKey: queryKeys.curation.reviewQueue('questions', filters),
-    queryFn: ({ pageParam }) => fetchReviewQueue({ ...filters, cursor: pageParam }),
-    initialPageParam: undefined as string | undefined,
-    getNextPageParam: (last: ReviewQueue) => last.paging?.nextCursor ?? undefined,
+    queryKey: queryKeys.curation.reviewQueue('questions', filters, opening),
+    queryFn: async ({ pageParam }) => {
+      const firstOfLink = pageParam.anchor !== undefined;
+      const from = firstOfLink && fromRef.current?.list === list ? fromRef.current.from : undefined;
+      const page = await fetchReviewQueue({
+        ...filters, cursor: pageParam.cursor, anchor: from ? undefined : pageParam.anchor, from,
+      });
+      // Every question from the key the list began at down has been answered: the ones
+      // above it are all that is left, and the list reads them from its top rather than
+      // calling itself empty.
+      if (from && queueRows(page).length === 0 && page.total > 0) {
+        fromRef.current = null;
+        return fetchReviewQueue({ ...filters, cursor: pageParam.cursor });
+      }
+      if (firstOfLink && page.paging?.from) fromRef.current = { list, from: page.paging.from };
+      return page;
+    },
+    // A link names its row (ADR-0051 decision 5), and the row is often past the first
+    // page: the first page of a list opened with one asks for the page one key before
+    // that row, so the list arrives with it on screen (#843). Only the first page of a
+    // new list carries it — later pages follow the cursor — and a refetch re-reads the
+    // same anchor — by the key the list began at once it is known (`fromRef`) — recomputing
+    // the cursors from there, so the pages stay one chain. A row the filters exclude
+    // anchors nothing and the list opens at its top.
+    initialPageParam: { anchor: serverRowOf(opening) ?? undefined } as QueuePageParam,
+    getNextPageParam: (last: ReviewQueue): QueuePageParam | undefined => (
+      last.paging?.nextCursor ? { cursor: last.paging.nextCursor } : undefined
+    ),
     // The previous filter's answer stays on screen until the new one arrives, rather than
     // the whole read emptying: without it the toolbar prints "0 open" and the region and
     // run menus say they have nothing between every keystroke of a search, which reads as
@@ -133,6 +184,15 @@ export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
   const pages = data?.pages;
   const rows = useMemo(() => (pages ?? []).flatMap(page => queueRows(page)), [pages]);
   const first = pages?.[0];
+
+  // A new address row the list does not hold is a link — a click picks a loaded row, and
+  // the page's own move after an answer picks one too — so the list is read again
+  // starting at it, whatever this list had cached. Adjusted during the render, like the
+  // filter above, so the page never writes a row out of the list the link replaced.
+  if (address.row !== lastRow) {
+    setLastRow(address.row);
+    if (address.row !== null && !rows.some(row => row.key === address.row)) setOpening(address.row);
+  }
 
   // The answered lists once one of them is paged, and only then: at the first pages they
   // are the questions' first page's own. Under `reviewQueueAll`, so an answer that
@@ -175,6 +235,8 @@ export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
     more: () => { void fetchNextPage(); },
     pageOf: kind => sourceOf(kind)?.paging?.[kind] ?? { offset: offsets[kind] ?? 0, hasMore: false },
     answeredFailed: kind => (offsets[kind] ?? 0) > 0 && answeredError,
+    startsPastTop: Boolean(first?.paging?.from),
+    openAtTop: () => { fromRef.current = null; setOpening(null); },
     step: (kind, by) => setOffsets(o => ({
       ...o, [kind]: Math.max(0, (o[kind] ?? 0) + by * (first?.limit ?? 25)),
     })),

@@ -114,7 +114,8 @@ function rowColor(row: QueueRow): string {
 }
 
 export function ReviewQueueList({
-  rows, selected, onSelect, sort, today, hasMore, loadingMore, onMore, total, stale, selection,
+  rows, selected, onSelect, sort, today, hasMore, loadingMore, onMore, total, stale, selection, startsPastTop = false,
+  onTop,
 }: {
   rows: QueueRow[];
   selected: string | null;
@@ -129,6 +130,10 @@ export function ReviewQueueList({
   sort: 'date' | 'question';
   today: string;
   hasMore: boolean;
+  /** Opened at a linked row past the list's top: the rows above are not loaded (#843). */
+  startsPastTop?: boolean;
+  /** Reads the list from its top, offered while it `startsPastTop`: nothing else loads the rows above. */
+  onTop?: () => void;
   loadingMore: boolean;
   onMore: () => void;
   /** The filtered total, not just what this page loaded — the list's own name for a screen reader tabbing into it, since `rows.length` alone cannot say whether more waits below. */
@@ -232,8 +237,9 @@ export function ReviewQueueList({
   };
 
   if (rows.length === 0) return null;
-  // `!hasMore` is "every page is loaded": only then is a group's run of rows the group.
-  const rowHeadings = headings(rows, sort, today, !hasMore);
+  // "Every page is loaded": no more below and none left out above — only then is a
+  // group's run of rows the group.
+  const rowHeadings = headings(rows, sort, today, !hasMore && !startsPastTop);
   const ticked = rows.filter(row => selection.keys.has(row.key)).length;
   const allLoaded = ticked === rows.length;
   // Offered only once the whole page is ticked and there is more than the page:
@@ -279,6 +285,11 @@ export function ReviewQueueList({
           </Button>
         )}
       </Box>
+      {startsPastTop && onTop && (
+        <Box sx={{ px: 1, py: 0.5, borderBottom: 1, borderColor: 'divider' }}>
+          <Button size="small" onClick={onTop}>Show the questions above</Button>
+        </Box>
+      )}
       <List dense disablePadding>
         {rows.map((row, i) => {
           const heading = rowHeadings[i];
