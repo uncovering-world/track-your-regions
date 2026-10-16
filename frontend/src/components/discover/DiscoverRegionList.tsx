@@ -9,6 +9,7 @@
 import { useRef, useMemo } from 'react';
 import {
   Box,
+  List,
   Typography,
   Tooltip,
   IconButton,
@@ -22,6 +23,17 @@ import type { RegionExperienceCount, ExperienceKind } from '../../api/experience
 import { kindColor, shortKindName } from '../../utils/kindColors';
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { EmptyState } from '../shared/EmptyState';
+import { VirtualRow } from '../shared/VirtualRow';
+
+/** A row's height with its pills beside the name; a row whose pills wrap grows from it. */
+const ROW_MIN_HEIGHT = 48;
+
+/**
+ * The least width a region's name takes, however short. The pills share its line
+ * while the name's whole text and they fit, and take a line of their own when
+ * not; the name truncates only when its own text is wider than the row.
+ */
+const NAME_MIN_WIDTH = '9rem';
 
 interface DiscoverRegionListProps {
   regions: RegionExperienceCount[];
@@ -57,7 +69,11 @@ export function DiscoverRegionList({
   const virtualizer = useVirtualizer({
     count: regions.length,
     getScrollElement: () => parentRef.current,
-    estimateSize: () => 48,
+    estimateSize: () => ROW_MIN_HEIGHT,
+    // Rows are measured, and a drill-down hands the window another level's
+    // regions: keyed by index, an off-screen row would keep the height measured
+    // for the region that held its index before.
+    getItemKey: (index) => regions[index].region_id,
     overscan: 10,
   });
 
@@ -74,12 +90,9 @@ export function DiscoverRegionList({
       ref={parentRef}
       sx={{ flex: 1, overflowY: 'auto' }}
     >
-      <Box
-        sx={{
-          height: `${virtualizer.getTotalSize()}px`,
-          width: '100%',
-          position: 'relative',
-        }}
+      <List
+        disablePadding
+        sx={{ height: virtualizer.getTotalSize(), position: 'relative', width: '100%' }}
       >
         {virtualizer.getVirtualItems().map((virtualRow) => {
           const region = regions[virtualRow.index];
@@ -94,134 +107,139 @@ export function DiscoverRegionList({
               return (sa?.display_priority ?? 99) - (sb?.display_priority ?? 99);
             });
 
+          // A row is as tall as its pills need: they wrap under the name
+          // rather than squeeze it, so the window measures each row.
           return (
-            <Box
-              key={region.region_id}
-              sx={{
-                position: 'absolute',
-                top: 0,
-                left: 0,
-                width: '100%',
-                height: `${virtualRow.size}px`,
-                transform: `translateY(${virtualRow.start}px)`,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 1,
-                px: 1.5,
-                borderBottom: '1px solid',
-                borderColor: 'divider',
-                borderLeft: '3px solid',
-                borderLeftColor: region.region_color || 'primary.main',
-                transition: 'background-color 0.1s ease',
-                '&:hover': { bgcolor: 'action.hover' },
-              }}
+            <VirtualRow
+              key={virtualRow.key}
+              virtualizer={virtualizer}
+              index={virtualRow.index}
+              start={virtualRow.start}
             >
-              {/* Region name — clickable to drill down */}
               <Box
-                onClick={() => hasChildren && onNavigate(region.region_id, region.region_name)}
                 sx={{
+                  minHeight: ROW_MIN_HEIGHT,
                   display: 'flex',
+                  flexWrap: 'wrap',
                   alignItems: 'center',
-                  gap: 0.75,
-                  flex: 1,
-                  minWidth: 0,
-                  cursor: hasChildren ? 'pointer' : 'default',
-                  py: 0.75,
+                  columnGap: 1,
+                  px: 1.5,
+                  borderBottom: '1px solid',
+                  borderColor: 'divider',
+                  borderLeft: '3px solid',
+                  borderLeftColor: region.region_color || 'primary.main',
+                  transition: 'background-color 0.1s ease',
+                  '&:hover': { bgcolor: 'action.hover' },
                 }}
               >
-                {hasChildren ? (
-                  <FolderIcon sx={{ fontSize: 18, color: region.region_color || 'primary.main', flexShrink: 0 }} />
-                ) : (
-                  <PlaceIcon sx={{ fontSize: 18, color: 'action.active', flexShrink: 0 }} />
-                )}
-                <Typography
-                  variant="body2"
-                  noWrap
+                {/* Region name — clickable to drill down */}
+                <Box
+                  onClick={() => hasChildren && onNavigate(region.region_id, region.region_name)}
                   sx={{
-                    fontWeight: 500,
-                    fontSize: '0.85rem',
-                    '&:hover': hasChildren ? { textDecoration: 'underline' } : {},
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.75,
+                    flex: '1 1 auto',
+                    minWidth: NAME_MIN_WIDTH,
+                    maxWidth: '100%',
+                    cursor: hasChildren ? 'pointer' : 'default',
+                    py: 0.75,
                   }}
                 >
-                  {region.region_name}
-                </Typography>
-                {hasChildren && (
-                  <ChevronRightIcon sx={{ fontSize: 16, color: 'action.active', flexShrink: 0 }} />
-                )}
-              </Box>
+                  {hasChildren ? (
+                    <FolderIcon sx={{ fontSize: 18, color: region.region_color || 'primary.main', flexShrink: 0 }} />
+                  ) : (
+                    <PlaceIcon sx={{ fontSize: 18, color: 'action.active', flexShrink: 0 }} />
+                  )}
+                  <Typography
+                    variant="body2"
+                    noWrap
+                    sx={{
+                      fontWeight: 500,
+                      fontSize: '0.85rem',
+                      '&:hover': hasChildren ? { textDecoration: 'underline' } : {},
+                    }}
+                  >
+                    {region.region_name}
+                  </Typography>
+                  {hasChildren && (
+                    <ChevronRightIcon sx={{ fontSize: 16, color: 'action.active', flexShrink: 0 }} />
+                  )}
+                </Box>
 
-              {/* Source count pills — text labels, not icons */}
-              <Box sx={{ display: 'flex', gap: 0.5, flexShrink: 0, alignItems: 'center' }}>
-                {sortedKindEntries.map(({ kindId, count }) => {
-                  const source = kindById.get(kindId);
-                  if (!source) return null;
-                  const color = kindColor(kindId);
-                  const label = shortKindName(source.name);
+                {/* Source count pills — text labels, not icons */}
+                <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, alignItems: 'center', minWidth: 0, pb: 0.5, pt: 0.25 }}>
+                  {sortedKindEntries.map(({ kindId, count }) => {
+                    const source = kindById.get(kindId);
+                    if (!source) return null;
+                    const color = kindColor(kindId);
+                    const label = shortKindName(source.name);
 
-                  return (
-                    <Tooltip
-                      key={kindId}
-                      title={`${count} ${source.name} in ${region.region_name}`}
-                    >
-                      <Box
+                    return (
+                      <Tooltip
+                        key={kindId}
+                        title={`${count} ${source.name} in ${region.region_name}`}
+                      >
+                        <Box
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onKindClick(region.region_id, region.region_name, kindId, source.name);
+                          }}
+                          sx={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 0.25,
+                            px: 0.75,
+                            py: 0.25,
+                            borderRadius: '10px',
+                            fontSize: '0.65rem',
+                            fontWeight: 600,
+                            color,
+                            bgcolor: `${color}12`,
+                            border: `1px solid ${color}30`,
+                            cursor: 'pointer',
+                            whiteSpace: 'nowrap',
+                            userSelect: 'none',
+                            transition: 'all 0.15s ease',
+                            '&:hover': {
+                              bgcolor: `${color}25`,
+                              border: `1px solid ${color}60`,
+                              transform: 'scale(1.05)',
+                            },
+                          }}
+                        >
+                          <span style={{ opacity: 0.8 }}>{label}</span>
+                          <span>{count}</span>
+                        </Box>
+                      </Tooltip>
+                    );
+                  })}
+                  {onAddExperience && (!canAddToRegion || canAddToRegion(region.region_id)) && (
+                    <Tooltip title={`Add experience to ${region.region_name}`}>
+                      <IconButton
+                        size="small"
                         onClick={(e) => {
                           e.stopPropagation();
-                          onKindClick(region.region_id, region.region_name, kindId, source.name);
+                          onAddExperience(region.region_id, region.region_name);
                         }}
                         sx={{
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          gap: 0.25,
-                          px: 0.75,
-                          py: 0.25,
-                          borderRadius: '10px',
-                          fontSize: '0.65rem',
-                          fontWeight: 600,
-                          color,
-                          bgcolor: `${color}12`,
-                          border: `1px solid ${color}30`,
-                          cursor: 'pointer',
-                          whiteSpace: 'nowrap',
-                          userSelect: 'none',
-                          transition: 'all 0.15s ease',
-                          '&:hover': {
-                            bgcolor: `${color}25`,
-                            border: `1px solid ${color}60`,
-                            transform: 'scale(1.05)',
-                          },
+                          width: 20,
+                          height: 20,
+                          border: '1px solid',
+                          borderColor: 'action.disabled',
+                          '&:hover': { borderColor: 'primary.main', color: 'primary.main' },
                         }}
                       >
-                        <span style={{ opacity: 0.8 }}>{label}</span>
-                        <span>{count}</span>
-                      </Box>
+                        <AddIcon sx={{ fontSize: 14 }} />
+                      </IconButton>
                     </Tooltip>
-                  );
-                })}
-                {onAddExperience && (!canAddToRegion || canAddToRegion(region.region_id)) && (
-                  <Tooltip title={`Add experience to ${region.region_name}`}>
-                    <IconButton
-                      size="small"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onAddExperience(region.region_id, region.region_name);
-                      }}
-                      sx={{
-                        width: 20,
-                        height: 20,
-                        border: '1px solid',
-                        borderColor: 'action.disabled',
-                        '&:hover': { borderColor: 'primary.main', color: 'primary.main' },
-                      }}
-                    >
-                      <AddIcon sx={{ fontSize: 14 }} />
-                    </IconButton>
-                  </Tooltip>
-                )}
+                  )}
+                </Box>
               </Box>
-            </Box>
+            </VirtualRow>
           );
         })}
-      </Box>
+      </List>
     </Box>
   );
 }
