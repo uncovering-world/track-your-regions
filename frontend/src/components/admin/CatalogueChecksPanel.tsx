@@ -41,6 +41,7 @@ import HoldingIcon from '@mui/icons-material/RemoveCircleOutline';
 import ImprovedIcon from '@mui/icons-material/TrendingDown';
 import RegressedIcon from '@mui/icons-material/TrendingUp';
 import WatchIcon from '@mui/icons-material/Visibility';
+import UnavailableIcon from '@mui/icons-material/HourglassEmpty';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   acceptDataAssertion,
@@ -75,6 +76,7 @@ const STATUS_LOOK: Record<AssertionStatus, {
   regressed: { label: 'more than accepted', colour: 'error', icon: <RegressedIcon fontSize="small" /> },
   unanswered: { label: 'nobody has answered for this', colour: 'warning', icon: <UnansweredIcon fontSize="small" /> },
   watch: { label: 'a number to watch', colour: 'info', icon: <WatchIcon fontSize="small" /> },
+  unavailable: { label: 'nothing to read yet', colour: 'default', icon: <UnavailableIcon fontSize="small" /> },
   error: { label: 'did not run', colour: 'error', icon: <BrokenIcon fontSize="small" /> },
 };
 
@@ -84,12 +86,14 @@ const AREA_LABELS: Record<DataAssertion['area'], string> = {
   boundaries: 'Boundaries',
   objects: 'Objects',
   pictures: 'Pictures',
+  coverage: 'What travellers expect',
 };
 
 /** The count, and what it is being read against. */
 function tally(assertion: DataAssertion): string {
   const { found, accepted, status } = assertion;
   if (status === 'error') return 'nothing, the query failed';
+  if (status === 'unavailable') return 'no count yet';
   if (found === 0 && accepted === null) return 'nothing found';
   if (status === 'watch') return plural(found, 'row');
   if (accepted === null) return `${plural(found, 'row')}, none of them accepted`;
@@ -133,9 +137,20 @@ function AssertionCard({ assertion, onAccept, accepting }: {
         </Stack>
 
         {assertion.error && (
-          <Alert severity="error" sx={{ mt: 2 }}>
+          <Alert severity={assertion.status === 'unavailable' ? 'info' : 'error'} sx={{ mt: 2 }}>
             {assertion.error}
           </Alert>
+        )}
+
+        {/* How much of the whole the rows are, said whatever their number. */}
+        {assertion.context.length > 0 && (
+          <Box component="ul" sx={{ pl: 3, mt: 1, mb: 0 }}>
+            {assertion.context.map((line, index) => (
+              <Typography component="li" variant="body2" key={`${assertion.id}-context-${index}`}>
+                {line}
+              </Typography>
+            ))}
+          </Box>
         )}
 
         {assertion.needsAttention && !assertion.error && (
