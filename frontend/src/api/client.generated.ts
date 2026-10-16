@@ -7835,6 +7835,72 @@ export interface RegionGeometry {
 }
 
 /**
+ * A region's reference map in the Create Subregions dialog (#595): an admin's working material, never shown to a visitor.
+ */
+export interface RegionImageOverlay {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  regionId: number;
+  /** The image as a base64 data URL: PNG, JPEG or WebP. */
+  imageDataUrl: string;
+  imageName: string;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  imageWidth: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  imageHeight: number;
+  /**
+     * Where the image's corners lie, [lng, lat] each: top left, top right, bottom right, bottom left.
+     * @minItems 4
+     * @maxItems 4
+     */
+  corners: [[number, number], [number, number], [number, number], [number, number]];
+  opacity: number;
+  /** When it was last saved, ISO 8601. */
+  updatedAt: string;
+}
+
+export interface RegionImageOverlayBody {
+  /**
+     * @maxLength 13981078
+     * @pattern ^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$
+     */
+  imageDataUrl: string;
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  imageName: string;
+  /**
+     * @minimum 1
+     * @maximum 100000
+     */
+  imageWidth: number;
+  /**
+     * @minimum 1
+     * @maximum 100000
+     */
+  imageHeight: number;
+  /**
+     * @minItems 4
+     * @maxItems 4
+     */
+  corners: [[number, number], [number, number], [number, number], [number, number]];
+  /**
+     * @minimum 0
+     * @maximum 1
+     */
+  opacity: number;
+}
+
+/**
  * What a member of a region is: a GADM division, or one of its own subregions.
  */
 export type RegionMemberType = typeof RegionMemberType[keyof typeof RegionMemberType];
@@ -12943,6 +13009,96 @@ export const getWorldViewsRegionsByRegionIdMembersDescendantGeometries = async (
   {
     ...options,
     method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getGetWorldViewsRegionsByRegionIdImageOverlayUrl = (regionId: number,) => {
+
+
+
+
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/image-overlay`
+}
+
+/**
+ * Requires an admin.
+ * @summary Get a region's reference map: the image an admin calibrated under its divisions
+ */
+export const getWorldViewsRegionsByRegionIdImageOverlay = async (regionId: number, options?: Parameters<typeof apiFetch>[1]): Promise<RegionImageOverlay | void> => {
+
+  return apiFetch<RegionImageOverlay | void>(getGetWorldViewsRegionsByRegionIdImageOverlayUrl(regionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getPutWorldViewsRegionsByRegionIdImageOverlayUrl = (regionId: number,) => {
+
+
+
+
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/image-overlay`
+}
+
+/**
+ * Requires an admin.
+ * @summary Keep a region's reference map, replacing the one it had
+ */
+export const putWorldViewsRegionsByRegionIdImageOverlay = async (regionId: number,
+    regionImageOverlayBody: RegionImageOverlayBody, options?: Parameters<typeof apiFetch>[1]): Promise<void> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<void>(getPutWorldViewsRegionsByRegionIdImageOverlayUrl(regionId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(regionImageOverlayBody)
+  }
+);}
+
+
+
+export const getDeleteWorldViewsRegionsByRegionIdImageOverlayUrl = (regionId: number,) => {
+
+
+
+
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/image-overlay`
+}
+
+/**
+ * Requires an admin.
+ * @summary Take a region's reference map away
+ */
+export const deleteWorldViewsRegionsByRegionIdImageOverlay = async (regionId: number, options?: Parameters<typeof apiFetch>[1]): Promise<void> => {
+
+  return apiFetch<void>(getDeleteWorldViewsRegionsByRegionIdImageOverlayUrl(regionId),
+  {
+    ...options,
+    method: 'DELETE'
 
 
   }

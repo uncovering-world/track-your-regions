@@ -1144,6 +1144,29 @@ export const addDivisionsToRegionBodySchema = z.object({
   customGeometry: z.any().optional(),
 });
 
+/** The most bytes a region's reference map may hold (#595, ADR-0113), the cap the table's CHECK holds too. */
+export const OVERLAY_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+
+/** A corner of a reference map on the map: [lng, lat], lng past ±180 where it is calibrated across the antimeridian. */
+const overlayCornerSchema = z.tuple([z.number().finite().min(-360).max(360), z.number().finite().min(-90).max(90)]);
+
+/**
+ * A region's reference map as the Create Subregions dialog saves it (#595): the
+ * image as a data URL of one of the raster types the table takes, its name and
+ * size, its four corners and its opacity. The bytes are checked against their
+ * signature by the handler; the length bound here only refuses a body that
+ * could not be within the cap.
+ */
+export const regionImageOverlayBodySchema = z.object({
+  imageDataUrl: z.string().max(Math.ceil((OVERLAY_IMAGE_MAX_BYTES * 4) / 3) + 64)
+    .regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/]+={0,2}$/, 'imageDataUrl must be a base64 PNG, JPEG or WebP data URL'),
+  imageName: z.string().trim().min(1).max(255),
+  imageWidth: z.number().int().min(1).max(100000),
+  imageHeight: z.number().int().min(1).max(100000),
+  corners: z.tuple([overlayCornerSchema, overlayCornerSchema, overlayCornerSchema, overlayCornerSchema]),
+  opacity: z.number().min(0).max(1),
+});
+
 export const removeDivisionsFromRegionBodySchema = z.object({
   divisionIds: z.array(bodyRowIdSchema).optional(),
   memberRowIds: z.array(bodyRowIdSchema).optional(),
