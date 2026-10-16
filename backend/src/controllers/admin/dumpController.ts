@@ -16,7 +16,8 @@ import { DUMPS } from '../../services/dumps/catalog.js';
 import { newestLocalCopy } from '../../services/dumps/localCopies.js';
 import { newestSample } from '../../services/dumps/samples.js';
 import { buildProgress, cancelBuild, isoDay, startBuild, type DumpBuildProgress } from '../../services/dumps/buildQueue.js';
-import { keeperOf } from '../../services/dumps/keepers.js';
+import { keeperOf, whatTheKeptNeeds } from '../../services/dumps/keepers.js';
+import { newestDump, type Newest } from '../../services/dumps/newestOnHost.js';
 import {
   closeOrphanedBuilds, recentBuilds, type BuildKind, type BuildRequestRecord, type DumpBuildRow,
 } from '../../services/dumps/ledger.js';
@@ -26,11 +27,24 @@ import type { dumpBuildBodySchema, dumpKeyParamSchema } from '../../types/index.
 type DumpParams = z.output<typeof dumpKeyParamSchema>;
 type DumpBuildBody = z.output<typeof dumpBuildBodySchema>;
 
+/** Whether the host was asked for its newest dump since the backend started, and whether it answered. */
+function checkedOf(newest: Newest): 'not-yet' | 'answered' | 'unreachable' {
+  if (newest.askedAt === null) return 'not-yet';
+  return newest.answered ? 'answered' : 'unreachable';
+}
+
 async function keepsOf(key: Dumps['dumps'][number]['key']): Promise<Dumps['dumps'][number]['keeps']> {
   const keeper = keeperOf(key);
   if (!keeper) return null;
   const built = await keeper.latest();
-  return { title: keeper.title, built: built ? { dumpDate: built.dumpDate, swappedAt: built.swappedAt.toISOString() } : null };
+  const newest = newestDump(key);
+  return {
+    title: keeper.title,
+    built: built ? { dumpDate: built.dumpDate, swappedAt: built.swappedAt.toISOString() } : null,
+    needs: whatTheKeptNeeds(built, newest.date),
+    newestDumpDate: newest.date,
+    newestChecked: checkedOf(newest),
+  };
 }
 
 const wireProgress = (progress: DumpBuildProgress | null): Dumps['dumps'][number]['progress'] => (progress
