@@ -39,9 +39,15 @@ function unreachableReason(result: ExperienceSearchResult): string {
   return result.regions.length > 0 ? 'not in this world view' : 'not on a map yet';
 }
 
-/** Kind, then the countries it is in — what tells two same-named sites apart. */
-function context(result: ExperienceSearchResult): string {
-  return [result.kind_name, result.country_names?.join(', ')].filter(Boolean).join(' · ');
+/**
+ * Kind, then where it is — what tells two same-named sites apart. Where is the
+ * region the open world view places it in, or, where that view places it
+ * nowhere (the default view owns no regions), the smallest region any world
+ * view does: the regions arrive most specific first. A place's country name
+ * is not shown (#1579).
+ */
+function context(result: ExperienceSearchResult, region: ExperienceRegionRef | null): string {
+  return [result.kind_name, (region ?? result.regions[0])?.name].filter(Boolean).join(' · ');
 }
 
 export function ExperienceSearchResults({ results, worldViewId, onSelect }: ExperienceSearchResultsProps) {
@@ -74,7 +80,7 @@ export function ExperienceSearchResults({ results, worldViewId, onSelect }: Expe
             secondary={
               <>
                 <Typography variant="caption" color="text.secondary" noWrap display="block">
-                  {context(result)}
+                  {context(result, region)}
                 </Typography>
                 {/* Its own line, and never truncated: the reason is the whole
                     of why this row is here rather than a link, and in a 320 px

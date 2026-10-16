@@ -259,13 +259,6 @@ export function ExperienceCard({
             </Tooltip>
           )}
         </Box>
-        {experience.country_names?.[0] && (
-          <Typography variant="caption" color="text.secondary" noWrap sx={{ fontSize: '0.7rem' }}>
-            {experience.country_names.length > 1
-              ? `${experience.country_names[0]} +${experience.country_names.length - 1}`
-              : experience.country_names[0]}
-          </Typography>
-        )}
       </Box>
 
       {/* Actions: checkbox + curate */}

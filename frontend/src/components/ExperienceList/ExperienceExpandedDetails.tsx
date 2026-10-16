@@ -314,9 +314,6 @@ function ExperienceExpandedDetailsComponent({
             }}
           />
         ))}
-        {experience.country_names?.[0] && (
-          <Chip label={experience.country_names[0]} size="small" variant="outlined" />
-        )}
         {experience.in_danger && (
           <Chip label={inDangerLabel(experience.danger_since)} size="small" color="error" />
         )}

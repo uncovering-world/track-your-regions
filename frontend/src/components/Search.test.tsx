@@ -134,6 +134,15 @@ describe('the navigation pane search', () => {
     expect(address()).toBe('/wv/5/r/7100-noord-holland/e/6198-rijksmuseum');
   });
 
+  it('says where a result is by its region, never by a country name (#1579)', async () => {
+    mockSearchExperiences.mockResolvedValue({ query: 'rijks', results: [RIJKSMUSEUM], total: 1 });
+    renderSearch();
+    await type('rijks');
+
+    expect(await screen.findByText('Art Museums · Noord-Holland')).toBeTruthy();
+    expect(screen.queryByText(/Netherlands/)).toBeNull();
+  });
+
   it('shows an object this world view does not place, without offering a link to it', async () => {
     mockSearchExperiences.mockResolvedValue({ query: 'alh', results: [ALHAMBRA], total: 1 });
     renderSearch();
@@ -206,5 +215,7 @@ describe('the navigation pane search', () => {
 
     expect(await screen.findByText(/not in this world view/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /Rijksmuseum/ })).toBeNull();
+    // Still told apart from a same-named place: by the smallest region a world view gives it (#1579).
+    expect(screen.getByText('Art Museums · Noord-Holland')).toBeTruthy();
   });
 });

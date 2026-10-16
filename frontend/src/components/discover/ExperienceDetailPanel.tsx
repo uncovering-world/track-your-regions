@@ -252,9 +252,6 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
               sx={{ bgcolor: catStyle.bg, color: catStyle.text, fontWeight: 600, textTransform: 'capitalize' }}
             />
           )}
-          {experience.country_names?.map((name, i) => (
-            <Chip key={i} label={name} size="small" variant="outlined" />
-          ))}
           {experience.in_danger && (
             <Chip label={inDangerLabel(experience.danger_since)} size="small" color="error" />
           )}
