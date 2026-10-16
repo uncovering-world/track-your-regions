@@ -8,8 +8,9 @@ import { expect, test } from '@playwright/test';
  * says which shape it browsed and proves it on the document the server sends,
  * before the app runs: the dev server marks the title (`devServerTitle` in
  * frontend/vite.config.ts) and loads `/@vite/client`, the build does neither.
- * The live tab title cannot tell them apart, since `useDocumentTitle` rewrites
- * it in both shapes once the app mounts.
+ * The served document rather than the live tab: the tab keeps the mark too
+ * (`useDocumentTitle` composes with it, #1549), but what the server sent is
+ * decided before any app code runs, so the proof does not rest on the app.
  */
 const MODE = process.env.E2E_FRONTEND_MODE === 'preview' ? 'preview' : 'dev';
 
