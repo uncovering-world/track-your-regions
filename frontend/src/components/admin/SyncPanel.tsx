@@ -16,6 +16,7 @@ import {
   Chip,
   Alert,
   Tooltip,
+  TextField,
 } from '@mui/material';
 import SyncIcon from '@mui/icons-material/Sync';
 import StopIcon from '@mui/icons-material/Stop';
@@ -246,8 +247,12 @@ function SourceCard({ source }: SourceCardProps) {
   // gap between the click and the first poll reads as nothing having happened.
   // Proposals only, so no review of its own: each candidate it finds waits for
   // a curator. Reported through the same status as the two above.
+  // A site's id narrows the search to that site (#1429): a curator working
+  // through one site, or a change measured on the site it was made for.
+  const [componentSite, setComponentSite] = useState('');
+  const componentSiteId = /^\d+$/.test(componentSite.trim()) ? Number(componentSite.trim()) : undefined;
   const findComponentItemsMutation = useMutation({
-    mutationFn: () => findComponentItems(source.id),
+    mutationFn: () => findComponentItems(source.id, componentSiteId),
     onSuccess: beginRun('components'),
   });
 
@@ -509,10 +514,20 @@ function SourceCard({ source }: SourceCardProps) {
                       onClick={() => findComponentItemsMutation.mutate()}
                       disabled={!source.is_active || isStarting}
                     >
-                      Find component items
+                      {componentSiteId === undefined ? 'Find component items' : 'Find component items for this site'}
                     </Button>
                   </span>
                 </Tooltip>
+              )}
+              {source.findsComponentItems && (
+                <TextField
+                  size="small"
+                  label="One site (id)"
+                  value={componentSite}
+                  onChange={(e) => setComponentSite(e.target.value)}
+                  sx={{ width: 140 }}
+                  slotProps={{ htmlInput: { inputMode: 'numeric', 'aria-label': 'Search one site, by its id' } }}
+                />
               )}
               <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
                 A sync preserves curator edits, visit history, manual region assignments and
