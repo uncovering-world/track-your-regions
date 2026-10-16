@@ -971,6 +971,18 @@ passed on the same inputs — after a fold, a clean rebase or a Markdown-only wa
 — is not run again and is printed as reused, never as a fresh pass; `--no-cache`
 runs it anyway, and CI never reuses one (ADR-0091).
 
+**Which trees the gates read.** Lint: `backend/src` (`lint:backend`),
+`frontend/src` and `frontend/perf` (`lint:frontend`), `packages/shared`
+(`lint:shared`), and `scripts/*.mjs` (`lint:scripts`, the backend's presets run
+from the root, #655). Tests: the backend unit lane runs the specs of
+`backend/src`, `scripts/` and `packages/shared/src` (`backend/vitest.config.ts`);
+the frontend lane those of `frontend/src`, `frontend/perf` and `frontend/tests`
+(`frontend/vite.config.ts`). A script under
+`scripts/` is linted and its spec run by being there; a script whose logic needs
+a spec keeps that logic in a module with no side effects on import, as
+`test-report-summary.mjs`, `perf-api-report.mjs` and `playwright-summary.mjs`
+do beside the scripts that run as soon as they are loaded.
+
 ```bash
 npm run gates                       # every gate, run or skipped, with its reason
 npm run check                       # the fast gates this change asks for
