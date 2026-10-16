@@ -20,6 +20,7 @@ import { useListScrollAnchor } from './ExperienceList/useListScrollAnchor';
 import { cardAboveGroups, echoRows, groupByEveryKind } from './ExperienceList/kindRows';
 import { useOpenedKind } from './ExperienceList/useOpenedKind';
 import { GroupHeader } from './ExperienceList/GroupHeader';
+import { narrowGroups } from './ExperienceList/kindTypes';
 import { NoticeLink } from './shared/NoticeLink';
 import { HIDE_LOST_LABEL, lostHiddenLabel } from './shared/lostNotice';
 import { RejectedSection } from './ExperienceList/RejectedSection';
@@ -81,6 +82,9 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     settleArrival,
     triggerFlyTo,
     setExpandedKindNames,
+    kindTypes,
+    kindTypeIndex,
+    setKindType,
     collapsedExperienceIds,
     toggleCollapsedExperience,
   } = useExperienceContext();
@@ -217,7 +221,12 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
   // Every place under each of its kinds, sorted by the kinds' display order, the
   // rows rebuilt only when the listed places change; one of a place's rows is the
   // home its card opens in, the rest are echoes (`kindRows.ts`).
-  const groups = useMemo(() => groupByEveryKind(listedExperiences), [listedExperiences]);
+  const allGroups = useMemo(() => groupByEveryKind(listedExperiences), [listedExperiences]);
+  // A kind's group narrowed to the type its chips chose, the pins with it (#589).
+  const groups = useMemo(
+    () => narrowGroups(allGroups, kindTypes, selectedExperienceId),
+    [allGroups, kindTypes, selectedExperienceId],
+  );
   // A place in several kinds opened from its pin or an address has its card
   // above the groups, and every row of it is an echo (#1262). The card is a row
   // object of its own, so a click on it is told from a click on its echoes.
@@ -572,12 +581,26 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
 
   // Takes the narrower shape: a header draws a name and a count and has no use
   // for the priority the sort above needs.
+  // What a header counts its rows against: the kind's whole region while the
+  // view filters the list, the group before its type narrowed it while a type
+  // does, and nothing — the shown count alone — otherwise.
+  const headerTotal = (kindName: string): number | null => {
+    if (groupsAreFiltered) return totalByKind.get(kindName) ?? null;
+    if (kindTypes.has(kindName)) return kindTypeIndex.get(kindName)?.size ?? null;
+    return null;
+  };
+
   const renderGroupHeader = (group: ExperienceGroupLike) => (
     <GroupHeader
       group={group}
       expanded={expandedGroups.has(group.kindName)}
       onToggle={() => toggleGroup(group.kindName)}
-      regionTotal={groupsAreFiltered ? totalByKind.get(group.kindName) ?? null : null}
+      regionTotal={headerTotal(group.kindName)}
+      types={kindTypeIndex.get(group.kindName)?.choices ?? []}
+      activeType={kindTypes.get(group.kindName) ?? null}
+      onType={(type) => setKindType(group.kindName, type)}
+      kindId={kindTypeIndex.get(group.kindName)?.kindId ?? null}
+      allCount={kindTypeIndex.get(group.kindName)?.size}
       canAdd={!!hasCuratorScope && !!regionId}
       onAdd={() => setAddDialogState({
         open: true,

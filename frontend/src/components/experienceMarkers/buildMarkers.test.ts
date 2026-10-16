@@ -334,6 +334,39 @@ describe('a place in several kinds', () => {
 });
 
 
+describe('a kind narrowed to one type in the list (#589)', () => {
+  const site = (id: number, type: string) => makeExperience(id, {
+    kind_id: 1, type,
+    kinds: [{ kind_id: 1, kind_name: 'World Heritage Sites', kind_priority: 1, type, source_id: 1, external_id: String(id), source_membership: 'present' }],
+  });
+
+  it("draws only the chosen type's pins", () => {
+    // Italy's World Heritage group narrowed to Natural: the Dolomites stay, Pompeii goes.
+    const pompeii = site(829, 'cultural');
+    const dolomites = site(1237, 'natural');
+    const markers = buildExperienceMarkers(
+      [pompeii, dolomites], {}, new Set(['World Heritage Sites']), undefined, null,
+      new Map([['World Heritage Sites', 'natural']]),
+    );
+    expect(markers.map(m => m.experienceId)).toEqual([1237]);
+  });
+
+  it("keeps a place another open kind shows, in that kind's colour", () => {
+    const capitoline = makeExperience(6214, {
+      kind_id: 2, kind_name: 'Art Museums', type: null,
+      kinds: [
+        { kind_id: 2, kind_name: 'Art Museums', kind_priority: 2, type: null, source_id: 2, external_id: 'Q333906', source_membership: 'present' },
+        { kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, type: 'museum', source_id: 5, external_id: 'Q333906', source_membership: 'present' },
+      ],
+    });
+    const markers = buildExperienceMarkers(
+      [capitoline], {}, new Set(['Art Museums', 'Archaeology']), undefined, null,
+      new Map([['Archaeology', 'site']]),
+    );
+    expect(markers[0].kindColors).toEqual([experienceColor(2, null)]);
+  });
+});
+
 describe("a place marker's name (#1268)", () => {
   // Two of the Via Appia's parts, which UNESCO leaves unnamed, and a museum's one point.
   const appia = { id: 1045, name: 'Via Appia. Regina Viarum', kind_id: 1, kind_name: 'World Heritage Sites',

@@ -98,6 +98,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     clearFlyTo,
     getExperienceById,
     expandedKindNames,
+    kindTypes,
     collapsedExperienceIds,
     toggleCollapsedExperience,
     showLost,
@@ -145,8 +146,8 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
   // highlight layer below, which follows the same rule.
   const markers = useMemo(
     () => buildExperienceMarkers(
-      experiences, locationsByExperience, expandedKindNames, collapsedExperienceIds),
-    [experiences, locationsByExperience, expandedKindNames, collapsedExperienceIds],
+      experiences, locationsByExperience, expandedKindNames, collapsedExperienceIds, null, kindTypes),
+    [experiences, locationsByExperience, expandedKindNames, collapsedExperienceIds, kindTypes],
   );
 
   // The outline of whichever place the reader is looking at, written straight

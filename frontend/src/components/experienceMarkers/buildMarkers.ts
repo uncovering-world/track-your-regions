@@ -17,6 +17,7 @@ import { pinLabel } from '../../utils/locationLabel';
 
 /** Shared empty set, so a caller with nothing collapsed allocates nothing. */
 const EMPTY_COLLAPSED: ReadonlySet<number> = new Set<number>();
+const NO_KIND_TYPES: ReadonlyMap<string, string> = new Map();
 
 /**
  * The places an object is drawn as: the ones in this region, or all of them when
@@ -101,11 +102,15 @@ function shownKinds(
   exp: Experience,
   shownKindNames: Set<string>,
   onlyKindId: number | null,
+  kindTypes: ReadonlyMap<string, string>,
 ): Array<{ kind_id: number; type: string | null }> {
   const kinds = exp.kinds ?? [{ kind_id: exp.kind_id, kind_name: exp.kind_name || 'Experiences', type: exp.type }];
   if (onlyKindId !== null) return kinds.filter(kind => kind.kind_id === onlyKindId);
-  if (shownKindNames.size > 0) return kinds.filter(kind => shownKindNames.has(kind.kind_name));
-  return kinds;
+  // A kind narrowed to one type in the list (#589) shows the place only as that type.
+  const ofItsType = (kind: { kind_name: string; type: string | null }) =>
+    !kindTypes.has(kind.kind_name) || kindTypes.get(kind.kind_name) === kind.type;
+  if (shownKindNames.size > 0) return kinds.filter(kind => shownKindNames.has(kind.kind_name) && ofItsType(kind));
+  return kinds.filter(ofItsType);
 }
 
 /**
@@ -178,6 +183,7 @@ export function buildExperienceMarkers(
   expandedKindNames: Set<string>,
   collapsedExperienceIds: ReadonlySet<number> = EMPTY_COLLAPSED,
   onlyKindId: number | null = null,
+  kindTypes: ReadonlyMap<string, string> = NO_KIND_TYPES,
 ): MarkerData[] {
   const result: MarkerData[] = [];
 
@@ -193,7 +199,7 @@ export function buildExperienceMarkers(
   for (const exp of experiences) {
     // One pin per place, drawn while any of its kinds is shown, in the colours
     // of the kinds it shows (#1245, #1262).
-    const kinds = shownKinds(exp, expandedKindNames, onlyKindId);
+    const kinds = shownKinds(exp, expandedKindNames, onlyKindId, kindTypes);
     if (kinds.length === 0) continue;
     const kindColors = kinds.map(kind => experienceColor(kind.kind_id, kind.type));
 
