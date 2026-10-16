@@ -483,7 +483,38 @@ gigabyte is not the whole dump's.
 
 ## The admin panel
 
-Admin → **Public Dumps** (`frontend/src/components/admin/DumpsPanel.tsx`)
+Admin → **Public Dumps** opens on what an admin needs (#1583): one card per
+copy the catalogue builds from a dump, the Wikidata copy today
+(`WikidataCopyCard.tsx`). It says what the copy is, which dump it was built
+from, and, only when something needs doing, a notice naming the one action and
+what it costs:
+
+| What the copy needs (`needs`) | The notice | The button |
+|---|---|---|
+| `newer-dump`: the host lists a newer dump than the one it was built from | A newer dump is out | *Update*, a `keep` build of the newest file (hours) |
+| `recompute`: the code now makes the derived tables differently | The app was updated, and the tables need recomputing | *Recompute*, a `rederive` (minutes) |
+| `rebuild`: the code now keeps or writes the copy differently, or no copy is in place | The app was updated, and the copy needs a full update | *Update* (*Build* where there is none) |
+| `nothing` | "Up to date" | none |
+
+While a build runs, the card shows its progress and *Stop*. What the copy needs
+is `whatTheKeptNeeds` (`keepers.ts`). It reads two things:
+- The rules the build in place was made under. Each swap records them in
+  `wikidata_subset_builds.rules` (migration 112, `buildRules.ts`): the first
+  pass's version and rules, `WRITE_VERSION`, and `DERIVE_VERSION`, which is
+  raised by hand with any change to what the derived tables hold. A re-derive
+  records the build's scope and writing with the code's derivations. A row
+  from before the rules were recorded is read as current.
+- The newest dump the host lists (`newestOnHost.ts`). It is asked at most once
+  a day, in the background, so the page never waits on the host. Until it has
+  been asked since the backend started (`newestChecked: 'not-yet'`) the card
+  says it is checking rather than "Up to date", and the page asks again every
+  ten seconds. When the host did not answer (`unreachable`), the card says a
+  newer dump may be out.
+
+Everything else sits in the collapsed section *For developers*: every dump,
+every build button, the sample and the trial, and the build history.
+
+The developers' section (`frontend/src/components/admin/DumpsPanel.tsx`)
 groups the catalog's dumps by who publishes them (each descriptor's `source`),
 one table per publisher on one column grid. A row is a dump with what it holds
 and how its last build ended: *Verified*, *Failed* or *Cancelled*, when, the
