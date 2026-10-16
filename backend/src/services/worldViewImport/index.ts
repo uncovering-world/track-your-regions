@@ -13,6 +13,7 @@ import type { ImportTreeNode, ImportProgress, MatchingPolicy } from './types.js'
 import { createInitialProgress } from './types.js';
 import { defaultMatchingPolicy, type ImportSourceType } from './sourceTypes.js';
 import { buildBaseLayerTree } from './baseLayerImporter.js';
+import { runSpatialPass, spatialSentence, type SpatialPassSummary } from './spatialPass.js';
 
 export type { ImportTreeNode, ImportProgress, MatchSuggestion, MatchingPolicy } from './types.js';
 export { matchCountryLevel } from './matcher.js';
@@ -182,12 +183,27 @@ export async function runMatchingPolicy(
   policy: Exclude<MatchingPolicy, 'none'>,
   worldViewId: number,
   progress: ImportProgress,
-): Promise<void> {
-  if (policy === 'hierarchical') {
-    await matchHierarchical(worldViewId, progress);
-    return;
-  }
-  await matchCountryLevel(worldViewId, progress);
+): Promise<MatchOutcome> {
+  if (policy === 'hierarchical') await matchHierarchical(worldViewId, progress);
+  else await matchCountryLevel(worldViewId, progress);
+  // A cancel the policy saw: its results may not be written, so the run is cancelled.
+  if (progress.cancel) return { cancelled: true, spatial: null };
+  // What names could not match, the item's shape or points may (#622). A cancel
+  // from here on only stops the scoring: the policy's results are written, so the
+  // caller finishes the run and marks it ready for review. The policy's own
+  // message is what a non-country caller builds its summary on, so it is put
+  // back once the pass has used the line; the pass's outcome is the caller's to
+  // add (`spatialSentence`).
+  const policyMessage = progress.statusMessage;
+  const spatial = await runSpatialPass(worldViewId, progress);
+  progress.statusMessage = policyMessage;
+  return { cancelled: false, spatial };
+}
+
+/** How the match phase ended: cancelled while the policy ran, or done, with the spatial pass's outcome. */
+export interface MatchOutcome {
+  cancelled: boolean;
+  spatial: SpatialPassSummary | null;
 }
 
 /** Internal: run the full import + match pipeline */
@@ -233,10 +249,10 @@ async function runImport(
     } else {
       const phase2Start = Date.now();
       console.log(`[WV Import] ${opId} Phase 2: Matching to GADM (policy=${matchingPolicy})...`);
-      await runMatchingPolicy(matchingPolicy, worldViewId, progress);
+      const { cancelled, spatial } = await runMatchingPolicy(matchingPolicy, worldViewId, progress);
       const phase2Duration = ((Date.now() - phase2Start) / 1000).toFixed(1);
 
-      if (!progress.cancel) {
+      if (!cancelled) {
         // Mark import run as ready for admin review
         await pool.query(
           `UPDATE import_runs SET status = 'reviewing', completed_at = NOW()
@@ -255,6 +271,7 @@ async function runImport(
         progress.statusMessage = matchingPolicy === 'country-based'
           ? `Import complete: ${progress.createdRegions} regions, ${progress.countriesMatched} countries matched (${progress.subdivisionsDrilled} with subdivisions), ${progress.noCandidates} unmatched leaves`
           : `Import complete: ${progress.createdRegions} regions. ${progress.statusMessage}`;
+        if (spatial) progress.statusMessage += spatialSentence(spatial);
         console.log(`[WV Import] ${opId} Complete in ${totalDuration}s (phase2=${phase2Duration}s): ${progress.statusMessage}`);
       } else {
         console.log(`[WV Import] ${opId} Cancelled during phase 2`);

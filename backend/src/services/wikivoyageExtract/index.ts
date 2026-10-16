@@ -19,6 +19,7 @@ import { type ClassificationCache } from './aiClassifier.js';
 import { collectPageTitles, fetchWikidataIds, enrichWikidataIds } from './wikidataEnricher.js';
 import { importTree } from '../worldViewImport/importer.js';
 import { runMatchingPolicy } from '../worldViewImport/index.js';
+import { spatialSentence, type SpatialPassSummary } from '../worldViewImport/spatialPass.js';
 import { defaultMatchingPolicy } from '../worldViewImport/sourceTypes.js';
 import { createInitialProgress as createImportProgress } from '../worldViewImport/types.js';
 import OpenAI from 'openai';
@@ -425,7 +426,7 @@ async function runMatchPhase(
   progress: ExtractionProgress,
   worldViewId: number,
   importProgress: ReturnType<typeof createImportProgress>,
-): Promise<boolean> {
+): Promise<{ spatial: SpatialPassSummary | null } | false> {
   progress.status = 'matching';
   progress.statusMessage = 'Matching countries to GADM divisions...';
   console.log(`[WV Extract] ${opId} Phase 4: Matching countries to GADM...`);
@@ -448,14 +449,26 @@ async function runMatchPhase(
     get: () => progress.cancel,
   });
 
-  await runMatchingPolicy(defaultMatchingPolicy('wikivoyage'), worldViewId, importProgress);
+  // And the line the panel reads: the matcher and the spatial pass write theirs on
+  // the import's progress, which the panel never polls, so each write is mirrored
+  // onto the extraction's own (#622).
+  let importMessage = importProgress.statusMessage;
+  Object.defineProperty(importProgress, 'statusMessage', {
+    configurable: true,
+    get: () => importMessage,
+    set: (message: string) => { importMessage = message; progress.statusMessage = message; },
+  });
+
+  const { cancelled, spatial } = await runMatchingPolicy(defaultMatchingPolicy('wikivoyage'), worldViewId, importProgress);
 
   progress.countriesMatched = importProgress.countriesMatched;
   progress.totalCountries = importProgress.totalCountries;
   progress.subdivisionsDrilled = importProgress.subdivisionsDrilled;
   progress.noCandidates = importProgress.noCandidates;
 
-  if (importProgress.cancel || progress.cancel) {
+  // A cancel the policy saw; one during the spatial pass only stopped the scoring,
+  // and the match is written, so the run finishes (`runMatchingPolicy`).
+  if (cancelled) {
     progress.status = 'cancelled';
     progress.statusMessage = 'Matching cancelled';
     console.log(`[WV Extract] ${opId} Cancelled during phase 4`);
@@ -469,7 +482,7 @@ async function runMatchPhase(
   );
 
   snapshotCache();
-  return true;
+  return { spatial };
 }
 
 /** Internal: run the full extraction → import → match pipeline */
@@ -501,7 +514,8 @@ async function runExtraction(
     progress.statusMessage =
       `Extraction complete: ${totalNodes} regions extracted, ` +
       `${importProgress.createdRegions} imported, ` +
-      `${importProgress.countriesMatched} countries matched`;
+      `${importProgress.countriesMatched} countries matched` +
+      (matched.spatial ? spatialSentence(matched.spatial) : '');
 
     const totalDuration = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(

@@ -14,6 +14,7 @@ import type { RematchStarted, RematchStatus } from '../../api/responses/worldVie
 import { createError, notFound } from '../../middleware/errorHandler.js';
 import type { worldViewIdParamSchema, wvImportRematchBodySchema } from '../../types/index.js';
 import { runMatchingPolicy } from '../../services/worldViewImport/index.js';
+import { spatialSentence } from '../../services/worldViewImport/spatialPass.js';
 import { createInitialProgress, type ImportProgress, type MatchingPolicy } from '../../services/worldViewImport/types.js';
 import { IMPORT_SOURCE_TYPES_ALL, defaultMatchingPolicy } from '../../services/worldViewImport/sourceTypes.js';
 
@@ -140,7 +141,7 @@ async function runRematch(
     return;
   }
   progress.statusMessage = `Re-matching to GADM (policy=${policy})...`;
-  await runMatchingPolicy(policy, worldViewId, progress);
+  const { spatial } = await runMatchingPolicy(policy, worldViewId, progress);
 
   const totalDuration = ((Date.now() - startTime) / 1000).toFixed(1);
   progress.status = 'complete';
@@ -152,6 +153,7 @@ async function runRematch(
   progress.statusMessage = policy === 'country-based'
     ? `Re-match complete: ${progress.countriesMatched} countries matched (${progress.subdivisionsDrilled} with subdivisions), ${progress.noCandidates} unmatched. Took ${totalDuration}s.`
     : `${progress.statusMessage} (total ${totalDuration}s)`;
+  if (spatial) progress.statusMessage += spatialSentence(spatial);
   console.log(`[WV Import Rematch] Complete in ${totalDuration}s: matched=${progress.countriesMatched}, drilldowns=${progress.subdivisionsDrilled}, none=${progress.noCandidates}`);
 }
 
