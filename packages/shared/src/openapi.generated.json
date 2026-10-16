@@ -2400,6 +2400,148 @@
         }
       }
     },
+    "/api/world-views/regions/{regionId}/subdivision-groups": {
+      "get": {
+        "operationId": "getWorldViewsRegionsByRegionIdSubdivisionGroups",
+        "summary": "Get a region's groups in the Create Subregions dialog, in their order",
+        "tags": [
+          "world-views"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "regionId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RegionSubdivisionGroups"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putWorldViewsRegionsByRegionIdSubdivisionGroups",
+        "summary": "Replace a region's groups in the Create Subregions dialog",
+        "tags": [
+          "world-views"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "regionId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegionSubdivisionGroupsBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Done; there is no body."
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "operationId": "deleteWorldViewsRegionsByRegionIdSubdivisionGroups",
+        "summary": "Drop a region's groups in the Create Subregions dialog",
+        "tags": [
+          "world-views"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "regionId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Done; there is no body."
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/world-views/regions/{regionId}/members/move": {
       "post": {
         "operationId": "postWorldViewsRegionsByRegionIdMembersMove",
@@ -29499,6 +29641,121 @@
           "$ref": "#/components/schemas/RegionSearchResult"
         },
         "description": "The best matches, at most as many as asked for."
+      },
+      "RegionSubdivisionGroups": {
+        "type": "object",
+        "properties": {
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "color": {
+                  "description": "The colour picked for the group, #rrggbb; null for the palette's.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "existingRegionId": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "minimum": -9007199254740991,
+                      "maximum": 9007199254740991
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "description": "The child region the group fills instead of a new one."
+                },
+                "memberRowIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "description": "The region_members rows in the group: only rows still in the region."
+                }
+              },
+              "required": [
+                "name",
+                "color",
+                "existingRegionId",
+                "memberRowIds"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "groups"
+        ],
+        "additionalProperties": false,
+        "description": "A region's groups in the Create Subregions dialog (#595), in their order: an admin's working material."
+      },
+      "RegionSubdivisionGroupsBody": {
+        "type": "object",
+        "properties": {
+          "groups": {
+            "maxItems": 500,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 255
+                },
+                "color": {
+                  "anyOf": [
+                    {
+                      "type": "string",
+                      "pattern": "^#[0-9a-fA-F]{6}$"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "existingRegionId": {
+                  "anyOf": [
+                    {
+                      "type": "integer",
+                      "exclusiveMinimum": 0,
+                      "maximum": 2147483647
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "memberRowIds": {
+                  "maxItems": 20000,
+                  "type": "array",
+                  "items": {
+                    "type": "integer",
+                    "exclusiveMinimum": 0,
+                    "maximum": 2147483647
+                  }
+                }
+              },
+              "required": [
+                "name",
+                "memberRowIds"
+              ]
+            }
+          }
+        },
+        "required": [
+          "groups"
+        ]
       },
       "Regions": {
         "type": "array",

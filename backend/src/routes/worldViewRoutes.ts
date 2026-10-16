@@ -30,6 +30,7 @@ import {
   RegionGeometry,
   RegionImageOverlay,
   RegionMembers,
+  RegionSubdivisionGroups,
   Regions,
   RegionSearchResults,
   SubregionFlattened,
@@ -75,6 +76,9 @@ import {
   getRegionImageOverlay,
   saveRegionImageOverlay,
   deleteRegionImageOverlay,
+  getRegionSubdivisionGroups,
+  saveRegionSubdivisionGroups,
+  deleteRegionSubdivisionGroups,
 } from '../controllers/worldView/index.js';
 import { publicReadLimiter } from '../middleware/rateLimiter.js';
 import {
@@ -102,6 +106,7 @@ import {
   regenerateDisplayQuerySchema,
   regionGeometryDetailQuerySchema,
   regionImageOverlayBodySchema,
+  regionSubdivisionGroupsBodySchema,
 } from '../types/index.js';
 
 export const worldViewRoutes = [
@@ -344,6 +349,32 @@ export const worldViewRoutes = [
     response: NO_BODY,
     noContent: true,
     handler: deleteRegionImageOverlay,
+  }),
+  // A region's groups in the Create Subregions dialog (#595): its subregions
+  // being sorted, an admin's working material like the reference map.
+  defineRoute({
+    method: 'get', path: '/regions/:regionId/subdivision-groups', access: 'admin', cache: 'no-store',
+    summary: "Get a region's groups in the Create Subregions dialog, in their order",
+    params: regionIdParamSchema,
+    response: RegionSubdivisionGroups,
+    handler: getRegionSubdivisionGroups,
+  }),
+  defineRoute({
+    method: 'put', path: '/regions/:regionId/subdivision-groups', access: 'admin', cache: 'no-store',
+    summary: "Replace a region's groups in the Create Subregions dialog",
+    params: regionIdParamSchema,
+    body: regionSubdivisionGroupsBodySchema,
+    response: NO_BODY,
+    noContent: true,
+    handler: saveRegionSubdivisionGroups,
+  }),
+  defineRoute({
+    method: 'delete', path: '/regions/:regionId/subdivision-groups', access: 'admin', cache: 'no-store',
+    summary: "Drop a region's groups in the Create Subregions dialog",
+    params: regionIdParamSchema,
+    response: NO_BODY,
+    noContent: true,
+    handler: deleteRegionSubdivisionGroups,
   }),
   defineRoute({
     method: 'post', path: '/regions/:regionId/members/move', access: 'admin', cache: 'no-store',

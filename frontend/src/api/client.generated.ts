@@ -8084,6 +8084,51 @@ export interface RegionSearchResult {
  */
 export type RegionSearchResults = RegionSearchResult[];
 
+export type RegionSubdivisionGroupsGroupsItem = {
+  name: string;
+  /**
+     * The colour picked for the group, #rrggbb; null for the palette's.
+     * @nullable
+     */
+  color: string | null;
+  /** The child region the group fills instead of a new one. */
+  existingRegionId: number | null;
+  /**
+     * The region_members rows in the group: only rows still in the region.
+     * @items.minimum -9007199254740991
+     * @items.maximum 9007199254740991
+     */
+  memberRowIds: number[];
+};
+
+/**
+ * A region's groups in the Create Subregions dialog (#595), in their order: an admin's working material.
+ */
+export interface RegionSubdivisionGroups {
+  groups: RegionSubdivisionGroupsGroupsItem[];
+}
+
+export type RegionSubdivisionGroupsBodyGroupsItem = {
+  /**
+     * @minLength 1
+     * @maxLength 255
+     */
+  name: string;
+  color?: string | null;
+  existingRegionId?: number | null;
+  /**
+     * @maxItems 20000
+     * @items.maximum 2147483647
+     * @items.exclusiveMinimum 0
+     */
+  memberRowIds: number[];
+};
+
+export interface RegionSubdivisionGroupsBody {
+  /** @maxItems 500 */
+  groups: RegionSubdivisionGroupsBodyGroupsItem[];
+}
+
 /**
  * Regions, by name; or a region's ancestors, from the root to the region itself.
  */
@@ -13096,6 +13141,96 @@ export const getDeleteWorldViewsRegionsByRegionIdImageOverlayUrl = (regionId: nu
 export const deleteWorldViewsRegionsByRegionIdImageOverlay = async (regionId: number, options?: Parameters<typeof apiFetch>[1]): Promise<void> => {
 
   return apiFetch<void>(getDeleteWorldViewsRegionsByRegionIdImageOverlayUrl(regionId),
+  {
+    ...options,
+    method: 'DELETE'
+
+
+  }
+);}
+
+
+
+export const getGetWorldViewsRegionsByRegionIdSubdivisionGroupsUrl = (regionId: number,) => {
+
+
+
+
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/subdivision-groups`
+}
+
+/**
+ * Requires an admin.
+ * @summary Get a region's groups in the Create Subregions dialog, in their order
+ */
+export const getWorldViewsRegionsByRegionIdSubdivisionGroups = async (regionId: number, options?: Parameters<typeof apiFetch>[1]): Promise<RegionSubdivisionGroups> => {
+
+  return apiFetch<RegionSubdivisionGroups>(getGetWorldViewsRegionsByRegionIdSubdivisionGroupsUrl(regionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getPutWorldViewsRegionsByRegionIdSubdivisionGroupsUrl = (regionId: number,) => {
+
+
+
+
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/subdivision-groups`
+}
+
+/**
+ * Requires an admin.
+ * @summary Replace a region's groups in the Create Subregions dialog
+ */
+export const putWorldViewsRegionsByRegionIdSubdivisionGroups = async (regionId: number,
+    regionSubdivisionGroupsBody: RegionSubdivisionGroupsBody, options?: Parameters<typeof apiFetch>[1]): Promise<void> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<void>(getPutWorldViewsRegionsByRegionIdSubdivisionGroupsUrl(regionId),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(regionSubdivisionGroupsBody)
+  }
+);}
+
+
+
+export const getDeleteWorldViewsRegionsByRegionIdSubdivisionGroupsUrl = (regionId: number,) => {
+
+
+
+
+  return `/api/world-views/regions/${encodeURIComponent(String(regionId))}/subdivision-groups`
+}
+
+/**
+ * Requires an admin.
+ * @summary Drop a region's groups in the Create Subregions dialog
+ */
+export const deleteWorldViewsRegionsByRegionIdSubdivisionGroups = async (regionId: number, options?: Parameters<typeof apiFetch>[1]): Promise<void> => {
+
+  return apiFetch<void>(getDeleteWorldViewsRegionsByRegionIdSubdivisionGroupsUrl(regionId),
   {
     ...options,
     method: 'DELETE'
