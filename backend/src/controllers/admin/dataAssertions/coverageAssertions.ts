@@ -10,11 +10,11 @@
  *
  * The decision is the coverage report's (`catalogueCoverage/report.ts`), which
  * the terminal command prints too; this file only says its findings the way the
- * panel says a row. Nothing here decides what is offered or where a kind's line
- * is.
+ * panel says a row. Nothing here decides what is offered, where a kind's line
+ * is, or whether a judgement of the ledger (ADR-0116) still stands.
  */
 
-import { coverageReport, type CoverageReport, type Verdict } from '../catalogueCoverage/report.js';
+import { causeWords, coverageReport, type CoverageReport, type Verdict } from '../catalogueCoverage/report.js';
 import {
   AssertionUnavailable, count, text,
   type AssertionRow, type Collected, type ComputedAssertion,
@@ -55,22 +55,57 @@ function kindLine(kind: CoverageReport['liveKinds'][number]): string {
   return `${offers}; ${over}, and ${under} the regional tier's to hold.`;
 }
 
-/** The report's findings, one row per kind and entry, the most named first. */
+/** How many wait for a person, said in number. */
+function waitingWords(waiting: number): string {
+  if (waiting === 0) return 'none waits for a person';
+  if (waiting === 1) return '1 waits for a person';
+  return `${waiting} wait for a person`;
+}
+
+/** How many of what a kind lacks a person has judged, by cause, and how many wait for one. */
+function judgedLine(kind: CoverageReport['liveKinds'][number]): string {
+  const judged = kind.judgedByCause.reduce((sum, cause) => sum + cause.count, 0);
+  const them = judged === 1 ? '1 of them is judged' : `${judged} of them are judged`;
+  return ` ${them}: ${kind.judgedByCause.map(causeWords).join('; ')}; ${waitingWords(kind.wellKnownMissing.length - judged)}.`;
+}
+
+/**
+ * The report's findings, one row per kind and entry a person has not judged, the most named
+ * first, and after them one row per judgement whose gap has closed (ADR-0116).
+ */
 export function coverageFindings(report: CoverageReport): Collected {
   if (report.expectations.length === 0) throw new AssertionUnavailable(NOT_LOADED);
   const regionName = new Map(report.regions.map(region => [region.slug, region.name]));
-  const rows: AssertionRow[] = report.liveKinds.flatMap(kind => kind.wellKnownMissing.map(missing => ({
-    kind: kind.name,
-    name: missing.name,
-    region: regionName.get(missing.regionSlug) ?? missing.regionSlug,
-    sources: missing.sourceCount,
-    sitelinks: missing.sitelinks,
-    verdict: missing.verdict,
-  })));
+  const rows: AssertionRow[] = report.liveKinds.flatMap(kind => kind.wellKnownMissing
+    .filter(missing => missing.judgement === null)
+    .map(missing => ({
+      kind: kind.name,
+      name: missing.name,
+      region: regionName.get(missing.regionSlug) ?? missing.regionSlug,
+      sources: missing.sourceCount,
+      sitelinks: missing.sitelinks,
+      verdict: missing.verdict,
+    })));
   rows.sort((a, b) => count(b, 'sources') - count(a, 'sources')
     || count(b, 'sitelinks') - count(a, 'sitelinks')
     || text(a, 'name').localeCompare(text(b, 'name')));
-  return { rows, context: report.liveKinds.map(kindLine) };
+  const stale: AssertionRow[] = report.staleJudgements.map(judgement => ({
+    kind: judgement.kindName,
+    name: judgement.name,
+    region: regionName.get(judgement.regionSlug) ?? judgement.regionSlug,
+    stale: judgement.cause,
+    issue: judgement.issue,
+    judged: judgement.judged,
+  }));
+  const context = report.liveKinds.map(kind => kindLine(kind) + (kind.judgedByCause.length > 0 ? judgedLine(kind) : ''));
+  return { rows: [...rows, ...stale], context };
+}
+
+/** A judgement whose gap has closed, said as the thing to do about it. */
+function describeStale(row: AssertionRow): string {
+  const issue = row.issue === null || row.issue === undefined ? '' : ` (#${count(row, 'issue')})`;
+  return `${text(row, 'name')} (${text(row, 'region')}): judged ${text(row, 'stale')}${issue} on ${text(row, 'judged')}, `
+    + `and ${text(row, 'kind')} offers it now: the line comes out of judgements.jsonl.`;
 }
 
 const expectedWellKnownMissing: ComputedAssertion = {
@@ -83,11 +118,16 @@ const expectedWellKnownMissing: ComputedAssertion = {
     + 'Each row is one that a live kind should hold by its own rule, being at or over the kind\'s '
     + 'sitelinks line (the number of Wikimedia sites with an article on it), or any for a kind that '
     + 'draws no line, and that the kind does not offer. A count that grows is a place the catalogue lost, '
-    + 'unless the lists were extended. A row is answered by the kind\'s run or a curator, or, where the catalogue holds '
-    + 'the place under another Wikidata item, by naming that item in the entry\'s same_as. Those under '
-    + 'the line are the regional tier\'s, and are counted beside the rows rather than listed.',
+    + 'unless the lists were extended or a judged gap closed. A row is answered by the kind\'s run or a curator, or, where the catalogue holds '
+    + 'the place under another Wikidata item, by naming that item in the entry\'s same_as, or by a person judging '
+    + 'why the gap stands, once per kind, in db/catalogue-coverage/judgements.jsonl: a defect of a rule, a door no rule has '
+    + 'yet, a kind that does not exist, a part of a place the catalogue offers, a reader finding it under another kind, '
+    + 'or not a must. A judged gap is counted by its cause beside the rows and listed no more; a judgement whose gap '
+    + 'has since closed, the kind offering the entry now, is listed as a line to remove. Those under the line are the '
+    + 'regional tier\'s, and are counted beside the rows rather than listed.',
   collect: async () => coverageFindings(await coverageReport()),
   describe: (row) => {
+    if (row.stale !== undefined) return describeStale(row);
     const sitelinks = row.sitelinks === null || row.sitelinks === undefined ? '' : `, ${count(row, 'sitelinks')} sitelinks`;
     const where = WHERE[text(row, 'verdict') as Verdict] ?? WHERE.missing_live;
     return `${text(row, 'name')} (${text(row, 'region')}), named by ${count(row, 'sources')} sources${sitelinks}: `
