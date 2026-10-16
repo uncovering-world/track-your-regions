@@ -64,7 +64,7 @@ import {
 import { badRequest, createError, notFound } from '../../middleware/errorHandler.js';
 import type {
   cacheKindParamSchema, cacheTtlBodySchema, clearCacheQuerySchema, experienceCountsQuerySchema, logIdParamSchema,
-  regionAssignmentStatusQuerySchema, reorderSourcesBodySchema, sourceIdParamSchema, startRegionAssignmentBodySchema,
+  findComponentItemsQuerySchema, regionAssignmentStatusQuerySchema, reorderSourcesBodySchema, sourceIdParamSchema, startRegionAssignmentBodySchema,
   startSyncBodySchema, syncChangesQuerySchema, syncLogsQuerySchema,
 } from '../../types/index.js';
 import {
@@ -94,7 +94,7 @@ const PICTURE_REPAIRS: Record<number, (triggeredBy: number | null) => Promise<vo
  * Which sources the panel can search Wikidata for their components' items
  * (#1272): the one whose objects are serial, with components a reference names.
  */
-const COMPONENT_ITEM_SEARCHES: Record<number, (triggeredBy: number | null) => Promise<void>> = {
+const COMPONENT_ITEM_SEARCHES: Record<number, typeof findUnescoComponentItems> = {
   [UNESCO_SOURCE_ID]: findUnescoComponentItems,
 };
 
@@ -302,14 +302,39 @@ export async function fixImages(
 
 /**
  * Search Wikidata for the items of a source's components that no item records
- * the reference of, and propose each to a curator (#1272)
- * POST /api/admin/sync/sources/:sourceId/find-component-items
+ * the reference of, and propose each to a curator (#1272) — for every site, or
+ * for the one `experienceId` names (#1429), which has to be one of the source's
+ * own sites.
+ * POST /api/admin/sync/sources/:sourceId/find-component-items[?experienceId=]
  */
 export async function findComponentItems(
-  { params: { sourceId }, caller }: { params: SourceParams; caller: Express.User },
+  { params: { sourceId }, query: { experienceId }, caller }: {
+    params: SourceParams; query: z.output<typeof findComponentItemsQuerySchema>; caller: Express.User;
+  },
 ): Promise<ComponentItemSearchStarted> {
-  await startBesideSync(sourceId, caller.id, COMPONENT_ITEM_SEARCHES[sourceId], 'Find component items');
-  return { started: true, message: 'Searching for component items. Poll /status endpoint for progress.' };
+  const search = COMPONENT_ITEM_SEARCHES[sourceId];
+  let site: { id: number; name: string } | undefined;
+  // Asked after the source's own doors, so a site sent to a source that does
+  // not exist or does not search is told that, not that the site is unknown.
+  const siteOf = async () => {
+    if (experienceId === undefined) return;
+    const found = await pool.query<{ id: number; name: string }>(
+      `SELECT e.id, e.name FROM experiences e
+        WHERE e.id = $1 AND EXISTS (SELECT 1 FROM experience_kind_memberships m WHERE m.experience_id = e.id AND m.source_id = $2)`,
+      [experienceId, sourceId],
+    );
+    if (!found.rows[0]) throw notFound('No site of this source has that id');
+    site = found.rows[0];
+  };
+  await startBesideSync(
+    sourceId, caller.id, search && ((triggeredBy) => search(triggeredBy, site)), 'Find component items', siteOf,
+  );
+  return {
+    started: true,
+    message: site
+      ? `Searching for the component items of ${site.name}. Poll /status endpoint for progress.`
+      : 'Searching for component items. Poll /status endpoint for progress.',
+  };
 }
 
 /**
@@ -326,6 +351,8 @@ async function startBesideSync(
   triggeredBy: number,
   job: ((triggeredBy: number | null) => Promise<void>) | undefined,
   name: string,
+  /** A check of the job's own, asked once the source's doors have let it through. */
+  beforeStart?: () => Promise<void>,
 ): Promise<void> {
   const source = await pool.query(
     'SELECT id, is_active FROM experience_sources WHERE id = $1',
@@ -334,6 +361,9 @@ async function startBesideSync(
   if (source.rows.length === 0) throw notFound('Source not found');
   if (!source.rows[0].is_active) throw badRequest('Source is not active');
   if (!job) throw badRequest(`${name} is not implemented for this source`);
+  // Before the in-flight check, never between it and the job: the job registers
+  // in the same tick as the check, so a second press cannot pass it meanwhile.
+  await beforeStart?.();
   const existing = runningSyncs.get(sourceId);
   if (existing && !isTerminalSyncStatus(existing.status)) {
     throw createError('Sync already in progress for this source', 409);

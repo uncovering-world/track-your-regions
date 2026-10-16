@@ -210,6 +210,32 @@ describe('findComponentItems', () => {
     expect(rows).toEqual([{ wikidata_item: BOLOGA_ITEM, register_code: null }]);
   });
 
+  it("narrowed to one site, asks about and writes that site's points only (#1429)", async () => {
+    // Another site of the source, with a component of its own: a pass narrowed to it
+    // leaves the fixture site's stale proposal and its points alone.
+    const other = OTHER_SITES[0];
+    await pool.query(
+      `INSERT INTO experiences (id, source_id, external_id, name, location)
+       VALUES ($1, 1, $2, 'Another fixture site', ST_SetSRID(ST_MakePoint(10, 50), 4326))`,
+      [other, `${other}-fixture`],
+    );
+    await pool.query(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at, wikidata_items)
+       SELECT $1, s.kind_id, s.id, $2, 'auto', NOW(), $3 FROM experience_sources s WHERE s.id = 1`,
+      [other, `${other}-fixture`, [otherSiteItem(other)]],
+    );
+    vi.mocked(queries.partsOfSites).mockClear();
+
+    const narrowed = await findComponentItems({ write: true, siteId: other, hooks: { budget: new WaitBudget(1000) } });
+
+    expect(narrowed.report.points).toBe(0);
+    expect(vi.mocked(queries.partsOfSites).mock.calls[0][0]).not.toContain(SITE_ITEM);
+    expect((await proposals()).map(p => p.wikidata_item)).toEqual([STALE_ITEM, REFUSED_ITEM]);
+
+    await findComponentItems({ write: true, siteId: SITE, hooks: { budget: new WaitBudget(1000) } });
+    expect((await proposals()).map(p => p.wikidata_item)).toEqual([MAIREA_ITEM, BOLOGA_ITEM, REFUSED_ITEM]);
+  });
+
   it('writes nothing on a dry pass', async () => {
     const { matches } = await findComponentItems({ write: false, hooks: { budget: new WaitBudget(1000) } });
 

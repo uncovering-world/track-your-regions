@@ -378,6 +378,11 @@ export const sourceIdParamSchema = z.object({
   sourceId: rowIdSchema,
 });
 
+/** The component-item search narrowed to one site (#1429); absent, the whole catalogue. */
+export const findComponentItemsQuerySchema = z.object({
+  experienceId: rowIdSchema.optional(),
+});
+
 /** A public dump the catalogue reads, by its key in the dump catalog (ADR-0101). */
 export const dumpKeyParamSchema = z.object({
   dump: z.enum(DUMP_KEYS),
