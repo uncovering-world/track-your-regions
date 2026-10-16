@@ -130,8 +130,30 @@ describe('findComponentItems', () => {
 
     await answerRoute(findItemsRoute, request(1) as never, res as never);
 
-    expect(mockedSearch).toHaveBeenCalledWith(7);
+    expect(mockedSearch).toHaveBeenCalledWith(7, undefined);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ started: true }));
+  });
+
+  it('narrows the search to the one site it is given, a site of the source (#1429)', async () => {
+    mockedQuery
+      .mockResolvedValueOnce({ rows: [{ id: 1, is_active: true }] })
+      .mockResolvedValueOnce({ rows: [{ id: 1234, name: 'Frontiers of the Roman Empire – Dacia' }] });
+    const res = makeRes();
+
+    await answerRoute(findItemsRoute, { ...request(1), query: { experienceId: '1234' } } as never, res as never);
+
+    expect(mockedSearch).toHaveBeenCalledWith(7, { id: 1234, name: 'Frontiers of the Roman Empire – Dacia' });
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ started: true }));
+  });
+
+  it('answers 404 for an id no site of the source has', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 1, is_active: true }] }).mockResolvedValueOnce({ rows: [] });
+    const res = makeRes();
+
+    await answerRoute(findItemsRoute, { ...request(1), query: { experienceId: '99' } } as never, res as never);
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(mockedSearch).not.toHaveBeenCalled();
   });
 
   it('answers 409 while a run is in flight', async () => {
@@ -143,6 +165,16 @@ describe('findComponentItems', () => {
 
     expect(res.status).toHaveBeenCalledWith(409);
     expect(mockedSearch).not.toHaveBeenCalled();
+  });
+
+  it("tells a site sent to a source with no search that the source has none, before the site is asked about", async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 2, is_active: true }] });
+    const res = makeRes();
+
+    await answerRoute(findItemsRoute, { ...request(2), query: { experienceId: '1234' } } as never, res as never);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(mockedQuery).toHaveBeenCalledTimes(1);
   });
 
   it('answers 400 for a source with no components to search', async () => {

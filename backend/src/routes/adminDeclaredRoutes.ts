@@ -52,7 +52,7 @@ import {
   aiSettingValueBodySchema, applyRuleReviewBodySchema, assignmentIdParamSchema, cacheKindParamSchema,
   cacheTtlBodySchema, clearCacheQuerySchema, createCuratorAssignmentBodySchema, curationGateBodySchema, wikidataReaderBodySchema,
   curationActivityQuerySchema, curatorActivityQuerySchema, dataAssertionAcceptBodySchema, dumpBuildBodySchema, dumpKeyParamSchema, experienceCountsQuerySchema, hierarchyReviewBodySchema,
-  logIdParamSchema, regionAssignmentStatusQuerySchema, reorderSourcesBodySchema, sourceIdParamSchema,
+  findComponentItemsQuerySchema, logIdParamSchema, regionAssignmentStatusQuerySchema, reorderSourcesBodySchema, sourceIdParamSchema,
   sourceLineBodySchema, startRegionAssignmentBodySchema, startSyncBodySchema, syncChangesQuerySchema,
   syncLogsQuerySchema, userIdParamSchema, worldViewIdParamSchema,
 } from '../types/index.js';
@@ -219,8 +219,9 @@ export const adminDeclaredRoutes = [
   // limiter as the repair above.
   defineRoute({
     ...ADMIN, method: 'post', path: '/sync/sources/:sourceId/find-component-items', limiter: expensiveAdminLimiter,
-    summary: 'Start a search for the Wikidata items of a source\'s components, proposed to a curator',
+    summary: 'Start a search for the Wikidata items of a source\'s components, proposed to a curator, for every site or one',
     params: sourceIdParamSchema,
+    query: findComponentItemsQuerySchema,
     response: ComponentItemSearchStarted,
     handler: findComponentItems,
   }),

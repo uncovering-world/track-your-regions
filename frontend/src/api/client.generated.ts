@@ -11064,6 +11064,14 @@ export type GetUsersMeViewedTreasuresIdsParams = {
 experienceId?: number;
 };
 
+export type PostAdminSyncSourcesBySourceIdFindComponentItemsParams = {
+/**
+ * @maximum 2147483647
+ * @exclusiveMinimum 0
+ */
+experienceId?: number;
+};
+
 export type DeleteAdminSyncSourcesBySourceIdCacheParams = {
 /**
  * @minLength 1
@@ -14598,21 +14606,30 @@ export const postAdminDumpsByDumpCancel = async (dump: 'wikidata-entities' | 'wi
 
 
 
-export const getPostAdminSyncSourcesBySourceIdFindComponentItemsUrl = (sourceId: number,) => {
+export const getPostAdminSyncSourcesBySourceIdFindComponentItemsUrl = (sourceId: number,
+    params?: PostAdminSyncSourcesBySourceIdFindComponentItemsParams,) => {
+  const normalizedParams = new URLSearchParams();
 
+  Object.entries(params || {}).forEach(([key, value]) => {
 
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
 
+  const stringifiedParams = normalizedParams.toString();
 
-  return `/api/admin/sync/sources/${encodeURIComponent(String(sourceId))}/find-component-items`
+  return stringifiedParams.length > 0 ? `/api/admin/sync/sources/${encodeURIComponent(String(sourceId))}/find-component-items?${stringifiedParams}` : `/api/admin/sync/sources/${encodeURIComponent(String(sourceId))}/find-component-items`
 }
 
 /**
  * Requires an admin.
- * @summary Start a search for the Wikidata items of a source's components, proposed to a curator
+ * @summary Start a search for the Wikidata items of a source's components, proposed to a curator, for every site or one
  */
-export const postAdminSyncSourcesBySourceIdFindComponentItems = async (sourceId: number, options?: Parameters<typeof apiFetch>[1]): Promise<ComponentItemSearchStarted> => {
+export const postAdminSyncSourcesBySourceIdFindComponentItems = async (sourceId: number,
+    params?: PostAdminSyncSourcesBySourceIdFindComponentItemsParams, options?: Parameters<typeof apiFetch>[1]): Promise<ComponentItemSearchStarted> => {
 
-  return apiFetch<ComponentItemSearchStarted>(getPostAdminSyncSourcesBySourceIdFindComponentItemsUrl(sourceId),
+  return apiFetch<ComponentItemSearchStarted>(getPostAdminSyncSourcesBySourceIdFindComponentItemsUrl(sourceId,params),
   {
     ...options,
     method: 'POST'

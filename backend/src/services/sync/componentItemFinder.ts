@@ -97,6 +97,12 @@ export interface ComponentItemReport {
 
 export interface FinderOptions {
   hooks: QueryHooks;
+  /**
+   * One site's components only (#1429): its own areas asked about, its own points
+   * written and cleared. Every rule is the whole pass's; the classes a site is
+   * judged by are still learned from the whole catalogue's resolved components.
+   */
+  siteId?: number;
   /** When false, nothing is written: the matches are returned, for measuring the rules. */
   write: boolean;
   onStage?: (message: string) => void;
@@ -127,7 +133,7 @@ function sitePointsArm({ from, placeId }: PlacePointArm): string {
  * point, or a point named like the site, is the site's own item, and anything
  * near it is a building inside rather than the place.
  */
-async function readPoints(): Promise<{ points: PointRow[]; wholeSites: number; wholeSiteIds: number[] }> {
+async function readPoints(siteId?: number): Promise<{ points: PointRow[]; wholeSites: number; wholeSiteIds: number[] }> {
   const result = await pool.query<{
     id: number; name: string | null; lat: number; lon: number; experience_id: number; external_ref: string;
     wikidata_items: string[] | null; site_name: string; standing_points: number;
@@ -135,7 +141,7 @@ async function readPoints(): Promise<{ points: PointRow[]; wholeSites: number; w
     overPlacePoints(sitePointsArm),
     [UNESCO_SOURCE_ID],
   );
-  const read: PointRead[] = result.rows.map(row => ({
+  const read: PointRead[] = result.rows.filter(row => siteId === undefined || row.experience_id === siteId).map(row => ({
     locationId: row.id, name: row.name, lat: row.lat, lon: row.lon,
     experienceId: row.experience_id, siteItems: row.wikidata_items ?? [], externalRef: row.external_ref,
     siteName: row.site_name, standingPoints: row.standing_points,
@@ -492,7 +498,7 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
   let queries = 0;
   const counted: QueryHooks = { ...hooks, onQuery: () => { queries += 1; hooks.onQuery?.(); } };
 
-  const [{ points, wholeSites, wholeSiteIds }, resolved, refused] = await Promise.all([readPoints(), readResolved(), readRefused()]);
+  const [{ points, wholeSites, wholeSiteIds }, resolved, refused] = await Promise.all([readPoints(options.siteId), readResolved(), readRefused()]);
   const taken = new Set([...resolved.values()].flat());
   const labels = new Map<string, ItemLabels>();
   /** The candidates of one point that are free and close enough to be read. */

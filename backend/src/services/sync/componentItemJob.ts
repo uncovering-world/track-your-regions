@@ -6,11 +6,13 @@
  * It writes proposals only — a curator's answer is what records an item on a
  * point (ADR-0046) — so it needs no review of its own and can be run again:
  * a second pass replaces what is still unanswered and never brings back a
- * candidate a curator refused.
+ * candidate a curator refused. Given a site (#1429), it asks about that site's
+ * components only, for a curator working through one site or a change measured
+ * on the site it was made for, under the same manners and the same report.
  */
 
 import { sentenceFor } from '../../api/readerFacingError.js';
-import { findComponentItems } from './componentItemFinder.js';
+import { findComponentItems, type ComponentItemReport } from './componentItemFinder.js';
 import { WaitBudget } from './sourceRetry.js';
 import { isTerminalSyncStatus, runningSyncs, type SyncProgress } from './types.js';
 import { SPARQL_WAIT_BUDGET_MS, waitMessage } from './wikidataUtils.js';
@@ -18,7 +20,7 @@ import { SPARQL_WAIT_BUDGET_MS, waitMessage } from './wikidataUtils.js';
 const UNESCO_SOURCE_ID = 1;
 const LOG_PREFIX = '[Component items]';
 
-export async function findUnescoComponentItems(_triggeredBy: number | null): Promise<void> {
+export async function findUnescoComponentItems(_triggeredBy: number | null, site?: { id: number; name: string }): Promise<void> {
   const existing = runningSyncs.get(UNESCO_SOURCE_ID);
   if (existing && !isTerminalSyncStatus(existing.status)) {
     throw new Error('UNESCO sync already in progress');
@@ -28,7 +30,9 @@ export async function findUnescoComponentItems(_triggeredBy: number | null): Pro
     cancel: false,
     kind: 'components',
     status: 'fetching',
-    statusMessage: 'Reading the components no Wikidata item records...',
+    statusMessage: site
+      ? `Reading the components of ${site.name} no Wikidata item records...`
+      : 'Reading the components no Wikidata item records...',
     progress: 0,
     total: 0,
     created: 0,
@@ -49,6 +53,7 @@ export async function findUnescoComponentItems(_triggeredBy: number | null): Pro
     const budget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
     const { report } = await findComponentItems({
       write: true,
+      siteId: site?.id,
       hooks: {
         budget,
         isCancelled: () => progress.cancel,
@@ -64,17 +69,7 @@ export async function findUnescoComponentItems(_triggeredBy: number | null): Pro
     }
     progress.status = 'complete';
     progress.created = report.partOf + report.near + report.toponym + report.numbered;
-    progress.statusMessage =
-      `${report.partOf + report.near + report.toponym} of ${report.points} components without an item have a candidate for a curator`
-      + ` — ${report.partOf} named as parts of their site, ${report.near} found near the point`
-      + (report.toponym > 0 ? `, ${report.toponym} near the point carrying a place name of the component's` : '')
-      + `, ${report.exact} of the same name at the point`
-      + (report.numbered > 0 ? `; ${report.numbered} more carry a component's number under another inscription` : '')
-      + (report.unsearched > 0 ? `; ${report.unsearched} could not be searched around, as Wikidata did not answer` : '')
-      + (report.unreadSites > 0 ? `; the parts of ${report.unreadSites} sites could not be read` : '')
-      + (report.wholeSites > 0 ? `; ${report.wholeSites} stand for their whole site and were not searched` : '')
-      + (report.settlements > 0 ? `; ${report.settlements} settlements set aside` : '')
-      + (report.atTheComponent > 0 ? `; ${report.atTheComponent} near candidates standing at their component set aside` : '');
+    progress.statusMessage = sentenceOf(report, site);
     console.log(`${LOG_PREFIX} Complete after ${report.queries} queries: ${progress.statusMessage}`);
   } catch (err) {
     progress.status = progress.cancel ? 'cancelled' : 'failed';
@@ -88,4 +83,19 @@ export async function findUnescoComponentItems(_triggeredBy: number | null): Pro
       if (runningSyncs.get(UNESCO_SOURCE_ID) === thisProgress) runningSyncs.delete(UNESCO_SOURCE_ID);
     }, 60000);
   }
+}
+
+/** What a finished pass found, as the source's card says it. */
+function sentenceOf(report: ComponentItemReport, site?: { id: number; name: string }): string {
+  return (site ? `${site.name}: ` : '')
+    + `${report.partOf + report.near + report.toponym} of ${report.points} components without an item have a candidate for a curator`
+    + ` — ${report.partOf} named as parts of their site, ${report.near} found near the point`
+    + (report.toponym > 0 ? `, ${report.toponym} near the point carrying a place name of the component's` : '')
+    + `, ${report.exact} of the same name at the point`
+    + (report.numbered > 0 ? `; ${report.numbered} more carry a component's number under another inscription` : '')
+    + (report.unsearched > 0 ? `; ${report.unsearched} could not be searched around, as Wikidata did not answer` : '')
+    + (report.unreadSites > 0 ? `; the parts of ${report.unreadSites} sites could not be read` : '')
+    + (report.wholeSites > 0 ? `; ${report.wholeSites} stand for their whole site and were not searched` : '')
+    + (report.settlements > 0 ? `; ${report.settlements} settlements set aside` : '')
+    + (report.atTheComponent > 0 ? `; ${report.atTheComponent} near candidates standing at their component set aside` : '');
 }

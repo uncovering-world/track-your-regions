@@ -4996,7 +4996,7 @@
     "/api/admin/sync/sources/{sourceId}/find-component-items": {
       "post": {
         "operationId": "postAdminSyncSourcesBySourceIdFindComponentItems",
-        "summary": "Start a search for the Wikidata items of a source's components, proposed to a curator",
+        "summary": "Start a search for the Wikidata items of a source's components, proposed to a curator, for every site or one",
         "tags": [
           "admin"
         ],
@@ -5017,6 +5017,15 @@
               "maximum": 2147483647
             },
             "required": true
+          },
+          {
+            "in": "query",
+            "name": "experienceId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            }
           }
         ],
         "responses": {
