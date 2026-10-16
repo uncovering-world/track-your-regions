@@ -27,7 +27,7 @@ export type SourceFamily = 'unesco' | 'wikidata';
 const SOURCE_FAMILY: Readonly<Record<number, SourceFamily>> = { 1: 'unesco', 2: 'wikidata', 3: 'wikidata', 4: 'wikidata', 5: 'wikidata' };
 
 /** The place's columns a family can own, as the run's record names them. */
-export type FamilyColumn = 'nameLocal' | 'shortDescription' | 'countryCodes';
+export type FamilyColumn = 'nameLocal' | 'shortDescription' | 'countryCodes' | 'countryNames';
 
 export interface FamilyFields {
   columns: readonly FamilyColumn[];
@@ -37,15 +37,16 @@ export interface FamilyFields {
 /**
  * The fields each family brings and no other does, read off the places one
  * source holds alone on 2026-10-15. UNESCO's official names in its six
- * languages, its own text, the states party and the facts of the inscription.
- * Wikidata's item, the place's own website, its classes, fame and the counts a
- * run makes of it. UNESCO's page about a site is its own key (`unescoUrl`,
- * #1538). The Wikipedia article and the country names are written by both
- * families and listed for neither.
+ * languages, its own text, the states party's codes and the facts of the
+ * inscription. Wikidata's item, the place's own website, its classes, fame and
+ * the counts a run makes of it. UNESCO's page about a site is its own key
+ * (`unescoUrl`, #1538). The country names both families write, but they name
+ * UNESCO's codes, so they go with them (ADR-0111, #1553). The Wikipedia
+ * article is written by both families and listed for neither.
  */
 export const FAMILY_FIELDS: Readonly<Record<SourceFamily, FamilyFields>> = {
   unesco: {
-    columns: ['nameLocal', 'shortDescription', 'countryCodes'],
+    columns: ['nameLocal', 'shortDescription', 'countryCodes', 'countryNames'],
     metadata: ['dateInscribed', 'inDanger', 'dangerList', 'criteria', 'region', 'transboundary', 'areaHectares', 'unescoUrl'],
   },
   wikidata: {
@@ -88,6 +89,7 @@ export interface FamilyRecord {
   nameLocal: Record<string, string>;
   shortDescription: string | null;
   countryCodes: string[];
+  countryNames: string[];
   metadata: Record<string, unknown>;
 }
 
@@ -96,6 +98,7 @@ export interface StoredFamilyFields {
   name_local: Record<string, string> | null;
   short_description: string | null;
   country_codes: string[] | null;
+  country_names: string[] | null;
   metadata: Record<string, unknown> | null;
 }
 
@@ -107,6 +110,7 @@ export function keptForFamilies<T extends FamilyRecord>(params: T, stored: Store
     if (column === 'nameLocal') kept.nameLocal = stored.name_local ?? {};
     if (column === 'shortDescription') kept.shortDescription = stored.short_description;
     if (column === 'countryCodes') kept.countryCodes = stored.country_codes ?? [];
+    if (column === 'countryNames') kept.countryNames = stored.country_names ?? [];
   }
   const storedMetadata = stored.metadata ?? {};
   for (const key of others.metadata) {
