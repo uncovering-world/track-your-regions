@@ -119,7 +119,9 @@ export interface VenueSideOptions {
    * `readHandOvers`). One this read finds held at one of those places is kept
    * whatever this kind's class rule says: the places of worship take the Bamberg
    * Horseman, which Public Art refused as inside Bamberg Cathedral, though a
-   * sculpture is no worship object to their rule.
+   * sculpture is no worship object to their rule. A pool work its own
+   * statements place at no admitted venue goes to the admitted places the
+   * refusal named (ADR-0112).
    */
   handedOver?: ReadonlyMap<string, HandOver>;
 }
@@ -250,7 +252,8 @@ async function readStatements(
 /**
  * The hand-over of a work, where this read found it held at a place the
  * refusal named (ADR-0102): the read's own venue, never one the other kind
- * merely said.
+ * merely said. The one exception is a pool work its own statements place at no
+ * admitted venue (`handedOverPoolWorks`, ADR-0112).
  */
 function handOverAt(
   handOver: HandOver | undefined, at: { venues: Set<string>; heldBy: Set<string> } | undefined,
@@ -294,6 +297,31 @@ function judgeHoldings(
 }
 
 /**
+ * The handed-over works the pool already holds that its own statements place at
+ * no venue this kind admits, each with the admitted venues the refusal named
+ * (ADR-0102, #1557). The refusal read the work's chain, which can pass through
+ * what these statements do not: the Unknown Warrior is part of (P361)
+ * Westminster Abbey, and Bamberg Cathedral, where the Bamberg Horseman stands,
+ * carries a dissolution (P576, 1081) that is its first building's. A work
+ * nobody can see stays unseen. A venue folded into an admitted one is that
+ * venue, as everywhere else in the read.
+ */
+function handedOverPoolWorks(
+  collection: WorksCollection,
+  handedOver: ReadonlyMap<string, HandOver> | undefined,
+  admitted: ReadonlySet<string>,
+  placed: Readonly<Record<string, string[]>>,
+  unseen: Readonly<Record<string, UnseenWork>>,
+): Array<{ qid: string; venues: string[]; handOver: HandOver }> {
+  const isAdmitted = (venue: string) => admitted.has(venue) || admitted.has(survivorOf(collection.folds, venue));
+  return [...(handedOver ?? [])].flatMap(([qid, handOver]) => {
+    if (!collection.pool.has(qid) || unseen[qid] || (placed[qid] ?? []).some(isAdmitted)) return [];
+    const venues = handOver.heldIn.filter(isAdmitted);
+    return venues.length ? [{ qid, venues, handOver }] : [];
+  });
+}
+
+/**
  * Read what every admitted venue holds, keep what the kind's rule keeps, and
  * merge it into the collection as if the pool had collected it.
  *
@@ -317,7 +345,8 @@ export async function readVenueSide(
 
   // The pool's decision stands, kept or refused: what it holds is placed
   // already, and what its keep turned down would only be fetched again, judged
-  // the same and named twice.
+  // the same and named twice. One exception further down: a pool work handed
+  // over here that its statements place nowhere admitted (`handedOverPoolWorks`).
   const skip = venueSide.skip ?? new Set<string>();
   const handOverHere = (qid: string) => handOverAt(venueSide.handedOver?.get(qid), held.get(qid));
   // A refusal stands, the pool's or an earlier round's, unless the work is
@@ -386,6 +415,13 @@ export async function readVenueSide(
       unseen[qid] = { reason, wouldBe: venuesOfWork };
     }
   }
+  const poolHandOvers = handedOverPoolWorks(collection, venueSide.handedOver, admitted, placed, unseen);
+  for (const { qid, venues, handOver } of poolHandOvers) {
+    // Says so on the venue's changeset, as a work the read kept for a hand-over does (ADR-0102).
+    pool.set(qid, { ...pool.get(qid)!, handedBy: `${handOver.by}: ${handOver.reason}` });
+    placed[qid] = venues;
+    arrived[qid] = venues;
+  }
   const afterFolds = { ...collection.afterFolds, ...applyFolds(arrived, collection.folds) };
 
   const reported = refused.filter((refusal) => refusal.sitelinks >= reportFloor);
@@ -393,6 +429,7 @@ export async function readVenueSide(
     `${opts.logPrefix} Venue-side read: ${venues.length} venues hold ${held.size} objects at `
     + `${floor}+ Wikipedia editions; ${held.size - fresh.length} already in the pool, ${kept.size} kept as `
     + `${opts.noun.works} (${handedOver.size} handed over by another kind), `
+    + `${poolHandOvers.length} of the pool placed where another kind handed them over, `
     + `${refused.length} refused (${reported.length} at ${reportFloor}+ Wikipedia editions, named)`,
   );
   return {

@@ -228,6 +228,44 @@ describe('readVenueSide', () => {
       expect(unhanded.refused.map((r) => r.qid)).not.toContain('Q900950');
     });
 
+    it('places a pool work its statements place at no admitted venue at the admitted venue the refusal named (#1557)', async () => {
+      // The Bamberg Horseman's shape: in the pool, its own statements reach no venue
+      // the kind admits (the cathedral's P576 dissolution), the refusal names one.
+      const atPitti: ReadonlyMap<string, HandOver> = new Map([[
+        'Q12418', { by: 'Public Art & Monuments', reason: 'inside Palazzo Pitti: a work of a museum, not public art', heldIn: [PITTI] },
+      ]]);
+      const { before, collection } = await read(ART, [PITTI], atPitti);
+      expect(before.pool.has('Q12418')).toBe(true);
+      expect(collection.afterFolds.Q12418).toEqual([PITTI]);
+      // It says so on the venue's changeset, as a work the read kept for a hand-over does.
+      expect(collection.pool.get('Q12418')?.handedBy)
+        .toBe('Public Art & Monuments: inside Palazzo Pitti: a work of a museum, not public art');
+      // A work its statements already place at an admitted venue stays there.
+      const both = await read(ART, [LOUVRE, PITTI], atPitti);
+      expect(both.collection.afterFolds.Q12418).toEqual([LOUVRE]);
+      // And a refusal that names no admitted venue places nothing.
+      const nowhere = await read(ART, [PITTI], new Map([[
+        'Q12418', { by: 'Public Art & Monuments', reason: 'inside Louvre Museum: a work of a museum, not public art', heldIn: [LOUVRE] },
+      ]]));
+      expect(nowhere.collection.afterFolds.Q12418 ?? []).not.toContain(PITTI);
+      // A venue folded into an admitted one is that venue: the Galleria Palatina is Palazzo Pitti's.
+      const folded = await read(ART, [PITTI], new Map([[
+        'Q12418', { by: 'Public Art & Monuments', reason: 'inside the Galleria Palatina: a work of a museum', heldIn: ['Q866498'] },
+      ]]));
+      expect(folded.collection.afterFolds.Q12418).toEqual([PITTI]);
+    });
+
+    it('leaves a handed-over pool work nobody can see unseen (#1557)', async () => {
+      const { before } = await read(ART, [PITTI]);
+      const lost = Object.keys(before.unseen).find((qid) => before.pool.has(qid));
+      expect(lost).toBeDefined();
+      const { collection } = await read(ART, [PITTI], new Map([[
+        lost!, { by: 'Public Art & Monuments', reason: 'inside Palazzo Pitti: a work of a museum, not public art', heldIn: [PITTI] },
+      ]]));
+      expect(collection.unseen[lost!]).toBeDefined();
+      expect(collection.afterFolds[lost!] ?? []).toEqual([]);
+    });
+
     it("asks again about what the pool's own keep refused, once it is handed over here", async () => {
       const opts: WorksCollectorOptions = {
         ...ART,
