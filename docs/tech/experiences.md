@@ -4397,7 +4397,10 @@ moved. *Ask again about pins* on a source's card starts an ordinary run with `as
 pin it disagrees with, the silent ones included; nothing is released, each waits in the review
 queue as above — through the ordinary runs after it too, since a run keeps a question standing
 while it still says that question (`stillAsks`, `pinQuestion.ts`: the same verdict, the same
-reason with its counts folded), and one it has moved off closes as before. Every run tallies what it said of the pins it read (`progress.pins`: asked about
+reason with its counts folded), and one it has moved off closes as before. The queue marks such a
+question (`restated` on `pin_question`, the same folded comparison in SQL), and the card says the run
+was asked to look again and still says what the curator answered over, rather than "says something
+else" over the very words they answered. Every run tallies what it said of the pins it read (`progress.pins`: asked about
 again, agreed with, left as the curator answered) and closes its line with it (`pinsSentence`,
 `runLog.ts`), which the run's log row keeps as its status message. A dry run counts the questions,
 writes none, and says they would be asked.
