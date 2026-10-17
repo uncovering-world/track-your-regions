@@ -9,6 +9,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { Operation } from '../operationProgress.js';
 import { sourcePlacesSql } from '../../db/membership.js';
 import { sentenceFor } from '../../api/readerFacingError.js';
 import { fetchCommonsCredits, type ImageCredit } from './imageCredit.js';
@@ -20,13 +21,16 @@ import {
   WaitBudget,
   SPARQL_DELAY_MS,
   SPARQL_WAIT_BUDGET_MS,
-  waitMessage,
+  sayWait,
   WIKIDATA_USER_AGENT,
   wikidataDoor,
 } from './wikidataUtils.js';
 import { isTerminalSyncStatus, runningSyncs, type SyncProgress } from './types.js';
 
 const ENTITY_BATCH = 50;
+
+/** The repair's steps, as its progress counts them (#1356). */
+const STEP = { find: 1, images: 2, credits: 3, write: 4 } as const;
 
 /** Wikimedia image URLs for a set of QIDs, batched. */
 async function fetchWikidataImages(
@@ -47,6 +51,7 @@ async function fetchWikidataImages(
   // pass describes no question and caches nothing, which is why the descriptor
   // is dropped rather than forwarded.
   const sparql: SparqlFn = (query) => door(query);
+  progress.operation?.step(STEP.images, `Fetching image URLs from Wikidata for ${qids.length} items`, qids.length);
   for (let i = 0; i < qids.length; i += ENTITY_BATCH) {
     if (progress.cancel) throw new Error('Sync cancelled');
     progress.statusMessage =
@@ -55,6 +60,7 @@ async function fetchWikidataImages(
     for (const [qid, row] of details) {
       if (row.imageUrl) images.set(qid, row.imageUrl);
     }
+    progress.operation?.advance(Math.min(ENTITY_BATCH, qids.length - i));
     if (i + ENTITY_BATCH < qids.length) await delay(SPARQL_DELAY_MS);
   }
   return images;
@@ -78,6 +84,7 @@ async function writeFixedImages(
   let fixed = 0;
   let failed = 0;
   let kept = 0;
+  progress.operation?.step(STEP.write, `Fixing the pictures of ${rows.length} rows`, rows.length);
 
   for (let i = 0; i < rows.length; i++) {
     if (progress.cancel) throw new Error('Sync cancelled');
@@ -87,6 +94,7 @@ async function writeFixedImages(
     progress.currentItem = row.name;
     progress.statusMessage = `Fixing ${i + 1}/${rows.length}: ${row.name}`;
     progress.progress = i + 1;
+    progress.operation?.advance();
 
     if (!imageUrl) {
       failed++;
@@ -116,6 +124,7 @@ async function creditsForFixedImages(
   progress: SyncProgress,
 ): Promise<Map<string, ImageCredit>> {
   progress.statusMessage = 'Asking Commons who took the pictures...';
+  progress.operation?.step(STEP.credits, `Asking Commons who took ${imageUrls.length} pictures`);
   const budget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
   return fetchCommonsCredits(imageUrls, {
     userAgent: WIKIDATA_USER_AGENT,
@@ -125,7 +134,7 @@ async function creditsForFixedImages(
     // loop, so without this a bad day at Commons is a sentence frozen on the
     // panel for as long as the budget lasts — the hung-looking run this whole
     // change set exists to stop showing.
-    onWait: (wait) => { progress.statusMessage = waitMessage('Commons', wait, budget); },
+    onWait: (wait) => { sayWait(progress, 'Commons', wait, budget); },
     pause: () => delay(SPARQL_DELAY_MS),
   });
 }
@@ -169,9 +178,12 @@ export function makeWikidataPictureRepair(
       logId: null,
       dryRun: false,
     };
+    const operation = new Operation(`${logPrefix} Fix images:`, Object.keys(STEP).length);
+    progress.operation = operation;
     runningSyncs.set(sourceId, progress);
 
     try {
+      operation.step(STEP.find, `Finding ${noun.plural} without a picture`);
       // Find rows missing an image or with an old local path
       const result = await pool.query(`
         SELECT e.id, sm.external_id, e.name, e.metadata
@@ -184,11 +196,12 @@ export function makeWikidataPictureRepair(
       const rows = result.rows;
       progress.total = rows.length;
       progress.statusMessage = `Found ${rows.length} ${noun.plural} without images`;
-      console.log('%s Fix images: %d %s missing images', logPrefix, rows.length, noun.plural);
+      operation.advance(rows.length);
 
       if (rows.length === 0) {
         progress.status = 'complete';
         progress.statusMessage = `All ${noun.plural} already have images`;
+        operation.finish(progress.statusMessage);
         return;
       }
 
@@ -213,15 +226,14 @@ export function makeWikidataPictureRepair(
       progress.errors = failed;
       const curated = kept > 0 ? `, ${kept} left as the curator set them` : '';
       progress.statusMessage = `Fixed images: ${fixed} updated, ${failed} no image found${curated}`;
-      console.log(
-        '%s Fix images complete: %d updated, %d no image found%s', logPrefix, fixed, failed, curated,
-      );
+      operation.finish(progress.statusMessage);
     } catch (err) {
       progress.status = progress.cancel ? 'cancelled' : 'failed';
       // The card puts "The picture repair failed: " before it.
       progress.statusMessage = progress.cancel
         ? 'Cancelled.'
         : sentenceFor(err, 'the server log has the cause.');
+      operation.finish(progress.cancel ? 'cancelled' : 'failed');
       console.error('%s Fix images failed:', logPrefix, err);
       throw err;
     } finally {

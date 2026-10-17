@@ -21,6 +21,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import { Operation } from '../operationProgress.js';
 import { sourcePlacesSql } from '../../db/membership.js';
 import { ReaderFacingError, sentenceFor } from '../../api/readerFacingError.js';
 import { isDisplayablePictureUrl } from '../../types/urlSafety.js';
@@ -34,11 +35,14 @@ import {
   factsForSite, fetchWorldHeritageFacts, type WorldHeritageIndex,
 } from './unescoWikidata.js';
 import {
-  delay, waitMessage, SPARQL_DELAY_MS, SPARQL_WAIT_BUDGET_MS, WIKIDATA_USER_AGENT,
+  delay, sayWait, SPARQL_DELAY_MS, SPARQL_WAIT_BUDGET_MS, WIKIDATA_USER_AGENT,
 } from './wikidataUtils.js';
 
 const UNESCO_SOURCE_ID = 1;
 const LOG_PREFIX = '[UNESCO Sync]';
+
+/** The repair's steps, as its progress counts them (#1356). */
+const STEP = { find: 1, facts: 2, credits: 3, write: 4 } as const;
 
 interface SiteRow {
   id: number;
@@ -128,11 +132,12 @@ async function creditsFor(
 ): Promise<Map<string, ImageCredit>> {
   if (urls.length === 0) return new Map();
   progress.statusMessage = `Asking Commons who took ${urls.length} pictures...`;
+  progress.operation?.step(STEP.credits, `Asking Commons who took ${urls.length} pictures`);
   return fetchCommonsCredits(urls, {
     userAgent: WIKIDATA_USER_AGENT,
     budget,
     isCancelled: () => progress.cancel,
-    onWait: (wait) => { progress.statusMessage = waitMessage('Commons', wait, budget); },
+    onWait: (wait) => { sayWait(progress, 'Commons', wait, budget); },
     pause: () => delay(SPARQL_DELAY_MS),
   });
 }
@@ -152,6 +157,7 @@ async function repairRows(
   progress: SyncProgress,
 ): Promise<PictureRepairReport> {
   const report: PictureRepairReport = { fixed: 0, cleared: 0, untouched: 0, kept: 0 };
+  progress.operation?.step(STEP.write, `Fixing the pictures of ${rows.length} sites`, rows.length);
 
   for (let i = 0; i < rows.length; i++) {
     if (progress.cancel) throw new Error('Sync cancelled');
@@ -159,6 +165,7 @@ async function repairRows(
     progress.currentItem = row.name;
     progress.progress = i + 1;
     progress.statusMessage = `Fixing ${i + 1}/${rows.length}: ${row.name}`;
+    progress.operation?.advance();
 
     const picture = factsForSite(facts, row.external_id, row.name).picture;
     // A file the product may not show — a PDF under a P18 — is answered exactly
@@ -215,20 +222,25 @@ export async function fixUnescoImages(_triggeredBy: number | null): Promise<void
     logId: null,
     dryRun: false,
   };
+  const operation = new Operation(`${LOG_PREFIX} Fix images:`, Object.keys(STEP).length);
+  progress.operation = operation;
   runningSyncs.set(UNESCO_SOURCE_ID, progress);
 
   try {
+    operation.step(STEP.find, 'Finding sites whose picture we may not show');
     const rows = sitesNeedingAPicture(await readSites());
     progress.total = rows.length;
-    console.log(`${LOG_PREFIX} Fix images: ${rows.length} sites without a picture we may show`);
+    operation.advance(rows.length);
     if (rows.length === 0) {
       progress.status = 'complete';
       progress.statusMessage = 'Every site already shows a picture we may show';
+      operation.finish(progress.statusMessage);
       return;
     }
 
     const budget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
     progress.statusMessage = 'Asking Wikidata for a Commons picture of each property...';
+    operation.step(STEP.facts, 'Asking Wikidata for a Commons picture of each property');
     const facts = await fetchWorldHeritageFacts(progress, budget);
     // No answer is not "no pictures". Taking a picture off a row is right once
     // Wikidata has been asked and has said nothing for it; done on a day the
@@ -253,7 +265,7 @@ export async function fixUnescoImages(_triggeredBy: number | null): Promise<void
     progress.statusMessage =
       `${report.fixed} given a Commons picture, ${report.cleared} left without one`
       + `, ${report.untouched} had none either way${curated}`;
-    console.log(`${LOG_PREFIX} Fix images complete: ${progress.statusMessage}`);
+    operation.finish(progress.statusMessage);
   } catch (err) {
     progress.status = progress.cancel ? 'cancelled' : 'failed';
     // The card puts "The picture repair failed: " before it, and says a
@@ -261,6 +273,7 @@ export async function fixUnescoImages(_triggeredBy: number | null): Promise<void
     progress.statusMessage = progress.cancel
       ? 'Cancelled.'
       : sentenceFor(err, 'the server log has the cause.');
+    operation.finish(progress.cancel ? 'cancelled' : 'failed');
     // A literal first argument, as the museum repair logs it: the message is
     // the format string, and one built from a variable is what Semgrep flags.
     console.error('[UNESCO Sync] Fix images failed:', err);
