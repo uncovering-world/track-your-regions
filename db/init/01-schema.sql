@@ -4449,6 +4449,7 @@ CREATE TABLE IF NOT EXISTS wikidata_geoshapes (
     wikidata_id TEXT PRIMARY KEY,            -- Wikidata QID or "commons:{filename}"
     geom geometry(MultiPolygon, 4326),       -- NULL when not_available; SRID 4326
     not_available BOOLEAN NOT NULL DEFAULT FALSE,  -- TRUE = no geoshape exists (negative cache)
+    composite_of INTEGER CHECK (composite_of > 0),  -- parts a composite is the union of; NULL for a shape Wikimedia holds
     -- Negative-cache invariant: a row is either a real geoshape or a not_available
     -- marker. Stops a NULL geom with not_available=FALSE from reaching PostGIS calls
     -- (e.g. geoshapeCoverage.ts) and blocks a degenerate composite union from
@@ -4460,6 +4461,7 @@ CREATE INDEX IF NOT EXISTS idx_wikidata_geoshapes_geom ON wikidata_geoshapes USI
 
 COMMENT ON TABLE wikidata_geoshapes IS 'Cache of Wikidata/Commons geoshapes (and composite unions) for WorldView Import geoshape matching';
 COMMENT ON COLUMN wikidata_geoshapes.not_available IS 'Negative cache: TRUE means a geoshape lookup confirmed none exists';
+COMMENT ON COLUMN wikidata_geoshapes.composite_of IS 'How many parts a composite geoshape is the union of, every part the item names (#1628); NULL for a shape Wikimedia holds for the item';
 
 -- =============================================================================
 -- AI Settings

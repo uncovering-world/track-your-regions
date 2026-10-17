@@ -17,12 +17,13 @@ const USER_AGENT = userAgent({ bot: true });
 
 /**
  * Collect child QIDs via Wikidata SPARQL using P527 (has part) / P361 (part of).
- * Merges results into the provided set. Logs and swallows errors.
+ * Merges results into the provided set. Answers false when the question went
+ * unanswered, so the parts found are not taken for all of them.
  */
 async function collectChildQidsFromSparql(
   wikidataId: string,
   childQidSet: Set<string>,
-): Promise<void> {
+): Promise<boolean> {
   try {
     const query = `
       SELECT DISTINCT ?part WHERE {
@@ -36,17 +37,23 @@ async function collectChildQidsFromSparql(
       const qid = extractQid(r.part?.value ?? '');
       if (qid.startsWith('Q')) childQidSet.add(qid);
     }
+    return true;
   } catch (err) {
     console.warn(
       '[GeoshapeComposite] SPARQL failed for %s:',
       wikidataId,
       err instanceof Error ? err.message : err,
     );
+    return false;
   }
 }
 
-/** Resolve a batch of Wikivoyage page titles to Wikidata QIDs via the MediaWiki API. */
-async function resolveWikivoyageTitlesBatch(titles: string[], childQidSet: Set<string>): Promise<void> {
+/**
+ * Resolve a batch of Wikivoyage page titles to Wikidata QIDs via the MediaWiki
+ * API. Answers false when the batch went unanswered or a title has no item: a
+ * part with no item has no shape to count, so the item's parts are not all in.
+ */
+async function resolveWikivoyageTitlesBatch(titles: string[], childQidSet: Set<string>): Promise<boolean> {
   const qUrl = new URL('https://en.wikivoyage.org/w/api.php');
   qUrl.searchParams.set('action', 'query');
   qUrl.searchParams.set('titles', titles.join('|'));
@@ -58,14 +65,20 @@ async function resolveWikivoyageTitlesBatch(titles: string[], childQidSet: Set<s
     headers: { 'User-Agent': USER_AGENT },
     signal: AbortSignal.timeout(15000),
   });
-  if (!qResp.ok) return;
+  if (!qResp.ok) return false;
   const qData = await qResp.json() as {
     query?: { pages?: Record<string, { pageprops?: { wikibase_item?: string } }> };
   };
-  for (const page of Object.values(qData.query?.pages ?? {})) {
+  // An answer with no page map read none of the titles it was asked about.
+  const pages = Object.values(qData.query?.pages ?? {});
+  if (pages.length === 0) return false;
+  let everyTitle = true;
+  for (const page of pages) {
     const qid = page.pageprops?.wikibase_item;
     if (qid) childQidSet.add(qid);
+    else everyTitle = false;
   }
+  return everyTitle;
 }
 
 /** Parse regionlist links (e.g. `region1name=[[Title]]`) out of wikitext. */
@@ -82,25 +95,27 @@ async function resolveWikivoyageTitlesToQids(
   regionLinks: Set<string>,
   childQidSet: Set<string>,
   wikidataId: string,
-): Promise<void> {
+): Promise<boolean> {
   const titles = [...regionLinks];
+  let complete = true;
   for (let i = 0; i < titles.length; i += 50) {
     const batch = titles.slice(i, i + 50);
-    await resolveWikivoyageTitlesBatch(batch, childQidSet);
+    if (!await resolveWikivoyageTitlesBatch(batch, childQidSet)) complete = false;
   }
   console.log(`[GeoshapeComposite] Wikivoyage regionlist added ${regionLinks.size} titles for ${wikidataId}`);
+  return complete;
 }
 
 /**
  * Collect child QIDs by parsing regionlist wikilinks from the Wikivoyage page
- * pointed to by `sourceUrl`. Merges results into the provided set.
- * Logs and swallows errors.
+ * pointed to by `sourceUrl`. Merges results into the provided set. Answers
+ * false when the page or a title went unanswered.
  */
 async function collectChildQidsFromWikivoyage(
   wikidataId: string,
   sourceUrl: string,
   childQidSet: Set<string>,
-): Promise<void> {
+): Promise<boolean> {
   try {
     const pageTitle = decodeURIComponent(sourceUrl.replace('https://en.wikivoyage.org/wiki/', ''));
     const url = new URL('https://en.wikivoyage.org/w/api.php');
@@ -113,20 +128,20 @@ async function collectChildQidsFromWikivoyage(
       headers: { 'User-Agent': USER_AGENT },
       signal: AbortSignal.timeout(15000),
     });
-    if (!resp.ok) return;
+    if (!resp.ok) return false;
 
     const data = await resp.json() as { parse?: { wikitext?: { '*': string } } };
     const wikitext = data.parse?.wikitext?.['*'] ?? '';
     const regionLinks = extractRegionlistTitles(wikitext);
-    if (regionLinks.size > 0) {
-      await resolveWikivoyageTitlesToQids(regionLinks, childQidSet, wikidataId);
-    }
+    if (regionLinks.size === 0) return true;
+    return await resolveWikivoyageTitlesToQids(regionLinks, childQidSet, wikidataId);
   } catch (err) {
     console.warn(
       '[GeoshapeComposite] Wikivoyage parse failed for %s:',
       wikidataId,
       err instanceof Error ? err.message : err,
     );
+    return false;
   }
 }
 
@@ -147,16 +162,18 @@ async function filterAvailableChildGeoshapes(childQids: Iterable<string>): Promi
 async function storeCompositeUnion(wikidataId: string, availableQids: string[]): Promise<boolean> {
   try {
     await pool.query(`
-      INSERT INTO wikidata_geoshapes (wikidata_id, geom, not_available)
+      INSERT INTO wikidata_geoshapes (wikidata_id, geom, not_available, composite_of)
       SELECT $1,
         ST_Multi(ST_CollectionExtract(ST_Buffer(ST_Union(wg.geom), 0), 3)),
-        FALSE
+        FALSE,
+        $3
       FROM wikidata_geoshapes wg
       WHERE wg.wikidata_id = ANY($2) AND wg.not_available = FALSE AND wg.geom IS NOT NULL
       ON CONFLICT (wikidata_id) DO UPDATE SET
         geom = EXCLUDED.geom,
-        not_available = FALSE
-    `, [wikidataId, availableQids]);
+        not_available = FALSE,
+        composite_of = EXCLUDED.composite_of
+    `, [wikidataId, availableQids, availableQids.length]);
 
     const check = await pool.query(
       'SELECT geom IS NOT NULL AS valid FROM wikidata_geoshapes WHERE wikidata_id = $1',
@@ -180,13 +197,18 @@ async function storeCompositeUnion(wikidataId: string, availableQids: string[]):
  * Sources (merged, deduplicated):
  *  1. Wikidata P527 (has part) / P361 (part of)
  *  2. Wikivoyage regionlist subregion links (resolved to Wikidata QIDs)
- * Returns true if a composite geoshape was built and cached.
+ * Built only when every part has a shape of its own: a union of some of them
+ * is not the item. Returns true if a composite geoshape was built and cached.
  */
 export async function tryBuildCompositeGeoshape(wikidataId: string, sourceUrl?: string): Promise<boolean> {
   const childQidSet = new Set<string>();
-  await collectChildQidsFromSparql(wikidataId, childQidSet);
-  if (sourceUrl) {
-    await collectChildQidsFromWikivoyage(wikidataId, sourceUrl, childQidSet);
+  let complete = await collectChildQidsFromSparql(wikidataId, childQidSet);
+  if (sourceUrl && !await collectChildQidsFromWikivoyage(wikidataId, sourceUrl, childQidSet)) complete = false;
+  // Parts that could not be read count as parts with no shape: the set found
+  // is then not every part, and a union of it is not the item.
+  if (!complete) {
+    console.log(`[GeoshapeComposite] Not every part of ${wikidataId} could be read; no composite is built`);
+    return false;
   }
 
   if (childQidSet.size === 0) {
@@ -202,6 +224,14 @@ export async function tryBuildCompositeGeoshape(wikidataId: string, sourceUrl?: 
     return false;
   }
 
-  console.log(`[GeoshapeComposite] ${availableQids.length}/${childQidSet.size} children have geoshapes, building union...`);
+  // A union of some of the parts is not the item: Lower Egypt (Q463871) from
+  // the one of its four parts that has a shape is Cairo, and matched as the
+  // Delta it offered Cairo at 92 % (#1628). Without every part the item has no
+  // usable shape, and the point scorer stands in, as for an item with none.
+  if (availableQids.length < childQidSet.size) {
+    console.log(`[GeoshapeComposite] ${availableQids.length}/${childQidSet.size} children have geoshapes; a composite needs all of them, so none is built for ${wikidataId}`);
+    return false;
+  }
+  console.log(`[GeoshapeComposite] All ${availableQids.length} children have geoshapes, building union...`);
   return storeCompositeUnion(wikidataId, availableQids);
 }

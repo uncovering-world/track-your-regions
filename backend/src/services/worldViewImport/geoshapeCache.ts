@@ -57,6 +57,7 @@ export async function getOrFetchGeoshape(wikidataId: string): Promise<boolean> {
   await acquireFetchSlot();
 
   // Fetch from Wikimedia
+  let answered = false;
   try {
     const url = `${GEOSHAPE_URL}?getgeojson=1&ids=${wikidataId}`;
     const response = await fetch(url, {
@@ -82,6 +83,7 @@ export async function getOrFetchGeoshape(wikidataId: string): Promise<boolean> {
     }
 
     const geojson = await response.json() as { features?: Array<{ geometry?: unknown }> };
+    answered = true;
 
     // Extract geometry from FeatureCollection
     const features = geojson?.features;
@@ -113,11 +115,19 @@ export async function getOrFetchGeoshape(wikidataId: string): Promise<boolean> {
     return true;
   } catch (err) {
     console.error('[GeoshapeCache] Failed to fetch geoshape for %s:', wikidataId, err);
-    await pool.query(
-      `INSERT INTO wikidata_geoshapes (wikidata_id, not_available) VALUES ($1, TRUE)
-       ON CONFLICT (wikidata_id) DO NOTHING`,
-      [wikidataId],
-    );
+    // A request that failed (a dropped connection, a timeout, an unreadable
+    // answer) says nothing about the item and is asked again next time, as a
+    // 429 or a 5xx is. Only a shape Wikimedia sent that cannot be stored is
+    // remembered as none: asked again, it would fail the same way. A part a
+    // blip left unanswered would otherwise block its parent's composite for
+    // good (#1628).
+    if (answered) {
+      await pool.query(
+        `INSERT INTO wikidata_geoshapes (wikidata_id, not_available) VALUES ($1, TRUE)
+         ON CONFLICT (wikidata_id) DO NOTHING`,
+        [wikidataId],
+      );
+    }
     return false;
   }
 }
