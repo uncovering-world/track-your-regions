@@ -43,6 +43,7 @@ import type { WikiSection } from '../../services/wikivoyageExtract/types.js';
 import { geoshapeMatchRegion } from '../../services/worldViewImport/geoshapeCoverage.js';
 import { pointMatchRegion } from '../../services/worldViewImport/pointMatcher.js';
 import { computeGeoSimilarityIfNeeded } from '../../services/worldViewImport/geoshapeCache.js';
+import { operationAnswer } from '../../services/operationProgress.js';
 import type { z } from 'zod/v4';
 import { badRequest, createError, failure, notFound } from '../../middleware/errorHandler.js';
 import type {
@@ -104,6 +105,7 @@ function aiMatchStatusOf(progress: AIMatchProgress): AIMatchStatus {
     processedLeaves: progress.processedLeaves,
     improved: progress.improved,
     totalCost: progress.totalCost,
+    ...(progress.operation ? { operation: operationAnswer(progress.operation.progress) } : {}),
   };
 }
 

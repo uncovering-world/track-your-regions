@@ -190,16 +190,18 @@ export async function runMatchingPolicy(
   policy: Exclude<MatchingPolicy, 'none'>,
   worldViewId: number,
   progress: ImportProgress,
+  /** Which of the caller's steps the name match and the spatial pass are: an extraction has three before them. */
+  steps: { names: number; spatial: number } = MATCH_RUN_STEPS,
 ): Promise<MatchOutcome> {
   if (policy === 'hierarchical') {
-    progress.operation?.step(MATCH_RUN_STEPS.names, 'Matching the regions to GADM by name', 0,
+    progress.operation?.step(steps.names, 'Matching the regions to GADM by name', 0,
       () => ({ done: progress.matchDone, total: progress.matchTotal }));
     await matchHierarchical(worldViewId, progress);
   } else {
     // The country walk finds its countries as it goes and counts only the ones
     // it matched outright, so it has no total to measure against: the step
     // says how many it has matched, under an indeterminate bar.
-    progress.operation?.step(MATCH_RUN_STEPS.names, 'Matching the countries to GADM by name', 0,
+    progress.operation?.step(steps.names, 'Matching the countries to GADM by name', 0,
       () => ({ done: progress.countriesMatched, total: 0 }));
     await matchCountryLevel(worldViewId, progress);
   }
@@ -212,7 +214,7 @@ export async function runMatchingPolicy(
   // back once the pass has used the line; the pass's outcome is the caller's to
   // add (`spatialSentence`).
   const policyMessage = progress.statusMessage;
-  progress.operation?.step(MATCH_RUN_STEPS.spatial, 'Scoring the leaves the names left by their shape and points', 0,
+  progress.operation?.step(steps.spatial, 'Scoring the leaves the names left by their shape and points', 0,
     () => ({ done: progress.matchDone, total: progress.matchTotal }));
   const spatial = await runSpatialPass(worldViewId, progress);
   progress.statusMessage = policyMessage;

@@ -16,6 +16,7 @@
  */
 
 import { z } from 'zod/v4';
+import { OperationProgressAnswer } from './operation.js';
 
 export const ExtractionStarted = z.strictObject({
   started: z.literal(true),
@@ -98,6 +99,7 @@ export const ExtractionStatus = z.strictObject({
   aiCompletionTokens: z.number().int().optional(),
   aiTotalCost: z.number().optional(),
   pendingQuestions: z.array(PendingQuestion).optional(),
+  operation: OperationProgressAnswer.optional().describe('The step the extraction is on, of the six, and how far through it (#1356).'),
   importedWorldViews: z.array(ImportedWorldView).describe('Newest first.'),
   caches: z.array(WikivoyageCache).describe('Newest first.'),
 }).describe('The latest extraction as it stands, with the world views imported and the caches kept. Only `running` and the two lists are sent while no extraction is known since the server started.');

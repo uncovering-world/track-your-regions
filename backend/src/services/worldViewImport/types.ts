@@ -94,6 +94,8 @@ export interface AIMatchProgress {
   improved: number;
   totalCost: number;
   cancel: boolean;
+  /** The step the run is on, of the two, and how far through it (#1356). */
+  operation?: Operation;
 }
 
 /** Result from a single AI match attempt */

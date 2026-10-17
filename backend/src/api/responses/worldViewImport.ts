@@ -224,6 +224,7 @@ export const AIMatchStatus = z.strictObject({
   processedLeaves: z.number().int().optional(),
   improved: z.number().int().optional(),
   totalCost: z.number().optional().describe('What the model calls have cost so far, in US dollars.'),
+  operation: OperationProgressAnswer.optional().describe('The step the run is on, of the two, and how far through it (#1356).'),
 }).describe('A world view\'s AI re-match of its unresolved leaves as it stands.');
 export type AIMatchStatus = z.infer<typeof AIMatchStatus>;
 

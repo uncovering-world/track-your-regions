@@ -29,6 +29,7 @@ import { pool } from '../../db/index.js';
 import { runSpatialPass } from './spatialPass.js';
 import { createInitialProgress } from './types.js';
 import { runMatchingPolicy } from './index.js';
+import { Operation } from '../operationProgress.js';
 
 const mockedBuild = buildBaseLayerTree as unknown as ReturnType<typeof vi.fn>;
 const mockedImport = importTree as unknown as ReturnType<typeof vi.fn>;
@@ -137,5 +138,18 @@ describe('a cancel during the spatial pass', () => {
     await startBaseLayerImport({ name: 'Administrative', providerLabel: 'Dataset 1.0', maxDepth: 2 });
 
     await vi.waitFor(() => expect(query.mock.calls.some(([sql]) => String(sql).includes("SET status = 'reviewing'"))).toBe(true));
+  });
+});
+
+describe('the steps the match phase reports (#1356)', () => {
+  it("counts as the caller's own steps: 2 and 3 of an import, 5 and 6 of an extraction", async () => {
+    const lines: string[] = [];
+    const progress = createInitialProgress();
+    progress.operation = new Operation('[WV Extract] wv-extract-1:', 6, line => lines.push(line));
+
+    await runMatchingPolicy('country-based', 77, progress, { names: 5, spatial: 6 });
+
+    expect(lines.some(line => line.includes('Step 5 of 6: Matching the countries to GADM by name'))).toBe(true);
+    expect(lines.some(line => line.includes('Step 6 of 6: Scoring the leaves'))).toBe(true);
   });
 });

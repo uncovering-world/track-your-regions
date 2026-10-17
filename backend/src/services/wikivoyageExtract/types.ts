@@ -2,6 +2,7 @@
  * Types for Wikivoyage extraction service
  */
 
+import type { Operation } from '../operationProgress.js';
 import type { InterviewQuestion, RegionPreview } from '../../api/responses/wikivoyageExtract.js';
 
 // A region preview and an interview question are what the extraction's status
@@ -88,6 +89,8 @@ export interface ExtractionProgress {
   nextQuestionId: number;
   /** Decision log for Phase 1 summary */
   decisions: DecisionEntry[];
+  /** The step the extraction is on, of the six, and how far through it (#1356). */
+  operation?: Operation;
 }
 
 /** Configuration for a Wikivoyage extraction run */
