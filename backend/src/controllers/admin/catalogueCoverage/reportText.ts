@@ -5,7 +5,9 @@
  * tools, and a column of numbers survives both.
  */
 
-import { causeWords, type CoverageReport, type ExpectationResult, type LiveKindGaps, type NearbyPoint, type Verdict } from './report.js';
+import {
+  causeWords, type CoverageReport, type ExpectationResult, type LiveKindGaps, type NearbyPoint, type UnnamedPlace, type Verdict,
+} from './report.js';
 
 const VERDICT_WORDS: Record<Verdict, string> = {
   offered: 'offered to a reader',
@@ -72,18 +74,41 @@ function liveLines(report: CoverageReport): string[] {
   return ['What each live kind lacks of what is expected of it', '', ...report.liveKinds.flatMap(liveKindLines)];
 }
 
-/** The judgements whose gap has closed: each a line to remove from the ledger. */
+const owner = (issue: number | null): string => (issue === null ? '' : ` (#${issue})`);
+
+/** The judgements whose gap has closed, and the row judgements no offered row carries: each a line to remove from the ledger. */
 function staleLines(report: CoverageReport): string[] {
-  if (report.staleJudgements.length === 0) return [];
+  if (report.staleJudgements.length === 0 && report.staleRowJudgements.length === 0) return [];
   return [
-    'Judgements whose gap has closed: the kind offers the entry now, so the line comes out of judgements.jsonl',
+    'Judgements whose gap has closed: the kind offers the entry now, or no offered row within reach carries the id, so the line comes out of judgements.jsonl',
     '',
-    ...report.staleJudgements.map((stale) => {
-      const owner = stale.issue === null ? '' : ` (#${stale.issue})`;
-      return `${stale.regionSlug}: ${stale.name} under ${stale.kindSlug} -> ${stale.cause}${owner}, judged ${stale.judged}`;
-    }),
+    ...report.staleJudgements.map(stale => `${stale.regionSlug}: ${stale.name} under ${stale.kindSlug} -> ${stale.cause}${owner(stale.issue)}, judged ${stale.judged}`),
+    ...report.staleRowJudgements.map(stale => `${stale.regionSlug}: row ${stale.wikidataId} -> ${stale.cause}${owner(stale.issue)}, judged ${stale.judged}`),
     '',
   ];
+}
+
+/** One offered place no guide names: what it is, which kinds offer it, how known it is, how far from the centre. */
+function unnamedLine(place: UnnamedPlace): string {
+  const id = place.wikidataId ?? 'no Wikidata id';
+  const sitelinks = place.sitelinks === null ? 'no sitelinks count' : `${place.sitelinks} sitelinks`;
+  return `        ${place.name} (${id}; ${place.kinds.join(', ')}; ${sitelinks}; ${place.km} km)`;
+}
+
+/** Per region, what it offers that no guide names: the unjudged least known first, the judged by cause, and the findings that stand. */
+function unnamedLines(report: CoverageReport): string[] {
+  const lines = ['Offered within reach and named by no guide: for a person to judge, least known first', ''];
+  for (const region of report.unnamed) {
+    const judged = region.total - region.unjudged.length - region.unjudgeable.length;
+    const causes = region.judgedByCause.length > 0 ? `: ${region.judgedByCause.map(causeWords).join('; ')}` : '';
+    const unjudgeable = region.unjudgeable.length > 0 ? `; ${region.unjudgeable.length} cannot be judged (no Wikidata id)` : '';
+    lines.push(`${region.regionName} [${region.regionSlug}]: ${region.total} offered that no entry names; ${judged} judged${causes}; `
+      + `${region.unjudged.length} wait for a person${unjudgeable}`);
+    if (region.unjudged.length > 0) lines.push('    not judged:', ...region.unjudged.map(unnamedLine));
+    if (region.unjudgeable.length > 0) lines.push('    no Wikidata id to judge by:', ...region.unjudgeable.map(unnamedLine));
+    if (region.standing.length > 0) lines.push('    judged not worth a visit and still offered:', ...region.standing.map(unnamedLine));
+  }
+  return lines;
 }
 
 /** A catalogue point at an expectation's spot: the place, its named point where it has one, and how far. */
@@ -112,6 +137,8 @@ export function renderCoverageReport(report: CoverageReport): string {
     ...proposedLines(report),
     '',
     ...liveLines(report),
+    '',
+    ...unnamedLines(report),
     '',
     ...staleLines(report),
     ...judgedLines(

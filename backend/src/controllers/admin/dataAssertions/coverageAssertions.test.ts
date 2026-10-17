@@ -43,7 +43,8 @@ function report(liveKinds: LiveKindGaps[], expectations = 1, stale: CoverageRepo
     liveKinds,
     expectations: Array.from({ length: expectations }, () => ({}) as never),
     staleJudgements: stale,
-    rowJudgements: 0,
+    unnamed: [],
+    staleRowJudgements: [],
   };
 }
 

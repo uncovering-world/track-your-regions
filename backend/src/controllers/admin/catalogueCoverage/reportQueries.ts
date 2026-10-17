@@ -53,6 +53,21 @@ export interface NearbyRow {
 /** One line of the judgement ledger as loaded; `judged` as a date string. */
 export type JudgementRow = Pick<CoverageJudgementsRow, 'region_slug' | 'entry_slug' | 'kind_slug' | 'row_wikidata_id' | 'cause' | 'issue_number' | 'note'> & { judged: string };
 
+/** One offered place within a surveyed region's reach that no entry of the region names (#1601). */
+export interface UnnamedRow {
+  region_slug: string;
+  experience_id: number;
+  name: ExperiencesRow['name'];
+  /** The Wikidata id the place is known by, its own before a membership's; null for a place only a source's id names. */
+  wikidata_id: string | null;
+  /** The kinds that offer it, by `experience_kinds` id. */
+  kind_ids: number[];
+  /** The place's own sitelinks as its source recorded them; null where the source records none (a museum, an inscribed property). */
+  sitelinks: number | null;
+  /** Kilometres from the region's centre to its nearest offered point, rounded. */
+  km: number;
+}
+
 export interface CoverageFacts {
   kinds: KindRow[];
   regions: RegionRow[];
@@ -60,6 +75,7 @@ export interface CoverageFacts {
   matches: MatchRow[];
   nearby: NearbyRow[];
   judgements: JudgementRow[];
+  unnamed: UnnamedRow[];
 }
 
 const KINDS_SQL = `
@@ -87,12 +103,26 @@ const EXPECTATIONS_SQL = `
    ORDER BY x.region_slug, x.source_count DESC, x.sitelinks DESC NULLS LAST, x.name`;
 
 /**
+ * Every identifier a place is known by: its own `external_id`, each membership's
+ * (a run finds a place by the id on its membership, ADR-0084), and the Wikidata
+ * items a membership resolves a site to. A UNESCO-first place Archaeology knows
+ * by its Wikidata item is found by either id. `own` says which is the place's own.
+ */
+const KNOWN_AS_SQL = `
+    SELECT e.id AS experience_id, e.external_id AS id, true AS own FROM experiences e
+    UNION
+    SELECT m.experience_id, m.external_id, false FROM ${MEMBERSHIPS} m
+    UNION
+    SELECT m.experience_id, item, false FROM ${MEMBERSHIPS} m CROSS JOIN LATERAL unnest(m.wikidata_items) AS item`;
+
+/**
  * By identifier and never by name. An entry's identifiers are its Wikidata id,
  * the ids named as the same place, and UNESCO's id of an inscribed property;
- * each is looked up among the places and among the works, whatever the entry's
- * type, since a statue a guide calls a work is a place in the catalogue. A
- * UNESCO id is digits and a Wikidata id starts with Q, so one column of
- * identifiers answers for both without mistaking them.
+ * each is looked up among the places, by every id a place is known by, and
+ * among the works, whatever the entry's type, since a statue a guide calls a
+ * work is a place in the catalogue. A UNESCO id is digits and a Wikidata id
+ * starts with Q, so one column of identifiers answers for both without
+ * mistaking them.
  */
 const MATCHES_SQL = `
   WITH ids AS (
@@ -108,11 +138,13 @@ const MATCHES_SQL = `
     SELECT x.region_slug, x.slug, x.unesco_id
       FROM coverage_expectations x
      WHERE x.unesco_id IS NOT NULL AND ($1::text[] IS NULL OR x.region_slug = ANY($1))
+  ), known_as AS (${KNOWN_AS_SQL}
   )
-  SELECT ids.region_slug, ids.slug, e.name AS catalogue_name, m.kind_id,
+  SELECT DISTINCT ids.region_slug, ids.slug, e.name AS catalogue_name, m.kind_id,
          (${countedMembershipSql('m', 'e')}) AS offered
     FROM ids
-    JOIN experiences e ON e.external_id = ids.id
+    JOIN known_as k ON k.id = ids.id
+    JOIN experiences e ON e.id = k.experience_id
     JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
   UNION ALL
   SELECT ids.region_slug, ids.slug, t.name AS catalogue_name, NULL::int AS kind_id,
@@ -150,24 +182,117 @@ const JUDGEMENTS_SQL = `
    WHERE ($1::text[] IS NULL OR j.region_slug = ANY($1))
    ORDER BY j.region_slug, j.entry_slug NULLS LAST, j.kind_slug, j.row_wikidata_id`;
 
+/**
+ * The other direction (#1601): what a region offers that no guide names. Every
+ * offered place with an offered, published point within the region's reach,
+ * none of whose identifiers (`KNOWN_AS_SQL`) matches an identifier an entry of
+ * the region names: the same identifiers and the same `named` set as
+ * `MATCHES_SQL`, so a place the lists find is never also a place the lists do
+ * not name. The place's own sitelinks are what its source recorded on it; a
+ * museum and an inscribed property carry none.
+ *
+ * The identifiers are read once for the places reached and joined, not asked
+ * per row: the `known_as` set is the whole catalogue's, and a correlated
+ * subquery over it ran for seconds where the joins run in tens of milliseconds.
+ */
+const UNNAMED_SQL = `
+  WITH named AS (
+    SELECT x.region_slug, x.wikidata_id AS id
+      FROM coverage_expectations x
+     WHERE x.wikidata_id IS NOT NULL AND ($1::text[] IS NULL OR x.region_slug = ANY($1))
+    UNION
+    SELECT x.region_slug, same.id
+      FROM coverage_expectations x
+      CROSS JOIN LATERAL unnest(x.same_as) AS same(id)
+     WHERE ($1::text[] IS NULL OR x.region_slug = ANY($1))
+    UNION
+    SELECT x.region_slug, x.unesco_id
+      FROM coverage_expectations x
+     WHERE x.unesco_id IS NOT NULL AND ($1::text[] IS NULL OR x.region_slug = ANY($1))
+  ), reach AS (
+    -- The reach in degrees, for the index's prefilter: a degree of longitude is 111 km at the
+    -- equator and shrinks with the cosine of the latitude, so the circle in degree space is
+    -- drawn at the reach over that cosine, with a tenth over for the ellipsoid. A reach that
+    -- comes within six degrees of a pole is drawn over the whole world instead: there a
+    -- circle in degrees misses a point a kilometre away across the meridians, and no reach
+    -- in degree space is wider than 360. The geography test is the measure.
+    SELECT r.slug, r.centre, r.radius_km,
+           CASE WHEN abs(ST_Y(r.centre)) + r.radius_km / 111.0 >= 84 THEN 360
+                ELSE r.radius_km / 111.0 / cos(radians(ST_Y(r.centre))) * 1.1 END AS degrees,
+           -- The centre's twin across the antimeridian, so a reach over it is tested on both sides.
+           ST_Translate(r.centre, CASE WHEN ST_X(r.centre) >= 0 THEN -360 ELSE 360 END, 0) AS twin
+      FROM coverage_regions r
+     WHERE ($1::text[] IS NULL OR r.slug = ANY($1))
+  ), reached AS (
+    SELECT rc.slug AS region_slug, e.id AS experience_id, e.name, e.metadata,
+           round(MIN(ST_Distance(el.location::geography, rc.centre::geography)) / 1000)::int AS km
+      FROM reach rc
+      JOIN experience_locations el
+        ON (ST_DWithin(el.location, rc.centre, rc.degrees) OR ST_DWithin(el.location, rc.twin, rc.degrees))
+       AND ST_DWithin(el.location::geography, rc.centre::geography, rc.radius_km * 1000)
+      -- Under every place that shows the point, a part's site included (ADR-0100).
+      JOIN ${placePointsSql()} pp ON pp.location_id = el.id
+      JOIN experiences e ON e.id = pp.place_id
+     WHERE ${offeredLocationSql('el')}
+       AND ${publishedContentSql('el')}
+       AND EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id AND ${countedMembershipSql('m', 'e')})
+     GROUP BY rc.slug, e.id
+  ), known_as AS (
+    SELECT k.* FROM (${KNOWN_AS_SQL}
+    ) k
+     WHERE k.experience_id IN (SELECT experience_id FROM reached)
+  ), named_places AS (
+    SELECT DISTINCT k.experience_id, n.region_slug
+      FROM known_as k
+      JOIN named n ON n.id = k.id
+  ), items AS (
+    SELECT k.experience_id, (array_agg(k.id ORDER BY k.own DESC, k.id))[1] AS wikidata_id
+      FROM known_as k
+     WHERE k.id ~ '^Q[1-9][0-9]*$'
+     GROUP BY k.experience_id
+  ), offering AS (
+    SELECT m.experience_id, array_agg(DISTINCT m.kind_id ORDER BY m.kind_id) AS kind_ids
+      FROM ${MEMBERSHIPS} m
+      JOIN experiences e ON e.id = m.experience_id
+     WHERE m.experience_id IN (SELECT experience_id FROM reached)
+       AND ${countedMembershipSql('m', 'e')}
+     GROUP BY m.experience_id
+  )
+  SELECT rd.region_slug, rd.experience_id, rd.name, rd.km,
+         i.wikidata_id, o.kind_ids,
+         (rd.metadata->>'sitelinksCount')::int AS sitelinks
+    FROM reached rd
+    LEFT JOIN named_places np ON np.experience_id = rd.experience_id AND np.region_slug = rd.region_slug
+    LEFT JOIN items i ON i.experience_id = rd.experience_id
+    JOIN offering o ON o.experience_id = rd.experience_id
+   WHERE np.experience_id IS NULL
+   ORDER BY rd.region_slug, sitelinks NULLS LAST, rd.name`;
+
 /** How near a catalogue point must be to count as standing at an expectation's spot. */
 export const SAME_SPOT_METRES = 250;
 
 /** Read everything the report is built from, for every region or for `regionSlugs`. */
 export async function readCoverageFacts(regionSlugs?: string[]): Promise<CoverageFacts> {
   const only = regionSlugs ?? null;
-  const [kinds, regions, expectations, matches, nearby, judgements] = await Promise.all([
+  const [kinds, regions, expectations, matches, nearby, judgements, unnamed] = await Promise.all([
     pool.query<KindRow>(KINDS_SQL),
     pool.query<RegionRow>(REGIONS_SQL, [only]),
     pool.query<ExpectationRow>(EXPECTATIONS_SQL, [only]),
     pool.query<MatchRow>(MATCHES_SQL, [only]),
     pool.query<NearbyRow>(NEARBY_SQL, [only, SAME_SPOT_METRES]),
     pool.query<JudgementRow>(JUDGEMENTS_SQL, [only]),
+    pool.query<UnnamedRow>(UNNAMED_SQL, [only]),
   ]);
   return {
-    kinds: kinds.rows, regions: regions.rows, expectations: expectations.rows, matches: matches.rows, nearby: nearby.rows, judgements: judgements.rows,
+    kinds: kinds.rows,
+    regions: regions.rows,
+    expectations: expectations.rows,
+    matches: matches.rows,
+    nearby: nearby.rows,
+    judgements: judgements.rows,
+    unnamed: unnamed.rows,
   };
 }
 
 /** The statements, for the spec that holds them to the fragments they compose. */
-export const coverageSql = { KINDS_SQL, REGIONS_SQL, EXPECTATIONS_SQL, MATCHES_SQL, NEARBY_SQL, JUDGEMENTS_SQL };
+export const coverageSql = { KINDS_SQL, REGIONS_SQL, EXPECTATIONS_SQL, MATCHES_SQL, NEARBY_SQL, JUDGEMENTS_SQL, UNNAMED_SQL };

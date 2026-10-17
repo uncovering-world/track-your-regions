@@ -44,6 +44,7 @@ const facts = (over: Partial<CoverageFacts>): CoverageFacts => ({
   matches: [],
   nearby: [],
   judgements: [],
+  unnamed: [],
   ...over,
 });
 const judged = (slug: string, cause: string, issue: number | null, over: Partial<JudgementRow> = {}): JudgementRow => ({
@@ -290,9 +291,77 @@ describe('what a person has judged', () => {
     ]);
   });
 
-  it('counts a judgement on a catalogue row and joins it to no gap', () => {
-    expect(report.rowJudgements).toBe(1);
+  it('joins a judgement on a catalogue row to no gap, and calls it stale when no offered row within reach carries the id', () => {
     expect(report.liveKinds.flatMap(live => live.wellKnownMissing).filter(missing => missing.judgement !== null)).toHaveLength(5);
+    expect(report.staleRowJudgements).toEqual([
+      { regionSlug: 'cusco-region', wikidataId: 'Q96000099', cause: 'not-a-must', issue: null, judged: '2026-10-16', note: 'Judged .' },
+    ]);
+  });
+});
+
+describe('what a region offers that no guide names', () => {
+  const unnamed = (name: string, over: Partial<CoverageFacts['unnamed'][number]> = {}): CoverageFacts['unnamed'][number] => ({
+    region_slug: 'cusco-region', experience_id: name.length, name, wikidata_id: `Q${name.length}`, kind_ids: [5], sitelinks: 10, km: 3, ...over,
+  });
+  const onRow = (id: string, cause: string, issue: number | null = null): JudgementRow =>
+    judged('', cause, issue, { entry_slug: null, kind_slug: null, row_wikidata_id: id });
+  const report = buildCoverageReport(facts({
+    regions: [
+      { slug: 'cusco-region', name: 'Cusco region', country: 'Peru', surveyed: '2026-10-01' },
+      { slug: 'rome', name: 'Rome', country: 'Italy', surveyed: '2026-10-02' },
+    ],
+    unnamed: [
+      unnamed('Tipon', { sitelinks: 19, kind_ids: [5, 1] }),
+      unnamed('A stump', { sitelinks: 3 }),
+      unnamed('A chapel', { wikidata_id: 'Q77', sitelinks: 9 }),
+      unnamed('An aqueduct', { wikidata_id: 'Q78', sitelinks: 12, kind_ids: [5] }),
+      unnamed('A road', { wikidata_id: 'Q79', sitelinks: 30 }),
+      unnamed('A property only UNESCO names', { wikidata_id: null, sitelinks: null, kind_ids: [1] }),
+    ],
+    judgements: [
+      onRow('Q77', 'worth-a-visit'),
+      onRow('Q78', 'not-a-must'),
+      onRow('Q79', 'rule-defect', 1160),
+      // Judged in Rome, where no offered row carries the id any more.
+      onRow('Q80', 'not-a-must', null),
+    ].map((row, i) => (i === 3 ? { ...row, region_slug: 'rome' } : row)),
+  }));
+  const cusco = report.unnamed.find(region => region.regionSlug === 'cusco-region');
+
+  it('lists per region the unjudged rows least known first, with the kinds that offer them, and apart the ones with no id to judge by', () => {
+    expect(cusco?.total).toBe(6);
+    expect(cusco?.unjudged.map(place => [place.name, place.sitelinks, place.kinds])).toEqual([
+      ['A stump', 3, ['Archaeology']],
+      ['Tipon', 19, ['Archaeology', 'World Heritage Sites']],
+    ]);
+    expect(cusco?.unjudgeable.map(place => [place.name, place.wikidataId, place.kinds])).toEqual([
+      ['A property only UNESCO names', null, ['World Heritage Sites']],
+    ]);
+  });
+
+  it('counts the judged by cause, and keeps standing what a person said is not worth a visit while a kind offers it', () => {
+    expect(cusco?.judgedByCause).toEqual([
+      { cause: 'worth-a-visit', count: 1, issues: [] },
+      { cause: 'not-a-must', count: 1, issues: [] },
+      { cause: 'rule-defect', count: 1, issues: [1160] },
+    ]);
+    expect(cusco?.standing.map(place => [place.name, place.judgement?.cause])).toEqual([['An aqueduct', 'not-a-must'], ['A road', 'rule-defect']]);
+  });
+
+  it('says of a region with nothing unnamed that it has nothing, and calls stale a row judgement no offered row carries', () => {
+    expect(report.unnamed.find(region => region.regionSlug === 'rome')).toMatchObject({ total: 0, unjudged: [], unjudgeable: [], judgedByCause: [], standing: [] });
+    expect(report.staleRowJudgements.map(stale => [stale.regionSlug, stale.wikidataId, stale.cause])).toEqual([['rome', 'Q80', 'not-a-must']]);
+  });
+
+  it('says it as text: the counts per region, the unjudged, and the findings that stand', () => {
+    const text = renderCoverageReport(report);
+    expect(text).toContain('Cusco region [cusco-region]: 6 offered that no entry names; 3 judged: 1 worth-a-visit; 1 not-a-must; 1 rule-defect (#1160); '
+      + '2 wait for a person; 1 cannot be judged (no Wikidata id)');
+    expect(text).toContain('        A stump (Q7; Archaeology; 3 sitelinks; 3 km)');
+    expect(text).toContain('    no Wikidata id to judge by:\n        A property only UNESCO names (no Wikidata id; World Heritage Sites; no sitelinks count; 3 km)');
+    expect(text).toContain('    judged not worth a visit and still offered:\n        An aqueduct (Q78; Archaeology; 12 sitelinks; 3 km)');
+    expect(text).toContain('Rome [rome]: 0 offered that no entry names; 0 judged; 0 wait for a person');
+    expect(text).toContain('rome: row Q80 -> not-a-must, judged 2026-10-16');
   });
 });
 
@@ -311,7 +380,10 @@ describe('the statements', () => {
     expect(sql).toContain('x.wikidata_id AS id');
     expect(sql).toContain('unnest(x.same_as) AS same(id)');
     expect(sql).toContain('SELECT x.region_slug, x.slug, x.unesco_id');
-    expect(sql).toContain('JOIN experiences e ON e.external_id = ids.id');
+    // A place by every id it is known by: its own, each membership's, the items a membership resolves a site to.
+    expect(sql).toContain('JOIN known_as k ON k.id = ids.id');
+    expect(sql).toContain('JOIN experiences e ON e.id = k.experience_id');
+    for (const known of ['e.external_id AS id', 'm.external_id', 'unnest(m.wikidata_items) AS item']) expect(sql).toContain(known);
     expect(sql).toContain('JOIN treasures t ON t.external_id = ids.id');
     expect(sql).not.toMatch(/\bname\s*=|ILIKE|similarity\(/i);
   });
@@ -321,6 +393,22 @@ describe('the statements', () => {
     expect(sql).toContain(collapse(offeredLocationSql('el')));
     expect(sql).toContain(collapse(publishedContentSql('el')));
     expect(sql).toContain(collapse(`m.experience_id = e.id AND ${countedMembershipSql('m', 'e')}`));
+  });
+
+  it('count as offered and unnamed only an offered point of an offered place, by the identifiers the lists match by', () => {
+    const sql = collapse(coverageSql.UNNAMED_SQL);
+    expect(sql).toContain(collapse(offeredLocationSql('el')));
+    expect(sql).toContain(collapse(publishedContentSql('el')));
+    expect(sql).toContain(collapse(`m.experience_id = e.id AND ${countedMembershipSql('m', 'e')}`));
+    expect(sql).toContain('rc.radius_km * 1000');
+    // The prefilter in degrees widens with the latitude, covers the world by a pole, and is tested on both sides of the antimeridian.
+    expect(sql).toContain('cos(radians(ST_Y(r.centre)))');
+    expect(sql).toContain('>= 84 THEN 360');
+    expect(sql).toContain('ST_DWithin(el.location, rc.twin, rc.degrees)');
+    for (const identifier of ['x.wikidata_id AS id', 'unnest(x.same_as) AS same(id)', 'x.unesco_id', 'unnest(m.wikidata_items) AS item']) {
+      expect(sql).toContain(identifier);
+    }
+    expect(sql).not.toMatch(/\bname\s*=|ILIKE|similarity\(/i);
   });
 });
 
