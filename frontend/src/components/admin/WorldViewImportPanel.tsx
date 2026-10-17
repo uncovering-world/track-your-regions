@@ -38,9 +38,11 @@ import {
   cancelExtraction,
   answerExtractionQuestion,
 } from '../../api/admin/wikivoyageExtract';
-import type { PendingQuestion, RegionPreview } from '../../api/admin/wikivoyageExtract';
+import type { ExtractionStatus, PendingQuestion, RegionPreview } from '../../api/admin/wikivoyageExtract';
+import type { ImportStatus } from '../../api/admin/worldViewImport';
 import { WorldViewImportReview } from './WorldViewImportReview';
 import { ComputeGeometriesOffer } from './WorldViewGeometryCompute';
+import { OperationProgressView } from './OperationProgressView';
 import { ImportSourcePanel } from './ImportSourcePanel';
 import { safeHref } from '../../utils/safeHref';
 import { deleteWorldView } from '../../api/worldViews';
@@ -615,45 +617,7 @@ export function WorldViewImportPanel() {
               />
 
 
-              {/* Import progress (phase 3) */}
-              {isRunning && activeStatus.status === 'importing' && (activeStatus.totalRegions ?? 0) > 0 && (
-                <Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={((activeStatus.createdRegions ?? 0) / (activeStatus.totalRegions ?? 1)) * 100}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    Creating regions: {activeStatus.createdRegions}/{activeStatus.totalRegions}
-                  </Typography>
-                </Box>
-              )}
-
-              {/* Matching progress (phase 4) */}
-              {isRunning && activeStatus.status === 'matching' && (activeStatus.totalCountries ?? 0) > 0 && (
-                <Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={((activeStatus.countriesMatched ?? 0) / (activeStatus.totalCountries ?? 1)) * 100}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    Matching countries: {activeStatus.countriesMatched}/{activeStatus.totalCountries}
-                  </Typography>
-                </Box>
-              )}
-              {/* A policy that matches regions rather than countries (#457). Only an
-                  import's status carries these; a Wikivoyage extraction matches by country. */}
-              {isRunning && activeStatus.status === 'matching' && (activeStatus.totalCountries ?? 0) === 0
-                && 'matchTotal' in activeStatus && (activeStatus.matchTotal ?? 0) > 0 && (
-                <Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={((activeStatus.matchDone ?? 0) / (activeStatus.matchTotal ?? 1)) * 100}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    Matching regions: {activeStatus.matchDone ?? 0}/{activeStatus.matchTotal}
-                  </Typography>
-                </Box>
-              )}
+              {isRunning && <ImportRunProgress status={activeStatus} />}
 
               {/* Stats chips */}
               {(isComplete || (isRunning && (activeStatus.status === 'matching' || activeStatus.status === 'importing'))) && (
@@ -727,5 +691,60 @@ export function WorldViewImportPanel() {
         </Card>
       )}
     </Box>
+  );
+}
+
+/**
+ * A running import's or extraction's progress below its status line: an import
+ * says its step through the shared progress (#1356); the extraction's phases
+ * still draw a bar each.
+ */
+function ImportRunProgress({ status }: { status: ImportStatus | ExtractionStatus }) {
+  // Only an import's status carries the shared progress; the extraction's has no such field.
+  const steps = 'operation' in status ? status.operation : undefined;
+  // No detail line here: the card's header already says the run's sentence.
+  if (steps) return <OperationProgressView operation={steps} starting={status.statusMessage ?? ''} />;
+  return (
+    <>
+      {/* Import progress (phase 3) */}
+      {status.status === 'importing' && (status.totalRegions ?? 0) > 0 && (
+        <Box>
+          <LinearProgress
+            variant="determinate"
+            value={((status.createdRegions ?? 0) / (status.totalRegions ?? 1)) * 100}
+          />
+          <Typography variant="caption" color="text.secondary">
+            Creating regions: {status.createdRegions}/{status.totalRegions}
+          </Typography>
+        </Box>
+      )}
+
+      {/* Matching progress (phase 4) */}
+      {status.status === 'matching' && (status.totalCountries ?? 0) > 0 && (
+        <Box>
+          <LinearProgress
+            variant="determinate"
+            value={((status.countriesMatched ?? 0) / (status.totalCountries ?? 1)) * 100}
+          />
+          <Typography variant="caption" color="text.secondary">
+            Matching countries: {status.countriesMatched}/{status.totalCountries}
+          </Typography>
+        </Box>
+      )}
+      {/* A policy that matches regions rather than countries (#457). Only an
+          import's status carries these; a Wikivoyage extraction matches by country. */}
+      {status.status === 'matching' && (status.totalCountries ?? 0) === 0
+        && 'matchTotal' in status && (status.matchTotal ?? 0) > 0 && (
+        <Box>
+          <LinearProgress
+            variant="determinate"
+            value={((status.matchDone ?? 0) / (status.matchTotal ?? 1)) * 100}
+          />
+          <Typography variant="caption" color="text.secondary">
+            Matching regions: {status.matchDone ?? 0}/{status.matchTotal}
+          </Typography>
+        </Box>
+      )}
+    </>
   );
 }

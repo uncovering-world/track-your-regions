@@ -5847,6 +5847,8 @@ export interface ImportStatus {
   matchDone?: number;
   /** The world view the import creates, once it exists. */
   worldViewId?: number | null;
+  /** The step the import is on, of the three, and how far through it (#1356). */
+  operation?: OperationProgressAnswer;
   /** Every imported world view, newest first, finished ones included. */
   importedWorldViews: ImportedWorldView[];
 }
@@ -8451,6 +8453,8 @@ export interface RematchStatus {
      * @maximum 9007199254740991
      */
   noCandidates?: number;
+  /** The step the re-match is on, of the three, and how far through it (#1356). */
+  operation?: OperationProgressAnswer;
 }
 
 export interface RemoveDivisionsFromRegionBody {
