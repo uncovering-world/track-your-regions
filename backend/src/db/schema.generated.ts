@@ -362,6 +362,23 @@ export interface ExperienceLocationsRow {
   moved_to_location_id: number | null;
 }
 
+/** The table `experience_merge_proposals`. */
+export interface ExperienceMergeProposalsRow {
+  id: number;
+  place_a: number;
+  place_b: number;
+  distance_m: number;
+  name_similarity: number;
+  exact: boolean;
+  reach_m: number;
+  proposed_at: Date;
+  answer: string | null;
+  part_id: number | null;
+  answered_by: number | null;
+  answered_at: Date | null;
+  merge_id: number | null;
+}
+
 /** The table `experience_merges`. */
 export interface ExperienceMergesRow {
   id: number;
@@ -1016,6 +1033,9 @@ export const COLUMN_WIDTHS = {
     source_membership: 10,
     existence: 10,
   },
+  experience_merge_proposals: {
+    answer: 10,
+  },
   experience_merges: {
     reason: 30,
   },
@@ -1159,6 +1179,9 @@ export const CHECK_VALUES = {
     curation_state: ["pending", "auto", "verified"],
     existence: ["extant", "lost"],
     source_membership: ["present", "former"],
+  },
+  experience_merge_proposals: {
+    answer: ["one", "two", "part_of"],
   },
   experience_merges: {
     reason: ["equal_wikidata_item", "curator"],
