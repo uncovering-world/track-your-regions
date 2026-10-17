@@ -158,3 +158,35 @@ describe('a region assignment the server was restarted under', () => {
     expect(screen.queryByText(RESTARTED_UNDER_IT)).toBeNull();
   });
 });
+
+describe('a region assignment that reports its steps', () => {
+  beforeEach(() => {
+    mockedStatus.mockReset();
+    mockedStart.mockReset();
+    (getSources as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([]);
+    (fetchWorldViews as unknown as ReturnType<typeof vi.fn>).mockResolvedValue([
+      { id: 5, name: 'Regions of the World', isDefault: false },
+    ]);
+    mockedStart.mockResolvedValue({ started: true });
+  });
+
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('says the step it is on, of the four (#1356)', async () => {
+    mockedStatus
+      .mockResolvedValueOnce({ running: false })
+      .mockResolvedValue({
+        ...assigning,
+        operation: {
+          elapsedSeconds: 12, cancelling: false,
+          step: { index: 2, count: 4, sentence: 'Placing every point in the regions that contain it', done: 0, total: 0, elapsedSeconds: 9 },
+          wait: null,
+        },
+      });
+    renderPanel();
+    await startOnWorldView();
+
+    expect(await screen.findByText('Step 2 of 4')).toBeInTheDocument();
+    expect(screen.getByText(/Placing every point in the regions that contain it/)).toBeInTheDocument();
+  });
+});
