@@ -13,6 +13,7 @@ import type { HeldPart, ReviewQueueItem } from '../../../api/reviewQueue';
 import { sectionKind, type GatedGroup } from '../gatedGroup';
 import type { RowKind } from '../queueRowTypes';
 import { creditFoldsIntoPicture } from '../factRows';
+import { distanceLabel } from '../../../utils/moveDescription';
 import { HELD_CREDIT_FIELD } from '@tyr/shared/pictures';
 
 /**
@@ -37,6 +38,7 @@ export const KIND_COLOR: Record<RowKind | 'arrival' | 'contents', string> = {
   refused: '#6A1B9A',
   missing: '#757575',
   'component-items': '#5D4037',
+  'merge-proposals': '#00695C',
   'pin-question': '#4527A0',
 };
 
@@ -51,6 +53,7 @@ export const KIND_SHORT: Record<RowKind | 'arrival' | 'contents', string> = {
   refused: 'refused',
   missing: 'gone from the source',
   'component-items': 'candidate items',
+  'merge-proposals': 'may be one place with',
   'pin-question': 'your pin is questioned',
 };
 
@@ -189,6 +192,15 @@ export function rowSpecific(row: {
       const candidates = row.item?.component_items ?? [];
       const components = new Set(candidates.map(c => c.locationId)).size;
       return `for ${countLabel(components, 'component', 'components')}, ${countLabel(candidates.length, 'candidate', 'candidates')}`;
+    }
+    case 'merge-proposals': {
+      // "may be one place with Durham Cathedral, 139 m apart": the other place by
+      // name, and the distance; several pairs name the nearest (#1249).
+      const pairs = row.item?.merge_pairs ?? [];
+      const [first] = pairs;
+      if (!first) return '';
+      const others = pairs.length > 1 ? ` and ${countLabel(pairs.length - 1, 'other place', 'other places')}` : '';
+      return `${first.otherName}, ${distanceLabel(first.distanceM)} apart${others}`;
     }
     case 'pin-question':
       // What the run says now, per kind where two pins are asked (#1367).

@@ -15,6 +15,7 @@ import { RefusedCard } from './RefusedCards';
 import { PinQuestionCard } from './PinQuestionCard';
 import { SourcesCard } from './SourcesCard';
 import { ComponentItemsCard } from './ComponentItemsCard';
+import { MergeProposalsCard } from './MergeProposalsCard';
 import { KindMissingCard } from './KindMissingCard';
 import { asksOfKinds } from './kindQuestions';
 import { GatedCard } from './WaitingToPublish';
@@ -55,6 +56,11 @@ const KIND_NOTE: Record<RowKind, string> = {
     + 'name is a guess until you say otherwise. Confirming one makes it the part’s entry — its picture and '
     + 'description follow — and your choice is kept through every run; turning one down keeps it from being '
     + 'offered again.',
+  'merge-proposals': 'Another place stands within reach of this one under a name alike — the Statue of Liberty as a '
+    + 'World Heritage site and as public art, Durham Cathedral beside the site "Durham Castle and Cathedral". '
+    + 'Nothing is wrong on either card; the question is what a traveller stands in front of. One place folds the '
+    + 'other into this one — one pin, both kinds, visits kept — and can be undone from the history. Two places '
+    + 'keeps them apart for good. One part of the other records which is the part, and merges nothing.',
   'pin-question': 'A curator — perhaps you — answered whether this place belongs in this list and pinned the answer, '
     + 'so every run kept it as they left it. A run asks about it again: either it says something else — it turns the '
     + 'place down for a different reason, or its rule would now take in what you kept out — or an admin asked for every '
@@ -96,6 +102,7 @@ export function ReviewBench({ row, onDone }: {
       {row.kind === 'conflicts' && row.item && <ConflictCard item={row.item} onDone={onDone} />}
       {row.kind === 'sources' && row.item && <SourcesCard item={row.item} onDone={onDone} />}
       {row.kind === 'component-items' && row.item && <ComponentItemsCard item={row.item} onDone={onDone} />}
+      {row.kind === 'merge-proposals' && row.item && <MergeProposalsCard item={row.item} onDone={onDone} />}
       {row.kind === 'refused' && row.items && <RefusedCard items={row.items} onDone={onDone} />}
       {row.kind === 'pin-question' && row.items && <PinQuestionCard items={row.items} onDone={onDone} />}
       {row.kind === 'missing' && row.items && asksOfKinds(row.items) && <KindMissingCard items={row.items} onDone={onDone} />}

@@ -37,7 +37,7 @@ export interface AnswerableRow {
 
 export type AnswerableKind =
   | 'arrival' | 'held' | 'contents' | 'conflicts' | 'sources' | 'refused' | 'missing' | 'withdrawn' | 'component-items'
-  | 'pin-question';
+  | 'merge-proposals' | 'pin-question';
 
 export interface AnswerWords {
   /** What the row proposes, as the bar's expansion states it. */
@@ -103,6 +103,14 @@ export const ANSWER_WORDS: Record<AnswerableKind, AnswerWords> = {
     accept: 'Confirm the exact matches — the same name at the same spot',
     reject: 'Not these — turn every candidate down',
   },
+  // A batch makes one place only of the exact pairs, the same name within
+  // fifty metres (#1249); a pair merely alike, and which is the part, are
+  // judged on the card, pair by pair.
+  'merge-proposals': {
+    proposes: 'make this place one with a near place of a name alike',
+    accept: 'One place — merge the exact pairs, the same name at the same spot',
+    reject: 'Two places — keep every pair apart',
+  },
   // A pin is a person's answer to one row: a batch neither keeps nor releases
   // one (#1367), and the server refuses both.
   'pin-question': {
@@ -123,6 +131,7 @@ export const KIND_NOUN: Record<AnswerableKind, [string, string]> = {
   missing: ['object gone from the source', 'objects gone from the source'],
   withdrawn: ['object with lost places', 'objects with lost places'],
   'component-items': ['site with candidate items', 'sites with candidate items'],
+  'merge-proposals': ['place with a near place of a name alike', 'places with a near place of a name alike'],
   'pin-question': ['questioned pin', 'questioned pins'],
 };
 

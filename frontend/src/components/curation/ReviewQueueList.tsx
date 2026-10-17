@@ -39,6 +39,7 @@ const KIND_HEADING: Record<RowKind, string> = {
   refused: 'Our own rule for this list turned these down',
   missing: 'Gone from the source',
   'component-items': 'Components with candidate Wikidata items',
+  'merge-proposals': 'Near places with names alike — one place, or two?',
   'pin-question': 'A run asks again about an answer you pinned',
 };
 

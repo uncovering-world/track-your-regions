@@ -90,6 +90,14 @@ const ACT: Record<Kind, (answer: ReviewAnswer, rows: Rows) => string> = {
       ? `${plural(items, 'exact candidate item')} confirmed on ${plural(rows.length, 'site')}`
       : `${plural(items, 'candidate item')} turned down on ${plural(rows.length, 'site')}`;
   },
+  // Counted by pair (#1249): a batch accept makes the exact pairs one place, a
+  // reject keeps every open pair two.
+  'merge-proposals': (answer, rows) => {
+    const pairs = rows.reduce((sum, r) => sum + (r.did.pairs ?? 0), 0);
+    return answer === 'accept'
+      ? `${plural(pairs, 'exact pair')} made one place on ${plural(rows.length, 'place')}`
+      : `${plural(pairs, 'pair')} kept as two places on ${plural(rows.length, 'place')}`;
+  },
   refused: (answer, rows) => `${plural(rows.length, 'refusal')} ${answer === 'accept' ? 'put back' : 'kept out'}`,
   // Never answered by a batch (#1367): the server refuses every row, which the
   // notice names among the refusals; this is the count of none.

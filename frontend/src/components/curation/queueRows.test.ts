@@ -47,8 +47,8 @@ function heldPart(over: Partial<HeldPart> = {}): HeldPart {
 
 function queue(over: Partial<ReviewQueue> = {}): ReviewQueue {
   return {
-    missing: [], refused: [], keptOut: [], conflicts: [], sources: [], componentItems: [], pinQuestions: [],
-    arrivals: [], held: [], contents: [], withdrawn: [], answeredWithdrawals: [],
+    missing: [], refused: [], keptOut: [], conflicts: [], sources: [], componentItems: [], mergeProposals: [],
+    pinQuestions: [], arrivals: [], held: [], contents: [], withdrawn: [], answeredWithdrawals: [],
     refusedParts: [],
     limit: 25,
     order: [],

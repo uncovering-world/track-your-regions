@@ -81,6 +81,12 @@ const KIND_OPTIONS: Array<{ key: string; label: string; short: string; swatch: s
     swatch: KIND_COLOR['component-items'],
   },
   {
+    key: 'merge-proposals',
+    label: 'Near places with names alike',
+    short: 'may be one place',
+    swatch: KIND_COLOR['merge-proposals'],
+  },
+  {
     key: 'pin-question',
     label: 'Pins a run asks again about',
     short: 'questioned pins',
