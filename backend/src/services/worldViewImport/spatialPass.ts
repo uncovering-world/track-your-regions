@@ -14,7 +14,7 @@
  *   writes;
  * - **point scorer only where no geoshape could be had** (`pointMatchRegion`),
  *   which is what the Point Match button is for;
- * - **similarity scoring** wherever either added suggestions
+ * - **similarity scoring** on every leaf it reaches, a single suggestion the name matcher left included
  *   (`computeGeoSimilarityIfNeeded`), which auto-accepts a perfect match under
  *   the IoU thresholds the buttons use.
  *
@@ -54,7 +54,7 @@ export interface SpatialPassSummary {
   considered: number;
   /** Of those, how many the pass gave suggestions. */
   seeded: number;
-  /** Of those, how many it auto-accepted. */
+  /** Of the leaves considered, how many it auto-accepted, whether or not it gave them suggestions. */
   accepted: number;
   /** How many it scored before a cancel stopped it, or null when it ran to the end. */
   stoppedAfter: number | null;
@@ -99,7 +99,7 @@ async function statusOf(regionId: number): Promise<RegionImportStateRow['match_s
 
 /**
  * Score one leaf: the geoshape, the point fallback where no shape could be had,
- * similarity where either suggested. Answers the least pause it owes, or null
+ * similarity on every leaf it reaches. Answers the least pause it owes, or null
  * for a leaf an admin has matched since the list was read.
  */
 async function scoreLeaf(
@@ -119,11 +119,12 @@ async function scoreLeaf(
     found = (await scorers.point(worldViewId, regionId)).found;
     floor = POINT_PAUSE_MS;
   }
-  if (found > 0) {
-    summary.seeded += 1;
-    await scorers.similarity(regionId);
-    if (await statusOf(regionId) === 'auto_matched') summary.accepted += 1;
-  }
+  if (found > 0) summary.seeded += 1;
+  // Scored whether or not the pass added to it: a single suggestion the name
+  // matcher left is accepted when it is a perfect match (#1629), and the
+  // similarity step returns at once for a leaf that holds none.
+  await scorers.similarity(regionId);
+  if (await statusOf(regionId) === 'auto_matched') summary.accepted += 1;
   return floor;
 }
 

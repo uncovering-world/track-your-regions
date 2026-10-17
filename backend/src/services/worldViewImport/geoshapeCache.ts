@@ -438,11 +438,19 @@ async function markNoCandidatesIfAllRejected(
     [regionId],
   );
   if (parseInt(remaining.rows[0].count as string) !== 0) return;
-  await client.query(
-    `UPDATE region_import_state SET match_status = 'no_candidates' WHERE region_id = $1`,
+  // A region that already holds divisions is matched, whatever a later search
+  // found and rejected: the same rule the review applies to a rejection
+  // (`computeRejectStatus` in the frontend's `useTreeMutations.ts`).
+  const members = await client.query(
+    'SELECT EXISTS (SELECT 1 FROM region_members WHERE region_id = $1) AS held',
     [regionId],
   );
-  console.log(`[GeoSim] All suggestions rejected for region ${regionId}, set to no_candidates`);
+  const status = members.rows[0]?.held ? 'manual_matched' : 'no_candidates';
+  await client.query(
+    'UPDATE region_import_state SET match_status = $2 WHERE region_id = $1',
+    [regionId, status],
+  );
+  console.log('[GeoSim] All suggestions rejected for region %d, set to %s', regionId, status);
 }
 
 export async function computeGeoSimilarityForRegion(
@@ -478,17 +486,19 @@ export async function computeGeoSimilarityForRegion(
 }
 
 /**
- * After a search or match adds suggestions, compute geo similarity if the region
- * now has more than one suggestion not rejected. The manual match buttons and the
- * automatic spatial pass (`spatialPass.ts`, #622) both call it, so a suggestion is
- * scored, and a perfect one auto-accepted, the same way whoever asked.
+ * After a search or match adds suggestions, compute geo similarity for every
+ * suggestion not rejected. The manual match buttons and the automatic spatial
+ * pass (`spatialPass.ts`, #622) both call it, so a suggestion is scored, and a
+ * perfect one auto-accepted, the same way whoever asked — a region's only
+ * suggestion included (#1629): a perfect match is no less perfect for having no
+ * rival.
  */
 export async function computeGeoSimilarityIfNeeded(regionId: number): Promise<void> {
   const sugResult = await pool.query(
     `SELECT division_id AS "divisionId" FROM region_match_suggestions WHERE region_id = $1 AND rejected = false`,
     [regionId],
   );
-  if (sugResult.rows.length <= 1) return;
+  if (sugResult.rows.length === 0) return;
 
   const client = await pool.connect();
   try {

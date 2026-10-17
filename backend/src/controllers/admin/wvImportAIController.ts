@@ -164,7 +164,7 @@ export async function dbSearchOneRegion(
   let body: DbSearchResult;
   try {
     const result = await dbSearchSingleRegion(worldViewId, regionId);
-    // Compute geo similarity if region now has multiple suggestions
+    // Score what the search found, so a perfect match is accepted (#1629)
     if (result.found > 0) {
       await computeGeoSimilarityIfNeeded(regionId);
     }
@@ -189,7 +189,7 @@ export async function geocodeMatch(
   let body: GeocodeMatchResult;
   try {
     const result = await geocodeMatchRegion(worldViewId, regionId);
-    // Compute geo similarity if region now has multiple suggestions
+    // Score what the search found, so a perfect match is accepted (#1629)
     if (result.found > 0) {
       await computeGeoSimilarityIfNeeded(regionId);
     }
@@ -220,7 +220,7 @@ export async function geoshapeMatch(
   let body: CoveringMatchResult;
   try {
     const result = await geoshapeMatchRegion(worldViewId, regionId, scopeAncestorId);
-    // Compute geo similarity if region now has multiple suggestions
+    // Score what the search found, so a perfect match is accepted (#1629)
     if (result.found > 0) {
       await computeGeoSimilarityIfNeeded(regionId);
     }
@@ -325,7 +325,7 @@ export async function aiMatchOneRegion(
   let body: AIMatchOneResult;
   try {
     const result = await aiMatchSingleRegion(worldViewId, regionId);
-    // Compute geo similarity if region now has multiple suggestions
+    // Score what the search found, so a perfect match is accepted (#1629)
     await computeGeoSimilarityIfNeeded(regionId);
     body = {
       improved: result.improved,
