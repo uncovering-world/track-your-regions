@@ -24,6 +24,7 @@ import { REMAINS_ON_SHOW } from '../../../services/sync/museum/worksCollector.js
 import { tidyLabelSql } from '../../../services/sync/labelFold.js';
 
 import { sharedItemsSql } from '../../experience/equalItemMerges.js';
+import { PROPOSAL_ROWS_SQL } from '../../../services/sync/mergeProposalFinder.js';
 import { count, text } from './assertion.js';
 import type { CatalogueAssertion } from './assertion.js';
 import { publishedContentSql } from '../../../db/readerPredicates.js';
@@ -779,12 +780,46 @@ const placesSharingAnItem: CatalogueAssertion = {
 };
 
 /**
+ * Two near places with similar names nobody has answered (#1249).
+ *
+ * The weaker of the two universal signals (ADR-0046 decision 2): the pass in
+ * this panel proposes every such pair, and the proposal carries the answer a
+ * person gives it — one place, two places or one part of the other. What is
+ * open is a question waiting for a person, which is why it is listed here
+ * beside the pairs the item rule left apart; an answered pair is kept and
+ * never listed again. The rows are the pass's own (`PROPOSAL_ROWS_SQL`), so
+ * the check and the pass count one set.
+ */
+const nearPlacesUnanswered: CatalogueAssertion = {
+  id: 'near-places-with-similar-names-unanswered',
+  area: 'objects',
+  title: 'Two near places with similar names nobody has answered',
+  kind: 'invariant',
+  meaning:
+    'Two places stand within reach of each other with names alike enough to be one place shown twice '
+    + '(the Statue of Liberty as a World Heritage site and as public art), a part inside a whole '
+    + '(Durham Cathedral within "Durham Castle and Cathedral") or two neighbours (the National Gallery '
+    + 'and the National Museum of Ireland). "Propose near places with similar names" above found them, '
+    + 'and they are listed until a person answers each; an answer takes the pair off this list for good.',
+  sql: `${PROPOSAL_ROWS_SQL}
+        WHERE p.answer IS NULL
+        ORDER BY p.name_similarity DESC, p.distance_m, a.name`,
+  describe: row => {
+    const list = (key: string) => (Array.isArray(row[key]) ? (row[key] as unknown[]).map(String) : []);
+    return `${text(row, 'a_name')} (${list('a_kinds').join(', ')}) and ${text(row, 'b_name')} `
+      + `(${list('b_kinds').join(', ')}): ${count(row, 'distance_m')} m apart, names alike at `
+      + `${Math.round(count(row, 'name_similarity') * 100)} %`;
+  },
+};
+
+/**
  * The object rules, in the order a person reads them: the fact stored twice,
  * the badge a refusal should have taken, the count of works whose makers
  * nobody has arranged, the public-art row the rule would refuse, the
- * archaeology site standing where a World Heritage row already stands, the two
- * facts every reader rests on since the place and its membership came apart,
- * then the name a filter cannot find.
+ * archaeology site standing where a World Heritage row already stands, the
+ * pairs that are one Wikidata item and the near pairs waiting for a person,
+ * the two facts every reader rests on since the place and its membership came
+ * apart, then the name a filter cannot find.
  */
 export const objectAssertions: CatalogueAssertion[] = [
   dangerFlagAgainstItsTag,
@@ -793,6 +828,7 @@ export const objectAssertions: CatalogueAssertion[] = [
   publicArtRowTypedABuilding,
   archaeologySiteTwinOfWorldHeritage,
   placesSharingAnItem,
+  nearPlacesUnanswered,
   placeWithoutMembership,
   membershipSourceDisagreesWithRow,
   placeListingDisagreesWithMemberships,

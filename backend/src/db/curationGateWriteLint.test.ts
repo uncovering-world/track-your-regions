@@ -34,6 +34,7 @@ const EXPERIENCE = /^experiences is written by its writer modules only/;
 const REGION = /^regions is written by its writer modules only/;
 const COMPONENT_ITEM = /^experience_component_item_proposals is written by its writer modules only/;
 const COMPONENT_ITEM_SUGGESTION = /^experience_component_item_suggestions is written by its writer module only/;
+const MERGE_PROPOSAL = /^experience_merge_proposals is written by its writer modules only/;
 
 const draws = async (code: string, file: string, message: RegExp) =>
   (await reported(code, file)).some(m => message.test(m));
@@ -80,6 +81,9 @@ describe('the curation gate lint rules', () => {
     ["Jev's judgement of a candidate recorded by a handler", COMPONENT_ITEM_SUGGESTION,
       'export const q = `INSERT INTO experience_component_item_suggestions (location_id) VALUES ($1)`;\n',
       'src/controllers/experience/componentItemSuggestionController.ts'],
+    ['a pair of near places answered by a handler', MERGE_PROPOSAL,
+      "export const q = `UPDATE experience_merge_proposals SET answer = 'two' WHERE id = $1`;\n",
+      'src/controllers/experience/mergeProposalController.ts'],
   ])('refuses a write to a gate table outside its writers: %s', async (_, message, code, file) => {
     expect(await draws(code, file, message)).toBe(true);
   });
@@ -103,6 +107,9 @@ describe('the curation gate lint rules', () => {
     ["the writer of Jev's judgement of a candidate", COMPONENT_ITEM_SUGGESTION,
       'export const q = `INSERT INTO experience_component_item_suggestions (location_id) VALUES ($1)`;\n',
       'src/controllers/experience/componentItemSuggestions.ts'],
+    ['the pass over near places with similar names', MERGE_PROPOSAL,
+      'export const q = `INSERT INTO experience_merge_proposals (place_a, place_b) VALUES ($1, $2)`;\n',
+      'src/services/sync/mergeProposalFinder.ts'],
     ['the curator\'s membership writer', MEMBERSHIP,
       MEMBERSHIPS_IMPORT + 'export const q = `UPDATE ${MEMBERSHIPS} m SET admission = $2 WHERE m.id = $1`;\n',
       'src/controllers/experience/membershipWriter.ts'],
