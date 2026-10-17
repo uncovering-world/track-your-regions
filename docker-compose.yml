@@ -240,6 +240,7 @@ services:
       - ${DATA_DIR:-./data}:/app/data:z
     environment:
       - PYTHONUNBUFFERED=1
+      - CV_LOG_LEVEL=${CV_LOG_LEVEL:-INFO}
     # No restart policy on purpose — see the note on the martin service.
 
   # One-off GADM loader (GDAL + psycopg2 + dotenv + shapely). Not started by

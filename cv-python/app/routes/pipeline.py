@@ -1,8 +1,7 @@
 import json
+import logging
 import queue
-import sys
 import threading
-import traceback
 import uuid
 from collections.abc import Callable, Iterator
 from typing import Annotated, Any, Protocol
@@ -18,6 +17,8 @@ from ..cv.preprocess import run_phase1
 from ..cv.superpixel import compute_slic
 from ..utils.borders import extract_contour_paths
 from ..utils.image import decode_image, encode_labels_base64, encode_png_base64
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/pipeline", tags=["pipeline"])
 
@@ -76,7 +77,7 @@ def _make_review_callback(q: queue.Queue[str | None]) -> AwaitReview:
                 + "\n"
             )
             if not event.wait(timeout=timeout):
-                print(f"  [Review] {review_id} timed out after {timeout:.0f}s")
+                logger.warning(f"[Review] {review_id} timed out after {timeout:.0f}s")
                 return None
             return slot[0]
         finally:
@@ -124,7 +125,7 @@ def _ndjson_stream(worker_fn: Worker) -> Iterator[str]:
         except Exception:
             # ASVS V13.4: log the full exception internally, return a generic
             # message to the caller. Stack frames / file paths must not leak.
-            traceback.print_exc(file=sys.stderr)
+            logger.exception("Pipeline worker failed")
             q.put(json.dumps({"type": "error", "message": "Internal error during processing"}) + "\n")
         finally:
             q.put(None)  # sentinel

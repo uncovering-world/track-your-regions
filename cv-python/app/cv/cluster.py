@@ -1,5 +1,9 @@
+import logging
+
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def kmeans_cielab(
@@ -36,8 +40,8 @@ def kmeans_cielab(
     if known_noise_mask is not None:
         voting_mask_2d = voting_mask_2d & (known_noise_mask == 0)
         noise_pct = int((known_noise_mask > 0).sum()) / max(int((country_mask > 0).sum()), 1) * 100
-        print(
-            f"  [K-means] Excluding {int((known_noise_mask > 0).sum())} known-noise pixels ({noise_pct:.1f}% of country) from voting"
+        logger.info(
+            f"[K-means] Excluding {int((known_noise_mask > 0).sum())} known-noise pixels ({noise_pct:.1f}% of country) from voting"
         )
     mask_flat = voting_mask_2d.flatten()
     pixels = lab.reshape(-1, 3)[mask_flat]
@@ -135,7 +139,7 @@ def _fill_holes_via_nearest_label(pixel_labels_2d: np.ndarray, holes: np.ndarray
     src_x = seed_xs[hole_seed_idx]
     pixel_labels_2d[holes] = pixel_labels_2d[src_y, src_x]
     filled = int(holes.sum())
-    print(f"  [K-means] Filled {filled} noise-hole pixels via nearest-label assignment")
+    logger.info(f"[K-means] Filled {filled} noise-hole pixels via nearest-label assignment")
 
 
 def spatial_mode_filter(
@@ -177,6 +181,6 @@ def spatial_mode_filter(
 
     changed = int(np.sum(should_change))
     if changed > 0:
-        print(f"  [Mode Filter] Changed {changed} pixels ({changed / max(np.sum(country_mask > 0), 1) * 100:.1f}%)")
+        logger.info(f"[Mode Filter] Changed {changed} pixels ({changed / max(np.sum(country_mask > 0), 1) * 100:.1f}%)")
 
     return result

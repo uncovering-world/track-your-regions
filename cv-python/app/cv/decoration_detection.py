@@ -10,8 +10,12 @@ Detects and masks non-region decorative elements:
 Uses contour analysis + shape filtering — no ML required.
 """
 
+import logging
+
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 
 def detect_decorations(
@@ -113,8 +117,8 @@ def detect_decorations(
         # (decorations in pure background are already handled)
         overlap_mask = cv2.bitwise_and(decoration_mask, country_mask)
         overlap_count = int(np.sum(overlap_mask > 0))
-        print(
-            f"  [DecoDetect] Found {len(detected)} decoration(s): "
+        logger.info(
+            f"[DecoDetect] Found {len(detected)} decoration(s): "
             f"{sum(1 for d in detected if d[0]=='title')} title, "
             f"{sum(1 for d in detected if d[0]=='scale')} scale, "
             f"{sum(1 for d in detected if d[0]=='compass')} compass, "
@@ -145,6 +149,6 @@ def remove_decorations(
     updated_mask[deco_mask > 0] = 0
 
     if removed > 0:
-        print(f"  [DecoRemove] Excluded {removed} decoration pixels from country mask")
+        logger.info(f"[DecoRemove] Excluded {removed} decoration pixels from country mask")
 
     return image, updated_mask

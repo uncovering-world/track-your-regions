@@ -7,8 +7,12 @@ and morphological approaches cannot — text is structurally different
 from region colors but shares the same hue/saturation/value.
 """
 
+import logging
+
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 # Lazy-loaded EasyOCR reader (heavy — ~2s first call)
 _reader = None
@@ -88,7 +92,7 @@ def detect_text_regions(image: np.ndarray, min_confidence: float = 0.3) -> np.nd
 
     if detected > 0:
         text_px = int(np.sum(mask > 0))
-        print(f"  [OCR] Detected {detected} text regions ({text_px} px)")
+        logger.info(f"[OCR] Detected {detected} text regions ({text_px} px)")
 
     return mask
 
@@ -193,7 +197,7 @@ def remove_text_from_image(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         mask = _expand_to_container(image, mask, bbox)
 
     expanded_px = int(np.sum(mask > 0))
-    print(f"  [OCR] After container expansion: {expanded_px} px masked")
+    logger.info(f"[OCR] After container expansion: {expanded_px} px masked")
 
     # Flat-fill each mask connected component with the median color of its
     # surrounding ring. This produces truly uniform regions (no sub-pixel hue
@@ -241,8 +245,8 @@ def remove_text_from_image(image: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     if letter_px > 0:
         letter_mask = cv2.dilate(letter_mask, np.ones((3, 3), np.uint8))
 
-    print(f"  [OCR] Flat-filled {flat_filled}/{expanded_px} px with per-CC ring median")
-    print(f"  [OCR] Letter-precise mask: {int(letter_mask.sum())} px (from {letter_px} ink pixels + 1-px dilation)")
+    logger.info(f"[OCR] Flat-filled {flat_filled}/{expanded_px} px with per-CC ring median")
+    logger.info(f"[OCR] Letter-precise mask: {int(letter_mask.sum())} px (from {letter_px} ink pixels + 1-px dilation)")
 
     # Residual mask: CCs that couldn't be flat-filled (edge-adjacent, no ring)
     # fall back to cv2.inpaint. Build residual from pixels still equal to their
