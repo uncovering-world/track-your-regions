@@ -479,10 +479,10 @@ async function writeGroupingUpdates(
   }
 }
 
-/** Run geo-similarity refinement on multi-candidate updates. */
+/** Run geo-similarity refinement on the updates left for review, a single suggestion included (#1629). */
 async function runGroupingGeoComparison(updates: GroupingUpdate[]): Promise<void> {
   const geoUpdates = updates.filter(u =>
-    u.suggestions.length > 1 && (u.matchStatus === 'needs_review' || u.matchStatus === 'suggested'),
+    u.suggestions.length > 0 && (u.matchStatus === 'needs_review' || u.matchStatus === 'suggested'),
   );
   if (geoUpdates.length === 0) return;
 

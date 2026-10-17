@@ -9,7 +9,7 @@ import { createInitialProgress } from './types.js';
 /**
  * The automatic spatial pass over what the name matcher left (#622): the geoshape
  * scorer first, the point scorer only where no geoshape could be had, similarity
- * scoring wherever either suggested, one leaf at a time.
+ * scoring on every leaf it reaches, one leaf at a time.
  *
  * Kabardino-Balkaria (Q5775) is the leaf names cannot match; the ids are the
  * fixture's own.
@@ -56,6 +56,19 @@ describe('runSpatialPass', () => {
     expect(s.similarity).toHaveBeenCalledWith(KABARDINO);
     expect(s.point).not.toHaveBeenCalled();
     expect(summary).toEqual({ considered: 1, seeded: 1, accepted: 1, stoppedAfter: null });
+  });
+
+  it("scores a leaf the pass added nothing to, so the name matcher's single suggestion can be accepted (#1629)", async () => {
+    const statuses: Record<number, string> = { [KABARDINO]: 'needs_review' };
+    leaves([KABARDINO], statuses);
+    const s = scorers({
+      similarity: vi.fn().mockImplementation(async () => { statuses[KABARDINO] = 'auto_matched'; }),
+    });
+
+    const summary = await runSpatialPass(9, createInitialProgress(), s);
+
+    expect(s.similarity).toHaveBeenCalledWith(KABARDINO);
+    expect(summary).toMatchObject({ seeded: 0, accepted: 1 });
   });
 
   it('falls back to the point scorer only where no geoshape could be had, and pauses after it', async () => {
