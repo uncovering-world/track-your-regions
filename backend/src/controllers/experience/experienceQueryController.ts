@@ -226,8 +226,9 @@ export async function getExperiencesByRegion(
     ? await checkCuratorScope(userId, userRole, regionId)
     : false;
 
+  const curateAs = userRole === 'admin' || userRole === 'curator' ? userRole : undefined;
   const { query, countQuery, params } = buildRegionQueries({
-    regionId, includeChildren, showRejected, includeLostRows: includeLost(q), limit, offset, userId,
+    regionId, includeChildren, showRejected, includeLostRows: includeLost(q), limit, offset, userId, curateAs,
   });
 
   const result = await pool.query(query, params);
@@ -269,6 +270,7 @@ export async function getExperiencesByRegion(
     lostHidden: includeLost(q) ? 0 : countResult.rows[0].lost_hidden,
     limit,
     offset,
+    ...(curateAs ? { curatesRegion: Boolean(showRejected) } : {}),
   };
 }
 

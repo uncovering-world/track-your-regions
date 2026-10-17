@@ -88,6 +88,7 @@ export interface ExperienceListRow {
   is_new: boolean;
   /** Selected only for a curator whose scope reaches the region. */
   is_rejected?: boolean;
+  can_curate?: boolean;
   rejection_reason?: string | null;
 }
 
@@ -115,6 +116,7 @@ export function experienceOf(row: ExperienceListRow): Experience {
     finds_count: row.finds_count,
     created_at: row.created_at?.toISOString(),
     is_rejected: row.is_rejected,
+    can_curate: row.can_curate,
     rejection_reason: row.rejection_reason,
     source_membership: row.source_membership,
     existence: row.existence,
