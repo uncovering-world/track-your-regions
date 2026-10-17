@@ -34,17 +34,25 @@ const budgetsPath = path.resolve(process.argv[2] ?? path.join(here, 'lighthouse-
 const budgets = JSON.parse(fs.readFileSync(budgetsPath, 'utf8'));
 const outputDir = path.resolve(here, '..', budgets.outputDir ?? 'lighthouse-report');
 const runsPerUrl = Number(budgets.runs ?? 3);
-// The world view the pages name. The budgets file carries the one its
-// baseline was measured on; PERF_WORLD_VIEW (set by scripts/perf-local.sh
-// from --world-view) names another database's. Substituted into every
-// `{worldView}` in the URLs and in expectRequestMatching.
+// The world view, region and experience the pages name. The budgets file
+// carries the ones its baseline was measured on; PERF_WORLD_VIEW,
+// PERF_REGION and PERF_EXPERIENCE (set by scripts/perf-local.sh from
+// --world-view, --region and --experience) name another database's.
+// Substituted into every `{worldView}`, `{region}` and `{experience}` in the
+// URLs and in expectRequestMatching.
 const worldView = String(process.env.PERF_WORLD_VIEW ?? budgets.worldView ?? '');
+const region = String(process.env.PERF_REGION ?? budgets.region ?? '');
+const experience = String(process.env.PERF_EXPERIENCE ?? budgets.experience ?? '');
 // Likewise the port: the dev stack maps the frontend wherever .env says
 // (scripts/perf-local.sh exports FRONTEND_PORT from it); the budgets file
 // carries the default. The CI budgets name the in-network port, which no
 // .env moves, and use no placeholder.
 const port = String(process.env.FRONTEND_PORT ?? budgets.port ?? '5173');
-const fill = (text) => text.replaceAll('{worldView}', worldView).replaceAll('{port}', port);
+const fill = (text) => text
+  .replaceAll('{worldView}', worldView)
+  .replaceAll('{region}', region)
+  .replaceAll('{experience}', experience)
+  .replaceAll('{port}', port);
 // A page can load and still not be the page the budgets were set on: an id
 // the visitor cannot see falls back to the default world view without a
 // word - after one request for it that answers 404. So the representative
@@ -54,15 +62,17 @@ const fill = (text) => text.replaceAll('{worldView}', worldView).replaceAll('{po
 // basemap and reads as loaded (pageExpectations says why).
 const pages = pageExpectations(budgets, fill);
 const urls = pages.map((page) => page.url);
-const assertions = budgets.assertions;
 // A lane that could not gate must not run, let alone pass: no budgets (the
 // likely cause is a file shaped like a real lighthouserc, whose assertions
 // sit under `ci.assert.assertions` - this runner reads them at the root), a
-// mistyped level, a threshold that is not a number.
-try {
-  validateAssertions(assertions);
-} catch (error) {
-  throw new Error(`${path.relative(process.cwd(), budgetsPath)}: ${error.message}`);
+// mistyped level, a threshold that is not a number. Each page's own set is
+// read, since a page may carry budgets of its own over the shared ones.
+for (const page of pages) {
+  try {
+    validateAssertions(page.assertions);
+  } catch (error) {
+    throw new Error(`${path.relative(process.cwd(), budgetsPath)} (${pathOf(page.url)}): ${error.message}`);
+  }
 }
 
 resetOutputDir(outputDir);
@@ -76,7 +86,7 @@ const chrome = await launch({
   chromePath: process.env.CHROME_PATH,
 });
 try {
-  for (const { url, expects } of pages) {
+  for (const { url, expects, assertions } of pages) {
     const runs = [];
     for (let i = 1; i <= runsPerUrl; i += 1) {
       const result = await lighthouse(
@@ -102,7 +112,7 @@ try {
     const missed = expects.find((fragment) => !gotSuccessfulRequestMatching(median, fragment));
     if (missed !== undefined) {
       throw new Error(
-        `${pathOf(url)} got no successful request for "${missed}" - the page did not load world view ${worldView} (is it public on this database?), or the map never asked for its tiles`,
+        `${pathOf(url)} got no successful request for "${missed}" - the page did not load world view ${worldView} (is it public on this database?), the region or experience it names, or the map never asked for its tiles`,
       );
     }
     for (const run of runs) {

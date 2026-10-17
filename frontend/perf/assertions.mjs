@@ -97,14 +97,21 @@ export function hasFailures(results) {
 
 /**
  * The pages a budgets file names, each with the requests its representative
- * run must have made — as `{ url, expects }`, every string already put
- * through `fill` (the runner's placeholder substitution).
+ * run must have made and the budgets it is judged against — as
+ * `{ url, expects, assertions }`, every string already put through `fill`
+ * (the runner's placeholder substitution).
  *
- * A `urls` entry is a string, or `{ url, expectRequestMatching }` for a page
- * that must have asked for something of its own. `expectRequestMatching` at
- * the top level applies to every page; either takes a string or an array.
- * The two lists join, so a page's own fragment adds to the shared one rather
- * than replacing it.
+ * A `urls` entry is a string, or `{ url, expectRequestMatching, assertions }`
+ * for a page that must have asked for something of its own or is judged by
+ * budgets of its own. `expectRequestMatching` at the top level applies to
+ * every page; either takes a string or an array. The two lists join, so a
+ * page's own fragment adds to the shared one rather than replacing it.
+ *
+ * A page's own `assertions` replace the shared budget of the same key and
+ * leave the others standing: a card page that pulls a region's basemap is
+ * judged by bytes of its own and by the shells' timings, since one set of
+ * thresholds cannot describe a page at world zoom and one flown into a
+ * region (#669). An entry naming no `assertions` is judged by the shared set.
  *
  * The page-level form exists for the map: its regions are vector tiles that
  * a worker parses, and a build in which that worker dies — maplibre-gl 6's
@@ -118,12 +125,22 @@ export function pageExpectations(budgets, fill) {
   const shared = asList(budgets.expectRequestMatching).map(fill);
   return (budgets.urls ?? []).map((entry) => {
     if (typeof entry === 'string') {
-      return { url: fill(entry), expects: shared };
+      return { url: fill(entry), expects: shared, assertions: budgets.assertions };
     }
     if (!entry || typeof entry !== 'object' || typeof entry.url !== 'string') {
-      throw new Error(`budgets "urls": each entry is a string or { url, expectRequestMatching }, got ${JSON.stringify(entry)}`);
+      throw new Error(
+        `budgets "urls": each entry is a string or { url, expectRequestMatching, assertions }, got ${JSON.stringify(entry)}`,
+      );
     }
-    return { url: fill(entry.url), expects: [...shared, ...asList(entry.expectRequestMatching).map(fill)] };
+    const own = entry.assertions;
+    if (own !== undefined && (!own || typeof own !== 'object' || Array.isArray(own))) {
+      throw new Error(`budgets "urls": the assertions of ${entry.url} are an object of budgets, got ${JSON.stringify(own)}`);
+    }
+    return {
+      url: fill(entry.url),
+      expects: [...shared, ...asList(entry.expectRequestMatching).map(fill)],
+      assertions: own === undefined ? budgets.assertions : { ...budgets.assertions, ...own },
+    };
   });
 }
 

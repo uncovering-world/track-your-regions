@@ -18,15 +18,18 @@
 # at; `npm run dev:frontend:dev` switches it back.
 #
 # The pages and the probe name a world view and a region that exist on the
-# database the run is against and that a visitor can see (`is_public`).
-# The defaults are the ones the baseline in docs/tech/performance.md was
+# database the run is against and that a visitor can see (`is_public`), and
+# the pages an experience the region lists, whose card they open. The
+# defaults are the ones the baseline in docs/tech/performance.md was
 # measured on; another database names its own:
 #
-#   npm run perf:local -- --world-view 7 --region 42
+#   npm run perf:local -- --world-view 7 --region 42 --experience 1234
 #
-# Every argument goes to the probe (scripts/perf-api.mjs) as it is, and
-# --world-view also reaches the Lighthouse runner, which substitutes it
-# into the budgets file's URLs.
+# --world-view and --region reach the Lighthouse runner, which substitutes
+# them into the budgets file's URLs, and go to the probe
+# (scripts/perf-api.mjs) with every other argument as they are.
+# --experience is the runner's alone: the probe reads no card, so it is
+# taken out of what the probe is given.
 
 set -euo pipefail
 
@@ -34,13 +37,32 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 cd "$PROJECT_ROOT"
 
-# Pick --world-view out of the arguments for the runner; the probe parses
-# the full list itself.
+# Pick the ids out of the arguments for the runner; the probe parses the
+# rest itself, and is given everything but --experience. An id flag with no
+# value after it - last, or followed by another flag - is refused here,
+# before any step runs: read as given, it would measure the default page
+# under the flag's name, or swallow the next flag as its value.
 args=("$@")
+probe_args=()
 for ((i = 0; i < ${#args[@]}; i++)); do
-  if [ "${args[$i]}" = "--world-view" ] && [ $((i + 1)) -lt ${#args[@]} ]; then
-    export PERF_WORLD_VIEW="${args[$((i + 1))]}"
-  fi
+  case "${args[$i]}" in
+    --world-view | --region | --experience)
+      if [ $((i + 1)) -ge ${#args[@]} ] || [[ "${args[$((i + 1))]}" == --* ]]; then
+        echo "${args[$i]} needs a value, e.g. ${args[$i]} 42" >&2
+        exit 2
+      fi
+      ;;
+  esac
+  case "${args[$i]}" in
+    --world-view) export PERF_WORLD_VIEW="${args[$((i + 1))]}" ;;
+    --region) export PERF_REGION="${args[$((i + 1))]}" ;;
+    --experience)
+      export PERF_EXPERIENCE="${args[$((i + 1))]}"
+      i=$((i + 1))
+      continue
+      ;;
+  esac
+  probe_args+=("${args[$i]}")
 done
 
 # The dev stack's host ports, from the same .env compose reads - the
@@ -71,7 +93,7 @@ echo "== 2/3 Lighthouse on the dev stack's production build"
 
 echo
 echo "== 3/3 Latency probe against the dev stack"
-node scripts/perf-api.mjs --api "http://localhost:${BACKEND_PORT}" --martin "http://localhost:${MARTIN_PORT}" "$@"
+node scripts/perf-api.mjs --api "http://localhost:${BACKEND_PORT}" --martin "http://localhost:${MARTIN_PORT}" ${probe_args[@]+"${probe_args[@]}"}
 
 echo
 echo "Done. The frontend is serving its production build; 'npm run dev:frontend:dev' switches it back."
