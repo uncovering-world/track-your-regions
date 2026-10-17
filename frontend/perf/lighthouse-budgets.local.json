@@ -4,9 +4,50 @@
       "url": "http://localhost:{port}/wv/{worldView}",
       "expectRequestMatching": "/tile_"
     },
-    "http://localhost:{port}/discover/wv/{worldView}"
+    "http://localhost:{port}/discover/wv/{worldView}",
+    {
+      "url": "http://localhost:{port}/wv/{worldView}/r/{region}",
+      "expectRequestMatching": "/api/experiences/by-region/{region}?",
+      "assertions": {
+        "resource-summary:total:size": [
+          "error",
+          {
+            "maxNumericValue": 1140000
+          }
+        ],
+        "resource-summary:total:count": [
+          "error",
+          {
+            "maxNumericValue": 58
+          }
+        ]
+      }
+    },
+    {
+      "url": "http://localhost:{port}/wv/{worldView}/r/{region}/e/{experience}",
+      "expectRequestMatching": [
+        "/api/experiences/by-region/{region}?",
+        "/api/experiences/{experience}"
+      ],
+      "assertions": {
+        "resource-summary:total:size": [
+          "error",
+          {
+            "maxNumericValue": 1585000
+          }
+        ],
+        "resource-summary:total:count": [
+          "error",
+          {
+            "maxNumericValue": 104
+          }
+        ]
+      }
+    }
   ],
   "worldView": 5,
+  "region": 6737,
+  "experience": 6185,
   "port": 5173,
   "expectRequestMatching": "/api/world-views/{worldView}/",
   "runs": 3,
