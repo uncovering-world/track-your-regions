@@ -15,6 +15,7 @@ import {
   ComponentItemsAnswered,
   ComponentItemSuggestions,
   MergeProposalsAnswered,
+  MergeProposalSuggestions,
   CurationLog,
   PointItemTakenBack,
   DeclineHeldResult,
@@ -41,6 +42,7 @@ import { chooseViews } from '../controllers/experience/viewChoiceController.js';
 import { answerComponentItems } from '../controllers/experience/componentItemController.js';
 import { answerMergeProposals } from '../controllers/experience/mergeProposalController.js';
 import { suggestComponentItems } from '../controllers/experience/componentItemSuggestionController.js';
+import { suggestMergeProposals } from '../controllers/experience/mergeProposalSuggestionController.js';
 import { takeBackPointItem } from '../controllers/experience/pointItemTakeBackController.js';
 import { getNearbyPictures } from '../controllers/experience/nearbyPicturesController.js';
 import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
@@ -609,6 +611,17 @@ export const experienceCurationRoutes = [
     params: idParamSchema,
     response: ComponentItemSuggestions,
     handler: suggestComponentItems,
+  }),
+  // Jev's judgement of a place's pairs of near places with similar names
+  // (#1249): the stored one for each pair as it stands, or a new one asked for
+  // — one call for the card's pairs, a POST since it may be paid for.
+  defineRoute({
+    method: 'post', path: '/:id/merge-proposal-suggestions', access: 'curator', cache: 'no-store',
+    limiter: authenticatedLimiter,
+    summary: 'Ask Jev whether each pair of near places is one place, two places or one part of the other; a suggestion, never applied',
+    params: idParamSchema,
+    response: MergeProposalSuggestions,
+    handler: suggestMergeProposals,
   }),
 
   // The no that the two gated kinds without one lacked (#852, ADR-0053): keeping

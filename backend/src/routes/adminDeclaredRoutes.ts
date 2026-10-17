@@ -339,10 +339,11 @@ export const adminDeclaredRoutes = [
     response: MergeProposalPass,
     handler: findPlacesThatMayBeOne,
   }),
-  // What Jev has cost and how often curators took its suggestion (#1260).
+  // What Jev has cost and how often curators took its suggestion (#1260,
+  // #1272, #1249).
   defineRoute({
     ...ADMIN, method: 'get', path: '/jev/usage',
-    summary: 'What Jev has cost, and how often curators chose the view it suggested',
+    summary: 'What Jev has cost, and how often curators chose what it suggested, per card',
     response: JevUsage,
     handler: getJevUsage,
   }),
