@@ -4,9 +4,10 @@
  * (`DumpsPanel.tsx`) read the same sizes, dates and running progress.
  */
 
-import { Box, LinearProgress, Typography } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import type { DumpBuildProgress, DumpsDumpsItem } from '../../api/admin/dumps';
 import { formatRelativeTime, formatTimeLeft } from '../../utils/dateFormat';
+import { OperationProgressView } from './OperationProgressView';
 
 const GB = 1024 ** 3;
 export const size = (bytes: number) => (bytes >= GB ? `${(bytes / GB).toFixed(1)} GB` : `${Math.round(bytes / 1024 ** 2)} MB`);
@@ -31,32 +32,22 @@ const SILENT_FOR_MS = 60_000;
 
 /** A running build as a person follows it: what it does, how far, and whether the worker still answers. */
 export function BuildProgressDetails({ progress }: { progress: DumpBuildProgress }) {
-  // What the step's bar is measured against: the dump's file in a pass, the terms spool while labelling, the sample's size while cutting one (#1519).
-  const total = progress.total;
-  const done = Math.max(progress.read, progress.downloaded);
-  const measured = total !== null && total > 0;
   const silent = progress.heartbeatAt !== null && Date.now() - new Date(progress.heartbeatAt).getTime() > SILENT_FOR_MS;
   return (
     <Box>
-      <Typography variant="body2" sx={{ mb: 0.5 }}>{progress.message}</Typography>
-      <LinearProgress
-        variant={measured ? 'determinate' : 'indeterminate'}
-        value={measured ? Math.min(100, (done / total) * 100) : undefined}
-      />
+      {/* The step, its bar measured against the file, spool or sample it reads (#1519), and its times: the shared view (#1356). */}
+      <OperationProgressView operation={progress.operation} starting={progress.message} formatCount={size} />
+      {progress.lines > 0 && (
+        <Typography variant="caption" color="text.secondary" display="block">{compact.format(progress.lines)} lines</Typography>
+      )}
       {progress.heartbeatAt && (
         <Typography variant="caption" color={silent ? 'error' : 'text.secondary'} display="block">
           {silent
             ? `No word from the dump worker since ${formatRelativeTime(progress.heartbeatAt)}: it may have stopped`
             : <>
-              {progress.stepStartedAt && `This step started ${formatRelativeTime(progress.stepStartedAt)} · `}
-              {progress.etaSeconds !== null && `${formatTimeLeft(progress.etaSeconds)} left in it · `}
+              {progress.etaSeconds !== null && `${formatTimeLeft(progress.etaSeconds)} left in this step · `}
               Last seen alive {formatRelativeTime(progress.heartbeatAt)}
             </>}
-        </Typography>
-      )}
-      {done > 0 && (
-        <Typography variant="caption" color="text.secondary">
-          {size(done)}{measured ? ` of ${size(total)}` : ''}{progress.lines > 0 ? ` · ${compact.format(progress.lines)} lines` : ''}
         </Typography>
       )}
     </Box>

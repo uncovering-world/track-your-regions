@@ -121,11 +121,8 @@ export interface OperationStepAnswer {
      * @maximum 9007199254740991
      */
   index: number;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  count: number;
+  /** How many steps the run has; null where it cannot know ahead (a dump build names its steps as it goes). */
+  count: number | null;
   /** What the step is doing, in the words the panel shows. */
   sentence: string;
   /**
@@ -3874,6 +3871,8 @@ export interface DumpBuildProgress {
   total: number | null;
   /** When the step running now started, so a step with no measure of its own reads as alive; null while queued (#1519). */
   stepStartedAt: string | null;
+  /** The build in the shape every long operation reports (#1356): its step by ordinal and message, with no step count, measured as `read` is against `total`. */
+  operation: OperationProgressAnswer;
 }
 
 /**

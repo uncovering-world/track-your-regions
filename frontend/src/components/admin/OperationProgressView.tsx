@@ -20,17 +20,21 @@ interface OperationProgressViewProps {
    * the step does ("Loading divisions into memory...").
    */
   detail?: string;
+  /** How a step's count is written: a dump build's bytes as sizes rather than digits. */
+  formatCount?: (n: number) => string;
 }
 
-export function OperationProgressView({ operation, starting, detail }: OperationProgressViewProps) {
+export function OperationProgressView({ operation, starting, detail, formatCount = (n) => n.toLocaleString() }: OperationProgressViewProps) {
   const { step, wait } = operation;
   const measurable = !!step && step.total > 0;
   const percent = measurable ? Math.min(100, Math.round((step.done / step.total) * 100)) : 0;
+  // A run that names its steps as it goes (a dump build) cannot say how many it has.
+  const stepLabel = step && (step.count === null ? `Step ${step.index}` : `Step ${step.index} of ${step.count}`);
   return (
     <Box>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', gap: 2, mb: 1 }}>
         <Typography variant="body2">
-          {step ? <><strong>Step {step.index} of {step.count}</strong> · {step.sentence}</> : starting}
+          {step ? <><strong>{stepLabel}</strong> · {step.sentence}</> : starting}
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ whiteSpace: 'nowrap' }}>
           {elapsedText(operation.elapsedSeconds)}
@@ -39,12 +43,12 @@ export function OperationProgressView({ operation, starting, detail }: Operation
       <LinearProgress
         variant={measurable ? 'determinate' : 'indeterminate'}
         value={measurable ? percent : undefined}
-        aria-label={step ? `Step ${step.index} of ${step.count}` : starting}
+        aria-label={stepLabel ?? starting}
       />
       {step && (
         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-          {measurable ? `${step.done.toLocaleString()} of ${step.total.toLocaleString()} · ` : ''}
-          {!measurable && step.done > 0 ? `${step.done.toLocaleString()} so far · ` : ''}
+          {measurable ? `${formatCount(step.done)} of ${formatCount(step.total)} · ` : ''}
+          {!measurable && step.done > 0 ? `${formatCount(step.done)} so far · ` : ''}
           this step {elapsedText(step.elapsedSeconds)}
         </Typography>
       )}
