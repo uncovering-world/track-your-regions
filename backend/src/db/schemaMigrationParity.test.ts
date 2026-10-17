@@ -505,6 +505,10 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // A pin a curator handed back with no question asked (#1369): the claim
     // off, and the next run of the source decides.
     'admission_pin_handed_back',
+    // A curator's answer to two near places with similar names (#1249): one
+    // place, which ran the merge the `merged` row records; two places; or one
+    // part of the other, with which. Written on the place that stays.
+    'merge_proposal_answered',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;
