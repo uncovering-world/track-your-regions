@@ -186,10 +186,15 @@ backend and the worker talk only through the build's `dump_builds` row:
    (`PassClock`: none in a step's first minute, a new clock for each step,
    none in a step that reads no file) — and its heartbeat to the row (`beat`),
    and the panel reads them back (`buildProgress`), whatever process runs the
-   build, showing the time left as "about 1 h 10 min left in it". A step is
+   build, showing the time left as "about 1 h 10 min left in this step". A step is
    named by its message before a colon (`stepName`); a new step resets what
-   is measured and starts its clock, while a message of the same step only
-   says more.
+   is measured, starts its clock and counts one more (`step`, the ordinal),
+   while a message of the same step only says more. The panel's answer also
+   carries the build in the shape every long admin operation reports
+   (`operation`, #1356): step by ordinal and message, with no step count since a
+   build names its steps as it goes, measured as `read` against `total`, and
+   `BuildProgressDetails` draws it with `OperationProgressView`, sizes for
+   counts, beside the ETA and the heartbeat.
 4. **Stopped.** *Cancel* (`requestCancel`) closes a queued row at once and
    marks a running one (`cancel_requested_at`); the build reads the mark with
    its next heartbeat and ends as `cancelled`. A worker that stops (SIGTERM)
