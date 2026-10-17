@@ -10,13 +10,14 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 
-vi.mock('../../api/curation', () => ({ answerMergeProposals: vi.fn() }));
+vi.mock('../../api/curation', () => ({ answerMergeProposals: vi.fn(), suggestMergeProposals: vi.fn() }));
 vi.mock('../shared/PointPreviewDialog', () => ({ PointPreviewDialog: () => null }));
 
-import { answerMergeProposals } from '../../api/curation';
+import { answerMergeProposals, suggestMergeProposals } from '../../api/curation';
 import { MergeProposalsCard } from './MergeProposalsCard';
 
 const mockedAnswer = answerMergeProposals as unknown as ReturnType<typeof vi.fn>;
+const mockedSuggest = suggestMergeProposals as unknown as ReturnType<typeof vi.fn>;
 
 const DURHAM = {
   id: 1225, external_id: '370', name: 'Durham Castle and Cathedral', kind_id: 1, kind_name: 'World Heritage Sites',
@@ -49,6 +50,9 @@ function renderCard(onDone = vi.fn()) {
 describe('two near places with similar names', () => {
   beforeEach(() => {
     mockedAnswer.mockReset();
+    mockedSuggest.mockReset();
+    // A deployment without Jev: no judgement beside any pair.
+    mockedSuggest.mockResolvedValue({ configured: false, suggestions: [] });
   });
 
   it('lists each pair with how the two stand to each other, and saves nothing until something is answered', () => {
@@ -125,5 +129,65 @@ describe('two near places with similar names', () => {
       'Durham Castle and Cathedral: 1 pair kept as two places, 1 pair refused: Both places belong to the same kind, which one place cannot hold twice',
       1225,
     ));
+  });
+});
+
+describe("Jev's judgement on the card (#1249)", () => {
+  beforeEach(() => {
+    mockedAnswer.mockReset();
+    mockedSuggest.mockReset();
+    mockedSuggest.mockResolvedValue({
+      configured: true,
+      suggestions: [
+        { proposalId: 41, judgement: 'part_of', confidence: 0.84 },
+        { proposalId: 42, judgement: 'one', confidence: 0.95 },
+      ],
+    });
+  });
+
+  it('says what Jev makes of each pair, a low confidence as leaning, and chooses nothing for the curator', async () => {
+    mockedSuggest.mockResolvedValue({
+      configured: true,
+      suggestions: [
+        // A margin of 42 points between its options: a near coin toss, said as leaning.
+        { proposalId: 41, judgement: 'two', confidence: 0.42 },
+        { proposalId: 42, judgement: 'one', confidence: 0.95 },
+      ],
+    });
+    renderCard();
+    expect(await screen.findByText('Jev says one place · 95 %')).toBeTruthy();
+    expect(screen.getByText('Jev is unsure, leans two places · 42 %')).toBeTruthy();
+    expect(mockedSuggest).toHaveBeenCalledWith(1225);
+    expect(screen.getByRole('button', { name: 'Save answers' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'One place: Durham Castle and Cathedral' })).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('answers one place at one press only for the pairs Jev calls one place and is sure of', async () => {
+    mockedAnswer.mockResolvedValue({ experienceId: 1225, merged: [{ proposalId: 42, mergeId: 7 }], two: 0, partOf: 0, refused: [] });
+    renderCard();
+    expect(await screen.findByText('Jev says one part of the other · 84 %')).toBeTruthy();
+    const button = screen.getByRole('button', { name: 'One place for the pair Jev is sure of' });
+    fireEvent.click(button);
+    expect(button).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'One place: Durham Castle and Cathedral' })).toHaveAttribute('aria-pressed', 'true');
+    // The part-of pair is left to the curator, whatever Jev's confidence.
+    expect(screen.getByRole('button', { name: 'One part of the other: Durham Cathedral' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByRole('button', { name: 'Save 1 answer' }));
+    await waitFor(() => expect(mockedAnswer).toHaveBeenCalledWith(1225, [{ proposalId: 42, answer: 'one' }]));
+  });
+
+  it('offers no such button when Jev is sure of no pair being one place', async () => {
+    mockedSuggest.mockResolvedValue({
+      configured: true,
+      suggestions: [
+        { proposalId: 41, judgement: 'part_of', confidence: 0.95 },
+        { proposalId: 42, judgement: 'one', confidence: 0.6 },
+      ],
+    });
+    renderCard();
+    expect(await screen.findByText('Jev says one place · 60 %')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Jev is sure of/ })).toBeNull();
+    // The exact pair's own button stands regardless of Jev.
+    expect(screen.getByRole('button', { name: 'One place for the exact pair' })).toBeTruthy();
   });
 });
