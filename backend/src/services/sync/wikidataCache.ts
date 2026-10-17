@@ -27,6 +27,7 @@
 
 import { createHash } from 'crypto';
 import { pool, rollbackQuietly } from '../../db/index.js';
+import { readsSubset, type WikidataReader } from './subset/reader.js';
 import type { SparqlBinding } from './wikidataUtils.js';
 
 /**
@@ -174,6 +175,23 @@ export const CACHED_KINDS_BY_SOURCE: Record<number, CacheKind[]> = {
   5: ['classes', 'pool', 'statements', 'entities', 'edges', 'osm'],
 };
 
+/**
+ * The kinds of question the local Wikidata subset answers for a source the
+ * admin switched to it (#1439, #1518): Wikidata's class trees, pools,
+ * statements, details and edges. A run on the subset asks none of them of the
+ * live service, so none is kept, and what the cache still holds of them was
+ * left by the source's runs on the live service. OpenStreetMap's answers
+ * (`osm`) are asked of a mirror whichever Wikidata a run reads, and stay
+ * cached (ADR-0119).
+ */
+export const SUBSET_ANSWERS: ReadonlySet<CacheKind> = new Set(['classes', 'pool', 'statements', 'entities', 'edges']);
+
+/** The kinds a source's runs keep, given which Wikidata they read. */
+export function cachedKindsFor(sourceId: number, reader: WikidataReader): CacheKind[] {
+  const declared = CACHED_KINDS_BY_SOURCE[sourceId] ?? [];
+  return reader === 'subset' ? declared.filter(kind => !SUBSET_ANSWERS.has(kind)) : declared;
+}
+
 /** What a caller says about the question it is asking. */
 export interface CacheDescriptor {
   kind: CacheKind;
@@ -320,6 +338,14 @@ export function withCache(
     onHit?: (descriptor: CacheDescriptor, rows: number) => void;
   },
 ): (query: string, descriptor?: CacheDescriptor) => Promise<SparqlBinding[]> {
+  // The subset's door is never put behind the cache. Its fetchers read the
+  // mark on the door they are handed, and the wrapper carries no mark, so they
+  // would send SPARQL through it. The cache would then answer from the live
+  // service's Wikidata, of another date than the subset's, and the subset-only
+  // door would refuse any miss (#1518).
+  if (readsSubset(sparql)) {
+    throw new Error('The Wikidata cache was put in front of the local subset\'s door, which answers nothing from the live service');
+  }
   let pruned = false;
   return async (query, descriptor) => {
     if (!descriptor || !options.enabled) return sparql(query);
@@ -360,6 +386,12 @@ export interface CacheKindSummary {
   ttlMs: number;
   /** Whether that number is ours or somebody's decision. */
   ttlSource: 'default' | 'set by an admin';
+  /**
+   * Who answers this kind's questions now: the cache, or, for a source that
+   * reads the subset, the subset itself. In the second case these are rows the
+   * source's live runs left, which no run reads and which age out.
+   */
+  answeredBy: 'cache' | 'subset';
 }
 
 /**
@@ -370,7 +402,7 @@ export interface CacheKindSummary {
  * length of the JSON text, because that is the number the database will report
  * for the row and a person comparing the two should see them agree.
  */
-export async function cacheSummary(sourceId: number): Promise<CacheKindSummary[]> {
+export async function cacheSummary(sourceId: number, reader: WikidataReader): Promise<CacheKindSummary[]> {
   // Every kind the code knows about appears, even with nothing kept yet: a
   // panel that lists only what has been fetched cannot answer "how long would a
   // pool live if I ran this now", which is the question an admin has *before*
@@ -401,11 +433,12 @@ export async function cacheSummary(sourceId: number): Promise<CacheKindSummary[]
     [sourceId],
   );
   const stored = new Map(result.rows.map(row => [row.kind as string, row]));
-  // What this source can keep, plus anything it has already kept — the second
-  // half only matters after a kind is retired from the collector while its rows
-  // outlive it, which is exactly when an admin needs the button to drop them.
-  const declared = CACHED_KINDS_BY_SOURCE[sourceId] ?? [];
-  const kinds = [...new Set<string>([...declared, ...stored.keys()])].sort();
+  // What this source keeps, plus anything it has already kept. The second half
+  // matters when a kind is no longer asked live (the source reads the subset,
+  // or the collector retired the kind) while its rows outlive it, which is
+  // exactly when an admin needs the button to drop them.
+  const kept = cachedKindsFor(sourceId, reader);
+  const kinds = [...new Set<string>([...kept, ...stored.keys()])].sort();
 
   return kinds.map((kind) => {
     const row = stored.get(kind);
@@ -421,6 +454,7 @@ export async function cacheSummary(sourceId: number): Promise<CacheKindSummary[]
       labels: (row?.labels as string[] | null) ?? [],
       ttlMs,
       ttlSource: overrides.has(kind) ? ('set by an admin' as const) : ('default' as const),
+      answeredBy: reader === 'subset' && SUBSET_ANSWERS.has(kind as CacheKind) ? ('subset' as const) : ('cache' as const),
     };
   });
 }

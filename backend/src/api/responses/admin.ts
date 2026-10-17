@@ -175,11 +175,14 @@ export const WikidataCacheKind = z.strictObject({
   labels: z.array(z.string()).describe('A few of the questions themselves, newest first, so a kind is not just a word.'),
   ttlMs: z.number().int().describe('How long an answer of this kind stays fresh, in force now.'),
   ttlSource: z.enum(['default', 'set by an admin']),
+  answeredBy: z.enum(['cache', 'subset']).describe('Who answers this kind now. "subset": the source reads the local Wikidata subset, and these are answers its live runs left, which no run reads and which age out.'),
 }).describe('One kind of question whose answers a source keeps.');
 export type WikidataCacheKind = z.infer<typeof WikidataCacheKind>;
 
 export const WikidataCache = z.strictObject({
-  kinds: z.array(WikidataCacheKind).describe('Every kind the source asks, and any it kept before, by name.'),
+  reader: z.enum(CHECK_VALUES.experience_sources.wikidata_reader).describe('Which Wikidata the source\'s runs read: the live query service, or the local subset.'),
+  subsetDumpDate: z.string().nullable().describe('For a source that reads the subset, the date of the dump the subset in place was built from; null otherwise, or when no subset is built.'),
+  kinds: z.array(WikidataCacheKind).describe('Every kind the source keeps, and any it kept before, by name.'),
 }).describe('What a source keeps between runs.');
 export type WikidataCache = z.infer<typeof WikidataCache>;
 
