@@ -384,7 +384,7 @@ chapters:
       desc: "cv-python error responses don't leak internals"
       level: 2
       status: pass
-      notes: "FastAPI exception handler in app/middleware.py catches Exception, prints traceback to stderr (Docker stdout), and returns {'detail':'Internal error'} with 500. NDJSON streaming worker similarly returns {'type':'error','message':'Internal error during processing'} instead of str(exc). InvalidImageBytes is the one allowlisted exception that surfaces a generic message via 400. Fixed 2026-05-10."
+      notes: "FastAPI exception handler in app/middleware.py catches Exception, logs the traceback through stdlib logging to stdout (Docker collects it, #623), and returns {'detail':'Internal error'} with 500. NDJSON streaming worker similarly returns {'type':'error','message':'Internal error during processing'} instead of str(exc). InvalidImageBytes is the one allowlisted exception that surfaces a generic message via 400. Fixed 2026-05-10."
 
   V14_data_protection:
     V14.2.1:
@@ -418,4 +418,4 @@ chapters:
       desc: "cv-python service logging"
       level: 2
       status: pass
-      notes: "Service emits print()-based stdout (collected by Docker). No security-relevant events to audit at this layer (no authn, no authz, no data-mutating side effects). The Node backend layer remains the source of truth for V16 audit trails. Replacing print() with structured `logging` is a follow-up but not blocking for L2."
+      notes: "Service logs through stdlib logging (app/logging_config.py, #623): one stdout handler collected by Docker, level from CV_LOG_LEVEL, timestamp, level and module on every line; caught errors logged with their trace. No security-relevant events to audit at this layer (no authn, no authz, no data-mutating side effects). The Node backend layer remains the source of truth for V16 audit trails. A per-upload request id is the next step once observability expands."
