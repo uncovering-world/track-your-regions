@@ -6,6 +6,8 @@
  * so a trial on a sample shows which step a change made slower.
  */
 
+import { elapsedText } from '@tyr/shared/durations';
+
 /** The step a phase message names. */
 export function stepName(message: string): string {
   const colon = message.indexOf(':');
@@ -13,14 +15,6 @@ export function stepName(message: string): string {
   return (head.endsWith('...') ? head.slice(0, -3) : head).trim();
 }
 
-/** A duration as a row says it: `40 s`, `3 min 5 s`, `2 h 4 min`. */
-export function spoken(ms: number): string {
-  const seconds = Math.round(ms / 1000);
-  if (seconds < 60) return `${seconds} s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} min ${seconds % 60} s`;
-  return `${Math.floor(minutes / 60)} h ${minutes % 60} min`;
-}
 
 export class StepTimes {
   private readonly done: { name: string; ms: number }[] = [];
@@ -44,7 +38,7 @@ export class StepTimes {
    */
   summary(): string {
     this.end();
-    return this.done.filter(step => step.ms >= 1000).map(step => `${step.name} ${spoken(step.ms)}`).join(', ');
+    return this.done.filter(step => step.ms >= 1000).map(step => `${step.name} ${elapsedText(step.ms / 1000)}`).join(', ');
   }
 
   private end(): void {

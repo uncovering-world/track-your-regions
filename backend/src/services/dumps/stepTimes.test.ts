@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { spoken, stepName, StepTimes } from './stepTimes.js';
+import { stepName, StepTimes } from './stepTimes.js';
 
 describe('the steps of a build (#1527)', () => {
   it('names a step by its message before a colon or a trailing ellipsis', () => {
@@ -32,6 +32,5 @@ describe('the steps of a build (#1527)', () => {
 
   it('says nothing for a build that named no step', () => {
     expect(new StepTimes(() => 0).summary()).toBe('');
-    expect(spoken(400)).toBe('0 s');
   });
 });

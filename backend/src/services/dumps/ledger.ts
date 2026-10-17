@@ -48,6 +48,8 @@ export interface BuildProgressRecord {
   total?: number | null;
   /** When the step running now started, so a step with no measure of its own still reads as alive (#1519). */
   stepStartedAt?: string | null;
+  /** Which step the build is on, counted from 1 as steps start (#1356); how many it will have is not known ahead. */
+  step?: number;
 }
 
 /** How often a running build says it is alive and how far it got (#1463, #1467). */

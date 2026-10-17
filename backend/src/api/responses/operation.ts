@@ -12,7 +12,7 @@ import { z } from 'zod/v4';
 
 export const OperationStepAnswer = z.strictObject({
   index: z.number().int().describe('1-based, of `count`. A step a run skips is not announced, so it can jump.'),
-  count: z.number().int(),
+  count: z.number().int().nullable().describe('How many steps the run has; null where it cannot know ahead (a dump build names its steps as it goes).'),
   sentence: z.string().describe('What the step is doing, in the words the panel shows.'),
   done: z.number().int(),
   total: z.number().int().describe('0 while the step cannot say how much it has to do.'),

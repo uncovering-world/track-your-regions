@@ -110,6 +110,8 @@ describe('a build in the dump worker (ADR-0106)', () => {
     await runBuild({ id: 9, dump: 'wikidata-entities', request: { kind: 'keep' } }, new AbortController().signal);
     const labelling = beats.find(beat => String(beat.message).startsWith('Labelling'));
     expect(labelling).toMatchObject({ read: 2_000, total: 8_000, stepStartedAt: '2026-10-15T15:00:00.000Z' });
+    // Each step started is counted, a message of the same step not (#1356).
+    expect(beats.at(-1)!.step).toBe((labelling!.step as number) + 1);
     expect(beats.at(-1)).toMatchObject({
       message: 'Indexing: index 1 of 6, idx_wikidata_claims_subject...', read: 0, total: null, stepStartedAt: '2026-10-15T15:10:00.000Z',
     });
