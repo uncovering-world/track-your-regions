@@ -562,48 +562,7 @@ export function WorldViewImportPanel() {
               </Box>
 
               {/* Extraction progress (phases 1-2) */}
-              {isExtracting && extractStatus &&
-                (extractStatus.status === 'extracting' || extractStatus.status === 'enriching') && (
-                <Box>
-                  <LinearProgress
-                    variant="determinate"
-                    value={Math.min(
-                      ((extractStatus.regionsFetched ?? 0) / (extractStatus.estimatedTotal ?? 5700)) * 100,
-                      99,
-                    )}
-                  />
-                  <Typography variant="caption" color="text.secondary">
-                    {extractStatus.status === 'extracting'
-                      ? `Extracting regions: ${extractStatus.regionsFetched ?? 0} / ~${extractStatus.estimatedTotal ?? 5700}`
-                      : 'Enriching with Wikidata IDs...'
-                    }
-                    {extractStatus.currentPage && (
-                      <> — {extractStatus.currentPage}</>
-                    )}
-                    {extractStatus.status === 'extracting' && extractStatus.startedAt && (extractStatus.regionsFetched ?? 0) > 50 && (() => {
-                      const elapsed = (Date.now() - extractStatus.startedAt!) / 1000;
-                      const rate = (extractStatus.regionsFetched ?? 0) / elapsed;
-                      const remaining = ((extractStatus.estimatedTotal ?? 5700) - (extractStatus.regionsFetched ?? 0)) / rate;
-                      if (remaining <= 0 || !isFinite(remaining)) return null;
-                      const mins = Math.floor(remaining / 60);
-                      const secs = Math.floor(remaining % 60);
-                      return <> — ETA: {mins > 0 ? `${mins}m ` : ''}{secs}s</>;
-                    })()}
-                  </Typography>
-                  <br />
-                  <Typography variant="caption" color="text.secondary">
-                    API requests: {extractStatus.apiRequests ?? 0} | Cache hits: {extractStatus.cacheHits ?? 0}
-                    {extractStatus.startedAt && (() => {
-                      const elapsed = (Date.now() - extractStatus.startedAt!) / 1000;
-                      const rate = (extractStatus.regionsFetched ?? 0) / elapsed;
-                      return rate > 0 ? ` | ${rate.toFixed(1)} regions/s` : '';
-                    })()}
-                    {(extractStatus.aiApiCalls ?? 0) > 0 && (
-                      ` | AI: ${extractStatus.aiApiCalls} calls ($${(extractStatus.aiTotalCost ?? 0).toFixed(2)})`
-                    )}
-                  </Typography>
-                </Box>
-              )}
+              {isExtracting && extractStatus && <ExtractionPhaseProgress status={extractStatus} />}
 
               {/* AI Interview Questions — structured HITL decision making */}
               <InterviewQuestionsList
@@ -695,13 +654,12 @@ export function WorldViewImportPanel() {
 }
 
 /**
- * A running import's or extraction's progress below its status line: an import
- * says its step through the shared progress (#1356); the extraction's phases
- * still draw a bar each.
+ * A running import's or extraction's progress below its status line: both say
+ * their step through the shared progress (#1356); the per-phase bars below are
+ * for a status that does not send it.
  */
 function ImportRunProgress({ status }: { status: ImportStatus | ExtractionStatus }) {
-  // Only an import's status carries the shared progress; the extraction's has no such field.
-  const steps = 'operation' in status ? status.operation : undefined;
+  const steps = status.operation;
   // No detail line here: the card's header already says the run's sentence.
   if (steps) return <OperationProgressView operation={steps} starting={status.statusMessage ?? ''} />;
   return (
@@ -746,5 +704,46 @@ function ImportRunProgress({ status }: { status: ImportStatus | ExtractionStatus
         </Box>
       )}
     </>
+  );
+}
+
+/**
+ * An extraction's reading phases: the hierarchy, then the Wikidata ids. Where
+ * the extraction reports its steps through the shared progress (#1356), that
+ * view draws the bar, and only the request counts are said here.
+ */
+function ExtractionPhaseProgress({ status }: { status: ExtractionStatus }) {
+  if (status.status !== 'extracting' && status.status !== 'enriching') return null;
+  const estimated = status.estimatedTotal ?? 5700;
+  const fetched = status.regionsFetched ?? 0;
+  const elapsed = status.startedAt ? (Date.now() - status.startedAt) / 1000 : 0;
+  const rate = elapsed > 0 ? fetched / elapsed : 0;
+  return (
+    <Box>
+      {!status.operation && (
+        <>
+          <LinearProgress variant="determinate" value={Math.min((fetched / estimated) * 100, 99)} />
+          <Typography variant="caption" color="text.secondary">
+            {status.status === 'extracting'
+              ? `Extracting regions: ${fetched} / ~${estimated}`
+              : 'Enriching with Wikidata IDs...'}
+            {status.currentPage && <> — {status.currentPage}</>}
+            {status.status === 'extracting' && fetched > 50 && rate > 0 && (() => {
+              const remaining = (estimated - fetched) / rate;
+              if (remaining <= 0 || !isFinite(remaining)) return null;
+              const mins = Math.floor(remaining / 60);
+              const secs = Math.floor(remaining % 60);
+              return <> — ETA: {mins > 0 ? `${mins}m ` : ''}{secs}s</>;
+            })()}
+          </Typography>
+          <br />
+        </>
+      )}
+      <Typography variant="caption" color="text.secondary">
+        API requests: {status.apiRequests ?? 0} | Cache hits: {status.cacheHits ?? 0}
+        {rate > 0 ? ` | ${rate.toFixed(1)} regions/s` : ''}
+        {(status.aiApiCalls ?? 0) > 0 && ` | AI: ${status.aiApiCalls} calls ($${(status.aiTotalCost ?? 0).toFixed(2)})`}
+      </Typography>
+    </Box>
   );
 }

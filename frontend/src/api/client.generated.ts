@@ -112,6 +112,71 @@ export const AIMatchStartedStatus = {
 } as const;
 
 /**
+ * The step an operation is on.
+ */
+export interface OperationStepAnswer {
+  /**
+     * 1-based, of `count`. A step a run skips is not announced, so it can jump.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  index: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  count: number;
+  /** What the step is doing, in the words the panel shows. */
+  sentence: string;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  done: number;
+  /**
+     * 0 while the step cannot say how much it has to do.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  total: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  elapsedSeconds: number;
+}
+
+/**
+ * An outside service is holding the run: a rate limit or a retry.
+ */
+export type OperationProgressAnswerWait = {
+  /** Who is holding the run, and why. */
+  sentence: string;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  secondsLeft: number;
+} | null;
+
+/**
+ * How far a long admin operation is.
+ */
+export interface OperationProgressAnswer {
+  /**
+     * Since the operation started.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  elapsedSeconds: number;
+  /** A cancel was asked: the run stops at the next point it can, usually when the step in flight ends. */
+  cancelling: boolean;
+  step: OperationStepAnswer | null;
+  /** An outside service is holding the run: a rate limit or a retry. */
+  wait: OperationProgressAnswerWait;
+}
+
+/**
  * An AI re-match of the world view's unresolved leaves, started in the background.
  */
 export interface AIMatchStarted {
@@ -135,6 +200,8 @@ export interface AIMatchStarted {
   improved?: number;
   /** What the model calls have cost so far, in US dollars. */
   totalCost?: number;
+  /** The step the run is on, of the two, and how far through it (#1356). */
+  operation?: OperationProgressAnswer;
   started: true;
 }
 
@@ -176,6 +243,8 @@ export interface AIMatchStatus {
   improved?: number;
   /** What the model calls have cost so far, in US dollars. */
   totalCost?: number;
+  /** The step the run is on, of the two, and how far through it (#1356). */
+  operation?: OperationProgressAnswer;
 }
 
 /**
@@ -945,71 +1014,6 @@ export const AssignmentStatusStatus = {
   failed: 'failed',
   cancelled: 'cancelled',
 } as const;
-
-/**
- * The step an operation is on.
- */
-export interface OperationStepAnswer {
-  /**
-     * 1-based, of `count`. A step a run skips is not announced, so it can jump.
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  index: number;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  count: number;
-  /** What the step is doing, in the words the panel shows. */
-  sentence: string;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  done: number;
-  /**
-     * 0 while the step cannot say how much it has to do.
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  total: number;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  elapsedSeconds: number;
-}
-
-/**
- * An outside service is holding the run: a rate limit or a retry.
- */
-export type OperationProgressAnswerWait = {
-  /** Who is holding the run, and why. */
-  sentence: string;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  secondsLeft: number;
-} | null;
-
-/**
- * How far a long admin operation is.
- */
-export interface OperationProgressAnswer {
-  /**
-     * Since the operation started.
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  elapsedSeconds: number;
-  /** A cancel was asked: the run stops at the next point it can, usually when the step in flight ends. */
-  cancelling: boolean;
-  step: OperationStepAnswer | null;
-  /** An outside service is holding the run: a rate limit or a retry. */
-  wait: OperationProgressAnswerWait;
-}
 
 /**
  * A world view's placement as it stands. Only `running` is sent while no run is known since the server started.
@@ -5220,6 +5224,8 @@ export interface ExtractionStatus {
   aiCompletionTokens?: number;
   aiTotalCost?: number;
   pendingQuestions?: PendingQuestion[];
+  /** The step the extraction is on, of the six, and how far through it (#1356). */
+  operation?: OperationProgressAnswer;
   /** Newest first. */
   importedWorldViews: ImportedWorldView[];
   /** Newest first. */

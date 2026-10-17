@@ -7,6 +7,7 @@ import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { WorldViewImportPanel } from './WorldViewImportPanel';
 import { getImportStatus } from '../../api/admin/worldViewImport';
+import { getExtractionStatus } from '../../api/admin/wikivoyageExtract';
 
 vi.mock('../../api/admin/worldViewImport', async () => ({
   getImportStatus: vi.fn(),
@@ -54,5 +55,26 @@ describe('a running import (#1356)', () => {
     expect(await screen.findByText('Step 3 of 3')).toBeInTheDocument();
     expect(screen.getByText(/1,227 of 2,490/)).toBeInTheDocument();
     expect(screen.queryByText(/Matching countries:/)).not.toBeInTheDocument();
+  });
+});
+
+describe('a running extraction (#1356)', () => {
+  it('says the step it is on, of the six, and keeps only its request counts', async () => {
+    mockedStatus.mockResolvedValue({ running: false, importedWorldViews: [] });
+    (getExtractionStatus as unknown as ReturnType<typeof vi.fn>).mockResolvedValue({
+      running: true, status: 'extracting', statusMessage: 'Extracting Africa...',
+      regionsFetched: 1200, estimatedTotal: 5700, apiRequests: 40, cacheHits: 1160,
+      importedWorldViews: [], caches: [],
+      operation: {
+        elapsedSeconds: 120, cancelling: false,
+        step: { index: 1, count: 6, sentence: 'Reading the region hierarchy from Wikivoyage', done: 1200, total: 5700, elapsedSeconds: 120 },
+        wait: null,
+      },
+    });
+    renderPanel();
+
+    expect(await screen.findByText('Step 1 of 6')).toBeInTheDocument();
+    expect(screen.getByText(/API requests: 40 \| Cache hits: 1160/)).toBeInTheDocument();
+    expect(screen.queryByText(/Extracting regions:/)).not.toBeInTheDocument();
   });
 });
