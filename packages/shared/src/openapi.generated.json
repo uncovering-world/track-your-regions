@@ -18132,6 +18132,10 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "operation": {
+            "description": "The step the run is on, of how many, and how far through it (#1356).",
+            "$ref": "#/components/schemas/OperationProgressAnswer"
           }
         },
         "required": [

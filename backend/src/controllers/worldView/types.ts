@@ -2,6 +2,8 @@
  * Shared types for World View controllers
  */
 
+import type { Operation } from '../../services/operationProgress.js';
+
 /**
  * Progress tracking for background geometry computations
  */
@@ -15,6 +17,8 @@ export interface ComputationProgress {
   errors: number;
   currentGroup: string;
   currentMembers: number;
+  /** The step the run is on, of the two, and how far through it (#1356). */
+  operation: Operation;
 }
 
 /**

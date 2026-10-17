@@ -10,6 +10,10 @@ import { pool } from '../../db/index.js';
 import { runningComputations } from './types.js';
 import type { ComputationProgress } from './types.js';
 import { computeRegionGeometryCore } from './geometryComputeSingle.js';
+import { Operation, operationAnswer } from '../../services/operationProgress.js';
+
+/** The computation's steps, as its progress counts them (#1356). */
+const STEP = { regions: 1, coverage: 2 } as const;
 
 type WorldViewParams = z.output<typeof worldViewIdParamSchema>;
 
@@ -41,6 +45,7 @@ export async function getComputationStatus(
     errors: status.errors,
     currentRegion: status.currentGroup,
     currentMembers: status.currentMembers,
+    operation: operationAnswer(status.operation.progress),
   };
 }
 
@@ -54,6 +59,7 @@ export async function cancelComputation(
   if (status) {
     status.cancel = true;
     status.status = 'Cancelling...';
+    status.operation.cancel();
   }
 
   return { cancelled: true };
@@ -181,10 +187,10 @@ async function computeOneGroup(
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
   if (result.computed) {
-    console.log(`[Geometry] Completed ${group.name} in ${elapsed}s (${result.points?.toLocaleString() || '?'} points)`);
+    progressState.operation.note(`Completed ${group.name} in ${elapsed}s (${result.points?.toLocaleString() || '?'} points)`);
     progressState.computed++;
   } else if (result.error) {
-    console.log(`[Geometry] Skipped ${group.name}: ${result.error}`);
+    progressState.operation.note(`Skipped ${group.name}: ${result.error}`);
     progressState.skipped++;
   }
 }
@@ -194,6 +200,7 @@ async function processGroups(
   progressState: ComputationProgress,
   skipSnapping: boolean,
 ): Promise<void> {
+  progressState.operation.step(STEP.regions, `Computing the geometry of ${groups.length} regions, deepest first`, groups.length);
   for (const group of groups) {
     if (progressState.cancel) {
       progressState.status = 'Cancelled';
@@ -208,6 +215,7 @@ async function processGroups(
       progressState.status = `Error: ${group.name}`;
     }
     progressState.progress++;
+    progressState.operation.advance();
   }
 }
 
@@ -218,7 +226,6 @@ async function applyCoverageSimplification(
   if (progressState.cancel) return;
 
   progressState.status = 'Applying coverage simplification...';
-  console.log(`[Geometry] Running coverage simplification for gap-free borders...`);
 
   const parentIds = await pool.query(`
     SELECT DISTINCT parent_region_id
@@ -228,13 +235,13 @@ async function applyCoverageSimplification(
     HAVING COUNT(*) >= 2
   `, [worldViewId]);
 
-  let coverageCount = 0;
+  progressState.currentGroup = '';
+  progressState.operation.step(STEP.coverage, `Simplifying the shared borders of ${parentIds.rows.length} parent regions, so siblings meet without gaps`, parentIds.rows.length);
   for (const row of parentIds.rows) {
     if (progressState.cancel) break;
     await pool.query('SELECT simplify_coverage_regions($1::integer)', [row.parent_region_id]);
-    coverageCount++;
+    progressState.operation.advance();
   }
-  console.log(`[Geometry] Coverage simplification complete: ${coverageCount} parent groups processed`);
 }
 
 async function finalizeComputation(
@@ -242,13 +249,17 @@ async function finalizeComputation(
   progressState: ComputationProgress,
 ): Promise<void> {
   if (progressState.cancel) {
-    console.log(`[Geometry] Computation cancelled for hierarchy ${worldViewId} at progress ${progressState.progress}/${progressState.total}`);
+    // A cancel that landed after the loop's last check, in the last region or
+    // in the second step, still ends the run as cancelled rather than leaving
+    // it on "Cancelling..." for the status to read as running.
+    progressState.status = 'Cancelled';
+    progressState.operation.finish(`cancelled after ${progressState.progress} of ${progressState.total} regions`);
     return;
   }
 
   progressState.status = 'Complete';
   progressState.currentGroup = '';
-  console.log(`[Geometry] Computation complete for hierarchy ${worldViewId}: computed=${progressState.computed}, skipped=${progressState.skipped}, errors=${progressState.errors}`);
+  progressState.operation.finish(`${progressState.computed} computed, ${progressState.skipped} skipped, ${progressState.errors} errors`);
 }
 
 /**
@@ -280,6 +291,7 @@ export async function computeWorldViewGeometries(
     errors: 0,
     currentGroup: '',
     currentMembers: 0,
+    operation: new Operation(`[Geometry] World view ${worldViewId}:`, Object.keys(STEP).length),
   };
   runningComputations.set(worldViewId, progressState);
 
@@ -347,6 +359,7 @@ async function computeInBackground(
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- worldViewId is a number
     console.error(`[Geometry] Pipeline error for hierarchy ${worldViewId}:`, err);
     progressState.status = 'Error: the computation stopped; the server log has the cause.';
+    progressState.operation.finish('failed');
   } finally {
     // Keep status available for ~30s for a final poll, then clean up.
     setTimeout(() => releaseSlot(worldViewId, progressState), 30000);

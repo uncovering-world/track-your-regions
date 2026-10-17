@@ -12,6 +12,7 @@
  */
 
 import { z } from 'zod/v4';
+import { OperationProgressAnswer } from './operation.js';
 import { AnchorPoint, AreaGeometry, FocusBbox } from './regions.js';
 
 // ---------------------------------------------------------------------------
@@ -84,6 +85,7 @@ export const ComputationStatus = z.strictObject({
   errors: z.number().int().optional(),
   currentRegion: z.string().optional(),
   currentMembers: z.number().int().optional(),
+  operation: OperationProgressAnswer.optional().describe('The step the run is on, of how many, and how far through it (#1356).'),
 }).describe('A world view\'s computation as it stands. Only `running` is sent while no run is known, since the server started or since the last one was cleared.');
 export type ComputationStatus = z.infer<typeof ComputationStatus>;
 
