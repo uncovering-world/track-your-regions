@@ -41,8 +41,13 @@ const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
 export interface QueryHooks {
   budget: WaitBudget;
   isCancelled?: () => boolean;
-  /** Called after each query, so a job can say how far it is. */
+  /** Called after each query, so a pass can count the questions it sent (`ComponentItemReport.queries`). */
   onQuery?: () => void;
+  /**
+   * Called with how many of the asked-about items (or areas) an answer covered,
+   * so a step can say how much of its own work is done (#1356).
+   */
+  onAnswered?: (count: number) => void;
   /** Called before a wait, so a job can say the service is holding it. */
   onWait?: (wait: SourceWait) => void;
 }
@@ -95,6 +100,7 @@ export async function classesOfItems(items: readonly string[], hooks: QueryHooks
       const item = itemOf(row.item!.value);
       classes.set(item, [...(classes.get(item) ?? []), itemOf(row.class!.value)]);
     }
+    hooks.onAnswered?.(Math.min(BATCH, items.length - i));
   }
   return classes;
 }
@@ -120,6 +126,7 @@ export async function registerCodesOf(items: readonly string[], hooks: QueryHook
       const code = { property: itemOf(row.property!.value), code: row.code!.value };
       codes.set(item, [...(codes.get(item) ?? []), code].sort((a, b) => a.property.localeCompare(b.property) || a.code.localeCompare(b.code)));
     }
+    hooks.onAnswered?.(Math.min(BATCH, items.length - i));
   }
   return codes;
 }
@@ -152,7 +159,7 @@ export async function partsOfSites(
       }`, hooks, HEAVY_RETRIES);
     } catch (error) {
       if (!tooHeavy(error)) throw error;
-      if (batch.length === 1) { unread.push(batch[0]); return; }
+      if (batch.length === 1) { unread.push(batch[0]); hooks.onAnswered?.(1); return; }
       const half = Math.ceil(batch.length / 2);
       await read(batch.slice(0, half));
       await read(batch.slice(half));
@@ -164,6 +171,7 @@ export async function partsOfSites(
       bySite.set(site, [...(bySite.get(site) ?? []), row]);
     }
     for (const [site, siteRows] of bySite) parts.set(site, [...candidatesOf(siteRows, 'part').values()]);
+    hooks.onAnswered?.(batch.length);
   };
   for (let i = 0; i < siteItems.length; i += SITES_PER_QUERY) await read(siteItems.slice(i, i + SITES_PER_QUERY));
   return { parts, unread };
@@ -182,6 +190,7 @@ export async function componentNumbers(hooks: QueryHooks): Promise<CandidateItem
     FILTER NOT EXISTS { ?statement wikibase:rank wikibase:DeprecatedRank }
     OPTIONAL { ?item wdt:P625 ?coord }
   }`, hooks);
+  hooks.onAnswered?.(1);
   return [...candidatesOf(rows, 'item').values()];
 }
 
@@ -296,6 +305,7 @@ export async function labelsOf(items: readonly string[], hooks: QueryHooks): Pro
         english: entity.labels?.en?.value ?? entity.labels?.mul?.value ?? null,
       });
     }
+    hooks.onAnswered?.(ids.length);
   }
   return labels;
 }
@@ -404,6 +414,7 @@ export async function settlementsAmong(
       }`, hooks.isCancelled);
     hooks.onQuery?.();
     for (const row of rows) found.add(itemOf(row.item!.value));
+    hooks.onAnswered?.(Math.min(SETTLEMENT_BATCH, ids.length - i));
   }
   return found;
 }
@@ -458,6 +469,7 @@ export async function placesOf(items: readonly string[], hooks: QueryHooks): Pro
       if (coord && !place.coords.some(([lat, lon]) => lat === coord[0] && lon === coord[1])) place.coords.push(coord);
       if (row.reference) place.referenced = true;
     }
+    hooks.onAnswered?.(Math.min(PLACE_BATCH, items.length - i));
   }
   return new Map([...places].map(([item, ofItem]) => [item, [...ofItem.values()]]));
 }

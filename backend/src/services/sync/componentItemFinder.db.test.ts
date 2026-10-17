@@ -68,7 +68,7 @@ vi.mock('./componentItemQueries.js', async (importOriginal) => ({
 const { pool } = await import('../../db/index.js');
 const queries = await import('./componentItemQueries.js');
 const { SparqlUnanswered } = await import('./wikidataUtils.js');
-const { findComponentItems } = await import('./componentItemFinder.js');
+const { FINDER_STEPS, findComponentItems } = await import('./componentItemFinder.js');
 const { WaitBudget } = await import('./sourceRetry.js');
 
 const SITE = 9840;
@@ -174,6 +174,14 @@ describe('findComponentItems', () => {
       { location_id: points.bologa, wikidata_item: BOLOGA_ITEM, basis: 'near', exact: false, answer: null },
       { location_id: points.buciumi, wikidata_item: REFUSED_ITEM, basis: 'near', exact: false, answer: 'refused' },
     ]);
+  });
+
+  it('announces its steps in order, each of the pass\'s count and none twice (#1356)', async () => {
+    const steps: number[] = [];
+    await findComponentItems({ write: false, hooks: { budget: new WaitBudget(1000) }, onStep: (index) => steps.push(index) });
+
+    expect(steps.length).toBeGreaterThan(5);
+    expect(steps.every((index, i) => index >= 1 && index <= FINDER_STEPS && (i === 0 || index > steps[i - 1]))).toBe(true);
   });
 
   it("proposes by a place name of the component's where the name rule finds nothing, with the item's register code (#1340)", async () => {

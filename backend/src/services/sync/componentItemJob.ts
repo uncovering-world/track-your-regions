@@ -12,10 +12,11 @@
  */
 
 import { sentenceFor } from '../../api/readerFacingError.js';
-import { findComponentItems, type ComponentItemReport } from './componentItemFinder.js';
+import { Operation } from '../operationProgress.js';
+import { FINDER_STEPS, findComponentItems, type ComponentItemReport } from './componentItemFinder.js';
 import { WaitBudget } from './sourceRetry.js';
 import { isTerminalSyncStatus, runningSyncs, type SyncProgress } from './types.js';
-import { SPARQL_WAIT_BUDGET_MS, waitMessage } from './wikidataUtils.js';
+import { SPARQL_WAIT_BUDGET_MS, sayWait } from './wikidataUtils.js';
 
 const UNESCO_SOURCE_ID = 1;
 const LOG_PREFIX = '[Component items]';
@@ -47,6 +48,8 @@ export async function findUnescoComponentItems(_triggeredBy: number | null, site
     logId: null,
     dryRun: false,
   };
+  const operation = new Operation(LOG_PREFIX, FINDER_STEPS);
+  progress.operation = operation;
   runningSyncs.set(UNESCO_SOURCE_ID, progress);
 
   try {
@@ -57,23 +60,28 @@ export async function findUnescoComponentItems(_triggeredBy: number | null, site
       hooks: {
         budget,
         isCancelled: () => progress.cancel,
-        onQuery: () => { progress.progress += 1; },
-        onWait: (wait) => { progress.statusMessage = waitMessage('Wikidata', wait, budget); },
+        onAnswered: (count) => { operation.advance(count); },
+        onWait: (wait) => { sayWait(progress, 'Wikidata', wait, budget); },
       },
-      onStage: (message) => { progress.statusMessage = message; },
+      onStep: (index, sentence, total) => {
+        progress.statusMessage = sentence;
+        operation.step(index, sentence, total);
+      },
     });
     if (progress.cancel) {
       progress.status = 'cancelled';
       progress.statusMessage = 'Cancelled.';
+      operation.finish('cancelled');
       return;
     }
     progress.status = 'complete';
     progress.created = report.partOf + report.near + report.toponym + report.numbered;
     progress.statusMessage = sentenceOf(report, site);
-    console.log(`${LOG_PREFIX} Complete after ${report.queries} queries: ${progress.statusMessage}`);
+    operation.finish(`${report.queries} queries; ${progress.statusMessage}`);
   } catch (err) {
     progress.status = progress.cancel ? 'cancelled' : 'failed';
     progress.statusMessage = progress.cancel ? 'Cancelled.' : sentenceFor(err, 'the server log has the cause.');
+    operation.finish(progress.cancel ? 'cancelled' : 'failed');
     console.error('[Component items] Search failed:', err);
     throw err;
   } finally {

@@ -49,6 +49,19 @@ describe('partsOfSites', () => {
     expect(parts.get('Q3')).toEqual([{ item: 'Q300', labels: [], coords: [[61.59, 21.87]], classes: [] }]);
   });
 
+  it('counts every site once as answered, the halves and the one it cannot answer alone included (#1356)', async () => {
+    asked.mockImplementation(async (query) => {
+      const sites = sitesIn(query);
+      if (sites.includes('Q2')) throw new SparqlUnanswered('Wikidata SPARQL error 504: gateway timeout');
+      return sites.map(site => part(site, `Q${site.slice(1)}00`));
+    });
+    const answered: number[] = [];
+
+    await partsOfSites(['Q1', 'Q2', 'Q3', 'Q4'], { ...hooks(), onAnswered: (count: number) => answered.push(count) });
+
+    expect(answered.reduce((a, b) => a + b, 0)).toBe(4);
+  });
+
   it('carries the World Heritage references a part states, so the finder can tell another site\'s part from this one\'s (#1344)', async () => {
     asked.mockResolvedValue([part('Q1', 'Q100', '527-002'), part('Q1', 'Q100', '527ter-002'), part('Q1', 'Q101')]);
 
