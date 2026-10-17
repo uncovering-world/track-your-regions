@@ -29,6 +29,10 @@ describe('a pageview line (ADR-0055)', () => {
     expect(decodeTitle('%uD800x')).toBe('�x');
     // A byte sequence that is not UTF-8 is unreadable too, never a failure.
     expect(decodeTitle('%FFabc')).toBe('�abc');
+    // A control character no title can hold, which PostgreSQL refuses in text (November 2025's file).
+    expect(decodeTitle('Foo%00bar')).toBe('Foo\uFFFDbar');
+    expect(decodeTitle('%u0000x')).toBe('\uFFFDx');
+    expect(decodeTitle('Tab\there')).toBe('Tab\uFFFDhere');
   });
 
   it('names an edition by the site code Wikidata gives its sitelinks', () => {

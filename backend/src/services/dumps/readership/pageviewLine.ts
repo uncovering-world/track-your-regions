@@ -19,6 +19,11 @@ const ESCAPE = /%(?:u([0-9A-Fa-f]{4})|([0-9A-Fa-f]{2}))/y;
 
 const utf8 = new TextDecoder('utf-8', { fatal: false });
 const REPLACEMENT = '�';
+/** C0 and C1 control characters, and DEL: never in an article's title. */
+const CONTROL = /[\u0000-\u001F\u007F-\u009F]/g;
+
+/** A title as a sitelink spells it: spaces for underscores, no control character. */
+const readable = (title: string) => title.replace(CONTROL, REPLACEMENT).replaceAll('_', ' ');
 
 /** UTF-16 code units as text: a high surrogate followed by a low one is one character, a lone one is unreadable. */
 function unitsToText(units: number[]): string {
@@ -46,10 +51,14 @@ function unitsToText(units: number[]): string {
  * writes UTF-16 code units, so a character beyond the Basic Multilingual Plane
  * arrives as two (`%uD83D%uDE00`) and is one character; a lone surrogate, which
  * September 2026's file carries, is unreadable and becomes U+FFFD rather than
- * failing the line. Underscores are spaces, as Wikidata's sitelinks write them.
+ * failing the line. A control character, which `%00` and its kind decode to
+ * and which no article's title can hold, becomes U+FFFD as well: such a title
+ * matches no sitelink, and PostgreSQL refuses a NUL in text outright (November
+ * 2025's file carries one). Underscores are spaces, as Wikidata's sitelinks
+ * write them.
  */
 export function decodeTitle(raw: string): string {
-  if (!raw.includes('%')) return raw.replaceAll('_', ' ');
+  if (!raw.includes('%')) return readable(raw);
   let out = '';
   let bytes: number[] = [];
   let units: number[] = [];
@@ -77,7 +86,7 @@ export function decodeTitle(raw: string): string {
   }
   flushBytes();
   flushUnits();
-  return out.replaceAll('_', ' ');
+  return readable(out);
 }
 
 export type Access = 'desktop' | 'mobile-web' | 'mobile-app';
