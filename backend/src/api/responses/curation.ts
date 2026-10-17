@@ -420,6 +420,17 @@ export const ComponentItemSuggestions = z.strictObject({
 }).describe("Jev's judgement of the candidate items of a site's components (#1272), per candidate it could judge; never applied.");
 export type ComponentItemSuggestions = z.infer<typeof ComponentItemSuggestions>;
 
+export const MergeProposalSuggestions = z.strictObject({
+  configured: z.boolean().describe('Whether this deployment asks Jev at all. False: no judgement, nothing else changes.'),
+  suggestions: z.array(z.strictObject({
+    proposalId: z.number().int().describe('The pair judged.'),
+    judgement: z.enum(CHECK_VALUES.experience_merge_suggestions.judgement)
+      .describe('`one`: the two are one place; `two`: two places; `part_of`: one lies within the other, which one being the curator\'s to say.'),
+    confidence: z.number().describe('Its confidence, 0 to 1.'),
+  })),
+}).describe("Jev's judgement of the pairs of near places with similar names a place is the lower id of (#1249), per pair it could judge; never applied.");
+export type MergeProposalSuggestions = z.infer<typeof MergeProposalSuggestions>;
+
 export const NearbyPicture = z.strictObject({
   file: z.string().describe("The file's name on Wikimedia Commons."),
   url: z.string().describe('The address the catalogue stores a picture by: what a pick sends as `imageUrl`.'),

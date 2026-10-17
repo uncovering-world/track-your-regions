@@ -6033,7 +6033,7 @@
     "/api/admin/jev/usage": {
       "get": {
         "operationId": "getAdminJevUsage",
-        "summary": "What Jev has cost, and how often curators chose the view it suggested",
+        "summary": "What Jev has cost, and how often curators chose what it suggested, per card",
         "tags": [
           "admin"
         ],
@@ -14174,6 +14174,56 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/ComponentItemSuggestions"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/{id}/merge-proposal-suggestions": {
+      "post": {
+        "operationId": "postExperiencesByIdMergeProposalSuggestions",
+        "summary": "Ask Jev whether each pair of near places is one place, two places or one part of the other; a suggestion, never applied",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeProposalSuggestions"
                 }
               }
             }
@@ -24997,7 +25047,7 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991,
-            "description": "Suggestions asked for, over both cards."
+            "description": "Suggestions asked for, over every card."
           },
           "inputTokens": {
             "type": "integer",
@@ -25012,7 +25062,7 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991,
-            "description": "Curators' answers for which Jev had suggested one for the same question, over both cards."
+            "description": "Curators' answers for which Jev had suggested one for the same question, over every card."
           },
           "agreed": {
             "type": "integer",
@@ -25029,15 +25079,16 @@
                   "type": "string",
                   "enum": [
                     "views",
-                    "componentItems"
+                    "componentItems",
+                    "mergeProposals"
                   ],
-                  "description": "Which card asked: the sources card (#1260), or the component-items card (#1272)."
+                  "description": "Which card asked: the sources card (#1260), the component-items card (#1272), or the near-places card (#1249)."
                 },
                 "calls": {
                   "type": "integer",
                   "minimum": -9007199254740991,
                   "maximum": 9007199254740991,
-                  "description": "Suggestions asked for: one call each on the sources card, one question each on the component-items card."
+                  "description": "Suggestions asked for: one call each on the sources card, one question each on the component-items and near-places cards."
                 },
                 "inputTokens": {
                   "type": "integer",
@@ -25083,7 +25134,7 @@
           "byQuestion"
         ],
         "additionalProperties": false,
-        "description": "What Jev has cost, and how often curators chose what it suggested (#1260, #1272)."
+        "description": "What Jev has cost, and how often curators chose what it suggested (#1260, #1272, #1249)."
       },
       "LearnedRule": {
         "type": "object",
@@ -26839,6 +26890,54 @@
         ],
         "additionalProperties": false,
         "description": "What the pass over near places with similar names found (ADR-0046 decision 2, #1249)."
+      },
+      "MergeProposalSuggestions": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "description": "Whether this deployment asks Jev at all. False: no judgement, nothing else changes."
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "proposalId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "The pair judged."
+                },
+                "judgement": {
+                  "type": "string",
+                  "enum": [
+                    "one",
+                    "two",
+                    "part_of"
+                  ],
+                  "description": "`one`: the two are one place; `two`: two places; `part_of`: one lies within the other, which one being the curator's to say."
+                },
+                "confidence": {
+                  "type": "number",
+                  "description": "Its confidence, 0 to 1."
+                }
+              },
+              "required": [
+                "proposalId",
+                "judgement",
+                "confidence"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "configured",
+          "suggestions"
+        ],
+        "additionalProperties": false,
+        "description": "Jev's judgement of the pairs of near places with similar names a place is the lower id of (#1249), per pair it could judge; never applied."
       },
       "MergeProposalsAnswered": {
         "type": "object",

@@ -22,15 +22,19 @@ import { membershipItemSql } from './equalItemMerges.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
 import { mergeProposalOpenSql } from './reviewQueuePredicates.js';
 
-/** The names of the kinds a place's memberships put it in, in display order, as a jsonb array. */
-function kindNamesSql(place: string): string {
+/**
+ * The names of the kinds a place's memberships put it in, in display order, as
+ * a jsonb array. Read by the card's row and by Jev's question about the same
+ * pair (`mergeProposalSuggestionController.ts`), so the two name one fact.
+ */
+export function kindNamesSql(place: string): string {
   return `(SELECT COALESCE(jsonb_agg(k.name ORDER BY k.display_priority, k.id), '[]'::jsonb)
              FROM ${MEMBERSHIPS} km JOIN ${KINDS} k ON k.id = km.kind_id
             WHERE km.experience_id = ${place}.id)`;
 }
 
-/** The Wikidata item a place's memberships make it, or null (`membershipItemSql`). */
-function itemSql(place: string): string {
+/** The Wikidata item a place's memberships make it, or null (`membershipItemSql`); read by the card and by Jev's question alike. */
+export function itemSql(place: string): string {
   return `(SELECT ${membershipItemSql('km', place)} FROM ${MEMBERSHIPS} km
             WHERE km.experience_id = ${place}.id AND ${membershipItemSql('km', place)} IS NOT NULL
             ORDER BY km.id LIMIT 1)`;
