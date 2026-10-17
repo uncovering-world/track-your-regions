@@ -503,6 +503,19 @@ a person. The question is the pass's own (`sharedItemsSql`,
 `controllers/experience/equalItemMerges.ts`), so the check never counts a pair
 the button would not merge, nor misses one it would.
 
+**The near-pairs rule** (`near-places-with-similar-names-unanswered`) lists every
+pair of near places with similar names nobody has answered (#1249). That is the
+weaker of ADR-0046's two universal signals, and it proposes rather than merges:
+the *Places that may be one place* card beside the merge card runs the pass
+(`services/sync/mergeProposalFinder.ts`) that writes each pair within reach with
+names alike at 0.5 or better to `experience_merge_proposals`, and a person says
+whether they are one place, two places or one part of the other, an answer the
+proposal carries. What this lists is the open pairs — a question waiting for a person, as
+the merge rule's leftovers are — and an answered pair leaves it for good, since
+the pass keeps an answered row and never proposes the pair again (ADR-0046
+decision 4). The rows are the pass's own (`PROPOSAL_ROWS_SQL`), so the check and
+the pass count one set.
+
 **The listing rule** (`place-listing-disagrees-with-memberships`) states the
 derivation ADR-0084 put on a place's own `missing_since` and
 `source_membership` (#1251): whether a source still lists a place is each
