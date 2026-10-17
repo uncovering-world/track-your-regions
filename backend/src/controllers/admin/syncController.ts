@@ -5,7 +5,7 @@
  */
 
 import { operationAnswer } from '../../services/operationProgress.js';
-import { SUBSET_READY_SOURCES } from '../../services/sync/subset/reader.js';
+import { SUBSET_READY_SOURCES, wikidataReaderOf, type WikidataReader } from '../../services/sync/subset/reader.js';
 import { mergeArrivalsOfRun } from '../experience/equalItemMerges.js';
 import type { z } from 'zod/v4';
 import type {
@@ -69,8 +69,9 @@ import type {
   startSyncBodySchema, syncChangesQuerySchema, syncLogsQuerySchema,
 } from '../../types/index.js';
 import {
-  cacheSummary, clearCache, setCacheTtl, CACHED_KINDS_BY_SOURCE, type CacheKind,
+  cacheSummary, cachedKindsFor, clearCache, setCacheTtl, CACHED_KINDS_BY_SOURCE, type CacheKind,
 } from '../../services/sync/wikidataCache.js';
+import { latestSubset } from '../../services/dumps/wikidata/subsetTables.js';
 
 const UNESCO_SOURCE_ID = 1;
 const MUSEUM_SOURCE_ID = 2;
@@ -200,9 +201,15 @@ function buildStartMessage(mode: { dryRun: boolean; refreshCache: boolean; askAb
 /**
  * What answers we are keeping from the source, and how old they are.
  * GET /api/admin/sync/sources/:sourceId/cache
+ *
+ * With which Wikidata the source's runs read, and, for the subset, the dump
+ * it was built from: that is where a switched source's Wikidata answers come
+ * from instead of the cache (ADR-0119).
  */
 export async function getWikidataCache({ params: { sourceId } }: { params: SourceParams }): Promise<WikidataCache> {
-  return { kinds: await cacheSummary(sourceId) };
+  const reader = await wikidataReaderOf(sourceId);
+  const subsetDumpDate = reader === 'subset' ? (await latestSubset())?.dumpDate ?? null : null;
+  return { reader, subsetDumpDate, kinds: await cacheSummary(sourceId, reader) };
 }
 
 /**
@@ -682,10 +689,11 @@ export async function getSources(): Promise<ExperienceSources> {
     // Whether this source keeps anything between runs, which decides whether
     // "Sync without cache" is a real offer. The Wikidata collectors
     // describe their questions (ADR-0030 decision 4); the UNESCO run reads
-    // its own API and does not, and on it that button would promise to
-    // bypass something that does not exist — the same pretence the cache
-    // panel below it refuses to make.
-    caches: (CACHED_KINDS_BY_SOURCE[source.id] ?? []).length > 0,
+    // its own API and does not, and a source that reads the local subset
+    // keeps only what it still asks live (ADR-0119). On either, that button
+    // would promise to bypass something that does not exist — the same
+    // pretence the cache panel below it refuses to make.
+    caches: cachedKindsFor(source.id, source.wikidata_reader as WikidataReader).length > 0,
     // Whether this source's pictures can be repaired from here, read from the
     // same registry the route answers from — the museums' missing pictures, and
     // the World Heritage ones the Centre's terms do not let us show (ADR-0043).

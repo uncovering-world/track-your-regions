@@ -34945,15 +34945,32 @@
       "WikidataCache": {
         "type": "object",
         "properties": {
+          "reader": {
+            "type": "string",
+            "enum": [
+              "live",
+              "subset"
+            ],
+            "description": "Which Wikidata the source's runs read: the live query service, or the local subset."
+          },
+          "subsetDumpDate": {
+            "description": "For a source that reads the subset, the date of the dump the subset in place was built from; null otherwise, or when no subset is built.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "kinds": {
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/WikidataCacheKind"
             },
-            "description": "Every kind the source asks, and any it kept before, by name."
+            "description": "Every kind the source keeps, and any it kept before, by name."
           }
         },
         "required": [
+          "reader",
+          "subsetDumpDate",
           "kinds"
         ],
         "additionalProperties": false,
@@ -35055,6 +35072,14 @@
               "default",
               "set by an admin"
             ]
+          },
+          "answeredBy": {
+            "type": "string",
+            "enum": [
+              "cache",
+              "subset"
+            ],
+            "description": "Who answers this kind now. \"subset\": the source reads the local Wikidata subset, and these are answers its live runs left, which no run reads and which age out."
           }
         },
         "required": [
@@ -35067,7 +35092,8 @@
           "bytes",
           "labels",
           "ttlMs",
-          "ttlSource"
+          "ttlSource",
+          "answeredBy"
         ],
         "additionalProperties": false,
         "description": "One kind of question whose answers a source keeps."
