@@ -2372,6 +2372,8 @@ export interface ComputationStatus {
      * @maximum 9007199254740991
      */
   currentMembers?: number;
+  /** The step the run is on, of how many, and how far through it (#1356). */
+  operation?: OperationProgressAnswer;
 }
 
 /**

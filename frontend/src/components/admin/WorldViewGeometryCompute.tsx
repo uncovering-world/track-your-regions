@@ -17,13 +17,14 @@ import {
   startWorldViewGeometryComputation,
   type ComputationStatus,
 } from '../../api/geometry';
+import { OperationProgressView } from './OperationProgressView';
 import { ApiError } from '../../api/fetchUtils';
 
 // What the alert shows is the computation's status as the server answers it, with
 // the counts it draws made definite; `computed` is the status's `progress`, the
 // regions processed so far.
 type GeomStatus = Required<Pick<ComputationStatus, 'percent' | 'total' | 'errors'>>
-  & Pick<ComputationStatus, 'currentRegion' | 'status'>
+  & Pick<ComputationStatus, 'currentRegion' | 'status' | 'operation'>
   & { computed: number };
 
 export interface WorldViewGeometryCompute {
@@ -55,6 +56,7 @@ export function useWorldViewGeometryCompute(worldViewId: number): WorldViewGeome
     errors: s.errors ?? 0,
     currentRegion: s.currentRegion,
     status: s.status,
+    operation: s.operation,
   }), []);
 
   const startPolling = useCallback(() => {
@@ -151,9 +153,21 @@ export function GeomComputationAlert({ compute }: { compute: WorldViewGeometryCo
       ) : undefined}
     >
       <Box sx={{ width: '100%' }}>
-        <Typography variant="body2">{progressText}</Typography>
-        {computing && (
-          <LinearProgress variant="determinate" value={status.percent} sx={{ mt: 0.5 }} />
+        {/* A run that sends the shared progress (#1356) says its step and how far through it. */}
+        {computing && status.operation ? (
+          <>
+            <OperationProgressView operation={status.operation} starting={progressText} />
+            {status.currentRegion && (
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{status.currentRegion}</Typography>
+            )}
+          </>
+        ) : (
+          <>
+            <Typography variant="body2">{progressText}</Typography>
+            {computing && (
+              <LinearProgress variant="determinate" value={status.percent} sx={{ mt: 0.5 }} />
+            )}
+          </>
         )}
       </Box>
     </Alert>
