@@ -6,9 +6,9 @@ it finds the newest complete file of a public dump, reads it line by line
 into a consumer, and lets the consumer keep what it built only once the file
 is verified. It holds no data of its own. A build that keeps something is a
 builder plugged into it: the local Wikidata subset (§ The local Wikidata
-subset, ADR-0105) is the first, and the Wikipedia structure tables (#1440)
-and readership (#1436) come later. The counting consumer keeps nothing, which
-is what the admin panel's *Verify newest* runs.
+subset, ADR-0105) and readership (§ Readership, ADR-0055) are the two today,
+and the Wikipedia structure tables (#1440) come later. The counting consumer
+keeps nothing, which is what the admin panel's *Verify newest* runs.
 
 Code: `backend/src/services/dumps/` — `catalog.ts` (which dumps exist and how
 the newest complete file of each is found), `fetch.ts` (the door to the host),
@@ -127,7 +127,8 @@ first when the disk cannot hold what is left of the new one beside them
 (`makeRoom`, `freeBytes`, with what a resumed ranged download already holds
 read from its saved ranges, `bytesHeld`). The monthly pageview files are
 twelve different months, which readership reads together (ADR-0055), so none
-of them is removed. Either is said in the build's message (`onNote`), as is a
+of them is an older copy of another and this rule removes none; readership's
+build removes each once its month is kept (§ Readership). Either is said in the build's message (`onNote`), as is a
 copy that could not be removed: the verified read stands. One build per dump
 runs at a time in any process (§ A build), so no build of that dump is reading
 an older copy then.
@@ -435,6 +436,80 @@ alive. The worker beats every five seconds whatever step it is in: the panel
 says a build whose last beat is more than a minute old may have stopped,
 rather than showing it as slow.
 
+## Readership
+
+Code: `backend/src/services/dumps/readership/` (#1436). A `keep` build of
+`pageviews-user` (`buildReadership`, `readershipBuild.ts`) keeps readership
+over the last twelve complete months, as ADR-0055 decision 1 reads it: the
+newest month the host has finished and the eleven before it. Each month that is
+not kept already from the same file is read, oldest first, through `readDump`
+like any dump, so it is verified by its size and the bzip2 stream's clean end
+and kept only once it is (`readership_month_files` names the file each month
+came from). A month that fails leaves the months before it kept, and the next
+build reads from there; a yearly build reads only the month it lacks. Months
+before the twelve are dropped once the twelve are in place. A month's local
+copy (about 6 GB) is removed once the month is kept, as is any copy of a month
+kept already or older than the twelve (`retiredCopies`), and the build's
+message says which: the kept rows are what readership reads, and twelve copies
+would hold some 70 GB beside the entities dump. A copy of a month not kept yet
+stays, so a cut download resumes from it. The three tables are unlogged, the
+record of the months kept among them: a crash that empties the months empties
+that record too, and the next build reads the year again rather than skipping
+months it no longer holds. The panel's
+*Build newest* runs it, and always ends the year at the newest month the host
+has finished: there is no *Build \<date\> copy* (`Keeper.fromCopy`), since the
+only local copy left is a month not kept yet, which *Build newest* resumes
+anyway, and a year ending there would be the wrong year. There is no sample or
+trial either, since a month is kept only from its whole file (`Keeper.samples`).
+
+**A month, line by line** (`monthSummer.ts`, `pageviewLine.ts`). A line is an
+edition, a title, a page id, an access method, the month's total and the daily
+counts (a letter per day from `A`, then the count). Only Wikipedia editions are
+read, and a line is read from its end, since Wikimedia's readme says a row with
+no page id has one column fewer. The file is sorted by edition and title, so a
+title's access methods are adjacent lines and are summed as they pass, with no
+table of every title in memory: the views, the views on a phone (mobile web and
+app, for the automated-traffic check of ADR-0055 decision 3), and, where the
+month reaches 400 views (5,000 a year), the daily series, for the burst flag of
+decision 4. A title under 10 views in the month is not staged.
+
+**Three spellings, and the trap in the third** (`decodeTitle`). The dump
+writes a title raw, as `%XX` bytes of UTF-8, and as `%uXXXX` code units of old
+JavaScript `escape()`, each in its own row with its own count (ADR-0055). The
+encoded rows sort apart from the plain one, so each is staged under the decoded
+title whatever its count, and the month's SQL sums them. `%uXXXX` writes UTF-16,
+so a character outside the Basic Multilingual Plane arrives as two surrogates
+(`%uD83D%uDE00`) and is one character; September 2026's file also carries lone
+surrogates, which are unreadable and become U+FFFD rather than failing the read.
+
+**Kept per item and edition.** The staged rows go to `readership_staging` in
+batches, and once the file is verified `keepMonth` (`readershipMonth.ts`) sums
+them per title, joins them to items through the local subset's sitelinks
+(`wikidata_sitelinks`, on site and title) and swaps the month into
+`readership_months` (month, item, site, views, mobile, daily) in one
+transaction. Every edition is kept, which adds 2.7 % to the rows of the
+editions ADR-0055 counts (36.9M titles over 10 views against 35.9M in September
+2026): an edition near the counted line crosses it from month to month, so which
+editions count is not decided by one month. Every Wikipedia edition's total that
+month is kept beside it (`readership_month_files.editions`), the denominator a
+door divides by. A month under 50 million lines or 80 Wikipedia editions in all
+(`MIN_EDITIONS`; the file names 371) is refused as a stream that stopped
+(ADR-0055 decision 1), on top of the read's own checks. A title's daily series
+is the one of its largest row, the plain spelling in practice.
+
+A door reads readership by item: `readership_months` for the item's sitelinks,
+summed over the twelve months `readership_month_files` lists, in the editions
+ADR-0055 counts — those whose twelve `editions` totals add up to more than 15
+million views — which the door picks from those totals; summing every edition
+would count the small ones the ADR leaves out. The redirects of
+ADR-0055 decision 2 are not folded in yet: they need each edition's redirect
+table, which the Wikipedia structure tables (#1440) bring for English only.
+
+On September 2026 (`pageviews-202609-user.bz2`, 5.9 GB, 561.8M lines, measured
+2026-10-17 on #1436), 80 editions are counted. They have 181.9M titles, 35.9M
+of them with 10 views or more. 9.6M of those are sitelinks of 3.6M subset items,
+0.74 GB a month as a heap, with 1.0M at 400 views or more.
+
 ## Trying a change on a sample
 
 A build of the subset reads the whole entities dump twice, about ten hours on
@@ -488,9 +563,9 @@ gigabyte is not the whole dump's.
 
 ## The admin panel
 
-Admin → **Public Dumps** opens on what an admin needs (#1583): one card per
-copy the catalogue builds from a dump, the Wikidata copy today
-(`WikidataCopyCard.tsx`). It says what the copy is, which dump it was built
+Admin → **Public Dumps** opens on what an admin needs (#1583): one card for
+the copy syncs read, the Wikidata copy (`WikidataCopyCard.tsx`); readership is
+built under *For developers* only. It says what the copy is, which dump it was built
 from, and, only when something needs doing, a notice naming the one action and
 what it costs:
 
@@ -534,8 +609,12 @@ bytes and lines, the time the pass has left, and when it was last seen alive; *C
 running. A dump something is built from (`keeps` in the list) also has *Build
 newest*, which starts a `keep` build, and, where a local copy exists
 (`localCopy` in the list, shown under the row's description with its date and
-size), *Build \<date\> copy*, which starts one from that copy. Where a build
-is in place, *Derive again* starts a `rederive` (#1526), which reads no file.
+size) and its builder builds from a copy (`keeps.fromCopy`, the subset's), *Build \<date\> copy*, which starts one from that copy. Where a build
+is in place and its builder can derive again without the dump (`keeps.rederives`,
+the subset's), *Derive again* starts a `rederive` (#1526), which reads no file.
+*Cut a sample* and *Try the build* are offered only where the builder can be
+tried on a sample (`keeps.samples`); readership keeps only whole files and has
+neither.
 The row's last build stays the last that read a file; the re-derive has a
 line of its own under what is built (*Last derived again …*, with its outcome
 when it did not succeed), and among the earlier builds it says *Derived* and
