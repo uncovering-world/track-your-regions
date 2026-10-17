@@ -37,7 +37,7 @@ def extract_contour_paths(
                     nx, ny = x + dx, y + dy
                     if 0 <= nx < w and 0 <= ny < h:
                         nl = int(pixel_labels[ny, nx])
-                        if nl != label and nl != 255:
+                        if nl not in (label, 255):
                             border_type = "internal"
                             neighbor_label = nl
                             break

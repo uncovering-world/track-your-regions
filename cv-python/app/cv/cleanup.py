@@ -474,7 +474,7 @@ def _remove_small_isolated_ccs(
     return result
 
 
-def _exclude_edge_decoration_ccs(
+def _exclude_edge_decoration_ccs(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
     pixel_labels: np.ndarray,
     country_mask: np.ndarray,
     edge_pct: float = 0.25,
@@ -575,7 +575,7 @@ def _exclude_edge_decoration_ccs(
     return result
 
 
-def _exclude_straight_edged_clusters(
+def _exclude_straight_edged_clusters(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
     pixel_labels: np.ndarray,
     color_centroids: list[list[int]],
     filtered_image: np.ndarray,
@@ -676,7 +676,7 @@ def _exclude_straight_edged_clusters(
     return result
 
 
-def _exclude_rectangular_edge_clusters(
+def _exclude_rectangular_edge_clusters(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
     pixel_labels: np.ndarray,
     color_centroids: list[list[int]],
     filtered_image: np.ndarray,
@@ -820,7 +820,7 @@ def _remove_tiny_fragments(
     return result
 
 
-def _merge_fragmented_clusters(
+def _merge_fragmented_clusters(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
     pixel_labels: np.ndarray,
     color_centroids: list[list[int]],
     country_mask: np.ndarray,
