@@ -240,6 +240,8 @@ export function useDiscoverExperiences() {
     () => new Map((placesData?.experiences ?? []).map(place => [place.id, place])),
     [placesData?.experiences],
   );
+  /** Whether the caller may curate the region itself — add to it, see what it rejected (#613). */
+  const curatesRegion = placesData?.curatesRegion ?? false;
   /** The place's own row for a row shown in one kind, which is what a curator answers about. */
   const placeRowOf = useCallback(
     (row: Experience): Experience => placeRows.get(row.id) ?? row,
@@ -425,6 +427,7 @@ export function useDiscoverExperiences() {
     closeExperienceView,
     experiences,
     placeRowOf,
+    curatesRegion,
     experiencesLoading,
     experienceSet,
     lostInKind,

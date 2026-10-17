@@ -5,8 +5,8 @@
  * shows a curator a work — the museum's contents on an open card in Map mode
  * and in Discover, the works waiting to be published on the review page, and
  * the held card's proposal about one — and the rule for where a work may be
- * corrected is the same on all of them: wherever a curator is looking at one
- * (#731, the sibling of #583 one level over).
+ * corrected is the same on all of them: wherever a curator whose scope reaches
+ * its place is looking at one (#731, the sibling of #583 one level over; #613).
  *
  * The header carries what identifies the work rather than what is being edited:
  * the museum it is being corrected from, what kind of thing it is, and the two

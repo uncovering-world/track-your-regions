@@ -4318,6 +4318,8 @@ export interface Experience {
   created_at?: string;
   /** Only for a curator whose scope reaches the region. */
   is_rejected?: boolean;
+  /** Only for a curator or admin: whether they may curate this place itself, by the rule the server applies on every write (#613). */
+  can_curate?: boolean;
   /** @nullable */
   rejection_reason?: string | null;
   source_membership: ExperienceSourceMembership;
@@ -5030,6 +5032,8 @@ export interface ExperiencesByRegionResponse {
      * @maximum 9007199254740991
      */
   offset: number;
+  /** Only for a curator or admin: whether their scope reaches this region, which its own actions (add a place, put a refused one back) need (#613). */
+  curatesRegion?: boolean;
 }
 
 /**

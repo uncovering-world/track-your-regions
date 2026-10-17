@@ -94,14 +94,27 @@ const bamiyan: Experience = {
   danger_since: null,
 };
 
-function renderDialog(experience: Experience = bamiyan) {
+function renderDialog(experience: Experience = bamiyan, curatesRegion = true) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <CurationDialog experience={experience} regionId={5} onClose={vi.fn()} />
+      <CurationDialog experience={experience} regionId={5} curatesRegion={curatesRegion} onClose={vi.fn()} />
     </QueryClientProvider>,
   );
 }
+
+describe('rejecting from the region (#613)', () => {
+  it('is offered in a region the caller curates', () => {
+    renderDialog();
+    expect(screen.getByText('Reject from Region')).toBeInTheDocument();
+  });
+
+  it('is not offered in a region the caller does not curate, where the reject would be refused', () => {
+    // A curator of Tuscany curating the Uffizi from Italy's list.
+    renderDialog(bamiyan, false);
+    expect(screen.queryByText('Reject from Region')).not.toBeInTheDocument();
+  });
+});
 
 describe('the Location field across objects', () => {
   it('closes a place opened under one object when the dialog moves to the next', async () => {
@@ -112,7 +125,7 @@ describe('the Location field across objects', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     const view = render(
       <QueryClientProvider client={client}>
-        <CurationDialog experience={bamiyan} regionId={5} onClose={vi.fn()} />
+        <CurationDialog experience={bamiyan} regionId={5} curatesRegion onClose={vi.fn()} />
       </QueryClientProvider>,
     );
     fireEvent.click(await screen.findByRole('button', { name: /^Move or rename/ }));
@@ -120,7 +133,7 @@ describe('the Location field across objects', () => {
 
     view.rerender(
       <QueryClientProvider client={client}>
-        <CurationDialog experience={{ ...bamiyan, id: 2, name: 'Minaret of Jam' }} regionId={5} onClose={vi.fn()} />
+        <CurationDialog experience={{ ...bamiyan, id: 2, name: 'Minaret of Jam' }} regionId={5} curatesRegion onClose={vi.fn()} />
       </QueryClientProvider>,
     );
 

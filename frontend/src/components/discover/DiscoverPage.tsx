@@ -56,6 +56,7 @@ export function DiscoverPage() {
     experiences,
     experiencesLoading,
     placeRowOf,
+    curatesRegion,
     experienceSet,
     lostInKind,
     showLost,
@@ -291,6 +292,7 @@ export function DiscoverPage() {
           activeView={activeView}
           experiences={experiences}
           placeRowOf={placeRowOf}
+          curatesRegion={curatesRegion}
           isLoading={experiencesLoading}
           experienceSet={experienceSet}
           lostInKind={lostInKind}
@@ -349,7 +351,9 @@ export function DiscoverPage() {
             experience={selectedExperience}
             onClose={() => setSelectedExperienceId(null)}
             onOpenPoint={openPoint}
-            onCurate={isCurator ? () => setDetailCurationTarget(placeRowOf(selectedExperience)) : undefined}
+            onCurate={selectedExperience.can_curate
+              ? () => setDetailCurationTarget(placeRowOf(selectedExperience))
+              : undefined}
           />
         )}
       </Box>
@@ -358,6 +362,7 @@ export function DiscoverPage() {
       <LazyCurationDialog
         experience={detailCurationTarget}
         regionId={activeView?.regionId ?? null}
+        curatesRegion={curatesRegion}
         onClose={() => setDetailCurationTarget(null)}
       />
 

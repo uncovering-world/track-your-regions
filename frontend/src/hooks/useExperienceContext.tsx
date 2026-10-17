@@ -38,6 +38,8 @@ interface ExperienceContextType {
   experiencesLoading: boolean;
   /** How many the region holds that no longer exist and are not being shown. */
   lostHidden: number;
+  /** Whether the caller may curate the region itself — add to it, see what it rejected (#613). */
+  curatesRegion: boolean;
   showLost: boolean;
   setShowLost: (show: boolean) => void;
   totalExperiences: number;
@@ -327,6 +329,7 @@ export function ExperienceProvider({ regionId, isExploring, children }: Experien
     experiences,
     experiencesLoading: isLoading,
     lostHidden,
+    curatesRegion: data?.curatesRegion ?? false,
     showLost,
     setShowLost,
     totalExperiences: data?.total || 0,

@@ -65,6 +65,12 @@ interface CurationDialogProps {
   experience: Experience | null;
   /** Region context for reject/unreject scope */
   regionId: number | null;
+  /**
+   * Whether the caller may reject or unreject a place in that region — the
+   * region list's `curatesRegion` (#613). A curator may curate a place their
+   * scope reaches inside a region it does not, and a reject there is refused.
+   */
+  curatesRegion: boolean;
   onClose: () => void;
 }
 
@@ -89,7 +95,7 @@ type EditFields = Required<Pick<Parameters<typeof editExperience>[1],
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 
-function CurationDialogComponent({ experience, regionId, onClose }: CurationDialogProps) {
+function CurationDialogComponent({ experience, regionId, curatesRegion, onClose }: CurationDialogProps) {
   const queryClient = useQueryClient();
   const typeOptions = typeOptionsFor(experience?.kind_id);
 
@@ -344,7 +350,7 @@ function CurationDialogComponent({ experience, regionId, onClose }: CurationDial
         </Box>
 
         {/* Reject / Unreject Section */}
-        {regionId && (
+        {regionId && curatesRegion && (
           <>
             <Divider sx={{ my: 2 }} />
 

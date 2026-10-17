@@ -37,8 +37,8 @@
  *
  * In `shared/` because the same look is asked for from three places — the review
  * page's cards, the object's own screen and the places list on a map — and the rule
- * for where a place may be corrected is the same on all of them: wherever a curator is
- * looking at one.
+ * for where a place may be corrected is the same on all of them: wherever a curator
+ * whose scope reaches the place is looking at one (#613).
  */
 
 import { Box, Dialog, DialogContent, DialogTitle, IconButton, Typography } from '@mui/material';
