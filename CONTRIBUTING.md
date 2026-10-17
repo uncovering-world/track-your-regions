@@ -28,6 +28,10 @@ World-boundary data is empty until you run:
 npm run db:load-gadm   # ~30 min; offers to download the file
 ```
 
+For a quick look at a real-shaped map, one continent loads in a fraction of that:
+`npm run db:load-gadm -- --continent Oceania` (`docs/tech/hacking.md` has the
+sizes). `db:status` says the database holds a sample.
+
 The repo-wide lint tooling lives in the root `package.json`. Install it
 once, in the repository root:
 

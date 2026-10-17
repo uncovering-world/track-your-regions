@@ -49,8 +49,35 @@ Which database is active depends on who is asking:
 
 `npm run db:load-gadm` offers to download the GADM file when none is found, then runs
 the importer in the `db-loader` container (built from `db/Dockerfile`, `tools` profile),
-so the host needs Docker and no Python or GDAL. Checking a load and a fast sample import
-are #610.
+so the host needs Docker and no Python or GDAL.
+
+**A load goes into an empty database and checks itself.** The loader appends, so
+`cmd_load_gadm` (`scripts/db-cli.sh`) refuses a database whose `administrative_divisions`
+already holds rows before it starts, rather than leaving a duplicated continent half an
+hour later; `npm run db:create` makes an empty one. It ends with `verify_gadm_load`, which
+reads the counts `db:status` prints and exits non-zero, saying what went wrong:
+- no table, or no divisions: the schema was never applied, or the loader read nothing;
+- divisions without a geometry: the parent merge, `db/precalculate-geometries.py`, did not
+  finish, and the first few are named;
+- two roots with one continent's name: two loads went into one database;
+- implausibly few for what was asked. A full load of GADM 4.1 holds 392 198 divisions under
+  8 continents, so fewer than 300 000 or fewer than 7 roots is a load that stopped. A sample
+  holds its one continent as its one root.
+
+**A sample loads one continent:** `npm run db:load-gadm -- --continent Antarctica`. The
+continent is one GADM's own `CONTINENT` column names, in any case
+(`db/gadm_sample.py`), and the loader refuses a name the file does not hold, listing the
+ones it does. A sample is for a dev loop or a cheap lane that needs a real-shaped
+database, never for the nightly lane, which loads the whole file. It goes into an empty
+database (`npm run db:create`), like any load. A sample says
+so on the database itself, as a comment (`COMMENT ON DATABASE … IS 'GADM sample: …'`),
+which a dump carries. `db:status` prints it under the division count, so a sample is
+never read as the world, and a full load clears it. GADM 4.1's continents by size:
+Antarctica 8 rows, Australia 568, Oceania 5 935, South America 11 649,
+North America 14 573, Africa 56 835, Europe 106 252, Asia 160 688 (356 508 in all).
+Antarctica, the smallest, loads in 97 s on the isolated test stack (196 s with the
+loader image's first build); most of that is simplifying its eight large shapes,
+since a sample pays the full load's per-geometry steps for each row it keeps.
 
 ## Where Things Live
 
