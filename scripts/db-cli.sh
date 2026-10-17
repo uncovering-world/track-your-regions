@@ -11,7 +11,7 @@
 #   drop <name>       - Drop a database (fails if golden)
 #   mark-golden       - Mark current DB as protected
 #   unmark-golden     - Remove golden protection
-#   load-gadm         - Load GADM data into current DB
+#   load-gadm         - Load GADM data into current DB (--continent NAME: a sample)
 #   migrate [args]    - Apply pending db/migrations/ files (see db-migrate.sh)
 #   shell             - Open psql to current DB
 #   status            - Show current DB info and row counts
@@ -104,6 +104,79 @@ table_count_where() {
     else
         echo "n/a"
     fi
+}
+
+# A sample load says so on the database itself, so `db:status` can tell it
+# from a full one wherever the database goes - a dump carries the comment.
+GADM_SAMPLE_PREFIX="GADM sample:"
+
+gadm_sample_label() {
+    local db_name="$1"
+    psql_cmd -d "$db_name" -tAc \
+        "SELECT shobj_description(oid, 'pg_database') FROM pg_database WHERE datname = current_database()" \
+        2>/dev/null | sed -n "s/^${GADM_SAMPLE_PREFIX} //p"
+}
+
+# What a finished load is checked for (#610), with the counts db:status
+# prints: divisions at all, and every one of them with a geometry, which
+# precalculate-geometries.py gives the levels above the leaves. A sample
+# holds one continent as its one root; a full load holds GADM's continents
+# and its hundreds of thousands of divisions - 392 198 under 8 roots on
+# GADM 4.1 - so a few thousand under a full load is a run that stopped.
+GADM_FULL_MIN_DIVISIONS=300000
+GADM_FULL_MIN_ROOTS=7
+
+verify_gadm_load() {
+    local db_name="$1" continent="$2"
+    local divisions with_geom roots without_geom
+    divisions=$(table_count "$db_name" "administrative_divisions")
+    with_geom=$(table_count_where "$db_name" "administrative_divisions" "geom IS NOT NULL")
+    roots=$(table_count_where "$db_name" "administrative_divisions" "parent_id IS NULL")
+
+    echo ""
+    echo -e "${BLUE}Checking the load...${NC}"
+    echo "  administrative_divisions: $divisions (with geometry: $with_geom, roots: $roots)"
+
+    if [[ ! "$divisions" =~ ^[0-9]+$ ]]; then
+        echo -e "${RED}Check failed: the administrative_divisions table does not exist in $db_name.${NC}"
+        echo "The schema was never applied to this database (npm run db:create applies it)."
+        return 1
+    fi
+    if [[ "$divisions" -eq 0 ]]; then
+        echo -e "${RED}Check failed: no divisions were loaded - administrative_divisions is empty.${NC}"
+        echo "The loader (db/init-db.py) read nothing into the database; its output above says why."
+        return 1
+    fi
+    without_geom=$((divisions - with_geom))
+    if [[ "$without_geom" -gt 0 ]]; then
+        echo -e "${RED}Check failed: $without_geom of $divisions divisions have no geometry.${NC}"
+        echo "The divisions are there but their shapes are not: the parent merge"
+        echo "(db/precalculate-geometries.py) did not finish. The first of them:"
+        psql_cmd -d "$db_name" -tAc \
+            "SELECT '  ' || name || ' (' || id || ')' FROM administrative_divisions WHERE geom IS NULL ORDER BY id LIMIT 5"
+        return 1
+    fi
+    local repeated
+    repeated=$(table_count_where "$db_name" "administrative_divisions" \
+        "parent_id IS NULL AND name IN (SELECT name FROM administrative_divisions WHERE parent_id IS NULL GROUP BY name HAVING COUNT(*) > 1)")
+    if [[ "$repeated" -gt 0 ]]; then
+        echo -e "${RED}Check failed: $repeated root divisions share a continent's name.${NC}"
+        echo "Two loads went into one database; a load goes into an empty one (npm run db:create)."
+        return 1
+    fi
+    if [[ -n "$continent" ]]; then
+        if [[ "$roots" -ne 1 ]]; then
+            echo -e "${RED}Check failed: a sample of one continent holds $roots root divisions, not 1.${NC}"
+            echo "The loader read rows of more than one continent; its output above names what it loaded."
+            return 1
+        fi
+    elif [[ "$divisions" -lt "$GADM_FULL_MIN_DIVISIONS" || "$roots" -lt "$GADM_FULL_MIN_ROOTS" ]]; then
+        echo -e "${RED}Check failed: a full load holds $divisions divisions under $roots roots.${NC}"
+        echo "GADM 4.1 gives about 392 000 under 8 continents; fewer than $GADM_FULL_MIN_DIVISIONS or"
+        echo "$GADM_FULL_MIN_ROOTS is a load that stopped part-way."
+        return 1
+    fi
+    echo -e "${GREEN}Every division has a geometry.${NC}"
 }
 
 # =============================================================================
@@ -336,11 +409,41 @@ download_gadm() {
 }
 
 cmd_load_gadm() {
-    local active
+    local active continent=""
     active=$(get_active_db)
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --continent)
+                if [[ -z "${2:-}" ]]; then
+                    echo -e "${RED}Error: --continent needs a name, e.g. --continent Oceania${NC}"
+                    exit 1
+                fi
+                continent="$2"
+                shift 2
+                ;;
+            *)
+                echo -e "${RED}Error: unknown option '$1' (load-gadm takes --continent NAME)${NC}"
+                exit 1
+                ;;
+        esac
+    done
 
     if [[ -z "$active" ]]; then
         echo -e "${RED}Error: No active database. Use 'npm run db:use <name>' or 'npm run db:create' first.${NC}"
+        exit 1
+    fi
+
+    # The loader appends, and nothing in the table refuses a second copy of a
+    # division, so a load over an earlier one - a full load over a sample, or
+    # a second full load - leaves a duplicated continent that every check
+    # after it would read as a larger world. Refused before the half hour,
+    # rather than discovered after it.
+    local existing
+    existing=$(table_count "$active" "administrative_divisions")
+    if [[ "$existing" =~ ^[0-9]+$ && "$existing" -gt 0 ]]; then
+        echo -e "${RED}Error: $active already holds $existing administrative divisions.${NC}"
+        echo "A load goes into a database with none: npm run db:create makes one."
         exit 1
     fi
 
@@ -382,7 +485,13 @@ cmd_load_gadm() {
     fi
 
     echo -e "${BLUE}Using GADM file: $gadm_file${NC}"
-    echo -e "${YELLOW}This will take approximately 30 minutes...${NC}"
+    local loader_args=(-s /data/gadm_410.gpkg -g --skip-schema)
+    if [[ -n "$continent" ]]; then
+        echo -e "${YELLOW}Sample load: $continent only - not a full load, and db:status will say so.${NC}"
+        loader_args+=(--continent "$continent")
+    else
+        echo -e "${YELLOW}This will take approximately 30 minutes...${NC}"
+    fi
     echo ""
 
     # The loaders run inside the db-loader container (GDAL + psycopg2 + dotenv +
@@ -397,7 +506,7 @@ cmd_load_gadm() {
     docker compose run --rm -T \
         -e DB_NAME="$active" -e DB_HOST=db -e DB_PORT=5432 \
         -v "$gadm_file:/data/gadm_410.gpkg:ro,z" \
-        db-loader python3 /app/db/init-db.py -s /data/gadm_410.gpkg -g --skip-schema
+        db-loader python3 /app/db/init-db.py "${loader_args[@]}"
 
     # Step 2: Compute parent geometries (countries, continents, etc.)
     echo ""
@@ -407,9 +516,28 @@ cmd_load_gadm() {
         -e DB_NAME="$active" -e DB_HOST=db -e DB_PORT=5432 \
         db-loader python3 /app/db/precalculate-geometries.py
 
+    if ! verify_gadm_load "$active" "$continent"; then
+        exit 1
+    fi
+
+    # Said on the database, so db:status never mistakes a sample for a full
+    # load; a full load clears what an earlier sample said. The continent is
+    # named as GADM spells it - the sample's one root, which the check above
+    # found - rather than as it was typed. The database name is the
+    # operator's argument, quoted the way cmd_create quotes it.
+    local ident="${active//\"/\"\"}" label="NULL"
+    if [[ -n "$continent" ]]; then
+        continent=$(psql_cmd -d "$active" -tAc "SELECT name FROM administrative_divisions WHERE parent_id IS NULL")
+        label="'${GADM_SAMPLE_PREFIX} ${continent//\'/\'\'}'"
+    fi
+    psql_cmd -d "$active" -qc "COMMENT ON DATABASE \"${ident}\" IS ${label}"
+
     echo ""
-    echo -e "${GREEN}GADM data loaded successfully!${NC}"
-    echo -e "${GREEN}All division levels now have geometry.${NC}"
+    if [[ -n "$continent" ]]; then
+        echo -e "${GREEN}GADM sample loaded: $continent only.${NC}"
+    else
+        echo -e "${GREEN}GADM data loaded successfully!${NC}"
+    fi
 }
 
 # Hand the migration commands to the runner that owns them.
@@ -643,6 +771,11 @@ cmd_status() {
         view_count=$(table_count "$active" "views")
 
         echo "  administrative_divisions: $div_count (with geometry: $div_geom)"
+        local sample
+        sample=$(gadm_sample_label "$active")
+        if [[ -n "$sample" ]]; then
+            echo -e "  ${YELLOW}GADM: a sample load, $sample only - not the whole world${NC}"
+        fi
         echo "  world_views:              $wv_count"
         echo "  regions:                  $reg_count (leaf: $reg_leaf, with geometry: $reg_geom)"
         echo "  views:                    $view_count"
@@ -775,7 +908,7 @@ case "$command" in
         cmd_unmark_golden
         ;;
     load-gadm)
-        cmd_load_gadm
+        cmd_load_gadm "$@"
         ;;
     migrate)
         cmd_migrate "$@"
@@ -809,7 +942,7 @@ case "$command" in
         echo "  drop <name>     Drop a database (fails if golden)"
         echo "  mark-golden     Mark current DB as protected"
         echo "  unmark-golden   Remove golden protection"
-        echo "  load-gadm       Load GADM data into current DB"
+        echo "  load-gadm [--continent NAME]  Load GADM data into current DB (one continent: a sample)"
         echo "  migrate [args]  Apply pending db/migrations/ files (status | apply | baseline)"
         echo "  make-admin <email>  Promote a user to admin"
         echo "  shell           Open psql to current DB"
