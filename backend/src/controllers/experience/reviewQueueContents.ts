@@ -446,11 +446,13 @@ export async function queryWithdrawn(
              -- curator's manual assignment outlives the withdrawal. Or the database has
              -- not had 026 applied -- which the ledger now answers (ADR-0041), though
              -- answering it is not applying it. Or,
-             -- **on an ungated source only**, the pairing was greedy and this row lost it:
-             -- ADR-0027 decision 5a-i, where the loser is marked while a row is inserted
-             -- for the ordinal it lost, both within ten metres of one incoming point by
-             -- construction and sharing the reference this subquery joins on. Ungated
-             -- only because the deferral is what decides it -- see the note further down.
+             -- **on an ungated source only**, this row lost the pairing: since ADR-0117 only
+             -- where no one-to-one pairing could keep it, the greedy loss of ADR-0027
+             -- decision 5a-i being found by the pairing's completion. The loser is marked
+             -- while a row is inserted for the ordinal it lost, both within ten metres of one
+             -- incoming point by construction and sharing the reference this subquery joins
+             -- on. Ungated only because the deferral is what decides it -- see the note
+             -- further down.
              --
              -- Or the deferral ran short: two points of one reference dropped against a
              -- single unread arrival, one held and the other marked at once. That one has
@@ -488,7 +490,7 @@ export async function queryWithdrawn(
                  -- arrivals) behaviour and older than the tolerance; what changed is that
                  -- the distance can now land in the band the card reads as a rewrite.
                  --
-                 -- Not the greedy pairing's loser, and here the gate is what decides it,
+                 -- Not the pairing's loser, and here the gate is what decides it,
                  -- which is why route 3 above says "ungated only". Under a gate the insert
                  -- lands pending, so the deferral statement runs, the loser satisfies its
                  -- withdrawn set, the row inserted for the ordinal it lost shares its
@@ -496,7 +498,7 @@ export async function queryWithdrawn(
                  -- marked, never on this card. Ungated, every insert is auto, the deferral
                  -- statement is skipped for want of an unread arrival, and the mark marks
                  -- the loser at once -- with a *visible* replacement metres away, which is
-                 -- the case route 3 names (ADR-0027 decision 5a-i).
+                 -- the case route 3 names (ADR-0027 decision 5a-i, narrowed by ADR-0117).
                  -- And not a row whose own withdrawal is merely waiting its turn. A
                  -- deferral holds one departure per unread arrival, so where a run drops
                  -- two points of one reference and offers a single arrival, the second

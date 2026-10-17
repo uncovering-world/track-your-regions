@@ -138,8 +138,9 @@ export function samePointSql(alias: string): string {
  * two, so "any referenceless incoming point" is one point. Were there two, the
  * second `DISTINCT ON` still makes the pairing one-to-one, and it breaks that
  * collision by `ordinal` — the source's own order, distance unread, the greedy
- * rule `locationWriter.ts` states where it builds that relation — so the
- * first-listed point takes the claimed row and the other arrives as new.
+ * rule `locationWriter.ts` states where it builds that relation. The pairing is
+ * then completed (ADR-0117, `locationMatching.ts`), so the collision costs a
+ * point only where no one-to-one pairing keeps both.
  */
 export function claimedPointSql(alias: string): string {
   // The reference exactly, never read past its variant: a claimed row pairs at

@@ -412,9 +412,10 @@ describe('writeExperienceLocations — when a stored point is the incoming one',
     // can see, which under a gate is a different row).
     //
     // Both orderings are pinned, because they are the product decision and because they
-    // are all this lane can reach: the passes are greedy, so a complete pairing inside the
-    // tolerance can go unfound (decision 5a-i, #549), and observing that needs SQL run
-    // against Postgres rather than a mock that never parses it (#522).
+    // are all this lane can reach. The passes are greedy, and the pairing they miss is
+    // found by their completion (ADR-0117, `locationMatching.ts`). Observing that needs SQL
+    // run against Postgres rather than a mock that never parses it, which is
+    // `locationMatching.db.test.ts`.
     //
     // Asserted on the statement that *builds* the table, since that is now the only place
     // the decision is made — the arms read its result and can no longer restate it.
