@@ -69,6 +69,17 @@ describe('OperationProgressView', () => {
     expect(screen.getByText('Loading divisions into memory...')).toBeInTheDocument();
   });
 
+  it('writes a step with no known count as Step N, and its count in the unit given', () => {
+    render(<OperationProgressView starting="" formatCount={(n) => `${(n / 1024 ** 3).toFixed(1)} GB`} operation={{
+      elapsedSeconds: 3600, cancelling: false,
+      step: { index: 3, count: null, sentence: 'Pass 2 of 2: writing the subset', done: 3 * 1024 ** 3, total: 156 * 1024 ** 3, elapsedSeconds: 1200 },
+      wait: null,
+    }} />);
+
+    expect(screen.getByText('Step 3')).toBeInTheDocument();
+    expect(screen.getByText(/3\.0 GB of 156\.0 GB/)).toBeInTheDocument();
+  });
+
   it('says what the run is doing before its first step opens', () => {
     render(<OperationProgressView starting="Reading the components no Wikidata item records..." operation={{ elapsedSeconds: 0, cancelling: false, step: null, wait: null }} />);
 

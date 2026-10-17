@@ -81,8 +81,14 @@ describe('the Wikidata copy card', () => {
       dump: 'wikidata-entities', kind: 'keep', status: 'reading', message: 'Pass 1 of 2: finding what the subset keeps...',
       file: null, downloaded: 0, read: 0, lines: 0, buildId: 11, heartbeatAt: new Date().toISOString(), etaSeconds: null,
       total: null, stepStartedAt: new Date().toISOString(),
+      operation: {
+        elapsedSeconds: 90, cancelling: false, wait: null,
+        step: { index: 2, count: null, sentence: 'Pass 1 of 2: finding what the subset keeps...', done: 0, total: 0, elapsedSeconds: 60 },
+      },
     }));
     expect(screen.getByText(/Pass 1 of 2/)).toBeTruthy();
+    // A build names its steps as it goes, so it says which one it is on and not of how many (#1356).
+    expect(screen.getByText('Step 2')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Update' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Stop' }));
     await waitFor(() => expect(cancelDumpBuild).toHaveBeenCalledWith('wikidata-entities'));
