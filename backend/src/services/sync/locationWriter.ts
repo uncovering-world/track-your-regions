@@ -112,6 +112,7 @@ import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicat
 import { lockExperience } from '../../db/experienceWriter.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import { shownBySql } from '../../db/placePoints.js';
+import { completePairing } from './locationMatching.js';
 
 
 /** Which rows the write touched, so assignment can be limited to them. */
@@ -263,13 +264,15 @@ export async function writeExperienceLocations(
    * mode that keeps a reader's map and a curator's queue answering the same
    * catalogue.
    *
-   * Greedy, and knowingly: the first pass commits an ordinal before the second
-   * learns two of them chose one row, so a complete pairing inside the tolerance can
-   * go unfound where a source lists two points of one reference between ten and
-   * twenty metres apart. No source does; ADR-0027 decision 5a-i states the cost and
-   * #549 holds the maximum matching.
+   * Greedy, and then made complete: the first pass commits an ordinal before the
+   * second learns two of them chose one row, so a complete pairing inside the
+   * tolerance can go unfound where a source lists two points of one reference
+   * between ten and twenty metres apart — six Wikidata items did on 2026-10-17, the
+   * Bronze Horseman's two points among them. So the table these passes build is
+   * then completed by `completePairing` (`locationMatching.ts`, ADR-0117), which
+   * keeps every pair they made unless moving one is what lets another point pair.
    */
-  const paired = `${cte},
+  const candidates = `${cte},
      candidate AS (
        SELECT i.ordinal, el.id AS location_id, el.missing_since,
               (el.external_ref IS NOT DISTINCT FROM i.external_ref) AS exact_ref,
@@ -279,15 +282,17 @@ export async function writeExperienceLocations(
        JOIN experience_locations el
          ON ${shownBySql('el', 'ARRAY[$1::int]')}
         AND (${samePointSql('el')} OR ${claimedPointSql('el')})
-     ),
-     -- The reference exactly before one read past its variant (ADR-0090
-     -- decision 3): where a property's rows carry both numberings, the row
-     -- the incoming reference names outright is the candidate, not whichever
-     -- is a centimetre nearer.
+     )`;
+  // The reference exactly before one read past its variant (ADR-0090 decision 3):
+  // where a property's rows carry both numberings, the row the incoming reference
+  // names outright is the candidate, not whichever is a centimetre nearer. One
+  // statement of the order, read by the greedy pass and by its completion alike.
+  const preference = 'exact_ref DESC, (missing_since IS NULL) DESC, metres, location_id';
+  const paired = `${candidates},
      best_row AS (
        SELECT DISTINCT ON (ordinal) ordinal, location_id, metres
        FROM candidate
-       ORDER BY ordinal, exact_ref DESC, (missing_since IS NULL) DESC, metres, location_id
+       ORDER BY ordinal, ${preference}
      ),
      paired AS (
        SELECT DISTINCT ON (location_id) ordinal, location_id, metres
@@ -398,10 +403,11 @@ export async function writeExperienceLocations(
     // leaving it visible in a list position the source no longer gives it, on every run
     // after, with nothing to settle it.
     //
-    // Only reachable in the shape ADR-0027 decision 5a-i already describes, two points of
-    // one reference between ten and twenty metres apart. But 5a-i was accepted on a cost —
-    // one withdrawal that did not happen, settling next run — that this made untrue, and a
-    // relation has to mean the same thing to everything that reads it regardless.
+    // Only reachable in the shape ADR-0027 decision 5a-i describes, two points of one
+    // reference between ten and twenty metres apart. But a relation has to mean the same
+    // thing to everything that reads it, whatever shape reaches it — and the completion
+    // below (ADR-0117) is a rewrite of this table that the arms must all see the result of,
+    // which only a table decided before the first of them can give.
     //
     // Which is *every statement below this one* — stated as a class rather than a count,
     // so a statement moving onto the pairing cannot falsify it. The five arms read it, the unpairing statement reads it, and
@@ -424,6 +430,39 @@ export async function writeExperienceLocations(
        FROM paired p JOIN experience_locations el ON el.id = p.location_id`,
       params,
     );
+
+    // ADR-0117: the greedy pairing completed before any arm reads it. The
+    // candidates are read only for a place where some point holds a candidate
+    // and no row, so the common run, every point paired, reads nothing here
+    // and writes nothing.
+    const leftover = await client.query<{ ordinal: number; location_id: number; metres: number }>(
+      `WITH ${candidates}
+       SELECT ordinal, location_id, metres FROM candidate
+       WHERE EXISTS (SELECT 1 FROM candidate o
+                      WHERE NOT EXISTS (SELECT 1 FROM paired_rows p WHERE p.ordinal = o.ordinal))
+       ORDER BY ordinal, ${preference}`,
+      params,
+    );
+    if (leftover.rows.length > 0) {
+      const greedy = await client.query<{ ordinal: number; location_id: number; metres: number }>(
+        'SELECT ordinal, location_id, metres FROM paired_rows',
+      );
+      const complete = completePairing(
+        leftover.rows.map(row => ({ ordinal: row.ordinal, locationId: row.location_id, metres: row.metres })),
+        greedy.rows.map(row => ({ ordinal: row.ordinal, locationId: row.location_id, metres: row.metres })),
+      );
+      if (complete) {
+        await client.query('DELETE FROM paired_rows');
+        await client.query(
+          `INSERT INTO paired_rows (ordinal, location_id, metres, old_name, old_lon, old_lat, old_curated_fields)
+           SELECT p.ordinal, p.location_id, p.metres,
+                  el.name, ST_X(el.location::geometry), ST_Y(el.location::geometry), el.curated_fields
+           FROM unnest($1::int[], $2::int[], $3::float8[]) AS p(ordinal, location_id, metres)
+           JOIN experience_locations el ON el.id = p.location_id`,
+          [complete.map(pair => pair.ordinal), complete.map(pair => pair.locationId), complete.map(pair => pair.metres)],
+        );
+      }
+    }
 
     // Survivors keep their id. At most one incoming entry can match, since the
     // incoming list is deduped by identity above.
