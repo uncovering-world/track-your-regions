@@ -101,7 +101,7 @@ interface CoverageEntry {
   gadmArea: number;
 }
 
-type CandidateInfo = {
+export type CandidateInfo = {
   id: number;
   name: string;
   path: string;
@@ -241,6 +241,7 @@ async function refineEntry(
   entry: CandidateInfo,
   wikidataId: string,
   wikiArea: number,
+  excluded: Set<number>,
   depth: number,
   maxDepth: number,
 ): Promise<CandidateInfo[]> {
@@ -265,7 +266,10 @@ async function refineEntry(
     console.log(
       `[Geoshape Refine] Replacing ${entry.name} with ${children.length} children (childCoverageRatio=${(childCoverageRatio * 100).toFixed(1)}%)`,
     );
-    return refineCoveringSet(children, wikidataId, wikiArea, depth + 1, maxDepth);
+    // The children replace the parent whole, but one already suggested, rejected
+    // or assigned stays as it is rather than being offered a second time.
+    const offered = children.filter(c => !excluded.has(c.id));
+    return refineCoveringSet(offered, wikidataId, wikiArea, excluded, depth + 1, maxDepth);
   }
 
   console.log(
@@ -281,17 +285,20 @@ async function refineEntry(
  * If precision < 0.5 (the geoshape covers less than half the GADM division), replaces
  * that division with its children that intersect the geoshape — recursively up to maxDepth.
  * This handles cases like a Wikivoyage island region matching a whole GADM province.
+ * A child in `excluded` (already suggested, rejected or assigned) counts towards
+ * replacing its parent but is never returned.
  */
-async function refineCoveringSet(
+export async function refineCoveringSet(
   coveringSet: CandidateInfo[],
   wikidataId: string,
   wikiArea: number,
+  excluded: Set<number>,
   depth: number = 0,
   maxDepth: number = 3,
 ): Promise<CandidateInfo[]> {
   const result: CandidateInfo[] = [];
   for (const entry of coveringSet) {
-    const refined = await refineEntry(entry, wikidataId, wikiArea, depth, maxDepth);
+    const refined = await refineEntry(entry, wikidataId, wikiArea, excluded, depth, maxDepth);
     result.push(...refined);
   }
   return result;
@@ -484,26 +491,33 @@ async function queryCandidateDivisions(
     return result.rows as CandidateRow[];
   }
 
+  // With no scope the depth is the division's own in GADM, so the covering set
+  // still prefers the shallowest division (Africa over Egypt over a governorate)
+  // and the cut keeps whole levels: a parent always comes before its children.
   const result = await pool.query(`
-    WITH candidates AS (
-      SELECT ad.id, ad.name, ad.parent_id, 0 AS gadm_depth
+    WITH intersecting AS (
+      SELECT ad.id, ad.name, ad.parent_id
       FROM administrative_divisions ad
       WHERE ad.geom_simplified_medium IS NOT NULL
         AND ST_Intersects(
           ad.geom_simplified_medium,
           (SELECT geom FROM wikidata_geoshapes WHERE wikidata_id = $1 AND not_available = FALSE)
         )
-      LIMIT 200
     )
-    SELECT c.id, c.name, c.parent_id, c.gadm_depth,
-      (WITH RECURSIVE div_ancestors AS (
-        SELECT c.id AS aid, c.name AS aname, c.parent_id AS apid
+    SELECT i.id, i.name, i.parent_id, a.gadm_depth, a.path
+    FROM intersecting i
+    CROSS JOIN LATERAL (
+      WITH RECURSIVE div_ancestors AS (
+        SELECT i.id AS aid, i.name AS aname, i.parent_id AS apid
         UNION ALL
         SELECT d.id, d.name, d.parent_id
         FROM administrative_divisions d JOIN div_ancestors da ON d.id = da.apid
       )
-      SELECT string_agg(aname, ' > ' ORDER BY aid) FROM div_ancestors) AS path
-    FROM candidates c
+      SELECT string_agg(aname, ' > ' ORDER BY aid) AS path, count(*)::int - 1 AS gadm_depth
+      FROM div_ancestors
+    ) a
+    ORDER BY a.gadm_depth, i.id
+    LIMIT 200
   `, [wikidataId]);
   return result.rows as CandidateRow[];
 }
@@ -677,20 +691,20 @@ function buildCandidateInfoMap(
 }
 
 /**
- * Check if any ancestor of `candidate` (walking parent_id chain through the candidate info map)
- * is already in the `selectedIds` set.
+ * Check if any ancestor of `candidate` is already in the `selectedIds` set,
+ * walking the parent chain of every intersecting division: an ancestor left out
+ * of the info map (already suggested, rejected or assigned) still links its
+ * descendants to the one above it.
  */
 function hasAncestorSelected(
   candidate: CandidateInfo,
   selectedIds: Set<number>,
-  candidateInfoMap: Map<number, CandidateInfo>,
+  parentOf: Map<number, number | null>,
 ): boolean {
   let walkId: number | null = candidate.parentId;
   while (walkId != null) {
     if (selectedIds.has(walkId)) return true;
-    const parent = candidateInfoMap.get(walkId);
-    if (!parent) return false;
-    walkId = parent.parentId;
+    walkId = parentOf.get(walkId) ?? null;
   }
   return false;
 }
@@ -698,10 +712,12 @@ function hasAncestorSelected(
 /**
  * Greedy covering-set selection: iterate candidates shallow-first and keep each one
  * whose ancestors are not already selected. Excludes scope roots (already assigned to the ancestor).
+ * `parentOf` holds the parent of every intersecting division, filtered or not.
  */
-function buildCoveringSet(
+export function buildCoveringSet(
   candidateInfoMap: Map<number, CandidateInfo>,
   scopeRootIds: Set<number>,
+  parentOf: Map<number, number | null>,
 ): CandidateInfo[] {
   const sortedCandidates = [...candidateInfoMap.values()]
     .filter(c => !scopeRootIds.has(c.id))
@@ -710,7 +726,7 @@ function buildCoveringSet(
   const selectedIds = new Set<number>();
   const coveringSet: CandidateInfo[] = [];
   for (const candidate of sortedCandidates) {
-    if (!hasAncestorSelected(candidate, selectedIds, candidateInfoMap)) {
+    if (!hasAncestorSelected(candidate, selectedIds, parentOf)) {
       selectedIds.add(candidate.id);
       coveringSet.push(candidate);
     }
@@ -752,6 +768,7 @@ async function computeTotalCoverage(
 /**
  * Persist each covering-set entry as a suggestion with its per-division coverage
  * as `geo_similarity`, and return the plain (non-conflict) suggestion list.
+ * The status and the suggestions land together or not at all.
  */
 async function writeCoveringSuggestions(
   regionId: number,
@@ -760,28 +777,37 @@ async function writeCoveringSuggestions(
   newStatus: 'suggested' | 'needs_review',
 ): Promise<GeoshapeSuggestion[]> {
   const suggestions: GeoshapeSuggestion[] = [];
-
-  await pool.query(
-    `UPDATE region_import_state SET match_status = $1 WHERE region_id = $2`,
-    [newStatus, regionId],
-  );
-
-  for (const c of refinedCoveringSet) {
-    const score = Math.round(c.coverage * 1000);
-    // For covering sets, geo_similarity = per-division coverage of the wiki shape.
-    // Using IoU here would be misleading: each division's IoU inflates via the
-    // sqrt(rev_coverage) penalty, so 4 divisions at ~25% coverage each would
-    // show ~50% IoU each (summing to ~200%), instead of ~25% each (summing to ~100%).
-    const geoSimilarity = Math.round(c.coverage * 1000) / 1000;
-
-    suggestions.push({ divisionId: c.id, name: c.name, path: c.path, score });
-
-    const conflict = conflictMap.get(c.id);
-    await pool.query(
-      `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score, geo_similarity, conflict_type, donor_region_id, donor_division_id, donor_region_name, donor_division_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-      [regionId, c.id, c.name, c.path, score, geoSimilarity, conflict?.type ?? null, conflict?.donorRegionId ?? null, conflict?.donorDivisionId ?? null, conflict?.donorRegionName ?? null, conflict?.donorDivisionName ?? null],
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(
+      `UPDATE region_import_state SET match_status = $1 WHERE region_id = $2`,
+      [newStatus, regionId],
     );
+
+    for (const c of refinedCoveringSet) {
+      const score = Math.round(c.coverage * 1000);
+      // For covering sets, geo_similarity = per-division coverage of the wiki shape.
+      // Using IoU here would be misleading: each division's IoU inflates via the
+      // sqrt(rev_coverage) penalty, so 4 divisions at ~25% coverage each would
+      // show ~50% IoU each (summing to ~200%), instead of ~25% each (summing to ~100%).
+      const geoSimilarity = Math.round(c.coverage * 1000) / 1000;
+
+      suggestions.push({ divisionId: c.id, name: c.name, path: c.path, score });
+
+      const conflict = conflictMap.get(c.id);
+      await client.query(
+        `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score, geo_similarity, conflict_type, donor_region_id, donor_division_id, donor_region_name, donor_division_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+        [regionId, c.id, c.name, c.path, score, geoSimilarity, conflict?.type ?? null, conflict?.donorRegionId ?? null, conflict?.donorDivisionId ?? null, conflict?.donorRegionName ?? null, conflict?.donorDivisionName ?? null],
+      );
+    }
+    await client.query('COMMIT');
+  } catch (err) {
+    await client.query('ROLLBACK');
+    throw err;
+  } finally {
+    client.release();
   }
 
   return suggestions;
@@ -868,12 +894,14 @@ export async function geoshapeMatchRegion(
 
   // 7. Build and refine covering set
   const candidateInfoMap = buildCandidateInfoMap(candidateRows, coverageMap);
-  const coveringSet = buildCoveringSet(candidateInfoMap, scopeRootIds);
+  const parentOf = new Map(candidateRows.map(r => [r.id, r.parent_id]));
+  const coveringSet = buildCoveringSet(candidateInfoMap, scopeRootIds, parentOf);
   if (coveringSet.length === 0) {
     console.log(`[Geoshape Match] No covering set candidates for region ${regionId}`);
     return { found: 0, suggestions: [] };
   }
-  const refinedCoveringSet = await refineCoveringSet(coveringSet, wikidataId, wikiArea);
+  const excluded = new Set([...rejectedIds, ...existingIds, ...assignedIds]);
+  const refinedCoveringSet = await refineCoveringSet(coveringSet, wikidataId, wikiArea, excluded);
   if (refinedCoveringSet.length === 0) {
     console.log(`[Geoshape Match] No refined covering set candidates for region ${regionId}`);
     return { found: 0, suggestions: [] };
