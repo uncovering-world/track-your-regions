@@ -155,6 +155,8 @@ export async function startBuild(key: DumpKey, { startedBy, kind = 'verify', fro
   if (!descriptor) throw new Error(`No dump named ${key}`);
   const keeper = keeperOf(key);
   if ((kind === 'keep' || kind === 'sample' || kind === 'trial') && !keeper) throw new Error(`Nothing is built from ${key} yet`);
+  if ((kind === 'sample' || kind === 'trial') && !keeper?.samples) throw new Error(`The build of ${key} cannot be tried on a sample: it keeps only whole files`);
+  if (kind === 'keep' && from === 'local' && !keeper?.fromCopy) throw new Error(`The build of ${key} always reads the newest file: it resumes a local copy on its own`);
   if (kind === 'rederive') {
     if (!keeper?.rederive) throw new Error(`Nothing built from ${key} can be derived again`);
     if (!await keeper.latest()) throw new Error(`Nothing is built from ${key} yet: build it from the dump first`);

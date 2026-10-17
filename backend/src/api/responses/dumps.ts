@@ -78,7 +78,10 @@ export const Dumps = z.strictObject({
         .describe('The newest complete dump the host lists, YYYY-MM-DD, as last learnt (asked at most once a day); null while not known.'),
       newestChecked: z.enum(['not-yet', 'answered', 'unreachable'])
         .describe('Whether the host has been asked for its newest dump since the backend started, and whether it answered the last time.'),
-    }).nullable().describe('What a keeping build of this dump makes (the local Wikidata subset), or null where nothing is built from it yet.'),
+      rederives: z.boolean().describe('Whether what is kept can be derived again without the dump, which decides whether "Derive again" is offered.'),
+      samples: z.boolean().describe('Whether a sample of the local copy can be cut and the build tried on it, which decides whether "Cut a sample" and "Try the build" are offered.'),
+      fromCopy: z.boolean().describe('Whether a keeping build may start from the local copy rather than the newest file, which decides whether "Build <date> copy" is offered.'),
+    }).nullable().describe('What a keeping build of this dump makes (the local Wikidata subset, readership), or null where nothing is built from it yet.'),
     localCopy: z.strictObject({
       fileName: z.string(),
       date: z.string().describe('The date in the file name: YYYYMMDD, or YYYYMM for a month of counts.'),

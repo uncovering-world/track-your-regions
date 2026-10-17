@@ -44,6 +44,9 @@ async function keepsOf(key: Dumps['dumps'][number]['key']): Promise<Dumps['dumps
     needs: whatTheKeptNeeds(built, newest.date),
     newestDumpDate: newest.date,
     newestChecked: checkedOf(newest),
+    rederives: Boolean(keeper.rederive),
+    samples: keeper.samples,
+    fromCopy: keeper.fromCopy,
   };
 }
 
@@ -63,7 +66,7 @@ export async function listDumps(): Promise<Dumps> {
   const progress = await Promise.all(DUMPS.map(dump => buildProgress(dump.key)));
   const dir = process.env.DUMPS_DIR?.trim();
   const copies = await Promise.all(DUMPS.map(dump => (dir ? newestLocalCopy(dir, dump.isFileName) : null)));
-  const samples = await Promise.all(DUMPS.map(dump => (dir && keeperOf(dump.key) ? newestSample(dir, dump.isFileName) : null)));
+  const samples = await Promise.all(DUMPS.map(dump => (dir && keeperOf(dump.key)?.samples ? newestSample(dir, dump.isFileName) : null)));
   return {
     localCopy: Boolean(process.env.DUMPS_DIR?.trim()),
     dumps: DUMPS.map((dump, index) => ({

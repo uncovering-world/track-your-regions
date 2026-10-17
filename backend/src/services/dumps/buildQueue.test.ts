@@ -19,7 +19,11 @@ const samples = vi.hoisted(() => ({ newest: null as null | { fileName: string } 
 vi.mock('./samples.js', () => ({ newestSample: async () => samples.newest }));
 const kept = vi.hoisted(() => ({ latest: vi.fn(async () => null as null | { dumpDate: string }) }));
 vi.mock('./keepers.js', () => ({
-  keeperOf: (key: string) => (key === 'wikidata-entities' ? { title: 'subset', rederive: vi.fn(), latest: kept.latest } : null),
+  keeperOf: (key: string) => {
+    if (key === 'wikidata-entities') return { title: 'subset', rederive: vi.fn(), latest: kept.latest, samples: true, fromCopy: true };
+    if (key === 'pageviews-user') return { title: 'readership', latest: kept.latest, samples: false, fromCopy: false };
+    return null;
+  },
 }));
 
 const { buildProgress, startBuild } = await import('./buildQueue.js');
@@ -37,6 +41,15 @@ beforeEach(() => {
 });
 
 describe('queuing a dump build (ADR-0106)', () => {
+  it('refuses a sample, a trial or a build from the copy of readership (#1436)', async () => {
+    copies.newest = { fileName: 'pageviews-202609-user.bz2' };
+    await expect(startBuild('pageviews-user', { startedBy: 1, kind: 'sample' })).rejects.toThrow(/cannot be tried on a sample/);
+    await expect(startBuild('pageviews-user', { startedBy: 1, kind: 'trial' })).rejects.toThrow(/cannot be tried on a sample/);
+    // Its year always ends at the newest month: a build from the copy would end it at a month not kept yet.
+    await expect(startBuild('pageviews-user', { startedBy: 1, kind: 'keep', from: 'local' })).rejects.toThrow(/always reads the newest file/);
+    expect(ledger.enqueueBuild).not.toHaveBeenCalled();
+  });
+
   it('cuts a sample from the local copy, and refuses one without a copy or a builder (#1527)', async () => {
     await expect(startBuild('wikidata-entities', { startedBy: 1, kind: 'sample' })).rejects.toThrow(/no local copy of wikidata-entities/);
     await expect(startBuild('enwiki-page', { startedBy: 1, kind: 'sample' })).rejects.toThrow(/Nothing is built from enwiki-page/);
