@@ -467,7 +467,7 @@ All require admin auth: each route is declared `admin` in `backend/src/routes/ad
 | Method | Path | Purpose |
 |--------|------|---------|
 | POST | `/start` | Start Wikivoyage extraction + import pipeline |
-| GET | `/status` | Poll extraction progress (includes importedWorldViews) |
+| GET | `/status` | Poll extraction progress (includes importedWorldViews), with `operation` (`OperationProgressAnswer`, #1356): six steps, reading the hierarchy (against the estimated region count), waiting for the answers to the AI questions (a person answers them), reading the Wikidata ids, creating the regions, then the import's two match steps as steps 5 and 6 (`runMatchingPolicy`'s `steps`) |
 | POST | `/cancel` | Cancel running extraction |
 | POST | `/answer` | Answer, accept or skip a page's pending question, or delete a rule it leaned on |
 | DELETE | `/caches/:name` | Delete a saved copy of the fetched pages |
@@ -508,7 +508,7 @@ All require admin auth. Every route that answers with a JSON body — the import
 | POST | `/matches/:worldViewId/accept-batch-and-reject-rest` | The same for a selection (body: `{ regionId, divisionIds }`): the review's selection toolbar |
 | POST | `/matches/:worldViewId/reject-batch` | Reject a selection of a region's suggestions (body: `{ regionId, divisionIds }`) |
 | POST | `/matches/:worldViewId/ai-match` | Start AI-assisted re-matching (batch) |
-| GET | `/matches/:worldViewId/ai-match/status` | AI matching progress |
+| GET | `/matches/:worldViewId/ai-match/status` | AI matching progress, with `operation`: reading the unresolved leaves, then asking the model about them, counted per leaf |
 | POST | `/matches/:worldViewId/ai-match/cancel` | Cancel AI matching |
 | POST | `/matches/:worldViewId/geocode-match` | Geocode name via Nominatim, find containing GADM division |
 | POST | `/matches/:worldViewId/geoshape-match` | Fetch Wikidata geoshape (or build composite), IoU-score GADM divisions |
