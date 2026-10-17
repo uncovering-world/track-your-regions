@@ -6376,7 +6376,8 @@
                 "component_item_taken_back",
                 "admission_pin_released",
                 "admission_pin_kept",
-                "admission_pin_handed_back"
+                "admission_pin_handed_back",
+                "merge_proposal_answered"
               ]
             }
           },
@@ -6505,7 +6506,8 @@
                 "component_item_taken_back",
                 "admission_pin_released",
                 "admission_pin_kept",
-                "admission_pin_handed_back"
+                "admission_pin_handed_back",
+                "merge_proposal_answered"
               ]
             }
           },
@@ -14029,6 +14031,66 @@
         }
       }
     },
+    "/api/experiences/{id}/merge-proposals": {
+      "post": {
+        "operationId": "postExperiencesByIdMergeProposals",
+        "summary": "Answer whether near places with similar names are one place, two places or one part of the other",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AnswerMergeProposalsBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MergeProposalsAnswered"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/view-suggestions": {
       "post": {
         "operationId": "postExperiencesByIdViewSuggestions",
@@ -15869,6 +15931,46 @@
                     "accepted",
                     "refused"
                   ]
+                }
+              },
+              "required": [
+                "proposalId",
+                "answer"
+              ]
+            }
+          }
+        },
+        "required": [
+          "answers"
+        ]
+      },
+      "AnswerMergeProposalsBody": {
+        "type": "object",
+        "properties": {
+          "answers": {
+            "minItems": 1,
+            "maxItems": 100,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "proposalId": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
+                },
+                "answer": {
+                  "type": "string",
+                  "enum": [
+                    "one",
+                    "two",
+                    "part_of"
+                  ]
+                },
+                "partId": {
+                  "type": "integer",
+                  "exclusiveMinimum": 0,
+                  "maximum": 2147483647
                 }
               },
               "required": [
@@ -19173,7 +19275,8 @@
               "component_item_taken_back",
               "admission_pin_released",
               "admission_pin_kept",
-              "admission_pin_handed_back"
+              "admission_pin_handed_back",
+              "merge_proposal_answered"
             ]
           },
           "region_id": {
@@ -19341,7 +19444,8 @@
               "component_item_taken_back",
               "admission_pin_released",
               "admission_pin_kept",
-              "admission_pin_handed_back"
+              "admission_pin_handed_back",
+              "merge_proposal_answered"
             ]
           },
           "created_at": {
@@ -26409,6 +26513,119 @@
         ],
         "description": "Where the object stands at the curation gate of its kind. `pending` is shown to nobody but a curator. `auto` and `verified` are shown to readers, `verified` because a person passed it."
       },
+      "MergePair": {
+        "type": "object",
+        "properties": {
+          "proposalId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "What an answer names."
+          },
+          "otherId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The other place of the pair; the card is the place with the lower id, which stays if the two are made one."
+          },
+          "otherName": {
+            "type": "string"
+          },
+          "otherKinds": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The names of the kinds the other place is in, in display order."
+          },
+          "otherImageUrl": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "otherImageCredit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ImageCredit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "otherLatitude": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "otherLongitude": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "otherWikidataItem": {
+            "description": "The Wikidata item the other place's memberships make it, where one does.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "anchorWikidataItem": {
+            "description": "The card's own place's item, the same way; two different items on a pair is worth a look.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "distanceM": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Between the two places' nearest offered points, in metres."
+          },
+          "nameSimilarity": {
+            "type": "number",
+            "description": "The best trigram similarity between any two of their folded names, 0 to 1."
+          },
+          "exact": {
+            "type": "boolean",
+            "description": "One and the same folded name within fifty metres: what a batch accept makes one place."
+          },
+          "reachM": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The distance the pass found the pair under: 300 m, or a property's area radius up to 3 km."
+          },
+          "proposedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$"
+          }
+        },
+        "required": [
+          "proposalId",
+          "otherId",
+          "otherName",
+          "otherKinds",
+          "otherImageUrl",
+          "otherImageCredit",
+          "otherLatitude",
+          "otherLongitude",
+          "otherWikidataItem",
+          "anchorWikidataItem",
+          "distanceM",
+          "nameSimilarity",
+          "exact",
+          "reachM",
+          "proposedAt"
+        ],
+        "additionalProperties": false,
+        "description": "Two near places with similar names, proposed as one place (#1249, ADR-0046 decision 2)."
+      },
       "MergeProposalPass": {
         "type": "object",
         "properties": {
@@ -26614,6 +26831,85 @@
         ],
         "additionalProperties": false,
         "description": "What the pass over near places with similar names found (ADR-0046 decision 2, #1249)."
+      },
+      "MergeProposalsAnswered": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The place the card is about: the lower id of each pair, which stays."
+          },
+          "merged": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "proposalId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "mergeId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "The merge the answer ran, which the history can undo."
+                }
+              },
+              "required": [
+                "proposalId",
+                "mergeId"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Pairs answered one place: the other place is folded into this one. A merge that committed is listed here whatever happened after it; where its answer could not be recorded, the same pair is in `refused` too, with why."
+          },
+          "two": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Pairs answered two places: kept apart, never proposed again."
+          },
+          "partOf": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Pairs answered one part of the other: recorded on the proposal, nothing merged."
+          },
+          "refused": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "proposalId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "error": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "proposalId",
+                "error"
+              ],
+              "additionalProperties": false
+            },
+            "description": "Pairs the answer could not be written for — answered meanwhile, a merge the catalogue refused, or a pair outside the caller's sources — each with why; the others stand. A pair also in `merged` was merged and its answer not recorded: one pair, not two."
+          }
+        },
+        "required": [
+          "experienceId",
+          "merged",
+          "two",
+          "partOf",
+          "refused"
+        ],
+        "additionalProperties": false,
+        "description": "A curator's answer to pairs of near places with similar names (#1249)."
       },
       "MergeUndone": {
         "type": "object",
@@ -28395,6 +28691,7 @@
                     "refused",
                     "missing",
                     "component-items",
+                    "merge-proposals",
                     "pin-question",
                     "arrival",
                     "held",
@@ -28569,6 +28866,7 @@
           "refused",
           "missing",
           "component-items",
+          "merge-proposals",
           "pin-question"
         ],
         "description": "The class of an open question, which a batch answer names a row by."
@@ -30402,6 +30700,7 @@
                     "refused",
                     "missing",
                     "component-items",
+                    "merge-proposals",
                     "pin-question"
                   ]
                 },
@@ -30497,6 +30796,12 @@
           },
           "items": {
             "description": "Candidate items confirmed or turned down, for a component-items row (#1272): a batch accept takes the exact ones.",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "pairs": {
+            "description": "Pairs of near places answered, for a merge-proposals row (#1249): a batch accept makes the exact pairs one place, a reject keeps every open pair two.",
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
@@ -30698,6 +31003,13 @@
             },
             "description": "Serial sites whose components have candidate Wikidata items (#1272)."
           },
+          "mergeProposals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueItem"
+            },
+            "description": "Places with a near place of a similar name nobody has answered (#1249)."
+          },
           "pinQuestions": {
             "type": "array",
             "items": {
@@ -30858,6 +31170,7 @@
           "conflicts",
           "sources",
           "componentItems",
+          "mergeProposals",
           "pinQuestions",
           "arrivals",
           "held",
@@ -30937,6 +31250,7 @@
               "withdrawn-answered",
               "contents-refused",
               "component-items",
+              "merge-proposals",
               "pin-question"
             ]
           },
@@ -31336,6 +31650,20 @@
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/SitePoint"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "merge_pairs": {
+            "description": "The open pairs of near places with similar names this place is the lower id of, the most alike first (#1249). `merge-proposals` items only.",
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/MergePair"
                 }
               },
               {

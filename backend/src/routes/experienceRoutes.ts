@@ -14,6 +14,7 @@ import {
   AdmissionPinHandedBack,
   ComponentItemsAnswered,
   ComponentItemSuggestions,
+  MergeProposalsAnswered,
   CurationLog,
   PointItemTakenBack,
   DeclineHeldResult,
@@ -38,6 +39,7 @@ import { PublishWaitingResult } from '../api/responses/admin.js';
 import { undoPlaceMerge } from '../controllers/experience/placeMergeController.js';
 import { chooseViews } from '../controllers/experience/viewChoiceController.js';
 import { answerComponentItems } from '../controllers/experience/componentItemController.js';
+import { answerMergeProposals } from '../controllers/experience/mergeProposalController.js';
 import { suggestComponentItems } from '../controllers/experience/componentItemSuggestionController.js';
 import { takeBackPointItem } from '../controllers/experience/pointItemTakeBackController.js';
 import { getNearbyPictures } from '../controllers/experience/nearbyPicturesController.js';
@@ -110,6 +112,7 @@ import {
   mergeIdParamSchema,
   chooseViewsBodySchema,
   answerComponentItemsBodySchema,
+  answerMergeProposalsBodySchema,
   reviewQueueQuerySchema,
   syncLogIdParamSchema,
   experienceAdmissionBodySchema,
@@ -575,6 +578,17 @@ export const experienceCurationRoutes = [
     body: answerComponentItemsBodySchema,
     response: ComponentItemsAnswered,
     handler: answerComponentItems,
+  }),
+  // Two near places with similar names (#1249, ADR-0046 decisions 2 to 4):
+  // one place runs the merge into this one, two places keeps the pair apart
+  // for good, part of records which is the part and merges nothing.
+  defineRoute({
+    method: 'post', path: '/:id/merge-proposals', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Answer whether near places with similar names are one place, two places or one part of the other',
+    params: idParamSchema,
+    body: answerMergeProposalsBodySchema,
+    response: MergeProposalsAnswered,
+    handler: answerMergeProposals,
   }),
   // Jev's suggestion for that card (#1260): the stored one for the views as
   // they stand, or a new one asked for — a POST, since a call may be paid for.

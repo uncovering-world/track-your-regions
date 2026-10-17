@@ -294,6 +294,25 @@ export const SitePoint = z.strictObject({
 }).describe('One of the places a site is made of (#1342).');
 export type SitePoint = z.infer<typeof SitePoint>;
 
+export const MergePair = z.strictObject({
+  proposalId: z.number().int().describe('What an answer names.'),
+  otherId: z.number().int().describe('The other place of the pair; the card is the place with the lower id, which stays if the two are made one.'),
+  otherName: z.string(),
+  otherKinds: z.array(z.string()).describe('The names of the kinds the other place is in, in display order.'),
+  otherImageUrl: z.string().nullable(),
+  otherImageCredit: ImageCredit.nullable(),
+  otherLatitude: z.number().nullable(),
+  otherLongitude: z.number().nullable(),
+  otherWikidataItem: z.string().nullable().describe("The Wikidata item the other place's memberships make it, where one does."),
+  anchorWikidataItem: z.string().nullable().describe("The card's own place's item, the same way; two different items on a pair is worth a look."),
+  distanceM: z.number().int().describe("Between the two places' nearest offered points, in metres."),
+  nameSimilarity: z.number().describe('The best trigram similarity between any two of their folded names, 0 to 1.'),
+  exact: z.boolean().describe('One and the same folded name within fifty metres: what a batch accept makes one place.'),
+  reachM: z.number().int().describe('The distance the pass found the pair under: 300 m, or a property\'s area radius up to 3 km.'),
+  proposedAt: timestamp,
+}).describe('Two near places with similar names, proposed as one place (#1249, ADR-0046 decision 2).');
+export type MergePair = z.infer<typeof MergePair>;
+
 const Verdict = z.enum(['admitted', 'refused']);
 
 export const PinQuestion = z.strictObject({
@@ -393,6 +412,10 @@ export const ReviewQueueItem = z.strictObject({
     'Every place the site is made of, in the source\'s order, each with its own picture where it has one: what the'
     + ' card\'s map draws around the candidates (#1342). `component-items` items only.',
   ),
+  merge_pairs: z.array(MergePair).nullable().optional().describe(
+    'The open pairs of near places with similar names this place is the lower id of, the most alike first (#1249).'
+    + ' `merge-proposals` items only.',
+  ),
   pin_question: PinQuestion.nullable().optional().describe('`pin-question` items only (#1367).'),
 }).describe('An object waiting on a curator, or one a curator can take a verdict back from.');
 export type ReviewQueueItem = z.infer<typeof ReviewQueueItem>;
@@ -442,6 +465,7 @@ export const ReviewQueue = z.strictObject({
   conflicts: z.array(ReviewQueueItem),
   sources: z.array(ReviewQueueItem).describe('Places two data sources describe differently (#1246).'),
   componentItems: z.array(ReviewQueueItem).describe('Serial sites whose components have candidate Wikidata items (#1272).'),
+  mergeProposals: z.array(ReviewQueueItem).describe('Places with a near place of a similar name nobody has answered (#1249).'),
   pinQuestions: z.array(ReviewQueueItem).describe("Curators' admission pins a run no longer agrees with (#1367)."),
   arrivals: z.array(ReviewQueueItem),
   held: z.array(ReviewQueueItem),
@@ -483,6 +507,9 @@ export const ReviewAnswerDid = z.strictObject({
   pointsRefused: z.number().int().optional().describe('Points on the same row that refused the answer, for a withdrawn row.'),
   items: z.number().int().optional().describe(
     'Candidate items confirmed or turned down, for a component-items row (#1272): a batch accept takes the exact ones.',
+  ),
+  pairs: z.number().int().optional().describe(
+    'Pairs of near places answered, for a merge-proposals row (#1249): a batch accept makes the exact pairs one place, a reject keeps every open pair two.',
   ),
 }).describe('What one answer did, counted. The notice sums these per kind and answer.');
 export type ReviewAnswerDid = z.infer<typeof ReviewAnswerDid>;

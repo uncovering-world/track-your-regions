@@ -15,7 +15,10 @@ vi.mock('../../db/index.js', () => ({ pool: { query: vi.fn() } }));
 
 import { pool } from '../../db/index.js';
 import { queryQueueKeys, encodeCursor, decodeCursor, KIND_RANK } from './reviewQueueKeys.js';
-import { missingOpenSql, refusedOpenSql, arrivalOpenSql, heldOpenSql, withdrawnPointOpenSql, withdrawnContainerOpenSql, conflictChangeOpenSql } from './reviewQueuePredicates.js';
+import {
+  missingOpenSql, refusedOpenSql, arrivalOpenSql, heldOpenSql, withdrawnPointOpenSql, withdrawnContainerOpenSql,
+  conflictChangeOpenSql, mergeProposalOpenSql,
+} from './reviewQueuePredicates.js';
 import { contentsWaitingSql } from './waitingCounts.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
@@ -91,19 +94,32 @@ describe('queryQueueKeys', () => {
 
   it('carries the scope filter into every branch of the union', async () => {
     await queryQueueKeys(base);
-    // Eleven: conflict, two sources (#1246), arrival, held, contents, withdrawn,
+    // Twelve: conflict, two sources (#1246), arrival, held, contents, withdrawn,
     // refused, the two missing branches — the place's, and one kind's
-    // (#1264) —, component items (#1272) and pin questions (#1367). The scope
-    // CTE's own join reads `r.parent_region_id = s.id`, so it is not counted
-    // here, and dropping the predicate from one branch fails this.
+    // (#1264) —, component items (#1272), near places with similar names
+    // (#1249) and pin questions (#1367). The scope CTE's own join reads
+    // `r.parent_region_id = s.id`, so it is not counted here, and dropping the
+    // predicate from one branch fails this.
     expect(lastCall()[0].match(/JOIN curator_scoped_regions s ON s\.id = er\.region_id/g))
-      .toHaveLength(11);
+      .toHaveLength(12);
+  });
+
+  it('dates a pair of near places by the newest proposal, anchors it on the lower id and scopes it by either place (#1249)', async () => {
+    await queryQueueKeys(base);
+    const [sql] = lastCall();
+    const pairs = between(sql, "SELECT 'merge-proposals'", "SELECT 'pin-question'");
+    expect(pairs).toContain(`'merge-proposals', ${KIND_RANK['merge-proposals']}, e.id, e.name`);
+    expect(pairs).toContain('max(p.proposed_at)');
+    expect(pairs).toContain('array_agg(DISTINCT m.source_id), NULL');
+    expect(pairs).toContain('JOIN experiences e ON e.id = p.place_a');
+    expect(pairs).toContain('m.experience_id IN (p.place_a, p.place_b)');
+    expect(pairs).toContain(mergeProposalOpenSql('p', 'e', 'b'));
   });
 
   it("files a pin question under the run that asked it, dated when it was first asked (#1367)", async () => {
     await queryQueueKeys(base);
     const [sql] = lastCall();
-    expect(sql).toContain("SELECT 'pin-question', 8, e.id, e.name");
+    expect(sql).toContain("SELECT 'pin-question', 9, e.id, e.name");
     expect(sql).toContain('(array_agg(m.admission_question_sync_log_id ORDER BY m.admission_questioned_at DESC))[1]');
     expect(sql).toContain("m.curated_fields ? 'admission' AND m.admission_questioned_at IS NOT NULL");
   });
