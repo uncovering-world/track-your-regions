@@ -232,3 +232,46 @@ describe('gotSuccessfulRequestMatching', () => {
     expect(gotSuccessfulRequestMatching({ audits: {} }, '/tile_')).toBe(false);
   });
 });
+
+describe('requests-except', () => {
+  const report = {
+    categories: {},
+    audits: {
+      'network-requests': {
+        details: {
+          items: [
+            { url: 'http://frontend:5173/assets/index.js', resourceType: 'Script', transferSize: 500000 },
+            { url: 'http://backend:3001/api/experiences/by-region/9001?limit=5000', resourceType: 'Fetch', transferSize: 4000 },
+            { url: 'http://backend:3001/api/experiences/by-region/9001?limit=5000', resourceType: 'Preflight', transferSize: 0 },
+            { url: 'https://tile.openstreetmap.org/12/2200/1300.png', resourceType: 'Image', transferSize: 30000 },
+            { url: 'https://a.tile.openstreetmap.org/12/2201/1300.png', resourceType: 'Image', transferSize: 31000 },
+          ],
+        },
+      },
+    },
+  };
+
+  it("sums what the page fetched from every host but the basemap's, preflights left out", () => {
+    const results = evaluateAssertions(
+      report,
+      {
+        'requests-except:openstreetmap.org:size': ['error', { maxNumericValue: 510000 }],
+        'requests-except:openstreetmap.org:count': ['error', { maxNumericValue: 2 }],
+      },
+      URL,
+    );
+    expect(results.map((r) => [r.auditProperty, r.actual, r.passed])).toEqual([
+      ['except openstreetmap.org:size', 504000, true],
+      ['except openstreetmap.org:count', 2, true],
+    ]);
+  });
+
+  it('refuses a measure it does not know, and a report without the audit', () => {
+    const [unknown] = evaluateAssertions(report, { 'requests-except:openstreetmap.org:time': ['error', { maxNumericValue: 1 }] }, URL);
+    expect(unknown.passed).toBe(false);
+    expect(unknown.message).toMatch(/unknown measure/);
+    const [missing] = evaluateAssertions({ audits: {} }, { 'requests-except:openstreetmap.org:size': ['error', { maxNumericValue: 1 }] }, URL);
+    expect(missing.passed).toBe(false);
+    expect(missing.message).toMatch(/network-requests not in report/);
+  });
+});

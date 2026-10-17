@@ -10,6 +10,11 @@
  *   resource-summary:<type>:size|count    maxNumericValue in bytes / requests,
  *                                         against the resource-summary audit's
  *                                         row for that type (script, total, ...)
+ *   requests-except:<host>:size|count     maxNumericValue in bytes / requests,
+ *                                         summed over the network-requests audit
+ *                                         leaving out every request to <host>
+ *                                         (and its subdomains) — this lane's own
+ *                                         form, not Lighthouse CI's (#669)
  *   <audit id>                            maxNumericValue against numericValue
  *                                         (ms for timings, unitless for CLS),
  *                                         or minScore against the audit score
@@ -200,7 +205,48 @@ function resolveTarget(lhr, key, check) {
   if (key.startsWith('resource-summary:')) {
     return resolveResourceSummary(lhr, key, check);
   }
+  if (key.startsWith('requests-except:')) {
+    return resolveRequestsExcept(lhr, key, check);
+  }
   return resolveAudit(lhr, key, check);
+}
+
+/**
+ * What a page fetched from everyone but one host. A page flown into a region
+ * pulls the OpenStreetMap basemap, and how many of its raster tiles land before
+ * Lighthouse calls the page loaded moved the fixture's region page between
+ * 1.37 and 2.32 MB across CI runs, while the repository's own bytes held within
+ * 8 kB. A byte line over that spread gates nothing the repository decides, so
+ * these pages gate their bytes without the basemap and read the total (#669).
+ * A preflight is left out too: it carries no body, and the resource summary
+ * counts none.
+ */
+function resolveRequestsExcept(lhr, key, check) {
+  const [, host, measure] = key.split(':');
+  const target = { auditId: 'network-requests', auditProperty: `except ${host}:${measure}` };
+  if (measure !== 'size' && measure !== 'count') {
+    return { ...target, value: undefined, message: `unknown measure "${measure}" (use size or count)` };
+  }
+  if (check.name !== 'maxNumericValue') {
+    return { ...target, value: undefined, message: 'a requests-except row takes maxNumericValue' };
+  }
+  const items = lhr.audits?.['network-requests']?.details?.items;
+  if (!Array.isArray(items)) {
+    return { ...target, value: undefined, message: 'network-requests not in report' };
+  }
+  const kept = items.filter((item) => {
+    if (item.resourceType === 'Preflight') return false;
+    try {
+      const { hostname } = new URL(item.url);
+      return hostname !== host && !hostname.endsWith(`.${host}`);
+    } catch {
+      return true;
+    }
+  });
+  const value = measure === 'count'
+    ? kept.length
+    : kept.reduce((sum, item) => sum + (Number.isFinite(item.transferSize) ? item.transferSize : 0), 0);
+  return { ...target, value, message: undefined };
 }
 
 function resolveCategory(lhr, key, check) {

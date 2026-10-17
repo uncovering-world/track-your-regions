@@ -30,6 +30,8 @@ describe('parseLighthouseResults', () => {
         { url: URL, auditId: 'resource-summary', auditProperty: 'script:size', level: 'error', operator: '<=', expected: 825000, actual: 782659, passed: true },
         { url: URL, auditId: 'largest-contentful-paint', level: 'warn', operator: '<=', expected: 2000, actual: 2150, passed: false },
         { url: URL, auditId: 'categories:performance', level: 'warn', operator: '>=', expected: 0.8, actual: 0.94, passed: true },
+        { url: URL, auditId: 'network-requests', auditProperty: 'except openstreetmap.org:size', level: 'error', operator: '<=', expected: 715000, actual: 720000, passed: false },
+        { url: URL, auditId: 'network-requests', auditProperty: 'except openstreetmap.org:count', level: 'error', operator: '<=', expected: 105, actual: 110, passed: false },
       ],
       'manifest.json': [
         { url: URL, isRepresentativeRun: true, jsonPath: '/app/lighthouse-report/wv-9001-run2.report.json', summary: { performance: 0.94 } },
@@ -47,10 +49,12 @@ describe('parseLighthouseResults', () => {
     const result = parseLighthouseResults({ assertionResultsPath: path.join(dir, 'assertion-results.json'), reportDir: dir });
 
     expect(result.ok).toBe(false);
-    expect([result.total, result.passed, result.failed, result.skipped]).toEqual([4, 2, 1, 1]);
+    expect([result.total, result.passed, result.failed, result.skipped]).toEqual([6, 2, 3, 1]);
     expect(result.note).toMatch(/^1 budget\(s\) at warn level are over/);
     expect(result.cases).toEqual([
       '[error] resource-summary:total:count on /wv/9001: 61 requests (<= 60 requests)',
+      '[error] network-requests:except openstreetmap.org:size on /wv/9001: 720.0 kB (<= 715.0 kB)',
+      '[error] network-requests:except openstreetmap.org:count on /wv/9001: 110 requests (<= 105 requests)',
       '[warn] largest-contentful-paint on /wv/9001: 2.15 s (<= 2.00 s)',
     ]);
     // The tools that measured it, so a number moved by a bump is not read as the code's (#656).

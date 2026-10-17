@@ -10,15 +10,51 @@
       "expectRequestMatching": "/api/experiences/by-region/{region}?",
       "assertions": {
         "resource-summary:total:size": [
-          "error",
+          "warn",
           {
             "maxNumericValue": 2200000
           }
         ],
         "resource-summary:total:count": [
-          "error",
+          "warn",
           {
             "maxNumericValue": 145
+          }
+        ],
+        "largest-contentful-paint": [
+          "warn",
+          {
+            "maxNumericValue": 2000
+          }
+        ],
+        "total-blocking-time": [
+          "warn",
+          {
+            "maxNumericValue": 300
+          }
+        ],
+        "interactive": [
+          "warn",
+          {
+            "maxNumericValue": 2500
+          }
+        ],
+        "cumulative-layout-shift": [
+          "warn",
+          {
+            "maxNumericValue": 0.02
+          }
+        ],
+        "requests-except:openstreetmap.org:size": [
+          "error",
+          {
+            "maxNumericValue": 715000
+          }
+        ],
+        "requests-except:openstreetmap.org:count": [
+          "error",
+          {
+            "maxNumericValue": 105
           }
         ]
       }
@@ -31,13 +67,13 @@
       ],
       "assertions": {
         "resource-summary:total:size": [
-          "error",
+          "warn",
           {
             "maxNumericValue": 2200000
           }
         ],
         "resource-summary:total:count": [
-          "error",
+          "warn",
           {
             "maxNumericValue": 145
           }
@@ -46,6 +82,36 @@
           "warn",
           {
             "maxNumericValue": 0.02
+          }
+        ],
+        "largest-contentful-paint": [
+          "warn",
+          {
+            "maxNumericValue": 2000
+          }
+        ],
+        "total-blocking-time": [
+          "warn",
+          {
+            "maxNumericValue": 300
+          }
+        ],
+        "interactive": [
+          "warn",
+          {
+            "maxNumericValue": 2500
+          }
+        ],
+        "requests-except:openstreetmap.org:size": [
+          "error",
+          {
+            "maxNumericValue": 715000
+          }
+        ],
+        "requests-except:openstreetmap.org:count": [
+          "error",
+          {
+            "maxNumericValue": 105
           }
         ]
       }
