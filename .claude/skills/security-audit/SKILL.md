@@ -79,7 +79,7 @@ Run a security audit of the codebase against OWASP ASVS 5.0 requirements.
 - **V2.4 (Input validation)** — `params: str = Form(...)` + `json.loads()` is unvalidated. Wrap in a Pydantic model so schema violations return 422 instead of crashing the worker
 - **V5 (File uploads)** — see "File Handling" above
 - **V11/V12** — N/A (no crypto or external traffic from cv-python)
-- **V16 (Logging)** — service uses `print()` to stdout (collected by Docker). Consider replacing with `logging` and structured fields
+- **V16 (Logging)** — the service logs through stdlib `logging` to stdout, collected by Docker (`app/logging_config.py`, level from `CV_LOG_LEVEL`). Verify that no log line carries an uploaded image's contents or a caller's precise coordinates. Structured fields and a per-upload request id are not there yet
 
 ### Python tooling expectations
 
