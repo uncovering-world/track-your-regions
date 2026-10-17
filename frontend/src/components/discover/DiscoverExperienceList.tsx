@@ -362,7 +362,7 @@ export function DiscoverExperienceList({
                         isVisited={visitedIds.has(exp.id)}
                         isSelected={selectedExperienceId === exp.id}
                         showCheckbox={isAuthenticated}
-                        canCurate={hasCuratorScope}
+                        canCurate={exp.can_curate === true}
                         onSelect={onSelectExperience}
                         onHoverEnter={onCardMouseEnter}
                         onHoverLeave={onCardMouseLeave}

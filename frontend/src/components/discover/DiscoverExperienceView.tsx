@@ -62,6 +62,8 @@ interface DiscoverExperienceViewProps {
   experiences: Experience[];
   /** The place's own row for a row shown in one kind — what the curation dialog answers about (#1289). */
   placeRowOf: (row: Experience) => Experience;
+  /** Whether the caller may curate the region itself (#613); each row says whether its place is curated. */
+  curatesRegion: boolean;
   isLoading: boolean;
   /** The open kind's rows, lost ones included: a change here is a new set to frame, a reveal is not. */
   experienceSet: Experience[] | undefined;
@@ -84,6 +86,7 @@ export function DiscoverExperienceView({
   activeView,
   experiences,
   placeRowOf,
+  curatesRegion,
   isLoading,
   experienceSet,
   lostInKind,
@@ -222,8 +225,8 @@ export function DiscoverExperienceView({
   const curate = useCallback((row: Experience) => setCurationTarget(placeRowOf(row)), [placeRowOf]);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
-  // Check if any experiences have is_rejected field (indicates curator has scope)
-  const hasCuratorScope = isCurator && experiences.some((exp) => exp.is_rejected !== undefined);
+  // The region's own actions, by the server's answer for the region (#613).
+  const hasCuratorScope = !!isCurator && curatesRegion;
 
   // Count rejected for header info
   const rejectedCount = useMemo(
@@ -623,6 +626,7 @@ export function DiscoverExperienceView({
       <LazyCurationDialog
         experience={curationTarget}
         regionId={activeView?.regionId ?? null}
+        curatesRegion={curatesRegion}
         onClose={() => setCurationTarget(null)}
       />
 

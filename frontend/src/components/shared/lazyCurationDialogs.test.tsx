@@ -33,13 +33,14 @@ describe('LazyAddExperienceDialog', () => {
 
 describe('LazyCurationDialog', () => {
   it('mounts only while there is an experience to curate', async () => {
-    const { rerender } = render(<LazyCurationDialog experience={null} regionId={null} onClose={() => {}} />);
+    const { rerender } = render(<LazyCurationDialog experience={null} regionId={null} curatesRegion onClose={() => {}} />);
     expect(screen.queryByText('curation dialog')).not.toBeInTheDocument();
 
     rerender(
       <LazyCurationDialog
         experience={{ id: 1, name: 'Cologne Cathedral' } as Parameters<typeof LazyCurationDialog>[0]['experience']}
         regionId={null}
+        curatesRegion
         onClose={() => {}}
       />,
     );

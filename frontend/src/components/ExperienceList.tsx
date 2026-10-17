@@ -68,6 +68,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     experiences,
     experiencesLoading,
     lostHidden,
+    curatesRegion,
     showLost,
     setShowLost,
     regionId,
@@ -165,8 +166,11 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     return map;
   }, [kindsData]);
 
-  // Check if any experiences have is_rejected field (indicates curator has scope for this region)
-  const hasCuratorScope = isCurator && experiences.some((exp) => exp.is_rejected !== undefined);
+  // What a curator may do here is the server's answer, by the rule its writes
+  // apply (#613): the region's own actions by whether the region is in scope,
+  // a place's by whether that place is — a curator of Tuscany who opens Italy
+  // curates the Uffizi but not the Colosseum, and adds nothing to Italy.
+  const hasCuratorScope = !!isCurator && curatesRegion;
 
   // Separate active and rejected experiences
   const activeExperiences = useMemo(() => experiences.filter((exp) => !exp.is_rejected), [experiences]);
@@ -641,7 +645,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       onToggleAllLocations={handleToggleAllLocations}
       onLocationHover={handleLocationHover}
       isRejected={rejected}
-      onCurate={hasCuratorScope ? handleCurate : undefined}
+      onCurate={exp.can_curate ? handleCurate : undefined}
       // Only the open card's row is told which part is open: every other row's
       // props stay as they were, and so does its memo.
       selectedPointId={selectedExperienceId === exp.id && !echo ? selectedPointId : null}
@@ -649,8 +653,8 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       onOpenPoint={openPoint}
       onClosePoint={closePoint}
       onDropPoint={dropPoint}
-      onCorrectPlace={hasCuratorScope ? handleCorrectPlace : undefined}
-      onCorrectWork={hasCuratorScope ? handleCorrectWork : undefined}
+      onCorrectPlace={exp.can_curate ? handleCorrectPlace : undefined}
+      onCorrectWork={exp.can_curate ? handleCorrectWork : undefined}
       onUnreject={hasCuratorScope && rejected && regionId ? handleUnreject : undefined}
       onRemoveFromRegion={hasCuratorScope && rejected && regionId ? handleRemoveFromRegion : undefined}
       onCardOpened={handleCardOpenedHere}
@@ -732,6 +736,7 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
       <LazyCurationDialog
         experience={curationTarget}
         regionId={regionId}
+        curatesRegion={curatesRegion}
         onClose={closeCuration}
       />
 

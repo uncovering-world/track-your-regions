@@ -63,7 +63,7 @@ interface ExperienceDetailPanelProps {
 }
 
 export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoint }: ExperienceDetailPanelProps) {
-  const { isAuthenticated, isCurator } = useAuth();
+  const { isAuthenticated } = useAuth();
   // The place a curator opened from the list below, held as the place; and what
   // the last correction did, said here because the panel has no other line for it.
   const [correcting, setCorrecting] = useState<PanelLocation | null>(null);
@@ -330,9 +330,10 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
             onUnmarkLocation={unmarkLocationVisited}
             onMarkAll={() => markAllLocations({ experienceId: experience.id })}
             onUnmarkAll={() => unmarkAllLocations({ experienceId: experience.id })}
-            // A place is corrected wherever a curator is looking at one (#583); the
-            // single place has no row here and is reached through the object screen.
-            onCorrect={isCurator ? setCorrecting : undefined}
+            // A place is corrected wherever a curator whose scope reaches it is
+            // looking at one (#583, #613); the single place has no row here and is
+            // reached through the object screen.
+            onCorrect={experience.can_curate ? setCorrecting : undefined}
             onOpen={onOpenPoint}
           />
         )}
@@ -401,8 +402,9 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
             onMarkViewed={(id) => markViewed({ treasureId: id, experienceId: experience.id })}
             onUnmarkViewed={unmarkViewed}
             // The same rule one level over (#731): a work is corrected wherever a
-            // curator is looking at one, and this grid is one of the places.
-            onCorrect={isCurator
+            // curator whose scope reaches its place is looking at one, and this
+            // grid is one of the places.
+            onCorrect={experience.can_curate
               ? (work) => setCorrectingWork(workToCorrect(experience, work))
               : undefined}
           />
