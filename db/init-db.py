@@ -29,6 +29,7 @@ from dotenv import load_dotenv
 # out (#665). PROPERTIES is the set of columns that decision reads, so the
 # SELECT below asks the GeoPackage for exactly them.
 from gadm_levels import PROPERTIES, REMAINDER_SUFFIX, row_divisions
+from gadm_sample import continents, ogr_filter, resolve_continent, sql_filter
 
 try:
     from osgeo import ogr
@@ -177,7 +178,8 @@ class GADMProcessor:
     # interpolated into SQL as an identifier. Accept only plain identifiers.
     TABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
-    def __init__(self, pg_cursor, sqlite_cursor, pg_conn, gadm_file, include_geometry=True, postprocess=True):
+    def __init__(self, pg_cursor, sqlite_cursor, pg_conn, gadm_file, include_geometry=True, postprocess=True,
+                 continent=None):
         self.pg_cursor = pg_cursor
         self.sqlite_cursor = sqlite_cursor
         self.pg_conn = pg_conn
@@ -186,6 +188,8 @@ class GADMProcessor:
         self.postprocess = postprocess
 
         self.table_name = self._get_gadm_table_name()
+        # A sample load reads one continent's rows (#610); None reads them all.
+        self.continent = self._resolve_continent(continent)
         self.existing_divisions = {}  # path -> Division object
         self.geometries = {}  # gadm_uid -> WKB geometry
         self.single_children = []  # List of divisions that are single children
@@ -219,10 +223,21 @@ class GADMProcessor:
             sys.exit(1)
         return table_name
 
+    def _resolve_continent(self, requested):
+        """The continent a sample load asks for, as the file spells it, or None."""
+        if requested is None:
+            return None
+        try:
+            return resolve_continent(requested, continents(self.sqlite_cursor, self.table_name))
+        except ValueError as error:
+            print(f"Error: {error}")
+            sys.exit(1)
+
     def _count_records(self):
-        """Count total records in GADM file."""
-        # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query,python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- sqlite3, not SQLAlchemy; table_name is an identifier (unbindable) validated against TABLE_NAME_RE in _get_gadm_table_name
-        self.sqlite_cursor.execute(f'SELECT COUNT(*) FROM "{self.table_name}"')
+        """Count the records this load reads: the file's, or one continent's."""
+        where, params = sql_filter(self.continent)
+        # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query,python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- sqlite3, not SQLAlchemy; table_name is an identifier (unbindable) validated against TABLE_NAME_RE in _get_gadm_table_name, and where is a constant clause whose value is bound
+        self.sqlite_cursor.execute(f'SELECT COUNT(*) FROM "{self.table_name}"{where}', params)
         return self.sqlite_cursor.fetchone()[0]
 
     def load_geometries_into_memory(self):
@@ -237,6 +252,8 @@ class GADMProcessor:
             sys.exit(1)
 
         layer = ds.GetLayerByName(self.table_name)
+        if self.continent is not None:
+            layer.SetAttributeFilter(ogr_filter(self.continent))
         progress = ProgressTracker(layer.GetFeatureCount(), "geometries")
 
         for feature in layer:
@@ -276,8 +293,9 @@ class GADMProcessor:
             self.pg_conn.commit()
 
         cols = ", ".join(PROPERTIES)
-        # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query,python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- sqlite3, not SQLAlchemy; cols is the PROPERTIES module constant and table_name is validated against TABLE_NAME_RE in _get_gadm_table_name
-        self.sqlite_cursor.execute(f'SELECT {cols} FROM "{self.table_name}"')
+        where, params = sql_filter(self.continent)
+        # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query,python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- sqlite3, not SQLAlchemy; cols is the PROPERTIES module constant, table_name is validated against TABLE_NAME_RE in _get_gadm_table_name, and where is a constant clause whose value is bound
+        self.sqlite_cursor.execute(f'SELECT {cols} FROM "{self.table_name}"{where}', params)
 
         progress = ProgressTracker(self.record_count, "records")
 
@@ -722,6 +740,11 @@ def main():
         help="Fast mode - skip postprocessing optimizations"
     )
     parser.add_argument(
+        "--continent",
+        help="Sample load: only the rows of this continent, as GADM's CONTINENT "
+             "column names it (e.g. Antarctica, Oceania). Omitted, the whole file."
+    )
+    parser.add_argument(
         "--skip-schema",
         action="store_true",
         help="Accepted for compatibility; the schema is always applied "
@@ -744,7 +767,8 @@ def main():
             pg_conn=pg_conn,
             gadm_file=args.source,
             include_geometry=args.geometry,
-            postprocess=not args.fast
+            postprocess=not args.fast,
+            continent=args.continent
         )
 
         if args.geometry:
@@ -763,7 +787,10 @@ def main():
 
         print_stats(pg_cur)
 
-    print("\nGADM data import complete!")
+    if processor.continent is None:
+        print("\nGADM data import complete!")
+    else:
+        print(f"\nGADM sample import complete: {processor.continent} only.")
 
 
 if __name__ == "__main__":
