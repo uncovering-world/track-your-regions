@@ -6695,6 +6695,69 @@ export interface NewBadgesSeenBody {
 }
 
 /**
+ * An outside service is holding the run: a rate limit or a retry.
+ */
+export type OperationProgressAnswerWait = {
+  /** Who is holding the run, and why. */
+  sentence: string;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  secondsLeft: number;
+} | null;
+
+/**
+ * The step an operation is on.
+ */
+export interface OperationStepAnswer {
+  /**
+     * 1-based, of `count`. A step a run skips is not announced, so it can jump.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  index: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  count: number;
+  /** What the step is doing, in the words the panel shows. */
+  sentence: string;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  done: number;
+  /**
+     * 0 while the step cannot say how much it has to do.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  total: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  elapsedSeconds: number;
+}
+
+/**
+ * How far a long admin operation is.
+ */
+export interface OperationProgressAnswer {
+  /**
+     * Since the operation started.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  elapsedSeconds: number;
+  step: OperationStepAnswer | null;
+  /** An outside service is holding the run: a rate limit or a retry. */
+  wait: OperationProgressAnswerWait;
+}
+
+/**
  * A tree edit that can be undone: the store keeps the last one per world view.
  */
 export type UndoOperation = typeof UndoOperation[keyof typeof UndoOperation];
@@ -9855,6 +9918,8 @@ export interface SyncStatus {
   currentItem?: string;
   logId?: number | null;
   dryRun?: boolean;
+  /** The step the run is on, of how many, and how far through it (#1356), for a run that reports through the shared shape. */
+  operation?: OperationProgressAnswer;
   /**
      * Sent only for a run this server does not hold, read from its log row: when that run last wrote its progress. It cannot be cancelled from here.
      * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
