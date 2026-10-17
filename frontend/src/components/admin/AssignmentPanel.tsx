@@ -46,6 +46,7 @@ import {
 import { fetchWorldViews } from '../../api/worldViews';
 import { useAuth } from '../../hooks/useAuth';
 import { queryKeys } from '../../api/queryKeys';
+import { OperationProgressView } from './OperationProgressView';
 import { LOST_TOUCH_AFTER_MS } from './useSyncStatusPolling';
 
 /** What the panel says when a run it was following was lost to a restart. */
@@ -244,10 +245,16 @@ export function AssignmentPanel() {
 
           {isRunning && status && (
             <Box sx={{ mt: 3 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-                <Typography variant="body2">{status.statusMessage}</Typography>
-              </Box>
-              <LinearProgress />
+              {status.operation ? (
+                <OperationProgressView operation={status.operation} starting={status.statusMessage ?? ''} />
+              ) : (
+                <>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                    <Typography variant="body2">{status.statusMessage}</Typography>
+                  </Box>
+                  <LinearProgress />
+                </>
+              )}
               <Box sx={{ display: 'flex', gap: 3, mt: 2 }}>
                 <Box>
                   <Typography variant="h5">{status.directAssignments || 0}</Typography>

@@ -947,6 +947,71 @@ export const AssignmentStatusStatus = {
 } as const;
 
 /**
+ * The step an operation is on.
+ */
+export interface OperationStepAnswer {
+  /**
+     * 1-based, of `count`. A step a run skips is not announced, so it can jump.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  index: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  count: number;
+  /** What the step is doing, in the words the panel shows. */
+  sentence: string;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  done: number;
+  /**
+     * 0 while the step cannot say how much it has to do.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  total: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  elapsedSeconds: number;
+}
+
+/**
+ * An outside service is holding the run: a rate limit or a retry.
+ */
+export type OperationProgressAnswerWait = {
+  /** Who is holding the run, and why. */
+  sentence: string;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  secondsLeft: number;
+} | null;
+
+/**
+ * How far a long admin operation is.
+ */
+export interface OperationProgressAnswer {
+  /**
+     * Since the operation started.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  elapsedSeconds: number;
+  /** A cancel was asked: the run stops at the next point it can, usually when the step in flight ends. */
+  cancelling: boolean;
+  step: OperationStepAnswer | null;
+  /** An outside service is holding the run: a rate limit or a retry. */
+  wait: OperationProgressAnswerWait;
+}
+
+/**
  * A world view's placement as it stands. Only `running` is sent while no run is known since the server started.
  */
 export interface AssignmentStatus {
@@ -976,6 +1041,8 @@ export interface AssignmentStatus {
      * @maximum 9007199254740991
      */
   errors?: number;
+  /** The step the run is on, of how many, and how long it has run (#1356). */
+  operation?: OperationProgressAnswer;
 }
 
 /**
@@ -6692,69 +6759,6 @@ export interface NewBadgesSeenBody {
      * @items.exclusiveMinimum 0
      */
   experienceIds: number[];
-}
-
-/**
- * An outside service is holding the run: a rate limit or a retry.
- */
-export type OperationProgressAnswerWait = {
-  /** Who is holding the run, and why. */
-  sentence: string;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  secondsLeft: number;
-} | null;
-
-/**
- * The step an operation is on.
- */
-export interface OperationStepAnswer {
-  /**
-     * 1-based, of `count`. A step a run skips is not announced, so it can jump.
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  index: number;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  count: number;
-  /** What the step is doing, in the words the panel shows. */
-  sentence: string;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  done: number;
-  /**
-     * 0 while the step cannot say how much it has to do.
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  total: number;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  elapsedSeconds: number;
-}
-
-/**
- * How far a long admin operation is.
- */
-export interface OperationProgressAnswer {
-  /**
-     * Since the operation started.
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  elapsedSeconds: number;
-  step: OperationStepAnswer | null;
-  /** An outside service is holding the run: a rate limit or a retry. */
-  wait: OperationProgressAnswerWait;
 }
 
 /**
