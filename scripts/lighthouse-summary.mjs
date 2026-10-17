@@ -173,13 +173,14 @@ function resourceBytes(lhr, resourceType) {
 
 /**
  * A resource-summary row is bytes for `<type>:size` and a request count for
- * `<type>:count`; the unit follows the property, not the audit.
+ * `<type>:count`; the unit follows the property, not the audit. A
+ * `requests-except` row (the network-requests audit, ADR-0118) reads the same way.
  */
 function formatValue({ auditId, auditProperty }, value) {
   if (!Number.isFinite(value)) {
     return String(value);
   }
-  if (auditId.startsWith('resource-summary')) {
+  if (auditId.startsWith('resource-summary') || auditId === 'network-requests') {
     return auditProperty?.endsWith(':count') ? `${value} requests` : formatBytes(value);
   }
   if (auditId.startsWith('categories:')) {
