@@ -14,6 +14,10 @@ import { createInitialProgress } from './types.js';
 import { defaultMatchingPolicy, type ImportSourceType } from './sourceTypes.js';
 import { buildBaseLayerTree } from './baseLayerImporter.js';
 import { runSpatialPass, spatialSentence, type SpatialPassSummary } from './spatialPass.js';
+import { Operation } from '../operationProgress.js';
+
+/** An import's and a re-match's steps, as their progress counts them (#1356). */
+export const MATCH_RUN_STEPS = { first: 1, names: 2, spatial: 3 } as const;
 
 export type { ImportTreeNode, ImportProgress, MatchSuggestion, MatchingPolicy } from './types.js';
 export { matchCountryLevel } from './matcher.js';
@@ -38,6 +42,7 @@ let nextOpId = 1;
 function reserveImportSlot(): { opId: string; progress: ImportProgress } {
   const opId = `wv-import-${nextOpId++}`;
   const progress = createInitialProgress();
+  progress.operation = new Operation(`[WV Import] ${opId}:`, Object.keys(MATCH_RUN_STEPS).length);
   runningImports.set(opId, progress);
   return { opId, progress };
 }
@@ -156,6 +161,7 @@ export function cancelImport(opId?: string): boolean {
     const progress = runningImports.get(opId);
     if (progress && (progress.status === 'importing' || progress.status === 'matching')) {
       progress.cancel = true;
+      progress.operation?.cancel();
       return true;
     }
     return false;
@@ -164,6 +170,7 @@ export function cancelImport(opId?: string): boolean {
   for (const progress of runningImports.values()) {
     if (progress.status === 'importing' || progress.status === 'matching') {
       progress.cancel = true;
+      progress.operation?.cancel();
       return true;
     }
   }
@@ -184,8 +191,18 @@ export async function runMatchingPolicy(
   worldViewId: number,
   progress: ImportProgress,
 ): Promise<MatchOutcome> {
-  if (policy === 'hierarchical') await matchHierarchical(worldViewId, progress);
-  else await matchCountryLevel(worldViewId, progress);
+  if (policy === 'hierarchical') {
+    progress.operation?.step(MATCH_RUN_STEPS.names, 'Matching the regions to GADM by name', 0,
+      () => ({ done: progress.matchDone, total: progress.matchTotal }));
+    await matchHierarchical(worldViewId, progress);
+  } else {
+    // The country walk finds its countries as it goes and counts only the ones
+    // it matched outright, so it has no total to measure against: the step
+    // says how many it has matched, under an indeterminate bar.
+    progress.operation?.step(MATCH_RUN_STEPS.names, 'Matching the countries to GADM by name', 0,
+      () => ({ done: progress.countriesMatched, total: 0 }));
+    await matchCountryLevel(worldViewId, progress);
+  }
   // A cancel the policy saw: its results may not be written, so the run is cancelled.
   if (progress.cancel) return { cancelled: true, spatial: null };
   // What names could not match, the item's shape or points may (#622). A cancel
@@ -195,6 +212,8 @@ export async function runMatchingPolicy(
   // back once the pass has used the line; the pass's outcome is the caller's to
   // add (`spatialSentence`).
   const policyMessage = progress.statusMessage;
+  progress.operation?.step(MATCH_RUN_STEPS.spatial, 'Scoring the leaves the names left by their shape and points', 0,
+    () => ({ done: progress.matchDone, total: progress.matchTotal }));
   const spatial = await runSpatialPass(worldViewId, progress);
   progress.statusMessage = policyMessage;
   return { cancelled: false, spatial };
@@ -225,13 +244,12 @@ async function runImport(
 
   try {
     // Phase 1: Import tree into WorldView
-    console.log(`[WV Import] ${opId} Phase 1: Importing tree into WorldView...`);
+    progress.operation?.step(MATCH_RUN_STEPS.first, 'Creating the regions', 0,
+      () => ({ done: progress.createdRegions, total: progress.totalRegions }));
     const worldViewId = await importTree(tree, name, progress, importOptions);
-    const phase1Duration = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(`[WV Import] ${opId} Phase 1 complete: ${progress.createdRegions} regions created in ${phase1Duration}s (worldViewId=${worldViewId})`);
 
     if (progress.cancel) {
-      console.log(`[WV Import] ${opId} Cancelled after phase 1`);
+      progress.operation?.finish('cancelled after creating the regions');
       return;
     }
 
@@ -245,12 +263,9 @@ async function runImport(
       );
       progress.status = 'complete';
       progress.statusMessage = `Import complete: ${progress.createdRegions} regions created (matching skipped)`;
-      console.log(`[WV Import] ${opId} Complete (no matching): ${progress.createdRegions} regions`);
+      progress.operation?.finish(progress.statusMessage);
     } else {
-      const phase2Start = Date.now();
-      console.log(`[WV Import] ${opId} Phase 2: Matching to GADM (policy=${matchingPolicy})...`);
       const { cancelled, spatial } = await runMatchingPolicy(matchingPolicy, worldViewId, progress);
-      const phase2Duration = ((Date.now() - phase2Start) / 1000).toFixed(1);
 
       if (!cancelled) {
         // Mark import run as ready for admin review
@@ -260,7 +275,6 @@ async function runImport(
           [worldViewId],
         );
         progress.status = 'complete';
-        const totalDuration = ((Date.now() - startTime) / 1000).toFixed(1);
         // Same reason as the re-match path: only the country policy fills the
         // country-named counters, so only it can be summarised in their terms.
         // Rebuilding this sentence for every policy overwrote a base-layer
@@ -272,14 +286,15 @@ async function runImport(
           ? `Import complete: ${progress.createdRegions} regions, ${progress.countriesMatched} countries matched (${progress.subdivisionsDrilled} with subdivisions), ${progress.noCandidates} unmatched leaves`
           : `Import complete: ${progress.createdRegions} regions. ${progress.statusMessage}`;
         if (spatial) progress.statusMessage += spatialSentence(spatial);
-        console.log(`[WV Import] ${opId} Complete in ${totalDuration}s (phase2=${phase2Duration}s): ${progress.statusMessage}`);
+        progress.operation?.finish(progress.statusMessage);
       } else {
-        console.log(`[WV Import] ${opId} Cancelled during phase 2`);
+        progress.operation?.finish('cancelled while matching by name');
       }
     }
   } catch (err) {
     progress.status = 'failed';
     progress.statusMessage = 'Import failed; the server log has the cause.';
+    progress.operation?.finish('failed');
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- opId is generated here as wv-import-<counter> and the elapsed time is a number
     console.error(`[WV Import] Import ${opId} failed after ${((Date.now() - startTime) / 1000).toFixed(1)}s:`, err);
   } finally {

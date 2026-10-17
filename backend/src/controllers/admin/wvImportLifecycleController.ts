@@ -17,6 +17,7 @@ import {
   cancelImport,
 } from '../../services/worldViewImport/index.js';
 import { IMPORT_SOURCE_TYPES_ALL } from '../../services/worldViewImport/sourceTypes.js';
+import { operationAnswer } from '../../services/operationProgress.js';
 import { userAgent } from '../../config/userAgent.js';
 
 // =============================================================================
@@ -171,6 +172,7 @@ export async function getWorldViewImportStatus(): Promise<ImportStatus> {
       matchTotal: progress.matchTotal,
       matchDone: progress.matchDone,
       worldViewId: progress.worldViewId,
+      ...(progress.operation ? { operation: operationAnswer(progress.operation.progress) } : {}),
       importedWorldViews,
     };
   }

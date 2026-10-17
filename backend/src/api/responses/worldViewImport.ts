@@ -16,6 +16,7 @@ import { MATCH_STATUSES } from '@tyr/shared/runStatuses';
 import { z } from 'zod/v4';
 import { AreaGeometry } from './regions.js';
 import { ImportedWorldView } from './wikivoyageExtract.js';
+import { OperationProgressAnswer } from './operation.js';
 
 // ---------------------------------------------------------------------------
 // An import, started and followed
@@ -43,6 +44,7 @@ export const ImportStatus = z.strictObject({
     .describe('How many regions the matching phase looks at, under a policy that matches regions rather than countries.'),
   matchDone: z.number().int().optional().describe('How many of those it has looked at.'),
   worldViewId: z.number().int().nullable().optional().describe('The world view the import creates, once it exists.'),
+  operation: OperationProgressAnswer.optional().describe('The step the import is on, of the three, and how far through it (#1356).'),
   importedWorldViews: z.array(ImportedWorldView).describe('Every imported world view, newest first, finished ones included.'),
 }).describe('The latest import as it stands, and the imported world views. Only `running` and the list are sent while no import is known since the server started.');
 export type ImportStatus = z.infer<typeof ImportStatus>;
@@ -211,6 +213,7 @@ export const RematchStatus = z.strictObject({
   countriesMatched: z.number().int().optional(),
   totalCountries: z.number().int().optional(),
   noCandidates: z.number().int().optional(),
+  operation: OperationProgressAnswer.optional().describe('The step the re-match is on, of the three, and how far through it (#1356).'),
 }).describe('A world view\'s re-match as it stands.');
 export type RematchStatus = z.infer<typeof RematchStatus>;
 
