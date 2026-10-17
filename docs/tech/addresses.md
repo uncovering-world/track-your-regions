@@ -311,10 +311,9 @@ round trip. The test is what stops a parameter being added in one direction only
 - The smoke specs open the fixture region directly (`/wv/9001/r/9001`), and
   `addresses.smoke.spec.ts` covers the deep link, the canonical rewrite, Back,
   the legacy form and the silent degradation.
-- The performance lane can audit a region page and a card page as page loads
-  rather than only the map view and Discover shells — #669 puts them in the budgets files, with
-  the measurement to size them against; #646 and #647 build on the same
-  addresses.
+- The performance lane loads a region page and a card page as well as the map view and
+  Discover shells (#669, `docs/tech/performance.md` § The region and card pages); #646 and
+  #647 build on the same addresses.
 
 ## What is not addressed
 
