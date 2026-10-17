@@ -49,6 +49,26 @@ describe('OperationProgressView', () => {
     expect(screen.getByText('Step 2 of 4')).toBeInTheDocument();
   });
 
+  it('counts a step with no total by what it has done so far', () => {
+    render(<OperationProgressView starting="" operation={{
+      elapsedSeconds: 8, cancelling: false,
+      step: { index: 2, count: 3, sentence: 'Matching the countries to GADM by name', done: 218, total: 0, elapsedSeconds: 8 },
+      wait: null,
+    }} />);
+
+    expect(screen.getByText('218 so far · this step 8 s')).toBeInTheDocument();
+  });
+
+  it('says the run\'s own sentence under the step when it says more', () => {
+    render(<OperationProgressView starting="" detail="Loading divisions into memory..." operation={{
+      elapsedSeconds: 8, cancelling: false,
+      step: { index: 2, count: 3, sentence: 'Matching the countries to GADM by name', done: 0, total: 0, elapsedSeconds: 2 },
+      wait: null,
+    }} />);
+
+    expect(screen.getByText('Loading divisions into memory...')).toBeInTheDocument();
+  });
+
   it('says what the run is doing before its first step opens', () => {
     render(<OperationProgressView starting="Reading the components no Wikidata item records..." operation={{ elapsedSeconds: 0, cancelling: false, step: null, wait: null }} />);
 

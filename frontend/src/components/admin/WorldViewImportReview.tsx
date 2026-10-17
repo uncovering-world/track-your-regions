@@ -42,11 +42,12 @@ import {
   splitDivisionsDeeper,
   visionMatchDivisions,
 } from '../../api/admin/worldViewImport';
-import type { CoverageResult } from '../../api/admin/worldViewImport';
+import type { CoverageResult, RematchStatus } from '../../api/admin/worldViewImport';
 
 import { WorldViewImportTree } from './WorldViewImportTree';
 import { CoverageResolveDialog } from './CoverageResolveDialog';
 import { type ShadowInsertion } from './treeNodeShared';
+import { OperationProgressView } from './OperationProgressView';
 import { queryKeys } from '../../api/queryKeys';
 import { plural } from '../../utils/plural';
 
@@ -678,11 +679,7 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
       )}
 
       {/* Re-match progress */}
-      {rematchRunning && rematchStatus && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          {rematchStatus.statusMessage}
-        </Alert>
-      )}
+      {rematchRunning && rematchStatus && <RematchProgress status={rematchStatus} />}
       {rematchStatus?.status === 'complete' && rematchStatus.statusMessage && (
         <Alert severity="success" sx={{ mb: 2 }}>
           {rematchStatus.statusMessage}
@@ -767,5 +764,16 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
         onRecheck={runCoverageCheck}
       />
     </Box>
+  );
+}
+
+/** A running re-match: its step, of the three, and how far through it (#1356). */
+function RematchProgress({ status }: { status: RematchStatus }) {
+  return (
+    <Alert severity="info" sx={{ mb: 2 }}>
+      {status.operation
+        ? <OperationProgressView operation={status.operation} starting={status.statusMessage ?? ''} detail={status.statusMessage} />
+        : status.statusMessage}
+    </Alert>
   );
 }

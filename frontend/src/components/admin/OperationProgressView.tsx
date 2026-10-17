@@ -15,9 +15,14 @@ interface OperationProgressViewProps {
   operation: OperationProgressAnswer;
   /** Said until the first step opens. */
   starting: string;
+  /**
+   * The run's own latest sentence, said under the step when it says more than
+   * the step does ("Loading divisions into memory...").
+   */
+  detail?: string;
 }
 
-export function OperationProgressView({ operation, starting }: OperationProgressViewProps) {
+export function OperationProgressView({ operation, starting, detail }: OperationProgressViewProps) {
   const { step, wait } = operation;
   const measurable = !!step && step.total > 0;
   const percent = measurable ? Math.min(100, Math.round((step.done / step.total) * 100)) : 0;
@@ -39,8 +44,12 @@ export function OperationProgressView({ operation, starting }: OperationProgress
       {step && (
         <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
           {measurable ? `${step.done.toLocaleString()} of ${step.total.toLocaleString()} · ` : ''}
+          {!measurable && step.done > 0 ? `${step.done.toLocaleString()} so far · ` : ''}
           this step {elapsedText(step.elapsedSeconds)}
         </Typography>
+      )}
+      {step && detail && detail !== step.sentence && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>{detail}</Typography>
       )}
       {operation.cancelling && (
         <Typography variant="caption" color="warning.main" sx={{ mt: 0.5, display: 'block' }} role="status">
