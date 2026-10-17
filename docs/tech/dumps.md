@@ -480,7 +480,10 @@ encoded rows sort apart from the plain one, so each is staged under the decoded
 title whatever its count, and the month's SQL sums them. `%uXXXX` writes UTF-16,
 so a character outside the Basic Multilingual Plane arrives as two surrogates
 (`%uD83D%uDE00`) and is one character; September 2026's file also carries lone
-surrogates, which are unreadable and become U+FFFD rather than failing the read.
+surrogates, which are unreadable and become U+FFFD rather than failing the read. A control
+character, which `%00` and its kind decode to and which no title can hold,
+becomes U+FFFD too: PostgreSQL refuses a NUL in text, and November 2025's file
+carries one.
 
 **Kept per item and edition.** The staged rows go to `readership_staging` in
 batches, and once the file is verified `keepMonth` (`readershipMonth.ts`) sums
