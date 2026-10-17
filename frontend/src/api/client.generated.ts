@@ -3975,7 +3975,7 @@ export const DumpsDumpsItemKeepsNewestChecked = {
 } as const;
 
 /**
- * What a keeping build of this dump makes (the local Wikidata subset), or null where nothing is built from it yet.
+ * What a keeping build of this dump makes (the local Wikidata subset, readership), or null where nothing is built from it yet.
  */
 export type DumpsDumpsItemKeeps = {
   title: string;
@@ -3990,6 +3990,12 @@ export type DumpsDumpsItemKeeps = {
   newestDumpDate: string | null;
   /** Whether the host has been asked for its newest dump since the backend started, and whether it answered the last time. */
   newestChecked: DumpsDumpsItemKeepsNewestChecked;
+  /** Whether what is kept can be derived again without the dump, which decides whether "Derive again" is offered. */
+  rederives: boolean;
+  /** Whether a sample of the local copy can be cut and the build tried on it, which decides whether "Cut a sample" and "Try the build" are offered. */
+  samples: boolean;
+  /** Whether a keeping build may start from the local copy rather than the newest file, which decides whether "Build <date> copy" is offered. */
+  fromCopy: boolean;
 } | null;
 
 /**
@@ -4032,7 +4038,7 @@ export type DumpsDumpsItem = {
   about: string;
   progress: DumpBuildProgress | null;
   builds: DumpBuild[];
-  /** What a keeping build of this dump makes (the local Wikidata subset), or null where nothing is built from it yet. */
+  /** What a keeping build of this dump makes (the local Wikidata subset, readership), or null where nothing is built from it yet. */
   keeps: DumpsDumpsItemKeeps;
   /** The newest local copy of the dump in DUMPS_DIR, which a build can read instead of the newest file the host lists (#1456); null without one. */
   localCopy: DumpsDumpsItemLocalCopy;
