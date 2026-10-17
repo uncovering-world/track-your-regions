@@ -45,6 +45,7 @@ import { WikidataCacheSection } from './WikidataCacheSection';
 import { SourceLastRunNote } from './SourceLastRunNote';
 import { useSyncStatusPolling } from './useSyncStatusPolling';
 import { RUN_WORDS, type RunKind } from './syncRunKinds';
+import { OperationProgressView } from './OperationProgressView';
 import { queryKeys } from '../../api/queryKeys';
 
 export function SyncPanel() {
@@ -349,14 +350,22 @@ function SourceCard({ source }: SourceCardProps) {
 
         {isRunning && status && (
           <Box sx={{ mb: 2 }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
-              <Typography variant="body2">{status.statusMessage}</Typography>
-              <Typography variant="body2">{measurable ? `${progress}%` : 'Collecting…'}</Typography>
-            </Box>
-            <LinearProgress
-              variant={measurable ? 'determinate' : 'indeterminate'}
-              value={measurable ? progress : undefined}
-            />
+            {/* A run that reports through the shared shape (#1356) says its
+                step and how far through it; the others still say a percent. */}
+            {status.operation ? (
+              <OperationProgressView operation={status.operation} starting={status.statusMessage ?? ''} />
+            ) : (
+              <>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1 }}>
+                  <Typography variant="body2">{status.statusMessage}</Typography>
+                  <Typography variant="body2">{measurable ? `${progress}%` : 'Collecting…'}</Typography>
+                </Box>
+                <LinearProgress
+                  variant={measurable ? 'determinate' : 'indeterminate'}
+                  value={measurable ? progress : undefined}
+                />
+              </>
+            )}
             {status.currentItem && (
               <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
                 {status.currentItem}

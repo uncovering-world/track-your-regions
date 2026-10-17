@@ -30,7 +30,7 @@ import {
 export type {
   AssignmentCancelled, AssignmentStarted, AssignmentStatus, ChangedField, ComponentItemSearchStarted, CuratorActivity, CuratorActivityEntry,
   CuratorAssignmentCreated, CuratorAssignmentRevoked, CuratorInfo, Curators, CuratorScope, CurationGateSet,
-  ExperienceSource, ExperienceSources, PictureRepairStarted, PlacementCount, PlacementCounts,
+  ExperienceSource, ExperienceSources, OperationProgressAnswer, OperationStepAnswer, PictureRepairStarted, PlacementCount, PlacementCounts,
   PublishedWaitingObject, PublishWaitingResult, RefusedWaitingObject, SourceLineSet, SourcesReordered,
   SyncCancelled, SyncChange, SyncChanges, SyncContentItem, SyncContentsDelta, SyncErrorDetail, SyncLastRun,
   SyncLog, SyncLogDetail, SyncLogs, SyncStarted, SyncStatus, UserSearchResult, UserSearchResults, WaitingCounts,
