@@ -210,12 +210,12 @@ const COMPONENT_ITEM_PROPOSAL_WRITE_RULES = spelledWriteRules('experience_compon
 
 /**
  * Two near places with similar names proposed as one place (#1249): proposed
- * by the pass (`services/sync/mergeProposalFinder.ts`); the curator's answer
- * gets a writer of its own, under the places' locks, when it arrives.
+ * by the pass (`services/sync/mergeProposalFinder.ts`), answered by the
+ * curator's writer (`mergeProposalAnswers.ts`) under both places' locks.
  */
 const MERGE_PROPOSAL_WRITE = 'experience_merge_proposals is written by its writer modules only (ADR-0077): the pass in '
-  + 'src/services/sync/mergeProposalFinder.ts proposes; an answer takes a named write in a writer module of its '
-  + 'own, taking the places\' LockedExperience tokens.';
+  + 'src/services/sync/mergeProposalFinder.ts proposes, and a curator answers through '
+  + 'src/controllers/experience/mergeProposalAnswers.ts, taking both places\' LockedExperience tokens.';
 const MERGE_PROPOSAL_WRITE_RULES = spelledWriteRules('experience_merge_proposals', MERGE_PROPOSAL_WRITE);
 
 /** Jev's suggestion for the sources card (#1260): `viewSuggestions.ts`. */
@@ -569,7 +569,7 @@ export default [
     },
   },
   {
-    files: ['src/services/sync/mergeProposalFinder.ts'],
+    files: ['src/controllers/experience/mergeProposalAnswers.ts', 'src/services/sync/mergeProposalFinder.ts'],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(MERGE_PROPOSAL_WRITE_RULES),
     },

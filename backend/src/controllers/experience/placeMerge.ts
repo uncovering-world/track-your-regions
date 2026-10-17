@@ -26,6 +26,7 @@ import { moveConflictDecisions } from './conflictDecisions.js';
 import { foldPoints, movePoints, unfoldPoints, type FoldedPoints } from './experienceLocationWriter.js';
 import { moveHeldDecisions } from './heldDecisions.js';
 import { moveMemberships } from './membershipWriter.js';
+import { reopenMergedPair } from './mergeProposalAnswers.js';
 import { placeAfterRelease } from './publishContents.js';
 import { moveViewChoices } from './viewChoices.js';
 import { foldLinks, moveLinks, unfoldLinks, type FoldedLinks } from './workWriter.js';
@@ -359,6 +360,10 @@ export async function undoMerge(
     }
     await moveEverythingBack(client, merge.moved, folded.lock, survivor.lock);
     await markFolded(client, folded.lock, null);
+    // A pair a curator answered *one place* ran this merge (#1249): apart
+    // again, the two are a question again, or the record would say one place
+    // of two places and the pass would never ask.
+    await reopenMergedPair(client, { a: survivor.lock, b: folded.lock }, mergeId);
     await client.query(
       'UPDATE experience_merges SET undone_at = NOW(), undone_by = $2 WHERE id = $1', [mergeId, userId],
     );

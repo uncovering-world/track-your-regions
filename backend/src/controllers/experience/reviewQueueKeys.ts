@@ -61,8 +61,8 @@ import { contentsWaitingSql, linkMembershipSql, pointMembershipSql, unreadLinkSq
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import {
   arrivalOpenSql, claimKeySql, componentItemsOpenSql, conflictChangeOpenSql, heldOpenSql,
-  membershipMissingOpenSql, missingOpenSql, openProposalSql, pinQuestionOpenSql, refusedOpenSql, sourcesOpenSql,
-  withdrawnContainerOpenSql, withdrawnPointOpenSql,
+  membershipMissingOpenSql, mergeProposalOpenSql, missingOpenSql, openProposalSql, pinQuestionOpenSql, refusedOpenSql,
+  sourcesOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql,
 } from './reviewQueuePredicates.js';
 import { answeringPlaceSql, pointsShownSql } from '../../db/placePoints.js';
 
@@ -74,13 +74,15 @@ import { answeringPlaceSql, pointsShownSql } from '../../db/placePoints.js';
  * what has left, then the two verdicts a rule already took. Last, the
  * candidate items of a site's components (#1272): every other question hides
  * or misdescribes something readers see, and this one adds what a component's
- * item would give it. A pin a run no longer agrees with (#1367) comes after
- * all: the place is as a curator left it, and the question is whether that
- * answer still stands.
+ * item would give it. Then two near places with similar names (#1249): nothing
+ * is wrong on either card, and the question is whether readers should see one
+ * card or two. A pin a run no longer agrees with (#1367) comes after all: the
+ * place is as a curator left it, and the question is whether that answer still
+ * stands.
  */
 export const KIND_RANK: Record<QueueKind, number> = {
   conflict: 1, sources: 2, waiting: 3, withdrawn: 4, refused: 5, missing: 6, 'component-items': 7,
-  'pin-question': 8,
+  'merge-proposals': 8, 'pin-question': 9,
 };
 
 // The words a `kind` chip may carry, and the only ones, are `QUEUE_KINDS` and
@@ -402,6 +404,27 @@ function componentItemsKeysSql(membershipScopeFilter: string): string {
     JOIN ${MEMBERSHIPS} m ON m.id = pl.membership_id
     WHERE ${openProposalSql('p', 'el')}
       AND ${componentItemsOpenSql('e')}
+      AND ${membershipScopeFilter}
+    GROUP BY e.id, e.name`;
+}
+
+/**
+ * Two near places with similar names nobody has answered (#1249,
+ * `mergeProposalOpenSql`): one row per place that stays if the two are made
+ * one — the lower id, `place_a`, which anchors the card and a batch's row — in
+ * scope by the source of any membership of either place, since a curator of
+ * either may say what the two are, and dated by the newest proposal; the pass
+ * is an admin's and names no run, so the row is never set aside with a batch.
+ */
+function mergeProposalsKeysSql(membershipScopeFilter: string): string {
+  return `
+    SELECT 'merge-proposals', ${KIND_RANK['merge-proposals']}, e.id, e.name, array_agg(DISTINCT m.source_id), NULL,
+           max(p.proposed_at), ARRAY[]::text[]
+    FROM experience_merge_proposals p
+    JOIN experiences e ON e.id = p.place_a
+    JOIN experiences b ON b.id = p.place_b
+    JOIN ${MEMBERSHIPS} m ON m.experience_id IN (p.place_a, p.place_b)
+    WHERE ${mergeProposalOpenSql('p', 'e', 'b')}
       AND ${membershipScopeFilter}
     GROUP BY e.id, e.name`;
 }
@@ -738,6 +761,7 @@ export async function queryQueueKeys(
     UNION ALL${refusedKeysSql(membershipScopeFilter)}
     UNION ALL${missingKeysSql(scopeFilter, membershipScopeFilter)}
     UNION ALL${componentItemsKeysSql(membershipScopeFilter)}
+    UNION ALL${mergeProposalsKeysSql(membershipScopeFilter)}
     UNION ALL${pinQuestionKeysSql(membershipScopeFilter)}
   )
 , searched AS (

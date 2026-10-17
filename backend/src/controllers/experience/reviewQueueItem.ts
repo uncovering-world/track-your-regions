@@ -10,8 +10,9 @@
  */
 
 import type {
-  ChangedField, ComponentItemProposal, CountedWork, AnsweredPoint, HeldPart, PendingPoint, PendingWork, PinQuestion,
-  ProposedField, QuietField, RefusedPoint, RefusedWork, ReviewQueueItem, SitePoint, SourceViewField, WithdrawnPoint,
+  ChangedField, ComponentItemProposal, CountedWork, AnsweredPoint, HeldPart, MergePair, PendingPoint, PendingWork,
+  PinQuestion, ProposedField, QuietField, RefusedPoint, RefusedWork, ReviewQueueItem, SitePoint, SourceViewField,
+  WithdrawnPoint,
 } from '../../api/responses/reviewQueue.js';
 import type { ImageCredit } from '../../api/responses/experiences.js';
 import type { CheckValue } from '../../db/schema.generated.js';
@@ -81,6 +82,8 @@ export interface QueueRow {
   quiet_fields?: QuietField[];
   component_items?: ComponentItemProposal[] | null;
   site_points?: SitePoint[] | null;
+  /** The open pairs of a `merge-proposals` card (#1249). */
+  merge_pairs?: MergePair[] | null;
   /** Postgres's jsonb renders the dates as strings, in the schema's shape. */
   pin_question?: PinQuestion | null;
 }
@@ -204,6 +207,7 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     quiet_fields: row.quiet_fields,
     component_items: row.component_items,
     site_points: row.site_points,
+    merge_pairs: row.merge_pairs,
     pin_question: row.pin_question,
   };
 }

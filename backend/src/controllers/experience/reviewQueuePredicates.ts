@@ -229,6 +229,21 @@ export function componentItemsOpenSql(e = 'e'): string {
 }
 
 /**
+ * `merge-proposals`: a pair of near places with similar names nobody has
+ * answered (#1249, ADR-0046 decision 2), on a proposal `p` whose places are
+ * `a` (the lower id, which stays) and `b`. Open while unanswered and while
+ * both places are still offered and unmerged: a pair one side of which a
+ * run took away, or an equal-item merge already made one, asks nothing. The
+ * keys phase, the hydration (`reviewQueueMergeProposals.ts`) and the answer
+ * (`mergeProposalController.ts`) read it alike.
+ */
+export function mergeProposalOpenSql(p = 'p', a = 'a', b = 'b'): string {
+  return `${p}.answer IS NULL
+    AND ${a}.merged_into_id IS NULL AND ${b}.merged_into_id IS NULL
+    AND ${experienceOfferedToReaderSql(a)} AND ${experienceOfferedToReaderSql(b)}`;
+}
+
+/**
  * `pin-question`: a curator's admission pin a run no longer agrees with
  * (#1367, `questionPins`), on a membership `m`. The row's admission is the
  * curator's answer and stays so until someone answers the question; a pin

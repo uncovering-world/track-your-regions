@@ -431,6 +431,23 @@ export const answerComponentItemsBodySchema = z.object({
   }),
 });
 
+/**
+ * A curator's answer to pairs of near places with similar names (#1249): per
+ * pair, one place, two places, or one part of the other — which names the
+ * part. Bounded by what one place can have open: a handful of near places.
+ */
+export const answerMergeProposalsBodySchema = z.object({
+  answers: z.array(z.object({
+    proposalId: bodyRowIdSchema,
+    answer: z.enum(CHECK_VALUES.experience_merge_proposals.answer),
+    partId: bodyRowIdSchema.optional(),
+  }).refine(one => (one.answer === 'part_of') === (one.partId !== undefined), {
+    message: 'Part of names the part, and no other answer does',
+  })).min(1).max(100).refine(answers => new Set(answers.map(one => one.proposalId)).size === answers.length, {
+    message: 'Each pair is answered once',
+  }),
+});
+
 /** `/api/experiences/merges/:mergeId…` — a merge of two places (ADR-0086). */
 export const mergeIdParamSchema = z.object({
   mergeId: rowIdSchema,

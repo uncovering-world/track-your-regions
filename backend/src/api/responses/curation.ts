@@ -376,6 +376,21 @@ export const ComponentItemsAnswered = z.strictObject({
 }).describe("A curator's answer to the candidate Wikidata items of a site's components (#1272).");
 export type ComponentItemsAnswered = z.infer<typeof ComponentItemsAnswered>;
 
+export const MergeProposalsAnswered = z.strictObject({
+  experienceId: z.number().int().describe('The place the card is about: the lower id of each pair, which stays.'),
+  merged: z.array(z.strictObject({
+    proposalId: z.number().int(),
+    mergeId: z.number().int().describe('The merge the answer ran, which the history can undo.'),
+  })).describe('Pairs answered one place: the other place is folded into this one. A merge that committed is listed here whatever happened after it; where its answer could not be recorded, the same pair is in `refused` too, with why.'),
+  two: z.number().int().describe('Pairs answered two places: kept apart, never proposed again.'),
+  partOf: z.number().int().describe('Pairs answered one part of the other: recorded on the proposal, nothing merged.'),
+  refused: z.array(z.strictObject({
+    proposalId: z.number().int(),
+    error: z.string(),
+  })).describe('Pairs the answer could not be written for — answered meanwhile, a merge the catalogue refused, or a pair outside the caller\'s sources — each with why; the others stand. A pair also in `merged` was merged and its answer not recorded: one pair, not two.'),
+}).describe("A curator's answer to pairs of near places with similar names (#1249).");
+export type MergeProposalsAnswered = z.infer<typeof MergeProposalsAnswered>;
+
 export const ViewSuggestions = z.strictObject({
   configured: z.boolean().describe('Whether this deployment asks Jev at all. False: no suggestion, nothing else changes.'),
   suggestions: z.array(z.strictObject({

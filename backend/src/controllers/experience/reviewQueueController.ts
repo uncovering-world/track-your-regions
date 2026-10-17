@@ -29,6 +29,7 @@ import {
 import { queryRefusedParts } from './reviewQueueRefusedParts.js';
 import { querySources } from './reviewQueueSources.js';
 import { queryComponentItems } from './reviewQueueComponentItems.js';
+import { queryMergeProposals } from './reviewQueueMergeProposals.js';
 import { queryPinQuestions } from './reviewQueuePinQuestions.js';
 import { queryConflicts } from './reviewQueueConflicts.js';
 import {
@@ -432,6 +433,11 @@ export async function getReviewQueue(
   // hydrated by the page's ids as the sources card is.
   const componentItemsIds = idsOf('component-items');
   const componentItems = await hydrate(componentItemsIds, () => queryComponentItems(componentItemsIds));
+  // Two near places with similar names (#1249), one card per place that would
+  // stay, hydrated by the page's ids; the keys phase scoped the row by either
+  // place's sources.
+  const mergeProposalIds = idsOf('merge-proposals');
+  const mergeProposals = await hydrate(mergeProposalIds, () => queryMergeProposals(mergeProposalIds));
   // A curator's admission pin a run no longer agrees with (#1367), one card
   // per place with a question per membership, scoped per membership as the
   // refusal card is.
@@ -597,6 +603,7 @@ export async function getReviewQueue(
     conflicts: cards(conflicts),
     sources: cards(sources),
     componentItems: cards(componentItems),
+    mergeProposals: cards(mergeProposals),
     pinQuestions: cards(pinQuestions),
     arrivals: cards(arrivals),
     held: cards(held),

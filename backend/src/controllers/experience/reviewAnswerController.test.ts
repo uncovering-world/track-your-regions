@@ -31,6 +31,9 @@ vi.mock('./componentItemController.js', () => ({
   answerComponentItems: vi.fn(), answerComponentItemsUnderLock: vi.fn(), candidateItems: vi.fn(),
   componentItemsScope: vi.fn(), openCandidates: vi.fn(), readItemContents: vi.fn(),
 }));
+vi.mock('./mergeProposalController.js', () => ({
+  answerMergeProposals: vi.fn(), answerMergeProposalsOneByOne: vi.fn(), mergeProposalsScope: vi.fn(), openPairs: vi.fn(),
+}));
 
 import { pool } from '../../db/index.js';
 import {

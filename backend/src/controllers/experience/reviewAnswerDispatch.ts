@@ -18,6 +18,7 @@
  * | conflict | take the source's value for every open field | keep ours for every open field | — |
  * | sources | refused: which source is chosen on the card | keep what the place shows for every open field | — |
  * | component-items | confirm the exact candidates: the same name at the same spot | turn down every open candidate | — |
+ * | merge-proposals | make the exact pairs one place: the same name within fifty metres | keep every open pair two places | — |
  * | pin-question | refused: a pin is a person's answer, answered on its card | refused, the same | — |
  * | refused | keep it out (confirm, unpinned) | put it back for now (override, unpinned; publishes an arrival) | — |
  * | missing | former: delisted, still there | the object stays: false alarm | no longer exists |
@@ -36,6 +37,7 @@ import { chooseViewsUnderLock, keepingChoices } from './viewChoiceController.js'
 import {
   answerComponentItemsUnderLock, candidateItems, openCandidates, readItemContents,
 } from './componentItemController.js';
+import { answerMergeProposalsOneByOne, openPairs } from './mergeProposalController.js';
 import { pool } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import { acceptSourceUnderLock } from './acceptSourceController.js';
@@ -103,6 +105,7 @@ export async function answerRow(
     case 'conflict': return answerConflict(who, answer);
     case 'sources': return answerSources(who, answer);
     case 'component-items': return answerComponentItems(who, answer);
+    case 'merge-proposals': return answerMergeProposals(who, answer);
     // A pin is a person's answer to one row, and a batch neither makes one nor
     // takes one back (ADR-0067, ADR-0096): the card asks it (#1367).
     case 'pin-question': return refused(409, 'A pin is answered on its own card, where the curator\'s answer and the run\'s are read side by side');
@@ -285,6 +288,33 @@ async function answerComponentItems(who: Answerer, answer: Answer): Promise<Outc
   const outcome = await answerComponentItemsUnderLock(experienceId, userId, logRegionId, answers, contents);
   if (outcome.refusal) return refusedBy(outcome.refusal);
   return { did: { items: outcome.result!.accepted + outcome.result!.refused } };
+}
+
+/**
+ * Two near places with similar names (#1249). A batch makes one place only of
+ * the exact pairs — one and the same name within fifty metres — and keeps
+ * every open pair two places; which is the part, and a pair that is alike but
+ * not the same name, are judged on the card, pair by pair. Through the card's
+ * own writer, each pair its own act; a batch whose every pair was refused is
+ * the row refused with the first reason.
+ */
+async function answerMergeProposals(who: Answerer, answer: Answer): Promise<Outcome> {
+  const { experienceId, userId, logRegionId } = who;
+  const ids = await openPairs(experienceId, answer === 'accept' ? 'exact' : 'all');
+  if (ids.length === 0) {
+    return answer === 'accept'
+      ? refused(409, 'No pair here is the same name at the same spot — answer on the place\'s card')
+      : refused(409, 'Already answered: this place has no near place waiting');
+  }
+  const verdict = answer === 'accept' ? 'one' : 'two';
+  // The sources the row's scope admitted the curator for (`mergeProposalsScope`,
+  // through `scopeOfRow`): each pair is held to them on its own.
+  const outcome = await answerMergeProposalsOneByOne(
+    experienceId, userId, logRegionId, ids.map(proposalId => ({ proposalId, answer: verdict })), who.scopedSourceIds ?? [],
+  );
+  const answered = outcome.merged.length + outcome.two + outcome.partOf;
+  if (answered === 0) return refused(409, outcome.refused[0]?.error ?? 'No pair could be answered');
+  return { did: { pairs: answered } };
 }
 
 /**

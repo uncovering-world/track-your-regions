@@ -11,7 +11,8 @@
 
 /** The classes of open question, in no order: `KIND_RANK` gives theirs. */
 export const QUEUE_KINDS = [
-  'conflict', 'sources', 'waiting', 'withdrawn', 'refused', 'missing', 'component-items', 'pin-question',
+  'conflict', 'sources', 'waiting', 'withdrawn', 'refused', 'missing', 'component-items', 'merge-proposals',
+  'pin-question',
 ] as const;
 export type QueueKind = (typeof QUEUE_KINDS)[number];
 
@@ -26,7 +27,7 @@ export type WaitingSub = (typeof WAITING_SUBS)[number];
  */
 export const QUEUE_ITEM_KINDS = [
   'missing', 'conflict', 'sources', 'refused', 'kept-out', 'arrival', 'held', 'contents',
-  'withdrawn', 'withdrawn-answered', 'contents-refused', 'component-items', 'pin-question',
+  'withdrawn', 'withdrawn-answered', 'contents-refused', 'component-items', 'merge-proposals', 'pin-question',
 ] as const;
 export type QueueItemKind = (typeof QUEUE_ITEM_KINDS)[number];
 

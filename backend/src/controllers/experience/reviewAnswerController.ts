@@ -30,6 +30,7 @@ import { pool } from '../../db/index.js';
 import type { reviewAnswerBodySchema } from '../../types/index.js';
 import { answeredSourceId, resolveEverySourceScope, resolveExperienceScope } from './experienceScope.js';
 import { componentItemsScope } from './componentItemController.js';
+import { mergeProposalsScope } from './mergeProposalController.js';
 import {
   answerRow, type AnswerRow,
 } from './reviewAnswerDispatch.js';
@@ -42,8 +43,9 @@ import {
 /**
  * The scope a row is answered in: its membership's source, the place's own,
  * every source of the place, or — for a site's candidate component items
- * (#1272) — a source that places such a point, never the membership the
- * client names, since the card's endpoint and the queue scope it that way.
+ * (#1272) — a source that places such a point, or for a pair of near places
+ * (#1249) a source of either place, never the membership the client names,
+ * since the card's endpoint and the queue scope it that way.
  */
 async function scopeOfRow(
   userId: number, userRole: Parameters<typeof resolveExperienceScope>[1],
@@ -51,6 +53,7 @@ async function scopeOfRow(
 ): Promise<{ permitted: boolean; logRegionId: number | null; sourceIds?: number[] }> {
   if (row.kind === 'sources') return resolveEverySourceScope(userId, userRole, row.id);
   if (row.kind === 'component-items') return componentItemsScope(userId, userRole, row.id);
+  if (row.kind === 'merge-proposals') return mergeProposalsScope(userId, userRole, row.id);
   const sourceId = row.membershipId === null
     ? placeSourceId
     : (await answeredSourceId(row.id, row.membershipId)) ?? placeSourceId;
