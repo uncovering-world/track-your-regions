@@ -497,7 +497,7 @@ All require admin auth. Every route that answers with a JSON body — the import
 |--------|------|---------|
 | POST | `/import` | Start import from JSON body |
 | POST | `/base-layer` | Start import from the administrative base layer (body: `{ name, providerLabel, maxDepth }`) |
-| GET | `/import/status` | Poll progress (shared by every source, including base layer) |
+| GET | `/import/status` | Poll progress (shared by every source, including base layer), with `operation` (`OperationProgressAnswer`, #1356): step 1 of 3 creates the regions, step 2 matches by name under the policy, step 3 is the spatial pass, each counted from the import's own counters. The country policy's step counts the countries it matched with no total, since its walk finds them as it goes; a cancel is said from the press |
 | POST | `/import/cancel` | Cancel running import |
 | GET | `/matches/:worldViewId/stats` | Match statistics |
 | GET | `/matches/:worldViewId/tree` | Full hierarchical tree with match statuses |
@@ -532,7 +532,7 @@ All require admin auth. Every route that answers with a JSON body — the import
 | POST | `/matches/:worldViewId/transfer-preview` | Build 3-layer FeatureCollection (donor/moving/target_outline) for conflict preview (ADR-0012) |
 | POST | `/matches/:worldViewId/finalize` | Close review — appends `'_done'` to current `source_type` |
 | POST | `/matches/:worldViewId/rematch` | **Destructive**: delete every `region_members` row for the world view (manual matches included) and re-run the matcher under the world view's policy. Optional `matchingPolicy` in the body scores the same tree under another. Rate-limited (5/min) — it is long-running and each run destroys the previous one's output |
-| GET | `/matches/:worldViewId/rematch/status` | Poll re-match progress |
+| GET | `/matches/:worldViewId/rematch/status` | Poll re-match progress, with `operation`: step 1 of 3 resets the match data, steps 2 and 3 as an import's |
 | POST | `/matches/:worldViewId/add-child-region` | Create a new child region under a parent (sets `match_status = 'no_candidates'`) |
 | POST | `/matches/:worldViewId/remove-region` | Delete a region from the import tree (with optional child/division reparenting) |
 | POST | `/matches/:worldViewId/rename-region` | Rename a region and optionally update its source URL / external ID |
