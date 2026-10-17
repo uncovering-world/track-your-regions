@@ -73,9 +73,13 @@ command that runs it against 3.12 instead.
 
 ### Coding Style
 
-- TypeScript (frontend + backend): ESLint with the project config.
+- TypeScript (frontend + backend): ESLint with the project config, which
+  holds each function to SonarJS's cognitive-complexity limit.
   Run `npm run lint` to check, `npm run lint:fix` to auto-fix.
-- Python (cv-python): Ruff for lint + format. Run `npm run check:py`.
+- Python (cv-python): Ruff for lint + format, which holds each function to
+  a McCabe complexity of 15 (`[tool.ruff.lint.mccabe]` in
+  `cv-python/pyproject.toml` says why 15; the functions still above it carry
+  a noqa naming #1654, which splits them). Run `npm run check:py`.
 
 ### Testing
 

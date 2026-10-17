@@ -84,7 +84,7 @@ Run a security audit of the codebase against OWASP ASVS 5.0 requirements.
 ### Python tooling expectations
 
 The Python toolchain must be wired up in CI on par with the Node side:
-- **Lint + format** — Ruff (`E/F/W/B/I/UP/C4/SIM/RET/S` rules)
+- **Lint + format** — Ruff, with the rules `[tool.ruff.lint]` in `cv-python/pyproject.toml` selects (the bandit set `S` and the McCabe complexity ceiling among them)
 - **Type check** — mypy (permissive defaults, tighten over time)
 - **Tests** — pytest with coverage
 - **SAST** — Bandit (idiom-aware) + Semgrep `p/default` + `p/python` + `p/owasp-top-ten` + `p/secrets`
