@@ -60,7 +60,17 @@ The count under the line is the regional tier's: name the count, judge nothing p
 
 Then read the two things the ledger cannot see on its own. The report's section *Judgements whose gap has closed* lists the lines to remove: remove each. And for every issue the ledger names, `gh issue view <n> --json state -q .state`; a judgement whose issue is closed is stale too: the gap is either closed with it, or open again under another cause.
 
-### 5. What the surveys expect of proposed kinds
+### 5. What a region offers that no guide names
+
+The section *Offered within reach and named by no guide* lists, per region, the offered places no entry names, least known first (#1601). Read each unjudged one as a traveller who knows the region and judge it once into the ledger, by its Wikidata id with `row`, `entry` and `kind` null:
+
+- **A traveller would go, though no guide names it**: `worth-a-visit`. The gap is the guides', not the catalogue's; the row is listed no more.
+- **A visitor misses nothing by it**, a stump, a road, a course that runs underground: `not-a-must`. It stays in the panel as a finding until the kind's rule or a curator turns it away.
+- **The rule that admitted it should not have**, by what the row's classes and sitelinks say: `rule-defect`, with the issue that owns the rule, found or filed as step 4 does. Several rows of one cause are one issue.
+
+A place with no Wikidata id on the line cannot be judged; say so. A region the maintainer knows on the ground is theirs to read: Berlin and Moscow are, so their lists are put to the maintainer rather than judged here. Then remove the stale row judgements the report lists, as step 4 removes the stale entry ones.
+
+### 6. What the surveys expect of proposed kinds
 
 Read the ordering: the kinds the most regions ask for come first. For each of the first ten:
 
@@ -69,11 +79,11 @@ Read the ordering: the kinds the most regions ask for come first. For each of th
 
 Say for each kind what a member of it is. A kind of dish, festival or route asks for more than a new sync, because a catalogue record is a place today; say that where it applies.
 
-### 6. Unsorted, and held
+### 7. Unsorted, and held
 
 - **Not sorted into a kind yet.** File each under a kind of the register, or propose the kind it needs, as `/coverage-survey` § 9 does.
 - **In the catalogue and not offered.** A place waiting for a curator is the review queue's; a refused or lost one is named to the user with the reason the catalogue records, since a guide still sends people there.
 
-### 7. Report
+### 8. Report
 
-Tell the user, in this order: the share offered and what moved since the last report; the judgements made, by cause, and the defects among them with their issues; the stale judgements removed; the proposed kinds in the report's order with their issues and any change of priority proposed; what was changed in the list files. Changes to the ledger and the list files are committed through `/commit`, as data.
+Tell the user, in this order: the share offered and what moved since the last report; the judgements made, by cause, and the defects among them with their issues; what each region offers that no guide names, how many were judged and how many findings stand; the stale judgements removed; the proposed kinds in the report's order with their issues and any change of priority proposed; what was changed in the list files. Changes to the ledger and the list files are committed through `/commit`, as data.

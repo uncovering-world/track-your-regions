@@ -83,6 +83,7 @@ accepted debt, and a fresh checkout of the code inherits none.
 | pictures | A stored picture on a host whose terms do not let us show it | invariant |
 | pictures | A picture shown with nobody credited | invariant |
 | coverage | A place or work travellers are sent to, well known by its kind's own rule, that the kind does not offer | invariant |
+| coverage | A place a kind offers in a surveyed region that no guide names and a person judged not worth a visit | invariant |
 
 **A work no place a reader is offered holds** (`workAssertions.ts`, #1444) is
 what a refusal by one kind can take from every kind. A work is shown only on the
@@ -645,6 +646,22 @@ tables empty it reports nothing as missing and is shown as *nothing to read yet*
 with the sentence that the lists have not been loaded: neither clear, since nothing was read,
 nor failed, since nothing is broken, and never counted as needing a person. It is not a CI lane,
 since it reads a live catalogue and lists a developer loads.
+
+The second coverage check (`coverageAssertions.ts`, #1601) asks the lists the opposite
+question: what a kind offers within a surveyed region's reach that no guide names. A catalogue
+padded with the Umbilicus urbis Romae, a stump of brick in the Forum, is as poor a guide as one
+that misses the Colosseum, and only a person scrolling the map would find it. Its rows are the
+report's `unnamed` regions' standing findings: a place a person judged, in the same ledger by
+its Wikidata id, not worth a visit or a defect of the rule that admitted it, while a kind still
+offers it. The kind's rule or a curator answers such a row with a refusal or a raised line, and
+it leaves when the place is no longer offered. A row judgement no offered place within reach
+carries any more is a row of its own, said as the line to remove. Beside the rows, one line per
+region says how many offered places no guide names, how many are judged under each cause, how
+many wait for a person and how many have no Wikidata id for the ledger to key on, which wait
+for nobody; those that wait the coverage command lists least known first, since a person
+reads them in order there and the panel is where the answered-for stand. On the development
+catalogue on 2026-10-17 the regions offered 107 such places, 71 of them in Rome, before anyone
+had judged one.
 
 ## Adding an assertion
 

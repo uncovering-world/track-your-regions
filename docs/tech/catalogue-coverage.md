@@ -111,11 +111,13 @@ of which sources stays under `docs/local/`.
 One line per gap a person has judged
 ([ADR-0116](../decisions/0116-a-gap-the-catalogue-carries-is-judged-once-in-a-committed-ledger-by-cause.md)):
 an entry of a region's list and the live kind that does not offer it, or a catalogue row the
-region offers that no entry names. A judgement says why the gap stands, so the report and the
-coverage check can count it by cause and stop listing it as needing a person. An entry filed
-under two live kinds has a gap, and a line, per kind: the Arch of Constantine, offered by
-Archaeology and absent from Public Art, is judged under Public Art alone, and a run that lost it
-would show it bare under Archaeology.
+region offers within its reach that no entry names (#1601). A judgement on an entry says why the
+gap stands; one on a row says whether the row is worth a visit, or why it should not be offered.
+Either way the report and the coverage check count it by cause and stop listing it as needing a
+person. An entry filed under two live kinds has a gap, and a line, per kind: the Arch of
+Constantine, offered by Archaeology and absent from Public Art, is judged under Public Art alone,
+and a run that lost it would show it bare under Archaeology. A row is judged once per region,
+whatever kinds offer it.
 
 | Field | Meaning |
 |---|---|
@@ -132,12 +134,19 @@ The causes, stated in the schema's `CHECK` and read from it by the files' reader
 
 | Cause | Meaning |
 |---|---|
-| `rule-defect` | A rule the product runs today should have admitted it: the Villa Farnesina, refused as a villa although an iconic work names it |
+| `rule-defect` | A rule the product runs today should have admitted it: the Villa Farnesina, refused as a villa although an iconic work names it. On a row, the opposite: the rule that admitted it should not have, by what the row's classes and sitelinks say |
 | `door-missing` | No rule the product runs would admit it yet: a museum with no work over the works line waits for the regional tier of Art Museums (#628) |
 | `kind-missing` | A traveller looks for it under a kind the register has and the product does not; the note names the kind, and the entry is filed under it |
 | `part-of-offered` | The catalogue offers the place it is part of: the Vatican Pinacoteca inside the Vatican Museums, a gallery of the Palace Museum |
 | `offered-elsewhere` | A reader finds it under the kind the product's rules give it to: the Arch of Constantine under Archaeology, not Public Art (ADR-0102) |
-| `not-a-must` | A visitor misses nothing by the kind not offering it: a commercial gallery, a printmaking workshop |
+| `not-a-must` | A visitor misses nothing by the kind not offering it: a commercial gallery, a printmaking workshop; on a row, a stump of brick in the Forum no guide sends anyone to |
+| `worth-a-visit` | On a row only: a traveller would go although no guide names it, so the gap is the guides', not the catalogue's. The row is listed no more |
+
+What a subject may be judged follows from what it is, and the schema's
+`coverage_judgements_row_causes` and `coverage_judgements_entry_causes` state it beside the
+reader: an offered row waits on no door, kind, part or other kind, so a row takes
+`worth-a-visit`, `not-a-must` or `rule-defect` (the rule that admitted it should not have); an
+entry a kind lacks is never `worth-a-visit`.
 
 A line, in full:
 
@@ -179,10 +188,12 @@ It refuses:
   under what it is;
 - in the ledger: a judgement that names both an entry and a row, or neither; an entry with no
   kind, under a kind the register lacks or only proposes, or under a kind the entry is not
-  filed under; a catalogue row that names a kind; a cause outside the vocabulary; a
-  `rule-defect` or a `door-missing` with no issue; a region no list has; an entry its region's
-  list does not hold; a gap judged twice; an empty note. A directory with no `judgements.jsonl`
-  has judged nothing and is not wrong.
+  filed under; a catalogue row that names a kind; a cause outside the vocabulary; a row judged
+  a cause only a gap waits on (`door-missing`, `kind-missing`, `part-of-offered`,
+  `offered-elsewhere`); an entry judged `worth-a-visit`; a `rule-defect` or a `door-missing`
+  with no issue; a region no list has; an entry its region's list does not hold; a gap or a row
+  judged twice; an empty note. A directory with no `judgements.jsonl` has judged nothing and is
+  not wrong.
 
 Two regions may hold the same place: Nara is a day trip from more than one city.
 
@@ -231,7 +242,8 @@ Two regions may hold the same place: Nara is a day trip from more than one city.
 comparison with the catalogue is a join. They are declared in `db/init/01-schema.sql` and
 `db/migrations/068-catalogue-coverage.sql`, which create them and load nothing;
 `069-coverage-kinds-in-venue.sql` adds `coverage_kinds.in_venue` to a database that has them,
-and `114-coverage-judgements.sql` the ledger's table.
+`114-coverage-judgements.sql` the ledger's table, and `115-coverage-judgements-worth-a-visit.sql`
+the cause a row alone takes and the constraints on what each subject may be judged.
 
 - **One writer.** `replaceCoverage` in `backend/src/services/catalogueCoverage/load.ts`
   empties all five and fills them from what the reader returned, in one transaction. Nobody
@@ -297,8 +309,12 @@ from what `readCoverageFacts` (`reportQueries.ts`) read; `reportText.ts` writes 
 | something else at its spot | Absent by identifier from a kind that exists, while an offered place stands within `SAME_SPOT_METRES` of it |
 | missing, kind exists | Absent, a kind it is filed under exists, and nothing stands at its spot |
 
-An identifier is the entry's Wikidata id, an id in its `same_as`, or its UNESCO id. A place is
-offered when a kind's count would count it, and a work when it is passed and a museum a reader
+An identifier is the entry's Wikidata id, an id in its `same_as`, or its UNESCO id, looked up
+among the places by every id a place is known by (`KNOWN_AS_SQL`): the place's own
+`external_id`, each membership's, since a run finds a place by the id on its membership
+(ADR-0084), and the Wikidata items a membership resolves a site to, so a UNESCO-first place
+Archaeology knows by its item is found by either. A place is offered when a kind's count would
+count it, and a work when it is passed and a museum a reader
 may go to shows it: the report composes `countedMembershipSql` and `venuesShowingSql`, the
 predicates the lists and counts use, and spells none of its own.
 
@@ -331,9 +347,25 @@ from another live kind is bare there. The text names the absent entries nobody h
 counts the judged by cause, with the issues the judgements name: `absent and judged: 100: 90
 door-missing (#628); 6 rule-defect (#1614, #1617); 4 not-a-must`. A judgement whose kind
 offers the entry now, over or under the line, is stale: its gap has closed, and the report
-lists it as a line to remove from `judgements.jsonl`. A judgement on a catalogue row (#1601)
-is loaded and counted and read by nothing yet. Whether a judgement's issue has closed is not
-the report's to know; the `/coverage-check` skill asks GitHub for the issues the ledger names.
+lists it as a line to remove from `judgements.jsonl`. Whether a judgement's issue has closed is
+not the report's to know; the `/coverage-check` skill asks GitHub for the issues the ledger
+names.
+
+**What a region offers that no guide names** (#1601). The lists are the yardstick in the other
+direction too. For every surveyed region, `UNNAMED_SQL` reads the offered places with an
+offered, published point within the region's `radius_km` of its centre none of whose
+identifiers (`KNOWN_AS_SQL`, the same ids `MATCHES_SQL` matches by) matches an identifier an
+entry of the region names. Each
+comes with the kinds that offer it, its own sitelinks as its source recorded them (a museum and
+an inscribed property carry none), its distance from the centre, and the ledger's line on it
+where a person has judged it by its Wikidata id. The text names the unjudged ones least known
+first, the order that finds the junk fastest, counts the judged by cause, and lists the
+findings that stand: a row judged `not-a-must` or `rule-defect` that a kind still offers, which
+the kind's rule or a curator answers with a refusal or a raised line. A row judgement no
+offered place within reach carries any more is stale and listed with the stale entry
+judgements. A place only its source's id names, an inscribed property with no Wikidata item on
+its membership, is listed apart and counted apart, since the ledger cannot key on it: it does
+not wait for a person, and the count that waits reaches zero without it.
 
 ## In Catalogue Checks
 
@@ -345,6 +377,14 @@ expected it offers, how many it lacks under the line, and how many of what it la
 under each cause, with their issues, and how many wait for a person. It runs `coverageReport()`
 and decides nothing of its own, so the command and the panel cannot disagree. With nothing
 loaded it reports nothing as missing and says the lists have not been loaded.
+
+`offered-and-named-by-no-guide` (the same file, #1601) says the report's *What a region offers
+that no guide names* the same way: one row per place a person judged not worth a visit that a
+kind still offers, least known first within each region, then one row per row judgement no
+offered place within reach carries, said as the line to remove; and one line per region saying
+how many offered places no guide names, how many are judged under each cause and how many wait
+for a person. The unjudged are counted there and listed by the command, where a person reads
+them in order.
 
 ## How the lists of 2026-10-02 were compiled
 
