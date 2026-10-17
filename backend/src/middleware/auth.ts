@@ -293,13 +293,40 @@ export const CURATOR_SCOPED_REGIONS_CTE = `
  * membership asks about (#1264): the review queue's arrivals and held proposals
  * belong to the membership's source, not to the source that brought the place.
  */
-export function curatorUnrestrictedScopeExists(source: '$3' | 'e.source_id' | 'm.source_id' = '$3'): string {
+export function curatorUnrestrictedScopeExists(
+  source: '$3' | 'e.source_id' | 'm.source_id' = '$3',
+  user: '$1' | '$4' = '$1',
+): string {
   return `
     EXISTS (
       SELECT 1 FROM curator_assignments ca
-      WHERE ca.user_id = $1
+      WHERE ca.user_id = ${user}
         AND (ca.scope_type = 'global' OR (ca.scope_type = 'source' AND ca.source_id = ${source}))
     )`;
+}
+
+/**
+ * SQL expression: may this curator act on the row's experience `e` as a whole?
+ * The question `resolveExperienceScope` answers for one experience, asked of
+ * every row of a list (#613): an unrestricted scope for the experience's
+ * source, or a region-scoped assignment on any region the experience sits in
+ * or on an ancestor of one. That is `CURATOR_SCOPED_REGIONS_CTE`'s set reached
+ * from the other end, walking up from the row rather than down from the
+ * assignments, so it needs no prelude and takes the user from whichever
+ * parameter the list binds it as. The UI shows a curate affordance by it; the
+ * server's own check on every write stays what decides.
+ */
+export function canCurateExperienceSql(user: '$1' | '$4'): string {
+  return `(${curatorUnrestrictedScopeExists('e.source_id', user)}
+    OR EXISTS (
+      WITH RECURSIVE up AS (
+        SELECT er_up.region_id AS id FROM experience_regions er_up WHERE er_up.experience_id = e.id
+        UNION
+        SELECT r_up.parent_region_id FROM regions r_up JOIN up ON r_up.id = up.id WHERE r_up.parent_region_id IS NOT NULL
+      )
+      SELECT 1 FROM up JOIN curator_assignments ca_up
+        ON ca_up.region_id = up.id AND ca_up.user_id = ${user} AND ca_up.scope_type = 'region'
+    ))`;
 }
 
 /** The single-experience form, which binds the source as `$3`. */

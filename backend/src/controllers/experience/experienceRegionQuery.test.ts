@@ -139,3 +139,31 @@ describe('the type a row is shown with', () => {
     expect(query).toContain('GROUP BY e.id, m.kind_id, m.type,');
   });
 });
+
+describe('whether the caller may curate each row (#613)', () => {
+  const base = { regionId: 7, showRejected: true, includeLostRows: false, limit: 20, offset: 0 };
+
+  it('says yes to every row for an admin, without asking the assignments', () => {
+    for (const includeChildren of [true, false]) {
+      const { query } = buildRegionQueries({ ...base, includeChildren, userId: 3, curateAs: 'admin' });
+      expect(query).toContain('TRUE AS can_curate');
+      expect(query).not.toContain('ca_up');
+    }
+  });
+
+  it("asks a curator's assignments of each row, with the caller bound as $4", () => {
+    for (const includeChildren of [true, false]) {
+      const { query, params } = buildRegionQueries({ ...base, includeChildren, userId: 3, curateAs: 'curator' });
+      expect(query).toMatch(/ca_up\.user_id = \$4 AND ca_up\.scope_type = 'region'[\s\S]*\) AS can_curate/);
+      expect(query).toContain('ca.user_id = $4');
+      expect(params[3]).toBe(3);
+    }
+  });
+
+  it('carries no answer for a caller who curates nothing', () => {
+    for (const includeChildren of [true, false]) {
+      const { query } = buildRegionQueries({ ...base, showRejected: false, includeChildren, userId: 3 });
+      expect(query).not.toContain('can_curate');
+    }
+  });
+});

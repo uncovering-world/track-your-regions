@@ -176,6 +176,8 @@ export const Experience = z.strictObject({
     .describe('Finds dug up at this site and on view in a museum a reader may be sent to — the length of GET /:id/finds. Zero on a row that is not a site.'),
   created_at: timestamp.unwrap().optional(),
   is_rejected: z.boolean().optional().describe('Only for a curator whose scope reaches the region.'),
+  can_curate: z.boolean().optional()
+    .describe('Only for a curator or admin: whether they may curate this place itself, by the rule the server applies on every write (#613).'),
   rejection_reason: z.string().nullable().optional(),
   source_membership: SourceMembership,
   existence: Existence,
@@ -195,6 +197,8 @@ export const ExperiencesByRegionResponse = z.strictObject({
     .describe('How many objects this region holds that no longer exist and are not being shown.'),
   limit: z.number().int(),
   offset: z.number().int(),
+  curatesRegion: z.boolean().optional()
+    .describe('Only for a curator or admin: whether their scope reaches this region, which its own actions (add a place, put a refused one back) need (#613).'),
 }).describe("A page of a region's objects.");
 export type ExperiencesByRegionResponse = z.infer<typeof ExperiencesByRegionResponse>;
 

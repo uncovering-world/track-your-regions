@@ -9,6 +9,7 @@
  * measuring the same thing.
  */
 
+import { canCurateExperienceSql } from '../../middleware/auth.js';
 import {
   hideLostSql,
   experienceOfferedToReaderSql,
@@ -47,8 +48,16 @@ export function buildRegionQueries(opts: {
   limit: number;
   offset: number;
   userId?: number;
+  /** Who asks, where the rows say whether the caller may curate each place (#613): an admin may curate every one. */
+  curateAs?: 'admin' | 'curator';
 }): { query: string; countQuery: string; params: (number | string)[] } {
-  const { regionId, includeChildren, showRejected, includeLostRows, limit, offset, userId } = opts;
+  const { regionId, includeChildren, showRejected, includeLostRows, limit, offset, userId, curateAs } = opts;
+  // Per row, whether the caller may curate the place itself (#613): the rule
+  // the server's own check applies on every write, computed here only so the
+  // UI offers nothing a write would refuse. The caller is `$4` in both branches.
+  let canCurateSelect = '';
+  if (curateAs === 'admin') canCurateSelect = ', TRUE AS can_curate';
+  else if (curateAs === 'curator' && userId) canCurateSelect = `, ${canCurateExperienceSql('$4')} AS can_curate`;
 
   // Rejection fields: include for curators, filter for others
   // For includeChildren, check rejections against all descendant regions (not just $1)
@@ -170,6 +179,7 @@ export function buildRegionQueries(opts: {
         ${lifecycleSelectSql()},
         ${isNewSql('e', readerParam)} AS is_new
         ${rejectionSelect}
+        ${canCurateSelect}
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
       ${rowKindJoinSql('e')}
@@ -251,6 +261,7 @@ export function buildRegionQueries(opts: {
         ${lifecycleSelectSql()},
         ${isNewSql('e', readerParam)} AS is_new
         ${rejectionSelect}
+        ${canCurateSelect}
       FROM experiences e
       JOIN experience_regions er ON e.id = er.experience_id
       ${rowKindJoinSql('e')}
