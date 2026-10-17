@@ -74,6 +74,7 @@ import { divisionTreeAssertions } from './divisionTreeAssertions.js';
 import { objectAssertions } from './objectAssertions.js';
 import { workAssertions } from './workAssertions.js';
 import { regionGeometryAssertions } from './regionGeometryAssertions.js';
+import { borderPlacementAssertions } from './borderPlacementAssertions.js';
 
 export type { AnyAssertion, AssertionRow, CatalogueAssertion } from './assertion.js';
 
@@ -746,6 +747,7 @@ export const catalogueAssertions: CatalogueAssertion[] = [
   heldByNoRegion,
   offeredPlaceInNoRegion,
   ...regionGeometryAssertions,
+  ...borderPlacementAssertions,
   ...divisionTreeAssertions,
   ...objectAssertions,
   ...workAssertions,
