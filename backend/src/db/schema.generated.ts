@@ -379,6 +379,21 @@ export interface ExperienceMergeProposalsRow {
   merge_id: number | null;
 }
 
+/** The table `experience_merge_suggestions`. */
+export interface ExperienceMergeSuggestionsRow {
+  id: number;
+  place_a: number;
+  place_b: number;
+  proposal_id: number | null;
+  asked: unknown;
+  judgement: string | null;
+  confidence: string;
+  probabilities: unknown;
+  model: string;
+  input_tokens: number;
+  asked_at: Date;
+}
+
 /** The table `experience_merges`. */
 export interface ExperienceMergesRow {
   id: number;
@@ -1036,6 +1051,10 @@ export const COLUMN_WIDTHS = {
   experience_merge_proposals: {
     answer: 10,
   },
+  experience_merge_suggestions: {
+    judgement: 10,
+    model: 40,
+  },
   experience_merges: {
     reason: 30,
   },
@@ -1182,6 +1201,9 @@ export const CHECK_VALUES = {
   },
   experience_merge_proposals: {
     answer: ["one", "two", "part_of"],
+  },
+  experience_merge_suggestions: {
+    judgement: ["one", "two", "part_of"],
   },
   experience_merges: {
     reason: ["equal_wikidata_item", "curator"],
