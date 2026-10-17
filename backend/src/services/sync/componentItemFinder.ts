@@ -105,8 +105,22 @@ export interface FinderOptions {
   siteId?: number;
   /** When false, nothing is written: the matches are returned, for measuring the rules. */
   write: boolean;
-  onStage?: (message: string) => void;
+  /** A step of the pass begins (`STEP`): its sentence, and how many items or areas it has to read. */
+  onStep?: OnStep;
 }
+
+type OnStep = (index: number, sentence: string, total: number) => void;
+
+/**
+ * The steps of a pass, in order, as its progress counts them (#1356). A step
+ * the pass has nothing for is skipped rather than renumbered, so a step's
+ * number means the same on every run.
+ */
+const STEP = {
+  parts: 1, partNames: 2, classes: 3, catalogueKinds: 4, near: 5, settlements: 6,
+  nearNames: 7, places: 8, placeSettlements: 9, numbered: 10, numberedNames: 11, codes: 12,
+} as const;
+export const FINDER_STEPS = Object.keys(STEP).length;
 
 /**
  * One arm of the points a World Heritage site shows (ADR-0100): its own, and
@@ -214,12 +228,13 @@ function boxOf(points: readonly PointRow[]): Box {
  * proposals are a day's QLever pass.
  */
 async function coded(
-  proposals: ComponentMatch[], points: readonly PointRow[], hooks: QueryHooks, onStage: ((message: string) => void) | undefined,
+  proposals: ComponentMatch[], points: readonly PointRow[], hooks: QueryHooks, onStep: OnStep | undefined,
 ): Promise<ComponentMatch[]> {
   const siteOf = new Map(points.map(p => [p.locationId, p.experienceId]));
-  onStage?.(`Reading the register codes of ${proposals.length} candidate items`);
+  const items = [...new Set(proposals.map(m => m.item))];
+  onStep?.(STEP.codes, `Reading the register codes of ${items.length} candidate items`, items.length);
   try {
-    const codes = await registerCodesOf([...new Set(proposals.map(m => m.item))], hooks);
+    const codes = await registerCodesOf(items, hooks);
     return withRegisterCodes(proposals, codes, locationId => siteOf.get(locationId) ?? 0);
   } catch (error) {
     if (hooks.isCancelled?.()) throw error;
@@ -245,17 +260,19 @@ function onePerItem(matches: ComponentMatch[]): ComponentMatch[] {
  */
 async function searchNear(
   unmatched: PointRow[], admitted: Map<number, ReadonlySet<string>>, hooks: QueryHooks,
-  onStage: ((message: string) => void) | undefined,
+  onStep: OnStep | undefined,
   keep: (point: PointRow, items: CandidateItem[]) => CandidateItem[],
 ): Promise<Map<number, CandidateItem[]>> {
   const nearOf = new Map<number, CandidateItem[]>();
   const cells = cellsOf(unmatched);
+  onStep?.(STEP.near, `Looking near ${unmatched.length} points, ${cells.length} areas`, cells.length);
   for (let i = 0; i < cells.length; i += CELLS_PER_QUERY) {
     if (hooks.isCancelled?.()) break;
-    onStage?.(`Looking near the points: areas ${i + 1}–${Math.min(i + CELLS_PER_QUERY, cells.length)} of ${cells.length}`);
-    for (const { cells: answered, items } of await nearbyOf(cells.slice(i, i + CELLS_PER_QUERY), admitted, hooks)) {
+    const group = cells.slice(i, i + CELLS_PER_QUERY);
+    for (const { cells: answered, items } of await nearbyOf(group, admitted, hooks)) {
       for (const point of answered.flat()) nearOf.set(point.locationId, keep(point, items));
     }
+    hooks.onAnswered?.(group.length);
   }
   return nearOf;
 }
@@ -287,11 +304,12 @@ async function catalogueSettlementKinds(classes: string[], hooks: QueryHooks): P
  */
 async function settlementsNear(
   nearOf: Map<number, CandidateItem[]>, admitted: Map<number, ReadonlySet<string>>, hooks: QueryHooks,
-  onStage: ((message: string) => void) | undefined,
+  onStep: OnStep | undefined,
 ): Promise<{ settled: Set<string>; settlementKinds: Set<string>; unanswered: Set<number> } > {
   const items = [...new Set([...nearOf.values()].flat().map(c => c.item))];
   const classes = [...new Set([...admitted.values()].flatMap(c => [...c]))];
-  onStage?.(`Telling ${items.length} near candidates that are settlements from the rest`);
+  // The candidates and the sites' classes are asked side by side, so the step counts both.
+  onStep?.(STEP.settlements, `Telling ${items.length} near candidates that are settlements from the rest`, items.length + classes.length);
   try {
     const [settled, settlementKinds] = await Promise.all([
       settlementsAmong(items, hooks),
@@ -363,14 +381,14 @@ function chooseNear(
  */
 async function placesNear(
   fallingBack: readonly PointRow[], ofKindOf: Map<number, CandidateItem[]>, refused: Map<number, Set<string>>,
-  nearOf: Map<number, CandidateItem[]>, hooks: QueryHooks, onStage: ((message: string) => void) | undefined,
+  nearOf: Map<number, CandidateItem[]>, hooks: QueryHooks, onStep: OnStep | undefined,
 ): Promise<{ places: Map<string, StandingPlace[]>; settledPlaces: Set<string> }> {
   const contenders = new Map(fallingBack.filter(p => nearOf.has(p.locationId)).map(p => [p.locationId,
     ofKindOf.get(p.locationId)!.filter(c => (['near', 'toponym'] as const)
       .some(basis => bestMatch(p, [c], basis, refused.get(p.locationId)) !== null))]));
   const items = [...new Set([...contenders.values()].flat().map(c => c.item))];
   if (items.length === 0) return { places: new Map(), settledPlaces: new Set() };
-  onStage?.(`Reading where ${items.length} near candidates stand`);
+  onStep?.(STEP.places, `Reading where ${items.length} near candidates stand`, items.length);
   try {
     const places = await placesOf(items, hooks);
     // A settlement is never offered in a thing's stead: the site's parts are
@@ -386,7 +404,9 @@ async function placesNear(
         return own.filter(place => placeAsCandidate(point, place) !== null).map(place => place.item);
       });
     }))];
-    return { places, settledPlaces: offerable.length > 0 ? await settlementsAmong(offerable, hooks) : new Set() };
+    if (offerable.length === 0) return { places, settledPlaces: new Set() };
+    onStep?.(STEP.placeSettlements, `Telling which of ${offerable.length} places named like a component are settlements`, offerable.length);
+    return { places, settledPlaces: await settlementsAmong(offerable, hooks) };
   } catch (error) {
     if (!tooHeavy(error)) throw error;
     for (const [locationId, theirs] of contenders) if (theirs.length > 0) nearOf.delete(locationId);
@@ -494,7 +514,7 @@ async function writeProposals(
 }
 
 export async function findComponentItems(options: FinderOptions): Promise<{ report: ComponentItemReport; matches: ComponentMatch[] }> {
-  const { hooks, onStage } = options;
+  const { hooks, onStep } = options;
   let queries = 0;
   const counted: QueryHooks = { ...hooks, onQuery: () => { queries += 1; hooks.onQuery?.(); } };
 
@@ -504,21 +524,22 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
   /** The candidates of one point that are free and close enough to be read. */
   const reachable = (point: PointRow, candidates: CandidateItem[], radius: number) =>
     candidates.filter(c => !taken.has(c.item) && nearestM(point, c) <= radius);
-  const readLabels = async (candidates: Iterable<CandidateItem[]>) => {
+  const readLabels = async (step: number, candidates: Iterable<CandidateItem[]>) => {
     const wanted = [...new Set([...candidates].flat().map(c => c.item))].filter(item => !labels.has(item));
-    onStage?.(`Reading the names of ${wanted.length} candidate items`);
+    onStep?.(step, `Reading the names of ${wanted.length} candidate items`, wanted.length);
     for (const [item, names] of await labelsOf(wanted, counted)) labels.set(item, names);
   };
   const named = (candidates: CandidateItem[]) => candidates.map(c => ({
     ...c, labels: labels.get(c.item)?.all ?? [], englishLabel: labels.get(c.item)?.english ?? null,
   }));
 
-  onStage?.(`Reading the parts ${new Set(points.flatMap(p => p.siteItems)).size} site items name`);
-  const { parts, unread } = await partsOfSites([...new Set(points.flatMap(p => p.siteItems))], counted);
+  const siteItems = [...new Set(points.flatMap(p => p.siteItems))];
+  onStep?.(STEP.parts, `Reading the parts ${siteItems.length} site items name`, siteItems.length);
+  const { parts, unread } = await partsOfSites(siteItems, counted);
   const partsNear = new Map(points.map(p => [
     p.locationId, reachable(p, p.siteItems.flatMap(item => parts.get(item) ?? []).filter(c => !claimsAnotherSite(c, p)), SAME_NAME_RADIUS_M),
   ]));
-  await readLabels(partsNear.values());
+  await readLabels(STEP.partNames, partsNear.values());
   const matches: ComponentMatch[] = [];
   const unmatched: PointRow[] = [];
   for (const point of points) {
@@ -526,8 +547,9 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
     if (match) matches.push(match); else unmatched.push(point);
   }
 
-  onStage?.(`Reading the classes of ${taken.size} resolved components`);
+  onStep?.(STEP.classes, `Reading the classes of ${taken.size} resolved components`, taken.size);
   const { bySite, catalogue } = learnClasses(resolved, await classesOfItems([...taken], counted));
+  onStep?.(STEP.catalogueKinds, `Telling the settlement kinds among the ${catalogue.size} classes of the resolved components`, catalogue.size);
   // The catalogue-wide classes less the settlement kinds among them: judged by
   // the same class tree the candidates are, not by a list.
   const catalogueKinds = await catalogueSettlementKinds([...catalogue], counted);
@@ -535,11 +557,11 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
   const searchable = catalogueKinds === null ? unmatched.filter(p => !fallsBack(p)) : unmatched;
   const admitted = new Map(searchable.map(p =>
     [p.locationId, admittedClasses(bySite.get(p.experienceId) ?? new Set(), catalogue, catalogueKinds ?? new Set())]));
-  const nearOf = await searchNear(searchable, admitted, counted, onStage, (point, items) =>
+  const nearOf = await searchNear(searchable, admitted, counted, onStep, (point, items) =>
     reachable(point, items.filter(c => (c.classes ?? []).some(k => admitted.get(point.locationId)!.has(k))), NEAR_SAME_NAME_RADIUS_M));
-  const { settled, settlementKinds, unanswered } = await settlementsNear(nearOf, admitted, counted, onStage);
+  const { settled, settlementKinds, unanswered } = await settlementsNear(nearOf, admitted, counted, onStep);
   for (const locationId of unanswered) nearOf.delete(locationId);
-  await readLabels(nearOf.values());
+  await readLabels(STEP.nearNames, nearOf.values());
   let settlements = 0;
   const ofKindOf = new Map<number, CandidateItem[]>();
   for (const point of searchable) {
@@ -550,13 +572,13 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
     settlements += candidates.length - ofKind.length;
     ofKindOf.set(point.locationId, ofKind);
   }
-  const { places, settledPlaces } = await placesNear(searchable.filter(fallsBack), ofKindOf, refused, nearOf, counted, onStage);
+  const { places, settledPlaces } = await placesNear(searchable.filter(fallsBack), ofKindOf, refused, nearOf, counted, onStep);
   const unsearched = unmatched.filter(p => !nearOf.has(p.locationId)).length;
   const { chosen, atTheComponent } = chooseNear(searchable.filter(p => nearOf.has(p.locationId)), ofKindOf, places, fallsBack, refused, new Set([...taken, ...settledPlaces]));
   matches.push(...chosen);
 
   // The third door, beside the others' answers rather than instead of them (#1394).
-  onStage?.('Reading the items that carry a component\'s number under another inscription');
+  onStep?.(STEP.numbered, 'Reading the items that carry a component\'s number under another inscription', 1);
   let byKey = new Map<string, CandidateItem[]>();
   let numberedUnread = false;
   try {
@@ -566,12 +588,12 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
     numberedUnread = true;
   }
   const numberedOf = new Map(points.map(p => [p.locationId, reachable(p, numberedFor(p, byKey), SAME_NAME_RADIUS_M)]));
-  await readLabels(numberedOf.values());
+  await readLabels(STEP.numberedNames, numberedOf.values());
   for (const point of points) {
     matches.push(...numberedMatches(point, named(numberedOf.get(point.locationId)!), refused.get(point.locationId)));
   }
 
-  const proposals = await coded(onePerItem(matches), points, counted, onStage);
+  const proposals = await coded(onePerItem(matches), points, counted, onStep);
   // Answered for: a new proposal, or every question this pass asked about the
   // point got an answer. A point whose site's parts or surroundings the service
   // could not answer keeps what an earlier pass proposed for it.
