@@ -27,7 +27,7 @@
  * sorting ahead of it.
  */
 
-import { sparqlQuery, waitMessage, type SparqlBinding, type WaitBudget } from './wikidataUtils.js';
+import { sayWait, sparqlQuery, type SparqlBinding, type WaitBudget } from './wikidataUtils.js';
 import type { SyncProgress } from './types.js';
 
 const LOG_PREFIX = '[UNESCO Sync]';
@@ -453,9 +453,7 @@ export async function fetchWorldHeritageFacts(
     const bindings = await sparqlQuery(query, LOG_PREFIX, {
       budget,
       isCancelled: () => progress.cancel,
-      onWait: (wait) => {
-        progress.statusMessage = waitMessage('Wikidata', wait, budget);
-      },
+      onWait: (wait) => { sayWait(progress, 'Wikidata', wait, budget); },
     });
     const index = indexWorldHeritageFacts(bindings);
     console.log(`${LOG_PREFIX} Wikidata answered for ${index.bySite.size} World Heritage properties`);
