@@ -303,11 +303,15 @@ describe("the query service's processing-time rule", () => {
     });
     const waits: string[] = [];
     const budget = new WaitBudget(900_000);
+    const warned = vi.spyOn(console, 'warn').mockImplementation(() => {});
 
     const outcome = await runWithTimers(Promise.allSettled([
       sparqlQuery('SELECT * { # Museums }', '[Museums]'),
       sparqlQuery('SELECT * { # Worship }', '[Worship]', { budget, onWait: (w) => waits.push(w.reason) }),
     ]));
+    // Logged under the run that waits it out, so its log is never silent through it (#1356).
+    expect(warned.mock.calls.some(([format, prefix]) => String(format).includes('asked this server to wait') && prefix === '[Worship]')).toBe(true);
+    warned.mockRestore();
 
     expect(outcome[0].status).toBe('rejected');
     expect(outcome[1].status).toBe('fulfilled');

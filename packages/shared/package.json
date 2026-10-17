@@ -9,6 +9,7 @@
     "./auth": "./src/auth.ts",
     "./catalogue": "./src/catalogue.ts",
     "./curationLog": "./src/curationLog.ts",
+    "./durations": "./src/durations.ts",
     "./equality": "./src/equality.ts",
     "./geometry": "./src/geometry.ts",
     "./labels": "./src/labels.ts",

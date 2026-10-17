@@ -21,6 +21,7 @@ import { CHECK_VALUES } from '../../db/schema.generated.js';
 import { placementTogether } from '../placementTogether.js';
 import { CuratorScope, UserRole } from './auth.js';
 import { PlacementFailure } from './curation.js';
+import { OperationProgressAnswer } from './operation.js';
 import { ChangedField } from './reviewQueue.js';
 
 /** A timestamp as the wire carries it: the handler converts the driver's `Date`. */
@@ -137,6 +138,8 @@ export const SyncStatus = z.strictObject({
   currentItem: z.string().optional(),
   logId: z.number().int().nullable().optional(),
   dryRun: z.boolean().optional(),
+  operation: OperationProgressAnswer.optional()
+    .describe('The step the run is on, of how many, and how far through it (#1356), for a run that reports through the shared shape.'),
   progressAt: timestamp.optional()
     .describe('Sent only for a run this server does not hold, read from its log row: when that run last wrote its progress. It cannot be cancelled from here.'),
   lastSyncAt: timestamp.nullable().optional()
