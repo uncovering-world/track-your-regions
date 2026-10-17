@@ -110,6 +110,8 @@ describe('queuing a dump build (ADR-0106)', () => {
     });
     expect(await buildProgress('wikidata-entities')).toMatchObject({
       read: 3_140_000_000, total: 5_350_000_000, stepStartedAt: new Date('2026-10-15T15:00:00Z'),
+      // The same step in the shape every long operation reports, with no step count (#1356).
+      operation: { step: { index: 1, count: null, sentence: 'Labelling the entities the kept items name...', done: 3_140_000_000, total: 5_350_000_000 } },
     });
     ledger.activeBuildOf.mockResolvedValue({
       ...queuedRow({ kind: 'keep' }), status: 'running', heartbeat_at: new Date(),

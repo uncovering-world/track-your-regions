@@ -21048,6 +21048,10 @@
               }
             ],
             "description": "When the step running now started, so a step with no measure of its own reads as alive; null while queued (#1519)."
+          },
+          "operation": {
+            "description": "The build in the shape every long operation reports (#1356): its step by ordinal and message, with no step count, measured as `read` is against `total`.",
+            "$ref": "#/components/schemas/OperationProgressAnswer"
           }
         },
         "required": [
@@ -21063,7 +21067,8 @@
           "heartbeatAt",
           "etaSeconds",
           "total",
-          "stepStartedAt"
+          "stepStartedAt",
+          "operation"
         ],
         "additionalProperties": false,
         "description": "A dump build queued or running, read from its ledger row whatever process runs it."
@@ -26938,9 +26943,17 @@
             "description": "1-based, of `count`. A step a run skips is not announced, so it can jump."
           },
           "count": {
-            "type": "integer",
-            "minimum": -9007199254740991,
-            "maximum": 9007199254740991
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "How many steps the run has; null where it cannot know ahead (a dump build names its steps as it goes)."
           },
           "sentence": {
             "type": "string",

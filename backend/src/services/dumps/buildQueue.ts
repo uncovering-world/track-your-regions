@@ -6,6 +6,7 @@
  */
 
 import { dumpNamed, type DumpDescriptor, type DumpFile, type DumpKey } from './catalog.js';
+import type { OperationProgressAnswer } from '../../api/responses/operation.js';
 import { activeBuildOf, closeOrphanedBuilds, enqueueBuild, requestCancel, type ActiveBuild, type BuildKind, type BuildProgressRecord } from './ledger.js';
 import { keeperOf } from './keepers.js';
 import { newestLocalCopy } from './localCopies.js';
@@ -27,6 +28,8 @@ export interface DumpBuildProgress {
   etaSeconds: number | null;
   /** What `read` is measured against: the dump's file in a pass, the terms spool while labelling, the sample's size while cutting one; null in a step with no measure (#1519). */
   total: number | null;
+  /** The build as every long operation reports, already in the wire's shape (#1356). */
+  operation: OperationProgressAnswer;
   /** When the step running now started; null while the build is queued. */
   stepStartedAt: Date | null;
 }
@@ -89,6 +92,35 @@ function progressOf(dump: DumpKey, build: ActiveBuild): DumpBuildProgress {
     etaSeconds: progress?.etaSeconds ?? null,
     total: progress?.total ?? null,
     stepStartedAt: !queued && progress?.stepStartedAt ? new Date(progress.stepStartedAt) : null,
+    operation: operationOf(build, progress, queued),
+  };
+}
+
+/**
+ * The build in the shape every long operation reports (#1356): its step, by
+ * the message the worker gives and the ordinal it keeps, measured as the
+ * panel's bar already was, with no step count since a build names its steps
+ * as it goes. Times are seconds on the server's clock.
+ */
+function operationOf(
+  build: ActiveBuild,
+  progress: Omit<BuildProgressRecord, 'etaSeconds'> | null,
+  queued: boolean,
+): OperationProgressAnswer {
+  const now = Date.now();
+  const since = (at: Date | string | null | undefined) => (at ? Math.max(0, Math.round((now - new Date(at).getTime()) / 1000)) : 0);
+  return {
+    elapsedSeconds: since(build.started_at),
+    cancelling: build.cancel_requested_at !== null,
+    wait: null,
+    step: queued || !progress ? null : {
+      index: progress.step ?? 1,
+      count: null,
+      sentence: progress.message,
+      done: Math.max(progress.read, progress.downloaded),
+      total: progress.total ?? 0,
+      elapsedSeconds: since(progress.stepStartedAt),
+    },
   };
 }
 

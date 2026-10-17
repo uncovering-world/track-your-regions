@@ -5,6 +5,7 @@
  */
 
 import { z } from 'zod/v4';
+import { OperationProgressAnswer } from './operation.js';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
 import { DUMP_KEYS } from '../../services/dumps/catalog.js';
 
@@ -37,6 +38,7 @@ export const DumpBuildProgress = z.strictObject({
   total: z.number().int().nullable()
     .describe('What read is measured against: the dump\'s file in a pass, the terms spool while labelling, the sample\'s size while cutting one; null in a step with no measure (#1519).'),
   stepStartedAt: timestamp.nullable().describe('When the step running now started, so a step with no measure of its own reads as alive; null while queued (#1519).'),
+  operation: OperationProgressAnswer.describe('The build in the shape every long operation reports (#1356): its step by ordinal and message, with no step count, measured as `read` is against `total`.'),
 }).describe('A dump build queued or running, read from its ledger row whatever process runs it.');
 export type DumpBuildProgress = z.infer<typeof DumpBuildProgress>;
 

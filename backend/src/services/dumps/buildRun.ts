@@ -99,6 +99,7 @@ export async function runBuild(claimed: ClaimedBuild, stop: AbortSignal): Promis
     progress.message = message;
     if (!steps.phase(message)) return false;
     progress.stepStartedAt = new Date().toISOString();
+    progress.step = (progress.step ?? 0) + 1;
     progress.read = 0;
     progress.downloaded = 0;
     progress.lines = 0;
