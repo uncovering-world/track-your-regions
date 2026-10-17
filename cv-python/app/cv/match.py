@@ -5,6 +5,7 @@ Matches GADM administrative division boundaries to color clusters detected on
 Wikivoyage travel maps.
 """
 
+import logging
 import math
 import time
 from collections import Counter
@@ -17,6 +18,8 @@ from scipy.spatial import KDTree
 
 from ..utils.image import encode_png_base64, resize_image
 from .svg_parse import parse_svg_path_points, parse_svg_sub_paths, resample_path
+
+logger = logging.getLogger(__name__)
 
 # --- Constants (preserved from JS implementation) ---
 RANSAC_REPROJ_THRESHOLD = 8.0
@@ -290,9 +293,9 @@ def _ransac_affine(
     tx = cv_cx - gadm_cx * sx
     ty = cv_cy - gadm_cy * sy
 
-    print(f"  [RANSAC] Init: sx={sx:.1f} sy={sy:.1f} tx={tx:.1f} ty={ty:.1f}")
-    print(f"  [RANSAC] GADM range: X[{gadm_min[0]:.2f},{gadm_max[0]:.2f}] Y[{gadm_min[1]:.2f},{gadm_max[1]:.2f}]")
-    print(f"  [RANSAC] CV range:   X[{cv_min[0]:.0f},{cv_max[0]:.0f}] Y[{cv_min[1]:.0f},{cv_max[1]:.0f}]")
+    logger.info(f"[RANSAC] Init: sx={sx:.1f} sy={sy:.1f} tx={tx:.1f} ty={ty:.1f}")
+    logger.info(f"[RANSAC] GADM range: X[{gadm_min[0]:.2f},{gadm_max[0]:.2f}] Y[{gadm_min[1]:.2f},{gadm_max[1]:.2f}]")
+    logger.info(f"[RANSAC] CV range:   X[{cv_min[0]:.0f},{cv_max[0]:.0f}] Y[{cv_min[1]:.0f},{cv_max[1]:.0f}]")
 
     # Project GADM points with rough transform
     projected = gadm_points.copy()
@@ -315,7 +318,7 @@ def _ransac_affine(
     mainland_projected = projected[in_mask]
     excluded_count = len(gadm_points) - in_mask.sum()
     if excluded_count > 0:
-        print(f"  [RANSAC] Pre-filtered: {excluded_count} GADM pts outside CV mask (islands/decorations)")
+        logger.info(f"[RANSAC] Pre-filtered: {excluded_count} GADM pts outside CV mask (islands/decorations)")
 
     if len(mainland_gadm) < 10:
         # Not enough points after filtering — use all
@@ -329,8 +332,8 @@ def _ransac_affine(
     # Filter correspondences within threshold (8% of image — generous for initial matching)
     max_dist = max(tw, th) * 0.08
     valid = distances < max_dist
-    print(
-        f"  [RANSAC] Correspondences: {valid.sum()}/{len(mainland_gadm)} within {max_dist:.0f}px (median dist={np.median(distances):.1f})"
+    logger.info(
+        f"[RANSAC] Correspondences: {valid.sum()}/{len(mainland_gadm)} within {max_dist:.0f}px (median dist={np.median(distances):.1f})"
     )
 
     if valid.sum() < 4:
@@ -350,7 +353,7 @@ def _ransac_affine(
     )
 
     if matrix is None or inlier_mask is None:
-        print("  [RANSAC] estimateAffinePartial2D returned None")
+        logger.warning("[RANSAC] estimateAffinePartial2D returned None")
         return None, 0.0, "ransac_affine"
 
     inlier_ratio = float(inlier_mask.sum()) / len(inlier_mask)
@@ -359,12 +362,14 @@ def _ransac_affine(
     c = matrix[1, 0]
     scale = math.sqrt(a * a + c * c)
     rotation = math.degrees(math.atan2(c, a))
-    print(
-        f"  [RANSAC] Result: {int(inlier_mask.sum())}/{len(inlier_mask)} inliers ({inlier_ratio:.1%}), scale={scale:.1f}, rotation={rotation:.1f}°, tx={matrix[0,2]:.1f}, ty={matrix[1,2]:.1f}"
+    logger.info(
+        f"[RANSAC] Result: {int(inlier_mask.sum())}/{len(inlier_mask)} inliers ({inlier_ratio:.1%}), scale={scale:.1f}, rotation={rotation:.1f}°, tx={matrix[0,2]:.1f}, ty={matrix[1,2]:.1f}"
     )
 
     if inlier_ratio < FALLBACK_INLIER_RATIO:
-        print(f"  [RANSAC] Inlier ratio {inlier_ratio:.1%} < {FALLBACK_INLIER_RATIO:.0%} threshold — will try fallback")
+        logger.info(
+            f"[RANSAC] Inlier ratio {inlier_ratio:.1%} < {FALLBACK_INLIER_RATIO:.0%} threshold — will try fallback"
+        )
         return None, inlier_ratio, "ransac_affine"
 
     return matrix, inlier_ratio, "ransac_affine"
@@ -417,7 +422,7 @@ def _iou_alignment(
     excluded = int((~inlier_mask).sum())
     if excluded > 0:
         excluded_names = [centroids[i].get("id", "?") for i in range(len(centroids)) if not inlier_mask[i]]
-        print(f"  [IoU] Excluded {excluded} antimeridian outlier centroids: {excluded_names}")
+        logger.info(f"[IoU] Excluded {excluded} antimeridian outlier centroids: {excluded_names}")
 
     cx_arr = raw_cx[inlier_mask] * cos_lat
     cy_arr = -raw_cy[inlier_mask]
@@ -460,7 +465,7 @@ def _iou_alignment(
     if not sub_paths:
         sub_paths = all_sub_paths  # fallback: keep all
     if len(sub_paths) < len(all_sub_paths):
-        print(f"  [IoU] Filtered sub-paths: {len(sub_paths)}/{len(all_sub_paths)} kept (within centroid extent)")
+        logger.info(f"[IoU] Filtered sub-paths: {len(sub_paths)}/{len(all_sub_paths)} kept (within centroid extent)")
 
     # Compute scale from filtered GADM outline extent (not just centroids)
     if sub_paths:
@@ -478,7 +483,7 @@ def _iou_alignment(
     else:
         sx_outline, sy_outline = sx0, sy0
     s_outline_avg = (sx_outline + sy_outline) / 2
-    print(f"  [IoU] Outline scale: sx={sx_outline:.1f} sy={sy_outline:.1f} (centroid: sx={sx0:.1f} sy={sy0:.1f})")
+    logger.info(f"[IoU] Outline scale: sx={sx_outline:.1f} sy={sy_outline:.1f} (centroid: sx={sx0:.1f} sy={sy0:.1f})")
 
     # For the scale search, use only the largest sub-paths (by point count).
     # Small island fragments add noise and slow rasterization dramatically.
@@ -486,7 +491,7 @@ def _iou_alignment(
     if len(sub_paths) > 200:
         sorted_by_size = sorted(sub_paths, key=lambda sp: len(sp), reverse=True)
         search_paths = sorted_by_size[:200]  # top 200 largest
-        print(f"  [IoU] Using {len(search_paths)}/{len(sub_paths)} largest sub-paths for scale search")
+        logger.info(f"[IoU] Using {len(search_paths)}/{len(sub_paths)} largest sub-paths for scale search")
     else:
         search_paths = sub_paths
 
@@ -597,7 +602,7 @@ def _iou_alignment(
                     continue
                 scale_candidates_2d.append((base_sx * sxf, base_sy * syf))
 
-    print(f"  [IoU] Scale candidates: {len(scale_candidates_2d)} combinations")
+    logger.info(f"[IoU] Scale candidates: {len(scale_candidates_2d)} combinations")
 
     target = country_mask.astype(np.float32)
 
@@ -633,7 +638,7 @@ def _iou_alignment(
             best_iou_val = score
             best_params = (sx_try, sy_try, tx, ty)
 
-    print(f"  [IoU] Scale search done in {time.perf_counter() - _scale_search_start:.2f}s (F2={best_iou_val:.3f})")
+    logger.info(f"[IoU] Scale search done in {time.perf_counter() - _scale_search_start:.2f}s (F2={best_iou_val:.3f})")
 
     # Fine refinement: small translation adjustments around best
     _refine_start = time.perf_counter()
@@ -659,8 +664,8 @@ def _iou_alignment(
                     best_iou_val = score
                     best_params = (sx_try, sy_try, tx_adj + dx, ty_adj + dy)
 
-    print(
-        f"  [IoU] Scale/translation refine done in {time.perf_counter() - _refine_start:.2f}s (F2={best_iou_val:.3f})"
+    logger.info(
+        f"[IoU] Scale/translation refine done in {time.perf_counter() - _refine_start:.2f}s (F2={best_iou_val:.3f})"
     )
 
     # Ultra-fine around winner
@@ -696,15 +701,15 @@ def _iou_alignment(
     if len(filtered_search) >= 3:
         removed = len(search_paths) - len(filtered_search)
         if removed > 0:
-            print(
-                f"  [IoU] Post-affine filter: {len(filtered_search)}/{len(search_paths)} sub-paths overlap mask (removed {removed} islands)"
+            logger.info(
+                f"[IoU] Post-affine filter: {len(filtered_search)}/{len(search_paths)} sub-paths overlap mask (removed {removed} islands)"
             )
             search_paths = filtered_search
             # Recompute F2 with filtered paths
             best_iou_val = iou_at(fsx, fsy, ftx, fty)
 
-    print(f"  [IoU] Affine: sx={fsx:.1f} sy={fsy:.1f} tx={ftx:.1f} ty={fty:.1f} F2={best_iou_val:.3f}")
-    print(f"  [IoU] Init: sx={sx0:.1f} sy={sy0:.1f} s_avg={s_avg:.1f}")
+    logger.info(f"[IoU] Affine: sx={fsx:.1f} sy={fsy:.1f} tx={ftx:.1f} ty={fty:.1f} F2={best_iou_val:.3f}")
+    logger.info(f"[IoU] Init: sx={sx0:.1f} sy={sy0:.1f} s_avg={s_avg:.1f}")
 
     # Bail out of conic/shear/perspective when affine is fundamentally
     # misaligned. At F2 < MIN_F2_FOR_REFINE the basic shape doesn't fit and
@@ -712,8 +717,8 @@ def _iou_alignment(
     # (~5s matching) than to burn ~7 minutes on polishing searches that only
     # nudge F2 by ~0.05 at best.
     if best_iou_val < MIN_F2_FOR_REFINE:
-        print(
-            f"  [IoU] Skipping conic/shear/perspective: affine F2={best_iou_val:.3f} < {MIN_F2_FOR_REFINE} — basic fit is wrong, refinements cannot recover it"
+        logger.info(
+            f"[IoU] Skipping conic/shear/perspective: affine F2={best_iou_val:.3f} < {MIN_F2_FOR_REFINE} — basic fit is wrong, refinements cannot recover it"
         )
         affine_matrix = np.array(
             [
@@ -736,7 +741,7 @@ def _iou_alignment(
     # refinement can only add a few thousandths to F2 and is pure latency.
     _conic_start = time.perf_counter()
     if best_iou_val >= SKIP_CONIC_F2:
-        print(f"  [IoU] Skipping conic search: affine F2={best_iou_val:.3f} >= {SKIP_CONIC_F2}")
+        logger.info(f"[IoU] Skipping conic search: affine F2={best_iou_val:.3f} >= {SKIP_CONIC_F2}")
     else:
         # Hierarchical coarse→fine search: first sweep coarsely over the
         # whole (c, dx, dy) volume (~120 cells), then refine tightly around
@@ -766,14 +771,14 @@ def _iou_alignment(
                             best_conic_f2 = f2_val
                             best_k = c_try
                             best_params = (fsx, fsy, ftx + dx, fty + dy)
-        print(f"  [IoU] Conic grid search (hierarchical) done in {time.perf_counter() - _conic_start:.2f}s")
+        logger.info(f"[IoU] Conic grid search (hierarchical) done in {time.perf_counter() - _conic_start:.2f}s")
 
     if best_k != 0:
         fsx, fsy, ftx, fty = best_params
         best_iou_val = best_conic_f2
-        print(f"  [IoU] Conic correction: c={best_k:.4f} F2→{best_conic_f2:.3f}")
+        logger.info(f"[IoU] Conic correction: c={best_k:.4f} F2→{best_conic_f2:.3f}")
     else:
-        print("  [IoU] No conic improvement found")
+        logger.info("[IoU] No conic improvement found")
 
     # ── Shear search: try adding shear to capture conic projection distortion ──
     # Conic projections make the top narrower than the bottom (or vice versa).
@@ -819,11 +824,11 @@ def _iou_alignment(
                 best_shear_f2 = f2
                 best_params = (fsx, fsy, ftx, fty, shear_x, shear_y)
 
-    print(f"  [IoU] Shear search done in {time.perf_counter() - _shear_start:.2f}s")
+    logger.info(f"[IoU] Shear search done in {time.perf_counter() - _shear_start:.2f}s")
     if best_shear_f2 > best_iou_val * 1.005:
         fsx, fsy, ftx, fty, shx, shy = best_params
-        print(
-            f"  [IoU] Shear improved: shear_x={shx:.3f} shear_y={shy:.3f} F2={best_iou_val:.3f} → {best_shear_f2:.3f}"
+        logger.info(
+            f"[IoU] Shear improved: shear_x={shx:.3f} shear_y={shy:.3f} F2={best_iou_val:.3f} → {best_shear_f2:.3f}"
         )
         best_iou_val = best_shear_f2
         affine_matrix = np.array(
@@ -851,7 +856,7 @@ def _iou_alignment(
     # is already near-perfect — perspective refinement won't meaningfully
     # improve an already-excellent fit.
     if best_iou_val >= SKIP_PERSPECTIVE_F2:
-        print(f"  [IoU] Skipping perspective search: F2={best_iou_val:.3f} >= {SKIP_PERSPECTIVE_F2}")
+        logger.info(f"[IoU] Skipping perspective search: F2={best_iou_val:.3f} >= {SKIP_PERSPECTIVE_F2}")
         return affine_matrix, best_iou_val, "iou_align", None, best_k, gadm_cx_corr
 
     _persp_start = time.perf_counter()
@@ -893,7 +898,7 @@ def _iou_alignment(
             tform = estimate_transform("projective", m_cnt[idxs_p].astype(np.float32), g_cnt.astype(np.float32))
             px_hint = float(np.clip(tform.params[2, 0], -0.002, 0.002))
             py_hint = float(np.clip(tform.params[2, 1], -0.002, 0.002))
-            print(f"  [IoU] Blur perspective hint: px={px_hint:.6f} py={py_hint:.6f}")
+            logger.info(f"[IoU] Blur perspective hint: px={px_hint:.6f} py={py_hint:.6f}")
 
     # Grid search around the hint — use FILTERED GADM for F2 (less overflow noise)
     mask_ys_p, mask_xs_p = np.where(country_mask > 0)
@@ -946,15 +951,17 @@ def _iou_alignment(
                     best_persp_f2 = f2_val
                     best_px, best_py = px, py
 
-    print(f"  [IoU] Perspective grid (hierarchical) done in {time.perf_counter() - _persp_start:.2f}s")
+    logger.info(f"[IoU] Perspective grid (hierarchical) done in {time.perf_counter() - _persp_start:.2f}s")
     if best_px != 0 or best_py != 0:
-        print(f"  [IoU] Perspective grid: px={best_px:.6f} py={best_py:.6f} F2={best_iou_val:.3f}→{best_persp_f2:.3f}")
+        logger.info(
+            f"[IoU] Perspective grid: px={best_px:.6f} py={best_py:.6f} F2={best_iou_val:.3f}→{best_persp_f2:.3f}"
+        )
         T1 = np.array([[1, 0, -cx_p], [0, 1, -cy_p], [0, 0, 1]], dtype=np.float64)
         P = np.array([[1, 0, 0], [0, 1, 0], [best_px, best_py, 1]], dtype=np.float64)
         T2 = np.array([[1, 0, cx_p], [0, 1, cy_p], [0, 0, 1]], dtype=np.float64)
         inverse_H = T2 @ P @ T1
         return affine_matrix, best_persp_f2, "iou_perspective", inverse_H, best_k, gadm_cx_corr
-    print("  [IoU] No perspective improvement found")
+    logger.info("[IoU] No perspective improvement found")
 
     return affine_matrix, best_iou_val, "iou_align", None, best_k, gadm_cx_corr
 
@@ -1060,7 +1067,7 @@ def _inverse_homography(
     src = cv_matched.astype(np.float32)
     dst = gadm_matched.astype(np.float32)
 
-    print(f"  [InvHomo] Hull match: {len(gadm_hull)} GADM + {len(cv_hull)} CV hull vertices → {N} correspondences")
+    logger.info(f"[InvHomo] Hull match: {len(gadm_hull)} GADM + {len(cv_hull)} CV hull vertices → {N} correspondences")
 
     # Try both affine6 and perspective, pick best by F2
     best_H = None
@@ -1093,7 +1100,7 @@ def _inverse_homography(
             f2 = 5 * p * r / max(4 * p + r, 1e-10)
         else:
             f2 = 0
-        print(f"  [InvHomo] {label}: {inl}/{N} inliers ({inl/N:.0%}), F2={f2:.3f}")
+        logger.info(f"[InvHomo] {label}: {inl}/{N} inliers ({inl/N:.0%}), F2={f2:.3f}")
         if f2 > best_f2:
             best_f2 = f2
             best_H = H_full
@@ -1102,9 +1109,9 @@ def _inverse_homography(
     if best_H is None:
         return None
 
-    print(f"  [InvHomo] Best: {best_label}, F2={best_f2:.3f}")
+    logger.info(f"[InvHomo] Best: {best_label}, F2={best_f2:.3f}")
     if best_H.shape == (3, 3):
-        print(f"  [InvHomo] Perspective: [{best_H[2,0]:.8f}, {best_H[2,1]:.8f}]")
+        logger.info(f"[InvHomo] Perspective: [{best_H[2,0]:.8f}, {best_H[2,1]:.8f}]")
     return best_H
 
 
@@ -1268,9 +1275,9 @@ def _centroid_fallback(
                         best_params = (sx, sy, btx + dtx, bty + dty)
 
     fsx, fsy, ftx, fty = best_params
-    print(f"  [Centroid] Best: sx={fsx:.1f} sy={fsy:.1f} tx={ftx:.1f} ty={fty:.1f} score={best_score:.1f}")
-    print(f"  [Centroid] Init: sx={sx0:.1f} sy={sy0:.1f} tx={tx0:.1f} ty={ty0:.1f}")
-    print(f"  [Centroid] Scale factors: sx_f={fsx/sx0:.3f} sy_f={fsy/sy0:.3f}")
+    logger.info(f"[Centroid] Best: sx={fsx:.1f} sy={fsy:.1f} tx={ftx:.1f} ty={fty:.1f} score={best_score:.1f}")
+    logger.info(f"[Centroid] Init: sx={sx0:.1f} sy={sy0:.1f} tx={tx0:.1f} ty={ty0:.1f}")
+    logger.info(f"[Centroid] Scale factors: sx_f={fsx/sx0:.3f} sy_f={fsy/sy0:.3f}")
     # Build 2x3 affine matrix (no rotation)
     matrix = np.array(
         [
@@ -1694,7 +1701,7 @@ def _detect_projection(
     # Different projections of the same region give different convex hulls.
     cv_contours, _ = cv2.findContours(cv_mask_u8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
     if not cv_contours:
-        print("  [Proj] No CV mask contours — skipping projection detection")
+        logger.info("[Proj] No CV mask contours — skipping projection detection")
         return None
     cv_main_contour = max(cv_contours, key=cv2.contourArea)
     cv_hull = cv2.convexHull(cv_main_contour)
@@ -1781,7 +1788,7 @@ def _detect_projection(
 
     # Baseline: equirectangular (cos_lat)
     baseline = shape_score(None)
-    print(f"  [Proj] Equirectangular baseline: score={baseline:.4f}")
+    logger.info(f"[Proj] Equirectangular baseline: score={baseline:.4f}")
 
     best_score = baseline
     best_name = None
@@ -1796,7 +1803,7 @@ def _detect_projection(
         pyproj_available = True
     except ImportError:
         pyproj_available = False
-        print("  [Proj] pyproj not available — skipping projection detection")
+        logger.warning("[Proj] pyproj not available — skipping projection detection")
 
     if pyproj_available:
         lat_min = float(raw_cy[inlier].min())
@@ -1879,13 +1886,13 @@ def _detect_projection(
                 transformer = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
                 fn = make_pyproj_fn(transformer)
                 score = shape_score(fn)
-                print(f"  [Proj] {name} score={score:.4f}")
+                logger.info(f"[Proj] {name} score={score:.4f}")
                 if score > best_score:
                     best_score = score
                     best_name = name
                     best_fn = fn
             except Exception as e:
-                print(f"  [Proj] {name} failed: {e}")
+                logger.warning(f"[Proj] {name} failed: {e}")
 
         for proj_name, proj4 in candidates_proj4:
             try:
@@ -1893,13 +1900,13 @@ def _detect_projection(
                 transformer = Transformer.from_crs("EPSG:4326", crs, always_xy=True)
                 fn = make_pyproj_fn(transformer)
                 score = shape_score(fn)
-                print(f"  [Proj] {proj_name} score={score:.4f}")
+                logger.info(f"[Proj] {proj_name} score={score:.4f}")
                 if score > best_score:
                     best_score = score
                     best_name = proj_name
                     best_fn = fn
             except Exception as e:
-                print(f"  [Proj] {proj_name} failed: {e}")
+                logger.warning(f"[Proj] {proj_name} failed: {e}")
 
         # Single-parallel LCC covers any cone constant via n=sin(lat_1). We
         # search lat_1 across a wide range — this is more flexible than the
@@ -1939,14 +1946,14 @@ def _detect_projection(
                 pass
 
         if best_name and best_name.startswith("lcc_lat1_"):
-            print(f"  [Proj] Best single-parallel LCC: {best_name} score={best_score:.4f}")
+            logger.info(f"[Proj] Best single-parallel LCC: {best_name} score={best_score:.4f}")
 
     # Require meaningful improvement to switch projections
     if best_fn and best_score > baseline * 1.05:
-        print(f"  [Proj] Best: {best_name} score={best_score:.4f} (vs baseline {baseline:.4f})")
+        logger.info(f"[Proj] Best: {best_name} score={best_score:.4f} (vs baseline {baseline:.4f})")
         return best_name, best_fn
 
-    print("  [Proj] Equirectangular is optimal — no projection change")
+    logger.info("[Proj] Equirectangular is optimal — no projection change")
     return None
 
 
@@ -2093,7 +2100,7 @@ def run_matching(
         now = time.perf_counter()
         if current_step[0]:
             elapsed = now - step_start[0]
-            print(f"  [Match] {current_step[0]} done in {elapsed:.2f}s")
+            logger.info(f"[Match] {current_step[0]} done in {elapsed:.2f}s")
         if msg and on_progress:
             on_progress(msg)
         current_step[0] = msg
@@ -2111,8 +2118,8 @@ def run_matching(
     # just fall into out_of_bounds naturally.
     mainland_centroids, excluded_ids = _filter_to_mainland(centroids, cos_lat)
     if len(mainland_centroids) < len(centroids):
-        print(
-            f"  [Match] Phantom-island filter: kept {len(mainland_centroids)}/{len(centroids)} mainland centroids (excluded divisions: {excluded_ids})"
+        logger.info(
+            f"[Match] Phantom-island filter: kept {len(mainland_centroids)}/{len(centroids)} mainland centroids (excluded divisions: {excluded_ids})"
         )
         centroids = mainland_centroids
 
@@ -2122,8 +2129,8 @@ def run_matching(
     cy_vals = np.array([c["cy"] for c in centroids])
     lat_span_deg = float(cy_vals.max() - cy_vals.min())
     if lat_span_deg < PROJ_DETECT_MIN_LAT_SPAN_DEG:
-        print(
-            f"  [Match] Skipping projection detection: lat_span={lat_span_deg:.1f}° < {PROJ_DETECT_MIN_LAT_SPAN_DEG}°"
+        logger.info(
+            f"[Match] Skipping projection detection: lat_span={lat_span_deg:.1f}° < {PROJ_DETECT_MIN_LAT_SPAN_DEG}°"
         )
         proj_result = None
     else:
@@ -2139,7 +2146,7 @@ def run_matching(
     original_centroids = centroids
     if proj_result is not None:
         proj_name, proj_fn = proj_result
-        print(f"  [Match] Candidate projection: {proj_name}")
+        logger.info(f"[Match] Candidate projection: {proj_name}")
 
         # Pre-project GADM temporarily to get a good IoU alignment in projected space
         proj_country_path = _project_svg_path(country_path, proj_fn)
@@ -2162,7 +2169,7 @@ def run_matching(
         )
         matrix_proj = proj_iou[0]
         proj_f2 = proj_iou[1]
-        print(f"  [Match] {proj_name} IoU F2={proj_f2:.4f}")
+        logger.info(f"[Match] {proj_name} IoU F2={proj_f2:.4f}")
 
         # Compute the equirect affine that maps the same GADM bbox to the same pixel region
         matrix_eq_target = _compute_equirect_matrix(
@@ -2211,7 +2218,7 @@ def run_matching(
             borderMode=cv2.BORDER_CONSTANT,
             borderValue=0,
         )
-        print(f"  [Match] Warped pixel_labels to equirectangular space via {proj_name}")
+        logger.info(f"[Match] Warped pixel_labels to equirectangular space via {proj_name}")
 
     # Step 2: Extract border points
     progress("Extracting CV border points")
@@ -2251,7 +2258,7 @@ def run_matching(
     # transform that was scored.
     gadm_cx_corr = iou_result[5]
     inlier_ratio = iou_score_val
-    print(f"  [Match] Raw alignment result: F2={iou_score_val:.4f} method={method} k_conic={k_conic:.4f}")
+    logger.info(f"[Match] Raw alignment result: F2={iou_score_val:.4f} method={method} k_conic={k_conic:.4f}")
 
     gadm_mid_y_ecc = float(np.median([-c["cy"] for c in centroids]))
 
@@ -2265,7 +2272,7 @@ def run_matching(
         # re-extract cv_border below so the alignment metrics describe the
         # post-warp images that actually drive division assignment.
         icp_mask = cv2.warpPerspective(icp_mask, inverse_H, (tw, th))
-        print("  [Match] Warped labels with inverse homography")
+        logger.info("[Match] Warped labels with inverse homography")
 
         # Re-extract cv_border from the warped masks so alignmentError and
         # alignmentPct reflect the final image rather than the pre-warp shape.
@@ -2280,8 +2287,8 @@ def run_matching(
 
     # Step 3b: Verify centroid placement is reasonable with the IoU transform
     centroid_score = _score_centroid_placement(centroids, pixel_labels, cos_lat, matrix, tw, th)
-    print(
-        f"  [Match] IoU alignment: F2={iou_score_val:.3f}, centroid_hits={centroid_score:.0f}/{len(centroids)}, method={method}"
+    logger.info(
+        f"[Match] IoU alignment: F2={iou_score_val:.3f}, centroid_hits={centroid_score:.0f}/{len(centroids)}, method={method}"
     )
 
     # Step 3c: If IoU alignment gives poor centroid coverage, try centroid fallback
@@ -2304,7 +2311,9 @@ def run_matching(
             # would otherwise be applied to division rasterization below,
             # mixing two different transforms.
             k_conic = 0.0
-            print(f"  [Match] Centroid fallback better: hits={centroid_fb_hits:.0f} vs IoU hits={centroid_score:.0f}")
+            logger.info(
+                f"[Match] Centroid fallback better: hits={centroid_fb_hits:.0f} vs IoU hits={centroid_score:.0f}"
+            )
 
     # Compute alignment metrics — median (robust), mean, and % aligned
     median_err, mean_err, align_pct = _compute_alignment_error(
@@ -2315,8 +2324,8 @@ def run_matching(
         th,
     )
     alignment_error = median_err  # Use median for the reported metric
-    print(
-        f"  [Match] Alignment: median_err={median_err:.1f}px, mean_err={mean_err:.1f}px, "
+    logger.info(
+        f"[Match] Alignment: median_err={median_err:.1f}px, mean_err={mean_err:.1f}px, "
         f"alignment_pct={align_pct*100:.1f}% (within 2% of image diagonal)"
     )
 
@@ -2422,7 +2431,7 @@ def run_matching(
 
     # Close the last open step then report total matching time.
     progress("")
-    print(f"  [Match] Total matching time: {time.perf_counter() - _match_wall_start:.2f}s")
+    logger.info(f"[Match] Total matching time: {time.perf_counter() - _match_wall_start:.2f}s")
 
     return {
         "transform": {

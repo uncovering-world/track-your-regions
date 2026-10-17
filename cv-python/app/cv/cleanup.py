@@ -9,8 +9,12 @@ Ports the JS pipeline's post-K-means cleanup operations:
 These steps clean up K-means artifacts and recover merged regions.
 """
 
+import logging
+
 import cv2
 import numpy as np
+
+logger = logging.getLogger(__name__)
 
 # -- Constants (match JS pipeline) --
 MERGE_SIZE_PCT = 0.02  # clusters < 2% are candidates for merge (loose color: RGB ≤ 40)
@@ -123,12 +127,12 @@ def merge_tiny_clusters(
         rgb_dist = min_dist_sq**0.5
         tier = "moderate" if is_moderate else "small"
         if min_dist_sq <= max_dist_sq and best_target >= 0:
-            print(f"  [Merge-{tier}] cluster {k} ({k_pct * 100:.1f}%) -> {best_target} (RGB dist={rgb_dist:.1f})")
+            logger.info(f"[Merge-{tier}] cluster {k} ({k_pct * 100:.1f}%) -> {best_target} (RGB dist={rgb_dist:.1f})")
             pixel_labels[pixel_labels == k] = best_target
         elif best_target >= 0:
             reason = "too far" if min_dist_sq > max_dist_sq else "not adjacent"
-            print(
-                f"  [Merge-{tier}] cluster {k} ({k_pct * 100:.1f}%) KEPT -- nearest {best_target} {reason} (RGB dist={rgb_dist:.1f})"
+            logger.info(
+                f"[Merge-{tier}] cluster {k} ({k_pct * 100:.1f}%) KEPT -- nearest {best_target} {reason} (RGB dist={rgb_dist:.1f})"
             )
 
     return pixel_labels
@@ -187,7 +191,7 @@ def remove_small_patches(
             patch_merge_count += 1
 
     if patch_merge_count > 0:
-        print(f"  [Patch] {patch_merge_count} small patches relabeled (threshold: {min_patch}px)")
+        logger.info(f"[Patch] {patch_merge_count} small patches relabeled (threshold: {min_patch}px)")
 
     return pixel_labels
 
@@ -269,11 +273,11 @@ def exclude_noise_clusters(
         pixel_labels[noise_y, noise_x] = best_labels
 
         reassigned = len(noise_y)
-        print(f"  [Noise] Auto-excluded {len(noise_ids)} noise cluster(s) ({reassigned} px reassigned)")
+        logger.info(f"[Noise] Auto-excluded {len(noise_ids)} noise cluster(s) ({reassigned} px reassigned)")
         for nl in noise_ids:
             c = color_centroids[nl] if nl < len(color_centroids) else None
             cnt = counts.get(nl, 0)
-            print(
+            logger.info(
                 f"    excluded {nl}: RGB({c[0] if c else '?'},{c[1] if c else '?'},{c[2] if c else '?'}) "
                 f"{cnt}px ({cnt / country_size * 100:.1f}%)"
             )
@@ -321,7 +325,7 @@ def _morph_clean_labels(
         if neighbors:
             result[y, x] = max(set(neighbors), key=neighbors.count)
 
-    print(f"  [MorphClean] Removed {total_orphaned} thin-feature pixels via morphological opening")
+    logger.info(f"[MorphClean] Removed {total_orphaned} thin-feature pixels via morphological opening")
     return result
 
 
@@ -381,9 +385,9 @@ def _exclude_edge_decorations(
                     result[y, x] = max(set(neighbors), key=neighbors.count)
 
         total_px = sum(e[1] for e in excluded)
-        print(f"  [EdgeDecor] Excluded {len(excluded)} edge decoration cluster(s) ({total_px} px)")
+        logger.info(f"[EdgeDecor] Excluded {len(excluded)} edge decoration cluster(s) ({total_px} px)")
         for lbl, cnt, pct, ratio in excluded:
-            print(f"    cluster {lbl}: {cnt}px ({pct:.1f}%), {ratio:.0%} near edge")
+            logger.info(f"    cluster {lbl}: {cnt}px ({pct:.1f}%), {ratio:.0%} near edge")
 
     return result
 
@@ -462,10 +466,10 @@ def _remove_small_isolated_ccs(
             result[cc_labels == i] = 255
             removed += area
             cx, cy = cc_centroids[i]
-            print(f"  [SmallCC] Removed medium CC: {area}px ({pct:.1f}%), pos=({cx:.0f},{cy:.0f}), fill={fill:.2f}")
+            logger.info(f"[SmallCC] Removed medium CC: {area}px ({pct:.1f}%), pos=({cx:.0f},{cy:.0f}), fill={fill:.2f}")
 
     if removed > 0:
-        print(f"  [SmallCC] Removed {removed} pixels in small/medium isolated CCs")
+        logger.info(f"[SmallCC] Removed {removed} pixels in small/medium isolated CCs")
 
     return result
 
@@ -566,7 +570,7 @@ def _exclude_edge_decoration_ccs(
                 if neighbors:
                     result[y, x] = max(set(neighbors), key=neighbors.count)
 
-        print(f"  [EdgeDecoCC] Excluded {total_excluded} px in per-cluster edge decoration CCs")
+        logger.info(f"[EdgeDecoCC] Excluded {total_excluded} px in per-cluster edge decoration CCs")
 
     return result
 
@@ -665,9 +669,9 @@ def _exclude_straight_edged_clusters(
                     result[y, x] = max(set(neighbors), key=neighbors.count)
 
         total_px = sum(e[1] for e in excluded)
-        print(f"  [StraightEdge] Excluded {len(excluded)} straight-edged CCs ({total_px} px)")
+        logger.info(f"[StraightEdge] Excluded {len(excluded)} straight-edged CCs ({total_px} px)")
         for lbl, cnt, pct, nv in excluded:
-            print(f"    cluster {lbl}: {cnt}px ({pct:.1f}%), {nv} vertices")
+            logger.info(f"    cluster {lbl}: {cnt}px ({pct:.1f}%), {nv} vertices")
 
     return result
 
@@ -758,11 +762,11 @@ def _exclude_rectangular_edge_clusters(
                     result[y, x] = max(set(neighbors), key=neighbors.count)
 
         total_px = sum(e[1] for e in excluded)
-        print(f"  [RectEdge] Excluded {len(excluded)} rectangular edge cluster(s) ({total_px} px)")
+        logger.info(f"[RectEdge] Excluded {len(excluded)} rectangular edge cluster(s) ({total_px} px)")
         for lbl, cnt, pct, fill in excluded:
             c = color_centroids[lbl] if lbl < len(color_centroids) else None
             c_str = f"RGB({c[0]},{c[1]},{c[2]})" if c else "?"
-            print(f"    cluster {lbl}: {c_str} {cnt}px ({pct:.1f}%), fill={fill:.2f}")
+            logger.info(f"    cluster {lbl}: {c_str} {cnt}px ({pct:.1f}%), fill={fill:.2f}")
 
     return result
 
@@ -811,7 +815,7 @@ def _remove_tiny_fragments(
                 total_removed += area
 
     if total_removed > 0:
-        print(f"  [TinyFrag] Removed {total_removed} px in tiny cluster fragments (< {max_fragment_px}px)")
+        logger.info(f"[TinyFrag] Removed {total_removed} px in tiny cluster fragments (< {max_fragment_px}px)")
 
     return result
 
@@ -890,14 +894,14 @@ def _merge_fragmented_clusters(
                 best_target = other_lbl
 
         if best_target >= 0:
-            print(
-                f"  [FragMerge] cluster {lbl} ({area_pct:.1f}%, {num_parts} parts, frag={frag_ratio:.1f}) → {best_target} (RGB dist={best_dist:.1f})"
+            logger.info(
+                f"[FragMerge] cluster {lbl} ({area_pct:.1f}%, {num_parts} parts, frag={frag_ratio:.1f}) → {best_target} (RGB dist={best_dist:.1f})"
             )
             result[pixel_labels == lbl] = best_target
             total_merged += area
 
     if total_merged > 0:
-        print(f"  [FragMerge] Merged {total_merged} px in fragmented-residue clusters")
+        logger.info(f"[FragMerge] Merged {total_merged} px in fragmented-residue clusters")
 
     return result
 
@@ -972,8 +976,8 @@ def _merge_color_close_fragments(
                 # else: neighbor color too different — try next neighbor
 
     if total_merged > 0:
-        print(
-            f"  [ColorCloseMerge] Merged {total_merged} px in color-close CCs (max_area={max_area}, rgb_dist≤{max_rgb_dist})"
+        logger.info(
+            f"[ColorCloseMerge] Merged {total_merged} px in color-close CCs (max_area={max_area}, rgb_dist≤{max_rgb_dist})"
         )
 
     return result
@@ -1062,7 +1066,7 @@ def _remove_color_outlier_ccs(
                 total_removed += area
 
     if total_removed > 0:
-        print(f"  [ColorOutlier] Removed {total_removed} px in color-outlier CCs (dist > {min_color_dist})")
+        logger.info(f"[ColorOutlier] Removed {total_removed} px in color-outlier CCs (dist > {min_color_dist})")
 
     return result
 
@@ -1158,7 +1162,7 @@ def _remove_circular_edge_elements(
                     neighbors.append(result[ny, nx])
             if neighbors:
                 result[y, x] = max(set(neighbors), key=neighbors.count)
-        print(f"  [CircularEdge] Removed {total_removed} px in circular edge elements")
+        logger.info(f"[CircularEdge] Removed {total_removed} px in circular edge elements")
 
     return result
 
@@ -1185,7 +1189,7 @@ def run_cleanup(
     if country_size == 0:
         return pixel_labels
 
-    print("  [Cleanup] Starting cluster cleanup pipeline...")
+    logger.info("[Cleanup] Starting cluster cleanup pipeline...")
 
     # Step 0: Remove small isolated CCs (tiny islands, dots, title fragments)
     pixel_labels = _remove_small_isolated_ccs(pixel_labels, country_mask, filtered_image)
@@ -1267,11 +1271,11 @@ def run_cleanup(
 
     # Report final state
     final_counts = _cluster_counts(pixel_labels)
-    print(f"  [Cleanup] Final: {len(final_counts)} clusters")
+    logger.info(f"[Cleanup] Final: {len(final_counts)} clusters")
     for lbl in sorted(final_counts.keys()):
         cnt = final_counts[lbl]
         c = color_centroids[lbl] if lbl < len(color_centroids) else None
         c_str = f"RGB({c[0]},{c[1]},{c[2]})" if c else "RGB(?)"
-        print(f"    cluster {lbl}: {c_str} {cnt}px ({cnt / country_size * 100:.1f}%)")
+        logger.info(f"    cluster {lbl}: {c_str} {cnt}px ({cnt / country_size * 100:.1f}%)")
 
     return pixel_labels

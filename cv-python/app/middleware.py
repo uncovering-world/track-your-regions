@@ -10,9 +10,8 @@ controls regardless of network topology.
 
 from __future__ import annotations
 
+import logging
 import os
-import sys
-import traceback
 from collections.abc import Awaitable, Callable
 
 from fastapi import FastAPI, Request
@@ -22,6 +21,8 @@ from starlette.responses import Response
 from starlette.types import ASGIApp
 
 from .utils.image import InvalidImageBytes
+
+logger = logging.getLogger(__name__)
 
 # Default cap: 100 MB. Map images can be large; 100 MB still bounds the
 # attack surface against unbounded-upload DoS. Override with CV_MAX_BODY_BYTES.
@@ -38,10 +39,7 @@ def _max_body_bytes() -> int:
             raise ValueError
         return n
     except ValueError:
-        print(
-            f"[middleware] Invalid CV_MAX_BODY_BYTES={raw!r}; falling back to default",
-            file=sys.stderr,
-        )
+        logger.warning(f"[middleware] Invalid CV_MAX_BODY_BYTES={raw!r}; falling back to default")
         return DEFAULT_MAX_BODY_BYTES
 
 
@@ -87,7 +85,7 @@ def install_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def _on_unhandled(_request: Request, exc: Exception) -> JSONResponse:
-        traceback.print_exception(type(exc), exc, exc.__traceback__, file=sys.stderr)
+        logger.error("Unhandled error answering a request", exc_info=exc)
         return JSONResponse({"detail": "Internal error"}, status_code=500)
 
 

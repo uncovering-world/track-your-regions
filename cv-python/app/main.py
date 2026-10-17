@@ -2,8 +2,11 @@ import cv2
 import skimage
 from fastapi import FastAPI
 
+from .logging_config import configure_logging
 from .middleware import install_security_middleware
 from .routes.pipeline import router as pipeline_router
+
+configure_logging()
 
 # No CORSMiddleware: this service is called only from the backend over the internal
 # Docker network. It must never be exposed to browser origins directly.
