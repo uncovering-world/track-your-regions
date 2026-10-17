@@ -13,6 +13,7 @@
 import type { SyncLastRun, SyncStatus } from '../../api/responses/admin.js';
 import type { CheckValue, ExperienceSourcesRow } from '../../db/schema.generated.js';
 import type { LatestSyncLogRow } from '../../services/sync/syncUtils.js';
+import { operationAnswer } from '../../services/operationProgress.js';
 import { isCancellable } from '../../services/sync/syncOrchestrator.js';
 import { isTerminalSyncStatus, type SyncProgress } from '../../services/sync/types.js';
 
@@ -45,6 +46,7 @@ export function heldRunStatusOf(status: SyncProgress): SyncStatus {
     currentItem: status.currentItem,
     logId: status.logId,
     dryRun: status.dryRun,
+    ...(status.operation ? { operation: operationAnswer(status.operation.progress) } : {}),
   };
 }
 

@@ -2,6 +2,7 @@
  * Types for experience sync services
  */
 
+import type { Operation } from '../operationProgress.js';
 import type { FieldChange } from './changeSet.js';
 
 /**
@@ -52,6 +53,12 @@ export interface SyncProgress {
    * disagrees with in the very words the curator answered, left standing.
    */
   pins?: PinTally;
+  /**
+   * The step the run is on, of how many, and how far through it (#1356), for
+   * a run that reports through the shared shape: the component item finder
+   * and the picture repairs so far.
+   */
+  operation?: Operation;
 }
 
 /** What a run said of the source's pins on admission (#1370). */

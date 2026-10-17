@@ -26599,6 +26599,107 @@
           "experienceIds"
         ]
       },
+      "OperationProgressAnswer": {
+        "type": "object",
+        "properties": {
+          "elapsedSeconds": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "Since the operation started."
+          },
+          "step": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OperationStepAnswer"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "wait": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "sentence": {
+                    "type": "string",
+                    "description": "Who is holding the run, and why."
+                  },
+                  "secondsLeft": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "sentence",
+                  "secondsLeft"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "An outside service is holding the run: a rate limit or a retry."
+          }
+        },
+        "required": [
+          "elapsedSeconds",
+          "step",
+          "wait"
+        ],
+        "additionalProperties": false,
+        "description": "How far a long admin operation is."
+      },
+      "OperationStepAnswer": {
+        "type": "object",
+        "properties": {
+          "index": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "1-based, of `count`. A step a run skips is not announced, so it can jump."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "sentence": {
+            "type": "string",
+            "description": "What the step is doing, in the words the panel shows."
+          },
+          "done": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "total": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "0 while the step cannot say how much it has to do."
+          },
+          "elapsedSeconds": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "index",
+          "count",
+          "sentence",
+          "done",
+          "total",
+          "elapsedSeconds"
+        ],
+        "additionalProperties": false,
+        "description": "The step an operation is on."
+      },
       "OperationUndone": {
         "type": "object",
         "properties": {
@@ -33111,6 +33212,10 @@
           },
           "dryRun": {
             "type": "boolean"
+          },
+          "operation": {
+            "description": "The step the run is on, of how many, and how far through it (#1356), for a run that reports through the shared shape.",
+            "$ref": "#/components/schemas/OperationProgressAnswer"
           },
           "progressAt": {
             "description": "Sent only for a run this server does not hold, read from its log row: when that run last wrote its progress. It cannot be cancelled from here.",

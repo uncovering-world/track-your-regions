@@ -18,6 +18,7 @@ import {
   type SourceWait,
 } from './sourceRetry.js';
 import { userAgent } from '../../config/userAgent.js';
+import type { Operation } from '../operationProgress.js';
 
 export { WaitBudget } from './sourceRetry.js';
 export type { SourceWait } from './sourceRetry.js';
@@ -371,6 +372,8 @@ interface TurnWatch {
   isCancelled?: () => boolean;
   onWait?: (wait: SourceWait) => void;
   budget: WaitBudget;
+  /** The run's log prefix, under which a hold it waits out is logged, as the retry loop logs its own. */
+  logPrefix?: string;
 }
 
 /**
@@ -388,6 +391,7 @@ function heldByService(pace: number, watch: TurnWatch): number {
       `Wikidata asked this server to wait, and this run's ${Math.round(watch.budget.totalMs / 60000)} min of waiting is spent`,
     );
   }
+  console.warn('%s Wikidata asked this server to wait, holding this run %ds', watch.logPrefix ?? '[Wikidata]', Math.round(hold / 1000));
   watch.onWait?.({
     reason: 'Wikidata asked this server to wait',
     attempt: 0,
@@ -490,6 +494,20 @@ export function waitMessage(source: string, wait: SourceWait, budget: WaitBudget
 }
 
 /**
+ * Say that a service is holding a run: on its status, and, for a run that
+ * reports through the shared progress (#1356), on that progress. The log line
+ * is the waiter's own: the retry loop's (`sourceRetry.ts`) or a hold's
+ * (`heldByService`).
+ */
+export function sayWait(
+  progress: { statusMessage: string; operation?: Operation },
+  source: string, wait: SourceWait, budget: WaitBudget,
+): void {
+  progress.statusMessage = waitMessage(source, wait, budget);
+  progress.operation?.waiting(progress.statusMessage, wait.backoffMs);
+}
+
+/**
  * A run's door to Wikidata: paced, interruptible, and able to say it is waiting.
  *
  * The three things every collector needs and each had written for itself. A
@@ -500,7 +518,7 @@ export function waitMessage(source: string, wait: SourceWait, budget: WaitBudget
 export type WikidataDoor = (query: string, retries?: number) => Promise<SparqlBinding[]>;
 
 export function wikidataDoor(
-  progress: { cancel: boolean; statusMessage: string },
+  progress: { cancel: boolean; statusMessage: string; operation?: Operation },
   budget: WaitBudget,
   logPrefix: string,
 ): WikidataDoor {
@@ -510,7 +528,7 @@ export function wikidataDoor(
     // Checked while waiting as well as between queries, because a backoff is up
     // to three minutes: without it, Cancel sits unhonoured for that long.
     isCancelled: () => progress.cancel,
-    onWait: (wait) => { progress.statusMessage = waitMessage('Wikidata', wait, budget); },
+    onWait: (wait) => { sayWait(progress, 'Wikidata', wait, budget); },
   });
 }
 
@@ -551,7 +569,7 @@ export async function sparqlQuery(
   const { retries = SPARQL_MAX_RETRIES, onWait, isCancelled } = options;
   const budget = options.budget ?? new WaitBudget(SPARQL_WAIT_BUDGET_MS);
   return withRetries(
-    (attempt) => attemptSparqlOnce(query, attempt, retries, { isCancelled, onWait, budget }),
+    (attempt) => attemptSparqlOnce(query, attempt, retries, { isCancelled, onWait, budget, logPrefix }),
     {
       logPrefix,
       retries,
