@@ -208,6 +208,16 @@ const COMPONENT_ITEM_PROPOSAL_WRITE = 'experience_component_item_proposals is wr
   + 'src/controllers/experience/componentItemAnswers.ts, taking the site\'s LockedExperience token.';
 const COMPONENT_ITEM_PROPOSAL_WRITE_RULES = spelledWriteRules('experience_component_item_proposals', COMPONENT_ITEM_PROPOSAL_WRITE);
 
+/**
+ * Two near places with similar names proposed as one place (#1249): proposed
+ * by the pass (`services/sync/mergeProposalFinder.ts`); the curator's answer
+ * gets a writer of its own, under the places' locks, when it arrives.
+ */
+const MERGE_PROPOSAL_WRITE = 'experience_merge_proposals is written by its writer modules only (ADR-0077): the pass in '
+  + 'src/services/sync/mergeProposalFinder.ts proposes; an answer takes a named write in a writer module of its '
+  + 'own, taking the places\' LockedExperience tokens.';
+const MERGE_PROPOSAL_WRITE_RULES = spelledWriteRules('experience_merge_proposals', MERGE_PROPOSAL_WRITE);
+
 /** Jev's suggestion for the sources card (#1260): `viewSuggestions.ts`. */
 const VIEW_SUGGESTION_WRITE = 'experience_view_suggestions is written by its writer module only (ADR-0077): add a named '
   + 'write to src/controllers/experience/viewSuggestions.ts, taking the place\'s LockedExperience token.';
@@ -374,7 +384,7 @@ const SOURCE_RULE_FAMILIES = [
   EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
   VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES, COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
-  COMPONENT_ITEM_SUGGESTION_WRITE_RULES,
+  COMPONENT_ITEM_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES,
   ROUTE_REGISTRY_RULES,
 ];
 
@@ -383,7 +393,7 @@ const TABLE_WRITE_FAMILIES = [
   EXPERIENCE_WRITE_RULES, EXPERIENCE_LOCATION_WRITE_RULES, WORK_WRITE_RULES, REGION_WRITE_RULES,
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
   VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES, COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
-  COMPONENT_ITEM_SUGGESTION_WRITE_RULES,
+  COMPONENT_ITEM_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES,
 ];
 
 /** The `no-restricted-syntax` setting of every family but the ones named. */
@@ -556,6 +566,12 @@ export default [
     files: ['src/controllers/experience/componentItemAnswers.ts', 'src/services/sync/componentItemFinder.ts'],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(COMPONENT_ITEM_PROPOSAL_WRITE_RULES),
+    },
+  },
+  {
+    files: ['src/services/sync/mergeProposalFinder.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(MERGE_PROPOSAL_WRITE_RULES),
     },
   },
   {

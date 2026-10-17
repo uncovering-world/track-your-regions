@@ -15,6 +15,7 @@ import { repoFile } from '../../../testSupport/repoFile.js';
 import { SQL_WHITESPACE_ALTERNATION, tidyLabelSql } from '../../../services/sync/labelFold.js';
 import { objectAssertions } from './objectAssertions.js';
 import { sharedItemsSql } from '../../experience/equalItemMerges.js';
+import { PROPOSAL_ROWS_SQL } from '../../../services/sync/mergeProposalFinder.js';
 
 const byId = (id: string) => {
   const assertion = objectAssertions.find(a => a.id === id);
@@ -420,5 +421,23 @@ describe('places that share a Wikidata item', () => {
       qid: 'Q43473', place_ids: [13178, 14708], names: ['Angkor Wat', 'Angkor Wat'],
       kinds: ['Archaeology', 'Places of worship'],
     })).toBe('Angkor Wat (Q43473): places 13178, 14708 in Archaeology, Places of worship');
+  });
+});
+
+describe('near places with similar names nobody has answered', () => {
+  const assertion = byId('near-places-with-similar-names-unanswered');
+
+  it("reads the pass's own rows, the open ones", () => {
+    // Composed, not spelled: the check and the review queue count one set of
+    // proposals, and an answered pair leaves both.
+    expect(assertion.sql).toContain(PROPOSAL_ROWS_SQL);
+    expect(collapse(assertion.sql)).toContain('WHERE p.answer IS NULL');
+  });
+
+  it('says both places with their kinds, the metres between them and how alike the names are', () => {
+    expect(assertion.describe({
+      a_name: 'Durham Castle and Cathedral', a_kinds: ['World Heritage Sites'],
+      b_name: 'Durham Cathedral', b_kinds: ['Places of worship'], distance_m: 139, name_similarity: 0.6486,
+    })).toBe('Durham Castle and Cathedral (World Heritage Sites) and Durham Cathedral (Places of worship): 139 m apart, names alike at 65 %');
   });
 });
