@@ -109,6 +109,23 @@ describe('the judgement ledger', () => {
     expect(problemsOf(files({ judgements }))).toEqual([]);
   });
 
+  it('takes on a catalogue row what an offered row can be, and refuses the causes a gap waits on', () => {
+    const row = (cause: string, issue: number | null, id = 'Q2003624') => judgement({ entry: null, kind: null, row: id, cause, issue, note: 'A chapel.' });
+    const kept = files({ judgements: [row('worth-a-visit', null, 'Q2003621'), row('not-a-must', null, 'Q2003622'), row('rule-defect', 1160, 'Q2003623')] });
+    expect(problemsOf(kept)).toEqual([]);
+    for (const cause of ['door-missing', 'kind-missing', 'part-of-offered', 'offered-elsewhere']) {
+      expect(problemsOf(files({ judgements: [row(cause, 628)] }))).toEqual([
+        `judgements.jsonl line 1: Q2003624 is a catalogue row judged ${cause}: an offered row waits on no door, kind, part or other kind; it is worth a visit, not a must, or a rule's defect`,
+      ]);
+    }
+  });
+
+  it('refuses worth-a-visit on an entry: a gap a kind has is never worth a visit', () => {
+    expect(problemsOf(files({ judgements: [judgement({ cause: 'worth-a-visit', issue: null })] }))).toEqual([
+      'judgements.jsonl line 1: moray is an entry judged worth-a-visit: a gap a kind has is never worth a visit',
+    ]);
+  });
+
   it('refuses a judgement on a catalogue row that names a kind: a row is judged on its own', () => {
     const rowWithKind = judgement({ entry: null, kind: 'archaeology', row: 'Q2003624', cause: 'not-a-must', issue: null });
     expect(problemsOf(files({ judgements: [rowWithKind] }))).toEqual([

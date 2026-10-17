@@ -84,14 +84,25 @@ const expectationSchema = z.strictObject({
 });
 
 /**
- * Why a gap stands (ADR-0116). Closed, so the report can count by it; a cause that fits none of
- * these is a reason to extend the vocabulary in a pull request, never a free-text cause.
+ * Why a gap stands, or why a row stays (ADR-0116). Closed, so the report can count by it; a cause
+ * that fits none of these is a reason to extend the vocabulary in a pull request, never a
+ * free-text cause.
  */
 export const CAUSES = CHECK_VALUES.coverage_judgements.cause;
 export type Cause = (typeof CAUSES)[number];
 
 /** The causes that name their owner: a defect is fixed somewhere, a door is built somewhere. */
 export const OWNED_CAUSES: ReadonlySet<Cause> = new Set<Cause>(['rule-defect', 'door-missing']);
+
+/**
+ * What a catalogue row may be judged (#1601). An offered row has no door, kind, part or other
+ * kind to wait on: it is worth a visit, not a must, or a rule's defect. The schema's
+ * `coverage_judgements_row_causes` states the same set.
+ */
+export const ROW_CAUSES: ReadonlySet<Cause> = new Set<Cause>(['worth-a-visit', 'not-a-must', 'rule-defect']);
+
+/** The one cause only a row takes: an entry a kind lacks is a gap, never a thing worth a visit. */
+const ROW_ONLY_CAUSE: Cause = 'worth-a-visit';
 
 const judgementSchema = z.strictObject({
   region: slug,
@@ -102,7 +113,10 @@ const judgementSchema = z.strictObject({
    * An entry filed under two live kinds has a gap, and a line, per kind. Null on a catalogue row.
    */
   kind: slug.nullable(),
-  /** A catalogue row the region offers and no entry names (#1601), by its Wikidata id; null when the subject is an entry. */
+  /**
+   * A catalogue row the region offers within its reach and no entry names (#1601), by its Wikidata
+   * id; null when the subject is an entry. A row is judged once per region, whatever kinds offer it.
+   */
   row: wikidataId.nullable(),
   cause: z.enum(CAUSES),
   /** The issue that owns the cause, where one does. A defect and a door name theirs. */
@@ -326,6 +340,12 @@ function checkJudgement(
   }
   if (judgement.row !== null && judgement.kind !== null) {
     found.push(`${judgement.row} is a catalogue row and names a kind: a row is judged on its own, not under a kind`);
+  }
+  if (judgement.row !== null && !ROW_CAUSES.has(judgement.cause)) {
+    found.push(`${judgement.row} is a catalogue row judged ${judgement.cause}: an offered row waits on no door, kind, part or other kind; it is worth a visit, not a must, or a rule's defect`);
+  }
+  if (judgement.entry !== null && judgement.cause === ROW_ONLY_CAUSE) {
+    found.push(`${judgement.entry} is an entry judged ${ROW_ONLY_CAUSE}: a gap a kind has is never worth a visit`);
   }
   if (OWNED_CAUSES.has(judgement.cause) && judgement.issue === null) {
     found.push(`${judgement.cause} names the issue that owns it`);
