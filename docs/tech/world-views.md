@@ -543,7 +543,7 @@ Every call `frontend/src/api/worldViews.ts`, `frontend/src/api/regions.ts` and `
 - `PUT /api/world-views/regions/:regionId/geometry` - Set custom geometry
 - `GET /api/world-views/regions/:regionId/geometry/compute-stream` - Compute single region with SSE progress (`force`, `skipSnapping`, `token`)
 - `POST /api/world-views/:worldViewId/compute-geometries` - Compute all geometries (`force`, `skipSnapping`)
-- `GET /api/world-views/:worldViewId/compute-geometries/status` - Get computation status
+- `GET /api/world-views/:worldViewId/compute-geometries/status` - Get computation status, with `operation` (`OperationProgressAnswer`, #1356): step 1 of 2 computes the regions' geometry, deepest first, counted per region; step 2 simplifies the shared borders of the parents with two or more children, counted per parent. Each step's end and the outcome is a line under `[Geometry] World view N:`
 - `POST /api/world-views/:worldViewId/compute-geometries/cancel` - Cancel computation
 - `GET /api/world-views/:worldViewId/display-geometry-status` - Display geometry status
 - `POST /api/world-views/:worldViewId/regenerate-display-geometries` - Regenerate display geometries (`geom_area_km2`, and `anchor_point` + `focus_bbox` by re-firing `update_region_focus_data()` — it does not compute the anchor itself; see `docs/tech/geometry-columns.md` § How a crossing region is told from a global one)
