@@ -14877,6 +14877,10 @@
             "description": "What the model calls have cost so far, in US dollars.",
             "type": "number"
           },
+          "operation": {
+            "description": "The step the run is on, of the two, and how far through it (#1356).",
+            "$ref": "#/components/schemas/OperationProgressAnswer"
+          },
           "started": {
             "type": "boolean",
             "const": true
@@ -14924,6 +14928,10 @@
           "totalCost": {
             "description": "What the model calls have cost so far, in US dollars.",
             "type": "number"
+          },
+          "operation": {
+            "description": "The step the run is on, of the two, and how far through it (#1356).",
+            "$ref": "#/components/schemas/OperationProgressAnswer"
           }
         },
         "required": [
@@ -23312,6 +23320,10 @@
             "items": {
               "$ref": "#/components/schemas/PendingQuestion"
             }
+          },
+          "operation": {
+            "description": "The step the extraction is on, of the six, and how far through it (#1356).",
+            "$ref": "#/components/schemas/OperationProgressAnswer"
           },
           "importedWorldViews": {
             "type": "array",

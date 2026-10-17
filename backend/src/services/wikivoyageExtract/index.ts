@@ -22,6 +22,10 @@ import { runMatchingPolicy } from '../worldViewImport/index.js';
 import { spatialSentence, type SpatialPassSummary } from '../worldViewImport/spatialPass.js';
 import { defaultMatchingPolicy } from '../worldViewImport/sourceTypes.js';
 import { createInitialProgress as createImportProgress } from '../worldViewImport/types.js';
+import { Operation } from '../operationProgress.js';
+
+/** An extraction's steps, as its progress counts them (#1356). */
+const EXTRACT_STEPS = { extract: 1, questions: 2, enrich: 3, import: 4, names: 5, spatial: 6 } as const;
 import OpenAI from 'openai';
 import { isOpenAIAvailable } from '../ai/openaiService.js';
 import { createExtractionAccumulator, preloadLearnedRules } from './aiRegionParser.js';
@@ -153,6 +157,7 @@ export function startExtraction(config: Partial<ExtractionConfig> & { cacheFile?
 
   const opId = `wv-extract-${nextOpId++}`;
   const progress = createInitialExtractionProgress();
+  progress.operation = new Operation(`[WV Extract] ${opId}:`, Object.keys(EXTRACT_STEPS).length);
   runningExtractions.set(opId, progress);
 
   console.log(`[WV Extract] Starting extraction ${opId}: name="${fullConfig.name}", maxDepth=${fullConfig.maxDepth}`);
@@ -185,6 +190,7 @@ export function cancelExtraction(opId?: string): boolean {
     const progress = runningExtractions.get(opId);
     if (progress && !isTerminalStatus(progress.status)) {
       progress.cancel = true;
+      progress.operation?.cancel();
       return true;
     }
     return false;
@@ -193,6 +199,7 @@ export function cancelExtraction(opId?: string): boolean {
   for (const progress of runningExtractions.values()) {
     if (!isTerminalStatus(progress.status)) {
       progress.cancel = true;
+      progress.operation?.cancel();
       return true;
     }
   }
@@ -272,7 +279,6 @@ async function extractContinentTrees(
 
 /** Wait for any pending AI questions to be resolved; applies their outcomes to the tree. */
 async function awaitPendingQuestions(
-  opId: string,
   progress: ExtractionProgress,
   rootTree: TreeNode,
 ): Promise<boolean> {
@@ -281,7 +287,10 @@ async function awaitPendingQuestions(
 
   const plural = (n: number) => (n !== 1 ? 's' : '');
   progress.statusMessage = `Waiting for ${unresolvedQuestions.length} AI question${plural(unresolvedQuestions.length)} to be resolved...`;
-  console.log(`[WV Extract] ${opId} Waiting for ${unresolvedQuestions.length} unresolved AI questions...`);
+  // A person answers these: the step waits on the admin, counted by the questions answered.
+  const asked = progress.pendingQuestions.length;
+  progress.operation?.step(EXTRACT_STEPS.questions, `Waiting for the answers to the ${asked} AI question${plural(asked)} asked`, 0,
+    () => ({ done: progress.pendingQuestions.filter(q => q.resolved).length, total: asked }));
 
   while (progress.pendingQuestions.some(q => !q.resolved) && !progress.cancel) {
     await new Promise(resolve => setTimeout(resolve, 2000));
@@ -292,11 +301,10 @@ async function awaitPendingQuestions(
   if (progress.cancel) {
     progress.status = 'cancelled';
     progress.statusMessage = 'Extraction cancelled while waiting for AI questions';
-    console.log(`[WV Extract] ${opId} Cancelled while waiting for AI questions`);
+    progress.operation?.finish('cancelled while waiting for AI questions');
     return false;
   }
 
-  console.log(`[WV Extract] ${opId} All AI questions resolved — proceeding`);
 
   for (const q of progress.pendingQuestions) {
     if (q.extractedRegions.length === 0) {
@@ -313,13 +321,14 @@ async function runExtractPhase(
   config: ExtractionConfig,
   progress: ExtractionProgress,
   fetcher: WikivoyageFetcher,
-  startTime: number,
 ): Promise<{ rootTree: TreeNode; totalNodes: number } | null> {
-  console.log(`[WV Extract] ${opId} Phase 1: Extracting tree from Wikivoyage...`);
   progress.status = 'extracting';
   progress.statusMessage = 'Fetching region hierarchy from Wikivoyage...';
 
   await loadEstimatedRegionCount(progress);
+  // Measured against an estimate of the region count, never below what is done.
+  progress.operation?.step(EXTRACT_STEPS.extract, 'Reading the region hierarchy from Wikivoyage', 0,
+    () => ({ done: progress.regionsFetched, total: Math.max(progress.estimatedTotal, progress.regionsFetched) }));
   const aiContext = await initAiContext();
   console.log(`[WV Extract] ${opId} AI extraction: ${aiContext ? 'enabled' : 'DISABLED (no OpenAI key)'}`);
 
@@ -327,24 +336,20 @@ async function runExtractPhase(
   if (trees === null) {
     progress.status = 'cancelled';
     progress.statusMessage = 'Extraction cancelled';
-    console.log(`[WV Extract] ${opId} Cancelled during phase 1`);
+    progress.operation?.finish('cancelled while reading the hierarchy');
     return null;
   }
 
   const rootTree: TreeNode = { name: 'World', children: trees };
   const totalNodes = countNodes(rootTree) - 1; // -1 for root
-  const phase1Duration = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(
-    `[WV Extract] ${opId} Phase 1 complete: ${totalNodes} regions in ${phase1Duration}s ` +
-    `(API=${progress.apiRequests}, cache=${progress.cacheHits})`,
-  );
+  progress.operation?.note(`${totalNodes} regions read (API=${progress.apiRequests}, cache=${progress.cacheHits})`);
 
   if (progress.decisions.length > 0) {
     const { formatDecisionSummary } = await import('./decisionSummary.js');
     console.log(formatDecisionSummary(progress.decisions, progress.regionsFetched));
   }
 
-  const proceed = await awaitPendingQuestions(opId, progress, rootTree);
+  const proceed = await awaitPendingQuestions(progress, rootTree);
   if (!proceed) return null;
 
   return { rootTree, totalNodes };
@@ -352,31 +357,27 @@ async function runExtractPhase(
 
 /** Enrich the tree with Wikidata IDs; returns false if cancelled. */
 async function runEnrichPhase(
-  opId: string,
   progress: ExtractionProgress,
   fetcher: WikivoyageFetcher,
   rootTree: TreeNode,
-  startTime: number,
 ): Promise<boolean> {
   progress.status = 'enriching';
   progress.statusMessage = 'Fetching Wikidata IDs...';
-  console.log(`[WV Extract] ${opId} Phase 2: Enriching with Wikidata IDs...`);
 
   const allTitles = collectPageTitles(rootTree);
+  progress.operation?.step(EXTRACT_STEPS.enrich, `Reading the Wikidata ids of ${allTitles.size} pages`);
   const wikidataMap = await fetchWikidataIds(fetcher, allTitles, progress);
   enrichWikidataIds(rootTree, wikidataMap);
 
   if (progress.cancel) {
     progress.status = 'cancelled';
     progress.statusMessage = 'Extraction cancelled during enrichment';
-    console.log(`[WV Extract] ${opId} Cancelled during phase 2`);
+    progress.operation?.finish('cancelled while reading the Wikidata ids');
     return false;
   }
 
-  const phase2Duration = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(
-    `[WV Extract] ${opId} Phase 2 complete: ${wikidataMap.size}/${allTitles.size} Wikidata IDs found (${phase2Duration}s total)`,
-  );
+  progress.operation?.advance(wikidataMap.size);
+  progress.operation?.note(`${wikidataMap.size} of ${allTitles.size} pages have a Wikidata id`);
 
   fetcher.save();
   return true;
@@ -384,18 +385,17 @@ async function runEnrichPhase(
 
 /** Import the enriched tree into a new world view; returns null on cancel. */
 async function runImportPhase(
-  opId: string,
   config: ExtractionConfig,
   progress: ExtractionProgress,
   rootTree: TreeNode,
   totalNodes: number,
-  startTime: number,
 ): Promise<{ worldViewId: number; importProgress: ReturnType<typeof createImportProgress> } | null> {
   progress.status = 'importing';
   progress.statusMessage = 'Importing into WorldView...';
-  console.log(`[WV Extract] ${opId} Phase 3: Importing tree into WorldView...`);
 
   const importProgress = createImportProgress();
+  progress.operation?.step(EXTRACT_STEPS.import, 'Creating the regions', 0,
+    () => ({ done: importProgress.createdRegions, total: importProgress.totalRegions }));
   const worldViewId = await importTree(rootTree, config.name, importProgress, {
     sourceType: 'wikivoyage',
     source: 'English Wikivoyage',
@@ -409,27 +409,23 @@ async function runImportPhase(
   if (importProgress.cancel || progress.cancel) {
     progress.status = 'cancelled';
     progress.statusMessage = 'Import cancelled';
-    console.log(`[WV Extract] ${opId} Cancelled during phase 3`);
+    progress.operation?.finish('cancelled while creating the regions');
     return null;
   }
 
-  const phase3Duration = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(
-    `[WV Extract] ${opId} Phase 3 complete: ${importProgress.createdRegions} regions created (${phase3Duration}s total)`,
-  );
   return { worldViewId, importProgress };
 }
 
 /** Match top-level countries to GADM; returns false if cancelled. */
 async function runMatchPhase(
-  opId: string,
   progress: ExtractionProgress,
   worldViewId: number,
   importProgress: ReturnType<typeof createImportProgress>,
 ): Promise<{ spatial: SpatialPassSummary | null } | false> {
   progress.status = 'matching';
   progress.statusMessage = 'Matching countries to GADM divisions...';
-  console.log(`[WV Extract] ${opId} Phase 4: Matching countries to GADM...`);
+  // The match and the spatial pass report as the extraction's own steps 5 and 6.
+  importProgress.operation = progress.operation;
 
   // Through the dispatch, not straight to a matcher: a caller naming one is
   // the divergence re-match guards against too — flipping a source's
@@ -459,7 +455,8 @@ async function runMatchPhase(
     set: (message: string) => { importMessage = message; progress.statusMessage = message; },
   });
 
-  const { cancelled, spatial } = await runMatchingPolicy(defaultMatchingPolicy('wikivoyage'), worldViewId, importProgress);
+  const { cancelled, spatial } = await runMatchingPolicy(defaultMatchingPolicy('wikivoyage'), worldViewId, importProgress,
+    { names: EXTRACT_STEPS.names, spatial: EXTRACT_STEPS.spatial });
 
   progress.countriesMatched = importProgress.countriesMatched;
   progress.totalCountries = importProgress.totalCountries;
@@ -471,7 +468,7 @@ async function runMatchPhase(
   if (cancelled) {
     progress.status = 'cancelled';
     progress.statusMessage = 'Matching cancelled';
-    console.log(`[WV Extract] ${opId} Cancelled during phase 4`);
+    progress.operation?.finish('cancelled while matching by name');
     return false;
   }
 
@@ -496,18 +493,18 @@ async function runExtraction(
   const fetcher = new WikivoyageFetcher(config.cachePath, progress);
 
   try {
-    const extractResult = await runExtractPhase(opId, config, progress, fetcher, startTime);
+    const extractResult = await runExtractPhase(opId, config, progress, fetcher);
     if (!extractResult) return;
     const { rootTree, totalNodes } = extractResult;
 
-    const enriched = await runEnrichPhase(opId, progress, fetcher, rootTree, startTime);
+    const enriched = await runEnrichPhase(progress, fetcher, rootTree);
     if (!enriched) return;
 
-    const importResult = await runImportPhase(opId, config, progress, rootTree, totalNodes, startTime);
+    const importResult = await runImportPhase(config, progress, rootTree, totalNodes);
     if (!importResult) return;
     const { worldViewId, importProgress } = importResult;
 
-    const matched = await runMatchPhase(opId, progress, worldViewId, importProgress);
+    const matched = await runMatchPhase(progress, worldViewId, importProgress);
     if (!matched) return;
 
     progress.status = 'complete';
@@ -517,17 +514,11 @@ async function runExtraction(
       `${importProgress.countriesMatched} countries matched` +
       (matched.spatial ? spatialSentence(matched.spatial) : '');
 
-    const totalDuration = ((Date.now() - startTime) / 1000).toFixed(1);
-    console.log(
-      `[WV Extract] ${opId} Complete in ${totalDuration}s: ` +
-      `regions=${totalNodes}, imported=${importProgress.createdRegions}, ` +
-      `matched=${importProgress.countriesMatched}, ` +
-      `drilldowns=${importProgress.subdivisionsDrilled}, ` +
-      `noMatch=${importProgress.noCandidates}`,
-    );
+    progress.operation?.finish(progress.statusMessage);
   } catch (err) {
     progress.status = 'failed';
     progress.statusMessage = 'Extraction failed; the server log has the cause.';
+    progress.operation?.finish('failed');
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- opId is generated here as wv-extract-<counter> and the elapsed time is a number
     console.error(`[WV Extract] ${opId} failed after ${((Date.now() - startTime) / 1000).toFixed(1)}s:`, err);
   } finally {

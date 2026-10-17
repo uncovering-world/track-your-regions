@@ -20,11 +20,15 @@ import { calculateCost } from '../ai/pricingService.js';
 import type { MatchSuggestion, MatchStatus, AIMatchProgress, AIMatchResult } from './types.js';
 import { tryTrigramMatch } from './dbSearchMatcher.js';
 import { applyAIResults } from './aiMatcherApply.js';
+import { Operation } from '../operationProgress.js';
 
 // Re-export for backward compatibility — consumers import from aiMatcher.ts
 export type { AIMatchProgress, AIMatchResult } from './types.js';
 export { trigramSearch, dbSearchSingleRegion } from './dbSearchMatcher.js';
 export { geocodeMatchRegion } from './geocodeMatcher.js';
+
+/** The batch AI match's steps, as its progress counts them (#1356). */
+const AI_MATCH_STEPS = { load: 1, ask: 2 } as const;
 
 export function createAIMatchProgress(): AIMatchProgress {
   return {
@@ -49,6 +53,7 @@ export function cancelAIMatch(worldViewId: number): boolean {
   const progress = runningAIMatches.get(worldViewId);
   if (progress && progress.status === 'running') {
     progress.cancel = true;
+    progress.operation?.cancel();
     return true;
   }
   return false;
@@ -89,6 +94,7 @@ function extractFencedJson(content: string): string {
  */
 export function startAIMatching(worldViewId: number): AIMatchProgress {
   const progress = createAIMatchProgress();
+  progress.operation = new Operation(`[AI Matcher] World view ${worldViewId}:`, Object.keys(AI_MATCH_STEPS).length);
   runningAIMatches.set(worldViewId, progress);
 
   runAIMatching(worldViewId, progress).catch((err) => {
@@ -96,6 +102,7 @@ export function startAIMatching(worldViewId: number): AIMatchProgress {
     console.error(`[AI Matcher] Error for worldView ${worldViewId}:`, err);
     progress.status = 'failed';
     progress.statusMessage = 'AI matching failed; the server log has the cause.';
+    progress.operation?.finish('failed');
   }).finally(() => {
     // Clean up after 5 minutes
     const thisProgress = progress;
@@ -119,6 +126,7 @@ async function runAIMatching(worldViewId: number, progress: AIMatchProgress): Pr
 
   // Load unresolved leaves with ancestor paths
   progress.statusMessage = 'Loading unresolved leaves...';
+  progress.operation?.step(AI_MATCH_STEPS.load, 'Reading the leaves left unresolved');
   const result = await pool.query(`
     WITH RECURSIVE ancestors AS (
       SELECT id, name, parent_region_id, id AS leaf_id
@@ -162,25 +170,28 @@ async function runAIMatching(worldViewId: number, progress: AIMatchProgress): Pr
   }));
 
   progress.totalLeaves = leaves.length;
+  progress.operation?.advance(leaves.length);
   if (leaves.length === 0) {
     progress.status = 'complete';
     progress.statusMessage = 'No unresolved leaves to process.';
+    progress.operation?.finish(progress.statusMessage);
     return;
   }
 
-  console.log(`[AI Matcher] Processing ${leaves.length} unresolved leaves for worldView ${worldViewId}`);
+  progress.operation?.step(AI_MATCH_STEPS.ask, `Asking the model about ${leaves.length} unresolved leaves`, 0,
+    () => ({ done: progress.processedLeaves, total: progress.totalLeaves }));
 
   // Process in batches
   for (let i = 0; i < leaves.length; i += BATCH_SIZE) {
     if (progress.cancel) {
       progress.status = 'cancelled';
       progress.statusMessage = 'AI matching cancelled.';
+      progress.operation?.finish('cancelled');
       return;
     }
 
     const batch = leaves.slice(i, i + BATCH_SIZE);
     progress.statusMessage = `Processing batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(leaves.length / BATCH_SIZE)}...`;
-    console.log(`[AI Matcher] Batch ${Math.floor(i / BATCH_SIZE) + 1}: ${batch.length} leaves`);
 
     const results = await processAIBatch(openai, batch, progress);
 
@@ -195,7 +206,7 @@ async function runAIMatching(worldViewId: number, progress: AIMatchProgress): Pr
   const duration = ((Date.now() - startTime) / 1000).toFixed(1);
   progress.status = 'complete';
   progress.statusMessage = `AI matching complete: ${progress.improved} improved out of ${progress.totalLeaves} leaves ($${progress.totalCost.toFixed(4)}). Took ${duration}s.`;
-  console.log(`[AI Matcher] Complete in ${duration}s: improved=${progress.improved}, cost=$${progress.totalCost.toFixed(4)}`);
+  progress.operation?.finish(progress.statusMessage);
 }
 
 async function processAIBatch(

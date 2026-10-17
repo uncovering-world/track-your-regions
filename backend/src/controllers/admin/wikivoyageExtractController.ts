@@ -28,6 +28,7 @@ import {
 } from '../../services/wikivoyageExtract/index.js';
 import { addRule, deleteRule } from '../../services/ai/learnedRulesService.js';
 import { WIKIVOYAGE_ELIGIBLE_SOURCE_TYPES_ALL } from '../../services/worldViewImport/sourceTypes.js';
+import { operationAnswer } from '../../services/operationProgress.js';
 
 // The interview's question and the regions read off a page come from a model,
 // by way of the extraction's own objects; each is read here key by key, so a
@@ -135,6 +136,7 @@ export async function getWikivoyageExtractionStatus(): Promise<ExtractionStatus>
     aiCompletionTokens: progress.aiCompletionTokens,
     aiTotalCost: progress.aiTotalCost,
     pendingQuestions,
+    ...(progress.operation ? { operation: operationAnswer(progress.operation.progress) } : {}),
     importedWorldViews,
     caches,
   };
