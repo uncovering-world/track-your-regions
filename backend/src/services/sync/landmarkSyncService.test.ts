@@ -27,6 +27,7 @@ vi.mock('./syncUtils.js', () => ({
   upsertSingleLocation: vi.fn(),
 }));
 vi.mock('./wikidataCache.js', () => ({
+  pruneExpired: vi.fn().mockResolvedValue(0),
   withCache: vi.fn((door: unknown) => door),
 }));
 vi.mock('./publicArt/pipeline.js', () => ({ collectPublicArt: vi.fn() }));
