@@ -13,9 +13,10 @@ vi.mock('../../../db/index.js', () => ({
   pool: { query: vi.fn(), connect: vi.fn() },
 }));
 
-import type { CoverageReport, LiveKindGaps } from '../catalogueCoverage/report.js';
+import type { Cause } from '../../../services/catalogueCoverage/files.js';
+import type { CoverageReport, LiveKindGaps, RegionUnnamed, UnnamedPlace } from '../catalogueCoverage/report.js';
 import { AssertionUnavailable } from './assertion.js';
-import { coverageAssertions, coverageFindings, NOT_LOADED } from './coverageAssertions.js';
+import { coverageAssertions, coverageFindings, NOT_LOADED, unnamedFindings } from './coverageAssertions.js';
 
 const [check] = coverageAssertions;
 
@@ -209,5 +210,67 @@ describe('the check', () => {
   it('is an invariant about coverage, so its count can be accepted and a loss reads as growth', () => {
     expect(check.kind).toBe('invariant');
     expect(check.area).toBe('coverage');
+  });
+});
+
+describe('what a region offers that no guide names', () => {
+  const [, junk] = coverageAssertions;
+  const place = (name: string, over: Partial<UnnamedPlace> = {}): UnnamedPlace => ({
+    experienceId: name.length, name, wikidataId: `Q${name.length}`, kinds: ['Archaeology'], sitelinks: 20, km: 1, judgement: null, ...over,
+  });
+  const judgedRow = (cause: Cause, issue: number | null = null) => ({ cause, issue, judged: '2026-10-17', note: 'Read on the ground.' });
+  const rome: RegionUnnamed = {
+    regionSlug: 'rome', regionName: 'Rome', total: 4,
+    unjudged: [place('Temple of Portunus', { sitelinks: 30 })], unjudgeable: [],
+    judgedByCause: [{ cause: 'worth-a-visit', count: 1, issues: [] }, { cause: 'not-a-must', count: 1, issues: [] }, { cause: 'rule-defect', count: 1, issues: [1700] }],
+    standing: [
+      place('Umbilicus urbis Romae', { sitelinks: 22, judgement: judgedRow('not-a-must') }),
+      place('Via Salaria', { sitelinks: 35, kinds: ['Archaeology', 'Public Art & Monuments'], judgement: judgedRow('rule-defect', 1700) }),
+    ],
+  };
+  const withUnnamed = (unnamed: RegionUnnamed[], stale: CoverageReport['staleRowJudgements'] = []): CoverageReport =>
+    ({ ...report([archaeology]), unnamed, staleRowJudgements: stale });
+
+  it('lists what a person judged not worth a visit while a kind still offers it, and the line beside says how the region stands', () => {
+    const { rows, context } = unnamedFindings(withUnnamed([rome]));
+
+    expect(rows.map(row => junk.describe(row))).toEqual([
+      'Umbilicus urbis Romae (Rome), Archaeology, 22 sitelinks: judged not-a-must on 2026-10-17, and the kind still offers it: its rule or a curator answers it.',
+      'Via Salaria (Rome), Archaeology, Public Art & Monuments, 35 sitelinks: judged rule-defect (#1700) on 2026-10-17, and the kind still offers it: its rule or a curator answers it.',
+    ]);
+    expect(context).toEqual([
+      'Rome offers 4 within its reach that no guide names; 3 are judged: 1 worth-a-visit; 1 not-a-must; 1 rule-defect (#1700); 1 waits for a person.',
+    ]);
+  });
+
+  it('says a region with nothing unjudged and nothing unnamed each in a line, and lists a stale row judgement after the findings', () => {
+    const berlin: RegionUnnamed = {
+      regionSlug: 'berlin', regionName: 'Berlin', total: 3,
+      unjudged: [place('Neptunbrunnen'), place('Berlin Mosque', { sitelinks: null })],
+      unjudgeable: [place('A property only UNESCO names', { wikidataId: null, kinds: ['World Heritage Sites'], sitelinks: null })],
+      judgedByCause: [], standing: [],
+    };
+    const dakar: RegionUnnamed = { regionSlug: 'dakar', regionName: 'Dakar', total: 0, unjudged: [], unjudgeable: [], judgedByCause: [], standing: [] };
+    const { rows, context } = unnamedFindings(withUnnamed([berlin, dakar], [
+      { regionSlug: 'cusco-region', wikidataId: 'Q96000099', cause: 'not-a-must', issue: null, judged: '2026-10-16', note: 'Gone.' },
+    ]));
+
+    expect(rows.map(row => junk.describe(row))).toEqual([
+      'Row Q96000099 (Cusco region): judged not-a-must on 2026-10-16, and no offered place within reach carries it now: the line comes out of judgements.jsonl.',
+    ]);
+    expect(context).toEqual([
+      'Berlin offers 3 within its reach that no guide names; 2 wait for a person; 1 has no Wikidata id to judge by.',
+      'Dakar: everything it offers within its reach is named by a guide.',
+    ]);
+  });
+
+  it('leaves the sitelinks out where the source recorded none, and reports nothing with the tables unloaded', () => {
+    const { rows } = unnamedFindings(withUnnamed([{ ...rome, standing: [place('A property', { sitelinks: null, kinds: ['World Heritage Sites'], judgement: judgedRow('not-a-must') })] }]));
+    expect(junk.describe(rows[0])).toBe('A property (Rome), World Heritage Sites: judged not-a-must on 2026-10-17, and the kind still offers it: its rule or a curator answers it.');
+    expect(() => unnamedFindings({ ...withUnnamed([rome]), expectations: [] })).toThrow(NOT_LOADED);
+  });
+
+  it('is an invariant about coverage with an id of its own', () => {
+    expect(junk).toMatchObject({ id: 'offered-and-named-by-no-guide', kind: 'invariant', area: 'coverage' });
   });
 });

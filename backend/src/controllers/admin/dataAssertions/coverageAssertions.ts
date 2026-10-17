@@ -1,12 +1,15 @@
 /**
- * What the catalogue lacks of what a traveller expects (#1162, ADR-0081).
+ * What the catalogue lacks of what a traveller expects (#1162, ADR-0081), and
+ * what it offers that no traveller is sent to (#1601).
  *
  * The other checks ask whether the rows the catalogue holds mean what the
- * product says. This one asks the opposite question, over the survey lists in
- * `db/catalogue-coverage/` once they are loaded: which expected places and works
- * a live kind does not offer although its own rule calls them well known. A sync
- * that loses the Frida Kahlo Museum makes this count grow, and nothing else in
- * the panel would see it.
+ * product says. These two ask over the survey lists in `db/catalogue-coverage/`
+ * once they are loaded: which expected places and works a live kind does not
+ * offer although its own rule calls them well known, and which offered places a
+ * person has read as not worth a visit while a kind still offers them. A sync
+ * that loses the Frida Kahlo Museum makes the first count grow, and nothing
+ * else in the panel would see it; a stump of brick in the Forum a rule admits
+ * is the second's business until the rule or a curator turns it away.
  *
  * The decision is the coverage report's (`catalogueCoverage/report.ts`), which
  * the terminal command prints too; this file only says its findings the way the
@@ -103,8 +106,7 @@ export function coverageFindings(report: CoverageReport): Collected {
 
 /** A judgement whose gap has closed, said as the thing to do about it. */
 function describeStale(row: AssertionRow): string {
-  const issue = row.issue === null || row.issue === undefined ? '' : ` (#${count(row, 'issue')})`;
-  return `${text(row, 'name')} (${text(row, 'region')}): judged ${text(row, 'stale')}${issue} on ${text(row, 'judged')}, `
+  return `${text(row, 'name')} (${text(row, 'region')}): judged ${text(row, 'stale')}${issueWords(row)} on ${text(row, 'judged')}, `
     + `and ${text(row, 'kind')} offers it now: the line comes out of judgements.jsonl.`;
 }
 
@@ -135,4 +137,79 @@ const expectedWellKnownMissing: ComputedAssertion = {
   },
 };
 
-export const coverageAssertions: ComputedAssertion[] = [expectedWellKnownMissing];
+/** How many a region offers that the ledger cannot key on, said after the ones that wait; nothing when none. */
+function unjudgeableWords(unjudgeable: number): string {
+  if (unjudgeable === 0) return '';
+  if (unjudgeable === 1) return '; 1 has no Wikidata id to judge by';
+  return `; ${unjudgeable} have no Wikidata id to judge by`;
+}
+
+/** How a region stands in the other direction, in one line: what it offers that no guide names, and what a person made of it. */
+function regionLine(region: CoverageReport['unnamed'][number]): string {
+  if (region.total === 0) return `${region.regionName}: everything it offers within its reach is named by a guide.`;
+  const offers = `${region.regionName} offers ${region.total} within its reach that no guide names`;
+  const judged = region.total - region.unjudged.length - region.unjudgeable.length;
+  const unjudgeable = unjudgeableWords(region.unjudgeable.length);
+  if (judged === 0) return `${offers}; ${waitingWords(region.unjudged.length)}${unjudgeable}.`;
+  const them = judged === 1 ? '1 is judged' : `${judged} are judged`;
+  return `${offers}; ${them}: ${region.judgedByCause.map(causeWords).join('; ')}; ${waitingWords(region.unjudged.length)}${unjudgeable}.`;
+}
+
+/**
+ * The other direction's findings (#1601): one row per place a person judged not worth a
+ * visit that a kind still offers, least known first within each region, and after them one
+ * row per row judgement no offered place within reach carries. The unjudged are counted
+ * beside the rows and listed by the command, since a person reads them in order there.
+ */
+export function unnamedFindings(report: CoverageReport): Collected {
+  if (report.expectations.length === 0) throw new AssertionUnavailable(NOT_LOADED);
+  const regionName = new Map(report.regions.map(region => [region.slug, region.name]));
+  const rows: AssertionRow[] = report.unnamed.flatMap(region => region.standing.map(place => ({
+    region: region.regionName,
+    name: place.name,
+    wikidata: place.wikidataId,
+    kinds: place.kinds.join(', '),
+    sitelinks: place.sitelinks,
+    cause: place.judgement?.cause,
+    issue: place.judgement?.issue ?? null,
+    judged: place.judgement?.judged,
+  })));
+  const stale: AssertionRow[] = report.staleRowJudgements.map(judgement => ({
+    region: regionName.get(judgement.regionSlug) ?? judgement.regionSlug,
+    wikidata: judgement.wikidataId,
+    stale: judgement.cause,
+    issue: judgement.issue,
+    judged: judgement.judged,
+  }));
+  return { rows: [...rows, ...stale], context: report.unnamed.map(regionLine) };
+}
+
+const issueWords = (row: AssertionRow): string => (row.issue === null || row.issue === undefined ? '' : ` (#${count(row, 'issue')})`);
+
+const offeredNamedByNoGuide: ComputedAssertion = {
+  id: 'offered-and-named-by-no-guide',
+  area: 'coverage',
+  title: 'A place a kind offers in a surveyed region that no guide names and a person judged not worth a visit',
+  kind: 'invariant',
+  meaning:
+    'The survey lists are the yardstick in this direction too: a place a kind offers within a surveyed region\'s reach '
+    + 'that no entry names, by its Wikidata id, an id named as the same place or UNESCO\'s id, is one a traveller was '
+    + 'not sent to. Most such places are fine, and the coverage command lists them for a person least known first; '
+    + 'each is judged once in db/catalogue-coverage/judgements.jsonl, worth a visit, not a must, or a defect of the '
+    + 'rule that admitted it. A row here is one judged not worth a visit that a kind still offers: the kind\'s rule or a '
+    + 'curator answers it, with a refusal or a raised line, and the row leaves when the place is no longer offered. '
+    + 'A judgement no offered place within reach carries any more is listed as a line to remove. How many each '
+    + 'region offers that no guide names, and how many wait for a person, is said beside the rows.',
+  collect: async () => unnamedFindings(await coverageReport()),
+  describe: (row) => {
+    if (row.stale !== undefined) {
+      return `Row ${text(row, 'wikidata')} (${text(row, 'region')}): judged ${text(row, 'stale')}${issueWords(row)} on ${text(row, 'judged')}, `
+        + 'and no offered place within reach carries it now: the line comes out of judgements.jsonl.';
+    }
+    const sitelinks = row.sitelinks === null || row.sitelinks === undefined ? '' : `, ${count(row, 'sitelinks')} sitelinks`;
+    return `${text(row, 'name')} (${text(row, 'region')}), ${text(row, 'kinds')}${sitelinks}: judged ${text(row, 'cause')}${issueWords(row)} `
+      + `on ${text(row, 'judged')}, and the kind still offers it: its rule or a curator answers it.`;
+  },
+};
+
+export const coverageAssertions: ComputedAssertion[] = [expectedWellKnownMissing, offeredNamedByNoGuide];
