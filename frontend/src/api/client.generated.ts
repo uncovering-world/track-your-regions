@@ -10679,12 +10679,34 @@ export interface WebSearchModelSet {
   webSearchModel: string;
 }
 
+/**
+ * Which Wikidata the source's runs read: the live query service, or the local subset.
+ */
+export type WikidataCacheReader = typeof WikidataCacheReader[keyof typeof WikidataCacheReader];
+
+
+export const WikidataCacheReader = {
+  live: 'live',
+  subset: 'subset',
+} as const;
+
 export type WikidataCacheKindTtlSource = typeof WikidataCacheKindTtlSource[keyof typeof WikidataCacheKindTtlSource];
 
 
 export const WikidataCacheKindTtlSource = {
   default: 'default',
   set_by_an_admin: 'set by an admin',
+} as const;
+
+/**
+ * Who answers this kind now. "subset": the source reads the local Wikidata subset, and these are answers its live runs left, which no run reads and which age out.
+ */
+export type WikidataCacheKindAnsweredBy = typeof WikidataCacheKindAnsweredBy[keyof typeof WikidataCacheKindAnsweredBy];
+
+
+export const WikidataCacheKindAnsweredBy = {
+  cache: 'cache',
+  subset: 'subset',
 } as const;
 
 /**
@@ -10726,13 +10748,22 @@ export interface WikidataCacheKind {
      */
   ttlMs: number;
   ttlSource: WikidataCacheKindTtlSource;
+  /** Who answers this kind now. "subset": the source reads the local Wikidata subset, and these are answers its live runs left, which no run reads and which age out. */
+  answeredBy: WikidataCacheKindAnsweredBy;
 }
 
 /**
  * What a source keeps between runs.
  */
 export interface WikidataCache {
-  /** Every kind the source asks, and any it kept before, by name. */
+  /** Which Wikidata the source's runs read: the live query service, or the local subset. */
+  reader: WikidataCacheReader;
+  /**
+     * For a source that reads the subset, the date of the dump the subset in place was built from; null otherwise, or when no subset is built.
+     * @nullable
+     */
+  subsetDumpDate: string | null;
+  /** Every kind the source keeps, and any it kept before, by name. */
   kinds: WikidataCacheKind[];
 }
 
