@@ -187,6 +187,19 @@ describe('assignExperiencesToRegions', () => {
     expect(progress.status).toBe('complete');
   });
 
+  it('says each of its four steps in the log as it ends, and ends on step 4 of 4 (#1356)', async () => {
+    const { client } = fakeClient();
+    mockedConnect.mockResolvedValue(client);
+    const logged = vi.spyOn(console, 'log').mockImplementation(() => {});
+
+    const progress = await assignExperiencesToRegions(4249);
+
+    const lines = logged.mock.calls.map(([line]) => String(line));
+    expect(lines.filter(line => /World view 4249: Step \d of 4 done/.test(line))).toHaveLength(4);
+    expect(lines.some(line => line.startsWith('[Region Assignment] World view 4249: Finished after'))).toBe(true);
+    expect(progress.operation.progress.step).toMatchObject({ index: 4, count: 4 });
+  });
+
   it('rolls back when a step throws, and says the assignments from before stand', async () => {
     const boom = new Error('canceling statement due to statement timeout');
     const { client, statements } = fakeClient((sql) => {
@@ -218,6 +231,19 @@ describe('assignExperiencesToRegions', () => {
     expect(client.release).toHaveBeenCalledWith(lost);
   });
 
+  it('rolls back a cancel pressed during the last step, rather than committing after it was taken (#1356)', async () => {
+    const { client, statements } = fakeClient((sql) => {
+      if (/^INSERT INTO experience_regions/.test(sql.trim())) cancelAssignment(4254);
+    });
+    mockedConnect.mockResolvedValue(client);
+
+    const progress = await assignExperiencesToRegions(4254);
+
+    expect(progress.status).toBe('cancelled');
+    expect(statements.map(head)).not.toContain('COMMIT');
+    expect(statements.map(head).at(-1)).toBe('ROLLBACK');
+  });
+
   it('rolls back a cancel that lands after the clear, and commits nothing', async () => {
     const { client, statements } = fakeClient((sql) => {
       if (/^DELETE FROM experience_regions/.test(sql.trim())) cancelAssignment(4253);
@@ -235,6 +261,8 @@ describe('assignExperiencesToRegions', () => {
       'DELETE FROM experience_regions',
       'ROLLBACK',
     ]);
+    // The panel says the press was taken while the step in flight ends (#1356).
+    expect(progress.operation.progress.cancelling).toBe(true);
     expect(client.release).toHaveBeenCalledTimes(1);
   });
 });

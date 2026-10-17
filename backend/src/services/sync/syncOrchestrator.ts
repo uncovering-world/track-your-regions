@@ -399,6 +399,7 @@ export function cancelSync(sourceId: number): boolean {
   if (progress && isCancellable(progress)) {
     progress.cancel = true;
     progress.statusMessage = 'Cancelling...';
+    progress.operation?.cancel();
     return true;
   }
   return false;

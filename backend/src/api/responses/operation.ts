@@ -22,6 +22,7 @@ export type OperationStepAnswer = z.infer<typeof OperationStepAnswer>;
 
 export const OperationProgressAnswer = z.strictObject({
   elapsedSeconds: z.number().int().describe('Since the operation started.'),
+  cancelling: z.boolean().describe('A cancel was asked: the run stops at the next point it can, usually when the step in flight ends.'),
   step: OperationStepAnswer.nullable(),
   wait: z.strictObject({
     sentence: z.string().describe('Who is holding the run, and why.'),

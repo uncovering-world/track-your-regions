@@ -16193,6 +16193,10 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "operation": {
+            "description": "The step the run is on, of how many, and how long it has run (#1356).",
+            "$ref": "#/components/schemas/OperationProgressAnswer"
           }
         },
         "required": [
@@ -26608,6 +26612,10 @@
             "maximum": 9007199254740991,
             "description": "Since the operation started."
           },
+          "cancelling": {
+            "type": "boolean",
+            "description": "A cancel was asked: the run stops at the next point it can, usually when the step in flight ends."
+          },
           "step": {
             "anyOf": [
               {
@@ -26648,6 +26656,7 @@
         },
         "required": [
           "elapsedSeconds",
+          "cancelling",
           "step",
           "wait"
         ],

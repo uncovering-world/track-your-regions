@@ -4,6 +4,7 @@
  * Handles sync operations for experience sources (UNESCO, etc.)
  */
 
+import { operationAnswer } from '../../services/operationProgress.js';
 import { SUBSET_READY_SOURCES } from '../../services/sync/subset/reader.js';
 import { mergeArrivalsOfRun } from '../experience/equalItemMerges.js';
 import type { z } from 'zod/v4';
@@ -750,6 +751,7 @@ export async function getRegionAssignmentStatus(
     ancestorAssignments: status.ancestorAssignments,
     totalAssignments: status.directAssignments + status.ancestorAssignments,
     errors: status.errors,
+    operation: operationAnswer(status.operation.progress),
   };
 }
 
