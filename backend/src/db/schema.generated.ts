@@ -592,6 +592,37 @@ export interface ImportRunsRow {
   completed_at: Date | null;
 }
 
+/** The table `readership_month_files`. */
+export interface ReadershipMonthFilesRow {
+  month: Date;
+  file_name: string;
+  build_id: number;
+  lines: string;
+  editions: unknown;
+  kept: string;
+  built_at: Date;
+}
+
+/** The table `readership_months`. */
+export interface ReadershipMonthsRow {
+  month: Date;
+  item: string;
+  site: string;
+  views: number;
+  mobile: number;
+  daily: number[] | null;
+}
+
+/** The table `readership_staging`. */
+export interface ReadershipStagingRow {
+  build_id: number;
+  site: string;
+  title: string;
+  views: number;
+  mobile: number;
+  daily: number[] | null;
+}
+
 /** The table `refresh_tokens`. */
 export interface RefreshTokensRow {
   id: number;
