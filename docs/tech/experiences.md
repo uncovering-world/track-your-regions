@@ -263,10 +263,13 @@ traveller can stand in the wrong place at, and cheaper than a transaction per ob
 last digits. A row the arm *did* move goes back for region placement whatever the distance, because a
 region's edge is a line and a rewrite of a centimetre across one is a different country — and nothing
 would revisit the row afterwards, the fast path matching its new coordinate on every later run. The
-pairing is greedy, so where a source lists two points of one reference between ten and twenty metres
-apart it can miss a pairing that exists, costing one withdrawal that did not happen (#549); no source
-in the catalogue is shaped that way, its nine multi-reference points standing either a centimetre or
-14 km apart. `db/migrations/026` collapses the pairs the old comparison
+pairing starts from two greedy passes, which can miss a pairing that exists where a source lists two
+points of one reference between ten and twenty metres apart, in an order other than the stored one.
+Six Wikidata places had that shape on 2026-10-17: the Bronze Horseman's two points are 17.4 m apart,
+Nidaros Cathedral's 10.3 m. So the passes' result is completed before any arm reads it
+(`completePairing` in `locationMatching.ts`, ADR-0117). For a point left without a row it searches an
+augmenting path, and it keeps every pair the passes made unless moving one is what lets another
+point pair. `db/migrations/026` collapses the pairs the old comparison
 already wrote and names any pair it leaves standing: it deletes the marked row where no visit and no
 region assignment hang off it, and the held pending arrival where no visit does — that row's `auto`
 placements are spent knowingly, being recomputable and on no reader-facing read.
@@ -889,9 +892,10 @@ writer raises no card for a rewrite inside ten metres, and its fast path still m
 UNESCO rows per run.
 
 That is not the same as "every card from here on is a real departure", and two shapes still record a
-withdrawal for a point that never moved. One is the greedy pairing's loser (ADR-0027 decision 5a-i,
-#549), which needs a source to list two points of one reference between ten and twenty metres apart —
-nothing in the catalogue does. The other is the pair migration 026 declines to touch. Where a visit or a manual region assignment keeps such a pair standing, the card
+withdrawal for a point that never moved. One was the greedy pairing's loser (ADR-0027 decision 5a-i),
+which the completion of the pairing removed (ADR-0117, #549). A row still loses the pairing only where
+no one-to-one pairing could keep it, and the point inserted beside it is then a point the stored rows
+cannot answer for. The other is the pair migration 026 declines to touch. Where a visit or a manual region assignment keeps such a pair standing, the card
 tells the curator truthfully that nothing moved, and the only honest button — "false alarm" — clears
 `missing_since` and leaves the object with two visible rows a centimetre apart under one reference.
 The next run pairs the one sitting on the source's coordinate and withdraws the other, so the same

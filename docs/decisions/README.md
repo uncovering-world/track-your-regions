@@ -46,7 +46,7 @@ and accepted by it.
 | [0024](0024-a-category-may-refuse-what-the-source-still-lists.md) | A category may refuse what the source still lists | Accepted — decisions 2 and 4 narrowed by [0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) | 2026-08-07 |
 | [0025](0025-per-source-curation-gate.md) | A source is trusted or it is not, and the product says which | Accepted — decision 5 narrowed by [0037](0037-a-part-field-readers-see-is-held-like-the-objects.md) | 2026-08-10 |
 | [0026](0026-a-run-records-what-a-container-holds.md) | A run records what a container's contents did, per kind of contents | Accepted — decisions 1 and 2 narrowed by [0029](0029-what-an-object-is-made-of-can-be-curated.md) | 2026-08-15 |
-| [0027](0027-a-point-rewritten-more-precisely-is-the-same-point.md) | A point the source rewrites more precisely is the same point | Accepted — decisions 1 and 5 narrowed by [0029](0029-what-an-object-is-made-of-can-be-curated.md) | 2026-08-16 |
+| [0027](0027-a-point-rewritten-more-precisely-is-the-same-point.md) | A point the source rewrites more precisely is the same point | Accepted — decisions 1 and 5 narrowed by [0029](0029-what-an-object-is-made-of-can-be-curated.md); decision 5a-i narrowed by [0117](0117-the-location-pairing-is-made-complete-before-any-arm-reads-it.md) | 2026-08-16 |
 | [0028](0028-a-reader-is-positioned-by-places-they-can-go-to.md) | A reader is positioned by places they can go to, never by a point that names the whole | Accepted — decision 2 narrowed by [0095](0095-a-place-of-several-points-has-no-coordinate-of-its-own.md) | 2026-08-17 |
 | [0029](0029-what-an-object-is-made-of-can-be-curated.md) | What an object is made of can be curated, and a correction outlives the run | Accepted | 2026-08-20 |
 | [0030](0030-answers-from-a-source-are-kept-with-an-expiry.md) | What a source answers is kept, with an expiry a person can change | Accepted — decision 1 narrowed by [0047](0047-a-cached-answer-belongs-to-the-source-that-asked.md) | 2026-08-21 |
@@ -136,6 +136,7 @@ and accepted by it.
 | [0114](0114-work-is-held-in-queues-one-issue-per-goal.md) | Work is held in queues, one issue per goal, with a checkable end and a journal | Accepted | 2026-10-16 |
 | [0115](0115-a-point-is-offered-to-several-maps-the-devices-own-first.md) | A point is offered to several maps, the device's own first | Accepted | 2026-10-16 |
 | [0116](0116-a-gap-the-catalogue-carries-is-judged-once-in-a-committed-ledger-by-cause.md) | A gap the catalogue carries is judged once, in a committed ledger by cause | Accepted | 2026-10-16 |
+| [0117](0117-the-location-pairing-is-made-complete-before-any-arm-reads-it.md) | The location pairing is made complete before any arm reads it | Accepted | 2026-10-17 |
 | [0118](0118-a-budget-may-leave-out-a-host-the-repository-does-not-serve.md) | A Lighthouse budget may leave out a host the repository does not serve | Accepted | 2026-10-17 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
