@@ -4714,13 +4714,16 @@ CREATE TABLE IF NOT EXISTS coverage_judgements (
     entry_slug VARCHAR(120),
     kind_slug VARCHAR(80) REFERENCES coverage_kinds(slug) ON DELETE CASCADE,
     row_wikidata_id VARCHAR(20) CHECK (row_wikidata_id ~ '^Q[1-9][0-9]*$'),
-    cause VARCHAR(20) NOT NULL CHECK (cause IN ('rule-defect', 'door-missing', 'kind-missing', 'part-of-offered', 'offered-elsewhere', 'not-a-must')),
+    cause VARCHAR(20) NOT NULL CHECK (cause IN ('rule-defect', 'door-missing', 'kind-missing', 'part-of-offered', 'offered-elsewhere', 'not-a-must', 'worth-a-visit')),
     issue_number INTEGER CHECK (issue_number > 0),
     judged DATE NOT NULL,
     note TEXT NOT NULL CHECK (note <> ''),
     CONSTRAINT coverage_judgements_one_subject CHECK ((entry_slug IS NULL) <> (row_wikidata_id IS NULL)),
     CONSTRAINT coverage_judgements_entry_names_kind CHECK ((entry_slug IS NULL) = (kind_slug IS NULL)),
     CONSTRAINT coverage_judgements_cause_owned CHECK (cause NOT IN ('rule-defect', 'door-missing') OR issue_number IS NOT NULL),
+    -- An offered row has no door, kind, part or other kind to wait on; an entry a kind lacks is never worth a visit.
+    CONSTRAINT coverage_judgements_row_causes CHECK (row_wikidata_id IS NULL OR cause IN ('worth-a-visit', 'not-a-must', 'rule-defect')),
+    CONSTRAINT coverage_judgements_entry_causes CHECK (entry_slug IS NULL OR cause <> 'worth-a-visit'),
     CONSTRAINT coverage_judgements_entry FOREIGN KEY (region_slug, entry_slug) REFERENCES coverage_expectations(region_slug, slug) ON DELETE CASCADE,
     CONSTRAINT coverage_judgements_filing FOREIGN KEY (region_slug, entry_slug, kind_slug) REFERENCES coverage_expectation_kinds(region_slug, expectation_slug, kind_slug) ON DELETE CASCADE
 );
@@ -4735,7 +4738,7 @@ COMMENT ON TABLE coverage_judgements IS 'A gap the coverage report found, judged
 COMMENT ON COLUMN coverage_judgements.entry_slug IS 'The entry of the region''s survey list a live kind does not offer; null when the subject is a catalogue row.';
 COMMENT ON COLUMN coverage_judgements.kind_slug IS 'The live kind whose gap is judged: the entry is filed under it and it does not offer the entry. An entry filed under two live kinds has a gap, and a line, per kind.';
 COMMENT ON COLUMN coverage_judgements.row_wikidata_id IS 'The catalogue row the region offers and no entry names, by its Wikidata id; null when the subject is an entry.';
-COMMENT ON COLUMN coverage_judgements.cause IS 'Why the gap stands, from the closed vocabulary the report counts by. A rule-defect and a door-missing name their issue.';
+COMMENT ON COLUMN coverage_judgements.cause IS 'Why the gap stands, or why the row stays, from the closed vocabulary the report counts by. A rule-defect and a door-missing name their issue. A row takes worth-a-visit, not-a-must or rule-defect; an entry never worth-a-visit.';
 COMMENT ON COLUMN coverage_judgements.issue_number IS 'The issue that owns the cause, where one does.';
 COMMENT ON COLUMN coverage_judgements.judged IS 'The date the judgement was made, which is the date of the catalogue it was made against.';
 
