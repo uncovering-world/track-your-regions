@@ -21,9 +21,9 @@ ratchets instead of aspiring.
 | Tier | What | Budget lives in | Runs |
 |------|------|-----------------|------|
 | Bundle size | gzip size of the entry chunk, the map's worker chunk and the stylesheet, from `vite build` | `frontend/package.json` → `"size-limit"` | CI **Build** job, after the frontend build; locally `npm run perf:size` |
-| Lighthouse | LCP, TBT, CLS, TTI, the performance score, and transfer size per resource type, on the map view and Discover, against the **production build** served compressed inside the isolated test stack | `frontend/perf/lighthouse-budgets.json` | CI **Performance (Lighthouse)** job; locally `npm run perf` |
+| Lighthouse | LCP, TBT, CLS, TTI, the performance score, and transfer size per resource type, on the map view, Discover, a region's page and an open card, against the **production build** served compressed inside the isolated test stack | `frontend/perf/lighthouse-budgets.json` | CI **Performance (Lighthouse)** job; locally `npm run perf` |
 | Backend latency | p50/p95/max of the hot read endpoints — the by-region experience reads and the Martin tile functions — and the bytes each one puts on the wire, in the encoding it puts them there in | — (a measurement, recorded here) | locally `npm run perf:api` against a stack holding the real catalogue — owed on a change to what answers those reads (`npm run gates -- run stack` marks it `run here`) |
-| Local run | all three, on the dev stack's production build and its real catalogue: the map view and Discover of the world view the database exposes | `frontend/perf/lighthouse-budgets.local.json` | locally `npm run perf:local` — owed on a change that touches what the browser loads or draws (`npm run gates -- run stack` marks it `run here`) |
+| Local run | all three, on the dev stack's production build and its real catalogue: the map view and Discover of the world view the database exposes, and a region's page and an open card in it | `frontend/perf/lighthouse-budgets.local.json` | locally `npm run perf:local` — owed on a change that touches what the browser loads or draws (`npm run gates -- run stack` marks it `run here`) |
 
 Both CI jobs are gates in the map, on the product's input classes (`backend`,
 `web`, `shared`, and for the Lighthouse lane the database, the tiles, the runner
@@ -62,7 +62,10 @@ run-perf`, which:
    with Lighthouse's desktop preset, keeps the **representative run**
    (Lighthouse's own `computeMedianRun`, the run closest to the median of
    its key timings — one real report, not a metric-by-metric composite no
-   single run produced), judges it against the budgets, and writes every
+   single run produced), judges it against the budgets — the shared ones,
+   or, where a `urls` entry carries `assertions` of its own, those over the
+   shared ones key by key, since a page flown into a region and a shell at
+   world zoom cannot share one set of byte lines (#669) — and writes every
    run's HTML/JSON report plus `manifest.json` and
    `assertion-results.json` into `frontend/lighthouse-report/`
    (bind-mounted out of the container, gitignored; CI uploads it as the
@@ -188,7 +191,9 @@ things fail fastest:
 2. Lighthouse against the **dev stack's frontend in its production shape**
    — `scripts/frontend-mode.sh preview` switches the container to
    `FRONTEND_MODE=preview` and waits for the built page — on the pages of
-   the world view the database exposes (`/wv/5`, `/discover/wv/5`), driven
+   the world view the database exposes (`/wv/5`, `/discover/wv/5`) and on
+   a region and a card in it (`/wv/5/r/6737`, Europe; `/wv/5/r/6737/e/6185`,
+   the Museo del Prado's card), driven
    by the machine's own Chrome and judged against
    `frontend/perf/lighthouse-budgets.local.json`;
 3. the latency probe (`npm run perf:api`).
@@ -209,11 +214,14 @@ Two things make the local run's numbers its own, not the lane's: the
 machine (a 2016 laptop here) and the database (whatever the dev stack
 holds). Its **byte budgets are the gate** — they are deterministic — and its
 timings are set wide, at `warn`, to be read rather than to fail. The pages
-and the probe name one world view and one region; the budgets file carries
-the ones the baseline was measured on (`worldView: 5`, substituted into
-`{worldView}` in its URLs), and another database names its own:
-`npm run perf:local -- --world-view 7 --region 42` reaches both the probe
-and the runner. The world view has to be public for the pages to load
+and the probe name one world view and one region, and the card page one
+experience the region lists; the budgets file carries the ones the baseline
+was measured on (`worldView: 5`, `region: 6737`, `experience: 6185`,
+substituted into `{worldView}`, `{region}` and `{experience}` in its URLs),
+and another database names its own:
+`npm run perf:local -- --world-view 7 --region 42 --experience 1234` — the
+world view and the region reach both the probe and the runner, the
+experience the runner alone. The world view has to be public for the pages to load
 (`is_public` on `world_views`; the dev database's mirror world view is
 public for this reason) — and because a world view the visitor cannot see
 falls back to the default one without a word, after one request for it
@@ -260,11 +268,9 @@ and prints the table, so the other endpoints' numbers stay readable. Below
 the table it lists each endpoint that failed with its reason — *an empty
 tile (204)*, *no answer* or *answered N*.
 
-What the local run cannot yet see is the interactions where the data cost
-actually lives — clicking Europe, opening a card. Both are addresses now
-(#644), so a selected region and an open card *can* be audited as page
-loads; adding them to `lighthouse-budgets.json` and
-`lighthouse-budgets.local.json` is #669. What a navigation
+A selected region and an open card are addresses (#644), and both lanes
+load them as pages (#669): Europe and the Museo del Prado's card here, the
+fixture's region and card in CI. What a navigation
 still cannot show is the cost of the click itself, since Lighthouse's
 navigation mode measures page loads; #646 adds scenarios (timespans around
 scripted interactions) to it. Making the
@@ -392,6 +398,53 @@ them: a local run while Semgrep and Trivy were scanning in parallel
 measured 665 ms of TBT on the map view. Run the lane on a quiet machine, or
 read a local timing miss as information rather than a verdict.
 
+### The region and card pages — 2026-10-17
+
+Since #644 a selected region and an open card have addresses, and since #669
+the lane loads both on the fixture: `/wv/9001/r/9001` (Testland, its three
+experiences listed) and `/wv/9001/r/9001/e/9001` (Testland Old Town's card
+open on it). Each page's representative run must have made the region's
+experience read answered 2xx (`/api/experiences/by-region/9001?`), and the
+card page the card's own read too (`/api/experiences/9001`), so a page that
+fell back to the world view's root fails instead of being measured under the
+wrong name.
+
+Every run of three, on the CI runner (the pull request that added the pages)
+and on the laptop above (load average about 4, so its timings describe that
+afternoon):
+
+| Page | where | total (requests) | of which the OpenStreetMap basemap | the rest |
+|------|-------|------------------|------------------------------------|----------|
+| `/wv/9001/r/9001` | CI | 2 008.9 / 1 365.9 / 1 995.3 kB (115 / 108 / 114) | 1 329.5 / 685.8 / 1 316.4 kB (46 / 34 / 46) | 679.4 / 680.1 / 679.0 kB |
+| | laptop | 1 452.0 / 1 664.8 / 1 603.4 kB (73 / 83 / 92) | 778.1 / 991.7 / 928.0 kB (26 / 36 / 36) | 673.9 / 673.1 / 675.4 kB |
+| `/wv/9001/r/9001/e/9001` | CI | 1 732.7 / 1 684.3 / 1 689.3 kB (84 / 91 / 92) | 1 054.8 / 1 004.2 / 1 008.0 kB (42 / 36 / 36) | 677.9 / 680.1 / 681.3 kB |
+| | laptop | 1 509.1 / 1 768.9 / 1 731.8 kB (76 / 88 / 86) | 829.9 / 1 088.5 / 1 051.8 kB (28 / 34 / 34) | 679.2 / 680.4 / 680.0 kB |
+
+Script is 585.9 kB on both, the shells' figure, and everything that is the
+repository's own — the bundle, the fonts, the backend's reads, Martin's
+tiles — holds to within 8 kB across machines and runs. **The spread is the
+basemap's alone**: how many raster tiles a map flown into a region fetches
+before Lighthouse calls the page loaded moved between 26 and 46, about 30 kB
+each. One page's total ranged from 1.37 MB to 2.01 MB on one machine in one
+job, the difference about half its weight, far wider than the 5 % a byte line
+is otherwise given. The total line is kept rather than dropped, and set above
+the heaviest run measured on either machine instead of above one median
+(§ Budgets). What it catches there is a second basemap or a read of hundreds
+of kilobytes, not the tile count wandering. The repository's own bytes are
+gated tightly on these pages all the same: the shared script, stylesheet and
+font lines apply to them unchanged. #651, which moves the basemap off
+OpenStreetMap's public server, is the change that would let the total line
+come down.
+
+On the CI runner the timings sit under the shells' lines: LCP 1.21–1.30 s,
+TBT 125–197 ms, TTI 1.61–1.78 s on the region page, and LCP 0.93–1.25 s,
+TBT 159–228 ms, TTI 1.51–1.70 s on the card. So they gate at the shells'
+values from the first run on, as the shells' did. The exception is the
+card's **layout shift, 0.18–0.29** on the runner and 0.25 on the laptop,
+against the shells' 0.000–0.006 and the region page's 0.011: the region
+panel's contents move as the card and the map's loading placeholder arrive.
+It stays a `warn` until #1639 fixes it.
+
 ### Local run — 2026-09-09
 
 `npm run perf:local` on the same laptop, against the dev stack's production
@@ -448,6 +501,22 @@ each filed with its numbers. Two are settled: every backend response went
 out uncompressed (#650), and the map root read every leaf region in the
 world view (#649). The third, an 86 kB `favicon.ico` fetched on every page,
 was settled by #648.
+
+### Local run: a region and a card — 2026-10-17
+
+The same laptop, the dev database's world view 5 on `main` at c5aeaac7e,
+every run of three:
+
+| Page | total (requests) | its largest reads |
+|------|------------------|-------------------|
+| `/wv/5/r/6737` (Europe) | 1 047.9 / 1 085.6 / 1 085.8 kB (45 / 46 / 46) | the region's list of places, 274.6 kB; the basemap 52 kB over 12 tiles |
+| `/wv/5/r/6737/e/6185` (the Museo del Prado's card on Europe) | 1 466.9 / 1 504.7 / 1 506.7 kB (82 / 83 / 83) | the same list, 274.6 kB, and the region's locations, 248.8 kB, which the region page does not read |
+
+On the real catalogue the weight is the data's rather than the basemap's: a
+map framed on a continent fetches few raster tiles, and the region's own
+reads are the largest things on the wire after the map library. The pages
+hold steady within 38 kB, so their byte lines carry the usual 5 %. The
+card's layout shift is 0.233–0.240 here, as on the fixture (#1639).
 
 ### Backend latency — 2026-08-25
 
@@ -754,6 +823,10 @@ unchanged, since only the overview tier was cut. They belong in the next full ru
 | `cumulative-layout-shift` | error | 0.02 | 0.001–0.006 / 0.000 on the CI runner |
 | `interactive` | error | 2 500 ms | 1.33–1.64 s on the CI runner (1.90 / 1.59 s locally) |
 | `categories:performance` | warn | 0.8 | informational — the composite score moves ±5 points on identical hardware and is not a gate |
+| region page `/wv/9001/r/9001` and card page `/wv/9001/r/9001/e/9001`: `resource-summary:total:size` | error | 2 200 000 B | 2 008 881 B, the heaviest run of either page on either machine (+ ~10 %): the basemap moves a page by up to half its weight between runs (§ The region and card pages), so the line sits above the heaviest run rather than one median. The shared script, stylesheet and font lines gate the repository's own bytes there |
+| both pages: `resource-summary:total:count` | error | 145 | 73–115 requests, 26–46 of them basemap tiles, with the shells' quarter of headroom over the heaviest |
+| both pages: `largest-contentful-paint`, `total-blocking-time`, `interactive`, and the region page's `cumulative-layout-shift` | error | the shared lines above, inherited rather than restated, so a ratchet of a shared timing moves these pages too | LCP 0.93–1.30 s, TBT 125–228 ms, TTI 1.51–1.78 s, the region page's CLS 0.011 on the CI runner |
+| card page: `cumulative-layout-shift` | warn | 0.02 | its own line: 0.18–0.29 on the CI runner, until #1639 |
 
 The local run has its own file, `frontend/perf/lighthouse-budgets.local.json`,
 with the same script and stylesheet lines, a font line at 85 000 B — the
@@ -765,7 +838,10 @@ total-size line at 965 000 B
 favicon cut to 2.5 kB, the page measured 939.6 kB, its 84 kB saving outrun by
 what the page gained since the line was set, so the line stays where it is,
 2.7 % above the page) and a request count of
-60 as errors, and every timing at `warn` set wide for a laptop (LCP 2.5 s,
+60 as errors, the region and card pages' own byte lines (1 140 000 B and 58
+requests for Europe, 1 585 000 B and 104 for the Prado's card: their
+heaviest runs + ~5 %, and the shells' quarter of headroom on the counts),
+and every timing at `warn` set wide for a laptop (LCP 2.5 s,
 TBT 1.2 s, CLS 0.02, TTI 3.5 s, score 0.5): the local run's bytes gate, its
 timings inform.
 
@@ -831,9 +907,11 @@ Filed, and linked here so the baseline is read with them in mind:
 
 - #651 — the basemap is OpenStreetMap's public tile server, and on a page
   whose map sits inside a region it is the largest thing on the wire.
-  Measured on `/wv/9001/r/9001/e/9001` (the fixture's card, not in the lane
-  yet — #669): 392–830 kB over 28–34 tile requests across six runs, against
-  4.0 kB of this repository's own vector tiles and 13.7 kB from the backend.
+  Measured on the fixture's region and card pages (in the lane since
+  #669): 392–1 330 kB over 26–46 tile requests across eighteen runs,
+  against 4.0 kB of this repository's own vector tiles and 13.7 kB from the
+  backend, and the whole of the spread the region and card pages' byte lines
+  have to allow for.
   The map view and Discover shells sit at world zoom and pay a fraction of it.
 - #551 — the region tile LOD ladder: a z3 tile costs hundreds of
   milliseconds of Postgres time for a few kilobytes. The first known breach
@@ -875,12 +953,9 @@ What the lane does not measure, by design or not yet:
   sees the shell. The local run sees the real catalogue on one machine;
   #647 brings production-like data to CI (a scaled fixture on pull
   requests, the golden dump nightly).
-- **A loaded page, and the click itself.** Opening a continent, opening a
-  card — the moments the data cost is paid — are addresses now (#644), so
-  they can be audited as page loads; #669 puts them in `lighthouse-budgets.json`
-  and `lighthouse-budgets.local.json`, with the finding above to size them
-  against. What a page load
-  cannot show is the cost of the transition; #646 measures those as
+- **The click itself.** Opening a continent, opening a card — the moments
+  the data cost is paid — are measured as page loads (#669); what a page load
+  cannot show is the cost of the transition, and #646 measures those as
   scripted scenarios in the local run.
 - **Whether the API is still compressed, in CI.** The fixture's responses
   are below the threshold either way, so removing the middleware would not
