@@ -19,7 +19,18 @@ export interface PendingAIQuestion {
   /** Structured interview question with options (null if interview not yet started) */
   currentQuestion: InterviewQuestion | null;
   extractedRegions: RegionPreview[];
+  /** The regions the page was extracted with when the question was queued, which the tree was built from */
+  queuedRegions: RegionPreview[];
   resolved: boolean;
+  /**
+   * Internal: every node built for this page, with the rebuild that refills it
+   * from a region set under the depth, ancestors and country context it was built
+   * under (#368). `buildTree` adds one per node it builds for the page — a page can
+   * sit under more than one parent, and a parent's rebuild builds it again — and
+   * `fromAnswer` says the node was built from the answered regions already. Empty
+   * where the page ended before any node was built (not serialized).
+   */
+  nodes: Array<{ node: TreeNode; fromAnswer: boolean; rebuild: (regions: RegionPreview[]) => Promise<void> }>;
   /** Internal: re-run AI with admin feedback, returns updated preview (not serialized) */
   reExtract: (feedback: string) => Promise<{ regions: RegionPreview[]; questions: string[] }>;
   /** Internal: formulate next interview question or auto-resolve (not serialized) */
@@ -87,6 +98,12 @@ export interface ExtractionProgress {
   pendingQuestions: PendingAIQuestion[];
   /** Auto-incrementing question ID */
   nextQuestionId: number;
+  /**
+   * The regions the model settled for a page in this run, by resolved title, so a
+   * page reached again — under a second parent, or by a rebuild from an answer
+   * (#368) — is built from what was decided rather than asked about again.
+   */
+  modelRegions: Map<string, RegionEntry[]>;
   /** Decision log for Phase 1 summary */
   decisions: DecisionEntry[];
   /** The step the extraction is on, of the six, and how far through it (#1356). */
@@ -124,6 +141,7 @@ export function createInitialExtractionProgress(): ExtractionProgress {
     aiTotalCost: 0,
     pendingQuestions: [],
     nextQuestionId: 1,
+    modelRegions: new Map(),
     decisions: [],
   };
 }

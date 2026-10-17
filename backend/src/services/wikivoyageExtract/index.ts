@@ -14,7 +14,7 @@ import { pool } from '../../db/index.js';
 import type { ExtractionProgress, ExtractionConfig, TreeNode } from './types.js';
 import { createInitialExtractionProgress } from './types.js';
 import { WikivoyageFetcher } from './fetcher.js';
-import { buildTree, countNodes, removeChildrenByTitle, CONTINENTS } from './treeBuilder.js';
+import { applyUntilSettled, buildTree, countNodes, CONTINENTS } from './treeBuilder.js';
 import { type ClassificationCache } from './aiClassifier.js';
 import { collectPageTitles, fetchWikidataIds, enrichWikidataIds } from './wikidataEnricher.js';
 import { importTree } from '../worldViewImport/importer.js';
@@ -277,41 +277,43 @@ async function extractContinentTrees(
   return progress.cancel ? null : trees;
 }
 
-/** Wait for any pending AI questions to be resolved; applies their outcomes to the tree. */
+/**
+ * Wait for any pending AI questions to be resolved, and apply their outcomes
+ * to the tree. Applied even when nothing waits: an admin can answer while the
+ * walk is still running. A rebuild from an answer can reach a page the model
+ * is unsure of, which queues a question of its own, so the wait repeats until
+ * no question is left open (#368).
+ */
 async function awaitPendingQuestions(
   progress: ExtractionProgress,
   rootTree: TreeNode,
 ): Promise<boolean> {
-  const unresolvedQuestions = progress.pendingQuestions.filter(q => !q.resolved);
-  if (unresolvedQuestions.length === 0) return true;
-
+  const open = () => progress.pendingQuestions.filter(q => !q.resolved).length;
   const plural = (n: number) => (n !== 1 ? 's' : '');
-  progress.statusMessage = `Waiting for ${unresolvedQuestions.length} AI question${plural(unresolvedQuestions.length)} to be resolved...`;
-  // A person answers these: the step waits on the admin, counted by the questions answered.
-  const asked = progress.pendingQuestions.length;
-  progress.operation?.step(EXTRACT_STEPS.questions, `Waiting for the answers to the ${asked} AI question${plural(asked)} asked`, 0,
-    () => ({ done: progress.pendingQuestions.filter(q => q.resolved).length, total: asked }));
+  let waiting = false;
 
-  while (progress.pendingQuestions.some(q => !q.resolved) && !progress.cancel) {
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    const remaining = progress.pendingQuestions.filter(q => !q.resolved).length;
-    progress.statusMessage = `Waiting for ${remaining} AI question${plural(remaining)} to be resolved...`;
-  }
-
-  if (progress.cancel) {
-    progress.status = 'cancelled';
-    progress.statusMessage = 'Extraction cancelled while waiting for AI questions';
-    progress.operation?.finish('cancelled while waiting for AI questions');
-    return false;
-  }
-
-
-  for (const q of progress.pendingQuestions) {
-    if (q.extractedRegions.length === 0) {
-      // Admin decided not to split — remove children from this node in the tree
-      removeChildrenByTitle(rootTree, q.pageTitle);
+  do {
+    if (open() > 0 && !waiting) {
+      // A person answers these: the step waits on the admin, counted by the
+      // questions answered, and opens the first time one is open — after the
+      // walk, or after a rebuild queued one.
+      waiting = true;
+      // No count in the sentence: a rebuild can queue more, and the counter says how many.
+      progress.operation?.step(EXTRACT_STEPS.questions, 'Waiting for the answers to the AI questions asked', 0,
+        () => ({ done: progress.pendingQuestions.filter(q => q.resolved).length, total: progress.pendingQuestions.length }));
     }
-  }
+    while (open() > 0 && !progress.cancel) {
+      progress.statusMessage = `Waiting for ${open()} AI question${plural(open())} to be resolved...`;
+      await new Promise(resolve => setTimeout(resolve, 2000));
+    }
+    if (progress.cancel) {
+      progress.status = 'cancelled';
+      progress.statusMessage = 'Extraction cancelled while waiting for AI questions';
+      progress.operation?.finish('cancelled while waiting for AI questions');
+      return false;
+    }
+    await applyUntilSettled(progress, rootTree);
+  } while (open() > 0 || progress.cancel);
   return true;
 }
 
@@ -341,8 +343,7 @@ async function runExtractPhase(
   }
 
   const rootTree: TreeNode = { name: 'World', children: trees };
-  const totalNodes = countNodes(rootTree) - 1; // -1 for root
-  progress.operation?.note(`${totalNodes} regions read (API=${progress.apiRequests}, cache=${progress.cacheHits})`);
+  progress.operation?.note(`${countNodes(rootTree) - 1} regions read (API=${progress.apiRequests}, cache=${progress.cacheHits})`);
 
   if (progress.decisions.length > 0) {
     const { formatDecisionSummary } = await import('./decisionSummary.js');
@@ -352,7 +353,8 @@ async function runExtractPhase(
   const proceed = await awaitPendingQuestions(progress, rootTree);
   if (!proceed) return null;
 
-  return { rootTree, totalNodes };
+  // Counted after the answers, which can rebuild a page's regions either way.
+  return { rootTree, totalNodes: countNodes(rootTree) - 1 }; // -1 for root
 }
 
 /** Enrich the tree with Wikidata IDs; returns false if cancelled. */

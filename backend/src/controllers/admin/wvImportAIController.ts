@@ -39,7 +39,7 @@ import { chatCompletion } from '../../services/ai/chatCompletion.js';
 import { logAIUsage } from '../../services/ai/aiUsageLogger.js';
 import { WikivoyageFetcher } from '../../services/wikivoyageExtract/fetcher.js';
 import { findRegionsSection } from '../../services/wikivoyageExtract/parser.js';
-import type { WikiSection } from '../../services/wikivoyageExtract/types.js';
+import { createInitialExtractionProgress, type WikiSection } from '../../services/wikivoyageExtract/types.js';
 import { geoshapeMatchRegion } from '../../services/worldViewImport/geoshapeCoverage.js';
 import { pointMatchRegion } from '../../services/worldViewImport/pointMatcher.js';
 import { computeGeoSimilarityIfNeeded } from '../../services/worldViewImport/geoshapeCache.js';
@@ -423,19 +423,6 @@ async function fetchRegionContext(worldViewId: number, regionId: number): Promis
   return { regionName: regionName as string, pageTitle, existingChildren };
 }
 
-/** Build an initial progress stub for the WikivoyageFetcher constructor. */
-function buildFetcherProgress() {
-  return {
-    cancel: false, status: 'extracting' as const, statusMessage: '',
-    regionsFetched: 0, estimatedTotal: 0, currentPage: '', apiRequests: 0,
-    cacheHits: 0, startedAt: Date.now(), createdRegions: 0, totalRegions: 0,
-    countriesMatched: 0, totalCountries: 0, subdivisionsDrilled: 0,
-    noCandidates: 0, worldViewId: null, aiApiCalls: 0, aiPromptTokens: 0,
-    aiCompletionTokens: 0, aiTotalCost: 0, pendingQuestions: [],
-    nextQuestionId: 1, decisions: [],
-  };
-}
-
 /**
  * Fetch the raw "Regions" section wikitext for a Wikivoyage page.
  * Returns null when the section is missing or empty.
@@ -649,7 +636,7 @@ function buildEnrichedActions(
 async function reviewRegionChildren(worldViewId: number, regionId: number): Promise<ChildrenReviewed> {
   const { regionName, pageTitle, existingChildren } = await fetchRegionContext(worldViewId, regionId);
 
-  const fetcher = new WikivoyageFetcher('data/cache/wikivoyage-cache.json', buildFetcherProgress());
+  const fetcher = new WikivoyageFetcher('data/cache/wikivoyage-cache.json', createInitialExtractionProgress());
 
   const wikitext = await fetchRegionsSectionWikitext(fetcher, pageTitle);
   if (wikitext == null) {

@@ -372,6 +372,8 @@ function makePendingQuestion(args: {
     rawQuestions: aiQuestions,
     currentQuestion: null,
     extractedRegions: capturedRegions,
+    queuedRegions: capturedRegions,
+    nodes: [],
     resolved: false,
     reExtract: async (feedback: string) => {
       const retryResult = await extractRegionsWithAI(
@@ -661,8 +663,30 @@ export async function buildTree(
 
   applyDistrictShortcut(page, resolved, progress);
 
-  if (page.needsAI && page.rawWikitext && aiContext && isOpenAIAvailable()) {
+  // A page reached again in this run — under a second parent, or by a parent's
+  // rebuild from an answer (#368) — is built from what was already decided for
+  // it, never handed to the model a second time: the admin's answer first, then
+  // the regions its open question was queued with, then the model's own
+  // outcome. Asking again would drop an answer, repeat the model's calls, and
+  // could queue the page twice.
+  const answered = progress.pendingQuestions.find(q => q.pageTitle === resolved && q.resolved);
+  const open = answered ? undefined : progress.pendingQuestions.find(q => q.pageTitle === resolved);
+  const settled = progress.modelRegions.get(resolved);
+  if (answered) {
+    page.regions = regionEntriesOf(answered.extractedRegions);
+    progress.decisions.push({
+      page: resolved,
+      decision: page.regions.length > 0 ? 'split' : 'leaf',
+      decidedBy: 'admin_answer',
+      detail: `Built from the admin's answer (${page.regions.length} regions), not extracted again`,
+    });
+  } else if (open) {
+    page.regions = regionEntriesOf(open.queuedRegions);
+  } else if (settled) {
+    page.regions = settled;
+  } else if (page.needsAI && page.rawWikitext && aiContext && isOpenAIAvailable()) {
     await resolveAmbiguousWithAI(page, resolved, fetcher, aiContext, progress);
+    progress.modelRegions.set(resolved, page.regions);
   } else if (page.needsAI) {
     console.log(`[WV Extract] AI needed for "${resolved}" but unavailable (aiContext=${!!aiContext}, openai=${isOpenAIAvailable()})`);
     progress.decisions.push({
@@ -678,35 +702,74 @@ export async function buildTree(
 
   const branchAncestors = new Set([...ancestors, title, resolved]);
   const node = buildNodeShell(title, page);
-  const childRegions = page.regions;
+  const cache = classificationCache ?? new Map();
+  const fill = (childRegions: PageData['regions']) => fillChildren(node, resolved, childRegions, {
+    fetcher, maxDepth, progress, currentDepth, ancestors, branchAncestors, aiContext, countryContext, cache,
+  });
 
+  // A question queued for this page waits on the admin while the walk goes on,
+  // and the admin's answer can re-extract a different region set: the node is
+  // rebuilt from it under the same depth, ancestors and country context, so the
+  // tree the import reads holds what the admin decided (#368).
+  const question = answered ?? open ?? progress.pendingQuestions.find(q => q.pageTitle === resolved);
+  question?.nodes.push({
+    node,
+    fromAnswer: answered !== undefined,
+    rebuild: async (regions) => {
+      node.children = [];
+      await fill(regionEntriesOf(regions));
+    },
+  });
+
+  await fill(page.regions);
+  return node;
+}
+
+/** What a node's children are built under: everything `buildTree` received for the node. */
+interface ChildContext {
+  fetcher: WikivoyageFetcher;
+  maxDepth: number;
+  progress: ExtractionProgress;
+  currentDepth: number;
+  ancestors: Set<string>;
+  branchAncestors: Set<string>;
+  aiContext: AIContext | undefined;
+  countryContext: CountryContext | undefined;
+  cache: ClassificationCache;
+}
+
+/** Build a node's children from its region set, and leave it a leaf where they add no granularity. */
+async function fillChildren(
+  node: TreeNode,
+  resolved: string,
+  childRegions: PageData['regions'],
+  ctx: ChildContext,
+): Promise<void> {
   // A single plain subregion (no grouping children) adds no granularity — treat parent as leaf
   if (childRegions.length === 1 && childRegions[0].items.length === 0) {
     console.log(`[WV Extract] "${resolved}" has only 1 subregion ("${childRegions[0].name}") — treating as leaf`);
-    return node;
+    return;
   }
-  if (childRegions.length === 0) return node;
+  if (childRegions.length === 0) return;
 
-  const cache = classificationCache ?? new Map();
-  const derived = await deriveCountryContext(resolved, ancestors, aiContext, countryContext, childRegions, cache, progress);
-  if (derived === 'tiny_country') return node;
+  const derived = await deriveCountryContext(
+    resolved, ctx.ancestors, ctx.aiContext, ctx.countryContext, childRegions, ctx.cache, ctx.progress,
+  );
+  if (derived === 'tiny_country') return;
 
-  const childCountryContext = derived;
-  const nextCountryContext = childCountryContext
-    ? { ...childCountryContext, currentSubDepth: childCountryContext.currentSubDepth + 1 }
+  const nextCountryContext = derived
+    ? { ...derived, currentSubDepth: derived.currentSubDepth + 1 }
     : undefined;
 
   await buildChildren(
-    node, childRegions, fetcher, maxDepth, progress,
-    currentDepth, branchAncestors, aiContext, nextCountryContext, cache,
+    node, childRegions, ctx.fetcher, ctx.maxDepth, ctx.progress,
+    ctx.currentDepth, ctx.branchAncestors, ctx.aiContext, nextCountryContext, ctx.cache,
   );
 
   if (node.children.length === 1 && node.children[0].children.length === 0) {
     console.log(`[WV Extract] "${resolved}" has 1 leaf child ("${node.children[0].name}") after build — treating as leaf`);
     node.children = [];
   }
-
-  return node;
 }
 
 /** Process a linked child result */
@@ -762,6 +825,66 @@ async function buildGroupingNode(
     return gnode.children[0];
   }
   return gnode;
+}
+
+/** A region set as the admin's question shows it, back in the shape a page's own regions take. */
+function regionEntriesOf(regions: RegionPreview[]): PageData['regions'] {
+  return regions.map(region => ({ name: region.name, hasLink: region.isLink, items: region.children }));
+}
+
+/** Whether `node` is still in the tree under `root` — a parent's rebuild detaches what it replaced. */
+function holds(root: TreeNode, node: TreeNode): boolean {
+  return root === node || root.children.some(child => holds(child, node));
+}
+
+/** Whether two region sets name the same regions, linked the same way, with the same items. */
+function sameRegions(a: RegionPreview[], b: RegionPreview[]): boolean {
+  const shape = (regions: RegionPreview[]) => JSON.stringify(regions.map(r => [r.name, r.isLink, r.children]));
+  return shape(a) === shape(b);
+}
+
+/**
+ * Carry each answered question's regions into the tree (#368). The tree was
+ * built from the regions the page had when its question was queued; an answer
+ * that re-extracted a different set rebuilds every node of that page the tree
+ * still holds, and one that left it no regions makes them leaves. A node a
+ * parent's rebuild already built from the answer is left as it is, and so is
+ * one that rebuild detached. A page that got no node has no rebuild to call,
+ * and only the leaf case applies, found by its title.
+ *
+ * Answers that arrive during a pass and were already passed over are left for
+ * the next pass. An answer can only land while a rebuild is fetching pages, so
+ * the pass returns whether it rebuilt anything, and `applyUntilSettled` passes
+ * again until one rebuilds nothing.
+ */
+export async function applyAnsweredRegions(progress: ExtractionProgress, rootTree: TreeNode): Promise<boolean> {
+  let rebuilt = false;
+  for (const q of progress.pendingQuestions) {
+    if (progress.cancel) return rebuilt;
+    if (!q.resolved || sameRegions(q.extractedRegions, q.queuedRegions)) continue;
+    if (q.nodes.length === 0) {
+      if (q.extractedRegions.length === 0) removeChildrenByTitle(rootTree, q.pageTitle);
+      continue;
+    }
+    for (const built of q.nodes) {
+      if (built.fromAnswer || !holds(rootTree, built.node)) continue;
+      progress.statusMessage = `Rebuilding "${q.pageTitle}" from the admin's answer...`;
+      console.log(`[WV Extract] Rebuilding "${q.pageTitle}" from ${q.extractedRegions.length} re-extracted regions`);
+      await built.rebuild(q.extractedRegions);
+      built.fromAnswer = true;
+      rebuilt = true;
+    }
+  }
+  return rebuilt;
+}
+
+/**
+ * Apply the answers until a pass rebuilds nothing, so an answer given during a
+ * rebuild, to a question the pass had already passed over, still reaches the
+ * tree. It ends because a rebuilt node is never rebuilt again.
+ */
+export async function applyUntilSettled(progress: ExtractionProgress, rootTree: TreeNode): Promise<void> {
+  while (await applyAnsweredRegions(progress, rootTree) && !progress.cancel) { /* another pass */ }
 }
 
 /** Remove children of a node found by page title (DFS). Used to apply "don't split" decisions. */

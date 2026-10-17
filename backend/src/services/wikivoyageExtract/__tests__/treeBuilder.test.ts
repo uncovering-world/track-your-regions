@@ -1,7 +1,21 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { buildTree, countNodes } from '../treeBuilder.js';
-import type { ExtractionProgress, TreeNode } from '../types.js';
+import { applyAnsweredRegions, applyUntilSettled, buildTree, countNodes } from '../treeBuilder.js';
+import type { ExtractionProgress, PendingAIQuestion, RegionPreview, TreeNode } from '../types.js';
 import { createInitialExtractionProgress } from '../types.js';
+import { extractRegionsWithAI } from '../aiRegionParser.js';
+
+// The model is reached only by a spec that hands buildTree an AI context; the
+// rest pass none, so these stand in for the model without touching them. Such
+// a spec passes no OpenAI client, so the classifier returns before it reads its
+// model setting from the database, which the unit lane does not have.
+vi.mock('../aiRegionParser.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../aiRegionParser.js')>(),
+  extractRegionsWithAI: vi.fn(),
+}));
+vi.mock('../../ai/openaiService.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../ai/openaiService.js')>(),
+  isOpenAIAvailable: () => true,
+}));
 
 // ─── Mock fetcher ───────────────────────────────────────────────────────────
 
@@ -338,5 +352,325 @@ describe('countNodes', () => {
       ],
     };
     expect(countNodes(tree)).toBe(4);
+  });
+});
+
+// ─── An answered question reaches the tree (#368) ───────────────────────────
+
+describe('applyAnsweredRegions', () => {
+  let progress: ExtractionProgress;
+
+  /** Pages for a Regionlist on Root and a leaf page for each name. */
+  function pages(rootRegions: string, leaves: string[]): Record<string, Record<string, unknown>> {
+    const responses: Record<string, Record<string, unknown>> = {
+      [key({ action: 'parse', page: 'Root', prop: 'sections', redirects: '1' })]:
+        sectionsResponse('Root', [{ index: '1', line: 'Regions' }]),
+      [key({ action: 'parse', page: 'Root', prop: 'wikitext', section: '1' })]:
+        wikitextResponse('Root', `{{Regionlist\n${rootRegions}\n}}`),
+      [key({ action: 'parse', page: 'Root', prop: 'wikitext' })]: wikitextResponse('Root', ''),
+    };
+    for (const leaf of leaves) {
+      responses[key({ action: 'parse', page: leaf, prop: 'sections', redirects: '1' })] = sectionsResponse(leaf, []);
+      responses[key({ action: 'parse', page: leaf, prop: 'wikitext' })] = wikitextResponse(leaf, '');
+    }
+    return responses;
+  }
+
+  const linked = (name: string): RegionPreview => ({ name, isLink: true, children: [] });
+
+  /** Root over A and B, each over its own 1 and 2, with a page for each 3 an answer can add. */
+  function siblingPages(): Record<string, Record<string, unknown>> {
+    const responses = pages(
+      '| region1name=[[A]]\n| region1items=\n| region2name=[[B]]\n| region2items=',
+      ['A1', 'A2', 'A3', 'B1', 'B2', 'B3'],
+    );
+    for (const parent of ['A', 'B']) {
+      responses[key({ action: 'parse', page: parent, prop: 'sections', redirects: '1' })] =
+        sectionsResponse(parent, [{ index: '1', line: 'Regions' }]);
+      responses[key({ action: 'parse', page: parent, prop: 'wikitext', section: '1' })] =
+        wikitextResponse(parent, `{{Regionlist\n| region1name=[[${parent}1]]\n| region1items=\n| region2name=[[${parent}2]]\n| region2items=\n}}`);
+      responses[key({ action: 'parse', page: parent, prop: 'wikitext' })] = wikitextResponse(parent, '');
+    }
+    return responses;
+  }
+
+  /** A question queued for Root with the regions its page was extracted with. */
+  function questionFor(pageTitle: string, queued: RegionPreview[]): PendingAIQuestion {
+    return {
+      id: 1, pageTitle, sourceUrl: '', rawQuestions: [], currentQuestion: null,
+      extractedRegions: queued, queuedRegions: queued, nodes: [], resolved: false,
+      reExtract: vi.fn(), formulateNextQuestion: vi.fn(), processAnswer: vi.fn(),
+    } as PendingAIQuestion;
+  }
+
+  async function built(question: PendingAIQuestion, responses: Record<string, Record<string, unknown>>) {
+    progress.pendingQuestions.push(question);
+    const fetcher = createMockFetcher(responses);
+    const tree = await buildTree(fetcher as unknown as Parameters<typeof buildTree>[0], 'Root', 5, progress) as TreeNode;
+    return { tree, fetcher };
+  }
+
+  beforeEach(() => {
+    progress = createInitialExtractionProgress();
+  });
+
+  it("rebuilds the page's node from a different re-extracted set", async () => {
+    // The AI split Root into North and South; the admin's answer re-extracted
+    // East, West and Centre, and the import must read those.
+    const queued = [linked('North'), linked('South')];
+    const question = questionFor('Root', queued);
+    const { tree } = await built(question, pages(
+      '| region1name=[[North]]\n| region1items=\n| region2name=[[South]]\n| region2items=',
+      ['North', 'South', 'East', 'West', 'Centre'],
+    ));
+    expect(tree.children.map(child => child.name)).toEqual(['North', 'South']);
+
+    question.extractedRegions = [linked('East'), linked('West'), linked('Centre')];
+    question.resolved = true;
+    await applyAnsweredRegions(progress, { name: 'World', children: [tree] });
+
+    expect(tree.children.map(child => child.name)).toEqual(['East', 'West', 'Centre']);
+  });
+
+  it('leaves the node alone when the answer kept the regions it was built from', async () => {
+    const queued = [linked('North'), linked('South')];
+    const question = questionFor('Root', queued);
+    const { tree, fetcher } = await built(question, pages(
+      '| region1name=[[North]]\n| region1items=\n| region2name=[[South]]\n| region2items=',
+      ['North', 'South'],
+    ));
+    const before = tree.children;
+    const calls = fetcher.apiGet.mock.calls.length;
+
+    question.extractedRegions = queued.map(region => ({ ...region }));
+    question.resolved = true;
+    await applyAnsweredRegions(progress, { name: 'World', children: [tree] });
+
+    expect(tree.children).toBe(before);
+    expect(fetcher.apiGet.mock.calls.length).toBe(calls);
+  });
+
+  it('makes the node a leaf when the answer left it no regions', async () => {
+    const question = questionFor('Root', [linked('North'), linked('South')]);
+    const { tree } = await built(question, pages(
+      '| region1name=[[North]]\n| region1items=\n| region2name=[[South]]\n| region2items=',
+      ['North', 'South'],
+    ));
+
+    question.extractedRegions = [];
+    question.resolved = true;
+    await applyAnsweredRegions(progress, { name: 'World', children: [tree] });
+
+    expect(tree.children).toEqual([]);
+  });
+
+  it('still makes a leaf of a page whose node was never given a rebuild', async () => {
+    // No page by this name was built in the walk, so nothing set the rebuild:
+    // the answer's empty set still clears the node found by its title.
+    const root: TreeNode = { name: 'World', children: [{ name: 'Atoll', children: [{ name: 'Islet', children: [] }] }] };
+    const question = questionFor('Atoll', [linked('Islet'), linked('Reef')]);
+    progress.pendingQuestions.push(question);
+
+    question.extractedRegions = [];
+    question.resolved = true;
+    await applyAnsweredRegions(progress, root);
+
+    expect(root.children[0].children).toEqual([]);
+  });
+
+  it("keeps the answer a child page was given when its parent is rebuilt", async () => {
+    // Root was asked about and so was North beneath it. Root's answer adds
+    // Centre, so Root is rebuilt and North is built again: from North's own
+    // answer (Lowland, Highland), not from its page (A, B), and its first node,
+    // now detached, is not rebuilt a second time.
+    const rootQuestion = questionFor('Root', [linked('North'), linked('South')]);
+    const northQuestion = questionFor('North', [linked('A'), linked('B')]);
+    progress.pendingQuestions.push(northQuestion);
+    const responses = pages(
+      '| region1name=[[North]]\n| region1items=\n| region2name=[[South]]\n| region2items=',
+      ['South', 'Centre', 'A', 'B', 'Lowland', 'Highland'],
+    );
+    responses[key({ action: 'parse', page: 'North', prop: 'sections', redirects: '1' })] =
+      sectionsResponse('North', [{ index: '1', line: 'Regions' }]);
+    responses[key({ action: 'parse', page: 'North', prop: 'wikitext', section: '1' })] =
+      wikitextResponse('North', '{{Regionlist\n| region1name=[[A]]\n| region1items=\n| region2name=[[B]]\n| region2items=\n}}');
+    responses[key({ action: 'parse', page: 'North', prop: 'wikitext' })] = wikitextResponse('North', '');
+    const { tree } = await built(rootQuestion, responses);
+    expect(tree.children[0].children.map(child => child.name)).toEqual(['A', 'B']);
+
+    northQuestion.extractedRegions = [linked('Lowland'), linked('Highland')];
+    northQuestion.resolved = true;
+    rootQuestion.extractedRegions = [linked('North'), linked('South'), linked('Centre')];
+    rootQuestion.resolved = true;
+    // Root's question comes first, as a parent's does in the walk.
+    progress.pendingQuestions.reverse();
+    await applyAnsweredRegions(progress, { name: 'World', children: [tree] });
+
+    expect(tree.children.map(child => child.name)).toEqual(['North', 'South', 'Centre']);
+    expect(tree.children[0].children.map(child => child.name)).toEqual(['Lowland', 'Highland']);
+    // North was built from its answer during Root's rebuild, not handed to the
+    // model again, which could have asked about it a second time.
+    expect(progress.decisions).toContainEqual(expect.objectContaining({ page: 'North', decidedBy: 'admin_answer' }));
+  });
+
+  it('reports a rebuild, so an answer that arrived during it is applied by the next pass', async () => {
+    // A and B were both asked about. A's question comes first in the pass and
+    // is passed over as still open; the admin answers it while B's rebuild is
+    // fetching pages. The pass reports the rebuild, and the next pass applies
+    // A's answer.
+    const aQuestion = questionFor('A', [linked('A1'), linked('A2')]);
+    const bQuestion = questionFor('B', [linked('B1'), linked('B2')]);
+    progress.pendingQuestions.push(aQuestion);
+    const { tree, fetcher } = await built(bQuestion, siblingPages());
+    const [a, b] = tree.children;
+    const answerFromPage = fetcher.apiGet.getMockImplementation()!;
+    fetcher.apiGet.mockImplementation(async (params) => {
+      if (params.page === 'B3' && !aQuestion.resolved) {
+        aQuestion.extractedRegions = [linked('A1'), linked('A2'), linked('A3')];
+        aQuestion.resolved = true;
+      }
+      return answerFromPage(params);
+    });
+
+    bQuestion.extractedRegions = [linked('B1'), linked('B2'), linked('B3')];
+    bQuestion.resolved = true;
+    const root = { name: 'World', children: [tree] };
+
+    expect(await applyAnsweredRegions(progress, root)).toBe(true);
+    expect(b.children.map(child => child.name)).toEqual(['B1', 'B2', 'B3']);
+    expect(a.children.map(child => child.name)).toEqual(['A1', 'A2']);
+
+    expect(await applyAnsweredRegions(progress, root)).toBe(true);
+    expect(a.children.map(child => child.name)).toEqual(['A1', 'A2', 'A3']);
+
+    expect(await applyAnsweredRegions(progress, root)).toBe(false);
+  });
+
+  it('applies an answer given during a rebuild before the wait lets the import go on', async () => {
+    // The same sequence through what the wait calls: one call settles both.
+    const aQuestion = questionFor('A', [linked('A1'), linked('A2')]);
+    const bQuestion = questionFor('B', [linked('B1'), linked('B2')]);
+    progress.pendingQuestions.push(aQuestion);
+    const { tree, fetcher } = await built(bQuestion, siblingPages());
+    const answerFromPage = fetcher.apiGet.getMockImplementation()!;
+    fetcher.apiGet.mockImplementation(async (params) => {
+      if (params.page === 'B3' && !aQuestion.resolved) {
+        aQuestion.extractedRegions = [linked('A1'), linked('A2'), linked('A3')];
+        aQuestion.resolved = true;
+      }
+      return answerFromPage(params);
+    });
+
+    bQuestion.extractedRegions = [linked('B1'), linked('B2'), linked('B3')];
+    bQuestion.resolved = true;
+    await applyUntilSettled(progress, { name: 'World', children: [tree] });
+
+    expect(tree.children.map(page => page.children.map(child => child.name))).toEqual([
+      ['A1', 'A2', 'A3'],
+      ['B1', 'B2', 'B3'],
+    ]);
+  });
+
+  it('skips a question the admin has not answered yet', async () => {
+    const question = questionFor('Root', [linked('North'), linked('South')]);
+    const { tree } = await built(question, pages(
+      '| region1name=[[North]]\n| region1items=\n| region2name=[[South]]\n| region2items=',
+      ['North', 'South', 'East'],
+    ));
+    question.extractedRegions = [linked('East')];
+    await applyAnsweredRegions(progress, { name: 'World', children: [tree] });
+    expect(tree.children.map(child => child.name)).toEqual(['North', 'South']);
+  });
+
+  it("builds a page whose question is still open from the regions it was queued with, and asks nothing twice", async () => {
+    // North's question waits on the admin. Root's answer rebuilds Root, which
+    // reaches North again: North is built from the regions its question was
+    // queued with (Lowland, Highland), not from its page (A, B), and the new
+    // node joins that question rather than a second one.
+    const rootQuestion = questionFor('Root', [linked('North'), linked('South')]);
+    const northQuestion = questionFor('North', [linked('Lowland'), linked('Highland')]);
+    progress.pendingQuestions.push(northQuestion);
+    const responses = pages(
+      '| region1name=[[North]]\n| region1items=\n| region2name=[[South]]\n| region2items=',
+      ['South', 'Centre', 'A', 'B', 'Lowland', 'Highland'],
+    );
+    responses[key({ action: 'parse', page: 'North', prop: 'sections', redirects: '1' })] =
+      sectionsResponse('North', [{ index: '1', line: 'Regions' }]);
+    responses[key({ action: 'parse', page: 'North', prop: 'wikitext', section: '1' })] =
+      wikitextResponse('North', '{{Regionlist\n| region1name=[[A]]\n| region1items=\n| region2name=[[B]]\n| region2items=\n}}');
+    responses[key({ action: 'parse', page: 'North', prop: 'wikitext' })] = wikitextResponse('North', '');
+    const { tree } = await built(rootQuestion, responses);
+
+    rootQuestion.extractedRegions = [linked('North'), linked('South'), linked('Centre')];
+    rootQuestion.resolved = true;
+    await applyAnsweredRegions(progress, { name: 'World', children: [tree] });
+
+    expect(tree.children[0].children.map(child => child.name)).toEqual(['Lowland', 'Highland']);
+    expect(northQuestion.nodes.map(built => built.node)).toContain(tree.children[0]);
+    expect(progress.pendingQuestions.filter(q => q.pageTitle === 'North')).toHaveLength(1);
+  });
+
+  it('builds a page from what the model settled for it earlier in the run', async () => {
+    // The model's outcome for a page is kept for the run (progress.modelRegions):
+    // a page reached again, by a rebuild or a second parent, is built from it
+    // rather than handed to the model again. Here North's page lists A and B,
+    // and the model settled it as Lowland and Highland earlier.
+    progress.modelRegions.set('North', [
+      { name: 'Lowland', hasLink: true, items: [] },
+      { name: 'Highland', hasLink: true, items: [] },
+    ]);
+    const responses = pages('', ['Lowland', 'Highland', 'A', 'B']);
+    responses[key({ action: 'parse', page: 'North', prop: 'sections', redirects: '1' })] =
+      sectionsResponse('North', [{ index: '1', line: 'Regions' }]);
+    responses[key({ action: 'parse', page: 'North', prop: 'wikitext', section: '1' })] =
+      wikitextResponse('North', '{{Regionlist\n| region1name=[[A]]\n| region1items=\n| region2name=[[B]]\n| region2items=\n}}');
+    responses[key({ action: 'parse', page: 'North', prop: 'wikitext' })] = wikitextResponse('North', '');
+    const fetcher = createMockFetcher(responses);
+
+    const north = await buildTree(fetcher as unknown as Parameters<typeof buildTree>[0], 'North', 5, progress) as TreeNode;
+
+    expect(north.children.map(child => child.name)).toEqual(['Lowland', 'Highland']);
+  });
+
+  it('does not hand the model a page again when a rebuild reaches it', async () => {
+    // North's page groups A and B under a plain-text name, so the walk asks the
+    // model, which settles it as Lowland and Highland. Root's answer adds Centre
+    // and rebuilds Root, which reaches North again: it is built from what the
+    // model settled, and the model is not asked a second time.
+    vi.mocked(extractRegionsWithAI).mockReset().mockResolvedValue({
+      regions: [
+        { name: 'Lowland', hasLink: true, items: [] },
+        { name: 'Highland', hasLink: true, items: [] },
+      ],
+      questions: [],
+    });
+    const rootQuestion = questionFor('Root', [linked('North'), linked('South')]);
+    const responses = pages('', ['South', 'Centre', 'A', 'B', 'Lowland', 'Highland']);
+    responses[key({ action: 'parse', page: 'North', prop: 'sections', redirects: '1' })] =
+      sectionsResponse('North', [{ index: '1', line: 'Regions' }]);
+    responses[key({ action: 'parse', page: 'North', prop: 'wikitext', section: '1' })] =
+      wikitextResponse('North', '{{Regionlist\n| region1name=Mountains\n| region1items=[[A]], [[B]]\n}}');
+    responses[key({ action: 'parse', page: 'North', prop: 'wikitext' })] = wikitextResponse('North', '');
+    progress.pendingQuestions.push(rootQuestion);
+    const fetcher = {
+      ...createMockFetcher(responses),
+      checkPagesExist: vi.fn(async (names: string[]) => new Map(names.map(name => [name, true]))),
+    };
+    const aiContext = {
+      openai: null as never,
+      accumulator: { apiCalls: 0, promptTokens: 0, completionTokens: 0, totalCost: 0 },
+    };
+    const tree = await buildTree(
+      fetcher as unknown as Parameters<typeof buildTree>[0], 'Root', 5, progress, 0, new Set(), aiContext,
+    ) as TreeNode;
+    expect(tree.children[0].children.map(child => child.name)).toEqual(['Lowland', 'Highland']);
+
+    rootQuestion.extractedRegions = [linked('North'), linked('South'), linked('Centre')];
+    rootQuestion.resolved = true;
+    await applyAnsweredRegions(progress, { name: 'World', children: [tree] });
+
+    expect(tree.children.map(child => child.name)).toEqual(['North', 'South', 'Centre']);
+    expect(tree.children[0].children.map(child => child.name)).toEqual(['Lowland', 'Highland']);
+    expect(extractRegionsWithAI).toHaveBeenCalledTimes(1);
   });
 });
