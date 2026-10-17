@@ -100,7 +100,9 @@ reading a number:
 
 The budget syntax is Lighthouse CI's (`"<key>": ["<level>", { <threshold> }]`),
 evaluated by `frontend/perf/assertions.mjs`, so anyone who has read a
-`lighthouserc.json` reads ours. Lighthouse CI itself is not used: at the time
+`lighthouserc.json` reads ours. One key is the lane's own,
+`requests-except:<host>:size|count`, for the pages whose weight is mostly a
+basemap the repository does not serve (ADR-0118, § The region and card pages). Lighthouse CI itself is not used: at the time
 of writing `@lhci/cli` pinned a year-old Lighthouse whose dependency tree
 carried nine high-severity advisories, for a feature set this lane needs a
 small part of — N runs, a median, a handful of assertions, reports on disk.
@@ -424,26 +426,34 @@ Script is 585.9 kB on both, the shells' figure, and everything that is the
 repository's own — the bundle, the fonts, the backend's reads, Martin's
 tiles — holds to within 8 kB across machines and runs. **The spread is the
 basemap's alone**: how many raster tiles a map flown into a region fetches
-before Lighthouse calls the page loaded moved between 26 and 46, about 30 kB
+before Lighthouse calls the page loaded moved between 26 and 52, about 30 kB
 each. One page's total ranged from 1.37 MB to 2.01 MB on one machine in one
 job, the difference about half its weight, far wider than the 5 % a byte line
-is otherwise given. The total line is kept rather than dropped, and set above
-the heaviest run measured on either machine instead of above one median
-(§ Budgets). What it catches there is a second basemap or a read of hundreds
-of kilobytes, not the tile count wandering. The repository's own bytes are
-gated tightly on these pages all the same: the shared script, stylesheet and
-font lines apply to them unchanged. #651, which moves the basemap off
-OpenStreetMap's public server, is the change that would let the total line
-come down.
+is otherwise given. A total line set above the heaviest of the first job's
+runs (2 008 881 B, plus 10 %) failed the next unrelated pull request at
+2 317 656 B: a byte line over that spread gates the tile count, not anything the
+repository decides. So these pages are **gated on what they fetch from every
+host but the basemap's**, `requests-except:openstreetmap.org:size` and `:count`
+(`frontend/perf/assertions.mjs`, this lane's own form beside Lighthouse CI's).
+Across all eighteen CI runs of the region and card pages, on #1641, #1644 and
+#1646, that measured 677.9–682.9 kB on 44–82 requests. The total, basemap
+included, is still read on every run at `warn`, because a visitor pays for
+those tiles whoever serves them. #651, which moves the basemap off
+OpenStreetMap's public server, is the change that would let it gate again.
 
-On the CI runner the timings sit under the shells' lines: LCP 1.21–1.30 s,
-TBT 125–197 ms, TTI 1.61–1.78 s on the region page, and LCP 0.93–1.25 s,
-TBT 159–228 ms, TTI 1.51–1.70 s on the card. So they gate at the shells'
-values from the first run on, as the shells' did. The exception is the
-card's **layout shift, 0.18–0.29** on the runner and 0.25 on the laptop,
-against the shells' 0.000–0.006 and the region page's 0.011: the region
-panel's contents move as the card and the map's loading placeholder arrive.
-It stays a `warn` until #1639 fixes it.
+On the CI runner the pull request that added the pages measured LCP 1.21–1.30 s,
+TBT 125–197 ms and TTI 1.61–1.78 s on the region page, and LCP 0.93–1.25 s,
+TBT 159–228 ms and TTI 1.51–1.70 s on the card, all under the shells' lines.
+Gating them at `error` on that one job's runs was premature. The next pull
+request to run the lane, #1644, which changed nothing the browser loads,
+measured the card's TBT at 304 ms and failed on it. So both pages' timings are
+`warn` at the shells' values. They move to `error` once enough CI runs show
+where they sit, per the rule below: a page flown into a region does more on its
+first screen than a shell, and one job's three runs did not show its spread.
+The card's **layout shift, 0.17–0.29** on the runner across #1641 and #1644 and 0.25 on the laptop, is
+against the shells' 0.000–0.006 and the region page's 0.011. The region
+panel's contents move as the card and the map's loading placeholder arrive,
+and #1639 holds the fix.
 
 ### Local run — 2026-09-09
 
@@ -823,10 +833,10 @@ unchanged, since only the overview tier was cut. They belong in the next full ru
 | `cumulative-layout-shift` | error | 0.02 | 0.001–0.006 / 0.000 on the CI runner |
 | `interactive` | error | 2 500 ms | 1.33–1.64 s on the CI runner (1.90 / 1.59 s locally) |
 | `categories:performance` | warn | 0.8 | informational — the composite score moves ±5 points on identical hardware and is not a gate |
-| region page `/wv/9001/r/9001` and card page `/wv/9001/r/9001/e/9001`: `resource-summary:total:size` | error | 2 200 000 B | 2 008 881 B, the heaviest run of either page on either machine (+ ~10 %): the basemap moves a page by up to half its weight between runs (§ The region and card pages), so the line sits above the heaviest run rather than one median. The shared script, stylesheet and font lines gate the repository's own bytes there |
-| both pages: `resource-summary:total:count` | error | 145 | 73–115 requests, 26–46 of them basemap tiles, with the shells' quarter of headroom over the heaviest |
-| both pages: `largest-contentful-paint`, `total-blocking-time`, `interactive`, and the region page's `cumulative-layout-shift` | error | the shared lines above, inherited rather than restated, so a ratchet of a shared timing moves these pages too | LCP 0.93–1.30 s, TBT 125–228 ms, TTI 1.51–1.78 s, the region page's CLS 0.011 on the CI runner |
-| card page: `cumulative-layout-shift` | warn | 0.02 | its own line: 0.18–0.29 on the CI runner, until #1639 |
+| region page `/wv/9001/r/9001` and card page `/wv/9001/r/9001/e/9001`: `requests-except:openstreetmap.org:size` | error | 715 000 B | 682 912 B, the heaviest of eighteen CI runs on #1641, #1644 and #1646 (+ ~5 %): everything the page fetched but the OpenStreetMap basemap, which held within 5 kB |
+| both pages: `requests-except:openstreetmap.org:count` | error | 105 | 44–82 requests, the spread being Martin's vector tiles, with the shells' quarter of headroom over the heaviest |
+| both pages: `resource-summary:total:size` and `:count` | warn | 2 200 000 B, 145 | 1 365 877–2 317 656 B on 108–132 requests on the region page in CI, the basemap's 34–52 raster tiles included: read, not gated, while the basemap is a public server's (#651) |
+| both pages: `largest-contentful-paint`, `total-blocking-time`, `interactive`, `cumulative-layout-shift` | warn | the shells' 2 000 ms / 300 ms / 2 500 ms / 0.02, as the pages' own lines | LCP 0.93–1.30 s, TBT 125–304 ms, TTI 1.51–1.78 s on the CI runner across #1641 and #1644, and CLS 0.011 on the region page, 0.17–0.29 on the card (#1639). `error` once more CI runs show where they sit |
 
 The local run has its own file, `frontend/perf/lighthouse-budgets.local.json`,
 with the same script and stylesheet lines, a font line at 85 000 B — the
@@ -908,10 +918,11 @@ Filed, and linked here so the baseline is read with them in mind:
 - #651 — the basemap is OpenStreetMap's public tile server, and on a page
   whose map sits inside a region it is the largest thing on the wire.
   Measured on the fixture's region and card pages (in the lane since
-  #669): 392–1 330 kB over 26–46 tile requests across eighteen runs,
-  against 4.0 kB of this repository's own vector tiles and 13.7 kB from the
-  backend, and the whole of the spread the region and card pages' byte lines
-  have to allow for.
+  #669): 392 kB to 1.64 MB over 26–52 tile requests across the runs of #669,
+  #1641, #1644 and #1646, against 4.0 kB of this repository's own vector
+  tiles and 13.7 kB from the backend. That spread is why those pages gate on
+  everything but the basemap and only read their totals at `warn`
+  (ADR-0118).
   The map view and Discover shells sit at world zoom and pay a fraction of it.
 - #551 — the region tile LOD ladder: a z3 tile costs hundreds of
   milliseconds of Postgres time for a few kilobytes. The first known breach

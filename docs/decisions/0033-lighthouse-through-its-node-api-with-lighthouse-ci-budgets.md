@@ -1,7 +1,7 @@
 # ADR-0033: Lighthouse is driven through its Node API, and the budgets keep Lighthouse CI's syntax
 
 **Date:** 2026-08-24
-**Status:** Accepted
+**Status:** Accepted — decision 2 narrowed by [ADR-0118](0118-a-budget-may-leave-out-a-host-the-repository-does-not-serve.md)
 
 ---
 

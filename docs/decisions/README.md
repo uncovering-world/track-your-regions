@@ -52,7 +52,7 @@ and accepted by it.
 | [0030](0030-answers-from-a-source-are-kept-with-an-expiry.md) | What a source answers is kept, with an expiry a person can change | Accepted — decision 1 narrowed by [0047](0047-a-cached-answer-belongs-to-the-source-that-asked.md) | 2026-08-21 |
 | [0031](0031-a-display-rung-drops-what-a-reader-cannot-see.md) | A display rung drops what a reader cannot see | Accepted | 2026-08-23 |
 | [0032](0032-a-rule-stays-absolute-and-the-debt-is-recorded.md) | A rule about the catalogue stays absolute, and the debt is recorded beside it | Accepted | 2026-08-24 |
-| [0033](0033-lighthouse-through-its-node-api-with-lighthouse-ci-budgets.md) | Lighthouse is driven through its Node API, and the budgets keep Lighthouse CI's syntax | Accepted | 2026-08-24 |
+| [0033](0033-lighthouse-through-its-node-api-with-lighthouse-ci-budgets.md) | Lighthouse is driven through its Node API, and the budgets keep Lighthouse CI's syntax | Accepted — decision 2 narrowed by [0118](0118-a-budget-may-leave-out-a-host-the-repository-does-not-serve.md) | 2026-08-24 |
 | [0034](0034-a-place-has-an-address.md) | A place has an address, and ids decide it | Accepted | 2026-08-25 |
 | [0035](0035-ancestor-geometry-invalidation-lives-in-the-database.md) | Ancestor geometry invalidation lives in the database | Accepted — narrowed by ADR-0068 | 2026-08-27 |
 | [0036](0036-a-rung-carries-the-holes-its-source-has.md) | A rung carries the holes its source has | Accepted | 2026-08-27 |
@@ -136,6 +136,7 @@ and accepted by it.
 | [0114](0114-work-is-held-in-queues-one-issue-per-goal.md) | Work is held in queues, one issue per goal, with a checkable end and a journal | Accepted | 2026-10-16 |
 | [0115](0115-a-point-is-offered-to-several-maps-the-devices-own-first.md) | A point is offered to several maps, the device's own first | Accepted | 2026-10-16 |
 | [0116](0116-a-gap-the-catalogue-carries-is-judged-once-in-a-committed-ledger-by-cause.md) | A gap the catalogue carries is judged once, in a committed ledger by cause | Accepted | 2026-10-16 |
+| [0118](0118-a-budget-may-leave-out-a-host-the-repository-does-not-serve.md) | A Lighthouse budget may leave out a host the repository does not serve | Accepted | 2026-10-17 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
