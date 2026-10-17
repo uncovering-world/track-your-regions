@@ -390,6 +390,7 @@ export const AssignmentStatus = z.strictObject({
   ancestorAssignments: z.number().int().optional().describe('Placements carried up to those regions\' ancestors.'),
   totalAssignments: z.number().int().optional(),
   errors: z.number().int().optional(),
+  operation: OperationProgressAnswer.optional().describe('The step the run is on, of how many, and how long it has run (#1356).'),
 }).describe('A world view\'s placement as it stands. Only `running` is sent while no run is known since the server started.');
 export type AssignmentStatus = z.infer<typeof AssignmentStatus>;
 

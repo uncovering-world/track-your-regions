@@ -47,6 +47,16 @@ describe('Operation', () => {
   });
 });
 
+describe('a cancel', () => {
+  it('is said on the progress and in the log at once, before the run stops', () => {
+    const { operation, lines } = clocked();
+    operation.step(2, 'Placing every point in the regions that contain it');
+    operation.cancel();
+    expect(operation.progress.cancelling).toBe(true);
+    expect(lines.at(-1)).toBe('[Component items] Cancel asked; stopping at the next point the run can');
+  });
+});
+
 describe('operationAnswer', () => {
   it('sends times as seconds elapsed on the server', () => {
     const { operation, tick, now } = clocked();
@@ -58,6 +68,7 @@ describe('operationAnswer', () => {
     tick(10_000);
     expect(operationAnswer(operation.progress, now())).toEqual({
       elapsedSeconds: 95,
+      cancelling: false,
       step: { index: 3, count: 12, sentence: 'Reading the classes of 1,640 resolved components', done: 800, total: 1640, elapsedSeconds: 30 },
       wait: { sentence: 'Wikidata asked to wait', secondsLeft: 20 },
     });
@@ -73,6 +84,6 @@ describe('operationAnswer', () => {
 
   it('answers no step before the first one opens', () => {
     const { operation, now } = clocked();
-    expect(operationAnswer(operation.progress, now())).toEqual({ elapsedSeconds: 0, step: null, wait: null });
+    expect(operationAnswer(operation.progress, now())).toEqual({ elapsedSeconds: 0, cancelling: false, step: null, wait: null });
   });
 });

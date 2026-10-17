@@ -37,6 +37,8 @@ export interface OperationProgress {
   startedAt: number;
   step: OperationStep | null;
   wait: OperationWait | null;
+  /** A cancel was asked: the run stops at the next point it can, usually when the step in flight ends. */
+  cancelling: boolean;
 }
 
 /**
@@ -48,6 +50,7 @@ export function operationAnswer(progress: OperationProgress, now = Date.now()): 
   const { step, wait } = progress;
   return {
     elapsedSeconds: seconds(progress.startedAt),
+    cancelling: progress.cancelling,
     step: step && {
       index: step.index, count: step.count, sentence: step.sentence, done: step.done, total: step.total,
       elapsedSeconds: seconds(step.startedAt),
@@ -68,7 +71,7 @@ export class Operation {
     private readonly log: (line: string) => void = console.log,
     private readonly now: () => number = Date.now,
   ) {
-    this.progress = { startedAt: now(), step: null, wait: null };
+    this.progress = { startedAt: now(), step: null, wait: null, cancelling: false };
   }
 
   /** Close the step running and open step `index` of the operation's count. */
@@ -93,6 +96,17 @@ export class Operation {
    */
   waiting(sentence: string, ms: number): void {
     this.progress.wait = { sentence, until: this.now() + ms };
+  }
+
+  /** A cancel was asked; the run's own loop is what stops it. */
+  cancel(): void {
+    this.progress.cancelling = true;
+    this.log(`${this.prefix} Cancel asked; stopping at the next point the run can`);
+  }
+
+  /** A line of the operation's own under its prefix, for a count a step's end line does not split. */
+  note(line: string): void {
+    this.log(`${this.prefix} ${line}`);
   }
 
   /** The operation is over, whatever its outcome: the sentence says which. */
