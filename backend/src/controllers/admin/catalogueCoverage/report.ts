@@ -10,10 +10,13 @@
  *   what to build, which an issue cites and no code acts on;
  * - per live kind, the expected things it lacks, the well-known ones by name, each
  *   with the judgement a person recorded on its gap in the committed ledger, where
- *   there is one (ADR-0116), and the judgements whose gap has since closed.
+ *   there is one (ADR-0116), and the judgements whose gap has since closed;
+ * - per region, the other direction (#1601): what it offers that no guide names,
+ *   least known first, each with its row judgement, and the rows a person judged
+ *   not worth a visit that a kind still offers.
  */
 
-import type { Cause } from '../../../services/catalogueCoverage/files.js';
+import { ROW_CAUSES, type Cause } from '../../../services/catalogueCoverage/files.js';
 import { ICONIC_SITELINKS } from '../../../services/sync/museum/tier1.js';
 import { ENTER_SITELINKS } from '../../../services/sync/publicArt/pipeline.js';
 import {
@@ -133,14 +136,49 @@ export interface StaleJudgement extends Judgement {
   kindName: string;
 }
 
+/** One offered place a surveyed region's guides do not name (#1601), with the ledger's line on it where a person has judged it. */
+export interface UnnamedPlace {
+  experienceId: number;
+  name: string;
+  /** Null for a place only its source's id names, which the ledger cannot judge. */
+  wikidataId: string | null;
+  /** The kinds that offer it, as the register names them. */
+  kinds: string[];
+  sitelinks: number | null;
+  km: number;
+  judgement: Judgement | null;
+}
+
+/** What one surveyed region offers that no guide names, and what a person has made of it. */
+export interface RegionUnnamed {
+  regionSlug: string;
+  regionName: string;
+  /** Every offered place within reach no entry names. */
+  total: number;
+  /** The ones nobody has judged, least known first: the order that finds the junk fastest. */
+  unjudged: UnnamedPlace[];
+  /** The ones nobody can judge: a place only its source's id names has no Wikidata id for the ledger to key on. */
+  unjudgeable: UnnamedPlace[];
+  /** Of the judged, how many under each cause. */
+  judgedByCause: JudgedCause[];
+  /** Judged not worth a visit, and a kind still offers it: a finding the kind's rule or a curator answers. */
+  standing: UnnamedPlace[];
+}
+
+/** A judgement on a row no offered place within the region's reach carries now: the finding is answered, and the line is to be removed. */
+export interface StaleRowJudgement extends Judgement {
+  regionSlug: string;
+  wikidataId: string;
+}
+
 export interface CoverageReport {
   regions: RegionCoverage[];
   proposedKinds: ProposedKindDemand[];
   liveKinds: LiveKindGaps[];
   expectations: ExpectationResult[];
   staleJudgements: StaleJudgement[];
-  /** Judgements on catalogue rows no entry names (#1601): loaded and counted, read by nothing yet. */
-  rowJudgements: number;
+  unnamed: RegionUnnamed[];
+  staleRowJudgements: StaleRowJudgement[];
 }
 
 const EXAMPLES = 5;
@@ -209,6 +247,60 @@ const byRenown = (a: ExpectationResult, b: ExpectationResult): number =>
 
 const toJudgement = (row: JudgementRow): Judgement =>
   ({ cause: row.cause as Cause, issue: row.issue_number, judged: row.judged, note: row.note });
+
+/** A place judged not worth a visit: `not-a-must`, or a `rule-defect` the kind's rule should have refused. */
+const notWorthAVisit = (judgement: Judgement | null): boolean =>
+  judgement !== null && ROW_CAUSES.has(judgement.cause) && judgement.cause !== 'worth-a-visit';
+
+/** Least known first: the fewest sitelinks, a place with no count last, then by name. */
+const byObscurity = (a: UnnamedPlace, b: UnnamedPlace): number =>
+  (a.sitelinks ?? Number.MAX_SAFE_INTEGER) - (b.sitelinks ?? Number.MAX_SAFE_INTEGER) || a.name.localeCompare(b.name);
+
+/**
+ * What each region offers that no guide names (#1601), with the ledger's row judgements
+ * joined by Wikidata id. A judged row no offered place within reach carries now is stale.
+ */
+function unnamedByRegion(
+  facts: CoverageFacts, kindNames: Map<number, string>, regionNames: Map<string, string>,
+): { unnamed: RegionUnnamed[]; stale: StaleRowJudgement[] } {
+  const rowKey = (regionSlug: string, wikidataId: string) => `${regionSlug}\n${wikidataId}`;
+  const onRows = facts.judgements.filter(row => row.row_wikidata_id !== null);
+  const judgements = new Map(onRows.map(row => [rowKey(row.region_slug, row.row_wikidata_id as string), toJudgement(row)]));
+  const carried = new Set<string>();
+  const places = new Map<string, UnnamedPlace[]>();
+  for (const row of facts.unnamed) {
+    const judgement = row.wikidata_id === null ? null : judgements.get(rowKey(row.region_slug, row.wikidata_id)) ?? null;
+    if (row.wikidata_id !== null) carried.add(rowKey(row.region_slug, row.wikidata_id));
+    const place: UnnamedPlace = {
+      experienceId: row.experience_id,
+      name: row.name,
+      wikidataId: row.wikidata_id,
+      kinds: row.kind_ids.map(id => kindNames.get(id) ?? `kind ${id}`),
+      sitelinks: row.sitelinks,
+      km: row.km,
+      judgement,
+    };
+    const list = places.get(row.region_slug);
+    if (list) list.push(place);
+    else places.set(row.region_slug, [place]);
+  }
+  const unnamed: RegionUnnamed[] = facts.regions.map((region) => {
+    const own = places.get(region.slug) ?? [];
+    return {
+      regionSlug: region.slug,
+      regionName: regionNames.get(region.slug) ?? region.slug,
+      total: own.length,
+      unjudged: own.filter(place => place.judgement === null && place.wikidataId !== null).sort(byObscurity),
+      unjudgeable: own.filter(place => place.wikidataId === null).sort(byObscurity),
+      judgedByCause: judgedByCause(own),
+      standing: own.filter(place => notWorthAVisit(place.judgement)).sort(byObscurity),
+    };
+  });
+  const stale: StaleRowJudgement[] = onRows
+    .filter(row => !carried.has(rowKey(row.region_slug, row.row_wikidata_id as string)))
+    .map(row => ({ ...toJudgement(row), regionSlug: row.region_slug, wikidataId: row.row_wikidata_id as string }));
+  return { unnamed, stale };
+}
 
 /** How many of `missing` a person has judged under each cause, in the order of the causes' first appearance by renown. */
 function judgedByCause(missing: Pick<MissingEntry, 'judgement'>[]): JudgedCause[] {
@@ -318,10 +410,10 @@ export function buildCoverageReport(facts: CoverageFacts): CoverageReport {
       kindName: kinds.get(row.kind_slug as string)?.name ?? (row.kind_slug as string),
     }));
 
-  return {
-    regions, proposedKinds, liveKinds, expectations, staleJudgements,
-    rowJudgements: facts.judgements.filter(row => row.row_wikidata_id !== null).length,
-  };
+  const kindNames = new Map(facts.kinds.filter(kind => kind.experience_kind_id !== null).map(kind => [kind.experience_kind_id as number, kind.name]));
+  const { unnamed, stale: staleRowJudgements } = unnamedByRegion(facts, kindNames, new Map(regions.map(region => [region.slug, region.name])));
+
+  return { regions, proposedKinds, liveKinds, expectations, staleJudgements, unnamed, staleRowJudgements };
 }
 
 /** The report over what is loaded now, for every region or for `regionSlugs`. */

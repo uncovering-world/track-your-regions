@@ -20,10 +20,18 @@ import { coverageReport, type CoverageReport } from './report.js';
  */
 
 const REGION = 'db-lane-region';
-const PLACES = { offered: 9601, pending: 9602, refused: 9603, lost: 9604, otherItem: 9605, heritage: 9606 } as const;
+/** Three more regions for the reach alone (#1601): one at seventy degrees north, one astride the antimeridian, one by the pole. */
+const NORTH = { slug: 'db-lane-north', lat: 70, lon: 20 };
+const FAR_EAST = { slug: 'db-lane-far-east', lat: -17, lon: 179.8 };
+const POLE = { slug: 'db-lane-pole', lat: 89.9, lon: 0 };
+const PLACES = { offered: 9601, pending: 9602, refused: 9603, lost: 9604, otherItem: 9605, heritage: 9606, unnamed: 9607, north: 9608, acrossTheLine: 9609, byThePole: 9610 } as const;
 const WORKS = { shown: 'Q96000010', hidden: 'Q96000011' } as const;
-const QID = { offered: 'Q96000001', pending: 'Q96000002', refused: 'Q96000003', lost: 'Q96000004', otherItem: 'Q96000005' } as const;
+const QID = {
+  offered: 'Q96000001', pending: 'Q96000002', refused: 'Q96000003', lost: 'Q96000004', otherItem: 'Q96000005', unnamed: 'Q96000006',
+  north: 'Q96000007', acrossTheLine: 'Q96000008', byThePole: 'Q96000009',
+} as const;
 const UNESCO = '96001';
+const HERITAGE_ITEM = 'Q96000040';
 // The offered dig stands at 50 N 10 E; a degree of latitude is 111.2 km.
 const AT = { lat: 50, lon: 10 };
 const metresNorth = (metres: number) => AT.lat + metres / 111_195;
@@ -48,17 +56,17 @@ async function clearExpectations(): Promise<void> {
 /** A place of a kind, with its one point, admitted or refused, read or not. */
 async function place(
   id: number, externalId: string, lon: number, kind: { source: number; kind: number; type: string },
-  admission: 'admitted' | 'refused', state: 'verified' | 'pending',
+  admission: 'admitted' | 'refused', state: 'verified' | 'pending', metadata: Record<string, unknown> = {}, lat = AT.lat,
 ): Promise<void> {
   await pool.query(
-    `INSERT INTO experiences (id, source_id, external_id, name, location)
-     VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326))`,
-    [id, kind.source, externalId, `Place ${id}`, lon, AT.lat],
+    `INSERT INTO experiences (id, source_id, external_id, name, location, metadata)
+     VALUES ($1, $2, $3, $4, ST_SetSRID(ST_MakePoint($5, $6), 4326), $7)`,
+    [id, kind.source, externalId, `Place ${id}`, lon, lat, metadata],
   );
   await pool.query(
     `INSERT INTO experience_locations (experience_id, name, ordinal, location)
      VALUES ($1, $2, 0, ST_SetSRID(ST_MakePoint($3, $4), 4326))`,
-    [id, `Point of ${id}`, lon, AT.lat],
+    [id, `Point of ${id}`, lon, lat],
   );
   await pool.query(
     `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, type, admission, curation_state)
@@ -97,14 +105,21 @@ async function files(): Promise<CoverageFiles> {
       { slug: 'markets', name: 'Markets', form: 'place', definition: 'A market.', ...proposed },
       { slug: 'festivals-and-events', name: 'Festivals & events', form: 'event', definition: 'A festival.', ...proposed, issue: 1300 },
     ],
-    regions: [{ slug: REGION, name: 'A region of the db lane', country: 'Nowhere', lat: AT.lat, lon: AT.lon, radius_km: 50, surveyed: '2026-10-01' }],
-    expectations: new Map([[REGION, [
+    regions: [
+      { slug: REGION, name: 'A region of the db lane', country: 'Nowhere', lat: AT.lat, lon: AT.lon, radius_km: 50, surveyed: '2026-10-01' },
+      { slug: NORTH.slug, name: 'Far north', country: 'Nowhere', lat: NORTH.lat, lon: NORTH.lon, radius_km: 50, surveyed: '2026-10-01' },
+      { slug: FAR_EAST.slug, name: 'Across the line', country: 'Nowhere', lat: FAR_EAST.lat, lon: FAR_EAST.lon, radius_km: 50, surveyed: '2026-10-01' },
+      { slug: POLE.slug, name: 'By the pole', country: 'Nowhere', lat: POLE.lat, lon: POLE.lon, radius_km: 50, surveyed: '2026-10-01' },
+    ],
+    expectations: new Map([[NORTH.slug, []], [FAR_EAST.slug, []], [POLE.slug, []], [REGION, [
       entry('offered-dig', { wikidata: QID.offered, sitelinks: 150 }),
       entry('pending-dig', { wikidata: QID.pending }),
       entry('refused-dig', { wikidata: QID.refused }),
       entry('lost-dig', { wikidata: QID.lost }),
       entry('dig-under-another-item', { wikidata: 'Q96000031', same_as: [QID.otherItem] }),
       entry('heritage-property', { kinds: ['world-heritage'], unesco: UNESCO }),
+      // The same property by the Wikidata item its membership resolves the site to, which no row's own id is.
+      entry('heritage-by-item', { wikidata: HERITAGE_ITEM }),
       entry('mask-on-view', { type: 'work', kinds: ['notable-works'], wikidata: WORKS.shown }),
       entry('mask-nobody-can-see', { type: 'work', kinds: ['notable-works'], wikidata: WORKS.hidden }),
       entry('sixty-six-metres-away', { wikidata: 'Q96000020', lat: metresNorth(66), lon: AT.lon }),
@@ -116,7 +131,8 @@ async function files(): Promise<CoverageFiles> {
     judgements: [
       { region: REGION, entry: 'refused-dig', kind: 'archaeology', row: null, cause: 'rule-defect', issue: 1160, judged: '2026-10-16', note: 'Refused on a class the door should admit.' },
       { region: REGION, entry: 'offered-dig', kind: 'archaeology', row: null, cause: 'door-missing', issue: 881, judged: '2026-10-01', note: 'Judged before the run that admitted it.' },
-      { region: REGION, entry: null, kind: null, row: 'Q96000099', cause: 'not-a-must', issue: null, judged: '2026-10-16', note: 'A row no guide names (#1601).' },
+      { region: REGION, entry: null, kind: null, row: 'Q96000099', cause: 'not-a-must', issue: null, judged: '2026-10-16', note: 'Judged when a row carried the id; none does now.' },
+      { region: REGION, entry: null, kind: null, row: QID.unnamed, cause: 'not-a-must', issue: null, judged: '2026-10-17', note: 'A stump no guide names (#1601).' },
     ],
   };
 }
@@ -133,6 +149,15 @@ beforeAll(async () => {
   await pool.query(`UPDATE experiences SET existence = 'lost' WHERE id = $1`, [PLACES.lost]);
   await place(PLACES.otherItem, QID.otherItem, AT.lon + 4, dig, 'admitted', 'verified');
   await place(PLACES.heritage, UNESCO, AT.lon + 5, { source: 1, kind: 1, type: 'cultural' }, 'admitted', 'verified');
+  await pool.query('UPDATE experience_kind_memberships SET wikidata_items = $2 WHERE experience_id = $1', [PLACES.heritage, [HERITAGE_ITEM]]);
+  // Fourteen kilometres from the centre, offered, and named by no entry: the other direction's one row (#1601).
+  await place(PLACES.unnamed, QID.unnamed, AT.lon + 0.2, dig, 'admitted', 'verified', { sitelinksCount: 7 });
+  // 1.2 degrees east at seventy north is 46 km, inside a 50 km reach that a box of 0.9 degrees would miss.
+  await place(PLACES.north, QID.north, NORTH.lon + 1.2, dig, 'admitted', 'verified', { sitelinksCount: 3 }, NORTH.lat);
+  // Across the antimeridian from a centre at 179.8 E: 0.3 degrees of longitude, 32 km, at seventeen south.
+  await place(PLACES.acrossTheLine, QID.acrossTheLine, -179.9, dig, 'admitted', 'verified', { sitelinksCount: 2 }, FAR_EAST.lat);
+  // Five degrees of longitude from a centre at 89.9 N is one kilometre: a circle in degrees drawn for the centre's latitude misses it.
+  await place(PLACES.byThePole, QID.byThePole, POLE.lon + 5, dig, 'admitted', 'verified', { sitelinksCount: 1 }, POLE.lat);
   await work(WORKS.shown, PLACES.offered);
   await work(WORKS.hidden, PLACES.pending);
   await replaceCoverage(await files());
@@ -148,10 +173,11 @@ afterAll(async () => {
 const verdict = (slug: string) => report.expectations.find(result => result.slug === slug)?.verdict;
 
 describe('the coverage report on a real database', () => {
-  it('finds a place by its Wikidata id, by an id named as the same place, and by UNESCO\'s id', () => {
+  it('finds a place by its Wikidata id, by an id named as the same place, by UNESCO\'s id, and by the item a membership resolves it to', () => {
     expect(verdict('offered-dig')).toBe('offered');
     expect(verdict('dig-under-another-item')).toBe('offered');
     expect(verdict('heritage-property')).toBe('offered');
+    expect(verdict('heritage-by-item')).toBe('offered');
   });
 
   it('calls held what the catalogue has and a reader does not see: unread, refused, no longer standing', () => {
@@ -183,8 +209,8 @@ describe('the coverage report on a real database', () => {
   it('counts the region by verdict and reads no other region', () => {
     expect(report.regions).toHaveLength(1);
     expect(report.regions[0]).toMatchObject({
-      slug: REGION, surveyed: '2026-10-01', total: 13,
-      counts: { offered: 4, held: 4, same_spot: 1, missing_live: 1, missing_proposed: 2, unsorted: 1 },
+      slug: REGION, surveyed: '2026-10-01', total: 14,
+      counts: { offered: 5, held: 4, same_spot: 1, missing_live: 1, missing_proposed: 2, unsorted: 1 },
     });
   });
 
@@ -200,18 +226,46 @@ describe('the coverage report on a real database', () => {
     );
     // The fixture database may state no line; the report then falls back to the code's.
     expect(archaeology?.line).toBe(stated.rows[0].line ?? 22);
-    expect(archaeology).toMatchObject({ expected: 7, offered: 2 });
+    // The property by its item is filed under Archaeology and offered by World Heritage: absent here, under the line.
+    expect(archaeology).toMatchObject({ expected: 8, offered: 2 });
     expect(archaeology?.wellKnownMissing.map(missing => missing.name)).toEqual(['three-hundred-metres-away']);
-    expect(archaeology?.belowLineMissing).toBe(4);
+    expect(archaeology?.belowLineMissing).toBe(5);
   });
 
-  it('reads the ledger: the refused dig carries its judgement under Archaeology, the offered one\'s is stale, the row one is counted', () => {
+  it('reads the ledger: the refused dig carries its judgement under Archaeology, and the offered one\'s is stale', () => {
     const archaeology = report.liveKinds.find(kind => kind.slug === 'archaeology');
     // Under the line, so counted rather than listed: the judgement is found through the stale test instead.
     expect(archaeology?.wellKnownMissing.map(missing => missing.judgement)).toEqual([null]);
     expect(report.staleJudgements.map(stale => [stale.slug, stale.kindSlug, stale.cause, stale.issue, stale.judged])).toEqual([
       ['offered-dig', 'archaeology', 'door-missing', 881, '2026-10-01'],
     ]);
-    expect(report.rowJudgements).toBe(1);
+  });
+
+  it('finds the offered place within reach no entry names, with its kind and its own sitelinks, and keeps its judgement standing', () => {
+    const [region] = report.unnamed;
+    // The fixture database seeds places of its own around the same point; they are unjudged, so the standing findings are this spec's alone.
+    expect(region).toMatchObject({ regionSlug: REGION, judgedByCause: [{ cause: 'not-a-must', count: 1, issues: [] }] });
+    expect(region.total).toBeGreaterThanOrEqual(1);
+    expect(region.unjudged.map(place => place.wikidataId)).not.toContain(QID.unnamed);
+    expect(region.standing).toEqual([{
+      experienceId: PLACES.unnamed, name: `Place ${PLACES.unnamed}`, wikidataId: QID.unnamed, kinds: ['Archaeology'], sitelinks: 7, km: 14,
+      judgement: { cause: 'not-a-must', issue: null, judged: '2026-10-17', note: 'A stump no guide names (#1601).' },
+    }]);
+    // A place the lists name is never also a place the lists do not name.
+    expect([...region.unjudged, ...region.standing].map(place => place.wikidataId)).not.toContain(QID.offered);
+  });
+
+  it('calls stale a row judgement no offered row within reach carries', () => {
+    expect(report.staleRowJudgements.map(stale => [stale.wikidataId, stale.cause])).toEqual([['Q96000099', 'not-a-must']]);
+  });
+
+  it('reaches a place at seventy degrees north, one across the antimeridian and one by the pole, where a box in degrees would not', async () => {
+    const elsewhere = await coverageReport([NORTH.slug, FAR_EAST.slug, POLE.slug]);
+    const unnamed = (slug: string) => elsewhere.unnamed.find(region => region.regionSlug === slug)?.unjudged
+      .filter(place => (Object.values(QID) as string[]).includes(place.wikidataId ?? ''))
+      .map(place => [place.wikidataId, place.km]);
+    expect(unnamed(NORTH.slug)).toEqual([[QID.north, 46]]);
+    expect(unnamed(FAR_EAST.slug)).toEqual([[QID.acrossTheLine, 32]]);
+    expect(unnamed(POLE.slug)).toEqual([[QID.byThePole, 1]]);
   });
 });
