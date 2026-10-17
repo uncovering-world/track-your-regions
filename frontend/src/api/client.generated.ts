@@ -819,6 +819,37 @@ export interface AnswerComponentItemsBody {
   answers: AnswerComponentItemsBodyAnswersItem[];
 }
 
+export type AnswerMergeProposalsBodyAnswersItemAnswer = typeof AnswerMergeProposalsBodyAnswersItemAnswer[keyof typeof AnswerMergeProposalsBodyAnswersItemAnswer];
+
+
+export const AnswerMergeProposalsBodyAnswersItemAnswer = {
+  one: 'one',
+  two: 'two',
+  part_of: 'part_of',
+} as const;
+
+export type AnswerMergeProposalsBodyAnswersItem = {
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  proposalId: number;
+  answer: AnswerMergeProposalsBodyAnswersItemAnswer;
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  partId?: number;
+};
+
+export interface AnswerMergeProposalsBody {
+  /**
+     * @minItems 1
+     * @maxItems 100
+     */
+  answers: AnswerMergeProposalsBodyAnswersItem[];
+}
+
 export type AnsweredPointSourceMembership = typeof AnsweredPointSourceMembership[keyof typeof AnsweredPointSourceMembership];
 
 
@@ -2847,6 +2878,7 @@ export const CuratorActivityEntryAction = {
   admission_pin_released: 'admission_pin_released',
   admission_pin_kept: 'admission_pin_kept',
   admission_pin_handed_back: 'admission_pin_handed_back',
+  merge_proposal_answered: 'merge_proposal_answered',
 } as const;
 
 /**
@@ -2975,6 +3007,7 @@ export const CurationLogEntryAction = {
   admission_pin_released: 'admission_pin_released',
   admission_pin_kept: 'admission_pin_kept',
   admission_pin_handed_back: 'admission_pin_handed_back',
+  merge_proposal_answered: 'merge_proposal_answered',
 } as const;
 
 /**
@@ -6655,6 +6688,62 @@ export interface MembersCleared {
 }
 
 /**
+ * Two near places with similar names, proposed as one place (#1249, ADR-0046 decision 2).
+ */
+export interface MergePair {
+  /**
+     * What an answer names.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  proposalId: number;
+  /**
+     * The other place of the pair; the card is the place with the lower id, which stays if the two are made one.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  otherId: number;
+  otherName: string;
+  /** The names of the kinds the other place is in, in display order. */
+  otherKinds: string[];
+  /** @nullable */
+  otherImageUrl: string | null;
+  otherImageCredit: ImageCredit | null;
+  /** @nullable */
+  otherLatitude: number | null;
+  /** @nullable */
+  otherLongitude: number | null;
+  /**
+     * The Wikidata item the other place's memberships make it, where one does.
+     * @nullable
+     */
+  otherWikidataItem: string | null;
+  /**
+     * The card's own place's item, the same way; two different items on a pair is worth a look.
+     * @nullable
+     */
+  anchorWikidataItem: string | null;
+  /**
+     * Between the two places' nearest offered points, in metres.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  distanceM: number;
+  /** The best trigram similarity between any two of their folded names, 0 to 1. */
+  nameSimilarity: number;
+  /** One and the same folded name within fifty metres: what a batch accept makes one place. */
+  exact: boolean;
+  /**
+     * The distance the pass found the pair under: 300 m, or a property's area radius up to 3 km.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  reachM: number;
+  /** @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$ */
+  proposedAt: string;
+}
+
+/**
  * The place with the lower id, which stays if the two are made one.
  */
 export type MergeProposalPassOpenItemPlaceA = {
@@ -6763,6 +6852,57 @@ export interface MergeProposalPass {
   answered: MergeProposalPassAnswered;
   /** Pairs the rule finds that share a kind, which one place cannot hold twice (ADR-0086 decision 4): not proposed, shown so a person sees them. */
   leftApart: MergeProposalPassLeftApartItem[];
+}
+
+export type MergeProposalsAnsweredMergedItem = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  proposalId: number;
+  /**
+     * The merge the answer ran, which the history can undo.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  mergeId: number;
+};
+
+export type MergeProposalsAnsweredRefusedItem = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  proposalId: number;
+  error: string;
+};
+
+/**
+ * A curator's answer to pairs of near places with similar names (#1249).
+ */
+export interface MergeProposalsAnswered {
+  /**
+     * The place the card is about: the lower id of each pair, which stays.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  /** Pairs answered one place: the other place is folded into this one. A merge that committed is listed here whatever happened after it; where its answer could not be recorded, the same pair is in `refused` too, with why. */
+  merged: MergeProposalsAnsweredMergedItem[];
+  /**
+     * Pairs answered two places: kept apart, never proposed again.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  two: number;
+  /**
+     * Pairs answered one part of the other: recorded on the proposal, nothing merged.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  partOf: number;
+  /** Pairs the answer could not be written for — answered meanwhile, a merge the catalogue refused, or a pair outside the caller's sources — each with why; the others stand. A pair also in `merged` was merged and its answer not recorded: one pair, not two. */
+  refused: MergeProposalsAnsweredRefusedItem[];
 }
 
 /**
@@ -7588,6 +7728,7 @@ export const QueueFacetsKindItemKind = {
   refused: 'refused',
   missing: 'missing',
   'component-items': 'component-items',
+  'merge-proposals': 'merge-proposals',
   'pin-question': 'pin-question',
   arrival: 'arrival',
   held: 'held',
@@ -7693,6 +7834,7 @@ export const QueueKind = {
   refused: 'refused',
   missing: 'missing',
   'component-items': 'component-items',
+  'merge-proposals': 'merge-proposals',
   'pin-question': 'pin-question',
 } as const;
 
@@ -8512,6 +8654,7 @@ export const ReviewAnswerBodyRowsItemKind = {
   refused: 'refused',
   missing: 'missing',
   'component-items': 'component-items',
+  'merge-proposals': 'merge-proposals',
   'pin-question': 'pin-question',
 } as const;
 
@@ -8602,6 +8745,12 @@ export interface ReviewAnswerDid {
      * @maximum 9007199254740991
      */
   items?: number;
+  /**
+     * Pairs of near places answered, for a merge-proposals row (#1249): a batch accept makes the exact pairs one place, a reject keeps every open pair two.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  pairs?: number;
 }
 
 export type ReviewAnswerResultAnsweredItem = {
@@ -8753,6 +8902,7 @@ export const ReviewQueueItemKind = {
   'withdrawn-answered': 'withdrawn-answered',
   'contents-refused': 'contents-refused',
   'component-items': 'component-items',
+  'merge-proposals': 'merge-proposals',
   'pin-question': 'pin-question',
 } as const;
 
@@ -8998,6 +9148,8 @@ export interface ReviewQueueItem {
   component_items?: ComponentItemProposal[] | null;
   /** Every place the site is made of, in the source's order, each with its own picture where it has one: what the card's map draws around the candidates (#1342). `component-items` items only. */
   site_points?: SitePoint[] | null;
+  /** The open pairs of near places with similar names this place is the lower id of, the most alike first (#1249). `merge-proposals` items only. */
+  merge_pairs?: MergePair[] | null;
   /** `pin-question` items only (#1367). */
   pin_question?: PinQuestion | null;
 }
@@ -9016,6 +9168,8 @@ export interface ReviewQueue {
   sources: ReviewQueueItem[];
   /** Serial sites whose components have candidate Wikidata items (#1272). */
   componentItems: ReviewQueueItem[];
+  /** Places with a near place of a similar name nobody has answered (#1249). */
+  mergeProposals: ReviewQueueItem[];
   /** Curators' admission pins a run no longer agrees with (#1367). */
   pinQuestions: ReviewQueueItem[];
   arrivals: ReviewQueueItem[];
@@ -11579,6 +11733,7 @@ export const GetAdminCuratorsByUserIdActivityAction = {
   admission_pin_released: 'admission_pin_released',
   admission_pin_kept: 'admission_pin_kept',
   admission_pin_handed_back: 'admission_pin_handed_back',
+  merge_proposal_answered: 'merge_proposal_answered',
 } as const;
 
 export type GetAdminCurationActivityParams = {
@@ -11650,6 +11805,7 @@ export const GetAdminCurationActivityAction = {
   admission_pin_released: 'admission_pin_released',
   admission_pin_kept: 'admission_pin_kept',
   admission_pin_handed_back: 'admission_pin_handed_back',
+  merge_proposal_answered: 'merge_proposal_answered',
 } as const;
 
 export type GetAdminUsersSearchParams = {
@@ -20376,6 +20532,46 @@ return apiFetch<ComponentItemsAnswered>(getPostExperiencesByIdComponentItemsUrl(
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(answerComponentItemsBody)
+  }
+);}
+
+
+
+export const getPostExperiencesByIdMergeProposalsUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/merge-proposals`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Answer whether near places with similar names are one place, two places or one part of the other
+ */
+export const postExperiencesByIdMergeProposals = async (id: number,
+    answerMergeProposalsBody: AnswerMergeProposalsBody, options?: Parameters<typeof apiFetch>[1]): Promise<MergeProposalsAnswered> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<MergeProposalsAnswered>(getPostExperiencesByIdMergeProposalsUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(answerMergeProposalsBody)
   }
 );}
 

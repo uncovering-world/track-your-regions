@@ -5,4 +5,6 @@
  */
 
 /** Which question a row asks. `waiting` is the three gated kinds, grouped. */
-export type RowKind = 'missing' | 'refused' | 'conflicts' | 'sources' | 'waiting' | 'withdrawn' | 'component-items' | 'pin-question';
+export type RowKind =
+  | 'missing' | 'refused' | 'conflicts' | 'sources' | 'waiting' | 'withdrawn' | 'component-items' | 'merge-proposals'
+  | 'pin-question';

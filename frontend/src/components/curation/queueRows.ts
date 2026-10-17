@@ -58,6 +58,7 @@ const QUESTION: Record<RowKind, string> = {
   waiting: 'waiting to be published',
   withdrawn: 'lost places it is made of',
   'component-items': 'candidate items for its components',
+  'merge-proposals': 'a near place with a name alike',
   'pin-question': 'a run asks again about a pin',
 };
 
@@ -70,6 +71,7 @@ const ROW_KIND: Record<QueueOrderEntry['kind'], RowKind> = {
   refused: 'refused',
   missing: 'missing',
   'component-items': 'component-items',
+  'merge-proposals': 'merge-proposals',
   'pin-question': 'pin-question',
 };
 
@@ -159,6 +161,7 @@ export function queueRows(data: ReviewQueue | undefined): QueueRow[] {
     refused: byPlace(data.refused),
     missing: byPlace(data.missing),
     'component-items': byPlace(data.componentItems),
+    'merge-proposals': byPlace(data.mergeProposals),
     'pin-question': byPlace(data.pinQuestions),
   };
 

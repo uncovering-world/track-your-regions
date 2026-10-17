@@ -312,8 +312,8 @@ export function normaliseReviewQ(raw: string): string {
 
 /** The API's own words for a question's kind, plus the three sub-kinds `waiting` groups. */
 const REVIEW_KIND_WORDS = new Set([
-  'conflict', 'sources', 'withdrawn', 'refused', 'missing', 'component-items', 'pin-question', 'arrival', 'held',
-  'contents',
+  'conflict', 'sources', 'withdrawn', 'refused', 'missing', 'component-items', 'merge-proposals', 'pin-question',
+  'arrival', 'held', 'contents',
 ]);
 
 /**
@@ -325,7 +325,7 @@ const REVIEW_KIND_WORDS = new Set([
  * a row on the page — and matching the API's word here would produce a `row` the page can
  * never find.
  */
-const REVIEW_ROW = /^(conflicts|sources|waiting|withdrawn|refused|missing|component-items|pin-question):(\d+)$/;
+const REVIEW_ROW = /^(conflicts|sources|waiting|withdrawn|refused|missing|component-items|merge-proposals|pin-question):(\d+)$/;
 
 /** A comma-separated parameter's entries, or `[]` when the parameter is absent. */
 function csv(raw: string | null): string[] {

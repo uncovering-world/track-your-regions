@@ -11,7 +11,7 @@ import type {
   AcceptSourceResult, AdmissionResult, ComponentItemsAnswered, ComponentItemSuggestions, ContentKind, CurationLog,
   DeclineHeldResult,
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
-  LocationStateResult, ManualExperienceCreated, MergeUndone, NearbyPictures, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointItemTakenBack, PublishResult,
+  LocationStateResult, ManualExperienceCreated, MergeProposalsAnswered, MergeUndone, NearbyPictures, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointItemTakenBack, PublishResult,
   ViewsChosen, ViewSuggestions, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
 import {
@@ -21,6 +21,7 @@ import {
   postExperiencesMergesByMergeIdUndo, postExperiencesByIdChooseViews, type ChooseViewsBody,
   postExperiencesByIdViewSuggestions, postExperiencesByIdComponentItems, type AnswerComponentItemsBody,
   postExperiencesByIdComponentItemSuggestions,
+  postExperiencesByIdMergeProposals, type AnswerMergeProposalsBody,
   postExperiencesByIdAdmission, postExperiencesByIdAdmissionPin, type PinQuestionAnswerBody,
   getExperiencesReviewPins, postExperiencesByIdAdmissionPinHandBack, type HandBackPinBody, postExperiencesByIdAssign, postExperiencesByIdDeclineHeld,
   postExperiencesByIdDeclineSource, postExperiencesByIdPublish, postExperiencesByIdRefuseArrival,
@@ -35,10 +36,10 @@ import {
 // and generated into `client.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
 export type {
-  AcceptSourceResult, AdmissionResult, AnswerComponentItemsBody, AppliedPart, ComponentItemsAnswered,
+  AcceptSourceResult, AdmissionResult, AnswerComponentItemsBody, AnswerMergeProposalsBody, AppliedPart, ComponentItemsAnswered,
   ComponentItemSuggestions, ContentKind, CurationLog, CurationLogEntry,
   DeclineHeldResult, DeclineSourceResult, DeclinedPart, ExperienceEditResult,
-  ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MergeUndone, NearbyPicture,
+  ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MergeProposalsAnswered, MergeUndone, NearbyPicture,
   NearbyPictures,
   AdmissionPin, AdmissionPinHandedBack, AdmissionPins, HandBackPinBody,
   PartNotFound, PinQuestionAnswerBody, PinQuestionAnswered, PointItemTakenBack, ViewsChosen, ViewSuggestions, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
@@ -431,6 +432,17 @@ export async function answerComponentItems(
   experienceId: number, answers: AnswerComponentItemsBody['answers'],
 ): Promise<ComponentItemsAnswered> {
   return postExperiencesByIdComponentItems(experienceId, { answers });
+}
+
+/**
+ * Two near places with similar names (#1249): per pair, one place — the other
+ * folded into this one, undone from the history like any merge — two places,
+ * kept apart for good, or one part of the other, recorded with which.
+ */
+export async function answerMergeProposals(
+  experienceId: number, answers: AnswerMergeProposalsBody['answers'],
+): Promise<MergeProposalsAnswered> {
+  return postExperiencesByIdMergeProposals(experienceId, { answers });
 }
 
 /**

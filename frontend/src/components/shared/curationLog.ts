@@ -124,6 +124,9 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // take-backs: the item comes off the point, and the candidate stays turned
   // down.
   component_item_taken_back: { label: 'Item taken back', color: GREEN },
+  // A curator's answer to a near place with a name alike (#1249): one place,
+  // which the merged row beside it records; two places; or one part of the other.
+  merge_proposal_answered: { label: 'Pair answered', color: BLUE },
   // A pin released, with the rule's verdict written in its place: one an
   // unread batch answer made (#1365, ADR-0096), or one a curator let the rule
   // decide once a run asked about it again (#1367). Red like a kept-out row,
@@ -491,6 +494,7 @@ const PLACE_ACT_DETAILS: Record<string, (d: Record<string, unknown>) => string |
   views_chosen: d => formatViewsChosen(d),
   component_items_answered: d => formatComponentItemsAnswered(d),
   component_item_taken_back: d => formatComponentItemTakenBack(d),
+  merge_proposal_answered: d => formatMergeProposalAnswered(d),
 };
 
 export function formatLogDetails(entry: CurationLogEntry): string | null {
@@ -573,6 +577,19 @@ function formatComponentItemTakenBack(d: Record<string, unknown>): string | null
 
 /** What a take-back can clear beside the item, in the history's words. */
 const CLEARED_WORDS: Record<string, string> = { image_url: 'the picture', description: 'the description' };
+
+/**
+ * A near place with a name alike answered (#1249): "Durham Cathedral (#13341):
+ * one place, merged into this one", "…: two places", "…: part of this place" or
+ * "…: this place is part of it".
+ */
+function formatMergeProposalAnswered(d: Record<string, unknown>): string | null {
+  if (typeof d.answer !== 'string') return null;
+  const other = mergedPlace(d.otherName, d.otherId);
+  if (d.answer === 'one') return `${other}: one place, merged into this one`;
+  if (d.answer === 'two') return `${other}: two places`;
+  return d.partId === d.otherId ? `${other}: part of this place` : `${other}: this place is part of it`;
+}
 
 /** A place a merge row names: by the name it had at the act, and its id, which tells two of one name apart. */
 function mergedPlace(name: unknown, id: unknown): string {
