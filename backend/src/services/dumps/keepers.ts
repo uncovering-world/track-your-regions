@@ -1,11 +1,12 @@
 /**
- * The dumps a build can keep something from, and what builds it (#1434):
- * the local Wikidata subset from the entities dump. Readership and the
- * Wikipedia tables bring theirs (#1436, #1440).
+ * The dumps a build can keep something from, and what builds it: the local
+ * Wikidata subset from the entities dump (#1434), and readership from the
+ * monthly pageview files (#1436). The Wikipedia tables bring theirs (#1440).
  */
 
 import type { DumpFile, DumpKey } from './catalog.js';
 import type { ReadOptions } from './read.js';
+import { buildReadership, latestReadership } from './readership/readershipBuild.js';
 import { buildSubset, rederiveSubset, type RederiveOptions } from './wikidata/subsetBuild.js';
 import type { CopyNeeds } from './wikidata/buildRules.js';
 import { latestSubset } from './wikidata/subsetTables.js';
@@ -28,6 +29,18 @@ export interface Keeper {
     onMeasure?: (read: number, total: number) => void;
   }):
     Promise<{ bytes: number; lines: number; checksumActual: string | null; summary?: string }>;
+  /**
+   * Whether a sample of the local copy can be cut and the build tried on it
+   * (#1527): the subset's build can, readership's cannot, since a month is
+   * kept only from its whole file.
+   */
+  samples: boolean;
+  /**
+   * Whether a keeping build may start from the local copy instead of the
+   * newest file (#1456): the subset's can; readership's year always ends at
+   * the newest month, and the only copy it leaves is a month not kept yet.
+   */
+  fromCopy: boolean;
   /** Derive the build in place's tables again from what it holds, without the dump (#1526). */
   rederive?(options: RederiveOptions): Promise<void>;
   /** The build now in place, if any. */
@@ -35,7 +48,10 @@ export interface Keeper {
 }
 
 const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
-  'wikidata-entities': { title: 'The local Wikidata subset', build: buildSubset, rederive: rederiveSubset, latest: latestSubset },
+  'wikidata-entities': {
+    title: 'The local Wikidata subset', build: buildSubset, rederive: rederiveSubset, latest: latestSubset, samples: true, fromCopy: true,
+  },
+  'pageviews-user': { title: 'Readership over the last twelve months', build: buildReadership, latest: latestReadership, samples: false, fromCopy: false },
 };
 
 export const keeperOf = (key: DumpKey): Keeper | null => KEEPERS[key] ?? null;

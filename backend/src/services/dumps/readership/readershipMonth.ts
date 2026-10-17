@@ -1,0 +1,143 @@
+/**
+ * The readership tables (#1436, ADR-0055): a month's staged titles are summed,
+ * joined to Wikidata items through the local subset's sitelinks and swapped in
+ * whole, with the file the month came from.
+ *
+ * A title is staged once per spelling and per run of adjacent lines
+ * (`monthSummer.ts`), so its rows are summed here. Its daily series is the one
+ * of its largest row, the plain spelling in practice, since the encoded ones
+ * carry a few views at most; adding series of other spellings would buy nothing
+ * a door reads.
+ */
+
+import type { PoolClient } from 'pg';
+import { pool, rollbackQuietly } from '../../../db/index.js';
+import type { StagedRow } from './monthSummer.js';
+import { MONTH_FLOOR } from './monthSummer.js';
+
+/**
+ * ADR-0055 decision 1: a month under these is a stream that stopped, not a
+ * short month. The editions are every Wikipedia edition the file names (371
+ * in September 2026), never the ones over the counted line, which an edition
+ * near it crosses from month to month.
+ */
+export const MIN_MONTH_LINES = 50_000_000;
+export const MIN_EDITIONS = 80;
+
+/** Stage a batch of a month's rows under the build reading it; one build of the dump runs at a time. */
+export async function stageRows(buildId: number, rows: readonly StagedRow[]): Promise<void> {
+  if (rows.length === 0) return;
+  await pool.query(
+    `INSERT INTO readership_staging (build_id, site, title, views, mobile, daily)
+     SELECT $1::int, s.site, s.title, s.views, s.mobile, s.daily::int[]
+       FROM unnest($2::text[], $3::text[], $4::int[], $5::int[], $6::text[]) AS s(site, title, views, mobile, daily)`,
+    [
+      buildId, rows.map(r => r.site), rows.map(r => r.title), rows.map(r => r.views), rows.map(r => r.mobile),
+      rows.map(r => (r.daily ? `{${r.daily.join(',')}}` : null)),
+    ],
+  );
+}
+
+/**
+ * Empty the staging table: before a month is read, after its read failed, and
+ * once it is kept. Builds of the dump run one at a time (`BuildAlreadyRunning`),
+ * so whatever is staged belongs to a build that is not running — a worker
+ * stopped mid-month leaves its rows here, and the next build drops them.
+ */
+export async function emptyStaging(client: Pick<PoolClient, 'query'> = pool): Promise<void> {
+  await client.query('TRUNCATE readership_staging');
+}
+
+export interface MonthRead {
+  buildId: number;
+  /** The month's first day, `YYYY-MM-01`. */
+  month: string;
+  fileName: string;
+  lines: number;
+  /** Every Wikipedia edition's views that month, by sitelink site code. */
+  editions: ReadonlyMap<string, number>;
+}
+
+/**
+ * Refuse a month that looks cut short (ADR-0055 decision 1): the file's own
+ * checks passed, and still a real month carries hundreds of millions of lines
+ * and hundreds of editions.
+ */
+export function refuseShortMonth(read: Pick<MonthRead, 'fileName' | 'lines' | 'editions'>, floors = { lines: MIN_MONTH_LINES, editions: MIN_EDITIONS }): void {
+  const editions = read.editions.size;
+  if (read.lines < floors.lines || editions < floors.editions) {
+    throw new Error(`${read.fileName} looks cut short: ${read.lines.toLocaleString('en')} lines and ${editions} Wikipedia editions, where a month has at least ${floors.lines.toLocaleString('en')} and ${floors.editions}`);
+  }
+}
+
+/**
+ * Sum the month's staged rows, join them to items and swap the month in, in
+ * one transaction: the month's old rows go, the new ones come, and the file
+ * it came from is recorded. Every edition is kept: which editions a door
+ * counts (ADR-0055, over 15 million views a year) is read off the twelve
+ * months' `editions` totals, not decided by one month. Answers how many rows
+ * were kept.
+ */
+export async function keepMonth(read: MonthRead): Promise<number> {
+  const client = await pool.connect();
+  let unusable: Error | undefined;
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM readership_months WHERE month = $1::date', [read.month]);
+    const kept = await client.query(
+      `WITH joined AS (
+         SELECT l.id AS item, p.site, p.views, p.mobile, p.daily,
+                row_number() OVER (PARTITION BY l.id, p.site ORDER BY p.daily IS NULL, p.views DESC) AS rank
+           FROM readership_staging p
+           JOIN wikidata_sitelinks l ON l.site = p.site AND l.title = p.title
+          WHERE p.build_id = $2::int)
+       INSERT INTO readership_months (month, item, site, views, mobile, daily)
+       SELECT $1::date, item, site, sum(views), sum(mobile), max(daily) FILTER (WHERE rank = 1)
+         FROM joined
+        GROUP BY item, site
+       HAVING sum(views) >= $3::int`,
+      [read.month, read.buildId, MONTH_FLOOR],
+    );
+    await client.query(
+      `INSERT INTO readership_month_files (month, file_name, build_id, lines, editions, kept)
+       VALUES ($1::date, $2, $3, $4, $5::jsonb, $6)
+       ON CONFLICT (month) DO UPDATE SET file_name = EXCLUDED.file_name, build_id = EXCLUDED.build_id,
+         lines = EXCLUDED.lines, editions = EXCLUDED.editions, kept = EXCLUDED.kept, built_at = NOW()`,
+      [read.month, read.fileName, read.buildId, read.lines, JSON.stringify(Object.fromEntries(read.editions)), kept.rowCount ?? 0],
+    );
+    await emptyStaging(client);
+    await client.query('COMMIT');
+    return kept.rowCount ?? 0;
+  } catch (error) {
+    unusable = await rollbackQuietly(client);
+    throw error;
+  } finally {
+    client.release(unusable);
+  }
+}
+
+/** The months kept, by their first day, with the file each came from. */
+export async function keptMonths(): Promise<Map<string, { fileName: string; builtAt: Date; lines: number }>> {
+  const result = await pool.query<{ month: string; file_name: string; built_at: Date; lines: string }>(
+    `SELECT to_char(month, 'YYYY-MM-DD') AS month, file_name, built_at, lines FROM readership_month_files ORDER BY month`,
+  );
+  return new Map(result.rows.map(r => [r.month, { fileName: r.file_name, builtAt: r.built_at, lines: Number(r.lines) }]));
+}
+
+/** Drop the months before `first`: readership reads the last twelve (ADR-0055 decision 1). */
+export async function dropMonthsBefore(first: string): Promise<number> {
+  const client = await pool.connect();
+  let unusable: Error | undefined;
+  try {
+    await client.query('BEGIN');
+    await client.query('DELETE FROM readership_months WHERE month < $1::date', [first]);
+    const files = await client.query('DELETE FROM readership_month_files WHERE month < $1::date', [first]);
+    await client.query('COMMIT');
+    return files.rowCount ?? 0;
+  } catch (error) {
+    unusable = await rollbackQuietly(client);
+    throw error;
+  } finally {
+    client.release(unusable);
+  }
+}

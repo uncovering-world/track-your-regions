@@ -155,9 +155,11 @@ const pageviews: DumpDescriptor = {
   async resolve(read, size, only) {
     const base = `${WIKIMEDIA_DUMPS}/other/pageview_complete/monthly`;
     const years = [...(await read(`${base}/`)).matchAll(/href="(\d{4})\/"/g)].map(m => m[1]).sort().reverse();
-    for (const year of years.slice(0, 2)) {
+    // The newest is among the last three months; a month asked for by name
+    // (readership's twelve, #1436) may be any of the last two years'.
+    for (const year of years.slice(0, only ? 3 : 2)) {
       const months = [...(await read(`${base}/${year}/`)).matchAll(/href="(\d{4}-\d{2})\/"/g)].map(m => m[1]).sort().reverse();
-      for (const month of months.slice(0, 3)) {
+      for (const month of only ? months : months.slice(0, 3)) {
         const fileName = safeFileName(`pageviews-${month.replace('-', '')}-user.bz2`);
         if (only && !only(fileName)) continue;
         const url = `${base}/${year}/${month}/${fileName}`;

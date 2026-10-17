@@ -21358,6 +21358,18 @@
                             "unreachable"
                           ],
                           "description": "Whether the host has been asked for its newest dump since the backend started, and whether it answered the last time."
+                        },
+                        "rederives": {
+                          "type": "boolean",
+                          "description": "Whether what is kept can be derived again without the dump, which decides whether \"Derive again\" is offered."
+                        },
+                        "samples": {
+                          "type": "boolean",
+                          "description": "Whether a sample of the local copy can be cut and the build tried on it, which decides whether \"Cut a sample\" and \"Try the build\" are offered."
+                        },
+                        "fromCopy": {
+                          "type": "boolean",
+                          "description": "Whether a keeping build may start from the local copy rather than the newest file, which decides whether \"Build <date> copy\" is offered."
                         }
                       },
                       "required": [
@@ -21365,7 +21377,10 @@
                         "built",
                         "needs",
                         "newestDumpDate",
-                        "newestChecked"
+                        "newestChecked",
+                        "rederives",
+                        "samples",
+                        "fromCopy"
                       ],
                       "additionalProperties": false
                     },
@@ -21373,7 +21388,7 @@
                       "type": "null"
                     }
                   ],
-                  "description": "What a keeping build of this dump makes (the local Wikidata subset), or null where nothing is built from it yet."
+                  "description": "What a keeping build of this dump makes (the local Wikidata subset, readership), or null where nothing is built from it yet."
                 },
                 "localCopy": {
                   "anyOf": [
