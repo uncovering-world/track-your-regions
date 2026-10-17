@@ -3,7 +3,9 @@
 **Date:** 2026-08-21
 **Status:** Accepted — decision 1 narrowed by
 [ADR-0047](0047-a-cached-answer-belongs-to-the-source-that-asked.md): the key is the source
-and the query text together, not the query text alone; decisions 2–8 stand
+and the query text together, not the query text alone; decision 4 narrowed by
+[ADR-0119](0119-a-source-that-reads-the-subset-keeps-only-what-it-still-asks-live.md): a source
+that reads the local subset keeps only what it still asks live; decisions 2, 3 and 5–8 stand
 
 ---
 
