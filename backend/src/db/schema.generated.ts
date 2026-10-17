@@ -1121,7 +1121,7 @@ export const CHECK_VALUES = {
     type: ["place", "work", "food", "drink", "event", "route", "activity", "title", "person", "species", "object", "sound"],
   },
   coverage_judgements: {
-    cause: ["rule-defect", "door-missing", "kind-missing", "part-of-offered", "offered-elsewhere", "not-a-must"],
+    cause: ["rule-defect", "door-missing", "kind-missing", "part-of-offered", "offered-elsewhere", "not-a-must", "worth-a-visit"],
   },
   coverage_kinds: {
     form: ["place", "work", "food", "drink", "event", "route", "activity", "title", "person", "species", "object", "sound"],
