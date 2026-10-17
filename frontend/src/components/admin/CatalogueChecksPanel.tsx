@@ -52,6 +52,7 @@ import {
 } from '../../api/admin/dataAssertions';
 import { EmptyState } from '../shared/EmptyState';
 import { EqualItemMergeCard } from './EqualItemMergeCard';
+import { MergeProposalFinderCard } from './MergeProposalFinderCard';
 import { formatDateTime } from '../../utils/dateFormat';
 import { plural } from '../../utils/plural';
 import { displayNameOf } from '../../utils/displayName';
@@ -303,6 +304,7 @@ export function CatalogueChecksPanel() {
       </Typography>
 
       <EqualItemMergeCard />
+      <MergeProposalFinderCard />
 
       {data?.acceptancesUnavailable && (
         <Alert severity="warning" sx={{ mb: 2 }}>{data.acceptancesUnavailable}</Alert>

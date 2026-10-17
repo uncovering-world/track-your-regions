@@ -6648,6 +6648,117 @@ export interface MembersCleared {
 }
 
 /**
+ * The place with the lower id, which stays if the two are made one.
+ */
+export type MergeProposalPassOpenItemPlaceA = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  name: string;
+  /** The names of the kinds the place is in, in display order. */
+  kinds: string[];
+};
+
+export type MergeProposalPassOpenItemPlaceB = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  name: string;
+  /** The names of the kinds the place is in, in display order. */
+  kinds: string[];
+};
+
+export type MergeProposalPassOpenItem = {
+  /**
+     * The proposal, which an answer names.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  /** The place with the lower id, which stays if the two are made one. */
+  placeA: MergeProposalPassOpenItemPlaceA;
+  placeB: MergeProposalPassOpenItemPlaceB;
+  /**
+     * Between the two places' nearest offered points, in metres.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  distanceM: number;
+  /** The best trigram similarity between any two of their folded names, 0 to 1. */
+  nameSimilarity: number;
+  /** One and the same folded name within fifty metres: the pairs a batch confirms. */
+  exact: boolean;
+  /**
+     * The distance the pair was found under: 300 m, or a property's area radius up to 3 km.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  reachM: number;
+  /** When the pass last found the pair. */
+  proposedAt: string;
+};
+
+/**
+ * How many pairs curators have answered so far, by answer; an answered pair is never proposed again.
+ */
+export type MergeProposalPassAnswered = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  one: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  two: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  partOf: number;
+};
+
+export type MergeProposalPassLeftApartItemPlaceA = {
+  name: string;
+  /** The names of the kinds the place is in, in display order. */
+  kinds: string[];
+};
+
+export type MergeProposalPassLeftApartItemPlaceB = {
+  name: string;
+  /** The names of the kinds the place is in, in display order. */
+  kinds: string[];
+};
+
+export type MergeProposalPassLeftApartItem = {
+  placeA: MergeProposalPassLeftApartItemPlaceA;
+  placeB: MergeProposalPassLeftApartItemPlaceB;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  distanceM: number;
+  nameSimilarity: number;
+};
+
+/**
+ * What the pass over near places with similar names found (ADR-0046 decision 2, #1249).
+ */
+export interface MergeProposalPass {
+  /** The pairs nobody has answered, the most alike first. */
+  open: MergeProposalPassOpenItem[];
+  /** How many pairs curators have answered so far, by answer; an answered pair is never proposed again. */
+  answered: MergeProposalPassAnswered;
+  /** Pairs the rule finds that share a kind, which one place cannot hold twice (ADR-0086 decision 4): not proposed, shown so a person sees them. */
+  leftApart: MergeProposalPassLeftApartItem[];
+}
+
+/**
  * A merge of two places undone (ADR-0086): what it moved is back where it came from.
  */
 export interface MergeUndone {
@@ -15398,6 +15509,31 @@ export const getPostAdminPlacesMergeEqualItemsUrl = () => {
 export const postAdminPlacesMergeEqualItems = async ( options?: Parameters<typeof apiFetch>[1]): Promise<EqualItemMerges> => {
 
   return apiFetch<EqualItemMerges>(getPostAdminPlacesMergeEqualItemsUrl(),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostAdminPlacesFindMergeProposalsUrl = () => {
+
+
+
+
+  return `/api/admin/places/find-merge-proposals`
+}
+
+/**
+ * Requires an admin.
+ * @summary Propose every pair of near places with similar names for a person to answer
+ */
+export const postAdminPlacesFindMergeProposals = async ( options?: Parameters<typeof apiFetch>[1]): Promise<MergeProposalPass> => {
+
+  return apiFetch<MergeProposalPass>(getPostAdminPlacesFindMergeProposalsUrl(),
   {
     ...options,
     method: 'POST'
