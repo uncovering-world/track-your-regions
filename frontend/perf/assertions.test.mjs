@@ -146,7 +146,7 @@ describe('pageExpectations', () => {
       fill,
     );
 
-    expect(pages).toEqual([
+    expect(pages.map(({ url, expects }) => ({ url, expects }))).toEqual([
       {
         url: 'http://frontend:5173/wv/9001',
         expects: ['/api/world-views/9001/', '/tile_world_view_all_leaf_regions/'],
@@ -162,7 +162,42 @@ describe('pageExpectations', () => {
     );
     expect(pages.map((p) => p.expects)).toEqual([['/s/', '/x/', '/y/'], ['/s/']]);
 
-    expect(pageExpectations({ urls: ['http://a/'] }, (t) => t)).toEqual([{ url: 'http://a/', expects: [] }]);
+    expect(pageExpectations({ urls: ['http://a/'] }, (t) => t)).toEqual([{ url: 'http://a/', expects: [], assertions: undefined }]);
+  });
+
+  it("judges a page by its own budgets over the shared ones, key by key (#669)", () => {
+    // A card page flown into a region pulls the basemap a shell at world zoom
+    // never does: its byte lines are its own, its timings the shared ones.
+    const shared = {
+      'resource-summary:total:size': ['error', { maxNumericValue: 805000 }],
+      'largest-contentful-paint': ['error', { maxNumericValue: 2000 }],
+    };
+    const pages = pageExpectations(
+      {
+        urls: [
+          'http://frontend:5173/wv/{worldView}',
+          {
+            url: 'http://frontend:5173/wv/{worldView}/r/9001/e/9001',
+            assertions: { 'resource-summary:total:size': ['error', { maxNumericValue: 1860000 }] },
+          },
+        ],
+        assertions: shared,
+      },
+      fill,
+    );
+
+    expect(pages[0].assertions).toBe(shared);
+    expect(pages[1].assertions).toEqual({
+      'resource-summary:total:size': ['error', { maxNumericValue: 1860000 }],
+      'largest-contentful-paint': ['error', { maxNumericValue: 2000 }],
+    });
+  });
+
+  it('refuses a page whose own budgets are not an object of budgets', () => {
+    expect(() => pageExpectations({ urls: [{ url: 'http://a/', assertions: [] }], assertions: {} }, (t) => t))
+      .toThrow(/assertions of http:\/\/a\//);
+    expect(() => pageExpectations({ urls: [{ url: 'http://a/', assertions: null }], assertions: {} }, (t) => t))
+      .toThrow(/assertions/);
   });
 
   it('refuses an entry it cannot read rather than expecting nothing of it', () => {
