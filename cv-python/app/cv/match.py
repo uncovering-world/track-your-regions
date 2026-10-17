@@ -375,7 +375,7 @@ def _ransac_affine(
     return matrix, inlier_ratio, "ransac_affine"
 
 
-def _iou_alignment(
+def _iou_alignment(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
     country_path: str,
     country_mask: np.ndarray,
     centroids: list[dict],
@@ -966,7 +966,7 @@ def _iou_alignment(
     return affine_matrix, best_iou_val, "iou_align", None, best_k, gadm_cx_corr
 
 
-def _inverse_homography(
+def _inverse_homography(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
     sub_paths: list[np.ndarray],
     cos_lat: float,
     country_mask: np.ndarray,
@@ -1137,7 +1137,7 @@ def _combine_affine_homography(
     return homography_3x3 @ affine_3x3
 
 
-def _centroid_fallback(
+def _centroid_fallback(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
     centroids: list[dict],
     pixel_labels: np.ndarray,
     country_mask: np.ndarray,
@@ -1647,7 +1647,7 @@ def _project_svg_path(svg_path: str, proj_fn: Callable, max_seg_len: float = 0.2
     return " ".join(parts)
 
 
-def _detect_projection(
+def _detect_projection(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
     country_path: str,
     country_mask: np.ndarray,
     centroids: list[dict],
@@ -2051,7 +2051,7 @@ def _build_unproject_remap(
     return in_x.astype(np.float32), in_y.astype(np.float32)
 
 
-def run_matching(
+def run_matching(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
     pixel_labels: np.ndarray,
     icp_mask: np.ndarray,
     country_mask: np.ndarray,

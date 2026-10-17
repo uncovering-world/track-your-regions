@@ -7,6 +7,7 @@ and morphological approaches cannot — text is structurally different
 from region colors but shares the same hue/saturation/value.
 """
 
+import functools
 import logging
 
 import cv2
@@ -14,17 +15,16 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# Lazy-loaded EasyOCR reader (heavy — ~2s first call)
-_reader = None
 
-
+@functools.cache
 def _get_reader():
-    global _reader
-    if _reader is None:
-        import easyocr
+    """The process's one EasyOCR reader, built on first use (heavy — ~2s).
 
-        _reader = easyocr.Reader(["en"], gpu=False, verbose=False)
-    return _reader
+    A failed build raises and is not cached, so the next call tries again.
+    """
+    import easyocr
+
+    return easyocr.Reader(["en"], gpu=False, verbose=False)
 
 
 def detect_text_regions(image: np.ndarray, min_confidence: float = 0.3) -> np.ndarray:

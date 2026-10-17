@@ -547,7 +547,7 @@ def _remove_outlier_pixels(
     return result, text_mask
 
 
-def _exclude_decoration_ccs(
+def _exclude_decoration_ccs(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
     country_mask: np.ndarray,
     filtered: np.ndarray,
     edge_pct: float = 0.25,
@@ -794,7 +794,7 @@ def _exclude_decoration_ccs(
     return result
 
 
-def _detect_inset_mask(image: np.ndarray) -> np.ndarray | None:
+def _detect_inset_mask(image: np.ndarray) -> np.ndarray | None:  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
     """Detect inset box boundaries (Alaska/Hawaii style) using Hough lines.
 
     Looks for strong horizontal/vertical lines that span most of the image
@@ -1369,7 +1369,7 @@ _sam_predictor = None
 
 def _get_sam_predictor():
     """Lazy-load SAM predictor (heavy model, ~5s first call)."""
-    global _sam_predictor
+    global _sam_predictor  # noqa: PLW0603 -- the one SAM predictor of the process, built on first use (~5 s); a missing model file is checked again on the next call
     if _sam_predictor is None:
         import os
 
@@ -1483,7 +1483,7 @@ def _sam_exclude_decorations(
     return result
 
 
-def _exclude_isolated_cc_groups(
+def _exclude_isolated_cc_groups(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
     country_mask: np.ndarray,
     filtered: np.ndarray,
     group_dist: int = 60,
@@ -1634,7 +1634,7 @@ def _exclude_hough_circles(
 
         # Find which CC the center belongs to
         cc_id = cc_labels[cy, cx] if 0 <= cy < h and 0 <= cx < w else 0
-        if cc_id == main_cc or cc_id == 0:
+        if cc_id in (main_cc, 0):
             continue  # Part of main landmass or background
 
         # Check CC size
@@ -1905,7 +1905,7 @@ def _exclude_gray_edge_regions(
 # =============================================================================
 
 
-def run_phase1(
+def run_phase1(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
     image: np.ndarray,
     tw: int,
     th: int,

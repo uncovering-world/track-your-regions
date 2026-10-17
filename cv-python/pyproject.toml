@@ -13,12 +13,27 @@ exclude = ["__pycache__", ".venv", "data", "dist", "build"]
 # SIM: flake8-simplify
 # RET: flake8-return
 # S: flake8-bandit (security checks during lint; complements the standalone Bandit run)
-select = ["E", "F", "W", "B", "I", "UP", "C4", "SIM", "RET", "S"]
+# C90: mccabe complexity, held to the ceiling below (#617)
+# PLE, PLW: pylint's errors and warnings
+# PLR1714: repeated equality comparisons, merged into one membership test
+# Pylint's other refactor rules stay off. PLR0912 counts branches, which C90
+# already measures. PLR0913 and PLR0915 count a function's tuning parameters
+# and lines, which this CV code has many of. PLR2004 calls every calibrated
+# pixel or ratio threshold a magic number.
+select = ["E", "F", "W", "B", "I", "UP", "C4", "SIM", "RET", "S", "C90", "PLE", "PLW", "PLR1714"]
 ignore = [
   "E501",  # line too long — we set line-length=120, but some strings legitimately exceed
   "E741",  # ambiguous variable name (l, I, O) — we use `l` for label in CV code
   "UP015", # mode='r' is default — explicit is fine for readability
 ]
+
+[tool.ruff.lint.mccabe]
+# A ceiling for new code, not one fitted over the most complex function in
+# the service, which would let every other function grow to it. 15 is NIST
+# SP 500-235's ceiling for a team that justifies going above McCabe's own 10.
+# A function still above it carries an inline noqa naming #1654, which splits
+# them, and lowering the ceiling toward 10 waits until none is left.
+max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
 "test_*.py" = ["F401", "F841", "S101"]  # tests may have unused imports/vars; assert is fine in tests (S101)
