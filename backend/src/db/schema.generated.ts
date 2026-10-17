@@ -845,6 +845,7 @@ export interface WikidataGeoshapesRow {
   wikidata_id: string;
   geom: string | null;
   not_available: boolean;
+  composite_of: number | null;
 }
 
 /** The table `wikidata_labels`. */
