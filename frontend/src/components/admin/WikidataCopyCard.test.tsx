@@ -26,6 +26,9 @@ const dump = (keeps: Partial<Keeps>, progress: DumpsDumpsItem['progress'] = null
     needs: 'nothing',
     newestDumpDate: '2026-10-05',
     newestChecked: 'answered',
+    rederives: true,
+    samples: true,
+    fromCopy: true,
     ...keeps,
   },
 });

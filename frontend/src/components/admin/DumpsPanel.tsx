@@ -242,28 +242,28 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
                   <Button size="small" variant="contained" onClick={() => keep.mutate('newest')} disabled={keep.isPending}>Build newest</Button>
                 </Tooltip>
               )}
-              {dump.keeps && copy && (
+              {dump.keeps?.fromCopy && copy && (
                 <Tooltip title={`Build from ${copy.fileName} (${size(copy.bytes)}) without downloading the newest dump`}>
                   <Button size="small" variant="contained" color="secondary" onClick={() => keep.mutate('local')} disabled={keep.isPending}>
                     Build {copyDate} copy
                   </Button>
                 </Tooltip>
               )}
-              {dump.keeps?.built && (
+              {dump.keeps?.built && dump.keeps.rederives && (
                 <Tooltip title="Rebuild the claims, labels, links and class tree from the items the subset already holds, without reading the dump again: for a change to how they are made">
                   <Button size="small" variant="outlined" color="secondary" onClick={() => rederive.mutate()} disabled={rederive.isPending}>
                     Derive again
                   </Button>
                 </Tooltip>
               )}
-              {dump.keeps && copy && (
+              {dump.keeps?.samples && copy && (
                 <Tooltip title={`Copy the first part of ${copy.fileName} into a small file of its own, so a change to the build can be tried in minutes instead of hours`}>
                   <Button size="small" variant="outlined" color="inherit" onClick={() => cutSample.mutate()} disabled={cutSample.isPending}>
                     Cut a sample
                   </Button>
                 </Tooltip>
               )}
-              {dump.keeps && dump.sample && (
+              {dump.keeps?.samples && dump.sample && (
                 <Tooltip title="Run every step of the build on the sample, say what it kept and how long each step took, then throw the result away. The subset the runs read is not touched.">
                   <Button size="small" variant="outlined" color="inherit" onClick={() => trial.mutate()} disabled={trial.isPending}>
                     Try the build
@@ -352,7 +352,8 @@ export function DumpsPanel() {
         The catalogue keeps its own copies of what Wikidata publishes, so syncs never wait on a live service.
       </Typography>
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2, mb: 4 }}>
-        {all.filter(dump => dump.keeps).map(dump => <WikidataCopyCard key={dump.key} dump={dump} />)}
+        {/* The card is the Wikidata copy's, the one copy syncs read: readership is built under For developers only. */}
+        {all.filter(dump => dump.keeps && dump.key === 'wikidata-entities').map(dump => <WikidataCopyCard key={dump.key} dump={dump} />)}
       </Box>
       {/* Every dump, every build and its history: for a change to how a copy is made (#1583). */}
       <Accordion disableGutters variant="outlined" sx={{ maxWidth: 1200 }}>
