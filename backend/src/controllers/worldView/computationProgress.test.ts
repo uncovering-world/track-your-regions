@@ -16,9 +16,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn().mockResolvedValue({ rows: [] }) },
 }));
+vi.mock('./geometryComputeSingle.js', () => ({
+  computeRegionGeometryCore: vi.fn(async () => ({ computed: true, points: 10 })),
+}));
 
 import { pool } from '../../db/index.js';
 import { runningComputations } from './types.js';
+import { Operation } from '../../services/operationProgress.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { worldViewRoutes } from '../../routes/worldViewRoutes.js';
 
@@ -143,6 +147,38 @@ describe('the run status a curator polls', () => {
     expect(payload).not.toHaveProperty('currentGroup');
     // The tally the completion alert turns amber on.
     expect(payload).toHaveProperty('errors');
+    // The shared progress the panel draws (#1356).
+    expect(payload).toHaveProperty('operation.elapsedSeconds');
+  });
+});
+
+describe('a cancel that lands after the last region', () => {
+  it('ends the run as cancelled, so the status stops answering running (#1356)', async () => {
+    nextWorldView += 1;
+    const worldViewId = nextWorldView;
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    mockedQuery.mockImplementation((sql: string) => {
+      const text = String(sql);
+      if (text.includes('group_depth')) return Promise.resolve({ rows: [{ id: 1, name: 'Adygea', depth: 1 }] });
+      if (text.includes('COUNT(*)::int as count')) return Promise.resolve({ rows: [{ count: 1 }] });
+      if (text.includes('SELECT id FROM regions WHERE id')) return Promise.resolve({ rows: [{ id: 1 }] });
+      if (text.includes('SELECT DISTINCT parent_region_id')) {
+        // The press lands while the second step reads its parents.
+        const run = runningComputations.get(worldViewId)!;
+        run.cancel = true;
+        run.operation.cancel();
+        return Promise.resolve({ rows: [{ parent_region_id: 7 }] });
+      }
+      return Promise.resolve({ rows: [] });
+    });
+    const req = { params: { worldViewId: String(worldViewId) }, query: {} } as never;
+    await answerRoute(computeWorldViewGeometriesRoute, req, { json: vi.fn(), status: vi.fn().mockReturnThis() } as never);
+
+    await vi.waitFor(() => expect(runningComputations.get(worldViewId)?.status).toBe('Cancelled'));
+    const statusJson = vi.fn();
+    await answerRoute(getComputationStatusRoute, { params: { worldViewId: String(worldViewId) } } as never, { json: statusJson, status: vi.fn().mockReturnThis() } as never);
+    expect(statusJson.mock.calls[0]?.[0]).toMatchObject({ running: false, status: 'Cancelled' });
+    runningComputations.delete(worldViewId);
   });
 });
 
@@ -158,7 +194,7 @@ describe('the slot a run holds', () => {
     // Cancelled while its first read is pending: the guard lets a second run
     // take the slot, which then holds it.
     runningComputations.get(worldViewId)!.cancel = true;
-    const later = { cancel: false, progress: 0, total: 1, status: 'Computing', computed: 0, skipped: 0, errors: 0, currentGroup: '', currentMembers: 0 };
+    const later = { cancel: false, progress: 0, total: 1, status: 'Computing', computed: 0, skipped: 0, errors: 0, currentGroup: '', currentMembers: 0, operation: new Operation('[Geometry]', 2, () => {}) };
     runningComputations.set(worldViewId, later);
 
     failFirst(new Error('connection terminated'));
