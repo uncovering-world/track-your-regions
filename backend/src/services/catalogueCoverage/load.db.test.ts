@@ -114,6 +114,23 @@ describe('replacing the catalogue-coverage tables', () => {
     expect(await loaded()).toEqual(['first-region/moray']);
   });
 
+  it('writes a judgement on a catalogue row, and the database refuses a cause a row cannot take and worth-a-visit on an entry', async () => {
+    const onRow = await files('first-region', ['moray']);
+    onRow.judgements = [{ region: 'first-region', entry: null, kind: null, row: 'Q2003624', cause: 'worth-a-visit', issue: null, judged: '2026-10-17', note: 'A chapel worth the walk.' }];
+    await replaceCoverage(onRow);
+    const judged = await pool.query<{ row_wikidata_id: string; cause: string }>('SELECT row_wikidata_id, cause FROM coverage_judgements');
+    expect(judged.rows).toEqual([{ row_wikidata_id: 'Q2003624', cause: 'worth-a-visit' }]);
+
+    // The files' reader would have refused these; the CHECK constraints are the second guard.
+    const rowWaiting = await files('first-region', ['moray']);
+    rowWaiting.judgements = [{ ...onRow.judgements[0], cause: 'door-missing', issue: 628 }];
+    await expect(replaceCoverage(rowWaiting)).rejects.toThrow(/coverage_judgements_row_causes/);
+    const entryWorthAVisit = await files('first-region', ['moray'], 'markets', ['moray']);
+    entryWorthAVisit.judgements[0].cause = 'worth-a-visit';
+    entryWorthAVisit.judgements[0].issue = null;
+    await expect(replaceCoverage(entryWorthAVisit)).rejects.toThrow(/coverage_judgements_entry_causes/);
+  });
+
   it('leaves nothing of the load before', async () => {
     await replaceCoverage(await files('first-region', ['moray', 'tipon'], 'markets', ['moray']));
     await replaceCoverage(await files('second-region', ['bondi']));
