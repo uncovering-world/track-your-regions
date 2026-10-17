@@ -17,8 +17,12 @@
 
 import { useState } from 'react';
 import { Box, Button, Card, CardContent, Chip, Link, Stack, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
-import { useMutation } from '@tanstack/react-query';
-import { answerMergeProposals, type AnswerMergeProposalsBody, type MergeProposalsAnswered } from '../../api/curation';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import {
+  answerMergeProposals, suggestMergeProposals, type AnswerMergeProposalsBody, type MergeProposalsAnswered,
+  type MergeProposalSuggestions,
+} from '../../api/curation';
+import { queryKeys } from '../../api/queryKeys';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { distanceLabel } from '../../utils/moveDescription';
@@ -26,12 +30,32 @@ import { plural } from '../../utils/plural';
 import { wikidataItemUrl } from '../../utils/wikidataLinks';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
+import { JEV_SURE } from './ComponentItemsCard';
 import { ItemHeader, messageFor } from './queueCard';
 
 type Pair = NonNullable<ReviewQueueItem['merge_pairs']>[number];
 type Answer = AnswerMergeProposalsBody['answers'][number]['answer'];
 /** The curator's answer to one pair, with which place is the part where that is the answer. */
 interface PairAnswer { answer: Answer; partId?: number }
+type Judgement = MergeProposalSuggestions['suggestions'][number];
+
+/** What Jev makes of a pair, in the words the caption uses. */
+const JUDGEMENT_WORDS: Record<Judgement['judgement'], string> = {
+  one: 'one place',
+  two: 'two places',
+  part_of: 'one part of the other',
+};
+
+/**
+ * Jev's confidence is the margin over its other options, so a low one is a
+ * near coin toss rather than a weak yes: said as leaning, not as saying.
+ */
+function judgementWords(judgement: Judgement): string {
+  const percent = `${Math.round(judgement.confidence * 100)} %`;
+  return judgement.confidence < 0.5
+    ? `Jev is unsure, leans ${JUDGEMENT_WORDS[judgement.judgement]} · ${percent}`
+    : `Jev says ${JUDGEMENT_WORDS[judgement.judgement]} · ${percent}`;
+}
 
 /** How alike the names are: the same, or a share. */
 function similarityWords(pair: Pair): string {
@@ -52,10 +76,12 @@ function OtherPicture({ pair }: { pair: Pair }) {
   );
 }
 
-/** One pair: the other place, how the two stand to each other, and the three answers. */
-function PairRow({ item, pair, answer, onAnswer }: {
+/** One pair: the other place, how the two stand to each other, what Jev makes of it, and the three answers. */
+function PairRow({ item, pair, judgement, answer, onAnswer }: {
   item: ReviewQueueItem;
   pair: Pair;
+  /** Jev's judgement where this deployment asks it; a suggestion, never a choice. */
+  judgement: Judgement | undefined;
   answer: PairAnswer | undefined;
   onAnswer: (answer: PairAnswer | undefined) => void;
 }) {
@@ -85,6 +111,12 @@ function PairRow({ item, pair, answer, onAnswer }: {
               <> · two different Wikidata items</>
             )}
           </Typography>
+          {judgement && (
+            // In grey, apart from the facts: a judgement is not a state of the places.
+            <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, display: 'block' }}>
+              {judgementWords(judgement)}
+            </Typography>
+          )}
           {located && (
             <Button size="small" variant="text" onClick={() => setLooking(true)}>Show where it stands</Button>
           )}
@@ -177,6 +209,31 @@ export function MergeProposalsCard({ item, onDone }: {
   const exact = pairs.filter(pair => pair.exact);
   const exactLeft = exact.filter(pair => answers[pair.proposalId]?.answer !== 'one').length;
 
+  // Jev's judgement, where this deployment asks Jev (#1249): shown beside each
+  // pair, never chosen for the curator. A failed read shows none. Keyed by the
+  // pairs as the question is built from them — both names, the distance, the
+  // similarity, whether exact — not by their ids alone: a judgement is about
+  // the pair it was asked for, and a card showing a pair the pass measured
+  // anew, or a place renamed, asks again rather than showing a cached word.
+  const asked = JSON.stringify([
+    item.name, ...pairs.map(pair => [pair.proposalId, pair.otherName, pair.distanceM, pair.nameSimilarity, pair.exact]),
+  ]);
+  const { data: judged } = useQuery({
+    queryKey: queryKeys.experience.mergeProposalSuggestions(item.id, asked),
+    queryFn: () => suggestMergeProposals(item.id),
+    staleTime: 300_000,
+    retry: false,
+  });
+  const judgementOf = (proposalId: number) => judged?.suggestions.find(one => one.proposalId === proposalId);
+  // The one-button confirmation takes only the pairs Jev calls one place and
+  // is sure of (`JEV_SURE`): which is the part, and a pair it calls two, stay
+  // the curator's click.
+  const sure = pairs.filter(pair => {
+    const judgement = judgementOf(pair.proposalId);
+    return judgement?.judgement === 'one' && judgement.confidence >= JEV_SURE;
+  });
+  const sureLeft = sure.filter(pair => answers[pair.proposalId]?.answer !== 'one').length;
+
   const save = useMutation({
     mutationFn: () => answerMergeProposals(item.id, answered),
     onSettled: (data, error) => onDone(error ? messageFor(item, error) : outcomeOf(item.name, data!), item.id),
@@ -187,9 +244,9 @@ export function MergeProposalsCard({ item, onDone }: {
     if (answer === undefined) delete next[proposalId]; else next[proposalId] = answer;
     return next;
   });
-  const confirmExact = () => setAnswers(previous => {
+  const confirmOne = (which: Pair[]) => () => setAnswers(previous => {
     const next = { ...previous };
-    for (const pair of exact) next[pair.proposalId] = { answer: 'one' };
+    for (const pair of which) next[pair.proposalId] = { answer: 'one' };
     return next;
   });
 
@@ -210,6 +267,7 @@ export function MergeProposalsCard({ item, onDone }: {
               item={item}
               pair={pair}
               answer={answers[pair.proposalId]}
+              judgement={judgementOf(pair.proposalId)}
               onAnswer={next => set(pair.proposalId, next)}
             />
           ))}
@@ -220,8 +278,13 @@ export function MergeProposalsCard({ item, onDone }: {
             {answered.length === 0 ? 'Save answers' : `Save ${plural(answered.length, 'answer')}`}
           </Button>
           {exact.length > 0 && (
-            <Button variant="outlined" disabled={exactLeft === 0 || save.isPending} onClick={confirmExact}>
+            <Button variant="outlined" disabled={exactLeft === 0 || save.isPending} onClick={confirmOne(exact)}>
               One place for {exact.length === 1 ? 'the exact pair' : `all ${exact.length} exact pairs`}
+            </Button>
+          )}
+          {sure.length > 0 && (
+            <Button variant="outlined" disabled={sureLeft === 0 || save.isPending} onClick={confirmOne(sure)}>
+              One place for {sure.length === 1 ? 'the pair' : `the ${sure.length} pairs`} Jev is sure of
             </Button>
           )}
         </Stack>

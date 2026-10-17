@@ -5923,7 +5923,7 @@ export interface InstancesSynced {
 }
 
 /**
- * Which card asked: the sources card (#1260), or the component-items card (#1272).
+ * Which card asked: the sources card (#1260), the component-items card (#1272), or the near-places card (#1249).
  */
 export type JevUsageByQuestionItemQuestion = typeof JevUsageByQuestionItemQuestion[keyof typeof JevUsageByQuestionItemQuestion];
 
@@ -5931,13 +5931,14 @@ export type JevUsageByQuestionItemQuestion = typeof JevUsageByQuestionItemQuesti
 export const JevUsageByQuestionItemQuestion = {
   views: 'views',
   componentItems: 'componentItems',
+  mergeProposals: 'mergeProposals',
 } as const;
 
 export type JevUsageByQuestionItem = {
-  /** Which card asked: the sources card (#1260), or the component-items card (#1272). */
+  /** Which card asked: the sources card (#1260), the component-items card (#1272), or the near-places card (#1249). */
   question: JevUsageByQuestionItemQuestion;
   /**
-     * Suggestions asked for: one call each on the sources card, one question each on the component-items card.
+     * Suggestions asked for: one call each on the sources card, one question each on the component-items and near-places cards.
      * @minimum -9007199254740991
      * @maximum 9007199254740991
      */
@@ -5963,12 +5964,12 @@ export type JevUsageByQuestionItem = {
 };
 
 /**
- * What Jev has cost, and how often curators chose what it suggested (#1260, #1272).
+ * What Jev has cost, and how often curators chose what it suggested (#1260, #1272, #1249).
  */
 export interface JevUsage {
   configured: boolean;
   /**
-     * Suggestions asked for, over both cards.
+     * Suggestions asked for, over every card.
      * @minimum -9007199254740991
      * @maximum 9007199254740991
      */
@@ -5981,7 +5982,7 @@ export interface JevUsage {
   /** What the calls cost: Jev is priced per input token, output free. */
   usd: number;
   /**
-     * Curators' answers for which Jev had suggested one for the same question, over both cards.
+     * Curators' answers for which Jev had suggested one for the same question, over every card.
      * @minimum -9007199254740991
      * @maximum 9007199254740991
      */
@@ -6856,6 +6857,40 @@ export interface MergeProposalPass {
   answered: MergeProposalPassAnswered;
   /** Pairs the rule finds that share a kind, which one place cannot hold twice (ADR-0086 decision 4): not proposed, shown so a person sees them. */
   leftApart: MergeProposalPassLeftApartItem[];
+}
+
+/**
+ * `one`: the two are one place; `two`: two places; `part_of`: one lies within the other, which one being the curator's to say.
+ */
+export type MergeProposalSuggestionsSuggestionsItemJudgement = typeof MergeProposalSuggestionsSuggestionsItemJudgement[keyof typeof MergeProposalSuggestionsSuggestionsItemJudgement];
+
+
+export const MergeProposalSuggestionsSuggestionsItemJudgement = {
+  one: 'one',
+  two: 'two',
+  part_of: 'part_of',
+} as const;
+
+export type MergeProposalSuggestionsSuggestionsItem = {
+  /**
+     * The pair judged.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  proposalId: number;
+  /** `one`: the two are one place; `two`: two places; `part_of`: one lies within the other, which one being the curator's to say. */
+  judgement: MergeProposalSuggestionsSuggestionsItemJudgement;
+  /** Its confidence, 0 to 1. */
+  confidence: number;
+};
+
+/**
+ * Jev's judgement of the pairs of near places with similar names a place is the lower id of (#1249), per pair it could judge; never applied.
+ */
+export interface MergeProposalSuggestions {
+  /** Whether this deployment asks Jev at all. False: no judgement, nothing else changes. */
+  configured: boolean;
+  suggestions: MergeProposalSuggestionsSuggestionsItem[];
 }
 
 export type MergeProposalsAnsweredMergedItem = {
@@ -15723,7 +15758,7 @@ export const getGetAdminJevUsageUrl = () => {
 
 /**
  * Requires an admin.
- * @summary What Jev has cost, and how often curators chose the view it suggested
+ * @summary What Jev has cost, and how often curators chose what it suggested, per card
  */
 export const getAdminJevUsage = async ( options?: Parameters<typeof apiFetch>[1]): Promise<JevUsage> => {
 
@@ -20621,6 +20656,31 @@ export const getPostExperiencesByIdComponentItemSuggestionsUrl = (id: number,) =
 export const postExperiencesByIdComponentItemSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<ComponentItemSuggestions> => {
 
   return apiFetch<ComponentItemSuggestions>(getPostExperiencesByIdComponentItemSuggestionsUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostExperiencesByIdMergeProposalSuggestionsUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/merge-proposal-suggestions`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Ask Jev whether each pair of near places is one place, two places or one part of the other; a suggestion, never applied
+ */
+export const postExperiencesByIdMergeProposalSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<MergeProposalSuggestions> => {
+
+  return apiFetch<MergeProposalSuggestions>(getPostExperiencesByIdMergeProposalSuggestionsUrl(id),
   {
     ...options,
     method: 'POST'
