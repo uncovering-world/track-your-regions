@@ -72,6 +72,7 @@ accepted debt, and a fresh checkout of the code inherits none.
 | regions | A parent region whose geometry covers less than nine tenths of what its children hold | invariant |
 | regions | A region with no geometry, in a world view whose geometry has been computed | invariant |
 | regions | A display rung drawing holes its source has not, or missing pieces its source has | invariant |
+| regions | A place within a kilometre of another region, its side not confirmed by its Wikidata item | invariant |
 | boundaries | A division stored as a leaf while divisions hang beneath it | invariant |
 | boundaries | A division holding a single source polygon while divisions hang beneath it | invariant |
 | objects | A site whose danger tag and whose In Danger badge disagree | invariant |
@@ -84,6 +85,34 @@ accepted debt, and a fresh checkout of the code inherits none.
 | pictures | A picture shown with nobody credited | invariant |
 | coverage | A place or work travellers are sent to, well known by its kind's own rule, that the kind does not offer | invariant |
 | coverage | A place a kind offers in a surveyed region that no guide names and a person judged not worth a visit | invariant |
+
+**A place within a kilometre of another region, its side not confirmed by its
+Wikidata item** (`borderPlacementAssertions.ts`, #1054) is the question a border
+drawn too coarsely leaves open. Placement tests a point against a region's
+full-resolution geometry, which is as exact as GADM draws it, and GADM draws many
+internal borders with a vertex every kilometre or more: Ararat with 169 for a
+229 km outline, Damascus with 12. A point nearer another region than
+`NEAR_BORDER_M` (1 km), by its own point and placed automatically, is placed by
+that border's straight chord, not by where the border runs. The rule reads the
+item's administrative chain (`P131`, six steps in the local subset) as the second
+source, and a row is a placement the chain does not confirm: it names the
+neighbour, both regions, neither by name, nothing, or there is no item. The
+maintainer's decision on #1054 is that a curator decides such a placement, so
+the rule moves nothing. A curator moves it, by adding the place to the right
+region and removing it from the wrong one, or confirms it by adding it to the
+region it is in by hand; either way the place is no longer asked about, and a
+later placement run, which puts back the automatic row a curator removed, does
+not bring the question back: the rule skips a pair a curator rejected and a
+place a curator placed by hand in the same world view. A World Heritage row, known by UNESCO's number, is read through the
+subset's item that carries that number (`P757`). Region and item are matched by
+English label, so a transliteration hides an agreement (GADM's *Al Uqsur*,
+Wikidata's *Luxor Governorate*) and the row is asked rather than confirmed. On
+the development catalogue on 2026-10-17, world view 5, the only one placed, held
+190 placements within a kilometre of another region by their own point; the
+chain confirmed 54, and the rule asked about 129 of the other 136, those a
+reader is offered. Geghard, Garni and the Umayyad Mosque are among them, where
+the chain names the neighbour; so are Kourion and Old St. Peter's, where the
+chain is wrong, and the sites of Jerusalem's Old City on a disputed line.
 
 **A work no place a reader is offered holds** (`workAssertions.ts`, #1444) is
 what a refusal by one kind can take from every kind. A work is shown only on the
