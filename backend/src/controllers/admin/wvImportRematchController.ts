@@ -13,7 +13,8 @@ import { pool } from '../../db/index.js';
 import type { RematchStarted, RematchStatus } from '../../api/responses/worldViewImport.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
 import type { worldViewIdParamSchema, wvImportRematchBodySchema } from '../../types/index.js';
-import { runMatchingPolicy } from '../../services/worldViewImport/index.js';
+import { MATCH_RUN_STEPS, runMatchingPolicy } from '../../services/worldViewImport/index.js';
+import { Operation, operationAnswer } from '../../services/operationProgress.js';
 import { spatialSentence } from '../../services/worldViewImport/spatialPass.js';
 import { createInitialProgress, type ImportProgress, type MatchingPolicy } from '../../services/worldViewImport/types.js';
 import { IMPORT_SOURCE_TYPES_ALL, defaultMatchingPolicy } from '../../services/worldViewImport/sourceTypes.js';
@@ -67,6 +68,7 @@ export async function rematchWorldView(
   const progress = createInitialProgress();
   progress.status = 'matching';
   progress.statusMessage = 'Resetting match data...';
+  progress.operation = new Operation(`[WV Import Rematch] World view ${worldViewId}:`, Object.keys(MATCH_RUN_STEPS).length);
   runningRematches.set(worldViewId, { progress, startTime: Date.now() });
 
   // Run in background
@@ -74,6 +76,7 @@ export async function rematchWorldView(
     console.error('[WV Import] Rematch error for worldView %d:', worldViewId, err);
     progress.status = 'failed';
     progress.statusMessage = 'Re-match failed; the server log has the cause.';
+    progress.operation?.finish('failed');
   }).finally(() => {
     const thisEntry = runningRematches.get(worldViewId);
     setTimeout(() => {
@@ -94,7 +97,7 @@ async function runRematch(
   const startTime = Date.now();
 
   // Step 1: Reset all match metadata and region_members
-  console.log(`[WV Import Rematch] Resetting match data for worldView ${worldViewId}...`);
+  progress.operation?.step(MATCH_RUN_STEPS.first, 'Resetting the match data');
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
@@ -131,13 +134,11 @@ async function runRematch(
     client.release();
   }
 
-  const resetDuration = ((Date.now() - startTime) / 1000).toFixed(1);
-  console.log(`[WV Import Rematch] Reset complete in ${resetDuration}s`);
-
   // Step 2: Re-run matching under the world view's policy
   if (policy === 'none') {
     progress.status = 'complete';
     progress.statusMessage = 'Match data reset; matching skipped (policy=none).';
+    progress.operation?.finish(progress.statusMessage);
     return;
   }
   progress.statusMessage = `Re-matching to GADM (policy=${policy})...`;
@@ -154,7 +155,7 @@ async function runRematch(
     ? `Re-match complete: ${progress.countriesMatched} countries matched (${progress.subdivisionsDrilled} with subdivisions), ${progress.noCandidates} unmatched. Took ${totalDuration}s.`
     : `${progress.statusMessage} (total ${totalDuration}s)`;
   if (spatial) progress.statusMessage += spatialSentence(spatial);
-  console.log(`[WV Import Rematch] Complete in ${totalDuration}s: matched=${progress.countriesMatched}, drilldowns=${progress.subdivisionsDrilled}, none=${progress.noCandidates}`);
+  progress.operation?.finish(progress.statusMessage);
 }
 
 /**
@@ -172,5 +173,6 @@ export async function getRematchStatus(
     countriesMatched: entry.progress.countriesMatched,
     totalCountries: entry.progress.totalCountries,
     noCandidates: entry.progress.noCandidates,
+    ...(entry.progress.operation ? { operation: operationAnswer(entry.progress.operation.progress) } : {}),
   };
 }

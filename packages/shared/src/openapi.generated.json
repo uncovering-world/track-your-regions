@@ -24690,6 +24690,10 @@
               }
             ]
           },
+          "operation": {
+            "description": "The step the import is on, of the three, and how far through it (#1356).",
+            "$ref": "#/components/schemas/OperationProgressAnswer"
+          },
           "importedWorldViews": {
             "type": "array",
             "items": {
@@ -30281,6 +30285,10 @@
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
+          },
+          "operation": {
+            "description": "The step the re-match is on, of the three, and how far through it (#1356).",
+            "$ref": "#/components/schemas/OperationProgressAnswer"
           }
         },
         "required": [

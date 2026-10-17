@@ -47,6 +47,20 @@ describe('Operation', () => {
   });
 });
 
+describe('a step that keeps its count in counters of its own', () => {
+  it('is answered and logged from those counters, read when asked', () => {
+    const { operation, lines, now } = clocked();
+    const progress = { createdRegions: 0, totalRegions: 0 };
+    operation.step(1, 'Creating the regions', 0, () => ({ done: progress.createdRegions, total: progress.totalRegions }));
+    progress.totalRegions = 3234;
+    progress.createdRegions = 1500;
+    expect(operationAnswer(operation.progress, now()).step).toMatchObject({ done: 1500, total: 3234 });
+    progress.createdRegions = 3234;
+    operation.step(2, 'Matching the countries to GADM by name');
+    expect(lines[1]).toBe('[Component items] Step 1 of 12 done: 3234 of 3234 in 0 s');
+  });
+});
+
 describe('a cancel', () => {
   it('is said on the progress and in the log at once, before the run stops', () => {
     const { operation, lines } = clocked();

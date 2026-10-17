@@ -25,6 +25,17 @@ export interface OperationStep {
   /** 0 while the step cannot say how much it has to do: the bar is then indeterminate. */
   total: number;
   startedAt: number;
+  /**
+   * Where a step already keeps its count in counters of its own (an import's
+   * `createdRegions` / `totalRegions`), the count is read from them when asked,
+   * rather than copied into `done` and `total` by every writer.
+   */
+  read?: () => { done: number; total: number };
+}
+
+/** A step's done and total, from its own counters where it reads them. */
+function measured(step: OperationStep): { done: number; total: number } {
+  return step.read ? step.read() : { done: step.done, total: step.total };
 }
 
 export interface OperationWait {
@@ -48,11 +59,12 @@ export interface OperationProgress {
 export function operationAnswer(progress: OperationProgress, now = Date.now()): OperationProgressAnswer {
   const seconds = (since: number) => Math.max(0, Math.round((now - since) / 1000));
   const { step, wait } = progress;
+  const count = step && measured(step);
   return {
     elapsedSeconds: seconds(progress.startedAt),
     cancelling: progress.cancelling,
-    step: step && {
-      index: step.index, count: step.count, sentence: step.sentence, done: step.done, total: step.total,
+    step: step && count && {
+      index: step.index, count: step.count, sentence: step.sentence, done: count.done, total: count.total,
       elapsedSeconds: seconds(step.startedAt),
     },
     // A wait that has run out is over, whether or not an answer has come since:
@@ -74,11 +86,15 @@ export class Operation {
     this.progress = { startedAt: now(), step: null, wait: null, cancelling: false };
   }
 
-  /** Close the step running and open step `index` of the operation's count. */
-  step(index: number, sentence: string, total = 0): void {
+  /**
+   * Close the step running and open step `index` of the operation's count. A
+   * step that keeps its count in counters of its own passes `read` instead of
+   * advancing.
+   */
+  step(index: number, sentence: string, total = 0, read?: () => { done: number; total: number }): void {
     this.closeStep();
     this.progress.wait = null;
-    this.progress.step = { index, count: this.steps, sentence, done: 0, total, startedAt: this.now() };
+    this.progress.step = { index, count: this.steps, sentence, done: 0, total, startedAt: this.now(), read };
     const toDo = total > 0 ? ` (${total} to do)` : '';
     this.log(`${this.prefix} Step ${index} of ${this.steps}: ${sentence}${toDo}`);
   }
@@ -119,7 +135,8 @@ export class Operation {
   private closeStep(): void {
     const step = this.progress.step;
     if (!step) return;
-    const counted = step.total > 0 ? `${step.done} of ${step.total}` : `${step.done}`;
+    const { done, total } = measured(step);
+    const counted = total > 0 ? `${done} of ${total}` : `${done}`;
     this.log(`${this.prefix} Step ${step.index} of ${step.count} done: ${counted} in ${elapsedText((this.now() - step.startedAt) / 1000)}`);
   }
 }

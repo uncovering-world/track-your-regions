@@ -2,6 +2,7 @@
  * Types for WorldView import and matching
  */
 
+import type { Operation } from '../operationProgress.js';
 import type { MatchStatus } from '../../api/responses/worldViewImport.js';
 
 /** A node in the import region hierarchy JSON */
@@ -75,6 +76,13 @@ export interface ImportProgress {
   matchTotal: number;
   matchDone: number;
   worldViewId: number | null;
+  /**
+   * The step the run is on, of the three (#1356): creating the regions or
+   * resetting the matches, matching by name, the spatial pass. Set by an import
+   * and a re-match; a run that reports in its own terms (the Wikivoyage
+   * extraction) leaves it unset.
+   */
+  operation?: Operation;
 }
 
 /** Progress for AI re-matching (separate from import progress) */
