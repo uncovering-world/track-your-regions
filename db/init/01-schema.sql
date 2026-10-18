@@ -365,6 +365,13 @@ EXCEPTION
     WHEN duplicate_object THEN null;
 END $$;
 
+-- The maps app a visitor opens places in (#1604); MAPS_APPS in @tyr/shared/preferences
+DO $$ BEGIN
+    CREATE TYPE maps_app AS ENUM ('device', 'osm', 'google');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
+
 -- =============================================================================
 -- Users (with authentication support)
 -- =============================================================================
@@ -381,6 +388,8 @@ CREATE TABLE IF NOT EXISTS users (
     auth_provider auth_provider,
     provider_id VARCHAR(255),
     email_verified BOOLEAN NOT NULL DEFAULT false,
+    -- The maps app places open in (#1604); NULL asks each time
+    maps_app maps_app,
     -- Timestamps
     created_at TIMESTAMPTZ DEFAULT NOW(),
     last_seen_at TIMESTAMPTZ DEFAULT NOW()

@@ -10,7 +10,7 @@
  */
 
 import { defineRoute, NO_BODY } from '../api/route.js';
-import { MyAccount } from '../api/responses/auth.js';
+import { MyAccount, MyPreferences } from '../api/responses/auth.js';
 import {
   AllLocationsMarked,
   AllLocationsUnmarked,
@@ -43,8 +43,10 @@ import {
   visitedLocationIdsQuerySchema,
   viewedTreasureIdsQuerySchema,
   markAllLocationsQuerySchema,
+  myPreferencesBodySchema,
 } from '../types/index.js';
 import { getMyAccount } from '../controllers/user/myAccount.js';
+import { getMyPreferences, setMyPreferences } from '../controllers/user/myPreferences.js';
 import {
   getVisitedRegions,
   getVisitedRegionsInWorldView,
@@ -76,6 +78,21 @@ export const userRoutes = [
     summary: 'Get the signed-in account, with its curator scopes for a curator or an admin',
     response: MyAccount,
     handler: getMyAccount,
+  }),
+
+  // The caller's own choices: the maps app places open in (#1604)
+  defineRoute({
+    ...OWN, method: 'get', path: '/me/preferences',
+    summary: 'Get what the signed-in visitor has chosen for themselves',
+    response: MyPreferences,
+    handler: getMyPreferences,
+  }),
+  defineRoute({
+    ...OWN, method: 'put', path: '/me/preferences',
+    summary: 'Save what the signed-in visitor chooses for themselves',
+    body: myPreferencesBodySchema,
+    response: MyPreferences,
+    handler: setMyPreferences,
   }),
 
   // =============================================================================

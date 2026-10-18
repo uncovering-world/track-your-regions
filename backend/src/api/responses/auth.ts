@@ -17,6 +17,7 @@
  */
 
 import { AUTH_PROVIDERS, USER_ROLES } from '@tyr/shared/auth';
+import { MAPS_APPS } from '@tyr/shared/preferences';
 import { z } from 'zod/v4';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
 
@@ -92,3 +93,12 @@ export const MyAccount = z.strictObject({
     .describe('Sent to a curator or an admin: what their curation reaches.'),
 }).describe('The signed-in account, with what a curator\'s assignments reach.');
 export type MyAccount = z.infer<typeof MyAccount>;
+
+export const MapsApp = z.enum(MAPS_APPS)
+  .describe('The maps app places open in: the device\'s own, OpenStreetMap or Google Maps.');
+
+export const MyPreferences = z.strictObject({
+  mapsApp: MapsApp.nullable()
+    .describe('The maps app "Open in maps" opens; null asks each time, with every maps app side by side.'),
+}).describe('What the signed-in visitor has chosen for themselves (#1604).');
+export type MyPreferences = z.infer<typeof MyPreferences>;
