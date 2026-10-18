@@ -369,6 +369,19 @@ is their one statement), and swaps the copies in with one transaction
 and the spool, and so does a read of a file that is not the host's
 (`isDamagedRead`), whose rows no build may reuse.
 
+**The indexes are built `INDEX_LANES` (four) at a time** (#1520), each on a
+client of its own: built one after another, a full build's indexes took
+12 minutes on build 7 (2026-10-15) and 14 minutes on the re-derive of build 10
+(2026-10-16), on four cores. A table's key constraint
+is built before its other indexes, since adding a constraint locks the table
+against every other statement on it, while two plain index builds on one
+table do not wait for each other. Each statement's session runs with
+`INDEX_SESSION`: 1 GB of `maintenance_work_mem` and two parallel maintenance
+workers, which four lanes keep within the eight worker processes a default
+server allows. Both are put back before the client returns to the pool, and a
+client whose settings cannot be put back is closed (`cancellable`). An index
+that fails cancels the others and starts no more.
+
 **The derived tables can be made again without the dump** (#1526). A change
 to how the claims, labels, sitelinks or class closure are derived from the
 entities needs the derivation, not the two passes over the file: a
@@ -442,11 +455,13 @@ and each says what it is doing while it does it (#1519):
 - **Deriving the claims, labels and sitelinks** says which of its three
   statements runs and how many of its parts have ended (`deriveFromEntities`:
   "claims, 2 of 4 parts done"); the parts run at once.
-- **Indexing** says which index of how many it builds, and every five seconds
-  that index's own phase and share from `pg_stat_progress_create_index`
-  ("index 3 of 7, idx_wikidata_claims_subject: building index: scanning
-  table, 45 %", `indexNextTables`). The class tree's index is reported the
-  same way under *Walking the class tree*.
+- **Indexing** says how many of its indexes are built and which are building,
+  with each one's own phase and share from `pg_stat_progress_create_index`
+  every five seconds ("2 of 6 indexes built; building
+  idx_wikidata_claims_subject (building index: scanning table, 45 %),
+  wikidata_labels_pkey (building index: loading tuples in tree, 12 %)",
+  `indexNextTables`). The class tree's indexes are reported the same way under
+  *Walking the class tree*.
 - **Walking the class tree** is one statement, with no measure of its own.
 
 Every step shows when it started, so a step with no measure still reads as
