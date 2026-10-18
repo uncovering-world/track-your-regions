@@ -40,8 +40,12 @@ const NOT_EXTENSION_OWNED = `NOT EXISTS (
   WHERE d.classid = 'pg_class'::regclass AND d.objid = c.oid AND d.deptype = 'e'
 )`;
 
+/** The schemas this file describes: the serving tables' and the dump-built ones' (ADR-0124). */
+const SCHEMAS = `'public', 'workbench'`;
+
 interface ColumnRow {
   table: string;
+  schema: string;
   relkind: string;
   column: string;
   formatted: string;
@@ -58,7 +62,7 @@ async function readCatalog(pool: Pool): Promise<{
   checks: CatalogCheck[];
 }> {
   const columns = await pool.query<ColumnRow>(`
-    SELECT c.relname AS "table", c.relkind, a.attname AS "column",
+    SELECT c.relname AS "table", n.nspname AS schema, c.relkind, a.attname AS "column",
            format_type(a.atttypid, a.atttypmod) AS formatted,
            t.typname AS udt_name, t.typtype,
            et.typname AS element_udt_name, et.typtype AS element_typtype,
@@ -68,7 +72,7 @@ async function readCatalog(pool: Pool): Promise<{
     JOIN pg_namespace n ON n.oid = c.relnamespace
     JOIN pg_type t ON t.oid = a.atttypid
     LEFT JOIN pg_type et ON et.oid = t.typelem AND t.typcategory = 'A'
-    WHERE n.nspname = 'public'
+    WHERE n.nspname IN (${SCHEMAS})
       AND c.relkind IN ('r', 'p', 'v', 'm')
       AND a.attnum > 0 AND NOT a.attisdropped
       AND ${NOT_EXTENSION_OWNED}
@@ -87,7 +91,7 @@ async function readCatalog(pool: Pool): Promise<{
     FROM pg_constraint con
     JOIN pg_class c ON c.oid = con.conrelid
     JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE con.contype = 'c' AND n.nspname = 'public'
+    WHERE con.contype = 'c' AND n.nspname IN (${SCHEMAS})
       AND ${NOT_EXTENSION_OWNED}
     ORDER BY c.relname, con.conname
   `);
@@ -102,6 +106,7 @@ async function readCatalog(pool: Pool): Promise<{
   return {
     columns: columns.rows.map((row) => ({
       table: row.table,
+      schema: row.schema,
       relkind: row.relkind,
       column: row.column,
       formatted: row.formatted,
@@ -151,7 +156,7 @@ async function main(): Promise<void> {
 
     const { columns, enums, checks } = await readCatalog(pool);
     if (columns.length === 0) {
-      throw new Error(`The database "${landedOn}" has no relations in schema public: was db/init applied?`);
+      throw new Error(`The database "${landedOn}" has no relations in schema public or workbench: was db/init applied?`);
     }
     const generated = renderSchemaTypes(columns, enums, checks);
 

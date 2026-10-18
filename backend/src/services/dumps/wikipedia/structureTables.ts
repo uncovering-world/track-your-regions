@@ -8,13 +8,14 @@
 
 import type { PoolClient } from 'pg';
 import { pool } from '../../../db/index.js';
+import { inWorkbench } from '../../../db/workbench.js';
 import type { CopyNeeds } from '../wikidata/buildRules.js';
 import { cancellable, indexesOf } from '../wikidata/subsetTables.js';
 
 export const STRUCTURE_TABLES = ['enwiki_pages', 'enwiki_page_items', 'enwiki_categories', 'enwiki_category_links'] as const;
 export type StructureTable = typeof STRUCTURE_TABLES[number];
 
-const next = (table: StructureTable) => `${table}_next`;
+const next = (table: StructureTable) => inWorkbench(`${table}_next`);
 
 /** Fresh, empty `_next` copies of every table, without their indexes, which are built once the rows are in. */
 export async function createNextTables(): Promise<void> {
@@ -89,7 +90,7 @@ export async function indexNextTables(signal: AbortSignal, onIndex?: (which: str
             ? `ALTER TABLE ${next(table)} ADD CONSTRAINT ${index.name}_next ${index.definition}`
             : index.definition
               .replace(`INDEX ${index.name} ON`, `INDEX ${index.name}_next ON`)
-              .replace(`ON public.${table} `, `ON public.${next(table)} `),
+              .replace(`ON ${inWorkbench(table)} `, `ON ${next(table)} `),
         });
       }
     }
@@ -114,9 +115,9 @@ export async function swapIn(buildId: number, dumpDate: string, counts: Record<s
     await client.query('BEGIN');
     for (const table of STRUCTURE_TABLES) {
       const indexes = await indexesOf(client, table);
-      await client.query(`DROP TABLE ${table}`);
+      await client.query(`DROP TABLE ${inWorkbench(table)}`);
       await client.query(`ALTER TABLE ${next(table)} RENAME TO ${table}`);
-      for (const index of indexes) await client.query(`ALTER INDEX ${index.name}_next RENAME TO ${index.name}`);
+      for (const index of indexes) await client.query(`ALTER INDEX ${inWorkbench(index.name + '_next')} RENAME TO ${index.name}`);
     }
     await client.query(
       'INSERT INTO enwiki_structure_builds (build_id, dump_date, counts) VALUES ($1, $2, $3)',
