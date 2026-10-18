@@ -4158,18 +4158,36 @@ COMMENT ON TABLE readership_staging IS 'A month being read (#1436): its titles o
 -- (ADR-0100): whoever renames, moves or renumbers the point - the run, a
 -- curator, a publish - the part and its relation follow, so the two never
 -- disagree. The name falls back as part_site_components names a part.
+-- A part that holds a kind of its own names itself (ADR-0100 decision 2,
+-- #1250): the Karnak Temple Complex, once the Temple of Karnak is merged into
+-- it, keeps its own name, anchor and relation however its point is written.
+-- part_follows_point is the rule, for one point: the trigger applies it on
+-- every write, and the undo of a merge applies it to the points it gives a
+-- part back, which a run may have renamed while the merge stood. See
+-- db/migrations/124.
+CREATE OR REPLACE FUNCTION part_follows_point(point_id INTEGER)
+RETURNS VOID AS $$
+  UPDATE experiences part
+     SET name = COALESCE(NULLIF(el.name, ''), el.external_ref, part.name), location = el.location,
+         -- Stamped as every writer of the table stamps it (ADR-0069).
+         updated_at = NOW()
+    FROM experience_locations el
+   WHERE el.id = point_id AND part.id = el.experience_id
+     AND EXISTS (SELECT 1 FROM experience_parts p WHERE p.part_id = el.experience_id AND p.reason = 'component')
+     AND NOT EXISTS (SELECT 1 FROM experience_kind_memberships m WHERE m.experience_id = el.experience_id)
+     AND (part.name IS DISTINCT FROM COALESCE(NULLIF(el.name, ''), el.external_ref, part.name)
+          OR part.location IS DISTINCT FROM el.location);
+  UPDATE experience_parts p SET external_ref = el.external_ref
+    FROM experience_locations el
+   WHERE el.id = point_id AND p.part_id = el.experience_id AND p.reason = 'component'
+     AND p.external_ref IS DISTINCT FROM el.external_ref
+     AND NOT EXISTS (SELECT 1 FROM experience_kind_memberships m WHERE m.experience_id = el.experience_id);
+$$ LANGUAGE sql;
+
 CREATE OR REPLACE FUNCTION follow_component_point()
 RETURNS TRIGGER AS $$
 BEGIN
-  UPDATE experiences part
-     SET name = COALESCE(NULLIF(NEW.name, ''), NEW.external_ref, part.name), location = NEW.location,
-         -- Stamped as every writer of the table stamps it (ADR-0069).
-         updated_at = NOW()
-   WHERE part.id = NEW.experience_id
-     AND EXISTS (SELECT 1 FROM experience_parts p WHERE p.part_id = NEW.experience_id AND p.reason = 'component');
-  UPDATE experience_parts SET external_ref = NEW.external_ref
-   WHERE part_id = NEW.experience_id AND reason = 'component'
-     AND external_ref IS DISTINCT FROM NEW.external_ref;
+  PERFORM part_follows_point(NEW.id);
   RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
