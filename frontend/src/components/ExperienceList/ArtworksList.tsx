@@ -46,9 +46,11 @@ function ArtworkRow({ content, placeKinds, isViewed, isAuthenticated, onToggleVi
   // `WorksPreview` state; it guards the next source rather than this one, since
   // every treasure image stored today is a Commons `Special:FilePath` URL.
   const url = content.image_url ? toThumbnailUrl(content.image_url) : '';
-  // Wikidata's own redirect, resolved at the click (`wikipediaArticleUrl`): nothing
-  // stored, and none for a curator-created work, whose id is no Wikidata item.
-  const article = safeHref(wikipediaArticleUrl(content.external_id));
+  // The English article a works run read (#1608), none where it read that the
+  // work has none, and Wikidata's own redirect, resolved at the click, for a
+  // work no run has asked about yet (`wikipediaArticleUrl`; none for a
+  // curator-created work, whose id is no Wikidata item).
+  const article = safeHref(content.wikipedia_read ? content.wikipedia_url : wikipediaArticleUrl(content.external_id));
 
   return (
     <Box

@@ -4895,6 +4895,13 @@ export interface ExperienceTreasure {
      * @items.maximum 9007199254740991
      */
   kind_ids: number[];
+  /**
+     * The work's English Wikipedia article, as the last works run read it (#1608).
+     * @nullable
+     */
+  wikipedia_url: string | null;
+  /** Whether a works run has read the article: false for a work no run has asked about, whose card keeps the redirect link. */
+  wikipedia_read: boolean;
 }
 
 /**

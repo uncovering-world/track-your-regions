@@ -79,7 +79,7 @@ function work(overrides: Partial<ExperienceTreasure> = {}): ExperienceTreasure {
     venue_count: 1,
     venues: null,
     found_at: null,
-    found_at_site: null,
+    found_at_site: null, wikipedia_url: null, wikipedia_read: false,
     ...overrides,
   };
 }
@@ -442,6 +442,23 @@ describe("a work's article", () => {
 
   it("offers none for a curator-created work, whose id is no Wikidata item", () => {
     renderList([work({ external_id: 'manual-31' })]);
+
+    expect(screen.queryByRole('link', { name: /Wikipedia/ })).toBeNull();
+  });
+  it('links the English article a works run stored, straight to it (#1608)', () => {
+    renderList([work({
+      name: 'Mesha Stele', external_id: 'Q724954',
+      wikipedia_read: true, wikipedia_url: 'https://en.wikipedia.org/wiki/Mesha_Stele',
+    })]);
+
+    expect(screen.getByRole('link', { name: 'Mesha Stele on Wikipedia' }))
+      .toHaveAttribute('href', 'https://en.wikipedia.org/wiki/Mesha_Stele');
+  });
+
+  it('offers no link for a work a run read and found with no English article (#1608)', () => {
+    // The stele of Lemnos has editions in other languages and none in English;
+    // the redirect would answer with Wikidata's "no page found" form.
+    renderList([work({ name: 'Stele of Lemnos', external_id: 'Q3501422', wikipedia_read: true, wikipedia_url: null })]);
 
     expect(screen.queryByRole('link', { name: /Wikipedia/ })).toBeNull();
   });
