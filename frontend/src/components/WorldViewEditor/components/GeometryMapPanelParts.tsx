@@ -1,5 +1,5 @@
 import {
-  Alert, Box, Button, Chip, CircularProgress, IconButton,
+  Alert, Box, Button, Checkbox, Chip, CircularProgress, FormControlLabel, IconButton,
   LinearProgress, ToggleButton, ToggleButtonGroup, Tooltip, Typography,
 } from '@mui/material';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -42,6 +42,9 @@ export interface ActionToolbarProps {
   onOpenHullEditor: () => void;
   onStartComputation: () => void;
   onCancelComputation: () => void;
+  /** Whether Compute All takes every region rather than the ones without geometry and those above them (#1683). */
+  recomputeAll: boolean;
+  onSetRecomputeAll: (all: boolean) => void;
 }
 
 function RegionInfoBadge({ selectedRegion, styles, onToggleHull }: {
@@ -209,7 +212,7 @@ function RegionToolbarContent(props: ActionToolbarProps & { selectedRegion: Regi
 
 function EmptyToolbarContent({
   isComputing, regionsCount, toolBtnSx, styles,
-  onStartComputation, onCancelComputation,
+  onStartComputation, onCancelComputation, recomputeAll, onSetRecomputeAll,
 }: ActionToolbarProps) {
   const button = isComputing
     ? (
@@ -233,6 +236,15 @@ function EmptyToolbarContent({
       <Typography sx={{ fontFamily: styles.uiFont, fontSize: '0.82rem', color: styles.textMuted, fontStyle: 'italic', flex: 1 }}>
         Select a region to view geometry
       </Typography>
+      {!isComputing && (
+        <Tooltip title="Compute All recomputes every region, not only the regions without geometry and the regions above them">
+          <FormControlLabel
+            control={<Checkbox size="small" checked={recomputeAll} onChange={(e) => onSetRecomputeAll(e.target.checked)} />}
+            label={<Typography sx={{ fontSize: '0.72rem', fontFamily: styles.uiFont }}>Recompute every region</Typography>}
+            sx={{ mr: 0 }}
+          />
+        </Tooltip>
+      )}
       {button}
     </>
   );
@@ -297,6 +309,9 @@ function BatchProgressBar({ computationStatus, borderColor, uiFont, monoFont, mu
   );
 }
 
+/** The status a Compute All shows when it found nothing to queue. */
+export const NOTHING_TO_COMPUTE = 'Nothing to compute';
+
 export function BatchProgressSection({
   isComputing, computationStatus, borderColor, uiFont, monoFont, mutedColor, onClearStatus,
 }: BatchProgressSectionProps) {
@@ -326,6 +341,14 @@ export function BatchProgressSection({
       >
         Complete! Computed: {computationStatus.computed ?? 0}, Skipped: {computationStatus.skipped ?? 0}
         {errors > 0 && `, Errors: ${errors} \u2014 see the server log, and Catalogue Checks for what it left behind`}
+      </Alert>
+    );
+  }
+  if (!isComputing && computationStatus?.status === NOTHING_TO_COMPUTE) {
+    // A press that queued nothing says so, rather than flashing a bar (#1683).
+    return (
+      <Alert severity="info" sx={{ mx: 2, my: 0.5, py: 0 }} onClose={onClearStatus}>
+        Every region already has its geometry, so nothing was queued. Tick Recompute every region to compute them all again.
       </Alert>
     );
   }

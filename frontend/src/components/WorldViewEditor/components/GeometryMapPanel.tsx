@@ -37,6 +37,7 @@ import {
   ActionToolbar,
   BatchProgressSection,
   MapStateOverlay,
+  NOTHING_TO_COMPUTE,
   type ToolbarStyles,
 } from './GeometryMapPanelParts';
 import { queryKeys } from '../../../api/queryKeys';
@@ -207,6 +208,7 @@ export function GeometryMapPanel({
     forceRecompute, setForceRecompute,
     isResettingToMembers, setIsResettingToMembers,
     skipSnapping, setSkipSnapping,
+    recomputeAll, setRecomputeAll,
     displayGeomStatus, setDisplayGeomStatus,
     computeProgressLogs, setComputeProgressLogs,
   } = useComputationStatus({ worldView, open });
@@ -252,14 +254,17 @@ export function GeometryMapPanel({
   const handleStartComputation = useCallback(async () => {
     try {
       setComputationStatus(null);
-      await startWorldViewGeometryComputation(worldView.id, true, skipSnapping);
+      const answer = await startWorldViewGeometryComputation(worldView.id, recomputeAll, skipSnapping);
+      if (!answer.started) {
+        setComputationStatus({ running: false, status: NOTHING_TO_COMPUTE });
+        return;
+      }
       setIsComputing(true);
-      setComputationStatus({ running: true, progress: 0, total: regions.length, status: 'Starting...' });
+      setComputationStatus({ running: true, progress: 0, total: answer.needsComputation, status: 'Starting...' });
     } catch (e) {
       console.error('Failed to start computation:', e);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- regions.length is the relevant trigger (we display "Starting... 0/N"); the regions array reference itself changes too often
-  }, [worldView.id, regions.length, skipSnapping]);
+  }, [worldView.id, skipSnapping, recomputeAll, setIsComputing, setComputationStatus]);
 
   const handleCancelComputation = useCallback(async () => {
     try { await cancelWorldViewGeometryComputation(worldView.id); } catch (e) { console.error('Failed to cancel:', e); }
@@ -369,6 +374,8 @@ export function GeometryMapPanel({
           onOpenHullEditor={() => setHullEditorOpen(true)}
           onStartComputation={handleStartComputation}
           onCancelComputation={handleCancelComputation}
+          recomputeAll={recomputeAll}
+          onSetRecomputeAll={setRecomputeAll}
         />
 
         {showOptions && selectedRegion && (

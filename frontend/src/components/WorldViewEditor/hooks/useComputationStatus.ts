@@ -30,6 +30,10 @@ export function useComputationStatus({
   const [forceRecompute, setForceRecompute] = useState(false);
   const [isResettingToMembers, setIsResettingToMembers] = useState(false);
   const [skipSnapping, setSkipSnapping] = useState(true);  // Fast mode - skip expensive snapping (default: true)
+  // Compute All takes every region only when asked: by default it computes the
+  // regions without geometry and the regions above them, which is what finishes
+  // a computation that stopped part-way (#1683).
+  const [recomputeAll, setRecomputeAll] = useState(false);
 
   // Display geometry state
   const [displayGeomStatus, setDisplayGeomStatus] = useState<DisplayGeometryStatus | null>(null);
@@ -108,6 +112,8 @@ export function useComputationStatus({
     setIsResettingToMembers,
     skipSnapping,
     setSkipSnapping,
+    recomputeAll,
+    setRecomputeAll,
     // Display geometry state
     displayGeomStatus,
     setDisplayGeomStatus,
