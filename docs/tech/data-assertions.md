@@ -227,6 +227,20 @@ down (ADR-0053) is still offered on the source's terms but never to be
 published, and placement gives it no row for that reason — so the check carries
 `refused_at IS NULL`, or every refusal would read as a placement run that failed.
 
+The first of the pair also says where a curator would put the object
+(`unplacedAssertions.ts`, #469). For every world view some placement has
+written into, its row names the nearest leaf within `SUGGEST_WITHIN_M` (30 km)
+and the next leaf within it, each with its distance on the sphere, and the rows
+come nearest first. The nearest region is a suggestion and decides nothing, as with a place
+near a border (#1054): a curator who agrees adds the object to that region by
+hand, and the row leaves the list. The next region is the confidence signal.
+The Island of Gorée is 14 m from Dakar with the next region 28 km away, which
+is an easy call. Ha Long Bay is 6.4 km from Hải Phòng and 10.1 km from Quảng
+Ninh, the province the bay is in, which is a real question. A point farther
+than 30 km from every leaf is the open ocean (#470), and the row says that no
+region is within reach. Measured on world view 5 on 2026-10-18: 33 objects in
+no region, 28 with a suggestion, and the statement takes about 1.5 s.
+
 The five geometry rules exist because defects keep being found by a person
 looking at a map and by nothing else in the repository (#668): three regions
 framed as the whole world (#666), four continents holding a fraction of what
