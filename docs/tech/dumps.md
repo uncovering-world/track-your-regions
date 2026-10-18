@@ -462,7 +462,7 @@ and each says what it is doing while it does it (#1519):
   wikidata_labels_pkey (building index: loading tuples in tree, 12 %)",
   `indexNextTables`). The class tree's indexes are reported the same way under
   *Walking the class tree*.
-- **Walking the class tree** is one statement, with no measure of its own.
+- **Walking the class tree** is one statement, with no measure of its own. It reads the subclass edges once, into a materialized CTE, and walks those (`deriveClassClosure`, #1520): joined to the claims table directly, every level of the recursion hashed a fresh scan of all of it. On re-derive 22 (2026-10-18) the walk and its two indexes took 6 min, half the run; the walk alone now takes 30 s on the same subset and gives the same rows.
 
 Every step shows when it started, so a step with no measure still reads as
 alive. The worker beats every five seconds whatever step it is in: the panel
