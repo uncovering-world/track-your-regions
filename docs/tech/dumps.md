@@ -223,7 +223,12 @@ run left; the backend's startup and the panel's list close the stopped ones
 too. A queued row waits for a worker: a stack without one shows it waiting.
 
 The worker runs the code it started with: a change to the build reaches it on
-`docker compose restart dump-worker`, which stops the build it is running.
+`docker compose restart dump-worker`, which stops the build it is running. A
+builder merged after the worker started is unknown to it, and the panel, which
+runs the new code, cannot tell. So the worker asks again: a `keep`, a
+`rederive` or a `trial` of a dump it has no builder for fails before it reads
+anything, saying to restart it (#1670). Dump build 14 on 2026-10-18, the first `keep` of `enwiki-page`,
+read the file as a verify, reported success and kept nothing.
 
 The worker also runs a world view's geometry computation
 ([ADR-0122](../decisions/0122-a-world-views-geometry-computation-runs-in-the-dump-worker-beside-its-builds.md),
