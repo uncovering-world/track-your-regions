@@ -11,16 +11,12 @@
  * that may run between here and the union reads the children alone. Its result
  * replaces the geometry the union is given, so the members have to be carried
  * across it — see `snapChildRegionsForGroup`, which collects them back in
- * (#736). They are carried rather than re-read there for two reasons: the
- * `shouldSimplify` guard below has already been applied to them, and repeating
- * it inside the snap statement is exactly what `unionGeomToleranceGuard`
- * forbids that statement.
+ * (#736); they are read here, once.
  *
- * `shouldSimplify` is the input-side timeout guard, not a tolerance the stored
- * shape is meant to carry: above 300,000 input points the inputs are coarsened
- * to 0.005 degrees so the union stays inside the five-minute bound the writers
- * set for themselves (#459). It is the one coarsening call any statement on the
- * way to `regions.geom` may make — rule 1 of `docs/tech/geometry-columns.md`.
+ * Every input is taken at full resolution, however many points the region
+ * holds: no statement on the way to `regions.geom` coarsens a shape (rule 1 of
+ * `docs/tech/geometry-columns.md`, #459). A union too large for the bound its
+ * runtime sets fails loudly instead (`geometryTimeouts.ts`).
  */
 
 import { PoolClient } from 'pg';
@@ -37,27 +33,16 @@ export interface CollectedUnionInputs {
 export async function collectUnionInputs(
   client: PoolClient,
   regionId: number,
-  shouldSimplify: boolean,
 ): Promise<CollectedUnionInputs> {
   const collectResult = await client.query(`
     WITH direct_member_geoms AS (
-      SELECT
-        CASE WHEN $2 THEN
-          ST_SimplifyPreserveTopology(ST_MakeValid(COALESCE(rm.custom_geom, ad.geom)), 0.005)
-        ELSE
-          ST_MakeValid(COALESCE(rm.custom_geom, ad.geom))
-        END as geom
+      SELECT ST_MakeValid(COALESCE(rm.custom_geom, ad.geom)) as geom
       FROM region_members rm
       JOIN administrative_divisions ad ON rm.division_id = ad.id
       WHERE rm.region_id = $1 AND (rm.custom_geom IS NOT NULL OR ad.geom IS NOT NULL)
     ),
     child_group_geoms AS (
-      SELECT
-        CASE WHEN $2 THEN
-          ST_SimplifyPreserveTopology(ST_MakeValid(geom), 0.005)
-        ELSE
-          ST_MakeValid(geom)
-        END as geom
+      SELECT ST_MakeValid(geom) as geom
       FROM regions
       WHERE parent_region_id = $1 AND geom IS NOT NULL
     )
@@ -70,7 +55,7 @@ export async function collectUnionInputs(
       UNION ALL
       SELECT geom, false as is_member FROM child_group_geoms WHERE geom IS NOT NULL
     ) all_geoms
-  `, [regionId, shouldSimplify]);
+  `, [regionId]);
 
   return {
     collectedGeom: collectResult.rows[0]?.collected_geom,

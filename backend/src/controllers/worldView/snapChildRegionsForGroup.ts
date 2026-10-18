@@ -16,9 +16,8 @@
  * decide which inputs the union is made of.
  *
  * The members arrive as a parameter rather than being read from
- * `region_members` here, because `collectUnionInputs` has already applied the
- * input-side timeout guard to them, and repeating that guard inside this
- * statement is what `unionGeomToleranceGuard` forbids it.
+ * `region_members` here, so the union is made of the very shapes the collect
+ * step gathered (`collectUnionInputs`), read once.
  */
 
 import { PoolClient } from 'pg';

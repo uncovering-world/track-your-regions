@@ -99,8 +99,9 @@ export async function closeComputation(
 
 /**
  * Ask the computation of `worldViewId` to stop: a queued one is closed at
- * once, a running one is told through its row and stops after the region in
- * hand. Answers whether there was one.
+ * once, a running one is told through its row, and the worker cancels its
+ * statement in flight at its next heartbeat (ADR-0123). Answers whether there
+ * was one.
  */
 export async function requestComputationCancel(worldViewId: number): Promise<boolean> {
   const queued = await pool.query(

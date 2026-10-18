@@ -23,6 +23,7 @@ import type { AssertionStatus, DataAssertion } from '../../../api/responses/data
 import { pool } from '../../../db/index.js';
 import { AssertionUnavailable, type AnyAssertion, type AssertionRow } from './assertion.js';
 import { everyAssertion } from './catalogueAssertions.js';
+import { isQueryCanceled } from '../../../db/queryCanceled.js';
 
 /**
  * How many violating rows travel to the panel per assertion.
@@ -175,8 +176,8 @@ export async function runCatalogueAssertions(
 export function couldNotRun(error: Error): string {
   // Written for the admin by the assertion that had nothing to read.
   if (error instanceof AssertionUnavailable) return error.message;
-  // 57014, query_canceled: the statement timeout.
-  return (error as { code?: string }).code === '57014'
+  // The statement timeout, or a cancel: a check never cancels its own.
+  return isQueryCanceled(error)
     ? 'The check could not run: its query timed out.'
     : 'The check could not run: its query failed, and the server log has the cause.';
 }

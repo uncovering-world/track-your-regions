@@ -11,9 +11,10 @@ vi.mock('../../db/index.js', () => ({
 }));
 vi.mock('./geometryComputeSingle.js', () => ({
   computeRegionGeometryCore: vi.fn(async () => ({ computed: true, points: 10 })),
+  clearRegionGeometry: vi.fn(async () => undefined),
 }));
 vi.mock('./computationScope.js', () => ({
-  loadGroupsToCompute: vi.fn(async () => [{ id: 1, name: 'Adygea', depth: 2 }, { id: 2, name: 'Russia', depth: 1 }]),
+  loadGroupsToCompute: vi.fn(async () => [{ id: 1, name: 'Adygea', depth: 2, parent_region_id: 2 }, { id: 2, name: 'Russia', depth: 1, parent_region_id: null }]),
 }));
 vi.mock('./computationLedger.js', () => ({
   COMPUTATION_BEAT_EVERY_MS: 5_000,
@@ -24,7 +25,7 @@ vi.mock('./computationLedger.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { computeRegionGeometryCore } from './geometryComputeSingle.js';
+import { clearRegionGeometry, computeRegionGeometryCore } from './geometryComputeSingle.js';
 import { beatComputation, closeComputation } from './computationLedger.js';
 import { runComputation } from './computationRun.js';
 
@@ -69,7 +70,7 @@ describe("the worker's run of a world view's geometry computation", () => {
     expect(vi.mocked(beatComputation).mock.calls[0]).toEqual([3, expect.objectContaining({ total: 2, progress: 0, skipped: 8 })]);
   });
 
-  it("stops after the region in hand when an admin's cancel reaches it through the row", async () => {
+  it("stops before the next region when an admin's cancel reaches it through the row", async () => {
     vi.mocked(beatComputation).mockResolvedValueOnce({ cancelRequested: true });
     await runComputation(claimed, new AbortController().signal);
     expect(vi.mocked(computeRegionGeometryCore)).not.toHaveBeenCalled();
@@ -94,7 +95,7 @@ describe("the worker's run of a world view's geometry computation", () => {
       return { computed: true, points: 10 };
     });
     await runComputation(claimed, stop.signal);
-    // The region in hand finishes; the next one is not started.
+    // The region the stop landed in answers; the next one is not started.
     expect(vi.mocked(computeRegionGeometryCore)).toHaveBeenCalledTimes(1);
     expect(closedWith()).toMatchObject({ status: 'failed', error: 'The computation stopped with the dump worker. Start it again to compute what is left.' });
   });
@@ -107,6 +108,22 @@ describe("the worker's run of a world view's geometry computation", () => {
     expect(closedWith()).toMatchObject({ status: 'failed', error: 'The computation stopped with the dump worker. Start it again to compute what is left.' });
   });
 
+  it("aborts the pipeline's signal on an admin's cancel too, so the statement in flight is cancelled (ADR-0123)", async () => {
+    let handed: AbortSignal | undefined;
+    vi.mocked(computeRegionGeometryCore).mockImplementationOnce(async (_id, options) => {
+      handed = options?.signal;
+      // The cancel arrives with the heartbeat while the union runs.
+      vi.mocked(beatComputation).mockResolvedValueOnce({ cancelRequested: true });
+      await vi.advanceTimersByTimeAsync(5_000);
+      return { computed: false, stopped: true, error: 'stopped or cancelled' };
+    });
+    vi.useFakeTimers();
+    await runComputation(claimed, new AbortController().signal);
+    vi.useRealTimers();
+    expect(handed?.aborted).toBe(true);
+    expect(closedWith()).toMatchObject({ status: 'cancelled' });
+  });
+
   it('closes the row as failed when the run itself throws, never leaving it running', async () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     mockedQuery.mockImplementation((sql: string) => (String(sql).includes('COUNT(*)')
@@ -116,8 +133,31 @@ describe("the worker's run of a world view's geometry computation", () => {
     expect(closedWith()).toMatchObject({ status: 'failed', error: "The computation stopped on an error; the dump worker's log has the cause." });
   });
 
+  it('counts a union that outran its bound as an error, and fails its parent rather than union it without the child (#459)', async () => {
+    vi.mocked(computeRegionGeometryCore).mockResolvedValueOnce({
+      computed: false, timedOut: true, error: 'a statement ran past the 30-minute bound or was cancelled in the database, so its geometry is cleared',
+    });
+    await runComputation(claimed, new AbortController().signal);
+    // Adygea timed out; Russia, its parent, is cleared and failed, never unioned.
+    expect(vi.mocked(computeRegionGeometryCore)).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(clearRegionGeometry)).toHaveBeenCalledWith(pool, 2);
+    expect(closedWith()).toMatchObject({ status: 'success', outcome: '0 computed, 8 skipped, 2 errors' });
+  });
+
+  it('hands the region pipeline a signal the worker\'s stop aborts, and counts nothing for a region the stop cancelled', async () => {
+    const stop = new AbortController();
+    vi.mocked(computeRegionGeometryCore).mockImplementationOnce(async (_id, options) => {
+      expect(options?.signal?.aborted).toBe(false);
+      stop.abort();
+      expect(options?.signal?.aborted).toBe(true);
+      return { computed: false, stopped: true, error: 'stopped or cancelled' };
+    });
+    await runComputation(claimed, stop.signal);
+    expect(closedWith()).toMatchObject({ status: 'failed', progress: { computed: 0, errors: 0, skipped: 8 } });
+  });
+
   it('counts a region whose pipeline failed as skipped, as the run reports it', async () => {
-    vi.mocked(computeRegionGeometryCore).mockResolvedValueOnce({ computed: false, error: 'canceling statement due to statement timeout' });
+    vi.mocked(computeRegionGeometryCore).mockResolvedValueOnce({ computed: false, error: 'No geometries to merge' });
     await runComputation(claimed, new AbortController().signal);
     expect(closedWith()).toMatchObject({ status: 'success', outcome: '1 computed, 9 skipped, 0 errors' });
   });

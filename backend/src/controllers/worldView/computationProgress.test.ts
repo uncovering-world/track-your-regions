@@ -57,7 +57,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockedQuery.mockResolvedValue({ rows: [{ count: 10 }] });
   vi.mocked(loadGroupsToCompute).mockResolvedValue([
-    { id: 1, name: 'Adygea', depth: 2 }, { id: 2, name: 'Russia', depth: 1 },
+    { id: 1, name: 'Adygea', depth: 2, parent_region_id: 2 }, { id: 2, name: 'Russia', depth: 1, parent_region_id: null },
   ]);
 });
 

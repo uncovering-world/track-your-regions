@@ -13,8 +13,8 @@ import { snapChildRegionsForGroup } from './snapChildRegionsForGroup.js';
 import type { ComputeProgressEvent } from '../../api/responses/geometry.js';
 import type { computeSSEQuerySchema, regionIdParamSchema } from '../../types/index.js';
 import type { AnchorPoint, FocusBbox } from '../../api/responses/regions.js';
-
-const GEOMETRY_QUERY_TIMEOUT_MS = 300000;
+import { GEOMETRY_STATEMENT_TIMEOUT_MS } from './geometryTimeouts.js';
+import { isQueryCanceled } from '../../db/queryCanceled.js';
 
 type LogStep = (step: string, data?: Record<string, unknown>) => void;
 type SendEvent = (event: ComputeProgressEvent) => void;
@@ -363,12 +363,11 @@ async function runUnionPipelineSteps(
   client: PoolClient,
   regionId: number,
   stats: ComplexityStats,
-  shouldSimplify: boolean,
   skipSnapping: boolean,
   logStep: LogStep,
 ): Promise<UnionPipelineResult | null> {
   logStep('Step 1/6: Collecting geometries...');
-  const collected = await collectUnionInputs(client, regionId, shouldSimplify);
+  const collected = await collectUnionInputs(client, regionId);
   let collectedGeom = collected.collectedGeom;
   if (!collectedGeom) return null;
   logStep('Step 1/6: Complete', { geomCount: collected.geomCount });
@@ -478,10 +477,7 @@ export async function computeSingleRegionGeometrySSE(
       totalPoints: stats.totalPoints,
     });
 
-    const shouldSimplify = stats.totalPoints > 300000;
-    if (shouldSimplify) logStep('Will simplify geometries before merging (>300k points)');
-
-    await client.query(`SET statement_timeout = '${GEOMETRY_QUERY_TIMEOUT_MS}'`);
+    await client.query(`SET statement_timeout = '${GEOMETRY_STATEMENT_TIMEOUT_MS.request}'`);
 
     // shortCircuitForCustomBoundary above has turned a hand-drawn boundary away;
     // see computeSingleMemberFastPath's docstring for the rest of the eligibility rules.
@@ -491,7 +487,7 @@ export async function computeSingleRegionGeometrySSE(
 
     const pipelineResult: UnionPipelineResult | null = fastResult
       ? { finalPoints: fastResult.points, usesHull: regionRow.uses_hull }
-      : await runUnionPipelineSteps(client, regionId, stats, shouldSimplify, skipSnapping, logStep);
+      : await runUnionPipelineSteps(client, regionId, stats, skipSnapping, logStep);
 
     if (!pipelineResult) {
       // Don't reset/release here — the outer `finally` already does both.
@@ -538,11 +534,14 @@ export async function computeSingleRegionGeometrySSE(
     // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- regionId is a number
     console.error(`[ComputeSingle SSE] Error for region ${regionId}:`, errorMessage);
 
-    const isTimeout = errorMessage.includes('statement timeout') || errorMessage.includes('canceling statement');
+    // A union of full-resolution inputs can outgrow a request's bound (#459),
+    // its children's in the pre-step included: this region's geometry was not
+    // written, and the world view's computation, which runs in the dump worker
+    // with a longer bound, is the way to compute it.
     sendEvent({
       type: 'error',
-      message: isTimeout
-        ? 'Query timeout - region is too large. Consider using a hull instead.'
+      message: isQueryCanceled(err)
+        ? `This region is too large to compute here within ${GEOMETRY_STATEMENT_TIMEOUT_MS.request / 60_000} minutes, and its geometry was not saved. Compute the world view's geometries instead: the dump worker runs them with a ${GEOMETRY_STATEMENT_TIMEOUT_MS.worker / 60_000}-minute bound.`
         : 'The geometry could not be computed; the server log has the cause.',
       elapsed: elapsed(),
     });

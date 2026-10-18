@@ -11,6 +11,7 @@ import type {
 } from '../../types/index.js';
 import { pool } from '../../db/index.js';
 import { inRegionTransaction, saveDrawnOutline } from '../../db/regionWriter.js';
+import { GEOMETRY_STATEMENT_TIMEOUT_MS } from './geometryTimeouts.js';
 
 /**
  * The regions in scope, deepest first.
@@ -245,7 +246,14 @@ export async function resetRegionToMembers(
  * Also updates 3857 projections and simplified versions for vector tiles.
  */
 export async function recomputeRegionGeometry(regionId: number): Promise<{ computed: boolean; points?: number }> {
-  const result = await pool.query(`
+  // Under a request's bound, as the stream it serves (#459): a child that a
+  // worker run cleared after a timeout, a continent, would otherwise be
+  // unioned here with no limit at all.
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    await client.query(`SET LOCAL statement_timeout = '${GEOMETRY_STATEMENT_TIMEOUT_MS.request}'`);
+    const result = await client.query(`
     WITH direct_member_geoms AS (
       SELECT ST_MakeValid(COALESCE(rm.custom_geom, ad.geom)) as geom
       FROM region_members rm
@@ -274,9 +282,15 @@ export async function recomputeRegionGeometry(regionId: number): Promise<{ compu
       AND m.merged_geom IS NOT NULL
     RETURNING ST_NPoints(r.geom) as points
   `, [regionId]);
-
-  return {
-    computed: result.rows.length > 0,
-    points: result.rows[0]?.points,
-  };
+    await client.query('COMMIT');
+    return {
+      computed: result.rows.length > 0,
+      points: result.rows[0]?.points,
+    };
+  } catch (error) {
+    await client.query('ROLLBACK').catch(() => undefined);
+    throw error;
+  } finally {
+    client.release();
+  }
 }

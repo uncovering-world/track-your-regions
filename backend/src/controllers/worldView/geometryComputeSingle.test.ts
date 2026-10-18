@@ -131,13 +131,42 @@ describe('computeRegionGeometryCore answers a failed pipeline softly', () => {
       if (s.includes('member_points')) {
         return { rows: [{ member_points: '900000', child_points: '900000', child_count: '4', child_row_count: '4', member_count: '9' }] };
       }
-      if (s.includes('ST_Collect')) throw new Error('canceling statement due to statement timeout');
+      if (s.includes('ST_Collect')) throw new Error('Connection terminated unexpectedly');
       return respond(s);
     });
 
     const result = await computeRegionGeometryCore(42);
     expect(result).toMatchObject({ computed: false });
-    expect(result.error).toContain('statement timeout');
+    expect(result.timedOut).toBeUndefined();
+    expect(result.error).toContain('Connection terminated');
+  });
+
+  /**
+   * A union of full-resolution inputs that outruns the worker's bound leaves
+   * no outline older than its members standing, and says so (#459): the
+   * region's geometry is cleared, and the run counts an error.
+   */
+  it('clears the region and answers a timeout when a statement outruns the worker bound (#459)', async () => {
+    client.query.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      if (s.includes('member_points')) {
+        return { rows: [{ member_points: '2400000', child_points: '2000000', child_count: '50', child_row_count: '50', member_count: '0' }] };
+      }
+      if (s.includes('ST_UnaryUnion')) {
+        throw Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' });
+      }
+      if (s.includes('direct_member_geoms')) return { rows: [{ collected_geom: { sentinel: 'collected' }, geom_count: '50' }] };
+      return respond(s);
+    });
+
+    const result = await computeRegionGeometryCore(6737, { skipSnapping: true });
+
+    expect(result).toMatchObject({ computed: false, timedOut: true });
+    expect(result.error).toContain('30-minute bound');
+    const sqls = client.query.mock.calls.map((c) => [String(c[0]), c[1]] as const);
+    expect(client.release).toHaveBeenLastCalledWith(undefined);
+    expect(sqls.some(([s]) => s === "SET statement_timeout = '1800000'")).toBe(true);
+    expect(sqls).toContainEqual(['UPDATE regions SET geom = NULL WHERE id = $1 AND is_custom_boundary IS NOT TRUE', [6737]]);
   });
 });
 
@@ -156,12 +185,6 @@ describe('computeRegionGeometryCore answers a failed pipeline softly', () => {
  * and none may carry a coarsening call. Naming the sink is what makes it fail
  * for a tolerance reintroduced under another name, or moved one statement
  * earlier.
- *
- * The collect step is the single exception, and a narrow one: it legitimately
- * carries the input-side timeout guard above 300,000 points (#459), so what is
- * asserted there is that its *only* coarsening calls are the ones under
- * `CASE WHEN $2` — the bound parameter alone would say nothing about a tolerance
- * written into the `ELSE` arm.
  *
  * The rule and the whole assertion sequence live in `unionGeomToleranceGuard.ts`,
  * shared with the SSE writer's guard, so a widening reaches both writers or
@@ -294,5 +317,55 @@ describe('the snap keeps the direct members a mixed region holds', () => {
   it('carries the members through the snap into the union', async () => {
     await computeRegionGeometryCore(42, { skipSnapping: false });
     expectMembersKept();
+  });
+});
+
+/**
+ * The worker's stop reaches a statement in flight (#459): a union may run up
+ * to the half-hour bound, and waiting it out would leave it running beside the
+ * next worker's if this one were killed meanwhile.
+ */
+describe('computeRegionGeometryCore under the worker stop', () => {
+  beforeEach(() => {
+    client.query.mockReset();
+    client.release.mockReset();
+    poolQuery.mockReset();
+    poolQuery.mockResolvedValue({ rows: [], rowCount: 1 });
+  });
+
+  it('cancels its statement in the database, writes nothing and closes the connection', async () => {
+    const stop = new AbortController();
+    Object.assign(client, { processID: 4242 });
+    client.query.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      if (s.includes('member_points')) return { rows: [UNION_SHAPE] };
+      if (s.includes('direct_member_geoms')) {
+        stop.abort();
+        throw Object.assign(new Error('canceling statement due to user request'), { code: '57014' });
+      }
+      return respond(s);
+    });
+
+    const result = await computeRegionGeometryCore(6737, { signal: stop.signal });
+
+    expect(result).toMatchObject({ computed: false, stopped: true });
+    expect(poolQuery).toHaveBeenCalledWith('SELECT pg_cancel_backend($1)', [4242]);
+    const sqls = client.query.mock.calls.map((c) => String(c[0]));
+    expect(sqls.some((s) => s.includes('SET geom'))).toBe(false);
+    expect(client.release).toHaveBeenCalledWith(true);
+  });
+
+  it('cancels at once a stop that landed before it took its client, and starts no statement after a stop', async () => {
+    const stop = new AbortController();
+    stop.abort();
+    Object.assign(client, { processID: 4343 });
+    client.query.mockImplementation(async (sql: string) => respond(String(sql)));
+
+    const result = await computeRegionGeometryCore(6737, { signal: stop.signal });
+
+    expect(result).toMatchObject({ computed: false, stopped: true });
+    expect(poolQuery).toHaveBeenCalledWith('SELECT pg_cancel_backend($1)', [4343]);
+    const sqls = client.query.mock.calls.map((c) => String(c[0]));
+    expect(sqls.some((s) => s.includes('direct_member_geoms') || s.includes('SET geom'))).toBe(false);
   });
 });
