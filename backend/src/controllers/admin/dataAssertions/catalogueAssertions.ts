@@ -75,6 +75,7 @@ import { objectAssertions } from './objectAssertions.js';
 import { workAssertions } from './workAssertions.js';
 import { regionGeometryAssertions } from './regionGeometryAssertions.js';
 import { borderPlacementAssertions } from './borderPlacementAssertions.js';
+import { unplacedAssertions } from './unplacedAssertions.js';
 
 export type { AnyAssertion, AssertionRow, CatalogueAssertion } from './assertion.js';
 
@@ -327,112 +328,6 @@ const visitsOnPlacesNoReaderIsShown: CatalogueAssertion = {
     const place = text(row, 'place_name') || `location ${count(row, 'location_id')}`;
     return `${text(row, 'experience_name')} — ${place}: `
       + `${ticks} ${ticks === 1 ? 'visit' : 'visits'} on a place no reader is shown`;
-  },
-};
-
-/**
- * An object a reader is offered that no region holds.
- *
- * The first assertion this lane carries about *where things are* rather than
- * about the places themselves, and the first one the catalogue does not pass:
- * 28 objects on the dev catalogue the day it was written. It is here for both
- * reasons — the fact is worth reporting, and a lane whose whole design rests
- * on carrying known debt should be proved against real debt rather than
- * against an empty result.
- *
- * What it means on the ground: the object is in search and on the map, and
- * browsing cannot reach it. Every region page a traveller opens is a list of
- * what is there, and this object is in none of them, so the only way to find
- * it is to already know its name.
- *
- * The known cause is a matching gap rather than a defect in the roll-up — a
- * point that falls just outside every region's boundary (#469) or lies
- * offshore (#470) is placed nowhere at all. That is why the remedy is a
- * curator's manual claim or a better match, and why this number is expected to
- * be worked down rather than to be zero tomorrow.
- *
- * Membership is read whole here, not through `readerRegionMembershipSql`. That
- * fragment answers "may this reader be shown this object *in this region*",
- * which needs a region to be about; the question here is whether **any** row
- * puts the object anywhere, and an object held only by a row a reader cannot
- * see is the previous assertion's business rather than this one's.
- */
-const heldByNoRegion: CatalogueAssertion = {
-  id: 'held-by-no-region',
-  area: 'regions',
-  title: 'An object offered to readers that no region holds',
-  kind: 'invariant',
-  meaning:
-    'The object cannot be found by browsing: no region page lists it, though search and the map '
-    + 'still have it. Usually a point that fell outside every boundary (#469) or lies offshore '
-    + '(#470); the remedies are a better match or a curator placing it by hand.',
-  sql: `SELECT e.id AS experience_id,
-               e.name AS experience_name,
-               e.external_id AS external_id,
-               array_to_string(e.country_names, ', ') AS countries
-          FROM experiences e
-         WHERE ${hideLostSql()}
-           AND ${experienceOfferedToReaderSql()}
-           AND NOT EXISTS (SELECT 1 FROM experience_regions er
-                            WHERE er.experience_id = e.id)
-         ORDER BY e.name`,
-  describe: row => {
-    const where = text(row, 'countries') || 'no country named';
-    return `${text(row, 'experience_name')} (${text(row, 'external_id')}): in ${where}, `
-      + `and in no region (experience ${count(row, 'experience_id')})`;
-  },
-};
-
-/**
- * A place the source still offers that no region holds.
- *
- * The point-level half of the assertion above, and where its 28 objects come
- * from: 173 offered points carry no `experience_location_regions` row at all.
- * Both are worth asking. An object no region holds cannot be browsed to; a
- * point no region holds is a pin that votes nowhere, and an object with several
- * places can be perfectly findable while one of its components is not counted
- * anywhere.
- *
- * The predicate is placement's own, not a reader's, and that is the point:
- * placement writes from every *offered* point, unread ones included, precisely
- * so a region curator's queue is not empty (ADR-0025 decision 5). So an offered
- * point missing from the roll-up is placement not having reached it, whatever a
- * reader may see of it. One exception, and it is placement's own too: a point a
- * curator turned down (ADR-0053) is still offered on the source's terms but
- * never to be published, so placement gives it no row on purpose — carried here
- * as `refused_at IS NULL`, or every refusal would read as a failed run.
- *
- * Read as a traveller would: Aldabra Atoll, the Great Barrier Reef, Bikini
- * Atoll, Cordouan Lighthouse standing in the Gironde estuary. What these have
- * in common is water — a boundary set built from land polygons has nowhere to
- * put them (#470), and a point a few metres outside a coastline has the same
- * problem for a different reason (#469).
- */
-const offeredPlaceInNoRegion: CatalogueAssertion = {
-  id: 'offered-place-in-no-region',
-  area: 'regions',
-  title: 'A place the source still offers that no region holds',
-  kind: 'invariant',
-  meaning:
-    'Placement never put this point anywhere, so it counts towards no region and votes on no '
-    + 'membership. Offshore and just-outside-the-boundary points are the known causes (#470, #469); '
-    + 'a jump in this number means a placement run failed rather than a coastline being awkward.',
-  sql: `SELECT el.id AS location_id,
-               el.name AS place_name,
-               e.id AS experience_id,
-               e.name AS experience_name
-          FROM experience_locations el
-          -- Named by the object a reader finds it under: a part's site (ADR-0100).
-          JOIN experiences e ON e.id = ${answeringPlaceSql()}
-         WHERE ${offeredLocationSql()}
-           AND el.refused_at IS NULL
-           AND NOT EXISTS (SELECT 1 FROM experience_location_regions r
-                            WHERE r.location_id = el.id)
-         ORDER BY e.name, el.id`,
-  describe: row => {
-    const place = text(row, 'place_name') || `location ${count(row, 'location_id')}`;
-    return `${text(row, 'experience_name')} — ${place}: on offer and in no region `
-      + `(location ${count(row, 'location_id')})`;
   },
 };
 
@@ -744,8 +639,7 @@ export const catalogueAssertions: CatalogueAssertion[] = [
   twoOfferedPlacesAtOneReference,
   listedWithNowhereToGo,
   visitsOnPlacesNoReaderIsShown,
-  heldByNoRegion,
-  offeredPlaceInNoRegion,
+  ...unplacedAssertions,
   ...regionGeometryAssertions,
   ...borderPlacementAssertions,
   ...divisionTreeAssertions,
