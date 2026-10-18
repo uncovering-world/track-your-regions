@@ -117,15 +117,34 @@ const STEP = {
 export const FINDER_STEPS = Object.keys(STEP).length;
 
 /**
+ * A point the World Heritage list gives (`$1` is its source): one a World
+ * Heritage membership places, or one no membership places, as every point was
+ * before the placements (ADR-0084). A point another kind added to the place —
+ * Places of worship's own point on Aachen Cathedral — is that source's, not a
+ * component: it carries its item as its reference already, and read as a
+ * component it was offered the cathedral's pipe organs.
+ */
+const listsPoint = (alias: string) => `(EXISTS (SELECT 1 FROM experience_location_placements pl
+                    JOIN experience_kind_memberships pm ON pm.id = pl.membership_id
+                   WHERE pl.location_id = ${alias}.id AND pm.source_id = $1)
+               OR NOT EXISTS (SELECT 1 FROM experience_location_placements any_placement
+                   WHERE any_placement.location_id = ${alias}.id))`;
+
+/**
  * One arm of the points a World Heritage site shows (ADR-0100): its own, and
  * its parts' — the Temple of Karnak is read as a component of Ancient Thebes,
- * and the site's standing points count it.
+ * and the site's standing points count it. Only the points the list gives
+ * (`listsPoint`) are counted, and each read point says whether it is one
+ * (`listed`), so another kind's point neither stands as a component nor makes
+ * a one-point site look like two, while a proposal an earlier pass made for
+ * it can still be cleared.
  */
 function sitePointsArm({ from, placeId }: PlacePointArm): string {
   return `SELECT el.id, el.name, ST_Y(el.location) AS lat, ST_X(el.location) AS lon,
             ${placeId} AS experience_id, el.external_ref, m.wikidata_items, e.name AS site_name,
+            ${listsPoint('el')} AS listed,
             (SELECT count(*)::int FROM ${pointsShownSql(placeId, 's')}
-              WHERE s.missing_since IS NULL AND s.merged_into_id IS NULL) AS standing_points
+              WHERE s.missing_since IS NULL AND s.merged_into_id IS NULL AND ${listsPoint('s')}) AS standing_points
        FROM ${from}
        JOIN experience_kind_memberships m ON m.experience_id = ${placeId} AND m.source_id = $1
       WHERE el.wikidata_item IS NULL
@@ -139,24 +158,30 @@ function sitePointsArm({ from, placeId }: PlacePointArm): string {
  * The components no item records and no curator has claimed one for, less the
  * ones that stand for their whole site (`standsForWholeSite`): a site of one
  * point, or a point named like the site, is the site's own item, and anything
- * near it is a building inside rather than the place.
+ * near it is a building inside rather than the place. `clearedIds` are the
+ * points the pass answers for without searching them: those whole-site
+ * points, and the points another kind gives the place, whose open proposals
+ * from an earlier pass are cleared (the Aachen organ, offered before
+ * `listsPoint`).
  */
-async function readPoints(siteId?: number): Promise<{ points: PointRow[]; wholeSites: number; wholeSiteIds: number[] }> {
+async function readPoints(siteId?: number): Promise<{ points: PointRow[]; wholeSites: number; clearedIds: number[] }> {
   const result = await pool.query<{
     id: number; name: string | null; lat: number; lon: number; experience_id: number; external_ref: string;
-    wikidata_items: string[] | null; site_name: string; standing_points: number;
+    wikidata_items: string[] | null; site_name: string; standing_points: number; listed: boolean;
   }>(
     overPlacePoints(sitePointsArm),
     [UNESCO_SOURCE_ID],
   );
-  const read: PointRead[] = result.rows.filter(row => siteId === undefined || row.experience_id === siteId).map(row => ({
+  const rows = result.rows.filter(row => siteId === undefined || row.experience_id === siteId);
+  const read: PointRead[] = rows.filter(row => row.listed).map(row => ({
     locationId: row.id, name: row.name, lat: row.lat, lon: row.lon,
     experienceId: row.experience_id, siteItems: row.wikidata_items ?? [], externalRef: row.external_ref,
     siteName: row.site_name, standingPoints: row.standing_points,
   }));
   const points = read.filter(p => !standsForWholeSite(p.name, p.siteName, p.standingPoints));
   const wholeSiteIds = read.filter(p => !points.includes(p)).map(p => p.locationId);
-  return { points, wholeSites: wholeSiteIds.length, wholeSiteIds };
+  const othersIds = rows.filter(row => !row.listed).map(row => row.id);
+  return { points, wholeSites: wholeSiteIds.length, clearedIds: [...wholeSiteIds, ...othersIds] };
 }
 
 /** The items components already are, per site: what the site's kind is learned from, and what is never proposed again. */
@@ -445,7 +470,7 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
   let queries = 0;
   const counted: QueryHooks = { ...hooks, onQuery: () => { queries += 1; hooks.onQuery?.(); } };
 
-  const [{ points, wholeSites, wholeSiteIds }, resolved, refused] = await Promise.all([readPoints(options.siteId), readResolved(), readRefused()]);
+  const [{ points, wholeSites, clearedIds }, resolved, refused] = await Promise.all([readPoints(options.siteId), readResolved(), readRefused()]);
   const taken = new Set([...resolved.values()].flat());
   const labels = new Map<string, ItemLabels>();
   /** The candidates of one point that are free and close enough to be read. */
@@ -513,10 +538,10 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
   const proposals = await coded(onePerItem(matches), points, counted, onStep);
   // Every question the pass asks has an answer, so the pass answers for every
   // point it read: what an earlier pass proposed and this one does not find
-  // is cleared. A point that stands for its whole site is answered for too:
-  // nothing is proposed for it.
+  // is cleared. A point that stands for its whole site, and a point another
+  // kind gives the place, are answered for too: nothing is proposed for them.
   if (options.write && !hooks.isCancelled?.()) {
-    await writeProposals([...points.map(p => p.locationId), ...wholeSiteIds], proposals);
+    await writeProposals([...points.map(p => p.locationId), ...clearedIds], proposals);
   }
   return {
     matches: proposals,
