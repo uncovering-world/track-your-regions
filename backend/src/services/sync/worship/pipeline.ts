@@ -39,7 +39,6 @@ import { fetchMuseumClasses, type PoolWork } from '../museum/queries.js';
 import {
   collectWorks,
   heldBy,
-  toContent,
   withEnglishArticles,
   MUSEUM_BROAD_ROOTS,
   MUSEUM_WHOLE_ROOTS,
@@ -64,6 +63,7 @@ import type { ClosureOptions } from '../classClosure.js';
 import { unique, type QueryRunner, type SparqlFn } from '../wikidataQueries.js';
 import type { FilteredEntity } from '../syncContract.js';
 import type { ProcessedContent } from '../types.js';
+import { admittingWork, doorNote, readContent, type DoorWork, type ReadershipDoor } from '../readershipDoor.js';
 
 const LOG_PREFIX = '[Worship Sync]';
 
@@ -89,6 +89,11 @@ export interface CollectedPlaceOfWorship {
   /** The work that admitted it, where a work did — the most famous of them. */
   admittedFor?: { qid: string; label: string };
   door: 'place' | 'work' | 'both';
+  /**
+   * The curator's question on a place only the readership door admitted
+   * (ADR-0056): the work, its year, the bar and its burst flag.
+   */
+  readershipNote?: string;
 }
 
 export interface CollectedWorship {
@@ -126,6 +131,11 @@ export interface WorshipPipelineDeps {
    * (`readHandOvers`); the test passes none.
    */
   handOvers?: ReadonlyMap<string, HandOver>;
+  /**
+   * The readership door over the pool's works (ADR-0056, `openReadershipDoor`),
+   * or nothing while the source's gate is off or the year cannot be read.
+   */
+  openDoor?: (works: DoorWork[]) => Promise<ReadershipDoor | null>;
 }
 
 /** A door-two venue the rule admits, with the iconic works that named it. */
@@ -245,18 +255,6 @@ function foldsOntoAdmitted(
 // What the run hands back
 // =============================================================================
 
-/** The most famous of the works that admitted a place: the one its card names. */
-function admittingWork(
-  iconic: string[],
-  pool: Map<string, PoolWork>,
-): { qid: string; label: string } | undefined {
-  const best = iconic
-    .map((qid) => pool.get(qid))
-    .filter((work): work is PoolWork => !!work)
-    .sort((a, b) => b.sitelinks - a.sitelinks)[0];
-  return best ? { qid: best.qid, label: best.label } : undefined;
-}
-
 function itemOf(
   qid: string,
   byFame: PlaceCandidate | undefined,
@@ -264,12 +262,14 @@ function itemOf(
   graph: VenueGraph,
   works: PoolWork[],
   pool: Map<string, PoolWork>,
+  readership: ReadershipDoor | null,
 ): CollectedPlaceOfWorship | undefined {
   const row = byFame?.entity ?? graph.details.get(qid);
   if (!row || row.lat === null || row.lon === null) return undefined;
   const classes = byFame?.classes ?? graph.facts(qid)?.classes ?? [];
   let door: CollectedPlaceOfWorship['door'] = 'work';
   if (byFame) door = venue ? 'both' : 'place';
+  const admitting = venue ? admittingWork(venue.iconic, pool, readership) : undefined;
   return {
     qid,
     label: row.label,
@@ -283,9 +283,12 @@ function itemOf(
     website: row.website,
     type: byFame?.type ?? venue?.type ?? null,
     classes,
-    artworks: works.map(toContent),
-    admittedFor: venue ? admittingWork(venue.iconic, pool) : undefined,
+    artworks: works.map((work) => readContent(work, readership)),
+    admittedFor: admitting ? { qid: admitting.work.qid, label: admitting.work.label } : undefined,
     door,
+    // A place its own fame admits needs no question about a work.
+    ...(admitting?.read && readership && !byFame
+      ? { readershipNote: doorNote(admitting.work.label, admitting.read, readership) } : {}),
   };
 }
 
@@ -322,6 +325,13 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
   // A fold may only hand a chapel's works to a place this kind could admit.
   let works = foldsOntoAdmitted(collected, new Set(byFame.places.keys()), trees);
 
+  // The second door (ADR-0056): a work below the line the world reads admits
+  // its holder as a work at the line does.
+  run.phase('Reading what the world reads of the works below the line...');
+  const readership = deps.openDoor
+    ? await deps.openDoor([...works.pool.values()].map((work) => ({ qid: work.qid, sitelinks: work.sitelinks })))
+    : null;
+
   run.phase('Deciding which places their treasures admit...');
   const oursFromThePool = ourWorks(works, museumClasses, trees, byFame.classesOf, 'from the pool');
   const tier = selectTier1([...works.pool.values()].map((work) => ({
@@ -329,6 +339,7 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
     sitelinks: work.sitelinks,
     venues: oursFromThePool[work.qid] ?? [],
     multipleMedium: work.typeQid !== null && works.editionClasses.has(work.typeQid),
+    read: !!readership?.opened.has(work.qid),
   })), { threshold: deps.line.enterSitelinks });
   const { venues, refused } = admitVenues(tier, works.graph, trees);
 
@@ -370,7 +381,7 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
   const items: CollectedPlaceOfWorship[] = [];
   for (const qid of admitted) {
     const item = itemOf(
-      qid, byFame.places.get(qid), venues.get(qid), works.graph, held.get(qid) ?? [], works.pool,
+      qid, byFame.places.get(qid), venues.get(qid), works.graph, held.get(qid) ?? [], works.pool, readership,
     );
     if (item) items.push(item);
   }

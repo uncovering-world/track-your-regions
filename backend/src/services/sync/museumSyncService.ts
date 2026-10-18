@@ -48,6 +48,8 @@ import {
 } from './imageCredit.js';
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 import { readHandOvers } from './handOvers.js';
+import { readershipDoorFor } from './readershipDoor.js';
+import { ICONIC_SITELINKS } from './museum/tier1.js';
 import { readsSubset } from './subset/reader.js';
 import { unreadOnSubset, wikidataRunDoor } from './subset/runDoor.js';
 // Museums use remote Wikimedia URLs, no local image storage
@@ -268,6 +270,8 @@ async function fetchMuseumItems(
     previousPlacements,
     // What other kinds refused as held at a museum (ADR-0102).
     handOvers: await readHandOvers(MUSEUM_SOURCE_ID),
+    // A work below the line the world reads (ADR-0056), while the gate is on.
+    openDoor: await readershipDoorFor(MUSEUM_SOURCE_ID, ICONIC_SITELINKS, LOG_PREFIX),
     onPhase: (message) => { progress.statusMessage = message; },
     checkCancel: () => {
       if (progress.cancel) throw new Error('Sync cancelled');
@@ -385,6 +389,13 @@ async function upsertMuseumExperience(
     // this run fetched, or the row's own credit where the picture has not
     // changed — never the one from a different photograph. See `creditToWrite`.
     ...creditPatch(museum.qid, details.imageUrl),
+    // The question a museum the readership door alone admitted puts to a
+    // curator (ADR-0056). Null otherwise: the upsert writes only the keys a run
+    // sends, so a note left out would stand on a museum the line now admits.
+    // A key of this kind's own: the place is shared, and another source's
+    // run writes it as the place holds it, as this run writes Archaeology's
+    // admissionNote and the worship door's note (`fieldFamilies.ts`).
+    museumReadershipNote: museum.readershipNote ?? null,
   };
 
   // Store remote Wikimedia URL directly (thumbnailing handled by frontend)

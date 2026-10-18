@@ -50,6 +50,7 @@ import {
 } from './imageCredit.js';
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 import { readHandOvers } from './handOvers.js';
+import { readershipDoorFor } from './readershipDoor.js';
 import { readsSubset } from './subset/reader.js';
 import { unreadOnSubset, wikidataRunDoor } from './subset/runDoor.js';
 
@@ -199,6 +200,8 @@ async function fetchWorshipItems(
     line,
     // What other kinds refused as held at a place of worship (ADR-0102).
     handOvers: await readHandOvers(WORSHIP_SOURCE_ID),
+    // A work below the line the world reads (ADR-0056), while the gate is on.
+    openDoor: await readershipDoorFor(WORSHIP_SOURCE_ID, line.enterSitelinks, LOG_PREFIX),
     onPhase: (message) => { progress.statusMessage = message; },
     checkCancel: () => {
       if (progress.cancel) throw new Error('Sync cancelled');
@@ -292,6 +295,10 @@ async function processPlace(
     // fetched, or the row's own credit where the picture has not changed —
     // never the one from a different photograph. See `creditToWrite`.
     ...creditPatch(place.qid, place.imageUrl),
+    // The question a place the readership door alone admitted puts to a curator
+    // (ADR-0056). Null otherwise: the upsert writes only the keys a run sends.
+    // A key of this kind's own, as the museum door's is: the place is shared.
+    worshipReadershipNote: place.readershipNote ?? null,
   };
 
   const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({

@@ -376,7 +376,7 @@ describe('getReviewQueue', () => {
     // to prevent.
     for (const kind of ["'arrival' AS kind", "'held' AS kind", "'contents' AS kind"]) {
       const [sql] = callMatching(kind);
-      expect(sql).toContain("metadata->>'admissionNote' AS admission_note");
+      expect(sql).toMatch(/metadata->>'admissionNote',\s*\S+\.metadata->>'museumReadershipNote',\s*\S+\.metadata->>'worshipReadershipNote'\), ''\) AS admission_note/);
     }
   });
 
