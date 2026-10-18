@@ -2,6 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { writeExperienceLocations, type LocationWriteRun } from '../../services/sync/locationWriter.js';
 import { mergePlaces, undoMerge } from './placeMerge.js';
+import { mergeEqualItems } from './equalItemMerges.js';
 import { editLocation } from './locationEditController.js';
 
 /**
@@ -195,5 +196,50 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
     expect((await undoMerge(mergeId, adminId)).refusal).toBeUndefined();
     const temple = await pool.query<{ name: string }>('SELECT name FROM experiences WHERE id = $1', [templeId]);
     expect(temple.rows[0].name).toBe('Temple of Amun-Ra at Karnak');
+  });
+
+  describe('the catalogue\'s merge on an equal item (#1250)', () => {
+    const ITEM = 'Q99952286';
+    /** The complex known by the item, and the given components' points carrying it as their item. */
+    async function itemOn(...refs: string[]): Promise<void> {
+      await pool.query(`UPDATE experience_kind_memberships SET external_id = $2 WHERE experience_id = $1`, [COMPLEX, ITEM]);
+      await pool.query(
+        `UPDATE experience_locations el SET wikidata_item = $1
+           FROM experience_parts p WHERE p.whole_id = $2 AND el.experience_id = p.part_id AND p.external_ref = ANY($3::text[])`,
+        [ITEM, THEBES, refs],
+      );
+    }
+
+    it('folds a component part into the place of another kind its item names', async () => {
+      await itemOn(KARNAK.externalRef);
+      const templeId = (await parts()).find(p => p.external_ref === KARNAK.externalRef)!.part_id;
+      const report = await mergeEqualItems([ITEM]);
+      expect(report.merged).toMatchObject([{ qid: ITEM, survivorId: COMPLEX, foldedId: templeId, name: 'Karnak Temple Complex' }]);
+      expect((await parts())[0]).toMatchObject({ external_ref: '87-001', part_id: COMPLEX });
+    });
+
+    it('waits while the place the item names is an arrival nobody has passed', async () => {
+      await itemOn(KARNAK.externalRef);
+      // The complex as a gated source's run leaves it: its membership an arrival nobody has passed.
+      await pool.query('DELETE FROM experience_kind_memberships WHERE experience_id = $1', [COMPLEX]);
+      await pool.query(
+        `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state)
+         SELECT $1, s.kind_id, s.id, $2, 'pending' FROM experience_sources s WHERE s.name = 'Places of worship'`,
+        [COMPLEX, ITEM],
+      );
+      const report = await mergeEqualItems([ITEM]);
+      expect(report.merged).toEqual([]);
+      expect(report.refused).toMatchObject([{
+        qid: ITEM, name: 'Karnak Temple Complex',
+        error: 'A component part waits until the place its item names is published, and merges on the next pass after that',
+      }]);
+      expect((await parts())[0].part_id).not.toBe(COMPLEX);
+    });
+
+    it('takes an item two components hold for their ensemble\'s, and merges neither', async () => {
+      await itemOn(KARNAK.externalRef, LUXOR.externalRef);
+      const report = await mergeEqualItems([ITEM]);
+      expect(report).toEqual({ merged: [], refused: [] });
+    });
   });
 });
