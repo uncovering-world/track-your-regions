@@ -49,11 +49,14 @@
  *   searched in degrees widened by the point's latitude, so a neighbour a
  *   kilometre east of a place in Iceland is reached;
  * - the item a membership names, or, for a World Heritage row known by
- *   UNESCO's number, the subset's item carrying that number (`P757`);
+ *   UNESCO's number, the item that number resolves to, as the run stored it
+ *   on the membership (`wikidata_items`, ADR-0088): looking the number up in
+ *   `wikidata_claims` has no index to use and reads every claim, about half a
+ *   minute for each such row;
  * - region and item matched by English label, either containing the other.
  *
- * About four seconds over the development catalogue, most of it the distance
- * to the neighbour.
+ * Eleven seconds over the development catalogue on 2026-10-18, on a machine
+ * under load.
  */
 
 import { experienceOfferedToReaderSql, hideLostSql } from '../../../db/readerPredicates.js';
@@ -97,8 +100,7 @@ const nearBorderUnconfirmed: CatalogueAssertion = {
                  COALESCE(
                    (SELECT km.external_id FROM ${MEMBERSHIPS} km
                      WHERE km.experience_id = e.id AND km.external_id ~ '^Q[0-9]+$' ORDER BY km.id LIMIT 1),
-                   (SELECT min(c.subject) FROM ${MEMBERSHIPS} km
-                      JOIN wikidata_claims c ON c.property = 'P757' AND c.value #>> '{}' = km.external_id
+                   (SELECT min(item) FROM ${MEMBERSHIPS} km, unnest(km.wikidata_items) item
                      WHERE km.experience_id = e.id AND km.source_id = ${WORLD_HERITAGE_SOURCE})) AS item
             FROM experiences e
             JOIN experience_regions er ON er.experience_id = e.id AND er.assignment_type = 'auto'
