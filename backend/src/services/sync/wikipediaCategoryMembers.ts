@@ -104,6 +104,8 @@ export interface CategoryWalkOptions extends CategoryOptions {
    * one of the article's own categories.
    */
   shelves?: Map<string, string[]>;
+  /** What the walk reads; the live API, by the options' manners, where none is given. */
+  reads?: CategoryReads;
 }
 
 /** What one category's own articles came to. */
@@ -112,61 +114,97 @@ interface Tally { pages: number; itemless: number }
 /** A count in English, because a log line an admin reads is prose. */
 const count = (n: number, one: string, many = `${one}s`): string => `${n} ${n === 1 ? one : many}`;
 
+/** A page the walk reads: its title, and the Wikidata item it is about where it names one. */
+export interface WalkedPage { title: string; item: string | null }
+
 /**
- * One category's articles, folded into the map under the title each is filed
- * by, as many requests as the continuations require.
- *
- * An article carrying no `wikibase_item` is counted and skipped rather than
- * guessed at — a title is not an id, and the walk answers in ids. A category
- * holding no articles at all answers with no `query` in it, which is the live
- * API's way of saying empty and not a refusal: `Archaeological museums by
- * country` itself is one, since every museum is in a country.
+ * What the walk reads of English Wikipedia, whichever copy it reads: the live
+ * Action API (`liveReads`) or the structure kept from the dumps
+ * (`structureCategoryReads`, #1440). The walk's rule — which subcategories it
+ * follows, how deep, what an eponymous category stands for — is the same over
+ * either.
  */
-async function readCategoryPages(
-  category: string, options: CategoryWalkOptions, budget: WaitBudget, into: Map<string, string>,
-): Promise<Tally> {
-  const tally: Tally = { pages: 0, itemless: 0 };
-  let cont: Record<string, string> | undefined = {};
-  let asks = 0;
-  while (cont) {
-    const answer = await askWikipediaOnce(
-      { ...MEMBER_QUERY, gcmtitle: category, ...cont },
-      options, budget, `the pages of "${category}"`,
-    );
-    asks += 1;
-    for (const page of pagesOf(answer)) {
-      if (!page.title) continue;
-      tally.pages += 1;
-      const qid = page.pageprops?.wikibase_item;
-      if (qid) into.set(page.title, qid);
-      else tally.itemless += 1;
-    }
-    cont = nextContinuation(answer, asks, `the pages of "${category}"`);
-    if (options.pause) await options.pause();
-  }
-  return tally;
+export interface CategoryReads {
+  /** A category's own pages, every namespace but categories and files. */
+  pages(category: string): Promise<WalkedPage[]>;
+  /** A category's subcategories, by title with the `Category:` prefix. */
+  subcategories(category: string): Promise<string[]>;
+  /** The articles of exactly these titles that carry an item; a missing page or a redirect has none. */
+  articles(titles: string[], category: string): Promise<Array<{ title: string; item: string }>>;
 }
 
-/** The titles of one category's subcategories, as many requests as it takes. */
-async function readSubcategories(
-  category: string, options: CategoryWalkOptions, budget: WaitBudget,
-): Promise<string[]> {
-  const titles: string[] = [];
-  let cont: Record<string, string> | undefined = {};
-  let asks = 0;
-  while (cont) {
-    const answer = await askWikipediaOnce(
-      { ...SUBCATEGORY_QUERY, cmtitle: category, ...cont },
-      options, budget, `the subcategories of "${category}"`,
-    );
-    asks += 1;
-    for (const member of answer.query?.categorymembers ?? []) {
-      if (member.title) titles.push(member.title);
-    }
-    cont = nextContinuation(answer, asks, `the subcategories of "${category}"`);
-    if (options.pause) await options.pause();
+/** The walk's reads asked of the live API, as many requests as the continuations take, a pause after each. */
+export function liveReads(options: CategoryOptions, budget: WaitBudget): CategoryReads {
+  return {
+    async pages(category) {
+      const found: WalkedPage[] = [];
+      let cont: Record<string, string> | undefined = {};
+      let asks = 0;
+      while (cont) {
+        const answer = await askWikipediaOnce(
+          { ...MEMBER_QUERY, gcmtitle: category, ...cont },
+          options, budget, `the pages of "${category}"`,
+        );
+        asks += 1;
+        for (const page of pagesOf(answer)) {
+          if (page.title) found.push({ title: page.title, item: page.pageprops?.wikibase_item ?? null });
+        }
+        cont = nextContinuation(answer, asks, `the pages of "${category}"`);
+        if (options.pause) await options.pause();
+      }
+      return found;
+    },
+    async subcategories(category) {
+      const titles: string[] = [];
+      let cont: Record<string, string> | undefined = {};
+      let asks = 0;
+      while (cont) {
+        const answer = await askWikipediaOnce(
+          { ...SUBCATEGORY_QUERY, cmtitle: category, ...cont },
+          options, budget, `the subcategories of "${category}"`,
+        );
+        asks += 1;
+        for (const member of answer.query?.categorymembers ?? []) {
+          if (member.title) titles.push(member.title);
+        }
+        cont = nextContinuation(answer, asks, `the subcategories of "${category}"`);
+        if (options.pause) await options.pause();
+      }
+      return titles;
+    },
+    async articles(titles, category) {
+      const found: Array<{ title: string; item: string }> = [];
+      for (let i = 0; i < titles.length; i += TITLES_PER_ASK) {
+        const answer = await askWikipediaOnce(
+          { ...TITLE_QUERY, titles: titles.slice(i, i + TITLES_PER_ASK).join('|') },
+          options, budget, `the articles named after the subcategories of "${category}"`,
+        );
+        for (const page of pagesOf(answer)) {
+          const item = page.pageprops?.wikibase_item;
+          if (page.title && item) found.push({ title: page.title, item });
+        }
+        if (options.pause) await options.pause();
+      }
+      return found;
+    },
+  };
+}
+
+/**
+ * One category's articles, folded into the map under the title each is filed
+ * by. An article carrying no `wikibase_item` is counted and skipped rather than
+ * guessed at — a title is not an id, and the walk answers in ids. A category
+ * holding no articles at all is empty, not a refusal: `Archaeological museums
+ * by country` itself is one, since every museum is in a country.
+ */
+async function readCategoryPages(category: string, reads: CategoryReads, into: Map<string, string>): Promise<Tally> {
+  const tally: Tally = { pages: 0, itemless: 0 };
+  for (const page of await reads.pages(category)) {
+    tally.pages += 1;
+    if (page.item) into.set(page.title, page.item);
+    else tally.itemless += 1;
   }
-  return titles;
+  return tally;
 }
 
 /** A category's title without its namespace, as rules and shelves spell it. */
@@ -179,25 +217,13 @@ const bare = (title: string): string => title.replace(/^Category:/, '');
  * `Byzantine museums` is no article, and a redirect carries no item.
  */
 async function readEponymous(
-  subcategories: string[], category: string, options: CategoryWalkOptions, budget: WaitBudget,
-  into: Map<string, string>,
+  subcategories: string[], category: string, reads: CategoryReads, shelves: Map<string, string[]>, into: Map<string, string>,
 ): Promise<number> {
   let found = 0;
-  const titles = subcategories.map(bare);
-  for (let i = 0; i < titles.length; i += TITLES_PER_ASK) {
-    const answer = await askWikipediaOnce(
-      { ...TITLE_QUERY, titles: titles.slice(i, i + TITLES_PER_ASK).join('|') },
-      options, budget, `the articles named after the subcategories of "${category}"`,
-    );
-    for (const page of pagesOf(answer)) {
-      const qid = page.pageprops?.wikibase_item;
-      if (!page.title || !qid) continue;
-      into.set(page.title, qid);
-      const shelves = options.shelves?.get(page.title) ?? [];
-      options.shelves?.set(page.title, [...new Set([...shelves, bare(category)])]);
-      found += 1;
-    }
-    if (options.pause) await options.pause();
+  for (const { title, item } of await reads.articles(subcategories.map(bare), category)) {
+    into.set(title, item);
+    shelves.set(title, [...new Set([...(shelves.get(title) ?? []), bare(category)])]);
+    found += 1;
   }
   return found;
 }
@@ -214,7 +240,7 @@ async function readEponymous(
 export async function fetchCategoryMembers(
   rootCategory: string, options: CategoryWalkOptions,
 ): Promise<Map<string, string>> {
-  const budget = options.budget ?? new WaitBudget(CATEGORY_WAIT_BUDGET_MS);
+  const reads = options.reads ?? liveReads(options, options.budget ?? new WaitBudget(CATEGORY_WAIT_BUDGET_MS));
   const members = new Map<string, string>();
   const visited = new Set<string>();
   const maxDepth = options.maxDepth ?? MAX_CATEGORY_DEPTH;
@@ -223,7 +249,7 @@ export async function fetchCategoryMembers(
   const walk = async (category: string, depth: number): Promise<void> => {
     if (visited.has(category)) return;
     visited.add(category);
-    const tally = await readCategoryPages(category, options, budget, members);
+    const tally = await readCategoryPages(category, reads, members);
     itemless += tally.itemless;
 
     if (depth >= maxDepth) {
@@ -235,10 +261,10 @@ export async function fetchCategoryMembers(
       );
       return;
     }
-    const subcategories = await readSubcategories(category, options, budget);
+    const subcategories = await reads.subcategories(category);
     const followed = subcategories.filter((title) => options.recurseInto.test(bare(title)));
     const eponymous = options.shelves
-      ? await readEponymous(subcategories.filter((title) => !followed.includes(title)), category, options, budget, members)
+      ? await readEponymous(subcategories.filter((title) => !followed.includes(title)), category, reads, options.shelves, members)
       : 0;
     console.log(
       `${LOG_PREFIX} ${count(tally.pages, 'page')}, `

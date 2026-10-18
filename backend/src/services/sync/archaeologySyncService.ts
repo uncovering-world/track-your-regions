@@ -76,6 +76,7 @@ import {
 } from './imageCredit.js';
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 import { readHandOvers } from './handOvers.js';
+import { wikipediaStructureFor } from './wikipediaStructure.js';
 
 // =============================================================================
 // Fetch
@@ -118,10 +119,14 @@ async function fetchArchaeologyItems(
   // (#1462): one door for every pass, since the map's fallback changes only
   // the map.
   const subset = await subsetRunDoor(ARCHAEOLOGY_SOURCE_ID, progress);
+  // A run on the subset reads English Wikipedia's categories from the copy of
+  // its structure too, where one is built (#1440, ADR-0121); the live API
+  // otherwise, as a run on the live service always does.
+  const structure = subset ? await wikipediaStructureFor(progress) : false;
   const { result: collected, door: osmDoorName } = await readThroughOneDoor({
     preferred: parseOsmReaderName(process.env[OSM_READER_VARIABLE]),
     pass: (reader) => {
-      const doors = doorsForAPass(reader, progress, refreshCache, subset);
+      const doors = doorsForAPass(reader, progress, refreshCache, subset, structure);
       return {
         door: doors.osm,
         forget: doors.forgetOsm,

@@ -21,6 +21,7 @@ import type { OsmReader, SiteEntrance } from './sites.js';
 import { fetchWikipediaCategories } from '../wikipediaCategories.js';
 import { resolveWikipediaArticles } from '../wikipediaArticles.js';
 import { fetchCategoryMembers } from '../wikipediaCategoryMembers.js';
+import { structureCategories, structureCategoryReads } from '../wikipediaStructure.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import { DEPARTMENT_ROOTS, DEPARTMENT_WALK, NATURE_CATEGORY_ROOT, NATURE_WALK, OSM_DIG_TAGS } from './classes.js';
 import {
@@ -85,10 +86,10 @@ function collectingSparql(
  * budget per wiki would let one run wait twice the number either was held to.
  */
 function categoriesDoor(
-  progress: SyncProgress, budget: WaitBudget, shelves: ReadonlyMap<string, string[]>,
+  progress: SyncProgress, budget: WaitBudget, shelves: ReadonlyMap<string, string[]>, local: boolean,
 ): (titles: string[]) => Promise<Map<string, string[]>> {
   return async (titles) => {
-    const categories = await fetchWikipediaCategories(titles, {
+    const categories = local ? await structureCategories(titles) : await fetchWikipediaCategories(titles, {
       userAgent: WIKIDATA_USER_AGENT,
       isCancelled: () => progress.cancel,
       pause: () => delay(SPARQL_DELAY_MS),
@@ -119,9 +120,10 @@ function categoriesDoor(
  * whose log said success.
  */
 function categoryMembersDoor(
-  progress: SyncProgress, budget: WaitBudget, shelves: Map<string, string[]>,
+  progress: SyncProgress, budget: WaitBudget, shelves: Map<string, string[]>, local: boolean,
 ): () => Promise<Map<string, string>> {
   const walk = (root: string, recurseInto: RegExp) => fetchCategoryMembers(root, {
+    ...(local ? { reads: structureCategoryReads() } : {}),
     userAgent: WIKIDATA_USER_AGENT,
     isCancelled: () => progress.cancel,
     pause: () => delay(SPARQL_DELAY_MS),
@@ -242,6 +244,8 @@ export interface PassDoors {
  */
 export function doorsForAPass(
   reader: OsmReaderName, progress: SyncProgress, refreshCache: boolean, subset: SparqlFn | null = null,
+  /** Whether English Wikipedia's categories are read from the structure kept from its dumps (#1440) rather than asked live. */
+  structure = false,
 ): PassDoors {
   const budget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
   // Wikidata's first: each composes the run's cache over its send. Or the
@@ -255,8 +259,8 @@ export function doorsForAPass(
   return {
     deps: {
       sparql,
-      categories: categoriesDoor(progress, budget, shelves),
-      categoryMembers: categoryMembersDoor(progress, budget, shelves),
+      categories: categoriesDoor(progress, budget, shelves, structure),
+      categoryMembers: categoryMembersDoor(progress, budget, shelves, structure),
       // The site door's second signal. Never a default inside the pipeline: a
       // run that silently read no map would refuse Troy and call it a verdict.
       osm: osmReader(door),
