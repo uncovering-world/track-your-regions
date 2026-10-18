@@ -103,12 +103,14 @@ controllers/
 │   ├── regionMemberOperations.ts
 │   ├── geometryRead.ts
 │   ├── geometryCompute.ts            ← drawn save, reset, regenerate, recompute
-│   ├── geometryComputeSingle.ts      ← computation: core algorithm + HTTP handler
+│   ├── geometryComputeSingle.ts      ← computation: core algorithm
 │   ├── geometryComputeSSE.ts         ← SSE streaming for single region compute
-│   ├── computationProgress.ts        ← batch computation with progress tracking
+│   ├── computationProgress.ts        ← queue, status and cancel of a world view's computation
+│   ├── computationLedger.ts          ← its ledger, the channel to the dump worker
+│   ├── computationRun.ts             ← the run the dump worker takes
+│   ├── computationScope.ts           ← which regions a run computes
 │   ├── hullOperations.ts
-│   ├── helpers.ts                    ← member moves, import match status
-│   └── types.ts
+│   └── helpers.ts                    ← member moves, import match status
 ├── division/
 └── sync/
 ```
