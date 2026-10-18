@@ -134,6 +134,31 @@ comparable across the world, with a threshold stated once for the whole world.
 museums — taking the reach of the door over the steadiness of its list. Leaving English out is
 recorded as the alternative below.
 
+**Amended while Draft (2026-10-18, #1574), before the slice that adopts the door:**
+- *Which kinds.* The door is a door of every kind that admits a place for a work it holds. Art
+  Museums admit a museum for a work at the line, and Places of worship admit a church for one
+  (their second door). Each kind reads its own pool and its own line, 22 for both today. Its bar
+  is the median over its own works at or over that line. The product review asked for this on
+  2026-10-16, for the Veiled Christ in the Cappella Sansevero. When a venue is both a church and
+  a museum, the museum rule takes the work, as it already does.
+- *A work another kind shows opens nothing.* A work published on the card of a place another
+  source offers (`worksShownByOtherSources`, ADR-0103) does not bring in a second venue. The
+  Uffizi's works never admit another museum.
+- *Decision 5 as a run checks it.* A run opens the door only while its source's curator gate is
+  on (`readershipDoorFor`, `backend/src/services/sync/readershipDoor.ts`). A place the door alone
+  admits carries the curator's question under its kind's own key (`metadata.museumReadershipNote`,
+  `metadata.worshipReadershipNote`): the work, its year's reading, the bar, and the burst flag
+  where there is one. The keys are separate because the place is shared. Archaeology already
+  writes its own question to `admissionNote`, and a place two kinds hold would otherwise show
+  whichever run went last.
+- *Decision 2 and the line's own stay.* The door holds a work it opened for down to the exit.
+  Below the exit, a work of 18 to 21 sitelinks still keeps its badge by the line's stay
+  (ADR-0023 decision 2), as every Iconic work in that band does, because the catalogue does not
+  record which door a badge came through. Most door works sit in that band: the *Veiled Christ*
+  has 18. A work under 18 leaves at the exit.
+- *Which year.* The door reads a year only when all twelve of its months are folded with the
+  redirects in place (#1650). Without that year the door is shut, and the run says so.
+
 **Left to the adoption slice, #628:** the level. The sixteen above are the plain annual sum. On the
 same door a trimmed monthly mean admits the same sixteen and agrees better between the halves of
 the year, 0.72 against 0.61; capping every day at five times the median admits fourteen, dropping
