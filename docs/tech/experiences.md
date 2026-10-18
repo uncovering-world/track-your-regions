@@ -1285,6 +1285,22 @@ comes as "HovgÃ¥rden", the two UTF-8 bytes of "å" read as two Latin-1 charact
 in a name made only of bytes that decode as well-formed UTF-8 is that UTF-8; anything else is
 kept as written.
 
+A name is read as plain text (`feedText`, `unescoText.ts`, #1610): the export marks a foreign
+term in italics with inline HTML, and a name stored that way was drawn with its tags, "Via
+Appia. <em>Regina Viarum</em>" under Lazio. The run reads every language of a site's name
+through it as it fetches the list (`fetchUnescoRecords`), and each component's name too.
+- An underline carries a letter, not a style: the macron below, U+0331, as the Haida and
+  Pitjantjatjara spellings write it. `S<U>G</U>ang Gwaay` is SG̱ang Gwaay, and NFC composes
+  `Ulu<U>r</U>u-Kata Tju<U>t</U>a` into Uluṟu-Kata Tjuṯa.
+- A line break is a space: Auschwitz Birkenau's name runs on after one, in a `<small>`.
+- Every other tag (`em`, `i`, `small`, `sup`) goes, and the name is tidied (`tidyLabel`).
+
+Migration 128 brought the stored names to the rule, the memberships' views of them included: 21
+places' names, 23 places' local names and 8 points' names on the development catalogue on
+2026-10-18. It read the change records the same way, as migration 047 did for whitespace, so a
+record still matches the row it describes. Catalogue Checks' `name-carries-markup` asks it of
+every row since.
+
 **Fixture source** — setting `SYNC_SOURCE_FIXTURE` to a directory makes UNESCO sync read
 `unesco.json` from it instead of the live API. Development only — the switch is refused
 outright when `NODE_ENV=production`, which is the guard that matters; the directory itself is
