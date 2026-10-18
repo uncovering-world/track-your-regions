@@ -51,7 +51,7 @@ function work(over: Partial<ExperienceTreasure> = {}): ExperienceTreasure {
     venue_count: 1,
     venues: null,
     found_at: null,
-    found_at_site: null,
+    found_at_site: null, wikipedia_url: null, wikipedia_read: false,
     ...over,
   };
 }

@@ -50,7 +50,7 @@ function works(n: number): ExperienceTreasure[] {
     venues: null,
     image_credit: null,
     found_at: null,
-    found_at_site: null,
+    found_at_site: null, wikipedia_url: null, wikipedia_read: false,
   }));
 }
 
