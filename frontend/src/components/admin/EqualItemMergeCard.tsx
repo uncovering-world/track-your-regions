@@ -4,7 +4,8 @@
  * Two sources that read one Wikidata item read one place — the Pantheon as a
  * place of worship and as an archaeological site — and the catalogue holds
  * them as two rows, two pins on one spot. This card runs the one pass that
- * merges every such pair into the place with the lower id, and shows what it
+ * merges every such pair into the place with the lower id — or, for a serial
+ * site's component part, into the place a kind holds — and shows what it
  * did: the places merged, and the ones it left apart with the reason. Each
  * merge can be undone from the place's history in its curation dialog.
  */
@@ -27,7 +28,7 @@ function ItemLink({ qid }: { qid: string }) {
 /** The pass's outcome in one sentence. */
 function outcomeSentence({ merged, refused }: EqualItemMerges): string {
   if (merged.length === 0 && refused.length === 0) return 'No two places share a Wikidata item.';
-  const apart = refused.length > 0 ? `; ${plural(refused.length, 'pair')} left apart` : '';
+  const apart = refused.length > 0 ? `; ${plural(refused.length, 'group')} of places left apart` : '';
   return `${plural(merged.length, 'place')} merged into another${apart}.`;
 }
 
@@ -82,8 +83,10 @@ export function EqualItemMergeCard() {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Two sources that read one Wikidata item read one place: the Pantheon as a place of worship and
           as an archaeological site. Merging makes each such pair one place — one pin, offered in both
-          kinds — keeping the older row; travellers&apos; visits move with it. A pair in the same kind is
-          left apart. Each merge can be undone from the place&apos;s history.
+          kinds — keeping the older row, or, for one place of a serial site such as the Temple of Karnak, the
+          place a kind holds; travellers&apos; visits move with it. A pair in the same kind is left apart, and
+          so is a site&apos;s place whose match still waits for a curator: it merges on the next pass after
+          that place is published. Each merge can be undone from the place&apos;s history.
         </Typography>
         <Button
           variant="contained"

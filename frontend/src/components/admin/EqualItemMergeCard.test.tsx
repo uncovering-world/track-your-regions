@@ -32,7 +32,7 @@ describe('the merge of places that share a Wikidata item', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Merge places that share a Wikidata item/ }));
 
-    expect(await screen.findByText('1 place merged into another; 1 pair left apart.')).toBeTruthy();
+    expect(await screen.findByText('1 place merged into another; 1 group of places left apart.')).toBeTruthy();
     expect(screen.getByText(/places 9700 and 9701/).textContent).toMatch(/^Pantheon \(Q99309, places 9700 and 9701\): Both places/);
     fireEvent.click(screen.getByRole('button', { name: /Show the merged places/ }));
     expect(screen.getByText(/National Museum of Archaeology/).textContent).toContain('place 6234 into 1482');
