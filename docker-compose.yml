@@ -91,9 +91,13 @@ services:
     volumes:
       - ./backend/src:/app/src:ro,z
       # The shared rules package is baked into the image (see the build
-      # context above); its source is mounted over that copy so an edit on the
-      # host reaches tsx watch and the unit lane, the way ./backend/src does.
-      - ./packages/shared/src:/packages/shared/src:ro,z
+      # context above); the checked-out package is mounted over that copy so an
+      # edit on the host reaches tsx watch and the unit lane, the way
+      # ./backend/src does. The whole directory, not only src/: a new module is
+      # a line in its package.json exports too, and an image's stale map refuses
+      # the import (#1706). A file mount would not do, since a checkout
+      # replaces the file and the mount keeps the old one.
+      - ./packages/shared:/packages/shared:ro,z
       # The backend's vitest run is also the runner for the repository's own
       # tooling specs (`../scripts/**/*.test.mjs`, #923) and for the shared
       # package's (`../packages/shared/src/**/*.test.ts`, ADR-0065). Inside the
@@ -198,9 +202,10 @@ services:
     volumes:
       - ./frontend/src:/app/src:ro,z
       - ./frontend/index.html:/app/index.html:ro,z
-      # The shared rules package's source over the copy baked into the image,
-      # so an edit reaches Vite's watcher the way ./frontend/src does.
-      - ./packages/shared/src:/packages/shared/src:ro,z
+      # The checked-out shared rules package over the copy baked into the
+      # image, so an edit reaches Vite's watcher the way ./frontend/src does,
+      # its exports map included (#1706, the backend's mount above).
+      - ./packages/shared:/packages/shared:ro,z
     depends_on:
       - backend
 
