@@ -143,6 +143,7 @@ and accepted by it.
 | [0121](0121-english-wikipedias-structure-is-kept-as-articles-categories-and-their-links.md) | English Wikipedia's structure is kept as articles, categories and their links | Accepted | 2026-10-18 |
 | [0122](0122-a-world-views-geometry-computation-runs-in-the-dump-worker-beside-its-builds.md) | A world view's geometry computation runs in the dump worker, beside its builds | Accepted — decision 2 narrowed by [0123](0123-a-regions-union-is-made-of-full-resolution-inputs-and-bounded-where-it-runs.md) | 2026-10-18 |
 | [0123](0123-a-regions-union-is-made-of-full-resolution-inputs-and-bounded-where-it-runs.md) | A region's union is made of full-resolution inputs, and bounded where it runs | Accepted | 2026-10-18 |
+| [0124](0124-the-dump-built-tables-live-in-a-workbench-schema-and-every-table-declares-its-tier.md) | The dump-built tables live in a workbench schema, and every table declares its tier | Accepted | 2026-10-19 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
