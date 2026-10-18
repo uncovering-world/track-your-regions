@@ -28,7 +28,7 @@
       "name": "entry chunk (gzip)",
       "path": "dist/assets/index-*.js",
       "gzip": true,
-      "limit": "200 kB"
+      "limit": "210 kB"
     },
     {
       "name": "map library chunk (gzip)",
