@@ -3870,6 +3870,9 @@ CREATE INDEX IF NOT EXISTS idx_experience_merge_proposals_open
   ON experience_merge_proposals(place_a) WHERE answer IS NULL;
 CREATE INDEX IF NOT EXISTS idx_experience_merge_proposals_place_b ON experience_merge_proposals(place_b);
 COMMENT ON TABLE experience_merge_proposals IS 'Two places near each other with similar names, proposed as one place (ADR-0046 decision 2, #1249): the pair in id order, its distance, similarity and reach, and the curator''s answer -- one place, two places, or one part of the other. An answered pair is kept and never proposed again.';
+ALTER TABLE experience_merge_proposals ADD COLUMN IF NOT EXISTS found_by VARCHAR(10) NOT NULL DEFAULT 'similar'
+    CHECK (found_by IN ('similar', 'words'));
+COMMENT ON COLUMN experience_merge_proposals.found_by IS 'Which rule found the pair (#1652): similar, the names reach a trigram similarity of 0.5; words, every significant word of one name stands in the other''s, as Geghard does in "Monastery of Geghard and the Upper Azat Valley".';
 COMMENT ON COLUMN experience_merge_proposals.exact IS 'The two places carry one and the same folded name within fifty metres: the pairs a batch confirms.';
 COMMENT ON COLUMN experience_merge_proposals.reach_m IS 'The distance the pair was found under: 300 m, or the radius of a World Heritage property''s area up to 3 km.';
 COMMENT ON COLUMN experience_merge_proposals.part_id IS 'Which of the two is the part, when the answer is part_of; recorded here for #823, never written to experience_parts by this answer.';

@@ -6699,6 +6699,28 @@ export interface MembersCleared {
 }
 
 /**
+ * similar: the names reach a trigram similarity of 0.5; words: every significant word of one name stands in the other's (#1652).
+ */
+export type MergeFoundBy = typeof MergeFoundBy[keyof typeof MergeFoundBy];
+
+
+export const MergeFoundBy = {
+  similar: 'similar',
+  words: 'words',
+} as const;
+
+/**
+ * Which rule found the pair: names alike by trigrams, or one name's words all standing in the other's (#1652).
+ */
+export type MergePairFoundBy = typeof MergePairFoundBy[keyof typeof MergePairFoundBy];
+
+
+export const MergePairFoundBy = {
+  similar: 'similar',
+  words: 'words',
+} as const;
+
+/**
  * Two near places with similar names, proposed as one place (#1249, ADR-0046 decision 2).
  */
 export interface MergePair {
@@ -6750,6 +6772,8 @@ export interface MergePair {
      * @maximum 9007199254740991
      */
   reachM: number;
+  /** Which rule found the pair: names alike by trigrams, or one name's words all standing in the other's (#1652). */
+  foundBy: MergePairFoundBy;
   /** @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$ */
   proposedAt: string;
 }
@@ -6805,8 +6829,25 @@ export type MergeProposalPassOpenItem = {
      * @maximum 9007199254740991
      */
   reachM: number;
+  foundBy: MergeFoundBy;
   /** When the pass last found the pair. */
   proposedAt: string;
+};
+
+/**
+ * How many of the open pairs each rule found (#1652).
+ */
+export type MergeProposalPassFoundBy = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  similar: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  words: number;
 };
 
 /**
@@ -6859,6 +6900,8 @@ export type MergeProposalPassLeftApartItem = {
 export interface MergeProposalPass {
   /** The pairs nobody has answered, the most alike first. */
   open: MergeProposalPassOpenItem[];
+  /** How many of the open pairs each rule found (#1652). */
+  foundBy: MergeProposalPassFoundBy;
   /** How many pairs curators have answered so far, by answer; an answered pair is never proposed again. */
   answered: MergeProposalPassAnswered;
   /** Pairs the rule finds that share a kind, which one place cannot hold twice (ADR-0086 decision 4): not proposed, shown so a person sees them. */

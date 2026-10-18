@@ -6,10 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { placeOfferedSql } from '../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
-import {
-  BASE_REACH_M, EXACT_DISTANCE_M, MIN_SIMILARITY, PROPOSAL_ROWS_SQL, WIDEST_REACH_M,
-  candidatePairsSql, foldedNamesSql, reachSql,
-} from './mergeProposalFinder.js';
+import { BASE_REACH_M, EXACT_DISTANCE_M, MIN_SIMILARITY, PROPOSAL_ROWS_SQL, WIDEST_REACH_M, candidatePairsSql, foldedNamesSql, reachSql, GENERIC_NAME_WORDS, MIN_WORD_LENGTH } from './mergeProposalFinder.js';
 
 const collapse = (sql: string) => sql.replace(/\s+/g, ' ');
 
@@ -48,7 +45,18 @@ describe('the pairs the rule finds', () => {
 
   it('asks the best similarity over every folded name of each, at the threshold ADR-0046 fixes', () => {
     expect(MIN_SIMILARITY).toBe(0.5);
-    expect(sql).toContain(`(SELECT max(similarity(an, bn)) FROM unnest(a.names) AS an, unnest(b.names) AS bn) >= ${MIN_SIMILARITY}`);
+    expect(sql).toContain('(SELECT max(similarity(an, bn)) FROM unnest(a.names) AS an, unnest(b.names) AS bn)::real AS name_similarity');
+    expect(sql).toContain(`WHERE m.name_similarity >= ${MIN_SIMILARITY} OR EXISTS`);
+    expect(sql).toContain(`CASE WHEN m.name_similarity >= ${MIN_SIMILARITY} THEN 'similar' ELSE 'words' END AS found_by`);
+  });
+
+  it('finds a pair too where every word of one name stands in the other, its generic words left out (#1652)', () => {
+    expect(sql).toContain('(words.wa <@ words.wb OR words.wb <@ words.wa)');
+    expect(sql).toContain('cardinality(words.wa) > 0 AND cardinality(words.wb) > 0');
+    expect(sql).toContain(`length(w) >= ${MIN_WORD_LENGTH}`);
+    for (const word of ['monastery', 'historic', 'centre', 'saint', 'and']) expect(GENERIC_NAME_WORDS).toContain(word);
+    // A word list is fixed literals: none carries a quote that would end the SQL string.
+    expect(GENERIC_NAME_WORDS.every(word => /^[a-z]+$/.test(word))).toBe(true);
   });
 
   it('calls a pair exact only on one and the same folded name within fifty metres', () => {

@@ -41,6 +41,7 @@ interface PairRow {
   distanceM: number;
   similarity: number;
   exact: boolean;
+  foundBy: 'similar' | 'words';
   reachM: number;
   /** The pair as the question is built from it (`askedPairSql`), read with the pair: what its judgement is recorded for. */
   asked: Record<string, unknown>;
@@ -76,12 +77,14 @@ export function questionFor(anchor: Anchor, pair: PairRow): JevChoiceAsked {
     ? 'The two carry different Wikidata items, which tells apart two things more often than it splits one. '
     : '';
   const sameName = pair.exact ? 'They carry one and the same name and stand within fifty metres. ' : '';
+  // A short name inside a long title reads as unlike by trigrams: say why the pair was asked (#1652).
+  const within = pair.foundBy === 'words' ? 'Every significant word of one name stands in the other\'s. ' : '';
   return {
     instructions: `The place "${anchor.name}" is in ${words(anchor.kinds, 'no kind')} and has ${itemWords(anchor.item)}. `
       + `Within ${pair.reachM} m of it, the place "${pair.otherName}" is in ${words(pair.otherKinds, 'no kind')}, in `
       + `${words(pair.otherCountries, 'no named country')}, and has ${itemWords(pair.otherItem)}; the two stand `
       + `${pair.distanceM} m apart and their names are `
-      + `${Math.round(pair.similarity * 100)} % alike. ${sameName}${items}Each kind lists what it covers under its own `
+      + `${Math.round(pair.similarity * 100)} % alike. ${sameName}${within}${items}Each kind lists what it covers under its own `
       + 'name, so one building can be a place of worship to one list and an archaeological site or a World Heritage '
       + 'site to another. Are the two one place, two places, or is one part of the other?',
     criteria: CRITERIA,
@@ -94,7 +97,7 @@ async function openPairsOf(anchorId: number): Promise<Anchor | null> {
             (SELECT jsonb_agg(jsonb_build_object(
                       'proposalId', p.id, 'otherId', b.id, 'otherName', b.name, 'otherKinds', ${kindNamesSql('b')},
                       'otherItem', ${itemSql('b')}, 'otherCountries', COALESCE(b.country_names, '{}'),
-                      'distanceM', p.distance_m, 'similarity', p.name_similarity, 'exact', p.exact, 'reachM', p.reach_m,
+                      'distanceM', p.distance_m, 'similarity', p.name_similarity, 'exact', p.exact, 'reachM', p.reach_m, 'foundBy', p.found_by,
                       'asked', ${askedPairSql('p', 'a', 'b')},
                       'stored', (SELECT jsonb_build_object('judgement', g.judgement, 'confidence', g.confidence)
                                    FROM experience_merge_suggestions g
