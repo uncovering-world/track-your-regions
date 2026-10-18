@@ -401,7 +401,7 @@ chapters:
       desc: "Sensitive data not stored in browser storage unencrypted"
       level: 1
       status: pass
-      notes: "Refresh token in httpOnly cookie (not accessible to JS). Access token in memory. Only non-sensitive data (last-used email, theme) in localStorage. Fixed 2026-02-10"
+      notes: "Refresh token in httpOnly cookie (not accessible to JS). Access token in memory. Only non-sensitive data (last-used email, theme, a signed-out visitor's maps app as tyr.mapsApp, #1604) in localStorage. Fixed 2026-02-10"
     V14.3.2:
       desc: "Sufficient anti-caching response header fields so sensitive data is not cached in browsers"
       level: 2

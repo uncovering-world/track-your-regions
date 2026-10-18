@@ -278,12 +278,13 @@ selectors should reuse this directory rather than enumerate assignments.
 
 ### What the answers carry
 
-Every answer above, and `GET /api/users/me`, is declared as a strict schema in `backend/src/api/responses/auth.ts` (ADR-0066) and sent through `respond()`, after the handler's `try` so a body that fails its schema reaches the error handler as the named 500:
+Every answer above, `GET /api/users/me` and the preferences routes are declared as a strict schema in `backend/src/api/responses/auth.ts` (ADR-0066) and sent through `respond()`, after the handler's `try` so a body that fails its schema reaches the error handler as the named 500:
 - **A session started**, by signing in, verifying an email or renewing from the refresh cookie (`SessionStarted`), carries the access token and the account (`PublicUser`: id, uuid, email, display name, role, avatar, whether the email is verified, and the provider, null where none is recorded).
 - **The OAuth code exchange** (`CodeExchanged`) carries the access token alone. The client reads the account afterwards through `GET /api/auth/me`.
 - **A password change** (`PasswordChanged`) carries the new access token and the sentence to show.
 - **Registration and a resent verification** (`AuthMessage`) carry one message, the same whether or not the address has an account.
 - **The account read** (`MyAccount`, `GET /api/users/me`) carries the profile and, for a curator or an admin, what their assignments reach (`CuratorScope`).
+- **The visitor's own preferences** (`MyPreferences`, `GET` and `PUT /api/users/me/preferences`, #1604) carry the maps app places open in, null for *ask each time*; the `PUT` body accepts only the values of `MAPS_APPS` (`@tyr/shared/preferences`) or null.
 
 No schema names the refresh token: it travels only in its httpOnly cookie. `routerOf` (`backend/src/api/route.ts`) refuses at startup a route whose response schema declares `accessToken` under any cache policy but `token`, so a new one is marked `private, no-store` the moment it declares the key. On the web, `frontend/src/api/auth.ts` re-exports these types, and the session refresh in `fetchUtils.ts` reads `SessionStarted`.
 
