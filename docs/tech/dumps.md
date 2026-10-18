@@ -238,8 +238,8 @@ The worker also runs a world view's geometry computation
 (`computationLoop` in `controllers/worldView/computationRun.ts`) beside the
 builds' loop, each loop one piece of work at a time. A computation never waits
 behind a build, nor a build behind a computation. Its row is followed, stopped
-and closed after a crash the way a build's is, and a restart of the worker
-stops it after the region in hand. `docs/tech/world-views.md` § Geometry
+and closed after a crash the way a build's is, and a restart of the worker, or
+an admin's cancel, cancels the statement in flight in the database (ADR-0123). `docs/tech/world-views.md` § Geometry
 Computation has the rest.
 
 `dump_builds` (migrations `095-a-dump-build-is-recorded.sql`, `100-…`,
