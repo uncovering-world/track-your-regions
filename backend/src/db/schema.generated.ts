@@ -193,6 +193,40 @@ export interface EmailVerificationTokensRow {
   created_at: Date | null;
 }
 
+/** The table `enwiki_categories`. */
+export interface EnwikiCategoriesRow {
+  id: number;
+  title: string;
+}
+
+/** The table `enwiki_category_links`. */
+export interface EnwikiCategoryLinksRow {
+  page: number;
+  category: number;
+  subcat: boolean;
+}
+
+/** The table `enwiki_page_items`. */
+export interface EnwikiPageItemsRow {
+  page: number;
+  item: string;
+}
+
+/** The table `enwiki_pages`. */
+export interface EnwikiPagesRow {
+  id: number;
+  namespace: number;
+  title: string;
+}
+
+/** The table `enwiki_structure_builds`. */
+export interface EnwikiStructureBuildsRow {
+  build_id: number;
+  dump_date: Date;
+  counts: unknown;
+  swapped_at: Date;
+}
+
 /** The table `experience_component_item_proposals`. */
 export interface ExperienceComponentItemProposalsRow {
   id: number;

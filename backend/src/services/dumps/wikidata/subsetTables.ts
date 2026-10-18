@@ -436,14 +436,14 @@ export async function deriveClassClosure(signal: AbortSignal): Promise<void> {
   );
 }
 
-interface IndexDefinition {
+export interface IndexDefinition {
   name: string;
   constraint: 'p' | 'u' | null;
   definition: string;
 }
 
-/** The live table's indexes and key constraints, as statements on its `_next` copy. */
-async function indexesOf(client: PoolClient, table: SubsetTable): Promise<IndexDefinition[]> {
+/** The live table's indexes and key constraints, as statements on its `_next` copy; English Wikipedia's structure tables copy theirs the same way (`wikipedia/structureTables.ts`). */
+export async function indexesOf(client: PoolClient, table: string): Promise<IndexDefinition[]> {
   const result = await client.query<{ name: string; constraint: 'p' | 'u' | null; index_def: string; constraint_def: string | null }>(
     `SELECT i.relname AS name, con.contype AS constraint, pg_get_indexdef(i.oid) AS index_def,
             pg_get_constraintdef(con.oid) AS constraint_def

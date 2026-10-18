@@ -4943,6 +4943,7 @@
                 "wikidata-lexemes",
                 "enwiki-page",
                 "enwiki-page-props",
+                "enwiki-linktarget",
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
                 "pageviews-user"
@@ -5010,6 +5011,7 @@
                 "wikidata-lexemes",
                 "enwiki-page",
                 "enwiki-page-props",
+                "enwiki-linktarget",
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
                 "pageviews-user"
@@ -5077,6 +5079,7 @@
                 "wikidata-lexemes",
                 "enwiki-page",
                 "enwiki-page-props",
+                "enwiki-linktarget",
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
                 "pageviews-user"
@@ -5134,6 +5137,7 @@
                 "wikidata-lexemes",
                 "enwiki-page",
                 "enwiki-page-props",
+                "enwiki-linktarget",
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
                 "pageviews-user"
@@ -5191,6 +5195,7 @@
                 "wikidata-lexemes",
                 "enwiki-page",
                 "enwiki-page-props",
+                "enwiki-linktarget",
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
                 "pageviews-user"
@@ -5248,6 +5253,7 @@
                 "wikidata-lexemes",
                 "enwiki-page",
                 "enwiki-page-props",
+                "enwiki-linktarget",
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
                 "pageviews-user"
@@ -21066,6 +21072,7 @@
               "wikidata-lexemes",
               "enwiki-page",
               "enwiki-page-props",
+              "enwiki-linktarget",
               "enwiki-categorylinks",
               "enwiki-langlinks",
               "pageviews-user"
@@ -21260,6 +21267,7 @@
                     "wikidata-lexemes",
                     "enwiki-page",
                     "enwiki-page-props",
+                    "enwiki-linktarget",
                     "enwiki-categorylinks",
                     "enwiki-langlinks",
                     "pageviews-user"
