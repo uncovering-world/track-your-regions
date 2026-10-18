@@ -16,6 +16,16 @@ export function isWikipediaEditionsQuery(query: string): boolean {
   return query.includes('wikibase:wikiGroup "wikipedia"');
 }
 
+/**
+ * Whether a query is the English-articles read (`fetchEnglishArticles`, #1608).
+ * A world that knows no article answers it with no rows: every work then has
+ * none, which is what the tests written before it saw.
+ */
+export function isEnglishArticlesQuery(query: string): boolean {
+  return query.trimStart().startsWith('SELECT ?e ?article WHERE')
+    && query.includes('schema:isPartOf <https://en.wikipedia.org/>');
+}
+
 /** The items a `VALUES ?e { … }` list names. */
 function itemsOf(query: string): string[] {
   const list = /VALUES \?e \{([^}]*)\}/.exec(query)?.[1] ?? '';

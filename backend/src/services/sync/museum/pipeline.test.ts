@@ -81,6 +81,15 @@ describe('collectTier1Museums', () => {
     expect(pine!.artists).toEqual(['Ivan Shishkin', 'Konstantin Savitsky']);
   });
 
+  it("hands every written work its English article, or none, read once the venues are settled (#1608)", async () => {
+    const out = await run();
+
+    const works = out.items.flatMap((i) => i.artworks);
+    expect(works.find((a) => a.externalId === 'Q12418')?.wikipediaUrl).toBe('https://en.wikipedia.org/wiki/Mona_Lisa');
+    // Every other work was asked about and has none in this world: no link, rather than the redirect.
+    expect(works.filter((a) => a.externalId !== 'Q12418').every((a) => a.wikipediaUrl === null)).toBe(true);
+  });
+
   it('records why a venue an iconic work named was dropped', async () => {
     const out = await run();
 

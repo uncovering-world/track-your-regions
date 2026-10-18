@@ -28,7 +28,7 @@ import { LOST_WORK_ROOT } from '../museum/worksCollector.js';
 import { POOL_MIN_SITELINKS } from '../publicArt/queries.js';
 import type { SourceLine } from '../sourceLine.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
-import { isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
+import { isEnglishArticlesQuery, isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';
 const RANK = 'http://wikiba.se/ontology#NormalRank';
@@ -438,6 +438,8 @@ function workByIdRows(w: World, asked: string[]): SparqlBinding[] {
 
 function answer(w: World, sent: string): SparqlBinding[] {
   const query = sent.trimStart();
+  // The English articles of the placed works (#1608): this world knows none.
+  if (isEnglishArticlesQuery(query)) return [];
   if (isWikipediaEditionsQuery(query)) {
     return wikipediaEditionsRows(query, (q) => w.places[q]?.sitelinks ?? w.works[q]?.sitelinks);
   }

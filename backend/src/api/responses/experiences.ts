@@ -328,6 +328,10 @@ export const ExperienceTreasure = z.strictObject({
   kind_ids: z.array(z.number().int())
     .describe('The kinds that hold the work here, by the memberships that place it, in display order (#1263).'
       + ' Empty where no offered membership places it: the work is the place\'s, whichever kind is chosen.'),
+  wikipedia_url: z.string().nullable()
+    .describe('The work\'s English Wikipedia article, as the last works run read it (#1608).'),
+  wikipedia_read: z.boolean()
+    .describe('Whether a works run has read the article: false for a work no run has asked about, whose card keeps the redirect link.'),
 }).describe('A work inside an object: an artwork, an artifact.');
 export type ExperienceTreasure = z.infer<typeof ExperienceTreasure>;
 

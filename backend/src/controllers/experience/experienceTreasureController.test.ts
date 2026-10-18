@@ -52,7 +52,7 @@ function workRow(over: Record<string, unknown>): Record<string, unknown> {
   return {
     treasure_type: 'painting', artists: [], artists_curated: false, year: null, curated_fields: [], venue_count: 1,
     venues: null, image_url: null, sitelinks_count: 0, is_iconic: false, image_credit: null, found_at: null, found_at_site: null,
-    kind_ids: [],
+    kind_ids: [], wikipedia_url: null, wikipedia_read: false,
     ...over,
   };
 }

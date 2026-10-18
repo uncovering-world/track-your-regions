@@ -10,7 +10,7 @@
  */
 
 import { readsSubset } from './subset/reader.js';
-import { subsetClassTree, subsetSubclasses, subsetWikipediaEditions } from './subset/kit.js';
+import { subsetClassTree, subsetEnglishArticles, subsetSubclasses, subsetWikipediaEditions } from './subset/kit.js';
 import { extractQid, isQid, type SparqlBinding } from './wikidataUtils.js';
 import type { CacheDescriptor } from './wikidataCache.js';
 
@@ -115,6 +115,36 @@ export async function fetchWikipediaEditions(
       const qid = extractQid(row.e?.value ?? '');
       const editions = parseInt(row.editions?.value ?? '', 10);
       if (isQid(qid) && Number.isFinite(editions)) out.set(qid, editions);
+    }
+  }
+  return out;
+}
+
+/**
+ * The English Wikipedia article of each item that has one, by its address: what
+ * a card links instead of Wikidata's redirect, which answers an item with no
+ * English article with a "no page found" form (#1608). An item with none is
+ * absent from the answer. `before` runs ahead of every live question.
+ */
+export async function fetchEnglishArticles(
+  sparql: SparqlFn,
+  qids: string[],
+  before: () => Promise<void> = () => Promise.resolve(),
+): Promise<Map<string, string>> {
+  const asked = unique(qids.filter(isQid));
+  if (readsSubset(sparql)) return subsetEnglishArticles(asked);
+  const out = new Map<string, string>();
+  for (const batch of chunk(asked, WIKIPEDIA_EDITIONS_BATCH)) {
+    await before();
+    const rows = await sparql(`
+      SELECT ?e ?article WHERE {
+        VALUES ?e { ${values(batch)} }
+        ?article schema:about ?e ; schema:isPartOf <https://en.wikipedia.org/> .
+      }`, { kind: 'edges', label: `English articles of ${batch.length} items` });
+    for (const row of rows) {
+      const qid = extractQid(row.e?.value ?? '');
+      const article = row.article?.value;
+      if (isQid(qid) && article?.startsWith('https://en.wikipedia.org/wiki/')) out.set(qid, article);
     }
   }
   return out;

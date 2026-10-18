@@ -23079,6 +23079,17 @@
               "maximum": 9007199254740991
             },
             "description": "The kinds that hold the work here, by the memberships that place it, in display order (#1263). Empty where no offered membership places it: the work is the place's, whichever kind is chosen."
+          },
+          "wikipedia_url": {
+            "description": "The work's English Wikipedia article, as the last works run read it (#1608).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "wikipedia_read": {
+            "type": "boolean",
+            "description": "Whether a works run has read the article: false for a work no run has asked about, whose card keeps the redirect link."
           }
         },
         "required": [
@@ -23098,7 +23109,9 @@
           "found_at",
           "found_at_site",
           "sitelinks_count",
-          "kind_ids"
+          "kind_ids",
+          "wikipedia_url",
+          "wikipedia_read"
         ],
         "additionalProperties": false,
         "description": "A work inside an object: an artwork, an artifact."

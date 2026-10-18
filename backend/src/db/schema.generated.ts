@@ -854,6 +854,8 @@ export interface TreasuresRow {
   artists: string[];
   curation_state: string;
   curated_fields: unknown;
+  wikipedia_url: string | null;
+  wikipedia_read_at: Date | null;
 }
 
 /** The table `user_auth_providers`. */
@@ -1237,6 +1239,7 @@ export const COLUMN_WIDTHS = {
     image_url: 1000,
     artists: 500,
     curation_state: 10,
+    wikipedia_url: 1000,
   },
   user_auth_providers: {
     provider_id: 255,

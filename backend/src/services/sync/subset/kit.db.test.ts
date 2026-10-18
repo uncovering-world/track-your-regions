@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../../db/index.js';
-import { fetchClassTree, fetchSubclasses, fetchWikipediaEditions } from '../wikidataQueries.js';
+import { fetchClassTree, fetchEnglishArticles, fetchSubclasses, fetchWikipediaEditions } from '../wikidataQueries.js';
 import { subsetDoor } from './reader.js';
 
 /**
@@ -21,6 +21,8 @@ const VISUAL_ARTWORK = 'Q4502142';
 const WORK_OF_ART = 'Q838948';
 const MONA_LISA = 'Q12418';
 const LEONARDO = 'Q762';
+/** The stele of Lemnos: editions in other languages, none in English (#1608). */
+const STELE_OF_LEMNOS = 'Q3501422';
 
 async function claim(subject: string, value: string, rank: -1 | 0 | 1, n: number): Promise<void> {
   await pool.query(
@@ -49,6 +51,7 @@ beforeAll(async () => {
        ($1, 'commonswiki', 'Category:Mona Lisa'), ($1, 'enwikiquote', 'Mona Lisa')`,
     [MONA_LISA],
   );
+  await pool.query(`INSERT INTO wikidata_sitelinks (id, site, title) VALUES ($1, 'frwiki', 'Stèle de Lemnos')`, [STELE_OF_LEMNOS]);
 });
 
 afterAll(async () => {
@@ -71,5 +74,10 @@ describe('the shared questions, read from the subset (#1458)', () => {
     const editions = await fetchWikipediaEditions(door, [MONA_LISA, LEONARDO]);
     expect(editions.get(MONA_LISA)).toBe(3);
     expect(editions.get(LEONARDO)).toBe(0);
+  });
+
+  it("answers an item's English article by the address the live service names, and nothing where English has none (#1608)", async () => {
+    const articles = await fetchEnglishArticles(door, [MONA_LISA, STELE_OF_LEMNOS, LEONARDO]);
+    expect(articles).toEqual(new Map([[MONA_LISA, 'https://en.wikipedia.org/wiki/Mona_Lisa']]));
   });
 });
