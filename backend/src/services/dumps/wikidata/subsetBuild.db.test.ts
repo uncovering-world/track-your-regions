@@ -260,9 +260,10 @@ describe('a build of the local Wikidata subset (#1434)', () => {
       onMeasure: (read, total) => measured.push([read, total]),
     });
     expect(phases).toContain('Walking the class tree...');
-    // What each long step says while it runs (#1519): the parts of a derivation, the index being built, the spool read.
+    // What each long step says while it runs (#1519): the parts of a derivation, the indexes building and built, the spool read.
     expect(phases.some(phase => /^Deriving the claims, labels and sitelinks: sitelinks, (\d+) of \1 parts done\.\.\.$/.test(phase))).toBe(true);
-    expect(phases.some(phase => /^Indexing: index 1 of \d+, \w+\.\.\.$/.test(phase))).toBe(true);
+    expect(phases.some(phase => phase.startsWith('Indexing: 0 of ') && phase.includes(' indexes built; building ') && phase.endsWith('...'))).toBe(true);
+    expect(phases.some(phase => /^Indexing: (\d+) of \1 indexes built\.\.\.$/.test(phase))).toBe(true);
     expect(measured.at(-1)?.[0]).toBe(measured.at(-1)?.[1]);
     expect(phases.at(-1)).toBe('Throwing the trial\'s tables away...');
     expect(result.summary).toMatch(/^kept \d+ of \d+ items .*the tables took \d+\.\d+ GB/);

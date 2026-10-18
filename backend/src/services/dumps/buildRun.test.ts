@@ -103,7 +103,7 @@ describe('a build in the dump worker (ADR-0106)', () => {
       await vi.advanceTimersByTimeAsync(5_000);
       vi.setSystemTime(Date.parse('2026-10-15T15:10:00Z'));
       options.onPhase('Indexing...');
-      options.onPhase('Indexing: index 1 of 6, idx_wikidata_claims_subject...');
+      options.onPhase('Indexing: 0 of 6 indexes built; building idx_wikidata_claims_subject...');
       await vi.advanceTimersByTimeAsync(5_000);
       return { bytes: 1, lines: 3, checksumActual: 'a'.repeat(40) };
     });
@@ -113,7 +113,7 @@ describe('a build in the dump worker (ADR-0106)', () => {
     // Each step started is counted, a message of the same step not (#1356).
     expect(beats.at(-1)!.step).toBe((labelling!.step as number) + 1);
     expect(beats.at(-1)).toMatchObject({
-      message: 'Indexing: index 1 of 6, idx_wikidata_claims_subject...', read: 0, total: null, stepStartedAt: '2026-10-15T15:10:00.000Z',
+      message: 'Indexing: 0 of 6 indexes built; building idx_wikidata_claims_subject...', read: 0, total: null, stepStartedAt: '2026-10-15T15:10:00.000Z',
     });
   });
 
