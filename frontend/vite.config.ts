@@ -36,8 +36,30 @@ function devServerTitle(): PluginOption {
   };
 }
 
+/**
+ * A new module of the shared rules package (ADR-0065) is a new subpath in its
+ * package.json `exports`, and the dev server reads that map once, at start:
+ * a pull that adds one leaves every page that imports it blank until the
+ * server restarts (#1706). So a change of that manifest restarts it.
+ */
+function sharedExportsRestart(): PluginOption {
+  const manifest = path.resolve(__dirname, '../packages/shared/package.json');
+  return {
+    name: 'shared-exports-restart',
+    apply: 'serve',
+    configureServer(server) {
+      server.watcher.add(manifest);
+      const onManifest = (file: string) => {
+        if (file === manifest) void server.restart();
+      };
+      server.watcher.on('change', onManifest);
+      server.watcher.on('add', onManifest);
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [react(), previewCompression(), devServerTitle()],
+  plugins: [react(), previewCompression(), devServerTitle(), sharedExportsRestart()],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
