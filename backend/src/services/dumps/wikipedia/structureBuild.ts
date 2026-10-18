@@ -25,9 +25,9 @@
 import type { DumpFile, DumpKey } from '../catalog.js';
 import { dumpNamed } from '../catalog.js';
 import { fetchText, sizeOf } from '../fetch.js';
-import { readDump, type ReadOptions } from '../read.js';
 import { IdSet } from '../wikidata/idSets.js';
-import { InsertReader, numberOf, textOf, type SqlValue } from './sqlInsert.js';
+import { numberOf, textOf, type SqlValue } from './sqlInsert.js';
+import { Batches, readTable as readTableOf, type TableBuildOptions } from './tableRead.js';
 import {
   createNextTables, dropNextTables, hiddenCategoryTitles, indexNextTables, insertCategories, insertItems, insertLinks, insertPages,
   swapIn,
@@ -36,12 +36,7 @@ import {
 
 const ARTICLE = 0;
 const CATEGORY = 14;
-const BATCH = 20_000;
-
-type BuildOptions = ReadOptions & {
-  buildId: number; onPhase: (message: string) => void; trial?: boolean;
-  onMeasure?: (read: number, total: number) => void;
-};
+type BuildOptions = TableBuildOptions;
 
 /**
  * The four files a build reads, in its order: the dump key, the table its
@@ -58,6 +53,11 @@ export const STRUCTURE_FILES: ReadonlyArray<{ key: DumpKey; table: string; colum
 
 const columnsOf = (table: string) => STRUCTURE_FILES.find(f => f.table === table)!.columns;
 
+/** One of the four files, read with the columns the build reads it by; the page table's is the build's own read. */
+const readTable = (
+  file: DumpFile, table: string, options: BuildOptions, onRow: (row: SqlValue[]) => Promise<void> | void, finish: () => Promise<void>,
+) => readTableOf(file, table, columnsOf(table), options, table === 'page', onRow, finish);
+
 /** The file of `table` in the dump directory `page` comes from: `enwiki-20261001-page.sql.gz` gives `enwiki-20261001-linktarget.sql.gz`. */
 export const siblingName = (page: DumpFile, table: string) => page.fileName.replace(/-page\.sql\.gz$/, `-${table}.sql.gz`);
 
@@ -67,54 +67,6 @@ async function siblingOf(page: DumpFile, key: DumpKey, table: string, signal: Ab
   const file = await dumpNamed(key)!.resolve(url => fetchText(url, signal), url => sizeOf(url, signal), candidate => candidate === name);
   if (!file) throw new Error(`The host has not finished ${name}, which the structure of ${page.date} needs`);
   return file;
-}
-
-/** Rows gathered and written a batch at a time. */
-class Batches<Row> {
-  private rows: Row[] = [];
-  written = 0;
-  constructor(private readonly write: (rows: Row[]) => Promise<void>) {}
-
-  async add(row: Row): Promise<void> {
-    this.rows.push(row);
-    if (this.rows.length >= BATCH) await this.flush();
-  }
-
-  async flush(): Promise<void> {
-    const rows = this.rows;
-    this.rows = [];
-    this.written += rows.length;
-    await this.write(rows);
-  }
-}
-
-/**
- * Read one file's inserts into `table`, handing each row to `onRow` (whose
- * writes it waits on before the next line), and finish once the file is
- * verified. A statement the file leaves open is a damaged file. The page
- * table's file is the build's own and reports as the build's read; each of
- * the other three reports as a step measured against its own size.
- */
-async function readTable(
-  file: DumpFile, table: string, options: BuildOptions, onRow: (row: SqlValue[]) => Promise<void> | void, finish: () => Promise<void>,
-): Promise<{ bytes: number; lines: number; checksumActual: string | null }> {
-  const pending: Array<Promise<void> | void> = [];
-  const reader = new InsertReader(table, row => { pending.push(onRow(row)); }, columnsOf(table));
-  const read: ReadOptions = table === 'page' ? options : {
-    ...options,
-    onProgress: ({ downloaded, read: done }) => options.onMeasure?.(done > 0 ? done : downloaded, file.expectedBytes ?? 0),
-  };
-  return readDump(file, {
-    line: async text => {
-      reader.line(text);
-      for (const write of pending.splice(0)) await write;
-    },
-    commit: async () => {
-      if (reader.open) throw new Error(`${file.fileName} ends inside an insert into ${table}`);
-      await finish();
-    },
-    abort: async () => undefined,
-  }, read);
 }
 
 /**
