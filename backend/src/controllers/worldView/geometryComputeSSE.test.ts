@@ -199,3 +199,39 @@ describe('the SSE snap keeps the direct members a mixed region holds', () => {
     expect(droppedMemberProblems(calls, { memberGeom: MEMBERS, snappedGeom: SNAPPED })).toEqual([]);
   });
 });
+
+/**
+ * The editor's stream runs in the backend, under a request's bound, and a
+ * union of full-resolution inputs can outgrow it (#459). Nothing is written,
+ * and the error points to the world view's computation, which the dump worker
+ * runs with the longer bound.
+ */
+describe('the SSE path under the request bound', () => {
+  beforeEach(() => {
+    client.query.mockReset();
+    poolQuery.mockReset();
+    poolQuery.mockImplementation(async (sql: string) => respondPool(String(sql)));
+  });
+
+  it('sets the request bound, writes nothing, and points to the worker when a statement outruns it', async () => {
+    client.query.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      if (s.includes('member_points')) return { rows: [UNION_SHAPE] };
+      if (s.includes('direct_member_geoms')) return { rows: [{ collected_geom: { sentinel: 'collected' }, geom_count: '4' }] };
+      if (s.includes('ST_UnaryUnion')) {
+        throw Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' });
+      }
+      return respondClient(s);
+    });
+
+    const events = await runStream();
+
+    const sqls = client.query.mock.calls.map((c) => String(c[0]));
+    expect(sqls).toContain("SET statement_timeout = '300000'");
+    expect(sqls.some((s) => s.includes('UPDATE regions'))).toBe(false);
+    const error = events.find((e) => e.type === 'error');
+    expect(error).toMatchObject({ type: 'error' });
+    expect((error as { message: string }).message).toContain('within 5 minutes, and its geometry was not saved');
+    expect((error as { message: string }).message).toContain('30-minute bound');
+  });
+});

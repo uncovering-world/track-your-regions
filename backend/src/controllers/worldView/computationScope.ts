@@ -10,6 +10,8 @@ export interface GroupRow {
   id: number;
   name: string;
   depth: number;
+  /** The region it is a child of, or null for a root: what a failed child's run has to stop short of. */
+  parent_region_id: number | null;
 }
 
 const GROUP_DEPTH_CTE = `
@@ -49,7 +51,7 @@ export async function loadGroupsToCompute(worldViewId: number, forceRecompute: b
   const sql = forceRecompute
     ? `
       ${GROUP_DEPTH_CTE}
-      SELECT gd.id, gd.name, gd.depth
+      SELECT gd.id, gd.name, gd.depth, gd.parent_region_id
       FROM group_depth gd
       JOIN regions cg ON gd.id = cg.id
       WHERE cg.is_custom_boundary IS NOT TRUE
@@ -74,7 +76,7 @@ export async function loadGroupsToCompute(worldViewId: number, forceRecompute: b
         JOIN needs_geometry n ON n.parent_region_id = p.id
         WHERE pr.is_custom_boundary IS NOT TRUE
       )
-      SELECT gd.id, gd.name, gd.depth
+      SELECT gd.id, gd.name, gd.depth, gd.parent_region_id
       FROM group_depth gd
       JOIN regions cg ON gd.id = cg.id
       WHERE cg.is_custom_boundary IS NOT TRUE

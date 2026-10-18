@@ -4037,7 +4037,7 @@ COMMENT ON COLUMN geometry_computations.regions IS 'How many regions the computa
 COMMENT ON COLUMN geometry_computations.heartbeat_at IS 'When the running computation last said it is alive, every few seconds. A running row that has not beaten for five minutes is a computation that stopped.';
 COMMENT ON COLUMN geometry_computations.runner IS 'What runs the computation: the dump worker on this host (worker:<hostname>). A worker that starts closes the running rows of its own runner, which its previous run left.';
 COMMENT ON COLUMN geometry_computations.progress IS 'The running computation''s progress as the panel shows it: regions done, computed, skipped and failed, the region in hand, and the step; written by the worker with its heartbeat.';
-COMMENT ON COLUMN geometry_computations.cancel_requested_at IS 'When an admin asked the computation to stop; the worker reads it with its heartbeat and stops after the region in hand.';
+COMMENT ON COLUMN geometry_computations.cancel_requested_at IS 'When an admin asked the computation to stop; the worker reads it with its heartbeat and cancels the statement in flight in the database (ADR-0123).';
 COMMENT ON COLUMN geometry_computations.outcome IS 'What a computation that ended well did, in words: regions computed, skipped and failed. Null while it runs and for one that failed or was cancelled, whose reason is in error.';
 
 -- The local Wikidata subset (ADR-0101 decision 2, ADR-0105, #1434): the items

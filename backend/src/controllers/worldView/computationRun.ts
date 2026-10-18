@@ -16,7 +16,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { pool } from '../../db/index.js';
 import { Operation } from '../../services/operationProgress.js';
 import { WORKER_RUNNER } from '../../services/dumps/dumpWorker.js';
-import { computeRegionGeometryCore } from './geometryComputeSingle.js';
+import { clearRegionGeometry, computeRegionGeometryCore } from './geometryComputeSingle.js';
 import { loadGroupsToCompute, type GroupRow } from './computationScope.js';
 import {
   beatComputation,
@@ -59,10 +59,20 @@ const recordOf = (state: ComputationProgress): ComputationProgressRecord => ({
   operation: state.operation.progress,
 });
 
+/**
+ * One region of the run. `unfinished` holds the regions a child of which ended
+ * without the geometry it should hold: a union that timed out, or a region
+ * failed for that same reason below it. Such a region is not unioned, since
+ * the union would lack the child's territory and be counted as computed (a
+ * parent comes after its children, deepest first); it is cleared and counted
+ * as an error, and its own parent is held the same way (#459).
+ */
 async function computeOneGroup(
   group: GroupRow,
   progressState: ComputationProgress,
   skipSnapping: boolean,
+  unfinished: Set<number>,
+  stop: AbortSignal,
 ): Promise<void> {
   progressState.currentGroup = group.name;
   progressState.status = `Computing: ${group.name} [depth ${group.depth}]`;
@@ -76,16 +86,33 @@ async function computeOneGroup(
   );
   if (exists.rows.length === 0) return;
 
+  const holdParent = () => { if (group.parent_region_id !== null) unfinished.add(group.parent_region_id); };
+  if (unfinished.has(group.id)) {
+    await clearRegionGeometry(pool, group.id);
+    progressState.operation.note(`Failed ${group.name}: a region under it timed out, so its union would lack that region; its geometry is cleared`);
+    progressState.errors++;
+    holdParent();
+    return;
+  }
+
   const startTime = Date.now();
   const result = await computeRegionGeometryCore(group.id, {
     skipSnapping,
     logPrefix: `[Geometry ${progressState.progress + 1}/${progressState.total}]`,
+    signal: stop,
   });
   const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
 
   if (result.computed) {
     progressState.operation.note(`Completed ${group.name} in ${elapsed}s (${result.points?.toLocaleString() || '?'} points)`);
     progressState.computed++;
+  } else if (result.stopped) {
+    // The run ends as stopped or cancelled; the region is taken again by the next one.
+  } else if (result.timedOut) {
+    // A union too large for the bound is an error, never a quiet skip (#459).
+    progressState.operation.note(`Failed ${group.name}: ${result.error}`);
+    progressState.errors++;
+    holdParent();
   } else if (result.error) {
     progressState.operation.note(`Skipped ${group.name}: ${result.error}`);
     progressState.skipped++;
@@ -96,7 +123,9 @@ async function processGroups(
   groups: GroupRow[],
   progressState: ComputationProgress,
   skipSnapping: boolean,
+  stop: AbortSignal,
 ): Promise<void> {
+  const unfinished = new Set<number>();
   progressState.operation.step(STEP.regions, `Computing the geometry of ${groups.length} regions, deepest first`, groups.length);
   for (const group of groups) {
     if (progressState.cancel) {
@@ -104,7 +133,7 @@ async function processGroups(
       break;
     }
     try {
-      await computeOneGroup(group, progressState, skipSnapping);
+      await computeOneGroup(group, progressState, skipSnapping, unfinished, stop);
     } catch (e) {
       // nosemgrep: javascript.lang.security.audit.unsafe-formatstring.unsafe-formatstring -- group.id is a number
       console.error(`Error computing geometry for group ${group.id}:`, e);
@@ -166,8 +195,9 @@ function endOf(progressState: ComputationProgress, stop: AbortSignal): Parameter
 /**
  * Run the computation the worker took, to its end on the row: every five
  * seconds the row gets its progress and answers whether an admin asked it to
- * stop, which, like the worker stopping, ends the run after the region in
- * hand.
+ * stop. An admin's cancel, like the worker stopping, cancels the statement in
+ * flight in the database (`halt`) and ends the run there, writing nothing of
+ * the region in hand.
  */
 export async function runComputation(claimed: ClaimedComputation, stop: AbortSignal): Promise<void> {
   const worldViewId = claimed.world_view_id;
@@ -182,11 +212,14 @@ export async function runComputation(claimed: ClaimedComputation, stop: AbortSig
     currentGroup: '',
     operation: new Operation(`[Geometry] World view ${worldViewId}:`, Object.keys(STEP).length),
   };
+  // What the region pipeline is handed: aborted by the worker's stop and by an admin's cancel alike.
+  const halt = new AbortController();
   const stopAsked = () => {
     if (progressState.cancel) return;
     progressState.cancel = true;
     progressState.status = 'Cancelling...';
     progressState.operation.cancel();
+    halt.abort();
   };
   stop.addEventListener('abort', stopAsked, { once: true });
   // A stop that landed while the claim was in flight fired before the listener.
@@ -209,7 +242,7 @@ export async function runComputation(claimed: ClaimedComputation, stop: AbortSig
     progressState.skipped = totalCount.rows[0].count - groups.length;
     console.log(`[Geometry] Starting computation ${claimed.id} of world view ${worldViewId}: ${groups.length} regions to process (skipSnapping=${claimed.skip_snapping})`);
     await beat();
-    await processGroups(groups, progressState, claimed.skip_snapping);
+    await processGroups(groups, progressState, claimed.skip_snapping, halt.signal);
     await applyCoverageSimplification(worldViewId, progressState);
     await closeComputation(claimed.id, endOf(progressState, stop));
   } catch (err) {
