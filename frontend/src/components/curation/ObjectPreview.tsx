@@ -70,10 +70,13 @@ export function ObjectPreview({ experienceId }: { experienceId: number }) {
   // which object and tag vouched for it. Without the note on screen the card
   // names a museum or a town and gives no reason it is in the queue, so the
   // curator has to rediscover the question before answering it. Above the
-  // facts, because it is why the facts are being read.
-  const note = typeof data.metadata?.admissionNote === 'string'
-    ? data.metadata.admissionNote.trim()
-    : '';
+  // facts, because it is why the facts are being read. The readership door
+  // asks under a key per kind (ADR-0056), as the review card reads it too.
+  const note = (['admissionNote', 'museumReadershipNote', 'worshipReadershipNote'] as const)
+    .map((key) => data.metadata?.[key])
+    .filter((asked): asked is string => typeof asked === 'string' && asked.trim() !== '')
+    .map((asked) => asked.trim())
+    .join(' ');
   return (
     <>
       {note && (
