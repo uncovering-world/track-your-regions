@@ -225,6 +225,17 @@ too. A queued row waits for a worker: a stack without one shows it waiting.
 The worker runs the code it started with: a change to the build reaches it on
 `docker compose restart dump-worker`, which stops the build it is running.
 
+The worker also runs a world view's geometry computation
+([ADR-0122](../decisions/0122-a-world-views-geometry-computation-runs-in-the-dump-worker-beside-its-builds.md),
+#1658), queued from the panel in a ledger of its own (`geometry_computations`,
+`controllers/worldView/computationLedger.ts`) and taken by a second loop
+(`computationLoop` in `controllers/worldView/computationRun.ts`) beside the
+builds' loop, each loop one piece of work at a time. A computation never waits
+behind a build, nor a build behind a computation. Its row is followed, stopped
+and closed after a crash the way a build's is, and a restart of the worker
+stops it after the region in hand. `docs/tech/world-views.md` § Geometry
+Computation has the rest.
+
 `dump_builds` (migrations `095-a-dump-build-is-recorded.sql`, `100-…`,
 `101-a-dump-build-is-queued-for-the-worker.sql` and
 `109-a-dump-build-says-what-it-did.sql`) records each build: the dump,

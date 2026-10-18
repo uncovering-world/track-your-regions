@@ -694,7 +694,7 @@ Admin panel section "WorldView Import" (`WorldViewImportPanel.tsx`) with these v
 4. Click "Fetch from Wikivoyage" — the extraction pipeline runs automatically (20-40 min). Always uses country-based matching
 5. After all phases complete, click "Review Matches"
 6. Accept auto-matches in bulk, review suggestions individually
-7. Click "Compute Geometries" in the review, beside Close Review, to draw the regions (the world view's background job, `POST /world-views/:id/compute-geometries`, with its progress, cancel and error count in the alert under the stats); the WorldView Editor has the same job for later geometry work
+7. Click "Compute Geometries" in the review, beside Close Review, to draw the regions (the world view's computation, `POST /world-views/:id/compute-geometries`, queued for the dump worker, with its progress, cancel and error count in the alert under the stats); the WorldView Editor has the same job for later geometry work
 
 ### JSON File Upload
 
