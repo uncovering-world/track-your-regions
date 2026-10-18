@@ -25,7 +25,7 @@ import {
   AIMatchCancelled, AIMatchOneResult, AIMatchStarted, AIMatchStatus, CoveringMatchResult, DbSearchResult,
   GeocodeMatchResult, ImportCancelled, ImportStarted, ImportStatus, InstancesSynced, MatchAccepted,
   MatchAcceptedRestRejected, MatchesAccepted, MatchReset, MatchStats, MatchTree, RemainingRejected, RematchStarted,
-  RematchStatus, SuggestionRejected, TransferAccepted, TransferPreview,
+  RematchCancelled, RematchStatus, SuggestionRejected, TransferAccepted, TransferPreview,
 } from '../api/responses/worldViewImport.js';
 import {
   AutoResolvePreview, ChildMerged, ChildRegionAdded, ChildrenAutoResolved, ChildrenCollapsed, ChildrenDismissed,
@@ -85,7 +85,7 @@ import {
 import {
   approveCoverageSuggestion, dismissCoverageGap, geoSuggestGap, getCoverage, undismissCoverageGap,
 } from '../controllers/admin/wvImportCoverageController.js';
-import { getRematchStatus, rematchWorldView } from '../controllers/admin/wvImportRematchController.js';
+import { cancelRematch, getRematchStatus, rematchWorldView } from '../controllers/admin/wvImportRematchController.js';
 
 const ADMIN = { access: 'admin', cache: 'no-store' } as const;
 
@@ -709,5 +709,13 @@ export const adminImportRoutes = [
     params: worldViewIdParamSchema,
     response: RematchStatus,
     handler: getRematchStatus,
+  }),
+  // A re-match ends with the spatial pass, which can take hours (#622, #1613)
+  defineRoute({
+    ...ADMIN, method: 'post', path: '/wv-import/matches/:worldViewId/rematch/cancel', limiter: expensiveAdminLimiter,
+    summary: 'Stop a running rematch of a world view',
+    params: worldViewIdParamSchema,
+    response: RematchCancelled,
+    handler: cancelRematch,
   }),
 ];

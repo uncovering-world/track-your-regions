@@ -205,8 +205,11 @@ export async function runMatchingPolicy(
       () => ({ done: progress.countriesMatched, total: 0 }));
     await matchCountryLevel(worldViewId, progress);
   }
-  // A cancel the policy saw: its results may not be written, so the run is cancelled.
-  if (progress.cancel) return { cancelled: true, spatial: null };
+  // A cancel the policy saw before writing: it wrote nothing and says so
+  // (`status = 'cancelled'`), so the run is cancelled. A cancel that landed
+  // while it was already writing finds its results committed, and falls
+  // through to the spatial pass, which stops at once on the same flag.
+  if (progress.cancel && progress.status === 'cancelled') return { cancelled: true, spatial: null };
   // What names could not match, the item's shape or points may (#622). A cancel
   // from here on only stops the scoring: the policy's results are written, so the
   // caller finishes the run and marks it ready for review. The policy's own

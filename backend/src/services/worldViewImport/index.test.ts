@@ -103,9 +103,19 @@ describe('a cancel during the spatial pass', () => {
     expect(outcome.spatial?.stoppedAfter).toBe(1);
   });
 
+  it('does not call a run cancelled whose matcher wrote its results before the stop landed (#1613)', async () => {
+    const progress = createInitialProgress();
+    // The stop arrives while the matcher is writing: it has passed its own check and commits.
+    mockedHierarchicalMatch.mockImplementationOnce(async () => { progress.cancel = true; });
+
+    const outcome = await runMatchingPolicy('hierarchical', 77, progress);
+
+    expect(outcome.cancelled).toBe(false);
+  });
+
   it('keeps a cancel the policy saw as a cancel, and runs no pass after it', async () => {
     const progress = createInitialProgress();
-    mockedHierarchicalMatch.mockImplementationOnce(async () => { progress.cancel = true; });
+    mockedHierarchicalMatch.mockImplementationOnce(async () => { progress.cancel = true; progress.status = 'cancelled'; });
     (runSpatialPass as unknown as ReturnType<typeof vi.fn>).mockClear();
 
     const outcome = await runMatchingPolicy('hierarchical', 77, progress);

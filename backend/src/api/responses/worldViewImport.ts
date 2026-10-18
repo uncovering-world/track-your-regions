@@ -207,6 +207,11 @@ export const RematchStarted = z.strictObject({
 }).describe('A re-match of the whole world view, started in the background.');
 export type RematchStarted = z.infer<typeof RematchStarted>;
 
+export const RematchCancelled = z.strictObject({
+  cancelled: z.boolean().describe('Whether a re-match of this world view was running to be stopped.'),
+}).describe('A request to stop a world view\'s re-match (#1613).');
+export type RematchCancelled = z.infer<typeof RematchCancelled>;
+
 export const RematchStatus = z.strictObject({
   status: z.enum(['importing', 'matching', 'complete', 'failed', 'cancelled', 'idle']).describe('`idle` while no re-match of this world view is known since the server started.'),
   statusMessage: z.string().optional(),
