@@ -193,3 +193,5 @@ lines are recorded; this record holds only what the category door itself contrib
 has been made, so the kind holds no place a reader can be shown. The site door landed with #581's
 second slice on 2026-09-14, so both halves of the kind are built and what it waits on is the
 maintainer's first live run and a curator publishing what it brings (ADR-0058 decision 7).
+
+**The same categories from the dumps** (#1440, 2026-10-18). A run that reads Wikidata from the local subset reads this walk and the category vote from the copy of English Wikipedia's structure kept from its SQL dumps, where one is built, and asks this door only otherwise ([`wikipedia-sql-dumps`](wikipedia-sql-dumps.md), ADR-0121).
