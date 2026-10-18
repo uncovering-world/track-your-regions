@@ -11,7 +11,7 @@
 import type {
   AIMatchOneResult, CoveringMatchResult, DbSearchResult, GeocodeMatchResult, Geoshape, ImportCancelled,
   ImportStarted, ImportStatus, InstancesSynced, MatchAccepted, MatchAcceptedRestRejected, MatchesAccepted,
-  MatchReset, MatchStats, MatchTree, RematchStarted, RematchStatus, RemainingRejected, SuggestionRejected,
+  MatchReset, MatchStats, MatchTree, RematchCancelled, RematchStarted, RematchStatus, RemainingRejected, SuggestionRejected,
   TransferAccepted, TransferPreview,
 } from '../client.generated';
 import {
@@ -24,7 +24,8 @@ import {
   postAdminWvImportMatchesByWorldViewIdDbSearchOne, postAdminWvImportMatchesByWorldViewIdGeocodeMatch,
   postAdminWvImportMatchesByWorldViewIdGeoshapeMatch, postAdminWvImportMatchesByWorldViewIdPointMatch,
   postAdminWvImportMatchesByWorldViewIdReject, postAdminWvImportMatchesByWorldViewIdRejectRemaining,
-  postAdminWvImportMatchesByWorldViewIdRematch, postAdminWvImportMatchesByWorldViewIdResetMatch,
+  postAdminWvImportMatchesByWorldViewIdRematch, postAdminWvImportMatchesByWorldViewIdRematchCancel,
+  postAdminWvImportMatchesByWorldViewIdResetMatch,
   postAdminWvImportMatchesByWorldViewIdSyncInstances, postAdminWvImportMatchesByWorldViewIdTransferPreview,
   type ImportTreeNode,
   type BaseLayerImportBody,
@@ -37,7 +38,7 @@ export type {
   AIMatchOneResult, AssignedDivision, CoveringMatchResult, DbSearchResult, FoundSuggestion, GeocodeMatchResult,
   Geoshape, ImportCancelled, ImportStarted, ImportStatus, InstancesSynced, MarkerPoint, MatchAccepted,
   MatchAcceptedRestRejected, MatchesAccepted, MatchReset, MatchStats, MatchStatus, MatchSuggestion, MatchTree,
-  MatchTreeNode, RematchStarted, RematchStatus, RemainingRejected, SuggestionConflict, SuggestionRejected,
+  MatchTreeNode, RematchCancelled, RematchStarted, RematchStatus, RemainingRejected, SuggestionConflict, SuggestionRejected,
   TransferAccepted, TransferPreview,
 } from '../client.generated';
 
@@ -197,6 +198,11 @@ export async function startRematch(
 
 export async function getRematchStatus(worldViewId: number): Promise<RematchStatus> {
   return getAdminWvImportMatchesByWorldViewIdRematchStatus(worldViewId);
+}
+
+/** Stop a running re-match (#1613): answers whether one was running. */
+export async function cancelRematch(worldViewId: number): Promise<RematchCancelled> {
+  return postAdminWvImportMatchesByWorldViewIdRematchCancel(worldViewId);
 }
 
 // =============================================================================

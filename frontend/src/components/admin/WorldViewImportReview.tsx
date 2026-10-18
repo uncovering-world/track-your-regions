@@ -32,6 +32,7 @@ import {
   finalizeReview,
   startRematch,
   getRematchStatus,
+  cancelRematch,
   acceptMatch,
   acceptBatchMatches,
   rejectSuggestion,
@@ -42,12 +43,12 @@ import {
   splitDivisionsDeeper,
   visionMatchDivisions,
 } from '../../api/admin/worldViewImport';
-import type { CoverageResult, RematchStatus } from '../../api/admin/worldViewImport';
+import type { CoverageResult } from '../../api/admin/worldViewImport';
 
 import { WorldViewImportTree } from './WorldViewImportTree';
 import { CoverageResolveDialog } from './CoverageResolveDialog';
 import { type ShadowInsertion } from './treeNodeShared';
-import { OperationProgressView } from './OperationProgressView';
+import { RematchProgress } from './RematchProgress';
 import { queryKeys } from '../../api/queryKeys';
 import { plural } from '../../utils/plural';
 
@@ -447,6 +448,8 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
   const rematchMutation = useMutation({
     mutationFn: () => startRematch(worldViewId),
     onSuccess: () => {
+      // A stop asked of an earlier run belongs to that run, not to this one.
+      cancelRematchMutation.reset();
       queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.rematchStatusAll });
     },
   });
@@ -457,13 +460,25 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
   // reporting `idle`, so nothing else in this view would ever say so.
   const rematchError = (rematchMutation.error as Error | null)?.message;
 
+  // A re-match ends with the spatial pass, which can take hours (#1613). Its
+  // limiter is the re-match's, a bucket other expensive admin routes share, so a
+  // refused stop is said rather than turning the button back without a word.
+  const cancelRematchMutation = useMutation({
+    mutationFn: () => cancelRematch(worldViewId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.wvImport.rematchStatus(worldViewId) });
+    },
+  });
+  const cancelRematchError = (cancelRematchMutation.error as Error | null)?.message;
+
   const { data: rematchStatus } = useQuery({
     queryKey: queryKeys.admin.wvImport.rematchStatus(worldViewId),
     queryFn: () => getRematchStatus(worldViewId),
     refetchInterval: (query) => {
       const st = query.state.data;
       if (st?.status === 'matching') return 1000;
-      if (st?.status === 'complete') {
+      // A cancelled re-match changed the tree too: its reset ran (a stop during the spatial pass ends `complete`).
+      if (st?.status === 'complete' || st?.status === 'cancelled') {
         // Invalidate tree + stats + children coverage but NOT rematch status
         // itself — otherwise the invalidation triggers a refetch, which sees
         // 'complete' again, calls invalidateAll again → infinite loop that
@@ -679,10 +694,23 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
       )}
 
       {/* Re-match progress */}
-      {rematchRunning && rematchStatus && <RematchProgress status={rematchStatus} />}
+      {rematchRunning && rematchStatus && (
+        <RematchProgress status={rematchStatus} onCancel={() => cancelRematchMutation.mutate()}
+          cancelling={cancelRematchMutation.isPending || cancelRematchMutation.data?.cancelled === true} />
+      )}
       {rematchStatus?.status === 'complete' && rematchStatus.statusMessage && (
         <Alert severity="success" sx={{ mb: 2 }}>
           {rematchStatus.statusMessage}
+        </Alert>
+      )}
+      {rematchStatus?.status === 'cancelled' && rematchStatus.statusMessage && (
+        <Alert severity="warning" sx={{ mb: 2 }}>
+          {rematchStatus.statusMessage}
+        </Alert>
+      )}
+      {cancelRematchError && (
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => cancelRematchMutation.reset()}>
+          The re-match could not be stopped: {cancelRematchError}
         </Alert>
       )}
       {rematchError && (
@@ -764,16 +792,5 @@ export function WorldViewImportReview({ worldViewId, onFinalize }: WorldViewImpo
         onRecheck={runCoverageCheck}
       />
     </Box>
-  );
-}
-
-/** A running re-match: its step, of the three, and how far through it (#1356). */
-function RematchProgress({ status }: { status: RematchStatus }) {
-  return (
-    <Alert severity="info" sx={{ mb: 2 }}>
-      {status.operation
-        ? <OperationProgressView operation={status.operation} starting={status.statusMessage ?? ''} detail={status.statusMessage} />
-        : status.statusMessage}
-    </Alert>
   );
 }
