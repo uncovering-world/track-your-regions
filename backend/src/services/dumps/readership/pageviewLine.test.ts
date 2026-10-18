@@ -38,6 +38,8 @@ describe('a pageview line (ADR-0055)', () => {
   it('names an edition by the site code Wikidata gives its sitelinks', () => {
     expect(siteOf('en.wikipedia')).toBe('enwiki');
     expect(siteOf('zh-min-nan.wikipedia')).toBe('zh_min_nanwiki');
+    // Created as be_x_oldwiki: its sitelinks and its dump directory keep that code.
+    expect(siteOf('be-tarask.wikipedia')).toBe('be_x_oldwiki');
     expect(siteOf('simple.wikipedia')).toBe('simplewiki');
   });
 

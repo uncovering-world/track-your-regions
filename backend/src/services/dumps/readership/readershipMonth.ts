@@ -4,10 +4,11 @@
  * whole, with the file the month came from.
  *
  * A title is staged once per spelling and per run of adjacent lines
- * (`monthSummer.ts`), so its rows are summed here. Its daily series is the one
- * of its largest row, the plain spelling in practice, since the encoded ones
- * carry a few views at most; adding series of other spellings would buy nothing
- * a door reads.
+ * (`monthSummer.ts`), so its rows are summed here, with the rows of the
+ * article's redirects (#1650). Its daily series is the sum, day by day, of the
+ * series its rows carry: a renamed article is read mostly under a redirect,
+ * and the series the burst flag reads (ADR-0055 decision 4) has to cover the
+ * views it is read against.
  */
 
 import type { PoolClient } from 'pg';
@@ -86,23 +87,34 @@ export async function keepMonth(read: MonthRead): Promise<number> {
     await client.query('DELETE FROM readership_months WHERE month = $1::date', [read.month]);
     const kept = await client.query(
       `WITH joined AS (
-         SELECT l.id AS item, p.site, p.views, p.mobile, p.daily,
-                row_number() OVER (PARTITION BY l.id, p.site ORDER BY p.daily IS NULL, p.views DESC) AS rank
+         SELECT l.id AS item, p.site, p.views, p.mobile, p.daily
            FROM readership_staging p
-           JOIN wikidata_sitelinks l ON l.site = p.site AND l.title = p.title
-          WHERE p.build_id = $2::int)
+           -- A redirect's views count under the article it points to (ADR-0055 decision 2, #1650).
+           LEFT JOIN wikipedia_redirects rd ON rd.site = p.site AND rd.title = p.title
+           JOIN wikidata_sitelinks l ON l.site = p.site AND l.title = COALESCE(rd.target, p.title)
+          WHERE p.build_id = $2::int),
+       per_day AS (
+         SELECT j.item, j.site, d.day, sum(d.views) AS views
+           FROM joined j CROSS JOIN LATERAL unnest(j.daily) WITH ORDINALITY AS d(views, day)
+          GROUP BY j.item, j.site, d.day),
+       series AS (
+         SELECT item, site, array_agg(views ORDER BY day) AS daily FROM per_day GROUP BY item, site)
        INSERT INTO readership_months (month, item, site, views, mobile, daily)
-       SELECT $1::date, item, site, sum(views), sum(mobile), max(daily) FILTER (WHERE rank = 1)
-         FROM joined
-        GROUP BY item, site
-       HAVING sum(views) >= $3::int`,
+       SELECT $1::date, j.item, j.site, sum(j.views), sum(j.mobile), s.daily
+         FROM joined j
+         LEFT JOIN series s ON s.item = j.item AND s.site = j.site
+        GROUP BY j.item, j.site, s.daily
+       HAVING sum(j.views) >= $3::int`,
       [read.month, read.buildId, MONTH_FLOOR],
     );
     await client.query(
-      `INSERT INTO readership_month_files (month, file_name, build_id, lines, editions, kept)
-       VALUES ($1::date, $2, $3, $4, $5::jsonb, $6)
+      `WITH redirects AS (SELECT build_id, dump_date FROM wikipedia_redirect_builds ORDER BY swapped_at DESC LIMIT 1)
+       INSERT INTO readership_month_files (month, file_name, build_id, lines, editions, kept, redirects_dump_date, redirects_build_id)
+       VALUES ($1::date, $2, $3, $4, $5::jsonb, $6,
+               (SELECT dump_date FROM redirects), (SELECT build_id FROM redirects))
        ON CONFLICT (month) DO UPDATE SET file_name = EXCLUDED.file_name, build_id = EXCLUDED.build_id,
-         lines = EXCLUDED.lines, editions = EXCLUDED.editions, kept = EXCLUDED.kept, built_at = NOW()`,
+         lines = EXCLUDED.lines, editions = EXCLUDED.editions, kept = EXCLUDED.kept,
+         redirects_dump_date = EXCLUDED.redirects_dump_date, redirects_build_id = EXCLUDED.redirects_build_id, built_at = NOW()`,
       [read.month, read.fileName, read.buildId, read.lines, JSON.stringify(Object.fromEntries(read.editions)), kept.rowCount ?? 0],
     );
     await emptyStaging(client);
@@ -116,12 +128,27 @@ export async function keepMonth(read: MonthRead): Promise<number> {
   }
 }
 
-/** The months kept, by their first day, with the file each came from. */
-export async function keptMonths(): Promise<Map<string, { fileName: string; builtAt: Date; lines: number }>> {
-  const result = await pool.query<{ month: string; file_name: string; built_at: Date; lines: string }>(
-    `SELECT to_char(month, 'YYYY-MM-DD') AS month, file_name, built_at, lines FROM readership_month_files ORDER BY month`,
+/** The months kept, by their first day, with the file each came from and the build of the redirects it was folded with. */
+export async function keptMonths(): Promise<Map<string, { fileName: string; builtAt: Date; lines: number; redirects: number | null }>> {
+  const result = await pool.query<{ month: string; file_name: string; built_at: Date; lines: string; redirects: number | null }>(
+    `SELECT to_char(month, 'YYYY-MM-DD') AS month, file_name, built_at, lines, redirects_build_id AS redirects
+       FROM readership_month_files ORDER BY month`,
   );
-  return new Map(result.rows.map(r => [r.month, { fileName: r.file_name, builtAt: r.built_at, lines: Number(r.lines) }]));
+  return new Map(result.rows.map(r => [r.month, {
+    fileName: r.file_name, builtAt: r.built_at, lines: Number(r.lines), redirects: r.redirects,
+  }]));
+}
+
+/**
+ * The build of the redirects in place (#1650), or null where none were ever
+ * built: the build, not its dump date, since one date can be built twice over
+ * a subset whose sitelinks changed between.
+ */
+export async function redirectsInPlace(): Promise<number | null> {
+  const result = await pool.query<{ build_id: number }>(
+    'SELECT build_id FROM wikipedia_redirect_builds ORDER BY swapped_at DESC LIMIT 1',
+  );
+  return result.rows[0]?.build_id ?? null;
 }
 
 /** Drop the months before `first`: readership reads the last twelve (ADR-0055 decision 1). */

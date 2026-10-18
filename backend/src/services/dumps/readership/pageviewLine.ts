@@ -122,11 +122,20 @@ export function parsePageviewLine(line: string): PageviewRow | null {
 }
 
 /**
+ * The editions whose site code is not their domain's. Belarusian in the
+ * Taraškievica spelling is `be-tarask.wikipedia` and `be_x_oldwiki`, the
+ * database it was created under, both in Wikidata's sitelinks and in its
+ * dump directory.
+ */
+const SITE_CODES: Readonly<Record<string, string>> = { 'be-tarask': 'be_x_oldwiki' };
+
+/**
  * The site code Wikidata's sitelinks use for an edition: `en.wikipedia` is
  * `enwiki`, `zh-min-nan.wikipedia` is `zh_min_nanwiki`.
  */
 export function siteOf(wiki: string): string {
-  return `${wiki.slice(0, -'.wikipedia'.length).replaceAll('-', '_')}wiki`;
+  const domain = wiki.slice(0, -'.wikipedia'.length);
+  return SITE_CODES[domain] ?? `${domain.replaceAll('-', '_')}wiki`;
 }
 
 const FIRST_DAY = 'A'.charCodeAt(0);

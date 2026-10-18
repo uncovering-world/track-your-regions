@@ -62,8 +62,15 @@ export async function listDumps(): Promise<Dumps> {
   // A build that stopped beating shows as the failure it is, not as running.
   await closeOrphanedBuilds();
   const builds = await recentBuilds();
-  const keeps = await Promise.all(DUMPS.map(dump => keepsOf(dump.key)));
-  const progress = await Promise.all(DUMPS.map(dump => buildProgress(dump.key)));
+  // One dump at a time: each asks the database a few things, and asked all at
+  // once they took a connection each, enough to exhaust the pool under the API
+  // contract lane's concurrent requests.
+  const keeps: Array<Awaited<ReturnType<typeof keepsOf>>> = [];
+  const progress: Array<Awaited<ReturnType<typeof buildProgress>>> = [];
+  for (const dump of DUMPS) {
+    keeps.push(await keepsOf(dump.key));
+    progress.push(await buildProgress(dump.key));
+  }
   const dir = process.env.DUMPS_DIR?.trim();
   const copies = await Promise.all(DUMPS.map(dump => (dir ? newestLocalCopy(dir, dump.isFileName) : null)));
   const samples = await Promise.all(DUMPS.map(dump => (dir && keeperOf(dump.key)?.samples ? newestSample(dir, dump.isFileName) : null)));
