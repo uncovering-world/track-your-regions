@@ -3,6 +3,8 @@ import tseslint from '@typescript-eslint/eslint-plugin';
 import tsparser from '@typescript-eslint/parser';
 import security from 'eslint-plugin-security';
 import sonarjs from 'eslint-plugin-sonarjs';
+import { readFileSync } from 'node:fs';
+import { builtinRules } from 'eslint/use-at-your-own-risk';
 
 /** What to do instead, said once for both spellings of the mistake below. */
 const PINNED_TRANSACTION = "pool.query() does not pin a connection. Open the transaction on one client: "
@@ -425,6 +427,33 @@ const TABLE_WRITE_FAMILIES = [
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES, MERGE_SUGGESTION_WRITE_RULES,
 ];
 
+/**
+ * No reader or curator route names a workbench table (ADR-0124): a deployment
+ * of the serving tables leaves the workbench behind, so a route that read one
+ * would answer on nothing there. The tables are those `TABLE_TIERS`
+ * (`src/db/tableTiers.ts`) gives the workbench tier, read from it rather than
+ * listed here, so the registry is the one place a table's tier is said: the
+ * workbench schema's, and those still in `public`. An admin route (a dump
+ * build, a sync, the catalogue checks) reads them, and so do the source runs.
+ * A build's `_next` copy of one is refused with it, and the match ignores
+ * case, as Postgres does for an unquoted name.
+ *
+ * The rule is the core `no-restricted-syntax` under a name of its own, since
+ * that rule's options are replaced block by block (`restrictedSyntaxWithout`)
+ * and a family scoped to the route modules would be lost from or leak into
+ * the writer modules' blocks.
+ */
+const WORKBENCH_TABLES = [...readFileSync(new URL('./src/db/tableTiers.ts', import.meta.url), 'utf8')
+  .matchAll(/^ {2}(\w+): 'workbench',$/gm)].map(match => match[1]);
+if (WORKBENCH_TABLES.length === 0) throw new Error('eslint.config.mjs: TABLE_TIERS gives no table the workbench tier');
+const WORKBENCH_TABLE_TEXT = `/\\b(workbench\\.)?(${WORKBENCH_TABLES.join('|')})(_next)?\\b/i`;
+const WORKBENCH_TABLE_MESSAGE = 'A reader or curator route names no workbench table (ADR-0124): a workbench table is read by the source runs and the admin routes. Precompute what a reader needs into a serving table, or, where a reader already reads it, give the table the serving tier.';
+const WORKBENCH_TABLE_RULES = [
+  { selector: `TemplateElement[value.raw=${WORKBENCH_TABLE_TEXT}]`, message: WORKBENCH_TABLE_MESSAGE },
+  { selector: `Literal[value=${WORKBENCH_TABLE_TEXT}]`, message: WORKBENCH_TABLE_MESSAGE },
+];
+const tiers = { rules: { 'no-workbench-tables': builtinRules.get('no-restricted-syntax') } };
+
 /** The `no-restricted-syntax` setting of every family but the ones named. */
 function restrictedSyntaxWithout(...allowed) {
   for (const family of allowed) {
@@ -668,6 +697,16 @@ export default [
     ],
     rules: {
       'no-restricted-imports': ['error', GEOMETRY_COMPUTE_IMPORTS],
+    },
+  },
+  // The reader and curator routes name no workbench table (WORKBENCH_TABLE_RULES
+  // above); the admin controllers and routes are left out.
+  {
+    files: ['src/controllers/**/*.ts', 'src/routes/**/*.ts'],
+    ignores: ['src/controllers/admin/**', 'src/routes/admin*.ts', 'src/**/*.test.ts'],
+    plugins: { tiers },
+    rules: {
+      'tiers/no-workbench-tables': ['error', ...WORKBENCH_TABLE_RULES],
     },
   },
   // The one file nobody writes: `schema.generated.ts` is the schema's
