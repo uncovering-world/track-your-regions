@@ -9,7 +9,7 @@
  * works-first kind shares. Both need the same works and venues, so one fixture serves both.
  */
 
-import { isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
+import { isEnglishArticlesQuery, isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
 import { vi } from 'vitest';
 import { MUSEUM_BROAD_ROOTS, MUSEUM_WHOLE_ROOTS, MUSEUM_PINNED_CLASSES } from './worksCollector.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
@@ -553,6 +553,13 @@ export function makeSparql() {
   return vi.fn(async (query: string): Promise<SparqlBinding[]> => {
     // The recount every pool and every venue is held to (ADR-0082): this
     // world's own counts, so the lines read as they were written against.
+    // The English articles of the works the run writes (#1608): this world
+    // knows the Mona Lisa's alone.
+    if (isEnglishArticlesQuery(query)) {
+      return query.includes('wd:Q12418')
+        ? [{ e: uri('Q12418'), article: { value: 'https://en.wikipedia.org/wiki/Mona_Lisa' } }]
+        : [];
+    }
     if (isWikipediaEditionsQuery(query)) {
       return wikipediaEditionsRows(query, (q) => WORKS[q]?.sitelinks ?? ENTITIES[q]?.sitelinks ?? 10);
     }

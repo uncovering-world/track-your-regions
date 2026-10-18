@@ -507,11 +507,13 @@ export async function upsertVenueTreasures(
     const treasureResult = await pool.query(
       `INSERT INTO treasures (
         external_id, name, treasure_type, artists, year,
-        image_url, sitelinks_count, is_iconic, metadata, curation_state, created_at, updated_at
+        image_url, sitelinks_count, is_iconic, metadata, curation_state, created_at, updated_at,
+        wikipedia_url, wikipedia_read_at
       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, ${INSERTED_METADATA},
         CASE WHEN (SELECT requires_curation FROM experience_sources WHERE id = $12)
              THEN 'pending' ELSE 'auto' END,
-        NOW(), NOW())
+        NOW(), NOW(),
+        $14, CASE WHEN $15::boolean THEN NOW() END)
       ON CONFLICT (external_id) DO UPDATE SET
         -- Four of these are things a curator can be right about, and the guard is
         -- the one an experience's columns have carried since #488: a claimed field
@@ -548,6 +550,11 @@ export async function upsertVenueTreasures(
         image_url = CASE WHEN treasures.curated_fields ? 'image_url' OR ${HELD_WORK}
                          THEN treasures.image_url ELSE EXCLUDED.image_url END,
         sitelinks_count = EXCLUDED.sitelinks_count,
+        -- The English article is a measurement too (#1608): written by a run that
+        -- asked ($15), the stored one kept by a run that did not, never claimed
+        -- and never held.
+        wikipedia_url = CASE WHEN $15::boolean THEN EXCLUDED.wikipedia_url ELSE treasures.wikipedia_url END,
+        wikipedia_read_at = CASE WHEN $15::boolean THEN NOW() ELSE treasures.wikipedia_read_at END,
         is_iconic = CASE
           WHEN EXCLUDED.sitelinks_count >= $10 THEN true
           WHEN treasures.is_iconic THEN EXCLUDED.sitelinks_count >= $11
@@ -619,6 +626,8 @@ export async function upsertVenueTreasures(
         iconicStay,
         run.sourceId,
         sameMakers,
+        artwork.wikipediaUrl ?? null,
+        artwork.wikipediaUrl !== undefined,
       ]
     );
 

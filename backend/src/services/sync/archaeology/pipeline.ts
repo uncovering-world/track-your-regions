@@ -73,6 +73,7 @@ import type { Fold } from '../museum/venueFolds.js';
 import { fetchMuseumClasses } from '../museum/queries.js';
 import {
   collectWorks,
+  withEnglishArticles,
   type WorksCollection,
   type WorksCollectorOptions,
 } from '../museum/worksCollector.js';
@@ -439,6 +440,7 @@ export async function collectArchaeology(
   // would have said, and is reported once by the address below.
   const folded = foldedAway(works);
   const items = verdict.items.filter((item) => !folded.has(item.qid));
+  await withEnglishArticles(run, items.flatMap((item) => item.treasures));
   const refused = verdict.refused;
 
   // The kind's other door, run after the museums and over its own pool

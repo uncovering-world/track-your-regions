@@ -78,8 +78,12 @@ describe('treasureOf', () => {
       found_at: { qid: 'Q131594', label: 'Mycenae', source: 'P189' },
       found_at_site: null,
       kind_ids: [5],
+      wikipedia_url: 'https://en.wikipedia.org/wiki/Mask_of_Agamemnon',
+      wikipedia_read: true,
     } as TreasureRow);
     expect(work.image_credit).toEqual({ author: 'A photographer', license: 'CC BY 2.0', licenseUrl: null, detailsUrl: null });
     expect(work.found_at).toEqual({ qid: 'Q131594', label: 'Mycenae' });
+    expect(work.wikipedia_url).toBe('https://en.wikipedia.org/wiki/Mask_of_Agamemnon');
+    expect(work.wikipedia_read).toBe(true);
   });
 });

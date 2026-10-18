@@ -24,6 +24,7 @@ import {
   collectWorks,
   heldBy,
   toContent,
+  withEnglishArticles,
   MUSEUM_BROAD_ROOTS,
   MUSEUM_WHOLE_ROOTS,
   MUSEUM_PINNED_CLASSES,
@@ -400,6 +401,7 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
   }
 
   const items = buildItems(tier, pool, current, graph);
+  await withEnglishArticles(run, items.flatMap((item) => item.artworks));
   const venues = new Set(Object.values(placed).flat());
   // A venue named once: the unseen losses come last, so a venue the resolver or the art test
   // already refused keeps that reason rather than being told its works cannot be seen.

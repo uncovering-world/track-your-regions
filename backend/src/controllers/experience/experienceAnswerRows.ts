@@ -259,6 +259,8 @@ export interface TreasureRow {
   found_at: { qid: string; label: string } | null;
   found_at_site: LinkedPlace | null;
   kind_ids: number[];
+  wikipedia_url: string | null;
+  wikipedia_read: boolean;
 }
 
 export function treasureOf(row: TreasureRow): ExperienceTreasure {
@@ -280,6 +282,8 @@ export function treasureOf(row: TreasureRow): ExperienceTreasure {
     found_at_site: row.found_at_site,
     sitelinks_count: row.sitelinks_count,
     kind_ids: row.kind_ids,
+    wikipedia_url: row.wikipedia_url,
+    wikipedia_read: row.wikipedia_read,
   };
 }
 

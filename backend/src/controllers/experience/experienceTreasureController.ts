@@ -65,6 +65,8 @@ export async function getExperienceTreasures(
       -- the work needs and a reader must not be served (venuesSql).
       CASE WHEN $2::boolean THEN ${venuesSql('t')} END AS venues,
       t.image_url, t.sitelinks_count, t.is_iconic,
+      -- The English article a works run read (#1608), and whether one has asked.
+      t.wikipedia_url, t.wikipedia_read_at IS NOT NULL AS wikipedia_read,
       -- The kinds that hold the work here, so a place in several lists each
       -- work once and marks it with its kinds (#1263).
       ${linkKindsSql('et')} AS kind_ids,

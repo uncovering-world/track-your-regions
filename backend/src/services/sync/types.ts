@@ -191,6 +191,13 @@ export interface ProcessedContent {
   foundAt?: { qid: string; label: string } | null;
   /** The kind that handed the work to this venue, and its reason (ADR-0102); absent on a work the kind kept itself. */
   handedBy?: string;
+  /**
+   * The work's English Wikipedia article (#1608), which the card links instead
+   * of Wikidata's redirect. **Absent** where the run did not ask, and the row
+   * keeps what it holds; **`null`** where the run asked and the work has none;
+   * a URL otherwise (`treasures.wikipedia_url`, `wikipedia_read_at`).
+   */
+  wikipediaUrl?: string | null;
 }
 
 /**

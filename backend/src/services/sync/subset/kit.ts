@@ -10,6 +10,7 @@
  */
 
 import { pool } from '../../../db/index.js';
+import { articleUrl } from './values.js';
 
 /**
  * Whether claim `c` is one of its subject's best subclass-of statements: no
@@ -71,4 +72,14 @@ export async function subsetWikipediaEditions(qids: string[]): Promise<Map<strin
     [qids, NOT_WIKIPEDIA],
   );
   return new Map(result.rows.map(row => [row.id, row.editions]));
+}
+
+/** The English Wikipedia article of each item that has one, as `fetchEnglishArticles` answers live (#1608). */
+export async function subsetEnglishArticles(qids: string[]): Promise<Map<string, string>> {
+  if (!qids.length) return new Map();
+  const result = await pool.query<{ id: string; title: string }>(
+    `SELECT id, title FROM wikidata_sitelinks WHERE site = 'enwiki' AND id = ANY($1::text[])`,
+    [qids],
+  );
+  return new Map(result.rows.map(row => [row.id, articleUrl(row.title)]));
 }

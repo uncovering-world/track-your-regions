@@ -70,7 +70,7 @@
  * to ask what the fold filter does with the other answers a nature can give.
  */
 
-import { isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
+import { isEnglishArticlesQuery, isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
 import { LOST_WORK_ROOT } from '../museum/worksCollector.js';
 import { POOL_MIN_SITELINKS } from '../publicArt/queries.js';
 import {
@@ -804,6 +804,8 @@ export function answer(w: World, sent: string): SparqlBinding[] {
   const query = sent.trimStart();
   // The recount every pool, find and museum is held to (ADR-0082): this
   // world's own counts, so the lines read as they were written against.
+  // The English articles of the works the run writes (#1608): this world knows none.
+  if (isEnglishArticlesQuery(query)) return [];
   if (isWikipediaEditionsQuery(query)) {
     return wikipediaEditionsRows(query, (q) => w.finds[q]?.sitelinks ?? w.museums[q]?.sitelinks ?? w.sites[q]?.sitelinks);
   }

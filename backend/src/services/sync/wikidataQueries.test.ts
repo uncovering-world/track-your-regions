@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect, vi } from 'vitest';
-import { fetchWikipediaEditions, inWikipediaEditions, WIKIPEDIA_EDITIONS_BATCH, type SparqlFn } from './wikidataQueries.js';
+import { fetchEnglishArticles, fetchWikipediaEditions, inWikipediaEditions, WIKIPEDIA_EDITIONS_BATCH, type SparqlFn } from './wikidataQueries.js';
 import { wikipediaEditionsRows } from './wikipediaEditionsFixture.js';
 
 const ZURBARAN = 'Q15943274';
@@ -47,6 +47,21 @@ describe('fetchWikipediaEditions', () => {
     await fetchWikipediaEditions(door(), qids, before);
 
     expect(before).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('fetchEnglishArticles', () => {
+  it("answers each item's English article by its address, and nothing for an item with none (#1608)", async () => {
+    const sparql = vi.fn(async () => [
+      { e: { value: 'http://www.wikidata.org/entity/Q12418' }, article: { value: 'https://en.wikipedia.org/wiki/Mona_Lisa' } },
+      // A row from any other wiki is not the English article.
+      { e: { value: 'http://www.wikidata.org/entity/Q3501422' }, article: { value: 'https://fr.wikipedia.org/wiki/St%C3%A8le_de_Lemnos' } },
+    ]) as unknown as SparqlFn;
+
+    const articles = await fetchEnglishArticles(sparql, ['Q12418', 'Q3501422', 'not-an-id']);
+
+    expect(articles).toEqual(new Map([['Q12418', 'https://en.wikipedia.org/wiki/Mona_Lisa']]));
+    expect(String((sparql as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0])).not.toContain('not-an-id');
   });
 });
 

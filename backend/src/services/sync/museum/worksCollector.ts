@@ -35,6 +35,7 @@ import {
   fetchSubclasses,
   fetchClassTree,
   chunk,
+  fetchEnglishArticles,
   unique,
   type QueryRunner,
 } from '../wikidataQueries.js';
@@ -492,6 +493,21 @@ export function heldBy(
   }
   for (const list of held.values()) list.sort((a, b) => b.sitelinks - a.sitelinks);
   return held;
+}
+
+/**
+ * The English Wikipedia article of every work a run will write (#1608), set on
+ * its content as `wikipediaUrl` (`null` where it has none). Asked of the
+ * contents of the admitted venues once those are settled, so of the works a
+ * card will show, the objects the venue-side read brought (#890) included,
+ * and of nothing else in the pool.
+ */
+export async function withEnglishArticles(run: QueryRunner, contents: ProcessedContent[]): Promise<void> {
+  const qids = unique(contents.map((content) => content.externalId));
+  if (!qids.length) return;
+  run.phase(`Reading the English articles of ${qids.length} works...`);
+  const articles = await fetchEnglishArticles(run.sparql, qids, run.step);
+  for (const content of contents) content.wikipediaUrl = articles.get(content.externalId) ?? null;
 }
 
 /** The treasure a venue's work becomes. */

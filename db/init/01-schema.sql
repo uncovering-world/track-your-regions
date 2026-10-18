@@ -3567,6 +3567,17 @@ COMMENT ON COLUMN treasures.curation_state IS 'Whether this work has been passed
 ALTER TABLE treasures ADD COLUMN IF NOT EXISTS curated_fields JSONB NOT NULL DEFAULT '[]'::jsonb;
 COMMENT ON COLUMN treasures.curated_fields IS 'Column names a curator has claimed on this work: name, artists, year, image_url. Not sitelinks_count or is_iconic, which are a measurement and a threshold rather than a judgement, and not external_id, which is identity.';
 
+-- The work's English Wikipedia article, as the last works run read it (#1608):
+-- an article (wikipedia_url), none (wikipedia_read_at set, no URL), or not yet
+-- asked (wikipedia_read_at NULL), which keeps the card's redirect link. A
+-- measurement like sitelinks_count: no curator claims it and no gate holds it.
+ALTER TABLE treasures ADD COLUMN IF NOT EXISTS wikipedia_url VARCHAR(1000);
+ALTER TABLE treasures ADD COLUMN IF NOT EXISTS wikipedia_read_at TIMESTAMPTZ;
+COMMENT ON COLUMN treasures.wikipedia_url IS
+    'The work''s English Wikipedia article, as the last works run read it (#1608); NULL with wikipedia_read_at set means none';
+COMMENT ON COLUMN treasures.wikipedia_read_at IS
+    'When a works run last read the English article (#1608); NULL means never, and the card keeps the redirect link';
+
 -- Junction table: many-to-many between experiences and treasures
 CREATE TABLE IF NOT EXISTS experience_treasures (
     id SERIAL PRIMARY KEY,

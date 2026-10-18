@@ -40,6 +40,7 @@ import {
   collectWorks,
   heldBy,
   toContent,
+  withEnglishArticles,
   MUSEUM_BROAD_ROOTS,
   MUSEUM_WHOLE_ROOTS,
   MUSEUM_PINNED_CLASSES,
@@ -373,6 +374,8 @@ export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise
     );
     if (item) items.push(item);
   }
+  await withEnglishArticles(run, items.flatMap((item) => item.artworks));
+
   items.sort((a, b) => b.sitelinks - a.sitelinks);
 
   // A place this run admits is not also a refusal, whichever door refused it:
