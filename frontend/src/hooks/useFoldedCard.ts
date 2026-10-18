@@ -10,7 +10,9 @@
  *
  * A part of a serial site (ADR-0100) is in no list either: it is reached
  * through its site, and its own address — a link to the Temple of Karnak —
- * moves to Ancient Thebes' card opened at the temple's point.
+ * moves to Ancient Thebes' card opened at the temple's point. A part that
+ * holds a kind of its own keeps its card: the Karnak Temple Complex, once the
+ * temple is merged into it, is a place of worship part of Ancient Thebes.
  *
  * Asked only for a card the list has answered without — a place nobody merged
  * costs no request. Kept under a key of its own rather than the card's: the
@@ -54,7 +56,8 @@ export function useFoldedCard(id: number | null, missing: boolean): FoldedInto |
     retry: (count, failure) => !isNotFound(failure) && count < 1,
   });
   if (!asked) return null;
-  if (data?.part_of) {
+  // A part with a kind of its own is a place in its own right (ADR-0100 decision 2): its card is its own.
+  if (data?.part_of && data.kinds.length === 0) {
     const { part_of: whole } = data;
     return { id: whole.id, name: whole.name, pointId: whole.point_id, pointName: data.name };
   }

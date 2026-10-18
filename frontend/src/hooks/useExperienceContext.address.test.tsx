@@ -118,13 +118,26 @@ describe('the open card is in the address', () => {
   it("moves the address of a part to its site's card, opened at the part's point, in place", async () => {
     // ADR-0100: a part is in no list; its by-id read names the site it belongs to.
     mockFetchOne.mockResolvedValue({
-      id: 4400, name: 'Temple of Karnak', part_of: { id: 1234, name: 'Stonehenge', point_id: 77 },
+      id: 4400, name: 'Temple of Karnak', kinds: [], part_of: { id: 1234, name: 'Stonehenge', point_id: 77 },
     });
     const { result } = renderHook(useUnderTest, { wrapper: wrapperAt('/wv/5/r/6737-europe/e/4400') });
 
     await waitFor(() => expect(result.current.at).toBe('/wv/5/r/6737-europe/e/1234-stonehenge/p/77-temple-of-karnak'));
     expect(result.current.type).toBe('REPLACE');
     expect(result.current.ctx.selectedExperienceId).toBe(1234);
+  });
+
+  it('does not move a part that holds a kind of its own into its site\'s card: it is a place in its own right', async () => {
+    // ADR-0100 decision 2, #1250: the Karnak Temple Complex, merged with the temple, is a place of worship.
+    mockFetchOne.mockResolvedValue({
+      id: 4400, name: 'Karnak Temple Complex', kinds: [{ id: 4, name: 'Places of worship' }],
+      part_of: { id: 1234, name: 'Stonehenge', point_id: 77 },
+    });
+    const { result } = renderHook(useUnderTest, { wrapper: wrapperAt('/wv/5/r/6737-europe/e/4400') });
+
+    await waitFor(() => expect(mockFetchOne).toHaveBeenCalledWith(4400));
+    // Answered as a card of its own the list does not hold, it is dropped from the address, never moved into the site's.
+    await waitFor(() => expect(result.current.at).toBe('/wv/5/r/6737-europe'));
   });
 
   it('asks nothing about a card the list holds', async () => {

@@ -268,7 +268,7 @@ describe('useDiscoverExperiences — the place is in the address', () => {
   it("moves the address of a part to its site's card, opened at the part's point, in its list", async () => {
     // ADR-0100: a part is in no list; its by-id read names the site it belongs to.
     mockFetchOne.mockResolvedValue({
-      id: 4400, name: 'Temple of Karnak', part_of: { id: 1234, name: 'Stonehenge', point_id: 77 },
+      id: 4400, name: 'Temple of Karnak', kinds: [], part_of: { id: 1234, name: 'Stonehenge', point_id: 77 },
     });
     const { result } = renderAt('/discover/wv/5/r/7100/e/4400');
 
