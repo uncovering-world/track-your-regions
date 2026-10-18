@@ -474,7 +474,7 @@ trusting that reading the first fix would be enough to generalise it.
 
 Treasures are independently trackable things inside venue experiences. Currently implemented for museum artworks. Treasures have a many-to-many relationship with venues via `experience_treasures` junction table; iconic treasures are called **highlights** (`is_iconic` flag). See [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md) for the full concept.
 
-- `treasures`: globally unique treasures (artworks, artifacts), keyed by `external_id`. No Wikipedia article is stored for a work: the card links one through Wikidata's redirect from that id (`wikipediaArticleUrl`; `docs/tech/experience-map-ui.md` § A work names its Wikipedia article, #1191)
+- `treasures`: globally unique treasures (artworks, artifacts), keyed by `external_id`. The works runs store a work's English article (`wikipedia_url`) and when they read it (`wikipedia_read_at`, #1608); the card links the stored article, none where the work has none, and Wikidata's redirect where no run has read it yet (`docs/tech/experience-map-ui.md` § A work names its Wikipedia article)
 - `experience_treasures`: many-to-many junction linking treasures to venue experiences. A link
   carries `missing_since` (ADR-0044): set by a run that cleared the works coverage floor and no
   longer places the work here, cleared by any run that places it here again, never deleted — the
@@ -958,8 +958,8 @@ write; `pointChanges` and `workChanges` take that answer as their fourth argumen
 unclaimed change as `held`. The claim wins where both are true. Visibility is the **row's own**
 state — `treasures.curation_state`, never the link's, since a work verified through another venue is
 on show there. Outside the hold, on purpose: a coordinate rewritten within ten metres (the same point,
-more precisely — ADR-0027, and nothing a reader can see), a work's `sitelinks_count`, `is_iconic` and
-`treasure_type`, the identity and provenance columns, and the `returned` arm, whose row is hidden
+more precisely — ADR-0027, and nothing a reader can see), a work's `sitelinks_count`, `is_iconic`,
+`treasure_type` and English article (`wikipedia_url`, `wikipedia_read_at`, #1608), the identity and provenance columns, and the `returned` arm, whose row is hidden
 until it returns. A held name fails the writer's fast path on every run until answered, the cost
 ADR-0029 decision 5 already accepts for a claimed point.
 
@@ -1672,6 +1672,17 @@ and the OpenStreetMap entrance's count (`fetchSitelinksByIds`, `archaeology/quer
 `metadata.sitelinksCount` — is the editions count, and a refusal says so: "17 Wikipedia editions:
 below the world tier's line (22 to enter, 18 to stay)". A test world answers the recount with its
 own counts (`wikipediaEditionsFixture.ts`).
+
+**A written work's English article is read once the admitted venues are settled** (#1608):
+`withEnglishArticles` (`museum/worksCollector.ts`) asks `fetchEnglishArticles` (`wikidataQueries.ts`)
+for the contents of every admitted venue — the works a card will show, the objects the venue-side
+read brought (#890) included, and nothing else in the pool — reading the subset's
+`wikidata_sitelinks` row for `enwiki`, or `schema:about` on English Wikipedia live, and sets each
+content's `wikipediaUrl`, `null` where there is none. The three works pipelines call it on the
+items they write (`museum/pipeline.ts`, `worship/pipeline.ts`, `archaeology/pipeline.ts`). The
+writer stores it as it stores `sitelinks_count`, a measurement outside any claim or hold
+(`treasures.wikipedia_url`), and stamps `wikipedia_read_at`; a run that did not ask keeps what
+the row holds. A test world answers that question with no article (`isEnglishArticlesQuery`).
 
 ### Art Museums (`museumSyncService.ts`, `museum/*.ts`)
 
@@ -4257,8 +4268,8 @@ else: all five experience syncs store the English sitelink, so a museum with a Q
 stored article is one whose object has *no* English article (Wikidata, 2026-09-05: 0 of the
 7 such museums on the development catalogue; 5 have an article in another language), and a
 link resolved from the QID there would dead-end on every row it applied to. A **work** is
-the opposite case — the works writer never asks for an article, and 50 of 50 sampled works
-have an English one — so every surface that shows a work to a curator (`WorkCard`, the
+the opposite case — 50 of 50 sampled works have an English article, and the article the works
+runs store (`treasures.wikipedia_url`, #1608) is the reader's card's — so every surface that shows a work to a curator (`WorkCard`, the
 contents card's rows, for which `pending_works[].externalId` is now selected) links its
 name to the item and offers *Wikipedia* beside it as
 `Special:GoToLinkedPage/enwiki/<QID>`, which Wikidata resolves at the click: a 302 to the
