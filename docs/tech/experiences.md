@@ -1474,7 +1474,16 @@ path needs.
   (ADR-0088), which carries the site's reference and is never a candidate, and anything near it
   is a building inside; such points are skipped, counted, and their open proposals from an
   earlier pass cleared. A label's trailing qualifier is dropped before names are compared
-  ("Dům čp. 7 (Žatec)" names a house, not the component named after the town).
+  ("Dům čp. 7 (Žatec)" names a house, not the component named after the town). A component's
+  name is compared whole and as it reads before its first comma, and the better similarity
+  counts (`nameReadings`, #1672), for every rule a similarity gates: part, near and numbered. The list appends a description of the kind of place there,
+  and in a trigram measure it outweighs the name. Castra Gerulata, 63 m from *Rusovce – Gerulata,
+  rímsky vojenský tábor (kastel)*, scores 0.18 against the whole and 0.44 against the head.
+  Measured read-only over the catalogue on 2026-10-18, the change adds the components' own
+  items for Rusovce, Iža, Zeiselmauer's fort, Skinburness's milefortlet and Tashkent's Palace
+  of Arts, and drops one wrong offer, the Rusovce mansion. It also adds the Appian Way as a part
+  for *The Via Appia in Rome, from the 1st to the 13th mile*, 585 m off at 0.36: the whole road
+  for one stretch, a question a curator refuses.
 
   An item of the same name, folded, is taken farther off: one of the site's parts up to 5 km (a
   beach, a road, a park), a near item up to 1 km. Within 50 m such a match is marked `exact`. The thresholds come from the components that
