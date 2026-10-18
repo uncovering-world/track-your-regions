@@ -1,7 +1,7 @@
 # ADR-0122: A world view's geometry computation runs in the dump worker, beside its builds
 
 **Date:** 2026-10-18
-**Status:** Accepted
+**Status:** Accepted — decision 2 narrowed by [ADR-0123](0123-a-regions-union-is-made-of-full-resolution-inputs-and-bounded-where-it-runs.md) (a running computation's cancel and the worker's stop cancel the statement in flight)
 **Extends:** [ADR-0106](0106-public-dump-builds-run-in-a-worker-process-queued-through-the-ledger.md) (the dump worker takes a second kind of work, through a ledger of its own)
 
 ---
