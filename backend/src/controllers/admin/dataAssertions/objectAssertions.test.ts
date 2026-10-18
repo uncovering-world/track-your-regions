@@ -309,6 +309,22 @@ describe('a point placed by a membership of another place', () => {
   });
 });
 
+describe('the name drawn with its tags (#1610)', () => {
+  const assertion = byId('name-carries-markup');
+  const sql = collapse(assertion.sql);
+
+  it('asks for a tag in every name column a reader sees', () => {
+    for (const column of ['e.name', "(kv.value #>> '{}')", 'el.name', 't.name']) {
+      expect(sql).toContain(`${column} ~ '<[a-zA-Z/][^<>]*>'`);
+    }
+  });
+
+  it('names the row and the field that carries the markup', () => {
+    expect(assertion.describe({ kind: 'place', id: 1045, name: 'Via Appia. <em>Regina Viarum</em>', field: 'name' }))
+      .toBe('place 1045, "Via Appia. <em>Regina Viarum</em>": name carries HTML markup');
+  });
+});
+
 describe('the name a filter cannot find', () => {
   const assertion = byId('name-carries-whitespace-nobody-typed');
   const sql = collapse(assertion.sql);
