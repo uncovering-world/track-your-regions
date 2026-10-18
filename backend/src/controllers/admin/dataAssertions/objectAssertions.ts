@@ -673,6 +673,56 @@ const nameCarriesWhitespaceNobodyTyped: CatalogueAssertion = {
     + `${text(row, 'field')} is not stored as a person would type it`,
 };
 
+/** The pattern of a tag: `<`, a letter or a slash, and no `<` or `>` before its `>`. */
+const MARKUP = String.raw`'<[a-zA-Z/][^<>]*>'`;
+const carriesMarkup = (column: string) => `${column} ~ ${MARKUP}`;
+
+/**
+ * A name stored with a source's HTML markup (#1610).
+ *
+ * The World Heritage Centre's feed marks a foreign term in italics with inline
+ * HTML, and a name stored as received is drawn with its tags, since every
+ * screen escapes what it shows: Map mode listed "Via Appia. <em>Regina
+ * Viarum</em>" under Lazio. The run reads the feed's names as plain text
+ * (`feedText`, `services/sync/unescoText.ts`), and migration 128 brought what
+ * was stored to it. Asked of the same columns as the whitespace check, so a
+ * new source that passes a tag through, or a hand-run update, is named here.
+ */
+const nameCarriesMarkup: CatalogueAssertion = {
+  id: 'name-carries-markup',
+  area: 'objects',
+  title: 'A name stored with HTML markup',
+  kind: 'invariant',
+  meaning:
+    'The stored name carries an HTML tag, which every screen shows as text: a reader sees '
+    + '"<em>" in a place\'s name. A source that marks up its names is read as plain text before '
+    + 'it is stored, so a row here came in by a path that did not, a new source or a hand-run '
+    + 'update. The remedy is a run of the source, or the name corrected by hand.',
+  sql: `SELECT kind, id, name, field
+          FROM (
+            SELECT 'place' AS kind, e.id, e.name, 'name' AS field
+              FROM experiences e
+             WHERE ${carriesMarkup('e.name')}
+            UNION ALL
+            SELECT 'place', e.id, e.name, 'name_local.' || kv.key
+              FROM experiences e, jsonb_each(e.name_local) kv
+             WHERE jsonb_typeof(kv.value) = 'string'
+               AND ${carriesMarkup("(kv.value #>> '{}')")}
+            UNION ALL
+            SELECT 'point', el.id, el.name, 'name'
+              FROM experience_locations el
+             WHERE ${carriesMarkup('el.name')}
+            UNION ALL
+            SELECT 'work', t.id, t.name, 'name'
+              FROM treasures t
+             WHERE ${carriesMarkup('t.name')}
+          ) marked_up_names
+         ORDER BY kind, name, field`,
+  describe: row =>
+    `${text(row, 'kind')} ${count(row, 'id')}, ${JSON.stringify(text(row, 'name'))}: `
+    + `${text(row, 'field')} carries HTML markup`,
+};
+
 /**
  * The same ground, twice: an archaeology site and the World Heritage row of the
  * same place.
@@ -836,4 +886,5 @@ export const objectAssertions: CatalogueAssertion[] = [
   placementOfAnotherPlace,
   pointPlacementOfAnotherPlace,
   nameCarriesWhitespaceNobodyTyped,
+  nameCarriesMarkup,
 ];
