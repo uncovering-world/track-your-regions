@@ -656,6 +656,8 @@ export interface ReadershipMonthFilesRow {
   editions: unknown;
   kept: string;
   built_at: Date;
+  redirects_dump_date: Date | null;
+  redirects_build_id: number | null;
 }
 
 /** The table `readership_months`. */
@@ -1002,6 +1004,21 @@ export interface WikidataSubsetBuildsRow {
   counts: unknown;
   swapped_at: Date;
   rules: unknown | null;
+}
+
+/** The table `wikipedia_redirect_builds`. */
+export interface WikipediaRedirectBuildsRow {
+  build_id: number;
+  dump_date: Date;
+  editions: unknown;
+  swapped_at: Date;
+}
+
+/** The table `wikipedia_redirects`. */
+export interface WikipediaRedirectsRow {
+  site: string;
+  title: string;
+  target: string;
 }
 
 /** The table `world_views`. */
