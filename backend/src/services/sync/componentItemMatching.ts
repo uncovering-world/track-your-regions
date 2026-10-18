@@ -229,6 +229,19 @@ export function nearestM(point: ComponentPoint, candidate: CandidateItem): numbe
   return nearest(point, candidate)?.metres ?? Infinity;
 }
 
+/**
+ * The readings of a component's name its similarity is taken over: the whole
+ * name, and the name before its first comma. The list appends a description of
+ * the kind of place there ("Rusovce – Gerulata, rímsky vojenský tábor
+ * (kastel)", a Roman military camp), and in a trigram measure the description
+ * outweighs the name: Castra Gerulata, 63 m away, scores 0.18 against the
+ * whole and 0.44 against "Rusovce – Gerulata" (#1672).
+ */
+export function nameReadings(name: string): string[] {
+  const head = name.split(',')[0].trim();
+  return head && head !== name.trim() ? [name, head] : [name];
+}
+
 /** How one candidate stands against one point: its nearest coordinate and its most similar label. */
 function measure(point: ComponentPoint, candidate: CandidateItem) {
   const closest = nearest(point, candidate);
@@ -237,8 +250,10 @@ function measure(point: ComponentPoint, candidate: CandidateItem) {
   let similarity = 0;
   let exactName = false;
   let toponym = false;
+  const readings = point.name ? nameReadings(point.name) : [];
   for (const each of candidate.labels) {
-    const s = point.name ? nameSimilarity(point.name, withoutQualifier(each)) : 0;
+    const bare = withoutQualifier(each);
+    const s = Math.max(0, ...readings.map(reading => nameSimilarity(reading, bare)));
     if (s > similarity) { similarity = s; label = each; }
     if (point.name && sameName(point.name, each)) { exactName = true; label = each; similarity = 1; }
     // Without its trailing qualifier, as the name rule reads it: "(Žatec)" names the town a house is in.

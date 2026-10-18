@@ -5,7 +5,7 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  admittedClasses, bestMatch, distanceM, nameSimilarity, numberedMatches, ofTheSitesKind, placeAsCandidate,
+  admittedClasses, bestMatch, distanceM, nameReadings, nameSimilarity, numberedMatches, ofTheSitesKind, placeAsCandidate,
   standsAtTheComponent, standsForWholeSite,
   type CandidateItem,
 } from './componentItemMatching.js';
@@ -81,6 +81,25 @@ describe('bestMatch', () => {
     // An item with no English label keeps the one most like the component's name.
     expect(bestMatch(MAIREA, [{ ...mairea, labels: ['Mairea', 'Villa Mairea'], englishLabel: null }], 'near'))
       .toMatchObject({ label: 'Villa Mairea' });
+  });
+});
+
+describe("a component's descriptive tail (#1672)", () => {
+  // Rusovce's Gerulata (1608ter-091) and its castrum, Castra Gerulata, 63 m from the point.
+  const rusovce = { locationId: 4, name: 'Rusovce – Gerulata, rímsky vojenský tábor (kastel)', lat: 48.0556083333, lon: 17.1493305555 };
+  const gerulata: CandidateItem = {
+    item: 'Q1309632', labels: ['Kastell Gerulata', 'Gerulata', 'Castra Gerulata'], coords: [[48.05611111, 17.14972222]],
+    englishLabel: 'Castra Gerulata',
+  };
+
+  it('reads a name before its first comma as well as whole', () => {
+    expect(nameReadings(rusovce.name)).toEqual([rusovce.name, 'Rusovce – Gerulata']);
+    expect(nameReadings('Historic Centre of Siena (Cathedral)')).toEqual(['Historic Centre of Siena (Cathedral)']);
+  });
+
+  it("matches the component's own item that the description kept below the floor", () => {
+    expect(nameSimilarity(rusovce.name, 'Gerulata')).toBeLessThan(0.3);
+    expect(bestMatch(rusovce, [gerulata], 'near')).toMatchObject({ item: 'Q1309632', similarity: 0.44, label: 'Castra Gerulata' });
   });
 });
 
