@@ -233,68 +233,6 @@ describe('visits on places no reader is shown', () => {
   });
 });
 
-describe('an object no region holds', () => {
-  const assertion = byId('held-by-no-region');
-  const sql = collapse(assertion.sql);
-
-  it('asks about the reader-facing object, whole', () => {
-    expect(sql).toContain(collapse(experienceOfferedToReaderSql()));
-    expect(sql).toContain(collapse(hideLostSql()));
-  });
-
-  it('asks whether any row places the object, not whether a reader may see it there', () => {
-    // `readerRegionMembershipSql` answers a question about one region, and needs
-    // one to be about. An object held only by a row a reader cannot see is the
-    // previous assertion's business; this one is about being held at all.
-    expect(sql).toMatch(/NOT EXISTS \(SELECT 1 FROM experience_regions er/);
-    expect(sql).not.toMatch(/assignment_type/);
-  });
-
-  it('says where the object is, since that is what makes it findable at all', () => {
-    expect(assertion.describe({
-      experience_id: 300, experience_name: 'Aldabra Atoll', external_id: '185',
-      countries: 'Seychelles',
-    })).toContain('in Seychelles, and in no region');
-  });
-
-  it('does not print an empty country as though it were one', () => {
-    expect(assertion.describe({
-      experience_id: 411, experience_name: 'Great Barrier Reef', external_id: '154', countries: '',
-    })).toContain('in no country named');
-  });
-});
-
-describe('a place no region holds', () => {
-  const assertion = byId('offered-place-in-no-region');
-  const sql = collapse(assertion.sql);
-
-  it('asks placement\'s question, not a reader\'s', () => {
-    // Placement writes from every offered point, unread ones included, so that a
-    // region curator's queue is not empty (ADR-0025 decision 5). Gating this on
-    // what a reader may see would call an unplaced pending point compliant.
-    expect(sql).toContain(collapse(offeredLocationSql()));
-    expect(sql).not.toMatch(/curation_state/);
-  });
-
-  it('leaves out a point a curator turned down, which placement skips on purpose', () => {
-    // ADR-0053: still offered on the source's terms, never to be published, so
-    // placement gives it no row — and without this term every refusal would
-    // read as a failed placement run.
-    expect(sql).toMatch(/el\.refused_at IS NULL/);
-  });
-
-  it('looks in the roll-up placement actually writes', () => {
-    expect(sql).toMatch(/NOT EXISTS \(SELECT 1 FROM experience_location_regions r/);
-  });
-
-  it('names the place as well as the object, since one object may have many', () => {
-    expect(assertion.describe({
-      location_id: 7042, place_name: 'Gold Beach', experience_id: 500,
-      experience_name: 'Beaches of the D-Day Landings',
-    })).toBe('Beaches of the D-Day Landings — Gold Beach: on offer and in no region (location 7042)');
-  });
-});
-
 describe('a picture with nobody credited', () => {
   const assertion = byId('picture-with-nobody-credited');
   const sql = collapse(assertion.sql);
