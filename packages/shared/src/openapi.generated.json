@@ -3253,6 +3253,92 @@
         }
       }
     },
+    "/api/users/me/preferences": {
+      "get": {
+        "operationId": "getUsersMePreferences",
+        "summary": "Get what the signed-in visitor has chosen for themselves",
+        "tags": [
+          "users"
+        ],
+        "description": "Requires a signed-in caller.",
+        "x-access": "signed-in",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyPreferences"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "operationId": "putUsersMePreferences",
+        "summary": "Save what the signed-in visitor chooses for themselves",
+        "tags": [
+          "users"
+        ],
+        "description": "Requires a signed-in caller.",
+        "x-access": "signed-in",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MyPreferencesBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MyPreferences"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/users/me/visited-regions": {
       "get": {
         "operationId": "getUsersMeVisitedRegions",
@@ -25759,6 +25845,15 @@
         "additionalProperties": false,
         "description": "One of a region's map image candidates chosen as its map, or the choice cleared."
       },
+      "MapsApp": {
+        "type": "string",
+        "enum": [
+          "device",
+          "osm",
+          "google"
+        ],
+        "description": "The maps app places open in: the device's own, OpenStreetMap or Google Maps."
+      },
       "MapshapeDivision": {
         "type": "object",
         "properties": {
@@ -27307,6 +27402,51 @@
         ],
         "additionalProperties": false,
         "description": "The signed-in account, with what a curator's assignments reach."
+      },
+      "MyPreferences": {
+        "type": "object",
+        "properties": {
+          "mapsApp": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MapsApp"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The maps app \"Open in maps\" opens; null asks each time, with every maps app side by side."
+          }
+        },
+        "required": [
+          "mapsApp"
+        ],
+        "additionalProperties": false,
+        "description": "What the signed-in visitor has chosen for themselves (#1604)."
+      },
+      "MyPreferencesBody": {
+        "type": "object",
+        "properties": {
+          "mapsApp": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "device",
+                  "osm",
+                  "google"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "mapsApp"
+        ],
+        "additionalProperties": false
       },
       "NamedDivision": {
         "type": "object",

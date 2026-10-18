@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod/v4';
+import { MAPS_APPS } from '@tyr/shared/preferences';
 import { bodyRowIdSchema, rowIdSchema } from './rowId.js';
 import { VIEW_FIELDS } from '../db/sourceViews.js';
 import { parseBbox } from '../db/bboxEnvelopes.js';
@@ -368,6 +369,11 @@ export const markAllLocationsQuerySchema = z.object({
 
 export const visitedRegionBodySchema = z.object({
   notes: z.string().max(2000).optional(),
+});
+
+/** What a visitor sets on their own preferences: only the listed maps apps, or null to be asked each time (#1604). */
+export const myPreferencesBodySchema = z.strictObject({
+  mapsApp: z.enum(MAPS_APPS).nullable(),
 });
 
 // =============================================================================

@@ -17,6 +17,7 @@
     "./moves": "./src/moves.ts",
     "./openapi": "./src/openapi.generated.json",
     "./pictures": "./src/pictures.ts",
+    "./preferences": "./src/preferences.ts",
     "./runStatuses": "./src/runStatuses.ts"
   },
   "scripts": {

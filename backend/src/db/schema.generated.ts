@@ -14,6 +14,9 @@
 /** Postgres enum `auth_provider`. */
 export type AuthProvider = "local" | "google" | "apple";
 
+/** Postgres enum `maps_app`. */
+export type MapsApp = "device" | "osm" | "google";
+
 /** Postgres enum `user_role`. */
 export type UserRole = "user" | "curator" | "admin";
 
@@ -926,6 +929,7 @@ export interface UsersRow {
   auth_provider: AuthProvider | null;
   provider_id: string | null;
   email_verified: boolean;
+  maps_app: MapsApp | null;
   created_at: Date | null;
   last_seen_at: Date | null;
 }

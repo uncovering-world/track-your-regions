@@ -24,6 +24,7 @@
 import { describe, it, expect, expectTypeOf } from 'vitest';
 import { CURATION_LOG_ACTIONS, POINT_VERDICT_ACTIONS, type CurationLogAction } from '@tyr/shared/curationLog';
 import { AUTH_PROVIDERS, USER_ROLES, type AuthProvider, type UserRole } from '@tyr/shared/auth';
+import { MAPS_APPS, type MapsApp } from '@tyr/shared/preferences';
 import {
   CLOSED_SYNC_STATUSES, IMPORT_RUN_STATUSES, MATCH_STATUSES, SYNC_LOG_STATUSES,
   type ClosedSyncStatus, type ImportRunStatus, type MatchStatus, type SyncLogStatus,
@@ -36,6 +37,7 @@ import {
   CHECK_VALUES,
   type AuthProvider as SchemaAuthProvider,
   type CheckValue,
+  type MapsApp as SchemaMapsApp,
   type UserRole as SchemaUserRole,
 } from './schema.generated.js';
 
@@ -83,5 +85,10 @@ describe('the vocabularies both sides import', () => {
     expectTypeOf<AuthProvider>().toEqualTypeOf<SchemaAuthProvider>();
     expect(USER_ROLES).toHaveLength(3);
     expect(AUTH_PROVIDERS).toHaveLength(3);
+  });
+
+  it('name exactly the maps apps a visitor may choose', () => {
+    expectTypeOf<MapsApp>().toEqualTypeOf<SchemaMapsApp>();
+    expect(MAPS_APPS).toHaveLength(3);
   });
 });
