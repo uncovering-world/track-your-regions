@@ -193,7 +193,7 @@ describe('writeExperienceLocations — when a stored point is the incoming one',
     expect(claimedTerm.slice(0, 200)).toContain('el.external_ref IS NOT DISTINCT FROM i.external_ref');
     expect(claimedTerm.slice(0, 200)).not.toContain('whc_ref_bare');
     const candidate = candidateSql;
-    expect(candidate).toMatch(/ORDER BY ordinal, exact_ref DESC, \(missing_since IS NULL\) DESC, metres, location_id/);
+    expect(candidate).toMatch(/ORDER BY ordinal, exact_ref DESC, folded, \(missing_since IS NULL\) DESC, metres, location_id/);
   });
 
   it('holds the tolerance to a matching reference, and to ten metres', async () => {
@@ -422,7 +422,7 @@ describe('writeExperienceLocations — when a stored point is the incoming one',
     const build = String(statements.find(s => /CREATE TEMP TABLE paired_rows/.test(s)));
     expect(build).toContain('DISTINCT ON (ordinal)');
     expect(build).toContain('DISTINCT ON (location_id)');
-    expect(build).toContain('ORDER BY ordinal, exact_ref DESC, (missing_since IS NULL) DESC, metres');
+    expect(build).toContain('ORDER BY ordinal, exact_ref DESC, folded, (missing_since IS NULL) DESC, metres');
     expect(build).toContain('ORDER BY location_id, ordinal');
     const kept = String(statements.find(s => KEEP.test(s) && !RESURRECT.test(s)));
     expect(kept).toContain('FROM paired_rows p JOIN incoming i ON i.ordinal = p.ordinal');

@@ -25,6 +25,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 import { OBJECT_LOCK } from '../../db/locks.js';
+import { foldedPointsSql } from '../../db/placePoints.js';
 import {
   mockedQuery, mockedConnect, writeExperienceLocations, A, B, fakeClient,
   RESURRECT, KEEP, MARK, INSERT, DECAY, HOLD,
@@ -251,7 +252,9 @@ describe('writeExperienceLocations', () => {
     // Asserted as a property of every subquery rather than as a tally of the term: the
     // count went stale the moment a subquery was added, and a count above a list always
     // will. What the fast path promises is that *no* part of it reads a marked row.
-    const sql = String(mockedQuery.mock.calls[0][0]);
+    // The points a merge folded (#1662) are a table the terms below read, each
+    // term asking the folded point's own state, as the places-shown arrays are.
+    const sql = String(mockedQuery.mock.calls[0][0]).replaceAll(foldedPointsSql('ARRAY[$1::int]'), 'folded_points');
     // The places-shown arrays (`ARRAY(SELECT …)`, ADR-0100) are no read of a point.
     const subqueries = sql.split(/(?<!ARRAY)\(SELECT/).filter(part => part.includes('experience_locations'));
     expect(subqueries.length).toBeGreaterThan(1);

@@ -97,6 +97,33 @@ export function shownBySql(point: string, places: string): string {
 }
 
 /**
+ * The points a merge folded into the points the places `places` show, as a
+ * derived table of (id, kept_id): each folded point and the point a reader
+ * sees in its place (ADR-0088 decision 3, #1662). A folded point is hidden from
+ * every reader (`offeredLocationSql`) and stays on the place that was folded, so
+ * no reader composes this. A run does: the folded point still carries the
+ * reference its source knows it by, and without it the source's next run finds
+ * nothing to pair its point with and adds it to the place again. That is how the
+ * Mogao Caves gained a second point 10.7 km from the first after their World
+ * Heritage and Archaeology rows were merged.
+ *
+ * Followed down a chain of merges: a point folded into one that a later merge
+ * folded in turn is the kept point's too. A point whose reference is the kept
+ * point's own is left out, since the run finds the kept point by it.
+ */
+export function foldedPointsSql(places: string): string {
+  return `(WITH RECURSIVE folded (id, kept_id, external_ref) AS (
+      SELECT f.id, kept.id, f.external_ref FROM experience_locations kept
+        JOIN experience_locations f ON f.merged_into_id = kept.id
+       WHERE kept.experience_id = ANY(${madeOfSql(places)}) AND kept.merged_into_id IS NULL
+      UNION
+      SELECT f.id, folded.kept_id, f.external_ref FROM folded
+        JOIN experience_locations f ON f.merged_into_id = folded.id)
+    SELECT folded.id, folded.kept_id FROM folded JOIN experience_locations kept ON kept.id = folded.kept_id
+     WHERE folded.external_ref IS DISTINCT FROM kept.external_ref)`;
+}
+
+/**
  * The places given and the places they are parts of, as an int[]: the places
  * whose own answer moves when the given places' points move — Ancient Thebes
  * is placed again when the Temple of Karnak's point is.

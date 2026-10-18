@@ -106,12 +106,12 @@ import {
 // stored row the point the source is offering, and what a kept row's own columns
 // say happened to it.
 import {
-  claimed, claimedPointSql, keptChanges, named, samePointSql, NO_CHANGE,
+  claimed, claimedPointSql, keptChanges, named, sameReferenceSql, samePointSql, NO_CHANGE,
 } from './locationPairing.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { lockExperience } from '../../db/experienceWriter.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
-import { shownBySql } from '../../db/placePoints.js';
+import { foldedPointsSql, shownBySql } from '../../db/placePoints.js';
 import { completePairing } from './locationMatching.js';
 
 
@@ -156,6 +156,13 @@ export type LocationWriteRun = WriteRun & {
 };
 
 /**
+ * A stored point of the place this write is about (`$1`): one it shows, its
+ * parts' included, and never one a merge folded, which is hidden from every
+ * reader and is the run's only as `foldedPointsSql` hands it over (#1662).
+ */
+const ownPointSql = (alias: string) => `(${shownBySql(alias, 'ARRAY[$1::int]')} AND ${alias}.merged_into_id IS NULL)`;
+
+/**
  * Make `experience_locations` for one experience match `incoming`, keeping the
  * row — and the id — of every point that is still offered.
  *
@@ -195,6 +202,41 @@ export async function writeExperienceLocations(
                     WHERE mine.location_id = ${alias}.id AND mine.membership_id = ${runMembership})
                OR NOT EXISTS (SELECT 1 FROM experience_location_placements any_placement
                     WHERE any_placement.location_id = ${alias}.id))`;
+  /**
+   * The stored points this run pairs with: the ones the place shows, and the
+   * ones a merge folded into them (#1662). A folded point keeps the reference
+   * its source knows it by, so the source's point pairs with it rather than
+   * being written to the place again as a second pin. A folded point follows
+   * the source quietly (the arm after the returning one) and is never reported, placed or
+   * shown.
+   */
+  // The run's own: the merge that folded a point recorded the membership that
+  // placed it (`FoldedPoints.removed`, `placeMerge.ts`), and that membership
+  // is this run's on the place now. Another source's folded point under the same
+  // reference is that source's to pair.
+  const folded = `ARRAY(SELECT fp.id FROM ${foldedPointsSql('ARRAY[$1::int]')} fp
+    WHERE EXISTS (SELECT 1 FROM experience_merges mg
+                   CROSS JOIN jsonb_array_elements(mg.moved->'foldedPoints'->'removed') placed
+                   WHERE mg.undone_at IS NULL AND (placed->>'location')::int = fp.id
+                     AND (placed->>'membership')::int = ${runMembership})
+      -- A placement an earlier fold copied onto the point is not the run's own
+      -- point: down a chain, the run's point is the one that fold folded.
+      AND NOT EXISTS (SELECT 1 FROM experience_merges mg
+                   CROSS JOIN jsonb_array_elements(mg.moved->'foldedPoints'->'added') gained
+                   WHERE mg.undone_at IS NULL AND (gained->>'location')::int = fp.id
+                     AND (gained->>'membership')::int = ${runMembership}))`;
+  const runsOver = (alias: string) =>
+    `(${ownPointSql(alias)} OR (${alias}.id = ANY(${folded}) AND ${alias}.missing_since IS NULL))`;
+  /**
+   * A shown point the run answers for through its folded twin: the point a
+   * reader sees, which carries the run's placement since the merge, while the
+   * source's own point, folded into it or down a chain of merges, is the one
+   * the run pairs (`paired` names the pairing). The run neither counts it as
+   * its own nor withdraws it.
+   */
+  const standsForFolded = (alias: string, paired: string) => `EXISTS (SELECT 1 FROM ${foldedPointsSql('ARRAY[$1::int]')} tw
+                    JOIN experience_locations twin ON twin.id = tw.id
+                    WHERE ${paired} AND tw.kept_id = ${alias}.id AND twin.id = ANY(${folded}))`;
 
   /**
    * The hold, as one SQL expression over the stored row: a gated source may not
@@ -276,18 +318,24 @@ export async function writeExperienceLocations(
      candidate AS (
        SELECT i.ordinal, el.id AS location_id, el.missing_since,
               (el.external_ref IS NOT DISTINCT FROM i.external_ref) AS exact_ref,
+              -- A point a reader sees before a folded one on the same reference.
+              el.merged_into_id IS NOT NULL AS folded,
               ST_Distance(el.location::geography,
                           ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)::geography) AS metres
        FROM incoming i
        JOIN experience_locations el
-         ON ${shownBySql('el', 'ARRAY[$1::int]')}
-        AND (${samePointSql('el')} OR ${claimedPointSql('el')})
+         ON ${runsOver('el')}
+        AND (${samePointSql('el')} OR ${claimedPointSql('el')}
+             -- A folded point pairs on its reference alone: no reader sees it, so
+             -- the source moving it is no move to ask about, and the ten metres
+             -- would only let the point back in as a second pin.
+             OR (el.id = ANY(${folded}) AND ${sameReferenceSql('el')}))
      )`;
   // The reference exactly before one read past its variant (ADR-0090 decision 3):
   // where a property's rows carry both numberings, the row the incoming reference
   // names outright is the candidate, not whichever is a centimetre nearer. One
   // statement of the order, read by the greedy pass and by its completion alike.
-  const preference = 'exact_ref DESC, (missing_since IS NULL) DESC, metres, location_id';
+  const preference = 'exact_ref DESC, folded, (missing_since IS NULL) DESC, metres, location_id';
   const paired = `${candidates},
      best_row AS (
        SELECT DISTINCT ON (ordinal) ordinal, location_id, metres
@@ -314,11 +362,19 @@ export async function writeExperienceLocations(
   const same = await pool.query(
     `WITH ${cte}
      SELECT (SELECT count(*) FROM experience_locations el
-               WHERE ${shownBySql('el', 'ARRAY[$1::int]')} AND el.missing_since IS NULL AND ${runsPoint('el')}) AS stored,
+               WHERE ${ownPointSql('el')} AND el.missing_since IS NULL AND ${runsPoint('el')}
+                 AND NOT ${standsForFolded('el', `twin.missing_since IS NULL
+                                                  AND EXISTS (SELECT 1 FROM incoming i WHERE ${sameReferenceSql('twin')})`)})
+            -- A folded point counts where the source still offers its reference:
+            -- another source's folded point is that source's, and one this source
+            -- dropped stays folded and hidden as it was.
+            + (SELECT count(*) FROM experience_locations el
+                WHERE el.missing_since IS NULL AND el.id = ANY(${folded})
+                  AND EXISTS (SELECT 1 FROM incoming i WHERE ${sameReferenceSql('el')})) AS stored,
             (SELECT count(*) FROM incoming i
                JOIN experience_locations el
-                 ON ${shownBySql('el', 'ARRAY[$1::int]')}
-                AND el.missing_since IS NULL
+                 ON el.missing_since IS NULL
+                AND ${runsOver('el')}
                 AND ${runsPoint('el')}
                 AND ${samePointSql('el')}
                 -- The reference exactly, where the pairing reads past the
@@ -354,7 +410,7 @@ export async function writeExperienceLocations(
                 -- the queue reads the axes as nobody having answered.
                 AND el.source_membership = 'present') AS matched,
             (SELECT array_agg(el.id) FROM experience_locations el
-               WHERE ${shownBySql('el', 'ARRAY[$1::int]')} AND el.missing_since IS NULL AND ${runsPoint('el')}) AS ids`,
+               WHERE ${ownPointSql('el')} AND el.missing_since IS NULL AND ${runsPoint('el')}) AS ids`,
     withSource,
   );
   const { stored, matched, ids } = same.rows[0] as
@@ -428,7 +484,7 @@ export async function writeExperienceLocations(
               ST_Y(el.location::geometry) AS old_lat,
               el.curated_fields AS old_curated_fields
        FROM paired p JOIN experience_locations el ON el.id = p.location_id`,
-      params,
+      withSource,
     );
 
     // ADR-0117: the greedy pairing completed before any arm reads it. The
@@ -441,7 +497,7 @@ export async function writeExperienceLocations(
        WHERE EXISTS (SELECT 1 FROM candidate o
                       WHERE NOT EXISTS (SELECT 1 FROM paired_rows p WHERE p.ordinal = o.ordinal))
        ORDER BY ordinal, ${preference}`,
-      params,
+      withSource,
     );
     if (leftover.rows.length > 0) {
       const greedy = await client.query<{ ordinal: number; location_id: number; metres: number }>(
@@ -513,7 +569,7 @@ export async function writeExperienceLocations(
        -- object's rows only, so this narrows nothing -- but with the pairing now a table
        -- rather than a CTE, it is the last mention of $1 in the statement, and without it
        -- Postgres cannot infer that parameter's type and refuses the whole query.
-       WHERE ${shownBySql('el', 'ARRAY[$1::int]')}
+       WHERE ${ownPointSql('el')}
          AND el.id = p.location_id
          AND el.missing_since IS NULL
        -- The distance decides whether this row still holds the place it was assigned
@@ -564,11 +620,32 @@ export async function writeExperienceLocations(
        FROM paired_rows p JOIN incoming i ON i.ordinal = p.ordinal
        -- Scoped to the experience for the reason given on the arm above: the pairing
        -- already narrows it, and $1 has to appear or Postgres cannot type the parameter.
-       WHERE ${shownBySql('el', 'ARRAY[$1::int]')}
+       WHERE ${ownPointSql('el')}
          AND el.id = p.location_id
          AND el.missing_since IS NOT NULL
        RETURNING el.id, el.name, el.external_ref`,
       params,
+    );
+
+    // **A folded point follows its source quietly** (#1662). The pairing holds
+    // it where the source still offers the point a merge folded into another
+    // place's: it takes the source's reference, position in the list, name and
+    // coordinate. It stays folded, so no
+    // reader sees it, and nothing here is reported, placed or held. The point
+    // it was folded into is the one a reader sees, and that stays as its own
+    // source writes it.
+    await client.query(
+      `WITH ${cte}
+       UPDATE experience_locations el
+       SET ordinal = i.ordinal, external_ref = i.external_ref,
+           -- A curator's claim on the point stands while it is folded, so an
+           -- undo of the merge brings back what the curator wrote.
+           name = ${claimed('name')} THEN el.name ELSE i.name END,
+           location = ${claimed('location')} THEN el.location
+                      ELSE ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326) END
+       FROM paired_rows p JOIN incoming i ON i.ordinal = p.ordinal
+       WHERE el.id = p.location_id AND el.id = ANY(${folded})`,
+      withSource,
     );
 
     // Deliberately no `missing_since` predicate in this NOT EXISTS: it asks
@@ -630,6 +707,8 @@ export async function writeExperienceLocations(
        SELECT p.location_id, ${runMembership}
          FROM paired_rows p
         WHERE ${runMembership} IS NOT NULL
+          -- A folded point's placements moved onto the point it was folded into.
+          AND p.location_id <> ALL(${folded})
        ON CONFLICT DO NOTHING`,
       withSource,
     );
@@ -685,7 +764,7 @@ export async function writeExperienceLocations(
               withdrawn AS (
                 SELECT el.id, el.external_ref
                 FROM experience_locations el
-                WHERE ${shownBySql('el', 'ARRAY[$1::int]')}
+                WHERE ${ownPointSql('el')}
                   -- Rows a reader can *see*, which is what a deferral slot is scarce for:
                   -- one per arrival, and spending one on a row nobody is looking at leaves
                   -- a visible pin unheld. So all three terms of that, not one:
@@ -812,8 +891,8 @@ export async function writeExperienceLocations(
        UPDATE experience_locations n
        SET withdrawal_deferred_for_location_id = NULL
        FROM experience_locations old
-       WHERE ${shownBySql('n', 'ARRAY[$1::int]')}
-         AND ${shownBySql('old', 'ARRAY[$1::int]')}
+       WHERE ${ownPointSql('n')}
+         AND ${ownPointSql('old')}
          AND n.withdrawal_deferred_for_location_id = old.id
          AND EXISTS (
            SELECT 1 FROM paired_rows p WHERE p.location_id = old.id
@@ -846,12 +925,13 @@ export async function writeExperienceLocations(
       `WITH ${cte},
        gone AS (
          SELECT el.id FROM experience_locations el
-          WHERE ${shownBySql('el', 'ARRAY[$1::int]')}
+          WHERE ${ownPointSql('el')}
             AND el.missing_since IS NULL
             AND ${runsPoint('el')}
             AND NOT EXISTS (
               SELECT 1 FROM paired_rows p WHERE p.location_id = el.id
             )
+            AND NOT ${standsForFolded('el', 'EXISTS (SELECT 1 FROM paired_rows p WHERE p.location_id = twin.id)')}
             AND NOT EXISTS (
               SELECT 1 FROM experience_locations waiting
               WHERE ${shownBySql('waiting', 'ARRAY[$1::int]')}
@@ -892,7 +972,7 @@ export async function writeExperienceLocations(
       `WITH ${cte}
        UPDATE experience_locations el
        SET ordinal = NULL
-       WHERE ${shownBySql('el', 'ARRAY[$1::int]')}
+       WHERE ${ownPointSql('el')}
          AND el.missing_since IS NULL
          AND el.ordinal IS NOT NULL
          AND ${runsPoint('el')}
@@ -1017,7 +1097,7 @@ export async function recordComponentItems(
       `UPDATE experience_locations el
           SET wikidata_item = r.item
          FROM unnest($2::text[], $3::text[]) AS r(ref, item)
-        WHERE ${shownBySql('el', 'ARRAY[$1::int]')}
+        WHERE ${ownPointSql('el')}
           AND lower(el.external_ref) = lower(r.ref)
           AND NOT (COALESCE(el.curated_fields, '[]'::jsonb) ? 'wikidata_item')
           AND el.wikidata_item IS DISTINCT FROM r.item
