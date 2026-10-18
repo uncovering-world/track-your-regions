@@ -521,6 +521,10 @@ const ProposedPlace = z.strictObject({
   kinds: z.array(z.string()).describe('The names of the kinds the place is in, in display order.'),
 });
 
+/** Which rule found a pair of near places (#1652). */
+export const MergeFoundBy = z.enum(['similar', 'words'])
+  .describe('similar: the names reach a trigram similarity of 0.5; words: every significant word of one name stands in the other\'s (#1652).');
+
 export const MergeProposalPass = z.strictObject({
   open: z.array(z.strictObject({
     id: z.number().int().describe('The proposal, which an answer names.'),
@@ -530,8 +534,13 @@ export const MergeProposalPass = z.strictObject({
     nameSimilarity: z.number().describe('The best trigram similarity between any two of their folded names, 0 to 1.'),
     exact: z.boolean().describe('One and the same folded name within fifty metres: the pairs a batch confirms.'),
     reachM: z.number().int().describe('The distance the pair was found under: 300 m, or a property\'s area radius up to 3 km.'),
+    foundBy: MergeFoundBy,
     proposedAt: z.string().describe('When the pass last found the pair.'),
   })).describe('The pairs nobody has answered, the most alike first.'),
+  foundBy: z.strictObject({
+    similar: z.number().int(),
+    words: z.number().int(),
+  }).describe('How many of the open pairs each rule found (#1652).'),
   answered: z.strictObject({
     one: z.number().int(),
     two: z.number().int(),
@@ -542,8 +551,9 @@ export const MergeProposalPass = z.strictObject({
     placeB: ProposedPlace.omit({ id: true }),
     distanceM: z.number().int(),
     nameSimilarity: z.number(),
+    foundBy: MergeFoundBy,
   })).describe('Pairs the rule finds that share a kind, which one place cannot hold twice (ADR-0086 decision 4): not proposed, shown so a person sees them.'),
-}).describe('What the pass over near places with similar names found (ADR-0046 decision 2, #1249).');
+}).describe('What the pass over near places with similar names found (ADR-0046 decision 2, ADR-0120, #1249).');
 export type MergeProposalPass = z.infer<typeof MergeProposalPass>;
 
 const JevQuestionUsage = z.strictObject({

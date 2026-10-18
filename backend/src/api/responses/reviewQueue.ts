@@ -309,6 +309,7 @@ export const MergePair = z.strictObject({
   nameSimilarity: z.number().describe('The best trigram similarity between any two of their folded names, 0 to 1.'),
   exact: z.boolean().describe('One and the same folded name within fifty metres: what a batch accept makes one place.'),
   reachM: z.number().int().describe('The distance the pass found the pair under: 300 m, or a property\'s area radius up to 3 km.'),
+  foundBy: z.enum(['similar', 'words']).describe('Which rule found the pair: names alike by trigrams, or one name\'s words all standing in the other\'s (#1652).'),
   proposedAt: timestamp,
 }).describe('Two near places with similar names, proposed as one place (#1249, ADR-0046 decision 2).');
 export type MergePair = z.infer<typeof MergePair>;
