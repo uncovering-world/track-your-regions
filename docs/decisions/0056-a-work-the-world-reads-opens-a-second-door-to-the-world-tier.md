@@ -1,7 +1,7 @@
 # ADR-0056: A work the world reads opens a second door to the world tier
 
 **Date:** 2026-09-11
-**Status:** Draft
+**Status:** Accepted
 
 ---
 
@@ -158,6 +158,37 @@ recorded as the alternative below.
   has 18. A work under 18 leaves at the exit.
 - *Which year.* The door reads a year only when all twelve of its months are folded with the
   redirects in place (#1650). Without that year the door is shut, and the run says so.
+
+**Measured on adoption (2026-10-18, #1574).** The dev database holds readership year build 21
+(October 2025 to September 2026, every month folded with the redirects) and the local Wikidata
+subset of 5 October 2026, and every source's gate is on. A dry run of each kind from the admin
+panel, with the door, was compared with the same dry run without it:
+- *Art Museums.* The door opens for 51 works below the line: bar 139,355 views, exit 96,694.
+  Without it the run admits nothing new (90 museums unchanged). With it the run adds 12 museums,
+  11 of them among the sixteen above: the Musée Fabre, the National Museum in Warsaw, the Norman
+  Rockwell Museum, the Israel Museum, the Cappella Sansevero for the *Veiled Christ*, Tate
+  Liverpool, Kelvingrove, the Sanssouci Picture Gallery, the Kunsthaus Zürich, the Pera Museum,
+  the Galleria d'Arte Moderna in Milan and the Art Mill Museum. It also takes back three museums
+  an earlier run had refused for holding nothing at the line:
+  - the Museo José Guadalupe Posada in Aguascalientes (*La Calavera Catrina*);
+  - New-York Historical (Cole's *The Course of Empire*);
+  - the Galleria Nazionale delle Marche in Urbino (Piero's *Flagellation*).
+
+  Of the sixteen, MALBA and the Autry Museum wait for the pool at 4 sitelinks, as the
+  consequences say. Masaccio's *Holy Trinity* and Kahlo's self-portrait read under this year's
+  bar.
+- *Places of worship.* The door opens for 55 works: bar 129,887, exit 86,770. Without it the run
+  adds nothing; with it the run adds four places:
+  - the Basilica of Our Lady of Aparecida (the image of *Our Lady of Aparecida*);
+  - the Basilica of Santa Chiara in Assisi (the San Damiano Cross);
+  - St. Peter am Perlach in Augsburg (*Mary, Untier of Knots*);
+  - the Cathedral of St. John the Baptist in St. John's, Newfoundland (Strazza's *Veiled
+    Virgin*).
+
+  Both runs update the same 64 places.
+- *The curator's questions.* The two below stand. The Art Mill Museum has not opened, and Tate
+  Liverpool is closed for refurbishment. Each arrives for a person, because every arrival of a
+  gated run does.
 
 **Left to the adoption slice, #628:** the level. The sixteen above are the plain annual sum. On the
 same door a trimmed monthly mean admits the same sixteen and agrees better between the halves of

@@ -8,7 +8,10 @@ first transition, because nothing unlinks a work) is answered by
 stays one source of the art-museums kind and the rule that sets the Iconic badge, and stops being
 the only way in; the one line still sets both badges, but a museum admitted by another source may
 hold no Iconic work, so "a museum's card can never be empty" holds only for works-first
-admissions; decisions 3 and 4 stand
+admissions; decisions 1 and 2 narrowed again by
+[ADR-0056](0056-a-work-the-world-reads-opens-a-second-door-to-the-world-tier.md) — a work below the
+line that the world reads admits its museum and is Iconic, with its own entry and exit; decisions
+3 and 4 stand
 
 ---
 
