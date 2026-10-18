@@ -36,6 +36,7 @@ docs/sources/
     ├── wikidata-archaeology.md
     ├── wikipedia-archaeological-museum-categories.md
     ├── wikipedia-archaeological-sites-categories.md
+    ├── wikipedia-sql-dumps.md
     ├── idai-gazetteer.md
     ├── geonames.md
     └── …
