@@ -431,20 +431,28 @@ export async function deriveFromEntities(
 
 /**
  * For every class a kept item is an instance of, the class and every class
- * above it through subclass of; a deprecated statement is not followed. Run
- * after the claims have their indexes: the walk reads them by subject.
+ * above it through subclass of; a deprecated statement is not followed.
+ *
+ * The subclass edges are read once, before the walk (`edges`, materialized):
+ * joined to the claims table directly, every step of the recursion hashed a
+ * fresh scan of all of it, some 31 million claims, to find the 5.2 million
+ * edges, once per level of the tree. Read once, the walk took 30 s on the
+ * subset of 2026-10-05 where it had taken about five minutes (#1520), and
+ * gave the same 4,583,879 rows.
  */
 export async function deriveClassClosure(signal: AbortSignal): Promise<void> {
   await cancellable(
     signal,
     `INSERT INTO ${next('wikidata_class_closure')} (class, ancestor)
-     WITH RECURSIVE up(class, ancestor) AS (
+     WITH RECURSIVE edges AS MATERIALIZED (
+       SELECT subject, value_item FROM ${next('wikidata_claims')}
+        WHERE property = 'P279' AND value_item IS NOT NULL AND rank >= 0
+     ),
+     up(class, ancestor) AS (
        SELECT DISTINCT value_item, value_item FROM ${next('wikidata_claims')}
         WHERE property = 'P31' AND value_item IS NOT NULL
        UNION
-       SELECT up.class, s.value_item
-         FROM up JOIN ${next('wikidata_claims')} s
-           ON s.subject = up.ancestor AND s.property = 'P279' AND s.value_item IS NOT NULL AND s.rank >= 0
+       SELECT up.class, e.value_item FROM up JOIN edges e ON e.subject = up.ancestor
      )
      SELECT class, ancestor FROM up`,
   );
