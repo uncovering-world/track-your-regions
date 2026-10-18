@@ -141,6 +141,7 @@ and accepted by it.
 | [0119](0119-a-source-that-reads-the-subset-keeps-only-what-it-still-asks-live.md) | A source that reads the subset keeps only what it still asks live | Accepted | 2026-10-18 |
 | [0120](0120-a-near-pair-is-also-asked-when-one-names-words-stand-in-the-others.md) | A near pair is also asked about when one name's words all stand in the other's | Accepted | 2026-10-18 |
 | [0121](0121-english-wikipedias-structure-is-kept-as-articles-categories-and-their-links.md) | English Wikipedia's structure is kept as articles, categories and their links | Accepted | 2026-10-18 |
+| [0122](0122-a-world-views-geometry-computation-runs-in-the-dump-worker-beside-its-builds.md) | A world view's geometry computation runs in the dump worker, beside its builds | Accepted | 2026-10-18 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
