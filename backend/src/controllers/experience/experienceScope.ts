@@ -9,7 +9,7 @@
 
 import { pool } from '../../db/index.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
-import { wholeOfSql } from '../../db/placePoints.js';
+import { answeringPlaceOfSql } from '../../db/placePoints.js';
 import { contentsMembershipToAnswerSql } from './waitingCounts.js';
 import type { UserRole } from '../../types/auth.js';
 import { CURATOR_SCOPED_REGIONS_CTE, CURATOR_UNRESTRICTED_SCOPE_EXISTS } from '../../middleware/auth.js';
@@ -121,7 +121,8 @@ export async function contentsMembershipId(
  *
  * A part of a serial site (ADR-0100) is asked about through its whole: it has
  * no regions of its own, and a curator who answers for Ancient Thebes answers
- * for the Temple of Karnak, as a write on the temple's point is judged.
+ * for the Temple of Karnak, as a write on the temple's point is judged. A part
+ * that holds a kind of its own answers for itself (`answeringPlaceOfSql`).
  */
 export async function maySeeUnreadExperience(
   userId: number | undefined,
@@ -132,7 +133,7 @@ export async function maySeeUnreadExperience(
   if (!userId || userRole !== 'curator') return false;
 
   const placeResult = await pool.query<{ source_id: number; scoped_id: number }>(
-    `SELECT e.source_id, COALESCE(${wholeOfSql('e.id')}, e.id) AS scoped_id FROM experiences e WHERE e.id = $1`,
+    `SELECT e.source_id, ${answeringPlaceOfSql('e.id')} AS scoped_id FROM experiences e WHERE e.id = $1`,
     [experienceId],
   );
   if (placeResult.rows.length === 0) return false;
