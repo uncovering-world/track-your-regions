@@ -36,6 +36,8 @@
  * it is the point of (ADR-0100 decision 5).
  */
 
+import { MEMBERSHIPS } from './membership.js';
+
 /** One way a place shows a point: the tables it is read from, and the place it is shown by. */
 export interface PlacePointArm {
   /** The FROM clause: binds `el` (the point) and `e` (the place that shows it). */
@@ -145,14 +147,27 @@ export function wholeOfSql(place: string): string {
 /**
  * The place a curator answers for a point under, as an expression over the
  * point `point`: the site that shows it when the point's own place is one of
- * its parts (ADR-0100), and its own place otherwise. Its scope, its source and
- * its lock are the ones a write on the point is judged and taken under, as the
- * site's are for a component today. A part of two sites answers to the lower
- * id, so every lookup names the same one.
+ * its parts and holds no kind of its own (ADR-0100), and its own place
+ * otherwise. Its scope, its source and its lock are the ones a write on the
+ * point is judged and taken under, as the site's are for a component. A part
+ * that holds a kind of its own is a place in its own right (ADR-0100 decision
+ * 2): the Karnak Temple Complex, once the Temple of Karnak is merged into it,
+ * answers for its own point under its own source, regions and history (#1250).
+ * A part of two sites answers to the lower id, so every lookup names the same
+ * one.
  */
 export function answeringPlaceSql(point = 'el'): string {
-  const own = `${point}.experience_id`;
-  return `COALESCE(${wholeOfSql(own)}, ${own})`;
+  return answeringPlaceOfSql(`${point}.experience_id`);
+}
+
+/**
+ * The same rule for a place: the site it is a part of where it holds no kind
+ * of its own, and itself otherwise. What a curator's scope over the place is
+ * asked through, as a write on its point is.
+ */
+export function answeringPlaceOfSql(place: string): string {
+  return `COALESCE(CASE WHEN NOT EXISTS (SELECT 1 FROM ${MEMBERSHIPS} kinded WHERE kinded.experience_id = ${place})
+                        THEN ${wholeOfSql(place)} END, ${place})`;
 }
 
 /**
