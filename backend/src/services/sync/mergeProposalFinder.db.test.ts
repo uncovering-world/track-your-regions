@@ -20,7 +20,7 @@ const ISLAND = { lat: -1.0, lon: -170.0 };
 const P = {
   church: 9720, site: 9721, farSite: 9722, chapelA: 9723, chapelB: 9724,
   property: 9725, propertyTwin: 9726, whole: 9727, part: 9728, partTwin: 9729, pending: 9730,
-  westOfTheLine: 9731, eastOfTheLine: 9732,
+  westOfTheLine: 9731, eastOfTheLine: 9732, monastery: 9733, monasteryTwin: 9734, oldTown: 9735, townMuseum: 9736,
 } as const;
 const ALL = Object.values(P);
 
@@ -70,8 +70,8 @@ async function place({ id, name, source, lon, state = 'auto', metadata = {}, rep
 }
 
 const fixturePairs = async () => {
-  const rows = await pool.query<{ place_a: number; place_b: number; exact: boolean; distance_m: number; reach_m: number; answer: string | null }>(
-    `SELECT place_a, place_b, exact, distance_m, reach_m, answer FROM experience_merge_proposals
+  const rows = await pool.query<{ place_a: number; place_b: number; exact: boolean; distance_m: number; reach_m: number; answer: string | null; found_by: string }>(
+    `SELECT place_a, place_b, exact, distance_m, reach_m, answer, found_by FROM experience_merge_proposals
       WHERE place_a = ANY($1) ORDER BY place_a, place_b`,
     [ALL],
   );
@@ -101,6 +101,12 @@ beforeAll(async () => {
   // Astride the antimeridian: 0.0005 degrees either side of 180, 111 m apart on the equator.
   await place({ id: P.westOfTheLine, name: 'Fixture Lighthouse', source: 'Places of worship', lon: 179.9995 });
   await place({ id: P.eastOfTheLine, name: 'Fixture Lighthouse', source: 'Archaeology', lon: -179.9995 });
+  // Geghard's case (#1652): a short name inside a long World Heritage title, unlike by trigrams.
+  await place({ id: P.monastery, name: 'Monastery of Fixturegard and the Upper Fixture Valley', source: 'UNESCO World Heritage Sites', lon: east(40000) });
+  await place({ id: P.monasteryTwin, name: 'Fixturegard', source: 'Places of worship', lon: east(40007) });
+  // Two names made only of generic words share nothing the rule reads.
+  await place({ id: P.oldTown, name: 'Old Town', source: 'UNESCO World Heritage Sites', lon: east(50000) });
+  await place({ id: P.townMuseum, name: 'Town Museum', source: 'Archaeology', lon: east(50010) });
 });
 
 afterAll(async () => {
@@ -112,10 +118,13 @@ describe('the pass over near places with similar names', () => {
   it('proposes the pairs within reach with names alike, exact where one name stands within fifty metres', async () => {
     const pass = await findMergeProposals();
     const pairs = await fixturePairs();
-    expect(pairs.map(p => [p.place_a, p.place_b, p.exact])).toEqual([
-      [P.church, P.site, true],
-      [P.property, P.propertyTwin, false],
-      [P.westOfTheLine, P.eastOfTheLine, false],
+    expect(pairs.map(p => [p.place_a, p.place_b, p.exact, p.found_by])).toEqual([
+      [P.church, P.site, true, 'similar'],
+      [P.property, P.propertyTwin, false, 'similar'],
+      [P.westOfTheLine, P.eastOfTheLine, false, 'similar'],
+      // Unlike by trigrams; asked because every word of "Fixturegard" stands in the title. The
+      // generic-only pair (Old Town / Town Museum) shares no word the rule reads and is not asked.
+      [P.monastery, P.monasteryTwin, false, 'words'],
     ]);
     expect(pairs[0].distance_m).toBe(40);
     expect(pairs[1].reach_m).toBe(1493);
@@ -123,11 +132,14 @@ describe('the pass over near places with similar names', () => {
     // Across the antimeridian: found through the twin, measured on the geography.
     expect(pairs[2].distance_m).toBe(111);
     const open = pass.open.filter(pair => (ALL as readonly number[]).includes(pair.placeA.id));
-    expect(open.map(pair => [pair.placeA.name, pair.placeB.name])).toEqual([
-      ['Church of St Fixture', 'Church of St. Fixture'],
-      ['Fixture Lighthouse', 'Fixture Lighthouse'],
-      ['Fixture Mining Landscape', 'Mining landscape of Fixture'],
+    expect(open.map(pair => [pair.placeA.name, pair.placeB.name, pair.foundBy])).toEqual([
+      ['Church of St Fixture', 'Church of St. Fixture', 'similar'],
+      ['Fixture Lighthouse', 'Fixture Lighthouse', 'similar'],
+      ['Fixture Mining Landscape', 'Mining landscape of Fixture', 'similar'],
+      ['Monastery of Fixturegard and the Upper Fixture Valley', 'Fixturegard', 'words'],
     ]);
+    expect(open[3].nameSimilarity).toBeLessThan(0.5);
+    expect(pass.foundBy.words).toBeGreaterThanOrEqual(1);
     expect(open[0].placeA.kinds).toEqual(['Places of worship']);
     expect(open[0].placeB.kinds).toEqual(['Archaeology']);
   });
@@ -161,6 +173,7 @@ describe('the pass over near places with similar names', () => {
     expect(pairs.map(p => [p.place_a, p.place_b, p.answer, p.distance_m])).toEqual([
       [P.church, P.site, 'two', 1],
       [P.westOfTheLine, P.eastOfTheLine, null, 111],
+      [P.monastery, P.monasteryTwin, null, 7],
     ]);
   });
 });

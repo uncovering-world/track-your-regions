@@ -56,6 +56,7 @@ const PAIRS = `(SELECT jsonb_agg(jsonb_build_object(
            'nameSimilarity', p.name_similarity,
            'exact', p.exact,
            'reachM', p.reach_m,
+           'foundBy', p.found_by,
            'proposedAt', p.proposed_at)
          ORDER BY p.name_similarity DESC, p.distance_m, p.id)
        FROM experience_merge_proposals p
