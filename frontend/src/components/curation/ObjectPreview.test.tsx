@@ -105,6 +105,23 @@ describe('the object a waiting card opens', () => {
     expect(screen.getByText(/is the exposition substantially archaeology\?/)).toBeInTheDocument();
   });
 
+  it('puts both questions in front of the curator when two kinds asked about one place', async () => {
+    // The readership door asks under its kind's own key (ADR-0056), so a place
+    // Archaeology also holds keeps Archaeology's question beside the door's.
+    fetchExperience.mockResolvedValue(detail({
+      name: 'Israel Museum',
+      metadata: {
+        admissionNote: 'an antiquities department; is the exposition substantially archaeology?',
+        museumReadershipNote: 'Admitted for L.H.O.O.Q., below the sitelinks line. Can a visitor see it there now?',
+      },
+    }));
+
+    renderPreview(1);
+
+    expect(await screen.findByText(/is the exposition substantially archaeology\?/)).toBeInTheDocument();
+    expect(screen.getByText(/Admitted for L\.H\.O\.O\.Q\./)).toBeInTheDocument();
+  });
+
   it('asks nothing on an object the run admitted by its rule', async () => {
     fetchExperience.mockResolvedValue(detail({ metadata: { wikidataQid: 'Q1' } }));
 
