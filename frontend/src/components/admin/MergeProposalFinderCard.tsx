@@ -26,15 +26,17 @@ type LeftApart = MergeProposalPass['leftApart'][number];
 /** One pair in a line: both places with their kinds, the distance and how alike the names are. */
 function pairLine(pair: OpenPair | LeftApart): string {
   const kinds = (names: string[]) => (names.length > 0 ? ` (${names.join(', ')})` : '');
+  const within = 'foundBy' in pair && pair.foundBy === 'words' ? ', one name within the other' : '';
   return `${pair.placeA.name}${kinds(pair.placeA.kinds)} and ${pair.placeB.name}${kinds(pair.placeB.kinds)}: `
-    + `${pair.distanceM} m apart, names alike at ${Math.round(pair.nameSimilarity * 100)} %`;
+    + `${pair.distanceM} m apart, names alike at ${Math.round(pair.nameSimilarity * 100)} %${within}`;
 }
 
 /** The pass's outcome in one sentence. */
-function outcomeSentence({ open, answered, leftApart }: MergeProposalPass): string {
+function outcomeSentence({ open, answered, leftApart, foundBy }: MergeProposalPass): string {
   const answeredCount = answered.one + answered.two + answered.partOf;
+  const within = foundBy.words > 0 ? ` (${foundBy.words} by one name standing within the other)` : '';
   const parts = [
-    open.length === 0 ? 'No pair waits for a person' : `${plural(open.length, 'pair')} wait for a person`,
+    open.length === 0 ? 'No pair waits for a person' : `${plural(open.length, 'pair')} wait for a person${within}`,
   ];
   if (answeredCount > 0) {
     parts.push(`${plural(answeredCount, 'pair')} answered so far: ${answered.one} one place, ${answered.two} two places, ${answered.partOf} part of the other`);

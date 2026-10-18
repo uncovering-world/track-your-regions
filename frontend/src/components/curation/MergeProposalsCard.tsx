@@ -57,9 +57,15 @@ function judgementWords(judgement: Judgement): string {
     : `Jev says ${JUDGEMENT_WORDS[judgement.judgement]} · ${percent}`;
 }
 
-/** How alike the names are: the same, or a share. */
+/**
+ * How alike the names are: the same, a share, or — for a pair found because
+ * every word of one name stands in the other's (#1652) — that, since a share
+ * of 17 % would read as a reason not to ask.
+ */
 function similarityWords(pair: Pair): string {
-  return pair.nameSimilarity >= 1 ? 'the same name' : `names ${Math.round(pair.nameSimilarity * 100)} % alike`;
+  if (pair.nameSimilarity >= 1) return 'the same name';
+  if (pair.foundBy === 'words') return 'one name within the other';
+  return `names ${Math.round(pair.nameSimilarity * 100)} % alike`;
 }
 
 /** The other place's picture with its credit under it — or the room it would take, so the rows line up. */
