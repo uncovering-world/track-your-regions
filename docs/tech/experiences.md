@@ -1346,8 +1346,8 @@ path needs.
   for a part without one, its site's, saying so beside the credit (`pointPicture`,
   `docs/tech/experience-map-ui.md`).
 - **A component no item records the reference of is proposed one** (#1272,
-  `componentItemFinder.ts`, rules in `componentItemMatching.ts`, queries in
-  `componentItemQueries.ts`). Started from the World Heritage source's card in the admin panel
+  `componentItemFinder.ts`, rules in `componentItemMatching.ts`, reads of the local Wikidata
+  subset in `subset/componentItems.ts`, label reads in `componentItemQueries.ts`). Started from the World Heritage source's card in the admin panel
   (*Find component items*, `POST /api/admin/sync/sources/:sourceId/find-component-items`,
   `findUnescoComponentItems` in `componentItemJob.ts`), not from the run, whose job is to record
   what UNESCO states. It can be narrowed to one site (#1429): `?experienceId=` names a site of the
@@ -1355,8 +1355,8 @@ path needs.
   site's component-items card (*Search this site again*, shown to admins, the pass's own role). The
   narrowed pass asks about that site's own areas and writes and clears proposals for its points
   only (`FinderOptions.siteId`); every rule is the whole pass's, the classes a site is judged by
-  are still learned from the whole catalogue, and QLever's manners and its refusal are unchanged. It reads the standing component points with no item and no claim on one, and
-  asks Wikidata by these rules, each a reason the curator reads on the card:
+  are still learned from the whole catalogue. It reads the standing component points with no item and no claim on one, and
+  reads Wikidata by these rules, each a reason the curator reads on the card:
   - **part of the site** (`part_of`) — an item that says it is part of one of the site's own items
     (P361), with or without a World Heritage reference of its own — one the reader matched is a
     point's item already and is left as taken; one naming this property under another variant of
@@ -1371,17 +1371,15 @@ path needs.
     resolved components of at least five sites across the catalogue are of — counted by site, so
     one site of four hundred rock-art shelters does not decide it for the rest. A settlement is a candidate only
     for a site whose own components include settlements: a fort named after a village is not the
-    village. Which items and classes are settlements is the class tree's answer, asked of QLever
-    (`settlementsAmong`): an item with a class under *human settlement* that is not itself under
+    village. Which items and classes are settlements is the class tree's answer
+    (`settlementsAmong`, read from the subset's class closure, which follows every subclass
+    statement that is not deprecated, where `wdt:P279*` followed the best ones): an item with a class under *human settlement* that is not itself under
     *fortification* or *archaeological site*, judged class by class — a castrum is filed under all
     three and is no settlement, while Tarentum is a *city* beside being a *polis*, which is a dig,
     and a city is what the rule sets aside. A list of classes could not keep up: Passau's old town
     is an *Altstadt*, a class no list named, and it was offered for Passau's fort until the tree
     was asked. It is decided before the best candidate is chosen, so a town set aside gives way to
-    the next candidate; a settlement question QLever cannot answer leaves those points unanswered
-    rather than ending the pass — the one about the candidates leaves theirs, and the one about
-    the catalogue-wide classes leaves every point of a site with no resolved components, since
-    such a site has no classes to search by without it (`catalogueSettlementKinds`). The rule is as good as Wikidata's classes: measured on the 163
+    the next candidate. The rule is as good as Wikidata's classes: measured on the 163
     near proposals of 2026-10-09 it sets aside five, and beside Tarentum it loses the Temple of
     Karnak, which somebody filed as a *city*, and the collegiate church of Ziortza, a *Trappist
     monastery* — a class under *human settlement*. A component thereby left without a candidate
@@ -1400,12 +1398,10 @@ path needs.
     either (`standsAtTheComponent`): a candidate that stands in (P131, P276) or is part of (P361)
     a place named like the component, at a similarity of 0.7 or more, and is not itself named like
     it, is set aside — the Moravian Church Settlements' Herrnhut was offered its *Heimatmuseum*,
-    Christiansfeld its pharmacy, the Comoros' Moroni its Old Friday Mosque. The places are asked
-    of QLever only for those sites' contenders — the candidates the near rule or the place-name
-    rule would take, since
-    a place cannot change a choice the rule refuses (`placesOf`; the source record
-    `docs/sources/global/wikidata-qlever.md` counts the questions) — and a batch it cannot answer
-    leaves the points unanswered, as the settlement question does. Only there, because a site's
+    Christiansfeld its pharmacy, the Comoros' Moroni its Old Friday Mosque. The places are read
+    only for those sites' contenders — the candidates the near rule or the place-name rule would
+    take, since a place cannot change a choice the rule refuses (`placesOf`), each with its
+    English or multilingual names. Only there, because a site's
     own classes say what its components are: 53 of the 3 941 resolved components, measured on
     2026-10-11, have an item standing in a place named like them that is not named like them
     itself — the Slovak wooden church that is the component "Hervartov", the caravanserai that is
@@ -1423,17 +1419,17 @@ path needs.
     where it was before the search, and the pass counts what it set aside.
   - **numbered under another inscription** (`numbered`, #1394, `componentItemNumbered.ts`) — an
     item that carries the component's number under another variant of the inscription, read in
-    one query of the component-level P757 statements (`componentNumbers`, some five thousand rows,
-    under two seconds on 2026-10-12): Mozu-Furuichi's Osamezuka Kofun is `1593-006` on Wikidata
+    one statement over the subset's component-level P757 statements, every rank but deprecated
+    (`componentNumbers`: 4,823 on the 2026-10-05 dump, read in about 20 s, since no index leads
+    with the property): Mozu-Furuichi's Osamezuka Kofun is `1593-006` on Wikidata
     and `1593bis-006` on the list. The number is keyed without its variant (`componentKey`, the
     list's padding dropped as `listRef` drops it); an item carrying the point's own reference is
     the reference reader's and is left out. The number is not an identity: an extension can
     renumber the parts — the Beech Forests' `1133quinquies-039` is Abruzzo and Wikidata's
     `1133ter-039` Paklenica — so the name decides, at 0.3 or more within 5 km
     (`numberedMatches`), and every candidate the rule admits is asked about, since two villages
-    carry Frederiksoord-Wilhelminaoord's number. Asked beside the other doors, never instead:
-    a point with only such a candidate is not answered for by the others, and where the numbers
-    could not be read the pass keeps the open proposals this door made before. Measured on
+    carry Frederiksoord-Wilhelminaoord's number. Asked beside the other doors, never instead.
+    Measured on
     2026-10-12, 192 points had an item under their number in another variant and nothing
     proposed; 71 of those items are named like their point (43 of them Mozu-Furuichi's kofun).
   - **named for a place in the component's name** (`toponym`, #1340) — where the near rule finds
@@ -1453,8 +1449,7 @@ path needs.
     match too; the site's kind keeps it out of the candidates, and its register code below.
 
   **A candidate's national register code** (#1340, `componentItemRegisters.ts`) is read off the
-  proposed items only — one query to the Wikidata Query Service per two hundred items
-  (`registerCodesOf`), never to QLever, whose day's budget the near search spends — for the
+  proposed items only, from the subset (`registerCodesOf`), for the
   registers in `REGISTER_CODES`: Romania's LMI (P1770), Switzerland's KGS (P381) and Finland's
   RKY (P4009). The proposal keeps it as the card shows it (`register_code`, "LMI CJ-I-s-A-07208",
   migration 092) and whether its group disagrees with the one most of the site's coded candidates
@@ -1462,8 +1457,7 @@ path needs.
   and Bologa Castle (`CJ-II-m-B-07533`), offered for a Roman fort, disagrees with the castra
   around it. A disagreeing candidate sorts below the ones that agree on the card, and says so
   under its code; a register that writes no group, or a site whose codes split evenly, disagrees
-  with nothing. A read that fails for any reason but a cancelled pass leaves the codes off and
-  the proposals as they are.
+  with nothing.
 
   Not every point is searched. A component that stands for its whole site — the only standing
   point of a site of one, or a point named exactly like its site, folded (`standsForWholeSite`;
@@ -1481,35 +1475,36 @@ path needs.
   proposed, and an item two components could be is offered for the one it matches better. Each
   match is a row of `experience_component_item_proposals` (migration 082): the item, its label,
   the distance, the similarity, `exact` and `basis`. A pass replaces the open proposals of the
-  points it answered for and keeps the answered ones, so a candidate a curator refused never comes back.
-  The query service is asked for identifiers, coordinates and classes only, and each query takes
-  its turn like every other (§ SPARQL reliability). Asked for every label in every language as
-  well, a site item with a few thousand parts made one query heavy enough to earn a 429 on
-  2026-10-09. The near rule is not asked of the query service at all: a pass paced at its own
-  published rate still drew a 429 by its 500th of 1,292 areas, so it asks Wikidata on QLever's
-  mirror instead (`qleverWikidata.ts`, register record `docs/sources/global/wikidata-qlever.md`),
-  one question at a time across the process, each held back as long as the last took. It groups
-  points in cells of 0.25°, 25 cells to a question, each cell a filter on the item's latitude and
-  longitude (`boxFilter`, which takes the other side of the antimeridian for a box that runs past
-  it); an unloaded mirror answers such a question in under a second, a loaded one in about 15 s
-  and then refuses the pass (measured 2026-10-09; the mirror's record,
-  `docs/sources/global/wikidata-qlever.md`, has the refusal), so the working budget is one pass a
-  day. The lasting route is a local
-  subset of the Wikidata dump (#1312). The labels are read from Wikidata's own API (`wbgetentities`,
-  `labelsOf`), fifty items a request, one request at a time, and only for the candidates within
-  reach: 5 km of a point for a part, 1 km for a near item. Every label is matched on, but the
+  points it read and keeps the answered ones, so a candidate a curator refused never comes back.
+  Every question but the labels is read from the local Wikidata subset (#1435,
+  `subset/componentItems.ts`, [ADR-0105](../decisions/0105-the-wikidata-subset-follows-containment-chains-and-is-kept-compact-and-swapped-in-whole.md)),
+  each statement as `wdt:` reads it: an item's best statements, never a deprecated one, and a
+  coordinate only on the Earth, since a crater on the Moon can share a component's latitude and
+  longitude. The
+  subset answers without the limits the query service and QLever's mirror set, under which a
+  pass was refused halfway twice (2026-10-09, 2026-10-13) and nothing was written. With no subset
+  built, or one a database crash emptied (its tables are unlogged and the build's record is not,
+  so `entitiesAreHeld` is asked beside `latestSubset`, as a kind's run asks), the pass refuses to
+  start, since every question would answer nothing and the pass would clear what the last one
+  proposed; its closing sentence names the dump the subset was built from. The two statements
+  that read the whole subset — every coordinate, every component number — run on a client of
+  their own and are cancelled in the database when the pass is (`cancellable`), so a cancel from
+  the panel does not wait for them. The near rule groups points in cells of 0.25°, each cell's box reaching the same-name
+  radius past its points, and asks about every box in one statement (`itemsInBoxes`): no index
+  holds the coordinates, so the statement reads the subset's P625 statements once, sorted into a
+  0.25° grid joined on the cells the boxes cover, and keeps those inside a box (`rangesOf` takes
+  the other side of the antimeridian for a box that runs past it). The labels alone are read from
+  Wikidata's own API (`wbgetentities`, `labelsOf`), fifty items a request, one request at a time,
+  and only for the candidates within reach: 5 km of a point for a part, 1 km for a near item.
+  The subset keeps labels in eight languages (`SUBSET_LANGUAGES`, `docs/tech/dumps.md`), and a
+  component is often named only in its own: on 2026-10-18, 2 of the 19 place-name proposals had
+  no label in them, Brețcu's archaeological site for Angustia among them. Every label is matched on, but the
   proposal names the candidate by its English label where the item has one, else by its
   multilingual one (`mul`, a name every language spells alike), and by the label most like the
   component's name only where it has neither (#1358): the most name-alike label of a
   candidate found at the point rather than by name is whatever language a trigram favoured —
-  Bahjí's Shrine of Bahá'u'lláh read as "Bahaullah'ın Makamı". A part or box question the service or
-  the mirror cannot answer is tried once more, then asked again smaller: a batch of sites in halves,
-  a group of cells one cell at a time. A site or a cell it cannot answer even alone is left out
-  and counted on the job's closing sentence, rather than ending the pass, and its points keep
-  what an earlier pass proposed for them. Only a 5xx, a timeout or a dropped connection is split
-  this way (`SparqlUnanswered`, `tooHeavy`): a 429 or a 403 means the service asked this client
-  to stop, a 400 that the query is wrong, a spent wait budget that the run has no patience left,
-  and each of those ends the pass. What a pass proposes is a curator's question, answered on
+  Bahjí's Shrine of Bahá'u'lláh read as "Bahaullah'ın Makamı". A request the API refuses ends
+  the pass. What a pass proposes is a curator's question, answered on
   the review queue's `component-items` card (§ Review Queue, **Component items**): a confirmed
   item is recorded on the point as the curator's choice, which the next pass reads as
   answered, and a turned-down candidate is kept so it is never proposed again.

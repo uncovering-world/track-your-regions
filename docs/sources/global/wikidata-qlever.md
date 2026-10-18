@@ -40,8 +40,8 @@ scorecard:
   cadence: 1
   total: 13
   verdict: adoptable
-status: adopted
-issue: 1272
+status: expired
+issue: 1435
 looked_at: 2026-10-09
 ---
 
@@ -72,3 +72,5 @@ A full pass asks the mirror about 80 questions — 52 for the 1,292 areas of 202
 - **Names: 0.** The connector asks for no labels; the candidates' names come from `wbgetentities`.
 - **Cadence: 1.** The mirror trails the live data.
 - **Signal: 2.** It is the classes and the missing World Heritage reference the rule reads.
+
+**Retired for the component-item search** (#1435, 2026-10-18). The search reads every question this record covered from the local Wikidata subset built from the entities dump (`backend/src/services/sync/subset/componentItems.ts`, ADR-0105): the near rule's boxes in one statement over the subset's coordinates, the settlements through its class closure, and the places a contender stands in. The mirror refused a full pass halfway twice, on 2026-10-09 and 2026-10-13, and nothing was written either time; the subset has no such limit. Nothing in the repository asks the mirror for Wikidata any more, and its connector (`qleverWikidata.ts`) was removed. The mirror stays readable under the terms above. The QLever mirror of OpenStreetMap is a record of its own (`openstreetmap-qlever.md`) and is still read.
