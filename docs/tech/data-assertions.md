@@ -581,6 +581,13 @@ place will ever take away: the work or the pin would stay on show after every
 source of the place had dropped it. A merge that moved a part without its
 placement, or a placement written by hand, is what leaves one.
 
+**The markup rule** (`name-carries-markup`, #1610) asks of a place's name, each
+language of its local names, a point's name and a work's title whether it holds
+an HTML tag, which every screen shows as text. The World Heritage run reads its
+feed's names as plain text (`feedText`), and migration 128 brought the stored
+names to it, so a row here came in by a path that did not: a new source that
+marks up its names, or a hand-run update.
+
 **The name rule** (`name-carries-whitespace-nobody-typed`) asks of every column
 a person types into a filter — a place's name, each language of its local
 names, a monument's makers, a point's name, a work's title and its makers —
