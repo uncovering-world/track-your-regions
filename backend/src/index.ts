@@ -113,6 +113,14 @@ const startServer = async () => {
     console.log(`🧹 Marked ${orphanedBuilds} stale dump build(s) as failed`);
   }
 
+  // The same for a world view's geometry computation, which the dump worker
+  // runs too (ADR-0122).
+  const { closeOrphanedComputations } = await import('./controllers/worldView/computationLedger.js');
+  const orphanedComputations = await closeOrphanedComputations();
+  if (orphanedComputations > 0) {
+    console.log(`🧹 Marked ${orphanedComputations} stale geometry computation(s) as failed`);
+  }
+
   // Mark any orphaned import_runs as failed (e.g., from a previous server crash)
   const staleImportResult = await pool.query(
     `UPDATE import_runs SET status = 'failed', completed_at = NOW()

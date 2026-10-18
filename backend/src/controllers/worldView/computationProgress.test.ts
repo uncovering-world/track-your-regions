@@ -1,219 +1,143 @@
 /**
- * What a world-view geometry run picks up, and in what order.
- *
- * A parent's geometry is the union of its children, so the run has to be a
- * closure rather than a filter: taking `geom IS NULL` alone never revisits a
- * parent that already has one, and a child computed after its parent stays
- * outside the parent's outline for good. Four of the eight top-level regions of
- * the Administrative world view were in that state — North America drew Mexico
- * and the Caribbean, 18.3 % of what it holds (#667).
- *
- * The order is the other half: deepest first, so a parent is unioned after the
- * children it is the union of.
+ * The admin panel's side of a world view's geometry computation (#1658,
+ * ADR-0122): a press queues the computation in the ledger for the dump worker
+ * and answers how many regions it will compute, a second press while one is
+ * queued or running is refused, and the status a poll reads is the row's,
+ * whatever process runs it.
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../db/index.js', () => ({
-  pool: { query: vi.fn().mockResolvedValue({ rows: [] }) },
+  pool: { query: vi.fn() },
 }));
-vi.mock('./geometryComputeSingle.js', () => ({
-  computeRegionGeometryCore: vi.fn(async () => ({ computed: true, points: 10 })),
+vi.mock('./computationScope.js', () => ({
+  loadGroupsToCompute: vi.fn(),
 }));
+vi.mock('./computationLedger.js', async () => {
+  const actual = await vi.importActual<typeof import('./computationLedger.js')>('./computationLedger.js');
+  return {
+    ComputationAlreadyRunning: actual.ComputationAlreadyRunning,
+    closeOrphanedComputations: vi.fn(async () => 0),
+    enqueueComputation: vi.fn(async () => 1),
+    requestComputationCancel: vi.fn(async () => true),
+    shownComputationOf: vi.fn(async () => null),
+  };
+});
 
 import { pool } from '../../db/index.js';
-import { runningComputations } from './types.js';
 import { Operation } from '../../services/operationProgress.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { worldViewRoutes } from '../../routes/worldViewRoutes.js';
+import { loadGroupsToCompute } from './computationScope.js';
+import {
+  ComputationAlreadyRunning, enqueueComputation, requestComputationCancel, shownComputationOf, type ComputationRow,
+} from './computationLedger.js';
+import { statusOf } from './computationProgress.js';
 
 /** The declared routes these specs answer through (ADR-0071). */
-const computeWorldViewGeometriesRoute = routeAt(worldViewRoutes, '/:worldViewId/compute-geometries', 'post');
-const getComputationStatusRoute = routeAt(worldViewRoutes, '/:worldViewId/compute-geometries/status', 'get');
+const startRoute = routeAt(worldViewRoutes, '/:worldViewId/compute-geometries', 'post');
+const statusRoute = routeAt(worldViewRoutes, '/:worldViewId/compute-geometries/status', 'get');
+const cancelRoute = routeAt(worldViewRoutes, '/:worldViewId/compute-geometries/cancel', 'post');
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
+const admin = { id: 7, role: 'admin' };
+const answerOf = async (route: typeof startRoute, req: Record<string, unknown>) => {
+  const res = { json: vi.fn(), status: vi.fn().mockReturnThis(), setHeader: vi.fn() };
+  await answerRoute(route, { user: admin, query: {}, ...req } as never, res as never);
+  return { body: res.json.mock.calls[0]?.[0] as Record<string, unknown> | undefined, res };
+};
 
-/**
- * The run answers the request and then works in the background, so the mock has
- * to satisfy every query it makes: an empty group list ends the work at once,
- * and the total is read straight after the selection.
- */
-function stubDatabase(): void {
-  mockedQuery.mockImplementation((sql: string) => {
-    if (String(sql).includes('COUNT(*)::int as count')) return Promise.resolve({ rows: [{ count: 0 }] });
-    return Promise.resolve({ rows: [] });
-  });
-}
+const row = (over: Partial<ComputationRow>): ComputationRow => ({
+  id: 3, world_view_id: 5, status: 'running', force: false, skip_snapping: false, regions: 4, started_by: 7,
+  queued_at: new Date(), started_at: new Date(), finished_at: null, heartbeat_at: new Date(), runner: 'worker:fixture',
+  progress: null, cancel_requested_at: null, outcome: null, error: null, stale: false, ...over,
+});
 
-/**
- * The SQL of the group selection, for one run.
- *
- * A world view id of its own per call: the module holds a running-computation
- * slot per world view and answers 409 to a second run of the same one.
- */
-let nextWorldView = 900;
-async function selectionSqlFor(force: boolean): Promise<string> {
-  stubDatabase();
-  mockedQuery.mockClear();
-  nextWorldView += 1;
-  const req = { params: { worldViewId: String(nextWorldView) }, query: force ? { force: 'true' } : {} } as never;
-  const res = { json: vi.fn(), status: vi.fn().mockReturnThis() } as never;
-  await answerRoute(computeWorldViewGeometriesRoute, req, res);
-  const call = mockedQuery.mock.calls.find(([sql]) => String(sql).includes('group_depth'));
-  if (!call) throw new Error('the run issued no group selection');
-  return String(call[0]).replace(/\s+/g, ' ');
-}
+beforeEach(() => {
+  vi.clearAllMocks();
+  mockedQuery.mockResolvedValue({ rows: [{ count: 10 }] });
+  vi.mocked(loadGroupsToCompute).mockResolvedValue([
+    { id: 1, name: 'Adygea', depth: 2 }, { id: 2, name: 'Russia', depth: 1 },
+  ]);
+});
 
-describe('the regions a world-view run computes', () => {
-  beforeEach(() => {
-    stubDatabase();
-    mockedQuery.mockClear();
+describe("queuing a world view's geometry computation", () => {
+  it('queues it for the dump worker with what was asked and who asked, and answers how many regions it takes', async () => {
+    const { body } = await answerOf(startRoute, { params: { worldViewId: '5' }, query: { force: 'true', skipSnapping: 'true' } });
+    expect(vi.mocked(loadGroupsToCompute)).toHaveBeenCalledWith(5, true);
+    expect(vi.mocked(enqueueComputation)).toHaveBeenCalledWith(5, { force: true, skipSnapping: true, regions: 2, startedBy: 7 });
+    expect(body).toMatchObject({ started: true, total: 10, needsComputation: 2, alreadyComputed: 8 });
   });
 
-  it('takes a region with no geometry and every ancestor of one', async () => {
-    const sql = await selectionSqlFor(false);
-    expect(sql).toContain('needs_geometry AS');
-    expect(sql).toContain('r.geom IS NULL');
-    // The upward walk: a region joins because a descendant needs geometry.
-    expect(sql).toContain('JOIN needs_geometry n ON n.parent_region_id = p.id');
-    expect(sql).toContain('gd.id IN (SELECT id FROM needs_geometry)');
+  it('queues nothing when every region already has its geometry', async () => {
+    vi.mocked(loadGroupsToCompute).mockResolvedValue([]);
+    const { body } = await answerOf(startRoute, { params: { worldViewId: '5' } });
+    expect(vi.mocked(enqueueComputation)).not.toHaveBeenCalled();
+    expect(body).toMatchObject({ started: false, needsComputation: 0, alreadyComputed: 10 });
   });
 
-  it('takes every region when forced, and only then', async () => {
-    const forced = await selectionSqlFor(true);
-    expect(forced).not.toContain('needs_geometry');
-    expect(forced).not.toContain('geom IS NULL');
+  it('refuses a second one while one is queued or running, in any process', async () => {
+    vi.mocked(enqueueComputation).mockRejectedValueOnce(new ComputationAlreadyRunning('already'));
+    const { res } = await answerOf(startRoute, { params: { worldViewId: '5' } });
+    expect(res.status).toHaveBeenCalledWith(409);
+  });
+});
+
+describe('the status a poll reads', () => {
+  it('answers nothing running when no computation is shown', async () => {
+    const { body } = await answerOf(statusRoute, { params: { worldViewId: '5' } });
+    expect(body).toEqual({ running: false });
   });
 
-  it('computes deepest first on both arms, since a parent is a union of its children', async () => {
-    for (const force of [false, true]) {
-      expect(await selectionSqlFor(force)).toContain('ORDER BY gd.depth DESC, gd.id');
-    }
-  });
-
-  it('never recomputes a user-drawn boundary, on either arm (#283)', async () => {
-    for (const force of [false, true]) {
-      expect(await selectionSqlFor(force)).toContain('cg.is_custom_boundary IS NOT TRUE');
-    }
+  it('says a queued computation waits for the dump worker', async () => {
+    vi.mocked(shownComputationOf).mockResolvedValueOnce(row({ status: 'queued', started_at: null, runner: null }));
+    const { body } = await answerOf(statusRoute, { params: { worldViewId: '5' } });
+    expect(body).toMatchObject({ running: true, status: 'Waiting for the dump worker...', progress: 0, total: 4, percent: 0 });
   });
 
   /**
-   * The closure walks a tree that may hold user-drawn boundaries, and they stop
-   * it in both directions. A custom boundary with no geometry is not a region
-   * awaiting computation -- it is a shape nobody has drawn yet, and computing
-   * its parent would not change what the parent contains. A custom boundary
-   * partway up is not made stale by a descendant either: its outline is drawn,
-   * not unioned, so it does not move, and neither does anything above it.
-   * Without the guard, an empty hand-drawn region would put a continent through
-   * a hundred seconds of union for nothing.
+   * `currentRegion` is the key both consumers read (`GeometryMapPanelParts`,
+   * `WorldViewImportReview`); a status that sent `currentGroup` left the
+   * progress line's region name blank.
    */
-  it('lets a user-drawn boundary neither seed the closure nor pass it on', async () => {
-    const sql = await selectionSqlFor(false);
-    // The seed: only a derived region with nothing to draw.
-    expect(sql).toContain('WHERE r.geom IS NULL AND r.is_custom_boundary IS NOT TRUE');
-    // The upward walk: the region being climbed to is checked as well.
-    expect(sql).toContain('JOIN regions pr ON pr.id = p.id');
-    expect(sql).toContain('JOIN needs_geometry n ON n.parent_region_id = p.id WHERE pr.is_custom_boundary IS NOT TRUE');
-  });
-});
-
-/**
- * Regression test: the status payload has to use the key the client reads.
- *
- * `ComputationStatus.currentRegion` is what both consumers read
- * (`GeometryMapPanelParts`, `WorldViewImportReview`); the endpoint sent
- * `currentGroup`, which nothing reads, so the progress line's region name never
- * rendered and `docs/tech/world-views.md` described a screen that did not exist.
- */
-describe('the run status a curator polls', () => {
-  it('names the region under the key the client reads', async () => {
-    stubDatabase();
-    mockedQuery.mockClear();
-    nextWorldView += 1;
-    const req = { params: { worldViewId: String(nextWorldView) }, query: {} } as never;
-    const res = { json: vi.fn(), status: vi.fn().mockReturnThis() } as never;
-
-    // Polled while the run is still on the books: the entry is cleaned up once
-    // the run finishes, and it is the live payload this pins.
-    const running = answerRoute(computeWorldViewGeometriesRoute, req, res);
-    const statusReq = { params: { worldViewId: String(nextWorldView) } } as never;
-    const statusJson = vi.fn();
-    const statusRes = { json: statusJson, status: vi.fn().mockReturnThis() } as never;
-    await answerRoute(getComputationStatusRoute, statusReq, statusRes);
-    await running;
-
-    const payload = statusJson.mock.calls[0]?.[0] as Record<string, unknown>;
-    expect(payload).toBeDefined();
-    expect(payload).toHaveProperty('currentRegion');
-    expect(payload).not.toHaveProperty('currentGroup');
-    // The tally the completion alert turns amber on.
-    expect(payload).toHaveProperty('errors');
-    // The shared progress the panel draws (#1356).
-    expect(payload).toHaveProperty('operation.elapsedSeconds');
-  });
-});
-
-describe('a cancel that lands after the last region', () => {
-  it('ends the run as cancelled, so the status stops answering running (#1356)', async () => {
-    nextWorldView += 1;
-    const worldViewId = nextWorldView;
-    vi.spyOn(console, 'log').mockImplementation(() => {});
-    mockedQuery.mockImplementation((sql: string) => {
-      const text = String(sql);
-      if (text.includes('group_depth')) return Promise.resolve({ rows: [{ id: 1, name: 'Adygea', depth: 1 }] });
-      if (text.includes('COUNT(*)::int as count')) return Promise.resolve({ rows: [{ count: 1 }] });
-      if (text.includes('SELECT id FROM regions WHERE id')) return Promise.resolve({ rows: [{ id: 1 }] });
-      if (text.includes('SELECT DISTINCT parent_region_id')) {
-        // The press lands while the second step reads its parents.
-        const run = runningComputations.get(worldViewId)!;
-        run.cancel = true;
-        run.operation.cancel();
-        return Promise.resolve({ rows: [{ parent_region_id: 7 }] });
-      }
-      return Promise.resolve({ rows: [] });
+  it("reads a running computation's progress from its row, under the keys the client reads", async () => {
+    const operation = new Operation('[Fixture]', 2, () => {});
+    operation.step(1, 'Computing the geometry of 4 regions, deepest first', 4);
+    operation.advance();
+    vi.mocked(shownComputationOf).mockResolvedValueOnce(row({
+      progress: { progress: 1, total: 4, computed: 1, skipped: 6, errors: 0, status: 'Computing: Russia [depth 1]', currentGroup: 'Russia', operation: operation.progress },
+    }));
+    const { body } = await answerOf(statusRoute, { params: { worldViewId: '5' } });
+    expect(body).toMatchObject({
+      running: true, status: 'Computing: Russia [depth 1]', currentRegion: 'Russia', progress: 1, total: 4, percent: 25, errors: 0,
+      operation: { step: { index: 1, done: 1, total: 4 }, cancelling: false },
     });
-    const req = { params: { worldViewId: String(worldViewId) }, query: {} } as never;
-    await answerRoute(computeWorldViewGeometriesRoute, req, { json: vi.fn(), status: vi.fn().mockReturnThis() } as never);
+    expect(body).not.toHaveProperty('currentGroup');
+    expect(body).toHaveProperty('operation.elapsedSeconds');
+  });
 
-    await vi.waitFor(() => expect(runningComputations.get(worldViewId)?.status).toBe('Cancelled'));
-    const statusJson = vi.fn();
-    await answerRoute(getComputationStatusRoute, { params: { worldViewId: String(worldViewId) } } as never, { json: statusJson, status: vi.fn().mockReturnThis() } as never);
-    expect(statusJson.mock.calls[0]?.[0]).toMatchObject({ running: false, status: 'Cancelled' });
-    runningComputations.delete(worldViewId);
+  it('reads a running row that stopped beating as stopped, so the panel does not poll a frozen region', () => {
+    expect(statusOf(row({ stale: true }))).toMatchObject({
+      running: false, status: 'Error: The computation stopped: its process ended or restarted. Start it again to compute what is left.',
+    });
+  });
+
+  it('says a cancel was asked of a running computation before the worker has read it', () => {
+    expect(statusOf(row({ cancel_requested_at: new Date() }))).toMatchObject({ running: true, status: 'Cancelling...' });
+  });
+
+  it('names how an ended computation ended, in the words the alert reads', () => {
+    expect(statusOf(row({ status: 'success', outcome: '4 computed' }))).toMatchObject({ running: false, status: 'Complete' });
+    expect(statusOf(row({ status: 'cancelled', error: 'Cancelled.' }))).toMatchObject({ running: false, status: 'Cancelled' });
+    expect(statusOf(row({ status: 'failed', error: 'The computation stopped with the dump worker. Start it again to compute what is left.' })))
+      .toMatchObject({ running: false, status: 'Error: The computation stopped with the dump worker. Start it again to compute what is left.' });
   });
 });
 
-describe('the slot a run holds', () => {
-  it('stays with a later run when a cancelled one fails its read after it', async () => {
-    nextWorldView += 1;
-    const worldViewId = nextWorldView;
-    const req = { params: { worldViewId: String(worldViewId) }, query: {} } as never;
-    let failFirst: (err: Error) => void = () => {};
-    mockedQuery.mockImplementationOnce(() => new Promise((_resolve, reject) => { failFirst = reject; }));
-    const first = answerRoute(computeWorldViewGeometriesRoute, req, { json: vi.fn(), status: vi.fn().mockReturnThis() } as never);
-
-    // Cancelled while its first read is pending: the guard lets a second run
-    // take the slot, which then holds it.
-    runningComputations.get(worldViewId)!.cancel = true;
-    const later = { cancel: false, progress: 0, total: 1, status: 'Computing', computed: 0, skipped: 0, errors: 0, currentGroup: '', currentMembers: 0, operation: new Operation('[Geometry]', 2, () => {}) };
-    runningComputations.set(worldViewId, later);
-
-    failFirst(new Error('connection terminated'));
-    await expect(first).rejects.toThrow('connection terminated');
-    expect(runningComputations.get(worldViewId)).toBe(later);
-    runningComputations.delete(worldViewId);
-  });
-
-  it('is released when a read before the start fails, so the next request is not answered 409', async () => {
-    nextWorldView += 1;
-    const req = { params: { worldViewId: String(nextWorldView) }, query: {} } as never;
-    mockedQuery.mockImplementation(() => Promise.reject(new Error('connection terminated')));
-    await expect(answerRoute(computeWorldViewGeometriesRoute, req, { json: vi.fn(), status: vi.fn().mockReturnThis() } as never))
-      .rejects.toThrow('connection terminated');
-
-    stubDatabase();
-    const res = { json: vi.fn(), status: vi.fn().mockReturnThis() };
-    await answerRoute(computeWorldViewGeometriesRoute, req, res as never);
-    expect(res.status).not.toHaveBeenCalledWith(409);
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ started: false }));
+describe("cancelling a world view's geometry computation", () => {
+  it('asks the ledger to stop it', async () => {
+    const { body } = await answerOf(cancelRoute, { params: { worldViewId: '5' } });
+    expect(vi.mocked(requestComputationCancel)).toHaveBeenCalledWith(5);
+    expect(body).toEqual({ cancelled: true });
   });
 });

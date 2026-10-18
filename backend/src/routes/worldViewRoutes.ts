@@ -193,7 +193,7 @@ export const worldViewRoutes = [
   // ===========================================================================
   defineRoute({
     method: 'post', path: '/:worldViewId/compute-geometries', access: 'admin', cache: 'no-store',
-    summary: 'Start computing the region geometries of a world view in the background',
+    summary: 'Queue the computation of the region geometries of a world view for the dump worker',
     params: worldViewIdParamSchema,
     query: computeGeometryQuerySchema,
     response: ComputationStartResult,

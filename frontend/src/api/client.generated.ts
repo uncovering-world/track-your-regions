@@ -2337,7 +2337,7 @@ export const ComputationCancelledValue = {
 export type ComputationCancelled = typeof ComputationCancelledValue;
 
 /**
- * A world view's computation, started in the background or found unnecessary.
+ * A world view's computation, queued for the dump worker or found unnecessary.
  */
 export interface ComputationStartResult {
   /** False when every region already had a geometry, so there was nothing to run. */
@@ -2362,7 +2362,7 @@ export interface ComputationStartResult {
 }
 
 /**
- * A world view's computation as it stands. Only `running` is sent while no run is known, since the server started or since the last one was cleared.
+ * A world view's computation as it stands. Only `running` is sent while none is queued or running and none ended in the last 30 seconds.
  */
 export interface ComputationStatus {
   running: boolean;
@@ -13129,7 +13129,7 @@ export const getPostWorldViewsByWorldViewIdComputeGeometriesUrl = (worldViewId: 
 
 /**
  * Requires an admin.
- * @summary Start computing the region geometries of a world view in the background
+ * @summary Queue the computation of the region geometries of a world view for the dump worker
  */
 export const postWorldViewsByWorldViewIdComputeGeometries = async (worldViewId: number,
     params?: PostWorldViewsByWorldViewIdComputeGeometriesParams, options?: Parameters<typeof apiFetch>[1]): Promise<ComputationStartResult> => {

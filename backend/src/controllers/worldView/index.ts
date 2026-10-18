@@ -82,10 +82,3 @@ export {
   saveRegionSubdivisionGroups,
   deleteRegionSubdivisionGroups,
 } from './regionSubdivisionGroups.js';
-
-// Types (for advanced use cases)
-export type { ComputationProgress } from './types.js';
-export { runningComputations } from './types.js';
-
-// Helpers (for advanced use cases)
-export { recomputeRegionGeometry } from './geometryCompute.js';

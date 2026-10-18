@@ -345,6 +345,29 @@ const SERVICE_LAYER_IMPORTS = {
   }],
 };
 
+/**
+ * Who may compute a region's geometry (#1658, ADR-0122): the world view's run
+ * is imported by the dump worker's entry alone, the region pipeline it runs by
+ * that run alone, and the editor's single-region recompute by its stream.
+ */
+const GEOMETRY_COMPUTE_IMPORTS = {
+  patterns: [
+    {
+      regex: '(^|/)computationRun(\\.js)?$',
+      message: 'A world view\'s geometry computation runs in the dump worker (ADR-0122): queue it in the ledger (computationLedger.ts); only worker.ts starts the run.',
+    },
+    {
+      regex: '(^|/)geometryComputeSingle(\\.js)?$',
+      message: 'A region\'s geometry is computed only by an explicit admin action (#1658): the worker\'s run (computationRun.ts) or the editor\'s stream (geometryComputeSSE.ts).',
+    },
+    {
+      regex: '(^|/)geometryCompute(\\.js)?$',
+      importNames: ['recomputeRegionGeometry'],
+      message: 'A region\'s geometry is computed only by an explicit admin action (#1658): the worker\'s run (computationRun.ts) or the editor\'s stream (geometryComputeSSE.ts).',
+    },
+  ],
+};
+
 /** What the error-text rule says. */
 const ERROR_TEXT = [
   'An error\'s own text does not reach a caller: a driver, an HTTP client or a model SDK puts table and column names, URLs',
@@ -625,6 +648,26 @@ export default [
     files: ['src/services/**/*.ts'],
     rules: {
       'no-restricted-imports': ['error', SERVICE_LAYER_IMPORTS],
+    },
+  },
+  // A region's geometry is computed only by an admin's explicit action
+  // (#1658, ADR-0122): a world view's computation by the dump worker, which
+  // takes what the panel queued, and one region by the editor's stream. The
+  // modules that compute are imported by those two and nothing else, so no
+  // other code path, a read or a write, computes one as a side effect.
+  // services/ is held by SERVICE_LAYER_IMPORTS already, since every one of
+  // these modules is a controller.
+  {
+    files: ['src/**/*.ts'],
+    ignores: [
+      'src/services/**',
+      'src/**/*.test.ts',
+      'src/worker.ts',
+      'src/controllers/worldView/computationRun.ts',
+      'src/controllers/worldView/geometryComputeSSE.ts',
+    ],
+    rules: {
+      'no-restricted-imports': ['error', GEOMETRY_COMPUTE_IMPORTS],
     },
   },
   // The one file nobody writes: `schema.generated.ts` is the schema's

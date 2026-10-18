@@ -71,7 +71,7 @@ export const ComputationStartResult = z.strictObject({
   needsComputation: z.number().int(),
   alreadyComputed: z.number().int(),
   message: z.string(),
-}).describe('A world view\'s computation, started in the background or found unnecessary.');
+}).describe('A world view\'s computation, queued for the dump worker or found unnecessary.');
 export type ComputationStartResult = z.infer<typeof ComputationStartResult>;
 
 export const ComputationStatus = z.strictObject({
@@ -86,7 +86,7 @@ export const ComputationStatus = z.strictObject({
   currentRegion: z.string().optional(),
   currentMembers: z.number().int().optional(),
   operation: OperationProgressAnswer.optional().describe('The step the run is on, of how many, and how far through it (#1356).'),
-}).describe('A world view\'s computation as it stands. Only `running` is sent while no run is known, since the server started or since the last one was cleared.');
+}).describe('A world view\'s computation as it stands. Only `running` is sent while none is queued or running and none ended in the last 30 seconds.');
 export type ComputationStatus = z.infer<typeof ComputationStatus>;
 
 export const ComputationCancelled = z.strictObject({
