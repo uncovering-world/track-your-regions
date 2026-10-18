@@ -104,7 +104,9 @@ region it is in by hand; either way the place is no longer asked about, and a
 later placement run, which puts back the automatic row a curator removed, does
 not bring the question back: the rule skips a pair a curator rejected and a
 place a curator placed by hand in the same world view. A World Heritage row, known by UNESCO's number, is read through the
-subset's item that carries that number (`P757`). Region and item are matched by
+item that number resolves to (`P757`), as the run stored it on the membership
+(`wikidata_items`): the claims table has no index on a claim's value, and a
+lookup there took about half a minute for each such row. Region and item are matched by
 English label, so a transliteration hides an agreement (GADM's *Al Uqsur*,
 Wikidata's *Luxor Governorate*) and the row is asked rather than confirmed. On
 the development catalogue on 2026-10-17, world view 5, the only one placed, held
