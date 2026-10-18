@@ -33,18 +33,22 @@ async function clear(): Promise<void> {
   await pool.query('DELETE FROM users WHERE uuid = $1', [CURATOR]);
 }
 
-/** Put the monastery at a longitude, placed automatically in Ararat. */
-async function placeAt(longitude: number): Promise<void> {
+/**
+ * Put the monastery at a longitude, placed automatically in Ararat: a place of
+ * worship known by its item, or a World Heritage site known by UNESCO's number,
+ * whose item the run resolved (`wikidata_items`).
+ */
+async function placeAt(longitude: number, source = 'Places of worship', externalId = QID): Promise<void> {
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location)
      SELECT $1, s.id, $2, 'Border fixture monastery', ST_SetSRID(ST_MakePoint($3, 40.14), 4326)
-       FROM experience_sources s WHERE s.name = 'Places of worship'`,
-    [PLACE, QID, longitude],
+       FROM experience_sources s WHERE s.name = $4`,
+    [PLACE, externalId, longitude, source],
   );
   await pool.query(
-    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-     SELECT $1, s.kind_id, s.id, $2, 'auto', NOW() FROM experience_sources s WHERE s.name = 'Places of worship'`,
-    [PLACE, QID],
+    `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, wikidata_items, curation_state, published_at)
+     SELECT $1, s.kind_id, s.id, $2, $3::text[], 'auto', NOW() FROM experience_sources s WHERE s.name = $4`,
+    [PLACE, externalId, externalId === QID ? null : [QID], source],
   );
   await pool.query(`INSERT INTO experience_regions (experience_id, region_id, assignment_type) VALUES ($1, $2, 'auto')`, [PLACE, ararat]);
 }
@@ -99,6 +103,12 @@ describe('a place within a kilometre of another region, its side not confirmed (
     expect(rows[0].metres).toBeLessThan(350);
     const said = assertion.describe((await pool.query(assertion.sql)).rows.find(row => row.experience_id === PLACE)!);
     expect(said).toBe(`Border fixture monastery (${QID}): placed in Ararat Fixture (Border fixture (#1054)), ${rows[0].metres} m from Kotayk Fixture; its Wikidata item names the neighbour (experience ${PLACE})`);
+  });
+
+  it('reads a World Heritage row by the item its number resolves to', async () => {
+    await placeAt(44.8165, 'UNESCO World Heritage Sites', '99971');
+    await chainTo(KOTAYK_ITEM, 'Kotayk Fixture Province');
+    expect((await asked())[0]).toMatchObject({ other_name: 'Kotayk Fixture', answer: 'names-other' });
   });
 
   it('asks about a placement the data says nothing of, and is silent where the item confirms the side', async () => {
