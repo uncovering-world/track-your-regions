@@ -3,9 +3,9 @@
  * publishes them: for each, what it holds, how its last build ended, and a
  * button that reads its newest complete file from the host and verifies it.
  * Earlier builds open under the row. A dump something is built from (the
- * local Wikidata subset, #1434) also has a button that builds it, and its row
- * says which dump the build in place was made from; readership and the
- * Wikipedia tables come later (#1436, #1440). Such a dump can also cut a
+ * local Wikidata subset, #1434; readership, #1436; English Wikipedia's
+ * structure, #1440) also has a button that builds it, and its row says which
+ * dump the build in place was made from. Such a dump can also cut a
  * sample of its local copy and try the build on it, which keeps nothing and
  * says what it kept and how long each step took (#1527). A button queues the build for
  * the dump worker (ADR-0106); the row follows it through its ledger row until
