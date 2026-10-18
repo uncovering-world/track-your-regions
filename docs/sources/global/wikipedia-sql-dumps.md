@@ -40,7 +40,7 @@ scorecard:
   cadence: 1
   total: 11
   verdict: adoptable
-status: looked-at
+status: adopted
 issue: 1440
 looked_at: 2026-10-18
 ---
@@ -51,7 +51,7 @@ The structure the Archaeology run reads from English Wikipedia: which category a
 
 **The terms.** The host's licence page (dumps.wikimedia.org/legal.html, read on 2026-10-18) says the dumps' "original textual content is licensed under" the GFDL and CC BY-SA 4.0. What the build keeps is titles, page ids, Wikidata ids and category membership. These are facts about the articles rather than their text. The project still credits English Wikipedia's contributors under CC BY-SA 4.0 wherever a judgement read from the categories is shown, as the live record does.
 
-**Status.** `looked-at`: the build keeps the tables (#1440's first slice), and no sync reads them yet. The record moves to `adopted`, naming the `experience_sources` row, when the Archaeology run's category walk and vote read them in #1440's second slice.
+**Status.** `adopted` by #1440: the Archaeology run (`experience_sources` id 5) reads its category walk and its category vote from the copy when it reads Wikidata from the local subset and a copy is built (`wikipediaStructure.ts`), and the live API otherwise (`wikipedia-archaeological-museum-categories.md`).
 
 **What is kept** is ADR-0121's: the articles and categories that are not redirects, their Wikidata items, the categories that are not hidden, and each article's and category's links to those. `docs/tech/dumps.md` § English Wikipedia's structure has the tables and the build.
 

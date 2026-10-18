@@ -3180,6 +3180,29 @@ no article of its own on 2026-09-13, is one. The second caller is this module's 
 `wikipediaCategoryMembers.ts`, the walk described under *Who is judged at all*, which borrows this
 file's endpoint, retry rule and refusal wording rather than growing a second client with its own
 mistakes.
+**A run on the subset reads both from the copy of English Wikipedia's structure** (#1440,
+`wikipediaStructure.ts`, ADR-0121), where one is built (`docs/tech/dumps.md` § English
+Wikipedia's structure): `structureCategories` answers what each title is filed under, and the walk
+reads through `structureCategoryReads` instead of `liveReads` — the walk's rule, its depth, its
+visited set and its eponymous shelves are `fetchCategoryMembers`' either way (`CategoryReads`). The
+answers are spelt as the API spells them, so no rule tells the two apart: a title with spaces, an
+article's categories without their `Category:` prefix, and a category's subcategories with it. The run says which dump it reads
+(`wikipediaStructureFor`), and with no copy built asks the live API as a run on the live service
+always does. The copy differs from the API in three ways ADR-0121 records: a hidden category is not
+kept, as `clshow=!hidden` leaves it out; a title that is a redirect finds no page, where
+`redirects=1` follows it, and the titles a run asks come from Wikidata's sitelinks, which name the
+article itself; and a category's pages are its articles, where the API lists a portal or a template
+filed there too.
+Compared on 2026-10-18, on the copy of the 2026-10-01 dump (dump build 15) against the live API:
+- **The walk:** the same roots gave 1,390 museums on the copy and 1,394 live, in 6 s against
+  8 min 44 s, with no title given a different item.
+  - Four live-only titles were redirects, which the API follows to their target's categories: the
+    Folk Art Museum of Acharnes walked as the municipality of Acharnes.
+  - One page each way was renamed or created after the dump: Verulamium Museum live, Museo
+    Regional de Atacama on the copy.
+- **Articles' categories:** for a sample of 40 museums, 39 were identical, and one had a category
+  added after the dump.
+
 **A wait says so, on the run's own patience** (#886). `CategoryOptions` takes the `onWait` and the
 `WaitBudget` the Wikidata door takes, and both Wikipedia readers pass every wait through them: the
 panel reads "Waiting on Wikipedia…" with the time left, in the words `waitMessage` gives a Wikidata
