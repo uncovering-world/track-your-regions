@@ -26587,6 +26587,14 @@
         ],
         "description": "Where the object stands at the curation gate of its kind. `pending` is shown to nobody but a curator. `auto` and `verified` are shown to readers, `verified` because a person passed it."
       },
+      "MergeFoundBy": {
+        "type": "string",
+        "enum": [
+          "similar",
+          "words"
+        ],
+        "description": "similar: the names reach a trigram similarity of 0.5; words: every significant word of one name stands in the other's (#1652)."
+      },
       "MergePair": {
         "type": "object",
         "properties": {
@@ -26674,6 +26682,14 @@
             "maximum": 9007199254740991,
             "description": "The distance the pass found the pair under: 300 m, or a property's area radius up to 3 km."
           },
+          "foundBy": {
+            "type": "string",
+            "enum": [
+              "similar",
+              "words"
+            ],
+            "description": "Which rule found the pair: names alike by trigrams, or one name's words all standing in the other's (#1652)."
+          },
           "proposedAt": {
             "type": "string",
             "format": "date-time",
@@ -26695,6 +26711,7 @@
           "nameSimilarity",
           "exact",
           "reachM",
+          "foundBy",
           "proposedAt"
         ],
         "additionalProperties": false,
@@ -26787,6 +26804,9 @@
                   "maximum": 9007199254740991,
                   "description": "The distance the pair was found under: 300 m, or a property's area radius up to 3 km."
                 },
+                "foundBy": {
+                  "$ref": "#/components/schemas/MergeFoundBy"
+                },
                 "proposedAt": {
                   "type": "string",
                   "description": "When the pass last found the pair."
@@ -26800,11 +26820,33 @@
                 "nameSimilarity",
                 "exact",
                 "reachM",
+                "foundBy",
                 "proposedAt"
               ],
               "additionalProperties": false
             },
             "description": "The pairs nobody has answered, the most alike first."
+          },
+          "foundBy": {
+            "type": "object",
+            "properties": {
+              "similar": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              "words": {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              }
+            },
+            "required": [
+              "similar",
+              "words"
+            ],
+            "additionalProperties": false,
+            "description": "How many of the open pairs each rule found (#1652)."
           },
           "answered": {
             "type": "object",
@@ -26885,13 +26927,17 @@
                 },
                 "nameSimilarity": {
                   "type": "number"
+                },
+                "foundBy": {
+                  "$ref": "#/components/schemas/MergeFoundBy"
                 }
               },
               "required": [
                 "placeA",
                 "placeB",
                 "distanceM",
-                "nameSimilarity"
+                "nameSimilarity",
+                "foundBy"
               ],
               "additionalProperties": false
             },
@@ -26900,11 +26946,12 @@
         },
         "required": [
           "open",
+          "foundBy",
           "answered",
           "leftApart"
         ],
         "additionalProperties": false,
-        "description": "What the pass over near places with similar names found (ADR-0046 decision 2, #1249)."
+        "description": "What the pass over near places with similar names found (ADR-0046 decision 2, ADR-0120, #1249)."
       },
       "MergeProposalSuggestions": {
         "type": "object",

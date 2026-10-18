@@ -782,13 +782,14 @@ const placesSharingAnItem: CatalogueAssertion = {
 /**
  * Two near places with similar names nobody has answered (#1249).
  *
- * The weaker of the two universal signals (ADR-0046 decision 2): the pass in
- * this panel proposes every such pair, and the proposal carries the answer a
- * person gives it — one place, two places or one part of the other. What is
- * open is a question waiting for a person, which is why it is listed here
- * beside the pairs the item rule left apart; an answered pair is kept and
- * never listed again. The rows are the pass's own (`PROPOSAL_ROWS_SQL`), so
- * the check and the pass count one set.
+ * The universal signals that propose rather than merge (ADR-0046 decision 2,
+ * ADR-0120): names alike by trigrams, or one name's words all standing in the
+ * other's. The pass in this panel proposes every such pair, and the proposal
+ * carries the answer a person gives it — one place, two places or one part of
+ * the other. What is open is a question waiting for a person, which is why it
+ * is listed here beside the pairs the item rule left apart; an answered pair
+ * is kept and never listed again. The rows are the pass's own
+ * (`PROPOSAL_ROWS_SQL`), so the check and the pass count one set.
  */
 const nearPlacesUnanswered: CatalogueAssertion = {
   id: 'near-places-with-similar-names-unanswered',

@@ -1,6 +1,17 @@
 /**
  * Two places near each other with similar names are proposed as one place,
- * and a person answers (#1249, ADR-0046 decisions 2 to 4).
+ * and a person answers (#1249, ADR-0046 decisions 2 to 4, ADR-0120).
+ *
+ * Two rules find a pair (`found_by`). Names alike by trigrams, below; and one
+ * name's significant words all standing in the other's (#1652), since a short
+ * name drowns in a long World Heritage title: Geghard and "Monastery of
+ * Geghard and the Upper Azat Valley", 7 m apart, are 0.17 alike. On the
+ * development catalogue on 2026-10-18 the second rule found 43 pairs the first
+ * did not, most a World Heritage property and the monument inside it (Córdoba's
+ * Mosque-Cathedral, Westminster Abbey, Florence Cathedral), some one place
+ * (Tikal, Machu Picchu) and a few two places that share a town's name (the
+ * Bremen Roland and Bremen Cathedral), which a curator answers. ADR-0120
+ * makes it the third universal signal and records why no guard narrows it.
  *
  * An equal Wikidata item merges without a question (`equalItemMerges.ts`).
  * The second universal signal is weaker and is a proposal: two places whose
@@ -39,6 +50,65 @@ export const WIDEST_REACH_M = 3000;
 export const EXACT_DISTANCE_M = 50;
 /** The trigram similarity two names must reach (ADR-0046 decision 2). */
 export const MIN_SIMILARITY = 0.5;
+/** The shortest word a name's words are compared by: shorter ones are articles and connectives. */
+export const MIN_WORD_LENGTH = 3;
+
+/**
+ * The words a name is not compared by, because they say what kind of thing a
+ * place is or connect its parts rather than which place it is (#1652): with
+ * them, "Toledo Cathedral" would not stand inside "Historic City of Toledo",
+ * nor "Mosque-Cathedral of Cordoba" inside "Historic Centre of Cordoba", though
+ * each is a monument of the property its town names.
+ * Each group is one reason:
+ * - connectives and articles of the languages a name arrives in, over the
+ *   length line: *and*, *with*, *the*, *del*, *und*, *von*, *los*;
+ * - what a place is: a monument's kind (*cathedral*, *mosque*, *temple*,
+ *   *monastery*, *palace*, *castle*, *museum*), and a site's (*complex*,
+ *   *ensemble*, *remains*, *ruins*, *landscape*);
+ * - what a World Heritage title adds around the place's name: *historic*,
+ *   *centre*, *city*, *town*, *old*, *site*, *area*, *archaeological*,
+ *   *national*, *park*;
+ * - the saint's word of a church's name (*saint*, *san*, *santa*), which
+ *   names its patron, never the place.
+ * Folded as the names are: unaccented, lower case.
+ */
+export const GENERIC_NAME_WORDS: readonly string[] = [
+  'and', 'with', 'the', 'its', 'for', 'from', 'del', 'des', 'der', 'die', 'das', 'den', 'und', 'von', 'van',
+  'les', 'los', 'las', 'sur', 'dei', 'della', 'delle',
+  'cathedral', 'basilica', 'church', 'churches', 'chapel', 'mosque', 'mosques', 'temple', 'temples', 'shrine',
+  'monastery', 'monasteries', 'abbey', 'convent', 'palace', 'castle', 'fortress', 'fort', 'citadel', 'tower',
+  'museum', 'museums', 'gallery', 'complex', 'ensemble', 'remains', 'ruins', 'landscape', 'cultural',
+  'historic', 'historical', 'centre', 'center', 'city', 'town', 'old', 'site', 'sites', 'area', 'archaeological',
+  'ancient', 'national', 'park', 'saint', 'san', 'santa', 'sant',
+];
+
+/** The generic words as a list of SQL literals: fixed words of this file, never input. */
+const GENERIC_WORDS_SQL = GENERIC_NAME_WORDS.map(word => "'" + word + "'").join(', ');
+
+/**
+ * A name's words as the containment rule reads them: split on anything not a
+ * letter or a digit, at `MIN_WORD_LENGTH` or longer, less `GENERIC_NAME_WORDS`.
+ * `name` is a folded name (`foldedNamesSql`).
+ */
+function wordsSql(name: string): string {
+  return `ARRAY(SELECT DISTINCT w FROM regexp_split_to_table(${name}, '[^[:alnum:]]+') AS w
+                 WHERE length(w) >= ${MIN_WORD_LENGTH}
+                   AND w <> ALL (ARRAY[${GENERIC_WORDS_SQL}]))`;
+}
+
+/**
+ * Whether one of a place's names has every word of one of the other's (#1652):
+ * "Geghard" within "Monastery of Geghard and the Upper Azat Valley", "Westminster
+ * Abbey" within "Palace of Westminster and Westminster Abbey including Saint
+ * Margaret's Church". A name left with no word after the generic ones are taken
+ * out says nothing and matches nothing.
+ */
+function nameWithinSql(a: string, b: string): string {
+  return `EXISTS (SELECT 1 FROM unnest(${a}) AS an, unnest(${b}) AS bn,
+                  LATERAL (SELECT ${wordsSql('an')} AS wa, ${wordsSql('bn')} AS wb) AS words
+                  WHERE cardinality(words.wa) > 0 AND cardinality(words.wb) > 0
+                    AND (words.wa <@ words.wb OR words.wb <@ words.wa))`;
+}
 
 /**
  * A place's reach in metres: `BASE_REACH_M`, or the radius of a circle of its
@@ -120,21 +190,26 @@ export function candidatePairsSql(): string {
       JOIN experience_locations el ON el.experience_id = p.id
      WHERE ${offeredLocationSql('el')} AND ${publishedContentSql('el')}
   ), near AS (${NEAR_SQL}
+  ), measured AS (
+    SELECT n.place_a, n.place_b, n.distance_m, n.reach_m,
+           (SELECT max(similarity(an, bn)) FROM unnest(a.names) AS an, unnest(b.names) AS bn)::real AS name_similarity,
+           (n.distance_m <= ${EXACT_DISTANCE_M}
+            AND EXISTS (SELECT 1 FROM unnest(a.names) AS an JOIN unnest(b.names) AS bn ON an = bn)) AS exact,
+           a.kind_ids && b.kind_ids AS shared_kind,
+           a.names AS a_names, b.names AS b_names
+      FROM near n
+      JOIN places a ON a.id = n.place_a
+      JOIN places b ON b.id = n.place_b
   )
-  SELECT n.place_a, n.place_b, n.distance_m, n.reach_m,
-         (SELECT max(similarity(an, bn)) FROM unnest(a.names) AS an, unnest(b.names) AS bn)::real AS name_similarity,
-         (n.distance_m <= ${EXACT_DISTANCE_M}
-          AND EXISTS (SELECT 1 FROM unnest(a.names) AS an JOIN unnest(b.names) AS bn ON an = bn)) AS exact,
-         a.kind_ids && b.kind_ids AS shared_kind
-    FROM near n
-    JOIN places a ON a.id = n.place_a
-    JOIN places b ON b.id = n.place_b
-   WHERE (SELECT max(similarity(an, bn)) FROM unnest(a.names) AS an, unnest(b.names) AS bn) >= ${MIN_SIMILARITY}`;
+  SELECT m.place_a, m.place_b, m.distance_m, m.reach_m, m.name_similarity, m.exact, m.shared_kind,
+         CASE WHEN m.name_similarity >= ${MIN_SIMILARITY} THEN 'similar' ELSE 'words' END AS found_by
+    FROM measured m
+   WHERE m.name_similarity >= ${MIN_SIMILARITY} OR ${nameWithinSql('m.a_names', 'm.b_names')}`;
 }
 
 /** A proposal as the pass and the check read it, with both places named. */
 export const PROPOSAL_ROWS_SQL = `
-  SELECT p.id, p.distance_m, p.name_similarity, p.exact, p.reach_m, p.proposed_at, p.answer,
+  SELECT p.id, p.distance_m, p.name_similarity, p.exact, p.reach_m, p.found_by, p.proposed_at, p.answer,
          a.id AS a_id, a.name AS a_name, ${kindNamesSql('a')} AS a_kinds,
          b.id AS b_id, b.name AS b_name, ${kindNamesSql('b')} AS b_kinds
     FROM experience_merge_proposals p
@@ -153,6 +228,7 @@ interface ProposalRow {
   name_similarity: number;
   exact: boolean;
   reach_m: number;
+  found_by: 'similar' | 'words';
   proposed_at: Date;
   a_id: number;
   a_name: string;
@@ -169,6 +245,7 @@ interface LeftApartRow {
   b_kinds: string[];
   distance_m: number;
   name_similarity: number;
+  found_by: 'similar' | 'words';
 }
 
 const placeOf = (row: ProposalRow, side: 'a' | 'b') => ({
@@ -193,18 +270,18 @@ export async function findMergeProposals(): Promise<MergeProposalPass> {
           AND NOT EXISTS (SELECT 1 FROM found f WHERE f.place_a = p.place_a AND f.place_b = p.place_b AND NOT f.shared_kind)`,
     );
     await client.query(
-      `INSERT INTO experience_merge_proposals AS p (place_a, place_b, distance_m, name_similarity, exact, reach_m)
-       SELECT f.place_a, f.place_b, f.distance_m, f.name_similarity, f.exact, f.reach_m
+      `INSERT INTO experience_merge_proposals AS p (place_a, place_b, distance_m, name_similarity, exact, reach_m, found_by)
+       SELECT f.place_a, f.place_b, f.distance_m, f.name_similarity, f.exact, f.reach_m, f.found_by
          FROM found f
         WHERE NOT f.shared_kind
        ON CONFLICT (place_a, place_b) DO UPDATE
           SET distance_m = EXCLUDED.distance_m, name_similarity = EXCLUDED.name_similarity,
-              exact = EXCLUDED.exact, reach_m = EXCLUDED.reach_m, proposed_at = NOW()
+              exact = EXCLUDED.exact, reach_m = EXCLUDED.reach_m, found_by = EXCLUDED.found_by, proposed_at = NOW()
         WHERE p.answer IS NULL`,
     );
     const leftApart = await client.query<LeftApartRow>(
       `SELECT a.name AS a_name, ${kindNamesSql('a')} AS a_kinds, b.name AS b_name, ${kindNamesSql('b')} AS b_kinds,
-              f.distance_m, f.name_similarity
+              f.distance_m, f.name_similarity, f.found_by
          FROM found f
          JOIN experiences a ON a.id = f.place_a
          JOIN experiences b ON b.id = f.place_b
@@ -228,14 +305,20 @@ export async function findMergeProposals(): Promise<MergeProposalPass> {
         nameSimilarity: row.name_similarity,
         exact: row.exact,
         reachM: row.reach_m,
+        foundBy: row.found_by,
         proposedAt: row.proposed_at.toISOString(),
       })),
+      foundBy: {
+        similar: open.rows.filter(row => row.found_by === 'similar').length,
+        words: open.rows.filter(row => row.found_by === 'words').length,
+      },
       answered: { one: by('one'), two: by('two'), partOf: by('part_of') },
       leftApart: leftApart.rows.map(row => ({
         placeA: { name: row.a_name, kinds: row.a_kinds },
         placeB: { name: row.b_name, kinds: row.b_kinds },
         distanceM: row.distance_m,
         nameSimilarity: row.name_similarity,
+        foundBy: row.found_by,
       })),
     };
   } catch (error) {
