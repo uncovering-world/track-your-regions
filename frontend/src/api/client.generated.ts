@@ -6271,6 +6271,18 @@ export const MapImageSelectedValue = {
 export type MapImageSelected = typeof MapImageSelectedValue;
 
 /**
+ * The maps app places open in: the device's own, OpenStreetMap or Google Maps.
+ */
+export type MapsApp = typeof MapsApp[keyof typeof MapsApp];
+
+
+export const MapsApp = {
+  device: 'device',
+  osm: 'osm',
+  google: 'google',
+} as const;
+
+/**
  * A GADM division a shape covers.
  */
 export interface MapshapeDivision {
@@ -7069,6 +7081,27 @@ export interface MyAccount {
   avatarUrl: string | null;
   /** Sent to a curator or an admin: what their curation reaches. */
   curatorScopes?: CuratorScope[];
+}
+
+/**
+ * What the signed-in visitor has chosen for themselves (#1604).
+ */
+export interface MyPreferences {
+  /** The maps app "Open in maps" opens; null asks each time, with every maps app side by side. */
+  mapsApp: MapsApp | null;
+}
+
+export type MyPreferencesBodyMapsApp = typeof MyPreferencesBodyMapsApp[keyof typeof MyPreferencesBodyMapsApp] | null;
+
+
+export const MyPreferencesBodyMapsApp = {
+  device: 'device',
+  osm: 'osm',
+  google: 'google',
+} as const;
+
+export interface MyPreferencesBody {
+  mapsApp: MyPreferencesBodyMapsApp;
 }
 
 export interface NearbyPicture {
@@ -14177,6 +14210,70 @@ export const getUsersMe = async ( options?: Parameters<typeof apiFetch>[1]): Pro
     method: 'GET'
 
 
+  }
+);}
+
+
+
+export const getGetUsersMePreferencesUrl = () => {
+
+
+
+
+  return `/api/users/me/preferences`
+}
+
+/**
+ * Requires a signed-in caller.
+ * @summary Get what the signed-in visitor has chosen for themselves
+ */
+export const getUsersMePreferences = async ( options?: Parameters<typeof apiFetch>[1]): Promise<MyPreferences> => {
+
+  return apiFetch<MyPreferences>(getGetUsersMePreferencesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getPutUsersMePreferencesUrl = () => {
+
+
+
+
+  return `/api/users/me/preferences`
+}
+
+/**
+ * Requires a signed-in caller.
+ * @summary Save what the signed-in visitor chooses for themselves
+ */
+export const putUsersMePreferences = async (myPreferencesBody: MyPreferencesBody, options?: Parameters<typeof apiFetch>[1]): Promise<MyPreferences> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<MyPreferences>(getPutUsersMePreferencesUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(myPreferencesBody)
   }
 );}
 

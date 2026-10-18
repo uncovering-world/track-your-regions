@@ -28,6 +28,11 @@ type Caller = number | null | undefined;
 const caller = (userId: Caller) => userId ?? 'anon';
 
 export const queryKeys = {
+  preferences: {
+    /** The signed-in visitor's own choices (#1604). */
+    mine: (userId: Caller) => ['preferences', caller(userId)] as const,
+  },
+
   worldViews: {
     all: ['worldViews'] as const,
     /** The world views this caller may see: public ones, and theirs. */

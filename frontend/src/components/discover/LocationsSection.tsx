@@ -434,7 +434,7 @@ function PanelLocationRow({
         // The curator's action shows for the row under the pointer, holding
         // keyboard focus, or lit from the map — the same rule as Map mode's row.
         '& .place-fix, & .place-copy, & .place-maps': { opacity: isHovered ? 1 : 0, transition: 'opacity 0.15s ease' },
-        '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy, &:hover .place-maps, &:focus-within .place-maps, & .place-maps[aria-expanded="true"]': { opacity: 1 },
+        '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy, &:hover .place-maps, &:focus-within .place-maps, & .place-maps[aria-expanded="true"], & .place-maps:has([aria-expanded="true"])': { opacity: 1 },
         // A touch screen has no hover to reveal them: the row's actions stay shown there.
         '@media (hover: none)': { '& .place-fix, & .place-copy, & .place-maps': { opacity: 1 } },
         ...(isHovered && {

@@ -128,7 +128,7 @@ function LocationRowComponent({
           sx={{
             py: 0.5, opacity: 0.4, bgcolor: 'grey.100', cursor: dimmedCursor(opener),
             '& .place-fix, & .place-copy, & .place-maps': { opacity: 0, transition: 'opacity 0.15s ease' },
-            '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy, &:hover .place-maps, &:focus-within .place-maps, & .place-maps[aria-expanded="true"]': { opacity: 1 },
+            '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy, &:hover .place-maps, &:focus-within .place-maps, & .place-maps[aria-expanded="true"], & .place-maps:has([aria-expanded="true"])': { opacity: 1 },
             // A touch screen has no hover to reveal them: the row's actions stay shown there.
             '@media (hover: none)': { '& .place-fix, & .place-copy, & .place-maps': { opacity: 1 } },
           }}
@@ -187,7 +187,7 @@ function LocationRowComponent({
           // from the map — thirty rows do not carry thirty pencils. Opacity, not
           // display: the button stays in the tab order, which is what reveals it.
           '& .place-fix, & .place-copy, & .place-maps': { opacity: hovered ? 1 : 0, transition: 'opacity 0.15s ease' },
-          '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy, &:hover .place-maps, &:focus-within .place-maps, & .place-maps[aria-expanded="true"]': { opacity: 1 },
+          '&:hover .place-fix, &:focus-within .place-fix, &:hover .place-copy, &:focus-within .place-copy, &:hover .place-maps, &:focus-within .place-maps, & .place-maps[aria-expanded="true"], & .place-maps:has([aria-expanded="true"])': { opacity: 1 },
           // A touch screen has no hover to reveal them: the row's actions stay shown there.
           '@media (hover: none)': { '& .place-fix, & .place-copy, & .place-maps': { opacity: 1 } },
         }}
