@@ -18,6 +18,15 @@ the newest complete file of each is found), `fetch.ts` (the door to the host),
 `dumpWorker.ts` and `buildRun.ts` (the worker's), `keepers.ts` (what a build
 keeps), `ledger.ts` (the `dump_builds` table).
 
+Every table a build keeps, and the ledger, lives in the `workbench` schema
+([ADR-0124](../decisions/0124-the-dump-built-tables-live-in-a-workbench-schema-and-every-table-declares-its-tier.md)),
+which a deployment of the serving tables leaves behind. The database's search
+path is `public, workbench`, so a reader names them bare. A builder names the
+schema where it creates or inspects a table: its `_next` copies, the subset's
+resume record and the redirect staging tables (`inWorkbench`,
+`backend/src/db/workbench.ts`), and `indexesOf`, which copies a live table's
+indexes onto its copy.
+
 ## The catalog
 
 `DUMPS` in `catalog.ts` names every dump the pipeline reads, by key

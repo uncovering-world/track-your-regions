@@ -265,6 +265,30 @@ guard over the schema file's text, and the executable SQL lane (#522) retires
 it: there a statement naming a dropped column is refused by the database
 itself.
 
+### A new table chooses its tier
+
+Every relation is `serving` or `workbench` (ADR-0124), and
+`TABLE_TIERS` in `backend/src/db/tableTiers.ts` says which. The record is
+typed against the generated schema, so a table without a tier fails the
+typecheck once `npm run db:types` has run.
+
+- **Serving**: what readers and curators read and write, and what the admin
+  screens keep about it. It is created in `public`, as before. A table a
+  reader or curator route reads is serving, whatever made it: the region tree
+  reads `region_import_state`, which the import writes.
+- **Workbench**: what is built from a public dump, imported, cached or kept as
+  intermediate work, which no reader or curator route reads. It is created in
+  the `workbench` schema, by name: `CREATE TABLE IF NOT EXISTS workbench.<name>`
+  in `01-schema.sql` and in its migration, and `inWorkbench(<name>)`
+  (`backend/src/db/workbench.ts`) for a table the code makes at run time. The
+  search path finds it by its bare name everywhere else.
+
+`tableTiers.test.ts` holds a table's tier to its schema. A reader or curator
+route that names a workbench table, in the workbench schema or one still in
+`public`, is refused by the lint (`tiers/no-workbench-tables`), which reads the
+tiers from `TABLE_TIERS`. A reader that needs dump-built data reads a
+result precomputed into a serving table.
+
 `db/migrations/README.md` has the rest, including what each existing migration
 does and how to give an older database a ledger.
 
