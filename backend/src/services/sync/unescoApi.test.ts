@@ -87,6 +87,15 @@ describe('fetchUnescoRecords', () => {
     expect(decodeURIComponent(url)).not.toMatch(/select=[^&]*\bsource\b/);
   });
 
+  it('hands every reader the names as plain text, the feed\'s markup read once (#1610)', async () => {
+    fetchMock.mockResolvedValue(ok(JSON.stringify([{ id_no: 52, name_en: 'S<U>G</U>ang Gwaay', name_fr: 'S<U>G</U>ang Gwaay' }, { id_no: 1045, name_en: 'Via Appia. <em>Regina Viarum</em>' }])));
+
+    const records = await runWithTimers(fetchUnescoRecords(makeProgress()));
+
+    expect(records.map(r => r.name_en)).toEqual(['SG\u0331ang Gwaay', 'Via Appia. Regina Viarum']);
+    expect(records[0].name_fr).toBe('SG\u0331ang Gwaay');
+  });
+
   it('says who is calling', async () => {
     fetchMock.mockResolvedValue(ok(RECORDS));
 

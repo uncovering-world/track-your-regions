@@ -38,6 +38,7 @@ import {
 import { waitMessage } from './wikidataUtils.js';
 import { userAgent } from '../../config/userAgent.js';
 import type { SyncProgress, UnescoApiRecord } from './types.js';
+import { feedText } from './unescoText.js';
 
 const LOG_PREFIX = '[UNESCO Sync]';
 
@@ -206,5 +207,17 @@ export async function fetchUnescoRecords(
   progress.total = records.length;
   progress.statusMessage = `Fetched ${records.length} records`;
   console.log(`${LOG_PREFIX} Fetched ${records.length} records in one export request`);
-  return records;
+  return records.map(namesAsText);
 }
+
+/** The record's names as plain text, the feed's inline markup read once here for every reader after (#1610). */
+export function namesAsText(record: UnescoApiRecord): UnescoApiRecord {
+  const named = { ...record };
+  for (const field of NAME_FIELDS) {
+    const value = named[field];
+    if (typeof value === 'string') named[field] = feedText(value);
+  }
+  return named;
+}
+
+const NAME_FIELDS = ['name_en', 'name_fr', 'name_es', 'name_ru', 'name_ar', 'name_zh'] as const;

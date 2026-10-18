@@ -11,6 +11,7 @@ import {
   type LocationWriteRun,
 } from './locationWriter.js';
 import type { IncomingLocation } from './locationIncoming.js';
+import { feedText } from './unescoText.js';
 import { recordComponentItemsReport, upsertExperienceRecord } from './syncUtils.js';
 import {
   componentPicturesToCredit, finishComponentReport, newComponentReport, resolveSiteComponents,
@@ -18,7 +19,7 @@ import {
 import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { ProcessItemResult, SyncRunContext } from './syncContract.js';
 import { readFixtureRecords } from './fixtureSource.js';
-import { fetchUnescoRecords } from './unescoApi.js';
+import { fetchUnescoRecords, namesAsText } from './unescoApi.js';
 import {
   creditToWrite,
   fetchCommonsCredits,
@@ -76,7 +77,7 @@ function componentName(entry: string): string | null {
   ref.lastIndex = name.index + name[0].length;
   const refFound = ref.exec(entry);
   if (!refFound) return null;
-  return readOnce(entry.slice(name.index + name[0].length, refFound.index).trim().replace(/,$/, '').trim());
+  return feedText(readOnce(entry.slice(name.index + name[0].length, refFound.index).trim().replace(/,$/, '').trim()));
 }
 
 /**
@@ -571,7 +572,8 @@ export function syncUnescoSites(
         // and a stale map from a previous run would decide who owns their
         // pictures.
         storedCredits = await readStoredCredits(UNESCO_SOURCE_ID);
-        return { items: fixture, fetchedCount: fixture.length };
+        // A fixture saved from the feed carries its markup: read as the feed is (#1610).
+        return { items: fixture.map(namesAsText), fetchedCount: fixture.length };
       }
 
       // One patience for the run, spent by whichever of its two sources needs
