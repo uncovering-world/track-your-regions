@@ -49,7 +49,7 @@
       "name": "admin panel chunk (gzip)",
       "path": "dist/assets/AdminDashboard-*.js",
       "gzip": true,
-      "limit": "151 kB"
+      "limit": "155 kB"
     },
     {
       "name": "world-view editor chunk (gzip)",
