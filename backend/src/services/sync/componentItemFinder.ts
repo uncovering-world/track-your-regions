@@ -28,12 +28,12 @@ import { byComponentKey, numberedFor } from './componentItemNumbered.js';
 import { listRef, parseWhcRef } from './unescoWikidata.js';
 import {
   admittedClasses, bestMatch, nearestM, numberedMatches, ofTheSitesKind, placeAsCandidate, standsAtTheComponent, standsForWholeSite,
-  NEAR_SAME_NAME_RADIUS_M, SAME_NAME_RADIUS_M,
+  NEAR_SAME_NAME_RADIUS_M, NEVER_BY_THE_CATALOGUE, NOT_BY_PLACE_NAME_ALONE, SAME_NAME_RADIUS_M,
   type CandidateItem, type ComponentMatch, type ComponentPoint,
 } from './componentItemMatching.js';
 import { labelsOf, type ItemLabels, type QueryHooks } from './componentItemQueries.js';
 import {
-  classesOfItems, componentNumbers, itemsInBoxes, partsOfSites, placesOf, registerCodesOf, settlementsAmong,
+  classesOfItems, classesUnder, componentNumbers, itemsInBoxes, itemsUnder, partsOfSites, placesOf, registerCodesOf, settlementsAmong,
   type Box, type StandingPlace,
 } from './subset/componentItems.js';
 import { entitiesAreHeld, latestSubset } from '../dumps/wikidata/subsetTables.js';
@@ -289,16 +289,18 @@ async function searchNear(
 async function settlementsNear(
   nearOf: Map<number, CandidateItem[]>, admitted: Map<number, ReadonlySet<string>>, hooks: QueryHooks,
   onStep: OnStep | undefined,
-): Promise<{ settled: Set<string>; settlementKinds: Set<string> }> {
+): Promise<{ settled: Set<string>; settlementKinds: Set<string>; museums: Set<string> }> {
   const items = [...new Set([...nearOf.values()].flat().map(c => c.item))];
   const classes = [...new Set([...admitted.values()].flatMap(c => [...c]))];
-  // The candidates and the sites' classes are asked side by side, so the step counts both.
-  onStep?.(STEP.settlements, `Telling ${items.length} near candidates that are settlements from the rest`, items.length + classes.length);
-  const [settled, settlementKinds] = await Promise.all([
+  // The candidates (twice: settlements, then museums) and the sites' classes are asked side by side, so the step counts all three.
+  onStep?.(STEP.settlements, `Telling ${items.length} near candidates that are settlements or museums from the rest`,
+    2 * items.length + classes.length);
+  const [settled, settlementKinds, museums] = await Promise.all([
     settlementsAmong(items, hooks),
     settlementsAmong(classes, hooks, true),
+    itemsUnder(items, Object.keys(NOT_BY_PLACE_NAME_ALONE), hooks),
   ]);
-  return { settled, settlementKinds };
+  return { settled, settlementKinds, museums };
 }
 
 
@@ -331,17 +333,21 @@ function atThePoint(
 function chooseNear(
   points: readonly PointRow[], ofKindOf: Map<number, CandidateItem[]>, places: Map<string, StandingPlace[]>,
   fallsBack: (point: PointRow) => boolean, refused: Map<number, Set<string>>, notOffered: ReadonlySet<string>,
+  museums: ReadonlySet<string>,
 ): { chosen: ComponentMatch[]; atTheComponent: number } {
   const chosen: ComponentMatch[] = [];
   let atTheComponent = 0;
   for (const point of points) {
     const ofKind = ofKindOf.get(point.locationId)!;
-    const { candidates, setAside } = fallsBack(point) ? atThePoint(point, ofKind, places, notOffered) : { candidates: ofKind, setAside: 0 };
+    const fallingBack = fallsBack(point);
+    const { candidates, setAside } = fallingBack ? atThePoint(point, ofKind, places, notOffered) : { candidates: ofKind, setAside: 0 };
     atTheComponent += setAside;
     // The place-name rule only where the name rule finds nothing: a match by
     // name is the better evidence, and one question per point by this door.
+    // On the catalogue's classes it never takes a museum (NOT_BY_PLACE_NAME_ALONE).
+    const byPlaceName = fallingBack ? candidates.filter(c => !museums.has(c.item)) : candidates;
     const match = bestMatch(point, candidates, 'near', refused.get(point.locationId))
-      ?? bestMatch(point, candidates, 'toponym', refused.get(point.locationId));
+      ?? bestMatch(point, byPlaceName, 'toponym', refused.get(point.locationId));
     if (match) chosen.push(match);
   }
   return { chosen, atTheComponent };
@@ -359,12 +365,12 @@ function chooseNear(
 async function placesNear(
   fallingBack: readonly PointRow[], ofKindOf: Map<number, CandidateItem[]>, refused: Map<number, Set<string>>,
   nearOf: Map<number, CandidateItem[]>, hooks: QueryHooks, onStep: OnStep | undefined,
-): Promise<{ places: Map<string, StandingPlace[]>; settledPlaces: Set<string> }> {
+): Promise<{ places: Map<string, StandingPlace[]>; settledPlaces: Set<string>; museumPlaces: Set<string> }> {
   const contenders = new Map(fallingBack.filter(p => nearOf.has(p.locationId)).map(p => [p.locationId,
     ofKindOf.get(p.locationId)!.filter(c => (['near', 'toponym'] as const)
       .some(basis => bestMatch(p, [c], basis, refused.get(p.locationId)) !== null))]));
   const items = [...new Set([...contenders.values()].flat().map(c => c.item))];
-  if (items.length === 0) return { places: new Map(), settledPlaces: new Set() };
+  if (items.length === 0) return { places: new Map(), settledPlaces: new Set(), museumPlaces: new Set() };
   onStep?.(STEP.places, `Reading where ${items.length} near candidates stand`, items.length);
   const places = await placesOf(items, hooks);
   // A settlement is never offered in a thing's stead: the site's parts are
@@ -380,9 +386,14 @@ async function placesNear(
       return own.filter(place => placeAsCandidate(point, place) !== null).map(place => place.item);
     });
   }))];
-  if (offerable.length === 0) return { places, settledPlaces: new Set() };
-  onStep?.(STEP.placeSettlements, `Telling which of ${offerable.length} places named like a component are settlements`, offerable.length);
-  return { places, settledPlaces: await settlementsAmong(offerable, hooks) };
+  if (offerable.length === 0) return { places, settledPlaces: new Set(), museumPlaces: new Set() };
+  // A place offered in a thing's stead is asked the place-name rule's museum question too (NOT_BY_PLACE_NAME_ALONE).
+  onStep?.(STEP.placeSettlements, `Telling which of ${offerable.length} places named like a component are settlements or museums`, 2 * offerable.length);
+  const [settledPlaces, museumPlaces] = await Promise.all([
+    settlementsAmong(offerable, hooks),
+    itemsUnder(offerable, Object.keys(NOT_BY_PLACE_NAME_ALONE), hooks),
+  ]);
+  return { places, settledPlaces, museumPlaces };
 }
 
 /**
@@ -501,16 +512,19 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
 
   onStep?.(STEP.classes, `Reading the classes of ${taken.size} resolved components`, taken.size);
   const { bySite, catalogue } = learnClasses(resolved, await classesOfItems([...taken], counted));
-  onStep?.(STEP.catalogueKinds, `Telling the settlement kinds among the ${catalogue.size} classes of the resolved components`, catalogue.size);
+  // Two questions of the same classes, so the step counts both.
+  onStep?.(STEP.catalogueKinds,
+    `Telling the settlement kinds, hotels and stations among the ${catalogue.size} classes of the resolved components`, 2 * catalogue.size);
   // The catalogue-wide classes less the settlement kinds among them: judged by
   // the same class tree the candidates are, not by a list.
   const catalogueKinds = await settlementsAmong([...catalogue], counted, true);
+  const neverByTheCatalogue = await classesUnder([...catalogue], Object.keys(NEVER_BY_THE_CATALOGUE), counted);
   const fallsBack = (p: PointRow) => (bySite.get(p.experienceId)?.size ?? 0) === 0;
   const admitted = new Map(unmatched.map(p =>
-    [p.locationId, admittedClasses(bySite.get(p.experienceId) ?? new Set(), catalogue, catalogueKinds)]));
+    [p.locationId, admittedClasses(bySite.get(p.experienceId) ?? new Set(), catalogue, catalogueKinds, neverByTheCatalogue)]));
   const nearOf = await searchNear(unmatched, admitted, counted, onStep, (point, items) =>
     reachable(point, items.filter(c => (c.classes ?? []).some(k => admitted.get(point.locationId)!.has(k))), NEAR_SAME_NAME_RADIUS_M));
-  const { settled, settlementKinds } = await settlementsNear(nearOf, admitted, counted, onStep);
+  const { settled, settlementKinds, museums } = await settlementsNear(nearOf, admitted, counted, onStep);
   await readLabels(STEP.nearNames, nearOf.values());
   let settlements = 0;
   const ofKindOf = new Map<number, CandidateItem[]>();
@@ -522,8 +536,9 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
     settlements += candidates.length - ofKind.length;
     ofKindOf.set(point.locationId, ofKind);
   }
-  const { places, settledPlaces } = await placesNear(unmatched.filter(fallsBack), ofKindOf, refused, nearOf, counted, onStep);
-  const { chosen, atTheComponent } = chooseNear(unmatched, ofKindOf, places, fallsBack, refused, new Set([...taken, ...settledPlaces]));
+  const { places, settledPlaces, museumPlaces } = await placesNear(unmatched.filter(fallsBack), ofKindOf, refused, nearOf, counted, onStep);
+  const { chosen, atTheComponent } = chooseNear(
+    unmatched, ofKindOf, places, fallsBack, refused, new Set([...taken, ...settledPlaces]), new Set([...museums, ...museumPlaces]));
   matches.push(...chosen);
 
   // The third door, beside the others' answers rather than instead of them (#1394).

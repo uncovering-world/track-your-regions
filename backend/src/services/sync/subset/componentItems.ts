@@ -287,6 +287,46 @@ export async function settlementsAmong(ids: readonly string[], progress: Progres
   return new Set(result.rows.map(row => row.id));
 }
 
+/**
+ * Which of the given classes are kinds of one of the given ancestors, each
+ * ancestor counting as a kind of itself, through the class tree
+ * (`wikidata_class_closure`): an *ethnographic museum* is a museum no list of
+ * museum classes named.
+ */
+export async function classesUnder(
+  classes: readonly string[], ancestors: readonly string[], progress: Progress,
+): Promise<Set<string>> {
+  const result = await pool.query<{ id: string }>(
+    `SELECT DISTINCT k.class AS id FROM wikidata_class_closure k
+      WHERE k.class = ANY($1::text[]) AND k.ancestor = ANY($2::text[])
+      ORDER BY id`,
+    [classes, ancestors],
+  );
+  progress.onAnswered?.(classes.length);
+  return new Set(result.rows.map(row => row.id));
+}
+
+/**
+ * Which of the given items have a class (P31, any rank but deprecated) that is
+ * a kind of one of the given ancestors, through the class tree: every class,
+ * not only the best-ranked one, since a museum typed a palace first is still a
+ * museum, and not only the classes it was fetched through.
+ */
+export async function itemsUnder(
+  items: readonly string[], ancestors: readonly string[], progress: Progress,
+): Promise<Set<string>> {
+  const result = await pool.query<{ id: string }>(
+    `SELECT DISTINCT c.subject AS id FROM wikidata_claims c
+       JOIN wikidata_class_closure k ON k.class = c.value_item
+      WHERE c.subject = ANY($1::text[]) AND c.property = 'P31' AND c.rank >= 0
+        AND k.ancestor = ANY($2::text[])
+      ORDER BY id`,
+    [items, ancestors],
+  );
+  progress.onAnswered?.(items.length);
+  return new Set(result.rows.map(row => row.id));
+}
+
 /** A place an item stands in (P131, P276) or is part of (P361), as the near rule reads it. */
 export interface StandingPlace {
   item: string;

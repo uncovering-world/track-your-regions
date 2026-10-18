@@ -331,17 +331,49 @@ export function bestMatch(
 /**
  * The classes a near candidate may be of, for one site: the classes of its
  * resolved components, or, where it has none, the catalogue-wide ones less the
- * settlement kinds among them. Which classes are settlement kinds is the class
- * tree's answer (`settlementsAmong`), passed in: a list could not
- * see that Passau's *Altstadt* is one.
+ * settlement kinds among them and less the kinds of thing no component is
+ * taken for on the catalogue's word (`NEVER_BY_THE_CATALOGUE`). Both are the
+ * class tree's answer, passed in: a list could not see that Passau's
+ * *Altstadt* is a settlement, or a *Bahnhof* class a railway station.
  */
 export function admittedClasses(
   siteClasses: ReadonlySet<string>,
   catalogueClasses: ReadonlySet<string>,
   settlementKinds: ReadonlySet<string>,
+  neverByTheCatalogue: ReadonlySet<string> = new Set(),
 ): ReadonlySet<string> {
-  return siteClasses.size > 0 ? siteClasses : new Set([...catalogueClasses].filter(c => !settlementKinds.has(c)));
+  return siteClasses.size > 0
+    ? siteClasses
+    : new Set([...catalogueClasses].filter(c => !settlementKinds.has(c) && !neverByTheCatalogue.has(c)));
 }
+
+/**
+ * The kinds of thing a component is taken for only on a site that is about
+ * them, never through the catalogue-wide fallback (#1671), with every class
+ * under them in the class tree. A few sites' components are a hotel or a
+ * station — the Ombilin coal line's stations, Hôtel Tassel typed a hotel — and
+ * that carries the class over the catalogue's floor, so a Roman fort with no
+ * resolved sibling was offered the hotel and the station named after its town:
+ * the Mercure Wien Zentrum for Vindobona's legionary fortress, Tulln's station
+ * for its tower. A site whose own resolved components are of the class still
+ * admits it through its own classes.
+ */
+export const NEVER_BY_THE_CATALOGUE: Readonly<Record<string, string>> = {
+  Q27686: 'hotel',
+  Q55488: 'railway station',
+};
+
+/**
+ * The kinds of thing the place-name rule never takes on the catalogue-wide
+ * fallback, with every class under them. A museum named after its town is the
+ * town's museum: the Weltmuseum and the Albertina for Vindobona's fortress, the
+ * Tulln City Museum for the fort under it. A museum that is a component is
+ * named as one, and the name rule finds it — the State Museum of History of
+ * Uzbekistan, Schloss Traismauer — so only the weaker door is closed to them.
+ */
+export const NOT_BY_PLACE_NAME_ALONE: Readonly<Record<string, string>> = {
+  Q33506: 'museum',
+};
 
 /**
  * Classes whose items record a find or a dig rather than a place to go: bulk
