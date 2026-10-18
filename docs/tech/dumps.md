@@ -6,8 +6,9 @@ it finds the newest complete file of a public dump, reads it line by line
 into a consumer, and lets the consumer keep what it built only once the file
 is verified. It holds no data of its own. A build that keeps something is a
 builder plugged into it: the local Wikidata subset (§ The local Wikidata
-subset, ADR-0105) and readership (§ Readership, ADR-0055) are the two today,
-and the Wikipedia structure tables (#1440) come later. The counting consumer
+subset, ADR-0105), readership (§ Readership, ADR-0055) and English
+Wikipedia's structure (§ English Wikipedia's structure, ADR-0121) are the
+three today. The counting consumer
 keeps nothing, which is what the admin panel's *Verify newest* runs.
 
 Code: `backend/src/services/dumps/` — `catalog.ts` (which dumps exist and how
@@ -26,7 +27,7 @@ keeps), `ledger.ts` (the `dump_builds` table).
 |---|---|---|
 | `wikidata-entities` | `wikidatawiki/entities/<date>/wikidata-<date>-all.json.gz` | the sha1 in that directory's `wikidata-<date>-sha1sums.txt` |
 | `wikidata-lexemes` | `wikidata-<date>-lexemes.json.gz`, same directory | the same sums file |
-| `enwiki-page`, `enwiki-page-props`, `enwiki-categorylinks`, `enwiki-langlinks` | `enwiki/<date>/enwiki-<date>-<table>.sql.gz` | the sha1 and size `dumpstatus.json` gives the file once its job is `done` |
+| `enwiki-page`, `enwiki-page-props`, `enwiki-linktarget`, `enwiki-categorylinks`, `enwiki-langlinks` | `enwiki/<date>/enwiki-<date>-<table>.sql.gz` | the sha1 and size `dumpstatus.json` gives the file once its job is `done` |
 | `pageviews-user` | `other/pageview_complete/monthly/<year>/<year-month>/pageviews-<yyyymm>-user.bz2` | the host's `Content-Length` and a clean end of the bzip2 stream — no checksum is published |
 
 Each descriptor's `resolve()` reads the host's own listing and answers the
@@ -506,12 +507,71 @@ ADR-0055 counts — those whose twelve `editions` totals add up to more than 15
 million views — which the door picks from those totals; summing every edition
 would count the small ones the ADR leaves out. The redirects of
 ADR-0055 decision 2 are not folded in yet: they need each edition's redirect
-table, which the Wikipedia structure tables (#1440) bring for English only.
+table, which no build keeps (English Wikipedia's structure keeps no redirect,
+ADR-0121 decision 2).
 
 On September 2026 (`pageviews-202609-user.bz2`, 5.9 GB, 561.8M lines, measured
 2026-10-17 on #1436), 80 editions are counted. They have 181.9M titles, 35.9M
 of them with 10 views or more. 9.6M of those are sitelinks of 3.6M subset items,
 0.74 GB a month as a heap, with 1.0M at 400 views or more.
+
+## English Wikipedia's structure
+
+Code: `backend/src/services/dumps/wikipedia/` —
+[ADR-0121](../decisions/0121-english-wikipedias-structure-is-kept-as-articles-categories-and-their-links.md).
+A keeping build of `enwiki-page` (`buildStructure`, `structureBuild.ts`)
+reads that file and the three of the same dated directory
+(`STRUCTURE_FILES`, each resolved by name, `siblingName`), each verified by
+the sha1 and size `dumpstatus.json` gives it before the next is read:
+
+1. `page`: the articles (namespace 0) and categories (14) that are no
+   redirect go to `enwiki_pages`, and their ids to two bit sets (`IdSet`);
+2. `page_props`: a kept page's `wikibase_item` goes to `enwiki_page_items`,
+   and a category page's `hiddencat` marks it hidden;
+3. `linktarget`: every namespace-14 target that is not a hidden category's
+   title goes to `enwiki_categories` under its link target id, the id a
+   category link names its category by;
+4. `categorylinks`: a `page` link from a kept article or a `subcat` link from
+   a kept category, into a kept category, goes to `enwiki_category_links`; a
+   file's, another namespace's, or one into a hidden category is left out.
+
+A statement is read by `InsertReader` (`sqlInsert.ts`): the dumps write a
+table's `INSERT` with one row a line after the line that names the table,
+each row ended by a comma and the last by the semicolon, and a row's strings
+carry mysqldump's backslash escapes. A line is decoded as UTF-8, which turns a
+binary sort key into replacement characters and leaves every quote and
+backslash where it was; the sort keys are not kept. On the first 30 MB of the
+2026-10-01 `categorylinks` file (320 MB of SQL, 3.33M rows) it read 82–88 MB/s
+on this repository's development machine at a load average of about 4.6,
+which puts the whole file, some 27 GB of SQL, at about five minutes of
+parsing.
+
+The rows go to `_next` copies of the four tables, made without their indexes
+(`createNextTables`); once the four files are verified the copies are given
+the live tables' indexes and key constraints, read from the catalog as the
+subset's are (`indexNextTables`, `indexesOf`), and swapped in with the
+build's row in `enwiki_structure_builds` in one transaction (`swapIn`). A file
+that fails its check, or a cancel, drops the copies; the structure in place
+stays. So does a file whose `CREATE TABLE` does not name, at the positions the
+build reads, the columns it reads there (`STRUCTURE_FILES`' `columns`, held by
+`InsertReader` before the first row), and a build that kept no row of one of
+the tables (`refuseEmpty`): a change to a table's columns is refused rather
+than read into the wrong values. The build's row records the page file's own
+size, lines and checksum; the other three files' reads are measured as steps
+against their own sizes, and the summary gives the four files' totals. Every table is `UNLOGGED`, the record too, so a crash of the database
+empties both and the panel asks for a build (`latestStructure` answers none).
+There is no trial build: a table is kept from its whole file.
+
+| Table | Holds |
+|---|---|
+| `enwiki_pages` | An article or category that is no redirect: page id, namespace, title with underscores |
+| `enwiki_page_items` | The Wikidata item of a kept page |
+| `enwiki_categories` | A category a link may name that is not hidden: its link target id and title |
+| `enwiki_category_links` | A kept page filed under a kept category, and whether the page is itself a category |
+| `enwiki_structure_builds` | The builds swapped in: the `dump_builds` row, the dump date, the counts |
+
+The `langlinks` table is listed in the catalog and verified like any dump, and
+kept by no build: Wikidata's sitelinks say the same (ADR-0121 decision 3).
 
 ## Trying a change on a sample
 
