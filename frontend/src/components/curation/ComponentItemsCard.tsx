@@ -27,7 +27,7 @@
  * The site is the container and each component a part of it (#1342): the
  * header says what the site is made of, each component is a part-card with its
  * own picture, and one map above the parts draws every place of the site with
- * the candidate a curator points at beside its component (`ComponentItemsMap`).
+ * the candidate a curator picks beside its component (`ComponentItemsMap`).
  */
 
 import { useMemo, useState } from 'react';
@@ -160,10 +160,12 @@ function PartPicture({ point }: { point: SitePoint | undefined }) {
 }
 
 /** One candidate: what it is, why it was found, what Jev makes of it, and the two answers. */
-function CandidateRow({ candidate, judgement, answer, onAnswer, onLook }: {
+function CandidateRow({ candidate, judgement, answer, onAnswer, onPick, picked }: {
   candidate: Candidate;
-  /** The pointer is on this candidate: the map reads it. */
-  onLook: () => void;
+  /** The curator picked this candidate, by a click or by Enter or Space on the row: the map reads it (#1691). */
+  onPick: () => void;
+  /** Whether the map reads this candidate now. */
+  picked: boolean;
   /** Jev's judgement where this deployment asks it; a suggestion, never a choice. */
   judgement: Judgement | undefined;
   answer: Answer | undefined;
@@ -172,7 +174,19 @@ function CandidateRow({ candidate, judgement, answer, onAnswer, onLook }: {
   const url = wikidataItemUrl(candidate.item);
   const toggle = (next: Answer) => onAnswer(answer === next ? undefined : next);
   return (
-    <Stack direction="row" spacing={2} alignItems="flex-start" sx={{ py: 0.75 }} onMouseEnter={onLook} onFocus={onLook}>
+    // Picked, never hovered: a pointer crossing the list on its way to the map would re-target it (#1691).
+    <Stack
+      direction="row" spacing={2} alignItems="flex-start" tabIndex={0} aria-current={picked || undefined}
+      aria-label={`${candidate.label}: show on the map`}
+      onClick={onPick}
+      onKeyDown={(event) => {
+        if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
+          event.preventDefault();
+          onPick();
+        }
+      }}
+      sx={{ py: 0.75, cursor: 'pointer', borderRadius: 0.5, '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main' } }}
+    >
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
           <Typography variant="body1" sx={{ fontWeight: 600 }}>
@@ -250,10 +264,10 @@ export function ComponentItemsCard({ item, onDone }: {
   const points = byPoint(candidates);
   const sitePoints = useMemo(() => item.site_points ?? [], [item.site_points]);
   const pointOf = (locationId: number) => sitePoints.find(p => p.locationId === locationId);
-  // The candidate the map reads: the one the pointer last rested on, the first one until then.
-  const [looked, setLooked] = useState<number | null>(null);
-  const lookedAt = candidates.find(c => c.proposalId === looked) ?? candidates.find(c => focusOf(c) !== null);
-  const focus = useMemo(() => (lookedAt ? focusOf(lookedAt) : null), [lookedAt]);
+  // The candidate the map reads: the one the curator picked, none until then (#1691).
+  const [picked, setPicked] = useState<number | null>(null);
+  const pickedCandidate = candidates.find(c => c.proposalId === picked);
+  const focus = useMemo(() => (pickedCandidate ? focusOf(pickedCandidate) : null), [pickedCandidate]);
 
   // The same search the admin panel runs, narrowed to this site (#1429), and
   // behind the same role: a curator who corrected a point asks an admin.
@@ -328,16 +342,26 @@ export function ComponentItemsCard({ item, onDone }: {
 
         {/* Sticky within the card: on a site of dozens of components the row a curator
             reads is far below the map's place, and the map is what the row is read against. */}
-        {focus && (
-          <Box sx={{ position: 'sticky', top: MAP_TOP, zIndex: 2, mb: 2, bgcolor: 'background.paper' }}>
-            <ComponentItemsMap sitePoints={sitePoints} focus={focus} />
-          </Box>
-        )}
+        <Box sx={{ position: 'sticky', top: MAP_TOP, zIndex: 2, mb: 2, bgcolor: 'background.paper' }}>
+          {focus ? <ComponentItemsMap sitePoints={sitePoints} focus={focus} /> : (
+            // The map's room before a pick, so the list does not jump when the map appears.
+            <Box sx={{
+              height: MAP_HEIGHT, border: 1, borderColor: 'divider', borderRadius: 1,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', px: 2, textAlign: 'center',
+            }}>
+              <Typography variant="body2" color="text.secondary">
+                {pickedCandidate
+                  ? 'This component has no coordinate to show it by.'
+                  : 'Pick a candidate below to see it beside its component on the map.'}
+              </Typography>
+            </Box>
+          )}
+        </Box>
 
         <Stack spacing={1.5}>
           {points.map(point => {
             const [first] = point.candidates;
-            const reading = lookedAt?.locationId === point.locationId;
+            const reading = pickedCandidate?.locationId === point.locationId;
             return (
               // A part-card of the site, as a work is of its venue; its stripe says which one the map reads.
               <Box
@@ -361,7 +385,8 @@ export function ComponentItemsCard({ item, onDone }: {
                         judgement={judgementOf(candidate.proposalId)}
                         answer={answers[candidate.proposalId]}
                         onAnswer={next => answer(candidate, next)}
-                        onLook={() => setLooked(candidate.proposalId)}
+                        onPick={() => setPicked(candidate.proposalId)}
+                        picked={candidate.proposalId === picked}
                       />
                     ))}
                   </Box>

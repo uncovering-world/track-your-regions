@@ -4,11 +4,13 @@
  * with its candidate item beside it — two pins, the line between them and how
  * far apart they stand.
  *
- * Whether a cave 11 m from a component's point is that component or the
- * neighbouring one is read from where the site's other places stand, so the
- * map frames the point, the candidate and the nearest other component together
- * (`frameGeoJson`, the one camera call for a shape a surface holds): the
- * question's two pins and the place a curator would confuse them with.
+ * The camera frames the pair alone, centred: the component's point and its
+ * candidate, padded so both fit (`frameGeoJson`, the one camera call for a
+ * shape a surface holds), or the point alone at street level where the
+ * candidate has no position (#1691). The site's other places are drawn but
+ * never framed: a far neighbour in the frame pushed the pair to the map's edge
+ * (Prašuma Janj and its candidate 1.3 km off, on the Beech Forests), and a
+ * curator who wants the neighbours zooms out to them.
  *
  * One map per card, on the card rather than behind a link — a curator wants the
  * distance at a look. The card mounts it only while it is near the screen
@@ -23,7 +25,6 @@ import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { MAP_STYLE } from '../../constants/mapStyles';
 import { useNearViewport } from '../../hooks/useNearViewport';
 import { frameGeoJson } from '../../utils/mapUtils';
-import { distanceMeters } from '@tyr/shared/moves';
 import { moveView, shortWayLongitudeDelta } from '../../utils/moveDescription';
 import { GuardedMap } from '../shared/GuardedMap';
 
@@ -40,6 +41,8 @@ const CANDIDATE_PIN = '#5D4037';
 const SITE_PIN = '#9E9E9E';
 const DISTANCE_LINE = '#5D4037';
 const FRAME = { padding: 56, duration: 600 } as const;
+/** How close the map stands on a point whose candidate has no position: a street, where its own pin is readable. */
+export const POINT_ALONE_ZOOM = 14;
 /** The map's height, which the card keeps its rows' controls clear of. */
 export const MAP_HEIGHT = 300;
 
@@ -52,16 +55,18 @@ function othersOf(points: readonly SitePoint[], focus: MapFocus): Array<SitePoin
   ));
 }
 
-/** The point, its candidate and the other component nearest the point: what the camera frames. */
-export function framedShape(points: readonly SitePoint[], focus: MapFocus): GeoJSON.MultiPoint {
+/** The pair the camera frames, or null where the candidate has no position and the point stands alone. */
+export function framedShape(focus: MapFocus): GeoJSON.MultiPoint | null {
   const { point, candidate } = focus;
-  const coordinates: Array<[number, number]> = [[point.longitude, point.latitude]];
-  if (candidate) coordinates.push([candidate.longitude, candidate.latitude]);
-  const nearest = othersOf(points, focus)
-    .map(other => ({ other, metres: distanceMeters(point.longitude, point.latitude, other.longitude, other.latitude) }))
-    .sort((a, b) => a.metres - b.metres)[0];
-  if (nearest) coordinates.push([nearest.other.longitude, nearest.other.latitude]);
-  return { type: 'MultiPoint', coordinates };
+  if (!candidate) return null;
+  return { type: 'MultiPoint', coordinates: [[point.longitude, point.latitude], [candidate.longitude, candidate.latitude]] };
+}
+
+/** Bring the camera to the focus: the pair framed, or the point alone centred at street level. */
+function frameFocus(map: MapRef | null, focus: MapFocus, shape: GeoJSON.MultiPoint | null, duration: number): void {
+  if (!map) return;
+  if (shape) frameGeoJson(map, shape, { ...FRAME, duration });
+  else map.easeTo({ center: [focus.point.longitude, focus.point.latitude], zoom: POINT_ALONE_ZOOM, duration });
 }
 
 /** The line from the point to its candidate, drawn the short way across the antimeridian. */
@@ -91,8 +96,8 @@ export function ComponentItemsMap({ sitePoints, focus }: { sitePoints: readonly 
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<MapRef>(null);
   const near = useNearViewport(box);
-  const shape = useMemo(() => framedShape(sitePoints, focus), [sitePoints, focus]);
-  useEffect(() => { frameGeoJson(map.current, shape, FRAME); }, [shape]);
+  const shape = useMemo(() => framedShape(focus), [focus]);
+  useEffect(() => { frameFocus(map.current, focus, shape, FRAME.duration); }, [focus, shape]);
 
   const { point, candidate } = focus;
   const from = { lat: point.latitude, lon: point.longitude };
@@ -107,8 +112,8 @@ export function ComponentItemsMap({ sitePoints, focus }: { sitePoints: readonly 
       {near && (
         <GuardedMap
           ref={map}
-          initialViewState={middle ?? { latitude: point.latitude, longitude: point.longitude, zoom: 11 }}
-          onLoad={() => frameGeoJson(map.current, shape, { ...FRAME, duration: 0 })}
+          initialViewState={middle ?? { latitude: point.latitude, longitude: point.longitude, zoom: POINT_ALONE_ZOOM }}
+          onLoad={() => frameFocus(map.current, focus, shape, 0)}
           mapStyle={MAP_STYLE}
           style={{ width: '100%', height: '100%' }}
           unavailableCompact
