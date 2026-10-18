@@ -615,6 +615,26 @@ export interface ExperiencesRow {
   merged_into_id: number | null;
 }
 
+/** The table `geometry_computations`. */
+export interface GeometryComputationsRow {
+  id: number;
+  world_view_id: number;
+  status: string;
+  force: boolean;
+  skip_snapping: boolean;
+  regions: number;
+  started_by: number | null;
+  queued_at: Date;
+  started_at: Date | null;
+  finished_at: Date | null;
+  heartbeat_at: Date | null;
+  runner: string | null;
+  progress: unknown | null;
+  cancel_requested_at: Date | null;
+  outcome: string | null;
+  error: string | null;
+}
+
 /** The table `import_runs`. */
 export interface ImportRunsRow {
   id: number;
@@ -1167,6 +1187,9 @@ export const COLUMN_WIDTHS = {
     source_membership: 10,
     existence: 10,
   },
+  geometry_computations: {
+    status: 20,
+  },
   import_runs: {
     source_type: 50,
     status: 20,
@@ -1304,6 +1327,9 @@ export const CHECK_VALUES = {
     existence: ["extant", "lost"],
     source_membership: ["present", "former"],
     status: ["active", "draft", "archived"],
+  },
+  geometry_computations: {
+    status: ["queued", "running", "success", "failed", "cancelled"],
   },
   import_runs: {
     status: ["running", "matching", "reviewing", "failed"],

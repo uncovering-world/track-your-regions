@@ -1428,7 +1428,7 @@
     "/api/world-views/{worldViewId}/compute-geometries": {
       "post": {
         "operationId": "postWorldViewsByWorldViewIdComputeGeometries",
-        "summary": "Start computing the region geometries of a world view in the background",
+        "summary": "Queue the computation of the region geometries of a world view for the dump worker",
         "tags": [
           "world-views"
         ],
@@ -18288,7 +18288,7 @@
           "message"
         ],
         "additionalProperties": false,
-        "description": "A world view's computation, started in the background or found unnecessary."
+        "description": "A world view's computation, queued for the dump worker or found unnecessary."
       },
       "ComputationStatus": {
         "type": "object",
@@ -18347,7 +18347,7 @@
           "running"
         ],
         "additionalProperties": false,
-        "description": "A world view's computation as it stands. Only `running` is sent while no run is known, since the server started or since the last one was cleared."
+        "description": "A world view's computation as it stands. Only `running` is sent while none is queued or running and none ended in the last 30 seconds."
       },
       "ComputeComplete": {
         "type": "object",
