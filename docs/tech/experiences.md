@@ -1460,6 +1460,14 @@ path needs.
   under its code; a register that writes no group, or a site whose codes split evenly, disagrees
   with nothing.
 
+  Only the points the World Heritage list gives are read: a point a World Heritage membership
+  places, or one no membership places (`listsPoint`, ADR-0084). A point another kind added to the
+  place is that source's, named by its item already. Places of worship's own point on Aachen
+  Cathedral, nameless, was read as a component on 2026-10-18 and offered the cathedral's pipe
+  organs, and Bourges was offered its pulpit, 28 such proposals in all. Such a point is neither
+  searched nor counted among the site's standing points, and its open proposals from an earlier
+  pass are cleared, as a whole-site point's are.
+
   Not every point is searched. A component that stands for its whole site — the only standing
   point of a site of one, or a point named exactly like its site, folded (`standsForWholeSite`;
   "Historic Centre of Siena (Cathedral)" is a part, not the site) — is the site's own item
