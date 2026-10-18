@@ -10,6 +10,7 @@ import { MEMBERSHIPS } from '../../../db/membership.js';
 import { latestSubset, entitiesAreHeld } from '../../dumps/wikidata/subsetTables.js';
 import type { SyncProgress } from '../types.js';
 import type { SparqlFn } from '../wikidataQueries.js';
+import { pruneExpired } from '../wikidataCache.js';
 import { readsSubset, subsetOnlyDoor, wikidataReaderOf } from './reader.js';
 
 export async function wikidataRunDoor(sourceId: number, progress: SyncProgress, live: () => SparqlFn): Promise<SparqlFn> {
@@ -24,6 +25,12 @@ export async function subsetRunDoor(sourceId: number, progress: SyncProgress): P
     throw new Error('This source reads the local Wikidata subset, which is not built (or a database crash emptied it): build it under Public Dumps, or switch the source back to the live service');
   }
   progress.statusMessage = `Reading Wikidata from the local subset of the ${built.dumpDate} dump...`;
+  // What the source's live runs kept is read by no run on the subset, and the
+  // cache's own prune runs only behind a cached door, which such a run may
+  // never build. So it is pruned here, by the same rule: a week past expiry.
+  await pruneExpired(sourceId).catch((error: unknown) => {
+    console.warn('[Wikidata Cache] Prune failed, continuing:', (error as Error).message);
+  });
   const door = subsetOnlyDoor();
   if (!readsSubset(door)) throw new Error('The subset door lost its mark');
   return door;

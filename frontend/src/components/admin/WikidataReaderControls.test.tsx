@@ -3,6 +3,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ExperienceSource } from '../../api/admin';
+import { queryKeys } from '../../api/queryKeys';
 
 /** The switch between the live Wikidata and the local subset on a source's card (#1459). */
 
@@ -13,9 +14,9 @@ const { WikidataReaderControls } = await import('./WikidataReaderControls');
 
 const source = (over: Partial<ExperienceSource>) => ({ id: 3, subsetReady: true, wikidataReader: 'live', ...over }) as ExperienceSource;
 
-function renderWith(s: ExperienceSource) {
+function renderWith(s: ExperienceSource, client = new QueryClient()) {
   return render(
-    <QueryClientProvider client={new QueryClient()}>
+    <QueryClientProvider client={client}>
       <WikidataReaderControls source={s} />
     </QueryClientProvider>,
   );
@@ -32,6 +33,14 @@ describe('WikidataReaderControls (#1459)', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Local subset' }));
     await vi.waitFor(() => expect(api.setWikidataReader).toHaveBeenCalled());
     expect(api.setWikidataReader).toHaveBeenCalledWith(3, 'subset');
+  });
+
+  it('reads the cache section again, which names the dump and keeps fewer kinds on the subset (ADR-0119)', async () => {
+    const client = new QueryClient();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    renderWith(source({}), client);
+    fireEvent.click(screen.getByRole('button', { name: 'Local subset' }));
+    await vi.waitFor(() => expect(invalidate).toHaveBeenCalledWith({ queryKey: queryKeys.admin.wikidataCache(3) }));
   });
 
   it('says where a source on the subset reads from', () => {

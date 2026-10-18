@@ -21,6 +21,12 @@
  * troubleshooting information rather than a control on the way in, so it costs
  * nothing until an admin opens it: the query does not run while it is closed.
  *
+ * **A source that reads the local subset** (ADR-0119) asks Wikidata nothing
+ * live, so nothing of Wikidata's is kept for it: the section names the dump
+ * the subset was built from and lists only what is still asked live, the
+ * archaeology run's OpenStreetMap answers. What its runs on the live service
+ * left is listed apart, as rows no run reads, with the button that drops them.
+ *
  * Its own file rather than more of `SyncPanel.tsx`: that panel is about the runs
  * themselves, this is about what they remember.
  */
@@ -113,7 +119,8 @@ function KindRow({ kind, busy, onClear, onSetTtl }: {
   kind: WikidataCacheKind;
   busy: boolean;
   onClear: (kind: string) => void;
-  onSetTtl: (kind: string, hours: number) => void;
+  /** Absent for answers no run reads, whose lifetime decides nothing. */
+  onSetTtl?: (kind: string, hours: number) => void;
 }) {
   const currentHours = kind.ttlMs / (60 * 60 * 1000);
   const [hours, setHours] = useState<string>(String(Number(currentHours.toFixed(2))));
@@ -167,6 +174,8 @@ function KindRow({ kind, busy, onClear, onSetTtl }: {
       )}
 
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }}>
+        {onSetTtl && (
+        <>
         <TextField
           size="small"
           label="Lives for (hours)"
@@ -186,6 +195,8 @@ function KindRow({ kind, busy, onClear, onSetTtl }: {
             </Button>
           </span>
         </Tooltip>
+        </>
+        )}
         <Button
           size="small"
           color="warning"
@@ -231,7 +242,7 @@ export function WikidataCacheSection({ sourceId }: { sourceId: number }) {
     mutationFn: (kind?: string) => clearWikidataCache(sourceId, kind),
     onSuccess: (result, kind) => {
       const scope = kind ? ` of ${kind}` : '';
-      setNote(`Cleared ${plural(result.removed, 'cached answer')}${scope}. The next run asks Wikidata for them again.`);
+      setNote(`Cleared ${plural(result.removed, 'cached answer')}${scope}. A run that needs them asks for them again.`);
     },
     onError: failed('Clearing the cache'),
     onSettled: refresh,
@@ -252,6 +263,11 @@ export function WikidataCacheSection({ sourceId }: { sourceId: number }) {
 
   const busy = clear.isPending || setTtl.isPending;
   const kinds = data?.kinds ?? [];
+  const onSubset = data?.reader === 'subset';
+  // What a run still reads from the cache, and what the source's runs on the
+  // live service left behind while it reads the subset.
+  const cached = kinds.filter(kind => kind.answeredBy === 'cache');
+  const leftOver = kinds.filter(kind => kind.answeredBy === 'subset' && kind.entries > 0);
 
   if (!open) {
     return (
@@ -290,13 +306,24 @@ export function WikidataCacheSection({ sourceId }: { sourceId: number }) {
             second one also pointed at a button that is not on the screen. This
             file's own header argues against exactly that: a cache that does not
             exist explaining a run that never made it. */}
-        {kinds.length > 0 && (
+        {onSubset && (
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            {data?.subsetDumpDate
+              ? <>This source's runs read Wikidata from the local subset of the <strong>{data.subsetDumpDate}</strong> dump (Public Dumps), so nothing Wikidata answers is cached for it. A newer Wikidata comes with the next subset build, not from a run.</>
+              : <>This source's runs read Wikidata from the local subset, which is not built: build it under Public Dumps, or switch the source back to the live service. Nothing Wikidata answers is cached for it.</>}
+          </Typography>
+        )}
+
+        {cached.length > 0 && (
           <>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              This source's runs cache what Wikidata answers, so a collection that
-              fails part-way resumes instead of starting over and a question that has
-              not changed costs their servers nothing. Nothing cached is ever shown to
-              a visitor: it only decides whether a sync asks Wikidata again.
+              {onSubset
+                ? 'What its runs still ask a live service is cached: '
+                : 'This source\'s runs cache what Wikidata answers: '}
+              a collection that fails part-way resumes instead of starting over, and
+              a question that has not changed costs their servers nothing. Nothing
+              cached is ever shown to a visitor: it only decides whether a sync asks
+              again.
             </Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               <strong>Clear</strong> deletes the cache — the next run fetches it
@@ -311,13 +338,13 @@ export function WikidataCacheSection({ sourceId }: { sourceId: number }) {
         )}
 
         {isLoading && <Typography variant="body2">Loading…</Typography>}
-        {!isLoading && kinds.length === 0 && (
+        {!isLoading && !onSubset && kinds.length === 0 && (
           <Typography variant="body2" color="text.secondary">
             This source caches nothing: its runs read the source's own API and ask
             Wikidata directly, so every run fetches everything again.
           </Typography>
         )}
-        {kinds.map((kind, index) => (
+        {cached.map((kind, index) => (
           <Box key={kind.kind}>
             {index > 0 && <Divider />}
             <KindRow
@@ -328,6 +355,22 @@ export function WikidataCacheSection({ sourceId }: { sourceId: number }) {
             />
           </Box>
         ))}
+
+        {leftOver.length > 0 && (
+          <Box sx={{ mt: cached.length > 0 ? 2 : 0 }}>
+            <Typography variant="subtitle2">Left from its runs on the live service</Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+              No run reads these while the source reads the subset. Its next run deletes
+              those a week past their expiry, and <strong>Clear</strong> deletes them now.
+            </Typography>
+            {leftOver.map((kind, index) => (
+              <Box key={kind.kind}>
+                {index > 0 && <Divider />}
+                <KindRow kind={kind} busy={busy} onClear={(k) => clear.mutate(k)} />
+              </Box>
+            ))}
+          </Box>
+        )}
       </CardContent>
     </Card>
   );

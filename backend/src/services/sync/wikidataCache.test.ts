@@ -24,8 +24,10 @@ vi.mock('../../db/index.js', () => ({
 
 import { pool } from '../../db/index.js';
 import {
-  withCache, setCacheTtl, forgetCached, CACHED_KINDS_BY_SOURCE, DEFAULT_TTL_MS, EXPIRED_GRACE_MS,
+  withCache, setCacheTtl, forgetCached, cacheSummary, cachedKindsFor,
+  CACHED_KINDS_BY_SOURCE, DEFAULT_TTL_MS, EXPIRED_GRACE_MS,
 } from './wikidataCache.js';
+import { subsetDoor } from './subset/reader.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
@@ -243,6 +245,54 @@ describe('the OSM answers of the Archaeology run', () => {
       if (sourceId === '5') continue;
       expect(kinds).not.toContain('osm');
     }
+  });
+});
+
+describe('a source that reads the local subset (ADR-0119)', () => {
+  beforeEach(() => { mockedQuery.mockReset(); });
+
+  it('never puts the cache in front of the subset\'s door', () => {
+    // A wrapper carries no mark, so the fetchers behind it would send SPARQL
+    // and the cache would answer from the live service's Wikidata, of another
+    // date than the subset's.
+    const door = subsetDoor(vi.fn(async () => ROWS));
+    expect(() => withCache(door, { sourceId: MUSEUM, enabled: true })).toThrow(/local subset/);
+  });
+
+  it('keeps only what it still asks live: OpenStreetMap for Archaeology, nothing for the others', () => {
+    expect(cachedKindsFor(5, 'subset')).toEqual(['osm']);
+    for (const sourceId of [2, 3, 4]) expect(cachedKindsFor(sourceId, 'subset')).toEqual([]);
+    for (const sourceId of [2, 3, 4, 5]) expect(cachedKindsFor(sourceId, 'live')).toEqual(CACHED_KINDS_BY_SOURCE[sourceId]);
+  });
+
+  it('lists what its live runs left as answered by the subset, and keeps OpenStreetMap a cache', async () => {
+    // Archaeology on the subset, with class trees its last live run kept and
+    // the mirror's answers about its site candidates.
+    mockedQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('wikidata_cache_policy')) return { rows: [] };
+      return {
+        rows: [
+          { kind: 'classes', entries: 17, rows: 400, expired: 17, oldest_fetched_at: '2026-10-14T08:00:00Z', next_expires_at: null, bytes: 9000, labels: ['subclasses of archaeological site'] },
+          { kind: 'osm', entries: 57, rows: 1200, expired: 0, oldest_fetched_at: '2026-10-16T08:00:00Z', next_expires_at: '2026-10-17T08:00:00Z', bytes: 40000, labels: ['digs at 50 candidates'] },
+        ],
+      };
+    });
+
+    const kinds = await cacheSummary(5, 'subset');
+
+    expect(kinds.map(({ kind, answeredBy }) => [kind, answeredBy])).toEqual([
+      ['classes', 'subset'],
+      ['osm', 'cache'],
+    ]);
+  });
+
+  it('answers every kind from the cache for a source on the live service', async () => {
+    mockedQuery.mockResolvedValue({ rows: [] });
+
+    const kinds = await cacheSummary(5, 'live');
+
+    expect(kinds.map(({ kind }) => kind)).toEqual([...CACHED_KINDS_BY_SOURCE[5]].sort());
+    expect(new Set(kinds.map(({ answeredBy }) => answeredBy))).toEqual(new Set(['cache']));
   });
 });
 

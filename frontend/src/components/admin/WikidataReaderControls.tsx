@@ -16,7 +16,12 @@ export function WikidataReaderControls({ source }: { source: ExperienceSource })
   const queryClient = useQueryClient();
   const mutation = useMutation({
     mutationFn: (reader: ExperienceSource['wikidataReader']) => setWikidataReader(source.id, reader),
-    onSettled: () => queryClient.invalidateQueries({ queryKey: queryKeys.admin.sources }),
+    // The cache section reads the reader too: on the subset it names the dump
+    // and keeps fewer kinds (ADR-0119), so an open section is read again.
+    onSettled: () => Promise.all([
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.sources }),
+      queryClient.invalidateQueries({ queryKey: queryKeys.admin.wikidataCache(source.id) }),
+    ]),
   });
   if (!source.subsetReady) return null;
   return (

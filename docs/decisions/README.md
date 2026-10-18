@@ -49,7 +49,7 @@ and accepted by it.
 | [0027](0027-a-point-rewritten-more-precisely-is-the-same-point.md) | A point the source rewrites more precisely is the same point | Accepted — decisions 1 and 5 narrowed by [0029](0029-what-an-object-is-made-of-can-be-curated.md); decision 5a-i narrowed by [0117](0117-the-location-pairing-is-made-complete-before-any-arm-reads-it.md) | 2026-08-16 |
 | [0028](0028-a-reader-is-positioned-by-places-they-can-go-to.md) | A reader is positioned by places they can go to, never by a point that names the whole | Accepted — decision 2 narrowed by [0095](0095-a-place-of-several-points-has-no-coordinate-of-its-own.md) | 2026-08-17 |
 | [0029](0029-what-an-object-is-made-of-can-be-curated.md) | What an object is made of can be curated, and a correction outlives the run | Accepted | 2026-08-20 |
-| [0030](0030-answers-from-a-source-are-kept-with-an-expiry.md) | What a source answers is kept, with an expiry a person can change | Accepted — decision 1 narrowed by [0047](0047-a-cached-answer-belongs-to-the-source-that-asked.md) | 2026-08-21 |
+| [0030](0030-answers-from-a-source-are-kept-with-an-expiry.md) | What a source answers is kept, with an expiry a person can change | Accepted — decision 1 narrowed by [0047](0047-a-cached-answer-belongs-to-the-source-that-asked.md); decision 4 narrowed by [0119](0119-a-source-that-reads-the-subset-keeps-only-what-it-still-asks-live.md) | 2026-08-21 |
 | [0031](0031-a-display-rung-drops-what-a-reader-cannot-see.md) | A display rung drops what a reader cannot see | Accepted | 2026-08-23 |
 | [0032](0032-a-rule-stays-absolute-and-the-debt-is-recorded.md) | A rule about the catalogue stays absolute, and the debt is recorded beside it | Accepted | 2026-08-24 |
 | [0033](0033-lighthouse-through-its-node-api-with-lighthouse-ci-budgets.md) | Lighthouse is driven through its Node API, and the budgets keep Lighthouse CI's syntax | Accepted — decision 2 narrowed by [0118](0118-a-budget-may-leave-out-a-host-the-repository-does-not-serve.md) | 2026-08-24 |
@@ -138,6 +138,7 @@ and accepted by it.
 | [0116](0116-a-gap-the-catalogue-carries-is-judged-once-in-a-committed-ledger-by-cause.md) | A gap the catalogue carries is judged once, in a committed ledger by cause | Accepted | 2026-10-16 |
 | [0117](0117-the-location-pairing-is-made-complete-before-any-arm-reads-it.md) | The location pairing is made complete before any arm reads it | Accepted | 2026-10-17 |
 | [0118](0118-a-budget-may-leave-out-a-host-the-repository-does-not-serve.md) | A Lighthouse budget may leave out a host the repository does not serve | Accepted | 2026-10-17 |
+| [0119](0119-a-source-that-reads-the-subset-keeps-only-what-it-still-asks-live.md) | A source that reads the subset keeps only what it still asks live | Accepted | 2026-10-18 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
