@@ -335,6 +335,37 @@ describe('findComponentItems', () => {
     expect((await proposals()).filter(p => p.location_id === points.mairea && p.answer === null)).toHaveLength(0);
   });
 
+  it("reads only the points the list gives: another kind's point on the site is no component, nor a second standing point", async () => {
+    // Places of worship's own point on the site, placed by its membership,
+    // nameless and referenced by its item, as a run of that source writes it:
+    // read as a component, it stood beside the castra the near rule offers.
+    const worship = await pool.query<{ id: number }>(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, 'Q98430', 'auto', NOW() FROM experience_sources s WHERE s.id = 4 RETURNING id`,
+      [SITE],
+    );
+    points.worship = await point('Q98430', '', 46.8852, 22.8753, null);
+    await pool.query('UPDATE experience_locations SET name = NULL WHERE id = $1', [points.worship]);
+    await pool.query('INSERT INTO experience_location_placements (location_id, membership_id) VALUES ($1, $2)', [points.worship, worship.rows[0].id]);
+    // What an earlier pass, before the rule, proposed for it: cleared, not left open on the card.
+    await pool.query(
+      `INSERT INTO experience_component_item_proposals (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
+       VALUES ($1, 'Q98431', 'Pipe organs', 0, 0, false, 'part_of')`,
+      [points.worship],
+    );
+
+    const { report } = await run();
+
+    expect((await proposals()).filter(p => p.location_id === points.worship)).toEqual([]);
+    // Three components no item records, as without the other kind's point.
+    expect(report.points).toBe(3);
+
+    // And a site of one listed point still stands for itself beside it.
+    await pool.query(`UPDATE experience_locations SET missing_since = NOW() WHERE id = ANY($1)`,
+      [[points.bologa, points.buciumi, points.resolved]]);
+    expect((await run()).report.wholeSites).toBe(1);
+  });
+
   it('sets aside, on a site with no resolved component, a contender standing in a place named like the component, and counts it (#1349)', async () => {
     await fallBack();
     // Wikidata says the item near Bologa stands in Bologa, and it is not named "Bologa" itself;
