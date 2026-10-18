@@ -1,7 +1,7 @@
 # ADR-0101: Bulk reads come from public dumps, and Wikidata is kept as a wide subset cut by entity
 
 **Date:** 2026-10-13
-**Status:** Accepted — decision 2 narrowed by ADR-0105
+**Status:** Accepted — decision 2 narrowed by ADR-0105, decision 6 narrowed by ADR-0121
 **Narrows:** [ADR-0060](0060-the-site-pool-has-a-second-entrance-the-map.md) decision 1 (the reader of the OSM ruin enumeration)
 
 ---
