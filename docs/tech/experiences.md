@@ -1386,7 +1386,13 @@ path needs.
   - **near, of the site's kind** (`near`) — an item within 500 m with a similar name, of a class
     (P31) the site's resolved components are of, or for a site with none resolved, of a class the
     resolved components of at least five sites across the catalogue are of — counted by site, so
-    one site of four hundred rock-art shelters does not decide it for the rest. A settlement is a candidate only
+    one site of four hundred rock-art shelters does not decide it for the rest. On that fallback a hotel or a
+    railway station, or any class under either in the class tree, is never admitted
+    (`NEVER_BY_THE_CATALOGUE`, `classesUnder`, #1671): a few sites' resolved components are a
+    hotel or a station — Hôtel Tassel, the Ombilin coal line's stations — which carried both
+    over the floor, and a Roman fort with no resolved sibling was offered
+    the Mercure Wien Zentrum, Tulln's station or the Altstadt-Hotel Passau. A site whose own
+    resolved components are of the class admits it through its own classes. A settlement is a candidate only
     for a site whose own components include settlements: a fort named after a village is not the
     village. Which items and classes are settlements is the class tree's answer
     (`settlementsAmong`, read from the subset's class closure, which follows every subclass
@@ -1463,7 +1469,17 @@ path needs.
     a Romanian LMI code, the rule finds an archaeology entry for 12 of the 277 points within 1 km
     and 5 within 500 m — Apulum at 485 m, Potaissa at 611 m, Angustia at 997 m — where the name
     rule finds two. A church named for its village (Lozna's wooden church, 616 m) is a place-name
-    match too; the site's kind keeps it out of the candidates, and its register code below.
+    match too; the site's kind keeps it out of the candidates, and its register code below. On the
+    catalogue-wide fallback the rule never takes an item with any class under *museum*, every
+    rank but deprecated (`NOT_BY_PLACE_NAME_ALONE`, `itemsUnder`, #1671): a museum named after its town is the town's museum —
+    the Weltmuseum, the Wien Museum and the Feuerwehrmuseum for Vindobona's fortress — while a
+    museum that is a component is named as one and the name rule finds it (the State Museum
+    of History of Uzbekistan, 40 m). Measured on the 2026-10-05 dump on 2026-10-18, the two
+    rules drop 17 proposals, every one a hotel, a station or a town's museum, and keep the
+    one accepted museum (Mosigkau Palace, by `part_of`). The Danube Limes points they free
+    are then offered the next building named after their town — Pöchlarn's parish church,
+    Tulln's Danube bridge — beside the right ones that were behind the hotels (Castra Batava
+    for Passau's fort, the Basilica of St. Lawrence for Enns – St. Laurenz).
 
   **A candidate's national register code** (#1340, `componentItemRegisters.ts`) is read off the
   proposed items only, from the subset (`registerCodesOf`), for the
