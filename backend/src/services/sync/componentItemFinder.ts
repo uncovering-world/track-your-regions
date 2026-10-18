@@ -16,7 +16,11 @@
  *
  * Run from the admin panel, like the picture repair: it reads Wikidata for a
  * few minutes and is not part of the source's own run, whose job is to record
- * what UNESCO states.
+ * what UNESCO states. It reads the local Wikidata subset (#1435,
+ * `subset/componentItems.ts`), and Wikidata's own API only for the labels of
+ * the candidates; with no subset built, or one a database crash emptied, it
+ * refuses to run, since every question would answer nothing and the pass
+ * would clear what the last one proposed.
  */
 
 import { pool } from '../../db/index.js';
@@ -25,30 +29,22 @@ import { listRef, parseWhcRef } from './unescoWikidata.js';
 import {
   admittedClasses, bestMatch, nearestM, numberedMatches, ofTheSitesKind, placeAsCandidate, standsAtTheComponent, standsForWholeSite,
   NEAR_SAME_NAME_RADIUS_M, SAME_NAME_RADIUS_M,
-  type CandidateItem, type ComponentMatch, type ComponentPoint, type MatchBasis,
+  type CandidateItem, type ComponentMatch, type ComponentPoint,
 } from './componentItemMatching.js';
+import { labelsOf, type ItemLabels, type QueryHooks } from './componentItemQueries.js';
 import {
-  classesOfItems, componentNumbers, itemsInBoxes, labelsOf, partsOfSites, placesOf, registerCodesOf, settlementsAmong, tooHeavy,
-  type Box, type ItemLabels,
-  type StandingPlace,
-  type QueryHooks,
-} from './componentItemQueries.js';
+  classesOfItems, componentNumbers, itemsInBoxes, partsOfSites, placesOf, registerCodesOf, settlementsAmong,
+  type Box, type StandingPlace,
+} from './subset/componentItems.js';
+import { entitiesAreHeld, latestSubset } from '../dumps/wikidata/subsetTables.js';
 import { withRegisterCodes } from './componentItemRegisters.js';
 import { overPlacePoints, type PlacePointArm, placePointsSql, pointsShownSql } from '../../db/placePoints.js';
 
 const UNESCO_SOURCE_ID = 1;
-/** Points are asked about in cells of this many degrees: one box query per cell. */
+/** Points are asked about in cells of this many degrees: one box per cell. */
 const CELL_DEG = 0.25;
 /** How far past its points a cell's box reaches, in degrees of latitude: the same-name radius. */
 const BOX_MARGIN_DEG = 0.05;
-/**
- * Cells asked about in one question. An unloaded QLever mirror answers a
- * filter over a class's coordinates in under a second however many boxes it
- * holds (a loaded one in about 15 s, `itemsInBoxes`), so the near rule asks
- * it about 52 questions for the 1,292 cells of 2026-10-09; a group it cannot
- * answer is asked one cell at a time.
- */
-const CELLS_PER_QUERY = 25;
 /**
  * A class becomes a catalogue-wide one when the resolved components of at least
  * this many sites are of it: counted by site, so one serial site of four hundred
@@ -87,12 +83,10 @@ export interface ComponentItemReport {
   toponym: number;
   /** Of those, the ones with the same name within a few metres. */
   exact: number;
-  /** Components whose surroundings the service could not answer for, even asked one area at a time. */
-  unsearched: number;
-  /** Site items whose parts the service could not answer for, even asked one at a time. */
-  unreadSites: number;
-  /** Queries sent to Wikidata. */
+  /** Requests sent to Wikidata's API, for the candidates' labels. */
   queries: number;
+  /** The date of the entities dump the subset the pass read was built from. */
+  dumpDate: string;
 }
 
 export interface FinderOptions {
@@ -220,27 +214,15 @@ function boxOf(points: readonly PointRow[]): Box {
   return { south, north, west: Math.min(...lons) - lonMargin, east: Math.max(...lons) + lonMargin };
 }
 
-/**
- * The proposals with their national register codes (#1340). A read that fails
- * for any reason but a cancelled pass — a heavy question, a refusal, a spent
- * wait budget — leaves the codes off rather than the proposals: a code is a
- * second key, the name and place are what proposed the candidate, and the
- * proposals are a day's QLever pass.
- */
+/** The proposals with their national register codes (#1340). */
 async function coded(
   proposals: ComponentMatch[], points: readonly PointRow[], hooks: QueryHooks, onStep: OnStep | undefined,
 ): Promise<ComponentMatch[]> {
   const siteOf = new Map(points.map(p => [p.locationId, p.experienceId]));
   const items = [...new Set(proposals.map(m => m.item))];
   onStep?.(STEP.codes, `Reading the register codes of ${items.length} candidate items`, items.length);
-  try {
-    const codes = await registerCodesOf(items, hooks);
-    return withRegisterCodes(proposals, codes, locationId => siteOf.get(locationId) ?? 0);
-  } catch (error) {
-    if (hooks.isCancelled?.()) throw error;
-    console.warn('[Component items] Register codes not read:', error instanceof Error ? error.message : error);
-    return proposals;
-  }
+  const codes = await registerCodesOf(items, hooks);
+  return withRegisterCodes(proposals, codes, locationId => siteOf.get(locationId) ?? 0);
 }
 
 /** One proposal per item: an item two components could be is offered for the one it matches better. */
@@ -255,8 +237,8 @@ function onePerItem(matches: ComponentMatch[]): ComponentMatch[] {
 }
 
 /**
- * The near candidates of every point the part rule left, cell group by cell
- * group; a point absent from the answer is one the service could not answer for.
+ * The near candidates of every point the part rule left: what stands in each
+ * cell's box, of a class some point of the pass admits, asked in one question.
  */
 async function searchNear(
   unmatched: PointRow[], admitted: Map<number, ReadonlySet<string>>, hooks: QueryHooks,
@@ -266,60 +248,32 @@ async function searchNear(
   const nearOf = new Map<number, CandidateItem[]>();
   const cells = cellsOf(unmatched);
   onStep?.(STEP.near, `Looking near ${unmatched.length} points, ${cells.length} areas`, cells.length);
-  for (let i = 0; i < cells.length; i += CELLS_PER_QUERY) {
-    if (hooks.isCancelled?.()) break;
-    const group = cells.slice(i, i + CELLS_PER_QUERY);
-    for (const { cells: answered, items } of await nearbyOf(group, admitted, hooks)) {
-      for (const point of answered.flat()) nearOf.set(point.locationId, keep(point, items));
-    }
-    hooks.onAnswered?.(group.length);
-  }
+  const classes = [...new Set(unmatched.flatMap(p => [...admitted.get(p.locationId)!]))];
+  const inBoxes = await itemsInBoxes(cells.map(boxOf), classes, hooks);
+  cells.forEach((cell, index) => {
+    for (const point of cell) nearOf.set(point.locationId, keep(point, inBoxes.get(index) ?? []));
+  });
   return nearOf;
 }
 
 /**
- * The settlement kinds among the catalogue-wide classes, or null where QLever
- * could not answer. A site with no resolved components falls back on those
- * classes less their settlement kinds, so without the answer it has no
- * admitted classes to search by: its points are left unsearched, keeping an
- * earlier pass's proposals, rather than searched with the settlement rule
- * quietly off.
- */
-async function catalogueSettlementKinds(classes: string[], hooks: QueryHooks): Promise<Set<string> | null> {
-  try {
-    return await settlementsAmong(classes, hooks, true);
-  } catch (error) {
-    if (!tooHeavy(error)) throw error;
-    return null;
-  }
-}
-
-/**
  * Which near candidates are settlements, and which sites admit them, asked of
- * the class tree on QLever (`settlementsAmong`) before the best match is
- * chosen, so a village set aside gives way to the next candidate rather than
- * to nothing. A batch QLever cannot answer leaves every point it was asked for
- * unanswered — they keep an earlier pass's proposals — rather than ending the
- * pass once every other question has its answer.
+ * the class tree (`settlementsAmong`) before the best match is chosen, so a
+ * village set aside gives way to the next candidate rather than to nothing.
  */
 async function settlementsNear(
   nearOf: Map<number, CandidateItem[]>, admitted: Map<number, ReadonlySet<string>>, hooks: QueryHooks,
   onStep: OnStep | undefined,
-): Promise<{ settled: Set<string>; settlementKinds: Set<string>; unanswered: Set<number> } > {
+): Promise<{ settled: Set<string>; settlementKinds: Set<string> }> {
   const items = [...new Set([...nearOf.values()].flat().map(c => c.item))];
   const classes = [...new Set([...admitted.values()].flatMap(c => [...c]))];
   // The candidates and the sites' classes are asked side by side, so the step counts both.
   onStep?.(STEP.settlements, `Telling ${items.length} near candidates that are settlements from the rest`, items.length + classes.length);
-  try {
-    const [settled, settlementKinds] = await Promise.all([
-      settlementsAmong(items, hooks),
-      settlementsAmong(classes, hooks, true),
-    ]);
-    return { settled, settlementKinds, unanswered: new Set() };
-  } catch (error) {
-    if (!tooHeavy(error)) throw error;
-    return { settled: new Set(), settlementKinds: new Set(), unanswered: new Set(nearOf.keys()) };
-  }
+  const [settled, settlementKinds] = await Promise.all([
+    settlementsAmong(items, hooks),
+    settlementsAmong(classes, hooks, true),
+  ]);
+  return { settled, settlementKinds };
 }
 
 
@@ -375,9 +329,7 @@ function chooseNear(
  * are settlements (`settlementsAmong`), never offered. Asked only of a
  * candidate the near rule would take on its own — the place cannot change the
  * choice among candidates the rule refuses — never of every building around
- * the points. A batch QLever cannot answer leaves those points unanswered —
- * they keep an earlier pass's proposals — as the settlement question does,
- * rather than offering what the rule would have set aside.
+ * the points.
  */
 async function placesNear(
   fallingBack: readonly PointRow[], ofKindOf: Map<number, CandidateItem[]>, refused: Map<number, Set<string>>,
@@ -389,52 +341,23 @@ async function placesNear(
   const items = [...new Set([...contenders.values()].flat().map(c => c.item))];
   if (items.length === 0) return { places: new Map(), settledPlaces: new Set() };
   onStep?.(STEP.places, `Reading where ${items.length} near candidates stand`, items.length);
-  try {
-    const places = await placesOf(items, hooks);
-    // A settlement is never offered in a thing's stead: the site's parts are
-    // not known to be towns, and a church named after its village is not the
-    // village. Asked of the same class tree as the candidates are, and only of
-    // the places that could be offered: those a set-aside contender stands in
-    // that are named like its component.
-    const offerable = [...new Set([...contenders].flatMap(([locationId, theirs]) => {
-      const point = fallingBack.find(p => p.locationId === locationId)!;
-      return theirs.flatMap(c => {
-        const own = places.get(c.item) ?? [];
-        if (!standsAtTheComponent(point, c, own.flatMap(place => place.names))) return [];
-        return own.filter(place => placeAsCandidate(point, place) !== null).map(place => place.item);
-      });
-    }))];
-    if (offerable.length === 0) return { places, settledPlaces: new Set() };
-    onStep?.(STEP.placeSettlements, `Telling which of ${offerable.length} places named like a component are settlements`, offerable.length);
-    return { places, settledPlaces: await settlementsAmong(offerable, hooks) };
-  } catch (error) {
-    if (!tooHeavy(error)) throw error;
-    for (const [locationId, theirs] of contenders) if (theirs.length > 0) nearOf.delete(locationId);
-    return { places: new Map(), settledPlaces: new Set() };
-  }
-}
-
-/**
- * What stands near a group of cells, asked in one query, and where the service
- * could not answer that, one cell at a time. A cell it cannot answer even alone
- * is left out — its points are counted as unsearched — rather than ending the
- * whole pass; a 429 ends it, since the service asked this client to stop.
- */
-async function nearbyOf(
-  group: PointRow[][], admitted: Map<number, ReadonlySet<string>>, hooks: QueryHooks,
-): Promise<Array<{ cells: PointRow[][]; items: CandidateItem[] }>> {
-  const classesOf = (cells: PointRow[][]) => [...new Set(cells.flat().flatMap(p => [...admitted.get(p.locationId)!]))];
-  try {
-    return [{ cells: group, items: await itemsInBoxes(group.map(boxOf), classesOf(group), hooks) }];
-  } catch (error) {
-    if (!tooHeavy(error) || group.length === 1) {
-      if (tooHeavy(error)) return [];
-      throw error;
-    }
-  }
-  const answers: Array<{ cells: PointRow[][]; items: CandidateItem[] }> = [];
-  for (const cell of group) answers.push(...await nearbyOf([cell], admitted, hooks));
-  return answers;
+  const places = await placesOf(items, hooks);
+  // A settlement is never offered in a thing's stead: the site's parts are
+  // not known to be towns, and a church named after its village is not the
+  // village. Asked of the same class tree as the candidates are, and only of
+  // the places that could be offered: those a set-aside contender stands in
+  // that are named like its component.
+  const offerable = [...new Set([...contenders].flatMap(([locationId, theirs]) => {
+    const point = fallingBack.find(p => p.locationId === locationId)!;
+    return theirs.flatMap(c => {
+      const own = places.get(c.item) ?? [];
+      if (!standsAtTheComponent(point, c, own.flatMap(place => place.names))) return [];
+      return own.filter(place => placeAsCandidate(point, place) !== null).map(place => place.item);
+    });
+  }))];
+  if (offerable.length === 0) return { places, settledPlaces: new Set() };
+  onStep?.(STEP.placeSettlements, `Telling which of ${offerable.length} places named like a component are settlements`, offerable.length);
+  return { places, settledPlaces: await settlementsAmong(offerable, hooks) };
 }
 
 /**
@@ -454,8 +377,7 @@ function claimsAnotherSite(candidate: CandidateItem, point: PointRow): boolean {
 }
 
 /**
- * Replaces the open proposals of the points this pass answered for with what it found,
- * but those of a rule whose question went unanswered (`unasked`), which stand.
+ * Replaces the open proposals of the points this pass answered for with what it found.
  * An answered proposal is kept: a refusal is what keeps a candidate from coming
  * back, and an acceptance has already recorded its item on the point. A candidate
  * a curator took back (#1336) is open and marked: found again, it takes the
@@ -463,7 +385,7 @@ function claimsAnotherSite(candidate: CandidateItem, point: PointRow): boolean {
  * candidate the pass does not find goes.
  */
 async function writeProposals(
-  locationIds: readonly number[], matches: readonly ComponentMatch[], unasked: MatchBasis | null,
+  locationIds: readonly number[], matches: readonly ComponentMatch[],
 ): Promise<void> {
   const client = await pool.connect();
   try {
@@ -471,11 +393,10 @@ async function writeProposals(
     await client.query(
       `DELETE FROM experience_component_item_proposals p
         WHERE p.answer IS NULL AND p.location_id = ANY($1::int[])
-          AND ($4::text IS NULL OR p.basis <> $4)
           AND (p.taken_back_at IS NULL
                OR NOT EXISTS (SELECT 1 FROM unnest($2::int[], $3::text[]) AS f(location_id, item)
                                WHERE f.location_id = p.location_id AND f.item = p.wikidata_item))`,
-      [locationIds, matches.map(m => m.locationId), matches.map(m => m.item), unasked],
+      [locationIds, matches.map(m => m.locationId), matches.map(m => m.item)],
     );
     // With the item's coordinate nearest the point, so the card can show the
     // candidate beside the component; none where the item states no coordinate.
@@ -515,6 +436,12 @@ async function writeProposals(
 
 export async function findComponentItems(options: FinderOptions): Promise<{ report: ComponentItemReport; matches: ComponentMatch[] }> {
   const { hooks, onStep } = options;
+  // The subset's tables are unlogged: a database crash empties them while the
+  // build's record stands, and a pass over empty tables would clear every open proposal.
+  const subset = await latestSubset();
+  if (!subset || !(await entitiesAreHeld())) {
+    throw new Error('The local Wikidata subset is not built (or a database crash emptied it): build it under Public Dumps before finding component items');
+  }
   let queries = 0;
   const counted: QueryHooks = { ...hooks, onQuery: () => { queries += 1; hooks.onQuery?.(); } };
 
@@ -535,7 +462,7 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
 
   const siteItems = [...new Set(points.flatMap(p => p.siteItems))];
   onStep?.(STEP.parts, `Reading the parts ${siteItems.length} site items name`, siteItems.length);
-  const { parts, unread } = await partsOfSites(siteItems, counted);
+  const parts = await partsOfSites(siteItems, counted);
   const partsNear = new Map(points.map(p => [
     p.locationId, reachable(p, p.siteItems.flatMap(item => parts.get(item) ?? []).filter(c => !claimsAnotherSite(c, p)), SAME_NAME_RADIUS_M),
   ]));
@@ -552,19 +479,17 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
   onStep?.(STEP.catalogueKinds, `Telling the settlement kinds among the ${catalogue.size} classes of the resolved components`, catalogue.size);
   // The catalogue-wide classes less the settlement kinds among them: judged by
   // the same class tree the candidates are, not by a list.
-  const catalogueKinds = await catalogueSettlementKinds([...catalogue], counted);
+  const catalogueKinds = await settlementsAmong([...catalogue], counted, true);
   const fallsBack = (p: PointRow) => (bySite.get(p.experienceId)?.size ?? 0) === 0;
-  const searchable = catalogueKinds === null ? unmatched.filter(p => !fallsBack(p)) : unmatched;
-  const admitted = new Map(searchable.map(p =>
-    [p.locationId, admittedClasses(bySite.get(p.experienceId) ?? new Set(), catalogue, catalogueKinds ?? new Set())]));
-  const nearOf = await searchNear(searchable, admitted, counted, onStep, (point, items) =>
+  const admitted = new Map(unmatched.map(p =>
+    [p.locationId, admittedClasses(bySite.get(p.experienceId) ?? new Set(), catalogue, catalogueKinds)]));
+  const nearOf = await searchNear(unmatched, admitted, counted, onStep, (point, items) =>
     reachable(point, items.filter(c => (c.classes ?? []).some(k => admitted.get(point.locationId)!.has(k))), NEAR_SAME_NAME_RADIUS_M));
-  const { settled, settlementKinds, unanswered } = await settlementsNear(nearOf, admitted, counted, onStep);
-  for (const locationId of unanswered) nearOf.delete(locationId);
+  const { settled, settlementKinds } = await settlementsNear(nearOf, admitted, counted, onStep);
   await readLabels(STEP.nearNames, nearOf.values());
   let settlements = 0;
   const ofKindOf = new Map<number, CandidateItem[]>();
-  for (const point of searchable) {
+  for (const point of unmatched) {
     const ownClasses = admitted.get(point.locationId)!;
     const siteAdmits = [...ownClasses].some(c => settlementKinds.has(c));
     const candidates = named(nearOf.get(point.locationId) ?? []);
@@ -572,21 +497,13 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
     settlements += candidates.length - ofKind.length;
     ofKindOf.set(point.locationId, ofKind);
   }
-  const { places, settledPlaces } = await placesNear(searchable.filter(fallsBack), ofKindOf, refused, nearOf, counted, onStep);
-  const unsearched = unmatched.filter(p => !nearOf.has(p.locationId)).length;
-  const { chosen, atTheComponent } = chooseNear(searchable.filter(p => nearOf.has(p.locationId)), ofKindOf, places, fallsBack, refused, new Set([...taken, ...settledPlaces]));
+  const { places, settledPlaces } = await placesNear(unmatched.filter(fallsBack), ofKindOf, refused, nearOf, counted, onStep);
+  const { chosen, atTheComponent } = chooseNear(unmatched, ofKindOf, places, fallsBack, refused, new Set([...taken, ...settledPlaces]));
   matches.push(...chosen);
 
   // The third door, beside the others' answers rather than instead of them (#1394).
   onStep?.(STEP.numbered, 'Reading the items that carry a component\'s number under another inscription', 1);
-  let byKey = new Map<string, CandidateItem[]>();
-  let numberedUnread = false;
-  try {
-    byKey = byComponentKey(await componentNumbers(counted));
-  } catch (error) {
-    if (!tooHeavy(error)) throw error;
-    numberedUnread = true;
-  }
+  const byKey = byComponentKey(await componentNumbers(counted));
   const numberedOf = new Map(points.map(p => [p.locationId, reachable(p, numberedFor(p, byKey), SAME_NAME_RADIUS_M)]));
   await readLabels(STEP.numberedNames, numberedOf.values());
   for (const point of points) {
@@ -594,23 +511,12 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
   }
 
   const proposals = await coded(onePerItem(matches), points, counted, onStep);
-  // Answered for: a new proposal, or every question this pass asked about the
-  // point got an answer. A point whose site's parts or surroundings the service
-  // could not answer keeps what an earlier pass proposed for it.
-  const unreadSites = new Set(unread);
-  const waiting = new Set(unmatched.map(p => p.locationId));
-  // A number under another inscription is asked beside the other doors, so it
-  // does not make a point answered for that the other doors did not answer.
-  const proposed = new Set(proposals.filter(m => m.basis !== 'numbered').map(m => m.locationId));
-  // A point one of whose site items went unread is not answered for, even
-  // with a part found under another: the pass did not see all of it, and
-  // writing would drop the open candidates it did not evaluate.
-  const answered = points.filter(p => !p.siteItems.some(item => unreadSites.has(item))
-    && (proposed.has(p.locationId) || !waiting.has(p.locationId) || nearOf.has(p.locationId)));
-  // A point that stands for its whole site is answered for too: nothing is
-  // proposed for it, and what an earlier pass proposed is cleared.
+  // Every question the pass asks has an answer, so the pass answers for every
+  // point it read: what an earlier pass proposed and this one does not find
+  // is cleared. A point that stands for its whole site is answered for too:
+  // nothing is proposed for it.
   if (options.write && !hooks.isCancelled?.()) {
-    await writeProposals([...answered.map(p => p.locationId), ...wholeSiteIds], proposals, numberedUnread ? 'numbered' : null);
+    await writeProposals([...points.map(p => p.locationId), ...wholeSiteIds], proposals);
   }
   return {
     matches: proposals,
@@ -624,9 +530,8 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
       wholeSites,
       settlements,
       atTheComponent,
-      unsearched,
-      unreadSites: unread.length,
       queries,
+      dumpDate: subset.dumpDate,
     },
   };
 }

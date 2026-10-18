@@ -317,7 +317,7 @@ export function bestMatch(
  * The classes a near candidate may be of, for one site: the classes of its
  * resolved components, or, where it has none, the catalogue-wide ones less the
  * settlement kinds among them. Which classes are settlement kinds is the class
- * tree's answer (`settlementsAmong` on QLever), passed in: a list could not
+ * tree's answer (`settlementsAmong`), passed in: a list could not
  * see that Passau's *Altstadt* is one.
  */
 export function admittedClasses(
