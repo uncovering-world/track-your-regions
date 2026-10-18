@@ -805,7 +805,9 @@ const archaeologySiteTwinOfWorldHeritage: CatalogueAssertion = {
  * into the place that already holds its item, and the admin's pass in this
  * panel merges what was there before. What is left is a pair the merge
  * refused — both rows in one kind, which one place cannot hold twice
- * (ADR-0086 decision 4) — or a pair nobody has run the pass over yet. The
+ * (ADR-0086 decision 4) — a serial site's component part whose item names a
+ * place no reader is shown yet, which waits for that place to be published
+ * and the pass to run again (#1250), or a pair nobody has run the pass over yet. The
  * question is the pass's own (`sharedItemsSql`), so the two cannot disagree
  * on what sharing an item means.
  */
@@ -818,7 +820,9 @@ const placesSharingAnItem: CatalogueAssertion = {
     'Two sources read the same Wikidata item, so these rows are one place shown twice: two pins '
     + 'on one spot and two cards that each tell half of it. "Merge places that share a Wikidata '
     + 'item" above makes each such pair one place; what it leaves apart is a pair in the same '
-    + 'kind, which one place cannot hold twice, and wants a person to decide which row is right.',
+    + 'kind, which one place cannot hold twice, and wants a person to decide which row is right, '
+    + 'and a serial site\'s component whose item names a place still waiting for a curator, which '
+    + 'merges when the pass runs again after that place is published (or stays apart if it is refused).',
   sql: `SELECT * FROM (${sharedItemsSql('NULL')}) shared
          ORDER BY shared.names[1], shared.qid`,
   describe: row => {
