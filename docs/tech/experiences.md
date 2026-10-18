@@ -4815,6 +4815,18 @@ signal of identity, the weaker one, which proposes rather than merges: two place
 offered points stand within the pair's reach and whose names reach a trigram similarity of 0.5,
 on unaccented lower case over every name each is known by — its own, each source's
 `reported_name`, its `name_local` values (`foldedNamesSql`, `services/sync/mergeProposalFinder.ts`).
+A second rule finds a pair whose names fail that line when every significant word of one name stands
+in the other's (#1652, `nameWithinSql`): words of three letters or more, less the connectives, the
+words that say what kind of place a name is and the words a World Heritage title adds around the
+place's name (`GENERIC_NAME_WORDS`, each group with its reason), so that Geghard, 7 m from
+*Monastery of Geghard and the Upper Azat Valley* and 0.17 alike by trigrams, is asked about; a name
+left with no word says nothing and matches nothing. A proposal records which rule found it
+(`found_by`, migration 121): the card says *one name within the other* instead of a share that
+would read as a reason not to ask, Jev's question says so, and the pass's report counts the open
+pairs each rule found. On 2026-10-18 the second rule added 43 pairs on the development catalogue,
+most a property and the monument inside it (Córdoba's Mosque-Cathedral, Westminster Abbey,
+Florence Cathedral), some one place (Tikal, Machu Picchu), and a few two places that share a
+town's name (the Bremen Roland and Bremen Cathedral), which a curator answers.
 The reach is the place's (decision 3): 300 m, or for a World Heritage property the radius of a
 circle of its `metadata.areaHectares` up to 3 km (`reachSql`), the pair found under the larger
 of its two; no kind declares a reach of its own yet. The pass (`findMergeProposals`, run from the
