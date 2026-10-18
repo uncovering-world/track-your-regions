@@ -11300,6 +11300,56 @@
         }
       }
     },
+    "/api/admin/wv-import/matches/{worldViewId}/rematch/cancel": {
+      "post": {
+        "operationId": "postAdminWvImportMatchesByWorldViewIdRematchCancel",
+        "summary": "Stop a running rematch of a world view",
+        "tags": [
+          "admin"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "worldViewId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RematchCancelled"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/wv-import/matches/{worldViewId}/color-match-stream": {
       "get": {
         "operationId": "getAdminWvImportMatchesByWorldViewIdColorMatchStream",
@@ -30749,6 +30799,20 @@
         ],
         "additionalProperties": false,
         "description": "A region's remaining open suggestions rejected."
+      },
+      "RematchCancelled": {
+        "type": "object",
+        "properties": {
+          "cancelled": {
+            "type": "boolean",
+            "description": "Whether a re-match of this world view was running to be stopped."
+          }
+        },
+        "required": [
+          "cancelled"
+        ],
+        "additionalProperties": false,
+        "description": "A request to stop a world view's re-match (#1613)."
       },
       "RematchStarted": {
         "type": "object",

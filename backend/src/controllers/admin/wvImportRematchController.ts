@@ -5,12 +5,13 @@
  * - rematchWorldView: starts a background re-match pass for a world view
  * - runRematch: private helper that resets match data and re-runs matching
  * - getRematchStatus: returns the current progress of a running rematch
+ * - cancelRematch: stops a running rematch (#1613)
  * See ADR-0009 for the domain-split rationale.
  */
 
 import type { z } from 'zod/v4';
 import { pool } from '../../db/index.js';
-import type { RematchStarted, RematchStatus } from '../../api/responses/worldViewImport.js';
+import type { RematchCancelled, RematchStarted, RematchStatus } from '../../api/responses/worldViewImport.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
 import type { worldViewIdParamSchema, wvImportRematchBodySchema } from '../../types/index.js';
 import { MATCH_RUN_STEPS, runMatchingPolicy } from '../../services/worldViewImport/index.js';
@@ -142,7 +143,17 @@ async function runRematch(
     return;
   }
   progress.statusMessage = `Re-matching to GADM (policy=${policy})...`;
-  const { spatial } = await runMatchingPolicy(policy, worldViewId, progress);
+  const { cancelled, spatial } = await runMatchingPolicy(policy, worldViewId, progress);
+  // A cancel the name matcher saw: it wrote nothing, so the world view is as
+  // the reset above left it. A cancel during the spatial pass only stopped the
+  // scoring, and the run below finishes with where it stopped (`spatialSentence`).
+  if (cancelled) {
+    progress.status = 'cancelled';
+    progress.statusMessage = 'Re-match cancelled while matching by name: nothing was matched, '
+      + 'so every region is unmatched, as the reset left it. Re-match again, or match regions by hand.';
+    progress.operation?.finish('cancelled while matching by name');
+    return;
+  }
 
   const totalDuration = ((Date.now() - startTime) / 1000).toFixed(1);
   progress.status = 'complete';
@@ -156,6 +167,21 @@ async function runRematch(
     : `${progress.statusMessage} (total ${totalDuration}s)`;
   if (spatial) progress.statusMessage += spatialSentence(spatial);
   progress.operation?.finish(progress.statusMessage);
+}
+
+/**
+ * Cancel a running re-match of a world view (#1613), which since the spatial
+ * pass (#622) can take hours: answers whether one was running to stop.
+ * POST /api/admin/wv-import/matches/:worldViewId/rematch/cancel
+ */
+export async function cancelRematch(
+  { params: { worldViewId } }: { params: z.output<typeof worldViewIdParamSchema> },
+): Promise<RematchCancelled> {
+  const entry = runningRematches.get(worldViewId);
+  if (!entry || entry.progress.status !== 'matching') return { cancelled: false };
+  entry.progress.cancel = true;
+  entry.progress.operation?.cancel();
+  return { cancelled: true };
 }
 
 /**
