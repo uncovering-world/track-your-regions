@@ -41,6 +41,9 @@
 const NO_COARSENING_CALL =
   /\bst_(?:[a-z_]*simplify[a-z_]*|snaptogrid|reduceprecision|chaikinsmoothing)\s*\(/i;
 
+/** What tells the union writers' store of `regions.geom` from every other statement: it reads the worked row. */
+const WRITE_ANCHOR = 'SET geom = validate_multipolygon(w.collected)';
+
 /**
  * Complexity counts that put a region on the union path rather than the
  * single-division fast path: one member and three children, pinned to take
@@ -63,9 +66,9 @@ export const UNION_SHAPE = {
  * snap, the union, or the write itself would reach the column just as surely,
  * and a guard that reads one statement passes while the shape it is about is
  * simplified in the next one. The snap belongs in that list because its result
- * *replaces* the geometry the rest of the pipeline works on — every writer
- * assigns it back over `collectedGeom` — so it is upstream of the column by the
- * same argument as the union.
+ * *replaces* the geometry the rest of the pipeline works on — it rewrites the
+ * region's `union_work` row, which the union reads — so it is upstream of the
+ * column by the same argument as the union.
  *
  * The collect step is held the same way: a union is made of full-resolution
  * inputs, however many points they hold (#459).
@@ -75,7 +78,7 @@ function unionStatements(calls: Array<[unknown, unknown[]?]>) {
   // The write is told by its SET: this module reads statements rather than
   // issuing them, and the lint keeps a write's text to the writers (#1073).
   const write = calls.find((c) => /\bregions\b/.test(String(c[0]))
-    && String(c[0]).includes('SET geom = validate_multipolygon($2)'));
+    && String(c[0]).includes(WRITE_ANCHOR));
   const collect = find('direct_member_geoms');
   return {
     /** The hole/sliver cleaning step, whose output is written to `geom`. */
@@ -88,8 +91,6 @@ function unionStatements(calls: Array<[unknown, unknown[]?]>) {
     writeSql: String(write?.[0] ?? ''),
     /** The collect step, whose output the union is made of. */
     collectSql: String(collect?.[0] ?? ''),
-    /** The geometry the write actually received. */
-    written: write?.[1]?.[1],
   };
 }
 
@@ -105,13 +106,11 @@ function unionStatements(calls: Array<[unknown, unknown[]?]>) {
  * without pulling a test framework in with it. A caller asserts the list is
  * empty, and each entry names the statement and what was wrong with it.
  *
- * `expected` is the geometry the cleaning step was mocked to return: the write
- * must have received that object, not merely something clean.
+ * The geometry stays in the database between statements (`unionWork.ts`), so
+ * what the write stores is told by what it reads: the region's `union_work`
+ * row, which the cleaning step is the last to rewrite.
  */
-export function coarseningProblems(
-  calls: Array<[unknown, unknown[]?]>,
-  expected: unknown,
-): string[] {
+export function coarseningProblems(calls: Array<[unknown, unknown[]?]>): string[] {
   const s = unionStatements(calls);
   const problems: string[] = [];
 
@@ -124,9 +123,12 @@ export function coarseningProblems(
   holdClean('cleaning', s.cleaningSql, 'holes_filtered');
   holdClean('snap', s.snapSql, 'ST_Snap(');
   holdClean('union', s.unionSql, 'ST_UnaryUnion');
-  holdClean('write', s.writeSql, 'SET geom = validate_multipolygon($2)');
+  holdClean('write', s.writeSql, WRITE_ANCHOR);
   holdClean('collect', s.collectSql, 'direct_member_geoms');
 
-  if (s.written !== expected) problems.push('write: did not receive the cleaning step output');
+  if (!s.cleaningSql.includes('UPDATE union_work SET collected = (SELECT geom FROM collected)')) {
+    problems.push('cleaning: does not write its output back into the union_work row');
+  }
+  if (!s.writeSql.includes('FROM union_work w')) problems.push('write: does not read the cleaned union from union_work');
   return problems;
 }

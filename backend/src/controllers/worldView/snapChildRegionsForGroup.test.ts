@@ -1,18 +1,12 @@
 /**
- * What the snap step hands back, and what it costs to hand back.
+ * What the snap step keeps in the database and what it answers (#459).
  *
  * The statement returns a row per child, because the log line names each one
- * and how many vertices it gained. The collected geometry is not per child: it
- * is the statement's single payload, and a scalar subquery repeated in the
- * select list lands in **every** DataRow the driver buffers even though
- * Postgres computes it once. The regions worth snapping are the ones with the
- * most children — 153 under New South Wales, 28 under North America — so the
- * verbose shape sends a continent's union across the wire once per child.
- *
- * Both writers share this statement, the bulk one — the writer that
- * walks every region of a world view — included. Nothing about the geometry
- * it stores would change if the payload were repeated per child again, which
- * is why the shape is pinned here rather than left to be noticed on a continent.
+ * and how many vertices it gained. The snapped geometry is not in the answer
+ * at all: it replaces the union's input in the region's `union_work` row,
+ * since a continent's union handed back to Node is text past V8's longest
+ * string, and the driver dies parsing it where nothing can catch it
+ * (`unionWork.ts`).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -20,69 +14,54 @@ import type { PoolClient } from 'pg';
 
 import { snapChildRegionsForGroup } from './snapChildRegionsForGroup.js';
 
-const MEMBERS = { sentinel: 'members-only' };
-const SNAPPED = { sentinel: 'snapped-children-and-members' };
-const COLLECTED = { sentinel: 'collect-step-output' };
-
-/** A child row as the statement returns one, carrying the payload or not. */
-function childRow(name: string, collectedGeom: unknown) {
+/** A child row as the statement returns one. */
+function childRow(name: string) {
   return {
     id: 7, name, neighbor_count: '2',
     original_points: '100', new_points: '104', added_points: '4',
-    collected_geom: collectedGeom, total_snapped_points: '720',
+    total_snapped_points: '720', kept: '1',
   };
 }
 
 const query = vi.fn();
 const client = { query } as unknown as PoolClient;
+const flat = (sql: string) => sql.replace(/\s+/g, ' ');
 
 describe('the snap step', () => {
   beforeEach(() => query.mockReset());
 
-  it('emits the collected geometry on one row, not on every child', async () => {
-    // The break this catches is invisible in the stored geometry and shows up
-    // only as bytes: dropping the ROW_NUMBER gate puts the whole union in
-    // every row again. Read off the statement, since a mocked driver cannot
-    // tell how large a real answer would have been.
-    query.mockResolvedValue({ rows: [childRow('Canillo', SNAPPED)] });
+  it("returns no geometry to Node, and writes the snapped input back into the region's row", async () => {
+    query.mockResolvedValue({ rows: [childRow('Canillo')] });
 
-    await snapChildRegionsForGroup(client, 42, COLLECTED, MEMBERS);
+    await snapChildRegionsForGroup(client, 42);
 
-    const [sql] = query.mock.calls[0] as [string];
-    const alias = sql.indexOf('as collected_geom');
-    const payloadColumn = alias < 0 ? '' : sql.slice(sql.lastIndexOf(',', alias) + 1, alias);
-    expect(payloadColumn).toContain('ROW_NUMBER()');
+    const sql = flat(query.mock.calls[0][0] as string);
+    expect(sql).not.toContain('collected_geom');
+    expect(sql).toContain('UPDATE union_work SET collected = (SELECT geom FROM collected) WHERE region_id = $1 AND EXISTS (SELECT 1 FROM with_new_points)');
+    expect(query.mock.calls[0][1]).toEqual([42]);
   });
 
-  it('takes the geometry from whichever row carries it', async () => {
-    // The window that picks the carrying row and the ORDER BY that returns the
-    // rows are two orderings; reading row zero would be right only while no
-    // two children of one region share a name.
-    query.mockResolvedValue({
-      rows: [childRow('Andorra la Vella', null), childRow('Canillo', SNAPPED), childRow('Encamp', null)],
-    });
+  it('collects the members it reads from the row back in with the snapped children (#736)', async () => {
+    query.mockResolvedValue({ rows: [childRow('Canillo')] });
 
-    const snap = await snapChildRegionsForGroup(client, 42, COLLECTED, MEMBERS);
+    await snapChildRegionsForGroup(client, 42);
 
-    expect(snap.collectedGeom).toBe(SNAPPED);
-    expect(snap.snappedPoints).toBe(720);
-    expect(snap.totalAdded).toBe(12);
+    const sql = flat(query.mock.calls[0][0] as string);
+    expect(sql).toContain('members AS ( SELECT members AS geom FROM union_work WHERE region_id = $1 )');
+    expect(sql).toContain('SELECT geom FROM with_new_points UNION ALL SELECT geom FROM members');
   });
 
-  it('hands back the geometry it was given when no child has one to snap', async () => {
+  it('answers the counts its log line and its caller read', async () => {
+    query.mockResolvedValue({ rows: [childRow('Andorra la Vella'), childRow('Canillo'), childRow('Encamp')] });
+
+    const snap = await snapChildRegionsForGroup(client, 42);
+
+    expect(snap).toEqual({ totalAdded: 12, snappedPoints: 720, rowCount: 3 });
+  });
+
+  it('answers nothing snapped for a region none of whose children has geometry', async () => {
     query.mockResolvedValue({ rows: [] });
 
-    const snap = await snapChildRegionsForGroup(client, 42, COLLECTED, MEMBERS);
-
-    expect(snap.collectedGeom).toBe(COLLECTED);
-    expect(snap.rowCount).toBe(0);
-  });
-
-  it('asks the statement for the region and the members it must keep', async () => {
-    query.mockResolvedValue({ rows: [childRow('Canillo', SNAPPED)] });
-
-    await snapChildRegionsForGroup(client, 42, COLLECTED, MEMBERS);
-
-    expect(query.mock.calls[0][1]).toEqual([42, MEMBERS]);
+    expect(await snapChildRegionsForGroup(client, 42)).toEqual({ totalAdded: 0, snappedPoints: 0, rowCount: 0 });
   });
 });

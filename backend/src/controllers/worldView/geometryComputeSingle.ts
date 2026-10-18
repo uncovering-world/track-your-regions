@@ -10,6 +10,7 @@ import { pool } from '../../db/index.js';
 import { computeSingleMemberFastPath } from './computeSingleMemberFastPath.js';
 import { collectUnionInputs } from './collectUnionInputs.js';
 import { snapChildRegionsForGroup } from './snapChildRegionsForGroup.js';
+import { cleanUnion, clearUnionWork, unionCollected } from './unionWork.js';
 import { GEOMETRY_STATEMENT_TIMEOUT_MS } from './geometryTimeouts.js';
 import { isQueryCanceled } from '../../db/queryCanceled.js';
 
@@ -145,6 +146,7 @@ export async function computeRegionGeometryCore(
   // Use a dedicated client so SET statement_timeout applies to our queries
   const client = await pool.connect();
   const settleStop = cancelOnStop(client, options.signal);
+  let worked = false;
 
   try {
     // A stop that landed before the client was taken starts nothing.
@@ -210,26 +212,22 @@ export async function computeRegionGeometryCore(
     // Step 1: Collect all geometries
     // A stop between two statements, which a cancel in the database cannot reach.
     options.signal?.throwIfAborted();
+    // Every step keeps the geometry in the region's union_work row and answers
+    // counts; none crosses to Node (unionWork.ts).
     log('Step 1: Collecting geometries...');
+    worked = true;
     const collected = await collectUnionInputs(client, regionId);
-
-    let collectedGeom = collected.collectedGeom;
-    const geomCount = collected.geomCount;
-
-    if (!collectedGeom) {
+    if (!collected.hasGeometry) {
       await client.query('RESET statement_timeout');
       return { computed: false, error: 'No geometries to merge' };
     }
-    log(`Step 1: Collected ${geomCount} geometries`);
+    log(`Step 1: Collected ${collected.geomCount} geometries`);
 
     // Step 2: Snap to neighbors (if not skipSnapping and has child regions)
-    const hasChildRegions = childCount > 0;
-
     options.signal?.throwIfAborted();
-    if (!skipSnapping && hasChildRegions) {
+    if (!skipSnapping && childCount > 0) {
       log(`Step 2: Snapping ${childCount} child regions to neighbors...`);
-      const snap = await snapChildRegionsForGroup(client, regionId, collectedGeom, collected.memberGeom);
-      collectedGeom = snap.collectedGeom;
+      await snapChildRegionsForGroup(client, regionId);
       log('Step 2: Snapping complete');
     } else {
       log('Step 2: Skipped (fast mode)');
@@ -238,54 +236,15 @@ export async function computeRegionGeometryCore(
     // Step 3: Union
     options.signal?.throwIfAborted();
     log('Step 3: Unioning geometries...');
-    const unionResult = await client.query(`
-      SELECT ST_UnaryUnion(ST_MakeValid($1::geometry)) as union_geom
-    `, [collectedGeom]);
-    const unionGeom = unionResult.rows[0]?.union_geom;
+    await unionCollected(client, regionId);
     log('Step 3: Union complete');
 
     // Step 4: Clean up - remove small holes and slivers, and nothing else:
     // regions.geom carries no tolerance of its own (rule 1, #443).
     options.signal?.throwIfAborted();
     log('Step 4: Removing holes & slivers...');
-    const cleanedResult = await client.query(`
-      WITH extracted AS (
-        SELECT ST_Multi(ST_CollectionExtract(ST_MakeValid($1::geometry), 3)) as geom
-      ),
-      polygons AS (
-        SELECT (ST_Dump(geom)).geom as poly FROM extracted
-      ),
-      holes_filtered AS (
-        SELECT
-          CASE
-            WHEN ST_NumInteriorRings(poly) = 0 THEN poly
-            ELSE (
-              SELECT ST_MakePolygon(
-                ST_ExteriorRing(poly),
-                ARRAY(
-                  SELECT ST_InteriorRingN(poly, n)
-                  FROM generate_series(1, ST_NumInteriorRings(poly)) n
-                  WHERE
-                    ST_Area(ST_MakePolygon(ST_InteriorRingN(poly, n))::geography) > 10000000
-                    AND (
-                      ST_Perimeter(ST_MakePolygon(ST_InteriorRingN(poly, n))::geography) /
-                      NULLIF(SQRT(ST_Area(ST_MakePolygon(ST_InteriorRingN(poly, n))::geography)), 0)
-                    ) < 25
-                )
-              )
-            )
-          END as poly
-        FROM polygons
-      ),
-      collected AS (
-        SELECT ST_Multi(ST_Collect(poly)) as geom FROM holes_filtered WHERE poly IS NOT NULL
-      )
-      SELECT geom as cleaned_geom, ST_NPoints(geom) as num_points FROM collected
-    `, [unionGeom]);
-
-    const cleanedGeom = cleanedResult.rows[0]?.cleaned_geom;
-    const numPoints = parseInt(cleanedResult.rows[0]?.num_points || '0');
-    log(`Step 4: Cleaning complete (${numPoints} points)`);
+    const cleaned = await cleanUnion(client, regionId);
+    log(`Step 4: Cleaning complete (${cleaned.numPoints} points)`);
 
     // Step 5: Save to database
     options.signal?.throwIfAborted();
@@ -293,10 +252,11 @@ export async function computeRegionGeometryCore(
     // The flag again at the write, for a boundary drawn while this ran (#439).
     const updateResult = await client.query(`
       UPDATE regions
-      SET geom = validate_multipolygon($2)
-      WHERE id = $1 AND is_custom_boundary IS NOT TRUE
-      RETURNING ST_NPoints(geom) as points
-    `, [regionId, cleanedGeom]);
+      SET geom = validate_multipolygon(w.collected)
+      FROM union_work w
+      WHERE regions.id = $1 AND w.region_id = $1 AND regions.is_custom_boundary IS NOT TRUE
+      RETURNING ST_NPoints(regions.geom) as points
+    `, [regionId]);
 
     await client.query('RESET statement_timeout');
     if (updateResult.rows.length === 0) {
@@ -314,6 +274,7 @@ export async function computeRegionGeometryCore(
     // A cancel that lands after the statement ended would stop whatever runs
     // next on this backend, so a stopped client is closed, never pooled.
     await settleStop();
+    if (worked && !options.signal?.aborted) await clearUnionWork(client).catch(() => undefined);
     client.release(options.signal?.aborted);
   }
 }

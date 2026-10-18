@@ -100,23 +100,13 @@ function geometryProducingPart(cte: string, column: string): string {
   return geometry.join(' ') + cte.slice(listEnd);
 }
 
-/**
- * The statements of a snapping run whose chain carries the collected geometry
- * to the union, picked out of a mocked client's calls by what each statement
- * *is* rather than by the order it was issued in.
- */
+/** The chain's statements, each picked out by what it is rather than by its position. */
 function chainStatements(calls: Array<[unknown, unknown[]?]>) {
   const find = (needle: string) => calls.find((c) => String(c[0]).includes(needle));
-  const snap = find('ST_Snap(');
-  const union = find('ST_UnaryUnion');
   return {
     collectSql: String(find('direct_member_geoms')?.[0] ?? ''),
-    snapSql: String(snap?.[0] ?? ''),
-    /** What the snap statement was bound to, after the region id. */
-    snapParams: snap?.[1] ?? [],
-    unionSql: String(union?.[0] ?? ''),
-    /** The geometry the union actually received. */
-    unioned: union?.[1]?.[0],
+    snapSql: String(find('ST_Snap(')?.[0] ?? ''),
+    unionSql: String(find('ST_UnaryUnion')?.[0] ?? ''),
   };
 }
 
@@ -125,15 +115,12 @@ function chainStatements(calls: Array<[unknown, unknown[]?]>) {
  * place. Returns the problems rather than asserting them, so the rule stays in
  * `src/` without pulling a test framework in with it.
  *
- * `memberGeom` is the members-only geometry the collect step was mocked to
- * return, and `snappedGeom` the snap step's own output: distinct sentinels, so
- * a writer that carries the wrong one forward is told apart from one that
- * carries the right one.
+ * The geometry stays in the database between statements (`unionWork.ts`), so
+ * the chain is read off the statements: the collect step keeps the members on
+ * the region's `union_work` row, the snap's `collected` CTE reads them from
+ * there and writes the result back, and the union reads that row.
  */
-export function droppedMemberProblems(
-  calls: Array<[unknown, unknown[]?]>,
-  expected: { memberGeom: unknown; snappedGeom: unknown },
-): string[] {
+export function droppedMemberProblems(calls: Array<[unknown, unknown[]?]>): string[] {
   const s = chainStatements(calls);
   const problems: string[] = [];
 
@@ -150,28 +137,35 @@ export function droppedMemberProblems(
   }
   if (problems.length > 0) return problems;
 
-  // The members reach the snap, and the CTE whose geometry the snap hands back
-  // is the one that reads them. Binding alone is not enough, and neither is the
-  // statement mentioning the parameter somewhere: a snap that counts the
-  // members' points for its log line and collects the children alone passes
-  // both of those while dropping the territory.
-  if (s.snapParams[1] !== expected.memberGeom) {
-    problems.push('snap: was not given the members the collect step gathered');
+  // The collect step keeps the members apart on the row, for the snap to read.
+  if (!s.collectSql.replace(/\s+/g, ' ').includes('ST_Collect(geom) FILTER (WHERE is_member)')) {
+    problems.push('collect: keeps no members apart for the snap');
   }
+  // The members reach the snap's result, and the CTE whose geometry the snap
+  // writes back is the one that reads them. The statement mentioning them
+  // somewhere is not enough: a snap that counts the members' points for its
+  // log line and collects the children alone would pass that while dropping
+  // the territory.
+  const membersCte = cteBody(s.snapSql, 'members');
   const collectedCte = cteBody(s.snapSql, 'collected');
   const producesGeometry = geometryProducingPart(collectedCte, 'geom');
+  if (!membersCte.includes('FROM union_work')) {
+    problems.push('snap: does not read the members the collect step kept');
+  }
   if (!collectedCte) {
-    problems.push('snap: has no collected CTE to hand a geometry back from');
+    problems.push('snap: has no collected CTE to write a geometry back from');
   } else if (!producesGeometry) {
     problems.push('snap: its collected CTE returns no geom column');
-  } else if (!producesGeometry.includes('$2')) {
-    problems.push('snap: collects the children alone, without the members it was given');
+  } else if (!producesGeometry.includes('FROM members')) {
+    problems.push('snap: collects the children alone, without the members the collect step kept');
+  }
+  if (!s.snapSql.replace(/\s+/g, ' ').includes('UPDATE union_work SET collected = (SELECT geom FROM collected)')) {
+    problems.push('snap: does not write its result back into the union_work row');
   }
 
-  // And what the snap hands back is what the union reads, so the members
-  // cannot be collected into a geometry the writer then drops on the floor.
-  if (s.unioned !== expected.snappedGeom) {
-    problems.push('union: did not receive the snap step output');
+  // And what the snap writes back is what the union reads.
+  if (!s.unionSql.includes('UPDATE union_work SET collected = ST_UnaryUnion(')) {
+    problems.push('union: does not read the union_work row the snap rewrote');
   }
   return problems;
 }

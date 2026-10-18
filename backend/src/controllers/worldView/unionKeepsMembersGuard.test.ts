@@ -16,9 +16,6 @@
 import { describe, it, expect } from 'vitest';
 import { droppedMemberProblems } from './unionKeepsMembersGuard.js';
 
-const MEMBERS = { sentinel: 'members-only' };
-const SNAPPED = { sentinel: 'snapped-children-and-members' };
-
 /** The `collected` CTE as the shipped snap statement writes it. */
 const KEEPS_MEMBERS = `
     collected AS (
@@ -26,13 +23,25 @@ const KEEPS_MEMBERS = `
       FROM (
         SELECT geom FROM with_new_points
         UNION ALL
-        SELECT $2::geometry
+        SELECT geom FROM members
       ) union_inputs
       WHERE geom IS NOT NULL
     ),`;
 
-/** A snap statement carrying the given `collected` CTE, and nothing else that matters. */
-function snapWith(collectedCte: string): string {
+const READS_MEMBERS = `
+    members AS (
+      SELECT members AS geom FROM union_work WHERE region_id = $1
+    ),`;
+
+const WRITES_BACK = `
+    kept AS (
+      UPDATE union_work SET collected = (SELECT geom FROM collected)
+       WHERE region_id = $1 AND EXISTS (SELECT 1 FROM with_new_points)
+      RETURNING 1
+    )`;
+
+/** A snap statement carrying the given CTEs, and nothing else that matters. */
+function snapWith(collectedCte: string, membersCte = READS_MEMBERS, keptCte = WRITES_BACK): string {
   return `
     WITH child_regions AS (
       SELECT id, geom FROM regions WHERE parent_region_id = $1 AND geom IS NOT NULL
@@ -42,91 +51,112 @@ function snapWith(collectedCte: string): string {
     ),
     with_new_points AS (
       SELECT *, ST_NPoints(geom) as new_points FROM snapped
-    ),${collectedCte}
+    ),${membersCte}${collectedCte}
     totals AS (
-      SELECT SUM(new_points) + COALESCE(ST_NPoints($2::geometry), 0) as total_points
+      SELECT SUM(new_points) + COALESCE((SELECT ST_NPoints(geom) FROM members), 0) as total_points
       FROM with_new_points
-    )
-    SELECT (SELECT geom FROM collected) as collected_geom FROM with_new_points`;
+    ),${keptCte}
+    SELECT (SELECT COUNT(*) FROM kept) as kept FROM with_new_points`;
 }
 
-/** The calls a writer makes, with the snap's collected CTE swapped for a mutation. */
-function callsWith(collectedCte: string): Array<[unknown, unknown[]?]> {
+const COLLECT = `WITH direct_member_geoms AS (...), child_group_geoms AS (...)
+  INSERT INTO union_work (region_id, collected, members, geom_count)
+  SELECT $1, ST_Collect(geom), ST_Collect(geom) FILTER (WHERE is_member), COUNT(*) FROM all_geoms`;
+
+const UNION = 'UPDATE union_work SET collected = ST_UnaryUnion(ST_MakeValid(collected)) WHERE region_id = $1';
+
+/** The calls a writer makes, with the snap's statement swapped for a mutation. */
+function callsWith(snapSql: string): Array<[unknown, unknown[]?]> {
   return [
-    ['WITH direct_member_geoms AS (...) SELECT ST_Collect(geom)', [42, false]],
-    [snapWith(collectedCte), [42, MEMBERS]],
-    ['SELECT ST_UnaryUnion($1::geometry) as union_geom', [SNAPPED]],
+    [COLLECT, [42]],
+    [snapSql, [42]],
+    [UNION, [42]],
   ];
 }
 
-const expected = { memberGeom: MEMBERS, snappedGeom: SNAPPED };
-
 describe('the guard notices when the members stop reaching the union', () => {
-  it('passes the statement the pipeline actually sends', () => {
+  it('passes the statements the pipeline actually sends', () => {
     // Anti-vacuity: every mutation below is a change to a shape that passes.
-    expect(droppedMemberProblems(callsWith(KEEPS_MEMBERS), expected)).toEqual([]);
+    expect(droppedMemberProblems(callsWith(snapWith(KEEPS_MEMBERS)))).toEqual([]);
   });
 
   it('reports a collected CTE that reads the members only for a sibling column', () => {
-    // The mutation this exists to catch: `$2` is in the CTE, and in the CTE the
-    // geometry comes from -- but not in the geometry. A count beside the
-    // collect reads exactly like the log line the last narrowing was about.
-    const problems = droppedMemberProblems(callsWith(`
+    // The mutation this exists to catch: the members are in the CTE, and in
+    // the CTE the geometry comes from -- but not in the geometry. A count
+    // beside the collect reads exactly like the log line an earlier narrowing
+    // was about.
+    const problems = droppedMemberProblems(callsWith(snapWith(`
     collected AS (
-      SELECT ST_Collect(geom) as geom, ST_NPoints($2::geometry) as member_points
+      SELECT ST_Collect(geom) as geom, (SELECT ST_NPoints(geom) FROM members) as member_points
       FROM with_new_points
       WHERE geom IS NOT NULL
-    ),`), expected);
+    ),`)));
 
     expect(problems).toContain(
-      'snap: collects the children alone, without the members it was given',
+      'snap: collects the children alone, without the members the collect step kept',
     );
   });
 
   it('reports a collected CTE with no mention of the members at all', () => {
-    const problems = droppedMemberProblems(callsWith(`
+    const problems = droppedMemberProblems(callsWith(snapWith(`
     collected AS (
       SELECT ST_Collect(geom) as geom FROM with_new_points WHERE geom IS NOT NULL
-    ),`), expected);
+    ),`)));
 
     expect(problems).toContain(
-      'snap: collects the children alone, without the members it was given',
+      'snap: collects the children alone, without the members the collect step kept',
     );
   });
 
   it('reports a collected CTE that returns no geometry column to read', () => {
     // Not the same failure and worth telling apart: a CTE renamed out from
     // under the guard would otherwise read as one that dropped the members.
-    const problems = droppedMemberProblems(callsWith(`
+    const problems = droppedMemberProblems(callsWith(snapWith(`
     collected AS (
       SELECT ST_Collect(shape) as outline FROM with_new_points
-    ),`), expected);
+    ),`)));
 
     expect(problems).toContain('snap: its collected CTE returns no geom column');
   });
 
-  it('reports a snap that was never given the members', () => {
-    const calls = callsWith(KEEPS_MEMBERS);
-    calls[1] = [snapWith(KEEPS_MEMBERS), [42, null]];
+  it('reports a snap whose members come from somewhere other than the collect step', () => {
+    const problems = droppedMemberProblems(callsWith(snapWith(KEEPS_MEMBERS, `
+    members AS (
+      SELECT ST_Collect(d.geom) AS geom FROM region_members rm JOIN administrative_divisions d ON d.id = rm.division_id
+    ),`)));
 
-    expect(droppedMemberProblems(calls, expected)).toContain(
-      'snap: was not given the members the collect step gathered',
-    );
+    expect(problems).toContain('snap: does not read the members the collect step kept');
   });
 
-  it('reports a union handed something other than what the snap produced', () => {
-    const calls = callsWith(KEEPS_MEMBERS);
-    calls[2] = ['SELECT ST_UnaryUnion($1::geometry) as union_geom', [{ sentinel: 'children-only' }]];
+  it('reports a collect step that keeps no members apart', () => {
+    const calls = callsWith(snapWith(KEEPS_MEMBERS));
+    calls[0] = [COLLECT.replace(' FILTER (WHERE is_member)', ''), [42]];
 
-    expect(droppedMemberProblems(calls, expected)).toContain(
-      'union: did not receive the snap step output',
+    expect(droppedMemberProblems(calls)).toContain('collect: keeps no members apart for the snap');
+  });
+
+  it('reports a snap that computes its result and never writes it back', () => {
+    const problems = droppedMemberProblems(callsWith(snapWith(KEEPS_MEMBERS, READS_MEMBERS, `
+    kept AS (
+      SELECT 1
+    )`)));
+
+    expect(problems).toContain('snap: does not write its result back into the union_work row');
+  });
+
+  it('reports a union that does not read the row the snap rewrote', () => {
+    const calls = callsWith(snapWith(KEEPS_MEMBERS));
+    calls[2] = ['SELECT ST_UnaryUnion($1::geometry) as union_geom', [42]];
+
+    expect(droppedMemberProblems(calls)).toContain(
+      'union: does not read the union_work row the snap rewrote',
     );
   });
 
   it('names the statement it could not find rather than passing without it', () => {
-    const withoutSnap = callsWith(KEEPS_MEMBERS).filter((c) => !String(c[0]).includes('ST_Snap('));
+    const withoutSnap = callsWith(snapWith(KEEPS_MEMBERS)).filter((c) => !String(c[0]).includes('ST_Snap('));
 
-    expect(droppedMemberProblems(withoutSnap, expected)).toContain(
+    expect(droppedMemberProblems(withoutSnap)).toContain(
       'snap: statement not found (no ST_Snap()',
     );
   });

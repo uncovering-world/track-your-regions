@@ -7,11 +7,11 @@
  * `custom_geom` override) and the child regions under it. The complexity gate
  * sums both, and the union that follows is meant to see both.
  *
- * It returns the members a second time on their own, because the neighbour snap
+ * It keeps the members a second time on their own, because the neighbour snap
  * that may run between here and the union reads the children alone. Its result
  * replaces the geometry the union is given, so the members have to be carried
  * across it — see `snapChildRegionsForGroup`, which collects them back in
- * (#736); they are read here, once.
+ * (#736); they are read here, once, and both stay in the database.
  *
  * Every input is taken at full resolution, however many points the region
  * holds: no statement on the way to `regions.geom` coarsens a shape (rule 1 of
@@ -19,21 +19,26 @@
  * runtime sets fails loudly instead (`geometryTimeouts.ts`).
  */
 
-import { PoolClient } from 'pg';
+import type { PoolClient } from 'pg';
+import { UNION_WORK_TABLE } from './unionWork.js';
 
 export interface CollectedUnionInputs {
-  /** Members and child regions together: what the union is made of. */
-  collectedGeom: unknown;
-  /** The members alone, for the snap step to carry across itself. */
-  memberGeom: unknown;
   /** How many shapes of both kinds were gathered. */
   geomCount: number;
+  /** Whether anything was gathered at all: a region with nothing to merge has no union to make. */
+  hasGeometry: boolean;
 }
 
+/**
+ * Gather the region's members and child regions into its `union_work` row
+ * (`unionWork.ts`): both together as the union's input, the members alone for
+ * the snap to carry across itself. Only the count comes back to Node.
+ */
 export async function collectUnionInputs(
   client: PoolClient,
   regionId: number,
 ): Promise<CollectedUnionInputs> {
+  await client.query(UNION_WORK_TABLE);
   const collectResult = await client.query(`
     WITH direct_member_geoms AS (
       SELECT ST_MakeValid(COALESCE(rm.custom_geom, ad.geom)) as geom
@@ -46,20 +51,20 @@ export async function collectUnionInputs(
       FROM regions
       WHERE parent_region_id = $1 AND geom IS NOT NULL
     )
-    SELECT
-      ST_Collect(geom) as collected_geom,
-      ST_Collect(geom) FILTER (WHERE is_member) as member_geom,
-      COUNT(*) as geom_count
+    INSERT INTO union_work (region_id, collected, members, geom_count)
+    SELECT $1, ST_Collect(geom), ST_Collect(geom) FILTER (WHERE is_member), COUNT(*)
     FROM (
       SELECT geom, true as is_member FROM direct_member_geoms WHERE geom IS NOT NULL
       UNION ALL
       SELECT geom, false as is_member FROM child_group_geoms WHERE geom IS NOT NULL
     ) all_geoms
+    ON CONFLICT (region_id) DO UPDATE
+      SET collected = EXCLUDED.collected, members = EXCLUDED.members, geom_count = EXCLUDED.geom_count
+    RETURNING geom_count, collected IS NOT NULL AS has_geometry
   `, [regionId]);
 
   return {
-    collectedGeom: collectResult.rows[0]?.collected_geom,
-    memberGeom: collectResult.rows[0]?.member_geom,
     geomCount: parseInt(collectResult.rows[0]?.geom_count || '0'),
+    hasGeometry: collectResult.rows[0]?.has_geometry === true,
   };
 }

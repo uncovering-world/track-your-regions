@@ -8,7 +8,8 @@ import { pool } from '../../db/index.js';
 import { generateSingleHull } from '../../services/hull/index.js';
 import { recomputeRegionGeometry } from './geometryCompute.js';
 import { computeSingleMemberFastPath } from './computeSingleMemberFastPath.js';
-import { collectUnionInputs, CollectedUnionInputs } from './collectUnionInputs.js';
+import { collectUnionInputs } from './collectUnionInputs.js';
+import { analyzeUnionInputs, cleanUnion, clearUnionWork, unionCollected } from './unionWork.js';
 import { snapChildRegionsForGroup } from './snapChildRegionsForGroup.js';
 import type { ComputeProgressEvent } from '../../api/responses/geometry.js';
 import type { computeSSEQuerySchema, regionIdParamSchema } from '../../types/index.js';
@@ -141,112 +142,6 @@ async function fetchComplexityStats(client: PoolClient, regionId: number): Promi
   };
 }
 
-async function analyzeInputGeometryStep(
-  client: PoolClient,
-  collectedGeom: unknown,
-): Promise<{ inputGeoms: number; inputHoles: number; inputPoints: number }> {
-  const analyzeResult = await client.query(`
-    WITH dumped AS (
-      SELECT (ST_Dump($1::geometry)).geom as geom
-    ),
-    stats AS (
-      SELECT
-        COUNT(*) as num_geoms,
-        SUM(ST_NRings(geom)) as total_rings,
-        SUM(ST_NRings(geom) - 1) as total_holes,
-        SUM(ST_NPoints(geom)) as total_points
-      FROM dumped
-      WHERE GeometryType(geom) IN ('POLYGON', 'MULTIPOLYGON')
-    )
-    SELECT * FROM stats
-  `, [collectedGeom]);
-  return {
-    inputGeoms: parseInt(analyzeResult.rows[0]?.num_geoms || '0'),
-    inputHoles: parseInt(analyzeResult.rows[0]?.total_holes || '0'),
-    inputPoints: parseInt(analyzeResult.rows[0]?.total_points || '0'),
-  };
-}
-
-interface CleanedGeometryStats {
-  cleanedGeom: unknown;
-  holesBefore: number;
-  numPolygons: number;
-  numHoles: number;
-  numPoints: number;
-}
-
-/**
- * Removes small holes and slivers from the union, and writes nothing else into
- * the shape. It deliberately does not simplify: `regions.geom` is the
- * authoritative geometry every derived column is made from (rule 1 of
- * `docs/tech/geometry-columns.md`), so a tolerance applied here is an error no
- * downstream rung can recover. Simplification belongs to the derived columns,
- * which run at 5 km and 1 km — not to a 0.0001° pass on the source (#443).
- */
-async function cleanupStep(
-  client: PoolClient,
-  unionGeom: unknown,
-): Promise<CleanedGeometryStats> {
-  const cleanedResult = await client.query(`
-    WITH extracted AS (
-      SELECT ST_Multi(ST_CollectionExtract(ST_MakeValid($1::geometry), 3)) as geom
-    ),
-    polygons AS (
-      SELECT (ST_Dump(geom)).geom as poly FROM extracted
-    ),
-    holes_filtered AS (
-      SELECT
-        CASE
-          WHEN ST_NumInteriorRings(poly) = 0 THEN poly
-          ELSE (
-            SELECT ST_MakePolygon(
-              ST_ExteriorRing(poly),
-              ARRAY(
-                SELECT ST_InteriorRingN(poly, n)
-                FROM generate_series(1, ST_NumInteriorRings(poly)) n
-                WHERE
-                  ST_Area(ST_MakePolygon(ST_InteriorRingN(poly, n))::geography) > 10000000
-                  AND (
-                    ST_Perimeter(ST_MakePolygon(ST_InteriorRingN(poly, n))::geography) /
-                    NULLIF(SQRT(ST_Area(ST_MakePolygon(ST_InteriorRingN(poly, n))::geography)), 0)
-                  ) < 25
-              )
-            )
-          )
-        END as poly
-      FROM polygons
-    ),
-    collected AS (
-      SELECT ST_Multi(ST_Collect(poly)) as geom FROM holes_filtered WHERE poly IS NOT NULL
-    ),
-    before_stats AS (
-      SELECT SUM(ST_NumInteriorRings(poly)) as num_holes FROM polygons
-    ),
-    final_stats AS (
-      SELECT
-        ST_NumGeometries(geom) as num_polygons,
-        ST_NRings(geom) as num_rings,
-        ST_NPoints(geom) as num_points
-      FROM collected
-    )
-    SELECT
-      (SELECT geom FROM collected) as cleaned_geom,
-      (SELECT num_holes FROM before_stats) as holes_before,
-      (SELECT num_polygons FROM final_stats) as num_polygons,
-      (SELECT num_rings FROM final_stats) as num_rings,
-      (SELECT num_points FROM final_stats) as num_points
-  `, [unionGeom]);
-  const numPolygons = parseInt(cleanedResult.rows[0]?.num_polygons || '0');
-  const numRings = parseInt(cleanedResult.rows[0]?.num_rings || '0');
-  return {
-    cleanedGeom: cleanedResult.rows[0]?.cleaned_geom,
-    holesBefore: parseInt(cleanedResult.rows[0]?.holes_before || '0'),
-    numPolygons,
-    numHoles: numRings - numPolygons,
-    numPoints: parseInt(cleanedResult.rows[0]?.num_points || '0'),
-  };
-}
-
 /**
  * The shared snap step, with the progress line this writer's stream carries.
  * The statement itself lives in snapChildRegionsForGroup, held by every
@@ -257,12 +152,9 @@ async function snapChildRegionsSSE(
   client: PoolClient,
   regionId: number,
   inputPoints: number,
-  collected: CollectedUnionInputs,
   logStep: LogStep,
-): Promise<unknown> {
-  const snap = await snapChildRegionsForGroup(
-    client, regionId, collected.collectedGeom, collected.memberGeom,
-  );
+): Promise<void> {
+  const snap = await snapChildRegionsForGroup(client, regionId);
 
   logStep(`Step 3/6: Complete`, {
     originalPoints: inputPoints,
@@ -270,10 +162,6 @@ async function snapChildRegionsSSE(
     addedPoints: snap.totalAdded,
     increase: `${((snap.snappedPoints / inputPoints - 1) * 100).toFixed(0)}%`,
   });
-  // A region with no geometry-bearing child leaves the step with the geometry
-  // it came in with, so the caller's assignment is a no-op rather than a case
-  // to spell out.
-  return snap.collectedGeom;
 }
 
 async function applyHullPostStep(
@@ -366,14 +254,15 @@ async function runUnionPipelineSteps(
   skipSnapping: boolean,
   logStep: LogStep,
 ): Promise<UnionPipelineResult | null> {
+  // Every step keeps the geometry in the region's union_work row and answers
+  // counts; none crosses to Node (unionWork.ts).
   logStep('Step 1/6: Collecting geometries...');
   const collected = await collectUnionInputs(client, regionId);
-  let collectedGeom = collected.collectedGeom;
-  if (!collectedGeom) return null;
+  if (!collected.hasGeometry) return null;
   logStep('Step 1/6: Complete', { geomCount: collected.geomCount });
 
   logStep('Step 2/6: Analyzing input geometry...');
-  const inputStats = await analyzeInputGeometryStep(client, collectedGeom);
+  const inputStats = await analyzeUnionInputs(client, regionId);
   logStep('Step 2/6: Complete', inputStats);
 
   // Step 3: Snap each child region to its neighbors (unless skipSnapping is true).
@@ -383,24 +272,17 @@ async function runUnionPipelineSteps(
     logStep('Step 3/6: Skipped (fast mode - no snapping)');
   } else if (stats.childCount > 0) {
     logStep(`Step 3/6: Snapping ${stats.childCount} child regions to their neighbors...`);
-    const snappedGeom = await snapChildRegionsSSE(
-      client, regionId, inputStats.inputPoints, collected, logStep,
-    );
-    if (snappedGeom) collectedGeom = snappedGeom;
+    await snapChildRegionsSSE(client, regionId, inputStats.inputPoints, logStep);
   } else {
     logStep('Step 3/6: No child regions (using direct members)');
   }
 
   logStep('Step 4/6: Unioning geometries...');
-  const unionResult = await client.query(
-    `SELECT ST_UnaryUnion(ST_MakeValid($1::geometry)) as union_geom`,
-    [collectedGeom],
-  );
-  const unionGeom = unionResult.rows[0]?.union_geom;
+  await unionCollected(client, regionId);
   logStep('Step 4/6: Complete');
 
   logStep('Step 5/6: Cleaning, removing small holes & slivers...');
-  const cleaned = await cleanupStep(client, unionGeom);
+  const cleaned = await cleanUnion(client, regionId);
   logStep('Step 5/6: Complete', {
     numPolygons: cleaned.numPolygons,
     holesBefore: cleaned.holesBefore,
@@ -413,10 +295,11 @@ async function runUnionPipelineSteps(
   // The flag again at the write, for a boundary drawn while this ran (#439).
   const updateResult = await client.query(`
     UPDATE regions
-    SET geom = validate_multipolygon($2)
-    WHERE id = $1 AND is_custom_boundary IS NOT TRUE
-    RETURNING ST_NPoints(geom) as points, uses_hull
-  `, [regionId, cleaned.cleanedGeom]);
+    SET geom = validate_multipolygon(w.collected)
+    FROM union_work w
+    WHERE regions.id = $1 AND w.region_id = $1 AND regions.is_custom_boundary IS NOT TRUE
+    RETURNING ST_NPoints(regions.geom) as points, regions.uses_hull
+  `, [regionId]);
   if (updateResult.rows.length === 0) {
     logStep('Step 6/6: Not saved - drawn by hand meanwhile');
     return null;
@@ -525,7 +408,9 @@ export async function computeSingleRegionGeometrySSE(
     } finally {
       try {
         await client.query('RESET statement_timeout');
-      } catch { /* ignore */ }
+        // The union_work table, if the pipeline made one; none on the fast path.
+        await clearUnionWork(client);
+      } catch { /* ignore: a connection that cannot answer is released all the same */ }
       client.release();
     }
 

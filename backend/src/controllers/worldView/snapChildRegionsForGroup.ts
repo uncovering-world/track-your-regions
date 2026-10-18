@@ -15,15 +15,15 @@
  * with the snapped children, untouched: snapping aligns borders, it does not
  * decide which inputs the union is made of.
  *
- * The members arrive as a parameter rather than being read from
+ * The members are read from the region's `union_work` row rather than from
  * `region_members` here, so the union is made of the very shapes the collect
- * step gathered (`collectUnionInputs`), read once.
+ * step gathered (`collectUnionInputs`), read once; and the result is written
+ * back into that row, never handed to Node (`unionWork.ts`).
  */
 
-import { PoolClient } from 'pg';
+import type { PoolClient } from 'pg';
 
 export interface SnapStepOutcome {
-  collectedGeom: unknown;
   totalAdded: number;
   snappedPoints: number;
   rowCount: number;
@@ -32,8 +32,6 @@ export interface SnapStepOutcome {
 export async function snapChildRegionsForGroup(
   client: PoolClient,
   gId: number,
-  initialGeom: unknown,
-  memberGeom: unknown,
 ): Promise<SnapStepOutcome> {
   const snapResult = await client.query(`
     WITH child_regions AS (
@@ -74,32 +72,38 @@ export async function snapChildRegionsForGroup(
     -- caller unions is everything the collect step gathered. They are added
     -- as one more row of the same aggregate rather than collected onto the
     -- result, which keeps the shape identical to the collect step's own.
+    members AS (
+      SELECT members AS geom FROM union_work WHERE region_id = $1
+    ),
     collected AS (
       SELECT ST_Collect(geom) as geom
       FROM (
         SELECT geom FROM with_new_points
         UNION ALL
-        SELECT $2::geometry
+        SELECT geom FROM members
       ) union_inputs
       WHERE geom IS NOT NULL
     ),
     totals AS (
-      SELECT SUM(new_points) + COALESCE(ST_NPoints($2::geometry), 0) as total_points
+      SELECT SUM(new_points) + COALESCE((SELECT ST_NPoints(geom) FROM members), 0) as total_points
       FROM with_new_points
+    ),
+    -- The snapped children and the members replace the union's input in the
+    -- region's row. A region whose children all lack geometry snaps nothing,
+    -- and its row keeps what the collect step gathered.
+    kept AS (
+      UPDATE union_work SET collected = (SELECT geom FROM collected)
+       WHERE region_id = $1 AND EXISTS (SELECT 1 FROM with_new_points)
+      RETURNING 1
     )
     SELECT
       id, name, neighbor_count, original_points, new_points,
       new_points - original_points as added_points,
-      -- The collected geometry rides on one row. A scalar subquery is computed
-      -- once, but its whole value lands in every DataRow the driver buffers,
-      -- and this statement returns a row per child -- so a continent's union
-      -- would cross the wire once per child, and the regions worth snapping
-      -- are exactly the ones with the most (153 under New South Wales).
-      CASE WHEN ROW_NUMBER() OVER () = 1 THEN (SELECT geom FROM collected) END as collected_geom,
-      (SELECT total_points FROM totals) as total_snapped_points
+      (SELECT total_points FROM totals) as total_snapped_points,
+      (SELECT COUNT(*) FROM kept) as kept
     FROM with_new_points
     ORDER BY name
-  `, [gId, memberGeom]);
+  `, [gId]);
 
   let totalAdded = 0;
 
@@ -115,17 +119,9 @@ export async function snapChildRegionsForGroup(
     }
   }
 
-  // The row carrying the geometry is looked for rather than assumed to be the
-  // first: the window that picks it and the ORDER BY that returns the rows are
-  // two orderings, and nothing makes two children of one region share a name
-  // impossible. A region whose children all lack geometry returns no rows at
-  // all, and the geometry it came in with is what the caller unions.
-  const carrying = snapResult.rows.find((row) => row.collected_geom !== null);
-
   return {
-    collectedGeom: carrying?.collected_geom ?? initialGeom,
     totalAdded,
-    snappedPoints: parseInt(carrying?.total_snapped_points ?? '0'),
+    snappedPoints: parseInt(snapResult.rows[0]?.total_snapped_points ?? '0'),
     rowCount: snapResult.rows.length,
   };
 }
