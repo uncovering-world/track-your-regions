@@ -31,7 +31,8 @@
  */
 
 import { useMemo, useState } from 'react';
-import { Box, Button, Card, CardContent, Chip, Link, Stack, Typography } from '@mui/material';
+import { Box, Button, Card, CardContent, Chip, IconButton, Link, Stack, Tooltip, Typography } from '@mui/material';
+import PlaceIcon from '@mui/icons-material/Place';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import {
   answerComponentItems, suggestComponentItems, type AnswerComponentItemsBody, type ComponentItemSuggestions,
@@ -162,7 +163,7 @@ function PartPicture({ point }: { point: SitePoint | undefined }) {
 /** One candidate: what it is, why it was found, what Jev makes of it, and the two answers. */
 function CandidateRow({ candidate, judgement, answer, onAnswer, onPick, picked }: {
   candidate: Candidate;
-  /** The curator picked this candidate, by a click or by Enter or Space on the row: the map reads it (#1691). */
+  /** The curator picked this candidate, by a click on its row or with its *Show on the map* button: the map reads it (#1691). */
   onPick: () => void;
   /** Whether the map reads this candidate now. */
   picked: boolean;
@@ -175,20 +176,17 @@ function CandidateRow({ candidate, judgement, answer, onAnswer, onPick, picked }
   const toggle = (next: Answer) => onAnswer(answer === next ? undefined : next);
   return (
     // Picked, never hovered: a pointer crossing the list on its way to the map would re-target it (#1691).
-    <Stack
-      direction="row" spacing={2} alignItems="flex-start" tabIndex={0} aria-current={picked || undefined}
-      aria-label={`${candidate.label}: show on the map`}
-      onClick={onPick}
-      onKeyDown={(event) => {
-        if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
-          event.preventDefault();
-          onPick();
-        }
-      }}
-      sx={{ py: 0.75, cursor: 'pointer', borderRadius: 0.5, '&:focus-visible': { outline: '2px solid', outlineColor: 'primary.main' } }}
-    >
+    // A click anywhere on the row picks it; the keyboard picks with the row's own button, which names the
+    // candidate and says which one the map shows (`aria-current`: a pick is one of a set, never toggled off).
+    <Stack direction="row" spacing={2} alignItems="flex-start" onClick={onPick} sx={{ py: 0.75, cursor: 'pointer' }}>
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap">
+          <Tooltip title="Show on the map" describeChild>
+            <IconButton size="small" aria-label={`Show ${candidate.label} on the map`} aria-current={picked || undefined}
+              color={picked ? 'primary' : 'default'} onClick={(event) => { event.stopPropagation(); onPick(); }}>
+              <PlaceIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <Typography variant="body1" sx={{ fontWeight: 600 }}>
             {url ? <Link href={url} target="_blank" rel="noopener noreferrer">{candidate.label}</Link> : candidate.label}
           </Typography>

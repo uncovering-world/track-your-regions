@@ -4,10 +4,11 @@
  * with its candidate item beside it — two pins, the line between them and how
  * far apart they stand.
  *
- * The camera frames the pair alone, centred: the component's point and its
- * candidate, padded so both fit (`frameGeoJson`, the one camera call for a
- * shape a surface holds), or the point alone at street level where the
- * candidate has no position (#1691). The site's other places are drawn but
+ * The camera stands on the pair alone, centred on its midpoint at the zoom its
+ * distance asks for (`moveView`, the moved-coordinate dialog's view, drawn the
+ * short way across the antimeridian), so a cave 11 m from its component's
+ * point is two pins rather than one; or on the point alone at street level
+ * where the candidate has no position (#1691). The site's other places are drawn but
  * never framed: a far neighbour in the frame pushed the pair to the map's edge
  * (Prašuma Janj and its candidate 1.3 km off, on the Beech Forests), and a
  * curator who wants the neighbours zooms out to them.
@@ -24,7 +25,6 @@ import { Layer, Marker, Source, type MapRef } from 'react-map-gl/maplibre';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { MAP_STYLE } from '../../constants/mapStyles';
 import { useNearViewport } from '../../hooks/useNearViewport';
-import { frameGeoJson } from '../../utils/mapUtils';
 import { moveView, shortWayLongitudeDelta } from '../../utils/moveDescription';
 import { GuardedMap } from '../shared/GuardedMap';
 
@@ -40,7 +40,8 @@ export interface MapFocus {
 const CANDIDATE_PIN = '#5D4037';
 const SITE_PIN = '#9E9E9E';
 const DISTANCE_LINE = '#5D4037';
-const FRAME = { padding: 56, duration: 600 } as const;
+/** How long the camera takes to move to a newly picked pair. */
+const EASE_MS = 600;
 /** How close the map stands on a point whose candidate has no position: a street, where its own pin is readable. */
 export const POINT_ALONE_ZOOM = 14;
 /** The map's height, which the card keeps its rows' controls clear of. */
@@ -55,18 +56,11 @@ function othersOf(points: readonly SitePoint[], focus: MapFocus): Array<SitePoin
   ));
 }
 
-/** The pair the camera frames, or null where the candidate has no position and the point stands alone. */
-export function framedShape(focus: MapFocus): GeoJSON.MultiPoint | null {
+/** Where the camera stands: on the pair's midpoint at the zoom its distance asks for, or on the point alone at street level. */
+export function pairView(focus: MapFocus): { longitude: number; latitude: number; zoom: number } {
   const { point, candidate } = focus;
-  if (!candidate) return null;
-  return { type: 'MultiPoint', coordinates: [[point.longitude, point.latitude], [candidate.longitude, candidate.latitude]] };
-}
-
-/** Bring the camera to the focus: the pair framed, or the point alone centred at street level. */
-function frameFocus(map: MapRef | null, focus: MapFocus, shape: GeoJSON.MultiPoint | null, duration: number): void {
-  if (!map) return;
-  if (shape) frameGeoJson(map, shape, { ...FRAME, duration });
-  else map.easeTo({ center: [focus.point.longitude, focus.point.latitude], zoom: POINT_ALONE_ZOOM, duration });
+  if (!candidate) return { longitude: point.longitude, latitude: point.latitude, zoom: POINT_ALONE_ZOOM };
+  return moveView({ lat: point.latitude, lon: point.longitude }, { lat: candidate.latitude, lon: candidate.longitude });
 }
 
 /** The line from the point to its candidate, drawn the short way across the antimeridian. */
@@ -96,13 +90,15 @@ export function ComponentItemsMap({ sitePoints, focus }: { sitePoints: readonly 
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<MapRef>(null);
   const near = useNearViewport(box);
-  const shape = useMemo(() => framedShape(focus), [focus]);
-  useEffect(() => { frameFocus(map.current, focus, shape, FRAME.duration); }, [focus, shape]);
+  const view = useMemo(() => pairView(focus), [focus]);
+  useEffect(() => {
+    map.current?.easeTo({ center: [view.longitude, view.latitude], zoom: view.zoom, duration: EASE_MS });
+  }, [view]);
 
   const { point, candidate } = focus;
   const from = { lat: point.latitude, lon: point.longitude };
   const to = candidate ? { lat: candidate.latitude, lon: candidate.longitude } : null;
-  const middle = to ? moveView(from, to) : null;
+  const middle = candidate ? view : null;
 
   return (
     <Box
@@ -112,8 +108,7 @@ export function ComponentItemsMap({ sitePoints, focus }: { sitePoints: readonly 
       {near && (
         <GuardedMap
           ref={map}
-          initialViewState={middle ?? { latitude: point.latitude, longitude: point.longitude, zoom: POINT_ALONE_ZOOM }}
-          onLoad={() => frameFocus(map.current, focus, shape, 0)}
+          initialViewState={view}
           mapStyle={MAP_STYLE}
           style={{ width: '100%', height: '100%' }}
           unavailableCompact
