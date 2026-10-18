@@ -143,12 +143,22 @@ export async function runBuild(claimed: ClaimedBuild, stop: AbortSignal): Promis
   }
 }
 
+/**
+ * What a worker says of a build it has no builder for. The panel checked the
+ * builder in the backend, which runs the current code; a worker started before
+ * the builder was merged has none (#1670).
+ */
+const noBuilder = (key: string) => `This dump worker has no builder for ${key}; restart it to run the current code`;
+
 /** Verify the dump's file, or, for a `keep`, build from it and swap the result in. */
 async function readTheDump(
   claimed: ClaimedBuild, descriptor: DumpDescriptor, progress: BuildProgressRecord, signal: AbortSignal, notes: string[],
   clock: PassClock, onPhase: (message: string) => boolean, figures: Figures,
 ): Promise<{ result: { bytes: number; lines: number; checksumActual: string | null }; said: string[] }> {
   const { kind, only } = claimed.request;
+  const keeper = kind === 'keep' ? keeperOf(descriptor.key) : null;
+  // Counting the file as a verify would end green with nothing kept.
+  if (kind === 'keep' && !keeper) throw new Error(noBuilder(descriptor.key));
   onPhase(only ? `Finding ${only} on the host...` : 'Finding the newest complete file...');
   await beat(claimed.id, progress);
   const file = await resolveFile(descriptor, signal, only);
@@ -156,7 +166,6 @@ async function readTheDump(
   progress.phase = 'reading';
   onPhase(`Reading ${file.fileName}${dumpsDir() ? ' into the local copy' : ' from the host'}...`);
   const options = readOptions(descriptor, progress, signal, notes, clock, file.expectedBytes, figures);
-  const keeper = kind === 'keep' ? keeperOf(descriptor.key) : null;
   const built = keeper
     ? await keeper.build(file, {
       ...options,
@@ -181,7 +190,7 @@ async function rederive(
   onPhase: (message: string) => void,
 ): Promise<void> {
   const keeper = keeperOf(descriptor.key);
-  if (!keeper?.rederive) throw new Error(`Nothing built from ${descriptor.key} can be derived again`);
+  if (!keeper?.rederive) throw new Error(noBuilder(descriptor.key));
   progress.phase = 'deriving';
   onPhase('Deriving the tables again from what is kept...');
   await beat(claimed.id, progress);
@@ -240,7 +249,7 @@ async function tryOnSample(
   clock: PassClock, onPhase: (message: string) => boolean, only: string | undefined, figures: Figures,
 ): Promise<{ bytes: number; lines: number; checksumActual: string | null; summary?: string }> {
   const keeper = keeperOf(descriptor.key);
-  if (!keeper) throw new Error(`Nothing is built from ${descriptor.key} yet`);
+  if (!keeper) throw new Error(noBuilder(descriptor.key));
   if (!only) throw new Error('A trial reads a sample, and none was named');
   const dir = localDir();
   const sample = await sampleIn(dir, only);

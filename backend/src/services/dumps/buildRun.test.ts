@@ -168,6 +168,25 @@ describe('a build in the dump worker (ADR-0106)', () => {
     expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'failed', error: expect.stringMatching(/does not know a compact build/) }));
   });
 
+  it('fails a keep build of a dump it has no builder for, before finding or reading the file (#1670)', async () => {
+    await runBuild({ id: 9, dump: 'enwiki-page', request: { kind: 'keep' } }, new AbortController().signal);
+    expect(ledger.recordFile).not.toHaveBeenCalled();
+    expect(read.readDump).not.toHaveBeenCalled();
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
+      status: 'failed', error: expect.stringMatching(/has no builder for enwiki-page; restart it/),
+    }));
+  });
+
+  it('says to restart the worker for a re-derive or a trial of a dump it has no builder for (#1670)', async () => {
+    for (const kind of ['rederive', 'trial'] as const) {
+      vi.clearAllMocks();
+      await runBuild({ id: 9, dump: 'enwiki-page', request: { kind, only: SAMPLE.fileName } }, new AbortController().signal);
+      expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
+        status: 'failed', error: expect.stringMatching(/has no builder for enwiki-page; restart it/),
+      }));
+    }
+  });
+
   it('closes a re-derive that failed with what it noted on the way (#1526)', async () => {
     keepers.rederive.mockImplementation(async ({ onNote }) => {
       onNote?.('the database\'s disk was not checked: DB_DISK_DIR names no path on it');
