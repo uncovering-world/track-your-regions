@@ -84,9 +84,9 @@ describe("a site's candidate component items", () => {
     expect((screen.getByRole('button', { name: 'Save answers' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('reads the candidate a curator picks, by a click or by Enter, and not the one the pointer crosses (#1691)', () => {
+  it('reads the candidate a curator picks, by its button or a click on its row, and not the one the pointer crosses (#1691)', () => {
     renderCard();
-    const row = (label: string) => screen.getByLabelText(`${label}: show on the map`);
+    const row = (label: string) => screen.getByRole('button', { name: `Show ${label} on the map` });
 
     fireEvent.mouseEnter(row('Castrul Buciumi'));
     fireEvent.focus(row('Castrul Buciumi'));
@@ -101,7 +101,8 @@ describe("a site's candidate component items", () => {
     fireEvent.mouseEnter(row('Turnul Bologa'));
     expect(screen.queryByText('The candidate’s position is not read yet')).toBeNull();
 
-    fireEvent.keyDown(row('Turnul Bologa'), { key: 'Enter' });
+    // A click on the row itself, away from its button, picks it too.
+    fireEvent.click(screen.getByText('near the point, of the site’s kind · 410 m away · names 52 % alike'));
     expect(screen.getByText('The candidate’s position is not read yet')).toBeTruthy();
     expect(row('Castrul Buciumi')).not.toHaveAttribute('aria-current');
   });
