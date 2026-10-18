@@ -21,15 +21,15 @@ const LIVE: Record<string, { name: string; constraint: 'p' | null; index_def: st
     { name: 'wikidata_entities_pkey', constraint: 'p', index_def: '', constraint_def: 'PRIMARY KEY (id)' },
   ],
   wikidata_claims: [
-    { name: 'idx_wikidata_claims_subject', constraint: null, index_def: 'CREATE INDEX idx_wikidata_claims_subject ON public.wikidata_claims USING btree (subject, property)', constraint_def: null },
-    { name: 'idx_wikidata_claims_value_item', constraint: null, index_def: 'CREATE INDEX idx_wikidata_claims_value_item ON public.wikidata_claims USING btree (property, value_item)', constraint_def: null },
+    { name: 'idx_wikidata_claims_subject', constraint: null, index_def: 'CREATE INDEX idx_wikidata_claims_subject ON workbench.wikidata_claims USING btree (subject, property)', constraint_def: null },
+    { name: 'idx_wikidata_claims_value_item', constraint: null, index_def: 'CREATE INDEX idx_wikidata_claims_value_item ON workbench.wikidata_claims USING btree (property, value_item)', constraint_def: null },
   ],
   wikidata_labels: [
     { name: 'wikidata_labels_pkey', constraint: 'p', index_def: '', constraint_def: 'PRIMARY KEY (id, language)' },
   ],
   wikidata_sitelinks: [
     { name: 'wikidata_sitelinks_pkey', constraint: 'p', index_def: '', constraint_def: 'PRIMARY KEY (id, site)' },
-    { name: 'idx_wikidata_sitelinks_title', constraint: null, index_def: 'CREATE INDEX idx_wikidata_sitelinks_title ON public.wikidata_sitelinks USING btree (site, title)', constraint_def: null },
+    { name: 'idx_wikidata_sitelinks_title', constraint: null, index_def: 'CREATE INDEX idx_wikidata_sitelinks_title ON workbench.wikidata_sitelinks USING btree (site, title)', constraint_def: null },
   ],
 };
 
@@ -85,7 +85,7 @@ describe('indexNextTables', () => {
       'idx_wikidata_claims_subject_next', 'idx_wikidata_claims_value_item_next', 'idx_wikidata_sitelinks_title_next',
       'wikidata_entities_pkey_next', 'wikidata_labels_pkey_next', 'wikidata_sitelinks_pkey_next',
     ]);
-    expect(of('idx_wikidata_claims_subject').sql).toContain('ON public.wikidata_claims_next ');
+    expect(of('idx_wikidata_claims_subject').sql).toContain('ON workbench.wikidata_claims_next ');
     expect(mostAtOnce).toBeGreaterThan(1);
     expect(mostAtOnce).toBeLessThanOrEqual(INDEX_LANES);
   });

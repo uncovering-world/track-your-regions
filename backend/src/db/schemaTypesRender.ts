@@ -16,6 +16,8 @@
 /** One column of one relation, as `generateSchemaTypes.ts` reads it. */
 export interface CatalogColumn {
   table: string;
+  /** The schema the relation sits in: `public`, or `workbench` for a dump-built table (ADR-0124). */
+  schema: string;
   /** `r` for a table, `v` for a view: a view's columns are never NOT NULL. */
   relkind: string;
   column: string;
@@ -255,6 +257,16 @@ export function renderSchemaTypes(
     out.push('}');
     out.push('');
   }
+
+  out.push('/**');
+  out.push(' * The schema every relation sits in (ADR-0124): `workbench` for the tables');
+  out.push(' * built from public dumps, `public` for the rest. `TABLE_TIERS` names each');
+  out.push(' * one\'s tier against this list.');
+  out.push(' */');
+  out.push('export const RELATION_SCHEMAS = {');
+  for (const [table, cols] of relations) out.push(`  ${key(table)}: ${JSON.stringify(cols[0].schema)},`);
+  out.push('} as const;');
+  out.push('');
 
   out.push('/**');
   out.push(' * The declared width of every VARCHAR and CHAR column, per element for an');

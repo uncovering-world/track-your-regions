@@ -13,6 +13,7 @@
 import { availableParallelism } from 'node:os';
 import type { PoolClient, QueryResultRow } from 'pg';
 import { pool } from '../../../db/index.js';
+import { WORKBENCH_SCHEMA, inWorkbench } from '../../../db/workbench.js';
 import { arrayItemOf } from './compactEntity.js';
 import { insertRefusing, type Refusals } from './refusals.js';
 import { whatTheCopyNeeds, type BuildRules, type CopyNeeds } from './buildRules.js';
@@ -26,7 +27,7 @@ type SubsetTable = typeof SUBSET_TABLES[number];
 /** The tables derived from the entities in SQL: what a re-derive rebuilds without the dump (#1526). */
 export const DERIVED_TABLES = SUBSET_TABLES.filter(table => table !== 'wikidata_entities');
 
-const next = (table: SubsetTable) => `${table}_next`;
+const next = (table: SubsetTable) => inWorkbench(`${table}_next`);
 
 /**
  * The properties `wikidata_claims` holds a row for: what the catalogue reads
@@ -96,10 +97,10 @@ export async function cancellable<Row extends QueryResultRow = QueryResultRow>(
  * rows Postgres refused. A piece's record is written in the transaction that
  * writes its rows, so a piece is either wholly done or not done at all.
  */
-const RESUME_TABLE = 'wikidata_build_resume_next';
+const RESUME_TABLE = inWorkbench('wikidata_build_resume_next');
 /** How many piece transactions may be open at once: each holds a client of the pool the API shares (`db/index.ts`). */
 export const PIECES_IN_FLIGHT = 6;
-const PIECES_TABLE = 'wikidata_build_pieces_next';
+const PIECES_TABLE = inWorkbench('wikidata_build_pieces_next');
 
 /** Empty `_next` copies of every table, made like the live ones but with no index yet: they load faster without. */
 export async function createNextTables(resumeKey: string, spoolPath: string): Promise<void> {
@@ -474,8 +475,8 @@ export async function indexesOf(client: PoolClient, table: string): Promise<Inde
        JOIN pg_class t ON t.oid = x.indrelid
        JOIN pg_namespace n ON n.oid = t.relnamespace
        LEFT JOIN pg_constraint con ON con.conindid = i.oid AND con.contype IN ('p', 'u')
-      WHERE n.nspname = 'public' AND t.relname = $1`,
-    [table],
+      WHERE n.nspname = $2 AND t.relname = $1`,
+    [table, WORKBENCH_SCHEMA],
   );
   return result.rows.map(row => ({
     name: row.name,
@@ -558,7 +559,7 @@ export async function indexNextTables(signal: AbortSignal, only: readonly Subset
             ? `ALTER TABLE ${next(table)} ADD CONSTRAINT ${index.name}_next ${index.definition}`
             : index.definition
               .replace(`INDEX ${index.name} ON`, `INDEX ${index.name}_next ON`)
-              .replace(`ON public.${table} `, `ON public.${next(table)} `),
+              .replace(`ON ${inWorkbench(table)} `, `ON ${next(table)} `),
         });
       }
     }
@@ -651,9 +652,9 @@ export async function swapIn(
     await client.query('BEGIN');
     for (const table of only) {
       const indexes = await indexesOf(client, table);
-      await client.query(`DROP TABLE ${table}`);
+      await client.query(`DROP TABLE ${inWorkbench(table)}`);
       await client.query(`ALTER TABLE ${next(table)} RENAME TO ${table}`);
-      for (const index of indexes) await client.query(`ALTER INDEX ${index.name}_next RENAME TO ${index.name}`);
+      for (const index of indexes) await client.query(`ALTER INDEX ${inWorkbench(index.name + '_next')} RENAME TO ${index.name}`);
     }
     if (only.includes('wikidata_entities')) await client.query(`DROP TABLE IF EXISTS ${RESUME_TABLE}, ${PIECES_TABLE}`);
     await client.query(

@@ -9,14 +9,15 @@
 
 import type { PoolClient } from 'pg';
 import { pool } from '../../../db/index.js';
+import { inWorkbench } from '../../../db/workbench.js';
 import type { CopyNeeds } from '../wikidata/buildRules.js';
 import { cancellable, indexesOf } from '../wikidata/subsetTables.js';
 
 const TABLE = 'wikipedia_redirects';
-const NEXT = `${TABLE}_next`;
+const NEXT = inWorkbench(`${TABLE}_next`);
 /** One edition's redirect pages (id → title), and the targets its redirect table gives them (id → title). */
-const PAGES = 'wikipedia_redirect_pages_stage';
-const TARGETS = 'wikipedia_redirect_targets_stage';
+const PAGES = inWorkbench('wikipedia_redirect_pages_stage');
+const TARGETS = inWorkbench('wikipedia_redirect_targets_stage');
 
 /** A fresh, empty `_next` copy without its indexes, and empty staging tables. */
 export async function createNextTable(): Promise<void> {
@@ -78,7 +79,7 @@ export async function indexNextTable(signal: AbortSignal): Promise<void> {
   try {
     statements = (await indexesOf(client, TABLE)).map(index => (index.constraint
       ? `ALTER TABLE ${NEXT} ADD CONSTRAINT ${index.name}_next ${index.definition}`
-      : index.definition.replace(`INDEX ${index.name} ON`, `INDEX ${index.name}_next ON`).replace(`ON public.${TABLE} `, `ON public.${NEXT} `)));
+      : index.definition.replace(`INDEX ${index.name} ON`, `INDEX ${index.name}_next ON`).replace(`ON ${inWorkbench(TABLE)} `, `ON ${NEXT} `)));
   } finally {
     client.release();
   }
@@ -95,9 +96,9 @@ export async function swapIn(buildId: number, dumpDate: string, editions: Record
   try {
     await client.query('BEGIN');
     const indexes = await indexesOf(client, TABLE);
-    await client.query(`DROP TABLE ${TABLE}`);
+    await client.query(`DROP TABLE ${inWorkbench(TABLE)}`);
     await client.query(`ALTER TABLE ${NEXT} RENAME TO ${TABLE}`);
-    for (const index of indexes) await client.query(`ALTER INDEX ${index.name}_next RENAME TO ${index.name}`);
+    for (const index of indexes) await client.query(`ALTER INDEX ${inWorkbench(index.name + '_next')} RENAME TO ${index.name}`);
     await client.query(
       'INSERT INTO wikipedia_redirect_builds (build_id, dump_date, editions) VALUES ($1, $2, $3)',
       [buildId, dumpDate, JSON.stringify(editions)],

@@ -32,6 +32,21 @@ BEGIN
 END
 $$;
 
+-- The tables built from public dumps live in a schema of their own (ADR-0124):
+-- the Wikidata subset, readership, English Wikipedia's structure, the
+-- redirects and the dump builds' ledger. No reader or curator route reads
+-- them, and a deployment of the serving tables alone leaves the schema
+-- behind. The search path is the database's, so every client finds them by
+-- their bare names; what creates a table there names the schema. Migration
+-- 131 moves them in a database that already exists.
+CREATE SCHEMA IF NOT EXISTS workbench;
+DO $$
+BEGIN
+  EXECUTE format('ALTER DATABASE %I SET search_path = public, workbench', current_database());
+END
+$$;
+SET search_path = public, workbench;
+
 -- =============================================================================
 -- Helper: Immutable unaccent wrapper (needed for generated columns / indexes)
 -- =============================================================================
@@ -3991,7 +4006,7 @@ $$ LANGUAGE plpgsql;
 -- One row per build of a public dump (ADR-0101 decision 3): which dump, which
 -- file of which date, how it was read, whether it was verified, and what the
 -- build made of it. A reader of a dump-derived table names the build it reads.
-CREATE TABLE IF NOT EXISTS dump_builds (
+CREATE TABLE IF NOT EXISTS workbench.dump_builds (
     id SERIAL PRIMARY KEY,
     dump VARCHAR(60) NOT NULL,
     -- The file is known once the build resolves it; a queued build has none yet (#1467).
@@ -4017,16 +4032,16 @@ CREATE TABLE IF NOT EXISTS dump_builds (
     cancel_requested_at TIMESTAMPTZ,
     outcome TEXT
 );
-CREATE INDEX IF NOT EXISTS idx_dump_builds_dump ON dump_builds(dump, started_at DESC);
+CREATE INDEX IF NOT EXISTS idx_dump_builds_dump ON workbench.dump_builds(dump, started_at DESC);
 -- At most one build of a dump is queued or running, in any process (#1463, #1467).
-CREATE UNIQUE INDEX IF NOT EXISTS idx_dump_builds_one_active ON dump_builds(dump) WHERE status IN ('queued', 'running');
-COMMENT ON COLUMN dump_builds.heartbeat_at IS 'When the running build last said it is alive, every few seconds, whatever process runs it (#1463). A running row that has not beaten for five minutes is a build that stopped.';
-COMMENT ON COLUMN dump_builds.runner IS 'What runs the build: the dump worker on this host (worker:<hostname>), or a script. A worker that starts closes the running rows of its own runner, which its previous run left.';
-COMMENT ON COLUMN dump_builds.request IS 'What the admin asked for (#1467): kind (verify, keep, rederive, sample or trial) and, for a build that reads a local file, only (that file''s name: the local copy, or the sample a trial reads), which the worker reads when it takes the queued build.';
-COMMENT ON COLUMN dump_builds.outcome IS 'What a build that ended well did, in words (#1527): what it kept, how long each step took, an older copy removed. Null while it runs and for one that failed or was cancelled, whose reason is in error.';
-COMMENT ON COLUMN dump_builds.progress IS 'The running build''s progress as the panel shows it (#1467): phase message, bytes downloaded and read, lines; written by the worker with its heartbeat.';
-COMMENT ON COLUMN dump_builds.cancel_requested_at IS 'When an admin asked the build to stop (#1467); the worker reads it with its heartbeat and cancels.';
-COMMENT ON TABLE dump_builds IS 'A build of a public dump (ADR-0101): the dump, the dated file, stream or local copy, the checksum it was verified against (or its size and a clean end of stream where none is published), the lines read and the outcome. A consumer commits only after verification.';
+CREATE UNIQUE INDEX IF NOT EXISTS idx_dump_builds_one_active ON workbench.dump_builds(dump) WHERE status IN ('queued', 'running');
+COMMENT ON COLUMN workbench.dump_builds.heartbeat_at IS 'When the running build last said it is alive, every few seconds, whatever process runs it (#1463). A running row that has not beaten for five minutes is a build that stopped.';
+COMMENT ON COLUMN workbench.dump_builds.runner IS 'What runs the build: the dump worker on this host (worker:<hostname>), or a script. A worker that starts closes the running rows of its own runner, which its previous run left.';
+COMMENT ON COLUMN workbench.dump_builds.request IS 'What the admin asked for (#1467): kind (verify, keep, rederive, sample or trial) and, for a build that reads a local file, only (that file''s name: the local copy, or the sample a trial reads), which the worker reads when it takes the queued build.';
+COMMENT ON COLUMN workbench.dump_builds.outcome IS 'What a build that ended well did, in words (#1527): what it kept, how long each step took, an older copy removed. Null while it runs and for one that failed or was cancelled, whose reason is in error.';
+COMMENT ON COLUMN workbench.dump_builds.progress IS 'The running build''s progress as the panel shows it (#1467): phase message, bytes downloaded and read, lines; written by the worker with its heartbeat.';
+COMMENT ON COLUMN workbench.dump_builds.cancel_requested_at IS 'When an admin asked the build to stop (#1467); the worker reads it with its heartbeat and cancels.';
+COMMENT ON TABLE workbench.dump_builds IS 'A build of a public dump (ADR-0101): the dump, the dated file, stream or local copy, the checksum it was verified against (or its size and a clean end of stream where none is published), the lines read and the outcome. A consumer commits only after verification.';
 
 -- A world view's geometry computation, queued for the dump worker (#1658,
 -- ADR-0122) through a ledger of its own, as a dump build is (ADR-0106).
@@ -4066,24 +4081,24 @@ COMMENT ON COLUMN geometry_computations.outcome IS 'What a computation that ende
 -- swaps them in whole, so a reader never sees half a build. They are UNLOGGED:
 -- each is rebuilt from its dump, and writing tens of gigabytes through the WAL
 -- would double what a build writes for no reader's sake.
-CREATE TABLE IF NOT EXISTS wikidata_subset_builds (
-    build_id INTEGER PRIMARY KEY REFERENCES dump_builds(id),
+CREATE TABLE IF NOT EXISTS workbench.wikidata_subset_builds (
+    build_id INTEGER PRIMARY KEY REFERENCES workbench.dump_builds(id),
     dump_date DATE NOT NULL,
     counts JSONB NOT NULL,
     swapped_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     rules JSONB
 );
-COMMENT ON COLUMN wikidata_subset_builds.rules IS 'The versions of the rules the build was made under (#1583): scope (the first pass''s version and rules), write (how a line is written), derive (how the derived tables are made). Null on a build from before they were recorded, read as current.';
-COMMENT ON TABLE wikidata_subset_builds IS 'Each build of the local Wikidata subset that was swapped in (ADR-0105): the dump build it read, the dump date, and what it kept. The newest row is what the wikidata_* tables hold.';
+COMMENT ON COLUMN workbench.wikidata_subset_builds.rules IS 'The versions of the rules the build was made under (#1583): scope (the first pass''s version and rules), write (how a line is written), derive (how the derived tables are made). Null on a build from before they were recorded, read as current.';
+COMMENT ON TABLE workbench.wikidata_subset_builds IS 'Each build of the local Wikidata subset that was swapped in (ADR-0105): the dump build it read, the dump date, and what it kept. The newest row is what the wikidata_* tables hold.';
 
-CREATE UNLOGGED TABLE IF NOT EXISTS wikidata_entities (
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikidata_entities (
     id TEXT PRIMARY KEY,
     sitelink_count INTEGER NOT NULL,
     entity JSONB COMPRESSION lz4 NOT NULL
 ) WITH (toast_tuple_target = 128);
-COMMENT ON TABLE wikidata_entities IS 'An item or property the local Wikidata subset keeps (ADR-0105), whole in a compact form: every statement at every rank with its qualifiers and statement id, every sitelink, labels and descriptions in the subset''s languages; no references or aliases.';
+COMMENT ON TABLE workbench.wikidata_entities IS 'An item or property the local Wikidata subset keeps (ADR-0105), whole in a compact form: every statement at every rank with its qualifiers and statement id, every sitelink, labels and descriptions in the subset''s languages; no references or aliases.';
 
-CREATE UNLOGGED TABLE IF NOT EXISTS wikidata_claims (
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikidata_claims (
     subject TEXT NOT NULL,
     property TEXT NOT NULL,
     statement_id TEXT NOT NULL,
@@ -4092,78 +4107,78 @@ CREATE UNLOGGED TABLE IF NOT EXISTS wikidata_claims (
     value JSONB,
     qualifiers JSONB
 );
-CREATE INDEX IF NOT EXISTS idx_wikidata_claims_subject ON wikidata_claims (subject, property);
-CREATE INDEX IF NOT EXISTS idx_wikidata_claims_value_item ON wikidata_claims (property, value_item) WHERE value_item IS NOT NULL;
-COMMENT ON TABLE wikidata_claims IS 'The statements of the properties the catalogue reads, one row each, derived from wikidata_entities: rank 1 preferred, 0 normal, -1 deprecated; value_item for an item value, value otherwise.';
+CREATE INDEX IF NOT EXISTS idx_wikidata_claims_subject ON workbench.wikidata_claims (subject, property);
+CREATE INDEX IF NOT EXISTS idx_wikidata_claims_value_item ON workbench.wikidata_claims (property, value_item) WHERE value_item IS NOT NULL;
+COMMENT ON TABLE workbench.wikidata_claims IS 'The statements of the properties the catalogue reads, one row each, derived from wikidata_entities: rank 1 preferred, 0 normal, -1 deprecated; value_item for an item value, value otherwise.';
 
-CREATE UNLOGGED TABLE IF NOT EXISTS wikidata_labels (
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikidata_labels (
     id TEXT NOT NULL,
     language TEXT NOT NULL,
     label TEXT,
     description TEXT,
     PRIMARY KEY (id, language)
 );
-COMMENT ON TABLE wikidata_labels IS 'Labels and descriptions in the subset''s languages: of every kept entity, and of every entity a kept item names (the labels ring), so a work''s maker has a name.';
+COMMENT ON TABLE workbench.wikidata_labels IS 'Labels and descriptions in the subset''s languages: of every kept entity, and of every entity a kept item names (the labels ring), so a work''s maker has a name.';
 
-CREATE UNLOGGED TABLE IF NOT EXISTS wikidata_sitelinks (
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikidata_sitelinks (
     id TEXT NOT NULL,
     site TEXT NOT NULL,
     title TEXT NOT NULL,
     PRIMARY KEY (id, site)
 );
-CREATE INDEX IF NOT EXISTS idx_wikidata_sitelinks_title ON wikidata_sitelinks (site, title);
-COMMENT ON TABLE wikidata_sitelinks IS 'Every sitelink of a kept item: the article each Wikipedia edition (and every other site) has about it.';
+CREATE INDEX IF NOT EXISTS idx_wikidata_sitelinks_title ON workbench.wikidata_sitelinks (site, title);
+COMMENT ON TABLE workbench.wikidata_sitelinks IS 'Every sitelink of a kept item: the article each Wikipedia edition (and every other site) has about it.';
 
-CREATE UNLOGGED TABLE IF NOT EXISTS wikidata_class_closure (
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikidata_class_closure (
     class TEXT NOT NULL,
     ancestor TEXT NOT NULL,
     PRIMARY KEY (class, ancestor)
 );
-CREATE INDEX IF NOT EXISTS idx_wikidata_class_closure_ancestor ON wikidata_class_closure (ancestor);
-COMMENT ON TABLE wikidata_class_closure IS 'For every class a kept item is an instance of, the class itself and every class above it through subclass of (P279, deprecated statements left out).';
+CREATE INDEX IF NOT EXISTS idx_wikidata_class_closure_ancestor ON workbench.wikidata_class_closure (ancestor);
+COMMENT ON TABLE workbench.wikidata_class_closure IS 'For every class a kept item is an instance of, the class itself and every class above it through subclass of (P279, deprecated statements left out).';
 
 -- English Wikipedia's structure (#1440, ADR-0121): its articles and
 -- categories, their Wikidata items and which category each is filed under,
 -- read from the enwiki SQL dumps of one date. Unlogged, rebuilt from the
 -- dumps: a build writes _next copies and swaps them in whole, and the record
 -- of the build is unlogged too, so a crash empties it with the tables.
-CREATE UNLOGGED TABLE IF NOT EXISTS enwiki_structure_builds (
-    build_id INTEGER PRIMARY KEY REFERENCES dump_builds(id),
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.enwiki_structure_builds (
+    build_id INTEGER PRIMARY KEY REFERENCES workbench.dump_builds(id),
     dump_date DATE NOT NULL,
     counts JSONB NOT NULL,
     swapped_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-COMMENT ON TABLE enwiki_structure_builds IS 'Each build of English Wikipedia''s structure that was swapped in (#1440, ADR-0121): the dump build that read it, the dump date its four tables share, and what it kept. The newest row is what the enwiki_* tables hold; unlogged like them, so a crash empties the record with the tables and the panel asks for a build.';
+COMMENT ON TABLE workbench.enwiki_structure_builds IS 'Each build of English Wikipedia''s structure that was swapped in (#1440, ADR-0121): the dump build that read it, the dump date its four tables share, and what it kept. The newest row is what the enwiki_* tables hold; unlogged like them, so a crash empties the record with the tables and the panel asks for a build.';
 
-CREATE UNLOGGED TABLE IF NOT EXISTS enwiki_pages (
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.enwiki_pages (
     id INTEGER PRIMARY KEY,
     namespace SMALLINT NOT NULL CHECK (namespace IN (0, 14)),
     title TEXT NOT NULL,
     UNIQUE (namespace, title)
 );
-COMMENT ON TABLE enwiki_pages IS 'English Wikipedia''s articles (namespace 0) and categories (14) that are no redirect (#1440, ADR-0121), by page id, the title as the dump writes it, with underscores for spaces.';
+COMMENT ON TABLE workbench.enwiki_pages IS 'English Wikipedia''s articles (namespace 0) and categories (14) that are no redirect (#1440, ADR-0121), by page id, the title as the dump writes it, with underscores for spaces.';
 
-CREATE UNLOGGED TABLE IF NOT EXISTS enwiki_page_items (
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.enwiki_page_items (
     page INTEGER PRIMARY KEY,
     item TEXT NOT NULL
 );
-CREATE INDEX IF NOT EXISTS idx_enwiki_page_items_item ON enwiki_page_items (item);
-COMMENT ON TABLE enwiki_page_items IS 'The Wikidata item of each article and category kept (#1440): page_props'' wikibase_item.';
+CREATE INDEX IF NOT EXISTS idx_enwiki_page_items_item ON workbench.enwiki_page_items (item);
+COMMENT ON TABLE workbench.enwiki_page_items IS 'The Wikidata item of each article and category kept (#1440): page_props'' wikibase_item.';
 
-CREATE UNLOGGED TABLE IF NOT EXISTS enwiki_categories (
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.enwiki_categories (
     id INTEGER PRIMARY KEY,
     title TEXT NOT NULL UNIQUE
 );
-COMMENT ON TABLE enwiki_categories IS 'The categories pages are filed under that are not hidden (#1440, ADR-0121): the linktarget id the category links name and the category''s title, with underscores, without its Category: prefix. A hidden category (__HIDDENCAT__, a maintenance or tracking one) is not kept, nor any link to it.';
+COMMENT ON TABLE workbench.enwiki_categories IS 'The categories pages are filed under that are not hidden (#1440, ADR-0121): the linktarget id the category links name and the category''s title, with underscores, without its Category: prefix. A hidden category (__HIDDENCAT__, a maintenance or tracking one) is not kept, nor any link to it.';
 
-CREATE UNLOGGED TABLE IF NOT EXISTS enwiki_category_links (
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.enwiki_category_links (
     page INTEGER NOT NULL,
     category INTEGER NOT NULL,
     subcat BOOLEAN NOT NULL,
     PRIMARY KEY (page, category)
 );
-CREATE INDEX IF NOT EXISTS idx_enwiki_category_links_category ON enwiki_category_links (category, subcat);
-COMMENT ON TABLE enwiki_category_links IS 'Which category each article or category is filed under (#1440, ADR-0121): the filed page''s id (an enwiki_pages row), the category''s linktarget id (an enwiki_categories row), and whether the filed page is itself a category (a subcategory), as categorymembers'' cmtype tells them.';
+CREATE INDEX IF NOT EXISTS idx_enwiki_category_links_category ON workbench.enwiki_category_links (category, subcat);
+COMMENT ON TABLE workbench.enwiki_category_links IS 'Which category each article or category is filed under (#1440, ADR-0121): the filed page''s id (an enwiki_pages row), the category''s linktarget id (an enwiki_categories row), and whether the filed page is itself a category (a subcategory), as categorymembers'' cmtype tells them.';
 
 -- Readership (ADR-0055, #1436): each month of Wikimedia's pageview_complete
 -- user file, summed per Wikipedia article and kept per Wikidata item and
@@ -4173,10 +4188,10 @@ COMMENT ON TABLE enwiki_category_links IS 'Which category each article or catego
 -- rebuilt from its dump. readership_month_files is unlogged too, so a crash
 -- that empties the months empties the record of them with it, and the next
 -- build reads the year again rather than skipping months it no longer holds.
-CREATE UNLOGGED TABLE IF NOT EXISTS readership_month_files (
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.readership_month_files (
     month DATE PRIMARY KEY CHECK (EXTRACT(DAY FROM month) = 1),
     file_name TEXT NOT NULL,
-    build_id INTEGER NOT NULL REFERENCES dump_builds(id),
+    build_id INTEGER NOT NULL REFERENCES workbench.dump_builds(id),
     lines BIGINT NOT NULL,
     editions JSONB NOT NULL,
     kept BIGINT NOT NULL,
@@ -4184,9 +4199,9 @@ CREATE UNLOGGED TABLE IF NOT EXISTS readership_month_files (
     redirects_dump_date DATE,
     redirects_build_id INTEGER
 );
-COMMENT ON TABLE readership_month_files IS 'Each month of readership kept (#1436): the pageview file it was read from, the build that read it, its lines, every Wikipedia edition''s total views that month (editions, by sitelink site code: the denominator a door divides by, and what says which editions ADR-0055 counts, those over 15M views a year) and the rows kept.';
+COMMENT ON TABLE workbench.readership_month_files IS 'Each month of readership kept (#1436): the pageview file it was read from, the build that read it, its lines, every Wikipedia edition''s total views that month (editions, by sitelink site code: the denominator a door divides by, and what says which editions ADR-0055 counts, those over 15M views a year) and the rows kept.';
 
-CREATE UNLOGGED TABLE IF NOT EXISTS readership_months (
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.readership_months (
     month DATE NOT NULL,
     item TEXT NOT NULL,
     site TEXT NOT NULL,
@@ -4195,30 +4210,30 @@ CREATE UNLOGGED TABLE IF NOT EXISTS readership_months (
     daily INTEGER[],
     PRIMARY KEY (item, site, month)
 );
-CREATE INDEX IF NOT EXISTS idx_readership_months_month ON readership_months (month);
-COMMENT ON TABLE readership_months IS 'A month''s views of a Wikidata item''s article in one Wikipedia edition (ADR-0055, #1436): the article''s title and its redirects (#1650), in all three of the dump''s spellings and every access method, summed; mobile is the views on a phone (mobile web and app), for the automated-traffic check; daily is the month''s series, summed day by day over the titles whose plain spelling reaches 400 views. A title is staged where its plain spelling reaches 10 views in the month, every encoded spelling always, and kept where they sum to 10.';
+CREATE INDEX IF NOT EXISTS idx_readership_months_month ON workbench.readership_months (month);
+COMMENT ON TABLE workbench.readership_months IS 'A month''s views of a Wikidata item''s article in one Wikipedia edition (ADR-0055, #1436): the article''s title and its redirects (#1650), in all three of the dump''s spellings and every access method, summed; mobile is the views on a phone (mobile web and app), for the automated-traffic check; daily is the month''s series, summed day by day over the titles whose plain spelling reaches 400 views. A title is staged where its plain spelling reaches 10 views in the month, every encoded spelling always, and kept where they sum to 10.';
 
 -- The redirects readership folds under an article (#1650). See db/migrations/126.
-CREATE UNLOGGED TABLE IF NOT EXISTS wikipedia_redirect_builds (
-    build_id INTEGER PRIMARY KEY REFERENCES dump_builds(id),
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikipedia_redirect_builds (
+    build_id INTEGER PRIMARY KEY REFERENCES workbench.dump_builds(id),
     dump_date DATE NOT NULL,
     editions JSONB NOT NULL,
     swapped_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-COMMENT ON TABLE wikipedia_redirect_builds IS 'Each build of the redirects readership folds (#1650, ADR-0055 decision 2) that was swapped in: the dump build that read it, the dump date every edition''s tables share, and the redirects kept per edition by its sitelink site code. The newest row is what wikipedia_redirects holds; unlogged like it, so a crash empties the record with the table and the panel asks for a build.';
+COMMENT ON TABLE workbench.wikipedia_redirect_builds IS 'Each build of the redirects readership folds (#1650, ADR-0055 decision 2) that was swapped in: the dump build that read it, the dump date every edition''s tables share, and the redirects kept per edition by its sitelink site code. The newest row is what wikipedia_redirects holds; unlogged like it, so a crash empties the record with the table and the panel asks for a build.';
 
-CREATE UNLOGGED TABLE IF NOT EXISTS wikipedia_redirects (
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikipedia_redirects (
     site TEXT NOT NULL,
     title TEXT NOT NULL,
     target TEXT NOT NULL,
     PRIMARY KEY (site, title)
 );
-COMMENT ON TABLE wikipedia_redirects IS 'An article''s redirects in the Wikipedia editions a door counts (#1650, ADR-0055 decision 2: over 15 million views a year): a redirect in namespace 0 by its title, and the title of the article it points to, both with spaces as Wikidata''s sitelinks write them. Kept only where the target is a sitelink of the local subset and the redirect is no item''s own sitelink, so a month''s views of the redirect are summed under that article''s item.';
+COMMENT ON TABLE workbench.wikipedia_redirects IS 'An article''s redirects in the Wikipedia editions a door counts (#1650, ADR-0055 decision 2: over 15 million views a year): a redirect in namespace 0 by its title, and the title of the article it points to, both with spaces as Wikidata''s sitelinks write them. Kept only where the target is a sitelink of the local subset and the redirect is no item''s own sitelink, so a month''s views of the redirect are summed under that article''s item.';
 
-COMMENT ON COLUMN readership_month_files.redirects_dump_date IS 'The dump date of the redirects the month was folded with (#1650), or null where no redirects were in place when it was kept.';
-COMMENT ON COLUMN readership_month_files.redirects_build_id IS 'The build of the redirects the month was folded with (#1650): a build reads again a month folded with another, since one dump date can be built twice over a changed subset.';
+COMMENT ON COLUMN workbench.readership_month_files.redirects_dump_date IS 'The dump date of the redirects the month was folded with (#1650), or null where no redirects were in place when it was kept.';
+COMMENT ON COLUMN workbench.readership_month_files.redirects_build_id IS 'The build of the redirects the month was folded with (#1650): a build reads again a month folded with another, since one dump date can be built twice over a changed subset.';
 
-CREATE UNLOGGED TABLE IF NOT EXISTS readership_staging (
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.readership_staging (
     build_id INTEGER NOT NULL,
     site TEXT NOT NULL,
     title TEXT NOT NULL,
@@ -4226,7 +4241,7 @@ CREATE UNLOGGED TABLE IF NOT EXISTS readership_staging (
     mobile INTEGER NOT NULL,
     daily INTEGER[]
 );
-COMMENT ON TABLE readership_staging IS 'A month being read (#1436): its titles over the floor, staged by the build that reads it, summed and joined to items once the file is verified, then cleared.';
+COMMENT ON TABLE workbench.readership_staging IS 'A month being read (#1436): its titles over the floor, staged by the build that reads it, summed and joined to items once the file is verified, then cleared.';
 
 -- A component part's name, coordinate and reference are its point's
 -- (ADR-0100): whoever renames, moves or renumbers the point - the run, a

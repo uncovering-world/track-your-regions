@@ -46,7 +46,7 @@ type Schema = Map<string, Set<string>>;
 function declaredColumns(schema: string): Schema {
   const tables: Schema = new Map();
   const constraint = /^(PRIMARY|UNIQUE|CONSTRAINT|FOREIGN|CHECK|EXCLUDE)\b/i;
-  for (const [, table, body] of schema.matchAll(/^CREATE TABLE (?:IF NOT EXISTS )?(\w+) \(\n([\s\S]*?)^\);/gm)) {
+  for (const [, table, body] of schema.matchAll(/^CREATE TABLE (?:IF NOT EXISTS )?(?:workbench\.)?(\w+) \(\n([\s\S]*?)^\);/gm)) {
     const columns = new Set<string>();
     for (const raw of body.split('\n')) {
       const line = raw.trim();
@@ -363,13 +363,14 @@ describe('the schema as read', () => {
     expect(tables.get('experiences')).not.toContain('CONSTRAINT');
   });
 
-  it('takes a CREATE TABLE with or without its IF NOT EXISTS guard', () => {
+  it('takes a CREATE TABLE with or without its IF NOT EXISTS guard, and a workbench one by its bare name', () => {
     const both = declaredColumns([
       'CREATE TABLE plain (\n    id SERIAL PRIMARY KEY,\n    name TEXT\n);',
       'CREATE TABLE IF NOT EXISTS guarded (\n    id SERIAL PRIMARY KEY\n);',
+      'CREATE TABLE IF NOT EXISTS workbench.ledger (\n    id SERIAL PRIMARY KEY\n);',
       'ALTER TABLE plain ADD COLUMN IF NOT EXISTS added INTEGER;',
     ].join('\n'));
-    expect([...both.keys()]).toEqual(['plain', 'guarded']);
+    expect([...both.keys()]).toEqual(['plain', 'guarded', 'ledger']);
     expect([...both.get('plain')!]).toEqual(['id', 'name', 'added']);
   });
 });

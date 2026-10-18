@@ -146,7 +146,7 @@ async function build(notes: string[] = []): Promise<void> {
 }
 
 const nextTables = async () =>
-  (await pool.query<{ tablename: string }>("SELECT tablename FROM pg_tables WHERE tablename LIKE 'wikidata_%_next' ORDER BY tablename")).rows.map(r => r.tablename);
+  (await pool.query<{ tablename: string }>("SELECT tablename FROM pg_tables WHERE schemaname = 'workbench' AND tablename LIKE 'wikidata_%_next' ORDER BY tablename")).rows.map(r => r.tablename);
 
 const ids = async (table: string) => (await pool.query<{ id: string }>(`SELECT DISTINCT id FROM ${table}`)).rows.map(r => r.id).sort();
 

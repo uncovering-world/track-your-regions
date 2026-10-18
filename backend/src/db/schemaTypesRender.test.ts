@@ -18,6 +18,7 @@ import {
 
 const column = (over: Partial<CatalogColumn>): CatalogColumn => ({
   table: 'experiences',
+  schema: 'public',
   relkind: 'r',
   column: 'name',
   formatted: 'character varying(500)',
@@ -153,6 +154,7 @@ describe('the generated file', () => {
     column({ table: 'users', column: 'email', formatted: 'character varying(255)', udtName: 'varchar', notNull: false }),
     column({ table: 'experience_sync_changes', column: 'change_type', formatted: 'character varying(20)', udtName: 'varchar' }),
     column({ table: 'region_render_geom', relkind: 'v', column: 'geom', formatted: 'geometry', udtName: 'geometry' }),
+    column({ table: 'dump_builds', schema: 'workbench', column: 'id', formatted: 'integer', udtName: 'int4' }),
   ];
   const enumRows = [{ name: 'user_role', values: ['user', 'curator', 'admin'] }];
   const checks = [
@@ -173,6 +175,10 @@ describe('the generated file', () => {
     expect(rendered).toContain('export interface RegionRenderGeomRow {\n  geom: string | null;\n}');
     const order = ['ExperienceSyncChangesRow', 'RegionRenderGeomRow', 'UsersRow'].map((name) => rendered.indexOf(`interface ${name}`));
     expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it('names the schema every relation sits in, a dump-built table in workbench', () => {
+    expect(rendered).toContain('export const RELATION_SCHEMAS = {\n  dump_builds: "workbench",\n  experience_sync_changes: "public",\n  region_render_geom: "public",\n  users: "public",\n} as const;');
   });
 
   it('carries the widths and the value lists as constants', () => {
