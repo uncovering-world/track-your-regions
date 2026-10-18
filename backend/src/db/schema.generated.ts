@@ -377,6 +377,7 @@ export interface ExperienceMergeProposalsRow {
   answered_by: number | null;
   answered_at: Date | null;
   merge_id: number | null;
+  found_by: string;
 }
 
 /** The table `experience_merge_suggestions`. */
@@ -1081,6 +1082,7 @@ export const COLUMN_WIDTHS = {
   },
   experience_merge_proposals: {
     answer: 10,
+    found_by: 10,
   },
   experience_merge_suggestions: {
     judgement: 10,
@@ -1232,6 +1234,7 @@ export const CHECK_VALUES = {
   },
   experience_merge_proposals: {
     answer: ["one", "two", "part_of"],
+    found_by: ["similar", "words"],
   },
   experience_merge_suggestions: {
     judgement: ["one", "two", "part_of"],
