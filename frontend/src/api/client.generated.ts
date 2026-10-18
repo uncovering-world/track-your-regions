@@ -8643,6 +8643,14 @@ export interface RemainingRejected {
 }
 
 /**
+ * A request to stop a world view's re-match (#1613).
+ */
+export interface RematchCancelled {
+  /** Whether a re-match of this world view was running to be stopped. */
+  cancelled: boolean;
+}
+
+/**
  * The policy the world view's source implies, or the one the request named.
  */
 export type RematchStartedMatchingPolicy = typeof RematchStartedMatchingPolicy[keyof typeof RematchStartedMatchingPolicy];
@@ -19110,6 +19118,31 @@ export const getAdminWvImportMatchesByWorldViewIdRematchStatus = async (worldVie
   {
     ...options,
     method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getPostAdminWvImportMatchesByWorldViewIdRematchCancelUrl = (worldViewId: number,) => {
+
+
+
+
+  return `/api/admin/wv-import/matches/${encodeURIComponent(String(worldViewId))}/rematch/cancel`
+}
+
+/**
+ * Requires an admin.
+ * @summary Stop a running rematch of a world view
+ */
+export const postAdminWvImportMatchesByWorldViewIdRematchCancel = async (worldViewId: number, options?: Parameters<typeof apiFetch>[1]): Promise<RematchCancelled> => {
+
+  return apiFetch<RematchCancelled>(getPostAdminWvImportMatchesByWorldViewIdRematchCancelUrl(worldViewId),
+  {
+    ...options,
+    method: 'POST'
 
 
   }
