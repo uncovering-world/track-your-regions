@@ -48,6 +48,12 @@ export async function cancellable<Row extends QueryResultRow = QueryResultRow>(
   signal: AbortSignal, sql: string, params: unknown[] = [],
   /** Hears the backend the statement runs on, so its progress can be read while it runs. */
   onBackend?: (pid: number) => void,
+  /**
+   * Settings the statement's session runs under, as `[name, value]`: set
+   * before it and reset after, so a pooled client never carries them to the
+   * next statement it serves.
+   */
+  session: readonly (readonly [string, string])[] = [],
 ): Promise<Row[]> {
   signal.throwIfAborted();
   const client = await pool.connect();
@@ -59,14 +65,22 @@ export async function cancellable<Row extends QueryResultRow = QueryResultRow>(
   };
   signal.addEventListener('abort', onAbort, { once: true });
   let rows: Row[];
+  let reset = true;
   try {
+    for (const [name, value] of session) await client.query('SELECT set_config($1, $2, false)', [name, value]);
     rows = (await client.query<Row>(sql, params)).rows;
   } finally {
     signal.removeEventListener('abort', onAbort);
     // A cancel that lands after the statement ended would stop whatever runs
     // next on this backend, so an aborted client is closed, never pooled.
     await cancelling;
-    client.release(signal.aborted);
+    // As is a client whose session settings could not be put back.
+    for (const [name] of signal.aborted ? [] : session) {
+      reset = reset && await client.query(
+        'SELECT set_config($1, (SELECT reset_val FROM pg_settings WHERE name = $1), false)', [name],
+      ).then(() => true, () => false);
+    }
+    client.release(signal.aborted || !reset);
   }
   signal.throwIfAborted();
   return rows;
@@ -462,7 +476,6 @@ export async function indexesOf(client: PoolClient, table: string): Promise<Inde
   }));
 }
 
-/** Give each `_next` copy the indexes its live table has, under the live names with `_next` appended. */
 /** How often a running index's progress is read back, for the step's report. */
 const INDEX_PROGRESS_EVERY_MS = 5_000;
 
@@ -477,14 +490,62 @@ async function indexProgress(pid: number): Promise<string | null> {
   return `${row.phase}${share(row.blocks_done, row.blocks_total) || share(row.tuples_done, row.tuples_total)}`;
 }
 
+/**
+ * How many index statements run at once, each on a client of its own, so the
+ * indexes of a build share the machine instead of queueing on one core
+ * (#1520). Four keeps the clients held from the pool the API shares
+ * (`db/index.ts`) as few as deriving holds.
+ */
+export const INDEX_LANES = 4;
+
+/**
+ * What each index statement's session may use: sort memory, and the parallel
+ * workers Postgres may give one index build. Four lanes of two workers stay
+ * within the eight worker processes a default server allows, and four
+ * gigabytes of sort memory within the database's share of the box.
+ */
+export const INDEX_SESSION: readonly (readonly [string, string])[] = [
+  ['maintenance_work_mem', '1GB'],
+  ['max_parallel_maintenance_workers', '2'],
+];
+
+interface IndexStatement { table: SubsetTable; name: string; constraint: boolean; sql: string }
+
+/** Run `tasks` at most `lanes` at a time; the first to fail stops the rest from starting, and is the error thrown. */
+async function inLanes(lanes: number, tasks: readonly (() => Promise<void>)[]): Promise<void> {
+  let at = 0;
+  let failed: unknown = null;
+  const lane = async () => {
+    while (failed === null && at < tasks.length) {
+      const task = tasks[at++];
+      try {
+        await task();
+      } catch (error) {
+        failed ??= error;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(lanes, tasks.length) }, lane));
+  if (failed !== null) throw failed;
+}
+
+/**
+ * Give each `_next` copy the indexes its live table has, under the live names
+ * with `_next` appended, `INDEX_LANES` statements at a time. A table's key
+ * constraint is built before its other indexes, since adding a constraint
+ * locks the table against every other statement on it, while two plain index
+ * builds on one table do not wait for each other.
+ */
 export async function indexNextTables(signal: AbortSignal, only: readonly SubsetTable[] = SUBSET_TABLES, report?: StepReport): Promise<void> {
-  const statements: { name: string; sql: string }[] = [];
+  const statements: IndexStatement[] = [];
   const client = await pool.connect();
   try {
     for (const table of only) {
       for (const index of await indexesOf(client, table)) {
         statements.push({
+          table,
           name: index.name,
+          constraint: index.constraint !== null,
           sql: index.constraint
             ? `ALTER TABLE ${next(table)} ADD CONSTRAINT ${index.name}_next ${index.definition}`
             : index.definition
@@ -496,24 +557,77 @@ export async function indexNextTables(signal: AbortSignal, only: readonly Subset
   } finally {
     client.release();
   }
-  for (const [at, statement] of statements.entries()) {
-    const which = `index ${at + 1} of ${statements.length}, ${statement.name}`;
-    report?.(which);
-    let pid: number | null = null;
-    // A reading still on its way when the index ends would name this step after the next one began.
-    let building = true;
-    // The index's own phase, read while it builds: one statement can take minutes on the entities copy.
-    const poll = report ? setInterval(() => {
-      if (pid === null) return;
-      indexProgress(pid).then(phase => { if (phase && building) report(`${which}: ${phase}`); }).catch(() => undefined);
-    }, INDEX_PROGRESS_EVERY_MS) : null;
+
+  // A statement that fails cancels the others, so no index keeps building on a copy the failed build drops.
+  signal.throwIfAborted();
+  const local = new AbortController();
+  const follow = () => local.abort(signal.reason);
+  signal.addEventListener('abort', follow, { once: true });
+  const building = new Map<string, number | null>();
+  let built = 0;
+  const named = (name: string, phases: Map<string, string>) => (phases.has(name) ? `${name} (${phases.get(name)})` : name);
+  const say = (phases: Map<string, string> = new Map()) => {
+    const running = [...building.keys()].map(name => named(name, phases)).join(', ');
+    const progress = `${built} of ${statements.length} indexes built`;
+    report?.(running ? `${progress}; building ${running}` : progress);
+  };
+  // Each running index's own phase, read while it builds: one statement can take minutes on the entities copy.
+  const poll = report ? setInterval(() => {
+    const running = [...building].filter((entry): entry is [string, number] => entry[1] !== null);
+    Promise.all(running.map(async ([name, pid]) => [name, await indexProgress(pid)] as const)).then(read => {
+      const phases = new Map(read.filter((entry): entry is readonly [string, string] => entry[1] !== null));
+      if (building.size > 0) say(phases);
+    }).catch(() => undefined);
+  }, INDEX_PROGRESS_EVERY_MS) : null;
+
+  const run = async (statement: IndexStatement) => {
+    building.set(statement.name, null);
+    say();
     try {
-      await cancellable(signal, statement.sql, [], backend => { pid = backend; });
+      await cancellable(local.signal, statement.sql, [], pid => { building.set(statement.name, pid); }, INDEX_SESSION);
+      built += 1;
+    } catch (error) {
+      local.abort(error);
+      throw error;
     } finally {
-      building = false;
-      if (poll) clearInterval(poll);
+      building.delete(statement.name);
     }
+    say();
+  };
+  // One task per table for its constraints, which must stand before the
+  // table's other indexes start, then one task per plain index.
+  const constraintsDone = new Map<SubsetTable, Promise<void>>();
+  const tasks: (() => Promise<void>)[] = [];
+  for (const table of only) {
+    const constraints = statements.filter(s => s.table === table && s.constraint);
+    let release!: () => void;
+    let fail!: (error: unknown) => void;
+    constraintsDone.set(table, new Promise<void>((resolve, reject) => { release = resolve; fail = reject; }));
+    // A rejection nobody waits for yet must not end the process.
+    constraintsDone.get(table)!.catch(() => undefined);
+    tasks.push(async () => {
+      try {
+        for (const statement of constraints) await run(statement);
+        release();
+      } catch (error) {
+        fail(error);
+        throw error;
+      }
+    });
   }
+  for (const statement of statements.filter(s => !s.constraint)) {
+    tasks.push(async () => {
+      await constraintsDone.get(statement.table);
+      await run(statement);
+    });
+  }
+  try {
+    await inLanes(INDEX_LANES, tasks);
+  } finally {
+    signal.removeEventListener('abort', follow);
+    if (poll) clearInterval(poll);
+  }
+  signal.throwIfAborted();
 }
 
 /**
