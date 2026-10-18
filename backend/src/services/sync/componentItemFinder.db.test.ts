@@ -1,10 +1,11 @@
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CandidateItem } from './componentItemMatching.js';
-import type { StandingPlace } from './componentItemQueries.js';
+import type { Box, StandingPlace } from './subset/componentItems.js';
 
 /**
  * Finding a World Heritage component's Wikidata item and proposing it (#1272),
- * against PostgreSQL, with Wikidata's answers stood in. A serial site of four
+ * against PostgreSQL, with the subset's answers and the labels stood in
+ * (`subset/componentItems.db.test.ts` reads the subset itself). A serial site of four
  * components: Villa Mairea, which an item says is part of the site; the fort
  * at Bologa, which an item of the site's kind stands beside; a component whose
  * only candidate a curator already refused; and one already resolved by its
@@ -44,30 +45,40 @@ const nearby: CandidateItem[] = [
   { item: REFUSED_ITEM, labels: ['Castra of Buciumi'], coords: [[47.0381, 23.0583]], classes: [CASTRUM] },
 ];
 
-vi.mock('./componentItemQueries.js', async (importOriginal) => ({
-  // The rule that tells a heavy question from a refusal is the real one.
-  ...await importOriginal<typeof import('./componentItemQueries.js')>(),
+/** The same candidates in every box the near rule asks about: the rule's distance decides which point each is near. */
+const inEveryBox = (items: CandidateItem[]) => async (boxes: readonly Box[]) =>
+  new Map(boxes.map((_, index) => [index, items.map(c => ({ ...c, labels: [] }))]));
+
+vi.mock('./subset/componentItems.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./subset/componentItems.js')>(),
   classesOfItems: vi.fn(async (items: string[]) => new Map(items.map(item => [item, item === RESOLVED_ITEM ? [CASTRUM] : []]))),
-  partsOfSites: vi.fn(async () => ({ parts: new Map([[SITE_ITEM, parts.map(c => ({ ...c, labels: [] }))]]), unread: [] })),
-  itemsInBoxes: vi.fn(async () => nearby.map(c => ({ ...c, labels: [] }))),
-  // The class tree is QLever's to walk, not the spec's: nothing here is a settlement unless a test says so.
+  partsOfSites: vi.fn(async () => new Map([[SITE_ITEM, parts.map(c => ({ ...c, labels: [] }))]])),
+  itemsInBoxes: vi.fn(inEveryBox(nearby)),
+  // Nothing here is a settlement unless a test says so.
   settlementsAmong: vi.fn(async () => new Set<string>()),
-  // Where a candidate stands is QLever's answer too: no place, unless a test names one.
+  // No place a candidate stands in, unless a test names one.
   placesOf: vi.fn(async () => new Map<string, StandingPlace[]>()),
   // The items carrying a component's number: none, unless a test names them.
   componentNumbers: vi.fn(async () => [] as CandidateItem[]),
   // The register codes the proposed items carry: none, unless a test names them.
   registerCodesOf: vi.fn(async () => new Map()),
+}));
+vi.mock('./componentItemQueries.js', async (importOriginal) => ({
+  ...await importOriginal<typeof import('./componentItemQueries.js')>(),
   // The labels come from Wikidata's API, read only for the items the distance leaves.
   labelsOf: vi.fn(async (items: string[]) => new Map(items.map(item => {
     const all = [...parts, ...nearby, ...numbered].find(c => c.item === item)?.labels ?? [];
     return [item, { all, english: all[0] ?? null }];
   }))),
 }));
+vi.mock('../dumps/wikidata/subsetTables.js', () => ({
+  latestSubset: vi.fn(async () => ({ dumpDate: '2026-10-05', swappedAt: new Date(), needs: 'nothing' })),
+  entitiesAreHeld: vi.fn(async () => true),
+}));
 
 const { pool } = await import('../../db/index.js');
-const queries = await import('./componentItemQueries.js');
-const { SparqlUnanswered } = await import('./wikidataUtils.js');
+const queries = { ...await import('./componentItemQueries.js'), ...await import('./subset/componentItems.js') };
+const { entitiesAreHeld, latestSubset } = await import('../dumps/wikidata/subsetTables.js');
 const { FINDER_STEPS, findComponentItems } = await import('./componentItemFinder.js');
 const { WaitBudget } = await import('./sourceRetry.js');
 
@@ -123,7 +134,7 @@ const proposals = async () => (await pool.query<{
 const run = () => findComponentItems({ write: true, hooks: { budget: new WaitBudget(1000) } });
 
 beforeEach(async () => {
-  vi.mocked(queries.itemsInBoxes).mockImplementation(async () => nearby.map(c => ({ ...c, labels: [] })));
+  vi.mocked(queries.itemsInBoxes).mockImplementation(inEveryBox(nearby));
   vi.mocked(queries.placesOf).mockReset().mockImplementation(async () => new Map<string, StandingPlace[]>());
   vi.mocked(queries.componentNumbers).mockReset().mockImplementation(async () => []);
   vi.mocked(queries.registerCodesOf).mockReset().mockImplementation(async () => new Map());
@@ -185,10 +196,10 @@ describe('findComponentItems', () => {
   });
 
   it("proposes by a place name of the component's where the name rule finds nothing, with the item's register code (#1340)", async () => {
-    vi.mocked(queries.itemsInBoxes).mockImplementation(async () => [
+    vi.mocked(queries.itemsInBoxes).mockImplementation(inEveryBox([
       { item: BOLOGA_ITEM, labels: [], coords: [[46.8851, 22.8754]], classes: [CASTRUM] },
       { item: GRESIA_ITEM, labels: [], coords: [[44.166667, 24.916667]], classes: [CASTRUM] },
-    ]);
+    ]));
     vi.mocked(queries.labelsOf).mockImplementation(async (items: readonly string[]) => new Map(items.map(item => {
       const all = item === GRESIA_ITEM ? ['Castrul roman de la Gresia'] : [...parts, ...nearby].find(c => c.item === item)?.labels ?? [];
       return [item, { all, english: all[0] ?? null }];
@@ -205,17 +216,6 @@ describe('findComponentItems', () => {
       `SELECT basis, register_code, register_disagrees FROM experience_component_item_proposals WHERE location_id = $1`, [gresia],
     )).rows;
     expect(row).toEqual([{ basis: 'toponym', register_code: 'LMI TR-I-s-B-14205', register_disagrees: false }]);
-  });
-
-  it('writes its proposals without codes when the register read fails, whatever the failure', async () => {
-    vi.mocked(queries.registerCodesOf).mockRejectedValue(new Error('the wait budget is spent'));
-
-    await run();
-
-    const rows = (await pool.query(
-      `SELECT wikidata_item, register_code FROM experience_component_item_proposals WHERE location_id = $1`, [points.bologa],
-    )).rows;
-    expect(rows).toEqual([{ wikidata_item: BOLOGA_ITEM, register_code: null }]);
   });
 
   it("narrowed to one site, asks about and writes that site's points only (#1429)", async () => {
@@ -242,6 +242,26 @@ describe('findComponentItems', () => {
 
     await findComponentItems({ write: true, siteId: SITE, hooks: { budget: new WaitBudget(1000) } });
     expect((await proposals()).map(p => p.wikidata_item)).toEqual([MAIREA_ITEM, BOLOGA_ITEM, REFUSED_ITEM]);
+  });
+
+  it('refuses to run without a subset built, leaving every proposal as it was (#1435)', async () => {
+    vi.mocked(latestSubset).mockResolvedValueOnce(null);
+
+    await expect(run()).rejects.toThrow(/subset is not built/);
+    expect((await proposals()).map(p => p.wikidata_item)).toEqual([STALE_ITEM, REFUSED_ITEM]);
+  });
+
+  it('refuses to run over a subset a database crash emptied, its build record standing (#1435)', async () => {
+    vi.mocked(entitiesAreHeld).mockResolvedValueOnce(false);
+
+    await expect(run()).rejects.toThrow(/crash emptied it/);
+    expect((await proposals()).map(p => p.wikidata_item)).toEqual([STALE_ITEM, REFUSED_ITEM]);
+  });
+
+  it('names the dump the subset it read was built from', async () => {
+    const { report } = await findComponentItems({ write: false, hooks: { budget: new WaitBudget(1000) } });
+
+    expect(report.dumpDate).toBe('2026-10-05');
   });
 
   it('writes nothing on a dry pass', async () => {
@@ -279,57 +299,13 @@ describe('findComponentItems', () => {
     expect((await proposals()).filter(p => p.answer === null)).toHaveLength(2);
   });
 
-  it('asks one area at a time where the service cannot answer several, and counts an area it cannot answer at all', async () => {
-    // Bologa and Buciumi lie in different cells. Asked together the service
-    // times out; asked alone it answers for Bologa and times out on Buciumi.
-    vi.mocked(queries.itemsInBoxes).mockImplementation(async (boxes) => {
-      if (boxes.length > 1 || boxes[0].south > 46.95) throw new SparqlUnanswered('Wikidata SPARQL error 504: gateway timeout');
-      return nearby.map(c => ({ ...c, labels: [] }));
-    });
-
-    const { report, matches } = await findComponentItems({ write: false, hooks: { budget: new WaitBudget(1000) } });
-
-    expect(report.unsearched).toBeGreaterThanOrEqual(1);
-    expect(matches.map(m => m.item)).toContain(BOLOGA_ITEM);
-  });
-
-  it('stops when the service says to stop, rather than asking it smaller questions', async () => {
-    const asked = vi.mocked(queries.itemsInBoxes);
-    asked.mockClear();
-    asked.mockRejectedValue(new Error('Wikidata SPARQL error 429: too many requests'));
-
-    await expect(run()).rejects.toThrow(/429/);
-    expect(asked).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps an earlier pass's proposal for a point whose surroundings the service could not answer", async () => {
-    // Buciumi's cell times out, alone and with the others: the open proposal an
-    // earlier pass made for it stands, where Bologa's stale one is replaced.
-    await pool.query(
-      `INSERT INTO experience_component_item_proposals (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
-       VALUES ($1, 'Q98405', 'Castra of Buciumi (earlier pass)', 40, 0.6, false, 'near')`,
-      [points.buciumi],
-    );
-    vi.mocked(queries.itemsInBoxes).mockImplementation(async (boxes) => {
-      if (boxes.length > 1 || boxes[0].south > 46.95) throw new SparqlUnanswered('Wikidata SPARQL error 504: gateway timeout');
-      return nearby.map(c => ({ ...c, labels: [] }));
-    });
-
-    await run();
-
-    const open = (await proposals()).filter(p => p.answer === null).map(p => p.wikidata_item);
-    expect(open).toContain('Q98405');
-    expect(open).toContain(BOLOGA_ITEM);
-    expect(open).not.toContain(STALE_ITEM);
-  });
-
   it('sets a village aside before choosing, so the next candidate is taken, and counts it', async () => {
     // The tree names Bologa's first candidate a village; the castrum beside it is taken instead.
     const VILLAGE_ITEM = 'Q98406';
-    vi.mocked(queries.itemsInBoxes).mockImplementation(async () => [
+    vi.mocked(queries.itemsInBoxes).mockImplementation(inEveryBox([
       { item: VILLAGE_ITEM, labels: [], coords: [[46.8852, 22.8753]], classes: [CASTRUM] },
-      ...nearby.map(c => ({ ...c, labels: [] })),
-    ]);
+      ...nearby,
+    ]));
     vi.mocked(queries.labelsOf).mockImplementation(async (items: readonly string[]) => new Map(items.map(item => {
       const all = item === VILLAGE_ITEM ? ['Bologa'] : ([...parts, ...nearby].find(c => c.item === item)?.labels ?? []);
       return [item, { all, english: all[0] ?? null }];
@@ -401,54 +377,6 @@ describe('findComponentItems', () => {
     expect(vi.mocked(queries.settlementsAmong).mock.calls.some(([ids]) => ids.includes(PLACE_ITEM))).toBe(true);
   });
 
-  it('leaves those points unanswered when QLever cannot say where their contenders stand', async () => {
-    await fallBack();
-    await pool.query(
-      `INSERT INTO experience_component_item_proposals (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
-       VALUES ($1, 'Q98408', 'An earlier pass found this', 40, 0.5, false, 'near')`,
-      [points.bologa],
-    );
-    vi.mocked(queries.placesOf).mockRejectedValue(new SparqlUnanswered('QLever error 503'));
-
-    const { report } = await run();
-
-    expect(report.near).toBe(0);
-    expect(report.unsearched).toBeGreaterThan(0);
-    const open = (await proposals()).filter(p => p.location_id === points.bologa && p.answer === null).map(p => p.wikidata_item);
-    expect(open).toContain('Q98408');
-  });
-
-  it('leaves a site with no resolved components unsearched when QLever cannot say which classes are settlements', async () => {
-    // Bologa's site has resolved components (its classes are its own); a site with none
-    // falls back on the catalogue's classes, which need the tree's answer to be usable.
-    await pool.query(`UPDATE experience_locations SET wikidata_item = NULL WHERE id = $1`, [points.resolved]);
-    await pool.query(
-      `INSERT INTO experience_component_item_proposals (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
-       VALUES ($1, 'Q98408', 'An earlier pass found this', 40, 0.5, false, 'near')`,
-      [points.bologa],
-    );
-    vi.mocked(queries.settlementsAmong).mockImplementation(async (_ids, _hooks, asClasses) => {
-      if (asClasses) throw new SparqlUnanswered('QLever error 503');
-      return new Set<string>();
-    });
-
-    vi.mocked(queries.itemsInBoxes).mockClear();
-    const { report } = await run();
-
-    // Not searched at all: no area question goes out for the site, rather than one
-    // with the settlement rule quietly off. (The fixture's one site is below the
-    // catalogue-wide class floor, so `near === 0` alone would hold either way.)
-    expect(vi.mocked(queries.itemsInBoxes)).not.toHaveBeenCalled();
-    // Every point the part rule left is one of this site's, and none of them was searched.
-    expect(report.unsearched).toBe(report.points - report.partOf);
-    expect(report.unsearched).toBeGreaterThan(0);
-    expect(report.near).toBe(0);
-    // Left unanswered, the point keeps every open proposal it had: the earlier pass's and the stale one from the fixture.
-    const open = (await proposals()).filter(p => p.location_id === points.bologa && p.answer === null).map(p => p.wikidata_item);
-    expect(open).toContain('Q98408');
-    expect(open).toContain(STALE_ITEM);
-  });
-
   it("proposes an item carrying the point's number under another inscription beside the other doors' answers (#1394)", async () => {
     vi.mocked(queries.componentNumbers).mockImplementation(async () => numbered.map(c => ({ ...c, labels: [] })));
 
@@ -459,19 +387,5 @@ describe('findComponentItems', () => {
       { location_id: points.buciumi, wikidata_item: REFUSED_ITEM, basis: 'near', exact: false, answer: 'refused' },
       { location_id: points.buciumi, wikidata_item: NUMBERED_ITEM, basis: 'numbered', exact: false, answer: null },
     ]);
-  });
-
-  it("keeps an earlier pass's numbered proposals when the numbers could not be read", async () => {
-    await pool.query(
-      `INSERT INTO experience_component_item_proposals (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
-       VALUES ($1, $2, 'Buciumi', 90, 1, false, 'numbered')`,
-      [points.buciumi, NUMBERED_ITEM],
-    );
-    vi.mocked(queries.componentNumbers).mockRejectedValue(new SparqlUnanswered('Wikidata SPARQL error 504: gateway timeout'));
-
-    const { report } = await run();
-
-    expect(report.numbered).toBe(0);
-    expect((await proposals()).some(p => p.location_id === points.buciumi && p.wikidata_item === NUMBERED_ITEM && p.answer === null)).toBe(true);
   });
 });

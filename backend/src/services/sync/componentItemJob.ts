@@ -77,7 +77,7 @@ export async function findUnescoComponentItems(_triggeredBy: number | null, site
     progress.status = 'complete';
     progress.created = report.partOf + report.near + report.toponym + report.numbered;
     progress.statusMessage = sentenceOf(report, site);
-    operation.finish(`${report.queries} queries; ${progress.statusMessage}`);
+    operation.finish(`${report.queries} requests to Wikidata's API; ${progress.statusMessage}`);
   } catch (err) {
     progress.status = progress.cancel ? 'cancelled' : 'failed';
     progress.statusMessage = progress.cancel ? 'Cancelled.' : sentenceFor(err, 'the server log has the cause.');
@@ -101,9 +101,8 @@ function sentenceOf(report: ComponentItemReport, site?: { id: number; name: stri
     + (report.toponym > 0 ? `, ${report.toponym} near the point carrying a place name of the component's` : '')
     + `, ${report.exact} of the same name at the point`
     + (report.numbered > 0 ? `; ${report.numbered} more carry a component's number under another inscription` : '')
-    + (report.unsearched > 0 ? `; ${report.unsearched} could not be searched around, as Wikidata did not answer` : '')
-    + (report.unreadSites > 0 ? `; the parts of ${report.unreadSites} sites could not be read` : '')
     + (report.wholeSites > 0 ? `; ${report.wholeSites} stand for their whole site and were not searched` : '')
     + (report.settlements > 0 ? `; ${report.settlements} settlements set aside` : '')
-    + (report.atTheComponent > 0 ? `; ${report.atTheComponent} near candidates standing at their component set aside` : '');
+    + (report.atTheComponent > 0 ? `; ${report.atTheComponent} near candidates standing at their component set aside` : '')
+    + `; read from the Wikidata subset of the ${report.dumpDate} dump`;
 }

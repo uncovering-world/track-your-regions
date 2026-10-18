@@ -88,7 +88,7 @@ describe('the classes a near candidate may be of', () => {
   const FORT = 'Q1785071';
   const CASTRUM = 'Q88205';
   const VILLAGE = 'Q532';
-  // What the class tree says (settlementsAmong on QLever): a village is a
+  // What the class tree says (settlementsAmong): a village is a
   // settlement kind, a castrum is not, though Wikidata files it under one too.
   const settlementKinds = new Set([VILLAGE]);
   const village: CandidateItem = { item: 'Q1', labels: ['Bologa'], coords: [], classes: [VILLAGE] };

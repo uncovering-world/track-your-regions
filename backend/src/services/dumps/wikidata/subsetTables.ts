@@ -41,9 +41,10 @@ export const CLAIM_PROPERTIES = [
 /**
  * Run one long statement on a client of its own, cancelled in the database
  * when `signal` aborts: a derivation over the whole subset runs for many
- * minutes, and a cancel must not wait for it to end.
+ * minutes, and a cancel must not wait for it to end. A reader's statement
+ * over the whole subset is run the same way (`subset/componentItems.ts`).
  */
-async function cancellable<Row extends QueryResultRow = QueryResultRow>(
+export async function cancellable<Row extends QueryResultRow = QueryResultRow>(
   signal: AbortSignal, sql: string, params: unknown[] = [],
   /** Hears the backend the statement runs on, so its progress can be read while it runs. */
   onBackend?: (pid: number) => void,
