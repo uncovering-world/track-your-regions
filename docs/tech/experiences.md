@@ -4824,14 +4824,20 @@ the header says what the site is made of and gives no single coordinate (ADR-009
 component is a part-card with its own picture and credit, and one map above the parts
 (`ComponentItemsMap.tsx`) draws every place the site is made of (`site_points`, the set
 `placeOfObjectSql` in `reviewQueueContext.ts` names, the same the header's count counts) as a
-grey, named pin, with the candidate the pointer last rested on beside its component — where the
-item stands, from the coordinate the finder kept (`item_location`, migration 083), a dashed line
-and the distance between them — framed with the other component nearest the point
-(`framedShape`, through `frameGeoJson`), since whether a cave 11 m off is this component or the
-neighbouring one is read from where the neighbour is. The map stays in view while the parts under
-it are read — sticky within the card, since a Dacian frontier has dozens of components and the row a
-curator reads is far below the map's place. A proposal with no `item_location` draws
-the component and says the candidate's position is not read yet. The map is mounted only while
+grey, named pin, with the candidate the curator picked beside its component — where the item
+stands, from the coordinate the finder kept (`item_location`, migration 083), a dashed line and
+the distance between them. A candidate is **picked** by a click on its row or by Enter or Space
+while the row has focus, never by hovering or focusing it (#1691): a pointer moving from a low row
+up to the map used to re-target it on the way, from Chornohora in Ukraine to Janj in Bosnia on the
+Beech Forests. Until a pick, the map's room holds a prompt instead of a map, at the map's height,
+so the list does not jump when it appears; the picked row keeps its part-card's stripe. The camera
+frames **the pair alone** (`framedShape`, through `frameGeoJson`): centred on the component's point
+and its candidate, padded so both fit. The site's other places are drawn and never framed, since a
+far neighbour in the frame left Prašuma Janj and its candidate 1.3 km off against the map's edge;
+a curator zooms out to them. A proposal with no `item_location` draws the component alone,
+centred at street level (`POINT_ALONE_ZOOM`, 14), and says the candidate's position is not read
+yet. The map stays in view while the parts under it are read — sticky within the card, since a
+Dacian frontier has dozens of components and the row a curator reads is far below the map's place. The map is mounted only while
 the card is near the screen (`useNearViewport`): a page holds up to 25 of these cards, and a
 WebGL context per card would pass the browser's cap of about a dozen and blank the earliest. The answer is
 `POST /api/experiences/:id/component-items` (`componentItemController.ts`), per candidate
