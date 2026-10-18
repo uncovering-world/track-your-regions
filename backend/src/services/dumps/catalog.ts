@@ -18,7 +18,7 @@ export const WIKIMEDIA_DUMPS = 'https://dumps.wikimedia.org';
 /** Every dump the catalog knows, by key: what a route accepts and a build is named by. */
 export const DUMP_KEYS = [
   'wikidata-entities', 'wikidata-lexemes', 'enwiki-page', 'enwiki-page-props', 'enwiki-linktarget', 'enwiki-categorylinks',
-  'enwiki-langlinks', 'pageviews-user',
+  'enwiki-langlinks', 'pageviews-user', 'wikipedia-redirects',
 ] as const;
 export type DumpKey = typeof DUMP_KEYS[number];
 
@@ -117,28 +117,43 @@ interface DumpStatus {
   jobs?: Record<string, { status?: string; files?: Record<string, { size?: number; sha1?: string; url?: string }> }>;
 }
 
-function enwikiTable(key: DumpKey, job: string, table: string, title: string, about: string): DumpDescriptor {
+/**
+ * The file of one table in a Wikipedia edition's dump directory, where its
+ * status file says the job that wrote it is done and gives its sha1: `wiki` is
+ * the edition's database name (`enwiki`, `zh_min_nanwiki`), `dir` the run's
+ * date (`20261001`). Null where the run has not finished it.
+ */
+export async function wikipediaTableFile(
+  read: TextReader, key: DumpKey, wiki: string, dir: string, job: string, table: string,
+): Promise<DumpFile | null> {
+  if (!/^[a-z_]+wiki$/.test(wiki) || !DIGITS.test(dir)) throw new Error(`Refusing a Wikipedia dump directory that is not one: ${wiki}/${dir}`);
+  const base = `${WIKIMEDIA_DUMPS}/${wiki}/${dir}`;
+  let status: DumpStatus;
+  try {
+    status = JSON.parse(await read(`${base}/dumpstatus.json`)) as DumpStatus;
+  } catch {
+    return null;
+  }
+  const entry = status.jobs?.[job];
+  const fileName = `${wiki}-${dir}-${table}.sql.gz`;
+  const file = entry?.files?.[fileName];
+  if (entry?.status !== 'done' || !file?.sha1 || !/^[0-9a-f]{40}$/.test(file.sha1)) return null;
+  return {
+    key, fileName: safeFileName(fileName), url: `${base}/${fileName}`, date: isoDate(dir),
+    checksum: { kind: 'sha1', value: file.sha1 }, expectedBytes: file.size ?? null, compression: 'gzip',
+  };
+}
+
+function enwikiTable(key: DumpKey, job: string, table: string, title: string, about: string, source = 'English Wikipedia'): DumpDescriptor {
   const base = `${WIKIMEDIA_DUMPS}/enwiki`;
   return {
-    key, source: 'English Wikipedia', title, datedBy: 'day', about: `The ${table} table: ${about}`,
+    key, source, title, datedBy: 'day', about: `The ${table} table: ${about}`,
     isFileName: datedName('enwiki-', 8, `-${table}.sql.gz`),
     async resolve(read, _size, only) {
       for (const dir of datedDirectories(await read(`${base}/`)).slice(0, DIRECTORIES_TRIED)) {
         if (only && !only(`enwiki-${dir}-${table}.sql.gz`)) continue;
-        let status: DumpStatus;
-        try {
-          status = JSON.parse(await read(`${base}/${dir}/dumpstatus.json`)) as DumpStatus;
-        } catch {
-          continue;
-        }
-        const entry = status.jobs?.[job];
-        const fileName = `enwiki-${dir}-${table}.sql.gz`;
-        const file = entry?.files?.[fileName];
-        if (entry?.status !== 'done' || !file?.sha1 || !/^[0-9a-f]{40}$/.test(file.sha1)) continue;
-        return {
-          key, fileName: safeFileName(fileName), url: `${base}/${dir}/${fileName}`, date: isoDate(dir),
-          checksum: { kind: 'sha1', value: file.sha1 }, expectedBytes: file.size ?? null, compression: 'gzip',
-        };
+        const file = await wikipediaTableFile(read, key, 'enwiki', dir, job, table);
+        if (file) return file;
       }
       return null;
     },
@@ -182,6 +197,9 @@ export const DUMPS: readonly DumpDescriptor[] = [
   enwikiTable('enwiki-linktarget', 'linktargettable', 'linktarget', 'Link targets', 'the namespace and title each category link names by id (#1440).'),
   enwikiTable('enwiki-categorylinks', 'categorylinkstable', 'categorylinks', 'Category links', 'which category each page is in, named by its link target (#1440).'),
   enwikiTable('enwiki-langlinks', 'langlinkstable', 'langlinks', 'Language links', 'each article\'s articles in other editions.'),
+  enwikiTable('wikipedia-redirects', 'redirecttable', 'redirect', 'Redirects',
+    'each redirect page and the title it points to. A build reads this and the page table of the same date in every edition readership counts, and keeps the redirects to an article with a Wikidata item, so their views count under it (#1650, ADR-0055 decision 2).',
+    'Wikipedia editions'),
   pageviews,
 ];
 

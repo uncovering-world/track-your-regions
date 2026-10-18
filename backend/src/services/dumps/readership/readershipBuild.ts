@@ -30,7 +30,7 @@ import type { CopyNeeds } from '../wikidata/buildRules.js';
 import { readDump, type ReadOptions } from '../read.js';
 import { DAILY_FLOOR, MONTH_FLOOR, MonthSummer } from './monthSummer.js';
 import {
-  dropMonthsBefore, emptyStaging, keepMonth, keptMonths, refuseShortMonth, stageRows,
+  dropMonthsBefore, emptyStaging, keepMonth, keptMonths, redirectsInPlace, refuseShortMonth, stageRows,
 } from './readershipMonth.js';
 
 /** How many months readership reads (ADR-0055 decision 1). */
@@ -119,18 +119,21 @@ async function keepOneMonth(file: DumpFile, month: string, options: BuildOptions
 
 /**
  * Keep the twelve months ending at `file`'s, each not already kept from the
- * same file; the newest month's figures are what the build's row records.
+ * same file with the redirects in place (#1650): a month folded with older
+ * redirects, or with none, is read again. The newest month's figures are what
+ * the build's row records.
  */
 export async function buildReadership(file: DumpFile, options: BuildOptions): Promise<{ bytes: number; lines: number; checksumActual: string | null; summary?: string }> {
   if (options.trial) throw new Error('Readership has no trial build: a month is kept from its whole file');
   const window = readershipWindow(file.date);
   const kept = await keptMonths();
+  const redirects = await redirectsInPlace();
   const said: string[] = [];
   let newest = { bytes: 0, lines: 0 };
   let read = 0;
   for (const [i, month] of window.entries()) {
     const already = kept.get(month);
-    if (already?.fileName === fileNameOf(month)) {
+    if (already?.fileName === fileNameOf(month) && already.redirects === redirects) {
       // Verified when it was kept: the row records those figures, not a read of nothing.
       if (month === file.date) newest = { bytes: file.expectedBytes ?? 0, lines: already.lines };
       continue;
@@ -156,12 +159,17 @@ function summaryOf(read: number, said: readonly string[], dropped: number, first
   ].join('; ');
 }
 
-/** The readership in place: its newest month, and whether all twelve are there. */
+/**
+ * The readership in place: its newest month, and whether all twelve are there
+ * and folded with the redirects in place (#1650); a build reads again the
+ * months that are not.
+ */
 export async function latestReadership(): Promise<{ dumpDate: string; swappedAt: Date; needs: CopyNeeds } | null> {
   const kept = await keptMonths();
   if (kept.size === 0) return null;
+  const redirects = await redirectsInPlace();
   const months = [...kept.keys()].sort();
   const newest = months[months.length - 1];
-  const whole = readershipWindow(newest).every(month => kept.has(month));
+  const whole = readershipWindow(newest).every(month => kept.get(month)?.redirects === redirects);
   return { dumpDate: newest, swappedAt: kept.get(newest)!.builtAt, needs: whole ? 'nothing' : 'rebuild' };
 }

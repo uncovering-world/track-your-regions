@@ -4946,7 +4946,8 @@
                 "enwiki-linktarget",
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
-                "pageviews-user"
+                "pageviews-user",
+                "wikipedia-redirects"
               ]
             },
             "required": true
@@ -5014,7 +5015,8 @@
                 "enwiki-linktarget",
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
-                "pageviews-user"
+                "pageviews-user",
+                "wikipedia-redirects"
               ]
             },
             "required": true
@@ -5082,7 +5084,8 @@
                 "enwiki-linktarget",
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
-                "pageviews-user"
+                "pageviews-user",
+                "wikipedia-redirects"
               ]
             },
             "required": true
@@ -5140,7 +5143,8 @@
                 "enwiki-linktarget",
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
-                "pageviews-user"
+                "pageviews-user",
+                "wikipedia-redirects"
               ]
             },
             "required": true
@@ -5198,7 +5202,8 @@
                 "enwiki-linktarget",
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
-                "pageviews-user"
+                "pageviews-user",
+                "wikipedia-redirects"
               ]
             },
             "required": true
@@ -5256,7 +5261,8 @@
                 "enwiki-linktarget",
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
-                "pageviews-user"
+                "pageviews-user",
+                "wikipedia-redirects"
               ]
             },
             "required": true
@@ -21075,7 +21081,8 @@
               "enwiki-linktarget",
               "enwiki-categorylinks",
               "enwiki-langlinks",
-              "pageviews-user"
+              "pageviews-user",
+              "wikipedia-redirects"
             ]
           },
           "kind": {
@@ -21270,7 +21277,8 @@
                     "enwiki-linktarget",
                     "enwiki-categorylinks",
                     "enwiki-langlinks",
-                    "pageviews-user"
+                    "pageviews-user",
+                    "wikipedia-redirects"
                   ]
                 },
                 "source": {

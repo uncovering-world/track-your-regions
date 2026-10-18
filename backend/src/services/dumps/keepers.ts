@@ -1,13 +1,17 @@
 /**
  * The dumps a build can keep something from, and what builds it: the local
  * Wikidata subset from the entities dump (#1434), and readership from the
- * monthly pageview files (#1436), and English Wikipedia's structure from its
- * page table's dump and the three of the same date (#1440).
+ * monthly pageview files (#1436), English Wikipedia's structure from its
+ * page table's dump and the three of the same date (#1440), and the redirects
+ * readership folds from the redirect and page tables of every edition a door
+ * counts (#1650).
  */
 
 import type { DumpFile, DumpKey } from './catalog.js';
 import type { ReadOptions } from './read.js';
 import { buildReadership, latestReadership } from './readership/readershipBuild.js';
+import { buildRedirects } from './wikipedia/redirectBuild.js';
+import { latestRedirects } from './wikipedia/redirectTables.js';
 import { buildStructure } from './wikipedia/structureBuild.js';
 import { latestStructure } from './wikipedia/structureTables.js';
 import { buildSubset, rederiveSubset, type RederiveOptions } from './wikidata/subsetBuild.js';
@@ -57,6 +61,9 @@ const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
   'pageviews-user': { title: 'Readership over the last twelve months', build: buildReadership, latest: latestReadership, samples: false, fromCopy: false },
   'enwiki-page': {
     title: 'English Wikipedia\'s articles, categories and category links', build: buildStructure, latest: latestStructure, samples: false, fromCopy: false,
+  },
+  'wikipedia-redirects': {
+    title: 'The redirects readership counts under an article', build: buildRedirects, latest: latestRedirects, samples: false, fromCopy: false,
   },
 };
 
