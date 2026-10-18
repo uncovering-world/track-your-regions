@@ -29,6 +29,7 @@ keeps), `ledger.ts` (the `dump_builds` table).
 | `wikidata-lexemes` | `wikidata-<date>-lexemes.json.gz`, same directory | the same sums file |
 | `enwiki-page`, `enwiki-page-props`, `enwiki-linktarget`, `enwiki-categorylinks`, `enwiki-langlinks` | `enwiki/<date>/enwiki-<date>-<table>.sql.gz` | the sha1 and size `dumpstatus.json` gives the file once its job is `done` |
 | `pageviews-user` | `other/pageview_complete/monthly/<year>/<year-month>/pageviews-<yyyymm>-user.bz2` | the host's `Content-Length` and a clean end of the bzip2 stream — no checksum is published |
+| `wikipedia-redirects` | `enwiki/<date>/enwiki-<date>-redirect.sql.gz`, and its build reads `<wiki>/<date>/<wiki>-<date>-{redirect,page}.sql.gz` of every counted edition | the sha1 and size each edition's `dumpstatus.json` gives (`wikipediaTableFile`) |
 
 Each descriptor's `resolve()` reads the host's own listing and answers the
 newest dated file that is **complete**, or nothing. It never reads a
@@ -514,17 +515,64 @@ editions count is not decided by one month. Every Wikipedia edition's total that
 month is kept beside it (`readership_month_files.editions`), the denominator a
 door divides by. A month under 50 million lines or 80 Wikipedia editions in all
 (`MIN_EDITIONS`; the file names 371) is refused as a stream that stopped
-(ADR-0055 decision 1), on top of the read's own checks. A title's daily series
-is the one of its largest row, the plain spelling in practice.
+(ADR-0055 decision 1), on top of the read's own checks. An item's daily series
+is the day-by-day sum of the series its rows carry, its redirects' included
+(#1650): a renamed article is read mostly under a redirect, and the series the
+burst flag reads has to cover the views it is read against.
 
 A door reads readership by item: `readership_months` for the item's sitelinks,
 summed over the twelve months `readership_month_files` lists, in the editions
 ADR-0055 counts — those whose twelve `editions` totals add up to more than 15
 million views — which the door picks from those totals; summing every edition
-would count the small ones the ADR leaves out. The redirects of
-ADR-0055 decision 2 are not folded in yet: they need each edition's redirect
-table, which no build keeps (English Wikipedia's structure keeps no redirect,
-ADR-0121 decision 2).
+would count the small ones the ADR leaves out.
+
+**A redirect's views count under the article it points to** (ADR-0055
+decision 2, #1650). A month's staged title that is a redirect in
+`wikipedia_redirects` is joined to items by its target's title (`keepMonth`,
+`readershipMonth.ts`), so the 388,094 English views a year of *Wanderer Above
+the Sea of Fog* under its redirect *Wanderer above the Sea of Fog*, one
+capital letter apart, are its own.
+The month records the build of the redirects it was folded with and its dump
+date (`readership_month_files.redirects_build_id`, `redirects_dump_date`). A
+month kept before any redirects were in place records none and counts its
+titles alone. A month keeps no row per title, so redirects built later reach it
+only when it is read again: a readership build reads again every month folded
+with another build of the redirects than the one in place, a build of the same
+dump date over a changed subset included (`buildReadership`), and until it has, the panel offers the
+year as one to rebuild (`latestReadership`). An edition is named by the code
+its sitelinks use, which is its domain's but for `be-tarask.wikipedia`, created
+as `be_x_oldwiki` (`siteOf`). A redirects build is swapped in only whole:
+where a counted edition's two tables of the date are not finished yet, as in
+the first days of a run, the build fails, names the editions and leaves the
+redirects in place.
+
+The redirects are a build of their own (`wikipedia-redirects`,
+`wikipedia/redirectBuild.ts`). It reads two tables of each edition the year
+counts, at one dump date, the date of English Wikipedia's newest finished
+redirect table:
+- the `redirect` table: a redirect page's id and the namespace-0 title it
+  points to, an interwiki redirect left out;
+- the `page` table: each namespace-0 redirect page's id and title.
+
+The counted editions are those over 15 million views a year in the months
+kept (`countedEditions`, `COUNTED_EDITION_VIEWS`): 83 of 378 on 2026-10-18,
+99.3 % of the year's views. Their 2026-10-01 tables weigh 8.7 GB (page) and
+0.67 GB (redirect), English 2.43 GB and 188 MB.
+
+How the build runs:
+- Both tables are staged per edition and joined in the database.
+  `keepEdition` keeps a redirect whose target is a sitelink of the local
+  subset, since a redirect to an article no item names counts for nothing,
+  and leaves out a redirect that is itself an item's sitelink (an
+  intentional sitelink to a redirect), which counts under that item.
+- English Wikipedia's redirect file is the build's own and is kept in the local
+  copy. Every other file is read from the host as a stream, verified by the
+  sha1 and size its edition's `dumpstatus.json` gives (`wikipediaTableFile`,
+  `catalog.ts`).
+- Both builds of Wikipedia's tables read through one reader, `readTable` in
+  `wikipedia/tableRead.ts`.
+- The table is swapped in whole (`redirectTables.ts`). A failed file or a
+  cancel leaves the redirects in place.
 
 On September 2026 (`pageviews-202609-user.bz2`, 5.9 GB, 561.8M lines, measured
 2026-10-17 on #1436), 80 editions are counted. They have 181.9M titles, 35.9M
