@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../../db/index.js';
 import {
-  classesOfItems, componentNumbers, itemsInBoxes, partsOfSites, placesOf, rangesOf, registerCodesOf, settlementsAmong,
+  classesOfItems, classesUnder, componentNumbers, itemsInBoxes, itemsUnder, partsOfSites, placesOf, rangesOf, registerCodesOf,
+  settlementsAmong,
 } from './componentItems.js';
 
 /**
@@ -160,6 +161,17 @@ describe('the component-item search, read from the subset (#1435)', () => {
   it('tells a settlement by its classes in the tree, a castrum filed under fortification too being none', async () => {
     expect([...await settlementsAmong([FORT, VILLAGE_ITEM, RECORD], progress)]).toEqual([VILLAGE_ITEM]);
     expect([...await settlementsAmong([CASTRUM, VILLAGE], progress, true)]).toEqual([VILLAGE]);
+  });
+
+  it('tells the classes under a root, the root a kind of itself, and an unrelated class none', async () => {
+    expect([...await classesUnder([CASTRUM, VILLAGE, 'Q98482'], [FORTIFICATION], progress)]).toEqual([CASTRUM]);
+    expect([...await classesUnder([VILLAGE, 'Q98482'], [VILLAGE], progress)]).toEqual([VILLAGE]);
+  });
+
+  it('tells the items with any class under a root, a normal-ranked one beside a preferred one included', async () => {
+    // The fort is a castrum first and a village second: the second class still counts.
+    expect([...await itemsUnder([FORT, VILLAGE_ITEM, RECORD], [VILLAGE], progress)]).toEqual([FORT, VILLAGE_ITEM]);
+    expect([...await itemsUnder([FORT, VILLAGE_ITEM, RECORD], [FORTIFICATION], progress)]).toEqual([FORT, RECORD]);
   });
 
   it('reads where an item stands, by its English and multilingual names, with the place\'s coordinate and reference', async () => {

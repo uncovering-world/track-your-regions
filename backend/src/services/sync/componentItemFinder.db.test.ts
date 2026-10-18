@@ -56,6 +56,9 @@ vi.mock('./subset/componentItems.js', async (importOriginal) => ({
   itemsInBoxes: vi.fn(inEveryBox(nearby)),
   // Nothing here is a settlement unless a test says so.
   settlementsAmong: vi.fn(async () => new Set<string>()),
+  // No class or item is under a root a rule names, unless a test says so.
+  classesUnder: vi.fn(async () => new Set<string>()),
+  itemsUnder: vi.fn(async () => new Set<string>()),
   // No place a candidate stands in, unless a test names one.
   placesOf: vi.fn(async () => new Map<string, StandingPlace[]>()),
   // The items carrying a component's number: none, unless a test names them.
@@ -136,6 +139,8 @@ const run = () => findComponentItems({ write: true, hooks: { budget: new WaitBud
 beforeEach(async () => {
   vi.mocked(queries.itemsInBoxes).mockImplementation(inEveryBox(nearby));
   vi.mocked(queries.placesOf).mockReset().mockImplementation(async () => new Map<string, StandingPlace[]>());
+  vi.mocked(queries.classesUnder).mockReset().mockImplementation(async () => new Set<string>());
+  vi.mocked(queries.itemsUnder).mockReset().mockImplementation(async () => new Set<string>());
   vi.mocked(queries.componentNumbers).mockReset().mockImplementation(async () => []);
   vi.mocked(queries.registerCodesOf).mockReset().mockImplementation(async () => new Map());
   // A test that names its own labels must not leave them to the next one.
@@ -216,6 +221,46 @@ describe('findComponentItems', () => {
       `SELECT basis, register_code, register_disagrees FROM experience_component_item_proposals WHERE location_id = $1`, [gresia],
     )).rows;
     expect(row).toEqual([{ basis: 'toponym', register_code: 'LMI TR-I-s-B-14205', register_disagrees: false }]);
+  });
+
+  it('never takes a hotel or a station on the catalogue\'s classes, nor a museum by the place name alone (#1671)', async () => {
+    const MUSEUM = 'Q33506';
+    const HOTEL = 'Q27686';
+    const WELTMUSEUM = 'Q98430';
+    const MERCURE = 'Q98431';
+    await fallBack();
+    // Some resolved components elsewhere are a museum or a hotel, so both classes clear the floor.
+    vi.mocked(queries.classesOfItems).mockImplementation(async (items: readonly string[]) =>
+      new Map(items.map(item => [item, OTHER_SITES.map(otherSiteItem).includes(item) ? [CASTRUM, MUSEUM, HOTEL] : []])));
+    const underTheRoots = (closed: boolean) => async (classes: readonly string[], ancestors: readonly string[]) =>
+      new Set(closed ? classes.filter(c => ancestors.includes(c)) : []);
+    // What the class tree says of each candidate's classes: the Weltmuseum is a museum.
+    const museumsAmong = (closed: boolean) => async (items: readonly string[]) =>
+      new Set(closed ? items.filter(item => item === WELTMUSEUM) : []);
+    vi.mocked(queries.itemsInBoxes).mockImplementation(inEveryBox([
+      { item: WELTMUSEUM, labels: [], coords: [[48.205, 16.363055]], classes: [MUSEUM] },
+      { item: MERCURE, labels: [], coords: [[48.2066, 16.3631]], classes: [HOTEL] },
+    ]));
+    const names: Record<string, string> = { [WELTMUSEUM]: 'Weltmuseum Wien', [MERCURE]: 'Mercure Wien Zentrum' };
+    vi.mocked(queries.labelsOf).mockImplementation(async (items: readonly string[]) => new Map(items.map(item => {
+      const all = item in names ? [names[item]] : [];
+      return [item, { all, english: all[0] ?? null }];
+    })));
+    const canabae = await point('9840-006', 'Wien – Canabae Südwest', 48.2033, 16.3608, null);
+    const offered = async () => (await pool.query(
+      `SELECT wikidata_item, basis FROM experience_component_item_proposals WHERE location_id = $1`, [canabae],
+    )).rows;
+
+    vi.mocked(queries.classesUnder).mockImplementation(underTheRoots(true));
+    vi.mocked(queries.itemsUnder).mockImplementation(museumsAmong(true));
+    await run();
+    expect(await offered()).toEqual([]);
+
+    // Anti-vacuity: with the class tree naming neither, the town's museum is what the place name takes.
+    vi.mocked(queries.classesUnder).mockImplementation(underTheRoots(false));
+    vi.mocked(queries.itemsUnder).mockImplementation(museumsAmong(false));
+    await run();
+    expect(await offered()).toEqual([{ wikidata_item: WELTMUSEUM, basis: 'toponym' }]);
   });
 
   it("narrowed to one site, asks about and writes that site's points only (#1429)", async () => {
@@ -406,6 +451,8 @@ describe('findComponentItems', () => {
     const village = await findComponentItems({ write: false, hooks: { budget: new WaitBudget(1000) } });
     expect(village.matches.find(m => m.locationId === points.bologa)).toBeUndefined();
     expect(vi.mocked(queries.settlementsAmong).mock.calls.some(([ids]) => ids.includes(PLACE_ITEM))).toBe(true);
+    // And the museum question is asked of the place too, as of every candidate the place-name rule could take (#1671).
+    expect(vi.mocked(queries.itemsUnder).mock.calls.some(([ids]) => ids.includes(PLACE_ITEM))).toBe(true);
   });
 
   it("proposes an item carrying the point's number under another inscription beside the other doors' answers (#1394)", async () => {

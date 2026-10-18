@@ -126,6 +126,18 @@ describe('the classes a near candidate may be of', () => {
     expect(ofTheSitesKind(village, admitted, true, false)).toBe(false);
   });
 
+  it('never fall back to a hotel or a station, which only a site about them admits', () => {
+    // The Mercure Wien Zentrum offered for Vindobona's legionary fortress, and
+    // Tulln's station for its Roman tower (#1671).
+    const HOTEL = 'Q27686';
+    const STATION = 'Q55488';
+    // What the class tree says (classesUnder) of the roots NEVER_BY_THE_CATALOGUE names.
+    const never = new Set([HOTEL, STATION]);
+    const fallback = admittedClasses(new Set(), new Set([CASTRUM, HOTEL, STATION]), settlementKinds, never);
+    expect([...fallback]).toEqual([CASTRUM]);
+    expect(admittedClasses(new Set([STATION]), new Set(), settlementKinds, never).has(STATION)).toBe(true);
+  });
+
   it("refuse a settlement of the site's kind unless the site's parts are settlements", () => {
     const admitted = admittedClasses(new Set([CASTRUM, VILLAGE]), new Set(), settlementKinds);
     const both = { ...castrum, classes: [CASTRUM, VILLAGE] };
