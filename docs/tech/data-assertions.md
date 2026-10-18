@@ -533,11 +533,12 @@ a person. The question is the pass's own (`sharedItemsSql`,
 the button would not merge, nor misses one it would.
 
 **The near-pairs rule** (`near-places-with-similar-names-unanswered`) lists every
-pair of near places with similar names nobody has answered (#1249). That is the
-weaker of ADR-0046's two universal signals, and it proposes rather than merges:
-the *Places that may be one place* card beside the merge card runs the pass
-(`services/sync/mergeProposalFinder.ts`) that writes each pair within reach with
-names alike at 0.5 or better to `experience_merge_proposals`, and a person says
+pair of near places with similar names nobody has answered (#1249). Those are
+the universal signals that propose rather than merge (ADR-0046 decision 2,
+ADR-0120): the *Places that may be one place* card beside the merge card runs
+the pass (`services/sync/mergeProposalFinder.ts`) that writes each pair within
+reach with names alike at 0.5 or better, or with one name's significant words
+all standing in the other's (#1652), to `experience_merge_proposals`, and a person says
 whether they are one place, two places or one part of the other, an answer the
 proposal carries. What this lists is the open pairs — a question waiting for a person, as
 the merge rule's leftovers are — and an answered pair leaves it for good, since

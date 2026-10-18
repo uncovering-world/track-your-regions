@@ -5,8 +5,10 @@
 [ADR-0084](0084-a-place-belongs-to-no-source-and-no-kind.md): the "surviving place" is the row
 that stays physically, with no kind or source of its own. Decisions 1 and 5 narrowed by
 [ADR-0100](0100-a-serial-sites-components-are-places-part-of-the-site.md): a component is a place
-row, part of the site, and a merged component's address is its own card. Every other decision
-stands
+row, part of the site, and a merged component's address is its own card. Decisions 2 and 3
+narrowed by [ADR-0120](0120-a-near-pair-is-also-asked-when-one-names-words-stand-in-the-others.md):
+a third universal signal, one name's words all standing in the other's, proposes a pair. Every
+other decision stands
 
 ---
 

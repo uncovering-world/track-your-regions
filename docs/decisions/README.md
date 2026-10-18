@@ -65,7 +65,7 @@ and accepted by it.
 | [0043](0043-a-picture-we-show-is-one-we-may-show.md) | A picture we show is one we may show | Accepted — decision 2's order narrowed by [0094](0094-the-item-named-as-a-world-heritage-property-is-its-item-whichever-number-it-carries.md) | 2026-09-01 |
 | [0044](0044-a-work-leaves-a-museum-behind-a-floor-measured-on-works.md) | A work leaves a museum by a mark, behind a floor measured on works | Accepted — decision 2 narrowed by [0110](0110-a-works-floor-counts-the-sources-own-works-less-its-fame-decisions.md) | 2026-09-02 |
 | [0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) | A traveller browses by kind of place, and a source is how a kind is filled | Accepted — decision 4 narrowed by [0046](0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md); decisions 2 and 3 narrowed by [0048](0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md); decision 4 narrowed by [0084](0084-a-place-belongs-to-no-source-and-no-kind.md) | 2026-09-03 |
-| [0046](0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md) | A place is ours to identify, and two rows become one place by a merge a curator confirms | Accepted — the wording of decision 5 narrowed by [0084](0084-a-place-belongs-to-no-source-and-no-kind.md); decisions 1 and 5 narrowed by [0100](0100-a-serial-sites-components-are-places-part-of-the-site.md) | 2026-09-03 |
+| [0046](0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md) | A place is ours to identify, and two rows become one place by a merge a curator confirms | Accepted — the wording of decision 5 narrowed by [0084](0084-a-place-belongs-to-no-source-and-no-kind.md); decisions 1 and 5 narrowed by [0100](0100-a-serial-sites-components-are-places-part-of-the-site.md); decisions 2 and 3 narrowed by [0120](0120-a-near-pair-is-also-asked-when-one-names-words-stand-in-the-others.md) | 2026-09-03 |
 | [0047](0047-a-cached-answer-belongs-to-the-source-that-asked.md) | A cached answer belongs to the source that asked | Accepted | 2026-09-04 |
 | [0048](0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md) | A kind is filled in two tiers, each from its own kind of source | Accepted | 2026-09-06 |
 | [0049](0049-a-curator-writes-a-works-picture-only-with-its-credit.md) | A curator writes a work's picture only with its credit | Accepted | 2026-09-06 |
@@ -138,6 +138,7 @@ and accepted by it.
 | [0116](0116-a-gap-the-catalogue-carries-is-judged-once-in-a-committed-ledger-by-cause.md) | A gap the catalogue carries is judged once, in a committed ledger by cause | Accepted | 2026-10-16 |
 | [0117](0117-the-location-pairing-is-made-complete-before-any-arm-reads-it.md) | The location pairing is made complete before any arm reads it | Accepted | 2026-10-17 |
 | [0118](0118-a-budget-may-leave-out-a-host-the-repository-does-not-serve.md) | A Lighthouse budget may leave out a host the repository does not serve | Accepted | 2026-10-17 |
+| [0120](0120-a-near-pair-is-also-asked-when-one-names-words-stand-in-the-others.md) | A near pair is also asked about when one name's words all stand in the other's | Accepted | 2026-10-18 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
