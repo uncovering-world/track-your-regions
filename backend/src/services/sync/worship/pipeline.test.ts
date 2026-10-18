@@ -23,7 +23,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { collectPlacesOfWorship, type CollectedWorship } from './pipeline.js';
+import { collectPlacesOfWorship, type CollectedWorship, type WorshipPipelineDeps } from './pipeline.js';
 import { LOST_WORK_ROOT } from '../museum/worksCollector.js';
 import { POOL_MIN_SITELINKS } from '../publicArt/queries.js';
 import type { SourceLine } from '../sourceLine.js';
@@ -472,12 +472,14 @@ const LINE: SourceLine = { enterSitelinks: 22, staySitelinks: 18 };
 
 function collect(w: World, opts: {
   line?: SourceLine; admitted?: string[]; previousPlacements?: Record<string, string[]>;
+  openDoor?: WorshipPipelineDeps['openDoor'];
 } = {}): Promise<CollectedWorship> {
   return collectPlacesOfWorship({
     sparql: (query: string) => Promise.resolve(answer(w, query)),
     previousPlacements: opts.previousPlacements ?? {},
     admitted: new Set(opts.admitted ?? []),
     line: opts.line ?? LINE,
+    openDoor: opts.openDoor,
   });
 }
 
@@ -591,6 +593,21 @@ describe('collectPlacesOfWorship', () => {
     });
     expect(worksOf(out, 'Q958699')).toEqual(['Q178331']);
     expect(item(out, 'Q958699')?.artworks[0]?.treasureType).toBe('relic associated with Jesus');
+  });
+
+  it('admits Turin Cathedral through a relic below the line the world reads, and asks a curator (ADR-0056)', async () => {
+    const w = world();
+    w.works.Q178331.sitelinks = 15;
+    expect(item(await collect(w), 'Q958699')).toBeUndefined();
+
+    const opened = new Map([['Q178331', { views: 300_000, burst: true }]]);
+    const out = await collect(w, { openDoor: async () => ({ opened, bar: 133_366, exit: 88_364 }) });
+    const turin = item(out, 'Q958699');
+    expect(turin).toMatchObject({ door: 'work', admittedFor: { qid: 'Q178331', label: 'Shroud of Turin' } });
+    expect(turin?.readershipNote).toContain('its year is a burst');
+    expect(turin?.artworks[0]?.readIconic).toBe(true);
+    // A place its own fame admits is asked nothing about a work.
+    expect(item(out, 'Q12512')?.readershipNote).toBeUndefined();
   });
 
   it("refuses the Temple Mount and the Leaning Tower with the rule's own reasons", async () => {

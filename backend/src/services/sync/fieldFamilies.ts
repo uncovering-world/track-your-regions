@@ -54,6 +54,7 @@ export const FAMILY_FIELDS: Readonly<Record<SourceFamily, FamilyFields>> = {
     metadata: [
       'website', 'wikidataQid', 'sitelinksCount', 'wikidataClasses', 'wikidataArtwork', 'year', 'creators', 'creator', 'type',
       'artworkCount', 'totalArtworkSitelinks', 'admissionNote', 'osm', 'archaeologyNature', 'wikipediaCategories',
+      'museumReadershipNote', 'worshipReadershipNote',
     ],
   },
 };
@@ -61,26 +62,56 @@ export const FAMILY_FIELDS: Readonly<Record<SourceFamily, FamilyFields>> = {
 const familyOf = (sourceId: number): SourceFamily | null => SOURCE_FAMILY[sourceId] ?? null;
 
 /**
+ * The question each source's run asks a curator about a place, one key per
+ * source. The four Wikidata kinds share a family, so the family rule keeps
+ * none of these: without this list a museum run on the Israel Museum would
+ * write its record without Archaeology's question, and a worship run would
+ * take the museum door's away. A run writes its own key every pass, null
+ * when it asks nothing, and another source's as the place holds it while
+ * that source's membership stands.
+ */
+const SOURCE_OWN_METADATA: Readonly<Record<number, readonly string[]>> = {
+  2: ['museumReadershipNote'],
+  4: ['worshipReadershipNote'],
+  5: ['admissionNote'],
+};
+
+/**
  * The fields of the place that another family's standing membership brings
- * and the run's own family does not: those the run writes as the place holds
- * them. None for a place no other family holds, or a source in no family.
+ * and the run's own family does not, and the questions another source of the
+ * place asks: those the run writes as the place holds them. None for a place
+ * no other source holds, or a source in no family.
  */
 export async function otherFamiliesFields(
   query: Pick<PoolClient, 'query'>,
   placeId: number,
   sourceId: number,
 ): Promise<FamilyFields> {
-  const own = familyOf(sourceId);
-  if (own === null) return { columns: [], metadata: [] };
+  if (familyOf(sourceId) === null) return { columns: [], metadata: [] };
   const result = await query.query<{ source_id: number }>(
     `SELECT DISTINCT m.source_id FROM ${MEMBERSHIPS} m
       WHERE m.experience_id = $1 AND m.source_id <> $2 AND ${viewStandsSql('m')}`,
     [placeId, sourceId],
   );
-  const others = new Set(result.rows.map(row => familyOf(row.source_id)).filter((f): f is SourceFamily => f !== null && f !== own));
+  return fieldsOfOthers(sourceId, result.rows.map(row => row.source_id));
+}
+
+/**
+ * What the run of `sourceId` writes as the place holds it, given the other
+ * sources with a standing membership on it: their families' fields, and each
+ * one's own question. Split from the read so the sequence of runs can be
+ * stated without a database.
+ */
+export function fieldsOfOthers(sourceId: number, otherSourceIds: readonly number[]): FamilyFields {
+  const own = familyOf(sourceId);
+  if (own === null) return { columns: [], metadata: [] };
+  const others = new Set(otherSourceIds.map(familyOf).filter((f): f is SourceFamily => f !== null && f !== own));
   return {
     columns: [...others].flatMap(family => FAMILY_FIELDS[family].columns),
-    metadata: [...others].flatMap(family => FAMILY_FIELDS[family].metadata),
+    metadata: [...new Set([
+      ...[...others].flatMap(family => FAMILY_FIELDS[family].metadata),
+      ...otherSourceIds.filter(id => id !== sourceId).flatMap(id => SOURCE_OWN_METADATA[id] ?? []),
+    ])],
   };
 }
 

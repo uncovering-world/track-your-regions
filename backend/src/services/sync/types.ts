@@ -198,6 +198,11 @@ export interface ProcessedContent {
    * a URL otherwise (`treasures.wikipedia_url`, `wikipedia_read_at`).
    */
   wikipediaUrl?: string | null;
+  /**
+   * Whether the readership door opened for the work this run (ADR-0056): it is
+   * Iconic below the sitelinks line. Absent on a run with no door.
+   */
+  readIconic?: boolean;
 }
 
 /**
@@ -213,6 +218,11 @@ export interface CollectedMuseum {
    * and what makes that reason nameable on the curation screen.
    */
   admittedFor?: { qid: string; label: string };
+  /**
+   * The curator's question on a museum only the readership door admitted
+   * (ADR-0056): the work, its year, the bar and its burst flag.
+   */
+  readershipNote?: string;
 }
 
 // =============================================================================

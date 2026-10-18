@@ -19,6 +19,7 @@ import {
   WORKS, makeSparql, MUSEUM_CLASSES, MUSEUM_REACHABLE, PAINTING, LONG_LABEL, FILM, SIDE_CLASS, uri,
 } from './pipelineFixture.js';
 import type { SparqlFn } from '../wikidataQueries.js';
+import type { DoorWork } from '../readershipDoor.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 import { answeringWith, isWikipediaEditionsQuery } from '../wikipediaEditionsFixture.js';
 
@@ -208,6 +209,26 @@ describe('collectTier1Museums', () => {
     expect(admitted).not.toContain('Q900301');
     expect(admitted).not.toContain('Q900302');
     expect(admitted).not.toContain('Q900303');
+  });
+
+  it('admits the holder of a work below the line the world reads, and asks a curator about it (ADR-0056)', async () => {
+    const openDoor = vi.fn(async (_works: DoorWork[]) => ({
+      opened: new Map([['Q900402', { views: 276_677, burst: false }]]), bar: 133_366, exit: 88_364,
+    }));
+    const out = await collectTier1Museums({
+      sparql: makeSparql(), previousPlacements: {}, museumClasses: MUSEUM_CLASSES, openDoor,
+    });
+
+    // The door is asked about the pool's works with their sitelinks.
+    expect(openDoor.mock.calls[0][0]).toContainEqual({ qid: 'Q900402', sitelinks: 20 });
+    const almost = out.items.find((i) => i.qid === 'Q900311')!;
+    expect(almost.admittedFor).toEqual({ qid: 'Q900402', label: 'Work Below the Threshold' });
+    expect(almost.readershipNote).toContain('read 276,677 times this year');
+    expect(almost.artworks.find((a) => a.externalId === 'Q900402')?.readIconic).toBe(true);
+    // A museum the line admits is asked nothing, and its works are badged by the line.
+    const louvre = out.items.find((i) => i.qid === 'Q19675')!;
+    expect(louvre.readershipNote).toBeUndefined();
+    expect(louvre.artworks[0].readIconic).toBeUndefined();
   });
 
   it('reports what moved since the previous run, and what the pool no longer offers', async () => {

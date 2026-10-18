@@ -15,6 +15,12 @@ export interface TierWork {
    * cast, an authorised replica. See `MAX_HOLDERS` for what turns on it.
    */
   multipleMedium?: boolean;
+  /**
+   * Whether the work's readership opened the second door (ADR-0056,
+   * `readershipDoor.ts`): it admits its holder below the line as a work at the
+   * line does.
+   */
+  read?: boolean;
 }
 
 export const ICONIC_SITELINKS = 22;
@@ -77,7 +83,7 @@ export function selectTier1(
   const shared: string[] = [];
 
   for (const work of works) {
-    if (work.sitelinks < threshold) continue;
+    if (work.sitelinks < threshold && !work.read) continue;
     if (!work.venues.length) { homeless.push(work.qid); continue; }
     // The cap asks "which of these is the one to travel for", and an edition has no such
     // answer to give — every holder of an iconic impression has the thing itself.

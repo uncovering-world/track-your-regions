@@ -23,7 +23,6 @@ import { applyFolds, foldVenues, type VenueGraph } from './venueGraph.js';
 import {
   collectWorks,
   heldBy,
-  toContent,
   withEnglishArticles,
   MUSEUM_BROAD_ROOTS,
   MUSEUM_WHOLE_ROOTS,
@@ -39,6 +38,7 @@ import type { ClosureOptions } from '../classClosure.js';
 import type { QueryRunner, SparqlFn } from '../wikidataQueries.js';
 import type { FilteredEntity } from '../syncContract.js';
 import type { CollectedMuseum } from '../types.js';
+import { admittingWork, doorNote, readContent, type DoorWork, type ReadershipDoor } from '../readershipDoor.js';
 
 const LOG_PREFIX = '[Museum Sync]';
 
@@ -63,6 +63,12 @@ export interface PipelineDeps {
    * (`readHandOvers`); the test passes none.
    */
   handOvers?: ReadonlyMap<string, HandOver>;
+  /**
+   * The readership door over the pool's works (ADR-0056, `openReadershipDoor`),
+   * or nothing while the source's gate is off or the year cannot be read. The
+   * test passes its own.
+   */
+  openDoor?: (works: DoorWork[]) => Promise<ReadershipDoor | null>;
 }
 
 export interface PipelineResult {
@@ -93,10 +99,11 @@ const DIFF_LINES = 20;
 function candidateVenues(
   pool: Map<string, PoolWork>,
   placements: Record<string, string[]>,
+  admits: (work: PoolWork) => boolean,
 ): Set<string> {
   const venues = new Set<string>();
   for (const work of pool.values()) {
-    if (work.sitelinks < ICONIC_SITELINKS) continue;
+    if (!admits(work)) continue;
     for (const venue of placements[work.qid] ?? []) venues.add(venue);
   }
   return venues;
@@ -116,9 +123,10 @@ function applyArtTest(
   pool: Map<string, PoolWork>,
   placements: Record<string, string[]>,
   graph: VenueGraph,
+  admits: (work: PoolWork) => boolean,
 ): { placements: Record<string, string[]>; rejected: FilteredEntity[] } {
   const held = heldBy(pool, placements);
-  const candidates = candidateVenues(pool, placements);
+  const candidates = candidateVenues(pool, placements, admits);
   const admitted = new Set<string>();
   const rejected: FilteredEntity[] = [];
 
@@ -155,6 +163,7 @@ function buildItems(
   pool: Map<string, PoolWork>,
   placements: Record<string, string[]>,
   graph: VenueGraph,
+  door: ReadershipDoor | null,
 ): CollectedMuseum[] {
   const held = heldBy(pool, placements);
   const items: CollectedMuseum[] = [];
@@ -163,16 +172,14 @@ function buildItems(
     const row = graph.details.get(venue);
     if (!row || row.lat === null || row.lon === null) continue;
     const works = held.get(venue) ?? [];
-    const admittedBy = iconic
-      .map((qid) => pool.get(qid))
-      .filter((work): work is PoolWork => !!work)
-      .sort((a, b) => b.sitelinks - a.sitelinks)[0];
+    const admitting = admittingWork(iconic, pool, door);
 
     items.push({
       qid: venue,
       label: row.label,
-      admittedFor: admittedBy ? { qid: admittedBy.qid, label: admittedBy.label } : undefined,
-      artworks: works.map(toContent),
+      admittedFor: admitting ? { qid: admitting.work.qid, label: admitting.work.label } : undefined,
+      ...(admitting?.read && door ? { readershipNote: doorNote(admitting.work.label, admitting.read, door) } : {}),
+      artworks: works.map((work) => readContent(work, door)),
       details: {
         museumQid: venue,
         museumLabel: row.label,
@@ -205,12 +212,13 @@ function nameFiltered(
   graph: VenueGraph,
   folds: Record<string, Fold>,
   venues: ReadonlySet<string>,
+  admits: (work: PoolWork) => boolean,
 ): FilteredEntity[] {
   const nameOf = (qid: string) => graph.details.get(qid)?.label ?? qid;
   const filtered = new Map<string, FilteredEntity>();
 
   for (const work of pool.values()) {
-    if (work.sitelinks < ICONIC_SITELINKS) continue;
+    if (!admits(work)) continue;
     for (const statement of statements.get(work.qid) ?? []) {
       // An unknown value named no venue to resolve.
       if (statement.venue === null) continue;
@@ -270,7 +278,11 @@ function unseenLosses(
   const asIfSeen: Record<string, string[]> = { ...placed };
   for (const [qid, work] of Object.entries(unseen)) asIfSeen[qid] = work.wouldBe;
   const folds = foldVenues(asIfSeen, graph, rule);
-  const { placements: afterArtTest } = applyArtTest(pool, applyFolds(asIfSeen, folds), graph);
+  // Measured on the line alone: an unseen work is reported for what it would
+  // have admitted by its fame, and the readership door reads only works a
+  // visitor can see.
+  const atTheLine = (work: PoolWork) => work.sitelinks >= ICONIC_SITELINKS;
+  const { placements: afterArtTest } = applyArtTest(pool, applyFolds(asIfSeen, folds), graph, atTheLine);
   const tier = selectTier1(Object.keys(unseen).map((qid) => {
     const work = pool.get(qid);
     return {
@@ -364,15 +376,24 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
   };
   const collected = await collectWorks(run, options);
 
+  // The second door (ADR-0056): a work below the line the world reads admits
+  // its holder as a work at the line does.
+  run.phase('Reading what the world reads of the works below the line...');
+  const door = deps.openDoor
+    ? await deps.openDoor([...collected.pool.values()].map((work) => ({ qid: work.qid, sitelinks: work.sitelinks })))
+    : null;
+  const admits = (work: PoolWork) => work.sitelinks >= ICONIC_SITELINKS || !!door?.opened.has(work.qid);
+
   run.phase('Asking whether each venue is an art museum...');
   const { placements: afterArtTest, rejected: notArt } =
-    applyArtTest(collected.pool, collected.afterFolds, collected.graph);
+    applyArtTest(collected.pool, collected.afterFolds, collected.graph, admits);
 
   const tier = selectTier1([...collected.pool.values()].map((work) => ({
     qid: work.qid,
     sitelinks: work.sitelinks,
     venues: afterArtTest[work.qid] ?? [],
     multipleMedium: work.typeQid !== null && collected.editionClasses.has(work.typeQid),
+    read: !!door?.opened.has(work.qid),
   })));
   const admitted = new Set(tier.museums.keys());
 
@@ -400,14 +421,14 @@ export async function collectTier1Museums(deps: PipelineDeps): Promise<PipelineR
     current[qid] = venues.filter((venue) => admitted.has(venue));
   }
 
-  const items = buildItems(tier, pool, current, graph);
+  const items = buildItems(tier, pool, current, graph, door);
   await withEnglishArticles(run, items.flatMap((item) => item.artworks));
   const venues = new Set(Object.values(placed).flat());
   // A venue named once: the unseen losses come last, so a venue the resolver or the art test
   // already refused keeps that reason rather than being told its works cannot be seen.
   const filtered = new Map<string, FilteredEntity>();
   for (const entry of [
-    ...nameFiltered(pool, statements, resolver.resolution, graph, folds, venues),
+    ...nameFiltered(pool, statements, resolver.resolution, graph, folds, venues, admits),
     ...notArt,
     ...unseenLosses(pool, unseen, placed, rule, editionClasses, admitted, graph),
   ]) {

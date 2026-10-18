@@ -556,7 +556,12 @@ export async function upsertVenueTreasures(
         wikipedia_url = CASE WHEN $15::boolean THEN EXCLUDED.wikipedia_url ELSE treasures.wikipedia_url END,
         wikipedia_read_at = CASE WHEN $15::boolean THEN NOW() ELSE treasures.wikipedia_read_at END,
         is_iconic = CASE
-          WHEN EXCLUDED.sitelinks_count >= $10 THEN true
+          -- A work the readership door opened for this run is Iconic below the
+          -- line (ADR-0056), and the door keeps it open down to its exit. Below
+          -- the exit a work of 18 to 21 sitelinks still stays by the next arm,
+          -- as every Iconic work in that band does: no column says which door
+          -- a badge came through.
+          WHEN EXCLUDED.sitelinks_count >= $10 OR $16::boolean THEN true
           WHEN treasures.is_iconic THEN EXCLUDED.sitelinks_count >= $11
           ELSE false
         END,
@@ -618,7 +623,7 @@ export async function upsertVenueTreasures(
         artwork.year,
         artwork.imageUrl,
         artwork.sitelinksCount,
-        artwork.sitelinksCount >= iconicEnter,
+        artwork.sitelinksCount >= iconicEnter || artwork.readIconic === true,
         // What `treasureMetadata` serialises, from the patch computed above and
         // the find spot the work carries.
         serialiseMetadata(metadataPatch(artwork, patch)),
@@ -628,6 +633,7 @@ export async function upsertVenueTreasures(
         sameMakers,
         artwork.wikipediaUrl ?? null,
         artwork.wikipediaUrl !== undefined,
+        artwork.readIconic === true,
       ]
     );
 

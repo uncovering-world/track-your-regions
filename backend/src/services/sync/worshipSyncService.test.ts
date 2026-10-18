@@ -290,6 +290,23 @@ describe('what the worship run writes', () => {
     expect(params.metadata).not.toHaveProperty('door');
   });
 
+  it('writes the readership door\'s question under its own key, never over another kind\'s', async () => {
+    wrote();
+    const context: SyncRunContext = {
+      dryRun: false, syncLogId: 51, onLocationsChanged: vi.fn(), withdrawalSkippedReason: null,
+    };
+    const note = 'Admitted for Mary, Untier of Knots, below the sitelinks line. Can a visitor see it there now?';
+
+    await (await afterFetch()).processItem(place({ readershipNote: note }), progress(), context);
+
+    // A place Archaeology also holds carries Archaeology's question in
+    // admissionNote, and a run of this kind that wrote there would replace it
+    // (ADR-0056).
+    const { metadata } = mockedUpsert.mock.calls[0][0];
+    expect(metadata.worshipReadershipNote).toBe(note);
+    expect(metadata).not.toHaveProperty('admissionNote');
+  });
+
   it('tags a place its classes name no word for with the kind alone', async () => {
     wrote();
     const context: SyncRunContext = {

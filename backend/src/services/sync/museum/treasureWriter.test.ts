@@ -714,11 +714,10 @@ describe('the line a work is badged at', () => {
     const params = treasureCall()[1] as unknown[];
     const columns = /INSERT INTO treasures \(([\s\S]*?)\) VALUES/.exec(sql);
     expect(columns, 'the treasure insert no longer names its columns').not.toBeNull();
-    const arm = /EXCLUDED\.sitelinks_count >= \$(\d+) THEN true[\s\S]*?EXCLUDED\.sitelinks_count >= \$(\d+)/
-      .exec(sql);
-    expect(arm, 'the treasure upsert no longer decides is_iconic on two thresholds').not.toBeNull();
+    const arm = /EXCLUDED\.sitelinks_count >= \$(\d+) OR \$(\d+)::boolean THEN true[\s\S]*?EXCLUDED\.sitelinks_count >= \$(\d+)/.exec(sql);
+    expect(arm, 'the treasure upsert no longer decides is_iconic on two thresholds and the door').not.toBeNull();
     const at = columns![1].split(',').map((c) => c.trim()).indexOf('is_iconic');
-    return { flag: params[at], enter: params[Number(arm![1]) - 1], stay: params[Number(arm![2]) - 1] };
+    return { flag: params[at], ...Object.fromEntries(['enter', 'read', 'stay'].map((key, i) => [key, params[Number(arm![i + 1]) - 1]])) };
   }
 
   it('badges a find at the line the run states', async () => {
@@ -735,20 +734,22 @@ describe('the line a work is badged at', () => {
     // states a second pair (ADR-0058 decision 5), and the museum's own badge is
     // read at it. The find's flag has to read the same numbers, or the two
     // badges disagree about the same find (ADR-0023 decision 2).
-    expect(badgeBinding()).toEqual({ flag: true, enter: 18, stay: 15 });
+    expect(badgeBinding()).toEqual({ flag: true, enter: 18, read: false, stay: 15 });
   });
 
-  it('badges a work at the art museums\' line where the run states none', async () => {
+  it.each([
+    { door: undefined, iconic: false },
+    { door: true, iconic: true },
+  ])('badges a work at the art museums\' line where the run states none, and below it when the readership door opened (door: $door)', async ({ door, iconic }) => {
     scriptWorks('new');
 
-    await upsertMuseumTreasures(EXPERIENCE_ID, [find()]);
+    await upsertMuseumTreasures(EXPERIENCE_ID, [{ ...find(), readIconic: door }]);
 
     // The same 20 articles, under the line the museum run has always used: not
     // a masterpiece, and the default is the constants rather than a number this
-    // writer invents for a run that said nothing.
-    expect(badgeBinding()).toEqual({
-      flag: false, enter: ICONIC_SITELINKS, stay: ICONIC_RELEASE,
-    });
+    // writer invents for a run that said nothing. Read as widely as the works
+    // at the line, the door makes it Iconic all the same (ADR-0056).
+    expect(badgeBinding()).toEqual({ flag: iconic, enter: ICONIC_SITELINKS, read: iconic, stay: ICONIC_RELEASE });
   });
 });
 

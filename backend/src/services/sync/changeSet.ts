@@ -222,6 +222,11 @@ export const SYNC_OWNED_METADATA_KEYS = [
   'artworkCount', 'totalArtworkSitelinks', 'sitelinksCount',
   'wikidataClasses', 'wikidataArtwork',
   'archaeologyNature', 'admissionNote', 'wikipediaCategories',
+  // The readership door's question on a place it alone admitted (ADR-0056),
+  // one key per kind that opens the door, since a place two kinds hold would
+  // otherwise carry whichever run's sentence came last. Re-derived every pass,
+  // as admissionNote is.
+  'museumReadershipNote', 'worshipReadershipNote',
   // What OpenStreetMap said about a site, and when (ADR-0059 decision 2). The
   // run's own reading, re-derived every pass and stamped with the date it was
   // read: a curator cannot be right about which object carried the tag, and a

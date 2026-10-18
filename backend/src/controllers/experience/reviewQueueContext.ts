@@ -84,8 +84,14 @@ export function objectContextSelectSql(alias = 'e'): string {
           -- only on the preview behind it, because this is where the answer is
           -- given -- and where a batch answer can dispose of the row without
           -- the object ever being opened (#852). Null on every row no run
-          -- asked anything about, which is nearly all of them.
-          ${alias}.metadata->>'admissionNote' AS admission_note,
+          -- asked anything about, which is nearly all of them. The readership
+          -- door asks under a key per kind (ADR-0056), since a place two kinds
+          -- hold must not lose one run's question to the other's, and the card
+          -- reads every question there is, one after another.
+          NULLIF(concat_ws(' ',
+            ${alias}.metadata->>'admissionNote',
+            ${alias}.metadata->>'museumReadershipNote',
+            ${alias}.metadata->>'worshipReadershipNote'), '') AS admission_note,
           (SELECT jsonb_agg(r.name ORDER BY r.name)
              FROM experience_regions er
              JOIN regions r ON r.id = er.region_id
