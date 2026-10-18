@@ -1,12 +1,15 @@
 /**
  * The dumps a build can keep something from, and what builds it: the local
  * Wikidata subset from the entities dump (#1434), and readership from the
- * monthly pageview files (#1436). The Wikipedia tables bring theirs (#1440).
+ * monthly pageview files (#1436), and English Wikipedia's structure from its
+ * page table's dump and the three of the same date (#1440).
  */
 
 import type { DumpFile, DumpKey } from './catalog.js';
 import type { ReadOptions } from './read.js';
 import { buildReadership, latestReadership } from './readership/readershipBuild.js';
+import { buildStructure } from './wikipedia/structureBuild.js';
+import { latestStructure } from './wikipedia/structureTables.js';
 import { buildSubset, rederiveSubset, type RederiveOptions } from './wikidata/subsetBuild.js';
 import type { CopyNeeds } from './wikidata/buildRules.js';
 import { latestSubset } from './wikidata/subsetTables.js';
@@ -52,6 +55,9 @@ const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
     title: 'The local Wikidata subset', build: buildSubset, rederive: rederiveSubset, latest: latestSubset, samples: true, fromCopy: true,
   },
   'pageviews-user': { title: 'Readership over the last twelve months', build: buildReadership, latest: latestReadership, samples: false, fromCopy: false },
+  'enwiki-page': {
+    title: 'English Wikipedia\'s articles, categories and category links', build: buildStructure, latest: latestStructure, samples: false, fromCopy: false,
+  },
 };
 
 export const keeperOf = (key: DumpKey): Keeper | null => KEEPERS[key] ?? null;

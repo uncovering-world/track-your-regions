@@ -17,7 +17,7 @@ export const WIKIMEDIA_DUMPS = 'https://dumps.wikimedia.org';
 
 /** Every dump the catalog knows, by key: what a route accepts and a build is named by. */
 export const DUMP_KEYS = [
-  'wikidata-entities', 'wikidata-lexemes', 'enwiki-page', 'enwiki-page-props', 'enwiki-categorylinks',
+  'wikidata-entities', 'wikidata-lexemes', 'enwiki-page', 'enwiki-page-props', 'enwiki-linktarget', 'enwiki-categorylinks',
   'enwiki-langlinks', 'pageviews-user',
 ] as const;
 export type DumpKey = typeof DUMP_KEYS[number];
@@ -179,7 +179,8 @@ export const DUMPS: readonly DumpDescriptor[] = [
     'The same JSON format at a size that verifies the pipeline in minutes.'),
   enwikiTable('enwiki-page', 'pagetable', 'page', 'Pages', 'every page with its title, namespace, length and redirect flag (#1440).'),
   enwikiTable('enwiki-page-props', 'pagepropstable', 'page_props', 'Page properties', 'among them the Wikidata item of each article.'),
-  enwikiTable('enwiki-categorylinks', 'categorylinkstable', 'categorylinks', 'Category links', 'which category each page is in (#1440).'),
+  enwikiTable('enwiki-linktarget', 'linktargettable', 'linktarget', 'Link targets', 'the namespace and title each category link names by id (#1440).'),
+  enwikiTable('enwiki-categorylinks', 'categorylinkstable', 'categorylinks', 'Category links', 'which category each page is in, named by its link target (#1440).'),
   enwikiTable('enwiki-langlinks', 'langlinkstable', 'langlinks', 'Language links', 'each article\'s articles in other editions.'),
   pageviews,
 ];
