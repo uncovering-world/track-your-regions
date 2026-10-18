@@ -27,13 +27,13 @@ const DURHAM = {
       proposalId: 41, otherId: 13341, otherName: 'Durham Cathedral', otherKinds: ['Places of worship'],
       otherImageUrl: null, otherImageCredit: null, otherLatitude: 54.7733, otherLongitude: -1.5755,
       otherWikidataItem: 'Q1250209', anchorWikidataItem: 'Q1250209', distanceM: 139, nameSimilarity: 0.6486,
-      exact: false, reachM: 300, proposedAt: '2026-10-17T10:00:00.000Z',
+      exact: false, reachM: 300, foundBy: 'similar', proposedAt: '2026-10-17T10:00:00.000Z',
     },
     {
       proposalId: 42, otherId: 11800, otherName: 'Durham Castle and Cathedral', otherKinds: ['Public Art & Monuments'],
       otherImageUrl: null, otherImageCredit: null, otherLatitude: 54.7745, otherLongitude: -1.5760,
       otherWikidataItem: 'Q5316567', anchorWikidataItem: 'Q1250209', distanceM: 20, nameSimilarity: 1,
-      exact: true, reachM: 300, proposedAt: '2026-10-17T10:00:00.000Z',
+      exact: true, reachM: 300, foundBy: 'similar', proposedAt: '2026-10-17T10:00:00.000Z',
     },
   ],
 } as unknown as ReviewQueueItem;
@@ -129,6 +129,31 @@ describe('two near places with similar names', () => {
       'Durham Castle and Cathedral: 1 pair kept as two places, 1 pair refused: Both places belong to the same kind, which one place cannot hold twice',
       1225,
     ));
+  });
+});
+
+describe('a pair found because one name stands within the other (#1652)', () => {
+  beforeEach(() => {
+    mockedAnswer.mockReset();
+    mockedSuggest.mockReset();
+    mockedSuggest.mockResolvedValue({ configured: false, suggestions: [] });
+  });
+
+  it('says so instead of a share that would read as a reason not to ask', () => {
+    const geghard = {
+      ...DURHAM, id: 407, name: 'Monastery of Geghard and the Upper Azat Valley',
+      merge_pairs: [{
+        ...(DURHAM.merge_pairs ?? [])[0], proposalId: 51, otherId: 13263, otherName: 'Geghard', distanceM: 7,
+        nameSimilarity: 0.17, exact: false, foundBy: 'words',
+      }],
+    } as unknown as ReviewQueueItem;
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <MergeProposalsCard item={geghard} onDone={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    expect(screen.getByText(/7 m apart · one name within the other/)).toBeTruthy();
+    expect(screen.queryByText(/17 % alike/)).toBeNull();
   });
 });
 
