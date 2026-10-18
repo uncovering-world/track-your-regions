@@ -4,7 +4,8 @@
  *
  * A merge folds one place into another in one transaction, under both places'
  * locks taken in id order: the folded place's memberships, points, work links,
- * changeset rows and answers move to the survivor, a point or a link both hold
+ * changeset rows, answers and part-of relations (ADR-0100 decision 4) move to
+ * the survivor, a point or a link both hold
  * is folded into the survivor's, and every traveller's visit is reconciled as
  * ADR-0046 decision 5 says — the earlier date, both notes, the later visit's
  * rating. The folded place is kept, marked `merged_into_id`; it keeps no
@@ -26,6 +27,7 @@ import { moveConflictDecisions } from './conflictDecisions.js';
 import { foldPoints, movePoints, unfoldPoints, type FoldedPoints } from './experienceLocationWriter.js';
 import { moveHeldDecisions } from './heldDecisions.js';
 import { moveMemberships } from './membershipWriter.js';
+import { arePartAndWhole, followItsPoints, moveParts } from './partWriter.js';
 import { reopenMergedPair } from './mergeProposalAnswers.js';
 import { placeAfterRelease } from './publishContents.js';
 import { moveViewChoices } from './viewChoices.js';
@@ -63,6 +65,8 @@ export interface MergeRecord {
   assignments?: number[];
   /** A curator's choices between two sources' views of the folded place (#1246). */
   viewChoices?: number[];
+  /** The part-of relations the folded place was in, as the part or as the whole (ADR-0100 decision 4). */
+  parts?: number[];
   /**
    * The visits a folded visit was copied in as, and the survivor's visits it
    * reconciled, before and after: the undo takes back only what nobody has
@@ -114,6 +118,9 @@ export async function mergePlaces(
       // ADR-0086 decision 4: one place holds one membership per kind.
       return await refuse({ status: 409, error: 'Both places belong to the same kind, which one place cannot hold twice' });
     }
+    if (await arePartAndWhole(client, survivor.lock, folded.lock)) {
+      return await refuse({ status: 409, error: 'One of the two places is part of the other, which is not one place' });
+    }
 
     const record = await moveEverything(client, folded.lock, survivor.lock);
     await markFolded(client, folded.lock, survivorId);
@@ -151,11 +158,12 @@ async function moveEverything(client: PoolClient, folded: LockedExperience, surv
   const rejections = await moveRejections(client, folded.id, survivor.id);
   const assignments = await moveManualAssignments(client, folded.id, survivor.id);
   const viewChoices = await moveViewChoices(client, folded, survivor);
+  const parts = await moveParts(client, folded, survivor);
   const visits = await reconcileVisits(client, folded.id, survivor.id);
   const pointVisits = await reconcilePointVisits(client, foldedPoints);
   return {
     memberships, points, foldedPoints, links, foldedLinks, changes, heldDecisions, conflictDecisions, rejections,
-    assignments, viewChoices, visits, pointVisits,
+    assignments, viewChoices, parts, visits, pointVisits,
   };
 }
 
@@ -399,6 +407,10 @@ async function moveEverythingBack(
   // A merge recorded before assignments moved recorded none, and moves none back.
   await moveManualAssignments(client, survivor.id, folded.id, record.assignments ?? []);
   await moveViewChoices(client, survivor, folded, record.viewChoices ?? []);
+  await moveParts(client, survivor, folded, record.parts ?? []);
+  // Whichever of the two is a component part again follows its point.
+  await followItsPoints(client, folded);
+  await followItsPoints(client, survivor);
 }
 
 /**
