@@ -4,6 +4,7 @@ import { useAuth } from '../../hooks/useAuth';
 import type { AuthProvider } from '../../types/auth';
 import { ChangePasswordForm } from './ChangePasswordForm';
 import { displayNameOf } from '../../utils/displayName';
+import { MapsAppSetting } from './MapsAppSetting';
 
 /** How an account signs in, in the words a person would use. */
 const PROVIDER_LABEL: Record<AuthProvider, string> = {
@@ -26,7 +27,9 @@ function signsInWithProvider(provider: AuthProvider | null): boolean {
 }
 
 /**
- * The account area: who you are, and the password you sign in with.
+ * The account area: who you are, the password you sign in with, and the maps
+ * app places open in — the one part a signed-out visitor sees too, since their
+ * choice is kept in the browser (#1604).
  *
  * Deliberately plain. It exists because a password that cannot be rotated is
  * the one a person keeps after a breach — the endpoint has been there since
@@ -37,11 +40,24 @@ export function AccountPage() {
 
   if (isLoading) return null;
 
+  const maps = (signedIn: boolean) => (
+    <Paper variant="outlined" sx={{ p: 3, mt: 3 }}>
+      <Typography variant="h6" component="h2" gutterBottom>
+        Maps
+      </Typography>
+      <Divider sx={{ mb: 2 }} />
+      <MapsAppSetting signedIn={signedIn} />
+    </Paper>
+  );
+
   if (!isAuthenticated || !user) {
     return (
-      <Alert severity="info" sx={{ m: 3 }}>
-        Sign in to see your account.
-      </Alert>
+      <Container maxWidth="sm" sx={{ py: 4, overflow: 'auto' }}>
+        <Alert severity="info">
+          Sign in to see your account.
+        </Alert>
+        {maps(false)}
+      </Container>
     );
   }
 
@@ -97,6 +113,8 @@ export function AccountPage() {
           <ChangePasswordForm />
         )}
       </Paper>
+
+      {maps(true)}
     </Container>
   );
 }

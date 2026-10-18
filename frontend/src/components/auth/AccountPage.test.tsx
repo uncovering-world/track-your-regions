@@ -57,6 +57,21 @@ describe('AccountPage', () => {
     expect(passwordForm()).not.toBeInTheDocument();
   });
 
+  it("offers a signed-out visitor the maps app setting, kept in this browser (#1604)", () => {
+    currentUser = null;
+    render(<AccountPage />);
+    expect(screen.getByRole('radiogroup')).toBeTruthy();
+    expect(screen.getByLabelText('Ask each time: every map side by side')).toBeTruthy();
+    expect(screen.getByText('Kept in this browser.')).toBeTruthy();
+  });
+
+  it('offers a signed-in visitor the same setting, saved with the account (#1604)', () => {
+    currentUser = user();
+    render(<AccountPage />);
+    expect(screen.getByLabelText('Google Maps')).toBeTruthy();
+    expect(screen.getByText('Saved with your account, on every device you sign in on.')).toBeTruthy();
+  });
+
   it('offers the form to an email-and-password account', () => {
     render(<AccountPage />);
 

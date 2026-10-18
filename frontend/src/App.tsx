@@ -8,20 +8,23 @@ import { Header } from './components/Header';
 import { NavigationPane } from './components/NavigationPane';
 import { MainDisplay, setExplorationModeListener } from './components/MainDisplay';
 import { DiscoverPage } from './components/discover/DiscoverPage';
-import { AccountPage, AuthCallbackHandler, VerifyEmailPage } from './components/auth';
+import { AuthCallbackHandler, VerifyEmailPage } from './components/auth';
 import { LoadingSpinner } from './components/shared/LoadingSpinner';
 import { ChunkBoundary } from './components/shared/ChunkBoundary';
 import { lazyChunk } from './utils/lazyChunk';
 import { NavigationProvider } from './hooks/useNavigation';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { MapsAppProvider } from './hooks/useMapsApp';
 import { AppThemeProvider, useAppTheme, createAppTheme } from './theme';
 
 // The admin panel and the review queue are a signed-in admin's and curator's
-// screens: route-level chunks, so the visitor who opens the map or Discover
-// downloads none of them (#643). A new admin or curator screen goes under one
-// of these routes, or is lazy where it mounts, and lands in a chunk of its own.
+// screens, and the account page one a visitor opens rarely: route-level
+// chunks, so the visitor who opens the map or Discover downloads none of them
+// (#643). A new admin or curator screen goes under one of these routes, or is
+// lazy where it mounts, and lands in a chunk of its own.
 const AdminDashboard = lazyChunk(() => import('./components/admin/AdminDashboard').then(m => ({ default: m.AdminDashboard })));
 const ReviewPage = lazyChunk(() => import('./components/curation/ReviewPage').then(m => ({ default: m.ReviewPage })));
+const AccountPage = lazyChunk(() => import('./components/auth/AccountPage').then(m => ({ default: m.AccountPage })));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -112,7 +115,9 @@ function AccountContent() {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'auto' }}>
       <Header />
-      <AccountPage />
+      <ChunkBoundary fallback={<LoadingSpinner />}>
+        <AccountPage />
+      </ChunkBoundary>
     </Box>
   );
 }
@@ -173,17 +178,19 @@ function ThemedApp() {
     <ThemeProvider theme={theme}>
       <CssBaseline />
       <AuthProvider>
-        <NavigationProvider>
-          <Routes>
-            <Route path="/auth/callback" element={<AuthCallbackHandler />} />
-            <Route path="/verify-email" element={<VerifyEmailPage />} />
-            <Route path="/account" element={<AccountContent />} />
-            <Route path="/admin/*" element={<ChunkBoundary fallback={<LoadingSpinner />}><AdminDashboard /></ChunkBoundary>} />
-            <Route path="/discover/*" element={<DiscoverContent />} />
-            <Route path="/review" element={<CurationReview />} />
-            <Route path="/*" element={<MainContent />} />
-          </Routes>
-        </NavigationProvider>
+        <MapsAppProvider>
+          <NavigationProvider>
+            <Routes>
+              <Route path="/auth/callback" element={<AuthCallbackHandler />} />
+              <Route path="/verify-email" element={<VerifyEmailPage />} />
+              <Route path="/account" element={<AccountContent />} />
+              <Route path="/admin/*" element={<ChunkBoundary fallback={<LoadingSpinner />}><AdminDashboard /></ChunkBoundary>} />
+              <Route path="/discover/*" element={<DiscoverContent />} />
+              <Route path="/review" element={<CurationReview />} />
+              <Route path="/*" element={<MainContent />} />
+            </Routes>
+          </NavigationProvider>
+        </MapsAppProvider>
       </AuthProvider>
     </ThemeProvider>
   );
