@@ -77,21 +77,33 @@ describe("a site's candidate component items", () => {
     expect(screen.getByText('LMI CJ-I-s-A-07104')).toBeTruthy();
     expect(screen.getByText('LMI CJ-II-m-B-07533 · another kind of entry than the site’s other candidates')).toBeTruthy();
     expect(screen.getAllByRole('link', { name: 'Castrul Bologa' })[0]).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q98501');
-    // One map on the card, reading the first candidate until the pointer rests on another.
-    expect(screen.getAllByText('Castrul Bologa').length).toBeGreaterThan(1);
-    expect(screen.getByText('the site’s other places')).toBeTruthy();
+    // No map until a candidate is picked: the room it will take, with a prompt in it (#1691).
+    expect(screen.getByText('Pick a candidate below to see it beside its component on the map.')).toBeTruthy();
+    expect(screen.queryByText('the site’s other places')).toBeNull();
     expect(screen.queryByRole('button', { name: 'see both on the map' })).toBeNull();
     expect((screen.getByRole('button', { name: 'Save answers' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
-  it('reads the candidate the pointer rests on, and says when its position is not read yet (#1342)', () => {
+  it('reads the candidate a curator picks, by a click or by Enter, and not the one the pointer crosses (#1691)', () => {
     renderCard();
-    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Same place: Castrul Buciumi' }));
+    const row = (label: string) => screen.getByLabelText(`${label}: show on the map`);
+
+    fireEvent.mouseEnter(row('Castrul Buciumi'));
+    fireEvent.focus(row('Castrul Buciumi'));
+    expect(screen.queryByText('the site’s other places')).toBeNull();
+
+    fireEvent.click(row('Castrul Buciumi'));
     expect(screen.getAllByText('Castrul Buciumi').length).toBeGreaterThan(1);
+    expect(row('Castrul Buciumi')).toHaveAttribute('aria-current', 'true');
     expect(screen.queryByText('The candidate’s position is not read yet')).toBeNull();
 
-    fireEvent.mouseEnter(screen.getByRole('button', { name: 'Same place: Turnul Bologa' }));
+    // The pointer moving over another row on its way to the map leaves the picked pair where it is.
+    fireEvent.mouseEnter(row('Turnul Bologa'));
+    expect(screen.queryByText('The candidate’s position is not read yet')).toBeNull();
+
+    fireEvent.keyDown(row('Turnul Bologa'), { key: 'Enter' });
     expect(screen.getByText('The candidate’s position is not read yet')).toBeTruthy();
+    expect(row('Castrul Buciumi')).not.toHaveAttribute('aria-current');
   });
 
   it("draws a component's own picture on its part-card, with the photographer under it (#1342)", () => {
