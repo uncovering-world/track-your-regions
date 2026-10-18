@@ -155,7 +155,7 @@ describe('computeRegionGeometryCore answers a failed pipeline softly', () => {
       if (s.includes('ST_UnaryUnion')) {
         throw Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' });
       }
-      if (s.includes('direct_member_geoms')) return { rows: [{ collected_geom: { sentinel: 'collected' }, geom_count: '50' }] };
+      if (s.includes('direct_member_geoms')) return { rows: [{ geom_count: '50', has_geometry: true }] };
       return respond(s);
     });
 
@@ -191,13 +191,12 @@ describe('computeRegionGeometryCore answers a failed pipeline softly', () => {
  * neither.
  */
 describe('the union path writes regions.geom with no tolerance of its own', () => {
-  const CLEANED = { sentinel: 'cleaned-union-geometry' };
 
   function respondUnion(sql: string) {
     const s = String(sql);
     if (s.includes('member_points')) return { rows: [UNION_SHAPE] };
     if (s.includes('direct_member_geoms')) {
-      return { rows: [{ collected_geom: { sentinel: 'collected' }, geom_count: '4' }] };
+      return { rows: [{ geom_count: '4', has_geometry: true }] };
     }
     if (s.includes('ST_UnaryUnion')) {
       return { rows: [{ union_geom: { sentinel: 'unioned' } }] };
@@ -205,7 +204,7 @@ describe('the union path writes regions.geom with no tolerance of its own', () =
     if (s.includes('holes_filtered')) {
       return {
         rows: [{
-          cleaned_geom: CLEANED, holes_before: '4',
+          holes_before: '4',
           num_polygons: '2', num_rings: '3', num_points: '7000',
         }],
       };
@@ -216,7 +215,7 @@ describe('the union path writes regions.geom with no tolerance of its own', () =
   /** Asserts the whole path from the union to the column carries no coarsening. */
   function expectNoCoarsening() {
     const calls = client.query.mock.calls as Array<[unknown, unknown[]?]>;
-    expect(coarseningProblems(calls, CLEANED)).toEqual([]);
+    expect(coarseningProblems(calls)).toEqual([]);
   }
 
   beforeEach(() => {
@@ -231,7 +230,7 @@ describe('the union path writes regions.geom with no tolerance of its own', () =
       const s = String(sql);
       // The region was checked as not drawn; by the time of the write it is,
       // so the guarded UPDATE matches no row.
-      if (s.includes('SET geom = validate_multipolygon($2)')) return { rows: [], rowCount: 0 };
+      if (s.includes('SET geom = validate_multipolygon(w.collected)')) return { rows: [], rowCount: 0 };
       return respondUnion(s);
     });
 
@@ -250,6 +249,29 @@ describe('the union path writes regions.geom with no tolerance of its own', () =
     // default-skip path is covered by the fall-through cases above.
     await computeRegionGeometryCore(42, { skipSnapping: false });
     expectNoCoarsening();
+  });
+
+  it('drops the union_work table once the region is stored, a temporary table being never vacuumed', async () => {
+    await computeRegionGeometryCore(42, { skipSnapping: true });
+
+    const sqls = client.query.mock.calls.map((c) => String(c[0]));
+    const write = sqls.findIndex((s) => s.includes('SET geom = validate_multipolygon(w.collected)'));
+    const drop = sqls.indexOf('DROP TABLE IF EXISTS pg_temp.union_work');
+    expect(write).toBeGreaterThan(-1);
+    expect(drop).toBeGreaterThan(write);
+  });
+
+  it('drops the union_work table on a region with nothing to merge', async () => {
+    client.query.mockImplementation(async (sql: string) => {
+      const s = String(sql);
+      if (s.includes('direct_member_geoms')) return { rows: [{ geom_count: '0', has_geometry: false }] };
+      return respondUnion(s);
+    });
+
+    const result = await computeRegionGeometryCore(42, { skipSnapping: true });
+
+    expect(result).toEqual({ computed: false, error: 'No geometries to merge' });
+    expect(client.query.mock.calls.map((c) => String(c[0]))).toContain('DROP TABLE IF EXISTS pg_temp.union_work');
   });
 });
 
@@ -270,23 +292,19 @@ describe('the union path writes regions.geom with no tolerance of its own', () =
  * defect existed in three copies of one statement.
  */
 describe('the snap keeps the direct members a mixed region holds', () => {
-  const COLLECTED = { sentinel: 'collected-members-and-children' };
-  const MEMBERS = { sentinel: 'members-only' };
-  const SNAPPED = { sentinel: 'snapped-children-and-members' };
-  const CLEANED = { sentinel: 'cleaned-union-geometry' };
 
   function respondMixed(sql: string) {
     const s = String(sql);
     if (s.includes('member_points')) return { rows: [UNION_SHAPE] };
     if (s.includes('direct_member_geoms')) {
-      return { rows: [{ collected_geom: COLLECTED, member_geom: MEMBERS, geom_count: '4' }] };
+      return { rows: [{ geom_count: '4', has_geometry: true }] };
     }
     if (s.includes('ST_Snap(')) {
       return {
         rows: [{
           id: 7, name: 'Encamp', neighbor_count: '2',
           original_points: '100', new_points: '104', added_points: '4',
-          collected_geom: SNAPPED, total_snapped_points: '104',
+          total_snapped_points: '104',
         }],
       };
     }
@@ -294,7 +312,7 @@ describe('the snap keeps the direct members a mixed region holds', () => {
     if (s.includes('holes_filtered')) {
       return {
         rows: [{
-          cleaned_geom: CLEANED, holes_before: '4',
+          holes_before: '4',
           num_polygons: '2', num_rings: '3', num_points: '7000',
         }],
       };
@@ -304,7 +322,7 @@ describe('the snap keeps the direct members a mixed region holds', () => {
 
   function expectMembersKept() {
     const calls = client.query.mock.calls as Array<[unknown, unknown[]?]>;
-    expect(droppedMemberProblems(calls, { memberGeom: MEMBERS, snappedGeom: SNAPPED })).toEqual([]);
+    expect(droppedMemberProblems(calls)).toEqual([]);
   }
 
   beforeEach(() => {
@@ -352,6 +370,8 @@ describe('computeRegionGeometryCore under the worker stop', () => {
     expect(poolQuery).toHaveBeenCalledWith('SELECT pg_cancel_backend($1)', [4242]);
     const sqls = client.query.mock.calls.map((c) => String(c[0]));
     expect(sqls.some((s) => s.includes('SET geom'))).toBe(false);
+    // A stopped client is closed, never pooled, and its temporary table goes with it.
+    expect(sqls).not.toContain('DROP TABLE IF EXISTS pg_temp.union_work');
     expect(client.release).toHaveBeenCalledWith(true);
   });
 

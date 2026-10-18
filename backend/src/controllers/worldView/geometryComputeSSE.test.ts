@@ -93,24 +93,23 @@ describe('computeSingleRegionGeometrySSE reaches the same fast path', () => {
  * error baked in here (#443).
  *
  * Bound to the sink — every statement of the writer whose output can reach
- * `SET geom = validate_multipolygon($2)` — rather than to the file, and reading
+ * `SET geom = validate_multipolygon(w.collected)` — rather than to the file, and reading
  * the rule from `unionGeomToleranceGuard.ts` rather than restating it, so a
  * widening reaches this writer and the other two together.
  */
 describe('the SSE union path writes regions.geom with no tolerance of its own', () => {
-  const CLEANED = { sentinel: 'cleaned-union-geometry' };
 
   function respondUnionClient(sql: string) {
     const s = String(sql);
     if (s.includes('member_points')) return { rows: [UNION_SHAPE] };
     if (s.includes('direct_member_geoms')) {
-      return { rows: [{ collected_geom: { sentinel: 'collected' }, geom_count: '4' }] };
+      return { rows: [{ geom_count: '4', has_geometry: true }] };
     }
     if (s.includes('ST_UnaryUnion')) return { rows: [{ union_geom: { sentinel: 'unioned' } }] };
     if (s.includes('holes_filtered')) {
       return {
         rows: [{
-          cleaned_geom: CLEANED, holes_before: '4',
+          holes_before: '4',
           num_polygons: '2', num_rings: '3', num_points: '7000',
         }],
       };
@@ -132,7 +131,16 @@ describe('the SSE union path writes regions.geom with no tolerance of its own', 
     await runStream();
 
     const calls = client.query.mock.calls as Array<[unknown, unknown[]?]>;
-    expect(coarseningProblems(calls, CLEANED)).toEqual([]);
+    expect(coarseningProblems(calls)).toEqual([]);
+  });
+
+  it('drops the union_work table after the write, a temporary table being never vacuumed', async () => {
+    await runStream();
+
+    const sqls = client.query.mock.calls.map((c) => String(c[0]));
+    const write = sqls.findIndex((s) => s.includes('SET geom = validate_multipolygon(w.collected)'));
+    expect(write).toBeGreaterThan(-1);
+    expect(sqls.indexOf('DROP TABLE IF EXISTS pg_temp.union_work')).toBeGreaterThan(write);
   });
 });
 
@@ -148,23 +156,19 @@ describe('the SSE union path writes regions.geom with no tolerance of its own', 
  * is what kept the defect quiet here while the other two carried it.
  */
 describe('the SSE snap keeps the direct members a mixed region holds', () => {
-  const COLLECTED = { sentinel: 'collected-members-and-children' };
-  const MEMBERS = { sentinel: 'members-only' };
-  const SNAPPED = { sentinel: 'snapped-children-and-members' };
-  const CLEANED = { sentinel: 'cleaned-union-geometry' };
 
   function respondMixed(sql: string) {
     const s = String(sql);
     if (s.includes('member_points')) return { rows: [UNION_SHAPE] };
     if (s.includes('direct_member_geoms')) {
-      return { rows: [{ collected_geom: COLLECTED, member_geom: MEMBERS, geom_count: '4' }] };
+      return { rows: [{ geom_count: '4', has_geometry: true }] };
     }
     if (s.includes('ST_Snap(')) {
       return {
         rows: [{
           id: 7, name: 'Encamp', neighbor_count: '2',
           original_points: '100', new_points: '104', added_points: '4',
-          collected_geom: SNAPPED, total_snapped_points: '104',
+          total_snapped_points: '104',
         }],
       };
     }
@@ -172,7 +176,7 @@ describe('the SSE snap keeps the direct members a mixed region holds', () => {
     if (s.includes('holes_filtered')) {
       return {
         rows: [{
-          cleaned_geom: CLEANED, holes_before: '4',
+          holes_before: '4',
           num_polygons: '2', num_rings: '3', num_points: '7000',
         }],
       };
@@ -196,7 +200,7 @@ describe('the SSE snap keeps the direct members a mixed region holds', () => {
     await runStream();
 
     const calls = client.query.mock.calls as Array<[unknown, unknown[]?]>;
-    expect(droppedMemberProblems(calls, { memberGeom: MEMBERS, snappedGeom: SNAPPED })).toEqual([]);
+    expect(droppedMemberProblems(calls)).toEqual([]);
   });
 });
 
@@ -217,7 +221,7 @@ describe('the SSE path under the request bound', () => {
     client.query.mockImplementation(async (sql: string) => {
       const s = String(sql);
       if (s.includes('member_points')) return { rows: [UNION_SHAPE] };
-      if (s.includes('direct_member_geoms')) return { rows: [{ collected_geom: { sentinel: 'collected' }, geom_count: '4' }] };
+      if (s.includes('direct_member_geoms')) return { rows: [{ geom_count: '4', has_geometry: true }] };
       if (s.includes('ST_UnaryUnion')) {
         throw Object.assign(new Error('canceling statement due to statement timeout'), { code: '57014' });
       }
