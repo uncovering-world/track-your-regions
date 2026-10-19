@@ -626,7 +626,7 @@ export async function publishUnderLock(
       // has just applied — but it is written either way, because a rule that
       // fires only in the case that needs it is a rule nobody exercises.
       await recordHeldAnswers(client, experienceId, userId, 'published',
-        [...write.written, ...parts.written]);
+        [...write.written, ...parts.written], pointer);
       // The same value another kind's run proposed is published with it (#1599).
       await clearAnsweredHeldPointers(client, locked.lock);
     }

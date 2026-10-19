@@ -530,7 +530,7 @@ export async function getReviewQueue(
              ch.sync_log_id, 'held' AS kind,
              (SELECT jsonb_agg(f) FROM jsonb_array_elements(ch.changed_fields) AS f
                WHERE (f->>'held')::boolean
-                 AND NOT ${heldFieldAnsweredSql('e.id')}) AS proposed,
+                 AND NOT ${heldFieldAnsweredSql('e.id', 'ch.sync_log_id')}) AS proposed,
              ${heldPartsSelectSql('ch', 'e')}
       FROM experiences e
       -- The pointer is the membership's (#822): the proposal was held for the

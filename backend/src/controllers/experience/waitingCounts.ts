@@ -63,7 +63,7 @@ export function heldFieldExistsSql(alias = 'ch'): string {
   return `EXISTS (
       SELECT 1 FROM jsonb_array_elements(${alias}.changed_fields) AS f
       WHERE (f->>'held')::boolean
-        AND NOT ${heldFieldAnsweredSql(`${alias}.experience_id`)}
+        AND NOT ${heldFieldAnsweredSql(`${alias}.experience_id`, `${alias}.sync_log_id`)}
     )`;
 }
 

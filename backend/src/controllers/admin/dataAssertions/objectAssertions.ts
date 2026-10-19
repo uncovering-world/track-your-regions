@@ -119,7 +119,7 @@ const dangerFlagAgainstItsTag: CatalogueAssertion = {
                                     AND m.pending_change_sync_log_id = ch.sync_log_id
               WHERE ch.experience_id = e.id
                 AND (f->>'held')::boolean
-                AND NOT ${heldFieldAnsweredSql('e.id')}
+                AND NOT ${heldFieldAnsweredSql('e.id', 'ch.sync_log_id')}
                 AND f->>'field' = 'metadata.inDanger')
          ORDER BY e.name`,
   describe: row => {

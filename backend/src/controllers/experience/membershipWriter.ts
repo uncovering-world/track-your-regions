@@ -277,9 +277,8 @@ export async function clearHeldPointer(
  * would still name the run. Cleared here, under the lock the answer took, only
  * where the proposal held a row the gate kept out and none of those rows is
  * open: a pointer whose rows a curator claimed instead keeps its own question.
- * Nor where it holds a type: the type within the kind is the membership's
- * (ADR-0084), while the answer that reads it as settled is the place's, so
- * another kind's answer has not written this kind's type.
+ * A type is answered for its own kind's source (ADR-0125), so another kind's
+ * answer never reads this kind's type as settled.
  */
 export async function clearAnsweredHeldPointers(client: PoolClient, lock: LockedExperience): Promise<void> {
   // Asked first and written only where there is one, so the common answer —
@@ -302,9 +301,7 @@ export async function clearAnsweredHeldPointers(client: PoolClient, lock: Locked
                              COALESCE(ch.contents -> k.kind -> 'changed', '[]'::jsonb)) AS c
                            CROSS JOIN LATERAL jsonb_array_elements(c -> 'fields') AS f
                            WHERE (f->>'held')::boolean))
-             AND NOT (${heldFieldExistsSql('ch')} OR ${heldPartExistsSql('ch')})
-             AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(ch.changed_fields, '[]'::jsonb)) AS t
-                              WHERE (t->>'held')::boolean AND t->>'field' = 'type'))`,
+             AND NOT (${heldFieldExistsSql('ch')} OR ${heldPartExistsSql('ch')}))`,
     [lock.id],
   );
   const ids = (answered.rows ?? []).map(row => row.id);

@@ -4460,7 +4460,12 @@ CREATE TABLE IF NOT EXISTS experience_held_decisions (
     value JSONB NOT NULL,
     decided_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     decided_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    UNIQUE NULLS NOT DISTINCT (experience_id, part_kind, part_ref, part_name, field)
+    -- The source whose runs the answer answers, for a field that is a kind's
+    -- rather than the place's: the type within the kind (ADR-0125, #1720).
+    -- NULL, the place's, for every other field.
+    source_id INTEGER REFERENCES experience_sources(id) ON DELETE CASCADE,
+    CONSTRAINT experience_held_decisions_answer_key
+      UNIQUE NULLS NOT DISTINCT (experience_id, part_kind, part_ref, part_name, field, source_id)
 );
 
 -- No index beyond the unique constraint, for the reason given above it: the
@@ -4472,6 +4477,7 @@ COMMENT ON TABLE experience_held_decisions IS 'Gate-held proposals a curator has
 COMMENT ON COLUMN experience_held_decisions.part_kind IS 'NULL for the object own field; otherwise the contents kind the record filed the part under';
 COMMENT ON COLUMN experience_held_decisions.answer IS 'published: the value was written by a curator click. refused: the curator said not this, and nothing was written';
 COMMENT ON COLUMN experience_held_decisions.value IS 'The proposed value the answer is about, read from the locked proposal and never from the request';
+COMMENT ON COLUMN experience_held_decisions.source_id IS 'The source whose runs a kind field answer answers (the type within the kind, ADR-0125); NULL for a fact of the place, answered for every run';
 
 -- A run's batch a curator has set aside (#805, ADR-0051). Keyed on the run
 -- because that is the unit a batch has: run 98 put 1 255 questions about one

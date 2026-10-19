@@ -444,7 +444,7 @@ const pictureWithNobodyCredited: CatalogueAssertion = {
                              WHERE ch.experience_id = e.id
                                AND ch.sync_log_id = m.pending_change_sync_log_id
                                AND (f->>'held')::boolean
-                               AND NOT ${heldFieldRefusedSql('e.id')}
+                               AND NOT ${heldFieldRefusedSql('e.id', 'ch.sync_log_id')}
                                -- Both record shapes, because both are live. Since
                                -- ADR-0039 the credit is an entry of its own, whose
                                -- new value *is* the credit; before it the credit

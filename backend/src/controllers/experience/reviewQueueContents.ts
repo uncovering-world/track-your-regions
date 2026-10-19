@@ -270,7 +270,7 @@ export async function queryContents(
                    ORDER BY id DESC LIMIT 1) AS held,
                  jsonb_array_elements(held.changed_fields) AS f
            WHERE f->>'field' = 'location' AND (f->>'held')::boolean
-             AND NOT ${heldFieldAnsweredSql('e.id')}
+             AND NOT ${heldFieldAnsweredSql('e.id', 'm.pending_change_sync_log_id')}
              AND NOT COALESCE(e.curated_fields ? 'location', false)
            LIMIT 1) AS at) AS proposed
     ) pair

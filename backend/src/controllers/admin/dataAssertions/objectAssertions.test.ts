@@ -72,8 +72,8 @@ describe('the danger flag against its tag', () => {
     // check one assertion over (#722): a published flag is a flag that landed, so
     // the two halves agree and there is nothing left to reconcile. A published
     // credit is not — see `heldFieldRefusedSql`.
-    expect(sql).toContain(collapse(heldFieldAnsweredSql('e.id')));
-    expect(sql).not.toContain(collapse(heldFieldRefusedSql('e.id')));
+    expect(sql).toContain(collapse(heldFieldAnsweredSql('e.id', 'ch.sync_log_id')));
+    expect(sql).not.toContain(collapse(heldFieldRefusedSql('e.id', 'ch.sync_log_id')));
     expect(sql).toContain("e.metadata->'inDanger' = 'true'::jsonb");
   });
 

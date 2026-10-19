@@ -207,7 +207,7 @@ export async function refuseUnderLock(
     }
 
     await recordHeldAnswers(client, experienceId, userId, 'refused',
-      selected.map(row => ({ row: row.ref, value: row.proposed })));
+      selected.map(row => ({ row: row.ref, value: row.proposed })), pointer);
 
     // ADR-0083: the object's coordinate and the unread point that is the same move are
     // one question (#1233): publishing the coordinate takes the point along, so
