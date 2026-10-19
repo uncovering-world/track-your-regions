@@ -222,7 +222,7 @@ The Python service has a smaller surface than the Node backend but introduces ne
 
 | Concern | Status | Notes |
 |---|---|---|
-| File upload size cap | enforced | `BodySizeLimitMiddleware` (`cv-python/app/middleware.py`) rejects requests with `Content-Length` exceeding `CV_MAX_BODY_BYTES` (default 100 MB) before the body is buffered, returning 413. Uvicorn has no equivalent CLI flag — middleware is the standard ASGI mechanism. |
+| File upload size cap | enforced | `BodySizeLimitMiddleware` (`cv-python/app/middleware.py`) rejects requests with `Content-Length` exceeding `CV_MAX_BODY_BYTES` (default 100 MB; set in `.env`, which `docker-compose.yml` passes into the container, #1649) before the body is buffered, returning 413. Uvicorn has no equivalent CLI flag — middleware is the standard ASGI mechanism. |
 | File-format validation | enforced | `decode_image()` checks `cv2.imdecode` return for `None` and rejects non-image bytes; image dimensions clamped after decode |
 | Authentication | n/a (network-isolated) | Trust boundary documented above |
 | Authorization | n/a | Service has no per-resource state |
