@@ -33,7 +33,8 @@ import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { ItemHeader } from './queueCard';
 import { ObjectPreview } from './ObjectPreview';
 import { GatedSection } from './GatedSection';
-import { sectionKind, type GatedGroup } from './gatedGroup';
+import { sectionKind, sectionLabel, sectionsKinds, type GatedGroup } from './gatedGroup';
+import { liftSharedFacts } from './sharedFacts';
 
 /**
  * Each place's open questions, a section per membership that asks, in the
@@ -46,7 +47,8 @@ import { sectionKind, type GatedGroup } from './gatedGroup';
  * `pointMembershipSql` / `linkMembershipSql`, #1290), so where that membership
  * also holds a proposal they share its section — the source wants to change the label *and* the
  * museum gained twelve paintings. A second section exists only where a second
- * kind asks.
+ * kind asks. A fact two kinds' runs propose alike is lifted out of their
+ * sections into a "This place" section ahead of them (`liftSharedFacts`, #1599).
  */
 export function groupGated(
   arrivals: ReviewQueueItem[], held: ReviewQueueItem[], contents: ReviewQueueItem[],
@@ -63,6 +65,7 @@ export function groupGated(
   contents.forEach(item => put(item, 'contents'));
   const byPlace = new Map<number, GatedGroup[]>();
   for (const group of byMembership.values()) byPlace.set(group.id, [...(byPlace.get(group.id) ?? []), group]);
+  for (const [id, sections] of byPlace) byPlace.set(id, liftSharedFacts(sections));
   return byPlace;
 }
 
@@ -89,13 +92,15 @@ export function GatedCard({ sections, onDone }: { sections: GatedGroup[]; onDone
   return (
     <Card variant="outlined">
       <CardContent>
-        <ItemHeader item={item} kinds={several ? sections.map(sectionKind) : undefined} />
+        <ItemHeader item={item} kinds={several || first.sharedBy ? sectionsKinds(sections) : undefined} />
         <Stack spacing={2}>
           {sections.map((group, index) => (
             <GatedSection
-              key={`${group.id}:${group.membershipId ?? ''}`}
+              // The place's section answers under one of its kinds' memberships,
+              // whose own section may follow it, so it is keyed apart.
+              key={`${group.id}:${group.membershipId ?? ''}${group.sharedBy ? ':place' : ''}`}
               group={group}
-              heading={several ? `${sectionKind(group)} asks` : undefined}
+              heading={several ? headingOf(group) : undefined}
               objectButton={index === sections.length - 1 ? objectButton : undefined}
               onDone={onDone}
             />
@@ -105,4 +110,9 @@ export function GatedCard({ sections, onDone }: { sections: GatedGroup[]; onDone
       </CardContent>
     </Card>
   );
+}
+
+/** A section's heading on a card with several: the place's own facts, or the kind that asks. */
+function headingOf(group: GatedGroup): string {
+  return group.sharedBy ? sectionLabel(group) : `${sectionKind(group)} asks`;
 }

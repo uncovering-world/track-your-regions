@@ -58,21 +58,28 @@ export class AnswerStopped extends Error {
 /**
  * The questions a row answers, in the server's words: the row's own kind word,
  * except the one the row renames, and the membership its card asks about
- * (#1264) — one per refusal of a `refused` row, or one per section of a
- * `waiting` row, since a place two kinds ask about is two questions, each
- * answered under its own kind. A
- * held section names its own run, which is what its answer is checked
- * against; the row's run is the newest of its sections'.
+ * (#1264) — one per refusal of a `refused` row, or one per membership a
+ * `waiting` row's sections answer under: a section is one question, answered
+ * under its kind, and the place's own facts are answered under the one kind
+ * their section answers under (#1599). A held section names its own run, which
+ * is what its answer is checked against; the row's run is the newest of its
+ * sections'.
  */
 export function toAnswerRows(row: QueueRow): ReviewAnswerRow[] {
   const kind = row.kind === 'conflicts' ? 'conflict' : row.kind;
   if (row.sections) {
-    return row.sections.map(group => ({
+    // The place's own facts (#1599) are answered under the one kind their
+    // section answers under: the answer is recorded on the place by
+    // value, which settles the other kinds' copies, and a kind with more to ask
+    // has a section of its own, answered after it.
+    const answers: ReviewAnswerRow[] = row.sections.map(group => ({
       kind,
       id: row.id,
       runId: group.held ? group.held.sync_log_id ?? null : row.runId,
       ...namedMembership(group.membershipId),
     }));
+    return answers.filter((answer, index) => answer.membershipId === undefined
+      || answers.findIndex(other => other.membershipId === answer.membershipId) === index);
   }
   // A refused row answers each kind's refusal under its own membership.
   return (row.items ?? [row.item]).map(item => ({
@@ -102,7 +109,7 @@ function merge(into: ReviewAnswerResult, from: ReviewAnswerResult): ReviewAnswer
 /**
  * Counted in questions, as the server reports them. `of` is never under what
  * is done: the filtered total counts places, and a place two kinds ask about
- * is two questions (#1264).
+ * can be two questions (#1264).
  */
 function progressOf(report: ReviewAnswerResult, of: number): AnswerProgress {
   const answered = report.answered.length;

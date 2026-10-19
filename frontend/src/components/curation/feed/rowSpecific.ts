@@ -10,7 +10,7 @@
  */
 
 import type { HeldPart, ReviewQueueItem } from '../../../api/reviewQueue';
-import { sectionKind, type GatedGroup } from '../gatedGroup';
+import { sectionLabel, type GatedGroup } from '../gatedGroup';
 import type { RowKind } from '../queueRowTypes';
 import { creditFoldsIntoPicture } from '../factRows';
 import { distanceLabel } from '../../../utils/moveDescription';
@@ -153,7 +153,7 @@ function sectionSpecific(group: GatedGroup): string {
 function waitingSpecific(sections: readonly GatedGroup[]): string {
   if (sections.length === 1) return sectionSpecific(sections[0]);
   return sections
-    .map(group => `${sectionKind(group)}: ${sectionSpecific(group) || KIND_SHORT.arrival}`)
+    .map(group => `${sectionLabel(group)}: ${sectionSpecific(group) || KIND_SHORT.arrival}`)
     .join('; ');
 }
 
