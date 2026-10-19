@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 import pytest
 
-from app.cv.preprocess import _exclude_decoration_ccs
+from app.cv.decoration_ccs import exclude_decoration_ccs
 
 W, H = 400, 300
 
@@ -125,7 +125,7 @@ def _scene(shapes: dict[str, tuple[np.ndarray, str]]) -> tuple[np.ndarray, np.nd
     return mask, image.astype(np.uint8)
 
 
-# Recorded from _exclude_decoration_ccs before #1654 split it: the shapes kept.
+# Recorded from the exclusion before #1654 split it: the shapes kept.
 EXPECTED_KEPT: dict[tuple[str, float], set[str]] = {
     ("a furnished map", 0.25): {
         "a compact island inland",
@@ -151,7 +151,7 @@ EXPECTED_KEPT: dict[tuple[str, float], set[str]] = {
 def test_the_exclusion_keeps_the_shapes_it_kept_before_the_split(scene: str, edge_pct: float) -> None:
     shapes = SCENES[scene]
     mask, image = _scene(shapes)
-    result = _exclude_decoration_ccs(mask, image, edge_pct=edge_pct)
+    result = exclude_decoration_ccs(mask, image, edge_pct=edge_pct)
 
     kept = {name for name, (shape, _) in shapes.items() if np.any(result[(shape > 0) & (mask > 0)])}
     assert kept == EXPECTED_KEPT[(scene, edge_pct)]
@@ -162,4 +162,4 @@ def test_the_exclusion_keeps_the_shapes_it_kept_before_the_split(scene: str, edg
 
 def test_an_empty_mask_is_returned_as_it_is() -> None:
     mask = np.zeros((H, W), np.uint8)
-    assert _exclude_decoration_ccs(mask, np.zeros((H, W, 3), np.uint8)) is mask
+    assert exclude_decoration_ccs(mask, np.zeros((H, W, 3), np.uint8)) is mask
