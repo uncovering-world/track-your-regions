@@ -242,7 +242,87 @@ def _compute_initial_transform(
     return sx, sy, tx, ty
 
 
-def _centroid_fallback(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
+def _centroid_extent_transform(
+    centroids: list[dict],
+    country_mask: np.ndarray,
+    cos_lat: float,
+    gadm_points: np.ndarray,
+    tw: int,
+    th: int,
+) -> tuple[float, float, float, float]:
+    """The scale and translation (sx, sy, tx, ty) that map the centroids' extent onto the mask's.
+
+    Centroids give the GADM extent, not boundary points, which include offshore
+    islets that inflate the bbox; the CV mask gives the pixel extent, not the full
+    image, which the silhouette may not fill.
+    """
+    mask_ys, mask_xs = np.where(country_mask > 0)
+    if len(mask_xs) > 10:
+        cv_min_x, cv_max_x = float(mask_xs.min()), float(mask_xs.max())
+        cv_min_y, cv_max_y = float(mask_ys.min()), float(mask_ys.max())
+    else:
+        cv_min_x, cv_max_x = 0.0, float(tw)
+        cv_min_y, cv_max_y = 0.0, float(th)
+
+    # GADM extent from centroids — filter antimeridian outliers
+    raw_cx = np.array([c["cx"] for c in centroids])
+    raw_cy = np.array([c["cy"] for c in centroids])
+    inlier = np.abs(raw_cx - np.median(raw_cx)) < 30
+    if inlier.sum() < 3:
+        inlier = np.ones(len(raw_cx), dtype=bool)
+    cx_arr = raw_cx[inlier] * cos_lat
+    cy_arr = -raw_cy[inlier]  # Y-negation for SVG
+    # A 5% margin, since centroids are interior points, not edges
+    margin_x = (cx_arr.max() - cx_arr.min()) * 0.05
+    margin_y = (cy_arr.max() - cy_arr.min()) * 0.05
+    gadm_min_x, gadm_max_x = cx_arr.min() - margin_x, cx_arr.max() + margin_x
+    gadm_min_y, gadm_max_y = cy_arr.min() - margin_y, cy_arr.max() + margin_y
+
+    gadm_w = gadm_max_x - gadm_min_x
+    gadm_h = gadm_max_y - gadm_min_y
+    if not (gadm_w > 0 and gadm_h > 0):
+        return _compute_initial_transform(gadm_points, tw, th)
+    sx0 = (cv_max_x - cv_min_x) / gadm_w
+    sy0 = (cv_max_y - cv_min_y) / gadm_h
+    tx0 = (cv_min_x + cv_max_x) / 2.0 - (gadm_min_x + gadm_max_x) / 2.0 * sx0
+    ty0 = (cv_min_y + cv_max_y) / 2.0 - (gadm_min_y + gadm_max_y) / 2.0 * sy0
+    return sx0, sy0, tx0, ty0
+
+
+def _cluster_sizes(pixel_labels: np.ndarray) -> dict[int, int]:
+    """The pixel count of every cluster present, for weighting the centroid score."""
+    sizes: dict[int, int] = {}
+    for label_val in range(255):
+        count = int(np.sum(pixel_labels == label_val))
+        if count > 0:
+            sizes[label_val] = count
+    return sizes
+
+
+def _best_on_grid(
+    score_of: Callable[[float, float, float, float], float],
+    best: tuple[float, tuple[float, float, float, float]],
+    base: tuple[float, float, float, float],
+    scale_factors: tuple[Any, Any],
+    offsets: tuple[range, range],
+) -> tuple[float, tuple[float, float, float, float]]:
+    """The best (score, params) of best and every scale factor × translation offset around base."""
+    best_score, best_params = best
+    bsx, bsy, btx, bty = base
+    for sx_f in scale_factors[0]:
+        for sy_f in scale_factors[1]:
+            sx = bsx * sx_f
+            sy = bsy * sy_f
+            for tx_off in offsets[0]:
+                for ty_off in offsets[1]:
+                    score = score_of(sx, sy, btx + tx_off, bty + ty_off)
+                    if score > best_score:
+                        best_score = score
+                        best_params = (sx, sy, btx + tx_off, bty + ty_off)
+    return best_score, best_params
+
+
+def _centroid_fallback(
     centroids: list[dict],
     pixel_labels: np.ndarray,
     country_mask: np.ndarray,
@@ -261,129 +341,35 @@ def _centroid_fallback(  # noqa: C901 -- above the complexity ceiling of 15; #16
     if len(gadm_points) == 0:
         return np.eye(2, 3, dtype=np.float64), 0.0, "centroid_grid"
 
-    # Compute initial transform mapping GADM centroid extent to CV silhouette extent.
-    # Use centroids (not boundary points) for GADM extent — boundary points include
-    # offshore islets that inflate the bbox. Use CV mask extent (not full image)
-    # because the silhouette may not fill the image.
-    mask_ys, mask_xs = np.where(country_mask > 0)
-    if len(mask_xs) > 10:
-        cv_min_x, cv_max_x = float(mask_xs.min()), float(mask_xs.max())
-        cv_min_y, cv_max_y = float(mask_ys.min()), float(mask_ys.max())
-    else:
-        cv_min_x, cv_max_x = 0.0, float(tw)
-        cv_min_y, cv_max_y = 0.0, float(th)
+    initial = _centroid_extent_transform(centroids, country_mask, cos_lat, gadm_points, tw, th)
+    cluster_sizes = _cluster_sizes(pixel_labels)
+    # A "large" cluster is over 5% of the country's area
+    large_threshold = max(int(country_mask.sum()), 1) * 0.05
 
-    # GADM extent from centroids — filter antimeridian outliers
-    raw_cx = np.array([c["cx"] for c in centroids])
-    raw_cy = np.array([c["cy"] for c in centroids])
-    med_cx = np.median(raw_cx)
-    inlier = np.abs(raw_cx - med_cx) < 30
-    if inlier.sum() < 3:
-        inlier = np.ones(len(raw_cx), dtype=bool)
-    cx_arr = raw_cx[inlier] * cos_lat
-    cy_arr = -raw_cy[inlier]  # Y-negation for SVG
-    gadm_min_x, gadm_max_x = cx_arr.min(), cx_arr.max()
-    gadm_min_y, gadm_max_y = cy_arr.min(), cy_arr.max()
-    # Add 5% margin to centroid extent (centroids are interior points, not edges)
-    margin_x = (gadm_max_x - gadm_min_x) * 0.05
-    margin_y = (gadm_max_y - gadm_min_y) * 0.05
-    gadm_min_x -= margin_x
-    gadm_max_x += margin_x
-    gadm_min_y -= margin_y
-    gadm_max_y += margin_y
+    def score_of(sx: float, sy: float, tx: float, ty: float) -> float:
+        return _score_centroid_alignment(
+            centroids, pixel_labels, cos_lat, sx, sy, tx, ty, tw, th, cluster_sizes, large_threshold
+        )
 
-    gadm_w = gadm_max_x - gadm_min_x
-    gadm_h = gadm_max_y - gadm_min_y
-    cv_w = cv_max_x - cv_min_x
-    cv_h = cv_max_y - cv_min_y
+    # Coarse: scale ±25% for X, ±20% for Y, translation ±20 px
+    best = _best_on_grid(
+        score_of,
+        (-1.0, initial),
+        initial,
+        (np.arange(0.75, 1.26, 0.05), np.arange(0.80, 1.21, 0.05)),
+        (range(-20, 21, 4), range(-15, 16, 3)),
+    )
+    # Fine: ±2% scale, ±3 px translation around the coarse winner
+    fine_factors = [1 + d for d in np.arange(-0.02, 0.021, 0.005)]
+    best_score, (fsx, fsy, ftx, fty) = _best_on_grid(
+        score_of, best, best[1], (fine_factors, fine_factors), (range(-3, 4), range(-3, 4))
+    )
 
-    if gadm_w > 0 and gadm_h > 0:
-        sx0 = cv_w / gadm_w
-        sy0 = cv_h / gadm_h
-        gadm_cx = (gadm_min_x + gadm_max_x) / 2.0
-        gadm_cy = (gadm_min_y + gadm_max_y) / 2.0
-        tx0 = (cv_min_x + cv_max_x) / 2.0 - gadm_cx * sx0
-        ty0 = (cv_min_y + cv_max_y) / 2.0 - gadm_cy * sy0
-    else:
-        sx0, sy0, tx0, ty0 = _compute_initial_transform(gadm_points, tw, th)
-
-    # Count total non-background pixels per cluster for weighting
-    h, w = pixel_labels.shape
-    total_country_px = max(int(country_mask.sum()), 1)
-    cluster_sizes: dict[int, int] = {}
-    for label_val in range(255):
-        count = int(np.sum(pixel_labels == label_val))
-        if count > 0:
-            cluster_sizes[label_val] = count
-
-    # Threshold for "large" cluster: > 5% of country area
-    large_threshold = total_country_px * 0.05
-
-    best_score = -1.0
-    best_params = (sx0, sy0, tx0, ty0)
-
-    # Coarse grid search: scale +-25% for X, +-20% for Y, translation +-20px
-    # numpy is already imported as `np` at module top — drop the redundant alias.
-    sx_factors = np.arange(0.75, 1.26, 0.05)
-    sy_factors = np.arange(0.80, 1.21, 0.05)
-    tx_offsets = range(-20, 21, 4)
-    ty_offsets = range(-15, 16, 3)
-
-    for sx_f in sx_factors:
-        for sy_f in sy_factors:
-            sx = sx0 * sx_f
-            sy = sy0 * sy_f
-            for tx_off in tx_offsets:
-                for ty_off in ty_offsets:
-                    txc = tx0 + tx_off
-                    tyc = ty0 + ty_off
-                    score = _score_centroid_alignment(
-                        centroids,
-                        pixel_labels,
-                        cos_lat,
-                        sx,
-                        sy,
-                        txc,
-                        tyc,
-                        tw,
-                        th,
-                        cluster_sizes,
-                        large_threshold,
-                    )
-                    if score > best_score:
-                        best_score = score
-                        best_params = (sx, sy, txc, tyc)
-
-    # Fine refinement: +-2% scale, +-3px translation around best
-    bsx, bsy, btx, bty = best_params
-    for sx_d in np.arange(-0.02, 0.021, 0.005):
-        for sy_d in np.arange(-0.02, 0.021, 0.005):
-            sx = bsx * (1 + sx_d)
-            sy = bsy * (1 + sy_d)
-            for dtx in range(-3, 4):
-                for dty in range(-3, 4):
-                    score = _score_centroid_alignment(
-                        centroids,
-                        pixel_labels,
-                        cos_lat,
-                        sx,
-                        sy,
-                        btx + dtx,
-                        bty + dty,
-                        tw,
-                        th,
-                        cluster_sizes,
-                        large_threshold,
-                    )
-                    if score > best_score:
-                        best_score = score
-                        best_params = (sx, sy, btx + dtx, bty + dty)
-
-    fsx, fsy, ftx, fty = best_params
+    sx0, sy0, tx0, ty0 = initial
     logger.info(f"[Centroid] Best: sx={fsx:.1f} sy={fsy:.1f} tx={ftx:.1f} ty={fty:.1f} score={best_score:.1f}")
     logger.info(f"[Centroid] Init: sx={sx0:.1f} sy={sy0:.1f} tx={tx0:.1f} ty={ty0:.1f}")
     logger.info(f"[Centroid] Scale factors: sx_f={fsx/sx0:.3f} sy_f={fsy/sy0:.3f}")
-    # Build 2x3 affine matrix (no rotation)
+    # A 2x3 affine matrix (no rotation)
     matrix = np.array(
         [
             [fsx, 0.0, ftx],
@@ -391,7 +377,6 @@ def _centroid_fallback(  # noqa: C901 -- above the complexity ceiling of 15; #16
         ],
         dtype=np.float64,
     )
-
     return matrix, best_score, "centroid_grid"
 
 
