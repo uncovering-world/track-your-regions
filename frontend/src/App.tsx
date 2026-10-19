@@ -3,7 +3,7 @@ import { Container, Box, CssBaseline, ThemeProvider, IconButton, Tooltip, Alert 
 import CollapseIcon from '@mui/icons-material/ChevronLeft';
 import ExpandIcon from '@mui/icons-material/ChevronRight';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { BrowserRouter, Routes, Route } from 'react-router';
+import { BrowserRouter, Routes, Route, useLocation } from 'react-router';
 import { Header } from './components/Header';
 import { NavigationPane } from './components/NavigationPane';
 import { MainDisplay, setExplorationModeListener } from './components/MainDisplay';
@@ -16,6 +16,7 @@ import { NavigationProvider } from './hooks/useNavigation';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 import { MapsAppProvider } from './hooks/useMapsApp';
 import { AppThemeProvider, useAppTheme, createAppTheme } from './theme';
+import { parseAppUrl } from './utils/appUrl';
 
 // The admin panel and the review queue are a signed-in admin's and curator's
 // screens, and the account page one a visitor opens rarely: route-level
@@ -37,7 +38,13 @@ const queryClient = new QueryClient({
 });
 
 function MainContent() {
-  const [navCollapsed, setNavCollapsed] = useState(false);
+  // A link to a card opens with the panel open (MainDisplay), so the navigation
+  // starts collapsed: collapsing it once the region arrives slid the whole page
+  // sideways under the reader (#1639).
+  const location = useLocation();
+  const [navCollapsed, setNavCollapsed] = useState(
+    () => parseAppUrl(location.pathname, location.search)?.experienceId != null,
+  );
 
   // Listen for exploration mode changes from MainDisplay
   useEffect(() => {
