@@ -13,7 +13,7 @@
 
 import type { QueueOrderEntry, ReviewQueue, ReviewQueueItem } from '../../api/reviewQueue';
 import { groupGated } from './WaitingToPublish';
-import { sectionKind, type GatedGroup } from './gatedGroup';
+import { sectionsKinds, type GatedGroup } from './gatedGroup';
 import type { RowKind } from './queueRowTypes';
 import {
   KIND_COLOR, KIND_SHORT, rowSpecific, rowQuestionWord,
@@ -106,7 +106,7 @@ function waitingRow(entry: QueueOrderEntry, sections: GatedGroup[]): QueueRow {
     id: entry.id,
     name: sections[0].name,
     // Every kind that asks, since the row is one place however many of its kinds do.
-    placeKind: sections.map(sectionKind).join(', '),
+    placeKind: sectionsKinds(sections).join(', '),
     question: QUESTION.waiting,
     askedAt: entry.askedAt,
     runId: entry.runId,

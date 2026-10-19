@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { heldRefusalOutcomeFor, publishOutcomeFor } from './publishOutcome';
+import { heldRefusalOutcomeFor, mergedPublishResult, publishOutcomeFor } from './publishOutcome';
 import type { PublishResult } from '../../api/curation';
 
 function result(over: Partial<PublishResult> = {}): PublishResult {
@@ -251,5 +251,22 @@ describe('heldRefusalOutcomeFor', () => {
     expect(line).toContain('could not be re-placed into');
     expect(line).toContain('Administrative');
     expect(heldRefusalOutcomeFor(item, refusal)).not.toContain('moved point');
+  });
+});
+
+describe('one answer sent as two requests (#1599)', () => {
+  it('reports the held half from the first response and the contents from the second', () => {
+    const held = result({ appliedFields: ['description'], fromSyncLogId: 169, placementFailed: true,
+      placementFailedWorldViews: [{ id: 5, name: 'Administrative' }] });
+    const contents = result({ treasuresPublished: 1, treasureLinksPublished: 1 });
+
+    expect(mergedPublishResult(held, contents)).toEqual({
+      ...contents,
+      appliedFields: ['description'],
+      fromSyncLogId: 169,
+      partsNotFound: undefined,
+      placementFailed: true,
+      placementFailedWorldViews: [{ id: 5, name: 'Administrative' }],
+    });
   });
 });

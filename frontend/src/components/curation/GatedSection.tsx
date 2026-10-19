@@ -20,6 +20,7 @@ import {
   refuseArrival,
   refuseContents,
   type PublishRequest,
+  type PublishResult,
   type RefuseContentsBody,
 } from '../../api/curation';
 import { namedMembership } from '../../utils/namedMembership';
@@ -32,11 +33,11 @@ import { GatedRow, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
 import { partGroups, rowsFor } from './factRows';
 import { HeldAnswer, type HeldSelection } from './HeldAnswer';
-import { heldRefusalOutcomeFor, publishOutcomeFor } from './publishOutcome';
+import { heldRefusalOutcomeFor, mergedPublishResult, PartlyPublished, publishOutcomeFor } from './publishOutcome';
 import { PartPreviewDialog } from './PartPreviewDialog';
 import { ArrivedTable, RowAnswer } from './ArrivedTable';
 import { movedPointGroups } from './movedPointGroups';
-import { sectionKind, type GatedGroup } from './gatedGroup';
+import { sectionKind, sharedKinds, type GatedGroup } from './gatedGroup';
 
 /**
  * The counts, as numbers and as a floor under the query that casts them.
@@ -74,7 +75,9 @@ export function GatedSection({ group, heading, objectButton, onDone }: {
   // Trimmed before it is asked about, as `ObjectPreview` trims the same note:
   // a note of blanks is a note nobody wrote, and drawing "The run asks:" over
   // nothing tells a curator a question was asked and then withholds it.
-  const askedNote = item.admission_note?.trim();
+  // A kind's run asks it of its own membership, so the place's section, which
+  // speaks for several kinds, does not repeat it (#1599).
+  const askedNote = group.sharedBy ? undefined : item.admission_note?.trim();
   const queryClient = useQueryClient();
   // Which part is open. Nothing a curator opened here outlives the section:
   // `GatedCard` keys each section on its place and membership, so moving to
@@ -109,12 +112,26 @@ export function GatedSection({ group, heading, objectButton, onDone }: {
     // The membership the section is about (#1264): a held field's answer is
     // the held proposal's, anything else the arrival's where there is one, and
     // unread contents the membership whose run placed them (#1290).
-    mutationFn: (body?: PublishRequest) => publishExperience(group.id, {
-      ...(body ?? publishBodyFor(group)),
-      ...namedMembership(body?.heldFields !== undefined || body?.heldParts !== undefined
-        ? held?.membership_id
-        : (arrival ?? held ?? contents)?.membership_id),
-    }),
+    mutationFn: async (body?: PublishRequest) => {
+      // A narrowed kind section names its rows (#1599), and a selection cannot
+      // release contents in the same request, so its unread points and works
+      // follow in a second one: the button still takes everything it shows.
+      if (body === undefined && group.narrowed && contents) {
+        const heldHalf = await publishExperience(group.id, { ...publishBodyFor(group), ...namedMembership(held?.membership_id) });
+        try {
+          const contentsHalf = await publishExperience(group.id, { contentsOnly: true, ...namedMembership(contents.membership_id) });
+          return mergedPublishResult(heldHalf, contentsHalf);
+        } catch (failure) {
+          throw new PartlyPublished(heldHalf, failure);
+        }
+      }
+      return publishExperience(group.id, {
+        ...(body ?? publishBodyFor(group)),
+        ...namedMembership(body?.heldFields !== undefined || body?.heldParts !== undefined
+          ? held?.membership_id
+          : (arrival ?? held ?? contents)?.membership_id),
+      });
+    },
     // Say what landed. The refetch takes the card away, so this is the only
     // place a released withdrawal or a failed re-placement can be reported —
     // and a publication whose regions went stale must not read as an
@@ -129,7 +146,7 @@ export function GatedSection({ group, heading, objectButton, onDone }: {
       // reason the queue's own refetch does: a refusal usually means the server
       // has already moved and this page is the stale one.
       invalidateExperiences(queryClient, { experienceId: group.id });
-      onDone(error ? messageFor(item, error) : publishOutcomeFor(item, data));
+      onDone(settledMessage(item, data, error));
     },
   });
 
@@ -227,7 +244,7 @@ export function GatedSection({ group, heading, objectButton, onDone }: {
                 catalogue the second is the whole batch (#570). The parts' rows count
                 with the object's: one card, one decision. */}
             <ProposalSummary
-              lead={summaryLead(held)}
+              lead={summaryLead(held, group.sharedBy)}
               rows={[...rows, ...partRows]}
             />
             {/* The same table the conflict card draws, because it is the same
@@ -359,9 +376,32 @@ export function GatedSection({ group, heading, objectButton, onDone }: {
   );
 }
 
-/** Who the changes table's rows come from: a run's held proposal, or the source's moves alone. */
-function summaryLead(held: ReviewQueueItem | undefined): string {
+/**
+ * What a publish says when it settles: its outcome, its error, or — where the
+ * held half landed and the contents half did not (#1599) — both, in that order.
+ */
+function settledMessage(item: { name: string }, data: PublishResult | undefined, error: unknown): string | undefined {
+  if (error instanceof PartlyPublished) {
+    return [publishOutcomeFor(item, error.published), messageFor(item, error.failure)].filter(Boolean).join(' ');
+  }
+  return error ? messageFor(item, error) : publishOutcomeFor(item, data);
+}
+
+/**
+ * Who the changes table's rows come from: a run's held proposal, the runs of
+ * every kind that proposes the place's facts alike (#1599), or the source's
+ * moves alone.
+ */
+function summaryLead(held: ReviewQueueItem | undefined, sharedBy?: GatedGroup['sharedBy']): string {
   if (!held) return 'The source moved';
+  if (sharedBy) {
+    const named = (runs: NonNullable<GatedGroup['sharedBy']>) =>
+      listed(runs.map(run => (run.runId ? `${run.kindName} run ${run.runId}` : `an earlier ${run.kindName} run`)));
+    const all = sharedBy.filter(run => run.proposesAll);
+    const some = sharedBy.filter(run => !run.proposesAll);
+    const lead = `${named(all)} ${all.length === 1 ? 'proposes' : 'propose'}`;
+    return some.length === 0 ? lead : `${lead}, and ${named(some)} some of them`;
+  }
   return held.sync_log_id ? `Run ${held.sync_log_id} proposes` : 'An earlier run proposes';
 }
 
@@ -381,12 +421,34 @@ function summaryLead(held: ReviewQueueItem | undefined): string {
  * object underneath it, so `{}` — the object publish — is the one case it is
  * right for: there is no earlier verified state to misreport.
  */
-function publishBodyFor({ held, contents }: GatedGroup): PublishRequest {
+function publishBodyFor({ held, contents, sharedBy, narrowed }: GatedGroup): PublishRequest {
+  // The place's own facts are a selection out of one kind's proposal, and
+  // a kind's section is what is left of its proposal once they are lifted
+  // (#1599): naming no rows would publish, under either, rows the other shows.
+  if (held && (sharedBy || narrowed)) {
+    return {
+      heldFields: nonEmpty((held.proposed ?? []).map(field => field.field)),
+      heldParts: nonEmpty((held.proposed_parts ?? []).map(part => ({
+        kind: part.kind, ref: part.item.ref, name: part.item.name, fields: part.fields.map(field => field.field),
+      }))),
+      expectedSyncLogId: held.sync_log_id ?? 0,
+    };
+  }
   // A held card always names its run; the card type is shared with the arrival,
   // whose run can be null, so the null is turned back into "not sent".
   if (held) return { expectedSyncLogId: held.sync_log_id ?? undefined };
   if (contents) return { contentsOnly: true };
   return {};
+}
+
+/** Names in a sentence: "A", "A and B", "A, B and C". */
+function listed(names: string[]): string {
+  return names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`;
+}
+
+/** A list the request leaves out where it would be empty, since an empty one is refused. */
+function nonEmpty<T>(list: T[]): T[] | undefined {
+  return list.length > 0 ? list : undefined;
 }
 
 /**
@@ -415,6 +477,11 @@ function publishLabel(group: GatedGroup, sectioned: boolean): string {
   if (group.arrival && seenIn(group.arrival).length > 0) return `Publish — list it under ${group.arrival.kind_name}`;
   if (group.arrival) return 'Publish — readers may see it';
   // On a card two kinds ask on, the button reaches its own section alone.
+  if (sectioned && group.sharedBy) {
+    return group.sharedBy.filter(run => run.proposesAll).length > 1
+      ? `Publish what ${sharedKinds(group)} propose alike`
+      : 'Publish the place’s own facts';
+  }
   if (sectioned) return `Publish everything ${sectionKind(group)} asks`;
   return 'Publish everything on this card';
 }

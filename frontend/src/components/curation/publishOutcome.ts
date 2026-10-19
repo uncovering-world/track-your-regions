@@ -52,6 +52,39 @@ function partOutcomes(data: PublishResult): string[] {
 }
 
 /**
+ * The first of two requests landed and the second did not (#1599): what was
+ * written is still said, before why the rest was not.
+ */
+export class PartlyPublished extends Error {
+  constructor(readonly published: PublishResult, readonly failure: unknown) {
+    super(failure instanceof Error ? failure.message : 'could not be saved');
+    this.name = 'PartlyPublished';
+  }
+}
+
+/**
+ * One answer sent as two requests — a kind section's held rows by name, then
+ * its unread contents (#1599) — reported as the one answer it was: the held
+ * half from the first response, the contents from the second, and a failed
+ * re-placement from either, since each can move the place.
+ */
+export function mergedPublishResult(held: PublishResult, contents: PublishResult): PublishResult {
+  const failedWorldViews = [...(held.placementFailedWorldViews ?? []), ...(contents.placementFailedWorldViews ?? [])];
+  return {
+    ...contents,
+    appliedFields: held.appliedFields,
+    claimedFieldsSkipped: held.claimedFieldsSkipped,
+    appliedParts: held.appliedParts,
+    partsNotFound: held.partsNotFound,
+    fromSyncLogId: held.fromSyncLogId,
+    heldLeftOpen: held.heldLeftOpen,
+    ...(held.placementFailed || contents.placementFailed
+      ? { placementFailed: true as const, placementFailedWorldViews: failedWorldViews.length > 0 ? failedWorldViews : undefined }
+      : { placementFailed: undefined, placementFailedWorldViews: undefined }),
+  };
+}
+
+/**
  * What the publication did, in one sentence, plus a second when it went wrong
  * halfway.
  *
