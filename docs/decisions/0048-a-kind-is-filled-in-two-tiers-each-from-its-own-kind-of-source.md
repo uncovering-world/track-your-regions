@@ -1,7 +1,7 @@
 # ADR-0048: A kind is filled in two tiers, each from its own kind of source
 
 **Date:** 2026-09-06
-**Status:** Accepted
+**Status:** Accepted — decision 1 and decision 5's "top" narrowed by [ADR-0126](0126-the-two-tiers-differ-by-source-and-weigh-the-same.md)
 
 ---
 
