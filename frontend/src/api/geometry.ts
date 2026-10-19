@@ -36,14 +36,12 @@ export { DEFAULT_HULL_PARAMS } from '@tyr/shared/geometry';
 /**
  * Compute region geometry with SSE streaming for progress updates
  * @param regionId Region ID to compute
- * @param force Force recompute all
  * @param onProgress Callback for progress events
  * @param skipSnapping Skip expensive snapping step (fast mode)
  * @returns Promise that resolves when computation is complete
  */
 export function computeRegionGeometryWithProgress(
   regionId: number,
-  force: boolean,
   onProgress: (event: ComputeProgressEvent) => void,
   skipSnapping?: boolean
 ): Promise<ComputeComplete> {
@@ -53,7 +51,6 @@ export function computeRegionGeometryWithProgress(
     // generated builder gives the path, to which the API's origin is added.
     ensureFreshToken().then(token => {
       const url = API_URL + getGetWorldViewsRegionsByRegionIdGeometryComputeStreamUrl(regionId, {
-        force: force ? 'true' : undefined,
         skipSnapping: skipSnapping ? 'true' : undefined,
         token: token ?? undefined,
       });

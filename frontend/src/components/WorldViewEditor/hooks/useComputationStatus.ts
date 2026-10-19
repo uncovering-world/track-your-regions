@@ -27,7 +27,6 @@ export function useComputationStatus({
   const [computationStatus, setComputationStatus] = useState<ComputationStatus | null>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [isComputingSingleRegion, setIsComputingSingleRegion] = useState(false);
-  const [forceRecompute, setForceRecompute] = useState(false);
   const [isResettingToMembers, setIsResettingToMembers] = useState(false);
   const [skipSnapping, setSkipSnapping] = useState(true);  // Fast mode - skip expensive snapping (default: true)
   // Compute All takes every region only when asked: by default it computes the
@@ -106,8 +105,6 @@ export function useComputationStatus({
     setComputationStatus,
     isComputingSingleRegion,
     setIsComputingSingleRegion,
-    forceRecompute,
-    setForceRecompute,
     isResettingToMembers,
     setIsResettingToMembers,
     skipSnapping,

@@ -11678,18 +11678,9 @@ export const GetWorldViewsRegionsByRegionIdGeometryDetail = {
 } as const;
 
 export type GetWorldViewsRegionsByRegionIdGeometryComputeStreamParams = {
-force?: GetWorldViewsRegionsByRegionIdGeometryComputeStreamForce;
 skipSnapping?: GetWorldViewsRegionsByRegionIdGeometryComputeStreamSkipSnapping;
 token?: string;
 };
-
-export type GetWorldViewsRegionsByRegionIdGeometryComputeStreamForce = typeof GetWorldViewsRegionsByRegionIdGeometryComputeStreamForce[keyof typeof GetWorldViewsRegionsByRegionIdGeometryComputeStreamForce];
-
-
-export const GetWorldViewsRegionsByRegionIdGeometryComputeStreamForce = {
-  true: 'true',
-  false: 'false',
-} as const;
 
 export type GetWorldViewsRegionsByRegionIdGeometryComputeStreamSkipSnapping = typeof GetWorldViewsRegionsByRegionIdGeometryComputeStreamSkipSnapping[keyof typeof GetWorldViewsRegionsByRegionIdGeometryComputeStreamSkipSnapping];
 

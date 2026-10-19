@@ -42,12 +42,12 @@ describe('computeRegionGeometryWithProgress', () => {
     return FakeEventSource.mock.results[0].value as FakeStream;
   }
 
-  it('opens the stream on the API origin, with the flags set and the token in the query', async () => {
-    const done = computeRegionGeometryWithProgress(6737, true, () => undefined, true);
+  it('opens the stream on the API origin, with the flag set and the token in the query', async () => {
+    const done = computeRegionGeometryWithProgress(6737, () => undefined, true);
     const stream = await opened();
 
     expect(stream.url).toBe(
-      `${API_URL}/api/world-views/regions/6737/geometry/compute-stream?force=true&skipSnapping=true&token=the-session-token`,
+      `${API_URL}/api/world-views/regions/6737/geometry/compute-stream?skipSnapping=true&token=the-session-token`,
     );
     stream.onmessage?.({ data: JSON.stringify({ type: 'complete' }) });
     await expect(done).resolves.toEqual({ type: 'complete' });
@@ -55,7 +55,7 @@ describe('computeRegionGeometryWithProgress', () => {
   });
 
   it('sends no flag that is not set', async () => {
-    void computeRegionGeometryWithProgress(6737, false, () => undefined);
+    void computeRegionGeometryWithProgress(6737, () => undefined);
     const stream = await opened();
 
     expect(new URL(stream.url).search).toBe('?token=the-session-token');
