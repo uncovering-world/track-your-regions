@@ -500,8 +500,18 @@ means an admin turns `requires_curation` on before the first run that opens a do
 every arrival of that run waits for a person (decision 5 of each ADR). The bar sets itself per
 edition: 48,983 views in English, 9,074 in Italian, 366 in Georgian. It reaches a museum through a famous work — the Art Museum of Georgia through the
 Khakhuli triptych — and not a museum famous as an institution, such as the Frida Kahlo Museum or
-the National Museum of Fine Arts in Buenos Aires. Verdict: a signal — for the world tier's
-second door and for the fallback's cut — never a source of rows on its own.
+the National Museum of Fine Arts in Buenos Aires. Of the 126 surveyed art museums the catalogue
+missed on 2026-10-19, 119 hold no work any works-first reading can see: 58 are named by no item,
+50 hold none at 10 sitelinks, and 11 hold a famous object the pool does not class as a work of
+art (#870). A museum's own article, read in an official language of its country at three times
+the median the world tier's art museums reach in that edition, reaches 53 of them and admits 34
+museums no guide of the survey names, most of them museums of antiquities. A visitor count is
+recorded for 19 of the 126, too few to be a door. The result for each museum, and the visitor
+counts, are on #870. It is not adopted. A regional tier is read at more than one level: a
+country and any division below it, each with sources of its own. A country can have several
+languages, and nothing in the catalogue ties a region to the languages spoken in it yet (#809),
+so a signal read by language waits for the regional tier's own design (#628). Verdict: a signal — for the world tier's second door and for the fallback's
+cut — never a source of rows on its own.
 
 ### 7.5 Commercial catalogues and guides
 
