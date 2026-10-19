@@ -1476,10 +1476,27 @@ path needs.
     museum that is a component is named as one and the name rule finds it (the State Museum
     of History of Uzbekistan, 40 m). Measured on the 2026-10-05 dump on 2026-10-18, the two
     rules drop 17 proposals, every one a hotel, a station or a town's museum, and keep the
-    one accepted museum (Mosigkau Palace, by `part_of`). The Danube Limes points they free
-    are then offered the next building named after their town — Pöchlarn's parish church,
-    Tulln's Danube bridge — beside the right ones that were behind the hotels (Castra Batava
-    for Passau's fort, the Basilica of St. Lawrence for Enns – St. Laurenz).
+    one accepted museum (Mosigkau Palace, by `part_of`). On the same fallback the rule takes a
+    candidate by the component's town alone only where it is an archaeological site, with every
+    class under it (`BY_THE_TOWN_ALONE`, #1689). Any other candidate must share a word of five
+    letters or more with the component's own place names past the town it leads with
+    (`ownToponymsOf`, `namesMoreThanTheTown`). "Spätantiker Hufeisenturm im Kommunalzentrum
+    Pöchlarn" shares "Hufeisenturm" with "Pöchlarn – Kastell Hufeisenturm West", while a town
+    with many listed buildings names each of them. A class some component somewhere holds is
+    not enough to tell Pöchlarn's parish church, a house on Tulln's Wiener Straße or the Sigmund
+    Freud monument from the Roman fort or canabae under them. The Dacian castra are named after their village alone and are archaeological
+    sites, so they still come through. Measured on the 2026-10-05 dump on 2026-10-19 over
+    the whole catalogue against the pass without it, the place-name proposals went from 36 to
+    21:
+    - **Dropped:** 19 town-named proposals. 18 were wrong: churches, houses, a school, a
+      cemetery, a château, city walls, two monuments and a thermal spring. One was right, the
+      Basilica of St. Lawrence for Enns – St. Laurenz: its labels ("Pfarrkirche Enns",
+      "Basilica of St. Lawrence, Enns") carry its town alone, which is the same evidence
+      Pöchlarn's parish church gives, so a curator matches it.
+    - **Added:** four archaeological items the dropped ones stood in front of, such as the
+      Porta Praetoria in Regensburg.
+    - **Kept:** Castra Batava for Passau's fort, and the castra of Gresia, Potaissa and
+      Cumidava.
 
   **A candidate's national register code** (#1340, `componentItemRegisters.ts`) is read off the
   proposed items only, from the subset (`registerCodesOf`), for the
