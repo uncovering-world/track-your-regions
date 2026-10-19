@@ -77,24 +77,30 @@ export const MUSEUM_WHOLE_ROOTS = [
  * A painting series and a group of casts are *collections* of works, so they sit outside the
  * subclass tree under any single work — and they are where several of the most famous things
  * in the catalogue live: Monet's Water Lilies, Van Gogh's Sunflowers, Rodin's Thinker. Without
- * the pin all three are missing, checked by name rather than by QID.
+ * the pin all three are missing, checked by name rather than by QID. A cycle of frescoes and a
+ * group of sculptures are the same shape: the Raphael Rooms, which every visitor to the Vatican
+ * Museums queues for, and the Benin Bronzes (#1615).
  *
  * The panel forms are here as a floor rather than a necessity: most are reachable under
  * painting, and pinning them means no future tightening of the growth rule can drop them
- * silently. Every QID below was verified against Wikidata on 2026-08-07 — label and
- * description both — rather than assumed from a name, because "engraving" names a technique
- * and an object with different entities for each.
+ * silently. Every QID below was verified against Wikidata — label and description both, on
+ * 2026-08-07, and the two collection classes of #1615 by label and `P279` in the local subset
+ * on 2026-10-19 — rather than assumed from a name, because "engraving" names a technique and an
+ * object with different entities for each.
  */
 export const MUSEUM_PINNED_CLASSES: Record<string, string> = {
   Q15727816: 'painting series',
+  Q16905550: 'cycle of frescoes',
   Q28890616: 'group of casts',
+  Q2293362: 'group of sculptures',
   Q79218: 'triptych',
   Q1278452: 'polyptych',
   Q475476: 'diptych',
   Q15711026: 'altarpiece',
   Q11801536: 'winged altarpiece',
   Q28913685: 'woodblock print',
-  Q11835431: 'engraving (the object, not the technique)',
+  // The object, not the technique: the label is also the type a reader sees
+  Q11835431: 'engraving',
 };
 
 /**
@@ -164,7 +170,7 @@ export interface WorksCollectorOptions {
   broadRoots: { qid: string; type: string }[];
   /** Roots narrow enough to take whole (drawing, print, …). */
   wholeRoots: { qid: string; type: string }[];
-  /** Classes no closure reaches, pinned by name (label for the log). */
+  /** Classes no closure reaches, pinned by name: the label is the type the venue-side read gives a work. */
   pinned: Record<string, string>;
   /** Classes asked whole beside the narrow ones, without a closure: a kind's own roots (relic, tomb). */
   extraClasses?: Record<string, string>;
