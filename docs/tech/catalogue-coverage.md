@@ -134,7 +134,7 @@ The causes, stated in the schema's `CHECK` and read from it by the files' reader
 
 | Cause | Meaning |
 |---|---|
-| `rule-defect` | A rule the product runs today should have admitted it: the Villa Farnesina, refused as a villa although an iconic work names it. On a row, the opposite: the rule that admitted it should not have, by what the row's classes and sitelinks say |
+| `rule-defect` | A rule the product runs today should have admitted it: the Museo Soumaya, refused as a museum network although a cast of *The Gates of Hell* over the works line names it. On a row, the opposite: the rule that admitted it should not have, by what the row's classes and sitelinks say |
 | `door-missing` | No rule the product runs would admit it yet: a museum with no work over the works line waits for the regional tier of Art Museums (#628) |
 | `kind-missing` | A traveller looks for it under a kind the register has and the product does not; the note names the kind, and the entry is filed under it |
 | `part-of-offered` | The catalogue offers the place it is part of: the Vatican Pinacoteca inside the Vatican Museums, a gallery of the Palace Museum |

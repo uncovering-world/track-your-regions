@@ -1756,7 +1756,12 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   structures. A class that describes a place rather than an institution (a church building or
   cathedral, an archaeological park or Roman ruins, a villa — `SITE_CLASSES` in `venueTest.ts`)
   is vetoed the same way, unless the entity also carries an art class: the Uffizi is typed
-  `palace, art museum`, and the palace must not disqualify it. An entity that fails either check
+  `palace, art museum`, and the palace must not disqualify it. A building among those classes (a
+  church, a cathedral, a villa) is also not vetoed when Wikidata types it the museum of its own
+  building, a palazzo or historic house museum (`HOUSE_MUSEUM_CLASSES`): the Villa Farnesina,
+  `villa; palazzo museum`, is the museum of Raphael's frescoes on its walls, while Antwerp
+  Cathedral, typed `museum` alone, stays a church, and an archaeological park stays the grounds
+  of a dig whatever museum it is typed (#1614). An entity that fails either check
   is resolved by walking `wdt:P361` (part of) to the nearest ancestor that passes — how the
   Louvre's four curatorial departments become the Louvre, and a dead collector's collection
   re-homes to where the works actually hang
