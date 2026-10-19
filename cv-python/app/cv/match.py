@@ -10,6 +10,7 @@ import math
 import time
 from collections import Counter
 from collections.abc import Callable
+from dataclasses import dataclass
 from typing import Any
 
 import cv2
@@ -1088,7 +1089,248 @@ def _build_unproject_remap(
     return in_x.astype(np.float32), in_y.astype(np.float32)
 
 
-def run_matching(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
+class _StepTimer:
+    """The progress callback that also times each step.
+
+    Each call closes the previous step and logs its elapsed time, then opens a
+    new step named msg; finish() closes the last one and logs the total.
+    """
+
+    def __init__(self, on_progress: Callable[[str], None] | None) -> None:
+        self.on_progress = on_progress
+        self.started = time.perf_counter()
+        self.step = ""
+        self.step_start = self.started
+
+    def __call__(self, msg: str) -> None:
+        now = time.perf_counter()
+        if self.step:
+            logger.info(f"[Match] {self.step} done in {now - self.step_start:.2f}s")
+        if msg and self.on_progress:
+            self.on_progress(msg)
+        self.step = msg
+        self.step_start = now
+
+    def finish(self) -> None:
+        self("")
+        logger.info(f"[Match] Total matching time: {time.perf_counter() - self.started:.2f}s")
+
+
+@dataclass
+class _MapImages:
+    """The three images matching reads, warped together whenever one is."""
+
+    pixel_labels: np.ndarray
+    country_mask: np.ndarray
+    icp_mask: np.ndarray
+
+
+def _cv_border(images: _MapImages) -> np.ndarray:
+    """The CV border points matching measures against: external then internal."""
+    parts = [
+        border
+        for border in (
+            _extract_cv_external_border(images.icp_mask),
+            _extract_cv_internal_border(images.pixel_labels, images.icp_mask),
+        )
+        if len(border) > 0
+    ]
+    return np.vstack(parts) if parts else np.empty((0, 2), dtype=np.float64)
+
+
+def _mainland(centroids: list[dict], cos_lat: float) -> list[dict]:
+    """The centroids of the largest spatial cluster.
+
+    GADM may include distant islands (Cocos for Costa Rica, Aleutians for
+    Alaska) not shown on the Wikivoyage map; their centroids inflate the GADM
+    bbox and break scale/translation search. Division voting still considers
+    every division_path — missing-on-map ones just fall into out_of_bounds.
+    """
+    mainland_centroids, excluded_ids = _filter_to_mainland(centroids, cos_lat)
+    if len(mainland_centroids) == len(centroids):
+        return centroids
+    logger.info(
+        f"[Match] Phantom-island filter: kept {len(mainland_centroids)}/{len(centroids)} mainland centroids (excluded divisions: {excluded_ids})"
+    )
+    return mainland_centroids
+
+
+def _projection(
+    country_path: str,
+    country_mask: np.ndarray,
+    centroids: list[dict],
+    cos_lat: float,
+    tw: int,
+    th: int,
+    progress: _StepTimer,
+) -> tuple[str, Callable] | None:
+    """The projection the map was drawn in, when the region is tall enough to tell.
+
+    Small regions near the equator don't benefit from conic projection
+    detection (lat_span < threshold): the ~50-candidate pyproj loop is skipped.
+    """
+    cy_vals = np.array([c["cy"] for c in centroids])
+    lat_span_deg = float(cy_vals.max() - cy_vals.min())
+    if lat_span_deg < PROJ_DETECT_MIN_LAT_SPAN_DEG:
+        logger.info(
+            f"[Match] Skipping projection detection: lat_span={lat_span_deg:.1f}° < {PROJ_DETECT_MIN_LAT_SPAN_DEG}°"
+        )
+        return None
+    progress("Detecting map projection")
+    return detect_projection(country_path, country_mask, centroids, cos_lat, tw, th)
+
+
+def _unproject(
+    images: _MapImages,
+    proj_name: str,
+    proj_fn: Callable,
+    country_path: str,
+    centroids: list[dict],
+    cos_lat: float,
+    tw: int,
+    th: int,
+    progress: _StepTimer,
+) -> _MapImages:
+    """The images warped from the map's projection into equirectangular space.
+
+    There straight GADM lat/lon lines align with straight colour cluster
+    boundaries. GADM is pre-projected for a quick IoU alignment in projected
+    space, and the equirectangular affine that maps the same GADM bbox to the
+    same pixel region gives the un-projection remap.
+    """
+    logger.info(f"[Match] Candidate projection: {proj_name}")
+    proj_country_path = project_svg_path(country_path, proj_fn)
+    proj_centroids = []
+    for c in centroids:
+        lx, ly = proj_fn(np.array([c["cx"]]), np.array([-c["cy"]]))
+        proj_centroids.append({**c, "cx": float(lx[0]), "cy": float(-ly[0])})
+
+    progress(f"IoU alignment in {proj_name} space")
+    matrix_proj, proj_f2, *_ = iou_alignment(proj_country_path, images.country_mask, proj_centroids, 1.0, tw, th)
+    logger.info(f"[Match] {proj_name} IoU F2={proj_f2:.4f}")
+    matrix_eq_target = _compute_equirect_matrix(centroids, proj_centroids, matrix_proj, cos_lat)
+
+    progress("Building inverse projection warp")
+    map_x, map_y = _build_unproject_remap(matrix_eq_target, matrix_proj, proj_fn, cos_lat, tw, th)
+
+    progress("Applying inverse projection warp to cluster image")
+
+    def remap(img: np.ndarray, border: int) -> np.ndarray:
+        return cv2.remap(img, map_x, map_y, cv2.INTER_NEAREST, borderMode=cv2.BORDER_CONSTANT, borderValue=border)
+
+    warped = _MapImages(
+        pixel_labels=remap(images.pixel_labels, 255),
+        country_mask=remap(images.country_mask, 0),
+        icp_mask=remap(images.icp_mask, 0),
+    )
+    logger.info(f"[Match] Warped pixel_labels to equirectangular space via {proj_name}")
+    return warped
+
+
+def _undo_perspective(images: _MapImages, inverse_h: np.ndarray, tw: int, th: int, progress: _StepTimer) -> _MapImages:
+    """The images warped by the alignment's inverse homography: the fallback when no projection was found.
+
+    icp_mask is warped too, since the CV border is extracted from it, so the
+    alignment metrics describe the post-warp images that drive the assignment.
+    """
+    progress("Applying inverse perspective warp to cluster image")
+    warped = _MapImages(
+        pixel_labels=cv2.warpPerspective(images.pixel_labels, inverse_h, (tw, th), flags=cv2.INTER_NEAREST),
+        country_mask=cv2.warpPerspective(images.country_mask, inverse_h, (tw, th)),
+        icp_mask=cv2.warpPerspective(images.icp_mask, inverse_h, (tw, th)),
+    )
+    logger.info("[Match] Warped labels with inverse homography")
+    return warped
+
+
+def _best_of_centroid_fallback(
+    alignment: tuple[np.ndarray, str, float],
+    f2: float,
+    centroids: list[dict],
+    images: _MapImages,
+    cos_lat: float,
+    gadm_points: np.ndarray,
+    tw: int,
+    th: int,
+    progress: _StepTimer,
+) -> tuple[np.ndarray, str, float]:
+    """The alignment (matrix, method, k_conic), replaced by the centroid fallback when the
+    alignment places too few centroids on the clusters and the fallback places more.
+    """
+    matrix, method, k_conic = alignment
+    centroid_score = _score_centroid_placement(centroids, images.pixel_labels, cos_lat, matrix, tw, th)
+    logger.info(
+        f"[Match] IoU alignment: F2={f2:.3f}, centroid_hits={centroid_score:.0f}/{len(centroids)}, method={method}"
+    )
+    if centroid_score >= len(centroids) * 0.6:
+        return alignment
+
+    progress("Centroid fallback (IoU alignment had poor centroid coverage)")
+    centroid_matrix, _, centroid_method = _centroid_fallback(
+        centroids, images.pixel_labels, images.country_mask, cos_lat, gadm_points, tw, th
+    )
+    centroid_fb_hits = _score_centroid_placement(centroids, images.pixel_labels, cos_lat, centroid_matrix, tw, th)
+    if centroid_fb_hits <= centroid_score:
+        return alignment
+    logger.info(f"[Match] Centroid fallback better: hits={centroid_fb_hits:.0f} vs IoU hits={centroid_score:.0f}")
+    # k_conic was learned for the rejected IoU fit; applied to the division
+    # rasterization below it would mix two different transforms.
+    return centroid_matrix, centroid_method, 0.0
+
+
+def _split_clusters(
+    sorted_votes: list[tuple[int, int]],
+    total_valid: int,
+    confidence: float,
+    total_cluster_pixels: dict[int, int],
+) -> list[dict] | None:
+    """The clusters a division is split between, or None when it is not split.
+
+    A division is split when its dominant cluster holds too little of it, or when
+    a minority cluster would lose a significant share of its own area.
+    """
+    is_split = confidence < SPLIT_CONFIDENCE and len(sorted_votes) > 1
+    if not is_split:
+        is_split = any(
+            count / total_cluster_pixels.get(cluster_id, 1) > MINORITY_SHARE_FOR_SPLIT
+            for cluster_id, count in sorted_votes[1:]
+        )
+    if not is_split:
+        return None
+    return [
+        {"clusterId": cluster_id, "share": round(count / total_valid, 4)}
+        for cluster_id, count in sorted_votes
+        if count / total_valid >= MINORITY_INCLUSION
+    ]
+
+
+def _assign_division(
+    div_mask: np.ndarray,
+    div_id: Any,
+    pixel_labels: np.ndarray,
+    total_cluster_pixels: dict[int, int],
+) -> dict[str, Any] | None:
+    """The division's dominant cluster from its pixels' votes, or None when it is out of bounds."""
+    votes, total_valid = _compute_cluster_votes(pixel_labels, div_mask)
+    if total_valid < OUT_OF_BOUNDS_MIN_PX or not votes:
+        return None
+    sorted_votes = sorted(votes.items(), key=lambda x: x[1], reverse=True)
+    dominant_cluster, dominant_count = sorted_votes[0]
+    confidence = dominant_count / total_valid
+    split_clusters = _split_clusters(sorted_votes, total_valid, confidence, total_cluster_pixels)
+
+    assignment: dict[str, Any] = {
+        "divisionId": div_id,
+        "clusterId": dominant_cluster,
+        "confidence": round(confidence, 4),
+        "isSplit": split_clusters is not None,
+    }
+    if split_clusters is not None:
+        assignment["splitClusters"] = split_clusters
+    return assignment
+
+
+def run_matching(
     pixel_labels: np.ndarray,
     icp_mask: np.ndarray,
     country_mask: np.ndarray,
@@ -1125,350 +1367,74 @@ def run_matching(  # noqa: C901 -- above the complexity ceiling of 15; #1654 spl
         dict with transform, divAssignments, outOfBounds, alignmentMethod,
         alignmentError, inlierRatio, and debugImages.
     """
+    progress = _StepTimer(on_progress)
 
-    # Step-duration timer. Each call to progress(msg) closes the previous
-    # step and reports its elapsed time, then opens a new step named msg.
-    # Pass msg="" at the end to close the last step without opening a new one.
-    _match_wall_start = time.perf_counter()
-    step_start = [_match_wall_start]
-    current_step = [""]
-
-    def progress(msg: str) -> None:
-        now = time.perf_counter()
-        if current_step[0]:
-            elapsed = now - step_start[0]
-            logger.info(f"[Match] {current_step[0]} done in {elapsed:.2f}s")
-        if msg and on_progress:
-            on_progress(msg)
-        current_step[0] = msg
-        step_start[0] = now
-
-    # Step 1: Cosine latitude correction
     progress("Computing cosine latitude correction")
     cos_lat = _compute_cos_lat(country_bbox["minY"], country_bbox["maxY"])
+    centroids = _mainland(centroids, cos_lat)
 
-    # Step 1a: Phantom-island filter. GADM may include distant islands (Cocos
-    # for Costa Rica, Aleutians for Alaska) not shown on the Wikivoyage map;
-    # their centroids inflate the GADM bbox and break scale/translation search.
-    # Keep only the largest spatial cluster for alignment. Division voting
-    # further below still considers every division_path — missing-on-map ones
-    # just fall into out_of_bounds naturally.
-    mainland_centroids, excluded_ids = _filter_to_mainland(centroids, cos_lat)
-    if len(mainland_centroids) < len(centroids):
-        logger.info(
-            f"[Match] Phantom-island filter: kept {len(mainland_centroids)}/{len(centroids)} mainland centroids (excluded divisions: {excluded_ids})"
-        )
-        centroids = mainland_centroids
-
-    # Step 1b: Projection detection — test conic projections against CV mask.
-    # Small regions near the equator don't benefit from conic projection
-    # detection (lat_span < threshold): skip the ~50-candidate pyproj loop.
-    cy_vals = np.array([c["cy"] for c in centroids])
-    lat_span_deg = float(cy_vals.max() - cy_vals.min())
-    if lat_span_deg < PROJ_DETECT_MIN_LAT_SPAN_DEG:
-        logger.info(
-            f"[Match] Skipping projection detection: lat_span={lat_span_deg:.1f}° < {PROJ_DETECT_MIN_LAT_SPAN_DEG}°"
-        )
-        proj_result = None
-    else:
-        progress("Detecting map projection")
-        proj_result = detect_projection(
-            country_path,
-            country_mask,
-            centroids,
-            cos_lat,
-            tw,
-            th,
-        )
-    original_centroids = centroids
+    images = _MapImages(pixel_labels, country_mask, icp_mask)
+    proj_result = _projection(country_path, images.country_mask, centroids, cos_lat, tw, th, progress)
     if proj_result is not None:
-        proj_name, proj_fn = proj_result
-        logger.info(f"[Match] Candidate projection: {proj_name}")
+        images = _unproject(images, *proj_result, country_path, centroids, cos_lat, tw, th, progress)
 
-        # Pre-project GADM temporarily to get a good IoU alignment in projected space
-        proj_country_path = project_svg_path(country_path, proj_fn)
-        proj_centroids = []
-        for c in centroids:
-            svg_x = np.array([c["cx"]])
-            svg_y = np.array([-c["cy"]])
-            lx, ly = proj_fn(svg_x, svg_y)
-            proj_centroids.append({**c, "cx": float(lx[0]), "cy": float(-ly[0])})
-
-        # Run a quick IoU alignment in projected space
-        progress(f"IoU alignment in {proj_name} space")
-        proj_iou = iou_alignment(
-            proj_country_path,
-            country_mask,
-            proj_centroids,
-            1.0,
-            tw,
-            th,
-        )
-        matrix_proj = proj_iou[0]
-        proj_f2 = proj_iou[1]
-        logger.info(f"[Match] {proj_name} IoU F2={proj_f2:.4f}")
-
-        # Compute the equirect affine that maps the same GADM bbox to the same pixel region
-        matrix_eq_target = _compute_equirect_matrix(
-            original_centroids,
-            proj_centroids,
-            matrix_proj,
-            cos_lat,
-        )
-
-        # Build the un-projection remap
-        progress("Building inverse projection warp")
-        map_x, map_y = _build_unproject_remap(
-            matrix_eq_target,
-            matrix_proj,
-            proj_fn,
-            cos_lat,
-            tw,
-            th,
-        )
-
-        # Apply the warp to all CV images — the output is in equirectangular
-        # space where straight GADM lat/lon lines align with straight color
-        # cluster boundaries.
-        progress("Applying inverse projection warp to cluster image")
-        pixel_labels = cv2.remap(
-            pixel_labels,
-            map_x,
-            map_y,
-            cv2.INTER_NEAREST,
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=255,
-        )
-        country_mask = cv2.remap(
-            country_mask,
-            map_x,
-            map_y,
-            cv2.INTER_NEAREST,
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=0,
-        )
-        icp_mask = cv2.remap(
-            icp_mask,
-            map_x,
-            map_y,
-            cv2.INTER_NEAREST,
-            borderMode=cv2.BORDER_CONSTANT,
-            borderValue=0,
-        )
-        logger.info(f"[Match] Warped pixel_labels to equirectangular space via {proj_name}")
-
-    # Step 2: Extract border points
     progress("Extracting CV border points")
-    external_border = _extract_cv_external_border(icp_mask)
-    internal_border = _extract_cv_internal_border(pixel_labels, icp_mask)
-
-    # Combine external + internal borders for matching
-    cv_border_parts = []
-    if len(external_border) > 0:
-        cv_border_parts.append(external_border)
-    if len(internal_border) > 0:
-        cv_border_parts.append(internal_border)
-
-    cv_border = np.vstack(cv_border_parts) if cv_border_parts else np.empty((0, 2), dtype=np.float64)
+    cv_border = _cv_border(images)
 
     progress("Preparing GADM boundary points")
     gadm_points = _prepare_gadm_boundary_points(country_path, division_paths, cos_lat)
 
-    # Step 3: IoU-based alignment (primary)
-    # Maximizes overlap between rasterized GADM country outline and CV mask.
-    # This directly optimizes shape fitting, handling projection distortion,
-    # offshore islands, and noisy borders naturally.
+    # IoU-based alignment (primary) maximizes the overlap between the rasterized
+    # GADM country outline and the CV mask, which handles projection distortion,
+    # offshore islands and noisy borders naturally.
     progress("IoU shape alignment")
-    iou_result = iou_alignment(
-        country_path,
-        country_mask,
-        centroids,
-        cos_lat,
-        tw,
-        th,
+    matrix, inlier_ratio, method, inverse_h, k_conic, gadm_cx_corr = iou_alignment(
+        country_path, images.country_mask, centroids, cos_lat, tw, th
     )
-    matrix, iou_score_val, method = iou_result[0], iou_result[1], iou_result[2]
-    inverse_H = iou_result[3] if len(iou_result) > 3 else None
-    k_conic = iou_result[4] if len(iou_result) > 4 else 0.0
-    # Global X pivot used when learning k_conic — must be threaded into
-    # _rasterize_division so the per-division conic warp matches the
-    # transform that was scored.
-    gadm_cx_corr = iou_result[5]
-    inlier_ratio = iou_score_val
-    logger.info(f"[Match] Raw alignment result: F2={iou_score_val:.4f} method={method} k_conic={k_conic:.4f}")
-
+    logger.info(f"[Match] Raw alignment result: F2={inlier_ratio:.4f} method={method} k_conic={k_conic:.4f}")
     gadm_mid_y_ecc = float(np.median([-c["cy"] for c in centroids]))
 
-    # Inverse perspective warp from the super-blur contour search in
-    # iou_alignment: the fallback when pyproj detection finds no projection.
-    if inverse_H is not None:
-        progress("Applying inverse perspective warp to cluster image")
-        pixel_labels = cv2.warpPerspective(pixel_labels, inverse_H, (tw, th), flags=cv2.INTER_NEAREST)
-        country_mask = cv2.warpPerspective(country_mask, inverse_H, (tw, th))
-        # Re-warp icp_mask too — `cv_border` is extracted from it, and we
-        # re-extract cv_border below so the alignment metrics describe the
-        # post-warp images that actually drive division assignment.
-        icp_mask = cv2.warpPerspective(icp_mask, inverse_H, (tw, th))
-        logger.info("[Match] Warped labels with inverse homography")
+    if inverse_h is not None:
+        images = _undo_perspective(images, inverse_h, tw, th, progress)
+        cv_border = _cv_border(images)
 
-        # Re-extract cv_border from the warped masks so alignmentError and
-        # alignmentPct reflect the final image rather than the pre-warp shape.
-        external_border_post = _extract_cv_external_border(icp_mask)
-        internal_border_post = _extract_cv_internal_border(pixel_labels, icp_mask)
-        cv_border_parts_post = []
-        if len(external_border_post) > 0:
-            cv_border_parts_post.append(external_border_post)
-        if len(internal_border_post) > 0:
-            cv_border_parts_post.append(internal_border_post)
-        cv_border = np.vstack(cv_border_parts_post) if cv_border_parts_post else np.empty((0, 2), dtype=np.float64)
-
-    # Step 3b: Verify centroid placement is reasonable with the IoU transform
-    centroid_score = _score_centroid_placement(centroids, pixel_labels, cos_lat, matrix, tw, th)
-    logger.info(
-        f"[Match] IoU alignment: F2={iou_score_val:.3f}, centroid_hits={centroid_score:.0f}/{len(centroids)}, method={method}"
+    matrix, method, k_conic = _best_of_centroid_fallback(
+        (matrix, method, k_conic), inlier_ratio, centroids, images, cos_lat, gadm_points, tw, th, progress
     )
 
-    # Step 3c: If IoU alignment gives poor centroid coverage, try centroid fallback
-    if centroid_score < len(centroids) * 0.6:
-        progress("Centroid fallback (IoU alignment had poor centroid coverage)")
-        centroid_matrix, centroid_fb_score, centroid_method = _centroid_fallback(
-            centroids,
-            pixel_labels,
-            country_mask,
-            cos_lat,
-            gadm_points,
-            tw,
-            th,
-        )
-        centroid_fb_hits = _score_centroid_placement(centroids, pixel_labels, cos_lat, centroid_matrix, tw, th)
-        if centroid_fb_hits > centroid_score:
-            matrix = centroid_matrix
-            method = centroid_method
-            # Reset k_conic — it was learned for the rejected IoU fit and
-            # would otherwise be applied to division rasterization below,
-            # mixing two different transforms.
-            k_conic = 0.0
-            logger.info(
-                f"[Match] Centroid fallback better: hits={centroid_fb_hits:.0f} vs IoU hits={centroid_score:.0f}"
-            )
-
-    # Compute alignment metrics — median (robust), mean, and % aligned
-    median_err, mean_err, align_pct = _compute_alignment_error(
-        gadm_points,
-        cv_border,
-        matrix,
-        tw,
-        th,
-    )
-    alignment_error = median_err  # Use median for the reported metric
+    median_err, mean_err, align_pct = _compute_alignment_error(gadm_points, cv_border, matrix, tw, th)
     logger.info(
         f"[Match] Alignment: median_err={median_err:.1f}px, mean_err={mean_err:.1f}px, "
         f"alignment_pct={align_pct*100:.1f}% (within 2% of image diagonal)"
     )
 
-    # Extract sx, sy from matrix for the returned transform
-    # matrix = [[a, b, tx], [c, d, ty]]
-    # For partial affine: a = s*cos(theta), b = -s*sin(theta)
+    # matrix = [[a, b, tx], [c, d, ty]]; for a partial affine a = s*cos(theta), b = -s*sin(theta)
     sx = float(math.sqrt(matrix[0, 0] ** 2 + matrix[1, 0] ** 2))
     sy = float(math.sqrt(matrix[0, 1] ** 2 + matrix[1, 1] ** 2))
 
-    # Step 5: Division polygon rasterization + voting
     progress("Rasterizing divisions and computing assignments")
-    total_cluster_pixels = _compute_total_cluster_pixels(pixel_labels)
-
+    total_cluster_pixels = _compute_total_cluster_pixels(images.pixel_labels)
     div_assignments = []
     out_of_bounds = []
-
     for div in division_paths:
-        div_id = div["id"]
         svg = div.get("svgPath", "")
-
-        if not svg:
-            out_of_bounds.append(div_id)
-            continue
-
-        # Rasterize division polygon (with conic correction if found)
-        div_mask = _rasterize_division(
-            svg, cos_lat, matrix, tw, th, k_conic=k_conic, gadm_mid_y=gadm_mid_y_ecc, gadm_mid_x_corr=gadm_cx_corr
-        )
-
-        # Count cluster votes
-        votes, total_valid = _compute_cluster_votes(pixel_labels, div_mask)
-
-        if total_valid < OUT_OF_BOUNDS_MIN_PX:
-            out_of_bounds.append(div_id)
-            continue
-
-        if not votes:
-            out_of_bounds.append(div_id)
-            continue
-
-        # Find dominant cluster
-        sorted_votes = sorted(votes.items(), key=lambda x: x[1], reverse=True)
-        dominant_cluster = sorted_votes[0][0]
-        dominant_count = sorted_votes[0][1]
-        confidence = dominant_count / total_valid
-
-        # Split detection
-        is_split = False
-        split_clusters = []
-
-        if confidence < SPLIT_CONFIDENCE and len(sorted_votes) > 1:
-            is_split = True
+        assignment = None
+        if svg:
+            div_mask = _rasterize_division(
+                svg, cos_lat, matrix, tw, th, k_conic=k_conic, gadm_mid_y=gadm_mid_y_ecc, gadm_mid_x_corr=gadm_cx_corr
+            )
+            assignment = _assign_division(div_mask, div["id"], images.pixel_labels, total_cluster_pixels)
+        if assignment is None:
+            out_of_bounds.append(div["id"])
         else:
-            # Check if minority cluster would lose significant area
-            for cluster_id, count in sorted_votes[1:]:
-                cluster_total = total_cluster_pixels.get(cluster_id, 1)
-                share_of_cluster = count / cluster_total
-                if share_of_cluster > MINORITY_SHARE_FOR_SPLIT:
-                    is_split = True
-                    break
+            div_assignments.append(assignment)
 
-        if is_split:
-            for cluster_id, count in sorted_votes:
-                share = count / total_valid
-                if share >= MINORITY_INCLUSION:
-                    split_clusters.append(
-                        {
-                            "clusterId": cluster_id,
-                            "share": round(share, 4),
-                        }
-                    )
-
-        assignment: dict[str, Any] = {
-            "divisionId": div_id,
-            "clusterId": dominant_cluster,
-            "confidence": round(confidence, 4),
-            "isSplit": is_split,
-        }
-        if is_split:
-            assignment["splitClusters"] = split_clusters
-
-        div_assignments.append(assignment)
-
-    # Step 6: Debug images
     progress("Generating debug images")
     debug_image = _build_debug_image(
-        pixel_labels,
-        color_centroids,
-        division_paths,
-        centroids,
-        cos_lat,
-        matrix,
-        tw,
-        th,
-        orig_w,
-        orig_h,
+        images.pixel_labels, color_centroids, division_paths, centroids, cos_lat, matrix, tw, th, orig_w, orig_h
     )
-
-    # Build return matrix as nested list (2x3 or 3x3)
-    matrix_list = []
-    for row in range(matrix.shape[0]):
-        matrix_list.append([float(matrix[row, col]) for col in range(matrix.shape[1])])
-
-    # Close the last open step then report total matching time.
-    progress("")
-    logger.info(f"[Match] Total matching time: {time.perf_counter() - _match_wall_start:.2f}s")
+    matrix_list = [[float(matrix[row, col]) for col in range(matrix.shape[1])] for row in range(matrix.shape[0])]
+    progress.finish()
 
     return {
         "transform": {
@@ -1480,7 +1446,7 @@ def run_matching(  # noqa: C901 -- above the complexity ceiling of 15; #1654 spl
         "divAssignments": div_assignments,
         "outOfBounds": out_of_bounds,
         "alignmentMethod": method,
-        "alignmentError": round(alignment_error, 2),  # median boundary distance (px)
+        "alignmentError": round(median_err, 2),  # median boundary distance (px)
         "alignmentErrorMean": round(mean_err, 2),
         "alignmentPct": round(align_pct, 4),  # % of GADM boundary points within 2% of image diagonal
         "inlierRatio": round(inlier_ratio, 4),  # F2 shape overlap — can be misleading
