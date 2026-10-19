@@ -13,7 +13,7 @@ import cv2
 import numpy as np
 import pytest
 
-from app.cv.match import _iou_alignment
+from app.cv.iou_alignment import _search_frame, _shear_search, iou_alignment
 
 TW, TH = 320, 240
 MID_LAT = 47.5
@@ -120,7 +120,7 @@ def _cases() -> dict[str, tuple[str, np.ndarray]]:
     }
 
 
-# Recorded from _iou_alignment before #1654 split it: (matrix, f2, method,
+# Recorded from the search before #1654 split it: (matrix, f2, method,
 # inverse homography, k_conic, gadm_cx_corr).
 EXPECTED: dict[str, tuple[list[list[float]], float, str, list[list[float]] | None, float, float]] = {
     "a plain map: the affine fit is near-perfect and no refinement runs": (
@@ -173,7 +173,7 @@ EXPECTED: dict[str, tuple[list[list[float]], float, str, list[list[float]] | Non
 @pytest.mark.parametrize("case", list(_cases()))
 def test_the_search_finds_the_transform_it_found_before_the_split(case: str) -> None:
     path, mask = _cases()[case]
-    matrix, f2, method, inverse_h, k_conic, gadm_cx_corr = _iou_alignment(path, mask, CENTROIDS, COS_LAT, TW, TH)
+    matrix, f2, method, inverse_h, k_conic, gadm_cx_corr = iou_alignment(path, mask, CENTROIDS, COS_LAT, TW, TH)
     want_matrix, want_f2, want_method, want_h, want_k, want_cx = EXPECTED[case]
 
     assert method == want_method
@@ -189,7 +189,7 @@ def test_the_search_finds_the_transform_it_found_before_the_split(case: str) -> 
 
 def test_an_outline_with_no_path_gives_the_identity() -> None:
     mask = _drawn_mask(DRAWN, (11.0, 13.0), (-60, 760))
-    matrix, f2, method, inverse_h, k_conic, gadm_cx_corr = _iou_alignment("", mask, CENTROIDS, COS_LAT, TW, TH)
+    matrix, f2, method, inverse_h, k_conic, gadm_cx_corr = iou_alignment("", mask, CENTROIDS, COS_LAT, TW, TH)
 
     np.testing.assert_array_equal(matrix, np.eye(2, 3))
     assert (f2, method, inverse_h, k_conic, gadm_cx_corr) == (0.0, "iou_align", None, 0.0, 0.0)
@@ -198,9 +198,42 @@ def test_an_outline_with_no_path_gives_the_identity() -> None:
 def test_a_mask_of_under_ten_pixels_gives_the_identity() -> None:
     mask = np.zeros((TH, TW), np.uint8)
     mask[100, 100:109] = 1
-    matrix, f2, method, inverse_h, k_conic, gadm_cx_corr = _iou_alignment(
-        WITH_ISLANDS, mask, CENTROIDS, COS_LAT, TW, TH
-    )
+    matrix, f2, method, inverse_h, k_conic, gadm_cx_corr = iou_alignment(WITH_ISLANDS, mask, CENTROIDS, COS_LAT, TW, TH)
 
     np.testing.assert_array_equal(matrix, np.eye(2, 3))
     assert (f2, method, inverse_h, k_conic, gadm_cx_corr) == (0.0, "iou_align", None, 0.0, 0.0)
+
+
+def _sheared(mask: np.ndarray, shear: float) -> np.ndarray:
+    """The mask with its columns slid along x in proportion to their height."""
+    slide = np.float32([[1, shear, -shear * TH / 2], [0, 1, 0]])
+    return cv2.warpAffine(mask, slide, (TW, TH), flags=cv2.INTER_NEAREST)
+
+
+def test_the_shear_search_keeps_a_shear_only_when_it_raises_f2_by_half_a_percent() -> None:
+    # The full search scores the shear unsmoothed against an F2 measured on
+    # smoothed shapes, which a drawn map rarely beats; the stage is held here
+    # against a baseline of its own.
+    mask = _sheared(_drawn_mask(DRAWN, (11.0, 13.0), (-60, 760)), 0.12)
+    search = _search_frame(WITH_ISLANDS, mask, CENTROIDS, COS_LAT, TW, TH)
+    assert search is not None
+    params = (12.687306452014525, 13.566419999999999, -74.14269428571427, 788.40495)
+
+    matrix, f2 = _shear_search(search, 0.5, params)
+    assert f2 > 0.5 * 1.005
+    assert matrix[0, 1] != 0.0
+    assert (matrix[0, 0], matrix[0, 2], matrix[1, 1], matrix[1, 2]) == (params[0], params[2], params[1], params[3])
+
+    matrix, f2 = _shear_search(search, 0.99, params)
+    assert f2 == 0.99
+    np.testing.assert_array_equal(matrix, [[params[0], 0.0, params[2]], [0.0, params[1], params[3]]])
+
+
+def test_the_scale_search_draws_the_200_largest_paths_of_a_coast_of_islets() -> None:
+    mask = _drawn_mask(DRAWN, (11.0, 13.0), (-60, 760))
+    search = _search_frame(_svg([MAINLAND, *ISLETS]), mask, CENTROIDS, COS_LAT, TW, TH)
+    assert search is not None
+
+    assert len(search.sub_paths) == 1 + len(ISLETS)
+    assert len(search.search_paths) == 200
+    assert any(len(sp) == len(MAINLAND) for sp in search.search_paths)
