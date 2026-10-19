@@ -181,6 +181,16 @@ export function holdsToponym(name: string, label: string): boolean {
 }
 
 /**
+ * The place names of a component past the town it leads with: "Enns – St.
+ * Laurenz" is the basilica's own name beside its town's, which every listed
+ * building in Enns holds too.
+ */
+export function ownToponymsOf(name: string): string[] {
+  const town = matchKey(name.split('/')[0].split(/\s[-–]/)[0]);
+  return toponymsOf(name).filter(place => place !== town);
+}
+
+/**
  * A label without its trailing qualifier: "Dům čp. 7 (Žatec)" names a house,
  * and read with its town it looked like the component named "Žatec".
  */
@@ -373,6 +383,41 @@ export const NEVER_BY_THE_CATALOGUE: Readonly<Record<string, string>> = {
  */
 export const NOT_BY_PLACE_NAME_ALONE: Readonly<Record<string, string>> = {
   Q33506: 'museum',
+};
+
+/**
+ * The shortest word of a component's own name that tells a candidate's label
+ * apart from its town's buildings: "Hufeisenturm" does, while "West", "Ost"
+ * and "und" are in many a label.
+ */
+const OWN_WORD_MIN_LETTERS = 5;
+
+/**
+ * Whether a candidate's label shares a word with the component's own place
+ * names past the town it leads with (`ownToponymsOf`), read without its
+ * trailing qualifier as the place-name rule reads it: "Spätantiker
+ * Hufeisenturm im Kommunalzentrum Pöchlarn" shares "Hufeisenturm" with
+ * "Pöchlarn – Kastell Hufeisenturm West".
+ */
+export function namesMoreThanTheTown(point: ComponentPoint, candidate: CandidateItem): boolean {
+  if (point.name === null) return false;
+  const own = new Set(ownToponymsOf(point.name).flatMap(place => place.split(' '))
+    .filter(word => word.replace(/[^\p{L}]/gu, '').length >= OWN_WORD_MIN_LETTERS));
+  return candidate.labels.some(label => matchKey(withoutQualifier(label)).split(' ').some(word => own.has(word)));
+}
+
+/**
+ * The kinds of thing the place-name rule takes on the catalogue-wide fallback
+ * by the component's town alone, with every class under them (#1689). Every
+ * other candidate there must share a word with the component's own place
+ * names (`namesMoreThanTheTown`). A town with many listed buildings names each of
+ * them, and a class some component somewhere holds is not enough to tell its
+ * parish church, a house on Wiener Straße or the Freud monument from the
+ * Roman fort under them; the castra of the Dacian frontier are named after
+ * their village alone and are archaeological sites.
+ */
+export const BY_THE_TOWN_ALONE: Readonly<Record<string, string>> = {
+  Q839954: 'archaeological site',
 };
 
 /**
