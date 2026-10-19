@@ -5561,8 +5561,8 @@ left; its proposal still holds the lifted rows, so its own button names the rows
 and `clearAnsweredHeldPointers` (`membershipWriter.ts`), run by the publish and the decline under
 the place's lock, clears each pointer whose held rows are then all answered. So the values are
 compared as the decision compares them, exactly, and a fact the runs propose differently stays in
-each section. The type within the kind is the membership's: it is never lifted, and the sweep
-leaves standing a proposal that holds one, since the answer that reads it as settled is the place's. The row counts the
+each section. The type within the kind is the membership's: it is never lifted, and its answer is
+the kind's (ADR-0125), so another kind's answer never settles it. The row counts the
 place's section as one question. A batch answers the place's section under that kind alone,
 since the other kinds' copies are settled by value, and a kind with a section of its own answers
 it once (`toAnswerRows`).
@@ -5991,7 +5991,10 @@ coordinate turns its moved point down with it (ADR-0083) — and claims
 nothing, which is the whole difference from the one lever a curator had before (edit the field,
 which claims it, then publish, which skips it). Both record what they answered in
 `experience_held_decisions`, keyed on the experience, the part the record names and the field, and
-storing **the value**: the queue, `heldWaitingSql`, the admin panel's count and the catalogue
+storing **the value**. A type within the kind is the membership's (ADR-0084), so its answer also
+records the source of the run it answers (`source_id`) and answers only that source's runs; every
+other answer has no source and answers every run of the place ([ADR-0125](../decisions/0125-a-type-answer-is-the-kinds.md), #1720),
+so every reader names the run whose proposal it reads. With that, the queue, `heldWaitingSql`, the admin panel's count and the catalogue
 assertions all compose `heldDecisions.ts`'s fragments rather than spelling the comparison again, so
 a source that comes back with a *different* value asks again while one that repeats itself does not.
 They ask the same question with one deliberate exception, stated where a new reader would look for
