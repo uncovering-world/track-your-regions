@@ -25,6 +25,7 @@ npm run perf               # Lighthouse against the production build on the isol
 npm run perf:size          # Bundle-size budget on the entry chunk (size-limit; CI runs it in the build job)
 npm run perf:local         # Everything this machine can measure on its own data: size + Lighthouse on the dev stack's production build + the probe (the slow tier)
 npm run dev:frontend:preview  # Dev stack's frontend as the production build (what performance is measured on - never the dev server); dev:frontend:dev switches back, dev:frontend:mode says which is up
+npm run dev:frontend:branch   # This checkout's frontend beside the dev stack's, on 5181 against its backend: how a branch's screens are looked at before it merges (development-guide.md § Looking at a branch's screens)
 npm run dev                # Start all services via Docker Compose (rebuilds images, so container deps track package.json)
 npm run db:shell           # Open psql shell to active database
 npm run db:migrate         # Apply pending db/migrations/ files and record them (db:migrate:status to look first)
