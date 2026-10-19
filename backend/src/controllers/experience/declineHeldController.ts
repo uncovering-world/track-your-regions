@@ -36,7 +36,7 @@ import {
 } from './heldSelection.js';
 import type { ContentsByKind } from '../../services/sync/types.js';
 import { lockExperience } from '../../db/experienceWriter.js';
-import { clearHeldPointer } from './membershipWriter.js';
+import { clearAnsweredHeldPointers, clearHeldPointer } from './membershipWriter.js';
 import { markUnreadPointsRefused } from './experienceLocationWriter.js';
 import { pointMovedToProposed } from './movedPoint.js';
 import { placeAfterRelease } from './publishContents.js';
@@ -225,6 +225,8 @@ export async function refuseUnderLock(
     if (heldLeftOpen === 0) {
       await clearHeldPointer(client, locked.lock, membershipId);
     }
+    // The same value another kind's run proposed is refused with it (#1599).
+    await clearAnsweredHeldPointers(client, locked.lock);
 
     const declinedFields = selected.filter(row => row.ref.kind === null).map(row => row.ref.field);
     const declinedParts = groupParts(selected);
