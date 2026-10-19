@@ -275,7 +275,9 @@ typecheck once `npm run db:types` has run.
 - **Serving**: what readers and curators read and write, and what the admin
   screens keep about it. It is created in `public`, as before. A table a
   reader or curator route reads is serving, whatever made it: the region tree
-  reads `region_import_state`, which the import writes.
+  reads `region_import_state`, which the import writes. So is a table a
+  serving one references, since a deployment of the serving tables has to
+  carry it for the key to hold: `region_import_state` references `import_runs`.
 - **Workbench**: what is built from a public dump, imported, cached or kept as
   intermediate work, which no reader or curator route reads. It is created in
   the `workbench` schema, by name: `CREATE TABLE IF NOT EXISTS workbench.<name>`
@@ -283,10 +285,15 @@ typecheck once `npm run db:types` has run.
   (`backend/src/db/workbench.ts`) for a table the code makes at run time. The
   search path finds it by its bare name everywhere else.
 
-`tableTiers.test.ts` holds a table's tier to its schema. A reader or curator
-route that names a workbench table, in the workbench schema or one still in
-`public`, is refused by the lint (`tiers/no-workbench-tables`), which reads the
-tiers from `TABLE_TIERS`. A reader that needs dump-built data reads a
+`tableTiers.test.ts` holds a table's tier to its schema, and
+`tableTiers.db.test.ts` holds that no key runs from `public` into `workbench`.
+A key the other way, from a workbench table into a serving one, holds while the
+tiers share a database: the dump builds' ledger to `users` (`started_by`),
+`coverage_kinds` to `experience_kinds`, the Wikidata caches to
+`experience_sources` and `region_map_images` to `regions`. What replaces them
+when the tiers part is the deployment design's (#1693). A reader or curator
+route that names a workbench table is refused by the lint
+(`tiers/no-workbench-tables`), which reads the tiers from `TABLE_TIERS`. A reader that needs dump-built data reads a
 result precomputed into a serving table.
 
 `db/migrations/README.md` has the rest, including what each existing migration
