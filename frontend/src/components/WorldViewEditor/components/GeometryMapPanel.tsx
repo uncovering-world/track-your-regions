@@ -47,13 +47,10 @@ type ComputedRegionPatch = Pick<ComputeResult, 'preserved' | 'usesHull' | 'focus
 
 async function runSingleRegionCompute(
   regionId: number,
-  forceRecompute: boolean,
   skipSnapping: boolean,
   onEvent: (event: ComputeProgressEvent) => void,
 ): Promise<ComputedRegionPatch> {
-  const result = await computeRegionGeometryWithProgress(
-    regionId, forceRecompute, onEvent, skipSnapping,
-  );
+  const result = await computeRegionGeometryWithProgress(regionId, onEvent, skipSnapping);
   return result.data;
 }
 
@@ -205,7 +202,6 @@ export function GeometryMapPanel({
     isComputing, setIsComputing,
     computationStatus, setComputationStatus,
     isComputingSingleRegion, setIsComputingSingleRegion,
-    forceRecompute, setForceRecompute,
     isResettingToMembers, setIsResettingToMembers,
     skipSnapping, setSkipSnapping,
     recomputeAll, setRecomputeAll,
@@ -277,7 +273,6 @@ export function GeometryMapPanel({
     try {
       const data = await runSingleRegionCompute(
         selectedRegion.id,
-        forceRecompute,
         skipSnapping,
         event => setComputeProgressLogs(prev => [...prev, event]),
       );
@@ -289,7 +284,7 @@ export function GeometryMapPanel({
       setIsComputingSingleRegion(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps -- setComputeProgressLogs/setIsComputingSingleRegion setters are stable; deps listed are the actual trigger inputs
-  }, [selectedRegion, forceRecompute, skipSnapping, onSelectedRegionChange, onInvalidateQueries]);
+  }, [selectedRegion, skipSnapping, onSelectedRegionChange, onInvalidateQueries]);
 
   const handleRedefineBoundaries = useCallback(async () => {
     if (!selectedRegion) return;
@@ -386,13 +381,6 @@ export function GeometryMapPanel({
             display: 'flex', gap: 2, alignItems: 'center',
             flexShrink: 0,
           }}>
-            <Tooltip title="Recompute hull even if one already exists">
-              <FormControlLabel
-                control={<Checkbox size="small" checked={forceRecompute} onChange={(e) => setForceRecompute(e.target.checked)} />}
-                label={<Typography sx={{ fontSize: '0.72rem', fontFamily: P.font.ui }}>Regenerate hull</Typography>}
-                sx={{ mr: 0 }}
-              />
-            </Tooltip>
             <Tooltip title="Skip vertex alignment — faster but may leave small gaps">
               <FormControlLabel
                 control={<Checkbox size="small" checked={skipSnapping} onChange={(e) => setSkipSnapping(e.target.checked)} />}
