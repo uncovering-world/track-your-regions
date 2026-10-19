@@ -12,6 +12,7 @@ import { pool } from '../../db/index.js';
 import { parseMarkers, parseGeoTag } from '../wikivoyageExtract/markerParser.js';
 import type { ParsedMarker } from '../wikivoyageExtract/markerParser.js';
 import { userAgent } from '../../config/userAgent.js';
+import { buildCoveringSet, deepestCommonDivisions, type CandidateDivision, type PointDivision } from './pointCovering.js';
 
 const WIKIVOYAGE_API = 'https://en.wikivoyage.org/w/api.php';
 const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
@@ -118,14 +119,6 @@ interface DivisionConflict {
   donorRegionName: string;
   donorDivisionId: number;
   donorDivisionName: string;
-}
-
-interface CandidateDivision {
-  id: number;
-  name: string;
-  parentId: number | null;
-  gadmDepth: number;
-  path: string;
 }
 
 interface ScopeWalkResult {
@@ -292,57 +285,68 @@ const DIVISION_CONTAINS_SQL_WITH_SCOPE = `
   )
   SELECT ad.id, ad.name, ad.parent_id, sd.gadm_depth,
     (WITH RECURSIVE div_ancestors AS (
-      SELECT ad.id AS aid, ad.name AS aname, ad.parent_id AS apid
+      SELECT ad.id AS aid, ad.name AS aname, ad.parent_id AS apid, 0 AS lvl
       UNION ALL
-      SELECT d.id, d.name, d.parent_id
+      SELECT d.id, d.name, d.parent_id, da.lvl + 1
       FROM administrative_divisions d JOIN div_ancestors da ON d.id = da.apid
     )
-    SELECT string_agg(aname, ' > ' ORDER BY aid) FROM div_ancestors) AS path
+    SELECT string_agg(aname, ' > ' ORDER BY lvl DESC) FROM div_ancestors) AS path
   FROM administrative_divisions ad
   JOIN scope_descendants sd ON ad.id = sd.id
   WHERE ad.geom_simplified_medium IS NOT NULL
     AND ST_Contains(ad.geom_simplified_medium, ST_SetSRID(ST_MakePoint($1, $2), 4326))
 `;
 
+// Unscoped, a division's depth is its own in GADM and its root is the top of
+// its ancestry, so the points under each root are matched on their own. The
+// ancestors of a division holding the point come back too: a simplified
+// outline can miss a point its child holds (Calvados one Caen holds).
 const DIVISION_CONTAINS_SQL_NO_SCOPE = `
-  SELECT ad.id, ad.name, ad.parent_id, 0 AS gadm_depth,
-    (WITH RECURSIVE div_ancestors AS (
-      SELECT ad.id AS aid, ad.name AS aname, ad.parent_id AS apid
+  WITH RECURSIVE held AS (
+    SELECT ad.id, ad.parent_id FROM administrative_divisions ad
+    WHERE ad.geom_simplified_medium IS NOT NULL
+      AND ST_Contains(ad.geom_simplified_medium, ST_SetSRID(ST_MakePoint($1, $2), 4326))
+    UNION
+    SELECT p.id, p.parent_id FROM administrative_divisions p JOIN held h ON p.id = h.parent_id
+  )
+  SELECT ad.id, ad.name, ad.parent_id, anc.gadm_depth, anc.root_id, anc.path
+  FROM held JOIN administrative_divisions ad ON ad.id = held.id
+  CROSS JOIN LATERAL (
+    WITH RECURSIVE div_ancestors AS (
+      SELECT ad.id AS aid, ad.name AS aname, ad.parent_id AS apid, 0 AS lvl
       UNION ALL
-      SELECT d.id, d.name, d.parent_id
+      SELECT d.id, d.name, d.parent_id, da.lvl + 1
       FROM administrative_divisions d JOIN div_ancestors da ON d.id = da.apid
     )
-    SELECT string_agg(aname, ' > ' ORDER BY aid) FROM div_ancestors) AS path
-  FROM administrative_divisions ad
-  WHERE ad.geom_simplified_medium IS NOT NULL
-    AND ST_Contains(ad.geom_simplified_medium, ST_SetSRID(ST_MakePoint($1, $2), 4326))
+    SELECT max(lvl) AS gadm_depth, (array_agg(aid ORDER BY lvl DESC))[1] AS root_id,
+      string_agg(aname, ' > ' ORDER BY lvl DESC) AS path
+    FROM div_ancestors
+  ) anc
 `;
 
+/** The divisions that hold each point, one list per point; unscoped, with their ancestors. */
 async function collectPointDivisions(
   points: ResolvedPoint[],
   scopeDivisionIds: number[],
-): Promise<Map<number, CandidateDivision>> {
-  const pointDivisionMap = new Map<number, CandidateDivision>();
+): Promise<PointDivision[][]> {
   const useScope = scopeDivisionIds.length > 0;
+  const pointHits: PointDivision[][] = [];
 
   for (const point of points) {
     const result = await pool.query(
       useScope ? DIVISION_CONTAINS_SQL_WITH_SCOPE : DIVISION_CONTAINS_SQL_NO_SCOPE,
       useScope ? [point.lon, point.lat, scopeDivisionIds] : [point.lon, point.lat],
     );
-    for (const row of result.rows) {
-      const id = row.id as number;
-      if (pointDivisionMap.has(id)) continue;
-      pointDivisionMap.set(id, {
-        id,
-        name: row.name as string,
-        parentId: row.parent_id as number | null,
-        gadmDepth: row.gadm_depth as number,
-        path: row.path as string,
-      });
-    }
+    pointHits.push(result.rows.map(row => ({
+      id: row.id as number,
+      name: row.name as string,
+      parentId: row.parent_id as number | null,
+      gadmDepth: row.gadm_depth as number,
+      path: row.path as string,
+      rootId: useScope ? null : row.root_id as number,
+    })));
   }
-  return pointDivisionMap;
+  return pointHits;
 }
 
 async function detectScopeConflicts(
@@ -389,38 +393,6 @@ async function detectScopeConflicts(
     });
   }
   return conflictMap;
-}
-
-function buildCoveringSet(
-  pointDivisionMap: Map<number, CandidateDivision>,
-  scopeRootIds: Set<number>,
-  siblingDivisionIds: Set<number>,
-): CandidateDivision[] {
-  const sortedCandidates = [...pointDivisionMap.values()]
-    .filter(c => !scopeRootIds.has(c.id) && !siblingDivisionIds.has(c.id))
-    .sort((a, b) => a.gadmDepth - b.gadmDepth);
-
-  const selectedIds = new Set<number>();
-  const coveringSet: CandidateDivision[] = [];
-
-  for (const candidate of sortedCandidates) {
-    let ancestorSelected = false;
-    let walkId: number | null = candidate.parentId;
-    while (walkId != null) {
-      if (selectedIds.has(walkId)) {
-        ancestorSelected = true;
-        break;
-      }
-      const parent = pointDivisionMap.get(walkId);
-      walkId = parent?.parentId ?? null;
-      if (!parent) break;
-    }
-    if (!ancestorSelected) {
-      selectedIds.add(candidate.id);
-      coveringSet.push(candidate);
-    }
-  }
-  return coveringSet;
 }
 
 async function loadFilterIds(regionId: number): Promise<{
@@ -532,8 +504,10 @@ async function findRegionPoints(sourceUrl: string, regionId: number): Promise<{ 
  * Match a region to GADM divisions using point-in-polygon containment.
  *
  * Fetches the Wikivoyage page, extracts marker/geo coordinates, then finds
- * GADM divisions containing those points. Builds a covering set of the
- * shallowest divisions, excluding sibling-assigned ones.
+ * GADM divisions containing those points. Under a matched ancestor it offers
+ * the shallowest divisions below it that hold a point; with none, the deepest
+ * division holding every point (`pointCovering.ts`). Sibling-assigned
+ * divisions are left out.
  */
 export async function pointMatchRegion(
   worldViewId: number,
@@ -555,7 +529,8 @@ export async function pointMatchRegion(
   const { scopeDivisionIds, scopeAncestorName, nextScope } =
     await walkScopeAncestors(regionId, scopeAncestorId);
 
-  const pointDivisionMap = await collectPointDivisions(points, scopeDivisionIds);
+  const pointHits = await collectPointDivisions(points, scopeDivisionIds);
+  const pointDivisionMap = new Map<number, CandidateDivision>(pointHits.flat().map(d => [d.id, d]));
 
   const conflictMap = scopeAncestorId != null
     ? await detectScopeConflicts([...pointDivisionMap.keys()], worldViewId, regionId)
@@ -566,11 +541,9 @@ export async function pointMatchRegion(
     return { found: 0, suggestions: [], scopeAncestorName, nextScope };
   }
 
-  const coveringSet = buildCoveringSet(
-    pointDivisionMap,
-    new Set(scopeDivisionIds),
-    siblingDivisionIds,
-  );
+  const coveringSet = scopeDivisionIds.length > 0
+    ? buildCoveringSet(pointDivisionMap, new Set(scopeDivisionIds), siblingDivisionIds)
+    : deepestCommonDivisions(pointHits).filter(c => !siblingDivisionIds.has(c.id));
   if (coveringSet.length === 0) {
     console.log(`[PointMatcher] No covering set after filtering for region ${regionId}`);
     return { found: 0, suggestions: [], scopeAncestorName, nextScope };
