@@ -4613,7 +4613,7 @@ CREATE TABLE IF NOT EXISTS region_match_suggestions (
     name TEXT NOT NULL,
     path TEXT,
     score INTEGER DEFAULT 0,
-    rejected BOOLEAN DEFAULT FALSE,
+    rejected BOOLEAN NOT NULL DEFAULT FALSE,
     conflict_type TEXT,
     donor_region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     donor_division_id INTEGER REFERENCES administrative_divisions(id) ON DELETE SET NULL,
@@ -4623,6 +4623,10 @@ CREATE TABLE IF NOT EXISTS region_match_suggestions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_rms_region ON region_match_suggestions(region_id);
+-- One active suggestion per region and division (#1620): a rejected one stays
+-- outside, since the rejection is what keeps the division from being offered again.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_region_match_suggestions_active_unique
+  ON region_match_suggestions (region_id, division_id) WHERE rejected = false;
 
 COMMENT ON TABLE region_match_suggestions IS 'GADM division match suggestions for imported regions (1:N per region)';
 COMMENT ON COLUMN region_match_suggestions.rejected IS 'True if admin rejected this suggestion (prevents re-suggestion)';

@@ -403,8 +403,18 @@ async function revokeAutoMatchOnZeroOverlap(
   );
   if (statusResult.rows[0]?.match_status !== 'auto_matched') return false;
 
+  // One active suggestion per division (#1620): a rejection beside an active
+  // twin stays, and of two rejections of one division only the first returns.
   await client.query(
-    `UPDATE region_match_suggestions SET rejected = FALSE WHERE region_id = $1`,
+    `UPDATE region_match_suggestions s SET rejected = FALSE
+     WHERE s.id IN (
+       SELECT DISTINCT ON (division_id) id FROM region_match_suggestions
+       WHERE region_id = $1 AND rejected ORDER BY division_id, id
+     )
+     AND NOT EXISTS (
+       SELECT 1 FROM region_match_suggestions a
+       WHERE a.region_id = s.region_id AND a.division_id = s.division_id AND NOT a.rejected
+     )`,
     [regionId],
   );
   await client.query('DELETE FROM region_members WHERE region_id = $1', [regionId]);
