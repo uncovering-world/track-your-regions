@@ -4638,15 +4638,15 @@ COMMENT ON TABLE region_match_suggestions IS 'GADM division match suggestions fo
 COMMENT ON COLUMN region_match_suggestions.rejected IS 'True if admin rejected this suggestion (prevents re-suggestion)';
 
 -- Map image candidates (1:N per region, replaces metadata.mapImageCandidates)
-CREATE TABLE IF NOT EXISTS region_map_images (
+CREATE TABLE IF NOT EXISTS workbench.region_map_images (
     id SERIAL PRIMARY KEY,
     region_id INTEGER NOT NULL REFERENCES regions(id) ON DELETE CASCADE,
     image_url TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_rmi_region ON region_map_images(region_id);
+CREATE INDEX IF NOT EXISTS idx_rmi_region ON workbench.region_map_images(region_id);
 
-COMMENT ON TABLE region_map_images IS 'Candidate map images for imported regions (from Wikimedia Commons etc.)';
+COMMENT ON TABLE workbench.region_map_images IS 'Candidate map images for imported regions (from Wikimedia Commons etc.)';
 
 -- The reference map an admin lays under a region in the Create Subregions dialog
 -- (#595, ADR-0113): one per region, calibrated by its four corners. Working
@@ -4701,7 +4701,7 @@ COMMENT ON TABLE region_member_group_assignments IS 'Which group of the Create S
 -- Cache-first proxy: filled from maps.wikimedia.org and from composite unions of
 -- child entity geoshapes. Keyed by Wikidata QID or "commons:{filename}".
 -- See backend/src/services/worldViewImport/geoshapeCache.ts / geoshapeComposite.ts.
-CREATE TABLE IF NOT EXISTS wikidata_geoshapes (
+CREATE TABLE IF NOT EXISTS workbench.wikidata_geoshapes (
     wikidata_id TEXT PRIMARY KEY,            -- Wikidata QID or "commons:{filename}"
     geom geometry(MultiPolygon, 4326),       -- NULL when not_available; SRID 4326
     not_available BOOLEAN NOT NULL DEFAULT FALSE,  -- TRUE = no geoshape exists (negative cache)
@@ -4713,11 +4713,11 @@ CREATE TABLE IF NOT EXISTS wikidata_geoshapes (
     CONSTRAINT wikidata_geoshapes_geom_presence CHECK (not_available OR geom IS NOT NULL)
 );
 
-CREATE INDEX IF NOT EXISTS idx_wikidata_geoshapes_geom ON wikidata_geoshapes USING GIST (geom);
+CREATE INDEX IF NOT EXISTS idx_wikidata_geoshapes_geom ON workbench.wikidata_geoshapes USING GIST (geom);
 
-COMMENT ON TABLE wikidata_geoshapes IS 'Cache of Wikidata/Commons geoshapes (and composite unions) for WorldView Import geoshape matching';
-COMMENT ON COLUMN wikidata_geoshapes.not_available IS 'Negative cache: TRUE means a geoshape lookup confirmed none exists';
-COMMENT ON COLUMN wikidata_geoshapes.composite_of IS 'How many parts a composite geoshape is the union of, every part the item names (#1628); NULL for a shape Wikimedia holds for the item';
+COMMENT ON TABLE workbench.wikidata_geoshapes IS 'Cache of Wikidata/Commons geoshapes (and composite unions) for WorldView Import geoshape matching';
+COMMENT ON COLUMN workbench.wikidata_geoshapes.not_available IS 'Negative cache: TRUE means a geoshape lookup confirmed none exists';
+COMMENT ON COLUMN workbench.wikidata_geoshapes.composite_of IS 'How many parts a composite geoshape is the union of, every part the item names (#1628); NULL for a shape Wikimedia holds for the item';
 
 -- =============================================================================
 -- AI Settings
@@ -4726,20 +4726,20 @@ COMMENT ON COLUMN wikidata_geoshapes.composite_of IS 'How many parts a composite
 -- pipeline implementation toggles, etc.). Loaded by aiSettingsService.ts
 -- with a 60s in-memory cache.
 
-CREATE TABLE IF NOT EXISTS ai_settings (
+CREATE TABLE IF NOT EXISTS workbench.ai_settings (
     key VARCHAR(255) PRIMARY KEY,
     value TEXT NOT NULL,
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-COMMENT ON TABLE ai_settings IS 'Admin-configurable AI settings: model selections, feature toggles, etc.';
-COMMENT ON COLUMN ai_settings.key IS 'Setting key, e.g. model.matching, cv_pipeline_implementation';
+COMMENT ON TABLE workbench.ai_settings IS 'Admin-configurable AI settings: model selections, feature toggles, etc.';
+COMMENT ON COLUMN workbench.ai_settings.key IS 'Setting key, e.g. model.matching, cv_pipeline_implementation';
 
 -- =============================================================================
 -- AI Usage Logging
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS ai_usage_log (
+CREATE TABLE IF NOT EXISTS workbench.ai_usage_log (
     id SERIAL PRIMARY KEY,
     feature VARCHAR(100) NOT NULL,
     model VARCHAR(100) NOT NULL,
@@ -4752,16 +4752,16 @@ CREATE TABLE IF NOT EXISTS ai_usage_log (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_ai_usage_log_created ON ai_usage_log(created_at DESC);
-CREATE INDEX IF NOT EXISTS idx_ai_usage_log_feature ON ai_usage_log(feature, model);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_log_created ON workbench.ai_usage_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_log_feature ON workbench.ai_usage_log(feature, model);
 
-COMMENT ON TABLE ai_usage_log IS 'Per-session AI API usage logs for cost tracking and dashboard';
+COMMENT ON TABLE workbench.ai_usage_log IS 'Per-session AI API usage logs for cost tracking and dashboard';
 
 -- =============================================================================
 -- AI Learned Rules
 -- =============================================================================
 
-CREATE TABLE IF NOT EXISTS ai_learned_rules (
+CREATE TABLE IF NOT EXISTS workbench.ai_learned_rules (
     id SERIAL PRIMARY KEY,
     feature VARCHAR(100) NOT NULL,
     rule_text TEXT NOT NULL,
@@ -4769,9 +4769,9 @@ CREATE TABLE IF NOT EXISTS ai_learned_rules (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
-CREATE INDEX IF NOT EXISTS idx_ai_learned_rules_feature ON ai_learned_rules(feature);
+CREATE INDEX IF NOT EXISTS idx_ai_learned_rules_feature ON workbench.ai_learned_rules(feature);
 
-COMMENT ON TABLE ai_learned_rules IS 'User-provided rules injected into AI prompts to improve future extractions';
+COMMENT ON TABLE workbench.ai_learned_rules IS 'User-provided rules injected into AI prompts to improve future extractions';
 
 -- =============================================================================
 -- Wikidata query cache (migration 029)
@@ -4790,7 +4790,7 @@ COMMENT ON TABLE ai_learned_rules IS 'User-provided rules injected into AI promp
 -- can be told to ignore the cache entirely, and the admin panel shows each
 -- kind's age with a button to drop it -- a cache that cannot be bypassed is a
 -- fork of reality rather than a cache.
-CREATE TABLE IF NOT EXISTS wikidata_query_cache (
+CREATE TABLE IF NOT EXISTS workbench.wikidata_query_cache (
     id SERIAL PRIMARY KEY,
     -- Whose run kept this: the store is shared, but every question an admin asks
     -- about it is about one source, and lifetimes differ by source as much as by
@@ -4806,15 +4806,15 @@ CREATE TABLE IF NOT EXISTS wikidata_query_cache (
     expires_at TIMESTAMPTZ NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_wikidata_cache_kind ON wikidata_query_cache(kind);
-CREATE INDEX IF NOT EXISTS idx_wikidata_cache_expires ON wikidata_query_cache(expires_at);
+CREATE INDEX IF NOT EXISTS idx_wikidata_cache_kind ON workbench.wikidata_query_cache(kind);
+CREATE INDEX IF NOT EXISTS idx_wikidata_cache_expires ON workbench.wikidata_query_cache(expires_at);
 
 -- How long each kind is worth keeping, when an admin disagrees with the default.
 -- The defaults live in code because they are an argument about how fast the facts
 -- change; a row here means a person decided otherwise. Changing a lifetime
 -- re-stamps what is already kept, or the panel would show one rule and the
 -- reader honour another.
-CREATE TABLE IF NOT EXISTS wikidata_cache_policy (
+CREATE TABLE IF NOT EXISTS workbench.wikidata_cache_policy (
     source_id INTEGER NOT NULL REFERENCES experience_sources(id) ON DELETE CASCADE,
     kind TEXT NOT NULL,
     ttl_ms BIGINT NOT NULL CHECK (ttl_ms > 0),
@@ -4822,11 +4822,11 @@ CREATE TABLE IF NOT EXISTS wikidata_cache_policy (
     PRIMARY KEY (source_id, kind)
 );
 
-COMMENT ON TABLE wikidata_cache_policy IS 'Per-kind overrides for how long a cached Wikidata answer stays fresh. Absent kind = the default in wikidataCache.ts, which states why that number and not another.';
+COMMENT ON TABLE workbench.wikidata_cache_policy IS 'Per-kind overrides for how long a cached Wikidata answer stays fresh. Absent kind = the default in wikidataCache.ts, which states why that number and not another.';
 
-COMMENT ON TABLE wikidata_query_cache IS 'Answers from query.wikidata.org, kept so a failed run resumes where it stopped and a repeated question costs their cluster nothing. Never a source of truth: every row carries its own expiry, a run can be told to ignore the cache entirely, and the admin panel shows each kind''s age and expiry with a button to drop it.';
-COMMENT ON COLUMN wikidata_query_cache.query_hash IS 'SHA-256 of the asking source''s source_id and the exact query text (ADR-0047). The query is the question, so a changed filter is a different key and misses by construction rather than by remembering to invalidate.';
-COMMENT ON COLUMN wikidata_query_cache.expires_at IS 'Stored rather than derived: the row keeps the rule that applied when it was written, and the panel shows the same expiry the reader honours.';
+COMMENT ON TABLE workbench.wikidata_query_cache IS 'Answers from query.wikidata.org, kept so a failed run resumes where it stopped and a repeated question costs their cluster nothing. Never a source of truth: every row carries its own expiry, a run can be told to ignore the cache entirely, and the admin panel shows each kind''s age and expiry with a button to drop it.';
+COMMENT ON COLUMN workbench.wikidata_query_cache.query_hash IS 'SHA-256 of the asking source''s source_id and the exact query text (ADR-0047). The query is the question, so a changed filter is a different key and misses by construction rather than by remembering to invalidate.';
+COMMENT ON COLUMN workbench.wikidata_query_cache.expires_at IS 'Stored rather than derived: the row keeps the rule that applied when it was written, and the panel shows the same expiry the reader honours.';
 
 -- =============================================================================
 -- Catalogue Data Assertions
@@ -4889,7 +4889,7 @@ COMMENT ON COLUMN data_assertion_acceptances.accepted_count IS 'The number the a
 -- proposed kind has none.
 --
 -- Keys are the files' own slugs, so a reload keeps every key it had.
-CREATE TABLE IF NOT EXISTS coverage_kinds (
+CREATE TABLE IF NOT EXISTS workbench.coverage_kinds (
     slug VARCHAR(80) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     form VARCHAR(20) NOT NULL CHECK (form IN ('place', 'work', 'food', 'drink', 'event', 'route', 'activity', 'title', 'person', 'species', 'object', 'sound')),
@@ -4905,9 +4905,9 @@ CREATE TABLE IF NOT EXISTS coverage_kinds (
 -- One record per catalogue kind: two records claiming Archaeology would count
 -- every expectation of it twice.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_coverage_kinds_experience_kind
-    ON coverage_kinds(experience_kind_id) WHERE experience_kind_id IS NOT NULL;
+    ON workbench.coverage_kinds(experience_kind_id) WHERE experience_kind_id IS NOT NULL;
 
-CREATE TABLE IF NOT EXISTS coverage_regions (
+CREATE TABLE IF NOT EXISTS workbench.coverage_regions (
     slug VARCHAR(80) PRIMARY KEY,
     name VARCHAR(255) NOT NULL,
     country VARCHAR(255) NOT NULL,
@@ -4918,8 +4918,8 @@ CREATE TABLE IF NOT EXISTS coverage_regions (
 
 -- The ids are held to their shape here because the comparison joins them to
 -- experiences.external_id and treasures.external_id as text.
-CREATE TABLE IF NOT EXISTS coverage_expectations (
-    region_slug VARCHAR(80) NOT NULL REFERENCES coverage_regions(slug) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS workbench.coverage_expectations (
+    region_slug VARCHAR(80) NOT NULL REFERENCES workbench.coverage_regions(slug) ON DELETE CASCADE,
     slug VARCHAR(120) NOT NULL,
     name TEXT NOT NULL,
     aliases TEXT[] NOT NULL DEFAULT '{}',
@@ -4936,30 +4936,30 @@ CREATE TABLE IF NOT EXISTS coverage_expectations (
 );
 
 CREATE INDEX IF NOT EXISTS idx_coverage_expectations_wikidata
-    ON coverage_expectations(wikidata_id) WHERE wikidata_id IS NOT NULL;
+    ON workbench.coverage_expectations(wikidata_id) WHERE wikidata_id IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_coverage_expectations_location
-    ON coverage_expectations USING GIST (location);
+    ON workbench.coverage_expectations USING GIST (location);
 
-CREATE TABLE IF NOT EXISTS coverage_expectation_kinds (
+CREATE TABLE IF NOT EXISTS workbench.coverage_expectation_kinds (
     region_slug VARCHAR(80) NOT NULL,
     expectation_slug VARCHAR(120) NOT NULL,
-    kind_slug VARCHAR(80) NOT NULL REFERENCES coverage_kinds(slug) ON DELETE CASCADE,
+    kind_slug VARCHAR(80) NOT NULL REFERENCES workbench.coverage_kinds(slug) ON DELETE CASCADE,
     PRIMARY KEY (region_slug, expectation_slug, kind_slug),
-    CONSTRAINT coverage_expectation_kinds_entry FOREIGN KEY (region_slug, expectation_slug) REFERENCES coverage_expectations(region_slug, slug) ON DELETE CASCADE
+    CONSTRAINT coverage_expectation_kinds_entry FOREIGN KEY (region_slug, expectation_slug) REFERENCES workbench.coverage_expectations(region_slug, slug) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_coverage_expectation_kinds_kind
-    ON coverage_expectation_kinds(kind_slug);
+    ON workbench.coverage_expectation_kinds(kind_slug);
 
-COMMENT ON TABLE coverage_kinds IS 'The register of kinds of experience, live and proposed, loaded from db/catalogue-coverage/kinds.jsonl (ADR-0081). A copy: the file is the source of truth.';
-COMMENT ON COLUMN coverage_kinds.form IS 'What a member of the kind is. An expectation is filed only under a kind whose form is its own type.';
-COMMENT ON COLUMN coverage_kinds.in_venue IS 'True when a member exists only inside a place: a work shown there, something done there. An expectation filed under such a kind names its venue.';
-COMMENT ON COLUMN coverage_kinds.issue_number IS 'The issue that owns building a proposed kind. Its priority and order live there, never here (ADR-0079).';
-COMMENT ON TABLE coverage_regions IS 'The surveyed regions, loaded from db/catalogue-coverage/regions.jsonl (ADR-0081).';
-COMMENT ON TABLE coverage_expectations IS 'What two or more independent sources recommend in a surveyed region, loaded from db/catalogue-coverage/expectations/ (ADR-0081). Identified by wikidata_id, same_as and unesco_id, never by name.';
-COMMENT ON COLUMN coverage_expectations.same_as IS 'Other Wikidata items that are this same place: a building and the museum inside it.';
-COMMENT ON COLUMN coverage_expectations.source_count IS 'How many sources named the entry. Which ones is not published.';
-COMMENT ON TABLE coverage_expectation_kinds IS 'The kinds of the register an expectation is filed under. An expectation with no row here is not sorted yet.';
+COMMENT ON TABLE workbench.coverage_kinds IS 'The register of kinds of experience, live and proposed, loaded from db/catalogue-coverage/kinds.jsonl (ADR-0081). A copy: the file is the source of truth.';
+COMMENT ON COLUMN workbench.coverage_kinds.form IS 'What a member of the kind is. An expectation is filed only under a kind whose form is its own type.';
+COMMENT ON COLUMN workbench.coverage_kinds.in_venue IS 'True when a member exists only inside a place: a work shown there, something done there. An expectation filed under such a kind names its venue.';
+COMMENT ON COLUMN workbench.coverage_kinds.issue_number IS 'The issue that owns building a proposed kind. Its priority and order live there, never here (ADR-0079).';
+COMMENT ON TABLE workbench.coverage_regions IS 'The surveyed regions, loaded from db/catalogue-coverage/regions.jsonl (ADR-0081).';
+COMMENT ON TABLE workbench.coverage_expectations IS 'What two or more independent sources recommend in a surveyed region, loaded from db/catalogue-coverage/expectations/ (ADR-0081). Identified by wikidata_id, same_as and unesco_id, never by name.';
+COMMENT ON COLUMN workbench.coverage_expectations.same_as IS 'Other Wikidata items that are this same place: a building and the museum inside it.';
+COMMENT ON COLUMN workbench.coverage_expectations.source_count IS 'How many sources named the entry. Which ones is not published.';
+COMMENT ON TABLE workbench.coverage_expectation_kinds IS 'The kinds of the register an expectation is filed under. An expectation with no row here is not sorted yet.';
 
 -- A gap the coverage report found, judged once by cause (ADR-0116): a copy of
 -- db/catalogue-coverage/judgements.jsonl, loaded with the coverage tables above.
@@ -4967,10 +4967,10 @@ COMMENT ON TABLE coverage_expectation_kinds IS 'The kinds of the register an exp
 -- offer it (an entry filed under two live kinds has a gap per kind), or a
 -- catalogue row the region offers and no entry names, by its Wikidata id; one
 -- of the two. A defect and a missing door name the issue that owns them.
-CREATE TABLE IF NOT EXISTS coverage_judgements (
-    region_slug VARCHAR(80) NOT NULL REFERENCES coverage_regions(slug) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS workbench.coverage_judgements (
+    region_slug VARCHAR(80) NOT NULL REFERENCES workbench.coverage_regions(slug) ON DELETE CASCADE,
     entry_slug VARCHAR(120),
-    kind_slug VARCHAR(80) REFERENCES coverage_kinds(slug) ON DELETE CASCADE,
+    kind_slug VARCHAR(80) REFERENCES workbench.coverage_kinds(slug) ON DELETE CASCADE,
     row_wikidata_id VARCHAR(20) CHECK (row_wikidata_id ~ '^Q[1-9][0-9]*$'),
     cause VARCHAR(20) NOT NULL CHECK (cause IN ('rule-defect', 'door-missing', 'kind-missing', 'part-of-offered', 'offered-elsewhere', 'not-a-must', 'worth-a-visit')),
     issue_number INTEGER CHECK (issue_number > 0),
@@ -4982,23 +4982,23 @@ CREATE TABLE IF NOT EXISTS coverage_judgements (
     -- An offered row has no door, kind, part or other kind to wait on; an entry a kind lacks is never worth a visit.
     CONSTRAINT coverage_judgements_row_causes CHECK (row_wikidata_id IS NULL OR cause IN ('worth-a-visit', 'not-a-must', 'rule-defect')),
     CONSTRAINT coverage_judgements_entry_causes CHECK (entry_slug IS NULL OR cause <> 'worth-a-visit'),
-    CONSTRAINT coverage_judgements_entry FOREIGN KEY (region_slug, entry_slug) REFERENCES coverage_expectations(region_slug, slug) ON DELETE CASCADE,
-    CONSTRAINT coverage_judgements_filing FOREIGN KEY (region_slug, entry_slug, kind_slug) REFERENCES coverage_expectation_kinds(region_slug, expectation_slug, kind_slug) ON DELETE CASCADE
+    CONSTRAINT coverage_judgements_entry FOREIGN KEY (region_slug, entry_slug) REFERENCES workbench.coverage_expectations(region_slug, slug) ON DELETE CASCADE,
+    CONSTRAINT coverage_judgements_filing FOREIGN KEY (region_slug, entry_slug, kind_slug) REFERENCES workbench.coverage_expectation_kinds(region_slug, expectation_slug, kind_slug) ON DELETE CASCADE
 );
 
 -- A subject is judged once: one line per entry and kind, one per catalogue row.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_coverage_judgements_entry
-    ON coverage_judgements(region_slug, entry_slug, kind_slug) WHERE entry_slug IS NOT NULL;
+    ON workbench.coverage_judgements(region_slug, entry_slug, kind_slug) WHERE entry_slug IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_coverage_judgements_row
-    ON coverage_judgements(region_slug, row_wikidata_id) WHERE row_wikidata_id IS NOT NULL;
+    ON workbench.coverage_judgements(region_slug, row_wikidata_id) WHERE row_wikidata_id IS NOT NULL;
 
-COMMENT ON TABLE coverage_judgements IS 'A gap the coverage report found, judged once by cause, loaded from db/catalogue-coverage/judgements.jsonl (ADR-0116). A copy: the file is the source of truth.';
-COMMENT ON COLUMN coverage_judgements.entry_slug IS 'The entry of the region''s survey list a live kind does not offer; null when the subject is a catalogue row.';
-COMMENT ON COLUMN coverage_judgements.kind_slug IS 'The live kind whose gap is judged: the entry is filed under it and it does not offer the entry. An entry filed under two live kinds has a gap, and a line, per kind.';
-COMMENT ON COLUMN coverage_judgements.row_wikidata_id IS 'The catalogue row the region offers and no entry names, by its Wikidata id; null when the subject is an entry.';
-COMMENT ON COLUMN coverage_judgements.cause IS 'Why the gap stands, or why the row stays, from the closed vocabulary the report counts by. A rule-defect and a door-missing name their issue. A row takes worth-a-visit, not-a-must or rule-defect; an entry never worth-a-visit.';
-COMMENT ON COLUMN coverage_judgements.issue_number IS 'The issue that owns the cause, where one does.';
-COMMENT ON COLUMN coverage_judgements.judged IS 'The date the judgement was made, which is the date of the catalogue it was made against.';
+COMMENT ON TABLE workbench.coverage_judgements IS 'A gap the coverage report found, judged once by cause, loaded from db/catalogue-coverage/judgements.jsonl (ADR-0116). A copy: the file is the source of truth.';
+COMMENT ON COLUMN workbench.coverage_judgements.entry_slug IS 'The entry of the region''s survey list a live kind does not offer; null when the subject is a catalogue row.';
+COMMENT ON COLUMN workbench.coverage_judgements.kind_slug IS 'The live kind whose gap is judged: the entry is filed under it and it does not offer the entry. An entry filed under two live kinds has a gap, and a line, per kind.';
+COMMENT ON COLUMN workbench.coverage_judgements.row_wikidata_id IS 'The catalogue row the region offers and no entry names, by its Wikidata id; null when the subject is an entry.';
+COMMENT ON COLUMN workbench.coverage_judgements.cause IS 'Why the gap stands, or why the row stays, from the closed vocabulary the report counts by. A rule-defect and a door-missing name their issue. A row takes worth-a-visit, not-a-must or rule-defect; an entry never worth-a-visit.';
+COMMENT ON COLUMN workbench.coverage_judgements.issue_number IS 'The issue that owns the cause, where one does.';
+COMMENT ON COLUMN workbench.coverage_judgements.judged IS 'The date the judgement was made, which is the date of the catalogue it was made against.';
 
 -- =============================================================================
 -- Schema Complete

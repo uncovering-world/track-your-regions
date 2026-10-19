@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { RELATION_SCHEMAS } from './schema.generated.js';
-import { TABLE_TIERS, WORKBENCH_IN_PUBLIC, type RelationName } from './tableTiers.js';
+import { TABLE_TIERS, type RelationName } from './tableTiers.js';
 
 /**
  * A table's tier and the schema it sits in agree (ADR-0124): a deployment of
@@ -18,15 +18,8 @@ describe('a table\'s tier and its schema', () => {
     expect(misplaced).toEqual([]);
   });
 
-  it('puts every workbench table in workbench, but those named as still in public', () => {
-    const misplaced = relations.filter(t => TABLE_TIERS[t] === 'workbench' && RELATION_SCHEMAS[t] !== 'workbench'
-      && WORKBENCH_IN_PUBLIC[t] === undefined);
+  it('puts every workbench table in workbench', () => {
+    const misplaced = relations.filter(t => TABLE_TIERS[t] === 'workbench' && RELATION_SCHEMAS[t] !== 'workbench');
     expect(misplaced).toEqual([]);
-  });
-
-  it('names as still in public only workbench tables that are there, so the list only shrinks', () => {
-    const stale = (Object.keys(WORKBENCH_IN_PUBLIC) as RelationName[])
-      .filter(t => TABLE_TIERS[t] !== 'workbench' || RELATION_SCHEMAS[t] !== 'public');
-    expect(stale).toEqual([]);
   });
 });

@@ -7,7 +7,10 @@
  *   whatever made it: the region tree reads an imported region's source
  *   (`region_import_state`), the editor the import's open suggestions
  *   (`region_match_suggestions`), and a world view's page the state of its
- *   geometry computation (`geometry_computations`).
+ *   geometry computation (`geometry_computations`). So is a table a serving
+ *   table references, which a deployment of the serving tables has to carry
+ *   for the key to hold: `region_import_state` references the import run that
+ *   made it (`import_runs`).
  * - `workbench` — what is built from public dumps, imported, cached or kept as
  *   intermediate work, which no reader or curator route reads. It lives in the
  *   `workbench` schema, which a deployment of the serving tables leaves behind.
@@ -68,7 +71,7 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   experience_view_suggestions: 'serving',
   experiences: 'serving',
   geometry_computations: 'serving',
-  import_runs: 'workbench',
+  import_runs: 'serving',
   readership_month_files: 'workbench',
   readership_months: 'workbench',
   readership_staging: 'workbench',
@@ -105,24 +108,4 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   wikipedia_redirect_builds: 'workbench',
   wikipedia_redirects: 'workbench',
   world_views: 'serving',
-};
-
-/**
- * Workbench tables that still sit in `public`, each with what holds it there.
- * The list only shrinks: a new workbench table is made in the workbench schema.
- */
-export const WORKBENCH_IN_PUBLIC: Partial<Record<RelationName, string>> = {
-  ai_learned_rules: 'the world-view import\'s AI extraction, moved with the import state',
-  ai_settings: 'the world-view import\'s AI extraction, moved with the import state',
-  ai_usage_log: 'the world-view import\'s AI extraction, moved with the import state',
-  coverage_expectation_kinds: 'the catalogue-coverage survey, loaded by scripts/catalogue-coverage.sh',
-  coverage_expectations: 'the catalogue-coverage survey, loaded by scripts/catalogue-coverage.sh',
-  coverage_judgements: 'the catalogue-coverage survey, loaded by scripts/catalogue-coverage.sh',
-  coverage_kinds: 'the catalogue-coverage survey; references experience_kinds',
-  coverage_regions: 'the catalogue-coverage survey, loaded by scripts/catalogue-coverage.sh',
-  import_runs: 'the world-view import\'s state; references world_views',
-  region_map_images: 'the world-view import\'s state; references regions',
-  wikidata_cache_policy: 'a live cache of Wikidata answers; references experience_sources',
-  wikidata_geoshapes: 'a live cache of Wikidata geoshapes, read by the world-view import',
-  wikidata_query_cache: 'a live cache of Wikidata answers; references experience_sources',
 };
