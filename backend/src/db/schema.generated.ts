@@ -746,7 +746,7 @@ export interface RegionMatchSuggestionsRow {
   name: string;
   path: string | null;
   score: number | null;
-  rejected: boolean | null;
+  rejected: boolean;
   conflict_type: string | null;
   donor_region_id: number | null;
   donor_division_id: number | null;

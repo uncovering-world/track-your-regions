@@ -6,6 +6,7 @@
  */
 
 import { pool } from '../../db/index.js';
+import type { RegionMatchSuggestionsRow } from '../../db/schema.generated.js';
 import type { MatchSuggestion, MatchStatus } from './types.js';
 import { computeGeoSimilarityForRegion } from './geoshapeCache.js';
 import {
@@ -430,6 +431,36 @@ async function processUnscopedChild(
 
 // ─── Persistence ──────────────────────────────────────────────────────────────
 
+/**
+ * Drop the divisions already rejected for each child: a rejection is neither
+ * offered nor assigned again (#1620), as the per-region matchers skip it. A child
+ * whose auto-match was rejected goes to review with what is left, and a child
+ * left with nothing to review has no candidates, as the other passes say of an
+ * empty set.
+ */
+async function withoutRejectedDivisions(updates: GroupingUpdate[]): Promise<GroupingUpdate[]> {
+  const ids = updates.filter(u => u.suggestions.length > 0 || u.divisionId !== undefined).map(u => u.id);
+  if (ids.length === 0) return updates;
+  const result = await pool.query<Pick<RegionMatchSuggestionsRow, 'region_id' | 'division_id'>>(
+    `SELECT region_id, division_id FROM region_match_suggestions WHERE region_id = ANY($1) AND rejected`,
+    [ids],
+  );
+  const rejected = new Set(result.rows.map(r => `${r.region_id}:${r.division_id}`));
+  return updates.map(u => {
+    const suggestions = u.suggestions.filter(s => !rejected.has(`${u.id}:${s.divisionId}`));
+    const assignmentRejected = u.divisionId !== undefined && rejected.has(`${u.id}:${u.divisionId}`);
+    if (suggestions.length === u.suggestions.length && !assignmentRejected) return u;
+    const forReview = assignmentRejected || u.matchStatus === 'needs_review' || u.matchStatus === 'suggested';
+    if (!forReview) return { ...u, suggestions };
+    return {
+      id: u.id,
+      suggestions,
+      matchStatus: suggestions.length === 0 ? 'no_candidates' : 'needs_review',
+      divisionId: assignmentRejected ? undefined : u.divisionId,
+    };
+  });
+}
+
 /** Write grouping updates in a single transaction (parent + children). */
 async function writeGroupingUpdates(
   regionId: number,
@@ -454,10 +485,16 @@ async function writeGroupingUpdates(
         `DELETE FROM region_match_suggestions WHERE region_id = $1 AND rejected = false`,
         [update.id],
       );
+      // What is left of the region's suggestions are its rejections, which
+      // withoutRejectedDivisions kept out of the list; the guard keeps a division
+      // listed twice, or rejected since, to the one row the schema allows (#1620).
       for (const suggestion of update.suggestions) {
         await client.query(
           `INSERT INTO region_match_suggestions (region_id, division_id, name, path, score)
-           VALUES ($1, $2, $3, $4, $5)`,
+           SELECT $1::int, $2::int, $3::text, $4::text, $5::int
+           WHERE NOT EXISTS (
+             SELECT 1 FROM region_match_suggestions WHERE region_id = $1::int AND division_id = $2::int
+           )`,
           [update.id, suggestion.divisionId, suggestion.name, suggestion.path, suggestion.score],
         );
       }
@@ -553,8 +590,13 @@ export async function matchChildrenAsCountries(
     if (wasAutoMatched) matched++;
   }
 
-  await writeGroupingUpdates(regionId, updates);
-  await runGroupingGeoComparison(updates);
+  const written = await withoutRejectedDivisions(updates);
+  // The tally counts direct children; a drilled-down child's grandchildren are not in it.
+  const childIds = new Set(childResult.rows.map(row => row.id as number));
+  matched -= written.filter((u, i) => childIds.has(u.id)
+    && updates[i].matchStatus === 'auto_matched' && u.matchStatus !== 'auto_matched').length;
+  await writeGroupingUpdates(regionId, written);
+  await runGroupingGeoComparison(written);
 
   console.log(`[WV Matcher] matchChildrenAsCountries: region ${regionId} — ${matched}/${childResult.rows.length} children matched`);
   return { matched, total: childResult.rows.length };
