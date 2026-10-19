@@ -1278,8 +1278,14 @@ export const computeGeometryQuerySchema = z.object({
   skipSnapping: booleanStringSchema.default('false'),
 });
 
-/** The same, plus the JWT `EventSource` cannot put in a header. */
-export const computeSSEQuerySchema = computeGeometryQuerySchema.extend({
+/**
+ * The same, less `force`, plus the JWT `EventSource` cannot put in a header.
+ * `force` asks the bulk endpoint to recompute every region; a stream computes
+ * the one region it is asked for, and rebuilds its hull from the new geometry
+ * each time, since a hull kept from the old one would draw a stale outline
+ * (#1686).
+ */
+export const computeSSEQuerySchema = computeGeometryQuerySchema.omit({ force: true }).extend({
   token: z.string().optional(),
 });
 
