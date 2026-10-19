@@ -344,9 +344,9 @@ describe('a picture with nobody credited', () => {
     // answer recorded against Ancient City of Damascus the answered predicate
     // says "not waiting" and the refused one says "waiting"; with a `refused`
     // answer both say "not waiting".
-    expect(sql).toContain(collapse(heldFieldRefusedSql('e.id')));
+    expect(sql).toContain(collapse(heldFieldRefusedSql('e.id', 'ch.sync_log_id')));
     expect(sql).toContain(collapse(heldPartRefusedSql('e.id', "'treasures'")));
-    expect(sql).not.toContain(collapse(heldFieldAnsweredSql('e.id')));
+    expect(sql).not.toContain(collapse(heldFieldAnsweredSql('e.id', 'ch.sync_log_id')));
   });
 
   it('names the host, since which licence applies depends on where the picture is from', () => {

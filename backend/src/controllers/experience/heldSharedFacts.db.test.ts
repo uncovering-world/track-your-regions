@@ -59,6 +59,10 @@ const pointers = async () => (await pool.query<{ source_id: number; pending_chan
     WHERE experience_id = $1 ORDER BY source_id`, [MUSEUM],
 )).rows.map(row => row.pending_change_sync_log_id);
 
+const typeOf = async (membership: number) => (await pool.query<{ type: string | null }>(
+  'SELECT type FROM experience_kind_memberships WHERE id = $1', [membership],
+)).rows[0].type;
+
 const statueYear = async () =>
   (await pool.query<{ year: number }>('SELECT year FROM treasures WHERE external_id = $1', [STATUE])).rows[0].year;
 
@@ -148,6 +152,25 @@ describe('a fact two kinds\' runs both propose', () => {
     await publishUnderLock(MUSEUM, userId, null, {
       heldFields: ['type'], heldParts: [theYear], expectedSyncLogId: artLog, membershipId: memberships.art,
     });
+
+    expect(await pointers()).toEqual([null, archaeologyLog]);
+    // Still asked of Archaeology, whose type nothing has written (ADR-0125, #1720)…
+    expect(await typeOf(memberships.archaeology)).toBeNull();
+    // …and answered there, it is written there.
+    const { refusal } = await publishUnderLock(MUSEUM, userId, null, {
+      heldFields: ['type'], expectedSyncLogId: archaeologyLog, membershipId: memberships.archaeology,
+    });
+    expect(refusal).toBeUndefined();
+    expect(await typeOf(memberships.archaeology)).toBe('museum');
+    expect(await pointers()).toEqual([null, null]);
+  });
+
+  it('leaves the other kind\'s type asked when one kind refuses the same value (#1720)', async () => {
+    const type = { field: 'type', old: null, new: 'museum', significance: 'minor', held: true };
+    const artLog = await heldRun(2, [type]);
+    const archaeologyLog = await heldRun(5, [type]);
+
+    await refuseUnderLock(MUSEUM, userId, null, { fields: ['type'], parts: [theYear] }, artLog, memberships.art);
 
     expect(await pointers()).toEqual([null, archaeologyLog]);
   });

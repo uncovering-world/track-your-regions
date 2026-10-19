@@ -80,6 +80,27 @@ export function heldRowKey(row: HeldRowRef): string {
 }
 
 /**
+ * The object's fields whose answer is a kind's rather than the place's: the
+ * type within the kind is the membership's (ADR-0084, `publishTypeOnMembership`),
+ * so an answer to one kind's type proposal answers that kind alone (ADR-0125,
+ * #1720). Every other field is a fact of the place, answered once for every
+ * kind's run that proposes the same value.
+ */
+const KIND_FIELDS: ReadonlySet<string> = new Set(['type']);
+
+/**
+ * An answer recorded for a source answers only that source's runs; one with no
+ * source, which is every answer but a type's and a type answer recorded before
+ * ADR-0125, answers every run of the place.
+ *
+ * @param syncLog SQL expression for the sync log of the run whose proposal is read
+ */
+function answersThisRunSql(syncLog: string): string {
+  return `(d.source_id IS NULL
+           OR d.source_id = (SELECT l.source_id FROM experience_sync_logs l WHERE l.id = ${syncLog}))`;
+}
+
+/**
  * Whether the curator has answered what this changed_fields entry proposes for
  * the object's own field.
  *
@@ -90,10 +111,11 @@ export function heldRowKey(row: HeldRowRef): string {
  * class of card would come back after an answer that reported success.
  *
  * @param experience SQL expression for the experience id (e.id, ch.experience_id)
+ * @param syncLog SQL expression for the sync log of the run whose proposal it is
  * @param entry SQL alias of the jsonb changed_fields element
  */
-export function heldFieldAnsweredSql(experience: string, entry = 'f'): string {
-  return heldFieldMatchSql(experience, entry);
+export function heldFieldAnsweredSql(experience: string, syncLog: string, entry = 'f'): string {
+  return heldFieldMatchSql(experience, syncLog, entry);
 }
 
 /**
@@ -112,11 +134,11 @@ export function heldFieldAnsweredSql(experience: string, entry = 'f'): string {
  * The verdict is interpolated from the two-literal `HeldAnswer` union rather
  * than from a string, the way `curatorUnrestrictedScopeExists()` takes its own.
  */
-export function heldFieldRefusedSql(experience: string, entry = 'f'): string {
-  return heldFieldMatchSql(experience, entry, 'refused');
+export function heldFieldRefusedSql(experience: string, syncLog: string, entry = 'f'): string {
+  return heldFieldMatchSql(experience, syncLog, entry, 'refused');
 }
 
-function heldFieldMatchSql(experience: string, entry: string, verdict?: HeldAnswer): string {
+function heldFieldMatchSql(experience: string, syncLog: string, entry: string, verdict?: HeldAnswer): string {
   const verdictClause = verdict === undefined ? '' : `AND d.answer = '${verdict}'`;
   return `EXISTS (
       SELECT 1 FROM experience_held_decisions d
@@ -124,6 +146,7 @@ function heldFieldMatchSql(experience: string, entry: string, verdict?: HeldAnsw
          AND d.part_kind IS NULL
          AND d.field = ${entry}->>'field'
          AND d.value = COALESCE(${entry}->'new', 'null'::jsonb)
+         AND ${answersThisRunSql(syncLog)}
          ${verdictClause})`;
 }
 
@@ -183,12 +206,15 @@ function heldPartMatchSql(
  * credit rule reads this to tell those apart on a card answered one row at a
  * time (#722).
  */
-function answerOfSql(experience: string, entry = 'f'): string {
+function answerOfSql(experience: string, syncLog: string, entry = 'f'): string {
+  // The kind's own answer ahead of one recorded for the place before ADR-0125.
   return `(SELECT d.answer FROM experience_held_decisions d
             WHERE d.experience_id = ${experience}
               AND d.part_kind IS NULL
               AND d.field = ${entry}->>'field'
-              AND d.value = COALESCE(${entry}->'new', 'null'::jsonb))`;
+              AND d.value = COALESCE(${entry}->'new', 'null'::jsonb)
+              AND ${answersThisRunSql(syncLog)}
+            ORDER BY d.source_id NULLS LAST LIMIT 1)`;
 }
 
 /** The same, for a field of a part. */
@@ -222,12 +248,12 @@ export async function answeredHeldRows(
 ): Promise<Map<string, HeldAnswer>> {
   const result = await client.query(
     `SELECT NULL::text AS kind, NULL::text AS ref, NULL::text AS name, f->>'field' AS field,
-            ${answerOfSql('ch.experience_id')} AS answer
+            ${answerOfSql('ch.experience_id', 'ch.sync_log_id')} AS answer
        FROM experience_sync_changes ch
        CROSS JOIN LATERAL jsonb_array_elements(ch.changed_fields) AS f
       WHERE ch.experience_id = $1 AND ch.sync_log_id = $2
         AND (f->>'held')::boolean
-        AND ${heldFieldAnsweredSql('ch.experience_id')}
+        AND ${heldFieldAnsweredSql('ch.experience_id', 'ch.sync_log_id')}
       UNION ALL
      SELECT k.kind, c->'item'->>'ref', c->'item'->>'name', f->>'field',
             ${answerOfPartSql('ch.experience_id', 'k.kind')}
@@ -256,7 +282,8 @@ export async function answeredHeldRows(
  * Record what a curator answered, replacing any standing answer about the same
  * row.
  *
- * One row per (experience, part, field), for the reason 022 gives: this is the
+ * One row per (experience, part, field) — and, for a kind's field, per source
+ * (ADR-0125) — for the reason 022 gives: this is the
  * standing answer, not a history. Who answered what and when is the curation
  * log's, written in the same transaction by both callers.
  *
@@ -293,6 +320,7 @@ export async function recordHeldAnswers(
   userId: number,
   answer: HeldAnswer,
   rows: ReadonlyArray<{ row: HeldRowRef; value: unknown }>,
+  syncLogId: number | null,
 ): Promise<void> {
   for (const { row, value } of rows) {
     // The part's name and a name-carrying value as the catalogue stores a
@@ -301,17 +329,20 @@ export async function recordHeldAnswers(
     // would not meet the tidied record the next run files. Tidied at the
     // write, the unique key above is a key on the tidied form, which is what
     // keeps `answerOfPartSql` a single row.
+    // A kind's field is answered for the source of the run that proposed it (ADR-0125).
+    const forTheKind = row.kind === null && KIND_FIELDS.has(row.field);
     await client.query(
       `INSERT INTO experience_held_decisions
-              (experience_id, part_kind, part_ref, part_name, field, answer, value, decided_by)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8)
-       ON CONFLICT (experience_id, part_kind, part_ref, part_name, field)
+              (experience_id, part_kind, part_ref, part_name, field, answer, value, decided_by, source_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8,
+               CASE WHEN $9::boolean THEN (SELECT source_id FROM experience_sync_logs WHERE id = $10) END)
+       ON CONFLICT (experience_id, part_kind, part_ref, part_name, field, source_id)
        DO UPDATE SET answer = EXCLUDED.answer,
                      value = EXCLUDED.value,
                      decided_by = EXCLUDED.decided_by,
                      decided_at = NOW()`,
       [experienceId, row.kind, row.ref, row.name === null ? null : tidyLabel(row.name), row.field, answer,
-        JSON.stringify(tidyNameValue(row.field, value ?? null)), userId],
+        JSON.stringify(tidyNameValue(row.field, value ?? null)), userId, forTheKind, syncLogId],
     );
   }
 }
@@ -335,7 +366,7 @@ export async function moveHeldDecisions(
           SELECT 1 FROM experience_held_decisions s
            WHERE s.experience_id = $2 AND s.field = f.field
              AND s.part_kind IS NOT DISTINCT FROM f.part_kind AND s.part_ref IS NOT DISTINCT FROM f.part_ref
-             AND s.part_name IS NOT DISTINCT FROM f.part_name)
+             AND s.part_name IS NOT DISTINCT FROM f.part_name AND s.source_id IS NOT DISTINCT FROM f.source_id)
       RETURNING f.id`,
     [from.id, to.id, only ?? null],
   );
