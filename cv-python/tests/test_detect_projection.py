@@ -15,7 +15,7 @@ import numpy as np
 import pytest
 from pyproj import CRS, Transformer
 
-from app.cv.match import _detect_projection
+from app.cv.projection import detect_projection
 
 TW, TH = 320, 240
 
@@ -93,7 +93,7 @@ CASES = {
 PROBE_X = np.array([-150.0, -100.0, 10.0, 20.0])
 PROBE_Y = np.array([-60.0, -38.0, -48.0, -52.0])
 
-# Recorded from _detect_projection before #1654 split it: the name, and where
+# Recorded from the detection before #1654 split it: the name, and where
 # the projection sends the probe points (None when equirectangular stands).
 EXPECTED: dict[str, tuple[str, list[float], list[float]] | None] = {
     "a mid-latitude country drawn plain: equirectangular stands": None,
@@ -119,7 +119,7 @@ EXPECTED: dict[str, tuple[str, list[float], list[float]] | None] = {
 def test_the_detection_names_the_projection_it_named_before_the_split(case: str) -> None:
     box, crs = CASES[case]
     polygons = _region(box)
-    found = _detect_projection(
+    found = detect_projection(
         _svg(polygons), _drawn(polygons, crs), _centroids(*box), math.cos(math.radians((box[1] + box[3]) / 2)), TW, TH
     )
     want = EXPECTED[case]
@@ -137,10 +137,10 @@ def test_the_detection_names_the_projection_it_named_before_the_split(case: str)
 
 def test_an_outline_of_fewer_than_three_paths_is_not_tested() -> None:
     polygons = [_ring(*MIDLAT, 0.12)]
-    assert _detect_projection(_svg(polygons), _drawn(polygons, None), _centroids(*MIDLAT), 0.65, TW, TH) is None
+    assert detect_projection(_svg(polygons), _drawn(polygons, None), _centroids(*MIDLAT), 0.65, TW, TH) is None
 
 
 def test_a_mask_of_fewer_than_100_pixels_is_not_tested() -> None:
     mask = np.zeros((TH, TW), np.uint8)
     mask[100:109, 100:109] = 1
-    assert _detect_projection(_svg(_region(MIDLAT)), mask, _centroids(*MIDLAT), 0.65, TW, TH) is None
+    assert detect_projection(_svg(_region(MIDLAT)), mask, _centroids(*MIDLAT), 0.65, TW, TH) is None
