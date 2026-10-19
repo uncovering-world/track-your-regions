@@ -27,6 +27,7 @@ import type { PoolClient } from 'pg';
 import type { LockedExperience } from '../../db/experienceWriter.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
+import { heldFieldExistsSql, heldPartExistsSql } from './waitingCounts.js';
 
 /**
  * What a verdict on a refusal does to the must-see flag, appended to the
@@ -264,6 +265,54 @@ export async function clearHeldPointer(
     `UPDATE ${MEMBERSHIPS} SET pending_change_sync_log_id = NULL, updated_at = NOW()
           WHERE id = $1 AND experience_id = $2`,
     [membershipId, lock.id],
+  );
+}
+
+/**
+ * Take away every proposal of the place an answer left with nothing open (#1599).
+ *
+ * A curator's answer to a held row is recorded on the place, by value
+ * (`recordHeldAnswers`), so the same value another kind's run proposed is
+ * answered with it, and that membership's card leaves the queue. Its pointer
+ * would still name the run. Cleared here, under the lock the answer took, only
+ * where the proposal held a row the gate kept out and none of those rows is
+ * open: a pointer whose rows a curator claimed instead keeps its own question.
+ * Nor where it holds a type: the type within the kind is the membership's
+ * (ADR-0084), while the answer that reads it as settled is the place's, so
+ * another kind's answer has not written this kind's type.
+ */
+export async function clearAnsweredHeldPointers(client: PoolClient, lock: LockedExperience): Promise<void> {
+  // Asked first and written only where there is one, so the common answer —
+  // one kind, its own pointer already cleared or still asking — writes nothing.
+  const answered = await client.query<{ id: number }>(
+    `SELECT m.id FROM ${MEMBERSHIPS} m
+      WHERE m.experience_id = $1
+        AND m.pending_change_sync_log_id IS NOT NULL
+        AND EXISTS (
+          SELECT 1 FROM experience_sync_changes ch
+           WHERE ch.experience_id = m.experience_id
+             AND ch.sync_log_id = m.pending_change_sync_log_id
+             -- The run's newest record of the place, the one its card and the decline read.
+             AND ch.id = (SELECT max(c2.id) FROM experience_sync_changes c2
+                           WHERE c2.experience_id = m.experience_id AND c2.sync_log_id = m.pending_change_sync_log_id)
+             AND (EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(ch.changed_fields, '[]'::jsonb)) AS f
+                           WHERE (f->>'held')::boolean)
+               OR EXISTS (SELECT 1 FROM (VALUES ('locations'), ('treasures')) AS k(kind)
+                           CROSS JOIN LATERAL jsonb_array_elements(
+                             COALESCE(ch.contents -> k.kind -> 'changed', '[]'::jsonb)) AS c
+                           CROSS JOIN LATERAL jsonb_array_elements(c -> 'fields') AS f
+                           WHERE (f->>'held')::boolean))
+             AND NOT (${heldFieldExistsSql('ch')} OR ${heldPartExistsSql('ch')})
+             AND NOT EXISTS (SELECT 1 FROM jsonb_array_elements(COALESCE(ch.changed_fields, '[]'::jsonb)) AS t
+                              WHERE (t->>'held')::boolean AND t->>'field' = 'type'))`,
+    [lock.id],
+  );
+  const ids = (answered.rows ?? []).map(row => row.id);
+  if (ids.length === 0) return;
+  await client.query(
+    `UPDATE ${MEMBERSHIPS} SET pending_change_sync_log_id = NULL, updated_at = NOW()
+      WHERE id = ANY($1::int[]) AND experience_id = $2`,
+    [ids, lock.id],
   );
 }
 

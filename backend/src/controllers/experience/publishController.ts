@@ -51,7 +51,7 @@ import { recordHeldAnswers } from './heldDecisions.js';
 import type { HeldSelection, SelectedPart } from './heldSelection.js';
 import { lockExperience, updateExperienceColumns, type LockedExperience } from '../../db/experienceWriter.js';
 import { lockWorksToPublish, type WorksToPublish } from './workWriter.js';
-import { publishMembership, publishTypeOnMembership } from './membershipWriter.js';
+import { clearAnsweredHeldPointers, publishMembership, publishTypeOnMembership } from './membershipWriter.js';
 
 /**
  * What the curator asked to be published.
@@ -627,6 +627,8 @@ export async function publishUnderLock(
       // fires only in the case that needs it is a rule nobody exercises.
       await recordHeldAnswers(client, experienceId, userId, 'published',
         [...write.written, ...parts.written]);
+      // The same value another kind's run proposed is published with it (#1599).
+      await clearAnsweredHeldPointers(client, locked.lock);
     }
 
     // A fields-only publish leaves every unread point and work exactly where it
