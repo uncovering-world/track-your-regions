@@ -2935,18 +2935,6 @@
           },
           {
             "in": "query",
-            "name": "force",
-            "schema": {
-              "default": "false",
-              "type": "string",
-              "enum": [
-                "true",
-                "false"
-              ]
-            }
-          },
-          {
-            "in": "query",
             "name": "skipSnapping",
             "schema": {
               "default": "false",

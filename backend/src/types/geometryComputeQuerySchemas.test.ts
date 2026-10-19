@@ -20,8 +20,8 @@ import { computeGeometryQuerySchema, computeSSEQuerySchema } from './index.js';
 
 /**
  * The schema each writer mounts. The bulk endpoint mounts the object itself,
- * and the stream extends it with the token `EventSource` cannot send as a
- * header. Listed by endpoint rather than by object, because what the rows are
+ * and the stream takes it less `force` and adds the token `EventSource` cannot
+ * send as a header. Listed by endpoint rather than by object, because what the rows are
  * about is what reaches each endpoint.
  */
 const writersThatSnap = [
@@ -49,14 +49,17 @@ describe('skipSnapping survives validation on every writer that snaps', () => {
     });
   }
 
-  it('answers the stream and the bulk endpoint identically, token aside', () => {
+  it('answers the stream and the bulk endpoint identically on skipSnapping, force and token aside', () => {
     // The claim is one rule, not two that happen to agree today: a default
     // changed on one schema and forgotten on another is the shape #736 was
-    // about, and the stream extends the shared object rather than restating it.
-    // `token` is optional with no default, so an empty query leaves it off
-    // entirely and the two answers are comparable as they stand.
-    expect(computeSSEQuerySchema.parse({})).toEqual(computeGeometryQuerySchema.parse({}));
-    expect(computeSSEQuerySchema.parse({ skipSnapping: 'true', force: 'true' }))
-      .toMatchObject(computeGeometryQuerySchema.parse({ skipSnapping: 'true', force: 'true' }));
+    // about, and the stream derives from the shared object rather than restating it.
+    // `token` is optional with no default, so an empty query leaves it off.
+    expect(computeSSEQuerySchema.parse({})).toEqual(computeGeometryQuerySchema.omit({ force: true }).parse({}));
+    expect(computeSSEQuerySchema.parse({ skipSnapping: 'true' }).skipSnapping)
+      .toBe(computeGeometryQuerySchema.parse({ skipSnapping: 'true' }).skipSnapping);
+  });
+
+  it('takes no force on the stream, which rebuilds a hull from the new geometry every time (#1686)', () => {
+    expect(computeSSEQuerySchema.parse({ force: 'true' })).not.toHaveProperty('force');
   });
 });
