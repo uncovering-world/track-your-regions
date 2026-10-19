@@ -1,7 +1,7 @@
 # ADR-0038: A held proposal is answered per field, and the answer is recorded by value
 
 **Date:** 2026-08-30
-**Status:** Accepted — decisions 1 and 1a narrowed by ADR-0039
+**Status:** Accepted — decisions 1 and 1a narrowed by ADR-0039; decision 3 narrowed by [ADR-0125](0125-a-type-answer-is-the-kinds.md)
 
 ---
 

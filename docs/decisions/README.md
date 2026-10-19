@@ -57,7 +57,7 @@ and accepted by it.
 | [0035](0035-ancestor-geometry-invalidation-lives-in-the-database.md) | Ancestor geometry invalidation lives in the database | Accepted — narrowed by ADR-0068 | 2026-08-27 |
 | [0036](0036-a-rung-carries-the-holes-its-source-has.md) | A rung carries the holes its source has | Accepted | 2026-08-27 |
 | [0037](0037-a-part-field-readers-see-is-held-like-the-objects.md) | A field of a part readers can see is held like the object's own | Accepted — decision 6 narrowed by [0050](0050-a-renamed-component-is-found-by-its-claim.md); decision 1 narrowed by [0089](0089-a-parts-empty-field-is-filled-without-a-hold.md) and [0099](0099-a-rewrite-a-visitor-would-not-notice-passes-the-gate.md) | 2026-08-30 |
-| [0038](0038-a-held-proposal-is-answered-per-field.md) | A held proposal is answered per field, and the answer is recorded by value | Accepted — decisions 1 and 1a narrowed by ADR-0039 | 2026-08-30 |
+| [0038](0038-a-held-proposal-is-answered-per-field.md) | A held proposal is answered per field, and the answer is recorded by value | Accepted — decisions 1 and 1a narrowed by ADR-0039; decision 3 narrowed by ADR-0125 | 2026-08-30 |
 | [0039](0039-a-run-records-facts-not-columns.md) | A run records facts, not columns: every metadata key is its own changeset entry | Accepted — decision 2 narrowed by ADR-0077 | 2026-08-31 |
 | [0040](0040-a-work-names-every-one-of-its-makers.md) | A work names every one of its makers, and a curator can correct them | Accepted — decision 6 narrowed by [0049](0049-a-curator-writes-a-works-picture-only-with-its-credit.md) | 2026-08-31 |
 | [0041](0041-a-database-says-which-migrations-it-has-seen.md) | A database says which migrations it has seen | Accepted | 2026-08-31 |
@@ -144,6 +144,7 @@ and accepted by it.
 | [0122](0122-a-world-views-geometry-computation-runs-in-the-dump-worker-beside-its-builds.md) | A world view's geometry computation runs in the dump worker, beside its builds | Accepted — decision 2 narrowed by [0123](0123-a-regions-union-is-made-of-full-resolution-inputs-and-bounded-where-it-runs.md) | 2026-10-18 |
 | [0123](0123-a-regions-union-is-made-of-full-resolution-inputs-and-bounded-where-it-runs.md) | A region's union is made of full-resolution inputs, and bounded where it runs | Accepted | 2026-10-18 |
 | [0124](0124-the-dump-built-tables-live-in-a-workbench-schema-and-every-table-declares-its-tier.md) | The dump-built tables live in a workbench schema, and every table declares its tier | Accepted | 2026-10-19 |
+| [0125](0125-a-type-answer-is-the-kinds.md) | A held answer to a kind's type is the kind's, and every other is the place's | Accepted | 2026-10-19 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
