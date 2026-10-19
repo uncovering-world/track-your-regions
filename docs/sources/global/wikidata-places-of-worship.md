@@ -141,7 +141,8 @@ the Battle of the Alamo (52), the Second Council of Lyon (43). The objects among
 misses below — the Black Stone (`stone, heirloom`, 66), the kiswah (`parament`, 30), the Zamzam Well
 (`water well`, 67), the Hereford Mappa Mundi (`mappa mundi`, 24), the Codex Calixtinus (`codex`,
 21), the Coronation Chair (`ceremonial chair`, 21), the Codex Aureus of Lorsch (`illuminated
-manuscript`, 21) — and the Horses of Saint Mark (`group of sculptures`, 33, at St Mark's). The run
+manuscript`, 21). The Horses of Saint Mark (`group of sculptures`, 33, at St Mark's) are kept by
+that pinned class (#1615) and decided by the rules after it. The run
 reads every one, keeps what carries a class the pool asks for, and reports the rest with their
 classes on its changeset, named at or above the source's stay line (18) and counted below it; the
 class list that would keep the objects is #891's.

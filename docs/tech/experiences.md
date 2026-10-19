@@ -1709,7 +1709,10 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
 
 - Collects artworks via SPARQL: the three broad classes (painting, sculpture, statue), each asked
   in fame bands, plus every narrower artwork class found by a bounded `wdt:P279*` closure below
-  those three roots, asked in batches of 25. A hop that would multiply the class set (e.g. under
+  those three roots, asked in batches of 25. Classes no closure reaches, because they hold works
+  rather than being one, are pinned (`MUSEUM_PINNED_CLASSES`): a painting series, a group of
+  casts, a cycle of frescoes, a group of sculptures, the altarpiece forms — Monet's *Water
+  Lilies*, the Raphael Rooms, the Benin Bronzes. A hop that would multiply the class set (e.g. under
   `sculpture` or `print`) is refused rather than followed. Nothing requires a work to name an
   owner or a location: the ownership anchor the broad roots used to carry was what made their
   query unaffordable, and it cost the catalogue unowned works such as *Sunflowers* and the
@@ -2350,8 +2353,9 @@ the conclaves in the Sistine Chapel (nine at the pool's floor, the 2025 one at 4
 coronations and royal weddings at Westminster Abbey, the 2019 fire at Notre-Dame, the Grand Mosque
 Seizure, the Battle of the Alamo. The objects among them are the known misses the source record
 already names — the Black Stone (`stone, heirloom`), the kiswah (`parament`), the Hereford Mappa
-Mundi, the Codex Calixtinus, the Coronation Chair (`ceremonial chair`) — and the Horses of Saint Mark
-(`group of sculptures`, at St Mark's). Each is refused with its classes on the run's changeset as a
+Mundi, the Codex Calixtinus, the Coronation Chair (`ceremonial chair`). The Horses of Saint Mark
+are not: `group of sculptures` is a pinned class (#1615), so the read keeps them by class and the
+rules below decide them. Each miss is refused with its classes on the run's changeset as a
 `filtered` row, named at or above the source's stay line (`contentsLine`, 18) and counted below it,
 and marked as a refusal of nothing: a treasure's id is not a place's, whatever it shares with one.
 What the read kept by class and this door's own rules then wrote nowhere is named beside them,
