@@ -15,6 +15,7 @@ import numpy as np
 
 from ..utils.image import encode_png_base64, resize_image
 from .decoration_ccs import exclude_decoration_ccs
+from .insets import detect_inset_mask
 
 logger = logging.getLogger(__name__)
 
@@ -546,142 +547,6 @@ def _remove_outlier_pixels(
         logger.info(f"[TextCleanup] Replaced {text_count} outlier pixels (small CCs ≤ {max_cc_size}px)")
 
     return result, text_mask
-
-
-def _detect_inset_mask(image: np.ndarray) -> np.ndarray | None:  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
-    """Detect inset box boundaries (Alaska/Hawaii style) using Hough lines.
-
-    Looks for strong horizontal/vertical lines that span most of the image
-    width/height. These dividing lines split the image into rectangular
-    sections. The largest section is assumed to be the main map; all other
-    sections are returned as an inset mask (to be added to background).
-
-    Returns a binary mask (255 = inset region to exclude) or None if no
-    inset boundaries detected.
-    """
-    h, w = image.shape[:2]
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-    # Edge detection — use tight thresholds to catch the inset boundary lines
-    edges = cv2.Canny(gray, 50, 150)
-
-    # Hough line detection — look for strong lines
-    lines = cv2.HoughLinesP(edges, rho=1, theta=np.pi / 180, threshold=100, minLineLength=int(w * 0.4), maxLineGap=20)
-
-    if lines is None:
-        return None
-
-    h_lines = []  # Strong horizontal lines (y positions)
-    v_lines = []  # Strong vertical lines (x positions)
-
-    for line in lines:
-        x1, y1, x2, y2 = line[0]
-        angle = abs(np.degrees(np.arctan2(y2 - y1, x2 - x1)))
-
-        # Horizontal line: angle near 0 or 180, spans >70% of width
-        # Strict to avoid coastlines and other curved features
-        if (angle < 3 or angle > 177) and abs(x2 - x1) > w * 0.7:
-            # Must be in the inner 80% of the image (not near edges)
-            avg_y = (y1 + y2) / 2
-            if h * 0.15 < avg_y < h * 0.85:
-                h_lines.append(avg_y)
-
-        # Vertical line: angle near 90, spans >40% of height
-        if 87 < angle < 93 and abs(y2 - y1) > h * 0.4:
-            avg_x = (x1 + x2) / 2
-            if w * 0.15 < avg_x < w * 0.85:
-                v_lines.append(avg_x)
-
-    if not h_lines and not v_lines:
-        return None
-
-    # Cluster nearby lines (within 15px) and take the median
-    def cluster_lines(positions, min_gap=15):
-        if not positions:
-            return []
-        positions = sorted(positions)
-        clusters = [[positions[0]]]
-        for p in positions[1:]:
-            if p - clusters[-1][-1] < min_gap:
-                clusters[-1].append(p)
-            else:
-                clusters.append([p])
-        # Only keep clusters with at least 2 detections (strong evidence)
-        return [int(np.median(c)) for c in clusters if len(c) >= 2]
-
-    h_boundaries_raw = cluster_lines(h_lines)
-    v_boundaries_raw = cluster_lines(v_lines)
-
-    if not h_boundaries_raw and not v_boundaries_raw:
-        return None
-
-    # Validate boundaries with edge CONTINUITY check
-    # A real inset boundary is a straight line with edge pixels in most columns/rows.
-    # Coastlines have gaps. Check what fraction of columns (for H) or rows (for V)
-    # have edge pixels within the band.
-    def validate_h_boundary(y_pos):
-        band = edges[max(0, y_pos - 3) : min(h, y_pos + 4), :]
-        # Column coverage: how many columns have at least one edge pixel?
-        col_has_edge = np.any(band > 0, axis=0)
-        coverage = np.sum(col_has_edge) / max(w, 1)
-        return coverage > 0.75  # >75% of columns must have an edge pixel (straight line)
-
-    def validate_v_boundary(x_pos):
-        band = edges[:, max(0, x_pos - 3) : min(w, x_pos + 4)]
-        row_has_edge = np.any(band > 0, axis=1)
-        coverage = np.sum(row_has_edge) / max(h, 1)
-        return coverage > 0.75
-
-    h_boundaries = [b for b in h_boundaries_raw if validate_h_boundary(b)]
-    v_boundaries = [b for b in v_boundaries_raw if validate_v_boundary(b)]
-
-    if not h_boundaries and not v_boundaries:
-        return None
-
-    # Build rectangular sections from the boundary lines
-    y_cuts = [0] + h_boundaries + [h]
-    x_cuts = [0] + v_boundaries + [w]
-
-    sections = []
-    for i in range(len(y_cuts) - 1):
-        for j in range(len(x_cuts) - 1):
-            y_start, y_end = y_cuts[i], y_cuts[i + 1]
-            x_start, x_end = x_cuts[j], x_cuts[j + 1]
-            area = (y_end - y_start) * (x_end - x_start)
-            sections.append((y_start, y_end, x_start, x_end, area))
-
-    if len(sections) < 2:
-        return None
-
-    # Find the largest section (main map)
-    sections.sort(key=lambda s: -s[4])
-    main_section = sections[0]
-
-    # Only proceed if the main section is significantly larger than others
-    # (at least 40% of total image area)
-    total_area = h * w
-    if main_section[4] < total_area * 0.4:
-        return None
-
-    # Create mask: mark non-main sections as insets
-    inset_mask = np.zeros((h, w), dtype=np.uint8)
-    for y_start, y_end, x_start, x_end, area in sections[1:]:
-        # Only mask sections that are significantly smaller than main
-        if area < main_section[4] * 0.8:
-            inset_mask[y_start:y_end, x_start:x_end] = 255
-
-    inset_total = int(np.sum(inset_mask > 0))
-    if inset_total > 0:
-        logger.info(f"[Inset] Detected {len(sections) - 1} inset section(s), masking {inset_total} px")
-        logger.info(
-            f"[Inset] Main section: y=[{main_section[0]},{main_section[1]}], x=[{main_section[2]},{main_section[3]}]"
-        )
-        for s in sections[1:]:
-            if s[4] < main_section[4] * 0.8:
-                logger.info(f"[Inset] Inset: y=[{s[0]},{s[1]}], x=[{s[2]},{s[3]}] ({s[4] / total_area * 100:.1f}%)")
-        return inset_mask
-
-    return None
 
 
 def mean_shift_filter(image: np.ndarray, sp: int = 10, sr: int = 20) -> np.ndarray:
@@ -1799,7 +1664,7 @@ def run_phase1(  # noqa: C901 -- above the complexity ceiling of 15; #1654 split
 
     # Step 2f: Inset box detection
     _progress("Inset box detection...")
-    inset_mask = _detect_inset_mask(original_down)
+    inset_mask = detect_inset_mask(original_down)
 
     # Step 3: Two-stage background detection (on ORIGINAL, not filtered)
     _progress("Two-stage background detection...")

@@ -14,7 +14,7 @@ import cv2
 import numpy as np
 import pytest
 
-from app.cv.preprocess import _detect_inset_mask
+from app.cv.insets import detect_inset_mask
 
 W, H = 400, 300
 
@@ -70,7 +70,7 @@ def _answer(mask: np.ndarray | None) -> tuple[int, str] | None:
     return int(np.count_nonzero(mask)), hashlib.sha256(repr(mask.shape).encode() + mask.tobytes()).hexdigest()
 
 
-# Recorded from _detect_inset_mask before #1654 split it.
+# Recorded from the detection before #1654 split it.
 EXPECTED: dict[str, tuple[int, str] | None] = {
     "a map with no dividing line": None,
     "a rule across the map above two insets": (
@@ -91,4 +91,4 @@ EXPECTED: dict[str, tuple[int, str] | None] = {
 
 @pytest.mark.parametrize("case", list(CASES))
 def test_the_detection_answers_as_it_did_before_the_split(case: str) -> None:
-    assert _answer(_detect_inset_mask(_map(CASES[case]))) == EXPECTED[case]
+    assert _answer(detect_inset_mask(_map(CASES[case]))) == EXPECTED[case]
