@@ -1055,6 +1055,30 @@ npm run test:api       # Schemathesis against the same stack's backend, as each 
 npm run perf:local     # the production build on the dev stack's own data: size, Lighthouse, the probe
 ```
 
+### Looking at a branch's screens
+
+A change to what the web shows is looked at on the dev stack's data before it merges, since a spec does
+not read a screen the way a curator does: the look at #1717's review card caught a row naming its kind
+twice, which every spec passed (#1724). The stack's frontend serves the main checkout, so a branch is
+served beside it, from a checkout or worktree of the branch on the stack's machine:
+
+```bash
+npm run dev:frontend:branch          # this checkout's frontend on 5181, its /api proxied to the stack's backend
+ssh -N -L 5181:localhost:5181 <the stack's machine>   # from the machine with the browser, when they differ
+```
+
+Then open `http://localhost:5181/…` there. The page fetches everything from that server — the API,
+hosted pictures and Martin's tiles — so the one tunnel is enough, and the server presents the origin
+the backend allows (`FRONTEND_URL`) for the page's own requests, refusing another page's. The browser's
+session for `localhost` carries over; where it has expired, sign in with email and password on the
+branch's page itself, or on the stack's own frontend where the browser reaches it. An OAuth sign-in
+returns through the backend to `FRONTEND_URL`, which a browser forwarding only 5181 cannot reach. The server listens on its own machine only, which
+the tunnel reaches and the network does not. `BRANCH_PORT` moves it off 5181 — never onto 5173, the
+stack's, or 5174, the isolated test stack's — and `BRANCH_API`, `BRANCH_MARTIN` and `BRANCH_WEB_ORIGIN`
+name another backend, tile server and origin (`frontend/vite.branch.config.ts`).
+It reads and writes the stack's database like the stack's own frontend: look, do not answer, on a
+branch whose writes are not merged. Stop the server and the tunnel once the screenshots are taken.
+
 ### The shape the smoke lane browses
 
 The test stack's frontend comes up in one of two shapes: the dev server
