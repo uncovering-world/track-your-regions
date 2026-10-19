@@ -542,7 +542,7 @@ Every call `frontend/src/api/worldViews.ts`, `frontend/src/api/regions.ts` and `
 ### Geometry
 - `GET /api/world-views/regions/:regionId/geometry` - Get region geometry
 - `PUT /api/world-views/regions/:regionId/geometry` - Set custom geometry
-- `GET /api/world-views/regions/:regionId/geometry/compute-stream` - Compute single region with SSE progress (`force`, `skipSnapping`, `token`)
+- `GET /api/world-views/regions/:regionId/geometry/compute-stream` - Compute single region with SSE progress (`skipSnapping`, `token`). A region drawn as a hull has its hull rebuilt from the new geometry on every compute, since one kept from the old geometry would draw a stale outline; the editor offers no choice there (#1686)
 - `POST /api/world-views/:worldViewId/compute-geometries` - Queue the computation of all geometries for the dump worker (`force`, `skipSnapping`)
 - `GET /api/world-views/:worldViewId/compute-geometries/status` - Get computation status, with `operation` (`OperationProgressAnswer`, #1356): step 1 of 2 computes the regions' geometry, deepest first, counted per region; step 2 simplifies the shared borders of the parents with two or more children, counted per parent. Each step's end and the outcome is a line under `[Geometry] World view N:`
 - `POST /api/world-views/:worldViewId/compute-geometries/cancel` - Cancel computation: a queued one closes at once, and a running one's statement in flight is cancelled in the database at its next heartbeat, within five seconds (ADR-0123)
