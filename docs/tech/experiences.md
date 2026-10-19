@@ -5545,6 +5545,28 @@ already see the place in (`seen_in`, every other offered membership's kind) and 
 — "Readers already see this place under Art Museums", *Publish — list it under Archaeology* —
 rather than that readers see nothing at its address. A place in one kind reads exactly as before.
 
+**A fact two kinds' runs propose alike is asked once** (#1599). Most of what a run holds is a fact
+of the place or of one of its parts, which no kind owns (ADR-0084): on the development catalogue on
+2026-10-19, 82 places held proposals from two kinds, and 24 of them had 40 facts both runs proposed
+with the same value, picture credits, pictures, descriptions and websites among them. Where two
+sections hold a proposal, `liftSharedFacts` (`frontend/src/components/curation/sharedFacts.ts`)
+lifts the rows that kinds propose alike, by field or by part and field with an equal value, into a
+"This place" section ahead of the kinds' (`sharedBy`, `GatedSection.tsx`'s lead
+"Art Museums run 170 and Archaeology run 169 propose"). That section answers under the kind that shares the most of the facts, which holds every fact it lifts (Mỹ Sơn's description and Wikidata id, which its Places of worship and Archaeology runs share and its World Heritage run does not, are answered under Places of worship), with that kind's
+membership and run, and its own button publishes exactly its rows (*Publish what Art Museums and
+Archaeology propose alike*). A kind's section keeps what it asks alone, and goes where nothing is
+left; its proposal still holds the lifted rows, so its own button names the rows it shows
+(`narrowed`), with its unread contents released in a second request. One answer settles every copy, because a held answer is recorded on the place by value
+(`recordHeldAnswers`, `heldDecisions.ts`): the other kind's row of that value is answered with it,
+and `clearAnsweredHeldPointers` (`membershipWriter.ts`), run by the publish and the decline under
+the place's lock, clears each pointer whose held rows are then all answered. So the values are
+compared as the decision compares them, exactly, and a fact the runs propose differently stays in
+each section. The type within the kind is the membership's: it is never lifted, and the sweep
+leaves standing a proposal that holds one, since the answer that reads it as settled is the place's. The row counts the
+place's section as one question. A batch answers the place's section under that kind alone,
+since the other kinds' copies are settled by value, and a kind with a section of its own answers
+it once (`toAnswerRows`).
+
 **A refusal is asked of the membership a rule refused** (#1264). `refusedKeysSql` keys one row
 per place over every membership whose kind's rule refused it, carrying each refusing source, and
 the refused and kept-out reads return one item per membership, in scope and source-filtered by
