@@ -34,7 +34,7 @@ describe('the workbench-table lint rule', () => {
     ['a template in a curator controller', CLAIMS, 'src/controllers/experience/lint-fixture.ts'],
     ['a plain string in a reader route', 'export const q = "SELECT views FROM readership_months";\n', 'src/routes/lint-fixture.ts'],
     ['a name with its schema', 'export const q = `SELECT 1 FROM workbench.enwiki_pages`;\n', 'src/controllers/worldView/lint-fixture.ts'],
-    ['a workbench table still in public', 'export const q = `SELECT 1 FROM wikidata_query_cache`;\n', 'src/controllers/experience/lint-fixture.ts'],
+    ['a workbench table named bare, which the search path finds', 'export const q = `SELECT 1 FROM wikidata_query_cache`;\n', 'src/controllers/experience/lint-fixture.ts'],
     ['a name in capitals, which Postgres folds', 'export const q = `SELECT 1 FROM WIKIDATA_CLAIMS`;\n', 'src/routes/lint-fixture.ts'],
     ['a build\'s copy of one', 'export const q = `SELECT 1 FROM wikidata_claims_next`;\n', 'src/controllers/experience/lint-fixture.ts'],
   ])('refuses %s', async (_what, code, filePath) => {

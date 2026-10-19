@@ -432,9 +432,9 @@ const TABLE_WRITE_FAMILIES = [
  * of the serving tables leaves the workbench behind, so a route that read one
  * would answer on nothing there. The tables are those `TABLE_TIERS`
  * (`src/db/tableTiers.ts`) gives the workbench tier, read from it rather than
- * listed here, so the registry is the one place a table's tier is said: the
- * workbench schema's, and those still in `public`. An admin route (a dump
- * build, a sync, the catalogue checks) reads them, and so do the source runs.
+ * listed here, so the registry is the one place a table's tier is said. An
+ * admin route (a dump build, a sync, the catalogue checks) reads them, and so
+ * do the source runs.
  * A build's `_next` copy of one is refused with it, and the match ignores
  * case, as Postgres does for an unquoted name.
  *
