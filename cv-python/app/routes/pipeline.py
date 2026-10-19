@@ -260,7 +260,7 @@ async def match(
     icpMask: Annotated[UploadFile, File(...)],
     params: Annotated[UploadFile, File(...)],
 ) -> StreamingResponse:
-    """Match GADM divisions to color clusters via RANSAC affine estimation. Streams NDJSON progress."""
+    """Match GADM divisions to color clusters by IoU alignment. Streams NDJSON progress."""
     cfg = json.loads(await params.read())
 
     pl_img = decode_image(await pixelLabels.read())
