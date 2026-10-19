@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { DISSOLVED_UNKNOWN, venueVerdict, museumRule, type VenueFacts, type VenueRule } from './venueTest.js';
 
 const MUSEUM_CLASSES = new Set(['Q33506', 'Q207694']); // museum, art museum
+// The museum classes as the run reads them, under `museum`: palazzo and historic house museum among them
+const HOUSE_RULE = museumRule(new Set([...MUSEUM_CLASSES, 'Q112132542', 'Q2087181']));
 const facts = (over: Partial<VenueFacts>): VenueFacts =>
   ({ qid: 'Q1', classes: ['Q207694'], lat: 48.8, lon: 2.3, dissolved: null, ...over });
 
@@ -72,10 +74,28 @@ describe('venueVerdict', () => {
   });
 
   it('rejects a site class with no art class present', () => {
-    // The Villa Farnesina: typed villa plus several non-art museum classes, no art class.
+    // A villa typed museum and nothing that says the villa is the museum.
     const v = venueVerdict(facts({ classes: ['Q33506', 'Q3950'] }), museumRule(MUSEUM_CLASSES));
     expect(v.pass).toBe(false);
     expect((v as { reason: string }).reason).toContain('villa');
+  });
+
+  it('admits a villa Wikidata types the museum of its own building (#1614)', () => {
+    // The Villa Farnesina: villa; palazzo museum; religious museum; museum of a public entity
+    expect(venueVerdict(facts({ classes: ['Q3950', 'Q112132542', 'Q92755865', 'Q124830213'] }), HOUSE_RULE)).toEqual({
+      pass: true,
+    });
+    // Ainola, Sibelius's home: villa; historic house museum
+    expect(venueVerdict(facts({ classes: ['Q3950', 'Q2087181'] }), HOUSE_RULE)).toEqual({ pass: true });
+  });
+
+  it('still vetoes a church typed museum alone, and the grounds of a dig whatever museum it is', () => {
+    // Antwerp Cathedral: church building; Catholic cathedral; museum
+    const cathedral = venueVerdict(facts({ classes: ['Q16970', 'Q56242215', 'Q33506'] }), HOUSE_RULE);
+    expect(cathedral).toEqual({ pass: false, reason: 'site, not a venue: church building; Catholic cathedral' });
+    // The Blue Grotto: sea cave; archaeological park; historic house museum
+    const grotto = venueVerdict(facts({ classes: ['Q3363945', 'Q2087181'] }), HOUSE_RULE);
+    expect(grotto).toEqual({ pass: false, reason: 'site, not a venue: archaeological park' });
   });
 
   it('does not veto a site class when an art class is also present', () => {

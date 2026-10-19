@@ -32,14 +32,13 @@ export const KILL_CLASSES: Record<string, string> = {
 };
 
 /**
- * Classes that describe a place rather than an institution, read off the real entities the
- * first run wrongly admitted: a church building or cathedral (Antwerp Cathedral, the Church of
- * Our Lady in Bruges), an archaeological park, Roman archaeological site or Roman ruins (the
- * Roman Forum and the Palatine), a villa (the Villa Farnesina). Wikidata also types every one of
- * them `museum` directly, so they clear the class check below and need a veto of their own — one
- * that must not fire on an entity that also carries an `ART_CLASSES` member, since a great many
- * real art museums are also palaces, villas or former churches (the Uffizi, typed `palace, art
- * museum`, is exactly this shape).
+ * Classes that describe a place rather than an institution: a church building or cathedral
+ * (Antwerp Cathedral, the Church of Our Lady in Bruges), an archaeological park, Roman
+ * archaeological site or Roman ruins (the Roman Forum and the Palatine), a villa. Wikidata also
+ * types every one of them `museum` directly, so they clear the class check below and need a veto
+ * of their own — one that must not fire on an entity that also carries an `ART_CLASSES` member,
+ * since a great many real art museums are also palaces, villas or former churches (the Uffizi,
+ * typed `palace, art museum`, is exactly this shape).
  */
 export const SITE_CLASSES: Record<string, string> = {
   Q16970: 'church building',
@@ -48,6 +47,25 @@ export const SITE_CLASSES: Record<string, string> = {
   Q21752084: 'Roman archaeological site',
   Q133444874: 'roman ruins',
   Q3950: 'villa',
+};
+
+/**
+ * The place classes that are buildings, as against the grounds of a dig or a park: a building
+ * Wikidata also types a museum of its own building (`HOUSE_MUSEUM_CLASSES`) is that museum.
+ */
+const BUILDING_SITE_CLASSES: ReadonlySet<string> = new Set(['Q16970', 'Q56242215', 'Q3950']);
+
+/**
+ * Museum classes that say the building itself is the museum: a palazzo museum, a historic house
+ * museum (Wikidata holds two items of that name, both under `museum`). The Villa Farnesina is
+ * typed `villa; palazzo museum`, and a visitor buys a ticket to it for Raphael's frescoes on its
+ * walls; Antwerp Cathedral and the Church of Our Lady in Bruges are typed `museum` alone, and stay
+ * churches, which the places-of-worship kind lists.
+ */
+export const HOUSE_MUSEUM_CLASSES: Record<string, string> = {
+  Q112132542: 'palazzo museum',
+  Q2087181: 'historic house museum',
+  Q5755620: 'historic house museum',
 };
 
 export type VenueResult = { pass: true } | { pass: false; reason: string };
@@ -87,7 +105,8 @@ export function venueVerdict(e: VenueFacts, rule: VenueRule): VenueResult {
   if (!e.classes.some((c) => rule.classes.has(c))) {
     return { pass: false, reason: `not a ${rule.noun} class` };
   }
-  const site = e.classes.filter((c) => SITE_CLASSES[c]);
+  const houseMuseum = e.classes.some((c) => HOUSE_MUSEUM_CLASSES[c]);
+  const site = e.classes.filter((c) => SITE_CLASSES[c] && !(houseMuseum && BUILDING_SITE_CLASSES.has(c)));
   if (rule.siteVeto && site.length && !e.classes.some((c) => ART_CLASSES[c])) {
     return { pass: false, reason: `site, not a venue: ${site.map((c) => SITE_CLASSES[c]).join('; ')}` };
   }
