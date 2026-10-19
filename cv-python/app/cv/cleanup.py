@@ -474,108 +474,146 @@ def _remove_small_isolated_ccs(
     return result
 
 
-def _exclude_edge_decoration_ccs(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
+def _near_edge(cx: float, cy: float, w: int, h: int, edge_pct: float) -> bool:
+    """Whether a centroid lies within edge_pct of any image edge."""
+    bx = int(w * edge_pct)
+    by = int(h * edge_pct)
+    return bool(cx < bx or cx > w - bx or cy < by or cy > h - by)
+
+
+def _bbox_fill(area: int, bbox_w: int, bbox_h: int) -> float:
+    """How much of its bounding box a shape fills."""
+    bbox_area = bbox_w * bbox_h
+    return area / bbox_area if bbox_area > 0 else 0
+
+
+def _color_std(filtered_image: np.ndarray, where: np.ndarray) -> float:
+    return float(np.std(filtered_image[where].astype(np.float32), axis=0).mean())
+
+
+def _reassign_orphans(result: np.ndarray, country_mask: np.ndarray) -> None:
+    """Give each country pixel an exclusion left at 255 the most common label of its four neighbours.
+
+    The pixels are visited in row order and each takes the labels already
+    reassigned before it, so a decoration is filled in from its top-left.
+    """
+    h, w = result.shape
+    orphaned = (result == 255) & (country_mask > 0)
+    if not np.any(orphaned):
+        return
+    oy, ox = np.where(orphaned)
+    for y, x in zip(oy, ox, strict=False):
+        neighbors = []
+        for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            ny, nx = y + dy, x + dx
+            if 0 <= ny < h and 0 <= nx < w and result[ny, nx] != 255:
+                neighbors.append(result[ny, nx])
+        if neighbors:
+            result[y, x] = max(set(neighbors), key=neighbors.count)
+
+
+def _is_edge_decoration_cc(
+    stats: np.ndarray,
+    centroid: np.ndarray,
+    i: int,
+    cluster_total: int,
+    country_size: int,
+    shape: tuple[int, int],
+    edge_pct: float,
+) -> bool:
+    """Whether one CC of a cluster is a decoration: small, near an edge and compact.
+
+    Very small CCs (<1.5% of country) near edges can go even if they dominate
+    their cluster (a compass as its own cluster), and so can perfect rectangles
+    (fill > 0.85) up to 3% (title boxes, scale bar containers); a larger CC goes
+    only when it is under half its cluster.
+    """
+    h, w = shape
+    area = int(stats[i, cv2.CC_STAT_AREA])
+    pct_country = area / country_size * 100
+    if pct_country > 5.0:
+        return False  # too large relative to country
+    fill = _bbox_fill(area, int(stats[i, cv2.CC_STAT_WIDTH]), int(stats[i, cv2.CC_STAT_HEIGHT]))
+    if pct_country > 1.5 and area / cluster_total * 100 > 50.0 and not (pct_country <= 3.0 and fill > 0.85):
+        return False  # dominant in cluster and not rectangular
+    if not _near_edge(centroid[0], centroid[1], w, h, edge_pct):
+        return False
+    # Relaxed fill for very small edge CCs (<1% country):
+    # compass+text combos have fill ~0.35-0.50 due to irregular text shape
+    fill_threshold = 0.35 if pct_country < 1.0 else 0.55
+    return fill >= fill_threshold  # under it, too irregular — likely a real island fragment
+
+
+def _exclude_edge_decoration_ccs(
     pixel_labels: np.ndarray,
     country_mask: np.ndarray,
     edge_pct: float = 0.25,
 ) -> np.ndarray:
     """Per-cluster CC-level decoration detection.
 
-    For each cluster, finds connected components. CCs that are:
-    1. Near any image edge (centroid within edge_pct)
-    2. Compact shape (bbox fill ratio > 0.55)
-    3. Small relative to cluster (< 50% of cluster total)
-    4. Small relative to country (< 5%)
-    → are excluded as decoration elements (title box fragments, compass, scale bar).
+    For each cluster of more than one CC, every CC that `_is_edge_decoration_cc`
+    calls a decoration (small, near an image edge and compact) is excluded:
+    title box fragments, compasses, scale bars.
 
     This catches decorations that share a cluster color with real regions
     (e.g., teal title box + teal coastal region in the same cluster).
     """
-    h, w = pixel_labels.shape
     country_size = int(np.sum(country_mask > 0))
     if country_size == 0:
         return pixel_labels
 
-    bx = int(w * edge_pct)
-    by = int(h * edge_pct)
-
     result = pixel_labels.copy()
     total_excluded = 0
-    active_labels = [int(l) for l in np.unique(pixel_labels) if l != 255]
-
-    for lbl in active_labels:
+    for lbl in [int(l) for l in np.unique(pixel_labels) if l != 255]:
         cluster_mask = (pixel_labels == lbl).astype(np.uint8)
         cluster_total = int(np.sum(cluster_mask))
         if cluster_total == 0:
             continue
-
         num_cc, cc_labels, cc_stats, cc_centroids = cv2.connectedComponentsWithStats(cluster_mask)
         if num_cc <= 2:
             continue  # single CC, nothing to separate
-
         for i in range(1, num_cc):
-            area = int(cc_stats[i, cv2.CC_STAT_AREA])
-            pct_country = area / country_size * 100
-            pct_cluster = area / cluster_total * 100
-
-            if pct_country > 5.0:
-                continue  # too large relative to country
-
-            # Very small CCs (<1.5% of country) near edges can be excluded
-            # even if they dominate their cluster (compass as its own cluster).
-            # Perfect rectangles (fill > 0.85) up to 3% can also be excluded
-            # (title boxes, scale bar containers).
-            # Larger CCs need the cluster dominance check.
-            if pct_country > 1.5 and pct_cluster > 50.0:
-                # Allow rectangular CCs up to 3% through (title boxes)
-                cc_w_chk = int(cc_stats[i, cv2.CC_STAT_WIDTH])
-                cc_h_chk = int(cc_stats[i, cv2.CC_STAT_HEIGHT])
-                bbox_chk = cc_w_chk * cc_h_chk
-                fill_chk = area / bbox_chk if bbox_chk > 0 else 0
-                if not (pct_country <= 3.0 and fill_chk > 0.85):
-                    continue  # dominant in cluster and not rectangular
-
-            cx, cy = cc_centroids[i]
-            near_edge = cx < bx or cx > w - bx or cy < by or cy > h - by
-            if not near_edge:
-                continue
-
-            # Check compactness (fill ratio)
-            cc_w = int(cc_stats[i, cv2.CC_STAT_WIDTH])
-            cc_h_val = int(cc_stats[i, cv2.CC_STAT_HEIGHT])
-            bbox_area = cc_w * cc_h_val
-            fill = area / bbox_area if bbox_area > 0 else 0
-
-            # Relaxed fill for very small edge CCs (<1% country):
-            # compass+text combos have fill ~0.35-0.50 due to irregular text shape
-            fill_threshold = 0.35 if pct_country < 1.0 else 0.55
-            if fill < fill_threshold:
-                continue  # too irregular — likely a real island fragment
-
-            # Exclude this CC
-            result[cc_labels == i] = 255
-            total_excluded += area
+            if _is_edge_decoration_cc(
+                cc_stats, cc_centroids[i], i, cluster_total, country_size, pixel_labels.shape, edge_pct
+            ):
+                result[cc_labels == i] = 255
+                total_excluded += int(cc_stats[i, cv2.CC_STAT_AREA])
 
     if total_excluded > 0:
-        # Reassign excluded pixels to nearest valid neighbor
-        orphaned = (result == 255) & (country_mask > 0)
-        if np.any(orphaned):
-            oy, ox = np.where(orphaned)
-            for y, x in zip(oy, ox, strict=False):
-                neighbors = []
-                for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                    ny, nx = y + dy, x + dx
-                    if 0 <= ny < h and 0 <= nx < w and result[ny, nx] != 255:
-                        neighbors.append(result[ny, nx])
-                if neighbors:
-                    result[y, x] = max(set(neighbors), key=neighbors.count)
-
+        _reassign_orphans(result, country_mask)
         logger.info(f"[EdgeDecoCC] Excluded {total_excluded} px in per-cluster edge decoration CCs")
-
     return result
 
 
-def _exclude_straight_edged_clusters(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
+def _straight_edge_vertices(
+    cc_labels: np.ndarray,
+    ci: int,
+    filtered_image: np.ndarray,
+) -> int | None:
+    """The vertex count of a CC whose outline is a few straight edges in one colour, or None.
+
+    approxPolyDP at 2% of the perimeter reduces a rectangle to 4 vertices, a
+    pentagon or hexagon to 5-6, while natural coastlines keep far more than 10.
+    """
+    cc_mask = (cc_labels == ci).astype(np.uint8) * 255
+    contours, _ = cv2.findContours(cc_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+    contour = max(contours, key=cv2.contourArea)
+    perimeter = cv2.arcLength(contour, True)
+    if perimeter < 20:
+        return None
+    n_vertices = len(cv2.approxPolyDP(contour, 0.02 * perimeter, True))
+    if n_vertices > 6:
+        return None
+    # Varied colors — a real feature
+    where = cc_labels == ci
+    if np.any(where) and _color_std(filtered_image, where) > 15:
+        return None
+    return n_vertices
+
+
+def _exclude_straight_edged_clusters(
     pixel_labels: np.ndarray,
     color_centroids: list[list[int]],
     filtered_image: np.ndarray,
@@ -587,96 +625,64 @@ def _exclude_straight_edged_clusters(  # noqa: C901 -- above the complexity ceil
     Real geographic regions have irregular coastline boundaries.
     Title boxes, compass roses, and scale bars have straight-edged boundaries.
     Uses contour approximation: if approxPolyDP reduces the contour to
-    very few vertices (≤8), the shape has straight edges = artificial.
+    very few vertices (≤6), the shape has straight edges = artificial.
     """
     h, w = pixel_labels.shape
     country_size = int(np.sum(country_mask > 0))
     if country_size == 0:
         return pixel_labels
 
-    bx = int(w * edge_pct)
-    by = int(h * edge_pct)
-
     result = pixel_labels.copy()
-    active_labels = [int(l) for l in np.unique(pixel_labels) if l != 255]
     excluded = []
-
-    for lbl in active_labels:
+    for lbl in [int(l) for l in np.unique(pixel_labels) if l != 255]:
         mask = (pixel_labels == lbl).astype(np.uint8)
         total = int(np.sum(mask))
-        if total == 0:
+        if total == 0 or not 0.3 <= total / country_size * 100 <= 5.0:
             continue
-        pct = total / country_size * 100
-        if pct > 5.0 or pct < 0.3:
-            continue
-
-        # Find CCs of this cluster
         num_cc, cc_labels, cc_stats, cc_centroids = cv2.connectedComponentsWithStats(mask)
         for ci in range(1, num_cc):
             area = int(cc_stats[ci, cv2.CC_STAT_AREA])
             ci_pct = area / country_size * 100
-            if ci_pct > 5.0 or ci_pct < 0.1:
+            if not 0.1 <= ci_pct <= 5.0 or not _near_edge(cc_centroids[ci][0], cc_centroids[ci][1], w, h, edge_pct):
                 continue
-
-            cx, cy = cc_centroids[ci]
-            near_edge = cx < bx or cx > w - bx or cy < by or cy > h - by
-            if not near_edge:
+            n_vertices = _straight_edge_vertices(cc_labels, ci, filtered_image)
+            if n_vertices is None:
                 continue
-
-            # Get contour and approximate it
-            cc_mask = (cc_labels == ci).astype(np.uint8) * 255
-            contours, _ = cv2.findContours(cc_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-            if not contours:
-                continue
-
-            contour = max(contours, key=cv2.contourArea)
-            perimeter = cv2.arcLength(contour, True)
-            if perimeter < 20:
-                continue
-
-            # Approximate contour with fewer vertices
-            # epsilon = 2% of perimeter — loose approximation
-            approx = cv2.approxPolyDP(contour, 0.02 * perimeter, True)
-            n_vertices = len(approx)
-
-            # Straight-edged shapes: ≤ 6 vertices (rectangle=4, pentagon=5, hexagon=6)
-            # Natural coastlines: >> 10 vertices even with loose approximation
-            if n_vertices > 6:
-                continue
-
-            # Additional check: color uniformity (solid fill)
-            cc_pixels = filtered_image[cc_labels == ci]
-            if len(cc_pixels) > 0:
-                std = np.std(cc_pixels.astype(np.float32), axis=0).mean()
-                if std > 15:
-                    continue  # Varied colors — real feature
-
-            # This CC has straight edges, near edge, uniform color → decoration
+            # Straight edges, near an edge, uniform colour: a decoration
             result[cc_labels == ci] = 255
             excluded.append((lbl, area, ci_pct, n_vertices))
 
     if excluded:
-        orphaned = (result == 255) & (country_mask > 0)
-        if np.any(orphaned):
-            oy, ox = np.where(orphaned)
-            for y, x in zip(oy, ox, strict=False):
-                neighbors = []
-                for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                    ny, nx = y + dy, x + dx
-                    if 0 <= ny < h and 0 <= nx < w and result[ny, nx] != 255:
-                        neighbors.append(result[ny, nx])
-                if neighbors:
-                    result[y, x] = max(set(neighbors), key=neighbors.count)
-
+        _reassign_orphans(result, country_mask)
         total_px = sum(e[1] for e in excluded)
         logger.info(f"[StraightEdge] Excluded {len(excluded)} straight-edged CCs ({total_px} px)")
         for lbl, cnt, pct, nv in excluded:
             logger.info(f"    cluster {lbl}: {cnt}px ({pct:.1f}%), {nv} vertices")
-
     return result
 
 
-def _exclude_rectangular_edge_clusters(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
+def _rectangular_edge_fill(
+    mask: np.ndarray,
+    lbl: int,
+    total: int,
+    color_centroids: list[list[int]],
+    filtered_image: np.ndarray,
+    edge_pct: float,
+) -> float | None:
+    """The bbox fill of a cluster that is a compact, uniform shape near an edge, or None."""
+    h, w = mask.shape
+    ys, xs = np.where(mask)
+    if not _near_edge(xs.mean(), ys.mean(), w, h, edge_pct):
+        return None
+    fill = _bbox_fill(total, int(xs.max()) - int(xs.min()) + 1, int(ys.max()) - int(ys.min()) + 1)
+    if fill < 0.65:
+        return None  # Not rectangular enough — likely a real island
+    if lbl < len(color_centroids) and color_centroids[lbl] is not None and _color_std(filtered_image, mask) > 12:
+        return None  # Varied colors — real region
+    return fill
+
+
+def _exclude_rectangular_edge_clusters(
     pixel_labels: np.ndarray,
     color_centroids: list[list[int]],
     filtered_image: np.ndarray,
@@ -688,86 +694,42 @@ def _exclude_rectangular_edge_clusters(  # noqa: C901 -- above the complexity ce
     Unlike _exclude_edge_decorations (which checks % of pixels near border),
     this checks the SHAPE of each cluster's main body. A cluster is excluded if:
     1. Its centroid is within edge_pct of any image edge
-    2. Its bounding box fill ratio > 0.55 (compact/rectangular)
-    3. It has low color variance (std < 15, uniform color)
-    4. It's small (< 5% of country)
+    2. Its bounding box fill ratio is at least 0.65 (compact/rectangular)
+    3. It has low color variance (std ≤ 12, uniform color)
+    4. It's small (0.3-5% of country)
 
     This catches title box clusters that extend 50-100px from edges —
     too far for the 30px border check but still clearly decorations.
     """
-    h, w = pixel_labels.shape
     country_size = int(np.sum(country_mask > 0))
     if country_size == 0:
         return pixel_labels
 
-    bx = int(w * edge_pct)
-    by = int(h * edge_pct)
-
     result = pixel_labels.copy()
-    active_labels = [int(l) for l in np.unique(pixel_labels) if l != 255]
     excluded = []
-
-    for lbl in active_labels:
+    for lbl in [int(l) for l in np.unique(pixel_labels) if l != 255]:
         mask = pixel_labels == lbl
         total = int(np.sum(mask))
         if total == 0:
             continue
         pct = total / country_size * 100
-        if pct > 5.0 or pct < 0.3:
+        if not 0.3 <= pct <= 5.0:
             continue
-
-        # Find bounding box and centroid of this cluster
-        ys, xs = np.where(mask)
-        cx = xs.mean()
-        cy = ys.mean()
-
-        near_edge = cx < bx or cx > w - bx or cy < by or cy > h - by
-        if not near_edge:
+        fill = _rectangular_edge_fill(mask, lbl, total, color_centroids, filtered_image, edge_pct)
+        if fill is None:
             continue
-
-        # Check shape: bounding box fill ratio
-        min_x, max_x = int(xs.min()), int(xs.max())
-        min_y, max_y = int(ys.min()), int(ys.max())
-        bbox_w = max_x - min_x + 1
-        bbox_h = max_y - min_y + 1
-        bbox_area = bbox_w * bbox_h
-        fill = total / bbox_area if bbox_area > 0 else 0
-
-        if fill < 0.65:
-            continue  # Not rectangular enough — likely a real island
-
-        # Check color uniformity
-        if lbl < len(color_centroids) and color_centroids[lbl] is not None:
-            cluster_pixels = filtered_image[mask]
-            color_std = np.std(cluster_pixels.astype(np.float32), axis=0).mean()
-            if color_std > 12:
-                continue  # Varied colors — real region
-
-        # This cluster is rectangular, uniform, near edge, small → decoration
+        # Rectangular, uniform, near an edge, small: a decoration
         result[mask] = 255
         excluded.append((lbl, total, pct, fill))
 
     if excluded:
-        # Reassign excluded pixels to nearest valid neighbor
-        orphaned = (result == 255) & (country_mask > 0)
-        if np.any(orphaned):
-            oy, ox = np.where(orphaned)
-            for y, x in zip(oy, ox, strict=False):
-                neighbors = []
-                for dy, dx in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                    ny, nx = y + dy, x + dx
-                    if 0 <= ny < h and 0 <= nx < w and result[ny, nx] != 255:
-                        neighbors.append(result[ny, nx])
-                if neighbors:
-                    result[y, x] = max(set(neighbors), key=neighbors.count)
-
+        _reassign_orphans(result, country_mask)
         total_px = sum(e[1] for e in excluded)
         logger.info(f"[RectEdge] Excluded {len(excluded)} rectangular edge cluster(s) ({total_px} px)")
         for lbl, cnt, pct, fill in excluded:
             c = color_centroids[lbl] if lbl < len(color_centroids) else None
             c_str = f"RGB({c[0]},{c[1]},{c[2]})" if c else "?"
             logger.info(f"    cluster {lbl}: {c_str} {cnt}px ({pct:.1f}%), fill={fill:.2f}")
-
     return result
 
 
@@ -820,7 +782,34 @@ def _remove_tiny_fragments(
     return result
 
 
-def _merge_fragmented_clusters(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
+def _merge_target(
+    lbl: int,
+    area: int,
+    cluster_stats: dict[int, tuple[int, int]],
+    color_centroids: list[list[int]],
+    labels: np.ndarray,
+    max_rgb_dist: float,
+) -> tuple[int, float]:
+    """The colour-closest larger cluster within max_rgb_dist that touches lbl: (label, RGB distance), -1 when none."""
+    c_lbl = color_centroids[lbl]
+    best_target = -1
+    best_dist = float("inf")
+    for other_lbl, (other_area, _) in cluster_stats.items():
+        if other_lbl == lbl or other_area <= area:
+            continue
+        if other_lbl >= len(color_centroids) or color_centroids[other_lbl] is None:
+            continue
+        c_other = color_centroids[other_lbl]
+        rgb_dist = ((c_lbl[0] - c_other[0]) ** 2 + (c_lbl[1] - c_other[1]) ** 2 + (c_lbl[2] - c_other[2]) ** 2) ** 0.5
+        if rgb_dist > max_rgb_dist or not _are_spatially_adjacent(labels, lbl, other_lbl):
+            continue
+        if rgb_dist < best_dist:
+            best_dist = rgb_dist
+            best_target = other_lbl
+    return best_target, best_dist
+
+
+def _merge_fragmented_clusters(
     pixel_labels: np.ndarray,
     color_centroids: list[list[int]],
     country_mask: np.ndarray,
@@ -846,53 +835,26 @@ def _merge_fragmented_clusters(  # noqa: C901 -- above the complexity ceiling of
     if country_size == 0:
         return pixel_labels
 
-    result = pixel_labels.copy()
-    active_labels = [int(l) for l in np.unique(pixel_labels) if l != 255]
-    total_merged = 0
-
-    # Count parts + area per cluster
-    cluster_stats: dict[int, tuple[int, int]] = {}  # label -> (area, num_parts)
-    for lbl in active_labels:
+    # Area and part count per cluster
+    cluster_stats: dict[int, tuple[int, int]] = {}
+    for lbl in [int(l) for l in np.unique(pixel_labels) if l != 255]:
         cluster_mask = (pixel_labels == lbl).astype(np.uint8)
         area = int(cluster_mask.sum())
-        if area == 0:
-            continue
-        num_cc, _, _, _ = cv2.connectedComponentsWithStats(cluster_mask)
-        cluster_stats[lbl] = (area, num_cc - 1)  # -1 for background CC
+        if area > 0:
+            num_cc, _, _, _ = cv2.connectedComponentsWithStats(cluster_mask)
+            cluster_stats[lbl] = (area, num_cc - 1)  # -1 for background CC
 
+    result = pixel_labels.copy()
+    total_merged = 0
     for lbl, (area, num_parts) in cluster_stats.items():
         area_pct = (area / country_size) * 100
-        if area_pct > max_area_pct * 100:
-            continue  # too large to be residue
-        if num_parts < min_parts:
-            continue  # not fragmented enough
         frag_ratio = num_parts / max(area_pct, 0.1)
-        if frag_ratio < min_fragmentation_ratio:
-            continue  # parts-to-area ratio below threshold
+        # Too large to be residue, not fragmented enough, or without a colour
+        if area_pct > max_area_pct * 100 or num_parts < min_parts or frag_ratio < min_fragmentation_ratio:
+            continue
         if lbl >= len(color_centroids) or color_centroids[lbl] is None:
             continue
-        c_lbl = color_centroids[lbl]
-
-        # Find a color-close, larger, spatially-adjacent target
-        best_target = -1
-        best_dist = float("inf")
-        for other_lbl, (other_area, _) in cluster_stats.items():
-            if other_lbl == lbl or other_area <= area:
-                continue
-            if other_lbl >= len(color_centroids) or color_centroids[other_lbl] is None:
-                continue
-            c_other = color_centroids[other_lbl]
-            rgb_dist = (
-                (c_lbl[0] - c_other[0]) ** 2 + (c_lbl[1] - c_other[1]) ** 2 + (c_lbl[2] - c_other[2]) ** 2
-            ) ** 0.5
-            if rgb_dist > max_rgb_dist:
-                continue
-            if not _are_spatially_adjacent(result, lbl, other_lbl):
-                continue
-            if rgb_dist < best_dist:
-                best_dist = rgb_dist
-                best_target = other_lbl
-
+        best_target, best_dist = _merge_target(lbl, area, cluster_stats, color_centroids, result, max_rgb_dist)
         if best_target >= 0:
             logger.info(
                 f"[FragMerge] cluster {lbl} ({area_pct:.1f}%, {num_parts} parts, frag={frag_ratio:.1f}) → {best_target} (RGB dist={best_dist:.1f})"
@@ -902,7 +864,6 @@ def _merge_fragmented_clusters(  # noqa: C901 -- above the complexity ceiling of
 
     if total_merged > 0:
         logger.info(f"[FragMerge] Merged {total_merged} px in fragmented-residue clusters")
-
     return result
 
 
