@@ -246,6 +246,8 @@ services:
     environment:
       - PYTHONUNBUFFERED=1
       - CV_LOG_LEVEL=${CV_LOG_LEVEL:-INFO}
+      # Empty keeps the middleware's own cap (`DEFAULT_MAX_BODY_BYTES`, 100 MB).
+      - CV_MAX_BODY_BYTES=${CV_MAX_BODY_BYTES:-}
     # No restart policy on purpose — see the note on the martin service.
 
   # One-off GADM loader (GDAL + psycopg2 + dotenv + shapely). Not started by
