@@ -192,10 +192,13 @@ describe('collectTier1Museums', () => {
 
     // A painting series and a group of casts hold works rather than being one, so they sit
     // outside every subclass tree — which is where Monet's Water Lilies, Van Gogh's Sunflowers
-    // and Rodin's Thinker live.
+    // and Rodin's Thinker live, and, as a cycle of frescoes and a group of sculptures, the
+    // Raphael Rooms and the Benin Bronzes (#1615).
     const asked = sparql.mock.calls.map((c) => String(c[0])).join('\n');
     expect(asked).toContain('Q15727816');
     expect(asked).toContain('Q28890616');
+    expect(asked).toContain('Q16905550');
+    expect(asked).toContain('Q2293362');
   });
 
   it('admits nobody for a work below the threshold, or for one held too widely', async () => {
