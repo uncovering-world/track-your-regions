@@ -450,10 +450,17 @@ measured the card's TBT at 304 ms and failed on it. So both pages' timings are
 `warn` at the shells' values. They move to `error` once enough CI runs show
 where they sit, per the rule below: a page flown into a region does more on its
 first screen than a shell, and one job's three runs did not show its spread.
-The card's **layout shift, 0.17–0.29** on the runner across #1641 and #1644 and 0.25 on the laptop, is
-against the shells' 0.000–0.006 and the region page's 0.011. The region
-panel's contents move as the card and the map's loading placeholder arrive,
-and #1639 holds the fix.
+
+The card's **layout shift** is gated at `error`, at the shells' 0.02. It was
+0.17–0.29 on the runner across #1641 and #1644. A page opened on a card laid
+itself out with the explore panel closed while its region loaded, then opened
+it: the navigation slid from 320 to 48 px and the map from the whole width to
+65 %, moving the region's header and the map under the reader. The region's
+line arriving pushed the map down too. Since #1639, a card in the address lays
+the page out open from the first paint (`MainDisplay`'s `openedOnCardRef`, the
+navigation's initial state in `App.tsx`), and the line is held while the
+addressed region loads. Three runs on the mini PC on 2026-10-19 measured
+0.00005 on each.
 
 ### Local run — 2026-09-09
 
@@ -836,7 +843,9 @@ unchanged, since only the overview tier was cut. They belong in the next full ru
 | region page `/wv/9001/r/9001` and card page `/wv/9001/r/9001/e/9001`: `requests-except:openstreetmap.org:size` | error | 715 000 B | 682 912 B, the heaviest of eighteen CI runs on #1641, #1644 and #1646 (+ ~5 %): everything the page fetched but the OpenStreetMap basemap, which held within 5 kB |
 | both pages: `requests-except:openstreetmap.org:count` | error | 105 | 44–82 requests, the spread being Martin's vector tiles, with the shells' quarter of headroom over the heaviest |
 | both pages: `resource-summary:total:size` and `:count` | warn | 2 200 000 B, 145 | 1 365 877–2 317 656 B on 108–132 requests on the region page in CI, the basemap's 34–52 raster tiles included: read, not gated, while the basemap is a public server's (#651) |
-| both pages: `largest-contentful-paint`, `total-blocking-time`, `interactive`, `cumulative-layout-shift` | warn | the shells' 2 000 ms / 300 ms / 2 500 ms / 0.02, as the pages' own lines | LCP 0.93–1.30 s, TBT 125–304 ms, TTI 1.51–1.78 s on the CI runner across #1641 and #1644, and CLS 0.011 on the region page, 0.17–0.29 on the card (#1639). `error` once more CI runs show where they sit |
+| both pages: `largest-contentful-paint`, `total-blocking-time`, `interactive` | warn | the shells' 2 000 ms / 300 ms / 2 500 ms, as the pages' own lines | LCP 0.93–1.30 s, TBT 125–304 ms, TTI 1.51–1.78 s on the CI runner across #1641 and #1644. `error` once more CI runs show where they sit |
+| region page: `cumulative-layout-shift` | warn | the shells' 0.02 | 0.011 on the CI runner, 0.001–0.017 on the mini PC |
+| card page: `cumulative-layout-shift` | error | the shells' 0.02 | 0.00005 on each of three runs on the mini PC, where main measured 0.259–0.309 (#1639) |
 
 The local run has its own file, `frontend/perf/lighthouse-budgets.local.json`,
 with the same script and stylesheet lines, a font line at 85 000 B — the
