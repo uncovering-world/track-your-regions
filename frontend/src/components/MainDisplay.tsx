@@ -39,9 +39,17 @@ export function MainDisplay() {
   // a commit holding the new region beside the *previous* region's card — and
   // reading that as "a card is open here" would leave the panel open on a region
   // the reader has just moved to.
+  //
+  // Until the page's first region arrives, a card in the address is the card
+  // the page opened on, so the panel is laid out open from the first paint: a
+  // panel that opened once the region came slid the map and its header under a
+  // reader following a shared link (#1639).
+  // Read here and cleared by the region effect below, never written in render,
+  // so a render React abandons cannot clear it.
+  const openedOnCardRef = useRef(address !== null && address.experienceId !== null);
   const arrivedAtCard = address !== null
     && address.experienceId !== null
-    && address.regionId === (selectedRegion?.id ?? null);
+    && ((openedOnCardRef.current && !selectedRegion) || address.regionId === (selectedRegion?.id ?? null));
   const isExploring = exploring || arrivedAtCard;
 
   // Read rather than depended on: this effect answers a change of *region*, and
@@ -59,7 +67,10 @@ export function MainDisplay() {
   // flag can be set from it; seeding the initial state instead would be undone
   // by this very run.
   useEffect(() => {
-    setExploring(arrivedAtCardRef.current);
+    if (selectedRegion?.id !== undefined) openedOnCardRef.current = false;
+    // With no region yet, the layout comes from the address alone: a link whose
+    // region never arrives (hidden, missing) drops its card and must close again.
+    setExploring(selectedRegion?.id !== undefined && arrivedAtCardRef.current);
   }, [selectedRegion?.id]);
 
   // Closing the panel closes the card it holds, as a step: Back reopens it.
@@ -106,6 +117,10 @@ export function MainDisplay() {
                 ? 'Select a subregion from the list or click on the map.'
                 : 'This is a leaf region with no further subdivisions.'}
             </Typography>
+          )}
+          {/* Held while the addressed region loads, so its line arriving does not push the map down (#1639). */}
+          {!selectedRegion && address?.regionId != null && (
+            <Typography variant="body2" aria-hidden>{'\u00a0'}</Typography>
           )}
         </Box>
 

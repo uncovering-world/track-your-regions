@@ -17,7 +17,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, act } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { MemoryRouter } from 'react-router';
+import { MemoryRouter, useNavigate } from 'react-router';
 import type { Region } from '../types';
 
 const { navState, mockFetchByRegion } = vi.hoisted(() => ({
@@ -44,7 +44,7 @@ vi.mock('../api/experiences', async (importOriginal) => {
   return { ...actual, fetchExperiencesByRegion: mockFetchByRegion };
 });
 
-import { MainDisplay } from './MainDisplay';
+import { MainDisplay, setExplorationModeListener } from './MainDisplay';
 
 const TESTLAND = { id: 9001, name: 'Testland', worldViewId: 5 } as Region;
 const ELSEWHERE = { id: 9002, name: 'Elsewhere', worldViewId: 5 } as Region;
@@ -91,6 +91,55 @@ describe('the explore panel', () => {
     navState.selectedRegion = ELSEWHERE;
     renderAt('/wv/5/r/9001-testland/e/1-somewhere');
     expect(panel()).toBeNull();
+  });
+
+  it('is laid out open from the first paint when the page opens on a card, before its region arrives (#1639)', () => {
+    // A link to a card: the region is still loading. The page around the map
+    // collapses its navigation on this signal, so a "closed" first and an
+    // "open" once the region came slid the whole page under the reader.
+    const signals: boolean[] = [];
+    setExplorationModeListener(exploring => signals.push(exploring));
+    const { rerender } = renderAt('/wv/5/r/9001-testland/e/1-somewhere');
+    // The region's line is held while it loads, so its text arriving moves nothing below it.
+    expect(screen.getByRole('heading', { name: 'Select a region' }).nextElementSibling?.textContent).toBe('\u00a0');
+
+    navState.selectedRegion = TESTLAND;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    act(() => {
+      rerender(
+        <MemoryRouter initialEntries={['/wv/5/r/9001-testland/e/1-somewhere']}>
+          <QueryClientProvider client={client}>
+            <MainDisplay />
+          </QueryClientProvider>
+        </MemoryRouter>,
+      );
+    });
+
+    expect(panel()).not.toBeNull();
+    expect(signals).not.toContain(false);
+    expect(signals[0]).toBe(true);
+    setExplorationModeListener(() => {});
+  });
+
+  it('closes again when a card link\'s region never arrives and the address drops the card (#1639)', async () => {
+    // The restore finds the region hidden or missing: it rewrites the address to
+    // the world view alone and selects nothing. The page must not stay laid out
+    // open, with the navigation collapsed, on the page where the reader picks a region.
+    const signals: boolean[] = [];
+    setExplorationModeListener(exploring => signals.push(exploring));
+    function Degrade() {
+      const navigate = useNavigate();
+      return <button type="button" onClick={() => navigate('/wv/5', { replace: true })}>degrade</button>;
+    }
+    renderAt('/wv/5/r/9001-testland/e/1-somewhere', <Degrade />);
+    expect(signals[0]).toBe(true);
+
+    await act(async () => {
+      screen.getByRole('button', { name: 'degrade' }).click();
+    });
+
+    expect(signals.at(-1)).toBe(false);
+    setExplorationModeListener(() => {});
   });
 
   it('closes when the reader moves to another region', async () => {
