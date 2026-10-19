@@ -1956,7 +1956,7 @@ call a monument, and not a work that hangs inside one: a cathedral is a place of
 museum's sculpture is that museum's work, and a Pietà is St Peter's before it is Rome's (#753 is
 where a work a traveller goes to a church to see will live). This source fills the kind's **world
 tier** — what the world knows, by the same fame line as the museums' — and nothing else; the
-regional tier, the monuments a region holds below the world's line, comes from regional sources
+regional tier, the monuments a region knows and the world's line does not reach, comes from regional sources
 by the rules of [filling-a-kind.md](filling-a-kind.md) (ADR-0048; #799), and carries no badge.
 
 **The pipeline is the museum import's, one level over** (#754). Five stages, each a cached

@@ -67,7 +67,7 @@ and accepted by it.
 | [0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) | A traveller browses by kind of place, and a source is how a kind is filled | Accepted — decision 4 narrowed by [0046](0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md); decisions 2 and 3 narrowed by [0048](0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md); decision 4 narrowed by [0084](0084-a-place-belongs-to-no-source-and-no-kind.md) | 2026-09-03 |
 | [0046](0046-a-place-is-ours-to-identify-and-a-merge-is-confirmed-by-a-curator.md) | A place is ours to identify, and two rows become one place by a merge a curator confirms | Accepted — the wording of decision 5 narrowed by [0084](0084-a-place-belongs-to-no-source-and-no-kind.md); decisions 1 and 5 narrowed by [0100](0100-a-serial-sites-components-are-places-part-of-the-site.md); decisions 2 and 3 narrowed by [0120](0120-a-near-pair-is-also-asked-when-one-names-words-stand-in-the-others.md) | 2026-09-03 |
 | [0047](0047-a-cached-answer-belongs-to-the-source-that-asked.md) | A cached answer belongs to the source that asked | Accepted | 2026-09-04 |
-| [0048](0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md) | A kind is filled in two tiers, each from its own kind of source | Accepted | 2026-09-06 |
+| [0048](0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md) | A kind is filled in two tiers, each from its own kind of source | Accepted — decision 1 and decision 5's "top" narrowed by [0126](0126-the-two-tiers-differ-by-source-and-weigh-the-same.md) | 2026-09-06 |
 | [0049](0049-a-curator-writes-a-works-picture-only-with-its-credit.md) | A curator writes a work's picture only with its credit | Accepted | 2026-09-06 |
 | [0050](0050-a-renamed-component-is-found-by-its-claim.md) | A renamed component is found by its claim, and a tie the name does not decide is nobody | Accepted | 2026-09-07 |
 | [0051](0051-the-review-queue-is-one-list-of-dated-questions.md) | The review queue is one list of dated questions, filtered and set aside per curator | Accepted | 2026-09-07 |
@@ -145,6 +145,7 @@ and accepted by it.
 | [0123](0123-a-regions-union-is-made-of-full-resolution-inputs-and-bounded-where-it-runs.md) | A region's union is made of full-resolution inputs, and bounded where it runs | Accepted | 2026-10-18 |
 | [0124](0124-the-dump-built-tables-live-in-a-workbench-schema-and-every-table-declares-its-tier.md) | The dump-built tables live in a workbench schema, and every table declares its tier | Accepted | 2026-10-19 |
 | [0125](0125-a-type-answer-is-the-kinds.md) | A held answer to a kind's type is the kind's, and every other is the place's | Accepted | 2026-10-19 |
+| [0126](0126-the-two-tiers-differ-by-source-and-weigh-the-same.md) | The two tiers of a kind differ by source and weigh the same | Accepted | 2026-10-19 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

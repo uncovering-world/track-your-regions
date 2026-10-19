@@ -2,7 +2,7 @@
 
 The rules by which a kind of place is filled — which sources, chosen how — so that the next
 kind (regional art museums, #628; archaeology and history museums, #581; the public art a
-country holds below the world's line) is filled by applying them rather than by answering the
+country knows and the world's line does not reach) is filled by applying them rather than by answering the
 question again. The decisions that bind are
 [ADR-0048](../decisions/0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md);
 everything else here — the scorecard, the search procedure, the verdicts — is a **best effort
@@ -17,7 +17,13 @@ rules and leaving a record in the [source register](../sources/README.md).
 
 ## 1. The two tiers
 
-A kind is filled in two tiers, always both, in this order.
+A kind is filled in two tiers, always both. The tiers differ in where their places are found,
+never in how much a place matters: a place either tier brings is equally a place the kind
+offers, and each tier is described and measured by its own source and signal
+([ADR-0126](../decisions/0126-the-two-tiers-differ-by-source-and-weigh-the-same.md)). The world
+tier is built first only because one global source covers every region at once. No grade that
+separates the two tiers' places, such as "worth a journey" or "worth a detour", reaches a
+reader; such a scale may serve an internal mechanism only.
 
 **The world tier** is what the world knows of the kind: a global source ranks the whole world
 on one signal and a line is drawn across it. World Heritage is the UNESCO list itself — the
@@ -25,23 +31,24 @@ list *is* the tier; art museums are the venues holding a work at 22 Wikipedia-la
 sitelinks or more (works-first, [ADR-0023](../decisions/0023-works-first-museum-selection.md));
 public art is the sculptures and monuments above the same line — ADR-0023's, reused by #754
 ([experiences.md § Public Art](experiences.md#public-art--monuments-landmarksyncservicets-publicartts)). The
-world tier carries the **Iconic** badge — the badge is the world tier of a kind, and nothing
-else awards it ([ADR-0045](../decisions/0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md)
-decision 5). What the line leaves out is not a defect of the line: it is the next tier's job.
+**Iconic** badge is written on world-tier places only, by each kind's own rule
+([ADR-0045](../decisions/0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md)
+decision 5), and what it marks beyond a famous work waits for #1737. What the line leaves out is not a defect of the line: it is the regional tier's
+job.
 
-**The regional tier** completes the kind with what a region holds that a traveller standing
-there would visit — "the iconic art museums *and some other art museums worth your time*", in
-the vision's words. It comes from sources native to the region: a ministry's register, a
-museum association's directory, a city's own list, a curator who has been there. It carries no
-badge. Its **unit** is the source's own — a national register covers a country, a city list a
+**The regional tier** is what a region holds that a traveller standing there would visit,
+found through sources native to the region: a ministry's register, a museum association's
+directory, a city's own list, a curator who has been there. A temple that every Indian knows
+and the world does not belongs here, as much a place the kind offers as one the whole world
+knows. It carries no badge, and a place without one is not worth less for that. Its **unit** is the source's own — a national register covers a country, a city list a
 city — never a world-view region: the catalogue places each place into world-view regions by
 coordinates afterwards, as it does today, so a country register fills every region that country
 overlaps, and a region has a regional tier the moment any source covering it is adopted.
 
 **How a reader sees them.** A region's list of a kind is its world-tier places and its
-regional-tier places together, one list, the world tier's rows badged. Counts count both
-(ADR-0046 decision 8: a kind counts memberships, a region counts places). Nothing on a card
-says which tier brought a place except the badge.
+regional-tier places together, one list. Counts count both (ADR-0046 decision 8: a kind
+counts memberships, a region counts places). Nothing on a card says which tier brought a
+place.
 
 **How the tiers meet.** A regional source that names a place already in the world tier names
 *the same place* (ADR-0046: identity is ours; an equal Wikidata item merges without a
@@ -76,8 +83,8 @@ A curator may add to and remove from the cut.
 the world tier, where the curator says the place belongs there — judged by the same scorecard
 as any other (identity, coordinates, a Wikidata item where one exists), and it is how a unit
 with no native source gets filled at all. A curator may place an object in either tier and set
-or clear the badge; the model has two tiers and one badge, and "top" is the world tier, not a
-third status. The vision's "curators can promote or demote Iconic" is this sentence.
+or clear the badge; the model has two tiers and one badge, and the badge is not a third
+status. The vision's "curators can promote or demote Iconic" is this sentence.
 
 ---
 
@@ -623,7 +630,7 @@ expected to rewrite part of it:
   the proposal the gate receives.
 - **The first curator list**: what the curator screen asks for and how a curator's tier and
   badge are recorded (the badge is #603's).
-- **The first non-museum kind** (public art below the world's line; churches with works, #753):
+- **The first non-museum kind** (the public art the world's line does not reach; churches with works, #753):
   whether the scorecard's criteria are the kind's or the family's. **Answered** by the
   places-of-worship adoption — the family's, with two criteria read on their world-tier sense;
   see the log row below.
