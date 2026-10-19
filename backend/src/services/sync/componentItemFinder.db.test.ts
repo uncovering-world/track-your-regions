@@ -256,11 +256,61 @@ describe('findComponentItems', () => {
     await run();
     expect(await offered()).toEqual([]);
 
-    // Anti-vacuity: with the class tree naming neither, the town's museum is what the place name takes.
+    // Anti-vacuity: with the class tree naming neither, and the museum's ground
+    // an archaeological site, which the town's name alone may take (#1689), the
+    // town's museum is what the place name takes.
     vi.mocked(queries.classesUnder).mockImplementation(underTheRoots(false));
-    vi.mocked(queries.itemsUnder).mockImplementation(museumsAmong(false));
+    vi.mocked(queries.itemsUnder).mockImplementation(async (items: readonly string[], ancestors: readonly string[]) =>
+      new Set(ancestors.includes(MUSEUM) ? [] : items.filter(item => item === WELTMUSEUM)));
     await run();
     expect(await offered()).toEqual([{ wikidata_item: WELTMUSEUM, basis: 'toponym' }]);
+  });
+
+  it("takes by the town's name alone only an archaeological site on the catalogue's classes, else a word of the component's own (#1689)", async () => {
+    const CHURCH = 'Q16970';
+    const TOWER = 'Q12518';
+    const ARCHAEOLOGICAL_SITE = 'Q839954';
+    const PFARRKIRCHE = 'Q98440';
+    const HUFEISENTURM = 'Q98441';
+    await fallBack();
+    // Some resolved components elsewhere are a church or a tower, so both classes clear the floor.
+    vi.mocked(queries.classesOfItems).mockImplementation(async (items: readonly string[]) =>
+      new Map(items.map(item => [item, OTHER_SITES.map(otherSiteItem).includes(item) ? [CASTRUM, CHURCH, TOWER] : []])));
+    vi.mocked(queries.itemsInBoxes).mockImplementation(inEveryBox([
+      { item: PFARRKIRCHE, labels: [], coords: [[48.21165, 15.2093]], classes: [CHURCH] },
+      { item: HUFEISENTURM, labels: [], coords: [[48.2121, 15.2075]], classes: [TOWER] },
+      { item: GRESIA_ITEM, labels: [], coords: [[44.166667, 24.916667]], classes: [CASTRUM] },
+    ]));
+    const names: Record<string, string> = {
+      [PFARRKIRCHE]: 'Pfarrkirche Pöchlarn',
+      [HUFEISENTURM]: 'Spätantiker Hufeisenturm im Kommunalzentrum Pöchlarn',
+      [GRESIA_ITEM]: 'Castrul roman de la Gresia',
+    };
+    vi.mocked(queries.labelsOf).mockImplementation(async (items: readonly string[]) => new Map(items.map(item => {
+      const all = item in names ? [names[item]] : [];
+      return [item, { all, english: all[0] ?? null }];
+    })));
+    const centre = await point('9840-007', 'Pöchlarn – Kastell Zentralbereich', 48.2117, 15.2093, null);
+    const west = await point('9840-008', 'Pöchlarn – Kastell Hufeisenturm West', 48.2121, 15.2076, null);
+    const gresia = await point('9840-009', 'Gresia - La Biserică', 44.1666666667, 24.9166666667, null);
+    const offered = async (locationId: number) => (await pool.query(
+      `SELECT wikidata_item FROM experience_component_item_proposals WHERE location_id = $1`, [locationId],
+    )).rows.map(row => row.wikidata_item);
+    const archaeological = (among: readonly string[]) => async (items: readonly string[], ancestors: readonly string[]) =>
+      new Set(ancestors.includes(ARCHAEOLOGICAL_SITE) ? items.filter(item => among.includes(item)) : []);
+
+    // The Dacian castrum is named after its village alone and is an archaeological site; the
+    // parish church on the fort is named after its town alone; the tower shares "Hufeisenturm".
+    vi.mocked(queries.itemsUnder).mockImplementation(archaeological([GRESIA_ITEM]));
+    await run();
+    expect(await offered(centre)).toEqual([]);
+    expect(await offered(west)).toEqual([HUFEISENTURM]);
+    expect(await offered(gresia)).toEqual([GRESIA_ITEM]);
+
+    // Anti-vacuity: were the church an archaeological site, the town's name would take it.
+    vi.mocked(queries.itemsUnder).mockImplementation(archaeological([GRESIA_ITEM, PFARRKIRCHE]));
+    await run();
+    expect(await offered(centre)).toEqual([PFARRKIRCHE]);
   });
 
   it("narrowed to one site, asks about and writes that site's points only (#1429)", async () => {

@@ -8,7 +8,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { bestMatch, holdsToponym, toponymsOf, type CandidateItem, type ComponentMatch } from './componentItemMatching.js';
+import {
+  bestMatch, holdsToponym, namesMoreThanTheTown, ownToponymsOf, toponymsOf, type CandidateItem, type ComponentMatch,
+} from './componentItemMatching.js';
 import { withRegisterCodes } from './componentItemRegisters.js';
 
 const GRESIA = { locationId: 9884, name: 'Gresia - La Biserică', lat: 44.1666666667, lon: 24.9166666667 };
@@ -97,5 +99,27 @@ describe('a candidate\'s register code', () => {
     expect(aalto[0]).toMatchObject({ registerCode: 'RKY 1393', registerDisagrees: false });
     const even = withRegisterCodes([match(9860, 'Q42841496'), match(9860, 'Q12723861')], codes, () => 1718);
     expect(even.map(m => m.registerDisagrees)).toEqual([false, false]);
+  });
+});
+
+describe("a component's own place names past its town (#1689)", () => {
+  const POCHLARN_WEST = { locationId: 6817, name: 'Pöchlarn – Kastell Hufeisenturm West', lat: 48.2121, lon: 15.2076 };
+  const ENNS_LAURENZ = { locationId: 6757, name: 'Enns – St. Laurenz', lat: 48.2087, lon: 14.4734 };
+  const item = (label: string): CandidateItem => ({ item: 'Q1', labels: [label], coords: [] });
+
+  it('leaves out the town the name leads with', () => {
+    expect(ownToponymsOf(POCHLARN_WEST.name)).toEqual(['kastell hufeisenturm west']);
+    expect(ownToponymsOf(POTAISSA.name)).toEqual(['potaissa', 'dealul cetatii']);
+    expect(ownToponymsOf(GRESIA.name)).toEqual(['la biserica']);
+  });
+
+  it('reads a label sharing a word of them, never the town alone, nor a short word', () => {
+    expect(namesMoreThanTheTown(POCHLARN_WEST, item('Spätantiker Hufeisenturm im Kommunalzentrum Pöchlarn'))).toBe(true);
+    expect(namesMoreThanTheTown(POCHLARN_WEST, item('Pfarrkirche Pöchlarn'))).toBe(false);
+    // "West" is in many a label, and "St." names a saint before it names the basilica.
+    expect(namesMoreThanTheTown(POCHLARN_WEST, item('Westbahnhof West Pöchlarn'))).toBe(false);
+    expect(namesMoreThanTheTown(ENNS_LAURENZ, item('Pfarrkirche Enns'))).toBe(false);
+    expect(namesMoreThanTheTown(POTAISSA, item('Castrul roman Potaissa'))).toBe(true);
+    expect(namesMoreThanTheTown(GRESIA, item('Castrul roman de la Gresia'))).toBe(false);
   });
 });
