@@ -4230,6 +4230,23 @@ CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikipedia_redirects (
 );
 COMMENT ON TABLE workbench.wikipedia_redirects IS 'An article''s redirects in the Wikipedia editions a door counts (#1650, ADR-0055 decision 2: over 15 million views a year): a redirect in namespace 0 by its title, and the title of the article it points to, both with spaces as Wikidata''s sitelinks write them. Kept only where the target is a sitelink of the local subset and the redirect is no item''s own sitelink, so a month''s views of the redirect are summed under that article''s item.';
 
+-- The Wikivoyage listings Archaeology's readership door reads (#1768). See db/migrations/135.
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikivoyage_listing_builds (
+    build_id INTEGER PRIMARY KEY REFERENCES workbench.dump_builds(id),
+    dump_date DATE NOT NULL,
+    editions JSONB NOT NULL,
+    swapped_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+COMMENT ON TABLE workbench.wikivoyage_listing_builds IS 'Each build of the Wikivoyage listings (#1768, ADR-0128) that was swapped in: the dump build that read it, the dump date every edition''s file shares, and the listings kept per edition by its database name. The newest row is what wikivoyage_listings holds; unlogged like it, so a crash empties the record with the table and the panel asks for a build.';
+
+CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikivoyage_listings (
+    item TEXT NOT NULL,
+    site TEXT NOT NULL,
+    title TEXT NOT NULL,
+    PRIMARY KEY (item, site, title)
+);
+COMMENT ON TABLE workbench.wikivoyage_listings IS 'A Wikidata item a Wikivoyage listing names (#1768, ADR-0128): the item of a listing template''s wikidata= parameter in an article (namespace 0) of one edition, with the edition''s database name (enwikivoyage) and the article''s title. A travel guide''s editors send visitors there; Archaeology''s readership door opens only for a site an edition lists. No text of the listing is kept.';
+
 COMMENT ON COLUMN workbench.readership_month_files.redirects_dump_date IS 'The dump date of the redirects the month was folded with (#1650), or null where no redirects were in place when it was kept.';
 COMMENT ON COLUMN workbench.readership_month_files.redirects_build_id IS 'The build of the redirects the month was folded with (#1650): a build reads again a month folded with another, since one dump date can be built twice over a changed subset.';
 
