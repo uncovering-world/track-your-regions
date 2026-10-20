@@ -12,6 +12,7 @@ Usage:
     python precalculate-geometries.py
 """
 
+import contextlib
 import os
 import signal
 import sys
@@ -28,13 +29,12 @@ _conn = None
 
 def signal_handler(signum, frame):
     """Handle Ctrl+C by canceling the current query."""
-    global _conn
     if _conn:
         print("\n\n⚠️  Canceling current query...")
-        try:
+        # Best effort: the process exits on the next line either way, and a
+        # cancel that fails (the connection already gone) has nothing to undo.
+        with contextlib.suppress(Exception):
             _conn.cancel()
-        except Exception:
-            pass
     sys.exit(1)
 
 
@@ -93,7 +93,8 @@ def get_non_leaf_divisions_by_depth(cursor):
 
     # Group by depth level
     from collections import OrderedDict
-    levels = OrderedDict()
+
+    levels: OrderedDict[int, list[tuple[int, str]]] = OrderedDict()
     for div_id, name, depth in result:
         levels.setdefault(depth, []).append((div_id, name))
 
@@ -116,18 +117,25 @@ def calculate_merged_geometry(cursor, division_id, debug=False):
     """
     if debug:
         # Get debug info
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT
                 d.name,
                 (SELECT COUNT(*) FROM administrative_divisions WHERE parent_id = d.id) as child_count,
                 (SELECT COUNT(*) FROM administrative_divisions WHERE parent_id = d.id AND geom IS NOT NULL) as children_with_geom,
                 (SELECT SUM(ST_NPoints(geom)) FROM administrative_divisions WHERE parent_id = d.id AND geom IS NOT NULL) as total_points
             FROM administrative_divisions d WHERE d.id = %s
-        """, (division_id,))
+        """,
+            (division_id,),
+        )
         info = cursor.fetchone()
         if info:
             name, child_count, children_with_geom, total_points = info
-            print(f"\n    -> {name}: {child_count} children, {children_with_geom} with geom, {total_points or 0:,} points", end="", flush=True)
+            print(
+                f"\n    -> {name}: {child_count} children, {children_with_geom} with geom, {total_points or 0:,} points",
+                end="",
+                flush=True,
+            )
 
     start = time.perf_counter()
 
@@ -136,7 +144,8 @@ def calculate_merged_geometry(cursor, division_id, debug=False):
     used_coverage_union = False
     cursor.execute("SAVEPOINT try_coverage_union")
     try:
-        cursor.execute("""
+        cursor.execute(
+            """
             WITH merged AS (
                 SELECT ST_CoverageUnion(geom) as merged_geom
                 FROM administrative_divisions
@@ -148,12 +157,15 @@ def calculate_merged_geometry(cursor, division_id, debug=False):
             FROM merged
             WHERE administrative_divisions.id = %s
               AND merged.merged_geom IS NOT NULL
-        """, (division_id, division_id))
+        """,
+            (division_id, division_id),
+        )
         cursor.execute("RELEASE SAVEPOINT try_coverage_union")
         used_coverage_union = True
     except Exception:
         cursor.execute("ROLLBACK TO SAVEPOINT try_coverage_union")
-        cursor.execute("""
+        cursor.execute(
+            """
             WITH merged AS (
                 SELECT ST_Union(ST_MakeValid(geom)) as merged_geom
                 FROM administrative_divisions
@@ -165,7 +177,9 @@ def calculate_merged_geometry(cursor, division_id, debug=False):
             FROM merged
             WHERE administrative_divisions.id = %s
               AND merged.merged_geom IS NOT NULL
-        """, (division_id, division_id))
+        """,
+            (division_id, division_id),
+        )
 
     if debug:
         elapsed = time.perf_counter() - start
@@ -189,20 +203,23 @@ def _merge_worker(division_ids, db_params):
         start = time.perf_counter()
 
         # Get child info
-        cursor.execute("""
+        cursor.execute(
+            """
             SELECT
                 (SELECT COUNT(*) FROM administrative_divisions WHERE parent_id = %s),
                 (SELECT SUM(ST_NPoints(geom)) FROM administrative_divisions WHERE parent_id = %s AND geom IS NOT NULL)
-        """, (division_id, division_id))
+        """,
+            (division_id, division_id),
+        )
         info = cursor.fetchone()
         child_count = info[0] if info else 0
         points_before = info[1] if info and info[1] else 0
 
         # Try ST_CoverageUnion first, fall back to ST_Union
-        used_coverage = False
         cursor.execute("SAVEPOINT try_cov")
         try:
-            cursor.execute("""
+            cursor.execute(
+                """
                 WITH merged AS (
                     SELECT ST_CoverageUnion(geom) as merged_geom
                     FROM administrative_divisions
@@ -212,12 +229,14 @@ def _merge_worker(division_ids, db_params):
                 SET geom = validate_multipolygon(merged.merged_geom)
                 FROM merged
                 WHERE administrative_divisions.id = %s AND merged.merged_geom IS NOT NULL
-            """, (division_id, division_id))
+            """,
+                (division_id, division_id),
+            )
             cursor.execute("RELEASE SAVEPOINT try_cov")
-            used_coverage = True
         except Exception:
             cursor.execute("ROLLBACK TO SAVEPOINT try_cov")
-            cursor.execute("""
+            cursor.execute(
+                """
                 WITH merged AS (
                     SELECT ST_Union(ST_MakeValid(geom)) as merged_geom
                     FROM administrative_divisions
@@ -227,7 +246,9 @@ def _merge_worker(division_ids, db_params):
                 SET geom = validate_multipolygon(merged.merged_geom)
                 FROM merged
                 WHERE administrative_divisions.id = %s AND merged.merged_geom IS NOT NULL
-            """, (division_id, division_id))
+            """,
+                (division_id, division_id),
+            )
 
         # Commit so other workers can see this division's geometry
         conn.commit()
@@ -247,13 +268,13 @@ def _merge_worker(division_ids, db_params):
 
 def _get_db_params():
     """Get DB connection params from environment."""
-    return dict(
-        dbname=os.environ.get("DB_NAME", "track_regions"),
-        user=os.environ.get("DB_USER", "postgres"),
-        password=os.environ.get("DB_PASSWORD", "postgres"),
-        host=os.environ.get("DB_HOST", "localhost"),
-        port=int(os.environ.get("DB_PORT", 5432)),
-    )
+    return {
+        "dbname": os.environ.get("DB_NAME", "track_regions"),
+        "user": os.environ.get("DB_USER", "postgres"),
+        "password": os.environ.get("DB_PASSWORD", "postgres"),
+        "host": os.environ.get("DB_HOST", "localhost"),
+        "port": int(os.environ.get("DB_PORT", "5432")),
+    }
 
 
 def precalculate_all_geometries(conn, cursor, workers=8):
@@ -286,14 +307,14 @@ def precalculate_all_geometries(conn, cursor, workers=8):
 
             if actual_workers == 1:
                 # Sequential on main connection
-                for division_id, name in divisions:
+                for division_id, _name in divisions:
                     calculate_merged_geometry(cursor, division_id, debug=(level_count <= 20))
                     processed += 1
                 conn.commit()
             else:
                 # Parallel with thread pool
                 chunk_size = (level_count + actual_workers - 1) // actual_workers
-                chunks = [divisions[i:i + chunk_size] for i in range(0, level_count, chunk_size)]
+                chunks = [divisions[i : i + chunk_size] for i in range(0, level_count, chunk_size)]
 
                 with ThreadPoolExecutor(max_workers=actual_workers) as executor:
                     futures = [executor.submit(_merge_worker, chunk, db_params) for chunk in chunks]
@@ -303,11 +324,15 @@ def precalculate_all_geometries(conn, cursor, workers=8):
                         # Show notable regions (>1s or >100K points)
                         for name, children, pts_before, pts_after, elapsed in results:
                             if elapsed > 1.0 or pts_before > 100_000:
-                                print(f"    {name}: {children} children, {pts_before:,} → {pts_after:,} pts [{elapsed:.1f}s]")
+                                print(
+                                    f"    {name}: {children} children, {pts_before:,} → {pts_after:,} pts [{elapsed:.1f}s]"
+                                )
 
             level_elapsed = time.perf_counter() - level_start
             total_elapsed = time.perf_counter() - start_time
-            print(f"    Level {depth} done ({level_count:,} divisions in {level_elapsed:.1f}s) — {processed:,}/{total:,} total ({total_elapsed:.0f}s)")
+            print(
+                f"    Level {depth} done ({level_count:,} divisions in {level_elapsed:.1f}s) — {processed:,}/{total:,} total ({total_elapsed:.0f}s)"
+            )
 
         # Final
         elapsed = time.perf_counter() - start_time
@@ -319,7 +344,7 @@ def precalculate_all_geometries(conn, cursor, workers=8):
 
     except KeyboardInterrupt:
         print(f"\n\n  Interrupted! Progress: {processed:,}/{total:,} processed")
-        print(f"  Run the script again to continue from where you left off.")
+        print("  Run the script again to continue from where you left off.")
         sys.exit(0)
 
 
@@ -367,7 +392,7 @@ def run_coverage_simplification(conn, cursor, workers=8):
 
     # Split into chunks — one per worker
     chunk_size = (total + workers - 1) // workers
-    chunks = [parent_ids[i:i + chunk_size] for i in range(0, total, chunk_size)]
+    chunks = [parent_ids[i : i + chunk_size] for i in range(0, total, chunk_size)]
 
     completed = 0
     total_failed = 0
@@ -390,9 +415,9 @@ def run_coverage_simplification(conn, cursor, workers=8):
 
 def print_stats(cursor):
     """Print statistics about geometries."""
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print("Geometry Statistics:")
-    print("="*50)
+    print("=" * 50)
 
     cursor.execute("SELECT COUNT(*) FROM administrative_divisions")
     total = cursor.fetchone()[0]
@@ -420,16 +445,16 @@ def print_stats(cursor):
     """)
     sizes = cursor.fetchone()
     if sizes[0]:
-        print(f"  Geometry sizes:")
+        print("  Geometry sizes:")
         print(f"    - Full: {sizes[0]}")
         print(f"    - Medium (simplified): {sizes[2]}")
         print(f"    - Low (simplified): {sizes[1]}")
 
-    print("="*50)
+    print("=" * 50)
 
 
 def main():
-    global _conn
+    global _conn  # noqa: PLW0603 -- the SIGINT handler cancels the running query through this module-level connection
     db_name, db_user, db_password, db_host = get_db_credentials()
 
     print(f"Connecting to PostgreSQL database {db_name}@{db_host}...", end=" ")

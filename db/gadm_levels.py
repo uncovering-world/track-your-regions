@@ -57,12 +57,7 @@ SUBCOUNTRY_LEVELS = ["SOVEREIGN", "GOVERNEDBY"]
 NAME_LEVELS = [f"NAME_{i}" for i in range(6)]
 
 #: Every level a GADM row can name a division at, outermost first.
-GEO_LEVELS = (
-    ["CONTINENT", "SUBCONT"]
-    + SUBCOUNTRY_LEVELS
-    + ["COUNTRY", "REGION"]
-    + NAME_LEVELS
-)
+GEO_LEVELS = ["CONTINENT", "SUBCONT"] + SUBCOUNTRY_LEVELS + ["COUNTRY", "REGION"] + NAME_LEVELS
 
 #: The columns `row_levels` reads, so the loader can select exactly them.
 GID_LEVELS = [f"GID_{i}" for i in range(6)]
@@ -86,7 +81,7 @@ def _gid(record: dict, level: str) -> str | None:
     """The GID beside a `NAME_n` level, where the level has one."""
     if not level.startswith("NAME_"):
         return None
-    value = record.get(f"GID_{level[len('NAME_'):]}")
+    value = record.get(f"GID_{level[len('NAME_') :]}")
     return value or None
 
 
@@ -125,11 +120,10 @@ def row_levels(record: dict) -> list[RowLevel]:
         name = record.get(level) or None
         gid = _gid(record, level)
 
-        if level in SUBCOUNTRY_LEVELS:
-            # A territory is named at one of the two levels, and a country that
-            # governs itself repeats its own name rather than naming a level.
-            if level != subcountry or name == country:
-                continue
+        # A territory is named at one of the two levels, and a country that
+        # governs itself repeats its own name rather than naming a level.
+        if level in SUBCOUNTRY_LEVELS and (level != subcountry or name == country):
+            continue
 
         if level == "NAME_0" and name == country:
             continue
@@ -167,13 +161,15 @@ def row_divisions(record: dict) -> list[RowDivision]:
         # An unnamed level is called after its parent -- the name that division
         # already surfaces under wherever it is its parent's only row.
         name = level.name or parent_name or level.key
-        divisions.append(RowDivision(
-            path=path,
-            parent_path=parent_path,
-            name=name,
-            is_leaf=index == len(levels) - 1,
-            named=level.name is not None,
-        ))
+        divisions.append(
+            RowDivision(
+                path=path,
+                parent_path=parent_path,
+                name=name,
+                is_leaf=index == len(levels) - 1,
+                named=level.name is not None,
+            )
+        )
         parent_path = path
         parent_name = name
 

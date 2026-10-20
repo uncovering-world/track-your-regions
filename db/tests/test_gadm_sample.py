@@ -12,7 +12,14 @@ import pytest
 from gadm_sample import continents, ogr_filter, resolve_continent, sql_filter
 
 GADM_CONTINENTS = [
-    "Africa", "Antarctica", "Asia", "Australia", "Europe", "North America", "Oceania", "South America",
+    "Africa",
+    "Antarctica",
+    "Asia",
+    "Australia",
+    "Europe",
+    "North America",
+    "Oceania",
+    "South America",
 ]
 
 
@@ -47,7 +54,7 @@ def test_a_continent_the_file_does_not_hold_is_refused_with_the_ones_it_does():
 def test_the_filter_reads_one_continent_and_a_full_load_reads_all(gadm):
     where, params = sql_filter("Oceania")
     # nosemgrep: python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- sqlite3, not SQLAlchemy; where is sql_filter's constant clause, whose value is bound, which is what this test reads
-    gadm.execute(f'SELECT "COUNTRY" FROM gadm_410{where} ORDER BY 1', params)
+    gadm.execute(f'SELECT "COUNTRY" FROM gadm_410{where} ORDER BY 1', params)  # noqa: S608 -- see the nosemgrep line above
     assert [row[0] for row in gadm.fetchall()] == ["Fiji", "Samoa"]
     assert sql_filter(None) == ("", ())
 

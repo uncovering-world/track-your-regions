@@ -19,9 +19,7 @@ def continents(sqlite_cursor, table_name):
     already checked against its plain-identifier rule.
     """
     # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query,python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- sqlite3, not SQLAlchemy; table_name is an identifier (unbindable) the caller validated against TABLE_NAME_RE
-    sqlite_cursor.execute(
-        f'SELECT DISTINCT "CONTINENT" FROM "{table_name}" WHERE "CONTINENT" <> \'\' ORDER BY 1'
-    )
+    sqlite_cursor.execute(f'SELECT DISTINCT "CONTINENT" FROM "{table_name}" WHERE "CONTINENT" <> \'\' ORDER BY 1')  # noqa: S608  # nosec B608 -- see the nosemgrep line above
     return [row[0] for row in sqlite_cursor.fetchall()]
 
 
@@ -36,9 +34,7 @@ def resolve_continent(requested, available):
     for name in available:
         if name.casefold() == wanted:
             return name
-    raise ValueError(
-        f"GADM names no continent {requested!r}; it names {', '.join(available)}"
-    )
+    raise ValueError(f"GADM names no continent {requested!r}; it names {', '.join(available)}")
 
 
 def sql_filter(continent):

@@ -13,8 +13,13 @@ from gadm_levels import REMAINDER_SUFFIX, remainder_label, row_divisions, row_le
 def record(**fields):
     """A GADM row: the named columns, and every other one empty."""
     row = {
-        "CONTINENT": "", "SUBCONT": "", "SOVEREIGN": "", "GOVERNEDBY": "",
-        "COUNTRY": "", "REGION": "", "UID": 1,
+        "CONTINENT": "",
+        "SUBCONT": "",
+        "SOVEREIGN": "",
+        "GOVERNEDBY": "",
+        "COUNTRY": "",
+        "REGION": "",
+        "UID": 1,
     }
     row.update({f"NAME_{i}": "" for i in range(6)})
     row.update({f"GID_{i}": "" for i in range(6)})
@@ -65,9 +70,14 @@ def test_an_unnamed_level_does_not_collide_with_a_sibling_named_after_the_parent
     fold into one division and lose a polygon.
     """
     district = {
-        "CONTINENT": "Asia", "COUNTRY": "Thailand", "NAME_0": "Thailand", "GID_0": "THA",
-        "NAME_1": "Chiang Mai", "GID_1": "THA.10_1",
-        "NAME_2": "Hang Dong", "GID_2": "THA.10.7_1",
+        "CONTINENT": "Asia",
+        "COUNTRY": "Thailand",
+        "NAME_0": "Thailand",
+        "GID_0": "THA",
+        "NAME_1": "Chiang Mai",
+        "GID_1": "THA.10_1",
+        "NAME_2": "Hang Dong",
+        "GID_2": "THA.10.7_1",
     }
     unnamed = row_levels(record(**district, NAME_3="", GID_3="THA.10.7.1_1", UID=316016))
     named = row_levels(record(**district, NAME_3="Hang Dong", GID_3="THA.10.7.5_1", UID=316020))
@@ -85,12 +95,21 @@ def test_an_unnamed_level_that_is_its_parents_only_row_is_still_a_division():
     surfaces under the parent's name exactly as it does today. Keeping the rule
     the same for both shapes is what makes that true.
     """
-    levels = row_levels(record(
-        CONTINENT="Europe", COUNTRY="Russia", NAME_0="Russia", GID_0="RUS",
-        NAME_1="Adygey", GID_1="RUS.1_1",
-        NAME_2="Giaginskiy rayon", GID_2="RUS.1.1_1",
-        NAME_3="", GID_3="RUS.1.1.1_1", UID=272378,
-    ))
+    levels = row_levels(
+        record(
+            CONTINENT="Europe",
+            COUNTRY="Russia",
+            NAME_0="Russia",
+            GID_0="RUS",
+            NAME_1="Adygey",
+            GID_1="RUS.1_1",
+            NAME_2="Giaginskiy rayon",
+            GID_2="RUS.1.1_1",
+            NAME_3="",
+            GID_3="RUS.1.1.1_1",
+            UID=272378,
+        )
+    )
 
     assert levels[-1].level == "NAME_3"
     assert levels[-1].name is None
@@ -104,9 +123,15 @@ def test_the_country_is_named_once():
     and nothing below it ends at `COUNTRY` — which is then the leaf the polygon
     hangs on, rather than a child of itself.
     """
-    levels = row_levels(record(
-        CONTINENT="South America", COUNTRY="Aruba", NAME_0="Aruba", GID_0="ABW", UID=3379,
-    ))
+    levels = row_levels(
+        record(
+            CONTINENT="South America",
+            COUNTRY="Aruba",
+            NAME_0="Aruba",
+            GID_0="ABW",
+            UID=3379,
+        )
+    )
 
     assert [level.level for level in levels] == ["CONTINENT", "COUNTRY"]
     assert levels[-1].name == "Aruba"
@@ -118,30 +143,47 @@ def test_a_disputed_area_named_differently_from_its_country_is_kept():
     63 of GADM's rows name something at `NAME_0` other than their country, and
     dropping the level because it *usually* repeats would lose them.
     """
-    levels = row_levels(record(
-        CONTINENT="Asia", SOVEREIGN="China", COUNTRY="China",
-        NAME_0="Aksai Chin", GID_0="Z03", UID=331,
-    ))
+    levels = row_levels(
+        record(
+            CONTINENT="Asia",
+            SOVEREIGN="China",
+            COUNTRY="China",
+            NAME_0="Aksai Chin",
+            GID_0="Z03",
+            UID=331,
+        )
+    )
 
     assert [level.name for level in levels] == ["Asia", "China", "Aksai Chin"]
 
 
 def test_a_governed_territory_is_named_at_the_level_that_carries_it():
     """The Falklands: a sovereign that is not the country, and no governor."""
-    levels = row_levels(record(
-        CONTINENT="South America", SOVEREIGN="United Kingdom",
-        COUNTRY="Falkland Islands", NAME_0="Falkland Islands", GID_0="FLK",
-    ))
+    levels = row_levels(
+        record(
+            CONTINENT="South America",
+            SOVEREIGN="United Kingdom",
+            COUNTRY="Falkland Islands",
+            NAME_0="Falkland Islands",
+            GID_0="FLK",
+        )
+    )
 
     assert [level.level for level in levels] == ["CONTINENT", "SOVEREIGN", "COUNTRY"]
 
 
 def test_a_country_that_governs_itself_names_no_subcountry_level():
     """Djibouti, which fills both columns with its own name."""
-    levels = row_levels(record(
-        CONTINENT="Africa", SOVEREIGN="Djibouti", GOVERNEDBY="Djibouti",
-        COUNTRY="Djibouti", NAME_0="Djibouti", GID_0="DJI",
-    ))
+    levels = row_levels(
+        record(
+            CONTINENT="Africa",
+            SOVEREIGN="Djibouti",
+            GOVERNEDBY="Djibouti",
+            COUNTRY="Djibouti",
+            NAME_0="Djibouti",
+            GID_0="DJI",
+        )
+    )
 
     assert [level.level for level in levels] == ["CONTINENT", "COUNTRY"]
 
@@ -164,7 +206,7 @@ def paths(records):
     The loader's own walk, with the cursors taken out: get or create each
     division a row names, under the one above it.
     """
-    tree = {}
+    tree: dict[str, tuple[str, bool]] = {}
     for row in records:
         for division in row_divisions(row):
             tree.setdefault(division.path, (division.name, division.is_leaf))
@@ -179,11 +221,13 @@ def test_a_district_whose_unnamed_remainder_comes_first_is_not_left_a_leaf():
     alone made the district a leaf carrying that polygon, and the tambons
     that followed became children of a row nothing would ever union.
     """
-    tree = paths([
-        record(**THAI_DISTRICT, NAME_3="", GID_3="THA.29.20.1_1", UID=317553),
-        record(**THAI_DISTRICT, NAME_3="Nai Mueang", GID_3="THA.29.20.9_1", UID=317561),
-        record(**THAI_DISTRICT, NAME_3="Ban Ko", GID_3="THA.29.20.2_1", UID=317554),
-    ])
+    tree = paths(
+        [
+            record(**THAI_DISTRICT, NAME_3="", GID_3="THA.29.20.1_1", UID=317553),
+            record(**THAI_DISTRICT, NAME_3="Nai Mueang", GID_3="THA.29.20.9_1", UID=317561),
+            record(**THAI_DISTRICT, NAME_3="Ban Ko", GID_3="THA.29.20.2_1", UID=317554),
+        ]
+    )
 
     district = "Asia_Thailand_Nakhon Ratchasima_Muang Nakhon Ratchasima"
     assert tree[district] == ("Muang Nakhon Ratchasima", False)
@@ -211,14 +255,21 @@ def test_an_unnamed_remainder_and_a_sibling_named_after_the_district_stay_apart(
     first already there and its polygon would never be stored.
     """
     district = {
-        "CONTINENT": "Asia", "COUNTRY": "Thailand", "NAME_0": "Thailand", "GID_0": "THA",
-        "NAME_1": "Chiang Mai", "GID_1": "THA.10_1",
-        "NAME_2": "Hang Dong", "GID_2": "THA.10.7_1",
+        "CONTINENT": "Asia",
+        "COUNTRY": "Thailand",
+        "NAME_0": "Thailand",
+        "GID_0": "THA",
+        "NAME_1": "Chiang Mai",
+        "GID_1": "THA.10_1",
+        "NAME_2": "Hang Dong",
+        "GID_2": "THA.10.7_1",
     }
-    tree = paths([
-        record(**district, NAME_3="", GID_3="THA.10.7.1_1", UID=316016),
-        record(**district, NAME_3="Hang Dong", GID_3="THA.10.7.5_1", UID=316020),
-    ])
+    tree = paths(
+        [
+            record(**district, NAME_3="", GID_3="THA.10.7.1_1", UID=316016),
+            record(**district, NAME_3="Hang Dong", GID_3="THA.10.7.5_1", UID=316020),
+        ]
+    )
 
     leaves = [path for path, (_, is_leaf) in tree.items() if is_leaf]
     assert len(leaves) == 2
@@ -250,7 +301,10 @@ def test_a_remainder_is_labelled_next_to_the_sibling_it_would_be_confused_with()
 
     assert label == "Hang Dong (rest)"
     assert sorted(["Han Kaeo", "Hang Dong", label, "Khun Khong"]) == [
-        "Han Kaeo", "Hang Dong", "Hang Dong (rest)", "Khun Khong",
+        "Han Kaeo",
+        "Hang Dong",
+        "Hang Dong (rest)",
+        "Khun Khong",
     ]
 
 
@@ -268,11 +322,21 @@ def test_a_row_can_leave_two_levels_unnamed():
     afterwards. These two rows are also why the file's 2831 unnamed *rows* are
     2833 unnamed divisions.
     """
-    divisions = row_divisions(record(
-        CONTINENT="Asia", COUNTRY="United Arab Emirates", NAME_0="United Arab Emirates",
-        GID_0="ARE", NAME_1="Sharjah", GID_1="ARE.6_1",
-        NAME_2="", GID_2="ARE.6.1_1", NAME_3="", GID_3="ARE.6.1.1_1", UID=329863,
-    ))
+    divisions = row_divisions(
+        record(
+            CONTINENT="Asia",
+            COUNTRY="United Arab Emirates",
+            NAME_0="United Arab Emirates",
+            GID_0="ARE",
+            NAME_1="Sharjah",
+            GID_1="ARE.6_1",
+            NAME_2="",
+            GID_2="ARE.6.1_1",
+            NAME_3="",
+            GID_3="ARE.6.1.1_1",
+            UID=329863,
+        )
+    )
 
     assert [d.named for d in divisions] == [True, True, True, False, False]
     assert [d.name for d in divisions[-2:]] == ["Sharjah", "Sharjah"]
