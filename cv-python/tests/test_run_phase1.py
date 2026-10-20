@@ -211,3 +211,20 @@ def test_the_phase_answers_as_it_did_before_the_split(case: str) -> None:
     got = {**_answer(result), "steps": steps}
 
     assert got == EXPECTED[case]
+
+
+def test_a_water_coloured_patch_near_an_edge_is_taken_off_and_a_land_one_is_not() -> None:
+    # A title box background in the sea's colour survives water detection when no flood
+    # from the sea reaches it; a patch of land colour at the same place stays.
+    mask = np.zeros((H, W), np.uint8)
+    cv2.rectangle(mask, (80, 60), (320, 220), 1, -1)
+    cv2.rectangle(mask, (8, 8), (40, 30), 1, -1)
+    cv2.rectangle(mask, (360, 260), (392, 290), 1, -1)
+    image = np.full((H, W, 3), (110, 190, 120), np.uint8)
+    image[8:31, 8:41] = SEA
+
+    preprocess._remove_water_coloured_edge_ccs(mask, image, list(SEA))
+
+    assert not mask[8:31, 8:41].any()
+    assert mask[260:291, 360:393].all()
+    assert mask[60:221, 80:321].all()

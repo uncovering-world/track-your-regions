@@ -31,8 +31,8 @@ ignore = [
 # A ceiling for new code, not one fitted over the most complex function in
 # the service, which would let every other function grow to it. 15 is NIST
 # SP 500-235's ceiling for a team that justifies going above McCabe's own 10.
-# A function still above it carries an inline noqa naming #1654, which splits
-# them, and lowering the ceiling toward 10 waits until none is left.
+# No function is above it (#1654); the ceiling can move toward 10 when a
+# measurement says what that would cost.
 max-complexity = 15
 
 [tool.ruff.lint.per-file-ignores]
