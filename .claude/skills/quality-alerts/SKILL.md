@@ -33,7 +33,7 @@ gh api repos/{owner}/{repo}/code-scanning/alerts/{number}
 
 If $ARGUMENTS is a rule ID (e.g. `js/useless-expression`), filter by that rule.
 
-If there are no open quality alerts, tell the user and stop.
+If there are no open quality alerts, tell the user and stop — but say what was read. This endpoint returns code-scanning alerts, and the CodeQL quality findings the tab's *Standard findings* lists are not among them, so an empty answer here is not an empty tab. Those findings are read on the page itself (`/security/quality`, one page per rule), and `check:py` carries ruff twins for the Python rules that have met this code (`docs/tech/gates.md` § What the map does not reach).
 
 ### 2. Group and summarize
 

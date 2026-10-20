@@ -938,6 +938,24 @@ so the lane's findings are defects and its step fails the job.
   nothing. The key is still published on every run, because a `job_*` key that
   appeared only sometimes would reach an `if:` as the empty string and read as
   false — and because the next docs gate may well need a setup step of its own.
+- **CodeQL's quality findings are matched by local twins, not read.** GitHub's
+  Code quality tab (Security and quality → Code quality → Standard findings)
+  shows the CodeQL quality rules' findings, and nothing on a pull request fails
+  or comments on them: they are not code-scanning alerts, and the REST endpoint
+  `/quality-alerts` reads returns none of them. So `check:py` carries a ruff twin
+  for each such rule that has met this code (#1736): F841 and RUF059 for an
+  unused local or unpacked variable, S110 for an empty `except`, and PLW0108 for
+  a lambda that only calls a function. A finding the tab would show then fails
+  the gate first. Two rules have no ruff twin, a variable assigned twice before
+  it is read (`py/multiple-definition`) and a comparison that is always true or
+  false; a new finding of either reaches the tab without failing a gate, and is
+  read there. The loaders under `db/` are read by `check:py` and
+  `security:py:bandit` as well as by the test lane, each with `db/pyproject.toml`:
+  ruff extends cv-python's rules, mypy checks the scripts' bodies without asking
+  every function for its types (the files it reads are listed there, so a new
+  loader is added to the list), and Bandit skips the tests. Their dependency
+  audit waits on #1782, since the versions the loader image carries have
+  advisories of their own.
 - **No gate covers the backend ↔ cv-python HTTP contract.**
   `backend/src/services/cv/pythonCvClient.ts` calls the FastAPI service over
   HTTP; no backend spec exercises it, and `scripts/test-stack.sh` starts `db`,
