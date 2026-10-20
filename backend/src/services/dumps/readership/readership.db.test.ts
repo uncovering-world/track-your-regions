@@ -48,6 +48,7 @@ import { buildReadership, latestReadership, readershipWindow } from './readershi
 
 const ITEM = 'Q99436001';
 const OTHER = 'Q99436002';
+const CHAPEL = 'Q99436003';
 let buildId = 0;
 
 /** A month's lines: two editions over ADR-0055's counted line, and one far under it. */
@@ -73,10 +74,11 @@ const file = (yyyymm: string): DumpFile => ({
 const options = () => ({ buildId, signal: new AbortController().signal, onPhase: () => undefined });
 
 async function clear(): Promise<void> {
-  await pool.query('DELETE FROM readership_months WHERE item = ANY($1)', [[ITEM, OTHER]]);
+  await pool.query('DELETE FROM readership_months WHERE item = ANY($1)', [[ITEM, OTHER, CHAPEL]]);
   await pool.query('DELETE FROM readership_month_files');
   await pool.query('DELETE FROM readership_staging');
-  await pool.query('DELETE FROM wikidata_sitelinks WHERE id = ANY($1)', [[ITEM, OTHER]]);
+  await pool.query('DELETE FROM wikidata_sitelinks WHERE id = ANY($1)', [[ITEM, OTHER, CHAPEL]]);
+  await pool.query(`DELETE FROM wikipedia_redirects WHERE site = 'enwiki' AND title = ANY($1)`, [['Cologne Minster', 'Small chapel']]);
 }
 
 beforeEach(async () => {
@@ -105,7 +107,7 @@ afterAll(async () => {
 
 const rows = async (m: string) => (await pool.query<{ item: string; site: string; views: number; mobile: number; daily: number[] | null }>(
   `SELECT item, site, views, mobile, daily FROM readership_months WHERE month = $1::date AND item = ANY($2) ORDER BY item, site`,
-  [m, [ITEM, OTHER]],
+  [m, [ITEM, OTHER, CHAPEL]],
 )).rows;
 
 describe('readership kept by month (#1436)', () => {
@@ -138,6 +140,25 @@ describe('readership kept by month (#1436)', () => {
     expect(german.views).toBe(604);
     expect(german.daily).toHaveLength(30);
     expect(german.daily![0]).toBe(600);
+  });
+
+  it('counts a redirect under its article whatever its own count, and applies the floor to the sum (#1702)', async () => {
+    await pool.query(`INSERT INTO wikidata_sitelinks (id, site, title) VALUES ($1, 'enwiki', 'Small Chapel')`, [CHAPEL]);
+    await pool.query(
+      `INSERT INTO wikipedia_redirects (site, title, target) VALUES
+         ('enwiki', 'Cologne Minster', 'Cologne Cathedral'), ('enwiki', 'Small chapel', 'Small Chapel')`,
+    );
+    reads.lines.set('pageviews-202609-user.bz2', [
+      ...month(100),
+      'en.wikipedia Cologne_Minster 6 desktop 3 A3',
+      'en.wikipedia Small_Chapel 7 desktop 6 A6',
+      'en.wikipedia Small_chapel 8 desktop 5 A5',
+    ]);
+    await buildReadership(file('202609'), options());
+    const september = await rows('2026-09-01');
+    expect(september).toContainEqual({ item: ITEM, site: 'enwiki', views: 203, mobile: 0, daily: null });
+    // Six views and five under a redirect: neither reaches the floor alone, the article does.
+    expect(september).toContainEqual({ item: CHAPEL, site: 'enwiki', views: 11, mobile: 0, daily: null });
   });
 
   it('reads only the months it lacks, and drops the month that left the twelve', async () => {

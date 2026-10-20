@@ -11,8 +11,9 @@
  * views it is read against.
  */
 
-import type { PoolClient } from 'pg';
+import type { PoolClient, QueryResult } from 'pg';
 import { pool, rollbackQuietly } from '../../../db/index.js';
+import { FoldTitles, titleHash } from './foldTitles.js';
 import type { StagedRow } from './monthSummer.js';
 import { MONTH_FLOOR } from './monthSummer.js';
 
@@ -47,6 +48,41 @@ export async function stageRows(buildId: number, rows: readonly StagedRow[]): Pr
  */
 export async function emptyStaging(client: Pick<PoolClient, 'query'> = pool): Promise<void> {
   await client.query('TRUNCATE readership_staging');
+}
+
+const FOLD_PAGE = 100_000;
+
+/**
+ * The titles a month stages under the floor (#1702): every redirect in place
+ * and the article each points to, read in pages along the table's key. On the
+ * development database, 26.2M redirects to 9.5M articles: some 140 MB of
+ * hashes once read, after a peak of some 350 MB while the two hashes of every
+ * redirect are sorted and the distinct ones copied out.
+ */
+export async function foldTitles(): Promise<FoldTitles> {
+  const counted = await pool.query<{ n: string }>('SELECT count(*) AS n FROM wikipedia_redirects');
+  let hashes = new Uint32Array(Number(counted.rows[0].n) * 2);
+  let filled = 0;
+  let after: { site: string; title: string } | null = null;
+  for (;;) {
+    const page: QueryResult<{ site: string; title: string; target: string }> = await pool.query(after
+      ? `SELECT site, title, target FROM wikipedia_redirects WHERE (site, title) > ($2::text, $3::text) ORDER BY site, title LIMIT $1::int`
+      : 'SELECT site, title, target FROM wikipedia_redirects ORDER BY site, title LIMIT $1::int',
+    after ? [FOLD_PAGE, after.site, after.title] : [FOLD_PAGE]);
+    if (filled + page.rows.length * 2 > hashes.length) {
+      // A build of the redirects swapped in a larger table since the count.
+      const grown = new Uint32Array((filled + page.rows.length * 2) * 2);
+      grown.set(hashes.subarray(0, filled));
+      hashes = grown;
+    }
+    for (const row of page.rows) {
+      hashes[filled++] = titleHash(row.site, row.title);
+      hashes[filled++] = titleHash(row.site, row.target);
+    }
+    if (page.rows.length < FOLD_PAGE) break;
+    after = page.rows[page.rows.length - 1];
+  }
+  return FoldTitles.ofHashes(hashes.subarray(0, filled));
 }
 
 export interface MonthRead {
