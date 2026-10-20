@@ -21,6 +21,10 @@ from pyproj import CRS, Transformer
 from app.cv import match
 from app.cv.match import run_matching
 
+# A deprecated NumPy conversion inside pyproj is an error here: one would fail every
+# map drawn in a detected projection once NumPy removes it (#1743).
+pytestmark = pytest.mark.filterwarnings("error::DeprecationWarning")
+
 TW, TH = 320, 240
 Draw = Callable[[np.ndarray, np.ndarray], tuple[np.ndarray, np.ndarray]]
 
