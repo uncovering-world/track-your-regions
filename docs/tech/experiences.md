@@ -2555,6 +2555,19 @@ none. The line is asked last and decides whether a refusal is *named*: 830 rows 
 15 and 21 sitelinks, and a village refused down there would bury Athens and Rhodes under the long
 tail.
 
+**A site the world reads opens a second door** (ADR-0127, #1756, `placeReadershipDoorFor` and
+`openPlaceDoor` in `readershipDoor.ts`). Before anything asks where a row stands, the run reads the
+year of readership of every candidate below the line and of every site the source holds at it,
+with the work door's measure (`readWorks`). A candidate below the line read at the median of the
+held sites at the line or over stands in, as one at the line does (`siteStanding`,
+`archaeology/siteTest.ts`). A held site stays while it reads at the 35th percentile. The bar is read
+over the held sites, not over every candidate at the line, where Athens and Istanbul would set it.
+The rest of the rule is unchanged, so a row the door opened for that the map shows to be a living
+town is refused by name. The door reads only the pool the site door already asks for, from its
+floor of 15 sitelinks. It is shut while the source's curator gate is off and while the year is not
+folded with the redirects in place. A site it alone admits carries the curator's question in
+`admissionNote` (`placeDoorNote`): its reading, the bar and the burst flag.
+
 **Pompeii is the row both doors see.** English Wikipedia files it under `Archaeological museums
 in Italy`, so the museum door's category walk names it and refuses it for carrying no museum
 class; its own classes are `archaeological site, ancient city`, so the site door admits it. One
