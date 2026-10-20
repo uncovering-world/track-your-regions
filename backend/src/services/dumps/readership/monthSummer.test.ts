@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { FoldTitles } from './foldTitles.js';
 import { MonthSummer, type StagedRow } from './monthSummer.js';
 
-async function sum(lines: string[], floor = 10, dailyFloor = 400, batch = 2): Promise<{ rows: StagedRow[]; batches: number; summer: MonthSummer }> {
+async function sum(lines: string[], floor = 10, dailyFloor = 400, batch = 2, folded = FoldTitles.of([])): Promise<{ rows: StagedRow[]; batches: number; summer: MonthSummer }> {
   const rows: StagedRow[] = [];
   let batches = 0;
   const summer = new MonthSummer({
-    days: 30, floor, dailyFloor, batch,
+    days: 30, floor, dailyFloor, batch, folded,
     onBatch: async taken => { batches++; rows.push(...taken); },
   });
   for (const line of lines) await summer.line(line);
@@ -44,6 +45,18 @@ describe("a month's file summed per article (#1436)", () => {
     ]);
     expect(rows.map(r => [r.title, r.views])).toEqual([['Кёльн', 3], ['Кёльн', 500]]);
     expect(summer.encoded).toBe(1);
+  });
+
+  it('stages a folded redirect and the article it folds into under the floor, for the month’s SQL to sum (#1702)', async () => {
+    const folded = FoldTitles.of([
+      { site: 'enwiki', title: 'A Virgin with a Unicorn' }, { site: 'enwiki', title: 'Maiden with the Unicorn' },
+    ]);
+    const { rows } = await sum([
+      'en.wikipedia A_Virgin_with_a_Unicorn 1 desktop 6 A6',
+      'en.wikipedia Maiden_with_the_Unicorn 2 desktop 4 A4',
+      'en.wikipedia Unicorn_(disambiguation) 3 desktop 9 A9',
+    ], 10, 400, 10, folded);
+    expect(rows.map(r => [r.title, r.views])).toEqual([['A Virgin with a Unicorn', 6], ['Maiden with the Unicorn', 4]]);
   });
 
   it('hands rows on in batches and the rest at the end', async () => {

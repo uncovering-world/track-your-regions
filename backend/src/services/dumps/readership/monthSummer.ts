@@ -20,6 +20,11 @@
  * encoded spellings are added in SQL: a title at 9 views plain and a few
  * encoded is not kept, though its spellings sum to 10. The encoded spellings
  * are 17k of September's 263M lines, so the floor moves by a few views at most.
+ *
+ * A redirect readership folds, and the article it folds into, are staged
+ * whatever their count (`folded`, #1702), and the month's SQL applies the
+ * floor to the article once its redirects are summed into it: a work read
+ * through many rare spellings, each under 10, reads them all.
  */
 
 import { addDaily, decodeTitle, parsePageviewLine, siteOf } from './pageviewLine.js';
@@ -38,8 +43,10 @@ export interface StagedRow {
 export interface MonthSummerOptions {
   /** Days in the month the file covers. */
   days: number;
-  /** A title under this many views in the month is not staged (an encoded spelling always is). */
+  /** A title under this many views in the month is not staged (an encoded spelling always is, and so is a folded title). */
   floor: number;
+  /** The titles staged under the floor: a redirect readership folds, and the article it folds into (`foldTitles.ts`). */
+  folded: { has(site: string, title: string): boolean };
   /** A title at this many views or more keeps its daily series. */
   dailyFloor: number;
   /** How many rows to hand on at once. */
@@ -94,7 +101,8 @@ export class MonthSummer {
     const current = this.current;
     this.current = null;
     this.key = null;
-    if (!current || (current.views < this.options.floor && !current.encoded)) return;
+    if (!current) return;
+    if (current.views < this.options.floor && !current.encoded && !this.options.folded.has(current.site, current.title)) return;
     let daily: number[] | null = null;
     if (current.views >= this.options.dailyFloor) {
       daily = new Array<number>(this.options.days).fill(0);

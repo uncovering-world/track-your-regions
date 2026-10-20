@@ -28,9 +28,10 @@ import { fetchText, sizeOf } from '../fetch.js';
 import { copyOf, removeCopies } from '../localCopies.js';
 import type { CopyNeeds } from '../wikidata/buildRules.js';
 import { readDump, type ReadOptions } from '../read.js';
+import type { FoldTitles } from './foldTitles.js';
 import { DAILY_FLOOR, MONTH_FLOOR, MonthSummer } from './monthSummer.js';
 import {
-  dropMonthsBefore, emptyStaging, keepMonth, keptMonths, redirectsInPlace, refuseShortMonth, stageRows,
+  dropMonthsBefore, emptyStaging, foldTitles, keepMonth, keptMonths, redirectsInPlace, refuseShortMonth, stageRows,
 } from './readershipMonth.js';
 
 /** How many months readership reads (ADR-0055 decision 1). */
@@ -94,12 +95,24 @@ async function fileOfMonth(month: string, signal: AbortSignal): Promise<DumpFile
   return file;
 }
 
+/** The titles a month stages under the floor, read when the first month that needs them is read, and once. */
+function readOnce(options: BuildOptions): () => Promise<FoldTitles> {
+  let read: Promise<FoldTitles> | undefined;
+  return () => {
+    if (!read) {
+      options.onPhase('Reading the redirects readership folds...');
+      read = foldTitles();
+    }
+    return read;
+  };
+}
+
 /** Read one month's file and keep it; answers what was read and kept. */
-async function keepOneMonth(file: DumpFile, month: string, options: BuildOptions): Promise<{ bytes: number; lines: number; kept: number }> {
+async function keepOneMonth(file: DumpFile, month: string, folded: () => Promise<FoldTitles>, options: BuildOptions): Promise<{ bytes: number; lines: number; kept: number }> {
   const { buildId } = options;
   await emptyStaging();
   const summer = new MonthSummer({
-    days: daysIn(month), floor: MONTH_FLOOR, dailyFloor: DAILY_FLOOR, batch: STAGE_BATCH,
+    days: daysIn(month), floor: MONTH_FLOOR, dailyFloor: DAILY_FLOOR, folded: await folded(), batch: STAGE_BATCH,
     onBatch: rows => stageRows(buildId, rows),
   });
   let kept = 0;
@@ -131,6 +144,7 @@ export async function buildReadership(file: DumpFile, options: BuildOptions): Pr
   const said: string[] = [];
   let newest = { bytes: 0, lines: 0 };
   let read = 0;
+  const folded = readOnce(options);
   for (const [i, month] of window.entries()) {
     const already = kept.get(month);
     if (already?.fileName === fileNameOf(month) && already.redirects === redirects) {
@@ -140,7 +154,7 @@ export async function buildReadership(file: DumpFile, options: BuildOptions): Pr
     }
     options.onPhase(`Reading ${fileNameOf(month)} (month ${i + 1} of ${window.length})${options.dumpsDir ? ' into the local copy' : ' from the host'}...`);
     const monthFile = month === file.date ? file : await fileOfMonth(month, options.signal);
-    const done = await keepOneMonth(monthFile, month, options);
+    const done = await keepOneMonth(monthFile, month, folded, options);
     await retireCopies(options, window[0], new Set([monthFile.fileName]));
     read++;
     said.push(`${month.slice(0, 7)} ${done.kept.toLocaleString('en')} rows`);
