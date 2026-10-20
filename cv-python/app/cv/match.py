@@ -889,10 +889,10 @@ def _unproject(
     """
     logger.info(f"[Match] Candidate projection: {proj_name}")
     proj_country_path = project_svg_path(country_path, proj_fn)
-    proj_centroids = []
-    for c in centroids:
-        lx, ly = proj_fn(np.array([c["cx"]]), np.array([-c["cy"]]))
-        proj_centroids.append({**c, "cx": float(lx[0]), "cy": float(-ly[0])})
+    # One call for every centroid: pyproj's single-point path converts a one-element
+    # array to a scalar, which NumPy deprecates.
+    lx, ly = proj_fn(np.array([c["cx"] for c in centroids], float), np.array([-c["cy"] for c in centroids], float))
+    proj_centroids = [{**c, "cx": float(x), "cy": float(-y)} for c, x, y in zip(centroids, lx, ly, strict=True)]
 
     progress(f"IoU alignment in {proj_name} space")
     matrix_proj, proj_f2, *_ = iou_alignment(proj_country_path, images.country_mask, proj_centroids, 1.0, tw, th)
