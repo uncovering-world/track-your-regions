@@ -9,6 +9,7 @@ Ports all JS pipeline preprocessing stages:
 """
 
 import logging
+from collections.abc import Callable
 
 import cv2
 import numpy as np
@@ -1102,7 +1103,51 @@ def _sam_exclude_decorations(
     return result
 
 
-def _exclude_isolated_cc_groups(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
+def _isolated_small_ccs(
+    cc_labels: np.ndarray,
+    cc_stats: np.ndarray,
+    cc_centroids: np.ndarray,
+    main_idx: int,
+    country_size: int,
+    max_cc_pct: float,
+) -> list[tuple[int, float, float, int]]:
+    """The small CCs (20 px up to max_cc_pct) that do not touch the main landmass: (id, cx, cy, area)."""
+    main_dil = cv2.dilate((cc_labels == main_idx).astype(np.uint8), np.ones((7, 7), np.uint8))
+    isolated = []
+    for i in range(1, len(cc_stats)):
+        if i == main_idx:
+            continue
+        area = int(cc_stats[i, cv2.CC_STAT_AREA])
+        if area / country_size * 100 > max_cc_pct or area < 20:
+            continue
+        cc_m = (cc_labels == i).astype(np.uint8)
+        if np.any(cv2.dilate(cc_m, np.ones((5, 5), np.uint8)) & main_dil):
+            continue  # Touches main landmass
+        cx, cy = cc_centroids[i]
+        isolated.append((i, cx, cy, area))
+    return isolated
+
+
+def _proximity_groups(isolated: list[tuple[int, float, float, int]], group_dist: int) -> list[list[int]]:
+    """The isolated CCs grouped greedily: each group is its first member and those within group_dist of it."""
+    used = set()
+    groups = []
+    for idx, (_cc_id, cx1, cy1, _a1) in enumerate(isolated):
+        if idx in used:
+            continue
+        group = [idx]
+        used.add(idx)
+        for jdx, (_cc_id2, cx2, cy2, _a2) in enumerate(isolated):
+            if jdx in used:
+                continue
+            if np.sqrt((cx1 - cx2) ** 2 + (cy1 - cy2) ** 2) < group_dist:
+                group.append(jdx)
+                used.add(jdx)
+        groups.append(group)
+    return groups
+
+
+def _exclude_isolated_cc_groups(
     country_mask: np.ndarray,
     filtered: np.ndarray,
     group_dist: int = 60,
@@ -1117,9 +1162,9 @@ def _exclude_isolated_cc_groups(  # noqa: C901 -- above the complexity ceiling o
     with consistent patterns.
 
     Groups 3+ isolated CCs within group_dist pixels of each other.
-    Each CC must be < max_cc_pct and not connected to the main landmass.
+    Each CC must be < max_cc_pct and not connected to the main landmass,
+    and a group that is over 10% of the country together is kept.
     """
-    h, w = country_mask.shape
     country_size = int(np.sum(country_mask > 0))
     if country_size == 0:
         return country_mask
@@ -1129,69 +1174,23 @@ def _exclude_isolated_cc_groups(  # noqa: C901 -- above the complexity ceiling o
     if num_cc <= 2:
         return country_mask
 
-    # Find main landmass
     main_idx = max(range(1, num_cc), key=lambda i: int(cc_stats[i, cv2.CC_STAT_AREA]))
-    main_mask = (cc_labels == main_idx).astype(np.uint8)
-    main_dil = cv2.dilate(main_mask, np.ones((7, 7), np.uint8))
-
-    # Collect isolated small CCs
-    isolated = []
-    for i in range(1, num_cc):
-        if i == main_idx:
-            continue
-        area = int(cc_stats[i, cv2.CC_STAT_AREA])
-        pct = area / country_size * 100
-        if pct > max_cc_pct or area < 20:
-            continue
-        cx, cy = cc_centroids[i]
-
-        # Check isolation
-        cc_m = (cc_labels == i).astype(np.uint8)
-        if np.any(cv2.dilate(cc_m, np.ones((5, 5), np.uint8)) & main_dil):
-            continue  # Touches main landmass
-
-        isolated.append((i, cx, cy, area))
-
+    isolated = _isolated_small_ccs(cc_labels, cc_stats, cc_centroids, main_idx, country_size, max_cc_pct)
     if len(isolated) < min_group_size:
         return country_mask
 
-    # Group isolated CCs by proximity
-    used = set()
-    groups = []
-    for idx, (_cc_id, cx1, cy1, _a1) in enumerate(isolated):
-        if idx in used:
-            continue
-        group = [idx]
-        used.add(idx)
-        for jdx, (_cc_id2, cx2, cy2, _a2) in enumerate(isolated):
-            if jdx in used:
-                continue
-            dist = np.sqrt((cx1 - cx2) ** 2 + (cy1 - cy2) ** 2)
-            if dist < group_dist:
-                group.append(jdx)
-                used.add(jdx)
-        groups.append(group)
-
-    # Exclude groups with 3+ members
+    groups = [g for g in _proximity_groups(isolated, group_dist) if len(g) >= min_group_size]
     result = country_mask.copy()
     total_excluded = 0
     for group in groups:
-        if len(group) < min_group_size:
-            continue
-        group_area = sum(isolated[idx][3] for idx in group)
-        group_pct = group_area / country_size * 100
-        if group_pct > 10:
+        if sum(isolated[idx][3] for idx in group) / country_size * 100 > 10:
             continue  # Too large to be decoration
-
         for idx in group:
-            cc_id = isolated[idx][0]
-            result[cc_labels == cc_id] = 0
+            result[cc_labels == isolated[idx][0]] = 0
             total_excluded += isolated[idx][3]
 
     if total_excluded > 0:
-        group_count = sum(1 for g in groups if len(g) >= min_group_size)
-        logger.info(f"[CCGroup] Excluded {total_excluded} px in {group_count} isolated CC group(s)")
-
+        logger.info(f"[CCGroup] Excluded {total_excluded} px in {len(groups)} isolated CC group(s)")
     return result
 
 
@@ -1524,7 +1523,285 @@ def _exclude_gray_edge_regions(
 # =============================================================================
 
 
-def run_phase1(  # noqa: C901 -- above the complexity ceiling of 15; #1654 splits it under the ceiling
+def _remove_text_and_lines(
+    pipeline_img: np.ndarray,
+    res_scale: float,
+    progress: Callable[[str], None],
+) -> tuple[np.ndarray, np.ndarray]:
+    """The image with its text, roads and coloured lines removed, and the known-noise mask of them.
+
+    known_noise_mask is the union of every "we know this pixel is not region"
+    decision made during preprocessing. After phase 1 it goes to K-means so those
+    pixels (and their rings) do not vote, which kills the ghost-text boundary
+    problem where mean-shift smears label colors into neighboring land pixels.
+
+    Scope: letter- and line-precise masks only (OCR ink strokes, dark-text,
+    tophat, outlier, road, coloured line). We deliberately do NOT union the
+    OCR rectangular bounding boxes — one bbox may straddle two regions and
+    would kill region distinction if whole rows got excluded. We DO union
+    the letter-precise OCR mask (strokes only); those pixels are ink, not
+    region, and flat-filling them leaves a slight colour shift that K-means
+    would otherwise pick up as a ghost sub-cluster. Excluding them from
+    voting + filling via nearest neighbour label absorbs them into the
+    surrounding region cleanly.
+    """
+    known_noise_mask = np.zeros(pipeline_img.shape[:2], dtype=np.uint8)
+
+    # Step 0a: OCR-based text detection and removal (BEFORE any other processing).
+    # remove_text_from_image returns the letter-precise mask (not the bboxes),
+    # so unioning it into known_noise_mask is safe.
+    progress("OCR text detection and removal...")
+    from .text_detection import remove_text_from_image
+
+    pipeline_img, ocr_letter_mask = remove_text_from_image(pipeline_img)
+    known_noise_mask |= ocr_letter_mask
+
+    # Step 0b: Inpaint yellow/orange road-like features (before median-based line removal)
+    progress("Inpainting colored roads...")
+    pipeline_img, road_mask = _inpaint_colored_roads(pipeline_img, res_scale)
+    # Ring-median flat-fill (in _inpaint_colored_roads and remove_colored_lines)
+    # leaves clean region colour at road pixel positions, so the mean-shift
+    # halo going forward is minimal. A small 3-px dilation still captures
+    # the 1-2 px anti-aliased edge fringe the run-length detector misses.
+    road_dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))  # 3 px radius
+    known_noise_mask |= cv2.dilate(road_mask, road_dilate_kernel)
+
+    # Step 1: Remove colored lines
+    progress("Removing colored lines...")
+    cleaned, line_mask = remove_colored_lines(pipeline_img, res_scale)
+    line_dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))  # 3 px radius
+    known_noise_mask |= cv2.dilate(line_mask, line_dilate_kernel)
+
+    # Step 1b: Saturated text residue (teal/blue labels like "Dominical" that
+    # survive remove_colored_lines' thickness filter because letter bodies
+    # are thicker than a colour-line run-length).
+    progress("Saturated text residue cleanup...")
+    cleaned, sat_text_mask = _detect_saturated_text(cleaned, res_scale)
+    known_noise_mask |= sat_text_mask
+
+    # Step 1c: Non-OCR dark-text residue detection (catches dark-ink labels
+    # like thin black feature text that EasyOCR missed). Flat-fills thin
+    # high-contrast CCs.
+    progress("Dark text residue cleanup...")
+    cleaned, dark_text_mask = _detect_dark_text_residue(cleaned, res_scale)
+    known_noise_mask |= dark_text_mask
+
+    # Pre-mean-shift nearest-neighbour fill for ROAD + SATURATED/DARK TEXT
+    # residue. These are lines INSIDE regions (not borders BETWEEN them), so
+    # it's safe to replace them with local region colour — and doing so
+    # prevents mean-shift from smearing their residue into adjacent pixels.
+    #
+    # We DELIBERATELY EXCLUDE line_mask: `remove_colored_lines` uses a
+    # median-blur that leaves a tiny colour transition at thin region
+    # borders (e.g. Egypt's dashed governorate borders between same-hue
+    # desert regions). That transition is the ONLY signal k-means has to
+    # tell same-coloured governorates apart — destroying it via
+    # nearest-fill would merge them.
+    pre_ms_mask = np.maximum(np.maximum(road_mask, sat_text_mask), dark_text_mask)
+    if int(pre_ms_mask.sum()) > 0:
+        cleaned = _fill_via_nearest_image_pixel(cleaned, pre_ms_mask)
+        logger.info(
+            f"[PreMeanShift] Nearest-neighbour-filled {int(pre_ms_mask.sum())} px (roads+sat_text+dark_text; line_mask EXCLUDED to preserve thin region borders)"
+        )
+    return cleaned, known_noise_mask
+
+
+def _smooth(cleaned: np.ndarray, known_noise_mask: np.ndarray, progress: Callable[[str], None]) -> np.ndarray:
+    """The cleaned image smoothed into flat regions; the top-hat and outlier masks join known_noise_mask."""
+    # Step 2: Mean-shift filtering — two passes to thoroughly absorb text
+    progress("Mean-shift filtering pass 1/2 (sp=10, sr=20)...")
+    pass1 = mean_shift_filter(cleaned, sp=10, sr=20)
+    progress("Mean-shift filtering pass 2/2 (sp=20, sr=30)...")
+    filtered = mean_shift_filter(pass1, sp=20, sr=30)
+
+    # Step 2b: Morphological top-hat text removal
+    progress("Top-hat text/symbol removal...")
+    filtered, tophat_mask = _tophat_text_removal(filtered, kernel_size=15)
+    known_noise_mask |= tophat_mask
+
+    # Step 2c: Outlier pixel removal
+    progress("Outlier pixel cleanup...")
+    filtered, outlier_mask = _remove_outlier_pixels(filtered, kernel_size=21, diff_threshold=12, max_cc_size=500)
+    known_noise_mask |= outlier_mask
+
+    # Step 2d: Bilateral filter
+    progress("Bilateral filter (edge-preserving smoothing)...")
+    filtered = cv2.bilateralFilter(filtered, d=9, sigmaColor=50, sigmaSpace=50)
+
+    # Step 2e: Late blob removal
+    progress("Late dark blob detection...")
+    return _remove_dark_blobs(filtered, max_area=1500)
+
+
+def _land_mask(filtered: np.ndarray, original_down: np.ndarray, progress: Callable[[str], None]) -> np.ndarray:
+    """The country mask: background, insets and map furniture taken off, before water."""
+    # Step 2f: Inset box detection
+    progress("Inset box detection...")
+    inset_mask = detect_inset_mask(original_down)
+
+    # Step 3: Two-stage background detection (on ORIGINAL, not filtered)
+    progress("Two-stage background detection...")
+    country_mask = detect_background(filtered, original_down)
+    # Inset regions are added to background
+    if inset_mask is not None:
+        country_mask[inset_mask > 0] = 0
+
+    progress("Hough circle detection...")
+    country_mask = _exclude_hough_circles(country_mask, filtered)
+    progress("Isolated CC group detection...")
+    country_mask = _exclude_isolated_cc_groups(country_mask, filtered)
+    progress("SAM decoration segmentation...")
+    country_mask = _sam_exclude_decorations(country_mask, filtered)
+    progress("Edge decoration exclusion...")
+    country_mask = exclude_decoration_ccs(country_mask, filtered, edge_pct=0.28)
+    # Gray edge regions are neighboring countries
+    progress("Gray edge region exclusion...")
+    return _exclude_gray_edge_regions(country_mask, original_down)
+
+
+def _remove_coastal_fringe(country_mask: np.ndarray, original_down: np.ndarray, water_ref: list) -> None:
+    """Take off the thin strips of sea colour along the coastline that survived background detection."""
+    bg_mask = (country_mask == 0).astype(np.uint8) * 255
+    # Dilate background by 5px to find the coastal fringe
+    fringe_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
+    dilated_bg = cv2.dilate(bg_mask, fringe_kernel)
+    fringe = (dilated_bg > 0) & (country_mask > 0)  # pixels near background that are still "country"
+
+    # Check if fringe pixels match the water reference color
+    ref_bgr = np.array(water_ref, dtype=np.float32)
+    fringe_diff = np.abs(original_down.astype(np.float32) - ref_bgr[np.newaxis, np.newaxis, :])
+    sea_like_fringe = fringe & (fringe_diff.max(axis=2) <= 35)  # slightly more permissive than BG_RGB_DIST
+
+    fringe_removed = int(np.sum(sea_like_fringe))
+    if fringe_removed > 0:
+        country_mask[sea_like_fringe] = 0
+        logger.info(f"[Phase1] Coastal fringe cleanup: removed {fringe_removed} sea-like pixels along coastline")
+
+
+def _remove_water_coloured_edge_ccs(country_mask: np.ndarray, original_down: np.ndarray, water_ref: list) -> None:
+    """Take off the CCs near an image edge in the water's colour: title box backgrounds.
+
+    Wikivoyage uses the ocean color for title boxes, and they survive water
+    detection because they are not connected to the ocean flood-fill seeds.
+    """
+    ref_bgr = np.array(water_ref, dtype=np.float32)
+    h_img, w_img = country_mask.shape
+    bx_w = int(w_img * 0.25)
+    by_w = int(h_img * 0.25)
+
+    cm_bin = (country_mask > 0).astype(np.uint8) * 255
+    n_cc, cc_lbl, cc_st, cc_ctr = cv2.connectedComponentsWithStats(cm_bin)
+    cs = int(np.sum(country_mask > 0))
+    main_id_w = max(range(1, n_cc), key=lambda j: int(cc_st[j, cv2.CC_STAT_AREA]), default=0)
+
+    water_cc_removed = 0
+    for j in range(1, n_cc):
+        if j == main_id_w:
+            continue
+        a = int(cc_st[j, cv2.CC_STAT_AREA])
+        p = a / max(cs, 1) * 100
+        jcx, jcy = cc_ctr[j]
+        near_edge = jcx < bx_w or jcx > w_img - bx_w or jcy < by_w or jcy > h_img - by_w
+        if p > 8.0 or p < 0.1 or not near_edge:
+            continue
+        color_diff = np.abs(original_down[cc_lbl == j].mean(axis=0).astype(np.float32) - ref_bgr).max()
+        if color_diff > 40:
+            continue  # Color too different from water
+        country_mask[cc_lbl == j] = 0
+        water_cc_removed += a
+        logger.info(
+            f"[WaterCC] Removed water-colored edge CC: {a}px ({p:.1f}%), pos=({jcx:.0f},{jcy:.0f}), diff={color_diff:.0f}"
+        )
+    if water_cc_removed > 0:
+        logger.info(f"[WaterCC] Total removed: {water_cc_removed} px")
+
+
+def _take_off_water(
+    country_mask: np.ndarray,
+    original_down: np.ndarray,
+    on_review: Callable | None,
+    progress: Callable[[str], None],
+) -> tuple[np.ndarray, list]:
+    """Take the water off the country mask: (water mask, water components).
+
+    The detected components pause for an operator's review when an on_review
+    callback is wired up (interactive HTTP mode), and the sea's colour then also
+    takes off the coastal fringe and the title box backgrounds.
+    """
+    # Step 4: Water detection (on ORIGINAL, not filtered)
+    progress("Water detection (edge seeding + inland lakes)...")
+    water_mask, water_components, water_ref = detect_water(original_down, country_mask)
+    if on_review is not None and water_components:
+        water_mask = _review_water_components(
+            original_down, water_mask, water_components, country_mask, on_review, progress
+        )
+    country_mask[water_mask > 0] = 0
+
+    if water_ref is not None:
+        _remove_coastal_fringe(country_mask, original_down, water_ref)
+        _remove_water_coloured_edge_ccs(country_mask, original_down, water_ref)
+    return water_mask, water_components
+
+
+def _noise_inside_country(known_noise_mask: np.ndarray, country_mask: np.ndarray) -> np.ndarray:
+    """The known-noise mask dilated over its halo and kept inside the country.
+
+    The anti-aliased halo around each detected text/road/line feature (the
+    pixels mean-shift smeared colour into) is excluded from K-means voting too.
+    The final uniform dilation is small — road_mask and line_mask were already
+    dilated per-mask before unioning, which targets the wide mean-shift halos
+    only where they occur. This pass just catches the 1-2 px halo around
+    letter-precise masks (OCR ink, saturated text, dark text, tophat, outlier)
+    without over-absorbing their areas. Pixels outside the country are already
+    masked off by country_mask.
+    """
+    noise_dilate_px = 1
+    if noise_dilate_px > 0 and known_noise_mask.any():
+        dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * noise_dilate_px + 1, 2 * noise_dilate_px + 1))
+        known_noise_mask = cv2.dilate(known_noise_mask, dilate_kernel)
+    noise_px_total = int(known_noise_mask.sum())
+    known_noise_mask &= (country_mask > 0).astype(np.uint8)
+    logger.info(
+        f"[Phase1] Known-noise mask: {noise_px_total} total pixels, {int(known_noise_mask.sum())} inside country"
+    )
+    return known_noise_mask
+
+
+def _phase1_debug_images(
+    filtered: np.ndarray,
+    country_mask: np.ndarray,
+    water_mask: np.ndarray,
+    known_noise_mask: np.ndarray,
+    orig_w: int,
+    orig_h: int,
+) -> list[dict]:
+    """The filtered image, and what K-means sees: background gray, water blue, known noise red.
+
+    Gray is excluded by country_mask; red is inside the country but excluded via
+    known_noise_mask (OCR/road/line/text residue), blended at 60% opacity so the
+    underlying colors stay visible.
+    """
+    debug_images = [
+        {"label": "Mean-shift filtered (Python)", "dataUrl": encode_png_base64(resize_image(filtered, orig_w, orig_h))},
+    ]
+    debug_overlay = filtered.copy()
+    debug_overlay[country_mask == 0] = [200, 200, 200]  # background = gray
+    debug_overlay[water_mask > 0] = [255, 150, 100]  # water = blue-ish (BGR)
+    noise_in_country = (known_noise_mask > 0) & (country_mask > 0)
+    if noise_in_country.any():
+        red_bgr = np.array([50, 50, 230], dtype=np.float32)
+        orig_vals = debug_overlay[noise_in_country].astype(np.float32)
+        debug_overlay[noise_in_country] = (orig_vals * 0.4 + red_bgr * 0.6).astype(np.uint8)
+    debug_images.append(
+        {
+            "label": "Background (gray) + Water (blue) + Known noise (red)",
+            "dataUrl": encode_png_base64(resize_image(debug_overlay, orig_w, orig_h)),
+        }
+    )
+    return debug_images
+
+
+def run_phase1(
     image: np.ndarray,
     tw: int,
     th: int,
@@ -1549,286 +1826,21 @@ def run_phase1(  # noqa: C901 -- above the complexity ceiling of 15; #1654 split
         Passed through from the HTTP layer — see app/routes/pipeline.py.
     """
 
-    def _progress(msg: str):
+    def _progress(msg: str) -> None:
         logger.info(f"[Phase1] {msg}")
         if on_progress:
             on_progress(msg)
 
-    # Downscale to pipeline resolution
+    # Downscale to pipeline resolution, keeping the original for water/background detection
     pipeline_img = resize_image(image, tw, th)
-    original_down = pipeline_img.copy()  # Keep original for water/background detection
-
+    original_down = pipeline_img.copy()
     res_scale = tw / 800.0  # Scale factors relative to 800px reference
 
-    # known_noise_mask: union of every "we know this pixel is not region" decision
-    # made during preprocessing. After phase 1 we pass it to K-means so those
-    # pixels (and their rings) do not vote, which kills the ghost-text boundary
-    # problem where mean-shift smears label colors into neighboring land pixels.
-    #
-    # Scope: letter- and line-precise masks only (OCR ink strokes, dark-text,
-    # tophat, outlier, road, coloured line). We deliberately do NOT union the
-    # OCR rectangular bounding boxes — one bbox may straddle two regions and
-    # would kill region distinction if whole rows got excluded. We DO union
-    # the letter-precise OCR mask (strokes only); those pixels are ink, not
-    # region, and flat-filling them leaves a slight colour shift that K-means
-    # would otherwise pick up as a ghost sub-cluster. Excluding them from
-    # voting + filling via nearest neighbour label absorbs them into the
-    # surrounding region cleanly.
-    known_noise_mask = np.zeros(pipeline_img.shape[:2], dtype=np.uint8)
-
-    # Step 0a: OCR-based text detection and removal (BEFORE any other processing).
-    # remove_text_from_image returns the letter-precise mask (not the bboxes),
-    # so unioning it into known_noise_mask is safe.
-    _progress("OCR text detection and removal...")
-    from .text_detection import remove_text_from_image
-
-    pipeline_img, ocr_letter_mask = remove_text_from_image(pipeline_img)
-    known_noise_mask |= ocr_letter_mask
-
-    # Step 0b: Inpaint yellow/orange road-like features (before median-based line removal)
-    _progress("Inpainting colored roads...")
-    pipeline_img, road_mask = _inpaint_colored_roads(pipeline_img, res_scale)
-    # Ring-median flat-fill (in _inpaint_colored_roads and remove_colored_lines)
-    # leaves clean region colour at road pixel positions, so the mean-shift
-    # halo going forward is minimal. A small 3-px dilation still captures
-    # the 1-2 px anti-aliased edge fringe the run-length detector misses.
-    road_dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))  # 3 px radius
-    road_mask_wide = cv2.dilate(road_mask, road_dilate_kernel)
-    known_noise_mask |= road_mask_wide
-
-    # Step 1: Remove colored lines
-    _progress("Removing colored lines...")
-    cleaned, line_mask = remove_colored_lines(pipeline_img, res_scale)
-    line_dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))  # 3 px radius
-    line_mask_wide = cv2.dilate(line_mask, line_dilate_kernel)
-    known_noise_mask |= line_mask_wide
-
-    # Step 1b: Saturated text residue (teal/blue labels like "Dominical" that
-    # survive remove_colored_lines' thickness filter because letter bodies
-    # are thicker than a colour-line run-length).
-    _progress("Saturated text residue cleanup...")
-    cleaned, sat_text_mask = _detect_saturated_text(cleaned, res_scale)
-    known_noise_mask |= sat_text_mask
-
-    # Step 1c: Non-OCR dark-text residue detection (catches dark-ink labels
-    # like thin black feature text that EasyOCR missed). Flat-fills thin
-    # high-contrast CCs.
-    _progress("Dark text residue cleanup...")
-    cleaned, dark_text_mask = _detect_dark_text_residue(cleaned, res_scale)
-    known_noise_mask |= dark_text_mask
-
-    # Pre-mean-shift nearest-neighbour fill for ROAD + SATURATED/DARK TEXT
-    # residue. These are lines INSIDE regions (not borders BETWEEN them), so
-    # it's safe to replace them with local region colour — and doing so
-    # prevents mean-shift from smearing their residue into adjacent pixels.
-    #
-    # We DELIBERATELY EXCLUDE line_mask: `remove_colored_lines` uses a
-    # median-blur that leaves a tiny colour transition at thin region
-    # borders (e.g. Egypt's dashed governorate borders between same-hue
-    # desert regions). That transition is the ONLY signal k-means has to
-    # tell same-coloured governorates apart — destroying it via
-    # nearest-fill would merge them.
-    pre_ms_mask = np.maximum(
-        np.maximum(road_mask, sat_text_mask),
-        dark_text_mask,
-    )
-    if int(pre_ms_mask.sum()) > 0:
-        cleaned = _fill_via_nearest_image_pixel(cleaned, pre_ms_mask)
-        logger.info(
-            f"[PreMeanShift] Nearest-neighbour-filled {int(pre_ms_mask.sum())} px (roads+sat_text+dark_text; line_mask EXCLUDED to preserve thin region borders)"
-        )
-
-    # Step 2: Mean-shift filtering — two passes to thoroughly absorb text
-    _progress("Mean-shift filtering pass 1/2 (sp=10, sr=20)...")
-    pass1 = mean_shift_filter(cleaned, sp=10, sr=20)
-    _progress("Mean-shift filtering pass 2/2 (sp=20, sr=30)...")
-    filtered = mean_shift_filter(pass1, sp=20, sr=30)
-
-    # Step 2b: Morphological top-hat text removal
-    _progress("Top-hat text/symbol removal...")
-    filtered, tophat_mask = _tophat_text_removal(filtered, kernel_size=15)
-    known_noise_mask |= tophat_mask
-
-    # Step 2c: Outlier pixel removal
-    _progress("Outlier pixel cleanup...")
-    filtered, outlier_mask = _remove_outlier_pixels(filtered, kernel_size=21, diff_threshold=12, max_cc_size=500)
-    known_noise_mask |= outlier_mask
-
-    # Step 2d: Bilateral filter
-    _progress("Bilateral filter (edge-preserving smoothing)...")
-    filtered = cv2.bilateralFilter(filtered, d=9, sigmaColor=50, sigmaSpace=50)
-
-    # Step 2e: Late blob removal
-    _progress("Late dark blob detection...")
-    filtered = _remove_dark_blobs(filtered, max_area=1500)
-
-    # Step 2f: Inset box detection
-    _progress("Inset box detection...")
-    inset_mask = detect_inset_mask(original_down)
-
-    # Step 3: Two-stage background detection (on ORIGINAL, not filtered)
-    _progress("Two-stage background detection...")
-    country_mask = detect_background(filtered, original_down)
-
-    # Apply inset mask: add inset regions to background
-    if inset_mask is not None:
-        country_mask[inset_mask > 0] = 0
-
-    country_size = int(np.sum(country_mask > 0))
-
-    # Step 3b: Hough circle detection
-    _progress("Hough circle detection...")
-    country_mask = _exclude_hough_circles(country_mask, filtered)
-
-    # Step 3c: Isolated CC grouping
-    _progress("Isolated CC group detection...")
-    country_mask = _exclude_isolated_cc_groups(country_mask, filtered)
-
-    # Step 3d: SAM-based decoration segmentation
-    _progress("SAM decoration segmentation...")
-    country_mask = _sam_exclude_decorations(country_mask, filtered)
-
-    # Step 3e: Edge decoration exclusion
-    _progress("Edge decoration exclusion...")
-    country_mask = exclude_decoration_ccs(country_mask, filtered, edge_pct=0.28)
-
-    # Step 3f: Gray edge region exclusion (neighboring countries)
-    _progress("Gray edge region exclusion...")
-    country_mask = _exclude_gray_edge_regions(country_mask, original_down)
-
-    # Step 4: Water detection (on ORIGINAL, not filtered)
-    _progress("Water detection (edge seeding + inland lakes)...")
-    water_mask, water_components, water_ref = detect_water(original_down, country_mask)
-
-    # Step 4b: Operator review of water components (optional — only when
-    # an on_review callback is wired up, i.e. interactive HTTP mode).
-    if on_review is not None and water_components:
-        water_mask = _review_water_components(
-            original_down,
-            water_mask,
-            water_components,
-            country_mask,
-            on_review,
-            _progress,
-        )
-
-    # Remove water from country mask
-    country_mask[water_mask > 0] = 0
-
-    # Step 5: Coastal fringe cleanup — remove thin strips of sea color along the coastline
-    # These are pixels that survived background detection but are really sea/ocean
-    if water_ref is not None:
-        bg_mask = (country_mask == 0).astype(np.uint8) * 255
-        # Dilate background by 5px to find the coastal fringe
-        fringe_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (11, 11))
-        dilated_bg = cv2.dilate(bg_mask, fringe_kernel)
-        fringe = (dilated_bg > 0) & (country_mask > 0)  # pixels near background that are still "country"
-
-        # Check if fringe pixels match the water reference color
-        ref_bgr = np.array(water_ref, dtype=np.float32)
-        fringe_diff = np.abs(original_down.astype(np.float32) - ref_bgr[np.newaxis, np.newaxis, :])
-        fringe_max_diff = fringe_diff.max(axis=2)
-        sea_like_fringe = fringe & (fringe_max_diff <= 35)  # slightly more permissive than BG_RGB_DIST
-
-        fringe_removed = int(np.sum(sea_like_fringe))
-        if fringe_removed > 0:
-            country_mask[sea_like_fringe] = 0
-            logger.info(f"[Phase1] Coastal fringe cleanup: removed {fringe_removed} sea-like pixels along coastline")
-
-    # Step 6: Water-colored edge CC removal — find CCs in the country mask
-    # that match the water/ocean reference color and are near image edges.
-    # These are typically title box backgrounds (Wikivoyage uses ocean color
-    # for title boxes). They survived water detection because they weren't
-    # connected to the ocean flood-fill seeds.
-    if water_ref is not None:
-        ref_bgr = np.array(water_ref, dtype=np.float32)
-        h_img, w_img = country_mask.shape
-        bx_w = int(w_img * 0.25)
-        by_w = int(h_img * 0.25)
-
-        cm_bin = (country_mask > 0).astype(np.uint8) * 255
-        n_cc, cc_lbl, cc_st, cc_ctr = cv2.connectedComponentsWithStats(cm_bin)
-        cs = int(np.sum(country_mask > 0))
-
-        # Find main landmass
-        main_id_w = max(range(1, n_cc), key=lambda j: int(cc_st[j, cv2.CC_STAT_AREA]), default=0)
-
-        water_cc_removed = 0
-        for j in range(1, n_cc):
-            if j == main_id_w:
-                continue
-            a = int(cc_st[j, cv2.CC_STAT_AREA])
-            p = a / max(cs, 1) * 100
-            if p > 8.0 or p < 0.1:
-                continue
-            jcx, jcy = cc_ctr[j]
-            if not (jcx < bx_w or jcx > w_img - bx_w or jcy < by_w or jcy > h_img - by_w):
-                continue
-
-            # Check if CC color matches water reference
-            cc_pixels = original_down[cc_lbl == j]
-            cc_avg = cc_pixels.mean(axis=0).astype(np.float32)
-            color_diff = np.abs(cc_avg - ref_bgr).max()
-            if color_diff > 40:
-                continue  # Color too different from water
-
-            # This CC looks like water near an edge — likely title box background
-            country_mask[cc_lbl == j] = 0
-            water_cc_removed += a
-            logger.info(
-                f"[WaterCC] Removed water-colored edge CC: {a}px ({p:.1f}%), pos=({jcx:.0f},{jcy:.0f}), diff={color_diff:.0f}"
-            )
-
-        if water_cc_removed > 0:
-            logger.info(f"[WaterCC] Total removed: {water_cc_removed} px")
-
-    country_size = int(np.sum(country_mask > 0))
-
-    # Dilate the accumulated noise mask so the anti-aliased halo around each
-    # detected text/road/line feature (the pixels mean-shift smeared colour
-    # into) is also excluded from K-means voting.
-    #
-    # Final uniform dilation: small — road_mask and line_mask have already
-    # been dilated per-mask (5 px / 3 px) before unioning, which targets the
-    # wide mean-shift halos only where they occur. This final pass just
-    # catches the 1-2 px halo around letter-precise masks (OCR ink, saturated
-    # text, dark text, tophat, outlier) without over-absorbing their areas.
-    noise_dilate_px = 1
-    if noise_dilate_px > 0 and known_noise_mask.any():
-        dilate_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (2 * noise_dilate_px + 1, 2 * noise_dilate_px + 1))
-        known_noise_mask = cv2.dilate(known_noise_mask, dilate_kernel)
-    noise_px_total = int(known_noise_mask.sum())
-    # Only pixels that are inside the country count for K-means exclusion;
-    # pixels outside country are already masked off by country_mask.
-    known_noise_mask &= (country_mask > 0).astype(np.uint8)
-    logger.info(
-        f"[Phase1] Known-noise mask: {noise_px_total} total pixels, {int(known_noise_mask.sum())} inside country"
-    )
-
-    # Debug images
-    filtered_display = resize_image(filtered, orig_w, orig_h)
-    debug_images = [
-        {"label": "Mean-shift filtered (Python)", "dataUrl": encode_png_base64(filtered_display)},
-    ]
-
-    # Debug: background (gray) + water (blue) + known-noise (red, semi-transparent)
-    # This honestly represents what K-means sees: gray = excluded by country_mask,
-    # red = inside country but excluded via known_noise_mask (OCR/road/line/text residue).
-    h, w = filtered.shape[:2]
-    debug_overlay = filtered.copy()
-    debug_overlay[country_mask == 0] = [200, 200, 200]  # background = gray
-    debug_overlay[water_mask > 0] = [255, 150, 100]  # water = blue-ish (BGR)
-    # Known-noise tint: blend red at 60% opacity so underlying colors are visible
-    noise_in_country = (known_noise_mask > 0) & (country_mask > 0)
-    if noise_in_country.any():
-        red_bgr = np.array([50, 50, 230], dtype=np.float32)
-        orig_vals = debug_overlay[noise_in_country].astype(np.float32)
-        blended = (orig_vals * 0.4 + red_bgr * 0.6).astype(np.uint8)
-        debug_overlay[noise_in_country] = blended
-    debug_display = resize_image(debug_overlay, orig_w, orig_h)
-    debug_images.append(
-        {"label": "Background (gray) + Water (blue) + Known noise (red)", "dataUrl": encode_png_base64(debug_display)}
-    )
+    cleaned, known_noise_mask = _remove_text_and_lines(pipeline_img, res_scale, _progress)
+    filtered = _smooth(cleaned, known_noise_mask, _progress)
+    country_mask = _land_mask(filtered, original_down, _progress)
+    water_mask, water_components = _take_off_water(country_mask, original_down, on_review, _progress)
+    known_noise_mask = _noise_inside_country(known_noise_mask, country_mask)
 
     return {
         "filteredImage": encode_png_base64(filtered),
@@ -1836,6 +1848,6 @@ def run_phase1(  # noqa: C901 -- above the complexity ceiling of 15; #1654 split
         "waterComponents": water_components,
         "countryMask": encode_png_base64(country_mask),
         "knownNoiseMask": encode_png_base64(known_noise_mask * 255),
-        "countrySize": country_size,
-        "debugImages": debug_images,
+        "countrySize": int(np.sum(country_mask > 0)),
+        "debugImages": _phase1_debug_images(filtered, country_mask, water_mask, known_noise_mask, orig_w, orig_h),
     }

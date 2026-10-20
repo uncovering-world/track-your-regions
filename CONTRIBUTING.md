@@ -78,8 +78,7 @@ command that runs it against 3.12 instead.
   Run `npm run lint` to check, `npm run lint:fix` to auto-fix.
 - Python (cv-python): Ruff for lint + format, which holds each function to
   a McCabe complexity of 15 (`[tool.ruff.lint.mccabe]` in
-  `cv-python/pyproject.toml` says why 15; the functions still above it carry
-  a noqa naming #1654, which splits them). Run `npm run check:py`.
+  `cv-python/pyproject.toml` says why 15). Run `npm run check:py`.
 
 ### Testing
 
