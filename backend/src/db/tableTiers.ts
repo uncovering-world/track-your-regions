@@ -69,6 +69,7 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   experience_treasures: 'serving',
   experience_view_choices: 'serving',
   experience_view_suggestions: 'serving',
+  experience_visit_suggestions: 'serving',
   experiences: 'serving',
   geometry_computations: 'serving',
   import_runs: 'serving',
