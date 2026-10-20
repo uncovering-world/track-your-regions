@@ -154,13 +154,14 @@ export function uniteDoors<M extends { qid: string }, R extends FilteredEntity>(
  * The rule's own order — what the item is not is asked after the map, but a
  * reader of the line wants the two the door turns away most often first: the
  * living places and the cities with no ruin on the map (run 122: 76 and 55
- * against 66 by class or by name), then the class-or-name group, then the two
- * the pool itself can add, a row that fell below the line and a row with no
- * coordinate to pin. A group with nothing in it is not printed: a run says what
+ * against 66 by class or by name), then the class-or-name group, then the three
+ * the pool itself can add: a row that fell below the line, a row the readership
+ * door opened for that fewer than two witnesses say a visitor goes to, and a row
+ * with no coordinate to pin. A group with nothing in it is not printed: a run says what
  * it did, not what it might have done.
  */
 const GROUP_ORDER: readonly SiteRefusalGroup[] = [
-  'living', 'no-ruin', 'class-or-name', 'below-the-line', 'placeless',
+  'living', 'no-ruin', 'class-or-name', 'below-the-line', 'few-witnesses', 'placeless',
 ];
 
 /** What the count on the summary line is a count *of*. */
@@ -169,6 +170,7 @@ const GROUP_PHRASES: Record<SiteRefusalGroup, string> = {
   'no-ruin': 'with no ruin on the map',
   'class-or-name': 'by class or by name',
   'below-the-line': 'below the line',
+  'few-witnesses': 'opened by the readership door with fewer than two visit witnesses',
   placeless: 'with no coordinate to pin',
 };
 
@@ -178,6 +180,7 @@ const GROUP_HEADINGS: Record<SiteRefusalGroup, string> = {
   'no-ruin': 'no ruin on the map',
   'class-or-name': 'by class or by name',
   'below-the-line': 'below the line',
+  'few-witnesses': 'read, but fewer than two witnesses say a visitor goes there',
   placeless: 'no coordinate to pin',
 };
 

@@ -14,11 +14,16 @@
  * ADR-0127 opens the same door for a place admitted for its own sake: a site
  * below Archaeology's line that the world reads at the median of the kind's
  * own sites at the line. The measure, the bar, the exit and the gate are the
- * work door's.
+ * work door's. ADR-0128 adds one condition for a place: two independent
+ * witnesses say a visitor goes there (`visit/witnesses.ts`), so a place read
+ * as much as the Roman Baths with nothing to see (Stapleton International
+ * Airport, Rungholt) stays out.
  */
 
 import { pool } from '../../db/index.js';
 import { burstsAmong, readershipYear, readWorks } from '../dumps/readership/workReadership.js';
+import { latestUsage } from '../dumps/wikivoyage/usageTables.js';
+import { WITNESSES, WITNESSES_NEEDED, witnessWords, type Witness } from './visit/witnesses.js';
 import { toContent } from './museum/worksCollector.js';
 import type { PoolWork } from './museum/queries.js';
 import { worksShownByOtherSources } from './shownElsewhere.js';
@@ -173,6 +178,10 @@ export async function readershipDoorFor(
 /**
  * The place door a run of a source passes its pipeline (ADR-0127), or nothing
  * while the source's curator gate is off, for the reason the work door's is.
+ * With no Wikivoyage usage built the door opens for nothing, as with no year
+ * of readership: the travel guide is one of the witnesses a place it opens
+ * for needs (ADR-0128), and without it a place would be held to the other
+ * three.
  */
 export async function placeReadershipDoorFor(
   sourceId: number,
@@ -181,6 +190,10 @@ export async function placeReadershipDoorFor(
 ): Promise<((places: DoorWork[], held: ReadonlySet<string>) => Promise<ReadershipDoor | null>) | undefined> {
   if (!await gateIsOn(sourceId, logPrefix)) return undefined;
   return async (places, held) => {
+    if (!await latestUsage()) {
+      console.log(`${logPrefix} The readership door is shut: no Wikivoyage usage is built (ADR-0128)`);
+      return null;
+    }
     const door = await openPlaceDoor(places, line, held);
     if (door) {
       console.log(`${logPrefix} The readership door opened for ${door.opened.size} places below the line `
@@ -225,9 +238,36 @@ export function doorNote(label: string, work: OpenedWork, door: ReadershipDoor):
     + 'Can a visitor see it there now?';
 }
 
-/** The curator's question on a place the door alone admitted (ADR-0127): its year and the bar. */
-export function placeDoorNote(place: OpenedWork, door: ReadershipDoor): string {
+/** Where a place's reading stands against the door: over the bar, or over the exit that keeps a place held. */
+function readingAgainst(place: OpenedWork, door: ReadershipDoor): string {
+  return place.views >= door.bar
+    ? `over the readership door's bar of ${roundViews(door.bar)}`
+    : `over the exit of ${roundViews(door.exit)} that keeps a place the source holds`;
+}
+
+/**
+ * The curator's question on a place the door alone admitted (ADR-0127): its
+ * year, the bar, and the witnesses that say a visitor goes there (ADR-0128).
+ */
+export function placeDoorNote(place: OpenedWork, door: ReadershipDoor, witnesses: readonly Witness[] = []): string {
+  const said = witnesses.length > 0 ? ` ${capitalised(witnessWords(witnesses))} say a visitor goes there.` : '';
   return `Admitted below the sitelinks line, read ${roundViews(place.views)} times this year in every counted `
     + `edition (the median of this kind's places at the line is ${roundViews(door.bar)})`
-    + `${place.burst ? BURST_CLAUSE : ''}. Is it a place a visitor goes to see?`;
+    + `${place.burst ? BURST_CLAUSE : ''}.${said} Is it a place a visitor goes to see?`;
+}
+
+const capitalised = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/**
+ * Why a place the year opens the door for stays out (ADR-0128): its year,
+ * where it stands against the door, and the witnesses it has of the
+ * `WITNESSES_NEEDED` it needs.
+ */
+export function fewWitnessesReason(place: OpenedWork, door: ReadershipDoor, witnesses: readonly Witness[]): string {
+  const count = witnesses.length === 1 ? 'one witness says' : `${witnesses.length} witnesses say`;
+  const said = witnesses.length === 0
+    ? 'no witness says a visitor goes there'
+    : `only ${count} a visitor goes there (${witnessWords(witnesses)})`;
+  return `Read ${roundViews(place.views)} times this year in every counted edition, ${readingAgainst(place, door)}, `
+    + `but ${said}; the door asks for ${WITNESSES_NEEDED} of ${WITNESSES.length}: ${witnessWords(WITNESSES)}`;
 }

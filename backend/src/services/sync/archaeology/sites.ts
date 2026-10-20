@@ -42,7 +42,9 @@ import type { KeepWkt, OsmObject } from '../osm/types.js';
 import { OsmEmptyAnswerError } from '../osm/readOsmObjects.js';
 import { lineStanding, type SourceLine } from '../sourceLine.js';
 import type { FilteredEntity } from '../syncContract.js';
-import { placeDoorNote, type DoorWork, type OpenedWork, type ReadershipDoor } from '../readershipDoor.js';
+import { fewWitnessesReason, placeDoorNote, type DoorWork, type OpenedWork, type ReadershipDoor } from '../readershipDoor.js';
+import { isVisited, type Witness } from '../visit/witnesses.js';
+import type { VisitWitnessReader } from '../visit/visitWitnesses.js';
 
 const CLASS_BATCH = 25;
 const FACT_BATCH = 50;
@@ -75,6 +77,9 @@ export type OsmReader = (
  * curator gate is off, and in a test that asks no readership.
  */
 export type PlaceDoor = (places: DoorWork[], held: ReadonlySet<string>) => Promise<ReadershipDoor | null>;
+
+/** A row the readership door alone admits: the door, what it read, and the witnesses it has (ADR-0128). */
+interface OpenedFor { door: ReadershipDoor; read: OpenedWork; witnesses: Witness[] }
 
 /** A site the rule admitted and the line let in, with what the run learned about it. */
 export interface SiteCandidate {
@@ -371,8 +376,8 @@ function judgeCandidate(
     admitted: ReadonlySet<string>;
     line: SourceLine;
     readAt: string;
-    /** The door that opened for this row below the line, and what it read (ADR-0127). */
-    door?: { door: ReadershipDoor; read: OpenedWork } | undefined;
+    /** The door that opened for this row below the line, what it read (ADR-0127) and its witnesses (ADR-0128). */
+    door?: OpenedFor | undefined;
   },
 ): SiteCandidate | SiteRefusal | null {
   const { objects, trees, admitted, line, readAt } = input;
@@ -400,7 +405,7 @@ function judgeCandidate(
   const extent = siteExtent(objects);
   // Both questions where both apply: what carried a row the tree did not vouch
   // for in, and that it came in on its reading rather than its sitelinks.
-  const note = [verdict.note, input.door && placeDoorNote(input.door.read, input.door.door)]
+  const note = [verdict.note, input.door && placeDoorNote(input.door.read, input.door.door, input.door.witnesses)]
     .filter(Boolean).join(' ');
   return {
     entity,
@@ -433,6 +438,54 @@ async function openSiteDoor(
 }
 
 /**
+ * The witnesses of the rows the readership door alone admits and the rule
+ * would admit (ADR-0128), and the ones refused for having fewer than two. A
+ * row the rule refuses on its own (a living town, no ruin on the map) is
+ * refused for that, and costs no question. With no reader, as in a test that
+ * asks no witnesses, every door row keeps its standing with none named.
+ */
+async function witnessTheDoor(
+  read: VisitWitnessReader | undefined,
+  rows: readonly PoolEntity[],
+  doorAlone: (entity: PoolEntity) => { door: ReadershipDoor; read: OpenedWork } | undefined,
+  objects: ReadonlyMap<string, readonly OsmObject[]>,
+): Promise<{ of: Map<string, Witness[]>; out: Set<string>; refused: SiteRefusal[] }> {
+  const of = read && rows.length > 0 ? await read(rows, objects) : new Map<string, Witness[]>();
+  const out = new Set<string>();
+  const refused: SiteRefusal[] = [];
+  if (!read) return { of, out, refused };
+  for (const entity of rows) {
+    const witnesses = of.get(entity.qid) ?? [];
+    if (isVisited(witnesses)) continue;
+    const { door, read: reading } = doorAlone(entity)!;
+    out.add(entity.qid);
+    refused.push({ externalId: entity.qid, name: entity.label, reason: fewWitnessesReason(reading, door, witnesses), group: 'few-witnesses' });
+  }
+  return { of, out, refused };
+}
+
+/**
+ * Take the door rows the witnesses refused out of the sites, and judge the
+ * others again so each card names its witnesses.
+ */
+function keepWitnessed(
+  sites: Map<string, SiteCandidate>,
+  doorRows: readonly PoolEntity[],
+  witnessed: { of: ReadonlyMap<string, Witness[]>; out: ReadonlySet<string> },
+  judgeAgain: (entity: PoolEntity) => SiteCandidate | SiteRefusal | null,
+): void {
+  for (const entity of doorRows) {
+    if (witnessed.out.has(entity.qid)) {
+      sites.delete(entity.qid);
+      continue;
+    }
+    if (witnessed.of.size === 0) continue;
+    const again = judgeAgain(entity);
+    if (again && !('group' in again)) sites.set(entity.qid, again);
+  }
+}
+
+/**
  * The sites this run would admit, and every candidate the rule refused with the
  * reason it gave.
  *
@@ -454,6 +507,7 @@ export async function collectSitesByFame(
   osm: OsmReader,
   entrance: SiteEntrance,
   openDoor?: PlaceDoor,
+  witnesses?: VisitWitnessReader,
 ): Promise<SitesByFame> {
   const { pool, byId, byOsm, named, byArticleOnly } = await collectPool(run, trees, admitted, entrance);
   const qids = [...pool.keys()];
@@ -471,7 +525,7 @@ export async function collectSitesByFame(
   const readOpened: ReadonlySet<string> = new Set(door?.opened.keys() ?? []);
   // The door's question goes only on a row the door alone lets in: a held
   // site of 18 to 21 sitelinks is kept by the line's own stay, whatever it reads.
-  const openedFor = (entity: PoolEntity) => {
+  const doorAlone = (entity: PoolEntity) => {
     const read = door?.opened.get(entity.qid);
     const lineKeeps = lineStanding(entity.sitelinks, admitted.has(entity.qid), line) === 'in';
     return door && read && !lineKeeps ? { door, read } : undefined;
@@ -521,8 +575,7 @@ export async function collectSitesByFame(
   }
 
   const sites = new Map<string, SiteCandidate>();
-  for (const entity of candidates) {
-    if (retyped.has(entity.qid)) continue;
+  const judge = (entity: PoolEntity, witnessesOf: ReadonlyMap<string, Witness[]>) => {
     const row = facts.get(entity.qid) ?? emptyFacts();
     // What the map carries under the item — and, where the map's word is what
     // the rule reads, what named it: the per-item read asks by the `wikidata`
@@ -537,7 +590,7 @@ export async function collectSitesByFame(
     // `wikipedia` tag names Athens would otherwise be the first ruin tag step
     // 2 finds and the city a dig, past the vetoes that exist for that mapping.
     const mapsWord = byOsm.has(entity.qid) || !row.classes.some((cls) => trees.site.has(cls));
-    const judged = judgeCandidate(entity, {
+    return judgeCandidate(entity, {
       facts: row,
       objects: mapsWord
         ? withNamed(objects.get(entity.qid) ?? [], named.get(entity.qid) ?? [])
@@ -545,12 +598,26 @@ export async function collectSitesByFame(
       namedByCategory: namedByCategory.has(entity.qid),
       osmOnly: byOsm.has(entity.qid),
       trees, admitted, line, readAt,
-      door: openedFor(entity),
+      door: openedFor(entity, witnessesOf),
     });
+  };
+  const openedFor = (entity: PoolEntity, witnessesOf: ReadonlyMap<string, Witness[]>): OpenedFor | undefined => {
+    const alone = doorAlone(entity);
+    return alone ? { ...alone, witnesses: witnessesOf.get(entity.qid) ?? [] } : undefined;
+  };
+  for (const entity of candidates) {
+    if (retyped.has(entity.qid)) continue;
+    const judged = judge(entity, new Map());
     if (judged === null) continue;
     if ('group' in judged) filtered.push(judged);
     else sites.set(entity.qid, judged);
   }
+
+  // The door's rows the rule admits need two witnesses (ADR-0128).
+  const doorRows = candidates.filter((entity) => sites.has(entity.qid) && doorAlone(entity));
+  const witnessed = await witnessTheDoor(witnesses, doorRows, doorAlone, objects);
+  filtered.push(...witnessed.refused);
+  keepWitnessed(sites, doorRows, witnessed, (entity) => judge(entity, witnessed.of));
 
   // What the run admitted is said once, by `reportProposal`, where the museums
   // are counted too: two lines with the same number in them is one line a

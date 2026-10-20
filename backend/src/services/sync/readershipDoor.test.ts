@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { doorOf, doorNote, percentile, placeDoorNote, type ReadershipDoor } from './readershipDoor.js';
+import { doorOf, doorNote, fewWitnessesReason, percentile, placeDoorNote, type ReadershipDoor } from './readershipDoor.js';
 
 /**
  * ADR-0056's door, on the world tier drawn small: four works at the line of
@@ -66,5 +66,18 @@ describe('the readership door (ADR-0056)', () => {
       + "times this year in every counted edition (the median of this kind's places at the line is 75,745). "
       + 'Is it a place a visitor goes to see?');
     expect(placeDoorNote({ views: 100_106, burst: true }, door)).toContain('its year is a burst');
+  });
+  it('names the witnesses a place the door admits has, and why one with fewer stays out (ADR-0128)', () => {
+    const door: ReadershipDoor = { opened: new Map(), bar: 75_178, exit: 50_844 };
+    expect(placeDoorNote({ views: 175_000, burst: false }, door, ['guide', 'photos', 'formal'])).toBe('Admitted below the '
+      + "sitelinks line, read 175,000 times this year in every counted edition (the median of this kind's places at the "
+      + "line is 75,178). A travel guide, photographs taken there and Wikidata's heritage, hours, visitors or website say "
+      + 'a visitor goes there. Is it a place a visitor goes to see?');
+    expect(fewWitnessesReason({ views: 95_000, burst: false }, door, [])).toBe('Read 95,000 times this year in every '
+      + "counted edition, over the readership door's bar of 75,178, but no witness says a visitor goes there; the door "
+      + "asks for 2 of 4: a travel guide, photographs taken there, Wikidata's heritage, hours, visitors or website and the map");
+    expect(fewWitnessesReason({ views: 60_000, burst: false }, door, ['photos'])).toContain(
+      'over the exit of 50,844 that keeps a place the source holds, but only one witness says a visitor goes there (photographs taken there)',
+    );
   });
 });

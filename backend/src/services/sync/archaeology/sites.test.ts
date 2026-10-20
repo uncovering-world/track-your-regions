@@ -16,6 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildArchaeologyTrees, OSM_KEEP_WKT, SITE_ROOT } from './classes.js';
 import { collectSitesByFame, OsmAnswerFloorError, type SiteEntrance } from './sites.js';
+import type { Witness } from '../visit/witnesses.js';
 import type { ReadershipDoor } from '../readershipDoor.js';
 import type { KeepWkt, OsmDigs, OsmObject } from '../osm/types.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
@@ -366,6 +367,56 @@ describe('collectSitesByFame', () => {
     expect([...answer.sites.keys()]).toEqual(['Q43332']);
     expect(answer.sites.get('Q43332')!.note).toBe('Admitted below the sitelinks line, read 2,400,000 times this year in '
       + "every counted edition (the median of this kind's places at the line is 1,000,000). Is it a place a visitor goes to see?");
+  });
+
+  it('refuses a row the door alone admits with fewer than two witnesses, and names the witnesses of one it keeps (ADR-0128)', async () => {
+    // Against a line only Athens clears, the door opens for Pompeii and Troy.
+    // Pompeii has a guide and the map; Troy only the map. The witnesses are
+    // asked about those two alone.
+    const { run } = runner();
+    const door: ReadershipDoor = {
+      opened: new Map([['Q43332', { views: 2_400_000, burst: false }], ['Q22647', { views: 1_200_000, burst: false }]]),
+      bar: 1_000_000, exit: 700_000,
+    };
+    const asked: string[][] = [];
+    const answer = await collectSitesByFame(
+      run, TREES, new Set<string>(), { enterSitelinks: 200, staySitelinks: 150 }, osmReader([]), NO_ENTRANCE,
+      async () => door,
+      async (places) => {
+        asked.push(places.map((place) => place.qid).sort());
+        return new Map<string, Witness[]>([['Q43332', ['guide', 'map']], ['Q22647', ['map']]]);
+      },
+    );
+    expect(asked).toEqual([['Q22647', 'Q43332']]);
+    expect([...answer.sites.keys()]).toEqual(['Q43332']);
+    expect(answer.sites.get('Q43332')!.note).toContain('A travel guide and the map say a visitor goes there.');
+    expect(answer.filtered.filter((row) => row.group === 'few-witnesses')).toEqual([{
+      externalId: 'Q22647', name: expect.any(String), group: 'few-witnesses',
+      reason: expect.stringContaining("over the readership door's bar of 1,000,000, but only one witness says a visitor goes there (the map)"),
+    }]);
+  });
+
+  it('asks no witness of a door row the rule refuses on its own: a living city is refused as one', async () => {
+    // Against a line nothing clears, the door opens for Pompeii and for
+    // Athens. Athens is refused as a living place before any witness is
+    // asked, so only Pompeii is asked about.
+    const { run } = runner();
+    const door: ReadershipDoor = {
+      opened: new Map([['Q43332', { views: 2_400_000, burst: false }], ['Q1524', { views: 9_000_000, burst: false }]]),
+      bar: 1_000_000, exit: 700_000,
+    };
+    const asked: string[][] = [];
+    const answer = await collectSitesByFame(
+      run, TREES, new Set<string>(), { enterSitelinks: 10_000, staySitelinks: 9_000 }, osmReader([]), NO_ENTRANCE,
+      async () => door,
+      async (places) => {
+        asked.push(places.map((place) => place.qid));
+        return new Map<string, Witness[]>([['Q43332', ['guide', 'map']]]);
+      },
+    );
+    expect(asked).toEqual([['Q43332']]);
+    expect(answer.filtered.find((row) => row.externalId === 'Q1524')?.group).toBe('living');
+    expect([...answer.sites.keys()]).toEqual(['Q43332']);
   });
 
   it('asks no door question of a held site the line\'s own stay keeps', async () => {
