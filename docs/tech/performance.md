@@ -655,6 +655,54 @@ catalogue has grown since that table was recorded. The whole-region
 answer now puts 268 kB on the wire against 142 kB then, and the locations
 answer 188 kB against 148 kB. What those reads carry is #657.
 
+### The hot reads' step on the mini PC — 2026-10-20
+
+The dev stack has run on the mini PC (an AMD Ryzen AI 9 HX 470) since
+2026-10-18, and between a probe on 2026-10-18 and one on 2026-10-19 its
+backend reads got about 20 % slower with byte-identical answers (#1712).
+Martin's tiles, generated per run, did not move. The run of 2026-10-20 is
+the one the investigation below measured against, and it repeats the
+2026-10-19 figures within 2 ms:
+
+| Endpoint | p50 2026-10-18 | p50 2026-10-20 |
+|----------|---------------|---------------|
+| experiences by region | 149 ms | 177 ms |
+| experience locations by region | 118 ms | 146 ms |
+| experience counts per region | 25 ms | 32 ms |
+| world points: overview | 30 ms | 37 ms |
+| world points: overview, folded | 46 ms | 56 ms |
+| world points: markers, Europe | 59 ms | 71 ms |
+
+The 2026-10-20 figures stand as the baseline, measured with PostgreSQL at
+its defaults (`shared_buffers` 128 MB, `work_mem` 4 MB, no parallel-worker
+or planner-cost overrides); a probe against a differently tuned server is
+compared only with another under the same settings. The software was ruled out,
+each by `npm run perf:api` against a second backend beside the dev stack's,
+on the same box and database:
+
+- **Not Node.** A backend on `node:22.22.3-alpine`, `22.23.2` and `22.23.3`
+  measured the same p50 within 2 ms on every row. The image the step was
+  first blamed on runs 22.23.3; the image the laptop ran until the move,
+  built 2026-10-17, runs 22.23.1, between the two older patches tried.
+- **Not the code.** The backend source of e42122211, the checkout of the
+  2026-10-18 run, measured the same as main.
+- **Not the dependencies.** The lockfile did not change in the window, and
+  that 2026-10-17 image and today's hold the same versions of `express`,
+  `compression`, `tsx`, `pg` and `zod`.
+- **Not the data.** Twelve places were added in the window, all of them held
+  for review and in no answer.
+- **Not table bloat.** A plain `VACUUM (ANALYZE)` of the eight tables the
+  reads join moved the p50 by 0–5 ms.
+
+The cause is not established. SQL is the largest part of each request
+today, timed in the backend around every query: 145 of the whole-region
+read's 178 ms, 27–37 of the region counts' 32–41 ms. No such split exists
+for the 2026-10-18 run, so this says where the time goes now, not which
+part of it grew. #1766 holds the one lever this
+found: the whole-region read sorts its wide rows to disk at the default
+`work_mem` of 4 MB, and with 16 MB the statement runs in 70 ms rather than
+107 ms.
+
 ### What the world layer cost the map root — 2026-09-16
 
 The map root draws the catalogue itself before any region is chosen (#910,
@@ -962,6 +1010,9 @@ Filed, and linked here so the baseline is read with them in mind:
   rows four times cheaper to ship and did not make them fewer, or make the
   browser's work of parsing them smaller — #657 is about sending fewer of
   them, and it is the one that moves the timings.
+- #1766 — the same read groups its joined rows per place by sorting every
+  column it selects, and at the default `work_mem` that sort spills 4.8 MB
+  to disk on Europe: about a third of the statement's time.
 
 What the lane does not measure, by design or not yet:
 
