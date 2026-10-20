@@ -90,6 +90,8 @@ export const queryKeys = {
     componentItemSuggestions: (id: Id, candidates: string) => ['experience', 'component-item-suggestions', id, candidates] as const,
     /** Jev's judgement of a place's pairs of near places (#1249), for the pairs the card shows (serialised). */
     mergeProposalSuggestions: (id: Id, pairs: string) => ['experience', 'merge-proposal-suggestions', id, pairs] as const,
+    /** Jev's reading of an arriving place (#1768), for the place as the card shows it (serialised). */
+    visitSuggestion: (id: Id, place: string) => ['experience', 'visit-suggestion', id, place] as const,
     /** The Commons pictures geotagged near one point (#1341). */
     nearbyPictures: (locationId: Id) => ['experience', 'nearby-pictures', locationId] as const,
   },

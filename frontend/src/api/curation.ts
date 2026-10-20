@@ -12,7 +12,7 @@ import type {
   DeclineHeldResult,
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
   LocationStateResult, ManualExperienceCreated, MergeProposalsAnswered, MergeProposalSuggestions, MergeUndone, NearbyPictures, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointItemTakenBack, PublishResult,
-  ViewsChosen, ViewSuggestions, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
+  ViewsChosen, ViewSuggestions, VisitSuggestion, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
 import {
   deleteExperiencesByIdAssignByRegionId, deleteExperiencesByIdRemoveFromRegionByRegionId,
@@ -22,6 +22,7 @@ import {
   postExperiencesByIdViewSuggestions, postExperiencesByIdComponentItems, type AnswerComponentItemsBody,
   postExperiencesByIdComponentItemSuggestions,
   postExperiencesByIdMergeProposals, type AnswerMergeProposalsBody, postExperiencesByIdMergeProposalSuggestions,
+  postExperiencesByIdVisitSuggestion,
   postExperiencesByIdAdmission, postExperiencesByIdAdmissionPin, type PinQuestionAnswerBody,
   getExperiencesReviewPins, postExperiencesByIdAdmissionPinHandBack, type HandBackPinBody, postExperiencesByIdAssign, postExperiencesByIdDeclineHeld,
   postExperiencesByIdDeclineSource, postExperiencesByIdPublish, postExperiencesByIdRefuseArrival,
@@ -42,7 +43,7 @@ export type {
   ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MergeProposalsAnswered, MergeProposalSuggestions, MergeUndone, NearbyPicture,
   NearbyPictures,
   AdmissionPin, AdmissionPinHandedBack, AdmissionPins, HandBackPinBody,
-  PartNotFound, PinQuestionAnswerBody, PinQuestionAnswered, PointItemTakenBack, ViewsChosen, ViewSuggestions, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
+  PartNotFound, PinQuestionAnswerBody, PinQuestionAnswered, PointItemTakenBack, ViewsChosen, ViewSuggestions, VisitSuggestion, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
   RefuseContentsResult,
   RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
@@ -472,6 +473,16 @@ export async function suggestComponentItems(experienceId: number): Promise<Compo
  */
 export async function suggestMergeProposals(experienceId: number): Promise<MergeProposalSuggestions> {
   return postExperiencesByIdMergeProposalSuggestions(experienceId);
+}
+
+/**
+ * Jev's reading of what a visitor finds at an arriving place (#1768):
+ * something to see, a part of a larger place, an object, nothing left, not one
+ * place, or another kind's place, with its confidence. A suggestion only; a
+ * POST since the server may ask Jev, which is paid for per call.
+ */
+export async function suggestVisit(experienceId: number): Promise<VisitSuggestion> {
+  return postExperiencesByIdVisitSuggestion(experienceId);
 }
 
 /**
