@@ -136,12 +136,23 @@ const NOT_A_QUESTION = new Set(['tags']);
  * no picture beside it is the same file under a corrected name or licence, a
  * question of its own, and keeps its row. Both spellings of the picture are
  * asked about, since an object's is `imageUrl` and a part's is `image_url`.
- * Exported for the feed's one-line summary (`rowSpecific.ts`), which names the
- * same facts the table draws.
  */
-export function creditFoldsIntoPicture(proposed: ReadonlyArray<Pick<ProposedField, 'field'>>): boolean {
+function creditFoldsIntoPicture(proposed: ReadonlyArray<Proposal>): boolean {
   const pictures = (['object', 'part'] as const).map(level => pictureCreditPartner(HELD_CREDIT_FIELD, level));
-  return proposed.some(proposal => pictures.includes(proposal.field));
+  // Only into a picture row that is drawn: a picture with no value on either side
+  // makes none (#1774), and folding the credit into it would leave a real credit
+  // change shown nowhere.
+  return proposed.some(proposal => pictures.includes(proposal.field) && proposalRows(proposal, { proposed }).length > 0);
+}
+
+/**
+ * Whether a fact is empty on both sides — null, absent, `''` or `[]` — and so moves
+ * nothing. A museum run proposes `metadata.creators` with an empty list stored and no
+ * value of its own (the Reina Sofía's held card, run 177); such a fact is no question
+ * for a curator and makes no row.
+ */
+function movesNothing(before: unknown, after: unknown): boolean {
+  return isEmptyValue(before) && isEmptyValue(after);
 }
 
 function kindOf(before: unknown, after: unknown): FactKind {
@@ -189,26 +200,53 @@ function row(
  * identically either way, on the same equality and in the same alphabetical order.
  */
 export function rowsFor(proposed: ReadonlyArray<Proposal>, context: ChangeContext): FactRow[] {
-  const rows: FactRow[] = [];
+  return asked(proposed).flatMap(proposal => proposalRows(proposal, context));
+}
+
+/** The proposals a card's table may draw: not a field that is never a question, not a credit its picture carries. */
+function asked<P extends Proposal>(proposed: ReadonlyArray<P>): P[] {
   const creditFolded = creditFoldsIntoPicture(proposed);
-  for (const proposal of proposed) {
-    const { field } = proposal;
-    if (NOT_A_QUESTION.has(field)) continue;
-    if (creditFolded && field === HELD_CREDIT_FIELD) continue;
-    // The proposed value tells a type's meaning which vocabulary to speak, and the
-    // stored one does where the proposal clears it (#814).
-    const meaning = meaningOf(field, proposal.new, proposal.old);
-    const keys = saidWhole(meaning) ? null : changedKeys(proposal.old, proposal.new);
-    if (keys) {
-      for (const change of keys) {
-        rows.push(row(`${field}.${change.key}`, field, keyMeaningOf(field, change.key),
-          change.old, change.new, proposal, context));
-      }
-    } else {
-      rows.push(row(field, field, meaning, proposal.old, proposal.new, proposal, context));
-    }
+  return proposed.filter(({ field }) => !NOT_A_QUESTION.has(field) && !(creditFolded && field === HELD_CREDIT_FIELD));
+}
+
+/**
+ * The proposed fields that make at least one row, in the queue's order: what the feed's
+ * one-line summary names (`rowSpecific.ts`), so the line and the card ask about the same
+ * facts. A field empty on both sides makes none.
+ */
+export function askedFields<P extends Proposal>(proposed: ReadonlyArray<P>): P[] {
+  return asked(proposed).filter(proposal => proposalRows(proposal, { proposed }).length > 0);
+}
+
+/**
+ * What a card proposes when its fields make no row, as the sentence that stands in for
+ * the empty table: the catalogue's own labels (tags, which an earlier run filed), facts
+ * with no value on either side, or both. Either way nothing readers see moves, and a
+ * card must not read "proposes nothing" over a button that still writes the fields.
+ */
+export function rowlessProposalWords(proposed: ReadonlyArray<Pick<ProposedField, 'field'>>): string {
+  const labels = proposed.some(({ field }) => NOT_A_QUESTION.has(field));
+  const empty = proposed.some(({ field }) => !NOT_A_QUESTION.has(field));
+  if (labels && empty) return 'only the catalogue’s own labels and facts with no value on either side';
+  return labels ? 'only the catalogue’s own labels' : 'only facts with no value on either side';
+}
+
+/** The rows of one proposed field: one per named part that moved, or the field whole. */
+function proposalRows(proposal: Proposal, context: ChangeContext): FactRow[] {
+  const { field } = proposal;
+  // The proposed value tells a type's meaning which vocabulary to speak, and the
+  // stored one does where the proposal clears it (#814).
+  const meaning = meaningOf(field, proposal.new, proposal.old);
+  const keys = saidWhole(meaning) ? null : changedKeys(proposal.old, proposal.new);
+  if (!keys) {
+    return movesNothing(proposal.old, proposal.new)
+      ? []
+      : [row(field, field, meaning, proposal.old, proposal.new, proposal, context)];
   }
-  return rows;
+  return keys
+    .filter(change => !movesNothing(change.old, change.new))
+    .map(change => row(`${field}.${change.key}`, field, keyMeaningOf(field, change.key),
+      change.old, change.new, proposal, context));
 }
 
 /** The rows by kind, for the line that says what a run proposes before the rows do. */
@@ -266,7 +304,7 @@ export function partGroups(
   shape: { offeredLocations?: number },
   onOpen: (part: HeldPart) => void,
 ): FactGroup[] {
-  return parts.map((part, index) => ({
+  return parts.map((part, index): FactGroup => ({
     subject: {
       kind: part.kind === 'locations' ? 'place' : 'work',
       // The stored row's name first: the record's is the name as the run saw
@@ -298,5 +336,8 @@ export function partGroups(
     // and its picture's credit is whose photograph readers see of *it* — the
     // object's would credit the museum's photographer under a work's picture.
     rows: rowsFor(part.fields, { ...context, proposed: part.fields, imageCredit: part.imageCredit ?? null }),
-  }));
+  }))
+    // A part whose fields all have no value on either side asks nothing: a heading over
+    // no rows would read as a question with nothing to answer.
+    .filter(group => group.rows.length > 0);
 }

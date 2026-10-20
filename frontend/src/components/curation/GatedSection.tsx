@@ -31,7 +31,7 @@ import { worldViewList } from '../../utils/worldViewList';
 import { ANSWER_WORDS } from './selection/answerWords';
 import { GatedRow, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
-import { partGroups, rowsFor } from './factRows';
+import { partGroups, rowlessProposalWords, rowsFor } from './factRows';
 import { HeldAnswer, type HeldSelection } from './HeldAnswer';
 import { heldRefusalOutcomeFor, mergedPublishResult, PartlyPublished, publishOutcomeFor } from './publishOutcome';
 import { PartPreviewDialog } from './PartPreviewDialog';
@@ -104,6 +104,9 @@ export function GatedSection({ group, heading, objectButton, onDone }: {
   // the coordinates row itself and gets no group (`movedPointGroups.ts`).
   const moved = movedPointGroups(contents, item.name);
   const partRows = [...parts, ...moved].flatMap(group => group.rows);
+  // Every field the card holds, the parts' included: what publishing writes, and what the
+  // note over an empty table names when none of them makes a row.
+  const heldFields = [...proposed, ...(held?.proposed_parts ?? []).flatMap(part => part.fields)];
   const works = count(contents?.pending_treasures);
   const points = count(contents?.pending_locations) - count(contents?.pending_moved_locations);
   const [showHow, setShowHow] = useState(false);
@@ -221,17 +224,18 @@ export function GatedSection({ group, heading, objectButton, onDone }: {
           </GatedRow>
         )}
 
-        {/* A card an earlier run filed with only the catalogue's own labels held —
-            tags, which are no longer a question and no longer a row — would
-            otherwise read "proposes nothing" over an empty table while its button
-            wrote them. None on this database today; the shape is real, and it
-            clears at the kind's next run. */}
-        {proposed.length > 0 && rows.length === 0 && (
+        {/* A card whose held fields, its parts' included, make no row — tags an earlier run filed, which
+            are no longer a question, or a fact with no value on either side (#1774)
+            — would otherwise read "proposes nothing" over an empty table while its
+            button wrote them. Where a part asks something, or unread works or points
+            arrived beside the held half, the tables below say what the card asks, and
+            "asks nothing of you" would contradict them. */}
+        {heldFields.length > 0 && rows.length === 0 && partRows.length === 0 && works === 0 && points === 0 && (
           <GatedRow label="fields">
             <Typography variant="body2">
-              {held?.sync_log_id ? `Run ${held.sync_log_id}` : 'An earlier run'} proposed only the
-              catalogue’s own labels, which nothing readers see. Publishing writes them and asks
-              nothing of you.
+              {held?.sync_log_id ? `Run ${held.sync_log_id}` : 'An earlier run'} proposed{' '}
+              {rowlessProposalWords(heldFields)}, which nothing readers see. Publishing writes them
+              and asks nothing of you.
             </Typography>
           </GatedRow>
         )}
