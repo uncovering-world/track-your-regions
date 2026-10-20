@@ -18,7 +18,7 @@ export const WIKIMEDIA_DUMPS = 'https://dumps.wikimedia.org';
 /** Every dump the catalog knows, by key: what a route accepts and a build is named by. */
 export const DUMP_KEYS = [
   'wikidata-entities', 'wikidata-lexemes', 'enwiki-page', 'enwiki-page-props', 'enwiki-linktarget', 'enwiki-categorylinks',
-  'enwiki-langlinks', 'pageviews-user', 'wikipedia-redirects',
+  'enwiki-langlinks', 'pageviews-user', 'wikipedia-redirects', 'wikivoyage-usage',
 ] as const;
 export type DumpKey = typeof DUMP_KEYS[number];
 
@@ -118,15 +118,16 @@ interface DumpStatus {
 }
 
 /**
- * The file of one table in a Wikipedia edition's dump directory, where its
- * status file says the job that wrote it is done and gives its sha1: `wiki` is
- * the edition's database name (`enwiki`, `zh_min_nanwiki`), `dir` the run's
- * date (`20261001`). Null where the run has not finished it.
+ * One file of a wiki's dated dump run, where its status file says the job that
+ * wrote it is done and gives its sha1: `wiki` is the edition's database name
+ * (`enwiki`, `zh_min_nanwiki`, `enwikivoyage`), `dir` the run's date
+ * (`20261001`), `suffix` what follows the date in the file's name. Null where
+ * the run has not finished it.
  */
-export async function wikipediaTableFile(
-  read: TextReader, key: DumpKey, wiki: string, dir: string, job: string, table: string,
+export async function wikiRunFile(
+  read: TextReader, key: DumpKey, wiki: string, dir: string, job: string, suffix: string, compression: DumpFile['compression'],
 ): Promise<DumpFile | null> {
-  if (!/^[a-z_]+wiki$/.test(wiki) || !DIGITS.test(dir)) throw new Error(`Refusing a Wikipedia dump directory that is not one: ${wiki}/${dir}`);
+  if (!/^[a-z_]+wiki(voyage)?$/.test(wiki) || !DIGITS.test(dir)) throw new Error(`Refusing a wiki dump directory that is not one: ${wiki}/${dir}`);
   const base = `${WIKIMEDIA_DUMPS}/${wiki}/${dir}`;
   let status: DumpStatus;
   try {
@@ -135,14 +136,50 @@ export async function wikipediaTableFile(
     return null;
   }
   const entry = status.jobs?.[job];
-  const fileName = `${wiki}-${dir}-${table}.sql.gz`;
+  const fileName = `${wiki}-${dir}-${suffix}`;
   const file = entry?.files?.[fileName];
   if (entry?.status !== 'done' || !file?.sha1 || !/^[0-9a-f]{40}$/.test(file.sha1)) return null;
   return {
     key, fileName: safeFileName(fileName), url: `${base}/${fileName}`, date: isoDate(dir),
-    checksum: { kind: 'sha1', value: file.sha1 }, expectedBytes: file.size ?? null, compression: 'gzip',
+    checksum: { kind: 'sha1', value: file.sha1 }, expectedBytes: file.size ?? null, compression,
   };
 }
+
+/** The file of one table in a Wikipedia edition's dump directory, as `wikiRunFile` finds it. */
+export async function wikipediaTableFile(
+  read: TextReader, key: DumpKey, wiki: string, dir: string, job: string, table: string,
+): Promise<DumpFile | null> {
+  if (!/^[a-z_]+wiki$/.test(wiki)) throw new Error(`Refusing a Wikipedia dump directory that is not one: ${wiki}/${dir}`);
+  return wikiRunFile(read, key, wiki, dir, job, `${table}.sql.gz`, 'gzip');
+}
+
+/** The job of a wiki's run that writes which Wikidata items each page uses, and the file it writes. */
+export const USAGE_JOB = 'wbcentityusagetable';
+export const USAGE_SUFFIX = 'wbc_entity_usage.sql.gz';
+
+/**
+ * English Wikivoyage's item usage, the build's own file: a build reads every
+ * edition's usage table of the same date (#1768).
+ */
+const wikivoyageUsage: DumpDescriptor = {
+  key: 'wikivoyage-usage',
+  source: 'Wikivoyage editions',
+  title: 'Item usage',
+  datedBy: 'day',
+  about: 'The wbc_entity_usage table: which Wikidata items each page uses. A build reads this and the same date\'s usage and '
+    + 'page tables of every edition, and keeps each item an edition\'s guide articles use: the travel-guide witness of '
+    + 'whether a place is one a visitor goes to (#1768, decided on #1718).',
+  isFileName: datedName('enwikivoyage-', 8, `-${USAGE_SUFFIX}`),
+  async resolve(read, _size, only) {
+    const base = `${WIKIMEDIA_DUMPS}/enwikivoyage`;
+    for (const dir of datedDirectories(await read(`${base}/`)).slice(0, DIRECTORIES_TRIED)) {
+      if (only && !only(`enwikivoyage-${dir}-${USAGE_SUFFIX}`)) continue;
+      const file = await wikiRunFile(read, 'wikivoyage-usage', 'enwikivoyage', dir, USAGE_JOB, USAGE_SUFFIX, 'gzip');
+      if (file) return file;
+    }
+    return null;
+  },
+};
 
 function enwikiTable(key: DumpKey, job: string, table: string, title: string, about: string, source = 'English Wikipedia'): DumpDescriptor {
   const base = `${WIKIMEDIA_DUMPS}/enwiki`;
@@ -201,6 +238,7 @@ export const DUMPS: readonly DumpDescriptor[] = [
     'each redirect page and the title it points to. A build reads this and the page table of the same date in every edition readership counts, and keeps the redirects to an article with a Wikidata item, so their views count under it (#1650, ADR-0055 decision 2).',
     'Wikipedia editions'),
   pageviews,
+  wikivoyageUsage,
 ];
 
 export function dumpNamed(key: string): DumpDescriptor | undefined {

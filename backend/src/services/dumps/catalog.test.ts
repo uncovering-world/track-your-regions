@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { datedDirectories, dumpNamed, sha1Of, type TextReader } from './catalog.js';
+import { datedDirectories, dumpNamed, sha1Of, wikipediaTableFile, wikiRunFile, type TextReader } from './catalog.js';
 
 /**
  * Finding the newest complete file of each dump (ADR-0101): a dated directory
@@ -54,6 +54,33 @@ describe('the dump catalog', () => {
     });
     const running = pages({ [`${base}/`]: '<a href="20261001/">b</a>', [`${base}/20261001/dumpstatus.json`]: status('in-progress') });
     expect(await dumpNamed('enwiki-page-props')!.resolve(running, noSize)).toBeNull();
+  });
+
+  it("takes English Wikivoyage's item usage from the newest run that has finished it (#1768)", async () => {
+    const base = 'https://dumps.wikimedia.org/enwikivoyage';
+    const status = (state: string) => JSON.stringify({ jobs: { wbcentityusagetable: { status: state, files: {
+      'enwikivoyage-20261001-wbc_entity_usage.sql.gz': { size: 8857077, sha1: SHA },
+    } } } });
+    const read = pages({
+      [`${base}/`]: '<a href="20260920/">a</a><a href="20261001/">b</a>',
+      [`${base}/20261001/dumpstatus.json`]: status('done'),
+    });
+    const usage = dumpNamed('wikivoyage-usage')!;
+    expect(await usage.resolve(read, noSize)).toMatchObject({
+      fileName: 'enwikivoyage-20261001-wbc_entity_usage.sql.gz', date: '2026-10-01', expectedBytes: 8857077,
+      checksum: { value: SHA }, compression: 'gzip',
+    });
+    const running = pages({ [`${base}/`]: '<a href="20261001/">b</a>', [`${base}/20261001/dumpstatus.json`]: status('in-progress') });
+    expect(await usage.resolve(running, noSize)).toBeNull();
+    expect(usage.isFileName('enwikivoyage-20261001-wbc_entity_usage.sql.gz')).toBe(true);
+    expect(usage.isFileName('dewikivoyage-20261001-wbc_entity_usage.sql.gz')).toBe(false);
+  });
+
+  it('refuses a wiki name that is not a database name before building a URL from it', async () => {
+    await expect(wikiRunFile(pages({}), 'wikivoyage-usage', '../enwikivoyage', '20261001', 'wbcentityusagetable', 'wbc_entity_usage.sql.gz', 'gzip'))
+      .rejects.toThrow('Refusing');
+    await expect(wikipediaTableFile(pages({}), 'wikipedia-redirects', 'enwikivoyage', '20261001', 'redirecttable', 'redirect'))
+      .rejects.toThrow('Refusing');
   });
 
   it('takes the newest monthly pageview file the host answers a size for, with no checksum', async () => {

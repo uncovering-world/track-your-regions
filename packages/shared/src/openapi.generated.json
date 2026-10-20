@@ -5021,7 +5021,8 @@
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
                 "pageviews-user",
-                "wikipedia-redirects"
+                "wikipedia-redirects",
+                "wikivoyage-usage"
               ]
             },
             "required": true
@@ -5090,7 +5091,8 @@
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
                 "pageviews-user",
-                "wikipedia-redirects"
+                "wikipedia-redirects",
+                "wikivoyage-usage"
               ]
             },
             "required": true
@@ -5159,7 +5161,8 @@
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
                 "pageviews-user",
-                "wikipedia-redirects"
+                "wikipedia-redirects",
+                "wikivoyage-usage"
               ]
             },
             "required": true
@@ -5218,7 +5221,8 @@
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
                 "pageviews-user",
-                "wikipedia-redirects"
+                "wikipedia-redirects",
+                "wikivoyage-usage"
               ]
             },
             "required": true
@@ -5277,7 +5281,8 @@
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
                 "pageviews-user",
-                "wikipedia-redirects"
+                "wikipedia-redirects",
+                "wikivoyage-usage"
               ]
             },
             "required": true
@@ -5336,7 +5341,8 @@
                 "enwiki-categorylinks",
                 "enwiki-langlinks",
                 "pageviews-user",
-                "wikipedia-redirects"
+                "wikipedia-redirects",
+                "wikivoyage-usage"
               ]
             },
             "required": true
@@ -21206,7 +21212,8 @@
               "enwiki-categorylinks",
               "enwiki-langlinks",
               "pageviews-user",
-              "wikipedia-redirects"
+              "wikipedia-redirects",
+              "wikivoyage-usage"
             ]
           },
           "kind": {
@@ -21402,7 +21409,8 @@
                     "enwiki-categorylinks",
                     "enwiki-langlinks",
                     "pageviews-user",
-                    "wikipedia-redirects"
+                    "wikipedia-redirects",
+                    "wikivoyage-usage"
                   ]
                 },
                 "source": {
