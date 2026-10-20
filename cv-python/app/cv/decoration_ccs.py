@@ -61,9 +61,9 @@ class _Components:
         pixels = self.filtered[self.labels == i]
         return float(np.std(pixels.astype(np.float32), axis=0).mean())
 
-    def touches(self, i: int, protected: set[int], kernel: int) -> bool:
-        """Whether the component, dilated by a kernel × kernel square, reaches a protected one."""
-        dilated = cv2.dilate((self.labels == i).astype(np.uint8), np.ones((kernel, kernel), np.uint8))
+    def touches(self, i: int, protected: set[int]) -> bool:
+        """Whether the component lies across a gap of one pixel from a protected one."""
+        dilated = cv2.dilate((self.labels == i).astype(np.uint8), np.ones((5, 5), np.uint8))
         return any(np.any(dilated & (self.labels == p_id).astype(np.uint8)) for p_id in protected)
 
     def describe(self, i: int) -> str:
@@ -139,7 +139,7 @@ def _interior_decoration(cc: _Components, i: int, protected: set[int]) -> bool:
     exceed 0.73.
     """
     pct, fill = cc.pct(i), cc.fill(i)
-    if not (0.2 <= pct <= 3.0 and fill >= 0.73) or cc.touches(i, protected, 5):
+    if not (0.2 <= pct <= 3.0 and fill >= 0.73) or cc.touches(i, protected):
         return False
     color_std = cc.color_std(i)
     if color_std > 8:
@@ -148,12 +148,12 @@ def _interior_decoration(cc: _Components, i: int, protected: set[int]) -> bool:
     return True
 
 
-def _title_box(cc: _Components, i: int, protected: set[int]) -> bool:
-    """A large component (8-20%) near an edge that is a solid-colour rectangle, not touching the land."""
+def _title_box(cc: _Components, i: int) -> bool:
+    """A large component (8-20%) near an edge that is a solid-colour rectangle."""
     fill = cc.fill(i)
     # Perfect rectangles bypass the colour check entirely
     color_std = 0.0 if fill > 0.90 else cc.color_std(i)
-    if not (color_std < 12 or fill > 0.90) or cc.touches(i, protected, 3):
+    if not (color_std < 12 or fill > 0.90):
         return False
     logger.info(f"[DecoCC] Excluded LARGE CC: {cc.describe(i)}, fill={fill:.2f}, std={color_std:.1f}")
     return True
@@ -201,16 +201,18 @@ def _compact_decoration(cc: _Components, i: int, color_std: float) -> bool:
     return True
 
 
-def _edge_decoration(cc: _Components, i: int, protected: set[int]) -> bool:
-    """A small or medium component (< 8%) near an edge that is furniture rather than land."""
+def _edge_decoration(cc: _Components, i: int) -> bool:
+    """A small or medium component (< 8%) near an edge that is furniture rather than land.
+
+    It is judged on its own, whatever lies beside it. Counting a component a pixel
+    from the land as land (the interior tier's test) keeps, on the sample of the
+    import's region maps measured, the sea labels, compass roses and scale bars
+    whose pale halos run into the coast, and no island (#1740).
+    """
     pct = cc.pct(i)
     # Very tiny CCs near edges: always exclude (scale bar fragments, dots)
     if pct < 0.3:
         return True
-    # Real geographic features (peninsulas, border areas) touch the mainland;
-    # decorations are isolated.
-    if cc.touches(i, protected, 3):
-        return False
     color_std = cc.color_std(i)
     if pct < 2.0 and _marked_small_decoration(cc, i, color_std):
         return True
@@ -227,10 +229,10 @@ def _is_decoration(cc: _Components, i: int, protected: set[int]) -> bool:
         return _interior_decoration(cc, i, protected)
     pct = cc.pct(i)
     if 8.0 < pct <= 20.0 and cc.fill(i) > 0.70:
-        return _title_box(cc, i, protected)
+        return _title_box(cc, i)
     if pct > 8.0:
         return False
-    return _edge_decoration(cc, i, protected)
+    return _edge_decoration(cc, i)
 
 
 def exclude_decoration_ccs(
