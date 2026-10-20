@@ -946,7 +946,7 @@ def _best_of_centroid_fallback(
     """The alignment (matrix, method, k_conic), replaced by the centroid fallback when the
     alignment places too few centroids on the clusters and the fallback places more.
     """
-    matrix, method, k_conic = alignment
+    matrix, method, _ = alignment
     centroid_score = _score_centroid_placement(centroids, images.pixel_labels, cos_lat, matrix, tw, th)
     logger.info(
         f"[Match] IoU alignment: F2={f2:.3f}, centroid_hits={centroid_score:.0f}/{len(centroids)}, method={method}"

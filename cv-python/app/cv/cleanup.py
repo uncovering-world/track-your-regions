@@ -56,7 +56,6 @@ def _are_spatially_adjacent(
     Returns True if at least `min_border` pixels of label_a have a direct
     4-neighbor belonging to label_b.
     """
-    h, w = pixel_labels.shape
     mask_a = pixel_labels == label_a
 
     # Dilate mask_a by 1 pixel (4-connected) and check overlap with label_b
@@ -148,7 +147,6 @@ def remove_small_patches(
 
     The JS pipeline uses max(pxS(20), countrySize * 0.02) as threshold.
     """
-    h, w = pixel_labels.shape
     min_patch = max(min_patch_px, round(country_size * 0.02))
     unique_labels = [int(l) for l in np.unique(pixel_labels) if l != 255]
 
@@ -404,7 +402,6 @@ def _remove_small_isolated_ccs(
 
     Also removes medium CCs (0.5-2%) that are isolated + compact + uniform
     (likely compass dots, scale bar fragments, city markers)."""
-    h, w = pixel_labels.shape
     country_size = int(np.sum(country_mask > 0))
     if country_size == 0:
         return pixel_labels
@@ -743,7 +740,6 @@ def _remove_tiny_fragments(
 
     This is the final sweep to catch city dots, compass fragments, and other
     tiny decoration remnants that survived all previous cleanup steps."""
-    h, w = pixel_labels.shape
     result = pixel_labels.copy()
     active_labels = [int(l) for l in np.unique(pixel_labels) if l != 255]
     total_removed = 0
@@ -962,7 +958,6 @@ def _remove_color_outlier_ccs(
 
     Replace outlier CC pixels with the most common neighboring cluster label.
     """
-    h, w = pixel_labels.shape
     if country_size == 0:
         return pixel_labels
 

@@ -72,9 +72,9 @@ def kmeans_cielab(
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 40, 0.2)
     if random_seed > 0:
         cv2.setRNGSeed(random_seed)
-        _, km_labels, centers_norm = cv2.kmeans(normalized, n_clusters, None, criteria, 1, cv2.KMEANS_RANDOM_CENTERS)
+        _, km_labels, _ = cv2.kmeans(normalized, n_clusters, None, criteria, 1, cv2.KMEANS_RANDOM_CENTERS)
     else:
-        _, km_labels, centers_norm = cv2.kmeans(normalized, n_clusters, None, criteria, 10, cv2.KMEANS_PP_CENTERS)
+        _, km_labels, _ = cv2.kmeans(normalized, n_clusters, None, criteria, 10, cv2.KMEANS_PP_CENTERS)
 
     # Compute centroids from actual Lab values (not normalized)
     pixel_labels = np.full(h * w, 255, dtype=np.uint8)
