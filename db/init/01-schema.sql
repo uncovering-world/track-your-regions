@@ -4424,6 +4424,27 @@ COMMENT ON COLUMN experience_merge_suggestions.proposal_id IS 'The proposal the 
 COMMENT ON COLUMN experience_merge_suggestions.asked IS 'The pair as the question was built from it: both names, the distance, the similarity and whether exact; a judgement answers for that pair only.';
 COMMENT ON COLUMN experience_merge_suggestions.input_tokens IS 'This question''s share of its call''s input tokens, so the rows added up are what the calls cost.';
 
+-- Jev's reading of what a visitor finds at a place a curator is asked about
+-- (#1768, ADR-0087, ADR-0128). See db/migrations/136.
+CREATE TABLE IF NOT EXISTS experience_visit_suggestions (
+    id SERIAL PRIMARY KEY,
+    experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+    asked JSONB NOT NULL,
+    article_lead TEXT,
+    reading VARCHAR(12) CHECK (reading IN ('visit', 'part', 'object', 'nothing', 'not-a-place', 'other-kind')),
+    confidence NUMERIC(4, 3) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),
+    probabilities JSONB NOT NULL,
+    model VARCHAR(40) NOT NULL,
+    input_tokens INTEGER NOT NULL DEFAULT 0,
+    asked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_experience_visit_suggestions_place
+    ON experience_visit_suggestions(experience_id, asked_at DESC);
+COMMENT ON TABLE experience_visit_suggestions IS 'Jev''s reading of what a visitor finds at a place (#1768, ADR-0087): visit, something to see or enter; part, a part of a larger place; object, a thing kept elsewhere; nothing, little or nothing visible; not-a-place, a culture, a kingdom or a group; other-kind, a place visited for something its kinds do not offer; null, an answer the client refused. One row per call, each for the place as recorded in asked and stale once it changes. Never applied.';
+COMMENT ON COLUMN experience_visit_suggestions.asked IS 'The place as the question was built from it: its name, countries and kinds, the map''s tag and its article, as askedSql states them.';
+COMMENT ON COLUMN experience_visit_suggestions.article_lead IS 'The lead of the place''s Wikipedia article Jev read, as it was when asked; null where none could be read.';
+COMMENT ON COLUMN experience_visit_suggestions.input_tokens IS 'What the call cost: Jev is priced per input token, output free.';
+
 -- One gate over: how a curator answers a single field of a held proposal (#722).
 --
 -- A held field is one nobody claimed and the gate kept out of the columns

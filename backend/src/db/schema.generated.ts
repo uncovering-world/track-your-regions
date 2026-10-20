@@ -587,6 +587,20 @@ export interface ExperienceViewSuggestionsRow {
   asked_at: Date;
 }
 
+/** The table `experience_visit_suggestions`. */
+export interface ExperienceVisitSuggestionsRow {
+  id: number;
+  experience_id: number;
+  asked: unknown;
+  article_lead: string | null;
+  reading: string | null;
+  confidence: string;
+  probabilities: unknown;
+  model: string;
+  input_tokens: number;
+  asked_at: Date;
+}
+
 /** The table `experiences`. */
 export interface ExperiencesRow {
   id: number;
@@ -1108,6 +1122,7 @@ export const RELATION_SCHEMAS = {
   experience_treasures: "public",
   experience_view_choices: "public",
   experience_view_suggestions: "public",
+  experience_visit_suggestions: "public",
   experiences: "public",
   geometry_computations: "public",
   import_runs: "public",
@@ -1307,6 +1322,10 @@ export const COLUMN_WIDTHS = {
     field: 20,
     model: 40,
   },
+  experience_visit_suggestions: {
+    reading: 12,
+    model: 40,
+  },
   experiences: {
     external_id: 255,
     name: 500,
@@ -1453,6 +1472,9 @@ export const CHECK_VALUES = {
   },
   experience_view_suggestions: {
     field: ["name", "description", "imageUrl", "location"],
+  },
+  experience_visit_suggestions: {
+    reading: ["visit", "part", "object", "nothing", "not-a-place", "other-kind"],
   },
   experiences: {
     existence: ["extant", "lost"],
