@@ -55,9 +55,11 @@ fi
 commands=()
 for tool in "${missing[@]}"; do
   case "$tool" in
-    ruff)      commands+=("ruff check --no-cache ." "ruff format --no-cache --check .") ;;
-    mypy)      commands+=("mypy app") ;;
-    bandit)    commands+=("bandit -r app -c pyproject.toml") ;;
+    # The loaders under db/ are read by the same three tools, each with db/'s own
+    # configuration (db/pyproject.toml; ruff's extends cv-python's), #1736.
+    ruff)      commands+=("ruff check --no-cache . ../db" "ruff format --no-cache --check . ../db") ;;
+    mypy)      commands+=("mypy app" "(cd ../db && mypy)") ;;
+    bandit)    commands+=("bandit -r app -c pyproject.toml" "(cd ../db && bandit -r . -c pyproject.toml)") ;;
     pip-audit) commands+=("pip-audit -r requirements.txt") ;;
     # Two lanes: cv-python's own tests, and db/, which tests the part of the
     # GADM loader that needs neither a database nor GDAL (#665). Naming only the

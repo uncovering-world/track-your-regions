@@ -5,3 +5,27 @@
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+
+# The loaders are read by the same gates as cv-python (#1736): ruff with
+# cv-python's rules, which this extends, mypy and Bandit. Only what differs is
+# stated here.
+[tool.ruff]
+extend = "../cv-python/pyproject.toml"
+
+[tool.mypy]
+python_version = "3.12"
+# Named one by one, since two loaders are not importable module names; a new
+# db/*.py is added here, or ruff and Bandit read it and mypy does not.
+files = ["gadm_levels.py", "gadm_sample.py", "init-db.py", "precalculate-geometries.py", "tests"]
+# GDAL's bindings, psycopg2 and shapely ship no stubs in the venv the gates use,
+# and the loader image installs them from apt, so they are read as untyped.
+ignore_missing_imports = true
+# Loader scripts, not a service: their bodies are checked without asking every
+# function to declare its types, which cv-python's app code does (#1185).
+check_untyped_defs = true
+warn_unused_ignores = true
+warn_redundant_casts = true
+strict_equality = true
+
+[tool.bandit]
+exclude_dirs = ["tests"]

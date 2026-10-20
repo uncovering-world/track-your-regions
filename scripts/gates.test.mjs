@@ -219,13 +219,16 @@ describe('what a change asks for', () => {
     expect(outputs(['cv-python/app/a.py']).job_test).toBe('false');
   });
 
-  it('asks the database lanes and the Python tests for a loader in db/', () => {
-    // `db/gadm_levels.py` is loaded by the schema's own tests and by nothing in
-    // cv-python, so it asks for `test:py` without asking for cv-python's lint.
+  it('asks the database lanes and the Python gates for a loader in db/', () => {
+    // `db/gadm_levels.py` is loaded by the schema's own tests, and the Python
+    // gates read the loaders with db/'s own configuration (#1736). The audit of
+    // cv-python's dependencies is not asked: the loaders' own waits on #1782.
     const gates = applying(['db/gadm_levels.py']);
     expect(gates).toContain('test:py');
     expect(gates).toContain('test:backend');
-    expect(gates).not.toContain('check:py');
+    expect(gates).toContain('check:py');
+    expect(gates).toContain('security:py:bandit');
+    expect(gates).not.toContain('security:py:deps');
   });
 
   it('asks only the backend unit lane and the secrets scan for a change of the coverage lists', () => {

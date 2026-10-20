@@ -21,8 +21,8 @@ import time
 from datetime import timedelta
 
 import psycopg2
-from psycopg2.extras import execute_batch
 from dotenv import load_dotenv
+from psycopg2.extras import execute_batch
 
 # Which levels of a GADM row are divisions, what each is called and what
 # identifies it, is decided in gadm_levels.py -- one row in, a list of divisions
@@ -33,6 +33,7 @@ from gadm_sample import continents, ogr_filter, resolve_continent, sql_filter
 
 try:
     from osgeo import ogr
+
     ogr.UseExceptions()
     HAS_GDAL = True
 except ImportError:
@@ -119,9 +120,13 @@ class ProgressTracker:
         elapsed = time.perf_counter() - self.start_time
         pct = self.current / self.total_items if self.total_items > 0 else 1
         eta = (elapsed / pct - elapsed) if pct > 0 else 0
-        print(f"\r  {pct*100:5.1f}% ({self.current}/{self.total_items} {self.item_name}) "
-              f"- Elapsed: {timedelta(seconds=int(elapsed))} "
-              f"- ETA: {timedelta(seconds=int(eta))}", end="", flush=True)
+        print(
+            f"\r  {pct * 100:5.1f}% ({self.current}/{self.total_items} {self.item_name}) "
+            f"- Elapsed: {timedelta(seconds=int(elapsed))} "
+            f"- ETA: {timedelta(seconds=int(eta))}",
+            end="",
+            flush=True,
+        )
 
     def finish(self):
         elapsed = time.perf_counter() - self.start_time
@@ -151,8 +156,8 @@ def get_db_credentials():
 
 class Division:
     """Represents an administrative division with metadata for optimization."""
-    def __init__(self, name, division_id, parent_id, parent_path, parent_name, path,
-                 name_borrowed=False):
+
+    def __init__(self, name, division_id, parent_id, parent_path, parent_name, path, name_borrowed=False):
         self.name = name
         self.id = division_id
         self.parent_id = parent_id
@@ -178,8 +183,9 @@ class GADMProcessor:
     # interpolated into SQL as an identifier. Accept only plain identifiers.
     TABLE_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
-    def __init__(self, pg_cursor, sqlite_cursor, pg_conn, gadm_file, include_geometry=True, postprocess=True,
-                 continent=None):
+    def __init__(
+        self, pg_cursor, sqlite_cursor, pg_conn, gadm_file, include_geometry=True, postprocess=True, continent=None
+    ):
         self.pg_cursor = pg_cursor
         self.sqlite_cursor = sqlite_cursor
         self.pg_conn = pg_conn
@@ -237,7 +243,7 @@ class GADMProcessor:
         """Count the records this load reads: the file's, or one continent's."""
         where, params = sql_filter(self.continent)
         # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query,python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- sqlite3, not SQLAlchemy; table_name is an identifier (unbindable) validated against TABLE_NAME_RE in _get_gadm_table_name, and where is a constant clause whose value is bound
-        self.sqlite_cursor.execute(f'SELECT COUNT(*) FROM "{self.table_name}"{where}', params)
+        self.sqlite_cursor.execute(f'SELECT COUNT(*) FROM "{self.table_name}"{where}', params)  # noqa: S608  # nosec B608 -- see the nosemgrep line above
         return self.sqlite_cursor.fetchone()[0]
 
     def load_geometries_into_memory(self):
@@ -264,7 +270,9 @@ class GADMProcessor:
             progress.update()
 
         progress.finish()
-        ds = None  # Close dataset
+        # GDAL closes the dataset when its last reference goes; `del` drops it as
+        # `ds = None` would, without leaving a name assigned and never read.
+        del ds
 
     def process_records(self):
         """Process all GADM records and insert into database.
@@ -295,12 +303,12 @@ class GADMProcessor:
         cols = ", ".join(PROPERTIES)
         where, params = sql_filter(self.continent)
         # nosemgrep: python.lang.security.audit.formatted-sql-query.formatted-sql-query,python.sqlalchemy.security.sqlalchemy-execute-raw-query.sqlalchemy-execute-raw-query -- sqlite3, not SQLAlchemy; cols is the PROPERTIES module constant, table_name is validated against TABLE_NAME_RE in _get_gadm_table_name, and where is a constant clause whose value is bound
-        self.sqlite_cursor.execute(f'SELECT {cols} FROM "{self.table_name}"{where}', params)
+        self.sqlite_cursor.execute(f'SELECT {cols} FROM "{self.table_name}"{where}', params)  # noqa: S608  # nosec B608 -- see the nosemgrep line above
 
         progress = ProgressTracker(self.record_count, "records")
 
         for row in self.sqlite_cursor:
-            self._process_row(dict(zip(PROPERTIES, row)))
+            self._process_row(dict(zip(PROPERTIES, row, strict=True)))
             progress.update()
 
             # Periodic commits to limit transaction size and memory
@@ -407,12 +415,15 @@ class GADMProcessor:
         one GID, 88 of them in the United Kingdom, and choosing between those
         rows is a defect of its own (#681) rather than a decision to take here.
         """
-        self.pg_cursor.execute("""
+        self.pg_cursor.execute(
+            """
             UPDATE administrative_divisions
             SET gadm_uid = %s,
                 geom = validate_multipolygon(ST_GeomFromWKB(%s, 4326))
             WHERE id = %s AND geom IS NULL
-        """, (uid, geom, division_id))
+        """,
+            (uid, geom, division_id),
+        )
 
     def label_surviving_remainders(self):
         """Relabel an unnamed division that ends up standing beside its siblings.
@@ -448,15 +459,14 @@ class GADMProcessor:
         knows -- so `name_borrowed` is carried on the division and handed down by
         the merge.
         """
-        candidates = [
-            division.id for division in self.unnamed_divisions if division.name_borrowed
-        ]
+        candidates = [division.id for division in self.unnamed_divisions if division.name_borrowed]
         if not candidates:
             print("\nNo unnamed divisions to label.")
             return
 
         print("\nLabelling unnamed divisions that stand beside named siblings...")
-        self.pg_cursor.execute("""
+        self.pg_cursor.execute(
+            """
             UPDATE administrative_divisions c
                SET name = p.name || %s, updated_at = NOW()
               FROM administrative_divisions p
@@ -465,7 +475,9 @@ class GADMProcessor:
                AND c.name = p.name
                AND EXISTS (SELECT 1 FROM administrative_divisions s
                             WHERE s.parent_id = c.parent_id AND s.id <> c.id)
-        """, (REMAINDER_SUFFIX, candidates))
+        """,
+            (REMAINDER_SUFFIX, candidates),
+        )
         self.pg_conn.commit()
         print(f"  Labelled {self.pg_cursor.rowcount} of {len(candidates)} unnamed divisions")
 
@@ -498,17 +510,23 @@ class GADMProcessor:
     def _insert_division(self, name, parent_id, has_children, gadm_uid=None, geom=None):
         """Insert an administrative division and return its ID."""
         if geom and self.include_geometry:
-            self.pg_cursor.execute("""
+            self.pg_cursor.execute(
+                """
                 INSERT INTO administrative_divisions (name, parent_id, has_children, gadm_uid, geom)
                 VALUES (%s, %s, %s, %s, validate_multipolygon(ST_GeomFromWKB(%s, 4326)))
                 RETURNING id
-            """, (name, parent_id, has_children, gadm_uid, geom))
+            """,
+                (name, parent_id, has_children, gadm_uid, geom),
+            )
         else:
-            self.pg_cursor.execute("""
+            self.pg_cursor.execute(
+                """
                 INSERT INTO administrative_divisions (name, parent_id, has_children, gadm_uid)
                 VALUES (%s, %s, %s, %s)
                 RETURNING id
-            """, (name, parent_id, has_children, gadm_uid))
+            """,
+                (name, parent_id, has_children, gadm_uid),
+            )
 
         return self.pg_cursor.fetchone()[0]
 
@@ -683,17 +701,12 @@ class GADMProcessor:
                 self.pg_cursor,
                 "UPDATE administrative_divisions SET parent_id = %s WHERE id = %s",
                 updates,
-                page_size=1000
+                page_size=1000,
             )
 
         # Execute batched deletes
         if deletes:
-            execute_batch(
-                self.pg_cursor,
-                "DELETE FROM administrative_divisions WHERE id = %s",
-                deletes,
-                page_size=1000
-            )
+            execute_batch(self.pg_cursor, "DELETE FROM administrative_divisions WHERE id = %s", deletes, page_size=1000)
 
         progress.finish()
         print(f"  Merged {merged_count} redundant divisions")
@@ -701,9 +714,9 @@ class GADMProcessor:
 
 def print_stats(cursor):
     """Print database statistics."""
-    print("\n" + "="*50)
+    print("\n" + "=" * 50)
     print("Database Statistics:")
-    print("="*50)
+    print("=" * 50)
 
     cursor.execute("SELECT COUNT(*) FROM administrative_divisions")
     total = cursor.fetchone()[0]
@@ -717,39 +730,25 @@ def print_stats(cursor):
     with_geom = cursor.fetchone()[0]
     print(f"  Divisions with geometry: {with_geom:,}")
 
-    print("="*50)
+    print("=" * 50)
 
 
 def main():
-    parser = argparse.ArgumentParser(
-        description="Load GADM administrative divisions into database"
-    )
-    parser.add_argument(
-        "-s", "--source",
-        required=True,
-        help="Path to the GADM GeoPackage file"
-    )
-    parser.add_argument(
-        "-g", "--geometry",
-        action="store_true",
-        help="Include geometry data (requires GDAL)"
-    )
-    parser.add_argument(
-        "-f", "--fast",
-        action="store_true",
-        help="Fast mode - skip postprocessing optimizations"
-    )
+    parser = argparse.ArgumentParser(description="Load GADM administrative divisions into database")
+    parser.add_argument("-s", "--source", required=True, help="Path to the GADM GeoPackage file")
+    parser.add_argument("-g", "--geometry", action="store_true", help="Include geometry data (requires GDAL)")
+    parser.add_argument("-f", "--fast", action="store_true", help="Fast mode - skip postprocessing optimizations")
     parser.add_argument(
         "--continent",
         help="Sample load: only the rows of this continent, as GADM's CONTINENT "
-             "column names it (e.g. Antarctica, Oceania). Omitted, the whole file."
+        "column names it (e.g. Antarctica, Oceania). Omitted, the whole file.",
     )
     parser.add_argument(
         "--skip-schema",
         action="store_true",
         help="Accepted for compatibility; the schema is always applied "
-             "externally (Docker init / db/init/01-schema.sql). This script "
-             "only loads data, so this flag is a documented no-op."
+        "externally (Docker init / db/init/01-schema.sql). This script "
+        "only loads data, so this flag is a documented no-op.",
     )
     args = parser.parse_args()
 
@@ -759,8 +758,11 @@ def main():
 
     db_name, db_user, db_password, db_host = get_db_credentials()
 
-    with DatabaseConnectionManager(db_host, db_name, db_user, db_password, args.source) as (pg_conn, pg_cur, sqlite_cur):
-
+    with DatabaseConnectionManager(db_host, db_name, db_user, db_password, args.source) as (
+        pg_conn,
+        pg_cur,
+        sqlite_cur,
+    ):
         processor = GADMProcessor(
             pg_cursor=pg_cur,
             sqlite_cursor=sqlite_cur,
@@ -768,7 +770,7 @@ def main():
             gadm_file=args.source,
             include_geometry=args.geometry,
             postprocess=not args.fast,
-            continent=args.continent
+            continent=args.continent,
         )
 
         if args.geometry:
