@@ -64,8 +64,10 @@ export interface SiteFacts {
  * a lake *and* says "with no ruin on the map", so a substring test filed it
  * under the map's answer when the class is what refused it.
  *
- * `placeless` is the one value the rule itself never returns: it is the pool's
- * (`sites.ts`), for a candidate with no coordinate to pin. It is named here all
+ * `placeless` and `few-witnesses` are the two values the rule itself never
+ * returns: they are the pool's (`sites.ts`), for a candidate with no
+ * coordinate to pin and for one the readership door alone admits that fewer
+ * than two witnesses say a visitor goes to (ADR-0128). It is named here all
  * the same, because the report's groups are one vocabulary and a caller should
  * not have to invent a word for the one refusal it owns.
  */
@@ -74,6 +76,7 @@ export type SiteRefusalGroup =
   | 'no-ruin'
   | 'class-or-name'
   | 'below-the-line'
+  | 'few-witnesses'
   | 'placeless';
 
 /**

@@ -21,6 +21,8 @@ import type { OsmReader, SiteEntrance } from './sites.js';
 import { fetchWikipediaCategories } from '../wikipediaCategories.js';
 import { resolveWikipediaArticles } from '../wikipediaArticles.js';
 import { fetchCategoryMembers } from '../wikipediaCategoryMembers.js';
+import { commonsPhotoDoor } from '../visit/commonsPhotos.js';
+import { visitWitnessReader } from '../visit/visitWitnesses.js';
 import { structureCategories, structureCategoryReads } from '../wikipediaStructure.js';
 import type { SparqlFn } from '../wikidataQueries.js';
 import { DEPARTMENT_ROOTS, DEPARTMENT_WALK, NATURE_CATEGORY_ROOT, NATURE_WALK, OSM_DIG_TAGS } from './classes.js';
@@ -224,11 +226,32 @@ function articlesDoor(
   });
 }
 
+/**
+ * The door a pass counts a place's Commons photographs through (#1768), with
+ * the run's cache over it like every other answer the run pays for, and the
+ * pass's patience and pause.
+ */
+function cachedPhotosDoor(progress: SyncProgress, refreshCache: boolean, budget: WaitBudget) {
+  return withCache(commonsPhotoDoor({
+    userAgent: WIKIDATA_USER_AGENT,
+    isCancelled: () => progress.cancel,
+    pause: () => delay(SPARQL_DELAY_MS),
+    budget,
+    onWait: (wait) => { progress.statusMessage = waitMessage('Commons', wait, budget); },
+  }), {
+    sourceId: ARCHAEOLOGY_SOURCE_ID,
+    enabled: !refreshCache,
+    onHit: (descriptor, rows) => {
+      progress.statusMessage = `${descriptor.label}: ${rows} rows, from cache`;
+    },
+  });
+}
+
 /** What a pass hands the pipeline, and the door it read the map through. */
 export interface PassDoors {
   deps: Pick<
     ArchaeologyPipelineDeps,
-    'sparql' | 'categories' | 'categoryMembers' | 'osm' | 'osmDigs' | 'resolveArticles'
+    'sparql' | 'categories' | 'categoryMembers' | 'osm' | 'osmDigs' | 'resolveArticles' | 'visitWitnesses'
   >;
   osm: OsmDoor;
   /** Takes back the cached OpenStreetMap answers this pass's door touched. */
@@ -266,6 +289,9 @@ export function doorsForAPass(
       osm: osmReader(door),
       osmDigs: osmDigsReader(door),
       resolveArticles: articlesDoor(progress, budget),
+      // The witnesses the readership door's rows need (ADR-0128): the map's
+      // is read from the objects this pass's door brought.
+      visitWitnesses: visitWitnessReader({ sparql, photos: cachedPhotosDoor(progress, refreshCache, budget) }),
     },
     osm: door,
     forgetOsm: forget,
