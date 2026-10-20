@@ -39,6 +39,7 @@ indexes onto its copy.
 | `enwiki-page`, `enwiki-page-props`, `enwiki-linktarget`, `enwiki-categorylinks`, `enwiki-langlinks` | `enwiki/<date>/enwiki-<date>-<table>.sql.gz` | the sha1 and size `dumpstatus.json` gives the file once its job is `done` |
 | `pageviews-user` | `other/pageview_complete/monthly/<year>/<year-month>/pageviews-<yyyymm>-user.bz2` | the host's `Content-Length` and a clean end of the bzip2 stream — no checksum is published |
 | `wikipedia-redirects` | `enwiki/<date>/enwiki-<date>-redirect.sql.gz`, and its build reads `<wiki>/<date>/<wiki>-<date>-{redirect,page}.sql.gz` of every counted edition | the sha1 and size each edition's `dumpstatus.json` gives (`wikipediaTableFile`) |
+| `wikivoyage-usage` | `enwikivoyage/<date>/enwikivoyage-<date>-wbc_entity_usage.sql.gz`, and its build reads `<wiki>/<date>/<wiki>-<date>-{wbc_entity_usage,page}.sql.gz` of every Wikivoyage edition, English Wikivoyage's page table included | the sha1 and size each edition's `dumpstatus.json` gives its `wbcentityusagetable` job (`wikiRunFile`) |
 
 Each descriptor's `resolve()` reads the host's own listing and answers the
 newest dated file that is **complete**, or nothing. It never reads a
@@ -673,6 +674,49 @@ There is no trial build: a table is kept from its whole file.
 
 The `langlinks` table is listed in the catalog and verified like any dump, and
 kept by no build: Wikidata's sitelinks say the same (ADR-0121 decision 3).
+
+## The items Wikivoyage uses
+
+Code: `backend/src/services/dumps/wikivoyage/`. A keeping build of
+`wikivoyage-usage` (`buildUsage`, `usageBuild.ts`) reads English
+Wikivoyage's `wbc_entity_usage` table, the dump's own file, the same date's
+usage table of every other edition, and every edition's page table
+(`WIKIVOYAGE_EDITIONS`). That is the 28 editions of Wikimedia's site matrix
+on 2026-10-20, less Malayalam Wikivoyage, which has no dumps yet. Each file is
+verified by the sha1 and size its edition's `dumpstatus.json` gives. Every
+file but English Wikivoyage's usage table is read from the host as a stream;
+the 27 editions' tables together are about 58 MB. An edition whose run has not
+finished its tables fails the build and names it, and the usage in place
+stays.
+
+A Wikibase client wiki records, for each page, the Wikidata entities it uses.
+A Wikivoyage article uses the item of every place it lists, since a listing's
+`wikidata=` pulls the place's coordinates and picture. Each edition's two
+tables are read by `InsertReader` (`sqlInsert.ts`): first its `page` table,
+for the ids of its guide articles (`guideArticles`), then its usage table.
+Every item (`Q…`) a guide article uses is kept once per edition in
+`wikivoyage_usage`; a property or a lexeme is left out.
+
+A guide article is in namespace 0 and is no redirect: a user's draft or a
+project page names items without sending a visitor to any of them. Nor is it
+one of a heritage register's lists (`REGISTER_ROOTS`, by the start of the
+title). Russian Wikivoyage keeps the heritage registers of Belarus and Russia
+and the natural-monument lists of Russia and Central Asia as articles. On
+2026-10-01, 8,437 of the 26,357 items Russian Wikivoyage used were used by those
+lists alone, and a register lists every protected object, not the ones a guide
+sends a visitor to. With these left out, the 27 editions used 503,657 items
+(English Wikivoyage 134,320); all their pages together used 551,491.
+
+This is the travel-guide witness of whether a place is one a visitor goes to
+(`usedByAGuide`, #1768). On the 150 judged places of #1718 and #1756 it gives
+exactly what a parse of every listing's `wikidata=` in the articles' text gives.
+
+The rows go to a `_next` copy, given the live table's key once every file is
+read, and swapped in with the build's row in `wikivoyage_usage_builds` in one
+transaction (`swapIn`, `usageTables.ts`), as the redirects are. A file that
+fails its check, or a cancel, drops the copy. Both tables are `UNLOGGED`, so a
+crash empties them and the panel asks for a build (`latestUsage` answers
+none). There is no trial build.
 
 ## Trying a change on a sample
 
