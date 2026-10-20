@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { doorOf, doorNote, percentile, placeDoorNote, type ReadershipDoor } from './readershipDoor.js';
+import { doorOf, doorNote, guidedDoor, percentile, placeDoorNote, unlistedReason, type ReadershipDoor } from './readershipDoor.js';
 
 /**
  * ADR-0056's door, on the world tier drawn small: four works at the line of
@@ -66,5 +66,20 @@ describe('the readership door (ADR-0056)', () => {
       + "times this year in every counted edition (the median of this kind's places at the line is 75,745). "
       + 'Is it a place a visitor goes to see?');
     expect(placeDoorNote({ views: 100_106, burst: true }, door)).toContain('its year is a burst');
+  });
+  it('opens for a place only where a travel guide lists it, and keeps the unlisted ones to be named (ADR-0128)', () => {
+    // Dry run 178's door opened for the Roman Baths (Q2540426) and for
+    // Stapleton International Airport (Q1436575), read alike; only the baths
+    // are listed by a Wikivoyage edition.
+    const read: ReadershipDoor = {
+      opened: new Map([['Q2540426', { views: 175_000, burst: false }], ['Q1436575', { views: 95_000, burst: false }]]),
+      bar: 75_178, exit: 50_844,
+    };
+    const door = guidedDoor(read, new Set(['Q2540426', 'Q42']));
+    expect([...door.opened.keys()]).toEqual(['Q2540426']);
+    expect([...door.unlisted!.keys()]).toEqual(['Q1436575']);
+    expect([door.bar, door.exit]).toEqual([75_178, 50_844]);
+    expect(unlistedReason(door.unlisted!.get('Q1436575')!, door)).toBe('Read 95,000 times this year in every counted '
+      + "edition, over the readership door's bar of 75,178, but no Wikivoyage edition lists it, so no travel guide sends a visitor there");
   });
 });

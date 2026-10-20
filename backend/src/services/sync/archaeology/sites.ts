@@ -42,7 +42,7 @@ import type { KeepWkt, OsmObject } from '../osm/types.js';
 import { OsmEmptyAnswerError } from '../osm/readOsmObjects.js';
 import { lineStanding, type SourceLine } from '../sourceLine.js';
 import type { FilteredEntity } from '../syncContract.js';
-import { placeDoorNote, type DoorWork, type OpenedWork, type ReadershipDoor } from '../readershipDoor.js';
+import { placeDoorNote, unlistedReason, type DoorWork, type OpenedWork, type ReadershipDoor } from '../readershipDoor.js';
 
 const CLASS_BATCH = 25;
 const FACT_BATCH = 50;
@@ -433,6 +433,27 @@ async function openSiteDoor(
 }
 
 /**
+ * The rows the year read over the door's bar that no travel guide lists
+ * (ADR-0128), refused by name, unless the line keeps them on their own or a
+ * class already refused them.
+ */
+function refuseUnlisted(
+  candidates: readonly PoolEntity[],
+  door: ReadershipDoor | null,
+  retyped: ReadonlySet<string>,
+  admitted: ReadonlySet<string>,
+  line: SourceLine,
+): SiteRefusal[] {
+  if (!door?.unlisted?.size) return [];
+  return candidates.flatMap((entity) => {
+    const read = door.unlisted?.get(entity.qid);
+    if (!read || retyped.has(entity.qid)) return [];
+    if (lineStanding(entity.sitelinks, admitted.has(entity.qid), line) === 'in') return [];
+    return [{ externalId: entity.qid, name: entity.label, reason: unlistedReason(read, door), group: 'no-guide' as const }];
+  });
+}
+
+/**
  * The sites this run would admit, and every candidate the rule refused with the
  * reason it gave.
  *
@@ -478,6 +499,7 @@ export async function collectSitesByFame(
   };
 
   const { retyped, filtered } = refuseRetyped(candidates, facts, trees, admitted, line, named, readOpened);
+  filtered.push(...refuseUnlisted(candidates, door, retyped, admitted, line));
 
   // **Only the candidates the line would let speak.** `siteVerdict` answers
   // `out` for every row below the line that the source does not already admit,

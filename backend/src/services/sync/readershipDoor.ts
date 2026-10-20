@@ -14,11 +14,14 @@
  * ADR-0127 opens the same door for a place admitted for its own sake: a site
  * below Archaeology's line that the world reads at the median of the kind's
  * own sites at the line. The measure, the bar, the exit and the gate are the
- * work door's.
+ * work door's. ADR-0128 adds one condition for a place: a travel guide lists
+ * it, so a place read as much as the Roman Baths with nothing to see
+ * (Stapleton International Airport, Rungholt) stays out.
  */
 
 import { pool } from '../../db/index.js';
 import { burstsAmong, readershipYear, readWorks } from '../dumps/readership/workReadership.js';
+import { latestListings, listedAmong } from '../dumps/wikivoyage/listingTables.js';
 import { toContent } from './museum/worksCollector.js';
 import type { PoolWork } from './museum/queries.js';
 import { worksShownByOtherSources } from './shownElsewhere.js';
@@ -38,6 +41,11 @@ export interface OpenedWork { views: number; burst: boolean }
 export interface ReadershipDoor {
   /** The works below the line it opened for, by item. */
   opened: Map<string, OpenedWork>;
+  /**
+   * The places the year would have opened it for that no travel guide lists
+   * (ADR-0128), which the run records as refused. Absent on the work door.
+   */
+  unlisted?: Map<string, OpenedWork>;
   /** This year's bar and exit, in views, for the run's log and the curator's note. */
   bar: number;
   exit: number;
@@ -171,8 +179,22 @@ export async function readershipDoorFor(
 }
 
 /**
+ * The door with the places no travel guide lists moved out of what it opened
+ * for (ADR-0128): `listed` holds the items some Wikivoyage edition's listing
+ * names.
+ */
+export function guidedDoor(door: ReadershipDoor, listed: ReadonlySet<string>): ReadershipDoor {
+  const opened = new Map<string, OpenedWork>();
+  const unlisted = new Map<string, OpenedWork>();
+  for (const [qid, read] of door.opened) (listed.has(qid) ? opened : unlisted).set(qid, read);
+  return { ...door, opened, unlisted };
+}
+
+/**
  * The place door a run of a source passes its pipeline (ADR-0127), or nothing
  * while the source's curator gate is off, for the reason the work door's is.
+ * With no Wikivoyage listings built, the door opens for nothing, as with no
+ * year of readership: a guide's listing is half of what opens it (ADR-0128).
  */
 export async function placeReadershipDoorFor(
   sourceId: number,
@@ -181,11 +203,19 @@ export async function placeReadershipDoorFor(
 ): Promise<((places: DoorWork[], held: ReadonlySet<string>) => Promise<ReadershipDoor | null>) | undefined> {
   if (!await gateIsOn(sourceId, logPrefix)) return undefined;
   return async (places, held) => {
-    const door = await openPlaceDoor(places, line, held);
-    if (door) {
-      console.log(`${logPrefix} The readership door opened for ${door.opened.size} places below the line `
-        + `(bar ${Math.round(door.bar)} views, exit ${Math.round(door.exit)})`);
-    } else shutForYear(logPrefix);
+    if (!await latestListings()) {
+      console.log(`${logPrefix} The readership door is shut: no Wikivoyage listings are built (ADR-0128)`);
+      return null;
+    }
+    const read = await openPlaceDoor(places, line, held);
+    if (!read) {
+      shutForYear(logPrefix);
+      return null;
+    }
+    const door = guidedDoor(read, await listedAmong([...read.opened.keys()]));
+    console.log(`${logPrefix} The readership door opened for ${door.opened.size} places below the line `
+      + `(bar ${Math.round(door.bar)} views, exit ${Math.round(door.exit)}); `
+      + `${door.unlisted?.size ?? 0} more read over the bar have no travel guide's listing`);
     return door;
   };
 }
@@ -223,6 +253,12 @@ export function doorNote(label: string, work: OpenedWork, door: ReadershipDoor):
   return `Admitted for ${label}, below the sitelinks line but read ${roundViews(work.views)} times this year `
     + `in every counted edition (the world tier's median is ${roundViews(door.bar)})${work.burst ? BURST_CLAUSE : ''}. `
     + 'Can a visitor see it there now?';
+}
+
+/** Why a place the year would open the door for stays out (ADR-0128): its year, the bar, and no guide. */
+export function unlistedReason(place: OpenedWork, door: ReadershipDoor): string {
+  return `Read ${roundViews(place.views)} times this year in every counted edition, over the readership door's bar of `
+    + `${roundViews(door.bar)}, but no Wikivoyage edition lists it, so no travel guide sends a visitor there`;
 }
 
 /** The curator's question on a place the door alone admitted (ADR-0127): its year and the bar. */

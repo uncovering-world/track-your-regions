@@ -381,6 +381,27 @@ describe('collectSitesByFame', () => {
     expect(answer.sites.get('Q22647')!.note).toBeUndefined();
   });
 
+  it('names as refused a row the door read over its bar that no travel guide lists, unless the line keeps it (ADR-0128)', async () => {
+    // Pompeii below a line only Athens clears, read over the bar but with no
+    // listing: it stays out and is said so. Troy, held and kept by the line's
+    // stay, is unlisted too, and nothing is said of it.
+    const { run } = runner();
+    const door: ReadershipDoor = {
+      opened: new Map(), bar: 1_000_000, exit: 700_000,
+      unlisted: new Map([['Q43332', { views: 2_400_000, burst: false }], ['Q22647', { views: 800_000, burst: false }]]),
+    };
+    const answer = await collectSitesByFame(
+      run, TREES, new Set(['Q22647']), { enterSitelinks: 200, staySitelinks: 100 }, osmReader([]), NO_ENTRANCE,
+      async () => door,
+    );
+    expect(answer.sites.has('Q43332')).toBe(false);
+    expect(answer.filtered.filter((row) => row.group === 'no-guide')).toEqual([{
+      externalId: 'Q43332', name: expect.any(String), group: 'no-guide',
+      reason: expect.stringContaining("over the readership door's bar of 1,000,000, but no Wikivoyage edition lists it"),
+    }]);
+    expect(answer.sites.has('Q22647')).toBe(true);
+  });
+
   it('fails the run when the mirror answers about almost nothing', async () => {
     // A mirror that answers HTTP 200 with no bindings — a renamed `osmkey:`
     // IRI, a rebuilt dataset, the host moving again — says "no OSM object
