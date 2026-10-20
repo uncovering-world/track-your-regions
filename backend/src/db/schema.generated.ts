@@ -1028,6 +1028,20 @@ export interface WikipediaRedirectsRow {
   target: string;
 }
 
+/** The table `wikivoyage_usage`. */
+export interface WikivoyageUsageRow {
+  item: string;
+  site: string;
+}
+
+/** The table `wikivoyage_usage_builds`. */
+export interface WikivoyageUsageBuildsRow {
+  build_id: number;
+  dump_date: Date;
+  editions: unknown;
+  swapped_at: Date;
+}
+
 /** The table `world_views`. */
 export interface WorldViewsRow {
   id: number;
@@ -1132,6 +1146,8 @@ export const RELATION_SCHEMAS = {
   wikidata_subset_builds: "workbench",
   wikipedia_redirect_builds: "workbench",
   wikipedia_redirects: "workbench",
+  wikivoyage_usage: "workbench",
+  wikivoyage_usage_builds: "workbench",
   world_views: "public",
 } as const;
 
