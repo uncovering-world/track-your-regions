@@ -97,7 +97,6 @@ def _compute_run_lengths(ctype: np.ndarray, max_run: int) -> np.ndarray:
     classified = (ctype > 0).astype(np.uint8)
 
     # Horizontal run length via cumulative sum trick
-    h_run = np.zeros((h, w), dtype=np.int32)
     # Forward pass
     h_fwd = np.zeros((h, w), dtype=np.int32)
     for x in range(w):
@@ -851,7 +850,7 @@ def detect_water(
 
     # Build component info for review
     total_country = int(np.sum(country_mask > 0))
-    num_labels, labels, stats, _ = cv2.connectedComponentsWithStats(water_mask)
+    num_labels, _, stats, _ = cv2.connectedComponentsWithStats(water_mask)
     components = []
     for i in range(1, num_labels):
         area = int(stats[i, cv2.CC_STAT_AREA])
@@ -1026,7 +1025,6 @@ def _sam_exclude_decorations(
     if predictor is None:
         return country_mask
 
-    h, w = country_mask.shape
     country_size = int(np.sum(country_mask > 0))
     if country_size == 0:
         return country_mask
@@ -1087,7 +1085,7 @@ def _sam_exclude_decorations(
         if not valid:
             continue
 
-        best_mask, best_score = min(valid, key=lambda x: x[0].sum())
+        best_mask, _ = min(valid, key=lambda x: x[0].sum())
         mask_area = int(best_mask.sum())
 
         # Only use if mask is reasonable size (< 5% of country, not too much bigger than CC)

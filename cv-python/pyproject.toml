@@ -16,11 +16,15 @@ exclude = ["__pycache__", ".venv", "data", "dist", "build"]
 # C90: mccabe complexity, held to the ceiling below (#617)
 # PLE, PLW: pylint's errors and warnings
 # PLR1714: repeated equality comparisons, merged into one membership test
+# RUF059: an unpacked variable never used. With F841, S110 and PLW0108 (an
+# unnecessary lambda, in PLW) it is a local twin of a CodeQL quality rule this
+# code has met (#1736, docs/tech/gates.md), so a finding GitHub's Code quality
+# tab would show fails the gate first.
 # Pylint's other refactor rules stay off. PLR0912 counts branches, which C90
 # already measures. PLR0913 and PLR0915 count a function's tuning parameters
 # and lines, which this CV code has many of. PLR2004 calls every calibrated
 # pixel or ratio threshold a magic number.
-select = ["E", "F", "W", "B", "I", "UP", "C4", "SIM", "RET", "S", "C90", "PLE", "PLW", "PLR1714"]
+select = ["E", "F", "W", "B", "I", "UP", "C4", "SIM", "RET", "S", "C90", "PLE", "PLW", "PLR1714", "RUF059"]
 ignore = [
   "E501",  # line too long — we set line-length=120, but some strings legitimately exceed
   "E741",  # ambiguous variable name (l, I, O) — we use `l` for label in CV code
