@@ -36,7 +36,7 @@ import type { SparqlBinding } from './wikidataUtils.js';
  * Named by the question rather than by the function that asks it: `classes` is
  * "which classes count as artworks", whoever wants to know.
  */
-export type CacheKind = 'classes' | 'pool' | 'statements' | 'entities' | 'edges' | 'osm';
+export type CacheKind = 'classes' | 'pool' | 'statements' | 'entities' | 'edges' | 'osm' | 'photos';
 
 /**
  * How long each kind stays fresh, and why.
@@ -68,6 +68,10 @@ export const DEFAULT_TTL_MS: Record<CacheKind, number> = {
   // kind of its own rather than an `entities` answer so that an admin can drop
   // the OSM half without dropping Wikidata's, and see its size beside it.
   osm: 24 * 60 * 60 * 1000,
+  // How many of a place's Commons photographs were taken there (#1768): a
+  // witness of whether visitors go to it. People upload over weeks, not days,
+  // and a week keeps a repeated dry run from asking Commons again.
+  photos: 7 * 24 * 60 * 60 * 1000,
 };
 
 /**
@@ -170,9 +174,11 @@ export const CACHED_KINDS_BY_SOURCE: Record<number, CacheKind[]> = {
   3: ['classes', 'pool', 'edges', 'entities'],
   // Places of worship.
   4: ['classes', 'pool', 'statements', 'entities', 'edges'],
-  // Archaeology. The museum import's whole set, plus the one kind no other
-  // source keeps: what OpenStreetMap maps at each site candidate (#581).
-  5: ['classes', 'pool', 'statements', 'entities', 'edges', 'osm'],
+  // Archaeology. The museum import's whole set, plus the two kinds no other
+  // source keeps: what OpenStreetMap maps at each site candidate (#581), and
+  // how many photographs Commons holds of a place its readership door opens
+  // for (#1768).
+  5: ['classes', 'pool', 'statements', 'entities', 'edges', 'osm', 'photos'],
 };
 
 /**
@@ -182,7 +188,7 @@ export const CACHED_KINDS_BY_SOURCE: Record<number, CacheKind[]> = {
  * live service, so none is kept, and what the cache still holds of them was
  * left by the source's runs on the live service. OpenStreetMap's answers
  * (`osm`) are asked of a mirror whichever Wikidata a run reads, and stay
- * cached (ADR-0119).
+ * cached (ADR-0119), and so are Commons' photographs (`photos`, #1768).
  */
 export const SUBSET_ANSWERS: ReadonlySet<CacheKind> = new Set(['classes', 'pool', 'statements', 'entities', 'edges']);
 

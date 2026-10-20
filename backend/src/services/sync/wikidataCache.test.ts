@@ -259,8 +259,8 @@ describe('a source that reads the local subset (ADR-0119)', () => {
     expect(() => withCache(door, { sourceId: MUSEUM, enabled: true })).toThrow(/local subset/);
   });
 
-  it('keeps only what it still asks live: OpenStreetMap for Archaeology, nothing for the others', () => {
-    expect(cachedKindsFor(5, 'subset')).toEqual(['osm']);
+  it('keeps only what it still asks live: OpenStreetMap and Commons for Archaeology, nothing for the others', () => {
+    expect(cachedKindsFor(5, 'subset')).toEqual(['osm', 'photos']);
     for (const sourceId of [2, 3, 4]) expect(cachedKindsFor(sourceId, 'subset')).toEqual([]);
     for (const sourceId of [2, 3, 4, 5]) expect(cachedKindsFor(sourceId, 'live')).toEqual(CACHED_KINDS_BY_SOURCE[sourceId]);
   });
@@ -283,6 +283,7 @@ describe('a source that reads the local subset (ADR-0119)', () => {
     expect(kinds.map(({ kind, answeredBy }) => [kind, answeredBy])).toEqual([
       ['classes', 'subset'],
       ['osm', 'cache'],
+      ['photos', 'cache'],
     ]);
   });
 

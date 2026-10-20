@@ -41,13 +41,15 @@ export interface OsmObject {
  * a place is used today — a congregation, residents — which a dig tag on the
  * same item does not undo (#1352: Reims Cathedral, Lingaraja Temple). `museum`
  * is what the map says a museum is about (#889): `museum=archaeological` on the
- * Altes Museum, `museum=art` on the Cleveland Museum of Art. `site_type` is deliberately
+ * Altes Museum, `museum=art` on the Cleveland Museum of Art. `opening_hours` says
+ * visitors are let in, which is one of the things the map's visit witness
+ * reads (#1768, `visit/witnesses.ts`). `site_type` is deliberately
  * absent: the tagging wiki does not document it for `historic=archaeological_site`
  * and it was unused across all 1,544 objects measured on 2026-09-14.
  */
 export const OSM_TAG_KEYS = [
   'historic', 'place', 'archaeological_site', 'ruins', 'heritage',
-  'tourism', 'boundary', 'man_made', 'natural', 'name', 'amenity', 'building', 'museum',
+  'tourism', 'boundary', 'man_made', 'natural', 'name', 'amenity', 'building', 'museum', 'opening_hours',
 ] as const;
 
 /**
