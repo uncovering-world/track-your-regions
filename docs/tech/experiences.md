@@ -5716,7 +5716,10 @@ included.
 **A proposal is a table of facts** (#570). `factRows.ts` turns what the queue carries — `metadata`
 with an object on each side, `location`, `shortDescription` — into rows: one per fact that
 moved, each with its meaning from `fieldMeaning.tsx`, its kind (*new*, *changed*, *removed*)
-and the one sentence its fact has about the change. `FactTable.tsx` lays them out as *fact ·
+and the one sentence its fact has about the change. A fact empty on both sides (null, absent,
+`''` or `[]`) moved nothing and makes no row, so it is neither drawn nor counted: the Reina
+Sofía's held card from Art Museums run 177 proposed `metadata.creators` with an empty list
+stored and no value of the run's own, and read as a new attribution (#1774). `FactTable.tsx` lays them out as *fact ·
 readers see · the run proposes* (a held card) or *fact · as curated · the source proposes · your
 answer* (a conflict card — "as curated" rather than "yours", since the value that stands may be
 another curator's, and the trail under it says whose), and `ProposalSummary` counts the rows by kind above the table, so a
@@ -6060,8 +6063,9 @@ only publishing honoured would let a refusal separate what a publication cannot.
 level-aware because the two levels spell the picture differently: the object's changeset field is
 `imageUrl`, a part's is its column `image_url`.
 
-The card draws the pair as the one answer it is. Where a proposal holds a picture, its credit
-gets no row (`rowsFor` and `creditFoldsIntoPicture`, `factRows.ts`): the picture row draws each
+The card draws the pair as the one answer it is. Where a proposal holds a picture that makes a
+row, its credit gets no row (`rowsFor` and `creditFoldsIntoPicture`, `factRows.ts`), and a picture
+with no value on either side makes none and leaves the credit its own (#1774): the picture row draws each
 side's picture over that side's credit (`creditFor`, `fieldMeaning.tsx`), with one pair of
 buttons, and the feed's line names `picture` alone (`rowSpecific.ts`). A credit proposed with no
 picture beside it keeps its row, because it is a different question: the same file under an
