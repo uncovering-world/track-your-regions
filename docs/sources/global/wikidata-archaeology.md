@@ -306,8 +306,9 @@ each with a fame signal of its own.
   through OpenStreetMap's own list of digs since #895 (ADR-0060), never through this source alone;
   and one neither names — Sanchi, the Thai historical parks — through nothing yet.
 - **A find in a natural history museum**: the Venus of Willendorf (Naturhistorisches Museum
-  Wien), the Venus of Lespugue (Musée de l'Homme, typed `museum`), Lucy (the National Museum of
-  Ethiopia). A natural history museum is not an archaeology museum, whatever one find it holds
+  Wien), the Venus of Lespugue (Musée de l'Homme, typed `museum`). Lucy is not a find at all: a
+  hominin fossil is natural history (`NOT_A_FIND`), and she waits for a kind of natural history
+  specimens (#1616). A natural history museum is not an archaeology museum, whatever one find it holds
   (ADR-0058 decision 2). But where no other kind shows the find, the museum arrives held for a
   curator with the find named (ADR-0103). Until a natural-history kind exists, the curator's yes is
   the only way the Venus of Willendorf reaches a card.
