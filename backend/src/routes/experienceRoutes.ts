@@ -16,6 +16,7 @@ import {
   ComponentItemSuggestions,
   MergeProposalsAnswered,
   MergeProposalSuggestions,
+  VisitSuggestion,
   CurationLog,
   PointItemTakenBack,
   DeclineHeldResult,
@@ -43,6 +44,7 @@ import { answerComponentItems } from '../controllers/experience/componentItemCon
 import { answerMergeProposals } from '../controllers/experience/mergeProposalController.js';
 import { suggestComponentItems } from '../controllers/experience/componentItemSuggestionController.js';
 import { suggestMergeProposals } from '../controllers/experience/mergeProposalSuggestionController.js';
+import { suggestVisit } from '../controllers/experience/visitSuggestionController.js';
 import { takeBackPointItem } from '../controllers/experience/pointItemTakeBackController.js';
 import { getNearbyPictures } from '../controllers/experience/nearbyPicturesController.js';
 import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
@@ -622,6 +624,16 @@ export const experienceCurationRoutes = [
     params: idParamSchema,
     response: MergeProposalSuggestions,
     handler: suggestMergeProposals,
+  }),
+  // Jev's reading of what a visitor finds at an arriving place (#1768): the
+  // stored one for the place as it stands, or a new one asked for — a POST,
+  // since a call may be paid for.
+  defineRoute({
+    method: 'post', path: '/:id/visit-suggestion', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Ask Jev what a visitor finds at an arriving place; a suggestion, never applied',
+    params: idParamSchema,
+    response: VisitSuggestion,
+    handler: suggestVisit,
   }),
 
   // The no that the two gated kinds without one lacked (#852, ADR-0053): keeping

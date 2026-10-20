@@ -36,6 +36,7 @@ const COMPONENT_ITEM = /^experience_component_item_proposals is written by its w
 const COMPONENT_ITEM_SUGGESTION = /^experience_component_item_suggestions is written by its writer module only/;
 const MERGE_PROPOSAL = /^experience_merge_proposals is written by its writer modules only/;
 const MERGE_SUGGESTION = /^experience_merge_suggestions is written by its writer module only/;
+const VISIT_SUGGESTION = /^experience_visit_suggestions is written by its writer module only/;
 
 const draws = async (code: string, file: string, message: RegExp) =>
   (await reported(code, file)).some(m => message.test(m));
@@ -85,6 +86,9 @@ describe('the curation gate lint rules', () => {
     ["Jev's judgement of a pair recorded by a handler", MERGE_SUGGESTION,
       'export const q = `INSERT INTO experience_merge_suggestions (proposal_id) VALUES ($1)`;\n',
       'src/controllers/experience/mergeProposalSuggestionController.ts'],
+    ["Jev's reading of a place recorded by a handler", VISIT_SUGGESTION,
+      'export const q = `INSERT INTO experience_visit_suggestions (experience_id) VALUES ($1)`;\n',
+      'src/controllers/experience/visitSuggestionController.ts'],
     ['a pair of near places answered by a handler', MERGE_PROPOSAL,
       "export const q = `UPDATE experience_merge_proposals SET answer = 'two' WHERE id = $1`;\n",
       'src/controllers/experience/mergeProposalController.ts'],
@@ -120,6 +124,9 @@ describe('the curation gate lint rules', () => {
     ["the writer of Jev's judgement of a pair", MERGE_SUGGESTION,
       'export const q = `INSERT INTO experience_merge_suggestions (proposal_id) VALUES ($1)`;\n',
       'src/controllers/experience/mergeProposalSuggestions.ts'],
+    ["the writer of Jev's reading of a place", VISIT_SUGGESTION,
+      'export const q = `INSERT INTO experience_visit_suggestions (experience_id) VALUES ($1)`;\n',
+      'src/controllers/experience/visitSuggestions.ts'],
     ['the curator\'s membership writer', MEMBERSHIP,
       MEMBERSHIPS_IMPORT + 'export const q = `UPDATE ${MEMBERSHIPS} m SET admission = $2 WHERE m.id = $1`;\n',
       'src/controllers/experience/membershipWriter.ts'],

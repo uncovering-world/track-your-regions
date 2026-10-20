@@ -239,6 +239,11 @@ const MERGE_SUGGESTION_WRITE = 'experience_merge_suggestions is written by its w
   + 'token.';
 const MERGE_SUGGESTION_WRITE_RULES = spelledWriteRules('experience_merge_suggestions', MERGE_SUGGESTION_WRITE);
 
+/** Jev's reading of what a visitor finds at a place (#1768): `visitSuggestions.ts`. */
+const VISIT_SUGGESTION_WRITE = 'experience_visit_suggestions is written by its writer module only (ADR-0077): add a '
+  + 'named write to src/controllers/experience/visitSuggestions.ts, taking the place\'s LockedExperience token.';
+const VISIT_SUGGESTION_WRITE_RULES = spelledWriteRules('experience_visit_suggestions', VISIT_SUGGESTION_WRITE);
+
 /** A curator's answer to one row of a held proposal: `recordHeldAnswers` in `heldDecisions.ts`. */
 const HELD_DECISION_WRITE = 'experience_held_decisions is written by its writer module only (ADR-0077): record an answer '
   + 'through recordHeldAnswers in src/controllers/experience/heldDecisions.ts.';
@@ -416,6 +421,7 @@ const SOURCE_RULE_FAMILIES = [
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
   VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES, COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES, MERGE_SUGGESTION_WRITE_RULES,
+  VISIT_SUGGESTION_WRITE_RULES,
   ROUTE_REGISTRY_RULES,
 ];
 
@@ -425,6 +431,7 @@ const TABLE_WRITE_FAMILIES = [
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
   VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES, COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES, MERGE_SUGGESTION_WRITE_RULES,
+  VISIT_SUGGESTION_WRITE_RULES,
 ];
 
 /**
@@ -642,6 +649,12 @@ export default [
     files: ['src/controllers/experience/mergeProposalSuggestions.ts'],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(MERGE_SUGGESTION_WRITE_RULES),
+    },
+  },
+  {
+    files: ['src/controllers/experience/visitSuggestions.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(VISIT_SUGGESTION_WRITE_RULES),
     },
   },
   {

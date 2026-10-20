@@ -121,6 +121,12 @@ export interface CategoryOptions {
   /** The door, for the test; defaults to global fetch. */
   fetchImpl?: typeof fetch;
   /**
+   * How long one ask may take, `CATEGORY_TIMEOUT_MS` unless a caller names a
+   * shorter one: a run waits out a slow Wikipedia, while a curator's card
+   * reading an article's lead (`visitReading.ts`) does not.
+   */
+  timeoutMs?: number;
+  /**
    * Which wiki to ask; English Wikipedia unless a caller names another. The
    * article resolver (`wikipediaArticles.ts`, #895) asks the wiki an
    * OpenStreetMap tag names — `tr:` for Nemrut's tumulus — through this same
@@ -237,7 +243,7 @@ async function askWikipedia(
   params: Record<string, string>, options: CategoryOptions, attempt: number,
 ): Promise<CategoryAnswer> {
   const body = new URLSearchParams(params);
-  const { signal, release } = abortOn(CATEGORY_TIMEOUT_MS, options.isCancelled);
+  const { signal, release } = abortOn(options.timeoutMs ?? CATEGORY_TIMEOUT_MS, options.isCancelled);
   try {
     const response = await postWikipedia(options.endpoint ?? ENWIKI_API, body, options, signal);
     if (!response.ok) await handleHttpError(response, attempt);
