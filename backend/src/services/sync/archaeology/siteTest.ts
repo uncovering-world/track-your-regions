@@ -331,7 +331,23 @@ function killed(facts: SiteFacts, signal: OsmSignal, trees: ArchaeologyTrees): s
   return null;
 }
 
-/** The line, asked last, as `lineStanding` decides it for every kind. */
+/**
+ * Where a row stands against the line: as `lineStanding` decides it for every
+ * kind, except that a row the readership door opened for stands in, as one at
+ * the line does (ADR-0127). The door has already applied its own exit to the
+ * rows the source holds, so an admitted row it let go falls back to the line.
+ */
+export function siteStanding(
+  qid: string,
+  sitelinks: number,
+  admitted: ReadonlySet<string>,
+  line: LinePair,
+  readOpened?: ReadonlySet<string>,
+): LineStanding {
+  return readOpened?.has(qid) ? 'in' : lineStanding(sitelinks, admitted.has(qid), line);
+}
+
+/** The line, asked last, as `siteStanding` decides it. */
 function admit(
   signal: OsmSignal,
   objects: OsmObject[],
@@ -538,10 +554,12 @@ export function siteVerdict(input: {
   trees: ArchaeologyTrees;
   admitted: ReadonlySet<string>;
   line: LinePair;
+  /** The rows below the line the readership door opened for (ADR-0127). */
+  readOpened?: ReadonlySet<string>;
 }): SiteVerdict {
   const { facts, objects, trees, admitted, line } = input;
   const signal = siteSignal(objects);
-  const stands = lineStanding(facts.sitelinks, admitted.has(facts.qid), line);
+  const stands = siteStanding(facts.qid, facts.sitelinks, admitted, line, input.readOpened);
   const refuse = (reason: string, group: SiteRefusalGroup): SiteVerdict =>
     (stands === 'out' ? { pass: false, out: true } : { pass: false, reason, group });
 

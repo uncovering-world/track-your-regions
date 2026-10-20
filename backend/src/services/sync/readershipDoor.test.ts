@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { doorOf, doorNote, percentile, type ReadershipDoor } from './readershipDoor.js';
+import { doorOf, doorNote, percentile, placeDoorNote, type ReadershipDoor } from './readershipDoor.js';
 
 /**
  * ADR-0056's door, on the world tier drawn small: four works at the line of
@@ -58,5 +58,13 @@ describe('the readership door (ADR-0056)', () => {
     expect(note).toBe('Admitted for Veiled Christ, below the sitelinks line but read 276,677 times this year in every '
       + "counted edition (the world tier's median is 133,366). Can a visitor see it there now?");
     expect(doorNote('Veiled Christ', { views: 276_677, burst: true }, door)).toContain('its year is a burst');
+  });
+
+  it('asks the curator of a place the door alone admitted whether a visitor goes to see it (ADR-0127)', () => {
+    const door: ReadershipDoor = { opened: new Map(), bar: 75_745, exit: 49_638 };
+    expect(placeDoorNote({ views: 100_106, burst: false }, door)).toBe('Admitted below the sitelinks line, read 100,106 '
+      + "times this year in every counted edition (the median of this kind's places at the line is 75,745). "
+      + 'Is it a place a visitor goes to see?');
+    expect(placeDoorNote({ views: 100_106, burst: true }, door)).toContain('its year is a burst');
   });
 });

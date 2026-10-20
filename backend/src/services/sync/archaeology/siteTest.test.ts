@@ -389,6 +389,30 @@ describe('the line, asked last', () => {
   });
 });
 
+describe('the readership door (ADR-0127)', () => {
+  it('lets in a row below the line the door opened for, as one at the line', () => {
+    const verdict = siteVerdict({
+      facts: facts({ qid: 'Q43332', classes: ['Q839954'], sitelinks: 16 }),
+      objects: [], trees: TREES, admitted: new Set<string>(), line: LINE, readOpened: new Set(['Q43332']),
+    });
+    expect(verdict.pass).toBe(true);
+  });
+
+  it('names a rule refusal of a row the door opened for, since the world reads it', () => {
+    // Asyut's own facts (Q29962) moved below the line: a site class and half a
+    // million people. Out unread without the door; named once the door opened.
+    const asyut = facts({ qid: 'Q29962', classes: ['Q515', 'Q1549591', 'Q839954'], sitelinks: 16, statesPopulation: true });
+    const city = [object('node/6379231716', { place: 'city' })];
+    const unread = siteVerdict({ facts: asyut, objects: city, trees: TREES, admitted: new Set<string>(), line: LINE });
+    expect(!unread.pass && 'out' in unread).toBe(true);
+    const verdict = siteVerdict({
+      facts: asyut, objects: city, trees: TREES, admitted: new Set<string>(), line: LINE, readOpened: new Set(['Q29962']),
+    });
+    if (verdict.pass || 'out' in verdict) throw new Error('a refusal the door let speak is named');
+    expect(verdict.reason).toContain('a living place');
+  });
+});
+
 describe('siteSignal and siteExtent', () => {
   it('names the object and the tag the verdict was read off', () => {
     expect(siteSignal([object('way/1', { ruins: 'yes' })])).toEqual({
