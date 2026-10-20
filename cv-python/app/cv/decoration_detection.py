@@ -119,10 +119,10 @@ def detect_decorations(
         overlap_count = int(np.sum(overlap_mask > 0))
         logger.info(
             f"[DecoDetect] Found {len(detected)} decoration(s): "
-            f"{sum(1 for d in detected if d[0]=='title')} title, "
-            f"{sum(1 for d in detected if d[0]=='scale')} scale, "
-            f"{sum(1 for d in detected if d[0]=='compass')} compass, "
-            f"{sum(1 for d in detected if d[0]=='marker')} marker "
+            f"{sum(1 for d in detected if d[0] == 'title')} title, "
+            f"{sum(1 for d in detected if d[0] == 'scale')} scale, "
+            f"{sum(1 for d in detected if d[0] == 'compass')} compass, "
+            f"{sum(1 for d in detected if d[0] == 'marker')} marker "
             f"({overlap_count} px overlap with country)"
         )
 

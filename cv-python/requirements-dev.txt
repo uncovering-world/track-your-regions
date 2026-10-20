@@ -4,7 +4,7 @@
 # to its CPU build).
 
 # Lint + format
-ruff==0.8.4
+ruff==0.17.1
 
 # Type checking
 mypy==1.13.0
