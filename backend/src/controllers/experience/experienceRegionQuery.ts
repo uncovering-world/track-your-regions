@@ -30,6 +30,19 @@ import { findsOnViewCountSql } from './siteFinds.js';
 import { pointsShownSql } from '../../db/placePoints.js';
 
 /**
+ * The rejection columns of a read that includes children: aggregated where the
+ * places are grouped, since that is the statement that sees their rejections,
+ * and read off the grouped row by the statement around it.
+ */
+function groupedRejectionColumns(showRejected: boolean): { rejectionAggregate: string; rejectionSelect: string } {
+  if (!showRejected) return { rejectionAggregate: '', rejectionSelect: '' };
+  return {
+    rejectionAggregate: ', bool_or(rej.id IS NOT NULL) as is_rejected, MAX(rej.reason) as rejection_reason',
+    rejectionSelect: ', p.is_rejected, p.rejection_reason',
+  };
+}
+
+/**
  * The two statements a region read needs, and their parameters.
  *
  * Extracted because the handler had accumulated one conditional per feature —
@@ -118,15 +131,29 @@ export function buildRegionQueries(opts: {
   let countQuery: string;
 
   if (includeChildren) {
-    const rejectionSelect = showRejected
-      ? `, bool_or(rej.id IS NOT NULL) as is_rejected, MAX(rej.reason) as rejection_reason`
-      : '';
+    const { rejectionAggregate, rejectionSelect } = groupedRejectionColumns(showRejected);
+    // A place joins once per descendant region it is assigned to and once per
+    // rejection, so the set is deduplicated by id first and the wide columns
+    // are read once per place after it. Grouping the joined rows with every
+    // selected column in the sort sorted 4.8 MB for Europe, past the default
+    // work_mem, and the sort went to disk (#1766).
     query = `
       WITH RECURSIVE descendant_regions AS (
         SELECT id FROM regions WHERE id = $1
         UNION ALL
         SELECT r.id FROM regions r
         JOIN descendant_regions dr ON r.parent_region_id = dr.id
+      ),
+      places AS (
+        SELECT e.id${rejectionAggregate}
+        FROM experiences e
+        JOIN experience_regions er ON e.id = er.experience_id
+        ${descendantRejectionJoin}
+        WHERE er.region_id IN (SELECT id FROM descendant_regions)
+        ${rejectionFilter}
+        ${membershipFilter}
+        ${lifecycleFilter}
+        GROUP BY e.id
       )
       SELECT
         e.id,
@@ -180,16 +207,12 @@ export function buildRegionQueries(opts: {
         ${isNewSql('e', readerParam)} AS is_new
         ${rejectionSelect}
         ${canCurateSelect}
-      FROM experiences e
-      JOIN experience_regions er ON e.id = er.experience_id
+      FROM places p
+      JOIN experiences e ON e.id = p.id
       ${rowKindJoinSql('e')}
-      ${descendantRejectionJoin}
-      WHERE er.region_id IN (SELECT id FROM descendant_regions)
-      ${rejectionFilter}
-      ${membershipFilter}
-      ${lifecycleFilter}
-      GROUP BY e.id, m.kind_id, m.type, k.name, k.display_priority
-      ORDER BY e.name
+      -- The id breaks a tie between two places of one name (two Alexander Nevsky
+      -- Cathedrals under Europe), so a page boundary never repeats or drops one.
+      ORDER BY e.name, e.id
       LIMIT $2 OFFSET $3
     `;
     countQuery = `
@@ -270,7 +293,9 @@ export function buildRegionQueries(opts: {
       ${rejectionFilter}
       ${membershipFilter}
       ${lifecycleFilter}
-      ORDER BY e.name
+      -- The id breaks a tie between two places of one name (two Alexander Nevsky
+      -- Cathedrals under Europe), so a page boundary never repeats or drops one.
+      ORDER BY e.name, e.id
       LIMIT $2 OFFSET $3
     `;
     countQuery = `

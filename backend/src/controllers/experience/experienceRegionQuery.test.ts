@@ -128,15 +128,44 @@ describe('the count statements carry no per-object columns', () => {
 });
 
 describe('the type a row is shown with', () => {
-  it('is its membership\'s, and grouped with it where children are included', () => {
-    // The type within a kind is the membership's (ADR-0084), so it is no longer
-    // functionally dependent on the place's key: the grouped statement names it
-    // or Postgres refuses the whole read.
+  it('is its membership\'s', () => {
+    // The type within a kind is the membership's (ADR-0084), read off the
+    // row's own membership join.
     const { query } = buildRegionQueries({
       regionId: 7, includeChildren: true, showRejected: false, includeLostRows: false, limit: 20, offset: 0,
     });
     expect(query).toContain('m.type,');
-    expect(query).toContain('GROUP BY e.id, m.kind_id, m.type,');
+  });
+});
+
+describe('a region read with its children (#1766)', () => {
+  const base = { regionId: 7, includeChildren: true, includeLostRows: false, limit: 20, offset: 0 };
+  const collapse = (sql: string) => sql.replace(/\s+/g, ' ');
+
+  it('deduplicates the places by id before it reads their columns', () => {
+    // A place joins once per descendant region and once per rejection.
+    // Grouping those joined rows with every selected column in the sort key
+    // spilled the sort to disk for Europe, so the grouping holds ids only, and
+    // the wide columns are joined to the grouped ids.
+    for (const showRejected of [false, true]) {
+      const sql = collapse(buildRegionQueries({ ...base, showRejected }).query);
+      expect(sql).toMatch(/places AS \( SELECT e\.id.*? FROM experiences e JOIN experience_regions er .*? GROUP BY e\.id \)/);
+      expect(sql).toContain('FROM places p JOIN experiences e ON e.id = p.id');
+      expect(sql.match(/GROUP BY/g)).toHaveLength(1);
+    }
+  });
+
+  it('keeps a rejection\'s columns with the grouping that sees the rejections', () => {
+    const sql = collapse(buildRegionQueries({ ...base, showRejected: true }).query);
+    expect(sql).toContain('SELECT e.id, bool_or(rej.id IS NOT NULL) as is_rejected, MAX(rej.reason) as rejection_reason FROM experiences e');
+    expect(sql).toContain(', p.is_rejected, p.rejection_reason');
+  });
+
+  it('orders ties between two places of one name by id, in both branches', () => {
+    for (const includeChildren of [true, false]) {
+      const { query } = buildRegionQueries({ ...base, includeChildren, showRejected: false });
+      expect(query).toContain('ORDER BY e.name, e.id');
+    }
   });
 });
 
