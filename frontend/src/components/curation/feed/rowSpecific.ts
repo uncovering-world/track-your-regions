@@ -12,9 +12,8 @@
 import type { HeldPart, ReviewQueueItem } from '../../../api/reviewQueue';
 import { sectionLabel, type GatedGroup } from '../gatedGroup';
 import type { RowKind } from '../queueRowTypes';
-import { creditFoldsIntoPicture } from '../factRows';
+import { askedFields } from '../factRows';
 import { distanceLabel } from '../../../utils/moveDescription';
-import { HELD_CREDIT_FIELD } from '@tyr/shared/pictures';
 
 /**
  * The colour a *question* is drawn in — never an object's own colour.
@@ -95,10 +94,15 @@ function countLabel(n: number, singular: string, plural: string): string {
   return `${n} ${n === 1 ? singular : plural}`;
 }
 
-/** `proposed_parts`, as `N work(s)` / `N place(s)` — a work per `'treasures'`, a place per `'locations'`. */
+/**
+ * `proposed_parts`, as `N work(s)` / `N place(s)` — a work per `'treasures'`, a place per
+ * `'locations'` — counting only the parts the card draws a group for: one whose fields all
+ * have no value on either side asks nothing (`partGroups`, #1774).
+ */
 function partsLabels(parts: HeldPart[]): string[] {
-  const works = parts.filter(p => p.kind === 'treasures').length;
-  const places = parts.filter(p => p.kind === 'locations').length;
+  const asking = parts.filter(p => askedFields(p.fields).length > 0);
+  const works = asking.filter(p => p.kind === 'treasures').length;
+  const places = asking.filter(p => p.kind === 'locations').length;
   const labels: string[] = [];
   if (works > 0) labels.push(countLabel(works, 'work', 'works'));
   if (places > 0) labels.push(countLabel(places, 'place', 'places'));
@@ -136,11 +140,9 @@ function sectionSpecific(group: GatedGroup): string {
   const pieces: string[] = [];
   const proposed = group.held?.proposed ?? [];
   // The facts the card's table draws, so the line and the card count alike: a
-  // credit proposed beside its picture is that picture's, not a fact of its own.
-  const folded = creditFoldsIntoPicture(proposed);
-  pieces.push(...proposed
-    .filter(f => !(folded && f.field === HELD_CREDIT_FIELD))
-    .map(f => humaniseField(f.field)));
+  // credit proposed beside its picture is that picture's, not a fact of its own,
+  // and a fact empty on both sides is no fact at all (#1774).
+  pieces.push(...askedFields(proposed).map(f => humaniseField(f.field)));
   pieces.push(...partsLabels(group.held?.proposed_parts ?? []));
   if (group.contents) pieces.push(...contentsLabels(group.contents));
   return pieces.join(', ');
@@ -153,7 +155,7 @@ function sectionSpecific(group: GatedGroup): string {
 function waitingSpecific(sections: readonly GatedGroup[]): string {
   if (sections.length === 1) return sectionSpecific(sections[0]);
   return sections
-    .map(group => `${sectionLabel(group)}: ${sectionSpecific(group) || KIND_SHORT.arrival}`)
+    .map(group => `${sectionLabel(group)}: ${sectionSpecific(group) || (group.arrival ? KIND_SHORT.arrival : KIND_SHORT.waiting)}`)
     .join('; ');
 }
 
@@ -181,7 +183,7 @@ export function rowSpecific(row: {
       }
       return row.item?.admission_reason ?? '';
     case 'conflicts':
-      return (row.item?.proposed ?? []).map(f => humaniseField(f.field)).join(', ');
+      return askedFields(row.item?.proposed ?? []).map(f => humaniseField(f.field)).join(', ');
     case 'sources':
       return (row.item?.source_views ?? []).map(f => VIEW_FIELD_WORD[f.field]).join(', ');
     case 'withdrawn':

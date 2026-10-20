@@ -99,6 +99,15 @@ describe('rowsFor', () => {
     }
   });
 
+  it('keeps a credit\'s row where the picture beside it has no value on either side', () => {
+    // The picture makes no row (#1774), so a credit folded into it would be shown nowhere.
+    const rows = rowsFor([
+      { field: 'imageUrl', old: null, new: null },
+      { field: 'metadata.imageCredit', old: { author: 'Thomas Wolf' }, new: { author: 'VitVit' } },
+    ], NO_CONTEXT);
+    expect(rows.map(r => r.field)).toEqual(['metadata.imageCredit']);
+  });
+
   it('keeps a coordinate whole, because a place is not two numbers', () => {
     const rows = rowsFor([{ field: 'location', old: { lon: 4, lat: 49 }, new: { lon: 4, lat: 49.3 } }], NO_CONTEXT);
     expect(rows).toHaveLength(1);
@@ -118,6 +127,24 @@ describe('rowsFor', () => {
     expect(row.acceptable).toBe(true);
     expect(row.provenance?.claim?.by).toBe('admin');
   });
+
+  it('makes no row for a fact that is empty on both sides', () => {
+    // The Reina Sofía's held card from Art Museums run 177: an empty list stored,
+    // and no value of the run's own. Nothing moves, so nothing is asked.
+    const reinaSofia = [
+      { field: 'metadata.creators', old: [], new: undefined },
+      { field: 'shortDescription', old: '', new: null },
+      { field: 'metadata.inDanger', old: false, new: true },
+    ];
+    expect(rowsFor(reinaSofia, NO_CONTEXT).map(r => r.field)).toEqual(['metadata.inDanger']);
+  });
+
+  it('makes no row for a key that is empty on both sides inside a field with named parts', () => {
+    const rows = rowsFor([{
+      field: 'metadata', old: { region: 'Europe', tags: [] }, new: { region: 'Europe and North America', tags: null },
+    }], NO_CONTEXT);
+    expect(rows.map(r => r.id)).toEqual(['metadata.region']);
+  });
 });
 
 describe('summarize', () => {
@@ -126,6 +153,11 @@ describe('summarize', () => {
     expect(byKind.changed.map(r => r.meaning.label)).toEqual(['in danger']);
     expect(byKind.new.map(r => r.meaning.label)).toEqual(['inscription criteria', 'picture credit']);
     expect(byKind.removed).toEqual([]);
+  });
+
+  it('does not count a fact that moves nothing as new', () => {
+    const byKind = summarize(rowsFor([{ field: 'metadata.creators', old: [], new: undefined }], NO_CONTEXT));
+    expect(byKind.new).toEqual([]);
   });
 });
 
@@ -225,6 +257,14 @@ describe('partGroups', () => {
 
     expect(work.rows[0].context.proposed).toBe(wineGlass.fields);
     expect(work.rows[0].context.imageCredit).toEqual(workCredit);
+  });
+
+  it('draws no group for a part whose fields have no value on either side', () => {
+    // A work filed the way the Reina Sofía's place was (#1774): no makers stored, and
+    // none proposed. A heading over no rows would read as a question with nothing in it.
+    const unattributed = { ...wineGlass, item: { name: 'Guernica', ref: 'Q175036' }, fields: [{ field: 'artists', old: [], new: undefined }] };
+    const groups = partGroups([unattributed, montsegur], NO_CONTEXT, {}, vi.fn());
+    expect(groups.map(g => g.subject.label)).toEqual(['Château de Montésgur']);
   });
 
   it('names a part by its reference where the source gave it no name', () => {

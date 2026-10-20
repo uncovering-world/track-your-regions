@@ -41,7 +41,10 @@ function orderEntry(over: Partial<QueueOrderEntry> = {}): QueueOrderEntry {
 
 function heldPart(over: Partial<HeldPart> = {}): HeldPart {
   return {
-    kind: 'treasures', item: { name: null, ref: null }, fields: [], ...over,
+    // A held work's one attribution, so the part asks something: a part whose fields
+    // all have no value on either side draws no group and is not counted (#1774).
+    kind: 'treasures', item: { name: null, ref: null },
+    fields: [{ field: 'artists', old: ['Diego Velázquez'], new: ['Juan Bautista Martínez del Mazo'] }], ...over,
   };
 }
 

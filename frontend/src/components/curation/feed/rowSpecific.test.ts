@@ -31,7 +31,7 @@ describe('a waiting row counts its contents as the card does', () => {
     // Ephesus, run 146: the coordinate and its one point are one move, asked once
     // on the coordinates row, which the line already names.
     const item = contents({ pending_locations: 1, pending_moved_locations: 1, coordinates_move_point_id: 15624 });
-    const held = { ...item, kind: 'held' as const, proposed: [{ field: 'location', old: null, new: null }] };
+    const held = { ...item, kind: 'held' as const, proposed: [{ field: 'location', old: { lat: 37.9395, lng: 27.3417 }, new: { lat: 37.9411, lng: 27.3420 } }] };
     expect(line(item, held)).toBe('coordinates');
   });
 });
@@ -43,7 +43,7 @@ describe('a waiting row two kinds ask about (#1264)', () => {
     const arrival = contents({ name: 'Capitoline Museums', kind: 'arrival', kind_name: 'Archaeology' });
     const held = contents({
       name: 'Capitoline Museums', kind: 'held', kind_name: 'Art Museums',
-      proposed: [{ field: 'imageUrl', old: null, new: null }],
+      proposed: [{ field: 'imageUrl', old: null, new: 'https://commons.wikimedia.org/wiki/Special:FilePath/Capitoline_Museums.jpg' }],
     });
     expect(rowSpecific({
       kind: 'waiting',
@@ -54,3 +54,45 @@ describe('a waiting row two kinds ask about (#1264)', () => {
     })).toBe('Archaeology: new arrival; Art Museums: picture');
   });
 });
+
+describe('a held row names only the facts its card asks about (#1774)', () => {
+  it('leaves out a fact empty on both sides', () => {
+    // The Reina Sofía's held card from Art Museums run 177: an empty list of makers
+    // stored and none proposed, beside a year the run no longer gives.
+    const held = contents({
+      id: 1438, name: 'Museo Nacional Centro de Arte Reina Sofía', kind: 'held', kind_name: 'Art Museums',
+      proposed: [{ field: 'metadata.creators', old: [], new: undefined }, { field: 'metadata.year', old: 1992, new: null }],
+    });
+    expect(rowSpecific({ kind: 'waiting', sections: [{ id: 1438, name: held.name, held }] })).toBe('year');
+  });
+
+  it('counts only the parts the card draws a group for', () => {
+    const held = contents({
+      id: 1438, name: 'Museo Nacional Centro de Arte Reina Sofía', kind: 'held', kind_name: 'Art Museums',
+      proposed: [{ field: 'metadata.year', old: 1992, new: null }],
+      proposed_parts: [{
+        kind: 'treasures', item: { name: 'Guernica', ref: 'Q175036' },
+        fields: [{ field: 'artists', old: [], new: undefined }],
+      }] as ReviewQueueItem['proposed_parts'],
+    });
+    expect(rowSpecific({ kind: 'waiting', sections: [{ id: 1438, name: held.name, held }] })).toBe('year');
+  });
+
+  it('does not call a held section that asks nothing a new arrival', () => {
+    // Two kinds ask about the place; the held one carries only a fact with no value on
+    // either side, so it names nothing, and the line still says it holds a change.
+    const arrival = contents({ name: 'Capitoline Museums', kind: 'arrival', kind_name: 'Archaeology' });
+    const held = contents({
+      name: 'Capitoline Museums', kind: 'held', kind_name: 'Art Museums',
+      proposed: [{ field: 'metadata.creators', old: [], new: undefined }],
+    });
+    expect(rowSpecific({
+      kind: 'waiting',
+      sections: [
+        { id: 6214, name: 'Capitoline Museums', membershipId: 1, arrival },
+        { id: 6214, name: 'Capitoline Museums', membershipId: 2, held },
+      ],
+    })).toBe('Archaeology: new arrival; Art Museums: holds a change');
+  });
+});
+

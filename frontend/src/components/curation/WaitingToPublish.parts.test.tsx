@@ -76,6 +76,37 @@ function renderCard(item: ReviewQueueItem) {
 }
 
 describe('a held card about a part', () => {
+  it('says what a card whose only part field has no value on either side proposes', () => {
+    // No field of the object's own, and a work with no makers on either side: no group,
+    // no table, and the note still says what publishing writes.
+    const item = held();
+    renderCard({ ...item, proposed: null, proposed_parts: [{ ...item.proposed_parts![0], fields: [{ field: 'artists', old: [], new: undefined, held: true }] }] });
+    expect(screen.getByText(/Run 64 proposed only facts with no value on either side/)).toBeInTheDocument();
+    expect(screen.queryByText('The Wine Glass')).not.toBeInTheDocument();
+  });
+
+  it('does not say it asks nothing when its own field is empty but works arrived beside it', () => {
+    // The held half carries only a fact with no value on either side; two works arrived
+    // in the same group, and the card's button releases them too.
+    const item = { ...held(), proposed: [{ field: 'metadata.creators', old: [], new: undefined, held: true }], proposed_parts: [] };
+    const contents: ReviewQueueItem = { ...item, kind: 'contents', proposed: null, pending_treasures: 2, pending_locations: 0 };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <GatedCard sections={[{ id: item.id, name: item.name, held: item, contents }]} onDone={() => {}} />
+      </QueryClientProvider>,
+    );
+    expect(screen.queryByText(/asks nothing of you/)).not.toBeInTheDocument();
+  });
+
+  it('does not say it asks nothing when its own field is empty but a part asks (#1774)', () => {
+    // The object's only field has no value on either side and makes no row; the work's
+    // attribution is a real question, and the table below asks it.
+    renderCard({ ...held(), proposed: [{ field: 'metadata.creators', old: [], new: undefined, held: true }] });
+    expect(screen.getByText('The Wine Glass')).toBeInTheDocument();
+    expect(screen.queryByText(/asks nothing of you/)).not.toBeInTheDocument();
+  });
+
   it('shows the change under the part\'s name, and counts it', () => {
     renderCard(held());
 

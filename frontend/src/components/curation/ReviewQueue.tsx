@@ -26,7 +26,7 @@ import { formatDateTime } from '../../utils/dateFormat';
 import { worldViewList } from '../../utils/worldViewList';
 import { ItemHeader, messageFor } from './queueCard';
 import { FactTable, ProposalSummary } from './FactTable';
-import { rowsFor } from './factRows';
+import { rowlessProposalWords, rowsFor } from './factRows';
 import { fieldLabel } from './fieldMeaning';
 import type { Existence, SourceMembership } from '@tyr/shared/lifecycle';
 
@@ -168,12 +168,13 @@ export function ConflictCard({ item, onDone }: { item: ReviewQueueItem; onDone: 
         {/* The claimed half of the shape WaitingToPublish has a branch for: a changeset
             an earlier run filed can carry a tags conflict (curatedConflict on a field
             no run reports now), and the conflict query surfaces it while the claim on
-            tags stands. No rows to table, and "proposes nothing" over the two live
+            tags stands; a fact with no value on either side makes no row either
+            (#1774). No rows to table, and "proposes nothing" over the two live
             buttons would be false — either answer settles it, and neither changes what
             readers see. */}
         {rows.length === 0 && (
           <Typography variant="body2" sx={{ mb: 2 }}>
-            The source proposes only the catalogue’s own labels, which nothing readers see
+            The source proposes {rowlessProposalWords(proposed)}, which nothing readers see
             {claimants.length > 0 ? `, over an edit claimed by ${claimants.join(', ')}` : ''}.
             Either answer settles it and changes nothing readers see.
           </Typography>

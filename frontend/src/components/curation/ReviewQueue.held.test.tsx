@@ -204,6 +204,21 @@ describe('ReviewQueue', () => {
       expect(screen.getByRole('button', { name: /publish everything on this card/i })).toBeInTheDocument();
     });
 
+    it('says what a card holding only a fact with no value on either side is (#1774)', async () => {
+      // The Reina Sofía's card without its year: no makers stored and none proposed.
+      // The fact makes no row, and the card must not call it the catalogue's labels.
+      mockedFetch.mockResolvedValue({
+        missing: [], refused: [], conflicts: [], contents: [], limit: 25,
+        held: [{ ...HELD, proposed: [{ field: 'metadata.creators', old: [], new: undefined, held: true }] }],
+      });
+      renderQueue();
+
+      expect(await screen.findByText(/Run 47 proposed only facts with no value on either side, which nothing readers see/))
+        .toBeInTheDocument();
+      expect(screen.queryByText(/own labels/)).not.toBeInTheDocument();
+      expect(screen.queryByRole('columnheader')).not.toBeInTheDocument();
+    });
+
     it('says nothing of the kind when a value readers see is being replaced', async () => {
       mockedFetch.mockResolvedValue({
         missing: [], refused: [], conflicts: [], held: [HELD], contents: [], limit: 25,
