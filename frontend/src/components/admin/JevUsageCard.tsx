@@ -37,6 +37,7 @@ const QUESTION_WORDS: Record<JevUsage['byQuestion'][number]['question'], string>
   views: 'which source’s view a place shows',
   componentItems: 'whether a candidate item is the component',
   mergeProposals: 'what two near places with alike names are',
+  visits: 'what a visitor finds at an arriving place',
 };
 
 export function JevUsageCard() {
@@ -49,8 +50,9 @@ export function JevUsageCard() {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           {data.configured
             ? 'Jev suggests which of two sources’ name, picture or point a place should show, whether a candidate '
-              + 'Wikidata item is the component it was proposed for, and whether two near places with alike names are '
-              + 'one place, two, or one part of the other, on the review page; a curator decides.'
+              + 'Wikidata item is the component it was proposed for, whether two near places with alike names are '
+              + 'one place, two, or one part of the other, and what a visitor finds at an arriving place, on the '
+              + 'review page; a curator decides.'
             : 'Not configured: set JEV_API_KEY to show Jev’s suggestion on the review page. Nothing else changes without it.'}
         </Typography>
         <Stack direction="row" spacing={4} flexWrap="wrap" useFlexGap>

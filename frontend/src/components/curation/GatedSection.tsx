@@ -38,6 +38,7 @@ import { PartPreviewDialog } from './PartPreviewDialog';
 import { ArrivedTable, RowAnswer } from './ArrivedTable';
 import { movedPointGroups } from './movedPointGroups';
 import { sectionKind, sharedKinds, type GatedGroup } from './gatedGroup';
+import { VisitReadingLine } from './VisitReadingLine';
 
 /**
  * The counts, as numbers and as a floor under the query that casts them.
@@ -369,6 +370,11 @@ export function GatedSection({ group, heading, objectButton, onDone }: {
           <Box component="span" sx={{ fontWeight: 600 }}>The run asks:</Box> {askedNote}
         </Typography>
       )}
+
+      {/* Jev's reading of what a visitor finds there (#1768): beside the run's
+          question, because it answers what the run's witnesses cannot — a part
+          of a larger place, an object, a culture. Never chosen for the curator. */}
+      {arrival && <VisitReadingLine experienceId={group.id} name={item.name} />}
 
       <PartPreviewDialog
         part={openPart}
