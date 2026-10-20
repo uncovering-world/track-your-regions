@@ -294,11 +294,11 @@ export async function askWikipediaOnce(
  * Wikipedia's (#887).
  */
 export function nextContinuation(
-  answer: CategoryAnswer, asks: number, what: string,
+  answer: CategoryAnswer, asks: number, what: string, cap = MAX_ASKS_PER_QUESTION,
 ): Record<string, string> | undefined {
   const cont = answer.continue && Object.keys(answer.continue).length > 0
     ? answer.continue : undefined;
-  if (cont && asks >= MAX_ASKS_PER_QUESTION) {
+  if (cont && asks >= cap) {
     const said = `${what} still continues after ${asks} asks, this run's cap`;
     console.log(`${LOG_PREFIX} ${said} — stopping rather than reading on`);
     throw new Error(`${LOG_PREFIX} ${said}`);

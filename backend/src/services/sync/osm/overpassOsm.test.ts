@@ -77,7 +77,7 @@ describe('overpassBatchQuery', () => {
   });
 
   it('names the keys it reads, so a cached answer read for fewer is not served (#1352)', () => {
-    expect(overpassBatchQuery(['Q22647'], KEEP)).toContain('amenity, building, museum */');
+    expect(overpassBatchQuery(['Q22647'], KEEP)).toContain('amenity, building, museum, opening_hours */');
   });
 
   it('refuses anything that is not a QID rather than splicing it into the query', () => {
