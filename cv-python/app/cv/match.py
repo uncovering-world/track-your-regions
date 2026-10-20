@@ -368,7 +368,7 @@ def _centroid_fallback(
     sx0, sy0, tx0, ty0 = initial
     logger.info(f"[Centroid] Best: sx={fsx:.1f} sy={fsy:.1f} tx={ftx:.1f} ty={fty:.1f} score={best_score:.1f}")
     logger.info(f"[Centroid] Init: sx={sx0:.1f} sy={sy0:.1f} tx={tx0:.1f} ty={ty0:.1f}")
-    logger.info(f"[Centroid] Scale factors: sx_f={fsx/sx0:.3f} sy_f={fsy/sy0:.3f}")
+    logger.info(f"[Centroid] Scale factors: sx_f={fsx / sx0:.3f} sy_f={fsy / sy0:.3f}")
     # A 2x3 affine matrix (no rotation)
     matrix = np.array(
         [
@@ -1094,7 +1094,7 @@ def run_matching(
     median_err, mean_err, align_pct = _compute_alignment_error(gadm_points, cv_border, matrix, tw, th)
     logger.info(
         f"[Match] Alignment: median_err={median_err:.1f}px, mean_err={mean_err:.1f}px, "
-        f"alignment_pct={align_pct*100:.1f}% (within 2% of image diagonal)"
+        f"alignment_pct={align_pct * 100:.1f}% (within 2% of image diagonal)"
     )
 
     # matrix = [[a, b, tx], [c, d, ty]]; for a partial affine a = s*cos(theta), b = -s*sin(theta)
