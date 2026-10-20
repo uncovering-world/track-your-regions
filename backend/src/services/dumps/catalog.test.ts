@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { datedDirectories, dumpNamed, sha1Of, type TextReader } from './catalog.js';
+import { datedDirectories, dumpNamed, sha1Of, wikipediaTableFile, wikiRunFile, type TextReader } from './catalog.js';
 
 /**
  * Finding the newest complete file of each dump (ADR-0101): a dated directory
@@ -54,6 +54,33 @@ describe('the dump catalog', () => {
     });
     const running = pages({ [`${base}/`]: '<a href="20261001/">b</a>', [`${base}/20261001/dumpstatus.json`]: status('in-progress') });
     expect(await dumpNamed('enwiki-page-props')!.resolve(running, noSize)).toBeNull();
+  });
+
+  it("takes English Wikivoyage's articles from the newest run that has finished them, as a bzip2 file (#1768)", async () => {
+    const base = 'https://dumps.wikimedia.org/enwikivoyage';
+    const status = (state: string) => JSON.stringify({ jobs: { articlesdump: { status: state, files: {
+      'enwikivoyage-20261001-pages-articles.xml.bz2': { size: 130838743, sha1: SHA },
+    } } } });
+    const read = pages({
+      [`${base}/`]: '<a href="20260920/">a</a><a href="20261001/">b</a>',
+      [`${base}/20261001/dumpstatus.json`]: status('done'),
+    });
+    const listings = dumpNamed('wikivoyage-listings')!;
+    expect(await listings.resolve(read, noSize)).toMatchObject({
+      fileName: 'enwikivoyage-20261001-pages-articles.xml.bz2', date: '2026-10-01', expectedBytes: 130838743,
+      checksum: { value: SHA }, compression: 'bzip2',
+    });
+    const running = pages({ [`${base}/`]: '<a href="20261001/">b</a>', [`${base}/20261001/dumpstatus.json`]: status('in-progress') });
+    expect(await listings.resolve(running, noSize)).toBeNull();
+    expect(listings.isFileName('enwikivoyage-20261001-pages-articles.xml.bz2')).toBe(true);
+    expect(listings.isFileName('dewikivoyage-20261001-pages-articles.xml.bz2')).toBe(false);
+  });
+
+  it('refuses a wiki name that is not a database name before building a URL from it', async () => {
+    await expect(wikiRunFile(pages({}), 'wikivoyage-listings', '../enwikivoyage', '20261001', 'articlesdump', 'pages-articles.xml.bz2', 'bzip2'))
+      .rejects.toThrow('Refusing');
+    await expect(wikipediaTableFile(pages({}), 'wikipedia-redirects', 'enwikivoyage', '20261001', 'redirecttable', 'redirect'))
+      .rejects.toThrow('Refusing');
   });
 
   it('takes the newest monthly pageview file the host answers a size for, with no checksum', async () => {

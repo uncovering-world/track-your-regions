@@ -4,7 +4,8 @@
  * monthly pageview files (#1436), English Wikipedia's structure from its
  * page table's dump and the three of the same date (#1440), and the redirects
  * readership folds from the redirect and page tables of every edition a door
- * counts (#1650).
+ * counts (#1650), and the Wikivoyage listings Archaeology's readership door
+ * reads from every edition's articles (#1768).
  */
 
 import type { DumpFile, DumpKey } from './catalog.js';
@@ -17,6 +18,8 @@ import { latestStructure } from './wikipedia/structureTables.js';
 import { buildSubset, rederiveSubset, type RederiveOptions } from './wikidata/subsetBuild.js';
 import type { CopyNeeds } from './wikidata/buildRules.js';
 import { latestSubset } from './wikidata/subsetTables.js';
+import { buildListings } from './wikivoyage/listingBuild.js';
+import { latestListings } from './wikivoyage/listingTables.js';
 
 export interface Kept {
   /** The dump date of the build now in place, and when it was swapped in. */
@@ -64,6 +67,9 @@ const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
   },
   'wikipedia-redirects': {
     title: 'The redirects readership counts under an article', build: buildRedirects, latest: latestRedirects, samples: false, fromCopy: false,
+  },
+  'wikivoyage-listings': {
+    title: 'The items Wikivoyage\'s listings name', build: buildListings, latest: latestListings, samples: false, fromCopy: false,
   },
 };
 

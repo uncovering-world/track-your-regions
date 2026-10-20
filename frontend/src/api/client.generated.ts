@@ -3832,6 +3832,7 @@ export const DumpBuildProgressDump = {
   'enwiki-langlinks': 'enwiki-langlinks',
   'pageviews-user': 'pageviews-user',
   'wikipedia-redirects': 'wikipedia-redirects',
+  'wikivoyage-listings': 'wikivoyage-listings',
 } as const;
 
 /**
@@ -3931,6 +3932,7 @@ export const DumpsDumpsItemKey = {
   'enwiki-langlinks': 'enwiki-langlinks',
   'pageviews-user': 'pageviews-user',
   'wikipedia-redirects': 'wikipedia-redirects',
+  'wikivoyage-listings': 'wikivoyage-listings',
 } as const;
 
 /**
@@ -15338,7 +15340,7 @@ export const getAdminDumps = async ( options?: Parameters<typeof apiFetch>[1]): 
 
 
 
-export const getPostAdminDumpsByDumpBuildUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects',) => {
+export const getPostAdminDumpsByDumpBuildUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects' | 'wikivoyage-listings',) => {
 
 
 
@@ -15350,7 +15352,7 @@ export const getPostAdminDumpsByDumpBuildUrl = (dump: 'wikidata-entities' | 'wik
  * Requires an admin.
  * @summary Start a build that reads the newest complete file of a dump, or the local copy's, and verifies it against its host
  */
-export const postAdminDumpsByDumpBuild = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects',
+export const postAdminDumpsByDumpBuild = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects' | 'wikivoyage-listings',
     dumpBuildBody: DumpBuildBody, options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
@@ -15378,7 +15380,7 @@ return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpBuildUrl(dump),
 
 
 
-export const getPostAdminDumpsByDumpKeepUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects',) => {
+export const getPostAdminDumpsByDumpKeepUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects' | 'wikivoyage-listings',) => {
 
 
 
@@ -15390,7 +15392,7 @@ export const getPostAdminDumpsByDumpKeepUrl = (dump: 'wikidata-entities' | 'wiki
  * Requires an admin.
  * @summary Start a build that reads the newest complete file of a dump, or the local copy's, and keeps what is built from it, swapping it in whole
  */
-export const postAdminDumpsByDumpKeep = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects',
+export const postAdminDumpsByDumpKeep = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects' | 'wikivoyage-listings',
     dumpBuildBody: DumpBuildBody, options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
 
     const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
@@ -15418,7 +15420,7 @@ return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpKeepUrl(dump),
 
 
 
-export const getPostAdminDumpsByDumpRederiveUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects',) => {
+export const getPostAdminDumpsByDumpRederiveUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects' | 'wikivoyage-listings',) => {
 
 
 
@@ -15430,7 +15432,7 @@ export const getPostAdminDumpsByDumpRederiveUrl = (dump: 'wikidata-entities' | '
  * Requires an admin.
  * @summary Start deriving the tables kept from a dump again from what the build in place holds, without reading the dump, swapping them in whole
  */
-export const postAdminDumpsByDumpRederive = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
+export const postAdminDumpsByDumpRederive = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects' | 'wikivoyage-listings', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
 
   return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpRederiveUrl(dump),
   {
@@ -15443,7 +15445,7 @@ export const postAdminDumpsByDumpRederive = async (dump: 'wikidata-entities' | '
 
 
 
-export const getPostAdminDumpsByDumpSampleUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects',) => {
+export const getPostAdminDumpsByDumpSampleUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects' | 'wikivoyage-listings',) => {
 
 
 
@@ -15455,7 +15457,7 @@ export const getPostAdminDumpsByDumpSampleUrl = (dump: 'wikidata-entities' | 'wi
  * Requires an admin.
  * @summary Start cutting a sample of the first part of a dump's local copy, kept beside it, for a trial of the build
  */
-export const postAdminDumpsByDumpSample = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
+export const postAdminDumpsByDumpSample = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects' | 'wikivoyage-listings', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
 
   return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpSampleUrl(dump),
   {
@@ -15468,7 +15470,7 @@ export const postAdminDumpsByDumpSample = async (dump: 'wikidata-entities' | 'wi
 
 
 
-export const getPostAdminDumpsByDumpTrialUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects',) => {
+export const getPostAdminDumpsByDumpTrialUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects' | 'wikivoyage-listings',) => {
 
 
 
@@ -15480,7 +15482,7 @@ export const getPostAdminDumpsByDumpTrialUrl = (dump: 'wikidata-entities' | 'wik
  * Requires an admin.
  * @summary Start a trial of the build on the dump's sample: every step runs into copies that are then dropped, never swapped in
  */
-export const postAdminDumpsByDumpTrial = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
+export const postAdminDumpsByDumpTrial = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects' | 'wikivoyage-listings', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildStarted> => {
 
   return apiFetch<DumpBuildStarted>(getPostAdminDumpsByDumpTrialUrl(dump),
   {
@@ -15493,7 +15495,7 @@ export const postAdminDumpsByDumpTrial = async (dump: 'wikidata-entities' | 'wik
 
 
 
-export const getPostAdminDumpsByDumpCancelUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects',) => {
+export const getPostAdminDumpsByDumpCancelUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects' | 'wikivoyage-listings',) => {
 
 
 
@@ -15505,7 +15507,7 @@ export const getPostAdminDumpsByDumpCancelUrl = (dump: 'wikidata-entities' | 'wi
  * Requires an admin.
  * @summary Ask a running build of a dump to stop
  */
-export const postAdminDumpsByDumpCancel = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildCancelled> => {
+export const postAdminDumpsByDumpCancel = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects' | 'wikivoyage-listings', options?: Parameters<typeof apiFetch>[1]): Promise<DumpBuildCancelled> => {
 
   return apiFetch<DumpBuildCancelled>(getPostAdminDumpsByDumpCancelUrl(dump),
   {
