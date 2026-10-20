@@ -2568,6 +2568,18 @@ floor of 15 sitelinks. It is shut while the source's curator gate is off and whi
 folded with the redirects in place. A site it alone admits carries the curator's question in
 `admissionNote` (`placeDoorNote`): its reading, the bar and the burst flag.
 
+**The door opens only for a place a travel guide lists** (ADR-0128, #1768, `guidedDoor` and
+`placeReadershipDoorFor`). Of what the year opens it for, a place stays open only where a
+Wikivoyage listing in any edition names its item (`listedAmong`, read from the listings build,
+`docs/tech/dumps.md` § Wikivoyage's listings). A year of reading says people read about a place,
+not that they go there. On dry run 178 the door had opened for Stapleton International Airport,
+the circus of Nero and Rungholt, read as much as the Roman Baths with nothing to see, and no guide
+lists any of them, while 19 of its 20 sites are listed. A place read over the bar that no guide
+lists stays out and is named among the run's refusals under `no-guide` (`unlistedReason`), unless
+the line keeps it on its own. The condition guards the door alone: a quarter of the sites the line
+admits have no listing, the Aqua Claudia among them. With no listings built the place door is shut,
+and the run says so.
+
 **Pompeii is the row both doors see.** English Wikipedia files it under `Archaeological museums
 in Italy`, so the museum door's category walk names it and refuses it for carrying no museum
 class; its own classes are `archaeological site, ancient city`, so the site door admits it. One

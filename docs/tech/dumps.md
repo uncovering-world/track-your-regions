@@ -39,6 +39,7 @@ indexes onto its copy.
 | `enwiki-page`, `enwiki-page-props`, `enwiki-linktarget`, `enwiki-categorylinks`, `enwiki-langlinks` | `enwiki/<date>/enwiki-<date>-<table>.sql.gz` | the sha1 and size `dumpstatus.json` gives the file once its job is `done` |
 | `pageviews-user` | `other/pageview_complete/monthly/<year>/<year-month>/pageviews-<yyyymm>-user.bz2` | the host's `Content-Length` and a clean end of the bzip2 stream — no checksum is published |
 | `wikipedia-redirects` | `enwiki/<date>/enwiki-<date>-redirect.sql.gz`, and its build reads `<wiki>/<date>/<wiki>-<date>-{redirect,page}.sql.gz` of every counted edition | the sha1 and size each edition's `dumpstatus.json` gives (`wikipediaTableFile`) |
+| `wikivoyage-listings` | `enwikivoyage/<date>/enwikivoyage-<date>-pages-articles.xml.bz2`, and its build reads `<wiki>/<date>/<wiki>-<date>-pages-articles.xml.bz2` of every Wikivoyage edition | the sha1 and size each edition's `dumpstatus.json` gives its `articlesdump` job (`wikiRunFile`) |
 
 Each descriptor's `resolve()` reads the host's own listing and answers the
 newest dated file that is **complete**, or nothing. It never reads a
@@ -673,6 +674,40 @@ There is no trial build: a table is kept from its whole file.
 
 The `langlinks` table is listed in the catalog and verified like any dump, and
 kept by no build: Wikidata's sitelinks say the same (ADR-0121 decision 3).
+
+## Wikivoyage's listings
+
+Code: `backend/src/services/dumps/wikivoyage/` —
+[ADR-0128](../decisions/0128-a-site-enters-through-the-readership-door-only-where-a-travel-guide-lists-it.md).
+A keeping build of `wikivoyage-listings` (`buildListings`, `listingBuild.ts`)
+reads English Wikivoyage's articles, the dump's own file, and the articles of
+the same date in every other edition (`WIKIVOYAGE_EDITIONS`, the 28 of
+Wikimedia's site matrix on 2026-10-20). Each file is verified by the sha1 and
+size its edition's `dumpstatus.json` gives. The other editions' files are read
+from the host as streams: the 28 dumps are about 400 MB together, English and
+German Wikivoyage the largest at 125 and 69 MB. An edition whose run has not
+finished its articles fails the build and names it, and the listings in place
+stay.
+
+A file is read a line at a time (`ListingReader`, `listingLine.ts`). Every
+`wikidata=` in an article's text (namespace 0) is a listing: a See or Do
+template, German Wikivoyage's `{{vCard}}`, a map marker, the article's own
+banner. An item is counted once per article. A talk page or a template's
+documentation names an item without sending anyone to it, so it is not read.
+Only the item, the edition and the article title are kept, in
+`wikivoyage_listings`. No text of a listing is copied: Wikivoyage's text is CC
+BY-SA, and an item naming a place is a fact.
+
+The rows go to a `_next` copy, given the live table's key once every file is
+read, and swapped in with the build's row in `wikivoyage_listing_builds` in
+one transaction (`swapIn`, `listingTables.ts`), as the redirects are. A file
+that fails its check, or a cancel, drops the copy. Both tables are `UNLOGGED`,
+so a crash empties them and the panel asks for a build (`latestListings`
+answers none). There is no trial build.
+
+Archaeology's readership door reads the table (`listedAmong`): it opens for a
+place only where a listing names its item, and is shut while no build is in
+place (`docs/tech/experiences.md` § Archaeology).
 
 ## Trying a change on a sample
 

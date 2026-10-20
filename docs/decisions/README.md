@@ -146,7 +146,8 @@ and accepted by it.
 | [0124](0124-the-dump-built-tables-live-in-a-workbench-schema-and-every-table-declares-its-tier.md) | The dump-built tables live in a workbench schema, and every table declares its tier | Accepted | 2026-10-19 |
 | [0125](0125-a-type-answer-is-the-kinds.md) | A held answer to a kind's type is the kind's, and every other is the place's | Accepted | 2026-10-19 |
 | [0126](0126-the-two-tiers-differ-by-source-and-weigh-the-same.md) | The two tiers of a kind differ by source and weigh the same | Accepted | 2026-10-19 |
-| [0127](0127-a-site-the-world-reads-opens-a-second-door-to-the-world-tier.md) | A site the world reads opens a second door to the world tier | Accepted | 2026-10-20 |
+| [0127](0127-a-site-the-world-reads-opens-a-second-door-to-the-world-tier.md) | A site the world reads opens a second door to the world tier | Accepted — decision 1 narrowed by [0128](0128-a-site-enters-through-the-readership-door-only-where-a-travel-guide-lists-it.md) | 2026-10-20 |
+| [0128](0128-a-site-enters-through-the-readership-door-only-where-a-travel-guide-lists-it.md) | A site enters through the readership door only where a travel guide lists it | Accepted | 2026-10-20 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR

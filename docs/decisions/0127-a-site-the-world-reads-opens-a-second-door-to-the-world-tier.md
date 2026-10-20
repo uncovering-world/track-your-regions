@@ -1,7 +1,7 @@
 # ADR-0127: A site the world reads opens a second door to the world tier
 
 **Date:** 2026-10-20
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by [ADR-0128](0128-a-site-enters-through-the-readership-door-only-where-a-travel-guide-lists-it.md)
 
 ---
 
