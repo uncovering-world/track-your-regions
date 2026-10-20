@@ -21,6 +21,7 @@
 # Examples:
 #   scripts/board.sh add 631 High Large "UX & Frontend" Pair Backlog
 #   scripts/board.sh status 631 "In progress"
+#   scripts/board.sh status 631 Waiting    # started, and the next step is not ours
 #   scripts/board.sh set 631 Priority Medium
 #   scripts/board.sh type 631 Epic
 #
@@ -33,7 +34,8 @@
 # touch the project.
 #
 # Values are the option names as GitHub shows them (Size: Tiny, Small, Medium, Large,
-# X-Large — not single letters). Status options carry an emoji prefix ("🏗 In progress");
+# X-Large — not single letters). Status options carry an emoji prefix ("🏗 In progress"):
+# 🆕 New, 📋 Backlog, 🏗 In progress, ⏳ Waiting, 👀 In review, ✅ Done;
 # a value matches an option's exact name or the part after the emoji, case-insensitively,
 # and an ambiguous value is an error, never a guess. Parents, blockers and milestones
 # need no helper: `gh issue edit N --parent P`, `--add-blocked-by B`, `--milestone "M"`.

@@ -110,9 +110,27 @@ Out of scope: <what this queue does not do, and where it goes instead>.
   one session becomes an issue first.
 - **The state is one of** `next`, `in progress`, `waiting`, `done` or `deferred`:
   - `in progress` names its PR or branch;
-  - `waiting` names what it waits on;
+  - `waiting` names what it waits on and the event that ends the wait;
   - `done` names its evidence;
   - `deferred` names its reason.
+- **The board follows the state.** An issue item's board Status is set in the same step as its
+  state, so the board tells started work that moves from started work that stopped:
+
+  | Queue state | Board Status |
+  |---|---|
+  | `next` | 📋 Backlog |
+  | `in progress` | 🏗 In progress, or 👀 In review while its PR is open |
+  | `waiting` | ⏳ Waiting |
+  | `deferred` | 📋 Backlog |
+  | `done` | ✅ Done (a closing merge sets it) |
+
+  ```bash
+  scripts/board.sh status <N> Waiting
+  ```
+
+  An item that was started and then left, with no branch open, is `deferred`, not `in progress`
+  or `waiting`. A blocker of an item that has not started is a blocked-by link on its issue
+  (`gh issue edit <N> --add-blocked-by <B>`), and the item stays `next` or `deferred`.
 - **A detour line starts with `detour:`.** It names the item it serves and its end condition.
 - **A claim names the item it is for.** It is removed when that item is done. The dev stack is
   claimed by one queue only: its keeper's.
@@ -216,6 +234,12 @@ gh api --paginate "repos/uncovering-world/track-your-regions/issues/<n>/comments
    § Babysit the PR until it is mergeable) before a new item starts. Refresh the claims so they
    name what the in-flight items hold. Write the `done` and `claim` entries these edits call
    for.
+
+   Then compare each issue item's board Status with its state (*The board follows the state*
+   above), reading Status as `/issues` § 1 does. Name every item where the two disagree, such
+   as an item `waiting` on a build that stands in 👀 In review with no pull request open, or a
+   `deferred` one in 🏗 In progress. Set the board from the state, and write one `state` entry
+   that lists what moved.
 5. **Say where the work stopped and what is next:**
    - the current item and its evidence so far;
    - what ends it;
@@ -260,6 +284,8 @@ hides the merges before it.
      the maintainer's: ask first, and record the answer as the maintainer gave it.
    - A detour needs an end condition before it is written.
    - `done` needs its evidence.
+   - A change of an item's state sets its issue's board Status in the same step, as *The board
+     follows the state* lists.
 3. **Edit the body**, owner only. Another session writes an `ask` comment for the owner
    instead, and tells the owner through `SendMessage`.
 4. **Write the journal entry** of the matching kind.
