@@ -209,7 +209,15 @@ scripts/board.sh status <N> "In review"
 
 The board update is best-effort: if it fails because the token lacks the `project` scope, run `gh auth refresh -s project` (or note the miss and continue) — it must not block the work itself.
 
-An issue referenced with `Closes`/`Fixes` goes ✅ Done automatically when the merge closes it. A `Part of #N` issue stays open — after the merge, move it back to 📋 Backlog (or 🏗 In progress if its work continues) by hand.
+An issue referenced with `Closes`/`Fixes` goes ✅ Done automatically when the merge closes it. A `Part of #N` issue stays open, and after the merge it is moved by hand. A merged pull request never leaves its issue in 👀 In review:
+
+- **⏳ Waiting** when the rest of it waits on something that is not ours to take now: a measurement, a slot on the dev stack, the maintainer's answer or a blocker. Name what it waits on, and the event that ends the wait, on the issue or on its queue item (`/queue` § The body);
+- **🏗 In progress** when its work continues in this session;
+- **📋 Backlog** when it is left for later, with a `deferred` line in its queue that gives the reason.
+
+```bash
+scripts/board.sh status <N> Waiting
+```
 
 ### 7. Report results
 

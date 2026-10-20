@@ -34,6 +34,14 @@ If the issue doesn't exist or `state` is not `OPEN`, tell the user and stop. Two
 
 ### 3. Create a branch
 
+First, read the issue's board Status (`project` scope; when it cannot be read, say so and go on as for a new start):
+
+```bash
+gh issue view $ARGUMENTS --json projectItems --jq '.projectItems[].status.name'
+```
+
+If it is ⏳ Waiting, the issue was started already and what it waited on has now arrived. Resume it, never re-start it: read the issue's thread and its queue item for where it stopped, reuse its branch when one is open (skip the checkout below), and move it back to 🏗 In progress. Otherwise:
+
 ```bash
 git checkout main
 git pull
