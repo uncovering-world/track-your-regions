@@ -513,7 +513,8 @@ title's access methods are adjacent lines and are summed as they pass, with no
 table of every title in memory: the views, the views on a phone (mobile web and
 app, for the automated-traffic check of ADR-0055 decision 3), and, where the
 month reaches 400 views (5,000 a year), the daily series, for the burst flag of
-decision 4. A title under 10 views in the month is not staged.
+decision 4. A title under 10 views in the month is not staged, unless it is a
+redirect readership folds or the article one points to (below).
 
 **Three spellings, and the trap in the third** (`decodeTitle`). The dump
 writes a title raw, as `%XX` bytes of UTF-8, and as `%uXXXX` code units of old
@@ -556,6 +557,18 @@ decision 2, #1650). A month's staged title that is a redirect in
 `readershipMonth.ts`), so the 388,094 English views a year of *Wanderer Above
 the Sea of Fog* under its redirect *Wanderer above the Sea of Fog*, one
 capital letter apart, are its own.
+The 10-view floor applies to the article once its redirects are summed into
+it, not to each title alone (#1702): *A Virgin with a Unicorn* reads 461
+English views in October 2025 under its own title and 518 with its 17
+redirects of 1–9 views each. Before a month is read, the build reads every
+redirect in place and the article it points to as a set of 32-bit hashes of
+site and title (`foldTitles` in `readershipMonth.ts`, the set `FoldTitles`
+in `foldTitles.ts`; 26.2M redirects to 9.5M articles, some 140 MB once read,
+on the development database), and a title in it is
+staged whatever its count. A hash that collides stages a title for nothing,
+since `keepMonth` joins on the title; a title in the set is never missed. A
+title that is neither is still not staged under 10, and the month keeps an
+item's edition only where the sum reaches 10.
 The month records the build of the redirects it was folded with and its dump
 date (`readership_month_files.redirects_build_id`, `redirects_dump_date`). A
 month kept before any redirects were in place records none and counts its
