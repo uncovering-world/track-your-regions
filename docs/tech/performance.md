@@ -698,10 +698,42 @@ The cause is not established. SQL is the largest part of each request
 today, timed in the backend around every query: 145 of the whole-region
 read's 178 ms, 27–37 of the region counts' 32–41 ms. No such split exists
 for the 2026-10-18 run, so this says where the time goes now, not which
-part of it grew. #1766 holds the one lever this
-found: the whole-region read sorts its wide rows to disk at the default
-`work_mem` of 4 MB, and with 16 MB the statement runs in 70 ms rather than
-107 ms.
+part of it grew. It found one lever, which the next section pulls: the
+whole-region read sorted its wide rows to disk at the default `work_mem`
+of 4 MB, and with 16 MB the statement ran in 70 ms rather than 107 ms.
+
+### The whole-region read sorts ids, not rows — 2026-10-20
+
+The read with children joins a place once per descendant region and once
+per rejection. It used to deduplicate those rows with a `GROUP BY` whose
+sort carried every column it selects. For Europe that was 5 112 joined
+rows of about 1.7 kB, and the sort ran as an external merge, writing
+4.8 MB to disk on every request. `buildRegionQueries`
+(`experienceRegionQuery.ts`) now groups the places by id in a `places`
+CTE and joins the wide columns to the grouped ids. The sort that remains
+holds ids, in 193 kB of memory (#1766).
+
+The statement's execution on the dev database at `work_mem` 4 MB, five
+runs each, went from 72–117 ms to 57–78 ms, with no temp file. The probe
+ran against a second backend beside the dev stack's, on origin/main's
+source and on the branch's in turn, twice each. The dev database was then
+as tuned on 2026-10-20 at 18:31 UTC: `shared_buffers` 6 GB, parallel
+workers raised, `random_page_cost` 1.1, `work_mem` still the default. So
+these figures compare with each other, not with the table above:
+
+| Endpoint | p50 before | p50 after |
+|----------|-----------|----------|
+| experiences by region | 175 / 173 ms | 151 / 153 ms |
+| experience locations by region | 141 / 140 ms | 140 / 140 ms |
+| experience counts per region | 30 / 30 ms | 30 / 30 ms |
+
+The answer holds the same 1 612 places. 29 of them share one of 14 names
+with another place in it, two Alexander Nevsky Cathedrals among them,
+and their order among themselves had been whatever the sort left. Both
+arms of the statement, with children and without, now order by name and
+then id, which moved 14 of them. That is also why the answer crossed the
+wire in 272 908 bytes rather than 272 967: the same rows compress a
+little differently in another order.
 
 ### What the world layer cost the map root — 2026-09-16
 
@@ -1010,9 +1042,6 @@ Filed, and linked here so the baseline is read with them in mind:
   rows four times cheaper to ship and did not make them fewer, or make the
   browser's work of parsing them smaller — #657 is about sending fewer of
   them, and it is the one that moves the timings.
-- #1766 — the same read groups its joined rows per place by sorting every
-  column it selects, and at the default `work_mem` that sort spills 4.8 MB
-  to disk on Europe: about a third of the statement's time.
 
 What the lane does not measure, by design or not yet:
 
