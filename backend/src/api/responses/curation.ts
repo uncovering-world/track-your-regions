@@ -431,6 +431,18 @@ export const MergeProposalSuggestions = z.strictObject({
 }).describe("Jev's judgement of the pairs of near places with similar names a place is the lower id of (#1249), per pair it could judge; never applied.");
 export type MergeProposalSuggestions = z.infer<typeof MergeProposalSuggestions>;
 
+export const VisitSuggestion = z.strictObject({
+  configured: z.boolean().describe('Whether this deployment asks Jev at all. False: no reading, nothing else changes.'),
+  suggestion: z.strictObject({
+    reading: z.enum(CHECK_VALUES.experience_visit_suggestions.reading)
+      .describe('`visit`: something to see or enter; `part`: a part of a larger place; `object`: a thing kept elsewhere; '
+        + '`nothing`: little or nothing visible; `not-a-place`: a culture, a kingdom or a group of sites; '
+        + '`other-kind`: visited for something the place\'s kinds do not offer.'),
+    confidence: z.number().describe('Its confidence, 0 to 1.'),
+  }).nullable().describe('None where the place is not arriving, or Jev could not read it.'),
+}).describe("Jev's reading of what a visitor finds at a place arriving for a curator (#1768); never applied.");
+export type VisitSuggestion = z.infer<typeof VisitSuggestion>;
+
 export const NearbyPicture = z.strictObject({
   file: z.string().describe("The file's name on Wikimedia Commons."),
   url: z.string().describe('The address the catalogue stores a picture by: what a pick sends as `imageUrl`.'),

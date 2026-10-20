@@ -14383,6 +14383,56 @@
         }
       }
     },
+    "/api/experiences/{id}/visit-suggestion": {
+      "post": {
+        "operationId": "postExperiencesByIdVisitSuggestion",
+        "summary": "Ask Jev what a visitor finds at an arriving place; a suggestion, never applied",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisitSuggestion"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/refuse-arrival": {
       "post": {
         "operationId": "postExperiencesByIdRefuseArrival",
@@ -25256,15 +25306,16 @@
                   "enum": [
                     "views",
                     "componentItems",
-                    "mergeProposals"
+                    "mergeProposals",
+                    "visits"
                   ],
-                  "description": "Which card asked: the sources card (#1260), the component-items card (#1272), or the near-places card (#1249)."
+                  "description": "Which card asked: the sources card (#1260), the component-items card (#1272), the near-places card (#1249), or an arriving place's card (#1768)."
                 },
                 "calls": {
                   "type": "integer",
                   "minimum": -9007199254740991,
                   "maximum": 9007199254740991,
-                  "description": "Suggestions asked for: one call each on the sources card, one question each on the component-items and near-places cards."
+                  "description": "Suggestions asked for: one call each on the sources and arriving-place cards, one question each on the component-items and near-places cards."
                 },
                 "inputTokens": {
                   "type": "integer",
@@ -25310,7 +25361,7 @@
           "byQuestion"
         ],
         "additionalProperties": false,
-        "description": "What Jev has cost, and how often curators chose what it suggested (#1260, #1272, #1249)."
+        "description": "What Jev has cost, and how often curators chose what it suggested (#1260, #1272, #1249, #1768)."
       },
       "LearnedRule": {
         "type": "object",
@@ -34903,6 +34954,55 @@
         ],
         "additionalProperties": false,
         "description": "A model's reading of which candidate divisions a region's map covers."
+      },
+      "VisitSuggestion": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "description": "Whether this deployment asks Jev at all. False: no reading, nothing else changes."
+          },
+          "suggestion": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "reading": {
+                    "type": "string",
+                    "enum": [
+                      "visit",
+                      "part",
+                      "object",
+                      "nothing",
+                      "not-a-place",
+                      "other-kind"
+                    ],
+                    "description": "`visit`: something to see or enter; `part`: a part of a larger place; `object`: a thing kept elsewhere; `nothing`: little or nothing visible; `not-a-place`: a culture, a kingdom or a group of sites; `other-kind`: visited for something the place's kinds do not offer."
+                  },
+                  "confidence": {
+                    "type": "number",
+                    "description": "Its confidence, 0 to 1."
+                  }
+                },
+                "required": [
+                  "reading",
+                  "confidence"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "None where the place is not arriving, or Jev could not read it."
+          }
+        },
+        "required": [
+          "configured",
+          "suggestion"
+        ],
+        "additionalProperties": false,
+        "description": "Jev's reading of what a visitor finds at a place arriving for a curator (#1768); never applied."
       },
       "VisitedExperienceIds": {
         "type": "object",

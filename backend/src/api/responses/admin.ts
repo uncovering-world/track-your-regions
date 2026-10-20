@@ -560,10 +560,11 @@ export const MergeProposalPass = z.strictObject({
 export type MergeProposalPass = z.infer<typeof MergeProposalPass>;
 
 const JevQuestionUsage = z.strictObject({
-  question: z.enum(['views', 'componentItems', 'mergeProposals']).describe(
-    'Which card asked: the sources card (#1260), the component-items card (#1272), or the near-places card (#1249).',
+  question: z.enum(['views', 'componentItems', 'mergeProposals', 'visits']).describe(
+    'Which card asked: the sources card (#1260), the component-items card (#1272), the near-places card (#1249), '
+    + 'or an arriving place\'s card (#1768).',
   ),
-  calls: z.number().int().describe('Suggestions asked for: one call each on the sources card, one question each on the component-items and near-places cards.'),
+  calls: z.number().int().describe('Suggestions asked for: one call each on the sources and arriving-place cards, one question each on the component-items and near-places cards.'),
   inputTokens: z.number().int(),
   usd: z.number(),
   compared: z.number().int().describe("Curators' answers for which Jev had suggested one for the same question."),
@@ -578,5 +579,5 @@ export const JevUsage = z.strictObject({
   compared: z.number().int().describe("Curators' answers for which Jev had suggested one for the same question, over every card."),
   agreed: z.number().int().describe('Of those, the answers that took what Jev suggested.'),
   byQuestion: z.array(JevQuestionUsage).describe('The same figures per card.'),
-}).describe('What Jev has cost, and how often curators chose what it suggested (#1260, #1272, #1249).');
+}).describe('What Jev has cost, and how often curators chose what it suggested (#1260, #1272, #1249, #1768).');
 export type JevUsage = z.infer<typeof JevUsage>;

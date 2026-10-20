@@ -1,9 +1,9 @@
 /**
  * What Jev has cost, and how often curators chose what it suggested (#1260,
- * #1272, #1249).
+ * #1272, #1249, #1768).
  * GET /api/admin/jev/usage
  *
- * Three questions are asked of it, counted apart and added up. The sources
+ * Four questions are asked of it, counted apart and added up. The sources
  * card's: the rows of `experience_view_suggestions`, one per call, and the
  * agreement compares each curator's choice of a source with the newest
  * suggestion made for the same views — a choice that kept the place's own
@@ -17,11 +17,18 @@
  * judged, and the agreement compares each pair a curator answered with the
  * newest judgement of it as it stood, in the same three words — *one*, *two*,
  * *part of*; a pair a merge's undo opened again has no answer and compares
- * with nothing until it is answered again.
+ * with nothing until it is answered again. The arriving place's (#1768): the
+ * rows of `experience_visit_suggestions`, one per call, and the agreement
+ * compares a curator's first answer to an arrival after the place's newest
+ * reading — a kept-out arrival (its log row) against *nothing*, *not a place*
+ * or *an object*, a membership first published after it against *something to
+ * see*; a reading of a part or of another kind says neither, and compares with
+ * nothing.
  */
 
 import type { JevUsage } from '../../api/responses/admin.js';
 import { pool } from '../../db/index.js';
+import { MEMBERSHIPS } from '../../db/membership.js';
 import { jevConfigured, JEV_USD_PER_MILLION_INPUT_TOKENS } from '../../services/jev/jevClient.js';
 import { askedSql } from '../experience/componentItemSuggestions.js';
 import { askedPairSql } from '../experience/mergeProposalSuggestions.js';
@@ -89,8 +96,33 @@ export async function getJevUsage(): Promise<JevUsage> {
       ) g ON true
      WHERE p.answer IS NOT NULL
   `);
+  const arrivals = await pool.query<Counted>(`
+    SELECT (SELECT count(*) FROM experience_visit_suggestions)::int AS calls,
+           (SELECT COALESCE(sum(input_tokens), 0) FROM experience_visit_suggestions)::float8 AS input_tokens,
+           count(*)::int AS compared,
+           count(*) FILTER (WHERE (a.action = 'arrival_refused') = (g.reading IN ('nothing', 'not-a-place', 'object')))::int AS agreed
+      FROM (SELECT DISTINCT ON (s.experience_id) s.experience_id, s.reading, s.asked_at
+              FROM experience_visit_suggestions s
+             ORDER BY s.experience_id, s.asked_at DESC, s.id DESC) g
+      JOIN LATERAL (
+        SELECT answer.action
+          FROM (SELECT l.action, l.created_at AS at
+                  FROM experience_curation_log l
+                 WHERE l.experience_id = g.experience_id AND l.action = 'arrival_refused' AND l.created_at >= g.asked_at
+                UNION ALL
+                -- An arrival is passed when its membership is first published:
+                -- a publication of the place's other kind, or of its held fields,
+                -- leaves a time set before the reading.
+                SELECT 'published', m.published_at
+                  FROM ${MEMBERSHIPS} m
+                 WHERE m.experience_id = g.experience_id AND m.published_at >= g.asked_at) answer
+         ORDER BY answer.at LIMIT 1
+      ) a ON true
+     WHERE g.reading IN ('visit', 'nothing', 'not-a-place', 'object')
+  `);
   const byQuestion = [
     figures('views', views.rows[0]), figures('componentItems', items.rows[0]), figures('mergeProposals', pairs.rows[0]),
+    figures('visits', arrivals.rows[0]),
   ];
   const inputTokens = byQuestion.reduce((sum, q) => sum + q.inputTokens, 0);
   return {

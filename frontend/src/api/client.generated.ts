@@ -5942,7 +5942,7 @@ export interface InstancesSynced {
 }
 
 /**
- * Which card asked: the sources card (#1260), the component-items card (#1272), or the near-places card (#1249).
+ * Which card asked: the sources card (#1260), the component-items card (#1272), the near-places card (#1249), or an arriving place's card (#1768).
  */
 export type JevUsageByQuestionItemQuestion = typeof JevUsageByQuestionItemQuestion[keyof typeof JevUsageByQuestionItemQuestion];
 
@@ -5951,13 +5951,14 @@ export const JevUsageByQuestionItemQuestion = {
   views: 'views',
   componentItems: 'componentItems',
   mergeProposals: 'mergeProposals',
+  visits: 'visits',
 } as const;
 
 export type JevUsageByQuestionItem = {
-  /** Which card asked: the sources card (#1260), the component-items card (#1272), or the near-places card (#1249). */
+  /** Which card asked: the sources card (#1260), the component-items card (#1272), the near-places card (#1249), or an arriving place's card (#1768). */
   question: JevUsageByQuestionItemQuestion;
   /**
-     * Suggestions asked for: one call each on the sources card, one question each on the component-items and near-places cards.
+     * Suggestions asked for: one call each on the sources and arriving-place cards, one question each on the component-items and near-places cards.
      * @minimum -9007199254740991
      * @maximum 9007199254740991
      */
@@ -5983,7 +5984,7 @@ export type JevUsageByQuestionItem = {
 };
 
 /**
- * What Jev has cost, and how often curators chose what it suggested (#1260, #1272, #1249).
+ * What Jev has cost, and how often curators chose what it suggested (#1260, #1272, #1249, #1768).
  */
 export interface JevUsage {
   configured: boolean;
@@ -10659,6 +10660,41 @@ export interface VisionMatchResult {
   /** In US dollars. */
   cost: number;
   debugImages: VisionMatchResultDebugImages;
+}
+
+/**
+ * `visit`: something to see or enter; `part`: a part of a larger place; `object`: a thing kept elsewhere; `nothing`: little or nothing visible; `not-a-place`: a culture, a kingdom or a group of sites; `other-kind`: visited for something the place's kinds do not offer.
+ */
+export type VisitSuggestionSuggestionReading = typeof VisitSuggestionSuggestionReading[keyof typeof VisitSuggestionSuggestionReading];
+
+
+export const VisitSuggestionSuggestionReading = {
+  visit: 'visit',
+  part: 'part',
+  object: 'object',
+  nothing: 'nothing',
+  'not-a-place': 'not-a-place',
+  'other-kind': 'other-kind',
+} as const;
+
+/**
+ * None where the place is not arriving, or Jev could not read it.
+ */
+export type VisitSuggestionSuggestion = {
+  /** `visit`: something to see or enter; `part`: a part of a larger place; `object`: a thing kept elsewhere; `nothing`: little or nothing visible; `not-a-place`: a culture, a kingdom or a group of sites; `other-kind`: visited for something the place's kinds do not offer. */
+  reading: VisitSuggestionSuggestionReading;
+  /** Its confidence, 0 to 1. */
+  confidence: number;
+} | null;
+
+/**
+ * Jev's reading of what a visitor finds at a place arriving for a curator (#1768); never applied.
+ */
+export interface VisitSuggestion {
+  /** Whether this deployment asks Jev at all. False: no reading, nothing else changes. */
+  configured: boolean;
+  /** None where the place is not arriving, or Jev could not read it. */
+  suggestion: VisitSuggestionSuggestion;
 }
 
 /**
@@ -20896,6 +20932,31 @@ export const getPostExperiencesByIdMergeProposalSuggestionsUrl = (id: number,) =
 export const postExperiencesByIdMergeProposalSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<MergeProposalSuggestions> => {
 
   return apiFetch<MergeProposalSuggestions>(getPostExperiencesByIdMergeProposalSuggestionsUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostExperiencesByIdVisitSuggestionUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/visit-suggestion`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Ask Jev what a visitor finds at an arriving place; a suggestion, never applied
+ */
+export const postExperiencesByIdVisitSuggestion = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<VisitSuggestion> => {
+
+  return apiFetch<VisitSuggestion>(getPostExperiencesByIdVisitSuggestionUrl(id),
   {
     ...options,
     method: 'POST'
