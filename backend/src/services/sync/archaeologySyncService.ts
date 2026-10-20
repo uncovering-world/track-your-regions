@@ -77,6 +77,7 @@ import {
 import { makeWikidataPictureRepair } from './wikidataPictureRepair.js';
 import { readHandOvers } from './handOvers.js';
 import { wikipediaStructureFor } from './wikipediaStructure.js';
+import { placeReadershipDoorFor } from './readershipDoor.js';
 
 // =============================================================================
 // Fetch
@@ -110,6 +111,10 @@ async function fetchArchaeologyItems(
     worksShownByOtherSources(ARCHAEOLOGY_SOURCE_ID),
   ]);
 
+  // A site the world reads opens a second door to the world tier (ADR-0127),
+  // while the source's curator gate is on.
+  const openSiteDoor = await placeReadershipDoorFor(ARCHAEOLOGY_SOURCE_ID, line.enterSitelinks, LOG_PREFIX);
+
   // The collection, read through one OpenStreetMap door (`osm/oneDoorPerRun.ts`):
   // the one the environment names — the mirror unless `OSM_READER` says
   // `overpass` — and, on the day the mirror fails, Overpass from the start. A
@@ -139,6 +144,7 @@ async function fetchArchaeologyItems(
           line,
           // What other kinds refused as held at a museum (ADR-0102).
           handOvers,
+          openSiteDoor,
           onPhase: (message) => { progress.statusMessage = message; },
           checkCancel: () => {
             if (progress.cancel) throw new Error('Sync cancelled');

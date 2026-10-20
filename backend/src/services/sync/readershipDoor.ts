@@ -10,6 +10,11 @@
  * door is the source's only while its curator gate is on (decision 5): every
  * venue it admits arrives for a person, with the work, its reading and its
  * burst flag named. The caller asks the gate; this module reads the year.
+ *
+ * ADR-0127 opens the same door for a place admitted for its own sake: a site
+ * below Archaeology's line that the world reads at the median of the kind's
+ * own sites at the line. The measure, the bar, the exit and the gate are the
+ * work door's.
  */
 
 import { pool } from '../../db/index.js';
@@ -24,7 +29,7 @@ export const DOOR_ENTER_PERCENTILE = 0.5;
 /** ADR-0056 decision 2: a work the door admitted leaves below the tier's 35th percentile. */
 export const DOOR_STAY_PERCENTILE = 0.35;
 
-/** A work the door is asked about: its item and its sitelinks. */
+/** A work or a place the door is asked about: its item and its sitelinks. */
 export interface DoorWork { qid: string; sitelinks: number }
 
 /** What the door read of a work it opened for. */
@@ -94,16 +99,55 @@ export async function openReadershipDoor(
   works: readonly DoorWork[],
   line: number,
 ): Promise<ReadershipDoor | null> {
+  return readDoor(works, async (views, items) => (
+    doorOf(works, views, line, await iconicNow(items), await worksShownByOtherSources(sourceId))
+  ));
+}
+
+/**
+ * The door over the places a source's pool holds (ADR-0127), or null when the
+ * year cannot be read. The exit holds a place the source admits now, as it
+ * holds a work Iconic now; no other kind's card shuts it, since a place is
+ * shared and another kind offering it says nothing about this one.
+ */
+export async function openPlaceDoor(
+  places: readonly DoorWork[],
+  line: number,
+  held: ReadonlySet<string>,
+): Promise<ReadershipDoor | null> {
+  return readDoor(places, async (views) => doorOf(places, views, line, held, new Set()));
+}
+
+/** The year's reading of the items, the door it opens, and the burst flag on what it opened for. */
+async function readDoor(
+  items: readonly DoorWork[],
+  open: (views: ReadonlyMap<string, number>, qids: string[]) => Promise<ReturnType<typeof doorOf>>,
+): Promise<ReadershipDoor | null> {
   const year = await readershipYear();
   if (!year) return null;
-  const items = works.map(work => work.qid);
-  const { views, counted } = await readWorks(year, items);
-  const door = doorOf(works, views, line, await iconicNow(items), await worksShownByOtherSources(sourceId));
+  const qids = items.map(item => item.qid);
+  const { views, counted } = await readWorks(year, qids);
+  const door = await open(views, qids);
   const bursts = await burstsAmong(year, [...door.opened.keys()], counted);
   const opened = new Map<string, OpenedWork>();
   for (const [qid, read] of door.opened) opened.set(qid, { views: read, burst: bursts.has(qid) });
   return { opened, bar: door.bar, exit: door.exit };
 }
+
+/** Whether the source's curator gate is on, saying so in the run's log when it is not. */
+async function gateIsOn(sourceId: number, logPrefix: string): Promise<boolean> {
+  const gate = await pool.query<{ requires_curation: boolean }>(
+    'SELECT requires_curation FROM experience_sources WHERE id = $1',
+    [sourceId],
+  );
+  if (gate.rows[0]?.requires_curation) return true;
+  console.log(`${logPrefix} The readership door is shut: the source's curator gate is off (ADR-0056 decision 5)`);
+  return false;
+}
+
+const shutForYear = (logPrefix: string) => console.log(
+  `${logPrefix} The readership door is shut: no year of readership is folded with the redirects in place`,
+);
 
 /**
  * The door a run of a source passes its pipeline, or nothing while the
@@ -115,20 +159,33 @@ export async function readershipDoorFor(
   line: number,
   logPrefix: string,
 ): Promise<((works: DoorWork[]) => Promise<ReadershipDoor | null>) | undefined> {
-  const gate = await pool.query<{ requires_curation: boolean }>(
-    'SELECT requires_curation FROM experience_sources WHERE id = $1',
-    [sourceId],
-  );
-  if (!gate.rows[0]?.requires_curation) {
-    console.log(`${logPrefix} The readership door is shut: the source's curator gate is off (ADR-0056 decision 5)`);
-    return undefined;
-  }
+  if (!await gateIsOn(sourceId, logPrefix)) return undefined;
   return async (works) => {
     const door = await openReadershipDoor(sourceId, works, line);
-    console.log(door
-      ? `${logPrefix} The readership door opened for ${door.opened.size} works below the line `
-        + `(bar ${Math.round(door.bar)} views, exit ${Math.round(door.exit)})`
-      : `${logPrefix} The readership door is shut: no year of readership is folded with the redirects in place`);
+    if (door) {
+      console.log(`${logPrefix} The readership door opened for ${door.opened.size} works below the line `
+        + `(bar ${Math.round(door.bar)} views, exit ${Math.round(door.exit)})`);
+    } else shutForYear(logPrefix);
+    return door;
+  };
+}
+
+/**
+ * The place door a run of a source passes its pipeline (ADR-0127), or nothing
+ * while the source's curator gate is off, for the reason the work door's is.
+ */
+export async function placeReadershipDoorFor(
+  sourceId: number,
+  line: number,
+  logPrefix: string,
+): Promise<((places: DoorWork[], held: ReadonlySet<string>) => Promise<ReadershipDoor | null>) | undefined> {
+  if (!await gateIsOn(sourceId, logPrefix)) return undefined;
+  return async (places, held) => {
+    const door = await openPlaceDoor(places, line, held);
+    if (door) {
+      console.log(`${logPrefix} The readership door opened for ${door.opened.size} places below the line `
+        + `(bar ${Math.round(door.bar)} views, exit ${Math.round(door.exit)})`);
+    } else shutForYear(logPrefix);
     return door;
   };
 }
@@ -158,13 +215,19 @@ export function readContent(work: PoolWork, door: ReadershipDoor | null): Proces
   return door?.opened.has(work.qid) ? { ...toContent(work), readIconic: true } : toContent(work);
 }
 
+const roundViews = (n: number) => Math.round(n).toLocaleString('en-US');
+const BURST_CLAUSE = '; its year is a burst (a quarter in one week, or months that swing), so check the reading holds';
+
 /** The curator's question on a venue the door alone admitted: the work, its year and the bar. */
 export function doorNote(label: string, work: OpenedWork, door: ReadershipDoor): string {
-  const views = (n: number) => Math.round(n).toLocaleString('en-US');
-  const burst = work.burst
-    ? '; its year is a burst (a quarter in one week, or months that swing), so check the reading holds'
-    : '';
-  return `Admitted for ${label}, below the sitelinks line but read ${views(work.views)} times this year `
-    + `in every counted edition (the world tier's median is ${views(door.bar)})${burst}. `
+  return `Admitted for ${label}, below the sitelinks line but read ${roundViews(work.views)} times this year `
+    + `in every counted edition (the world tier's median is ${roundViews(door.bar)})${work.burst ? BURST_CLAUSE : ''}. `
     + 'Can a visitor see it there now?';
+}
+
+/** The curator's question on a place the door alone admitted (ADR-0127): its year and the bar. */
+export function placeDoorNote(place: OpenedWork, door: ReadershipDoor): string {
+  return `Admitted below the sitelinks line, read ${roundViews(place.views)} times this year in every counted `
+    + `edition (the median of this kind's places at the line is ${roundViews(door.bar)})`
+    + `${place.burst ? BURST_CLAUSE : ''}. Is it a place a visitor goes to see?`;
 }

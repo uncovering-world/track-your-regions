@@ -31,6 +31,7 @@ import { categoryVotes, collectOsmEntrance, withNamed, type SiteEntrance } from 
 export type { SiteEntrance } from './siteEntrance.js';
 import {
   siteExtent,
+  siteStanding,
   siteVerdict,
   type OsmSignal,
   type SiteFacts,
@@ -41,6 +42,7 @@ import type { KeepWkt, OsmObject } from '../osm/types.js';
 import { OsmEmptyAnswerError } from '../osm/readOsmObjects.js';
 import { lineStanding, type SourceLine } from '../sourceLine.js';
 import type { FilteredEntity } from '../syncContract.js';
+import { placeDoorNote, type DoorWork, type OpenedWork, type ReadershipDoor } from '../readershipDoor.js';
 
 const CLASS_BATCH = 25;
 const FACT_BATCH = 50;
@@ -65,6 +67,14 @@ export type OsmReader = (
   keep: KeepWkt,
   run: Pick<QueryRunner, 'phase' | 'step'>,
 ) => Promise<Map<string, OsmObject[]>>;
+
+/**
+ * The readership door over the site pool (ADR-0127, `placeReadershipDoorFor`):
+ * the places below the line it opens for, with the bar read over the places at
+ * the line, and the exit holding the ones in `held`. Absent while the source's
+ * curator gate is off, and in a test that asks no readership.
+ */
+export type PlaceDoor = (places: DoorWork[], held: ReadonlySet<string>) => Promise<ReadershipDoor | null>;
 
 /** A site the rule admitted and the line let in, with what the run learned about it. */
 export interface SiteCandidate {
@@ -188,6 +198,7 @@ function refuseRetyped(
   admitted: ReadonlySet<string>,
   line: SourceLine,
   named: ReadonlyMap<string, OsmObject[]>,
+  readOpened: ReadonlySet<string>,
 ): { retyped: Set<string>; filtered: SiteRefusal[] } {
   const filtered: SiteRefusal[] = [];
   const retyped = new Set<string>();
@@ -204,7 +215,7 @@ function refuseRetyped(
     // `out` is the long tail the source never admitted and the line never let
     // in — no rule ran on it, so no refusal names it (`sourceLine.ts`). Only an
     // unadmitted row can be out; an admitted one is `in` or `fell`, both named.
-    if (lineStanding(entity.sitelinks, admitted.has(entity.qid), line) === 'out') continue;
+    if (siteStanding(entity.qid, entity.sitelinks, admitted, line, readOpened) === 'out') continue;
     filtered.push({
       externalId: entity.qid,
       name: entity.label,
@@ -360,6 +371,8 @@ function judgeCandidate(
     admitted: ReadonlySet<string>;
     line: SourceLine;
     readAt: string;
+    /** The door that opened for this row below the line, and what it read (ADR-0127). */
+    door?: { door: ReadershipDoor; read: OpenedWork } | undefined;
   },
 ): SiteCandidate | SiteRefusal | null {
   const { objects, trees, admitted, line, readAt } = input;
@@ -369,6 +382,7 @@ function judgeCandidate(
       ...(input.namedByCategory ? { namedByCategory: true } : {}),
     },
     objects, trees, admitted, line,
+    ...(input.door ? { readOpened: new Set([entity.qid]) } : {}),
   });
   if (!verdict.pass) {
     if ('out' in verdict) return null;
@@ -384,13 +398,38 @@ function judgeCandidate(
     return { externalId: entity.qid, name: entity.label, reason: at.reason, group: 'placeless' };
   }
   const extent = siteExtent(objects);
+  // Both questions where both apply: what carried a row the tree did not vouch
+  // for in, and that it came in on its reading rather than its sitelinks.
+  const note = [verdict.note, input.door && placeDoorNote(input.door.read, input.door.door)]
+    .filter(Boolean).join(' ');
   return {
     entity,
     classes: input.facts.classes,
     osm: { ...verdict.osm, readAt },
     extentWkt: extent ? extent.wkt : null,
-    ...(verdict.note ? { note: verdict.note } : {}),
+    ...(note ? { note } : {}),
   };
+}
+
+/**
+ * The readership door over the site pool (ADR-0127), or null where none is
+ * open. The bar is read over the sites the source holds at the line — not over
+ * every candidate at it, where Athens and Istanbul would set it — so the door
+ * is handed the held rows at the line and every row below it.
+ */
+async function openSiteDoor(
+  openDoor: PlaceDoor | undefined,
+  candidates: readonly PoolEntity[],
+  admitted: ReadonlySet<string>,
+  line: SourceLine,
+): Promise<ReadershipDoor | null> {
+  if (!openDoor) return null;
+  return openDoor(
+    candidates
+      .filter((entity) => entity.sitelinks < line.enterSitelinks || admitted.has(entity.qid))
+      .map((entity) => ({ qid: entity.qid, sitelinks: entity.sitelinks })),
+    admitted,
+  );
 }
 
 /**
@@ -414,6 +453,7 @@ export async function collectSitesByFame(
   line: SourceLine,
   osm: OsmReader,
   entrance: SiteEntrance,
+  openDoor?: PlaceDoor,
 ): Promise<SitesByFame> {
   const { pool, byId, byOsm, named, byArticleOnly } = await collectPool(run, trees, admitted, entrance);
   const qids = [...pool.keys()];
@@ -425,7 +465,19 @@ export async function collectSitesByFame(
   // the same quiet failure, with a comune walking in on the map's note.
   const facts = await collectFacts(run, qids, (qid) => !byId.has(qid));
   const candidates = [...pool.values()].sort((a, b) => b.sitelinks - a.sitelinks);
-  const { retyped, filtered } = refuseRetyped(candidates, facts, trees, admitted, line, named);
+
+  // The readership door, before anything asks where a row stands.
+  const door = await openSiteDoor(openDoor, candidates, admitted, line);
+  const readOpened: ReadonlySet<string> = new Set(door?.opened.keys() ?? []);
+  // The door's question goes only on a row the door alone lets in: a held
+  // site of 18 to 21 sitelinks is kept by the line's own stay, whatever it reads.
+  const openedFor = (entity: PoolEntity) => {
+    const read = door?.opened.get(entity.qid);
+    const lineKeeps = lineStanding(entity.sitelinks, admitted.has(entity.qid), line) === 'in';
+    return door && read && !lineKeeps ? { door, read } : undefined;
+  };
+
+  const { retyped, filtered } = refuseRetyped(candidates, facts, trees, admitted, line, named, readOpened);
 
   // **Only the candidates the line would let speak.** `siteVerdict` answers
   // `out` for every row below the line that the source does not already admit,
@@ -436,7 +488,7 @@ export async function collectSitesByFame(
   // is not a heavy user.
   const asked = candidates
     .filter((entity) => !retyped.has(entity.qid))
-    .filter((entity) => lineStanding(entity.sitelinks, admitted.has(entity.qid), line) !== 'out')
+    .filter((entity) => siteStanding(entity.qid, entity.sitelinks, admitted, line, readOpened) !== 'out')
     .map((entity) => entity.qid);
 
   // One read, here: after the pool is known and before a single verdict. The
@@ -445,7 +497,9 @@ export async function collectSitesByFame(
   const objects = await osm(asked, OSM_KEEP_WKT, run);
   const readAt = new Date().toISOString();
   // After the read, since a place used today is said so by its objects (#1352).
-  const namedByCategory = await categoryVotes(run, candidates, facts, trees, named, line, admitted, entrance, objects);
+  const namedByCategory = await categoryVotes(
+    run, candidates, facts, trees, named, line, admitted, entrance, objects, readOpened,
+  );
 
   // **And an empty answer is not a fact.** A mirror that answers 200 with no
   // bindings says "no OSM object carries this item" about every candidate at
@@ -491,6 +545,7 @@ export async function collectSitesByFame(
       namedByCategory: namedByCategory.has(entity.qid),
       osmOnly: byOsm.has(entity.qid),
       trees, admitted, line, readAt,
+      door: openedFor(entity),
     });
     if (judged === null) continue;
     if ('group' in judged) filtered.push(judged);

@@ -16,6 +16,7 @@
 import { describe, it, expect } from 'vitest';
 import { buildArchaeologyTrees, OSM_KEEP_WKT, SITE_ROOT } from './classes.js';
 import { collectSitesByFame, OsmAnswerFloorError, type SiteEntrance } from './sites.js';
+import type { ReadershipDoor } from '../readershipDoor.js';
 import type { KeepWkt, OsmDigs, OsmObject } from '../osm/types.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 import { isWikipediaEditionsQuery, wikipediaEditionsRows } from '../wikipediaEditionsFixture.js';
@@ -339,6 +340,45 @@ describe('collectSitesByFame', () => {
       run, TREES, new Set(['Q22647']), { enterSitelinks: 200, staySitelinks: 100 }, osmReader(asked), NO_ENTRANCE,
     );
     expect([...asked[0].qids].sort()).toEqual(['Q1524', 'Q22647']);
+  });
+
+  it('lets in a row below the line the readership door opened for, with the curator\'s question (ADR-0127)', async () => {
+    // Against a line only Athens clears, Pompeii stands below it. The door is
+    // handed the rows below the line and the admitted ones at it — never
+    // Athens, which the source does not hold and whose reading would set the
+    // bar — and it opens for Pompeii alone, so the map is asked about Pompeii
+    // and Pompeii is admitted with its reading named, while Troy stays out.
+    const { run } = runner();
+    const asked: OsmCall[] = [];
+    const handed: { qids: string[]; held: string[] }[] = [];
+    const door: ReadershipDoor = { opened: new Map([['Q43332', { views: 2_400_000, burst: false }]]), bar: 1_000_000, exit: 700_000 };
+    const answer = await collectSitesByFame(
+      run, TREES, new Set<string>(), { enterSitelinks: 200, staySitelinks: 150 }, osmReader(asked), NO_ENTRANCE,
+      async (places, held) => {
+        handed.push({ qids: places.map((place) => place.qid).sort(), held: [...held] });
+        return door;
+      },
+    );
+    expect(handed).toHaveLength(1);
+    expect(handed[0].qids).not.toContain('Q1524');
+    expect(handed[0].qids).toEqual(expect.arrayContaining(['Q22647', 'Q43332']));
+    expect(asked[0].qids.sort()).toEqual(['Q1524', 'Q43332']);
+    expect([...answer.sites.keys()]).toEqual(['Q43332']);
+    expect(answer.sites.get('Q43332')!.note).toBe('Admitted below the sitelinks line, read 2,400,000 times this year in '
+      + "every counted edition (the median of this kind's places at the line is 1,000,000). Is it a place a visitor goes to see?");
+  });
+
+  it('asks no door question of a held site the line\'s own stay keeps', async () => {
+    // Troy held at 121 against a stay line of 100: the door opens for it at
+    // the exit, but the line keeps it, so its card asks nothing of the door.
+    const { run } = runner();
+    const door: ReadershipDoor = { opened: new Map([['Q22647', { views: 800_000, burst: false }]]), bar: 1_000_000, exit: 700_000 };
+    const answer = await collectSitesByFame(
+      run, TREES, new Set(['Q22647']), { enterSitelinks: 200, staySitelinks: 100 }, osmReader([]), NO_ENTRANCE,
+      async () => door,
+    );
+    expect(answer.sites.has('Q22647')).toBe(true);
+    expect(answer.sites.get('Q22647')!.note).toBeUndefined();
   });
 
   it('fails the run when the mirror answers about almost nothing', async () => {

@@ -16,8 +16,8 @@ import { fetchSitelinksByIds, SITELINKS_BATCH, type SiteFactsRow } from './queri
 import { SITE_CATEGORY, type ArchaeologyTrees } from './classes.js';
 import type { OsmDigs, OsmObject } from '../osm/types.js';
 import { enwikiTitleOf } from '../wikipediaCategories.js';
-import { lineStanding, type SourceLine } from '../sourceLine.js';
-import { inUseAmong } from './siteTest.js';
+import type { SourceLine } from '../sourceLine.js';
+import { inUseAmong, siteStanding } from './siteTest.js';
 import { readsSubset } from '../subset/reader.js';
 import { subsetKeeps } from '../subset/archaeology.js';
 
@@ -186,6 +186,8 @@ export async function categoryVotes(
   admitted: ReadonlySet<string>,
   entrance: SiteEntrance,
   objects: ReadonlyMap<string, OsmObject[]>,
+  /** The rows below the line the readership door opened for (ADR-0127). */
+  readOpened: ReadonlySet<string> = new Set(),
 ): Promise<Set<string>> {
   const titles = new Map<string, string>();
   for (const entity of candidates) {
@@ -197,7 +199,7 @@ export async function categoryVotes(
     const row = facts.get(entity.qid);
     if (!row || !refusedUnlessVoted(row, withNamed(objects.get(entity.qid) ?? [], mapped))) continue;
     if (row.classes.some((cls) => trees.site.has(cls))) continue;
-    if (lineStanding(entity.sitelinks, admitted.has(entity.qid), line) === 'out') continue;
+    if (siteStanding(entity.qid, entity.sitelinks, admitted, line, readOpened) === 'out') continue;
     const title = enwikiTitleOf(entity.articleUrl);
     if (title) titles.set(entity.qid, title);
   }
