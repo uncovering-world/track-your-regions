@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { resolveMainPoint, buildUnescoTags, isInDanger, transformRecord } from './unescoSyncService.js';
+import { resolveMainPoint, buildUnescoTags, isInDanger, parseDelimitedField, transformRecord } from './unescoSyncService.js';
 import type { UnescoApiRecord, ParsedLocation } from './types.js';
 
 function record(overrides: Partial<UnescoApiRecord> = {}): UnescoApiRecord {
@@ -378,5 +378,27 @@ describe("a component's name", () => {
   it('is kept where it only looks so, or its bytes are not UTF-8', () => {
     expect(namesOf('Kåfjord')).toEqual(['Kåfjord']);
     expect(namesOf('Ã©tude Ãx')).toEqual(['Ã©tude Ãx']);
+  });
+});
+
+describe("a site's countries", () => {
+  it('reads the JSON list the dataset writes since 2026-10-20, and the pieces the portal splits it into', () => {
+    // 1567 (France and Belgium) and the Silk Roads' 1675, copied from the export.
+    expect(parseDelimitedField('["FR", "BE"]')).toEqual(['FR', 'BE']);
+    expect(parseDelimitedField(['["Tajikistan"', '"Uzbekistan"', '"Turkmenistan"]']))
+      .toEqual(['Tajikistan', 'Uzbekistan', 'Turkmenistan']);
+    expect(transformRecord(record({ geo_point_2d: { lat: 27.7, lon: 88.15 }, iso_codes: '["IN"]', states_names: ['["India"]'] })))
+      .toMatchObject({ countryCodes: ['IN'], countryNames: ['India'] });
+  });
+
+  it('still reads the forms before it', () => {
+    expect(parseDelimitedField('FR,ES')).toEqual(['FR', 'ES']);
+    expect(parseDelimitedField(['France', 'Spain'])).toEqual(['France', 'Spain']);
+    expect(parseDelimitedField(undefined)).toEqual([]);
+  });
+
+  it('fails a list that is not well-formed JSON, rather than write it as a country', () => {
+    expect(() => parseDelimitedField('["FR"')).toThrow();
+    expect(() => parseDelimitedField(['["France"', '"Belgium"'])).toThrow();
   });
 });

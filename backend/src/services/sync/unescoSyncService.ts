@@ -262,8 +262,24 @@ function buildMultilingualNames(record: UnescoApiRecord): Record<string, string>
   return nameLocal;
 }
 
-/** UNESCO API hands us "FR,ES" or ["FR","ES"] depending on the field; normalize either shape. */
-function parseDelimitedField(value: unknown): string[] {
+/**
+ * A site's countries, in whichever shape the portal sends the field.
+ *
+ * Since 2026-10-20 the dataset writes the list as JSON text, `["FR", "BE"]` for
+ * `iso_codes`, and the portal splits a text field on its commas into an array,
+ * so `states_names` comes as `['["France"', '"Belgium"]']`, each piece trimmed.
+ * The pieces are joined again on ", " and the JSON read as the list it is. The
+ * forms before it, "FR,ES" and ["FR","ES"], are still read. JSON text that is
+ * not a list throws, so the site fails by name rather than carrying a wrong
+ * country.
+ */
+export function parseDelimitedField(value: unknown): string[] {
+  const text = Array.isArray(value) ? value.map(String).join(', ') : value;
+  if (typeof text === 'string' && text.trimStart().startsWith('[')) {
+    const list: unknown = JSON.parse(text);
+    if (!Array.isArray(list)) throw new Error('Country list is not a list');
+    return list.map(entry => String(entry).trim()).filter(Boolean);
+  }
   if (typeof value === 'string') {
     return value.split(',').map(c => c.trim()).filter(Boolean);
   }
