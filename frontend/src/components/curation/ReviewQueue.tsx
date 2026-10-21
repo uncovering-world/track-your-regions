@@ -294,7 +294,7 @@ export function outcomeFor(
   if (!data) return undefined;
   const parts: string[] = [];
   // Through `fieldLabel` for the reason the headings are: the card the curator just read
-  // said "short description", and an answer that says `shortDescription` reads as a
+  // said "picture", and an answer that says `imageUrl` reads as a
   // different subject — our word for the column, in the one line confirming their click.
   if (data.applied.length > 0) parts.push(`${data.applied.map(fieldLabel).join(', ')} applied now`);
   if (data.released.length > 0) {

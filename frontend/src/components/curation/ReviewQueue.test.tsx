@@ -173,7 +173,7 @@ describe('ReviewQueue', () => {
     mockedFetch.mockResolvedValue({
       missing: [],
       conflicts: [{ ...CONFLICT, proposed: [
-        { field: 'shortDescription', old: null, new: 'A description this row never had', acceptable: true },
+        { field: 'description', old: null, new: 'A description this row never had', acceptable: true },
       ] }],
       refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
     });
@@ -192,7 +192,7 @@ describe('ReviewQueue', () => {
       missing: [],
       conflicts: [{ ...CONFLICT, proposed: [
         { field: 'name', old: 'Curator wording', new: 'Renamed upstream', acceptable: true },
-        { field: 'shortDescription', old: 'Mine', new: 'Theirs', acceptable: true },
+        { field: 'description', old: 'Mine', new: 'Theirs', acceptable: true },
       ] }],
       refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
     });
@@ -204,7 +204,7 @@ describe('ReviewQueue', () => {
     const takeThese = await screen.findAllByRole('button', { name: 'take the source’s' });
     fireEvent.click(takeThese[1]);
 
-    await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(88, ['shortDescription'], 41));
+    await waitFor(() => expect(mockedAccept).toHaveBeenCalledWith(88, ['description'], 41));
   });
 
   it('lets a curator settle one field their own way', async () => {
@@ -215,7 +215,7 @@ describe('ReviewQueue', () => {
         sync_log_id: 41,
         proposed: [
           { field: 'name', old: 'Curator wording', new: 'Renamed upstream', acceptable: true },
-          { field: 'shortDescription', old: 'Mine', new: 'Theirs', acceptable: true },
+          { field: 'description', old: 'Mine', new: 'Theirs', acceptable: true },
         ],
       }],
       refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
@@ -228,7 +228,7 @@ describe('ReviewQueue', () => {
     const keepThese = await screen.findAllByRole('button', { name: 'keep this' });
     fireEvent.click(keepThese[1]);
 
-    await waitFor(() => expect(mockedDecline).toHaveBeenCalledWith(88, ['shortDescription'], 41));
+    await waitFor(() => expect(mockedDecline).toHaveBeenCalledWith(88, ['description'], 41));
     expect(mockedAccept).not.toHaveBeenCalled();
   });
 
@@ -252,11 +252,11 @@ describe('ReviewQueue', () => {
   });
 
   it('says what a refusal settled, since the card leaves with it', async () => {
-    mockedDecline.mockResolvedValue({ experienceId: 88, declined: ['shortDescription'], fromSyncLogId: 41 });
+    mockedDecline.mockResolvedValue({ experienceId: 88, declined: ['description'], fromSyncLogId: 41 });
     mockedFetch
       .mockResolvedValueOnce({
         missing: [],
-        conflicts: [{ ...CONFLICT, sync_log_id: 41, proposed: [{ field: 'shortDescription', old: 'Mine', new: 'Theirs', acceptable: true }] }],
+        conflicts: [{ ...CONFLICT, sync_log_id: 41, proposed: [{ field: 'description', old: 'Mine', new: 'Theirs', acceptable: true }] }],
         refused: [], keptOut: [], arrivals: [], held: [], contents: [], limit: 25,
       })
       .mockResolvedValue({ missing: [], conflicts: [], limit: 25 });
@@ -266,7 +266,7 @@ describe('ReviewQueue', () => {
 
     // In the reader's words, and naming the run — so a curator meeting the field again
     // later is being told the source changed its mind, not that the click failed.
-    expect(await screen.findByText(/short description — kept as curated/)).toBeInTheDocument();
+    expect(await screen.findByText(/description — kept as curated/)).toBeInTheDocument();
     expect(screen.getByText(/run 41/)).toBeInTheDocument();
   });
 

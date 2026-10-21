@@ -29,7 +29,7 @@ type QuietField = NonNullable<ReviewQueueItem['quiet_fields']>[number];
 
 const FIELD_LABEL: Record<SourceViewField['field'], string> = {
   name: 'Name',
-  description: 'Description',
+  subtitle: 'Subtitle',
   imageUrl: 'Picture',
   location: 'Where it is',
 };

@@ -91,7 +91,7 @@ function creditForPreview(editImageUrl: string, row: Experience): ImageCredit | 
 
 /** What the edit form holds, named by the request body's keys (ADR-0076). */
 type EditFields = Required<Pick<Parameters<typeof editExperience>[1],
-  'name' | 'shortDescription' | 'type' | 'imageUrl' | 'websiteUrl' | 'wikipediaUrl'>>;
+  'name' | 'description' | 'type' | 'imageUrl' | 'websiteUrl' | 'wikipediaUrl'>>;
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 
@@ -118,7 +118,7 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
   const form = useEditForm<EditFields>({
     initial: {
       name: experience?.name ?? '',
-      shortDescription: experience?.short_description ?? '',
+      description: experience?.description ?? '',
       type: experience?.type ?? '',
       imageUrl: experience?.image_url ?? '',
       websiteUrl: text(metadata?.website),
@@ -266,8 +266,8 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
             objectMissingSince={experience.missing_since}
           />
           <TextField
-            label="Short Description"
-            {...form.field('shortDescription')}
+            label="Description"
+            {...form.field('description')}
             fullWidth
             size="small"
             multiline

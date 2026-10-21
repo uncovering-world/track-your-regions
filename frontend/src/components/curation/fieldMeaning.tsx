@@ -1,7 +1,7 @@
 /**
  * What each curated fact means to a person, and what it means that it changed.
  *
- * A review card must not print the changeset's own names — `shortDescription`,
+ * A review card must not print the changeset's own names — `countryNames`,
  * `metadata.inDanger`, `criterion_ii` — with the stored values under them, leaving the
  * curator to work out what any of it is. That is the wrong reader to leave it to: a
  * curator is a traveller with the right and the duty to say what the catalogue claims
@@ -353,13 +353,13 @@ const MEANINGS: Record<string, FieldMeaning> = {
     what: 'The name in the source’s other languages — UNESCO publishes six: English, French, Spanish, Arabic, Russian and Chinese.',
     whenItChanges: 'Routine: a translation corrected or added.',
   },
-  description: {
-    label: 'description',
-    what: 'The long text on the object’s own page.',
+  subtitle: {
+    label: 'subtitle',
+    what: 'The one-line subtitle from Wikidata — “museum in Saint Petersburg, Russia” — which readers see where the place has no description.',
     whenItChanges: 'The source rewrote it. Read both; a rewrite can drop what a curator added.',
   },
-  shortDescription: {
-    label: 'short description',
+  description: {
+    label: 'description',
     what: 'The paragraph on the card readers open.',
     whenItChanges: 'The source rewrote it. Read both; a rewrite can drop what a curator added.',
   },

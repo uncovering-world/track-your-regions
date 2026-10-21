@@ -77,8 +77,8 @@ export function resetCardMocks(mockedFetch: ReturnType<typeof vi.fn>): void {
     locationIds: [], treasureIds: [],
   });
   mockedExperience.mockReset().mockResolvedValue({
-    id: 55, name: 'Museo Soumaya', description: 'The Slim family collection.',
-    short_description: null, image_url: null, latitude: 19.4406, longitude: -99.2047,
+    id: 55, name: 'Museo Soumaya', subtitle: 'The Slim family collection.',
+    description: null, image_url: null, latitude: 19.4406, longitude: -99.2047,
     country_names: ['Mexico'], location_count: 1,
   });
   mockedFetch.mockResolvedValue({

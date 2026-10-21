@@ -450,7 +450,7 @@ describe('the location a lookup fills in', () => {
     const sent = mockedCreate.mock.calls[0][0];
     expect(sent).toMatchObject({ latitude: BRNO.lat, longitude: BRNO.lng });
     expect(sent).not.toHaveProperty('imageUrl');
-    expect(sent).not.toHaveProperty('shortDescription');
+    expect(sent).not.toHaveProperty('description');
     expect(sent).not.toHaveProperty('wikipediaUrl');
   });
 
@@ -484,7 +484,7 @@ describe('the location a lookup fills in', () => {
     const sent = mockedCreate.mock.calls[0][0];
     expect(sent).toMatchObject({ latitude: BRNO.lat, longitude: BRNO.lng });
     expect(sent).not.toHaveProperty('imageUrl');
-    expect(sent).not.toHaveProperty('shortDescription');
+    expect(sent).not.toHaveProperty('description');
     expect(sent).not.toHaveProperty('wikipediaUrl');
     mockedSearch.mockImplementation(async () => []);
   });
@@ -522,7 +522,7 @@ describe('the location a lookup fills in', () => {
     await waitFor(() => expect(mockedCreate).toHaveBeenCalledTimes(1));
     const sent = mockedCreate.mock.calls[0][0];
     expect(sent).not.toHaveProperty('imageUrl');
-    expect(sent).not.toHaveProperty('shortDescription');
+    expect(sent).not.toHaveProperty('description');
     expect(sent).not.toHaveProperty('wikipediaUrl');
     mockedSearch.mockImplementation(async () => []);
   });

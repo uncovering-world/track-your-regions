@@ -339,9 +339,9 @@ function ExperienceExpandedDetailsComponent({
       </Box>
 
       {/* Description */}
-      {experience.short_description && (
+      {experience.description && (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          {experience.short_description}
+          {experience.description}
         </Typography>
       )}
 
@@ -356,10 +356,10 @@ function ExperienceExpandedDetailsComponent({
           from the detail read the card already issues. */}
       <ExtentLine areaKm2={details?.area_km2} />
 
-      {/* Museum description */}
-      {details?.description && !experience.short_description && (
+      {/* The subtitle, where the place has no description */}
+      {details?.subtitle && !experience.description && (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          {details.description}
+          {details.subtitle}
         </Typography>
       )}
 

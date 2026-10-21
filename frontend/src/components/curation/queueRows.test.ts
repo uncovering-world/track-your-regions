@@ -257,12 +257,12 @@ describe('queueRows', () => {
   it('a conflict row names the field the source disagrees on, humanised', () => {
     const rows = queueRows(queue({
       conflicts: [item({
-        id: 1, name: 'Aksum', proposed: [{ field: 'shortDescription', old: 'a', new: 'b' }],
+        id: 1, name: 'Aksum', proposed: [{ field: 'metadata.dateInscribed', old: 1980, new: 1979 }],
       })],
       order: [orderEntry({ kind: 'conflict', id: 1 })],
     }));
 
-    expect(rows[0].specific).toBe('short description');
+    expect(rows[0].specific).toBe('year inscribed');
   });
 
   it('a withdrawn row counts its lost places', () => {

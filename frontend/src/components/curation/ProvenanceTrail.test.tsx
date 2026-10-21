@@ -5,14 +5,14 @@
  * only do by showing what each earlier answer *took*. Its one real failure mode is a value
  * that quietly does not appear, because that is indistinguishable from an acceptance that
  * applied nothing, and it happens on exactly the field the trail was built for:
- * `shortDescription` acceptances run to 1339 characters and average 841.
+ * `description` acceptances run to 1339 characters and average 841.
  */
 
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { ProvenanceTrail } from './ProvenanceTrail';
 
-/** The length a real `shortDescription` acceptance runs to on the dev database. */
+/** The length a real `description` acceptance runs to on the dev database. */
 const LONG = `The property, located in north-eastern Democratic Republic of the Congo, forms part of one of the last extensive and continuous forest–savanna mosaic landscapes in Central Africa. ${'It encompasses a diverse range of habitats. '.repeat(15)}`;
 
 describe('ProvenanceTrail', () => {

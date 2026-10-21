@@ -75,7 +75,7 @@ describe('FactTable', () => {
   });
 
   it('compares text a person wrote word by word, across the two columns', () => {
-    const proposed = [{ field: 'shortDescription', old: 'The ruins of Aksum', new: 'The ruins of Axum' }];
+    const proposed = [{ field: 'description', old: 'The ruins of Aksum', new: 'The ruins of Axum' }];
     render(<FactTable groups={objectGroup(proposed, { proposed })} labels={HELD_LABELS} />);
     const [row] = screen.getAllByRole('row').slice(1);
     const cells = within(row).getAllByRole('cell');

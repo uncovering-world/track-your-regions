@@ -1662,7 +1662,7 @@ export type ChooseViewsBodyChoicesItemField = typeof ChooseViewsBodyChoicesItemF
 
 export const ChooseViewsBodyChoicesItemField = {
   name: 'name',
-  description: 'description',
+  subtitle: 'subtitle',
   imageUrl: 'imageUrl',
   location: 'location',
 } as const;
@@ -2772,7 +2772,7 @@ export interface CreateCuratorAssignmentBody {
 export interface CreateManualExperienceBody {
   name: string;
   /** @maxLength 1000 */
-  shortDescription?: string;
+  description?: string;
   /**
      * The type within the kind the place is created under, never the kind itself, which is `kindId`.
      * @maxLength 100
@@ -4091,9 +4091,9 @@ export interface EarlierAnswer {
 export interface EditExperienceBody {
   name?: string;
   /** @maxLength 1000 */
-  shortDescription?: string;
-  /** @maxLength 10000 */
   description?: string;
+  /** @maxLength 10000 */
+  subtitle?: string;
   /** @maxLength 100 */
   type?: string;
   imageUrl?: string;
@@ -4279,7 +4279,7 @@ export interface Experience {
   external_id: string;
   name: string;
   /** @nullable */
-  short_description: string | null;
+  description: string | null;
   /**
      * The type within the kind, such as `cultural` on a World Heritage site or `cathedral` on a place of worship. Null on a museum, whose kind has no types (ADR-0045).
      * @nullable
@@ -4438,9 +4438,9 @@ export interface ExperienceDetail {
   name: string;
   name_local: ExperienceDetailNameLocal;
   /** @nullable */
-  description: string | null;
+  subtitle: string | null;
   /** @nullable */
-  short_description: string | null;
+  description: string | null;
   /** @nullable */
   type: string | null;
   /** Null on a place created by hand without a country, which the columns allow. */
@@ -4636,7 +4636,7 @@ export interface ExperienceSearchResult {
   id: number;
   name: string;
   /** @nullable */
-  short_description: string | null;
+  description: string | null;
   /** @nullable */
   type: string | null;
   /**
@@ -8024,7 +8024,7 @@ export type QuietFieldField = typeof QuietFieldField[keyof typeof QuietFieldFiel
 
 export const QuietFieldField = {
   name: 'name',
-  description: 'description',
+  subtitle: 'subtitle',
   imageUrl: 'imageUrl',
   location: 'location',
 } as const;
@@ -9108,7 +9108,7 @@ export type SourceViewFieldField = typeof SourceViewFieldField[keyof typeof Sour
 
 export const SourceViewFieldField = {
   name: 'name',
-  description: 'description',
+  subtitle: 'subtitle',
   imageUrl: 'imageUrl',
   location: 'location',
 } as const;
@@ -9255,7 +9255,7 @@ export interface ReviewQueueItem {
   /** @nullable */
   wikipedia_url?: string | null;
   /**
-     * The object's description, the long one where there is one, else the short one (#1780).
+     * What the object is, in a line: its subtitle (Wikidata's line) where it has one, else its description (UNESCO's paragraph, a curator's text) (#1780).
      * @nullable
      */
   object_description?: string | null;
@@ -10628,7 +10628,7 @@ export type ViewSuggestionsSuggestionsItemField = typeof ViewSuggestionsSuggesti
 
 export const ViewSuggestionsSuggestionsItemField = {
   name: 'name',
-  description: 'description',
+  subtitle: 'subtitle',
   imageUrl: 'imageUrl',
   location: 'location',
 } as const;
@@ -10670,7 +10670,7 @@ export type ViewsChosenFieldsItem = typeof ViewsChosenFieldsItem[keyof typeof Vi
 
 export const ViewsChosenFieldsItem = {
   name: 'name',
-  description: 'description',
+  subtitle: 'subtitle',
   imageUrl: 'imageUrl',
   location: 'location',
 } as const;
@@ -10680,7 +10680,7 @@ export type ViewsChosenChangedItem = typeof ViewsChosenChangedItem[keyof typeof 
 
 export const ViewsChosenChangedItem = {
   name: 'name',
-  description: 'description',
+  subtitle: 'subtitle',
   imageUrl: 'imageUrl',
   location: 'location',
 } as const;

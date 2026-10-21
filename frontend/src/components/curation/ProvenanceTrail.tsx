@@ -29,7 +29,7 @@ export type FieldProvenance = Pick<ProposedField, 'claim' | 'decidedBefore'>;
  * "what did they take" — the opening of it answers that, silence does not. Silence is also
  * ambiguous in the worst way: it reads identically to an acceptance that applied nothing.
  *
- * The length matters because of which field this is for. `shortDescription` acceptances run
+ * The length matters because of which field this is for. `description` acceptances run
  * to 1339 characters and average 841 (`wordDiff.ts`), so any test a long value fails hides
  * the trail on the only field it was built for — `name`, at 37 characters, is the field a
  * curator can already compare at a glance.
