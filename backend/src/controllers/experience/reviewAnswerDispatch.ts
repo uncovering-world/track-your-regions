@@ -20,6 +20,7 @@
  * | component-items | confirm the exact candidates: the same name at the same spot | turn down every open candidate | — |
  * | merge-proposals | make the exact pairs one place: the same name within fifty metres | keep every open pair two places | — |
  * | pin-question | refused: a pin is a person's answer, answered on its card | refused, the same | — |
+ * | visit-question | refused: a refusal pins the place out of its kind, answered on its card | keep it in the kind | — |
  * | refused | keep it out (confirm, unpinned) | put it back for now (override, unpinned; publishes an arrival) | — |
  * | missing | former: delisted, still there | the object stays: false alarm | no longer exists |
  * | missing, one kind (#1264) | no longer that kind (former, or out of the kind) | it stays in the kind | — |
@@ -38,6 +39,7 @@ import {
   answerComponentItemsUnderLock, candidateItems, openCandidates, readItemContents,
 } from './componentItemController.js';
 import { answerMergeProposalsOneByOne, openPairs } from './mergeProposalController.js';
+import { answerVisitQuestionUnderLock } from './visitQuestionController.js';
 import { pool } from '../../db/index.js';
 import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import { acceptSourceUnderLock } from './acceptSourceController.js';
@@ -109,6 +111,7 @@ export async function answerRow(
     // A pin is a person's answer to one row, and a batch neither makes one nor
     // takes one back (ADR-0067, ADR-0096): the card asks it (#1367).
     case 'pin-question': return refused(409, 'A pin is answered on its own card, where the curator\'s answer and the run\'s are read side by side');
+    case 'visit-question': return answerVisitQuestion(who, answer);
     case 'refused': return answerRefused(who, answer);
     case 'missing': return answerMissing(who, answer);
     case 'withdrawn': return answerWithdrawn(who, answer);
@@ -315,6 +318,27 @@ async function answerMergeProposals(who: Answerer, answer: Answer): Promise<Outc
   const answered = outcome.merged.length + outcome.two + outcome.partOf;
   if (answered === 0) return refused(409, outcome.refused[0]?.error ?? 'No pair could be answered');
   return { did: { pairs: answered } };
+}
+
+/**
+ * A question about an offered place with nothing to see (#1770), answered per
+ * membership: reject keeps the place, as its card does. Accept, the refusal,
+ * is the card's alone: the kind's rule admits the place, so a refusal holds
+ * only by pinning `admission`, and a batch answer pins nothing (ADR-0067
+ * decision 2). A row names the membership its question is about, one per kind
+ * the card asks about.
+ */
+async function answerVisitQuestion(who: Answerer, answer: Answer): Promise<Outcome> {
+  const { experienceId, userId, logRegionId, membershipId } = who;
+  if (answer === 'accept') {
+    return refused(409, 'A refusal pins the place out of its kind, which only its card does — refuse it there');
+  }
+  if (membershipId === null) return refused(409, 'This row names no kind — reload to see which kind is asked about');
+  const outcome = await answerVisitQuestionUnderLock(experienceId, userId, logRegionId, {
+    decision: 'keep', membershipId,
+  });
+  if (outcome.refusal) return refusedBy(outcome.refusal);
+  return { did: { visitQuestions: 1 } };
 }
 
 /**

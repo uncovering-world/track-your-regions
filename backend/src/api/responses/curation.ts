@@ -154,6 +154,15 @@ export const PinQuestionAnswered = z.strictObject({
 }).describe("A curator's answer to a run that asked again about their admission pin (#1367).");
 export type PinQuestionAnswered = z.infer<typeof PinQuestionAnswered>;
 
+export const VisitQuestionAnswered = z.strictObject({
+  experienceId: z.number().int(),
+  membershipId: z.number().int(),
+  answer: z.enum(CHECK_VALUES.experience_visit_questions.answer),
+  admission: z.enum(CHECK_VALUES.experience_kind_memberships.admission)
+    .describe('The verdict now standing on the membership: refused by the curator, or admitted as before.'),
+}).describe("A curator's answer to a run's question about an offered place with nothing to see (#1770).");
+export type VisitQuestionAnswered = z.infer<typeof VisitQuestionAnswered>;
+
 /**
  * Publish's own answer with the verdict in front: a curator who clicks "Put it
  * back" on an arrival gets the verdict and the publication that came with it,

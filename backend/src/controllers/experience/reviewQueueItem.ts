@@ -12,7 +12,7 @@
 import type {
   ChangedField, ComponentItemProposal, CountedWork, AnsweredPoint, HeldPart, MergePair, PendingPoint, PendingWork,
   PinQuestion, ProposedField, QuietField, RefusedPoint, RefusedWork, ReviewQueueItem, SitePoint, SourceViewField,
-  WithdrawnPoint,
+  VisitQuestion, WithdrawnPoint,
 } from '../../api/responses/reviewQueue.js';
 import type { ImageCredit } from '../../api/responses/experiences.js';
 import type { CheckValue } from '../../db/schema.generated.js';
@@ -88,6 +88,8 @@ export interface QueueRow {
   merge_pairs?: MergePair[] | null;
   /** Postgres's jsonb renders the dates as strings, in the schema's shape. */
   pin_question?: PinQuestion | null;
+  /** The question of a `visit-question` card (#1770), dated as `pin_question` is. */
+  visit_question?: VisitQuestion | null;
 }
 
 /**
@@ -214,5 +216,6 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     site_points: row.site_points,
     merge_pairs: row.merge_pairs,
     pin_question: row.pin_question,
+    visit_question: row.visit_question,
   };
 }

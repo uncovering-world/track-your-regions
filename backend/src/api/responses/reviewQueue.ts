@@ -19,6 +19,7 @@ import { VIEW_FIELDS } from '../../db/sourceViews.js';
 import { GATE_PASSES } from '../../services/sync/changeSet.js';
 import { z } from 'zod/v4';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
+import { WITNESSES } from '../../services/sync/visit/witnesses.js';
 import {
   QUEUE_ITEM_KINDS, QUEUE_KINDS, REVIEW_ANSWERS, WAITING_SUBS,
 } from '../../controllers/experience/reviewQueueVocabulary.js';
@@ -333,6 +334,16 @@ export const PinQuestion = z.strictObject({
 }).describe("A curator's admission pin a run no longer agrees with (#1367).");
 export type PinQuestion = z.infer<typeof PinQuestion>;
 
+export const VisitQuestion = z.strictObject({
+  witnesses: z.array(z.enum(WITNESSES))
+    .describe('The visit witnesses that vouched for the place when it was asked (ADR-0128): fewer than two.'),
+  reading: z.enum(CHECK_VALUES.experience_visit_questions.reading)
+    .describe("Jev's reading of what a visitor finds there: little or nothing visible, not a place, or an object kept elsewhere."),
+  confidence: z.number().describe("How sure Jev was of that reading, 0 to 1; a question is raised at 0.7 or more."),
+  askedAt: timestamp.describe('When the run asked.'),
+}).describe('An offered place few witnesses vouch for and Jev reads as nothing to see (#1770): the suggested answer is to refuse it from the kind.');
+export type VisitQuestion = z.infer<typeof VisitQuestion>;
+
 export const ReviewQueueItem = z.strictObject({
   id: z.number().int(),
   external_id: z.string(),
@@ -425,6 +436,7 @@ export const ReviewQueueItem = z.strictObject({
     + ' `merge-proposals` items only.',
   ),
   pin_question: PinQuestion.nullable().optional().describe('`pin-question` items only (#1367).'),
+  visit_question: VisitQuestion.nullable().optional().describe('`visit-question` items only (#1770).'),
 }).describe('An object waiting on a curator, or one a curator can take a verdict back from.');
 export type ReviewQueueItem = z.infer<typeof ReviewQueueItem>;
 
@@ -475,6 +487,7 @@ export const ReviewQueue = z.strictObject({
   componentItems: z.array(ReviewQueueItem).describe('Serial sites whose components have candidate Wikidata items (#1272).'),
   mergeProposals: z.array(ReviewQueueItem).describe('Places with a near place of a similar name nobody has answered (#1249).'),
   pinQuestions: z.array(ReviewQueueItem).describe("Curators' admission pins a run no longer agrees with (#1367)."),
+  visitQuestions: z.array(ReviewQueueItem).describe('Offered places few witnesses vouch for and Jev reads as nothing to see (#1770).'),
   arrivals: z.array(ReviewQueueItem),
   held: z.array(ReviewQueueItem),
   contents: z.array(ReviewQueueItem).describe('One per place and membership holding unread rows it placed (#1290).'),
@@ -518,6 +531,9 @@ export const ReviewAnswerDid = z.strictObject({
   ),
   pairs: z.number().int().optional().describe(
     'Pairs of near places answered, for a merge-proposals row (#1249): a batch accept makes the exact pairs one place, a reject keeps every open pair two.',
+  ),
+  visitQuestions: z.number().int().optional().describe(
+    'Questions about a place with nothing to see answered, for a visit-question row (#1770): a reject keeps the place; an accept is refused, since a refusal is answered on the card.',
   ),
 }).describe('What one answer did, counted. The notice sums these per kind and answer.');
 export type ReviewAnswerDid = z.infer<typeof ReviewAnswerDid>;

@@ -244,9 +244,14 @@ const VISIT_SUGGESTION_WRITE = 'experience_visit_suggestions is written by its w
   + 'named write to src/services/sync/visit/visitSuggestions.ts, taking the place\'s LockedExperience token.';
 const VISIT_SUGGESTION_WRITE_RULES = spelledWriteRules('experience_visit_suggestions', VISIT_SUGGESTION_WRITE);
 
-/** A curator's question about a place with nothing to see (#1770): the run's `visitQuestions.ts`. */
+/**
+ * A curator's question about a place with nothing to see (#1770): the run's
+ * `visitQuestions.ts`, which raises it, and the curator's answer in
+ * `visitQuestionController.ts`, under the place's lock.
+ */
 const VISIT_QUESTION_WRITE = 'experience_visit_questions is written by its writer modules only (ADR-0077): add a '
-  + 'named write to src/services/sync/visit/visitQuestions.ts, the run that raises the question.';
+  + 'named write to src/services/sync/visit/visitQuestions.ts, the run that raises the question, or to '
+  + 'src/controllers/experience/visitQuestionController.ts, the curator who answers it.';
 const VISIT_QUESTION_WRITE_RULES = spelledWriteRules('experience_visit_questions', VISIT_QUESTION_WRITE);
 
 /** A curator's answer to one row of a held proposal: `recordHeldAnswers` in `heldDecisions.ts`. */
@@ -663,7 +668,7 @@ export default [
     },
   },
   {
-    files: ['src/services/sync/visit/visitQuestions.ts'],
+    files: ['src/services/sync/visit/visitQuestions.ts', 'src/controllers/experience/visitQuestionController.ts'],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(VISIT_QUESTION_WRITE_RULES),
     },

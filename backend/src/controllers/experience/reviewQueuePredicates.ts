@@ -253,3 +253,18 @@ export function mergeProposalOpenSql(p = 'p', a = 'a', b = 'b'): string {
 export function pinQuestionOpenSql(m = 'm'): string {
   return `${admissionPinnedSql(m)} AND ${m}.admission_questioned_at IS NOT NULL`;
 }
+
+/**
+ * `visit-question`: a run's question about an offered place with nothing to
+ * see (#1770, `askVisitQuestions`), on a question `q` about the membership
+ * `m` of the place `e`. Open while nobody has answered it and while the kind
+ * still offers the place as the run asked it: a place since refused, pinned by
+ * a curator, delisted or gone from every source asks nothing, since its
+ * admission was answered another way. The keys phase, the hydration
+ * (`reviewQueueVisitQuestions.ts`) and the answer (`visitQuestionController.ts`)
+ * read it alike.
+ */
+export function visitQuestionOpenSql(q = 'q', m = 'm', e = 'e'): string {
+  return `${q}.answer IS NULL AND ${q}.membership_id = ${m}.id
+    AND ${membershipOfferedSql(m)} AND NOT ${admissionPinnedSql(m)} AND ${e}.missing_since IS NULL`;
+}

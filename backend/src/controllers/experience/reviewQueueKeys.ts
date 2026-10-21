@@ -62,7 +62,7 @@ import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/c
 import {
   arrivalOpenSql, claimKeySql, componentItemsOpenSql, conflictChangeOpenSql, heldOpenSql,
   membershipMissingOpenSql, mergeProposalOpenSql, missingOpenSql, openProposalSql, pinQuestionOpenSql, refusedOpenSql,
-  sourcesOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql,
+  sourcesOpenSql, visitQuestionOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql,
 } from './reviewQueuePredicates.js';
 import { answeringPlaceSql, pointsShownSql } from '../../db/placePoints.js';
 
@@ -78,11 +78,13 @@ import { answeringPlaceSql, pointsShownSql } from '../../db/placePoints.js';
  * is wrong on either card, and the question is whether readers should see one
  * card or two. A pin a run no longer agrees with (#1367) comes after all: the
  * place is as a curator left it, and the question is whether that answer still
- * stands.
+ * stands. Last, a place a kind offers that few witnesses vouch for and Jev
+ * reads as nothing to see (#1770): a suggestion, which a curator confirms or
+ * turns down, about a place no source disputes.
  */
 export const KIND_RANK: Record<QueueKind, number> = {
   conflict: 1, sources: 2, waiting: 3, withdrawn: 4, refused: 5, missing: 6, 'component-items': 7,
-  'merge-proposals': 8, 'pin-question': 9,
+  'merge-proposals': 8, 'pin-question': 9, 'visit-question': 10,
 };
 
 // The words a `kind` chip may carry, and the only ones, are `QUEUE_KINDS` and
@@ -447,6 +449,24 @@ function pinQuestionKeysSql(membershipScopeFilter: string): string {
     GROUP BY e.id, e.name`;
 }
 
+/**
+ * A run's question about an offered place with nothing to see (#1770,
+ * `visitQuestionOpenSql`): one row per place, in scope by the source of the
+ * membership asked about, under the run that asked and dated by when it
+ * asked.
+ */
+function visitQuestionKeysSql(membershipScopeFilter: string): string {
+  return `
+    SELECT 'visit-question', ${KIND_RANK['visit-question']}, e.id, e.name, array_agg(DISTINCT m.source_id),
+           (array_agg(q.sync_log_id ORDER BY q.asked_at DESC))[1], max(q.asked_at), ARRAY[]::text[]
+    FROM experiences e
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
+    JOIN experience_visit_questions q ON q.membership_id = m.id
+    WHERE ${visitQuestionOpenSql('q', 'm', 'e')}
+      AND ${membershipScopeFilter}
+    GROUP BY e.id, e.name`;
+}
+
 /** The order, over the union's own columns. `prefix` qualifies them for `json_agg`. */
 function orderSql(sort: 'date' | 'question', prefix = ''): string {
   const date = `COALESCE(${prefix}asked_at, '-infinity') DESC`;
@@ -763,6 +783,7 @@ export async function queryQueueKeys(
     UNION ALL${componentItemsKeysSql(membershipScopeFilter)}
     UNION ALL${mergeProposalsKeysSql(membershipScopeFilter)}
     UNION ALL${pinQuestionKeysSql(membershipScopeFilter)}
+    UNION ALL${visitQuestionKeysSql(membershipScopeFilter)}
   )
 , searched AS (
     SELECT k.kind, k.rank, k.id, k.name, k.source_ids, k.run_id, k.asked_at, k.subs

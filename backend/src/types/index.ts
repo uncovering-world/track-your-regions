@@ -680,6 +680,17 @@ export const pinQuestionAnswerBodySchema = z.object({
 });
 
 /**
+ * A curator's answer to a run's question about an offered place with nothing
+ * to see (#1770): `refuse` takes the place out of the kind, as the card
+ * suggests; `keep` leaves it, and the question is never raised again.
+ */
+export const visitQuestionAnswerBodySchema = z.object({
+  decision: z.enum(['keep', 'refuse']),
+  membershipId: bodyRowIdSchema,
+  note: z.string().max(1000).optional(),
+});
+
+/**
  * A selection of review rows and one answer for all of them (#852).
  *
  * A row is what a click sends: which row — the queue's own kind word and the

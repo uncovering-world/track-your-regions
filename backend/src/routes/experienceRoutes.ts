@@ -10,6 +10,7 @@ import {
   AcceptSourceResult,
   AdmissionResult,
   PinQuestionAnswered,
+  VisitQuestionAnswered,
   AdmissionPins,
   AdmissionPinHandedBack,
   ComponentItemsAnswered,
@@ -86,6 +87,7 @@ import {
   bringRunBack,
   setExperienceAdmission,
   answerPinQuestion,
+  answerVisitQuestion,
   listAdmissionPins,
   handBackPin,
   setExperienceState,
@@ -121,6 +123,7 @@ import {
   syncLogIdParamSchema,
   experienceAdmissionBodySchema,
   pinQuestionAnswerBodySchema,
+  visitQuestionAnswerBodySchema,
   admissionPinsQuerySchema,
   handBackPinBodySchema,
   refuseArrivalBodySchema,
@@ -509,6 +512,17 @@ export const experienceCurationRoutes = [
     body: pinQuestionAnswerBodySchema,
     response: PinQuestionAnswered,
     handler: answerPinQuestion,
+  }),
+  // The answer to a run's question about a place with nothing to see (#1770):
+  // a membership row, the question and a log row in one transaction, limited
+  // as the pin's answers are.
+  defineRoute({
+    method: 'post', path: '/:id/visit-question', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Keep a place a run asked about as one with nothing to see, or refuse it from its kind',
+    params: idParamSchema,
+    body: visitQuestionAnswerBodySchema,
+    response: VisitQuestionAnswered,
+    handler: answerVisitQuestion,
   }),
   // Hand back a pin with no question asked (#1369): one membership row and one
   // log row in one transaction, limited as the pin's other answers are.

@@ -31,6 +31,7 @@ import { querySources } from './reviewQueueSources.js';
 import { queryComponentItems } from './reviewQueueComponentItems.js';
 import { queryMergeProposals } from './reviewQueueMergeProposals.js';
 import { queryPinQuestions } from './reviewQueuePinQuestions.js';
+import { queryVisitQuestions } from './reviewQueueVisitQuestions.js';
 import { queryConflicts } from './reviewQueueConflicts.js';
 import {
   QUEUE_KINDS, WAITING_SUBS, likeParam, queryQueueKeys, queueScopeSql,
@@ -384,7 +385,8 @@ export async function getReviewQueue(
     LEFT JOIN LATERAL (
       SELECT cl.created_at AS at, cl.details->>'note' AS note
         FROM experience_curation_log cl
-       WHERE cl.experience_id = e.id AND cl.action IN ('admission_confirmed', 'arrival_refused', 'marked_former', 'admission_pin_released', 'admission_pin_kept')
+       WHERE cl.experience_id = e.id AND (cl.action IN ('admission_confirmed', 'arrival_refused', 'marked_former', 'admission_pin_released', 'admission_pin_kept')
+              OR (cl.action = 'visit_question_answered' AND cl.details->>'answer' = 'refused'))
          AND (cl.details->>'membershipId')::int = m.id
        ORDER BY cl.created_at DESC
        LIMIT 1
@@ -444,6 +446,13 @@ export async function getReviewQueue(
   const pinQuestionIds = idsOf('pin-question');
   const pinQuestions = await hydrate(pinQuestionIds, () => queryPinQuestions(
     pinQuestionIds, { params, membershipSourceFilter, membershipScopeFilter },
+  ));
+  // An offered place few witnesses vouch for and Jev reads as nothing to see
+  // (#1770), one card per place with a question per membership, scoped per
+  // membership as the pin's question is.
+  const visitQuestionIds = idsOf('visit-question');
+  const visitQuestions = await hydrate(visitQuestionIds, () => queryVisitQuestions(
+    visitQuestionIds, { params, membershipSourceFilter, membershipScopeFilter },
   ));
 
   // What counts as `arrival`: the reasoning is on `arrivalOpenSql`
@@ -605,6 +614,7 @@ export async function getReviewQueue(
     componentItems: cards(componentItems),
     mergeProposals: cards(mergeProposals),
     pinQuestions: cards(pinQuestions),
+    visitQuestions: cards(visitQuestions),
     arrivals: cards(arrivals),
     held: cards(held),
     contents: cards(contents),

@@ -6469,7 +6469,8 @@
                 "admission_pin_released",
                 "admission_pin_kept",
                 "admission_pin_handed_back",
-                "merge_proposal_answered"
+                "merge_proposal_answered",
+                "visit_question_answered"
               ]
             }
           },
@@ -6599,7 +6600,8 @@
                 "admission_pin_released",
                 "admission_pin_kept",
                 "admission_pin_handed_back",
-                "merge_proposal_answered"
+                "merge_proposal_answered",
+                "visit_question_answered"
               ]
             }
           },
@@ -13813,6 +13815,66 @@
         }
       }
     },
+    "/api/experiences/{id}/visit-question": {
+      "post": {
+        "operationId": "postExperiencesByIdVisitQuestion",
+        "summary": "Keep a place a run asked about as one with nothing to see, or refuse it from its kind",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/VisitQuestionAnswerBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VisitQuestionAnswered"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/admission-pin/hand-back": {
       "post": {
         "operationId": "postExperiencesByIdAdmissionPinHandBack",
@@ -19518,7 +19580,8 @@
               "admission_pin_released",
               "admission_pin_kept",
               "admission_pin_handed_back",
-              "merge_proposal_answered"
+              "merge_proposal_answered",
+              "visit_question_answered"
             ]
           },
           "region_id": {
@@ -19687,7 +19750,8 @@
               "admission_pin_released",
               "admission_pin_kept",
               "admission_pin_handed_back",
-              "merge_proposal_answered"
+              "merge_proposal_answered",
+              "visit_question_answered"
             ]
           },
           "created_at": {
@@ -29142,6 +29206,7 @@
                     "component-items",
                     "merge-proposals",
                     "pin-question",
+                    "visit-question",
                     "arrival",
                     "held",
                     "contents"
@@ -29316,7 +29381,8 @@
           "missing",
           "component-items",
           "merge-proposals",
-          "pin-question"
+          "pin-question",
+          "visit-question"
         ],
         "description": "The class of an open question, which a batch answer names a row by."
       },
@@ -31164,7 +31230,8 @@
                     "missing",
                     "component-items",
                     "merge-proposals",
-                    "pin-question"
+                    "pin-question",
+                    "visit-question"
                   ]
                 },
                 "id": {
@@ -31265,6 +31332,12 @@
           },
           "pairs": {
             "description": "Pairs of near places answered, for a merge-proposals row (#1249): a batch accept makes the exact pairs one place, a reject keeps every open pair two.",
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "visitQuestions": {
+            "description": "Questions about a place with nothing to see answered, for a visit-question row (#1770): a reject keeps the place; an accept is refused, since a refusal is answered on the card.",
             "type": "integer",
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
@@ -31480,6 +31553,13 @@
             },
             "description": "Curators' admission pins a run no longer agrees with (#1367)."
           },
+          "visitQuestions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueItem"
+            },
+            "description": "Offered places few witnesses vouch for and Jev reads as nothing to see (#1770)."
+          },
           "arrivals": {
             "type": "array",
             "items": {
@@ -31635,6 +31715,7 @@
           "componentItems",
           "mergeProposals",
           "pinQuestions",
+          "visitQuestions",
           "arrivals",
           "held",
           "contents",
@@ -31714,7 +31795,8 @@
               "contents-refused",
               "component-items",
               "merge-proposals",
-              "pin-question"
+              "pin-question",
+              "visit-question"
             ]
           },
           "membership_id": {
@@ -32146,6 +32228,17 @@
             "anyOf": [
               {
                 "$ref": "#/components/schemas/PinQuestion"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "visit_question": {
+            "description": "`visit-question` items only (#1770).",
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/VisitQuestion"
               },
               {
                 "type": "null"
@@ -34975,6 +35068,114 @@
         ],
         "additionalProperties": false,
         "description": "A model's reading of which candidate divisions a region's map covers."
+      },
+      "VisitQuestion": {
+        "type": "object",
+        "properties": {
+          "witnesses": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "guide",
+                "photos",
+                "formal",
+                "map"
+              ]
+            },
+            "description": "The visit witnesses that vouched for the place when it was asked (ADR-0128): fewer than two."
+          },
+          "reading": {
+            "type": "string",
+            "enum": [
+              "nothing",
+              "not-a-place",
+              "object"
+            ],
+            "description": "Jev's reading of what a visitor finds there: little or nothing visible, not a place, or an object kept elsewhere."
+          },
+          "confidence": {
+            "type": "number",
+            "description": "How sure Jev was of that reading, 0 to 1; a question is raised at 0.7 or more."
+          },
+          "askedAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$",
+            "description": "When the run asked."
+          }
+        },
+        "required": [
+          "witnesses",
+          "reading",
+          "confidence",
+          "askedAt"
+        ],
+        "additionalProperties": false,
+        "description": "An offered place few witnesses vouch for and Jev reads as nothing to see (#1770): the suggested answer is to refuse it from the kind."
+      },
+      "VisitQuestionAnswerBody": {
+        "type": "object",
+        "properties": {
+          "decision": {
+            "type": "string",
+            "enum": [
+              "keep",
+              "refuse"
+            ]
+          },
+          "membershipId": {
+            "type": "integer",
+            "exclusiveMinimum": 0,
+            "maximum": 2147483647
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "decision",
+          "membershipId"
+        ]
+      },
+      "VisitQuestionAnswered": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "membershipId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "answer": {
+            "type": "string",
+            "enum": [
+              "kept",
+              "refused"
+            ]
+          },
+          "admission": {
+            "type": "string",
+            "enum": [
+              "admitted",
+              "refused"
+            ],
+            "description": "The verdict now standing on the membership: refused by the curator, or admitted as before."
+          }
+        },
+        "required": [
+          "experienceId",
+          "membershipId",
+          "answer",
+          "admission"
+        ],
+        "additionalProperties": false,
+        "description": "A curator's answer to a run's question about an offered place with nothing to see (#1770)."
       },
       "VisitSuggestion": {
         "type": "object",
