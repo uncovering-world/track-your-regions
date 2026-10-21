@@ -64,6 +64,7 @@ export interface ExperienceListRow {
   id: number;
   external_id: string;
   name: string;
+  subtitle: string | null;
   description: string | null;
   type: string | null;
   kind_id: number;
@@ -97,6 +98,7 @@ export function experienceOf(row: ExperienceListRow): Experience {
     id: row.id,
     external_id: row.external_id,
     name: row.name,
+    subtitle: row.subtitle,
     description: row.description,
     type: row.type,
     kind_id: row.kind_id,

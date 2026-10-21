@@ -22019,7 +22019,15 @@
           "name": {
             "type": "string"
           },
+          "subtitle": {
+            "description": "One line under the name that says what the place is, such as Wikidata's \"museum in Saint Petersburg, Russia\" (#1795). Null where no source gave one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "description": {
+            "description": "The paragraph a reader opens: UNESCO's for a World Heritage site, or a curator's text (#1795).",
             "type": [
               "string",
               "null"
@@ -22191,6 +22199,7 @@
           "id",
           "external_id",
           "name",
+          "subtitle",
           "description",
           "type",
           "kind_id",

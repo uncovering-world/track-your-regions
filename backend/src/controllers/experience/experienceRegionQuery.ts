@@ -159,6 +159,7 @@ export function buildRegionQueries(opts: {
         e.id,
         e.external_id,
         e.name,
+        e.subtitle,
         e.description,
         -- The type within that kind is the membership's too (ADR-0084).
         m.type,
@@ -241,6 +242,7 @@ export function buildRegionQueries(opts: {
         e.id,
         e.external_id,
         e.name,
+        e.subtitle,
         e.description,
         -- The type within that kind is the membership's too (ADR-0084).
         m.type,

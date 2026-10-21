@@ -53,7 +53,7 @@ describe('experienceDetailOf', () => {
 describe('experienceOf', () => {
   it('writes the curator-only rejection keys as absent for a reader', () => {
     const row: ExperienceListRow = {
-      id: 14723, external_id: 'Q131013', name: 'Acropolis of Athens', description: null, type: 'site',
+      id: 14723, external_id: 'Q131013', name: 'Acropolis of Athens', subtitle: null, description: null, type: 'site',
       kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, kinds: null, country_codes: ['GR'], country_names: ['Greece'],
       image_url: null, image_credit: null, created_at: null, latitude: 37.9715, longitude: 23.7263,
       in_danger: false, danger_since: null, location_count: 1, treasure_count: 0, finds_count: 6,
