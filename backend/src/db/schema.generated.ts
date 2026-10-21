@@ -587,6 +587,20 @@ export interface ExperienceViewSuggestionsRow {
   asked_at: Date;
 }
 
+/** The table `experience_visit_questions`. */
+export interface ExperienceVisitQuestionsRow {
+  id: number;
+  membership_id: number;
+  witnesses: string[];
+  reading: string;
+  confidence: string;
+  sync_log_id: number | null;
+  asked_at: Date;
+  answer: string | null;
+  answered_by: number | null;
+  answered_at: Date | null;
+}
+
 /** The table `experience_visit_suggestions`. */
 export interface ExperienceVisitSuggestionsRow {
   id: number;
@@ -1122,6 +1136,7 @@ export const RELATION_SCHEMAS = {
   experience_treasures: "public",
   experience_view_choices: "public",
   experience_view_suggestions: "public",
+  experience_visit_questions: "public",
   experience_visit_suggestions: "public",
   experiences: "public",
   geometry_computations: "public",
@@ -1322,6 +1337,10 @@ export const COLUMN_WIDTHS = {
     field: 20,
     model: 40,
   },
+  experience_visit_questions: {
+    reading: 12,
+    answer: 10,
+  },
   experience_visit_suggestions: {
     reading: 12,
     model: 40,
@@ -1472,6 +1491,10 @@ export const CHECK_VALUES = {
   },
   experience_view_suggestions: {
     field: ["name", "description", "imageUrl", "location"],
+  },
+  experience_visit_questions: {
+    answer: ["kept", "refused"],
+    reading: ["nothing", "not-a-place", "object"],
   },
   experience_visit_suggestions: {
     reading: ["visit", "part", "object", "nothing", "not-a-place", "other-kind"],
