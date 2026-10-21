@@ -4775,6 +4775,12 @@ export interface ExperienceSource {
   wikidataReader: ExperienceSourceWikidataReader;
   /** Whether every question this source asks has a twin in the local subset, so its runs may be switched to read it. */
   subsetReady: boolean;
+  /**
+     * The other sources this one fills its kind with from one gather, in the order the pass runs them (ADR-0132); empty for a source that runs alone. Starting any of them starts them all.
+     * @items.minimum -9007199254740991
+     * @items.maximum 9007199254740991
+     */
+  runsWith: number[];
 }
 
 /**
