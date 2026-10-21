@@ -91,7 +91,9 @@ export function MergeProposalFinderCard() {
           Heritage site and as public art, Durham Cathedral beside the site &quot;Durham Castle and
           Cathedral&quot; — are proposed as one place and listed for a person to answer: one place, two
           places, or one part of the other. A pair answered once is never proposed again. A pair in the
-          same kind is left apart, since one place cannot be in a kind twice.
+          same kind is left apart, since one place cannot be in a kind twice. Every run already looks
+          around the places it brought, and publishing an arrival around that place; this looks over the
+          whole catalogue, for after a rule changes.
         </Typography>
         <Button
           variant="contained"
