@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { OsmObject } from '../osm/types.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
-import { visitQuestionsOf, VISIT_QUESTION_SURE, type OfferedPlace, type VisitQuestionDoors } from './visitQuestions.js';
+import { OSM_BATCH, type OsmDoor } from '../osm/readOsmObjects.js';
+import type { SyncProgress } from '../types.js';
+import {
+  mapOfWhatAnswered, visitQuestionsOf, VISIT_QUESTION_SURE, type OfferedPlace, type VisitQuestionDoors,
+} from './visitQuestions.js';
 
 /**
  * Which offered places a run asks a curator about (#1770), on places the
@@ -70,6 +74,20 @@ describe('the places a run asks a curator about (#1770)', () => {
     expect(String(open.photos.mock.calls[0][0])).toContain('Cloud Gate');
   });
 
+  it('leaves a place the map did not answer for unread: neither read by Jev nor asked', async () => {
+    const open = doors({ Q958954: { reading: 'not-a-place', confidence: 0.9 }, Q856764: { reading: 'object', confidence: 0.96 } });
+    // The mirror dropped the batch holding Eboracum: its map witness is not known.
+    open.osm = vi.fn(async (qids: string[]) => new Map<string, OsmObject[]>(
+      qids.filter((qid) => qid !== 'Q958954').map((qid) => [qid, []]),
+    ));
+
+    const { short, unread, questions } = await visitQuestionsOf([EBORACUM, VENUS], open);
+
+    expect([short, unread]).toEqual([1, 1]);
+    expect(questions.map((q) => q.place.name)).toEqual(['Venus of Tan-Tan']);
+    expect(open.read.mock.calls.map(([asked]) => asked.qid)).toEqual(['Q856764']);
+  });
+
   it('asks nothing where Jev is not sure enough', async () => {
     const open = doors({ Q958954: { reading: 'nothing', confidence: VISIT_QUESTION_SURE - 0.01 } });
 
@@ -84,5 +102,51 @@ describe('the places a run asks a curator about (#1770)', () => {
 
     expect(questions).toHaveLength(1);
     expect(open.read).not.toHaveBeenCalled();
+  });
+});
+
+describe('the map, a batch at a time (#1770)', () => {
+  it('leaves out the places of a batch the mirror did not answer, and keeps the rest', async () => {
+    const qids = Array.from({ length: OSM_BATCH + 1 }, (_, i) => `Q${i + 1}`);
+    const door: OsmDoor = {
+      name: 'qlever',
+      question: (batch) => batch.join(' '),
+      digsQuestions: () => [],
+      // The second batch, the last item alone, times out on the mirror.
+      send: vi.fn(async (query: string) => {
+        if (query === qids[OSM_BATCH]) throw new Error('This operation was aborted');
+        return [];
+      }),
+    };
+
+    const read = await mapOfWhatAnswered(door, qids, { cancel: false, statusMessage: '' } as SyncProgress);
+
+    expect(read.size).toBe(OSM_BATCH);
+    expect(read.has(qids[OSM_BATCH])).toBe(false);
+    expect(read.get('Q1')).toEqual([]);
+  });
+
+  it('leaves the rest of the map for the next run once the mirror drops two batches in a row', async () => {
+    const qids = Array.from({ length: OSM_BATCH * 4 }, (_, i) => `Q${i + 1}`);
+    const send = vi.fn(async (query: string) => {
+      if (query !== qids.slice(0, OSM_BATCH).join(' ')) throw new Error('This operation was aborted');
+      return [];
+    });
+    const door: OsmDoor = { name: 'qlever', question: (batch) => batch.join(' '), digsQuestions: () => [], send };
+
+    const read = await mapOfWhatAnswered(door, qids, { cancel: false, statusMessage: '' } as SyncProgress);
+
+    expect(read.size).toBe(OSM_BATCH);
+    expect(send).toHaveBeenCalledTimes(3);
+  });
+
+  it('ends the read on a Cancel rather than counting it as a dropped batch', async () => {
+    const progress = { cancel: false, statusMessage: '' } as SyncProgress;
+    const door: OsmDoor = {
+      name: 'qlever', question: (batch) => batch.join(' '), digsQuestions: () => [],
+      send: vi.fn(async () => { progress.cancel = true; throw new Error('Sync cancelled'); }),
+    };
+
+    await expect(mapOfWhatAnswered(door, ['Q1'], progress)).rejects.toThrow('Sync cancelled');
   });
 });

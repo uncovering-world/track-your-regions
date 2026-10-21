@@ -156,10 +156,12 @@ export function pinsSentence(pins: PinTally | undefined, dryRun = false): string
  * nothing where it read none.
  */
 export function visitQuestionsSentence(tally: VisitQuestionTally | undefined, dryRun = false): string {
+  if (tally?.failed) return '; places with nothing to see: not asked, the step failed (see the backend log) — the next run asks';
   if (tally?.stopped && tally.read === 0) return '; places with nothing to see: stopped by Cancel before any was read';
-  if (!tally || tally.read === 0) return '';
+  if (!tally || (tally.read === 0 && !tally.unread)) return '';
   return `; places with nothing to see: ${tally.asked} ${dryRun ? 'would be asked' : 'asked'} of a curator, `
     + `of ${tally.short} that fewer than two witnesses vouch for among ${tally.read} read`
+    + (tally.unread ? `, ${tally.unread} left for the next run as OpenStreetMap did not answer` : '')
     + (tally.stopped ? ', stopped by Cancel' : '');
 }
 
