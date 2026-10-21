@@ -933,7 +933,15 @@ with a qualifier and nothing removed — the stored name, not empty, then a comm
 2026-10-12; *Church of St Mary* → *Church of St Mary Magdalene* is another dedication and is held) —,
 a picture credit re-read for the same file under the same stated licence, on a picture no curator
 claimed (*No machine-readable author provided. Ansgar Walk* → *Ansgar Walk*), and a measurement (`MEASURED_METADATA_KEYS`, an area — never
-a year) the source re-took within `REMEASURED_SHARE`, a tenth (821.7474 → 821.748 ha). Each
+a year) the source re-took within `REMEASURED_SHARE`, a tenth (821.7474 → 821.748 ha). A fourth
+class, `own-item`, is the Wikidata item arriving where the place holds none
+([ADR-0129](../decisions/0129-a-wikidata-item-a-place-holds-none-of-passes-the-gate.md), #1794).
+The UNESCO run writes no item, and every Wikidata kind writes the id its membership knows the place
+by, so a World Heritage site that Places of worship or Archaeology also admits (Ajanta Caves,
+Q184427) was asked the item on every run. No reader surface shows it, and an item replaced by
+another is still held. Migration 139 wrote the item onto the places the earlier runs held it from,
+from the place's standing memberships (190 of the 195 on the development catalogue on 2026-10-21;
+the other 5 hold only a refused one). Each
 is written on a held row and filed with the written fields, carrying its class in `passedTheGate`,
 so the run's record says what moved and why nobody was asked; none raises a question, sets the held
 pointer or demotes a verified membership (`wroteContent`). On an object the rule is
@@ -5898,8 +5906,9 @@ What the table decides, rather than merely draws:
   that explain a rule rather than a fact, and now says in its accessible name which.
 - **The sentence is one line and about this change.** Never the kind, which the row already
   says. A fact whose change is an event in the world — the danger listing, a coordinate, the
-  countries, the Wikidata item, the UNESCO region, the inscription year — is marked `event` and
-  its sentence arrowed: "Listed since 2003 — readers see no badge today; publishing adds it",
+  countries, a Wikidata item replaced by another, the UNESCO region, the inscription year — is
+  marked `event` and its sentence arrowed (`'replaced'` marks one only where a value stood before,
+  `FactRow.event`, so an item arriving on a place that held none is no event, ADR-0129): "Listed since 2003 — readers see no badge today; publishing adds it",
   "Moved 33.4 km north — may fall in a different region; check the pin", "Inscription years do not
   change — check the source page". A changed country *name* reads the country *codes* row to
   tell a spelling correction from a change of country, which is why a sentence sees the whole
