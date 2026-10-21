@@ -28,6 +28,7 @@ import { answeredSourceId, resolveExperienceScope } from './experienceScope.js';
 import { contentsReached, publishContents, placeAfterRelease } from './publishContents.js';
 import { placementReport } from './placementReport.js';
 import { answerAdmissionOnMembership, setListingVerdict } from './membershipWriter.js';
+import { proposeMergesOfPlaces } from '../../services/sync/mergeProposalFinder.js';
 import { answerKindListingUnderLock } from './kindListingController.js';
 import {
   lockExperience, setLifecycleVerdict, recordDecisionOnExperience, type LockedExperience,
@@ -349,6 +350,8 @@ export async function setExperienceAdmission(
     const { status, ...body } = outcome.refusal;
     throw new Refusal(status, body);
   }
+  // An override that published the arrival is a place a reader can newly see (#1800).
+  if (outcome.result!.published) await proposeMergesOfPlaces([experienceId]);
   return outcome.result!;
 }
 

@@ -30,9 +30,15 @@ vi.mock('../../services/sync/regionAssignmentService.js', () => ({
   assignRegionsForExperiences: vi.fn(async () => 3),
 }));
 
+// The pairing an override that publishes asks for (#1800), mocked for the same reason.
+vi.mock('../../services/sync/mergeProposalFinder.js', () => ({
+  proposeMergesOfPlaces: vi.fn(async () => 0),
+}));
+
 import { pool } from '../../db/index.js';
 import { OBJECT_LOCK } from '../../db/locks.js';
 import { assignRegionsForExperiences } from '../../services/sync/regionAssignmentService.js';
+import { proposeMergesOfPlaces } from '../../services/sync/mergeProposalFinder.js';
 import { CLEAR_ICONIC } from '../../services/sync/admission.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { experienceCurationRoutes } from '../../routes/experienceRoutes.js';
@@ -440,6 +446,7 @@ describe('setExperienceAdmission', () => {
     mockedConnect.mockReset();
     mockedPlace.mockClear();
     mockedPlace.mockResolvedValue(3);
+    vi.mocked(proposeMergesOfPlaces).mockClear();
   });
 
   /** The row lookup and the scope check both run on the pool before the lock. */
@@ -639,6 +646,8 @@ describe('setExperienceAdmission', () => {
 
     const log = queries.find(q => q.sql.includes('experience_curation_log'))!;
     expect(JSON.parse(String(log.params[4]))).toMatchObject({ published: true });
+    // A place a reader can newly see is paired with near places (#1800).
+    expect(vi.mocked(proposeMergesOfPlaces)).toHaveBeenCalledWith([5]);
   });
 
   it('also publishes the arrival\'s pending locations and treasure links, and reports the counts', async () => {
@@ -758,6 +767,7 @@ describe('setExperienceAdmission', () => {
     expect(queries.some(q => q.sql.includes('UPDATE experience_locations'))).toBe(false);
     expect(queries.some(q => q.sql.includes('UPDATE experience_treasures'))).toBe(false);
     expect(queries.some(q => q.sql.includes('UPDATE treasures'))).toBe(false);
+    expect(vi.mocked(proposeMergesOfPlaces)).not.toHaveBeenCalled();
     expect(res.json).toHaveBeenCalledWith({
       experienceId: 5, admission: 'admitted', published: false,
       curationState: 'auto', appliedFields: [], claimedFieldsSkipped: [], appliedParts: [],
