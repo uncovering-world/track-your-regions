@@ -96,16 +96,52 @@ function readOnce(name: string): string {
   }
 }
 
+/** A component's latitude or longitude: a number, or NaN where the entry has none (`null` is not 0). */
+function coordinateOf(value: unknown): number {
+  return typeof value === 'number' ? value : NaN;
+}
+
 /**
- * Parse UNESCO components_list field to extract individual locations
- * Format: "{name: Fort Name, ref: 1739-005, latitude: 18.236, longitude: 73.444}"
- * Multiple components are separated by newlines or commas between braces
+ * The components of a site, from `components_list`: a JSON array the dataset
+ * writes one entry per component, `[{"name": "Hanklit", "ref": "1758-001",
+ * "latitude": 56.895649, "longitude": 8.751962}, …]` (#1803). An entry with no
+ * ref or no point on the globe is skipped. The form before it, `{name: …, ref:
+ * …, latitude: …, longitude: …}`, is still read (`parseFormerComponentsList`).
+ * Anything else throws, so the site fails the run by name rather than losing its
+ * components in silence: the dataset rewrote this field on 2026-10-20, and the
+ * parser of the former form read every serial site as having none.
  */
 function parseComponentsList(componentsList: string | undefined): ParsedLocation[] {
-  if (!componentsList) {
-    return [];
+  if (!componentsList) return [];
+  let entries: unknown;
+  try {
+    entries = JSON.parse(componentsList);
+  } catch {
+    if (componentsList.trimStart().startsWith('{name:')) return parseFormerComponentsList(componentsList);
+    throw new Error('Components list is not JSON');
   }
+  if (!Array.isArray(entries)) throw new Error('Components list is not a list');
 
+  const locations: ParsedLocation[] = [];
+  for (const entry of entries as Array<Record<string, unknown> | null>) {
+    const ref = typeof entry?.ref === 'string' ? entry.ref.trim() : '';
+    const lat = coordinateOf(entry?.latitude);
+    const lon = coordinateOf(entry?.longitude);
+    if (ref === '' || !Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+    if (lat < -90 || lat > 90 || lon < -180 || lon > 180) continue;
+    // Via Appia's 1708-003 has an empty name, which stays empty.
+    const name = typeof entry?.name === 'string' ? entry.name.trim() : '';
+    locations.push({ name: feedText(readOnce(name)), externalRef: ref, lat, lon });
+  }
+  return locations;
+}
+
+/**
+ * The components list as the dataset wrote it before 2026-10-20:
+ * `{name: Fort Name, ref: 1739-005, latitude: 18.236, longitude: 73.444}`, one
+ * brace per component (#1803).
+ */
+function parseFormerComponentsList(componentsList: string): ParsedLocation[] {
   const locations: ParsedLocation[] = [];
 
   // Format: {name: ..., ref: ..., latitude: ..., longitude: ...}. Split into
@@ -318,7 +354,11 @@ export function isInDanger(record: UnescoApiRecord): boolean {
  * component whatever the export's value, written past the gate
  * (`locationIsAnchor`).
  *
- * UNESCO leaves `coordinates` null on serial nominations and carries the real
+ * The site's own point is `geo_point_2d`, the portal's point of `coordinates`,
+ * which since 2026-10-20 is a shape holding every component's point (#1803):
+ * for a site of one component, that component's point.
+ *
+ * UNESCO leaves the point null on serial nominations and carries the real
  * positions in `components_list` — 28 of the 29 records that failed the dry run
  * of 3 August were of this shape, including sites already in the catalogue
  * (Garamba, Berlin Modernism) whose main field the source has since emptied.
@@ -336,7 +376,7 @@ export function resolveMainPoint(
 ): { lat: number; lon: number } | null {
   // Number.isFinite, not truthiness: a site on the equator or the prime
   // meridian has a coordinate of 0, which is a position, not a missing value.
-  const { lat, lon } = record.coordinates ?? {};
+  const { lat, lon } = record.geo_point_2d ?? {};
   if (locations.length <= 1 && Number.isFinite(lat) && Number.isFinite(lon)) {
     return { lat: lat as number, lon: lon as number };
   }
