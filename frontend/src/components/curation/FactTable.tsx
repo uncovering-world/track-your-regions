@@ -197,8 +197,8 @@ function ValueCells({ row }: { row: FactRow }) {
       <TableCell sx={{ verticalAlign: 'top' }}>
         {diff ? <Marked parts={diff.after} /> : <Value value={row.after} meaning={row.meaning} context={row.context} side="after" />}
         {row.sentence && (
-          <Typography variant="body2" sx={{ mt: 0.5, color: row.meaning.event ? 'text.primary' : 'text.secondary' }}>
-            {row.meaning.event && <Box component="span" sx={{ color: 'warning.main', fontWeight: 600, mr: 0.5 }}>→</Box>}
+          <Typography variant="body2" sx={{ mt: 0.5, color: row.event ? 'text.primary' : 'text.secondary' }}>
+            {row.event && <Box component="span" sx={{ color: 'warning.main', fontWeight: 600, mr: 0.5 }}>→</Box>}
             {row.sentence}
           </Typography>
         )}

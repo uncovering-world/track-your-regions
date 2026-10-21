@@ -44,6 +44,8 @@ export interface FactRow {
   kind: FactKind;
   /** One line about this change, where the fact has one. */
   sentence: string | null;
+  /** The change is an event in the world, so the card marks its sentence (`FieldMeaning.event`). */
+  event: boolean;
   /**
    * The card the row was built for, as a rendering may look at it beyond the row's
    * two values. Carried on the row rather than handed to the table, because a table
@@ -184,6 +186,7 @@ function row(
     after,
     kind: kindOf(before, after),
     sentence: meaning.describeChange?.(before, after, context) ?? null,
+    event: meaning.event === true || (meaning.event === 'replaced' && !isEmptyValue(before)),
     context,
     acceptable: proposal.acceptable,
     // Only where there is one: a held card's fields carry no claim and no earlier
