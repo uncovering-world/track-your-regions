@@ -19,6 +19,7 @@ import type { MapRef } from 'react-map-gl/maplibre';
 import { useHoverSelector } from '../../hooks/useHoverContext';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { PlaceSubtitle } from '../shared/PlaceSubtitle';
 import { TreasuresInsideChip } from '../shared/TreasuresInsideChip';
 import { FindsOnViewChip } from '../shared/FindsOnViewChip';
 
@@ -132,6 +133,7 @@ export function HoverPreviewCard({ mapRef, mapLoaded }: HoverPreviewCardProps) {
         <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
           {hoverPreview.experienceName}
         </Typography>
+        <PlaceSubtitle subtitle={hoverPreview.subtitle} />
         <Typography variant="caption" sx={{ color: 'text.secondary', lineHeight: 1.2 }} noWrap>
           {hoverPreview.locationName || 'Primary location'}
         </Typography>

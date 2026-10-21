@@ -13,6 +13,7 @@ import { useState } from 'react';
 import { Box, Typography } from '@mui/material';
 import { useHoverSelector } from '../../hooks/useHoverContext';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
+import { PlaceSubtitle } from '../shared/PlaceSubtitle';
 import { TreasuresInsideChip } from '../shared/TreasuresInsideChip';
 import { FindsOnViewChip } from '../shared/FindsOnViewChip';
 
@@ -70,6 +71,7 @@ export function DiscoverHoverCard() {
         <Typography variant="subtitle2" sx={{ fontWeight: 700, lineHeight: 1.2 }} noWrap>
           {hoverPreview.experienceName}
         </Typography>
+        <PlaceSubtitle subtitle={hoverPreview.subtitle} />
         {Boolean(hoverPreview.kindName || hoverPreview.treasureCount || hoverPreview.findsCount) && (
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, minWidth: 0 }}>
             {hoverPreview.kindName && (

@@ -205,6 +205,19 @@ describe('CurationDialog clearing a field', () => {
     await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(bamiyan.id, { description: '', websiteUrl: '' }));
   });
 
+  it('edits the subtitle and the description as two fields (#1795)', async () => {
+    renderDialog();
+    await screen.findByDisplayValue(PORTAL_PAGE);
+
+    fireEvent.change(screen.getByLabelText(/^Subtitle/), { target: { value: 'valley of rock-cut Buddhas in Afghanistan' } });
+    save();
+
+    await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(
+      bamiyan.id, { subtitle: 'valley of rock-cut Buddhas in Afghanistan' },
+    ));
+    expect(screen.getByLabelText(/^Description/)).toHaveValue(bamiyan.description);
+  });
+
   it('sends the kind None as an emptied kind', async () => {
     renderDialog();
     await screen.findByDisplayValue(PORTAL_PAGE);

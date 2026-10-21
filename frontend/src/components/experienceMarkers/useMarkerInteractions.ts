@@ -203,6 +203,7 @@ export function useMarkerInteractions({
             setHoverPreview({
               experienceId: marker.experienceId,
               experienceName: marker.experience.name,
+              subtitle: marker.experience.subtitle,
               locationId: marker.locationId,
               locationName: marker.locationName,
               kindName: placeKindNames(marker.experience),
@@ -296,6 +297,7 @@ export function useMarkerInteractions({
               setHoverPreview({
                 experienceId: exp.id,
                 experienceName: exp.name,
+                subtitle: exp.subtitle,
                 locationId: locationId ?? null,
                 locationName: (feature.properties?.name as string | null | undefined) ?? null,
                 kindName: placeKindNames(exp),

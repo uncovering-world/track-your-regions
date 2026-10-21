@@ -1,7 +1,7 @@
 /**
  * CurationDialog — Shared dialog for curator actions on an experience.
  *
- * Supports editing (name, description, type, picture, links), rejecting, and
+ * Supports editing (name, subtitle, description, type, picture, links), rejecting, and
  * unrejecting an experience within a region, and lists the places the object
  * is made of with the way to correct each (`CurationPlaces`). The edit's
  * fields are held by the form layer (`useEditForm`, ADR-0076), which decides
@@ -91,7 +91,7 @@ function creditForPreview(editImageUrl: string, row: Experience): ImageCredit | 
 
 /** What the edit form holds, named by the request body's keys (ADR-0076). */
 type EditFields = Required<Pick<Parameters<typeof editExperience>[1],
-  'name' | 'description' | 'type' | 'imageUrl' | 'websiteUrl' | 'wikipediaUrl'>>;
+  'name' | 'subtitle' | 'description' | 'type' | 'imageUrl' | 'websiteUrl' | 'wikipediaUrl'>>;
 
 const text = (value: unknown) => (typeof value === 'string' ? value : '');
 
@@ -118,6 +118,7 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
   const form = useEditForm<EditFields>({
     initial: {
       name: experience?.name ?? '',
+      subtitle: experience?.subtitle ?? '',
       description: experience?.description ?? '',
       type: experience?.type ?? '',
       imageUrl: experience?.image_url ?? '',
@@ -265,9 +266,17 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
             countryNames={experience.country_names}
             objectMissingSince={experience.missing_since}
           />
+          {/* Two texts, each with its own meaning (#1795): the line under the
+              name, and the paragraph a reader opens. */}
+          <TextField
+            label="Subtitle"
+            {...form.field('subtitle', { helperText: 'One line under the name: what the place is' })}
+            fullWidth
+            size="small"
+          />
           <TextField
             label="Description"
-            {...form.field('description')}
+            {...form.field('description', { helperText: 'The paragraph a reader opens' })}
             fullWidth
             size="small"
             multiline

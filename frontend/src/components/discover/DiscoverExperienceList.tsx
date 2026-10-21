@@ -157,9 +157,10 @@ export function DiscoverExperienceList({
   const virtualizer = useVirtualizer({
     count: filteredExperiences.length,
     getScrollElement: () => scrollContainerRef.current,
-    // A card is a fixed-layout strip — 56 px thumbnail, three `noWrap` lines,
-    // padding — so unlike map mode's rows there is no open state to swallow the
-    // estimate. `measureElement` still corrects each row as it mounts.
+    // A card is a fixed-layout strip — 56 px thumbnail, three `noWrap` lines and
+    // a fourth where the place has a subtitle, padding — so unlike map mode's
+    // rows there is no open state to swallow the estimate. `measureElement`
+    // still corrects each row as it mounts.
     estimateSize: () => 84,
     getItemKey: getRowKey,
     overscan: 8,
