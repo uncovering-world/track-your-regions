@@ -84,7 +84,10 @@ export function SyncPanel() {
             onDragOver={(e) => handleDragOver(e, index)}
             onDrop={handleDrop}
           >
-            <SourceCard source={source} />
+            <SourceCard
+              source={source}
+              runsWith={source.runsWith.map((id) => orderedSources.find((other) => other.id === id)?.name ?? `source ${id}`)}
+            />
           </Box>
         ))}
       </Box>

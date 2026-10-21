@@ -47,6 +47,16 @@ import { queryKeys } from '../../api/queryKeys';
 
 interface SourceCardProps {
   source: ExperienceSource;
+  /**
+   * The names of the sources this one runs with in one pass (ADR-0132), in
+   * the order the pass runs them; empty for a source that runs alone.
+   */
+  runsWith?: string[];
+}
+
+/** "A", "A and B", "A, B and C". */
+function namesInWords(names: string[]): string {
+  return names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 }
 
 /**
@@ -80,7 +90,7 @@ function cancelLabel(status: SyncStatus | null): string {
   return 'Cancel';
 }
 
-export function SourceCard({ source }: SourceCardProps) {
+export function SourceCard({ source, runsWith = [] }: SourceCardProps) {
   const queryClient = useQueryClient();
 
   // What the server said about the last Cancel, when it said no. A press the
@@ -255,6 +265,12 @@ export function SourceCard({ source }: SourceCardProps) {
               <Typography variant="body2" color="text.secondary">
                 {source.description}
               </Typography>
+              {runsWith.length > 0 && (
+                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                  Runs with {namesInWords(runsWith)}: they read one gather from Wikidata, so starting
+                  this source starts them all, and a Cancel stops them all.
+                </Typography>
+              )}
             </Box>
           </Box>
           {getStatusChip()}
