@@ -1,7 +1,7 @@
 # ADR-0085: One Wikidata item is one reading, whichever source reads it
 
 **Date:** 2026-10-05
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by [ADR-0130](0130-a-place-keeps-a-picture-its-item-still-carries.md)
 **Issue:** [#1246](https://github.com/uncovering-world/track-your-regions/issues/1246), Epic [#755](https://github.com/uncovering-world/track-your-regions/issues/755)
 **Narrows:** [ADR-0084](0084-a-place-belongs-to-no-source-and-no-kind.md) decision 4
 

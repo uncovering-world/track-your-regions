@@ -104,7 +104,7 @@ and accepted by it.
 | [0082](0082-a-fame-line-counts-wikipedia-language-editions.md) | A fame line counts Wikipedia language editions | Accepted | 2026-10-03 |
 | [0083](0083-a-no-to-a-moved-point-keeps-the-stored-pin.md) | A no to a moved point keeps the stored pin | Accepted | 2026-10-04 |
 | [0084](0084-a-place-belongs-to-no-source-and-no-kind.md) | A place belongs to no source and no kind | Accepted — decision 4 narrowed by [0085](0085-one-wikidata-item-is-one-reading-whichever-source-reads-it.md) and by [0109](0109-a-field-belongs-to-the-family-of-sources-that-brings-it.md) | 2026-10-04 |
-| [0085](0085-one-wikidata-item-is-one-reading-whichever-source-reads-it.md) | One Wikidata item is one reading, whichever source reads it | Accepted | 2026-10-05 |
+| [0085](0085-one-wikidata-item-is-one-reading-whichever-source-reads-it.md) | One Wikidata item is one reading, whichever source reads it | Accepted — decision 1 narrowed by [0130](0130-a-place-keeps-a-picture-its-item-still-carries.md) | 2026-10-05 |
 | [0086](0086-a-merge-is-a-record-that-moves-a-place-into-another-and-back.md) | A merge is a record that moves one place into another, and can move it back | Accepted — decision 3 narrowed by ADR-0088 and [0100](0100-a-serial-sites-components-are-places-part-of-the-site.md) | 2026-10-07 |
 | [0087](0087-jev-suggests-an-answer-on-a-curator-card-and-a-curator-decides.md) | Jev suggests an answer on a curator's card, and a curator decides | Accepted | 2026-10-08 |
 | [0088](0088-a-world-heritage-site-of-one-point-is-its-one-item-and-one-point.md) | A World Heritage site of one point is its one Wikidata item, and merges to one point | Accepted — decision 1 narrowed by [0094](0094-the-item-named-as-a-world-heritage-property-is-its-item-whichever-number-it-carries.md) | 2026-10-08 |
@@ -149,6 +149,7 @@ and accepted by it.
 | [0127](0127-a-site-the-world-reads-opens-a-second-door-to-the-world-tier.md) | A site the world reads opens a second door to the world tier | Accepted — decision 1 narrowed by [0128](0128-a-place-is-one-a-visitor-goes-to-when-two-independent-witnesses-say-so.md) | 2026-10-20 |
 | [0128](0128-a-place-is-one-a-visitor-goes-to-when-two-independent-witnesses-say-so.md) | A place is one a visitor goes to when two independent witnesses say so | Accepted | 2026-10-20 |
 | [0129](0129-a-wikidata-item-a-place-holds-none-of-passes-the-gate.md) | A Wikidata item a place holds none of passes the gate | Accepted | 2026-10-21 |
+| [0130](0130-a-place-keeps-a-picture-its-item-still-carries.md) | A place keeps a picture its item still carries | Accepted | 2026-10-21 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
