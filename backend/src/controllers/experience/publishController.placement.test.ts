@@ -25,6 +25,12 @@ vi.mock('../../services/sync/regionAssignmentService.js', () => ({
   assignRegionsForExperiences: vi.fn(async () => 3),
 }));
 
+// Mocked as a module for the same reason: the pairing a published arrival asks
+// for (#1800) opens its own transaction once the publish has committed.
+vi.mock('../../services/sync/mergeProposalFinder.js', () => ({
+  proposeMergesOfPlaces: vi.fn(async () => 0),
+}));
+
 import {
   grantScope, makeClient, mockedPlace, mockedQuery, mockedWorldViews, none, only, publish,
   resetPublishMocks,

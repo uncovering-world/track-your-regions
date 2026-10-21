@@ -36,6 +36,7 @@ import type { sourceIdParamSchema } from '../../types/index.js';
 import { CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { publishUnderLock } from './publishController.js';
+import { proposeMergesOfPlaces } from '../../services/sync/mergeProposalFinder.js';
 import { queueScopeSql } from './reviewQueueKeys.js';
 import { arrivalWaitingSql, contentsWaitingSql, heldWaitingSql } from './waitingCounts.js';
 
@@ -79,6 +80,8 @@ export async function publishWaiting(
 
   const published: PublishedWaitingObject[] = [];
   const refused: RefusedWaitingObject[] = [];
+  // The arrivals made visible, paired with near places once after the loop (#1800).
+  const arrived: number[] = [];
   let outOfScope = 0;
 
   for (const row of waiting.rows) {
@@ -144,6 +147,7 @@ export async function publishWaiting(
       refused.push({ id: experienceId, name: row.name as string, error: outcome.refusal.error });
       continue;
     }
+    if (outcome.arrived) arrived.push(experienceId);
     published.push({
       id: experienceId,
       name: row.name as string,
@@ -161,6 +165,8 @@ export async function publishWaiting(
       } : {}),
     });
   }
+
+  await proposeMergesOfPlaces(arrived);
 
   // Counted after the loop, not before it: a run can land a held proposal while
   // this is publishing, and the number's whole job is to explain the remainder a

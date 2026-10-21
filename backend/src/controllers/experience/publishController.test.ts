@@ -34,13 +34,23 @@ vi.mock('../../services/sync/regionAssignmentService.js', () => ({
   assignRegionsForExperiences: vi.fn(async () => 3),
 }));
 
+// Mocked as a module for the same reason: the pairing a published arrival asks
+// for (#1800) opens its own transaction once the publish has committed.
+vi.mock('../../services/sync/mergeProposalFinder.js', () => ({
+  proposeMergesOfPlaces: vi.fn(async () => 0),
+}));
+
 import { publishExperienceBodySchema } from '../../types/index.js';
+import { proposeMergesOfPlaces } from '../../services/sync/mergeProposalFinder.js';
 
 import {
   grantScope, makeClient, none, only, publish, resetPublishMocks,
 } from './publishController.fixtures.js';
 
-beforeEach(resetPublishMocks);
+beforeEach(() => {
+  resetPublishMocks();
+  vi.mocked(proposeMergesOfPlaces).mockClear();
+});
 
 describe('publishing an arrival', () => {
   it('publishes the object and everything unread it holds', async () => {
@@ -143,6 +153,25 @@ describe('publishing an arrival', () => {
       withdrawalsReleased: 0,
     });
     expect(queries.at(-1)?.sql).toBe('COMMIT');
+  });
+
+  it('pairs the place with near places once it is published, and not before (#1800)', async () => {
+    grantScope();
+    const { client, queries } = makeClient({ row: { curation_state: 'pending' } });
+
+    await publish({}, client);
+
+    expect(vi.mocked(proposeMergesOfPlaces)).toHaveBeenCalledWith([5]);
+    expect(queries.at(-1)?.sql).toBe('COMMIT');
+  });
+
+  it('pairs nothing for a place a reader could already see', async () => {
+    grantScope();
+    const { client } = makeClient({ row: { curation_state: 'verified' } });
+
+    await publish({ contentsOnly: true }, client);
+
+    expect(vi.mocked(proposeMergesOfPlaces)).not.toHaveBeenCalled();
   });
 
   it('says in the log which fields it applied and which it left claimed', async () => {
