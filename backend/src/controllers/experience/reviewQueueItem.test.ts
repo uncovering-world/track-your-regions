@@ -52,6 +52,21 @@ describe('queueItemOf', () => {
     expect(ReviewQueueItem.safeParse(JSON.parse(JSON.stringify(card))).success).toBe(true);
   });
 
+  it("carries a held work's stored article to the card (#1777)", () => {
+    const card = queueItemOf(conflictRow({
+      kind: 'held',
+      proposed: null,
+      proposed_parts: [{
+        kind: 'treasures', item: { name: 'The Coronation of Napoleon', ref: 'Q1231009' },
+        wikipediaUrl: 'https://en.wikipedia.org/wiki/The_Coronation_of_Napoleon', wikipediaRead: true,
+        fields: [{ field: 'name', old: 'Le Sacre', new: 'The Coronation of Napoleon', significance: 'minor', curatedConflict: false, held: true, protectedByClaim: false }],
+      }],
+    }));
+    const parsed = ReviewQueueItem.parse(JSON.parse(JSON.stringify(card)));
+    expect(parsed.proposed_parts?.[0].wikipediaUrl).toBe('https://en.wikipedia.org/wiki/The_Coronation_of_Napoleon');
+    expect(parsed.proposed_parts?.[0].wikipediaRead).toBe(true);
+  });
+
   it('keeps a held part and maps its fields key by key', () => {
     const card = queueItemOf(conflictRow({
       kind: 'held',

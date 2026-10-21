@@ -359,6 +359,11 @@ describe('getReviewQueue', () => {
     // the works on a card, and a retitled one must not sit where its old name
     // sorted while its heading shows the new one.
     expect(heldSql).toContain("COALESCE(part->>'storedName', part->'item'->>'name')");
+    // The work's stored article, for the way out to the source its heading offers
+    // (#1777), off the same row publishing resolves the work by.
+    expect(heldSql).toContain("'wikipediaUrl', work.wikipedia_url, 'wikipediaRead', work.wikipedia_read");
+    expect(heldSql).toContain('t.wikipedia_read_at IS NOT NULL AS wikipedia_read');
+    expect(heldSql).toMatch(/SELECT t\.id, t\.name, [^;]*t\.wikipedia_url/);
   });
 
   it('carries the run\'s own question on every card', async () => {

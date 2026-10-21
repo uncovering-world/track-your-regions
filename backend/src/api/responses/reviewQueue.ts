@@ -112,6 +112,10 @@ export const HeldPart = z.strictObject({
   imageUrl: z.string().nullable().optional(),
   imageCredit: ImageCredit.nullable().optional(),
   treasureType: z.string().nullable().optional(),
+  wikipediaUrl: z.string().nullable().optional().describe("The work's stored Wikipedia article (#1777); null on a place."),
+  wikipediaRead: z.boolean().nullable().optional().describe(
+    'Whether a works run has read the article: a null article read means no English one, unread means not looked up yet.',
+  ),
 }).describe(
   "One part of an object whose field a gated run held (ADR-0037), with what the stored row adds. The row's fields"
   + ' are null where no offered row answers to the record.',

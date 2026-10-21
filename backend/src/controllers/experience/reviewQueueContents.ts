@@ -108,6 +108,11 @@ export function heldPartsSelectSql(changes = 'ch', experience = 'e'): string {
                         -- cannot be checked against (venuesSql).
                         'venues', work.venues,
                         'treasureType', work.treasure_type,
+                        -- The work's article, for the way out to the source its
+                        -- heading offers (#1777), and whether a run has read it:
+                        -- none read is no English article, none yet unread is
+                        -- resolved at the click, as the other curator surfaces do.
+                        'wikipediaUrl', work.wikipedia_url, 'wikipediaRead', work.wikipedia_read,
                         -- The row's name *now*, beside the record's. The record
                         -- names the part as the run saw it (ADR-0026 decision 4)
                         -- and is never rewritten, so a title corrected since --

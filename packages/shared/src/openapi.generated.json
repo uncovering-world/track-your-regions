@@ -24520,6 +24520,20 @@
               "string",
               "null"
             ]
+          },
+          "wikipediaUrl": {
+            "description": "The work's stored Wikipedia article (#1777); null on a place.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "wikipediaRead": {
+            "description": "Whether a works run has read the article: a null article read means no English one, unread means not looked up yet.",
+            "type": [
+              "boolean",
+              "null"
+            ]
           }
         },
         "required": [

@@ -145,6 +145,8 @@ function heldPartOf(part: StoredPart): HeldPart {
     imageUrl: part.imageUrl,
     imageCredit: part.imageCredit,
     treasureType: part.treasureType,
+    wikipediaUrl: part.wikipediaUrl,
+    wikipediaRead: part.wikipediaRead,
   };
 }
 
