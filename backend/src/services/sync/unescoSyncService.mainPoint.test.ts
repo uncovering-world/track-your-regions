@@ -1,7 +1,7 @@
 /**
  * Tests for the site's main point.
  *
- * UNESCO leaves `coordinates` null on serial nominations and puts the real
+ * UNESCO leaves `geo_point_2d` null on serial nominations and puts the real
  * positions in `components_list`. Requiring the main field discarded 28 of the
  * 29 records that failed the dry run of 3 August — including sites already in
  * the catalogue whose main field the source has since emptied.
@@ -15,13 +15,17 @@ function record(overrides: Partial<UnescoApiRecord> = {}): UnescoApiRecord {
   return { id_no: '136', name_en: 'Garamba National Park', category: 'Natural', ...overrides };
 }
 
+/** A `components_list` as the dataset writes it since 2026-10-20 (#1803). */
+const components = (...entries: Array<{ name: string; ref: string; latitude: number; longitude: number }>) =>
+  JSON.stringify(entries);
+
 function component(overrides: Partial<ParsedLocation> = {}): ParsedLocation {
   return { name: 'Weiße Stadt', externalRef: '1239bis-005', lat: 52.5694, lon: 13.3508, ...overrides };
 }
 
 describe('resolveMainPoint', () => {
   it('uses the site\'s own coordinates when the source provides them', () => {
-    const point = resolveMainPoint(record({ coordinates: { lat: -2.3333, lon: 34.8333 } }), []);
+    const point = resolveMainPoint(record({ geo_point_2d: { lat: -2.3333, lon: 34.8333 } }), []);
 
     expect(point).toEqual({ lat: -2.3333, lon: 34.8333 });
   });
@@ -60,7 +64,7 @@ describe('resolveMainPoint', () => {
 
   it('prefers the site\'s own point over its components', () => {
     const point = resolveMainPoint(
-      record({ coordinates: { lat: 1, lon: 2 } }),
+      record({ geo_point_2d: { lat: 1, lon: 2 } }),
       [component({ lat: 50, lon: 50 })],
     );
 
@@ -70,7 +74,7 @@ describe('resolveMainPoint', () => {
   it("takes the most central component of a site of several, whatever the site's own coordinate says (ADR-0095)", () => {
     // The Danube Limes' export coordinate followed the first component listed
     // (Carnuntum, then Linz); the site is its components.
-    const point = resolveMainPoint(record({ coordinates: { lat: 48.1152, lon: 16.8614 } }), [
+    const point = resolveMainPoint(record({ geo_point_2d: { lat: 48.1152, lon: 16.8614 } }), [
       component({ lat: 48.2262, lon: 14.5507 }),
       component({ lat: 48.1152, lon: 16.8614 }),
       component({ lat: 48.2, lon: 15.6 }),
@@ -81,19 +85,21 @@ describe('resolveMainPoint', () => {
 
   it('marks the point of a site of several components as its anchor, and a single place\'s as its own', () => {
     const serial = transformRecord(record({
-      coordinates: { lat: 48.1152, lon: 16.8614 },
-      components_list: '{name: Carnuntum, ref: 1608-001, latitude: 48.1152, longitude: 16.8614}'
-        + ' {name: Enns, ref: 1608-002, latitude: 48.2262, longitude: 14.5507}',
+      geo_point_2d: { lat: 48.1152, lon: 16.8614 },
+      components_list: components(
+        { name: 'Carnuntum', ref: '1608-001', latitude: 48.1152, longitude: 16.8614 },
+        { name: 'Enns', ref: '1608-002', latitude: 48.2262, longitude: 14.5507 },
+      ),
     }));
     expect(serial?.locationIsAnchor).toBe(true);
-    expect(transformRecord(record({ coordinates: { lat: 4.1, lon: 29.3 } }))?.locationIsAnchor).toBe(false);
+    expect(transformRecord(record({ geo_point_2d: { lat: 4.1, lon: 29.3 } }))?.locationIsAnchor).toBe(false);
   });
 
   it('treats a coordinate of zero as a position, not as missing', () => {
     // A site on the equator or the prime meridian; truthiness would send it to
     // the component fallback and move it
     const point = resolveMainPoint(
-      record({ coordinates: { lat: 0, lon: 6.6 } }),
+      record({ geo_point_2d: { lat: 0, lon: 6.6 } }),
       [component({ lat: 50, lon: 50 })],
     );
 
@@ -123,7 +129,7 @@ describe('resolveMainPoint', () => {
 
   it('treats a half-populated coordinate pair as absent', () => {
     const point = resolveMainPoint(
-      record({ coordinates: { lat: 52.5, lon: undefined as unknown as number } }),
+      record({ geo_point_2d: { lat: 52.5, lon: undefined as unknown as number } }),
       [component({ lat: 10, lon: 20 })],
     );
 
@@ -134,7 +140,7 @@ describe('resolveMainPoint', () => {
 describe('the picture a site is shown with', () => {
   const COMMONS = 'http://commons.wikimedia.org/wiki/Special:FilePath/Bamiyan.jpg';
   const sited = (overrides: Partial<UnescoApiRecord> = {}) =>
-    record({ coordinates: { lat: 34.84, lon: 67.82 }, ...overrides });
+    record({ geo_point_2d: { lat: 34.84, lon: 67.82 }, ...overrides });
 
   it('does not read the picture the portal offers, whatever it says about it', () => {
     // The World Heritage Centre's terms: its photographs "may not be copied or
@@ -275,7 +281,7 @@ describe('the row a record becomes', () => {
       name_en: 'Ancient City of Aleppo',
       danger: 'True',
       danger_list: 'Y 2013',
-      coordinates: { lat: 36.199, lon: 37.163 },
+      geo_point_2d: { lat: 36.199, lon: 37.163 },
     }));
 
     expect(aleppo?.metadata.inDanger).toBe(true);
@@ -284,23 +290,23 @@ describe('the row a record becomes', () => {
   });
 
   it('leaves the flag false for a site nothing lists', () => {
-    const garamba = transformRecord(record({ coordinates: { lat: 4.1, lon: 29.5 } }));
+    const garamba = transformRecord(record({ geo_point_2d: { lat: 4.1, lon: 29.5 } }));
 
     expect(garamba?.metadata.inDanger).toBe(false);
   });
 });
 
-describe("a component's name (#1279)", () => {
-  it('is read whole, commas included, rather than up to its first comma', () => {
-    // Two of Aalto Works' components and one of Tashkent Modernist
-    // Architecture's, copied from the dataset as it writes them: the town after the comma is what tells two of Aalto's
-    // works apart, and the bracket closes after one.
+describe("a site's components (#1803)", () => {
+  it('reads each entry of the list, commas in a name included', () => {
+    // Two of Aalto Works' components and one of Tashkent Modernist Architecture's.
     const site = transformRecord(record({
       id_no: '1752',
       name_en: 'Aalto Works',
-      components_list: '{name: Villa Mairea, Pori, ref: 1752-013, latitude: 61.5974091666, longitude: 21.8745822223}\n'
-        + '{name: Experimental House, Muuratsalo, Jyväskylä, ref: 1752-009, latitude: 62.1147980556, longitude: 25.7450022222}\n'
-        + '{name: Zhemchug Residential Building (Zhemchug, the “Pearl”), ref: 1766-001, latitude: 41.3026833333, longitude: 69.2672222223}',
+      components_list: components(
+        { name: 'Villa Mairea, Pori', ref: '1752-013', latitude: 61.5974091666, longitude: 21.8745822223 },
+        { name: 'Experimental House, Muuratsalo, Jyväskylä', ref: '1752-009', latitude: 62.1147980556, longitude: 25.7450022222 },
+        { name: 'Zhemchug Residential Building (Zhemchug, the “Pearl”)', ref: '1766-001', latitude: 41.3026833333, longitude: 69.2672222223 },
+      ),
     }));
 
     expect(site?.locations.map(location => location.name)).toEqual([
@@ -311,40 +317,66 @@ describe("a component's name (#1279)", () => {
     expect(site?.locations.map(location => location.externalRef)).toEqual(['1752-013', '1752-009', '1766-001']);
   });
 
-  it('cuts a name with a dotted capital I where the original has its ref', () => {
-    // Hyrcanian Forests' component, as the dataset writes it: lowercasing "İ"
-    // makes two code units of one, so positions found in a lowercased copy
-    // cut the original one character late.
+  it('reads the list as the dataset writes it, from the export', () => {
+    // The Bony Fish Fossils of the Western Limfjord (1758), copied from the export.
     const site = transformRecord(record({
-      components_list: '{name: İstisuchay Valley (Southern HNP), ref: 1584bis-017, latitude: 38.4549666667, longitude: 48.6793027778}',
+      id_no: '1758',
+      components_list: '[{"name": "Hanklit", "ref": "1758-001", "latitude": 56.895649, "longitude": 8.751962}, '
+        + '{"name": "Knudeklint", "ref": "1758-002", "latitude": 56.838216, "longitude": 8.964653}]',
     }));
 
-    expect(site?.locations[0]).toMatchObject({ name: 'İstisuchay Valley (Southern HNP)', externalRef: '1584bis-017' });
+    expect(site?.locations.map(location => [location.name, location.externalRef, location.lat, location.lon])).toEqual([
+      ['Hanklit', '1758-001', 56.895649, 8.751962],
+      ['Knudeklint', '1758-002', 56.838216, 8.964653],
+    ]);
   });
 
-  it('keeps a name the source left empty as empty', () => {
-    // Via Appia's component 1708-003 is written `{name: , ref: 1708-003, …}`.
+  it('keeps a name the source left empty as empty, and skips an entry with no ref or no point', () => {
+    // Via Appia's component 1708-003 has an empty name.
     const site = transformRecord(record({
-      components_list: '{name: , ref: 1708-003, latitude: 41.6718, longitude: 12.7273}',
+      components_list: JSON.stringify([
+        { name: '', ref: '1708-003', latitude: 41.6718, longitude: 12.7273 },
+        { name: 'No ref', ref: '', latitude: 41.6, longitude: 12.7 },
+        { name: 'No point', ref: '1708-099', latitude: null, longitude: 12.7 },
+      ]),
     }));
 
-    expect(site?.locations[0]).toMatchObject({ name: '', externalRef: '1708-003' });
+    expect(site?.locations).toEqual([expect.objectContaining({ name: '', externalRef: '1708-003' })]);
+  });
+
+  it('still reads the form the dataset wrote before 2026-10-20, commas in a name included', () => {
+    const site = transformRecord(record({
+      components_list: '{name: Villa Mairea, Pori, ref: 1752-013, latitude: 61.5974091666, longitude: 21.8745822223}\n'
+        + '{name: İstisuchay Valley (Southern HNP), ref: 1584bis-017, latitude: 38.4549666667, longitude: 48.6793027778}',
+    }));
+
+    expect(site?.locations.map(location => [location.name, location.externalRef])).toEqual([
+      ['Villa Mairea, Pori', '1752-013'],
+      ['İstisuchay Valley (Southern HNP)', '1584bis-017'],
+    ]);
+  });
+
+  it('fails a site whose list is in neither form, rather than read it as no components', () => {
+    expect(() => transformRecord(record({ components_list: 'Carnuntum; Enns' }))).toThrow('Components list is not JSON');
+    expect(() => transformRecord(record({ components_list: '{"name": "Carnuntum"}' }))).toThrow('not a list');
   });
 });
 
 /** A component name the portal sends decoded twice (#1405). */
 describe("a component's name", () => {
-  const namesOf = (componentsList: string) =>
-    transformRecord(record({ coordinates: { lat: 59.33, lon: 17.55 }, components_list: componentsList }))
-      ?.locations.map(location => location.name);
+  const namesOf = (name: string) =>
+    transformRecord(record({
+      geo_point_2d: { lat: 59.33, lon: 17.55 },
+      components_list: components({ name, ref: '555-002', latitude: 59.3333, longitude: 17.55 }),
+    }))?.locations.map(location => location.name);
 
   it('is read once where the portal decoded it twice', () => {
     // Birka and Hovgården (555): the export sends "HovgÃ¥rden", the bytes c3 a5 of "å" as two characters.
-    expect(namesOf('{name: HovgÃ¥rden, ref: 555-002, latitude: 59.3333, longitude: 17.55}')).toEqual(['Hovgården']);
+    expect(namesOf('HovgÃ¥rden')).toEqual(['Hovgården']);
   });
 
   it('is kept where it only looks so, or its bytes are not UTF-8', () => {
-    expect(namesOf('{name: Kåfjord, ref: 352bis-004, latitude: 69.95, longitude: 23.02}')).toEqual(['Kåfjord']);
-    expect(namesOf('{name: Ã©tude Ãx, ref: 1-001, latitude: 1, longitude: 1}')).toEqual(['Ã©tude Ãx']);
+    expect(namesOf('Kåfjord')).toEqual(['Kåfjord']);
+    expect(namesOf('Ã©tude Ãx')).toEqual(['Ã©tude Ãx']);
   });
 });

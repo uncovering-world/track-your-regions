@@ -69,7 +69,7 @@ const REQUESTED: Record<keyof UnescoApiRecord, true> = {
   id_no: true,
   name_en: true, name_fr: true, name_es: true, name_ru: true, name_ar: true, name_zh: true,
   short_description_en: true, short_description_fr: true,
-  category: true, coordinates: true, iso_codes: true, states_names: true,
+  category: true, geo_point_2d: true, iso_codes: true, states_names: true,
   // Not `main_image_url`, `main_image_author` or `main_image_copyright`: the
   // picture they describe is the World Heritage Centre's own, which its terms
   // do not let this product show, so the run takes a site's picture from

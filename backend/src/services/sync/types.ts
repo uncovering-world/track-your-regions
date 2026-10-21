@@ -123,7 +123,11 @@ export interface UnescoApiRecord {
   short_description_fr?: string;
   /** The portal's own word for the site's type: `"Cultural"`, `"Natural"` or `"Mixed"`. */
   category: string;
-  coordinates?: {
+  /**
+   * The site's point, `{lon, lat}`. Not `coordinates`, which the dataset writes as
+   * a GeoJSON MultiPoint of every component since 2026-10-20 (#1803).
+   */
+  geo_point_2d?: {
     lat: number;
     lon: number;
   };
@@ -152,7 +156,7 @@ export interface UnescoApiRecord {
   /** `"True"` / `"False"`, like `danger`. See `isSet`. */
   transboundary?: string | number | boolean;
   // Multi-location support for serial nominations
-  components_list?: string; // Format: "{name: Fort Name, ref: 1739-005, latitude: 18.236, longitude: 73.444}"
+  components_list?: string; // JSON: [{"name": "Hanklit", "ref": "1758-001", "latitude": 56.895649, "longitude": 8.751962}]
 }
 
 /**
