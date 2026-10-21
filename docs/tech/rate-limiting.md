@@ -188,7 +188,7 @@ back the pin that carried it, and the pin is put on the coordinate that run offe
 rather than left for the next one to retire the row — so a place moves, and a place
 that moves has to be re-placed after committing, exactly as the correction above does.
 The other fields it accepts (`ACCEPTABLE_FIELDS` in `acceptableFields.ts`: `name`,
-`shortDescription`, `description`, `type`, `imageUrl`) place nothing, and the endpoint asks the criterion per
+`description`, `subtitle`, `type`, `imageUrl`) place nothing, and the endpoint asks the criterion per
 request the way `/state` does; the limiter is on the route either way, because a route
 is what a limiter can be attached to.
 

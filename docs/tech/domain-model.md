@@ -87,8 +87,8 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
   - `ExternalID`: The id that first source knows the place by
   - `Name`: Name of the experience
   - `NameLocal`: Multilingual names (JSONB)
-  - `Description`: Full description
-  - `ShortDescription`: Brief description for display
+  - `Subtitle`: Wikidata's one-line description of the item, from the Wikidata kinds (#1795)
+  - `Description`: The paragraph a reader opens: UNESCO's text for a World Heritage site, or a curator's
   - (The type within the kind is `ExperienceKindMembership.Type` since ADR-0084, #1253: a place in two kinds has a type in each)
   - `Tags`: Additional classification tags (JSONB)
   - `Location`: Geographic point (PostGIS Point, SRID 4326)
