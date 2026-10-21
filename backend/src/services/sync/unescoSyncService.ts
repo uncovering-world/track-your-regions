@@ -40,6 +40,7 @@ import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { WaitBudget } from './sourceRetry.js';
 import { longitudeDelta } from './longitude.js';
 import { parseDangerListing } from './dangerListing.js';
+import { UnplaceableRecord } from './itemOutcome.js';
 import type {
   SyncProgress,
   UnescoApiRecord,
@@ -662,7 +663,7 @@ export function syncUnescoSites(
     processItem: async (record, _progress, context) => {
       const processed = transformRecord(record, factsForSite(facts, String(record.id_no), record.name_en), credits);
       if (!processed) {
-        throw new Error('No valid coordinates');
+        throw new UnplaceableRecord('UNESCO sends this site with no point and no component');
       }
       // The site's Wikidata items (#1248), only from an index Wikidata answered.
       const items = factsAnswered ? siteItems(facts, String(record.id_no), record.name_en) : null;
