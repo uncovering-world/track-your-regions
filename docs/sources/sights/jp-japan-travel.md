@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.japan.travel/en/terms-of-use/
 family: tourism-board
-kinds: [places-of-worship, parks-and-gardens, festivals-and-events, art-museums, towns-and-villages, neighbourhoods, palaces-and-castles, markets, hiking-trails-and-walks, intangible-heritage, architecture, natural-landmarks, regional-drinks, seasonal-phenomena, day-trips-and-itineraries, notable-works, food-experiences, landmarks, viewpoints, regional-crafts, entertainment-venues, world-heritage, regional-food]
+kinds: [places-of-worship, parks-and-gardens, festivals-and-events, art-museums, towns-and-villages, neighbourhoods, palaces-and-castles, markets, hiking-trails-and-walks, intangible-heritage, architecture, natural-landmarks, regional-drinks, seasonal-phenomena, day-trips-and-itineraries, notable-works, food-experiences, towers, viewpoints, regional-crafts, entertainment-venues, world-heritage, regional-food]
 tier: regional
 unit: { level: country, code: JP, name: Japan }
 row:

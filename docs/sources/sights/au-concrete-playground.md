@@ -8,7 +8,7 @@ urls:
   api: none
   terms: none
 family: commercial
-kinds: [beaches-and-swimming, neighbourhoods, natural-landmarks, historic-hotels-and-restaurants, viewpoints, parks-and-gardens, hiking-trails-and-walks, national-parks-and-reserves, outdoor-activities, art-museums, towns-and-villages, architecture, historical-sites, landmarks, festivals-and-events, history-museums, world-heritage, entertainment-venues, science-and-nature-museums, on-site-activities, day-trips-and-itineraries, squares-and-streets, markets, zoos-and-aquariums, public-art, tours-and-cruises, historic-houses]
+kinds: [beaches-and-swimming, neighbourhoods, natural-landmarks, historic-hotels-and-restaurants, viewpoints, parks-and-gardens, hiking-trails-and-walks, national-parks-and-reserves, outdoor-activities, art-museums, towns-and-villages, architecture, historical-sites, lighthouses, towers, festivals-and-events, history-museums, world-heritage, entertainment-venues, science-and-nature-museums, on-site-activities, day-trips-and-itineraries, squares-and-streets, markets, zoos-and-aquariums, public-art, tours-and-cruises, historic-houses]
 tier: regional
 unit: { level: city, code: AU, name: Sydney }
 row:

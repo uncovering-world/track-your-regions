@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.chinahighlights.com/aboutus/terms.htm
 family: commercial
-kinds: [regional-food, places-of-worship, festivals-and-events, squares-and-streets, landmarks, neighbourhoods, historic-hotels-and-restaurants, world-heritage, parks-and-gardens, tombs-and-mausoleums, shows-and-performances, entertainment-venues, markets, palaces-and-castles, art-museums, intangible-heritage, natural-landmarks]
+kinds: [regional-food, places-of-worship, festivals-and-events, squares-and-streets, city-gates-and-walls, towers, neighbourhoods, historic-hotels-and-restaurants, world-heritage, parks-and-gardens, tombs-and-mausoleums, shows-and-performances, entertainment-venues, markets, palaces-and-castles, art-museums, intangible-heritage, natural-landmarks]
 tier: regional
 unit: { level: country, code: CN, name: China }
 row:

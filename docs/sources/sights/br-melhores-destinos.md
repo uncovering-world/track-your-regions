@@ -8,7 +8,7 @@ urls:
   api: none
   terms: none
 family: commercial
-kinds: [beaches-and-swimming, places-of-worship, historic-hotels-and-restaurants, squares-and-streets, neighbourhoods, regional-food, palaces-and-castles, history-museums, natural-landmarks, landmarks, art-museums, markets, towns-and-villages, specialty-museums, shows-and-performances]
+kinds: [beaches-and-swimming, places-of-worship, historic-hotels-and-restaurants, squares-and-streets, neighbourhoods, regional-food, palaces-and-castles, history-museums, natural-landmarks, bridges-and-engineering, historic-waterworks, lighthouses, art-museums, markets, towns-and-villages, specialty-museums, shows-and-performances]
 tier: regional
 unit: { level: country, code: BR, name: Brazil }
 row:

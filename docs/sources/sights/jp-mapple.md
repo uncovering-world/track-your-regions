@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.mapple.net/term/
 family: commercial
-kinds: [places-of-worship, regional-food, festivals-and-events, parks-and-gardens, neighbourhoods, squares-and-streets, notable-works, seasonal-phenomena, towns-and-villages, palaces-and-castles, regional-drinks, art-museums, hiking-trails-and-walks, architecture, landmarks]
+kinds: [places-of-worship, regional-food, festivals-and-events, parks-and-gardens, neighbourhoods, squares-and-streets, notable-works, seasonal-phenomena, towns-and-villages, palaces-and-castles, regional-drinks, art-museums, hiking-trails-and-walks, architecture, towers]
 tier: regional
 unit: { level: country, code: JP, name: Japan }
 row:

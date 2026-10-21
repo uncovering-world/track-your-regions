@@ -8,7 +8,7 @@ urls:
   api: none
   terms: none
 family: tourism-board
-kinds: [places-of-worship, regional-food, parks-and-gardens, palaces-and-castles, archaeology, art-museums, architecture, historic-hotels-and-restaurants, landmarks, viewpoints, neighbourhoods, baths-and-spas, markets, theme-parks, history-museums]
+kinds: [places-of-worship, regional-food, parks-and-gardens, palaces-and-castles, archaeology, art-museums, architecture, historic-hotels-and-restaurants, city-gates-and-walls, historic-waterworks, squares-and-streets, towers, viewpoints, neighbourhoods, baths-and-spas, markets, theme-parks, history-museums]
 tier: regional
 unit: { level: city, code: TR-34, name: Istanbul }
 row:

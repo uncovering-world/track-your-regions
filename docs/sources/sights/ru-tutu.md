@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.tutu.ru/2read/legal_information/legal_tuturu/
 family: commercial
-kinds: [parks-and-gardens, art-museums, places-of-worship, history-museums, squares-and-streets, architecture, regional-food, palaces-and-castles, public-art, science-and-nature-museums, festivals-and-events, entertainment-venues, tours-and-cruises, world-heritage, markets, tombs-and-mausoleums, zoos-and-aquariums, landmarks, viewpoints, notable-works]
+kinds: [parks-and-gardens, art-museums, places-of-worship, history-museums, squares-and-streets, architecture, regional-food, palaces-and-castles, public-art, science-and-nature-museums, festivals-and-events, entertainment-venues, tours-and-cruises, world-heritage, markets, tombs-and-mausoleums, zoos-and-aquariums, city-gates-and-walls, towers, viewpoints, notable-works]
 tier: regional
 unit: { level: any }
 row:

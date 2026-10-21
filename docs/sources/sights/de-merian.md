@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.merian.de/impressum
 family: commercial
-kinds: [art-museums, notable-works, architecture, history-museums, science-and-nature-museums, archaeology, historical-sites, landmarks, squares-and-streets, palaces-and-castles, parks-and-gardens, beaches-and-swimming, natural-landmarks, places-of-worship, festivals-and-events]
+kinds: [art-museums, notable-works, architecture, history-museums, science-and-nature-museums, archaeology, historical-sites, city-gates-and-walls, public-art, towers, squares-and-streets, palaces-and-castles, parks-and-gardens, beaches-and-swimming, natural-landmarks, places-of-worship, festivals-and-events]
 tier: regional
 unit: { level: country, code: DE, name: Germany }
 row:
