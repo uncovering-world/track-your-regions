@@ -21,7 +21,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import timedelta
 
 import psycopg2
-from dotenv import load_dotenv
 
 # Global connection for signal handler
 _conn = None
@@ -45,6 +44,12 @@ signal.signal(signal.SIGINT, signal_handler)
 def get_db_credentials():
     """Load database credentials from environment."""
     env_files = [".env", "../.env", "../../.env"]
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        # The loader image passes its settings as environment variables and
+        # ships no python-dotenv (#1782): a .env is read only where it is installed.
+        env_files = []
     for env_file in env_files:
         if os.path.exists(env_file):
             print(f"Loading environment from {env_file}")

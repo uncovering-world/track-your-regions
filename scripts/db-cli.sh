@@ -494,7 +494,7 @@ cmd_load_gadm() {
     fi
     echo ""
 
-    # The loaders run inside the db-loader container (GDAL + psycopg2 + dotenv +
+    # The loaders run inside the db-loader container (GDAL + psycopg2 +
     # shapely), so the host needs no Python or GDAL. The gpkg is mounted in, and
     # DB_HOST=db reaches the Postgres service over the compose network.
     cd "$PROJECT_ROOT"
