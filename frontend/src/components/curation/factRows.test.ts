@@ -27,6 +27,13 @@ const bamiyan = [
 ];
 
 describe('rowsFor', () => {
+  it('marks a Wikidata item replaced as an event, and one arriving as none (#1794)', () => {
+    const [arrived] = rowsFor([{ field: 'metadata.wikidataQid', old: null, new: 'Q184427' }], NO_CONTEXT);
+    const [replaced] = rowsFor([{ field: 'metadata.wikidataQid', old: 'Q184427', new: 'Q1' }], NO_CONTEXT);
+    expect([arrived.event, replaced.event]).toEqual([false, true]);
+    expect(rowsFor([{ field: 'metadata.inDanger', old: false, new: true }], NO_CONTEXT)[0].event).toBe(true);
+  });
+
   it('makes one row per fact that moved, named as the fact, in the order the queue gave', () => {
     const rows = rowsFor(bamiyan, NO_CONTEXT);
     expect(rows.map(r => r.meaning.label)).toEqual(['in danger', 'inscription criteria', 'picture credit']);

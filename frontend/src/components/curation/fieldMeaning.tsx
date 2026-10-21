@@ -26,6 +26,7 @@
 
 import type { ReactNode } from 'react';
 import { Chip, Link, Stack, Tooltip } from '@mui/material';
+import { isEmptyValue } from '@tyr/shared/equality';
 import type { ImageCredit } from '../../api/experiences';
 import type { ChangedField } from '../../api/reviewQueue';
 import { parseCriteria } from '../../utils/unescoCriteria';
@@ -81,8 +82,13 @@ export interface FieldMeaning {
   render?: (value: unknown, context: ChangeContext, side?: FactSide) => ReactNode;
   /** One sentence about this change, for the fields whose change carries a meaning of its own. */
   describeChange?: (before: unknown, after: unknown, context: ChangeContext) => string | null;
-  /** A change to this fact is an event in the world, not a rewording — the card marks the sentence. */
-  event?: true;
+  /**
+   * A change to this fact is an event in the world, not a rewording — the card marks the
+   * sentence. `'replaced'` is an event only where a value stood before: the Wikidata item
+   * arriving on a place that held none is the source's own id written down (ADR-0129), and
+   * one item replaced by another may be a different object.
+   */
+  event?: true | 'replaced';
   /** No reader-facing surface shows this fact today, so publishing it changes nothing readers see. */
   unseen?: true;
 }
@@ -578,10 +584,12 @@ const MEANINGS: Record<string, FieldMeaning> = {
   'metadata.wikidataQid': {
     label: 'Wikidata item',
     what: 'The object’s identifier on Wikidata, which is where this source reads it from.',
-    whenItChanges: 'A different item means this row now points at a different object, or Wikidata merged two records. Check the name and the pin before publishing.',
+    whenItChanges: 'An item appearing where there was none is the one this source knows the object by. A different item means this row now points at a different object, or Wikidata merged two records. Check the name and the pin before publishing.',
     render: qidLabel,
-    event: true,
-    describeChange: () => 'A different Wikidata item — check the name and the pin.',
+    event: 'replaced',
+    describeChange: before => (isEmptyValue(before)
+      ? 'The Wikidata item this source knows the object by.'
+      : 'A different Wikidata item — check the name and the pin.'),
   },
   'metadata.artworkCount': {
     label: 'works placed',

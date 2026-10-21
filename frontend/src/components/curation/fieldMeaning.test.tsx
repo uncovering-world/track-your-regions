@@ -133,6 +133,12 @@ describe('values as readers see them', () => {
     expect(said('metadata.wikidataQid', 'javascript:alert(1)')).toBe('javascript:alert(1)');
   });
 
+  it('calls a Wikidata item different only where there was one before (#1794)', () => {
+    // Ajanta Caves held no item: Q184427 arriving is the item the source knows it by.
+    expect(change('metadata.wikidataQid', undefined, 'Q184427')).toBe('The Wikidata item this source knows the object by.');
+    expect(change('metadata.wikidataQid', 'Q184427', 'Q1')).toBe('A different Wikidata item — check the name and the pin.');
+  });
+
   it('says tags and countries as lists of words', () => {
     expect(said('tags', ['criterion_ii', 'in_danger'])).toBe('criterion (ii), in danger');
     expect(said('countryNames', ['France', 'Belgium'])).toBe('France, Belgium');
@@ -374,8 +380,10 @@ describe('what a change means, in one line', () => {
   });
 
   it('marks the facts whose change is an event in the world, and only those', () => {
-    const events = ['metadata.inDanger', 'metadata.dangerList', 'location', 'countryCodes', 'metadata.wikidataQid', 'metadata.region'];
+    const events = ['metadata.inDanger', 'metadata.dangerList', 'location', 'countryCodes', 'metadata.region'];
     events.forEach(field => expect(meaningOf(field).event, field).toBe(true));
+    // An item arriving is the source's own id; only one replaced by another is an event (ADR-0129).
+    expect(meaningOf('metadata.wikidataQid').event).toBe('replaced');
     ['name', 'shortDescription', 'metadata.criteria', 'metadata.imageCredit'].forEach(field => expect(meaningOf(field).event, field).toBeUndefined());
   });
 });
