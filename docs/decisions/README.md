@@ -150,6 +150,7 @@ and accepted by it.
 | [0128](0128-a-place-is-one-a-visitor-goes-to-when-two-independent-witnesses-say-so.md) | A place is one a visitor goes to when two independent witnesses say so | Accepted | 2026-10-20 |
 | [0129](0129-a-wikidata-item-a-place-holds-none-of-passes-the-gate.md) | A Wikidata item a place holds none of passes the gate | Accepted | 2026-10-21 |
 | [0130](0130-a-place-keeps-a-picture-its-item-still-carries.md) | A place keeps a picture its item still carries | Accepted | 2026-10-21 |
+| [0131](0131-a-kind-is-drawn-by-what-a-place-was-made-for.md) | A kind is drawn by what a place was made for, and a place no kind holds waits for its own | Accepted | 2026-10-21 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
