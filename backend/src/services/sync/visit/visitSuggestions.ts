@@ -12,10 +12,9 @@
  */
 
 import type { PoolClient } from 'pg';
-import type { LockedExperience } from '../../db/experienceWriter.js';
-import { KINDS, MEMBERSHIPS, membershipAdmittedSql } from '../../db/membership.js';
-import { arrivalOpenSql } from './reviewQueuePredicates.js';
-import type { VisitReading } from '../../services/sync/visit/visitReading.js';
+import type { LockedExperience } from '../../../db/experienceWriter.js';
+import { KINDS, MEMBERSHIPS, membershipAdmittedSql } from '../../../db/membership.js';
+import type { VisitReading } from './visitReading.js';
 
 /**
  * The place as a question is built from it, off its row `e`: what a reading is
@@ -51,13 +50,25 @@ export interface VisitSuggestion {
 }
 
 /**
+ * The newest reading recorded for the place `e` as it stands, as
+ * `{ reading, confidence }` (a null reading for an answer the client
+ * refused), or null where none was: what the card and the run read before
+ * they pay for a new one.
+ */
+export function newestReadingSql(e = 'e'): string {
+  return `(SELECT jsonb_build_object('reading', g.reading, 'confidence', g.confidence)
+             FROM experience_visit_suggestions g
+            WHERE g.experience_id = ${e}.id AND g.asked = ${askedSql(e)}
+            ORDER BY g.asked_at DESC, g.id DESC LIMIT 1)`;
+}
+
+/**
  * Record a call, a row per call, since the rows are what the calls cost. It
  * is recorded for the place Jev was asked about, so an answer about a place a
  * run renamed during the call is kept and never the card's: the card reads the
  * newest row for the place as it stands. Answers whether this one is about the
- * place as it stands now and the place is still arriving, under the lock: a
- * place a run stopped finding, or a curator answered, during the call is no
- * card's question.
+ * place as it stands now, under the lock; whether the place is still a
+ * question anywhere is the caller's to ask under the same lock.
  */
 export async function recordVisitSuggestion(
   client: PoolClient,
@@ -69,9 +80,7 @@ export async function recordVisitSuggestion(
        (experience_id, asked, article_lead, reading, confidence, probabilities, model, input_tokens)
      SELECT e.id, $2::jsonb, $3, $4, $5, $6::jsonb, $7, $8
        FROM experiences e WHERE e.id = $1
-     RETURNING asked = (SELECT ${askedSql('e')} FROM experiences e WHERE e.id = $1)
-               AND EXISTS (SELECT 1 FROM experiences e JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id
-                            WHERE e.id = $1 AND ${arrivalOpenSql('e', 'm')}) AS current`,
+     RETURNING asked = (SELECT ${askedSql('e')} FROM experiences e WHERE e.id = $1) AS current`,
     [lock.id, JSON.stringify(suggestion.asked), suggestion.lead, suggestion.reading, suggestion.confidence,
       JSON.stringify(suggestion.probabilities), suggestion.model, suggestion.inputTokens],
   );

@@ -9,7 +9,7 @@
  * of a larger place, an object kept elsewhere, nothing left, not one place,
  * or a place visited for something its kinds do not offer — and the answer
  * is stored with its confidence and the place it was about
- * (`visitSuggestions.ts`). A deployment without Jev answers that it has none.
+ * (`services/sync/visit/visitSuggestions.ts`). A deployment without Jev answers that it has none.
  * The reading is shown beside the arrival and never applied: a curator
  * decides. A POST because a call may be made, and paid for.
  *
@@ -25,18 +25,16 @@
 
 import type { z } from 'zod/v4';
 import type { VisitSuggestion as VisitSuggestionResponse } from '../../api/responses/curation.js';
-import { pool, rollbackQuietly } from '../../db/index.js';
-import { lockExperience } from '../../db/experienceWriter.js';
+import { pool } from '../../db/index.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import { createError, notFound } from '../../middleware/errorHandler.js';
-import { askJevChoice, jevConfigured, JevAnswerRefused } from '../../services/jev/jevClient.js';
-import {
-  articleLead, visitQuestion, type VisitAsked, type VisitReading,
-} from '../../services/sync/visit/visitReading.js';
+import { jevConfigured } from '../../services/jev/jevClient.js';
+import type { VisitAsked, VisitReading } from '../../services/sync/visit/visitReading.js';
 import type { idParamSchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { arrivalOpenSql } from './reviewQueuePredicates.js';
-import { askedSql, recordVisitSuggestion, type VisitSuggestion } from './visitSuggestions.js';
+import { readVisit } from '../../services/sync/visit/readVisit.js';
+import { askedSql, newestReadingSql } from '../../services/sync/visit/visitSuggestions.js';
 
 interface PlaceRow {
   asked: VisitAsked;
@@ -53,10 +51,7 @@ async function placeOf(experienceId: number): Promise<PlaceRow | null> {
     `SELECT ${askedSql('e')} AS asked,
             (SELECT array_agg(DISTINCT m.source_id ORDER BY m.source_id) FROM ${MEMBERSHIPS} m
               WHERE m.experience_id = e.id AND ${arrivalOpenSql('e', 'm')}) AS arriving_source_ids,
-            (SELECT jsonb_build_object('reading', g.reading, 'confidence', g.confidence)
-               FROM experience_visit_suggestions g
-              WHERE g.experience_id = e.id AND g.asked = ${askedSql('e')}
-              ORDER BY g.asked_at DESC, g.id DESC LIMIT 1) AS stored
+            ${newestReadingSql('e')} AS stored
        FROM experiences e WHERE e.id = $1`,
     [experienceId],
   );
@@ -64,68 +59,9 @@ async function placeOf(experienceId: number): Promise<PlaceRow | null> {
   return row ? { asked: row.asked, arrivingSourceIds: row.arriving_source_ids ?? [], stored: row.stored } : null;
 }
 
-/** Record one call under the place's lock; whether its answer is about the place as it stands. */
-async function store(experienceId: number, suggestion: VisitSuggestion): Promise<boolean> {
-  const client = await pool.connect();
-  let unusable: Error | undefined;
-  try {
-    await client.query('BEGIN');
-    const locked = await lockExperience(client, experienceId);
-    const kept = locked ? await recordVisitSuggestion(client, locked.lock, suggestion) : false;
-    await client.query('COMMIT');
-    return kept;
-  } catch (error) {
-    unusable = await rollbackQuietly(client);
-    throw error;
-  } finally {
-    client.release(unusable);
-  }
-}
-
-type Reading = NonNullable<VisitSuggestionResponse['suggestion']>;
-
-/**
- * A new reading: the lead read, Jev asked, the answer recorded. Null where
- * there is none to show — a lead that could not be read, an answer refused,
- * an answer about a place a run changed meanwhile, or a call that failed.
- */
-async function read(id: number, place: PlaceRow): Promise<Reading | null> {
-  let lead: string | null;
-  try {
-    lead = await articleLead(place.asked.article);
-  } catch (error) {
-    // The lead decides most readings (`visitReading.ts`), and a reading is kept
-    // for the place as long as it stands: asked without the lead it would be
-    // kept without it. Nothing is asked or recorded; the next opening tries again.
-    console.error('[jev] no article lead for experience %d:', id, error);
-    return null;
-  }
-  try {
-    const answer = await askJevChoice(visitQuestion(place.asked, lead));
-    const reading = answer.choice as VisitReading;
-    const current = await store(id, {
-      reading, confidence: answer.confidence, probabilities: answer.probabilities,
-      model: answer.model, inputTokens: answer.inputTokens, asked: place.asked, lead,
-    });
-    // A run renamed the place or moved it into another kind during the call:
-    // the answer is about a place nobody sees now — recorded for what it
-    // cost, not shown, and the next opening asks about the new one.
-    return current ? { reading, confidence: answer.confidence } : null;
-  } catch (error) {
-    // An answer the client refused was still paid for: recorded with no
-    // reading, so the cost is counted and the same place is not asked again.
-    if (error instanceof JevAnswerRefused) {
-      await store(id, {
-        reading: null, confidence: 0, probabilities: {}, model: error.model,
-        inputTokens: error.inputTokens, asked: place.asked, lead,
-      }).catch(() => undefined);
-    }
-    // No reading: the card shows the arrival without one, exactly as on a
-    // deployment without Jev.
-    console.error('[jev] no visit reading for experience %d:', id, error);
-    return null;
-  }
-}
+/** The place is still arriving, under the lock: what a reading is shown for here. */
+const STILL_ARRIVING = (e: string) => `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m
+                                         WHERE m.experience_id = ${e}.id AND ${arrivalOpenSql(e, 'm')})`;
 
 export async function suggestVisit(
   { params: { id }, caller }: { params: z.output<typeof idParamSchema>; caller: Express.User },
@@ -153,5 +89,5 @@ export async function suggestVisit(
         : { reading: place.stored.reading, confidence: Number(place.stored.confidence) },
     };
   }
-  return { configured: true, suggestion: await read(id, place) };
+  return { configured: true, suggestion: await readVisit(id, place.asked, STILL_ARRIVING) };
 }

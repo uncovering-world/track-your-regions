@@ -126,7 +126,7 @@ describe('the curation gate lint rules', () => {
       'src/controllers/experience/mergeProposalSuggestions.ts'],
     ["the writer of Jev's reading of a place", VISIT_SUGGESTION,
       'export const q = `INSERT INTO experience_visit_suggestions (experience_id) VALUES ($1)`;\n',
-      'src/controllers/experience/visitSuggestions.ts'],
+      'src/services/sync/visit/visitSuggestions.ts'],
     ['the curator\'s membership writer', MEMBERSHIP,
       MEMBERSHIPS_IMPORT + 'export const q = `UPDATE ${MEMBERSHIPS} m SET admission = $2 WHERE m.id = $1`;\n',
       'src/controllers/experience/membershipWriter.ts'],
