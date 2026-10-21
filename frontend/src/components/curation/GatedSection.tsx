@@ -9,7 +9,7 @@
  * other's.
  */
 
-import { useState, type ReactNode } from 'react';
+import { useState } from 'react';
 import {
   Box, Typography, Button, Stack, Divider, Link, Collapse,
 } from '@mui/material';
@@ -63,19 +63,17 @@ function count(value: number | undefined): number {
  * already answered and this page is the stale one, and a card left standing
  * would let every further click repeat the same refusal.
  */
-export function GatedSection({ group, heading, objectButton, onDone }: {
+export function GatedSection({ group, heading, onDone }: {
   group: GatedGroup;
   /** "<Kind> asks", on a card with more than one section; none on a card with one. */
   heading?: string;
-  /** "Look at the object" — one per card, drawn in its last section's row of buttons. */
-  objectButton?: ReactNode;
   onDone: (message?: string) => void;
 }) {
   const { arrival, held, contents } = group;
   const item = arrival ?? held ?? contents!;
-  // Trimmed before it is asked about, as `ObjectPreview` trims the same note:
-  // a note of blanks is a note nobody wrote, and drawing "The run asks:" over
-  // nothing tells a curator a question was asked and then withholds it.
+  // Trimmed before it is asked about: a note of blanks is a note nobody wrote,
+  // and drawing "The run asks:" over nothing tells a curator a question was
+  // asked and then withholds it.
   // A kind's run asks it of its own membership, so the place's section, which
   // speaks for several kinds, does not repeat it (#1599).
   const askedNote = group.sharedBy ? undefined : item.admission_note?.trim();
@@ -143,8 +141,8 @@ export function GatedSection({ group, heading, objectButton, onDone }: {
     onSettled: (data, error) => {
       // The object's own caches, not only this queue: a publication changes the
       // fields, the points, the works and the counts every other surface reads,
-      // and the card the curator just followed through to ("Look at the object")
-      // shares its cache key with Discover and `CurationDialog`. Without this a
+      // and the object's own read (`experience.one`) shares its cache key with
+      // Discover and `CurationDialog`. Without this a
       // publish that succeeded is followed by the pre-publish snapshot for as
       // long as the global 60s `staleTime` lasts. Runs on failure too, for the
       // reason the queue's own refetch does: a refusal usually means the server
@@ -352,15 +350,13 @@ export function GatedSection({ group, heading, objectButton, onDone }: {
             {ANSWER_WORDS.arrival.reject}
           </Button>
         )}
-        {objectButton}
       </Stack>
 
       <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1.5 }}>
         {holdingNote(group)}
       </Typography>
 
-      {/* The run's own question, beside the sentence saying what is being held
-          — on the card and not only on the preview behind "Look at the object".
+      {/* The run's own question, beside the sentence saying what is being held.
           A rule that cannot settle a row writes down what it saw and holds it
           (ADR-0058), and the batch answer of #852 can dispose of the row
           without the object ever being opened: a question kept behind a toggle

@@ -101,8 +101,9 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   const officialSiteHref = safeHref(item.website_url);
 
   const madeOf = madeOfLabel(item.offered_locations, item.counted_works_total ?? undefined);
+  const description = item.object_description?.trim() || null;
 
-  if (!thumbnail && !hasPoint && !madeOf && regions.length === 0 && !wikipediaHref && !officialSiteHref && !unescoHref) return null;
+  if (!thumbnail && !description && !hasPoint && !madeOf && regions.length === 0 && !wikipediaHref && !officialSiteHref && !unescoHref) return null;
 
   return (
     <Stack direction="row" spacing={1.5} sx={{ mb: 1.5 }} alignItems="flex-start">
@@ -153,6 +154,14 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
             `image_url` is a local path draws no picture here (see above), and a
             photographer named under no photograph credits them for nothing. */}
         {thumbnail && <ImageCreditLine credit={item.image_credit} />}
+        {description && (
+          // What the object is, in the source's words: "museum in Saint Petersburg,
+          // Russia". One line, so a UNESCO site's paragraph does not push the card's
+          // question down; cut with an ellipsis and whole on hover (#1780).
+          <Typography variant="body2" color="text.secondary" noWrap title={description}>
+            {description}
+          </Typography>
+        )}
         {madeOf && (
           <Typography variant="caption" color="text.secondary" display="block">
             {madeOf}

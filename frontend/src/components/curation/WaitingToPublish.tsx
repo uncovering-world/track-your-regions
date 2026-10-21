@@ -27,11 +27,9 @@
  * `conflict` card: the same museum can legitimately appear under both.
  */
 
-import { useState } from 'react';
-import { Button, Card, CardContent, Stack } from '@mui/material';
+import { Card, CardContent, Stack } from '@mui/material';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 import { ItemHeader } from './queueCard';
-import { ObjectPreview } from './ObjectPreview';
 import { GatedSection } from './GatedSection';
 import { sectionKind, sectionLabel, sectionsKinds, type GatedGroup } from './gatedGroup';
 import { liftSharedFacts } from './sharedFacts';
@@ -70,43 +68,30 @@ export function groupGated(
 }
 
 /**
- * One place's card: its header once, then a section per kind that asks.
- *
- * `ReviewBench` mounts this without a key, deliberately — the object preview
- * staying open as a curator works down the queue is the behaviour
- * `ObjectPreview` is written around — so the preview's toggle lives here,
- * while each section is keyed on its place and membership and starts afresh on
- * the next row.
+ * One place's card: its header once, then a section per kind that asks. Each
+ * section is keyed on its place and membership and starts afresh on the next row.
  */
 export function GatedCard({ sections, onDone }: { sections: GatedGroup[]; onDone: (message?: string) => void }) {
-  const [showObject, setShowObject] = useState(false);
   const first = sections[0];
   const item = (first.arrival ?? first.held ?? first.contents)!;
   const several = sections.length > 1;
-  const objectButton = (
-    <Button variant="text" onClick={() => setShowObject(v => !v)}>
-      {showObject ? 'Hide the object' : 'Look at the object'}
-    </Button>
-  );
 
   return (
     <Card variant="outlined">
       <CardContent>
         <ItemHeader item={item} kinds={several || first.sharedBy ? sectionsKinds(sections) : undefined} />
         <Stack spacing={2}>
-          {sections.map((group, index) => (
+          {sections.map(group => (
             <GatedSection
               // The place's section answers under one of its kinds' memberships,
               // whose own section may follow it, so it is keyed apart.
               key={`${group.id}:${group.membershipId ?? ''}${group.sharedBy ? ':place' : ''}`}
               group={group}
               heading={several ? headingOf(group) : undefined}
-              objectButton={index === sections.length - 1 ? objectButton : undefined}
               onDone={onDone}
             />
           ))}
         </Stack>
-        {showObject && <ObjectPreview experienceId={first.id} />}
       </CardContent>
     </Card>
   );

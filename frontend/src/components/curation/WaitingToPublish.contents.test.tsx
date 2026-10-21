@@ -354,10 +354,8 @@ describe('a point the source moved', () => {
 
 describe('a card moving to the next object', () => {
   it('closes what a curator opened', () => {
-    // `ReviewBench` mounts this card without a key on purpose — the object
-    // preview staying open as a curator works down the queue is behaviour
-    // `ObjectPreview` is written around — so the next waiting row reconciles
-    // into this same instance. A work held open would then be paired with the
+    // A card re-rendered with the next waiting row reconciles into the same
+    // instance wherever its parent does not key it. A work held open would then be paired with the
     // *new* card's id and name, and corrected under another museum's id, which
     // is what proves the caller may correct it at all.
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -393,10 +391,9 @@ describe('a card moving to the next object', () => {
  * A row the Archaeology rule could not settle by itself is held with the doubt
  * written down (ADR-0058): the Pushkin Museum's antiquities are one department
  * of an art museum, and whether the exposition is substantially archaeology is
- * a judgement no classes answer. On the preview alone the question sits behind
- * "Look at the object" — and the batch answer of #852 can dispose of the row
- * without the object ever being opened, so a curator could answer a question
- * they were never shown.
+ * a judgement no classes answer. The batch answer of #852 can dispose of the row
+ * without the object ever being opened, so the question is drawn on the card,
+ * or a curator could answer a question they were never shown.
  */
 describe('the question the run wrote down', () => {
   /** An arrival held for a curator, with or without a note from the run. */
@@ -437,9 +434,9 @@ describe('the question the run wrote down', () => {
     expect(screen.queryByText(/The run asks:/)).toBeNull();
   });
 
-  it('says nothing for a note of blanks, as the preview says nothing for one', () => {
+  it('says nothing for a note of blanks', () => {
     // A label drawn over nothing tells a curator a question was asked and then
-    // withholds it. `ObjectPreview` trims the same note for the same reason.
+    // withholds it.
     renderArrival(arrival('   '));
 
     expect(screen.queryByText(/The run asks:/)).toBeNull();

@@ -22,9 +22,8 @@
  * small id beside it, which copies (`SourceId`).
  *
  * **Keyed on the object by its caller**, which is what keeps an open dialog from
- * outliving the card it was opened from: `ReviewBench` mounts `GatedCard`
- * without a key on purpose, so a card moving to the next waiting row reconciles
- * into the same instance, and a work held open here would then be paired with
+ * outliving the card it was opened from: a card re-rendered with another row
+ * can reconcile into the same instance, and a work held open here would then be paired with
  * the *new* card's id and name. A key remounts this and React resets it.
  */
 
