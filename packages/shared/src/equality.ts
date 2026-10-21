@@ -17,10 +17,13 @@
  *
  * `''` counts: a source that sends an empty string where the row holds `null`
  * has not proposed anything, and a row for it would be a question with no
- * content.
+ * content. So does an empty list: public art stores `creators: []` for a
+ * monument whose maker Wikidata does not name, and a source of the same place
+ * that sends no `creators` at all has not proposed removing anyone (#1792).
  */
-function isAbsent(value: unknown): boolean {
-  return value === null || value === undefined || value === '';
+export function isEmptyValue(value: unknown): boolean {
+  return value === null || value === undefined || value === ''
+    || (Array.isArray(value) && value.length === 0);
 }
 
 /** A JSON object with named keys — not an array, not `null`. */
@@ -35,7 +38,7 @@ function isNamedObject(value: unknown): value is Record<string, unknown> {
  */
 export function jsonEquals(a: unknown, b: unknown): boolean {
   if (a === b) return true;
-  if (isAbsent(a) && isAbsent(b)) return true;
+  if (isEmptyValue(a) && isEmptyValue(b)) return true;
   if (a === null || b === null || a === undefined || b === undefined) return false;
   if (typeof a !== typeof b) return false;
 

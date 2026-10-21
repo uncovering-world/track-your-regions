@@ -10,7 +10,7 @@
  * of edits that are real.
  */
 
-import { jsonEquals } from '@tyr/shared/equality';
+import { isEmptyValue, jsonEquals } from '@tyr/shared/equality';
 import { sameLabelSet } from './labelFold.js';
 import { distanceMeters, LOCATION_MAJOR_METERS, LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
 
@@ -440,12 +440,8 @@ interface RawDiff {
   passedTheGate?: GatePass;
 }
 
-function isAbsent(value: unknown): boolean {
-  return value === null || value === undefined || value === '';
-}
-
 function textEquals(a: unknown, b: unknown): boolean {
-  if (isAbsent(a) && isAbsent(b)) return true;
+  if (isEmptyValue(a) && isEmptyValue(b)) return true;
   return a === b;
 }
 

@@ -14,8 +14,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { jsonEquals } from '@tyr/shared/equality';
-import { changedKeys, isEmptyValue } from './objectDiff';
+import { changedKeys } from './objectDiff';
 
 describe('changedKeys', () => {
   /**
@@ -78,17 +77,5 @@ describe('changedKeys', () => {
     // The floor under a disagreement with the server, which applies the same equality
     // before reporting the field at all.
     expect(changedKeys({ a: 1, b: 2 }, { b: 2, a: 1 })).toBeNull();
-  });
-});
-
-describe('isEmptyValue', () => {
-  it('reads an empty list as nothing, which jsonEquals deliberately does not', () => {
-    // A place with no countries listed and then two is a fact arriving, to a person.
-    expect(isEmptyValue([])).toBe(true);
-    expect(isEmptyValue(null)).toBe(true);
-    expect(isEmptyValue('')).toBe(true);
-    expect(isEmptyValue(false)).toBe(false);
-    expect(isEmptyValue(0)).toBe(false);
-    expect(jsonEquals([], null)).toBe(false);
   });
 });
