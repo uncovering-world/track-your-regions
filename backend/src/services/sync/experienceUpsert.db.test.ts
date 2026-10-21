@@ -383,6 +383,50 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     }
   });
 
+  it('writes a subtitle where the place holds none, and asks about another subtitle (#1795)', async () => {
+    // Ajanta Caves again: the UNESCO run writes its paragraph and no subtitle,
+    // and Archaeology brings Wikidata's line.
+    const line = '2nd century BCE to 1st century CE Buddhist cave monuments located in Maharashtra, India';
+    const created = await upsertExperienceRecord(site({}));
+    // The record as the place holds it but for the subtitle: the tests above
+    // leave their own item and credit on this fixture.
+    const held = (await pool.query<{ metadata: Record<string, unknown> }>(
+      'SELECT metadata FROM experiences WHERE id = $1', [created.experienceId],
+    )).rows[0].metadata;
+    const record = (subtitle: string) => ({ ...site(held), subtitle });
+    await pool.query(
+      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+        WHERE experience_id = $1 AND source_id = $2`,
+      [created.experienceId, archaeology],
+    );
+    const log = (await pool.query<{ id: number }>(
+      `INSERT INTO experience_sync_logs (source_id, status, started_at, is_dry_run)
+       VALUES ($1, 'running', NOW(), FALSE) RETURNING id`, [archaeology],
+    )).rows[0].id;
+    const state = async () => (await pool.query<{ subtitle: string | null; pointer: number | null; state: string }>(
+      `SELECT e.subtitle, m.pending_change_sync_log_id AS pointer, m.curation_state AS state
+         FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
+        WHERE e.id = $1`,
+      [created.experienceId, archaeology],
+    )).rows[0];
+    try {
+      expect((await state()).subtitle).toBeNull();
+      const arrived = await upsertExperienceRecord(record(line), { syncLogId: log });
+      expect(arrived.changeSet.heldFields).toEqual([]);
+      expect(arrived.changeSet.changedFields.map(f => [f.field, f.passedTheGate])).toEqual([['subtitle', 'first-subtitle']]);
+      expect(await state()).toEqual({ subtitle: line, pointer: null, state: 'verified' });
+
+      const replaced = await upsertExperienceRecord(record('cave monuments'), { syncLogId: log });
+      expect(replaced.changeSet.heldFields.map(f => f.field)).toEqual(['subtitle']);
+      expect(await state()).toEqual({ subtitle: line, pointer: log, state: 'verified' });
+    } finally {
+      await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
+      await pool.query('UPDATE experiences SET subtitle = NULL WHERE id = $1', [created.experienceId]);
+      await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
+      await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [log]);
+    }
+  });
+
   it('asks about a credit that changed its licence, and one beside another picture', async () => {
     const created = await upsertExperienceRecord(site({ imageCredit: OLD_CREDIT }));
     await pool.query(
