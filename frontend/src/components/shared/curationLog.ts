@@ -127,6 +127,9 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // A curator's answer to a near place with a name alike (#1249): one place,
   // which the merged row beside it records; two places; or one part of the other.
   merge_proposal_answered: { label: 'Pair answered', color: BLUE },
+  // A curator's answer to a run's question about an offered place with nothing
+  // to see (#1770): refused from the kind, or kept.
+  visit_question_answered: { label: 'Visit answered', color: BLUE },
   // A pin released, with the rule's verdict written in its place: one an
   // unread batch answer made (#1365, ADR-0096), or one a curator let the rule
   // decide once a run asked about it again (#1367). Red like a kept-out row,
@@ -495,6 +498,7 @@ const PLACE_ACT_DETAILS: Record<string, (d: Record<string, unknown>) => string |
   component_items_answered: d => formatComponentItemsAnswered(d),
   component_item_taken_back: d => formatComponentItemTakenBack(d),
   merge_proposal_answered: d => formatMergeProposalAnswered(d),
+  visit_question_answered: d => formatVisitQuestionAnswered(d),
 };
 
 export function formatLogDetails(entry: CurationLogEntry): string | null {
@@ -589,6 +593,16 @@ function formatMergeProposalAnswered(d: Record<string, unknown>): string | null 
   if (d.answer === 'one') return `${other}: one place, merged into this one`;
   if (d.answer === 'two') return `${other}: two places`;
   return d.partId === d.otherId ? `${other}: part of this place` : `${other}: this place is part of it`;
+}
+
+/** An answer to a run's question about a place with nothing to see (#1770): which kind, and what was done. */
+function formatVisitQuestionAnswered(d: Record<string, unknown>): string | null {
+  if (d.answer !== 'refused' && d.answer !== 'kept') return null;
+  const kind = typeof d.kind === 'string' ? d.kind : 'its kind';
+  return [
+    d.answer === 'refused' ? `Refused from ${kind}: nothing to see` : `Kept in ${kind}`,
+    typeof d.note === 'string' && d.note !== '' ? `“${d.note}”` : null,
+  ].filter(Boolean).join(' — ');
 }
 
 /** A place a merge row names: by the name it had at the act, and its id, which tells two of one name apart. */

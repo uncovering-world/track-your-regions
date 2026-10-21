@@ -37,7 +37,7 @@ export interface AnswerableRow {
 
 export type AnswerableKind =
   | 'arrival' | 'held' | 'contents' | 'conflicts' | 'sources' | 'refused' | 'missing' | 'withdrawn' | 'component-items'
-  | 'merge-proposals' | 'pin-question';
+  | 'merge-proposals' | 'pin-question' | 'visit-question';
 
 export interface AnswerWords {
   /** What the row proposes, as the bar's expansion states it. */
@@ -118,6 +118,14 @@ export const ANSWER_WORDS: Record<AnswerableKind, AnswerWords> = {
     accept: 'Answer on each card',
     reject: 'Answer on each card',
   },
+  // The suggestion is the refusal (#1770), and a refusal pins the place out of
+  // its kind, which a batch never does (ADR-0067): the server refuses accept,
+  // and reject keeps every place.
+  'visit-question': {
+    proposes: 'refuse a place few witnesses vouch for and Jev reads as having nothing to see',
+    accept: 'Refuse on each card',
+    reject: 'Keep them all',
+  },
 };
 
 /** The plural noun the bar counts a kind by. */
@@ -133,6 +141,7 @@ export const KIND_NOUN: Record<AnswerableKind, [string, string]> = {
   'component-items': ['site with candidate items', 'sites with candidate items'],
   'merge-proposals': ['place with a near place of a name alike', 'places with a near place of a name alike'],
   'pin-question': ['questioned pin', 'questioned pins'],
+  'visit-question': ['place with nothing to see', 'places with nothing to see'],
 };
 
 /**

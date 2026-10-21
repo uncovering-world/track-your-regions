@@ -108,6 +108,7 @@ export function shaped(over: QueuePatch = {}) {
     componentItems: [],
     mergeProposals: [],
     pinQuestions: [],
+    visitQuestions: [],
     keptOut: [],
     arrivals: [],
     held: [],

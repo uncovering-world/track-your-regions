@@ -13,6 +13,7 @@ import type { QueueRow, RowKind } from './queueRows';
 import { MissingCard, ConflictCard } from './ReviewQueue';
 import { RefusedCard } from './RefusedCards';
 import { PinQuestionCard } from './PinQuestionCard';
+import { VisitQuestionCard } from './VisitQuestionCard';
 import { SourcesCard } from './SourcesCard';
 import { ComponentItemsCard } from './ComponentItemsCard';
 import { MergeProposalsCard } from './MergeProposalsCard';
@@ -66,6 +67,11 @@ const KIND_NOTE: Record<RowKind, string> = {
     + 'place down for a different reason, or its rule would now take in what you kept out — or an admin asked for every '
     + 'such answer to be looked at again after the rule changed, and the run still says what you answered over. Nothing '
     + 'has changed for visitors yet: keep your answer, or let the rule decide.',
+  'visit-question': 'This list offers the place, but little says a visitor goes there: fewer than two of four '
+    + 'witnesses — a travel guide, photographs taken there, Wikidata\'s heritage or visitor facts, the map — vouch for '
+    + 'it, and Jev reads it as a place with nothing to see, not one place, or an object kept elsewhere. Eboracum is '
+    + 'Roman York under the living city; the Venus of Tan-Tan is a stone in a museum. Visitors still see it: refuse it '
+    + 'from the list, as suggested, or keep it, and it is not asked again.',
 };
 
 /** The note above a kind whose source stopped listing a place other sources still list (#1264). */
@@ -105,6 +111,7 @@ export function ReviewBench({ row, onDone }: {
       {row.kind === 'merge-proposals' && row.item && <MergeProposalsCard item={row.item} onDone={onDone} />}
       {row.kind === 'refused' && row.items && <RefusedCard items={row.items} onDone={onDone} />}
       {row.kind === 'pin-question' && row.items && <PinQuestionCard items={row.items} onDone={onDone} />}
+      {row.kind === 'visit-question' && row.items && <VisitQuestionCard items={row.items} onDone={onDone} />}
       {row.kind === 'missing' && row.items && asksOfKinds(row.items) && <KindMissingCard items={row.items} onDone={onDone} />}
       {row.kind === 'missing' && row.item && !asksOfKinds(row.items) && <MissingCard item={row.item} onDone={onDone} />}
       {row.kind === 'withdrawn' && row.item && <WithdrawnCard item={row.item} onDone={onDone} />}

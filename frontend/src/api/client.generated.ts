@@ -2879,6 +2879,7 @@ export const CuratorActivityEntryAction = {
   admission_pin_kept: 'admission_pin_kept',
   admission_pin_handed_back: 'admission_pin_handed_back',
   merge_proposal_answered: 'merge_proposal_answered',
+  visit_question_answered: 'visit_question_answered',
 } as const;
 
 /**
@@ -3008,6 +3009,7 @@ export const CurationLogEntryAction = {
   admission_pin_kept: 'admission_pin_kept',
   admission_pin_handed_back: 'admission_pin_handed_back',
   merge_proposal_answered: 'merge_proposal_answered',
+  visit_question_answered: 'visit_question_answered',
 } as const;
 
 /**
@@ -7876,6 +7878,7 @@ export const QueueFacetsKindItemKind = {
   'component-items': 'component-items',
   'merge-proposals': 'merge-proposals',
   'pin-question': 'pin-question',
+  'visit-question': 'visit-question',
   arrival: 'arrival',
   held: 'held',
   contents: 'contents',
@@ -7982,6 +7985,7 @@ export const QueueKind = {
   'component-items': 'component-items',
   'merge-proposals': 'merge-proposals',
   'pin-question': 'pin-question',
+  'visit-question': 'visit-question',
 } as const;
 
 /**
@@ -8810,6 +8814,7 @@ export const ReviewAnswerBodyRowsItemKind = {
   'component-items': 'component-items',
   'merge-proposals': 'merge-proposals',
   'pin-question': 'pin-question',
+  'visit-question': 'visit-question',
 } as const;
 
 export type ReviewAnswerBodyRowsItem = {
@@ -8905,6 +8910,12 @@ export interface ReviewAnswerDid {
      * @maximum 9007199254740991
      */
   pairs?: number;
+  /**
+     * Questions about a place with nothing to see answered, for a visit-question row (#1770): a reject keeps the place; an accept is refused, since a refusal is answered on the card.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  visitQuestions?: number;
 }
 
 export type ReviewAnswerResultAnsweredItem = {
@@ -9058,6 +9069,7 @@ export const ReviewQueueItemKind = {
   'component-items': 'component-items',
   'merge-proposals': 'merge-proposals',
   'pin-question': 'pin-question',
+  'visit-question': 'visit-question',
 } as const;
 
 /**
@@ -9160,6 +9172,45 @@ export interface SitePoint {
      */
   imageUrl: string | null;
   imageCredit: ImageCredit | null;
+}
+
+export type VisitQuestionWitnessesItem = typeof VisitQuestionWitnessesItem[keyof typeof VisitQuestionWitnessesItem];
+
+
+export const VisitQuestionWitnessesItem = {
+  guide: 'guide',
+  photos: 'photos',
+  formal: 'formal',
+  map: 'map',
+} as const;
+
+/**
+ * Jev's reading of what a visitor finds there: little or nothing visible, not a place, or an object kept elsewhere.
+ */
+export type VisitQuestionReading = typeof VisitQuestionReading[keyof typeof VisitQuestionReading];
+
+
+export const VisitQuestionReading = {
+  nothing: 'nothing',
+  'not-a-place': 'not-a-place',
+  object: 'object',
+} as const;
+
+/**
+ * An offered place few witnesses vouch for and Jev reads as nothing to see (#1770): the suggested answer is to refuse it from the kind.
+ */
+export interface VisitQuestion {
+  /** The visit witnesses that vouched for the place when it was asked (ADR-0128): fewer than two. */
+  witnesses: VisitQuestionWitnessesItem[];
+  /** Jev's reading of what a visitor finds there: little or nothing visible, not a place, or an object kept elsewhere. */
+  reading: VisitQuestionReading;
+  /** How sure Jev was of that reading, 0 to 1; a question is raised at 0.7 or more. */
+  confidence: number;
+  /**
+     * When the run asked.
+     * @pattern ^(?:(?:\d\d[2468][048]|\d\d[13579][26]|\d\d0[48]|[02468][048]00|[13579][26]00)-02-29|\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\d|30)|(?:02)-(?:0[1-9]|1\d|2[0-8])))T(?:(?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d(?:\.\d+)?(?:Z|([+-](?:[01]\d|2[0-3]):[0-5]\d)))$
+     */
+  askedAt: string;
 }
 
 /**
@@ -9311,6 +9362,8 @@ export interface ReviewQueueItem {
   merge_pairs?: MergePair[] | null;
   /** `pin-question` items only (#1367). */
   pin_question?: PinQuestion | null;
+  /** `visit-question` items only (#1770). */
+  visit_question?: VisitQuestion | null;
 }
 
 /**
@@ -9331,6 +9384,8 @@ export interface ReviewQueue {
   mergeProposals: ReviewQueueItem[];
   /** Curators' admission pins a run no longer agrees with (#1367). */
   pinQuestions: ReviewQueueItem[];
+  /** Offered places few witnesses vouch for and Jev reads as nothing to see (#1770). */
+  visitQuestions: ReviewQueueItem[];
   arrivals: ReviewQueueItem[];
   held: ReviewQueueItem[];
   /** One per place and membership holding unread rows it placed (#1290). */
@@ -10677,6 +10732,63 @@ export interface VisionMatchResult {
   debugImages: VisionMatchResultDebugImages;
 }
 
+export type VisitQuestionAnswerBodyDecision = typeof VisitQuestionAnswerBodyDecision[keyof typeof VisitQuestionAnswerBodyDecision];
+
+
+export const VisitQuestionAnswerBodyDecision = {
+  keep: 'keep',
+  refuse: 'refuse',
+} as const;
+
+export interface VisitQuestionAnswerBody {
+  decision: VisitQuestionAnswerBodyDecision;
+  /**
+     * @maximum 2147483647
+     * @exclusiveMinimum 0
+     */
+  membershipId: number;
+  /** @maxLength 1000 */
+  note?: string;
+}
+
+export type VisitQuestionAnsweredAnswer = typeof VisitQuestionAnsweredAnswer[keyof typeof VisitQuestionAnsweredAnswer];
+
+
+export const VisitQuestionAnsweredAnswer = {
+  kept: 'kept',
+  refused: 'refused',
+} as const;
+
+/**
+ * The verdict now standing on the membership: refused by the curator, or admitted as before.
+ */
+export type VisitQuestionAnsweredAdmission = typeof VisitQuestionAnsweredAdmission[keyof typeof VisitQuestionAnsweredAdmission];
+
+
+export const VisitQuestionAnsweredAdmission = {
+  admitted: 'admitted',
+  refused: 'refused',
+} as const;
+
+/**
+ * A curator's answer to a run's question about an offered place with nothing to see (#1770).
+ */
+export interface VisitQuestionAnswered {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  membershipId: number;
+  answer: VisitQuestionAnsweredAnswer;
+  /** The verdict now standing on the membership: refused by the curator, or admitted as before. */
+  admission: VisitQuestionAnsweredAdmission;
+}
+
 /**
  * `visit`: something to see or enter; `part`: a part of a larger place; `object`: a thing kept elsewhere; `nothing`: little or nothing visible; `not-a-place`: a culture, a kingdom or a group of sites; `other-kind`: visited for something the place's kinds do not offer.
  */
@@ -11950,6 +12062,7 @@ export const GetAdminCuratorsByUserIdActivityAction = {
   admission_pin_kept: 'admission_pin_kept',
   admission_pin_handed_back: 'admission_pin_handed_back',
   merge_proposal_answered: 'merge_proposal_answered',
+  visit_question_answered: 'visit_question_answered',
 } as const;
 
 export type GetAdminCurationActivityParams = {
@@ -12022,6 +12135,7 @@ export const GetAdminCurationActivityAction = {
   admission_pin_kept: 'admission_pin_kept',
   admission_pin_handed_back: 'admission_pin_handed_back',
   merge_proposal_answered: 'merge_proposal_answered',
+  visit_question_answered: 'visit_question_answered',
 } as const;
 
 export type GetAdminUsersSearchParams = {
@@ -20597,6 +20711,46 @@ return apiFetch<PinQuestionAnswered>(getPostExperiencesByIdAdmissionPinUrl(id),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(pinQuestionAnswerBody)
+  }
+);}
+
+
+
+export const getPostExperiencesByIdVisitQuestionUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/visit-question`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Keep a place a run asked about as one with nothing to see, or refuse it from its kind
+ */
+export const postExperiencesByIdVisitQuestion = async (id: number,
+    visitQuestionAnswerBody: VisitQuestionAnswerBody, options?: Parameters<typeof apiFetch>[1]): Promise<VisitQuestionAnswered> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<VisitQuestionAnswered>(getPostExperiencesByIdVisitQuestionUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(visitQuestionAnswerBody)
   }
 );}
 
