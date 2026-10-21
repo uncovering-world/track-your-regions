@@ -17,7 +17,9 @@
  * them groups of sites or a route.
  */
 
-import { askWikipediaOnce, enwikiTitleOf, pagesOf, type CategoryPage } from '../wikipediaCategories.js';
+import {
+  askWikipediaOnce, askedTitles, enwikiTitleOf, pagesOf, type CategoryOptions, type CategoryPage,
+} from '../wikipediaCategories.js';
 import { WaitBudget } from '../sourceRetry.js';
 import { userAgent } from '../../../config/userAgent.js';
 import type { JevChoiceQuestion } from '../../jev/jevClient.js';
@@ -102,4 +104,73 @@ export async function articleLead(articleUrl: string | null, fetchImpl?: typeof 
   const page = (pagesOf(answer) as ExtractPage[]).find((one) => !one.missing);
   const lead = page?.extract?.trim();
   return lead ? lead.slice(0, LEAD_CHARS) : null;
+}
+
+/** Titles per ask: the most extracts English Wikipedia gives in one answer (`exlimit`). */
+export const LEADS_AT_ONCE = 20;
+
+/**
+ * The leads of many places' articles, for a run (#1770): `LEADS_AT_ONCE`
+ * titles per ask, one ask at a time with `options.pause` between, each
+ * retried as Wikipedia asks (a 429's `Retry-After`) within the run's
+ * `budget`. Answered by article URL: a lead, or null for a place with no
+ * English article or a page with none. An article whose ask failed is absent,
+ * which the run reads as "not read this time", never as "no lead".
+ */
+export async function articleLeads(
+  articleUrls: readonly (string | null)[], options: CategoryOptions, budget: WaitBudget,
+): Promise<Map<string | null, string | null>> {
+  const out = new Map<string | null, string | null>();
+  // Each English title, with the URLs that name it; a URL with none has no lead.
+  const titled = new Map<string, string[]>();
+  for (const url of new Set(articleUrls)) {
+    const title = enwikiTitleOf(url);
+    if (!title) out.set(url, null);
+    else titled.set(title, [...(titled.get(title) ?? []), url as string]);
+  }
+  const titles = [...titled.keys()];
+  for (let i = 0; i < titles.length; i += LEADS_AT_ONCE) {
+    if (i > 0) await options.pause?.();
+    const batch = titles.slice(i, i + LEADS_AT_ONCE);
+    const answer = await askLeads(batch, options, budget);
+    // An answer with no pages, or one Wikipedia cut short, did not answer
+    // every title: none is filed, so none is read as having no lead.
+    if (answer?.query && !(answer.continue && Object.keys(answer.continue).length > 0)) {
+      fileLeads(batch, answer, titled, out);
+    }
+  }
+  return out;
+}
+
+/** One ask for a batch of titles, or null where Wikipedia did not answer it; a Cancel rethrows. */
+async function askLeads(batch: string[], options: CategoryOptions, budget: WaitBudget) {
+  try {
+    return await askWikipediaOnce({
+      action: 'query', prop: 'extracts', exintro: '1', explaintext: '1', exlimit: 'max', redirects: '1',
+      titles: batch.join('|'), format: 'json', formatversion: '2',
+    }, options, budget, `the leads of ${batch.length} articles`);
+  } catch (error) {
+    if (options.isCancelled?.()) throw error;
+    console.error('[jev] %s', error instanceof Error ? error.message : String(error));
+    return null;
+  }
+}
+
+/**
+ * A batch's answer filed by URL, for the titles it holds a page for: the lead
+ * where the page has one, null where the page is missing or has none. A title
+ * the answer holds no page for stays out, unread.
+ */
+function fileLeads(
+  batch: string[], answer: Awaited<ReturnType<typeof askWikipediaOnce>>,
+  titled: ReadonlyMap<string, string[]>, out: Map<string | null, string | null>,
+): void {
+  const asked = askedTitles(batch, answer);
+  for (const page of pagesOf(answer) as ExtractPage[]) {
+    if (!page.title) continue;
+    const lead = page.missing ? '' : page.extract?.trim() ?? '';
+    for (const title of asked.get(page.title) ?? []) {
+      for (const url of titled.get(title) ?? []) out.set(url, lead ? lead.slice(0, LEAD_CHARS) : null);
+    }
+  }
 }

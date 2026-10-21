@@ -161,7 +161,7 @@ export function visitQuestionsSentence(tally: VisitQuestionTally | undefined, dr
   if (!tally || (tally.read === 0 && !tally.unread)) return '';
   return `; places with nothing to see: ${tally.asked} ${dryRun ? 'would be asked' : 'asked'} of a curator, `
     + `of ${tally.short} that fewer than two witnesses vouch for among ${tally.read} read`
-    + (tally.unread ? `, ${tally.unread} left for the next run as OpenStreetMap did not answer` : '')
+    + (tally.unread ? `, ${tally.unread} left for the next run as OpenStreetMap or Wikipedia did not answer` : '')
     + (tally.stopped ? ', stopped by Cancel' : '');
 }
 

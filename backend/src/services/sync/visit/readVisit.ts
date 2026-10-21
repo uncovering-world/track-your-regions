@@ -54,11 +54,15 @@ async function store(experienceId: number, suggestion: VisitSuggestion, stillAsk
  * A new reading: the lead read, Jev asked, the answer recorded. Null where
  * there is none to show — a lead that could not be read, an answer refused,
  * an answer about a place a run changed meanwhile, or a call that failed.
+ * A run passes the lead it read for many places at once (`articleLeads`);
+ * the card reads its own.
  */
-export async function readVisit(id: number, asked: VisitAsked, stillAsked: StillAsked): Promise<Reading | null> {
+export async function readVisit(
+  id: number, asked: VisitAsked, stillAsked: StillAsked, knownLead?: string | null,
+): Promise<Reading | null> {
   let lead: string | null;
   try {
-    lead = await articleLead(asked.article);
+    lead = knownLead !== undefined ? knownLead : await articleLead(asked.article);
   } catch (error) {
     // The lead decides most readings (`visitReading.ts`), and a reading is kept
     // for the place as long as it stands: asked without the lead it would be

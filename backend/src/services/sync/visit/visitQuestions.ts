@@ -42,7 +42,7 @@ import {
 import { commonsPhotoDoor, photographed, type PhotoPlace, type PhotoSend } from './commonsPhotos.js';
 import { readVisit, type Reading } from './readVisit.js';
 import { fetchVisitFacts } from './visitFacts.js';
-import type { VisitAsked, VisitReading } from './visitReading.js';
+import { articleLeads, type VisitAsked, type VisitReading } from './visitReading.js';
 import { askedSql, newestReadingSql } from './visitSuggestions.js';
 import { WITNESSES_NEEDED, mapWitness, witnessesOf, type Witness } from './witnesses.js';
 
@@ -82,7 +82,10 @@ export interface VisitQuestionDoors {
   osm: (qids: string[]) => Promise<Map<string, OsmObject[]>>;
   photos: PhotoSend;
   guide?: (qids: readonly string[]) => Promise<Set<string>>;
-  read?: (place: OfferedPlace) => Promise<Reading | null>;
+  /** Jev's reading of a place, given its article's lead where the run read one (`leads`). */
+  read?: (place: OfferedPlace, lead?: string | null) => Promise<Reading | null>;
+  /** The leads of the places' articles, read for all at once (`articleLeads`); absent leaves each read its own. */
+  leads?: (articleUrls: readonly (string | null)[]) => Promise<Map<string | null, string | null>>;
 }
 
 /** The source's offered memberships no question was ever raised on, with a Wikidata item. */
@@ -172,8 +175,9 @@ export interface VisitQuestion {
  * every place short of two, and the questions where both say a visitor finds
  * nothing there. Writes no question; the readings Jev gave are recorded as
  * every reading is (`readVisit`), so a later run or card does not pay twice.
- * A place whose map the mirror did not answer is counted `unread` and neither
- * read by Jev nor asked: the next run reads it, since it raised no question.
+ * A place whose map the mirror did not answer, or whose article's lead
+ * Wikipedia did not give, is counted `unread` and neither read by Jev nor
+ * asked: the next run reads it, since it raised no question.
  */
 export async function visitQuestionsOf(
   places: readonly OfferedPlace[], doors: VisitQuestionDoors, isCancelled: () => boolean = () => false,
@@ -181,24 +185,32 @@ export async function visitQuestionsOf(
   const { witnesses, unread } = await witnessesOfPlaces(places, doors);
   const short = places.filter((place) => !unread.has(place.qid)
     && (witnesses.get(place.qid)?.length ?? 0) < WITNESSES_NEEDED);
-  const read = doors.read ?? ((place: OfferedPlace) => readVisit(place.experienceId, place.asked, () => 'TRUE'));
-  const readings = await inTurn(short, async (place) => {
+  const read = doors.read
+    ?? ((place: OfferedPlace, lead?: string | null) => readVisit(place.experienceId, place.asked, () => 'TRUE', lead));
+  // The leads of the places Jev is to read, read together, so Wikipedia is
+  // asked a few times in turn rather than once per place at once.
+  const toRead = short.filter((place) => !place.stored);
+  const leads = doors.leads ? await doors.leads(toRead.map((place) => place.asked.article)) : null;
+  const noLead = new Set(leads ? toRead.filter((place) => !leads.has(place.asked.article)).map((place) => place.qid) : []);
+  const readable = short.filter((place) => !noLead.has(place.qid));
+  const readings = await inTurn(readable, async (place) => {
     // Read already for the place as it stands: Jev's word, or none where its
     // answer was refused — either way not asked, nor paid for, again.
     if (place.stored) {
       return place.stored.reading === null ? null
         : { reading: place.stored.reading, confidence: Number(place.stored.confidence) };
     }
-    return read(place);
+    return read(place, leads ? leads.get(place.asked.article) : undefined);
   }, isCancelled);
   const questions: VisitQuestion[] = [];
-  short.forEach((place, i) => {
+  readable.forEach((place, i) => {
     const reading = readings[i];
     if (reading && NOT_A_VISIT.has(reading.reading) && reading.confidence >= VISIT_QUESTION_SURE) {
       questions.push({ place, witnesses: witnesses.get(place.qid) ?? [], reading });
     }
   });
-  return { short: short.length, unread: places.filter((place) => unread.has(place.qid)).length, questions };
+  const unreadCount = places.filter((place) => unread.has(place.qid) || noLead.has(place.qid)).length;
+  return { short: readable.length, unread: unreadCount, questions };
 }
 
 /**
@@ -249,6 +261,12 @@ async function doorsOf(sourceId: number, progress: SyncProgress, refreshCache: b
     sparql,
     osm: (qids) => mapOfWhatAnswered(door, qids, progress),
     photos,
+    leads: (urls) => articleLeads(urls, {
+      userAgent: WIKIDATA_USER_AGENT,
+      isCancelled: () => progress.cancel,
+      pause: () => delay(SPARQL_DELAY_MS),
+      onWait: onWait('Wikipedia'),
+    }, budget),
   };
 }
 

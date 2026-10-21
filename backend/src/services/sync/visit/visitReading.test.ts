@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { articleLead, LEAD_CHARS, VISIT_READINGS, visitQuestion } from './visitReading.js';
+import { WaitBudget } from '../sourceRetry.js';
+import { articleLead, articleLeads, LEAD_CHARS, LEADS_AT_ONCE, VISIT_READINGS, visitQuestion } from './visitReading.js';
 
 const LUPANAR = {
   name: 'Lupanar', countries: ['Italy'], kinds: ['Archaeology'],
@@ -51,5 +52,59 @@ describe("Jev's reading of what a visitor finds (#1768)", () => {
 
     await expect(articleLead(LUPANAR.article, throttled)).rejects.toThrow(/the lead of Lupanar/);
     expect(throttled).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("a run's leads, read together (#1770)", () => {
+  const ROME = 'https://en.wikipedia.org/wiki/Catacombs_of_Rome';
+  const EBORACUM = 'https://en.wikipedia.org/wiki/Eboracum';
+
+  it('asks many titles at once, and files each lead under every URL that names its page', async () => {
+    const fetchImpl = answering({
+      query: {
+        normalized: [{ from: 'Catacombs_of_Rome', to: 'Catacombs of Rome' }],
+        pages: [
+          { title: 'Catacombs of Rome', extract: 'The Catacombs of Rome are ancient catacombs.' },
+          { title: 'Eboracum', extract: 'Eboracum was a fort and later a city.' },
+        ],
+      },
+    });
+
+    const leads = await articleLeads([ROME, EBORACUM, null], { userAgent: 'test', fetchImpl }, new WaitBudget(0));
+
+    expect(leads.get(ROME)).toBe('The Catacombs of Rome are ancient catacombs.');
+    expect(leads.get(EBORACUM)).toBe('Eboracum was a fort and later a city.');
+    expect(leads.get(null)).toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it(`asks ${LEADS_AT_ONCE} titles per ask`, async () => {
+    const urls = Array.from({ length: LEADS_AT_ONCE + 1 }, (_, i) => `https://en.wikipedia.org/wiki/Site_${i}`);
+    const fetchImpl = answering({ query: { pages: urls.map((_, i) => ({ title: `Site ${i}` })) } });
+
+    const leads = await articleLeads(urls, { userAgent: 'test', fetchImpl }, new WaitBudget(0));
+
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    // Answered, with a page and no extract: no lead, which is an answer.
+    expect(leads.get(urls[0])).toBeNull();
+  });
+
+  it('files nothing of an answer that holds no page for a title, or that Wikipedia cut short', async () => {
+    const holdsNone = answering({ query: { pages: [{ title: 'Catacombs of Rome', extract: 'Catacombs.' }] } });
+    const one = await articleLeads([ROME, EBORACUM], { userAgent: 'test', fetchImpl: holdsNone }, new WaitBudget(0));
+    expect(one.get(ROME)).toBe('Catacombs.');
+    expect(one.has(EBORACUM)).toBe(false);
+
+    const cut = answering({ continue: { excontinue: '1', continue: '||' }, query: { pages: [{ title: 'Eboracum' }] } });
+    expect((await articleLeads([EBORACUM], { userAgent: 'test', fetchImpl: cut }, new WaitBudget(0))).has(EBORACUM)).toBe(false);
+  });
+
+  it('leaves out the articles of an ask Wikipedia refused, rather than calling them leadless', async () => {
+    const fetchImpl = vi.fn(async () => new Response('slow down', { status: 429 })) as unknown as typeof fetch;
+
+    const leads = await articleLeads([EBORACUM, null], { userAgent: 'test', fetchImpl }, new WaitBudget(0));
+
+    expect(leads.has(EBORACUM)).toBe(false);
+    expect(leads.get(null)).toBeNull();
   });
 });
