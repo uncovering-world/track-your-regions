@@ -7,7 +7,7 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { collectPublicArt, ENTER_SITELINKS, STAY_SITELINKS } from './pipeline.js';
+import { classifyPublicArt, gatherPublicArt, ENTER_SITELINKS, STAY_SITELINKS } from './pipeline.js';
 import { belowLineReason } from '../sourceLine.js';
 import type { QueryRunner } from '../wikidataQueries.js';
 import type { CacheDescriptor } from '../wikidataCache.js';
@@ -103,6 +103,11 @@ const SCULPTURE = 'Q860861';
 const CATHEDRAL = 'Q56242215';
 const BASILICA = 'Q120560';
 
+/** The run as a pass of one source: the gather, then this source's classification. */
+async function collectPublicArt(run: QueryRunner, admitted: ReadonlySet<string>, offered?: ReadonlySet<string>) {
+  return classifyPublicArt(await gatherPublicArt(run, admitted), admitted, offered);
+}
+
 describe('collectPublicArt', () => {
   it('admits what clears the line and files what the rule refuses, with its reason', async () => {
     const world: World = {
@@ -127,6 +132,24 @@ describe('collectPublicArt', () => {
       },
       { externalId: 'Q1499912', name: 'Segovia Cathedral', reason: 'a place of worship, not public art' },
     ]);
+  });
+
+  it('classifies one gather for two sources without asking Wikidata again (ADR-0132)', async () => {
+    const world: World = {
+      entities: [
+        { qid: 'Q1', label: 'Stays', under: MONUMENT, sitelinks: STAY_SITELINKS + 1, classes: [MONUMENT] },
+        { qid: 'Q3', label: 'Enters', under: MONUMENT, sitelinks: ENTER_SITELINKS, classes: [MONUMENT] },
+      ],
+    };
+    let questions = 0;
+    const door = doorTo(world);
+    const gathered = await gatherPublicArt({ ...door, sparql: (q, d) => { questions++; return door.sparql(q, d); } }, new Set(['Q1']));
+    const asked = questions;
+
+    // Each source holds its own stay line: the one that admitted Q1 keeps it.
+    expect(classifyPublicArt(gathered, new Set(['Q1'])).items.map((i) => i.qid).sort()).toEqual(['Q1', 'Q3']);
+    expect(classifyPublicArt(gathered, new Set()).items.map((i) => i.qid)).toEqual(['Q3']);
+    expect(questions).toBe(asked);
   });
 
   it('keeps an admitted row that slipped below the entry line but not below the stay line', async () => {

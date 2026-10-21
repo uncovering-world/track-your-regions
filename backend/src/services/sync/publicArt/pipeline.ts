@@ -98,6 +98,19 @@ export interface CollectedPublicArt {
   filtered: FilteredEntity[];
 }
 
+/**
+ * What the gather read, before any kind's rule decided anything: the class
+ * trees, every candidate the admitting classes name, and the facts about each
+ * of them and about what holds it. The sources of a pass read it whole
+ * (ADR-0132), each through its own classification.
+ */
+export interface GatheredPublicArt {
+  trees: PublicArtTrees;
+  pool: Map<string, PoolEntity>;
+  facts: Map<string, EntityFacts>;
+  containers: Map<string, ContainerFacts>;
+}
+
 async function collectTrees(run: QueryRunner): Promise<PublicArtTrees> {
   // A step before every hop, as the museum walk does: each hop is one query,
   // and the runner's step is where the pacing is spent and a cancel is heard.
@@ -304,7 +317,24 @@ function collectionFacts(facts: EntityFacts, containers: Map<string, ContainerFa
 }
 
 /**
- * Collect the public art the world knows: the candidates that pass the rule
+ * Gather the candidates of public art the world knows, and what each is.
+ *
+ * `admitted` is every row the pass's sources hold as admitted before the run:
+ * a row the class questions no longer name is asked for by id, so that each
+ * kind's rule gives it its own reason rather than the sweep's.
+ */
+export async function gatherPublicArt(
+  run: QueryRunner,
+  admitted: ReadonlySet<string>,
+): Promise<GatheredPublicArt> {
+  const trees = await collectTrees(run);
+  const pool = await collectPool(run, trees, admitted);
+  const { facts, containers } = await collectFacts(run, [...pool.keys()]);
+  return { trees, pool, facts, containers };
+}
+
+/**
+ * Decide what of the gather is public art: the candidates that pass the rule
  * and clear the fame line, and every candidate the rule refused, with the
  * reason it gave.
  *
@@ -315,15 +345,11 @@ function collectionFacts(facts: EntityFacts, containers: Map<string, ContainerFa
  * is the order the run writes them in and the order a person watching it
  * reads.
  */
-export async function collectPublicArt(
-  run: QueryRunner,
+export function classifyPublicArt(
+  { trees, pool, facts, containers }: GatheredPublicArt,
   admitted: ReadonlySet<string>,
   offered?: ReadonlySet<string>,
-): Promise<CollectedPublicArt> {
-  const trees = await collectTrees(run);
-  const pool = await collectPool(run, trees, admitted);
-  const { facts, containers } = await collectFacts(run, [...pool.keys()]);
-
+): CollectedPublicArt {
   const items: WikidataLandmark[] = [];
   const filtered: FilteredEntity[] = [];
   const candidates = [...pool.values()].sort((a, b) => b.sitelinks - a.sitelinks);

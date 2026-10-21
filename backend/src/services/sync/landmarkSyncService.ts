@@ -16,7 +16,7 @@ import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.j
 import type { FetchResult, ProcessItemResult, SyncRunContext } from './syncContract.js';
 import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
-import { collectPublicArt } from './publicArt/pipeline.js';
+import { classifyPublicArt, gatherPublicArt } from './publicArt/pipeline.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import {
   delay,
@@ -197,14 +197,15 @@ async function fetchLandmarkItems(
   const offered = await placesOtherSourcesOffer(LANDMARK_SOURCE_ID);
 
   const sparql = await wikidataRunDoor(LANDMARK_SOURCE_ID, progress, () => collectingSparql(progress, refreshCache));
-  const { items, fetched, filtered } = await collectPublicArt({
+  const gathered = await gatherPublicArt({
     sparql,
     phase: (message) => { progress.statusMessage = message; },
     step: async () => {
       if (progress.cancel) throw new Error('Sync cancelled');
       await delay(SPARQL_DELAY_MS);
     },
-  }, admitted, offered);
+  }, admitted);
+  const { items, fetched, filtered } = classifyPublicArt(gathered, admitted, offered);
 
   disambiguateDuplicateNames(items);
 
