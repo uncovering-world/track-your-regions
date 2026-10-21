@@ -188,6 +188,7 @@ function buildItems(
         lon: row.lon,
         countryLabel: row.countryLabel,
         imageUrl: row.imageUrl,
+        itemPictures: row.itemPictures,
         website: row.website,
         articleUrl: row.articleUrl,
       },

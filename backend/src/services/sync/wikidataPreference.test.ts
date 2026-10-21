@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { preferredCoordinate, preferredPicture } from './wikidataUtils.js';
+import { applyPreferred, foldPreferred, preferredCoordinate, preferredPicture } from './wikidataUtils.js';
 
 /**
  * The one picture and the one coordinate every Wikidata reader keeps of an
@@ -57,3 +57,21 @@ describe('the coordinate every reader keeps', () => {
     expect(preferredCoordinate(moon, 'Point(-3.61 26.13)')).toBe('Point(-3.61 26.13)');
   });
 });
+
+describe("every picture an item's rows offered (#1778)", () => {
+  it('is kept beside the one every reader keeps, once each and in URL order, and written onto the entry', () => {
+    const b = 'http://commons.wikimedia.org/wiki/Special:FilePath/B.jpg';
+    const a = 'http://commons.wikimedia.org/wiki/Special:FilePath/A.jpg';
+    let kept = foldPreferred(undefined, b, null);
+    kept = foldPreferred(kept, null, null);
+    kept = foldPreferred(kept, a, null);
+    kept = foldPreferred(kept, b, null);
+    expect(kept.imageUrl).toBe(a);
+    expect(kept.pictures).toEqual([a, b]);
+
+    const entry = { imageUrl: null as string | null, itemPictures: [] as readonly string[], lat: null, lon: null };
+    applyPreferred(new Map([['Q1', entry]]), new Map([['Q1', kept]]));
+    expect(entry.itemPictures).toEqual([a, b]);
+  });
+});
+

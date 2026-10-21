@@ -129,6 +129,7 @@ describe('Art Museums read from the subset (#1460)', () => {
     expect((await fetchEntityDetails(door, [LOUVRE])).get(LOUVRE)).toEqual({
       qid: LOUVRE, label: 'Louvre', description: 'art museum in Paris', lat: 48.861, lon: 2.3358, countryLabel: 'France',
       imageUrl: 'http://commons.wikimedia.org/wiki/Special:FilePath/Louvre%20Museum%20Wikimedia%20Commons.jpg',
+      itemPictures: ['http://commons.wikimedia.org/wiki/Special:FilePath/Louvre%20Museum%20Wikimedia%20Commons.jpg'],
       website: 'https://www.louvre.fr/', articleUrl: 'https://en.wikipedia.org/wiki/Louvre', sitelinks: EDITIONS.length,
       dissolved: null,
     });

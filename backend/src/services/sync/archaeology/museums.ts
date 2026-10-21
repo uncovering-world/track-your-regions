@@ -40,6 +40,8 @@ export interface MuseumRow {
   lon: number | null;
   onEarth: boolean;
   imageUrl: string | null;
+  /** Every picture the item carries at its best rank, `imageUrl` among them (#1778). */
+  itemPictures: readonly string[];
   sitelinks: number;
   countryLabel: string | null;
   articleUrl: string | null;

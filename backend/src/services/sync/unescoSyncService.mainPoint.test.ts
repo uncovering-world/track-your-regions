@@ -174,7 +174,7 @@ describe('the picture a site is shown with', () => {
   it('shows the Commons picture Wikidata states, with whoever took it', () => {
     const site = transformRecord(
       sited(),
-      { article: 'https://en.wikipedia.org/wiki/Bamiyan', picture: { url: COMMONS, via: 'exact', ref: '208' } },
+      { article: 'https://en.wikipedia.org/wiki/Bamiyan', picture: { url: COMMONS, via: 'exact', ref: '208', itemPictures: [COMMONS] } },
       new Map([[COMMONS, { author: 'Ko Hon Chiu Vincent', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null }]]),
     );
 
@@ -189,7 +189,7 @@ describe('the picture a site is shown with', () => {
     // than invented, which is what `creditToWrite` leaves for the next run.
     const site = transformRecord(
       sited(),
-      { article: null, picture: { url: COMMONS, via: 'component', ref: '208-001' } },
+      { article: null, picture: { url: COMMONS, via: 'component', ref: '208-001', itemPictures: [COMMONS] } },
     );
 
     expect(site?.imageUrl).toBe(COMMONS);

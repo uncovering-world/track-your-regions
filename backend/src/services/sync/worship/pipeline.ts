@@ -77,6 +77,8 @@ export interface CollectedPlaceOfWorship {
   lat: number;
   lon: number;
   imageUrl: string | null;
+  /** Every picture the item carries at its best rank, `imageUrl` among them (#1778). */
+  itemPictures: readonly string[];
   sitelinks: number;
   countryLabel: string | null;
   articleUrl: string | null;
@@ -277,6 +279,7 @@ function itemOf(
     lat: row.lat,
     lon: row.lon,
     imageUrl: row.imageUrl,
+    itemPictures: row.itemPictures,
     sitelinks: row.sitelinks,
     countryLabel: row.countryLabel,
     articleUrl: row.articleUrl,

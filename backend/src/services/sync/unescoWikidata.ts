@@ -41,6 +41,8 @@ export interface SitePicture {
   via: PictureVia;
   /** The World Heritage id that carried it — `166rev`, `1142-01bis`. */
   ref: string;
+  /** Every picture the item that gave it carries at its best rank, `url` among them (#1778). */
+  itemPictures: string[];
 }
 
 export interface SiteFacts {
@@ -111,6 +113,8 @@ interface Candidate {
   sitelinks: number;
   article: string | null;
   image: string | null;
+  /** Every picture the item carries at its best rank, in URL order; `image` is the first (#1778). */
+  images: string[];
   /** The item's English description: what a component's own card says it is (#1270). */
   description: string | null;
   /**
@@ -193,6 +197,7 @@ export function indexWorldHeritageFacts(bindings: SparqlBinding[]): WorldHeritag
       sitelinks: Number(binding.links?.value ?? 0) || 0,
       article: binding.article?.value ?? null,
       image: binding.image?.value ?? null,
+      images: picturesOfBinding(binding.images?.value, binding.image?.value),
       description: binding.description?.value ?? null,
       deprecated: binding.rank?.value === DEPRECATED_RANK,
     });
@@ -394,9 +399,20 @@ export function factsForSite(index: WorldHeritageIndex, idNo: string, name?: str
   return {
     article,
     picture: pictured?.image
-      ? { url: pictured.image, via: tierOf(pictured.ref), ref: pictured.ref.raw }
+      ? { url: pictured.image, via: tierOf(pictured.ref), ref: pictured.ref.raw, itemPictures: pictured.images }
       : null,
   };
+}
+
+/**
+ * An item's pictures off one binding: the `GROUP_CONCAT` of every `wdt:P18`, which no
+ * Commons URL can break since a space in a file name is written `%20`, and the `MIN`
+ * among them, so a binding that names only the one still yields it (#1778).
+ */
+function picturesOfBinding(all: string | undefined, first: string | undefined): string[] {
+  const pictures = new Set((all ?? '').split(' ').filter(Boolean));
+  if (first) pictures.add(first);
+  return [...pictures].sort();
 }
 
 /**
@@ -436,7 +452,9 @@ export async function fetchWorldHeritageFacts(
   budget: WaitBudget,
 ): Promise<WorldHeritageIndex | null> {
   const query = `
-    SELECT ?item ?whc ?label ?links (MIN(?a) AS ?article) (MIN(?img) AS ?image) (MIN(?d) AS ?description) (MAX(STR(?r)) AS ?rank) WHERE {
+    SELECT ?item ?whc ?label ?links (MIN(?a) AS ?article) (MIN(?img) AS ?image)
+           (GROUP_CONCAT(DISTINCT STR(?img); separator=" ") AS ?images)
+           (MIN(?d) AS ?description) (MAX(STR(?r)) AS ?rank) WHERE {
       ?item p:P757 ?statement ;
             wikibase:sitelinks ?links .
       ?statement ps:P757 ?whc ;

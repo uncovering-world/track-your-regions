@@ -178,6 +178,8 @@ export function preferredCoordinate(a: string | null, b: string | null): string 
 export interface PreferredValues {
   imageUrl: string | null;
   wkt: string | null;
+  /** Every picture the item's rows offered, in URL order: what a place may keep (#1778). */
+  pictures: string[];
 }
 
 /**
@@ -191,9 +193,11 @@ export function foldPreferred(
   imageUrl: string | null,
   wkt: string | null,
 ): PreferredValues {
+  const pictures = kept?.pictures ?? [];
   return {
     imageUrl: preferredPicture(kept?.imageUrl ?? null, imageUrl),
     wkt: preferredCoordinate(kept?.wkt ?? null, wkt),
+    pictures: imageUrl && !pictures.includes(imageUrl) ? [...pictures, imageUrl].sort() : pictures,
   };
 }
 
@@ -203,14 +207,16 @@ export function foldPreferred(
  * on this planet (Wikidata writes a point on another globe with the globe's IRI
  * in front of it).
  */
-export function applyPreferred<T extends { imageUrl: string | null; lat: number | null; lon: number | null }>(
+export function applyPreferred<T extends {
+  imageUrl: string | null; itemPictures: readonly string[]; lat: number | null; lon: number | null;
+}>(
   entries: Map<string, T>,
   kept: Map<string, PreferredValues>,
 ): void {
   for (const [qid, entry] of entries) {
-    const { imageUrl, wkt } = kept.get(qid) ?? { imageUrl: null, wkt: null };
+    const { imageUrl, wkt, pictures } = kept.get(qid) ?? { imageUrl: null, wkt: null, pictures: [] };
     const at = wkt ? parseWktPoint(wkt) : null;
-    Object.assign(entry, { imageUrl, lat: at?.lat ?? null, lon: at?.lon ?? null });
+    Object.assign(entry, { imageUrl, itemPictures: pictures, lat: at?.lat ?? null, lon: at?.lon ?? null });
     if ('onEarth' in entry) Object.assign(entry, { onEarth: !wkt?.startsWith('<') });
   }
 }

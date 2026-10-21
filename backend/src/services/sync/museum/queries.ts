@@ -454,6 +454,8 @@ export interface EntityDetails {
   lon: number | null;
   countryLabel: string | null;
   imageUrl: string | null;
+  /** Every picture the item carries at its best rank, `imageUrl` among them (#1778). */
+  itemPictures: readonly string[];
   website: string | null;
   articleUrl: string | null;
   sitelinks: number;
@@ -525,6 +527,7 @@ async function liveEntityDetails(sparql: SparqlFn, qids: string[]): Promise<Map<
       lon: null,
       countryLabel: row.countryLabel?.value || null,
       imageUrl: null,
+      itemPictures: [],
       website: row.site?.value || null,
       articleUrl: row.article?.value || null,
       sitelinks: parseInt(row.sl?.value || '0', 10),

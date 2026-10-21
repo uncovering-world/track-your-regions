@@ -95,7 +95,7 @@ function museum(qid: string, works: string[]): CollectedMuseum {
     })),
     details: {
       museumQid: qid, museumLabel: 'Louvre Museum', description: null, lat: 48.86, lon: 2.34,
-      countryLabel: 'France', imageUrl: null, website: null, articleUrl: null,
+      countryLabel: 'France', imageUrl: null, itemPictures: [], website: null, articleUrl: null,
     },
   };
 }

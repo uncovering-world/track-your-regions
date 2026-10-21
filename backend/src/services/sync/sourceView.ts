@@ -39,6 +39,8 @@ export interface ViewRecord {
   /** `lon`/`lat` is a place of several points' anchor, which no other view contests (ADR-0095). */
   locationIsAnchor?: boolean;
   metadata: Record<string, unknown>;
+  /** Every picture the item carries at its best rank, as `pictureUrl` writes them (#1778). */
+  itemPictures?: readonly string[];
 }
 
 /** The stored columns `keptAsStored` puts back, as the upsert's snapshot read them. */
@@ -91,6 +93,40 @@ export async function contestedFields(
   // An anchor is the run's, not the place's coordinate (ADR-0095): there is no
   // view of it to contest, and a choice keyed on it would expire at every move.
   return VIEW_FIELDS.filter(field => contested.has(field) && !(field === 'location' && params.locationIsAnchor));
+}
+
+/**
+ * Whether the place keeps the picture it holds rather than take the one the run chose
+ * (ADR-0130): yes while the held picture is still one of the item's best-ranked pictures.
+ *
+ * An item often carries several pictures at one rank, and every reader keeps the first
+ * by URL (`preferredPicture`, ADR-0085). A place that took another of them, under an
+ * earlier rule or from another source, would otherwise be asked on every run to swap one
+ * valid picture of its item for another: the Art Institute of Chicago held one of its
+ * item's two pictures, and Art Museums proposed the other from run 158 to 177. A picture
+ * that left the item is a real change on Wikidata and is still proposed.
+ */
+export function keepsItsPicture(params: ViewRecord, stored: StoredView): boolean {
+  return stored.image_url !== null && params.imageUrl !== stored.image_url
+    && (params.itemPictures ?? []).includes(stored.image_url);
+}
+
+/**
+ * The fields a run writes as the place stores them: those another source contradicts
+ * (`contestedFields`), and the picture while the item still carries it
+ * (`keepsItsPicture`). The run and its preview both ask this, so a dry run reports
+ * what the run would write.
+ */
+export async function fieldsKeptAsStored(
+  query: Pick<PoolClient, 'query'>,
+  placeId: number,
+  params: ViewRecord,
+  stored: StoredView,
+): Promise<ViewField[]> {
+  return [
+    ...await contestedFields(query, placeId, params),
+    ...(keepsItsPicture(params, stored) ? ['imageUrl' as const] : []),
+  ];
 }
 
 /**

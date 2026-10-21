@@ -88,6 +88,8 @@ export interface PoolEntity {
    */
   onEarth: boolean;
   imageUrl: string | null;
+  /** Every picture the item carries at its best rank, `imageUrl` among them (#1778). */
+  itemPictures: readonly string[];
   sitelinks: number;
   countryLabel: string | null;
   /** What the place's statements left open, for its point to settle (`settleCountriesByPoint`, #1564). */
@@ -212,6 +214,7 @@ function parsePool(rows: SparqlBinding[], options: { placeless?: boolean } = {})
       lon: null,
       onEarth: true,
       imageUrl: null,
+      itemPictures: [],
       sitelinks: parseInt(row.sl?.value || '0', 10),
       countryLabel: null,
       articleUrl: row.article?.value || null,

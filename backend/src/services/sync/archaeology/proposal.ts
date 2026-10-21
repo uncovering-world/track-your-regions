@@ -29,6 +29,8 @@ export interface CollectedArchaeologySite {
   lat: number;
   lon: number;
   imageUrl: string | null;
+  /** Every picture the item carries at its best rank, `imageUrl` among them (#1778). */
+  itemPictures: readonly string[];
   sitelinks: number;
   countryLabel: string | null;
   articleUrl: string | null;
@@ -64,6 +66,7 @@ function siteItemOf(qid: string, site: SiteCandidate): CollectedArchaeologySite 
     lat: entity.lat as number,
     lon: entity.lon as number,
     imageUrl: entity.imageUrl,
+    itemPictures: entity.itemPictures,
     sitelinks: entity.sitelinks,
     countryLabel: entity.countryLabel,
     articleUrl: entity.articleUrl,

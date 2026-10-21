@@ -216,6 +216,7 @@ async function processMuseum(
     countryCodes: [],
     countryNames: item.countryLabel ? [item.countryLabel] : [],
     imageUrl: item.imageUrl,
+    itemPictures: item.itemPictures,
     metadata,
     // The reason this membership exists, nameable: the most famous find the
     // museum holds, where a find is what carried it over the line. A museum
@@ -332,6 +333,7 @@ async function processSite(
     countryCodes: [],
     countryNames: item.countryLabel ? [item.countryLabel] : [],
     imageUrl: item.imageUrl,
+    itemPictures: item.itemPictures,
     metadata,
     // The shape a reader sees drawn around the place, where OSM has one. Null
     // for a site mapped as a point, which is most of them.

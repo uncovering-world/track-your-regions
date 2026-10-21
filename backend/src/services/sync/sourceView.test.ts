@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { contestedFields, keptAsStored, type StoredView, type ViewRecord } from './sourceView.js';
+import { contestedFields, keepsItsPicture, keptAsStored, type StoredView, type ViewRecord } from './sourceView.js';
 
 /**
  * The run's half of a source's view (#1246): which fields another source
@@ -82,3 +82,30 @@ describe('the fields another source contradicts', () => {
     expect(await contestedFields({ query } as never, 9480, { ...RECORD, locationIsAnchor: true })).toEqual(['imageUrl']);
   });
 });
+
+describe('a picture the item still carries (#1778)', () => {
+  // The Art Institute of Chicago's item carries two pictures at one rank; the place
+  // holds the second, and every reader keeps the first by URL.
+  const FIRST = 'http://commons.wikimedia.org/wiki/Special:FilePath/Art%20Institute%20of%20Chicago%20%2851575570710%29.jpg';
+  const HELD = 'http://commons.wikimedia.org/wiki/Special:FilePath/Art%20Institute%20of%20Chicago%2C%20Illinois.jpg';
+  const record = (itemPictures?: string[]): ViewRecord => ({ ...RECORD, imageUrl: FIRST, itemPictures });
+  const stored: StoredView = { ...STORED, image_url: HELD };
+
+  it('is kept while it is one of the item\'s pictures', () => {
+    expect(keepsItsPicture(record([FIRST, HELD]), stored)).toBe(true);
+  });
+
+  it('is replaced once it left the item, which is a real change on Wikidata', () => {
+    expect(keepsItsPicture(record([FIRST]), stored)).toBe(false);
+  });
+
+  it('asks nothing of a run with no item to read, or of a place holding no picture', () => {
+    expect(keepsItsPicture(record(undefined), stored)).toBe(false);
+    expect(keepsItsPicture(record([FIRST, HELD]), { ...stored, image_url: null })).toBe(false);
+  });
+
+  it('is no question where the run chose the picture the place holds', () => {
+    expect(keepsItsPicture({ ...record([FIRST, HELD]), imageUrl: HELD }, stored)).toBe(false);
+  });
+});
+

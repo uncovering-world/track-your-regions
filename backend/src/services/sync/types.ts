@@ -180,6 +180,8 @@ export interface WikidataMuseum {
   lon: number | null;
   countryLabel: string | null;
   imageUrl: string | null;
+  /** Every picture the item carries at its best rank, `imageUrl` among them (#1778). */
+  itemPictures: readonly string[];
   website: string | null;
   articleUrl: string | null;
 }
@@ -263,6 +265,8 @@ export interface WikidataLandmark {
   lat: number;
   lon: number;
   imageUrl: string | null;
+  /** Every picture the item carries at its best rank, `imageUrl` among them (#1778). */
+  itemPictures: readonly string[];
   /**
    * Every maker the source names, in no asserted order. Empty where none is recorded.
    *
@@ -311,6 +315,8 @@ export interface ProcessedExperience {
   countryCodes: string[];
   countryNames: string[];
   imageUrl: string | null;
+  /** Every picture the item that gave `imageUrl` carries at its best rank (#1778); absent with no item. */
+  itemPictures?: readonly string[];
   metadata: Record<string, unknown>;
   // Multi-location support
   locations: ParsedLocation[];

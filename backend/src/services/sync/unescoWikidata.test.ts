@@ -22,6 +22,19 @@ function binding(whc: string, facts: { article?: string; image?: string } = {}):
 }
 
 describe('factsForSite', () => {
+  it("carries every picture of the item that gave the site its picture (#1778)", () => {
+    // Two pictures at one rank, as the query concatenates them: IRIs, so a space in a
+    // file name is `%20` and the separator cannot occur inside one. The first by URL is
+    // the site's.
+    const index = indexWorldHeritageFacts([{
+      ...binding('668', { image: 'Anuradhapura%2002.jpg' }),
+      images: { value: `${COMMONS}Ruwanwelisaya.jpg ${COMMONS}Anuradhapura%2002.jpg` },
+    }]);
+
+    expect(factsForSite(index, '668').picture?.itemPictures)
+      .toEqual([COMMONS + 'Anuradhapura%2002.jpg', COMMONS + 'Ruwanwelisaya.jpg']);
+  });
+
   it('answers from the site\'s own id', () => {
     const index = indexWorldHeritageFacts([
       binding('404', { article: 'https://en.wikipedia.org/wiki/Acropolis_of_Athens', image: 'Acropolis.jpg' }),
@@ -29,7 +42,7 @@ describe('factsForSite', () => {
 
     expect(factsForSite(index, '404')).toEqual({
       article: 'https://en.wikipedia.org/wiki/Acropolis_of_Athens',
-      picture: { url: COMMONS + 'Acropolis.jpg', via: 'exact', ref: '404' },
+      picture: { url: COMMONS + 'Acropolis.jpg', via: 'exact', ref: '404', itemPictures: [COMMONS + 'Acropolis.jpg'] },
     });
   });
 
@@ -42,7 +55,7 @@ describe('factsForSite', () => {
 
     expect(factsForSite(index, '166')).toEqual({
       article: 'https://en.wikipedia.org/wiki/Sydney_Opera_House',
-      picture: { url: COMMONS + 'Sydney.jpg', via: 'variant', ref: '166rev' },
+      picture: { url: COMMONS + 'Sydney.jpg', via: 'variant', ref: '166rev', itemPictures: [COMMONS + 'Sydney.jpg'] },
     });
   });
 
@@ -54,7 +67,7 @@ describe('factsForSite', () => {
     ]);
 
     expect(factsForSite(index, '292').picture)
-      .toEqual({ url: COMMONS + 'Koelner Dom.jpg', via: 'exact', ref: '292' });
+      .toEqual({ url: COMMONS + 'Koelner Dom.jpg', via: 'exact', ref: '292', itemPictures: [COMMONS + 'Koelner Dom.jpg'] });
   });
 
   it('falls back to a component, taking the lowest-numbered one', () => {
@@ -65,14 +78,14 @@ describe('factsForSite', () => {
     ]);
 
     expect(factsForSite(index, '1142').picture)
-      .toEqual({ url: COMMONS + 'One.jpg', via: 'component', ref: '1142-01bis' });
+      .toEqual({ url: COMMONS + 'One.jpg', via: 'component', ref: '1142-01bis', itemPictures: [COMMONS + 'One.jpg'] });
   });
 
   it('reads a component of a renumbered site as a component of the site', () => {
     const index = indexWorldHeritageFacts([binding('1246bis-001f', { image: 'Santa Maria.jpg' })]);
 
     expect(factsForSite(index, '1246').picture)
-      .toEqual({ url: COMMONS + 'Santa Maria.jpg', via: 'component', ref: '1246bis-001f' });
+      .toEqual({ url: COMMONS + 'Santa Maria.jpg', via: 'component', ref: '1246bis-001f', itemPictures: [COMMONS + 'Santa Maria.jpg'] });
   });
 
   it('never takes a component\'s article for the site\'s', () => {
@@ -84,7 +97,7 @@ describe('factsForSite', () => {
 
     expect(factsForSite(index, '1142')).toEqual({
       article: null,
-      picture: { url: COMMONS + 'One.jpg', via: 'component', ref: '1142-01bis' },
+      picture: { url: COMMONS + 'One.jpg', via: 'component', ref: '1142-01bis', itemPictures: [COMMONS + 'One.jpg'] },
     });
   });
 
@@ -97,7 +110,7 @@ describe('factsForSite', () => {
     ]);
 
     expect(factsForSite(index, '91').picture)
-      .toEqual({ url: COMMONS + 'Fourth.jpg', via: 'component', ref: '91-004a' });
+      .toEqual({ url: COMMONS + 'Fourth.jpg', via: 'component', ref: '91-004a', itemPictures: [COMMONS + 'Fourth.jpg'] });
   });
 
   it('answers the same whatever order the rows arrive in', () => {
@@ -179,7 +192,7 @@ describe('factsForSite, where several items carry one id', () => {
 
     expect(factsForSite(index, '896', 'Museumsinsel (Museum Island), Berlin')).toEqual({
       article: 'https://en.wikipedia.org/wiki/Museum_Island',
-      picture: { url: COMMONS + 'Berlin Museumsinsel Fernsehturm.jpg', via: 'exact', ref: '896' },
+      picture: { url: COMMONS + 'Berlin Museumsinsel Fernsehturm.jpg', via: 'exact', ref: '896', itemPictures: [COMMONS + 'Berlin Museumsinsel Fernsehturm.jpg'] },
     });
   });
 
@@ -506,7 +519,7 @@ describe('factsForSite, where an extension renumbered the property (#1373)', () 
     ]);
     expect(factsForSite(index, '710', 'Gelati Monastery')).toEqual({
       article: 'https://en.wikipedia.org/wiki/Gelati_Monastery',
-      picture: { url: COMMONS + 'Gelati Monastery 1.jpg', via: 'variant', ref: '710bis' },
+      picture: { url: COMMONS + 'Gelati Monastery 1.jpg', via: 'variant', ref: '710bis', itemPictures: [COMMONS + 'Gelati Monastery 1.jpg'] },
     });
   });
 
@@ -518,7 +531,7 @@ describe('factsForSite, where an extension renumbered the property (#1373)', () 
       binding('1035-001', { image: 'Vale do Rio Preto.jpg' }),
     ]);
     expect(factsForSite(index, '1035', 'Cerrado Protected Areas: Chapada dos Veadeiros and Emas National Parks').picture)
-      .toEqual({ url: COMMONS + 'Vale do Rio Preto.jpg', via: 'component', ref: '1035-001' });
+      .toEqual({ url: COMMONS + 'Vale do Rio Preto.jpg', via: 'component', ref: '1035-001', itemPictures: [COMMONS + 'Vale do Rio Preto.jpg'] });
   });
 
   it("takes no little-known carrier's article where the property's item has none, its own number's first one included", () => {

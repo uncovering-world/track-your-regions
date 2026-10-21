@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { articleUrl, bestStatements, pictureUrl, standingStatements, wktOf, yearOf } from './values.js';
+import { articleUrl, bestStatements, pictureUrl, picturesOf, standingStatements, wktOf, yearOf } from './values.js';
 
 /** The values the syncs compare, spelled as WDQS spells them (#1459); the expected spellings are WDQS's own, from the run cache. */
 
@@ -40,6 +40,15 @@ describe('values spelled as the live service spells them (#1459)', () => {
     expect(standingStatements([louvre, ended, deprecated])).toEqual([louvre]);
     const preferred = { id: 'd', value: 'Q1', rank: 'preferred' as const };
     expect(bestStatements([louvre, preferred])).toEqual([preferred]);
+  });
+
+  it('reads every picture of the best statements, in the order the first is kept by (#1778)', () => {
+    // The Art Institute of Chicago's two pictures, and a deprecated third that is no picture of it.
+    const second = { id: 'g', value: 'Art Institute of Chicago, Illinois, Estados Unidos, 2012-10-20, DD 01.jpg' };
+    const first = { id: 'h', value: 'Art Institute of Chicago (51575570710).jpg' };
+    const deprecated = { id: 'i', value: 'Old.jpg', rank: 'deprecated' as const };
+    expect(picturesOf([second, first, deprecated, first])).toEqual([pictureUrl(first.value), pictureUrl(second.value)]);
+    expect(picturesOf(undefined)).toEqual([]);
   });
 
   it('reads an end time of no value as no end, as WDQS writes it with no pq: triple', () => {
