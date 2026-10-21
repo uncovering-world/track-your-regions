@@ -282,11 +282,14 @@ export async function orchestrateSync<T>(
     changesRecorded = await recordChangesetOrMark(changes, errorDetails, progress, logPrefix);
 
     // After the changeset, so the run's own record is kept before its longest
-    // tail. A question is the run's record, not its work: a failure — the
-    // map's mirror down, Jev unreachable — is logged and asks nothing this time,
-    // and a Cancel pressed here stops the asking alone (`askVisitQuestions`).
+    // tail. A question is the run's record, not its work: a failure — Wikidata
+    // or Jev unreachable — is logged, said in the closing line, and asks
+    // nothing this time; a map batch the mirror drops leaves only its places
+    // for the next run, and a Cancel pressed here stops the asking alone
+    // (`askVisitQuestions`).
     await askVisitQuestions(sourceId, progress, { refreshCache: options.refreshCache }).catch((error: unknown) => {
       console.error('%s Asking about places with nothing to see failed:', logPrefix, error);
+      progress.visitQuestions = { read: 0, short: 0, asked: 0, failed: true };
     });
 
     // Computed after that attempt: a run whose per-object record never landed is

@@ -79,6 +79,10 @@ export interface VisitQuestionTally {
   asked: number;
   /** A Cancel stopped the asking: the places not read are read by the next run. */
   stopped?: boolean;
+  /** Places the map could not be read for, left for the next run. */
+  unread?: number;
+  /** The asking failed (a source not answering, a write refused): nothing was asked, and the next run asks. */
+  failed?: boolean;
 }
 
 /** What a run said of the source's pins on admission (#1370). */

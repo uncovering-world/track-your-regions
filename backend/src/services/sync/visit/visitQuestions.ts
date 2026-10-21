@@ -29,13 +29,13 @@ import { pool } from '../../../db/index.js';
 import { MEMBERSHIPS, admissionPinnedSql, membershipOfferedSql } from '../../../db/membership.js';
 import { usedByAGuide } from '../../dumps/wikivoyage/usageTables.js';
 import { jevConfigured } from '../../jev/jevClient.js';
-import { readOsmObjects, type OsmDoor } from '../osm/readOsmObjects.js';
+import { OSM_BATCH, OsmDoorFailedError, readOsmObjects, type OsmDoor } from '../osm/readOsmObjects.js';
 import { qleverOsmDoor } from '../osm/qleverOsm.js';
 import type { KeepWkt, OsmObject } from '../osm/types.js';
 import { subsetOnlyDoor, wikidataReaderOf } from '../subset/reader.js';
 import type { SyncProgress, VisitQuestionTally } from '../types.js';
 import { withCache } from '../wikidataCache.js';
-import type { SparqlFn } from '../wikidataQueries.js';
+import { chunk, type SparqlFn } from '../wikidataQueries.js';
 import {
   delay, sparqlQuery, SPARQL_DELAY_MS, SPARQL_WAIT_BUDGET_MS, waitMessage, WaitBudget, WIKIDATA_USER_AGENT,
 } from '../wikidataUtils.js';
@@ -114,10 +114,14 @@ export async function offeredPlaces(sourceId: number): Promise<OfferedPlace[]> {
  * the photographs only for a place one witness short, where they decide. A
  * place two witnesses vouch for is not asked more: its list may name fewer
  * than every witness it has.
+ *
+ * The map door answers for the items it could read: one it left out (a batch
+ * the mirror did not answer) is `unread`, since the witness it might have
+ * given is not known, and the caller asks nothing of it.
  */
 export async function witnessesOfPlaces(
   places: readonly OfferedPlace[], doors: VisitQuestionDoors,
-): Promise<Map<string, Witness[]>> {
+): Promise<{ witnesses: Map<string, Witness[]>; unread: Set<string> }> {
   const qids = [...new Set(places.map((place) => place.qid))];
   const guide = await (doors.guide ?? usedByAGuide)(qids);
   const facts = await fetchVisitFacts(doors.sparql, qids);
@@ -125,18 +129,20 @@ export async function witnessesOfPlaces(
     guide: guide.has(qid), formal: facts.get(qid)?.formal ?? false, map: false, photos: false,
   }]));
   const short = () => qids.filter((qid) => witnessesOf(answers.get(qid)!).length < WITNESSES_NEEDED);
-  const objects = await doors.osm(short());
+  const onTheMap = short();
+  const objects = await doors.osm(onTheMap);
   for (const [qid, found] of objects) answers.get(qid)!.map = mapWitness(found);
+  const unread = new Set(onTheMap.filter((qid) => !objects.has(qid)));
   const deciding = new Set(short().filter((qid) => witnessesOf(answers.get(qid)!).length === WITNESSES_NEEDED - 1));
   const photoPlaces: PhotoPlace[] = [];
   for (const place of places) {
     const category = facts.get(place.qid)?.commonsCategory;
-    if (!deciding.has(place.qid) || !category || place.lat === null || place.lon === null) continue;
+    if (!deciding.has(place.qid) || unread.has(place.qid) || !category || place.lat === null || place.lon === null) continue;
     deciding.delete(place.qid);
     photoPlaces.push({ qid: place.qid, category, lat: place.lat, lon: place.lon });
   }
   for (const [qid, yes] of await photographed(doors.photos, photoPlaces)) answers.get(qid)!.photos = yes;
-  return new Map(qids.map((qid) => [qid, witnessesOf(answers.get(qid)!)]));
+  return { witnesses: new Map(qids.map((qid) => [qid, witnessesOf(answers.get(qid)!)])), unread };
 }
 
 /** Read `items` through `work`, `READ_AT_ONCE` at a time, in order. */
@@ -166,12 +172,15 @@ export interface VisitQuestion {
  * every place short of two, and the questions where both say a visitor finds
  * nothing there. Writes no question; the readings Jev gave are recorded as
  * every reading is (`readVisit`), so a later run or card does not pay twice.
+ * A place whose map the mirror did not answer is counted `unread` and neither
+ * read by Jev nor asked: the next run reads it, since it raised no question.
  */
 export async function visitQuestionsOf(
   places: readonly OfferedPlace[], doors: VisitQuestionDoors, isCancelled: () => boolean = () => false,
-): Promise<{ short: number; questions: VisitQuestion[] }> {
-  const witnesses = await witnessesOfPlaces(places, doors);
-  const short = places.filter((place) => (witnesses.get(place.qid)?.length ?? 0) < WITNESSES_NEEDED);
+): Promise<{ short: number; unread: number; questions: VisitQuestion[] }> {
+  const { witnesses, unread } = await witnessesOfPlaces(places, doors);
+  const short = places.filter((place) => !unread.has(place.qid)
+    && (witnesses.get(place.qid)?.length ?? 0) < WITNESSES_NEEDED);
   const read = doors.read ?? ((place: OfferedPlace) => readVisit(place.experienceId, place.asked, () => 'TRUE'));
   const readings = await inTurn(short, async (place) => {
     // Read already for the place as it stands: Jev's word, or none where its
@@ -189,7 +198,7 @@ export async function visitQuestionsOf(
       questions.push({ place, witnesses: witnesses.get(place.qid) ?? [], reading });
     }
   });
-  return { short: short.length, questions };
+  return { short: short.length, unread: places.filter((place) => unread.has(place.qid)).length, questions };
 }
 
 /**
@@ -238,12 +247,44 @@ async function doorsOf(sourceId: number, progress: SyncProgress, refreshCache: b
   }), cache);
   return {
     sparql,
-    osm: (qids) => readOsmObjects(door, qids, NO_GEOMETRY, {
-      phase: (message) => { progress.statusMessage = message; },
-      step: async () => { if (progress.cancel) throw new Error('Sync cancelled'); },
-    }),
+    osm: (qids) => mapOfWhatAnswered(door, qids, progress),
     photos,
   };
+}
+
+/** Batches the mirror may drop in a row before the map is left for the next run. */
+export const MAP_DROPS_IN_A_ROW = 2;
+
+/**
+ * What the map holds for each item, a batch at a time, leaving out the items
+ * of a batch the mirror did not answer after its retries: the mirror is slow
+ * at times, and one batch it drops must not cost the run every question.
+ * A mirror that drops `MAP_DROPS_IN_A_ROW` batches running is taken as down,
+ * and the items after them are left out too, rather than each batch spending
+ * its own retries. A Cancel is never a dropped batch: it ends the read.
+ */
+export async function mapOfWhatAnswered(door: OsmDoor, qids: string[], progress: SyncProgress): Promise<Map<string, OsmObject[]>> {
+  const out = new Map<string, OsmObject[]>();
+  const batches = chunk(qids, OSM_BATCH);
+  let dropped = 0;
+  for (let i = 0; i < batches.length && dropped < MAP_DROPS_IN_A_ROW; i++) {
+    try {
+      const read = await readOsmObjects(door, batches[i], NO_GEOMETRY, {
+        phase: () => { progress.statusMessage = `Asking OpenStreetMap what it maps at the offered places (batch ${i + 1}/${batches.length})...`; },
+        step: async () => { if (progress.cancel) throw new Error('Sync cancelled'); },
+      });
+      for (const [qid, objects] of read) out.set(qid, objects);
+      dropped = 0;
+    } catch (error) {
+      if (!(error instanceof OsmDoorFailedError) || progress.cancel) throw error;
+      dropped += 1;
+      console.warn(`${LOG_PREFIX} OpenStreetMap left ${batches[i].length} places unread: ${error.message}`);
+      if (dropped === MAP_DROPS_IN_A_ROW && i < batches.length - 1) {
+        console.warn(`${LOG_PREFIX} OpenStreetMap dropped ${dropped} batches in a row: the rest of the map is left for the next run`);
+      }
+    }
+  }
+  return out;
 }
 
 /**
@@ -278,14 +319,14 @@ export async function askVisitQuestions(
       progress.visitQuestions = { read: 0, short: 0, asked: 0, stopped: true };
       return;
     }
-    const { short, questions } = asking;
+    const { short, unread, questions } = asking;
     const asked = progress.dryRun ? questions.length : await writeVisitQuestions(questions, logId);
     for (const question of questions) {
       console.log(`${LOG_PREFIX} ${progress.dryRun ? 'Would ask' : 'Asking'} about ${question.place.name} `
         + `(${question.place.qid}): ${question.reading.reading} at ${question.reading.confidence}, `
         + `witnesses: ${question.witnesses.join(', ') || 'none'}`);
     }
-    const tally: VisitQuestionTally = { read: places.length, short, asked };
+    const tally: VisitQuestionTally = { read: places.length - unread, short, asked, ...(unread ? { unread } : {}) };
     progress.visitQuestions = tally;
   } finally {
     progress.askingVisitQuestions = false;
