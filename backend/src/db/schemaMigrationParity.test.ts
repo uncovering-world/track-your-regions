@@ -509,6 +509,9 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // place, which ran the merge the `merged` row records; two places; or one
     // part of the other, with which. Written on the place that stays.
     'merge_proposal_answered',
+    // A curator's answer to a run's question about an offered place with
+    // nothing to see (#1770): refused from the kind, or kept.
+    'visit_question_answered',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;
