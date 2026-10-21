@@ -9191,6 +9191,11 @@ export interface ReviewQueueItem {
   unesco_url?: string | null;
   /** @nullable */
   wikipedia_url?: string | null;
+  /**
+     * The object's description, the long one where there is one, else the short one (#1780).
+     * @nullable
+     */
+  object_description?: string | null;
   region_names?: string[] | null;
   /** On an arrival or a refusal: the kinds readers already see the place in, through another membership (#1264). Empty where the membership asked about is the whole place. */
   seen_in?: string[];

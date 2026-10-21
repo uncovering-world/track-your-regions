@@ -33,6 +33,12 @@ describe('queueItemOf', () => {
     expect(field).toMatchObject({ field: 'name', acceptable: true, claim: { by: 'a curator' } });
   });
 
+  it('carries the object\'s description to the card (#1780)', () => {
+    const card = queueItemOf(conflictRow({ object_description: 'museum in Saint Petersburg, Russia' }));
+    expect(card.object_description).toBe('museum in Saint Petersburg, Russia');
+    expect(ReviewQueueItem.parse(card).object_description).toBe('museum in Saint Petersburg, Russia');
+  });
+
   it('does not serve a column the schema does not name', () => {
     const card = queueItemOf(conflictRow({ source_id: 1 }));
     expect(JSON.parse(JSON.stringify(card))).not.toHaveProperty('source_id');
