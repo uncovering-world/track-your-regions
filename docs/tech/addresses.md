@@ -264,6 +264,23 @@ filters leave out — answered by somebody else, outside a chip — anchors noth
 the list opens at its top, and the row in the address is replaced by the first
 row of the list, which is how the address bar says so.
 
+**An answer that moves its row keeps the card** (#1779). A row is dated by its
+newest question, so answering that one can sort a place that still holds an older
+question past the pages loaded: the Hermitage's Art Museums question from run 177
+put it under today, and its Archaeology question from run 169 dated it 16 October
+once the first was answered. The re-read then no longer holds the selected row, and
+the list alone cannot tell answered from moved. One read anchored at the row asks
+the server (`useReviewQueue`'s probe). If the row is still there, the list is read
+again starting at it, the way a link opens one, and the card stays in front of the
+curator. If it is not, it was answered, and the page moves to the question that took
+its place, as before. While that read is out (`settling`), the page holds the
+selection and keeps the card mounted under its key, so what the curator typed into
+it survives. Only a first page read *at* the row answers the question by itself. A
+linked list re-reads from the key it began at, which a re-dated row can have left,
+so it asks too, and is re-read at the row when the row is still there. A probe that
+answers after the curator moved to another row or filter is dropped, and *Show the
+questions above* does not ask: the curator asked for the top.
+
 ## Where it lives
 
 | File | What it holds |
