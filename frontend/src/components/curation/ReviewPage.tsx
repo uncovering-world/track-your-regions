@@ -32,7 +32,7 @@ import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { buildReviewUrl, isFilteredReview } from '../../utils/appUrl';
 import { plural } from '../../utils/plural';
 import { useReviewAddress, type ReviewPatch } from '../../hooks/useReviewAddress';
-import { nextSelection, type RowKind } from './queueRows';
+import { nextSelection, type QueueRow, type RowKind } from './queueRows';
 import { useReviewQueue } from './useReviewQueue';
 import { queryKeys } from '../../api/queryKeys';
 import { ReviewQueueList } from './ReviewQueueList';
@@ -77,6 +77,18 @@ export function visibilityCaveat(kinds: Set<RowKind>): string {
   }
   if (clauses.length === 0) return '.';
   return ` — except ${clauses.join(', and ')}.`;
+}
+
+/**
+ * The card on the bench: the selected row, or, while that row is looked for, the one it
+ * last was (#1779). An answer can move a row past the loaded pages; until the server says
+ * whether it is still open and the list is read again at it, the card stays mounted under
+ * the same key, rather than closing, reopening and losing what the curator typed into it.
+ */
+function useBenchRow(shown: QueueRow | undefined, row: string | null, looking: boolean): QueueRow | undefined {
+  const [last, setLast] = useState<QueueRow | undefined>(undefined);
+  if (shown !== undefined && shown !== last) setLast(shown);
+  return shown ?? (looking && last?.key === row ? last : undefined);
 }
 
 export function ReviewPage() {
@@ -130,6 +142,10 @@ export function ReviewPage() {
     if (selectedIndex >= 0) lastIndex.current = selectedIndex;
   }, [selectedIndex, queue.filterKey]);
 
+  const onBench = useBenchRow(
+    selectedIndex >= 0 ? rows[selectedIndex] : undefined, address.row, queue.settling || queue.stale,
+  );
+
   // Follow the list rather than hold a key that no longer exists. Answering removes a row,
   // and the selection has to land on the question that took its place — the alternative is
   // an empty bench after every answer, which is a scroll and a click per card. Written
@@ -139,11 +155,13 @@ export function ReviewPage() {
   // filter change the previous answer's rows stay on screen so the page does not blank,
   // and writing a `row` out of them would put a question the new address does not contain
   // into the address — which the next render would then have to correct. It waits.
+  // `queue.settling` holds it while a row that left the loaded pages is looked for: a row
+  // that only moved keeps its card (#1779), and only an answered one hands over.
   useEffect(() => {
-    if (queue.stale || rows.length === 0 || selected !== null) return;
+    if (queue.stale || queue.settling || rows.length === 0 || selected !== null) return;
     const next = nextSelection(rows, lastIndex.current);
     if (next !== undefined) go({ row: next }, { replace: true });
-  }, [rows, selected, go, queue.stale]);
+  }, [rows, selected, go, queue.stale, queue.settling]);
 
   // A change that names a different list clears the row with it: the question the curator
   // had open was chosen out of a list that no longer exists, and the effect above picks the
@@ -427,8 +445,8 @@ export function ReviewPage() {
             />
           </Box>
           <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-            {/* The selected row, or nothing for the one render before the effect above
-                picks the next one. Falling back to `rows[0]` would flash the top of the
+            {/* The selected row — kept while it is looked for after an answer moved it —
+                or nothing for the one render before the effect above picks the next one. Falling back to `rows[0]` would flash the top of the
                 list as the answer to a click somewhere else. With more than one row
                 ticked the bench sums the selection instead (#852); one tick, or none,
                 and the card is what it always was. */}
@@ -448,7 +466,7 @@ export function ReviewPage() {
               )
               // Keyed by the row: a card's unsaved answers are about its own object,
               // and another row of the same question must not inherit them (#1397).
-              : <ReviewBench key={rows[selectedIndex]?.key} row={rows[selectedIndex]} onDone={refresh} />}
+              : <ReviewBench key={onBench?.key} row={onBench} onDone={refresh} />}
           </Box>
         </Stack>
       )}

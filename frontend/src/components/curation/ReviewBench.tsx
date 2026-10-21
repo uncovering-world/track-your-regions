@@ -81,7 +81,7 @@ export function ReviewBench({ row, onDone }: {
       <Box sx={{ p: 4 }}>
         {/* Reachable for the one render between a row being answered away and the page
             choosing the next one — and only that, since the list always has a selection
-            otherwise. No mention of keys: nothing in this branch binds one, and the
+            otherwise, and a row an answer only moved keeps its card (`ReviewPage`, #1779). No mention of keys: nothing in this branch binds one, and the
             keyboard is deliberately deferred to 1.0. */}
         <Typography color="text.secondary">
           Pick a question on the left.
