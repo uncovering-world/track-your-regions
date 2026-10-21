@@ -1320,7 +1320,7 @@ export const ChangedFieldSignificance = {
 } as const;
 
 /**
- * On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth, or a Wikidata item arriving where the place held none (ADR-0129).
+ * On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth, a Wikidata item arriving where the place held none (ADR-0129), or a subtitle arriving where the place held none (ADR-0133).
  */
 export type ChangedFieldPassedTheGate = typeof ChangedFieldPassedTheGate[keyof typeof ChangedFieldPassedTheGate];
 
@@ -1330,6 +1330,7 @@ export const ChangedFieldPassedTheGate = {
   'same-file-credit': 'same-file-credit',
   remeasured: 'remeasured',
   'own-item': 'own-item',
+  'first-subtitle': 'first-subtitle',
 } as const;
 
 /**
@@ -1346,7 +1347,7 @@ export interface ChangedField {
   curatedConflict?: boolean;
   /** The source's gate kept the write out of a row readers see, so a verdict is waiting (ADR-0025). */
   held?: boolean;
-  /** On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth, or a Wikidata item arriving where the place held none (ADR-0129). */
+  /** On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth, a Wikidata item arriving where the place held none (ADR-0129), or a subtitle arriving where the place held none (ADR-0133). */
   passedTheGate?: ChangedFieldPassedTheGate;
 }
 
@@ -7599,7 +7600,7 @@ export const ProposedFieldSignificance = {
 } as const;
 
 /**
- * On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth, or a Wikidata item arriving where the place held none (ADR-0129).
+ * On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth, a Wikidata item arriving where the place held none (ADR-0129), or a subtitle arriving where the place held none (ADR-0133).
  */
 export type ProposedFieldPassedTheGate = typeof ProposedFieldPassedTheGate[keyof typeof ProposedFieldPassedTheGate];
 
@@ -7609,6 +7610,7 @@ export const ProposedFieldPassedTheGate = {
   'same-file-credit': 'same-file-credit',
   remeasured: 'remeasured',
   'own-item': 'own-item',
+  'first-subtitle': 'first-subtitle',
 } as const;
 
 /**
@@ -7625,7 +7627,7 @@ export interface ProposedField {
   curatedConflict?: boolean;
   /** The source's gate kept the write out of a row readers see, so a verdict is waiting (ADR-0025). */
   held?: boolean;
-  /** On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth, or a Wikidata item arriving where the place held none (ADR-0129). */
+  /** On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth, a Wikidata item arriving where the place held none (ADR-0129), or a subtitle arriving where the place held none (ADR-0133). */
   passedTheGate?: ProposedFieldPassedTheGate;
   /** False where accepting releases the claim and the next run writes it. On a `conflict` field only: a `held` field carries `held` instead, and publishing is what applies it. */
   acceptable?: boolean;

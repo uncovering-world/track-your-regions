@@ -556,7 +556,11 @@ async function writeUnderLock(
       ON CONFLICT (id) DO UPDATE SET
         name = CASE WHEN experiences.curated_fields ? 'name' OR ${HELD} THEN experiences.name ELSE EXCLUDED.name END,
         name_local = CASE WHEN experiences.curated_fields ? 'name_local' OR ${HELD} THEN experiences.name_local ELSE EXCLUDED.name_local END,
-        subtitle = CASE WHEN experiences.curated_fields ? 'subtitle' OR ${HELD} THEN experiences.subtitle ELSE EXCLUDED.subtitle END,
+        -- A subtitle where the place holds none passes the gate (ADR-0133,
+        -- the diff's 'first-subtitle'); one it holds is replaced only unheld.
+        subtitle = CASE WHEN experiences.curated_fields ? 'subtitle' THEN experiences.subtitle
+                        WHEN ${HELD} AND COALESCE(experiences.subtitle, '') <> '' THEN experiences.subtitle
+                        ELSE EXCLUDED.subtitle END,
         description = CASE WHEN experiences.curated_fields ? 'description' OR ${HELD} THEN experiences.description ELSE EXCLUDED.description END,
         -- Behind a claim but not behind the gate. Tags are labels the import
         -- derives from facts it also stores by name -- the criteria, the danger
@@ -810,7 +814,7 @@ async function writeUnderLock(
   // `computeChangeSet` files a refused write under the reason it was refused
   // instead (#519). Two kinds of written field are left out: a serial site's
   // anchor moving is the run's own bookkeeping (ADR-0095), and a rewrite that
-  // passed the gate changes nothing a visitor would notice (#1353) — written and
+  // passed the gate replaces nothing a visitor reads (#1353, ADR-0133) — written and
   // recorded, but neither a proposal for the pointer nor a reason to demote a
   // verified membership. Nor does a field no reader sees (`UNSEEN_FIELDS`, #1579).
   const wroteContent = changeSet.changedFields.some(

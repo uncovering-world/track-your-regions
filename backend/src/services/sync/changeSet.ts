@@ -59,15 +59,18 @@ export type FieldSignificance = 'major' | 'minor';
 
 /**
  * Why a rewrite a gated source proposes on a row readers see passes the gate
- * unasked (#1353): it changes nothing a visitor would notice. A part's name
+ * unasked (#1353): it replaces nothing a visitor reads (ADR-0099, ADR-0133).
+ * A part's name
  * with a qualifier added and nothing removed (*Church of All Saints* → *…,
  * Blizne*); a picture credit re-read for the same file under the same licence;
  * a measurement (`MEASURED_METADATA_KEYS`) the source re-took within
  * `REMEASURED_SHARE` (an area of 821.7474 ha → 821.748); the Wikidata item a
  * place held none of, written by a run that knows the place by it (`own-item`,
- * ADR-0129). Every other rewrite is held as before (ADR-0099).
+ * ADR-0129); and a subtitle where the place held none (`first-subtitle`,
+ * ADR-0133), the one class a visitor sees, as a line where there was none.
+ * Every other rewrite is held as before (ADR-0099).
  */
-export const GATE_PASSES = ['qualifier', 'same-file-credit', 'remeasured', 'own-item'] as const;
+export const GATE_PASSES = ['qualifier', 'same-file-credit', 'remeasured', 'own-item', 'first-subtitle'] as const;
 export type GatePass = (typeof GATE_PASSES)[number];
 
 /** How far a number may move and still be the same measurement re-taken. */
@@ -662,19 +665,29 @@ function nameLocalChanges(
   return changes;
 }
 
+/**
+ * The place's own text fields that differ. A subtitle arriving where the place
+ * holds none fills a line a visitor sees empty, so it is written past the gate
+ * (ADR-0133): a World Heritage site the UNESCO run made, which writes none, and
+ * which a Wikidata kind also admits. The upsert's subtitle arm is the same rule.
+ * A subtitle replaced or removed stays a question.
+ */
+function textDifferences(before: ExperienceSnapshot, incoming: ExperienceSnapshot): RawDiff[] {
+  const textFields = ['name', 'subtitle', 'description', 'type', 'imageUrl'] as const;
+  return textFields
+    .filter(field => !textEquals(before[field], incoming[field]))
+    .map(field => ({
+      field, old: before[field], new: incoming[field], significance: fieldSignificance(field),
+      ...(field === 'subtitle' && isEmptyValue(before.subtitle) ? { passedTheGate: 'first-subtitle' as const } : {}),
+    }));
+}
+
 function collectDifferences(
   before: ExperienceSnapshot,
   incoming: ExperienceSnapshot,
   curatedFields: string[],
 ): RawDiff[] {
-  const diffs: RawDiff[] = [];
-
-  const textFields = ['name', 'subtitle', 'description', 'type', 'imageUrl'] as const;
-  for (const field of textFields) {
-    if (!textEquals(before[field], incoming[field])) {
-      diffs.push({ field, old: before[field], new: incoming[field], significance: fieldSignificance(field) });
-    }
-  }
+  const diffs: RawDiff[] = textDifferences(before, incoming);
 
   diffs.push(...nameLocalChanges(before.nameLocal, incoming.nameLocal));
 
