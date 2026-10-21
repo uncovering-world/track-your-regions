@@ -151,6 +151,7 @@ and accepted by it.
 | [0129](0129-a-wikidata-item-a-place-holds-none-of-passes-the-gate.md) | A Wikidata item a place holds none of passes the gate | Accepted | 2026-10-21 |
 | [0130](0130-a-place-keeps-a-picture-its-item-still-carries.md) | A place keeps a picture its item still carries | Accepted | 2026-10-21 |
 | [0131](0131-a-kind-is-drawn-by-what-a-place-was-made-for.md) | A kind is drawn by what a place was made for, and a place no kind holds waits for its own | Accepted | 2026-10-21 |
+| [0132](0132-several-kinds-are-filled-from-one-gather-each-by-a-source-of-its-own.md) | Several kinds are filled from one gather, each by a source of its own | Accepted | 2026-10-21 |
 | [0133](0133-a-subtitle-a-place-holds-none-of-passes-the-gate.md) | A subtitle a place holds none of passes the gate | Accepted | 2026-10-21 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
