@@ -500,6 +500,19 @@ describe("a monument's makers, which are a set and not a list", () => {
     });
   });
 
+  it('files nothing, held or written, when no maker is named on either side', () => {
+    // Public art stores `creators: []` for a monument whose maker Wikidata does not
+    // name, and a place of worship's run of the same place sends no `creators` at
+    // all: neither side names anyone, so neither has proposed anything (#1792).
+    const stored = snapshot({ name: 'Christ the Redeemer', metadata: { wikidataQid: 'Q79961', creators: [] } });
+    const incoming = snapshot({ name: 'Christ the Redeemer', metadata: { wikidataQid: 'Q79961' } });
+    for (const gate of [WROTE, HELD]) {
+      const changes = computeChangeSet(stored, incoming, [], gate);
+      expect([...changes.changedFields, ...changes.heldFields]).toEqual([]);
+      expect(changes.changeType).toBe('unchanged');
+    }
+  });
+
   it('leaves every other list compared as a list', () => {
     // The set rule is one key's, not a new rule for arrays: `countryNames` and
     // the rest keep their own comparisons.

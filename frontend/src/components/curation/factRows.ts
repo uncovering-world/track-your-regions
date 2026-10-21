@@ -17,7 +17,8 @@
  * separate queue.
  */
 
-import { changedKeys, isEmptyValue } from './objectDiff';
+import { isEmptyValue } from '@tyr/shared/equality';
+import { changedKeys } from './objectDiff';
 import { keyMeaningOf, meaningOf, type ChangeContext, type FieldMeaning, type ProposedField } from './fieldMeaning';
 import type { FieldProvenance } from './ProvenanceTrail';
 import type { HeldPart } from '../../api/reviewQueue';

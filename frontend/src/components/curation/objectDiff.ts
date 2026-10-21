@@ -41,6 +41,10 @@ import { jsonEquals } from '@tyr/shared/equality';
  * `''` counts, because `changeSet.ts` counts it: a source that sends an empty string
  * where the row holds `null` has not proposed anything, and a row for it would be a
  * question with no content.
+ *
+ * Narrower than `isEmptyValue` from `@tyr/shared/equality` on purpose: this decides a
+ * value's shape, and an empty list is an array, so `[]` against an object is rendered
+ * whole rather than read as an empty object split into keys.
  */
 function isAbsent(value: unknown): boolean {
   return value === null || value === undefined || value === '';
@@ -92,17 +96,4 @@ export function changedKeys(before: unknown, after: unknown): KeyChange[] | null
     .map(key => ({ key, old: left[key], new: right[key] }));
 
   return changes.length > 0 ? changes : null;
-}
-
-/**
- * Nothing, as a card reads it: the absence `jsonEquals` knows, and an empty list.
- *
- * Wider than `isAbsent` on purpose, and kept apart from it. This decides whether a row
- * reads as *new* — a fact appearing where there was none — or as *changed*, and an
- * empty list is nothing to a person: a place with no countries listed and then two is a
- * fact arriving. `jsonEquals` keeps the server's stricter reading, because it decides
- * which keys are shown and must agree with the server about that.
- */
-export function isEmptyValue(value: unknown): boolean {
-  return isAbsent(value) || (Array.isArray(value) && value.length === 0);
 }
