@@ -221,14 +221,22 @@ describe('what a change asks for', () => {
 
   it('asks the database lanes and the Python gates for a loader in db/', () => {
     // `db/gadm_levels.py` is loaded by the schema's own tests, and the Python
-    // gates read the loaders with db/'s own configuration (#1736). The audit of
-    // cv-python's dependencies is not asked: the loaders' own waits on #1782.
+    // gates read the loaders with db/'s own configuration (#1736), the audit
+    // included, which reads the versions the loader image carries (#1782).
     const gates = applying(['db/gadm_levels.py']);
     expect(gates).toContain('test:py');
     expect(gates).toContain('test:backend');
     expect(gates).toContain('check:py');
     expect(gates).toContain('security:py:bandit');
-    expect(gates).not.toContain('security:py:deps');
+    expect(gates).toContain('security:py:deps');
+  });
+
+  it('asks the loader audit for a change to the loader image, and no other Python gate (#1782)', () => {
+    const image = applying(['db/Dockerfile']);
+    expect(image).toContain('security:py:deps');
+    expect(image).toContain('lint:docker');
+    for (const gate of ['check:py', 'security:py:bandit', 'test:py']) expect(image).not.toContain(gate);
+    expect(applying(['db/requirements.txt'])).toContain('security:py:deps');
   });
 
   it('asks only the backend unit lane and the secrets scan for a change of the coverage lists', () => {
@@ -506,6 +514,7 @@ describe('the CI outputs', () => {
       compose: '.env.example',
       python: 'cv-python/app/a.py',
       'db-python': 'db/gadm_levels.py',
+      'db-image': 'db/Dockerfile',
       coverage: 'db/catalogue-coverage/expectations/rome.jsonl',
       schema: 'db/init/01-schema.sql',
       'node-deps': 'backend/package-lock.json',

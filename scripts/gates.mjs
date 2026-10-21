@@ -135,8 +135,17 @@ export const INPUTS = [
     id: 'db-python',
     paths: [/^db\/.*\.py$/, 'db/pyproject.toml', 'db/requirements.txt'],
     note:
-      'The GADM loaders live in db/: the Python test lane runs their tests, and'
-      + ' check:py and Bandit read them with db/’s own configuration (#1736).',
+      'The GADM loaders live in db/: the Python test lane runs their tests,'
+      + ' check:py and Bandit read them with db/’s own configuration (#1736), and'
+      + ' pip-audit reads the versions their image carries (#1782, db/requirements.txt).',
+  },
+  {
+    id: 'db-image',
+    paths: ['db/Dockerfile'],
+    note:
+      'The GADM loader image: what it carries is pinned in db/requirements.txt,'
+      + ' which the dependency audit reads, so a change to the image asks for the'
+      + ' audit and nothing else of the Python gates (#1782).',
   },
   {
     id: 'coverage',
@@ -347,7 +356,7 @@ export const GATES = [
   { id: 'lint:shrunk', tier: 'check', inputs: INPUTS.map((input) => input.id), command: ['node', 'scripts/check-shrunk-files.mjs'], job: 'check', setup: 'docs', uncached: BASE_SIZES },
   { id: 'check:py', tier: 'check', inputs: ['python', 'db-python'], command: ['npm', 'run', 'check:py'], job: 'check', setup: 'python', config: ['scripts/require-py-tools.sh', 'scripts/require-python-312.sh'] },
   { id: 'security:py:bandit', tier: 'check', inputs: ['python', 'db-python'], command: ['npm', 'run', 'security:py:bandit'], job: 'check', setup: 'python', config: ['scripts/require-py-tools.sh', 'scripts/require-python-312.sh'] },
-  { id: 'security:py:deps', tier: 'check', inputs: ['python'], command: ['npm', 'run', 'security:py:deps'], job: 'check', setup: 'python', uncached: ADVISORIES, config: ['scripts/require-py-tools.sh', 'scripts/require-python-312.sh'] },
+  { id: 'security:py:deps', tier: 'check', inputs: ['python', 'db-python', 'db-image'], command: ['npm', 'run', 'security:py:deps'], job: 'check', setup: 'python', uncached: ADVISORIES, config: ['scripts/require-py-tools.sh', 'scripts/require-python-312.sh'] },
   { id: 'test:backend', tier: 'test', inputs: ['backend', 'web', 'shared', 'database', 'tiles', 'scripts', 'compose', 'coverage'], command: ['node', 'scripts/test-report.mjs', 'backend-unit'], job: 'test', setup: 'node', config: ['.github/workflows/ci.yml', 'docs/tech/gates.md', 'package.json'] },
   { id: 'test:frontend', tier: 'test', inputs: ['web', 'shared', 'runners', 'compose'], command: ['node', 'scripts/test-report.mjs', 'frontend-unit'], job: 'test', setup: 'node' },
   { id: 'test:py', tier: 'test', inputs: ['python', 'db-python'], command: ['npm', 'run', 'test:py'], job: 'python-tests', setup: 'python', config: ['scripts/require-py-tools.sh', 'scripts/require-python-312.sh'] },
