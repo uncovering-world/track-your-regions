@@ -2636,7 +2636,11 @@ admission pin and no question yet (`offeredPlaces`, `services/sync/visit/visitQu
   still short of two. The photographs are read only for a place one witness short, where they decide.
 - **Jev, for every place still short.** A reading the place already has as it stands is reused. Otherwise
   it is asked as on an arriving place's card (`readVisit`, `services/sync/visit/readVisit.ts`, recorded in
-  `experience_visit_suggestions`).
+  `experience_visit_suggestions`), with the lead of the place's article read beforehand for all of them
+  together: `LEADS_AT_ONCE` (20) titles per ask, one ask at a time, each retried as Wikipedia asks within
+  the run's wait budget (`articleLeads`, `visitReading.ts`). A place whose lead was not read is not read
+  by Jev and not asked. Run 185 on 2026-10-21, which asked for each lead on its own, four at once and
+  never again, lost 48 of its 240 places to Wikipedia's 429, Eboracum among them.
 - **The question.** It is raised where the reading is *nothing*, *not-a-place* or *object* at
   `VISIT_QUESTION_SURE` (0.7) or more: one row per membership in `experience_visit_questions`, with the
   witnesses it had and the reading, written by the run alone (`VISIT_QUESTION_WRITE_RULES`).
@@ -2652,7 +2656,7 @@ two witnesses vouch for among 1011 read". The step never fails the run. The map 
 leaves only its places unread, neither read by Jev nor asked; after `MAP_DROPS_IN_A_ROW` (2) dropped
 batches running, the mirror is taken as down and the rest of the map is left unread too, rather than
 each batch spending its own retries. The line adds "200 left for the next
-run as OpenStreetMap did not answer"; the next run reads them, since they carry no question. Archaeology's
+run as OpenStreetMap or Wikipedia did not answer", which counts the places without a lead too; the next run reads them, since they carry no question. Archaeology's
 run 184 on 2026-10-21, before this, lost the whole step to one dropped batch. Any other failure (Wikidata or
 Jev unreachable, a question that could not be written) is logged, asks nothing, and is said in the line:
 "places with nothing to see: not asked, the step failed (see the backend log) — the next run asks".
