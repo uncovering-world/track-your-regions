@@ -7,6 +7,7 @@
 import { operationAnswer } from '../../services/operationProgress.js';
 import { SUBSET_READY_SOURCES, wikidataReaderOf, type WikidataReader } from '../../services/sync/subset/reader.js';
 import { mergeArrivalsOfRun } from '../experience/equalItemMerges.js';
+import { proposeMergesOfRun } from '../../services/sync/mergeProposalFinder.js';
 import type { z } from 'zod/v4';
 import type {
   AssignmentCancelled,
@@ -168,7 +169,11 @@ export async function startSync(
     // starts before this callback runs.
     .then(async () => {
       const run = runningSyncs.get(sourceId);
-      if (run && !run.dryRun && run.logId) await mergeArrivalsOfRun(run.logId);
+      if (!run || run.dryRun || !run.logId) return;
+      await mergeArrivalsOfRun(run.logId);
+      // Then the places it created that a reader can see are paired with near
+      // places of similar names, as the admin's pass would pair them (#1800).
+      await proposeMergesOfRun(run.logId);
     });
 
   return {
