@@ -954,9 +954,15 @@ so the lane's findings are defects and its step fails the job.
   `security:py:bandit` as well as by the test lane, each with `db/pyproject.toml`:
   ruff extends cv-python's rules, mypy checks the scripts' bodies without asking
   every function for its types (the files it reads are listed there, so a new
-  loader is added to the list), and Bandit skips the tests. Their dependency
-  audit waits on #1782, since the versions the loader image carries have
-  advisories of their own.
+  loader is added to the list), and Bandit skips the tests. `security:py:deps`
+  audits what the loader image carries: `db/requirements.txt` pins the versions
+  its base image and apt packages hold, and pip-audit reads them with
+  `--no-deps --disable-pip`, since GDAL has no wheel to resolve (#1782). A
+  change to that file or to `db/Dockerfile` asks for the audit. The pins are
+  checked against the image only when the image is built
+  (`check_image_versions.py`, run by `db/Dockerfile`), which CI does not do:
+  a base-image bump that leaves the pins behind passes the audit and fails at
+  the next `npm run db:load-gadm`.
 - **No gate covers the backend ↔ cv-python HTTP contract.**
   `backend/src/services/cv/pythonCvClient.ts` calls the FastAPI service over
   HTTP; no backend spec exercises it, and `scripts/test-stack.sh` starts `db`,
