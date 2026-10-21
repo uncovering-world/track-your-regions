@@ -10168,6 +10168,13 @@ export interface SyncLog {
   changeset_lost: boolean;
   /** The server was restarted under the run: its figures are how far it got, and its per-object record never left memory. */
   stopped_by_restart: boolean;
+  /** The first run of the pass this run was part of, whose gather it read (ADR-0132); null on the first run and on a run that shared no gather. */
+  pass_log_id: number | null;
+  /**
+     * The source of that first run.
+     * @nullable
+     */
+  pass_source_name: string | null;
 }
 
 export type SyncLogDetailStatus = typeof SyncLogDetailStatus[keyof typeof SyncLogDetailStatus];
@@ -10268,6 +10275,13 @@ export interface SyncLogDetail {
   changeset_lost: boolean;
   /** The server was restarted under the run: its figures are how far it got, and its per-object record never left memory. */
   stopped_by_restart: boolean;
+  /** The first run of the pass this run was part of, whose gather it read (ADR-0132); null on the first run and on a run that shared no gather. */
+  pass_log_id: number | null;
+  /**
+     * The source of that first run.
+     * @nullable
+     */
+  pass_source_name: string | null;
   error_details: SyncErrorDetail[] | null;
   component_items: ComponentItems | null;
 }
@@ -10276,7 +10290,7 @@ export interface SyncLogDetail {
  * A page of runs.
  */
 export interface SyncLogs {
-  /** Newest first. */
+  /** Newest pass first, and the runs of one pass in the order they ran (ADR-0132). */
   logs: SyncLog[];
   /**
      * @minimum -9007199254740991

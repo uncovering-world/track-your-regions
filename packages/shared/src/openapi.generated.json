@@ -33985,6 +33985,26 @@
           "stopped_by_restart": {
             "type": "boolean",
             "description": "The server was restarted under the run: its figures are how far it got, and its per-object record never left memory."
+          },
+          "pass_log_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The first run of the pass this run was part of, whose gather it read (ADR-0132); null on the first run and on a run that shared no gather."
+          },
+          "pass_source_name": {
+            "description": "The source of that first run.",
+            "type": [
+              "string",
+              "null"
+            ]
           }
         },
         "required": [
@@ -34011,7 +34031,9 @@
           "triggered_by_name",
           "has_changeset",
           "changeset_lost",
-          "stopped_by_restart"
+          "stopped_by_restart",
+          "pass_log_id",
+          "pass_source_name"
         ],
         "additionalProperties": false,
         "description": "One run of a source."
@@ -34166,6 +34188,26 @@
             "type": "boolean",
             "description": "The server was restarted under the run: its figures are how far it got, and its per-object record never left memory."
           },
+          "pass_log_id": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The first run of the pass this run was part of, whose gather it read (ADR-0132); null on the first run and on a run that shared no gather."
+          },
+          "pass_source_name": {
+            "description": "The source of that first run.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "error_details": {
             "anyOf": [
               {
@@ -34215,6 +34257,8 @@
           "has_changeset",
           "changeset_lost",
           "stopped_by_restart",
+          "pass_log_id",
+          "pass_source_name",
           "error_details",
           "component_items"
         ],
@@ -34229,7 +34273,7 @@
             "items": {
               "$ref": "#/components/schemas/SyncLog"
             },
-            "description": "Newest first."
+            "description": "Newest pass first, and the runs of one pass in the order they ran (ADR-0132)."
           },
           "total": {
             "type": "integer",

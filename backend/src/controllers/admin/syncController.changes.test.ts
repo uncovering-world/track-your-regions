@@ -50,6 +50,7 @@ const LOG_ROW = {
   total_curated_conflicts: 0, total_held: 0, total_filtered: 0, total_errors: 0, is_dry_run: false,
   detection_skipped_reason: null, withdrawal_skipped_reason: null, admission_sweep_skipped_reason: null, triggered_by: 1, triggered_by_name: 'admin',
   has_changeset: true, changeset_lost: false, stopped_by_restart: false, error_details: null,
+  pass_log_id: null, pass_source_name: null,
 };
 
 describe('sync log queries', () => {
