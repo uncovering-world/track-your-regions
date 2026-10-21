@@ -35,8 +35,16 @@
  * pair in one kind, which one place cannot hold twice (ADR-0086 decision 4),
  * reported with the pass so a person sees what the rule leaves apart; and a
  * place no reader sees yet, which has an arrival card of its own.
+ *
+ * The whole pass runs from the admin panel, after a rule changes. A place a
+ * reader can newly see is paired by itself (#1800): after every real run, the
+ * places it created (`proposeMergesOfRun`), and when a curator publishes an
+ * arrival, that place (`proposeMergesOfPlaces`). Both are the whole pass's
+ * statements, kept to the pairs that hold one of those places, so a pair is
+ * never answered two ways.
  */
 
+import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import { KINDS, MEMBERSHIPS, placeOfferedSql } from '../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
@@ -253,32 +261,49 @@ const placeOf = (row: ProposalRow, side: 'a' | 'b') => ({
 });
 
 /**
- * The pass: find every pair the rule finds, forget the open proposals it no
- * longer finds, propose the new ones and refresh the measures of the open
- * ones; an answered pair is left as it is, which is what keeps a refused pair
- * from coming back. Returns what is open afterwards, how many pairs have been
- * answered and how, and the pairs in one kind the rule left apart.
+ * Find the pairs and write them, inside the caller's transaction: forget the
+ * open proposals the rule no longer finds, propose the new ones and refresh the
+ * measures of the open ones; an answered pair is left as it is, which is what
+ * keeps a refused pair from coming back. `among` keeps the pass to the pairs
+ * holding one of those places, and every other pair stands as it was. Leaves
+ * what it found in the temporary table `found`, until the commit.
+ */
+async function writeProposals(client: PoolClient, among: readonly number[] | null): Promise<void> {
+  const params = among === null ? [] : [among];
+  const holdsOne = (row: string) => `(${row}.place_a = ANY($1::int[]) OR ${row}.place_b = ANY($1::int[]))`;
+  // Every pair, then the ones kept: the same statement as the whole pass, which
+  // reads the catalogue in a fraction of a second (0.18 s on the development
+  // catalogue on 2026-10-21), so the two cannot measure a pair differently.
+  await client.query(`CREATE TEMP TABLE found ON COMMIT DROP AS ${candidatePairsSql()}`);
+  if (among !== null) await client.query(`DELETE FROM found f WHERE NOT ${holdsOne('f')}`, params);
+  await client.query(
+    `DELETE FROM experience_merge_proposals p
+      WHERE p.answer IS NULL ${among === null ? '' : `AND ${holdsOne('p')}`}
+        AND NOT EXISTS (SELECT 1 FROM found f WHERE f.place_a = p.place_a AND f.place_b = p.place_b AND NOT f.shared_kind)`,
+    params,
+  );
+  await client.query(
+    `INSERT INTO experience_merge_proposals AS p (place_a, place_b, distance_m, name_similarity, exact, reach_m, found_by)
+     SELECT f.place_a, f.place_b, f.distance_m, f.name_similarity, f.exact, f.reach_m, f.found_by
+       FROM found f
+      WHERE NOT f.shared_kind
+     ON CONFLICT (place_a, place_b) DO UPDATE
+        SET distance_m = EXCLUDED.distance_m, name_similarity = EXCLUDED.name_similarity,
+            exact = EXCLUDED.exact, reach_m = EXCLUDED.reach_m, found_by = EXCLUDED.found_by, proposed_at = NOW()
+      WHERE p.answer IS NULL`,
+  );
+}
+
+/**
+ * The pass over the whole catalogue, from the admin panel (`writeProposals`).
+ * Returns what is open afterwards, how many pairs have been answered and how,
+ * and the pairs in one kind the rule left apart.
  */
 export async function findMergeProposals(): Promise<MergeProposalPass> {
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
-    await client.query(`CREATE TEMP TABLE found ON COMMIT DROP AS ${candidatePairsSql()}`);
-    await client.query(
-      `DELETE FROM experience_merge_proposals p
-        WHERE p.answer IS NULL
-          AND NOT EXISTS (SELECT 1 FROM found f WHERE f.place_a = p.place_a AND f.place_b = p.place_b AND NOT f.shared_kind)`,
-    );
-    await client.query(
-      `INSERT INTO experience_merge_proposals AS p (place_a, place_b, distance_m, name_similarity, exact, reach_m, found_by)
-       SELECT f.place_a, f.place_b, f.distance_m, f.name_similarity, f.exact, f.reach_m, f.found_by
-         FROM found f
-        WHERE NOT f.shared_kind
-       ON CONFLICT (place_a, place_b) DO UPDATE
-          SET distance_m = EXCLUDED.distance_m, name_similarity = EXCLUDED.name_similarity,
-              exact = EXCLUDED.exact, reach_m = EXCLUDED.reach_m, found_by = EXCLUDED.found_by, proposed_at = NOW()
-        WHERE p.answer IS NULL`,
-    );
+    await writeProposals(client, null);
     const leftApart = await client.query<LeftApartRow>(
       `SELECT a.name AS a_name, ${kindNamesSql('a')} AS a_kinds, b.name AS b_name, ${kindNamesSql('b')} AS b_kinds,
               f.distance_m, f.name_similarity, f.found_by
@@ -326,5 +351,61 @@ export async function findMergeProposals(): Promise<MergeProposalPass> {
     throw error;
   } finally {
     client.release();
+  }
+}
+
+/**
+ * The pass kept to the pairs that hold one of these places, for a place a reader
+ * can newly see: a published arrival (#1800). A place no reader sees is in no
+ * pair, so naming one changes nothing. Called once the place's own write has
+ * committed, so a failure is logged and leaves the pair for the next pass, never
+ * undoing what the caller wrote. Returns how many open pairs hold one of the
+ * places afterwards, or null where the pass failed.
+ */
+export async function proposeMergesOfPlaces(placeIds: readonly number[]): Promise<number | null> {
+  if (placeIds.length === 0) return 0;
+  let client: PoolClient | undefined;
+  try {
+    client = await pool.connect();
+    await client.query('BEGIN');
+    await writeProposals(client, placeIds);
+    // Counted inside the transaction, so a failure here rolls the pass back
+    // rather than reporting a committed pass as failed.
+    const open = await client.query<{ n: number }>(
+      `SELECT count(*)::int AS n FROM experience_merge_proposals p
+        WHERE p.answer IS NULL AND (p.place_a = ANY($1::int[]) OR p.place_b = ANY($1::int[]))`,
+      [placeIds],
+    );
+    await client.query('COMMIT');
+    return open.rows[0].n;
+  } catch (error) {
+    await client?.query('ROLLBACK').catch(() => undefined);
+    console.error('[merge] pairing places %s with near places failed:', placeIds.join(', '), error);
+    return null;
+  } finally {
+    client?.release();
+  }
+}
+
+/**
+ * The pass for the places a run created (#1800), read off its changeset as
+ * `mergeArrivalsOfRun` reads them, after that merge: a created place an equal
+ * item folded into an older one is paired as the place it is now part of.
+ */
+export async function proposeMergesOfRun(syncLogId: number): Promise<number | null> {
+  try {
+    const created = await pool.query<{ id: number }>(
+      `SELECT DISTINCT COALESCE(e.merged_into_id, e.id) AS id
+         FROM experience_sync_changes c
+         JOIN experience_sync_logs run ON run.id = c.sync_log_id AND NOT run.is_dry_run
+         JOIN ${MEMBERSHIPS} m ON m.source_id = run.source_id AND m.external_id = c.external_id
+         JOIN experiences e ON e.id = m.experience_id
+        WHERE c.sync_log_id = $1 AND c.change_type = 'created'`,
+      [syncLogId],
+    );
+    return await proposeMergesOfPlaces(created.rows.map(row => row.id));
+  } catch (error) {
+    console.error('[merge] pairing the places run %d created failed:', syncLogId, error);
+    return null;
   }
 }

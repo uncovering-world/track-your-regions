@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
-import { findMergeProposals } from './mergeProposalFinder.js';
+import { findMergeProposals, proposeMergesOfPlaces, proposeMergesOfRun } from './mergeProposalFinder.js';
 
 /**
  * The pass over near places with similar names (#1249, ADR-0046 decisions 2
@@ -21,13 +21,23 @@ const P = {
   church: 9720, site: 9721, farSite: 9722, chapelA: 9723, chapelB: 9724,
   property: 9725, propertyTwin: 9726, whole: 9727, part: 9728, partTwin: 9729, pending: 9730,
   westOfTheLine: 9731, eastOfTheLine: 9732, monastery: 9733, monasteryTwin: 9734, oldTown: 9735, townMuseum: 9736,
+  fort: 9737, fortArrival: 9738, windmill: 9739, windmillArrival: 9740,
 } as const;
 const ALL = Object.values(P);
 
 /** Metres east of the island's centre as degrees of longitude, on the equator. */
 const east = (metres: number) => ISLAND.lon + metres / 111_320;
 
+/** The fixture's runs, told by their marker. */
+const RUN_MARK = '[{"fixture": "near-pairs"}]';
+
 async function clear(): Promise<void> {
+  await pool.query(
+    `DELETE FROM experience_sync_changes c USING experience_sync_logs l
+      WHERE c.sync_log_id = l.id AND l.error_details @> $1::jsonb`,
+    [RUN_MARK],
+  );
+  await pool.query('DELETE FROM experience_sync_logs WHERE error_details @> $1::jsonb', [RUN_MARK]);
   await pool.query('DELETE FROM experience_merge_proposals WHERE place_a = ANY($1) OR place_b = ANY($1)', [ALL]);
   await pool.query('DELETE FROM experience_parts WHERE whole_id = ANY($1) OR part_id = ANY($1)', [ALL]);
   await pool.query('DELETE FROM experiences WHERE id = ANY($1)', [ALL]);
@@ -176,5 +186,53 @@ describe('the pass over near places with similar names', () => {
       [P.westOfTheLine, P.eastOfTheLine, null, 111],
       [P.monastery, P.monasteryTwin, null, 7],
     ]);
+  });
+});
+
+describe('the pass for the places a reader can newly see (#1800)', () => {
+  const proposedAt = async (a: number, b: number) => (await pool.query<{ proposed_at: Date }>(
+    'SELECT proposed_at FROM experience_merge_proposals WHERE place_a = $1 AND place_b = $2', [a, b],
+  )).rows[0]?.proposed_at;
+
+  it('pairs a place a run created with a near place of a similar name, and leaves every other pair as it was', async () => {
+    await findMergeProposals();
+    const lighthouse = await proposedAt(P.westOfTheLine, P.eastOfTheLine);
+    // A pair the whole pass would now forget, which the run's pass is not asked about.
+    await pool.query('UPDATE experience_locations SET location = ST_SetSRID(ST_MakePoint($2, $3), 4326) WHERE experience_id = $1', [P.eastOfTheLine, -179.9, ISLAND.lat]);
+    await place({ id: P.fort, name: 'Fixture Harbour Fort', source: 'Places of worship', lon: east(60000) });
+    await place({ id: P.fortArrival, name: 'Fixture Harbour Fort', source: 'Archaeology', lon: east(60020) });
+    const run = (await pool.query<{ id: number }>(
+      `INSERT INTO experience_sync_logs (source_id, status, is_dry_run, error_details)
+       SELECT id, 'success', false, $1::jsonb FROM experience_sources WHERE name = 'Archaeology' RETURNING id`,
+      [RUN_MARK],
+    )).rows[0].id;
+    await pool.query(
+      `INSERT INTO experience_sync_changes (sync_log_id, experience_id, external_id, change_type) VALUES ($1, $2, $3, 'created')`,
+      [run, P.fortArrival, `fixture-${P.fortArrival}`],
+    );
+
+    expect(await proposeMergesOfRun(run)).toBe(1);
+
+    const pairs = await fixturePairs();
+    expect(pairs.find(p => p.place_a === P.fort)).toMatchObject({ place_b: P.fortArrival, exact: true, found_by: 'similar' });
+    expect(pairs.find(p => p.place_a === P.westOfTheLine)).toMatchObject({ place_b: P.eastOfTheLine, answer: null });
+    expect(await proposedAt(P.westOfTheLine, P.eastOfTheLine)).toEqual(lighthouse);
+  });
+
+  it('pairs an arrival once it is published, and not while no reader sees it', async () => {
+    await place({ id: P.windmill, name: 'Fixture Windmill', source: 'Places of worship', lon: east(70000) });
+    await place({ id: P.windmillArrival, name: 'Fixture Windmill', source: 'Archaeology', lon: east(70030), state: 'pending' });
+
+    expect(await proposeMergesOfPlaces([P.windmillArrival])).toBe(0);
+
+    // What publishing the arrival does to it: the membership and its point become a reader's.
+    await pool.query(
+      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1`,
+      [P.windmillArrival],
+    );
+    await pool.query(`UPDATE experience_locations SET curation_state = 'verified' WHERE experience_id = $1`, [P.windmillArrival]);
+
+    expect(await proposeMergesOfPlaces([P.windmillArrival])).toBe(1);
+    expect((await fixturePairs()).find(p => p.place_a === P.windmill)).toMatchObject({ place_b: P.windmillArrival, found_by: 'similar' });
   });
 });
