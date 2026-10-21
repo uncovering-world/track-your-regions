@@ -50,8 +50,7 @@ export function invalidateExperiences(
     // actually releases (ADR-0025) and the two caches this helper did not reach.
     // `experience-contents` holds them for five minutes (`staleTime: 300000`), so
     // without these a curator who published twelve paintings is told they are
-    // visible and then shown the list from before — on the very screen the card's
-    // "Look at the object" sends them to.
+    // visible and then shown the list from before on the object's own screens.
     queryClient.invalidateQueries({ queryKey: queryKeys.experience.locations(opts.experienceId) });
     queryClient.invalidateQueries({ queryKey: queryKeys.experience.contents(opts.experienceId) });
     // The region batch holds the same points, keyed by region instead of by

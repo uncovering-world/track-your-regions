@@ -79,8 +79,7 @@ describe('invalidateExperiences', () => {
     // These two hold exactly what publishing releases, and `experience-contents`
     // keeps it for five minutes (`staleTime: 300000`). Without them a curator who
     // published twelve paintings reads "12 works now visible" and then opens the
-    // object — via the card's own "Look at the object" — onto the list from
-    // before. The notice would be right and the page would contradict it.
+    // object onto the list from before. The notice would be right and the page would contradict it.
     expect(keys).toContainEqual(['experience-locations', 42]);
     expect(keys).toContainEqual(['experience-contents', 42]);
   });

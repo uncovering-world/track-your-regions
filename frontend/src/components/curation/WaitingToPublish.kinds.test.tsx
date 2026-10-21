@@ -69,13 +69,14 @@ function sectionOf(heading: string): HTMLElement {
 }
 
 describe('a place two kinds ask about', () => {
-  it('is drawn once, with a section per kind and one way to look at it', () => {
+  it('is drawn once, with a section per kind and no preview repeating its header', () => {
     renderCard();
 
     expect(screen.getAllByText('Capitoline Museums')).toHaveLength(1);
     expect(screen.getByText('Archaeology asks')).toBeInTheDocument();
     expect(screen.getByText('Art Museums asks')).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Look at the object' })).toHaveLength(1);
+    // The header is the object; a button opening it again repeated it (#1780).
+    expect(screen.queryByRole('button', { name: 'Look at the object' })).toBeNull();
   });
 
   it('says readers see the place under its other kind, not that nobody can see it', () => {

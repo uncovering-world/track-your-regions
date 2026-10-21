@@ -486,37 +486,19 @@ describe('ReviewQueue', () => {
       expect(screen.getByRole('button', { name: /publish everything on this card/i })).toBeEnabled();
     });
 
-    it('follows the card through to the object the gate is hiding', async () => {
+    it('says what the object the gate is hiding is, on the card itself (#1780)', async () => {
+      // An arrival is in no list, no count and on no map, so the card is where it is
+      // judged: its header carries the description off the queue's own row, and no
+      // second read of the object is needed to see it.
       mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], arrivals: [ARRIVAL], limit: 25,
+        missing: [], refused: [], conflicts: [], limit: 25,
+        arrivals: [{ ...ARRIVAL, object_description: 'art museum of the Slim family collection in Mexico City' }],
       });
       renderQueue();
 
-      fireEvent.click(await screen.findByRole('button', { name: /look at the object/i }));
-
-      // An arrival is in no list, no count and on no map. A curator's by-id read
-      // is the only place it answers at all, and judging it is the whole reason
-      // that read was relaxed.
-      await waitFor(() => expect(mockedExperience).toHaveBeenCalledWith(55));
-      expect(await screen.findByText(/Slim family collection/)).toBeInTheDocument();
-    });
-
-    it('does not claim a point count the by-id read never carries', async () => {
-      mockedFetch.mockResolvedValue({
-        missing: [], refused: [], conflicts: [], arrivals: [ARRIVAL], limit: 25,
-      });
-      renderQueue();
-
-      fireEvent.click(await screen.findByRole('button', { name: /look at the object/i }));
-
-      // GET /api/experiences/:id carries no location_count column at all —
-      // that field only exists on the region list's own query — so this
-      // number was always zero regardless of the object's real contents. A
-      // true sentence beats a false zero (#524 tracks the read that would
-      // list this properly).
-      await screen.findByText(/Slim family collection/);
-      expect(screen.queryByText(/reader would see/i)).not.toBeInTheDocument();
-      expect(screen.queryByText(/0 points?/i)).not.toBeInTheDocument();
+      expect(await screen.findByText('art museum of the Slim family collection in Mexico City')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /look at the object/i })).toBeNull();
+      expect(mockedExperience).not.toHaveBeenCalled();
     });
 
     it('does not print "undefined" for a held card with no run id on record', async () => {

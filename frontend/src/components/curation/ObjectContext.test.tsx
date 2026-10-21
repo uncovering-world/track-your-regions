@@ -59,6 +59,19 @@ describe('ObjectContext', () => {
     expect(screen.getByText('Tigray')).toBeInTheDocument();
   });
 
+  it('says what the object is in one line, whole on hover (#1780)', () => {
+    const line = 'museum in Saint Petersburg, Russia';
+    render(<ObjectContext item={item({ name: 'Hermitage Museum', object_description: `  ${line} ` })} />);
+
+    const description = screen.getByText(line);
+    expect(description).toHaveAttribute('title', line);
+  });
+
+  it('draws no description line for a blank one', () => {
+    const { container } = render(<ObjectContext item={item({ object_description: '   ' })} />);
+    expect(container.querySelector('p[title]')).toBeNull();
+  });
+
   it('offers one link where the official website is UNESCO\'s page (#1538)', () => {
     render(<ObjectContext item={item({
       unesco_url: 'https://whc.unesco.org/en/list/15',
