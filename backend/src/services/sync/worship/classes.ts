@@ -210,7 +210,7 @@ export const RUIN_CLASSES: Record<string, string> = {
  * `steeple`), Giotto's Campanile and St Mark's, the Kalyan Minaret, the Minaret
  * of Jam (Q192981), the Qutb Minar (Q187635), Big Ben (Q41225, also a
  * `steeple`) — and the kind it belongs to is proposed and unbuilt
- * (`docs/vision/PROPOSED-EXPERIENCE-CATEGORIES.md` § Towers & Landmarks).
+ * (`docs/vision/PROPOSED-EXPERIENCE-CATEGORIES.md` § Towers).
  *
  * So a row whose only worship class is one of these five is refused, with the
  * one reason that is true of every one of them: `a tower, not a place of

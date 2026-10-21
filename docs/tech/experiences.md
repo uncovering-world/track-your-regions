@@ -2286,9 +2286,9 @@ beside it or not):
   offered to nobody: a traveller does not enter Pisa Cathedral to see the Leaning Tower, and does
   not call the Minaret of Jam a place of worship. What a traveller climbs or stands under is a
   visit of its own kind, proposed and unbuilt
-  ([`PROPOSED-EXPERIENCE-CATEGORIES.md`](../vision/PROPOSED-EXPERIENCE-CATEGORIES.md) § Towers &
-  Landmarks), so the reason names the missing kind rather than a church. Whether the tower stands
-  over a cathedral or alone in a river valley makes no difference to that answer, so the rule does
+  ([`PROPOSED-EXPERIENCE-CATEGORIES.md`](../vision/PROPOSED-EXPERIENCE-CATEGORIES.md) § Towers),
+  so the reason names the missing kind rather than a church. Whether the tower stands over a
+  cathedral or alone in a river valley makes no difference to that answer, so the rule does
   not ask — the Leaning Tower, the Giralda, St Mark's and Giotto's campaniles, the Kalyan Minaret,
   the Minaret of Jam, the Qutb Minar and Big Ben all read alike. A row carrying a proper worship
   class beside its tower is the place: the Ivan the Great Bell Tower is a church you walk into, and
@@ -2475,8 +2475,8 @@ stay apart until identity per location is decided (#1250).
   Hassan Tower **is** Rabat's mosque site — its `P361` target, the Hassan Mosque, holds one
   sitelink and never reaches the pool — so this is the one loss a traveller would call a mosque
   site rather than only a tower. They wait for the kind that is theirs
-  ([`PROPOSED-EXPERIENCE-CATEGORIES.md`](../vision/PROPOSED-EXPERIENCE-CATEGORIES.md) § Towers &
-  Landmarks); Public Art & Monuments refuses the same rows as classes of the worship tree, so they
+  ([`PROPOSED-EXPERIENCE-CATEGORIES.md`](../vision/PROPOSED-EXPERIENCE-CATEGORIES.md) § Towers);
+  Public Art & Monuments refuses the same rows as classes of the worship tree, so they
   are named in two rules and listed in none.
 - **Manuscripts and church bells are not treasures**: a codex is in an archive and a bell is in the
   tower, and the test is being on public view rather than being valuable. The class test is coarser
