@@ -30,7 +30,7 @@ vi.mock('./wikidataCache.js', () => ({
   pruneExpired: vi.fn().mockResolvedValue(0),
   withCache: vi.fn((door: unknown) => door),
 }));
-vi.mock('./publicArt/pipeline.js', () => ({ collectPublicArt: vi.fn() }));
+vi.mock('./publicArt/pipeline.js', () => ({ gatherPublicArt: vi.fn(), classifyPublicArt: vi.fn() }));
 vi.mock('./pinQuestion.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./pinQuestion.js')>()),
   // The run's questions about a curator's pin read and write the database (#1367).
@@ -73,13 +73,16 @@ import { orchestrateSync } from './syncOrchestrator.js';
 import type { SyncServiceConfig, SyncRunContext } from './syncContract.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { withCache } from './wikidataCache.js';
-import { collectPublicArt } from './publicArt/pipeline.js';
+import { classifyPublicArt, gatherPublicArt } from './publicArt/pipeline.js';
 import { admittedExternalIds } from './admission.js';
 import { syncLandmarks } from './landmarkSyncService.js';
 import type { SyncProgress, WikidataLandmark } from './types.js';
 
 const mockedOrchestrate = orchestrateSync as unknown as ReturnType<typeof vi.fn>;
-const mockedCollect = collectPublicArt as unknown as ReturnType<typeof vi.fn>;
+const mockedGather = gatherPublicArt as unknown as ReturnType<typeof vi.fn>;
+const mockedCollect = classifyPublicArt as unknown as ReturnType<typeof vi.fn>;
+/** What the gather hands the classification; the classification is what the tests say. */
+const GATHERED = { trees: {}, pool: new Map(), facts: new Map(), containers: new Map() };
 const mockedAdmitted = admittedExternalIds as unknown as ReturnType<typeof vi.fn>;
 const mockedWithCache = withCache as unknown as ReturnType<typeof vi.fn>;
 const mockedUpsert = upsertExperienceRecord as unknown as ReturnType<typeof vi.fn>;
@@ -102,7 +105,8 @@ async function configOf(options: { dryRun?: boolean; refreshCache?: boolean } = 
 beforeEach(() => {
   vi.clearAllMocks();
   mockedAdmitted.mockResolvedValue(new Set(['Q337179']));
-  mockedCollect.mockResolvedValue({ items: [landmark()], fetched: 1, filtered: [] });
+  mockedGather.mockResolvedValue(GATHERED);
+  mockedCollect.mockReturnValue({ items: [landmark()], fetched: 1, filtered: [] });
   mockedUpsert.mockResolvedValue({
     experienceId: 7, changeSet: { changeType: 'unchanged' }, nameSnapshot: 'Freedom Monument', returnedFromMissing: false,
   });
@@ -121,12 +125,14 @@ describe('syncLandmarks', () => {
 
   it('hands the collection what the source already admits, and its refusals back', async () => {
     const refusal = { externalId: 'Q1499912', name: 'Segovia Cathedral', reason: 'a place of worship, not public art' };
-    mockedCollect.mockResolvedValue({ items: [landmark()], fetched: 5, filtered: [refusal] });
+    mockedCollect.mockReturnValue({ items: [landmark()], fetched: 5, filtered: [refusal] });
 
     const config = await configOf();
     const fetched = await config.fetchItems(progress(), []);
 
     expect(mockedAdmitted).toHaveBeenCalledWith(3);
+    expect(mockedGather.mock.calls[0][1]).toEqual(new Set(['Q337179']));
+    expect(mockedCollect.mock.calls[0][0]).toBe(GATHERED);
     expect(mockedCollect.mock.calls[0][1]).toEqual(new Set(['Q337179']));
     // And the places another kind offers, so a work outdoors on a venue no
     // kind offers stays public art (#1444).
@@ -143,7 +149,7 @@ describe('syncLandmarks', () => {
 
     vi.clearAllMocks();
     mockedAdmitted.mockResolvedValue(new Set());
-    mockedCollect.mockResolvedValue({ items: [], fetched: 0, filtered: [] });
+    mockedCollect.mockReturnValue({ items: [], fetched: 0, filtered: [] });
     const plain = await configOf();
     await plain.fetchItems(progress(), []);
     expect(mockedWithCache.mock.calls[0][1]).toMatchObject({ sourceId: 3, enabled: true });
@@ -157,13 +163,13 @@ describe('syncLandmarks', () => {
     await expect((await configOf()).fetchItems(progress(), [])).rejects.toThrow(/not built/);
 
     vi.mocked(latestSubset).mockResolvedValue({ dumpDate: '2026-10-05', swappedAt: new Date(), needs: 'nothing' });
-    mockedCollect.mockResolvedValue({ items: [], fetched: 0, filtered: [] });
+    mockedCollect.mockReturnValue({ items: [], fetched: 0, filtered: [] });
     // A row whose item the subset does not keep: left as it is, and named (#1462).
     const unread = [{ externalId: 'Q130000001', name: 'A statue newer than the dump' }];
     vi.mocked(pool.query).mockResolvedValueOnce({ rows: unread } as never);
     const result = await (await configOf()).fetchItems(progress(), []);
     expect(result.unread).toEqual(unread);
-    const door = mockedCollect.mock.calls.at(-1)![0].sparql;
+    const door = mockedGather.mock.calls.at(-1)![0].sparql;
     expect(readsSubset(door)).toBe(true);
     await expect(door('SELECT ?x WHERE {}', { kind: 'pool', label: 'a pool' })).rejects.toThrow(/asked the live service: a pool/);
     expect(mockedWithCache).not.toHaveBeenCalled();
@@ -194,7 +200,7 @@ describe('syncLandmarks', () => {
   });
 
   it('tells two landmarks of one name apart by where the description puts them', async () => {
-    mockedCollect.mockResolvedValue({
+    mockedCollect.mockReturnValue({
       items: [
         landmark({ qid: 'Q1', label: 'Victoria Memorial', description: 'memorial in London' }),
         landmark({ qid: 'Q2', label: 'Victoria Memorial', description: 'monument in Kolkata, India' }),
