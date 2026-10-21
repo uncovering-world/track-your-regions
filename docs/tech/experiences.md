@@ -1240,8 +1240,10 @@ would have blocked missing detection outright.
 
 **Serial nominations carry their coordinates in their parts, and have none of their own**
 ([ADR-0095](../decisions/0095-a-place-of-several-points-has-no-coordinate-of-its-own.md),
-#1354). UNESCO leaves `coordinates` null on many serial sites and fills `components_list`
-instead, and where it fills both, the site's value follows its list's ordering: the Danube Limes
+#1354). The site's own point is `geo_point_2d`: since the dataset's update of 2026-10-20,
+`coordinates` is a GeoJSON MultiPoint of every component, and `geo_point_2d` the portal's point of
+it, for a site of one component that component's point (#1803). UNESCO leaves both null on many
+serial sites and fills `components_list` instead, and where it fills both, the site's value follows its list's ordering: the Danube Limes
 went from Carnuntum to near Linz, 180 km. So for a record of several components
 `resolveMainPoint()` takes the component nearest the components' centroid whatever the export's
 own value, and the run marks it as the place's anchor (`locationIsAnchor`): the upsert writes it
@@ -1281,17 +1283,21 @@ the site's own points. A part with no kind of its own carries no `experience_reg
 placement derives them only for a place with a membership, and the lists find a part through its site.
 The smoke fixture parts its two-point World Heritage site the same way (`e2eFixture.ts`).
 
-**A component's name is everything between `name:` and `ref:`** (`componentName`,
-`unescoSyncService.ts`, #1279). The dataset writes each part as `{name: Villa Mairea, Pori, ref:
-1752-013, latitude: …, longitude: …}`, so a name has commas of its own: read up to the first
-comma, Aalto Works' parts lost the town that tells two of them apart and Tashkent's "Zhemchug
-Residential Building (Zhemchug, the “Pearl”)" lost half its bracket. A name the source leaves
-empty, as it does for parts of the Via Appia, stays empty; one it writes wrong, as "The " for two
-parts of Tarraco, is kept as written and is a suspicious-data heuristic's to flag (#497). A name
-the export sends decoded twice is read once (`readOnce`, #1405): Birka and Hovgården's part
-comes as "HovgÃ¥rden", the two UTF-8 bytes of "å" read as two Latin-1 characters. Such a pair
-in a name made only of bytes that decode as well-formed UTF-8 is that UTF-8; anything else is
-kept as written.
+**A site's components are the entries of `components_list`** (`parseComponentsList`,
+`unescoSyncService.ts`, #1803). Since 2026-10-20 the dataset writes the list as JSON,
+`[{"name": "Hanklit", "ref": "1758-001", "latitude": 56.895649, "longitude": 8.751962}, …]`, so a
+name keeps its commas ("Villa Mairea, Pori", Aalto Works) and its brackets as written. An entry
+with no ref or no point is skipped. The form before it, `{name: …, ref: …, latitude: …}`, is still
+read (`parseFormerComponentsList`), and a list in neither form fails the site by name: under the
+new form the former parser read every site as having no components, and run 187 failed every one
+of the 1273 records. A name the source leaves empty, as it does for
+parts of the Via Appia, stays empty; one it writes wrong, as "The " for two parts of Tarraco, is
+kept as written and is a suspicious-data heuristic's to flag (#497). A name the export sends
+decoded twice is read once (`readOnce`, #1405): Birka and Hovgården's part comes as
+"HovgÃ¥rden", the two UTF-8 bytes of "å" read as two Latin-1 characters. Such a pair in a name
+made only of bytes that decode as well-formed UTF-8 is that UTF-8; anything else is kept as
+written. The Routes of Santiago de Compostela in France (868) came with no point and no
+component in that update, so the run fails it and the place keeps what it holds.
 
 A name is read as plain text (`feedText`, `unescoText.ts`, #1610): the export marks a foreign
 term in italics with inline HTML, and a name stored that way was drawn with its tags, "Via
