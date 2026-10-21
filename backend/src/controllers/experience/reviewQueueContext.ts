@@ -77,12 +77,15 @@ export function objectContextSelectSql(alias = 'e'): string {
           ${alias}.metadata->>'website' AS website_url,
           ${alias}.metadata->>'unescoUrl' AS unesco_url,
           ${alias}.metadata->>'wikipediaUrl' AS wikipedia_url,
+          -- What the object is, in a line: Wikidata's description for a museum
+          -- ("museum in Saint Petersburg, Russia"), the long one first where the
+          -- source gave one. The card's header draws it (#1780).
+          COALESCE(NULLIF(${alias}.description, ''), NULLIF(${alias}.short_description, '')) AS object_description,
           -- The run's own question about a row it could not settle by its rule
           -- (ADR-0058): an art museum with an antiquities department is a
           -- judgement about the exposition that no classes answer, so the run
-          -- writes down what it saw and holds the row. On the card rather than
-          -- only on the preview behind it, because this is where the answer is
-          -- given -- and where a batch answer can dispose of the row without
+          -- writes down what it saw and holds the row. On the card, because
+          -- this is where the answer is given -- and where a batch answer can dispose of the row without
           -- the object ever being opened (#852). Null on every row no run
           -- asked anything about, which is nearly all of them. The readership
           -- door asks under a key per kind (ADR-0056), since a place two kinds

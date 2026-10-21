@@ -47,6 +47,8 @@ export interface QueueRow {
   /** UNESCO's page about a World Heritage site (#1538), apart from the site's own. */
   unesco_url?: string | null;
   wikipedia_url?: string | null;
+  /** The object's description, the long one where there is one (#1780). */
+  object_description?: string | null;
   region_names?: string[] | null;
   admission_note?: string | null;
   in_danger?: boolean;
@@ -169,6 +171,7 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     website_url: row.website_url,
     unesco_url: row.unesco_url,
     wikipedia_url: row.wikipedia_url,
+    object_description: row.object_description,
     region_names: row.region_names,
     admission_note: row.admission_note,
     seen_in: row.seen_in,

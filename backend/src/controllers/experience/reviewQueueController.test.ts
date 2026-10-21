@@ -361,7 +361,7 @@ describe('getReviewQueue', () => {
     expect(heldSql).toContain("COALESCE(part->>'storedName', part->'item'->>'name')");
   });
 
-  it('carries the run\'s own question on every card, not only on the preview behind it', async () => {
+  it('carries the run\'s own question on every card', async () => {
     await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
     // A row the rule could not settle is held with the doubt written down
@@ -369,8 +369,7 @@ describe('getReviewQueue', () => {
     // the exposition is substantially archaeology is nobody's class to answer.
     // The card is where that gets answered, and where a batch can dispose of
     // the row without the object ever being opened (#852), so the note travels
-    // with the rest of the object's context rather than only on the by-id read
-    // behind "Look at the object". Through the shared fragment, which is why it
+    // with the rest of the object's context on every card. Through the shared fragment, which is why it
     // is asserted on more than the one kind that carries it today: a column
     // added to one query is exactly the drift `objectContextSelectSql` exists
     // to prevent.

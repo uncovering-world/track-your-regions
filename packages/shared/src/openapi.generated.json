@@ -31763,6 +31763,13 @@
               "null"
             ]
           },
+          "object_description": {
+            "description": "The object's description, the long one where there is one, else the short one (#1780).",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "region_names": {
             "anyOf": [
               {
