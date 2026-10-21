@@ -131,6 +131,19 @@ interface SyncLogRowProps {
   onViewDetails: () => void;
 }
 
+/**
+ * Which pass a later run belongs to (ADR-0132): it read the gather its
+ * pass's first run made, and the list keeps the two together.
+ */
+export function PassNote({ log }: { log: Pick<SyncLog, 'pass_log_id' | 'pass_source_name'> }) {
+  if (log.pass_log_id === null) return null;
+  return (
+    <Typography variant="caption" color="text.secondary" display="block">
+      One pass with the {log.pass_source_name ?? 'first'} run #{log.pass_log_id}, from its gather
+    </Typography>
+  );
+}
+
 function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
   const getStatusChip = () => {
     switch (log.status) {
@@ -158,6 +171,7 @@ function SyncLogRow({ log, onViewDetails }: SyncLogRowProps) {
         {log.is_dry_run && (
           <Chip label="Preview" size="small" color="info" variant="outlined" sx={{ ml: 1 }} />
         )}
+        <PassNote log={log} />
       </TableCell>
       <TableCell>{formatDateTime(log.started_at)}</TableCell>
       <TableCell>{formatDuration(log.started_at, log.completed_at)}</TableCell>
@@ -353,6 +367,7 @@ function SyncLogDialog({ logId, onClose }: SyncLogDialogProps) {
               <Box>
                 <Typography variant="subtitle2" color="text.secondary">Source</Typography>
                 <Typography>{log.source_name}</Typography>
+                <PassNote log={log} />
               </Box>
               <Box>
                 <Typography variant="subtitle2" color="text.secondary">Status</Typography>

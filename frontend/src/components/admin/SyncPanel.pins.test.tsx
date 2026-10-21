@@ -42,6 +42,7 @@ const ART: ExperienceSource = {
   findsComponentItems: false,
   wikidataReader: 'live',
   subsetReady: false,
+  runsWith: [],
 };
 
 const idle: SyncStatus = { running: false, kind: 'sync', status: 'complete', statusMessage: '', progress: 0, total: 0, percent: 0 };
