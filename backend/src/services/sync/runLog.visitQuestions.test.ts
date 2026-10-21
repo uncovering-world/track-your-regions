@@ -17,10 +17,10 @@ describe("the run's closing line on places with nothing to see (#1770)", () => {
       .toBe('; places with nothing to see: stopped by Cancel before any was read');
   });
 
-  it('says how many places it left for the next run when the map did not answer for them', () => {
+  it('says how many places it left for the next run when the map or Wikipedia did not answer for them', () => {
     expect(visitQuestionsSentence({ read: 935, short: 40, asked: 3, unread: 200 })).toBe('; places with nothing to see: '
       + '3 asked of a curator, of 40 that fewer than two witnesses vouch for among 935 read, '
-      + '200 left for the next run as OpenStreetMap did not answer');
+      + '200 left for the next run as OpenStreetMap or Wikipedia did not answer');
   });
 
   it('says the asking failed, whatever failed, without naming a source', () => {

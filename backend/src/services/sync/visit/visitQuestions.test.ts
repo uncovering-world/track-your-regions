@@ -88,6 +88,21 @@ describe('the places a run asks a curator about (#1770)', () => {
     expect(open.read.mock.calls.map(([asked]) => asked.qid)).toEqual(['Q856764']);
   });
 
+  it('reads every lead at once and gives each its own; a place whose lead was not read is not read', async () => {
+    const open = doors({ Q958954: { reading: 'not-a-place', confidence: 0.9 }, Q856764: { reading: 'object', confidence: 0.96 } });
+    const venus = { ...VENUS, asked: { ...VENUS.asked, article: 'https://en.wikipedia.org/wiki/Venus_of_Tan-Tan' } };
+    const eboracum = { ...EBORACUM, asked: { ...EBORACUM.asked, article: 'https://en.wikipedia.org/wiki/Eboracum' } };
+    // Wikipedia answered for the Venus and not for Eboracum.
+    const leads = vi.fn(async () => new Map([[venus.asked.article, 'A stone found in Morocco.']]));
+
+    const { unread, questions } = await visitQuestionsOf([eboracum, venus], { ...open, leads });
+
+    expect(leads).toHaveBeenCalledTimes(1);
+    expect(unread).toBe(1);
+    expect(questions.map((q) => q.place.name)).toEqual(['Venus of Tan-Tan']);
+    expect(open.read.mock.calls).toEqual([[venus, 'A stone found in Morocco.']]);
+  });
+
   it('asks nothing where Jev is not sure enough', async () => {
     const open = doors({ Q958954: { reading: 'nothing', confidence: VISIT_QUESTION_SURE - 0.01 } });
 
