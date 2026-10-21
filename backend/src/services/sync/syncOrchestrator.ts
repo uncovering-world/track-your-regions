@@ -47,6 +47,17 @@ function isSyncStillRunning(progress: SyncProgress | undefined): boolean {
     && !isTerminalSyncStatus(progress.status);
 }
 
+/**
+ * A run's place in a pass (ADR-0132), handed by `runSyncPass`: the progress
+ * the pass registered for the source while it waited, which the run takes up
+ * rather than replacing, and the log of the pass's first run, which this
+ * run's log names.
+ */
+export interface PassSlot {
+  progress: SyncProgress;
+  firstLogId: number | null;
+}
+
 function initSyncProgress(dryRun: boolean): SyncProgress {
   return {
     cancel: false,
@@ -158,15 +169,21 @@ export async function orchestrateSync<T>(
   config: SyncServiceConfig<T>,
   triggeredBy: number | null,
   options: SyncRunOptions = {},
+  pass?: PassSlot,
 ): Promise<void> {
   const { sourceId, logPrefix } = config;
   const dryRun = options.dryRun ?? false;
 
-  if (isSyncStillRunning(runningSyncs.get(sourceId))) {
+  // A pass registers its later sources while they wait for their turn, so the
+  // panel shows them as running and a second start is refused; that entry is
+  // this run's own, and the run takes it up.
+  const current = runningSyncs.get(sourceId);
+  if (current !== pass?.progress && isSyncStillRunning(current)) {
     throw new Error(`${logPrefix} sync already in progress`);
   }
 
-  const progress = initSyncProgress(dryRun);
+  // Taken up in place rather than replaced, so the pass's sources stay on it.
+  const progress = pass ? Object.assign(pass.progress, initSyncProgress(dryRun)) : initSyncProgress(dryRun);
   runningSyncs.set(sourceId, progress);
   // Experiences whose geometry moved, so their region assignment is stale.
   const movedExperiences = new Set<number>();
@@ -193,7 +210,7 @@ export async function orchestrateSync<T>(
   const skipped: GuardSkips = { detection: null, withdrawal: null, admissionSweep: null };
 
   try {
-    progress.logId = await createSyncLog(sourceId, triggeredBy, dryRun);
+    progress.logId = await createSyncLog(sourceId, triggeredBy, dryRun, pass?.firstLogId ?? null);
     console.log(`${logPrefix} Started sync (log ID: ${progress.logId})${dryRun ? ' [DRY RUN]' : ''}`);
     inheritedLogIds = await takeOverUnplaced(sourceId, progress.logId, dryRun, movedExperiences, logPrefix);
     await progressWriter.flush(true);
@@ -361,14 +378,24 @@ export async function orchestrateSync<T>(
     // left non-terminal spins a poller forever and answers retries with 409.
     progress.status = terminalStatus(placed, finishedStatus);
 
-    // Clean up after delay, but only if this sync's progress is still current.
-    const thisProgress = progress;
-    setTimeout(() => {
-      if (runningSyncs.get(sourceId) === thisProgress) {
-        runningSyncs.delete(sourceId);
-      }
-    }, 30000);
+    releaseLater(sourceId, progress, pass);
   }
+}
+
+/**
+ * Clean up after delay, but only if this sync's progress is still current.
+ *
+ * A run of a pass leaves its entry to the pass, which releases every entry
+ * once its last run ends: the entry is what a Cancel on this source and the
+ * merge of this run's arrivals read while the later runs go on.
+ */
+function releaseLater(sourceId: number, progress: SyncProgress, pass: PassSlot | undefined): void {
+  if (pass) return;
+  setTimeout(() => {
+    if (runningSyncs.get(sourceId) === progress) {
+      runningSyncs.delete(sourceId);
+    }
+  }, 30000);
 }
 
 // =============================================================================
@@ -408,14 +435,23 @@ export function isCancellable(progress: SyncProgress): boolean {
  * Answers whether the press was acted on, not whether the run stopped: it sets
  * a flag the item loop reads, and refuses outright once there is no loop left,
  * save while the run asks about its offered places, which the flag stops alone.
+ *
+ * A run that is part of a pass stops the pass (ADR-0132): the flag is set on
+ * every source of it that can still read one, the waiting ones included, so
+ * none of them starts after the press.
  */
 export function cancelSync(sourceId: number): boolean {
   const progress = runningSyncs.get(sourceId);
-  if (progress && isCancellable(progress)) {
-    progress.cancel = true;
-    progress.statusMessage = 'Cancelling...';
-    progress.operation?.cancel();
-    return true;
+  if (!progress) return false;
+  let acted = false;
+  for (const id of progress.passSources ?? [sourceId]) {
+    const member = runningSyncs.get(id);
+    if (member && isCancellable(member)) {
+      member.cancel = true;
+      member.statusMessage = 'Cancelling...';
+      member.operation?.cancel();
+      acted = true;
+    }
   }
-  return false;
+  return acted;
 }

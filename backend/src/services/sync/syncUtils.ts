@@ -56,17 +56,21 @@ export async function upsertSingleLocation(
 
 /**
  * Create a new sync log entry with status 'running'.
+ *
+ * `passLogId` is the log of the first run of the pass this run is part of
+ * (ADR-0132), or null for the first run and for a run that shares no gather.
  */
 export async function createSyncLog(
   sourceId: number,
   triggeredBy: number | null,
   isDryRun: boolean = false,
+  passLogId: number | null = null,
 ): Promise<number> {
   const result = await pool.query(
-    `INSERT INTO experience_sync_logs (source_id, triggered_by, status, is_dry_run)
-     VALUES ($1, $2, 'running', $3)
+    `INSERT INTO experience_sync_logs (source_id, triggered_by, status, is_dry_run, pass_log_id)
+     VALUES ($1, $2, 'running', $3, $4)
      RETURNING id`,
-    [sourceId, triggeredBy, isDryRun]
+    [sourceId, triggeredBy, isDryRun, passLogId]
   );
   return result.rows[0].id;
 }
