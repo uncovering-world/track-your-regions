@@ -706,11 +706,22 @@ The generic sync lifecycle (progress init, already-running check, sync log creat
 
 Generic `getSyncStatus(sourceId)` and `cancelSync(sourceId)` replace per-service status/cancel functions. The controller dispatches via a registry map instead of if-else chains.
 
+### Several kinds from one gather ([ADR-0132](../decisions/0132-several-kinds-are-filled-from-one-gather-each-by-a-source-of-its-own.md))
+
+A Wikidata kind is filled by a source of its own, and sources whose kinds are drawn from the same candidates share one **gather** in a **pass**. The Public Art split (#1807) is the first such pair. The Bronze Horseman, made both to commemorate and as a sculpture, holds a membership in Monuments & memorials through one source and one in Public art through another. A source cannot hold it twice: a membership is unique by `(source_id, external_id)`.
+
+- **Which sources share a gather** is `passes.ts`: `PUBLIC_ART_PASS`, in the order a pass runs them, and `passOf(sourceId)`, which the start, the refusal and the sources list all read. A source named in no pass runs alone.
+- **The gather is made once.** `sharedGather` (`syncPass.ts`) hands every source of the pass the same promise. The first source to ask makes it, with that run's progress on screen, and a gather that failed fails every run that needed it, with the same error.
+- **Each source runs as before.** `runSyncPass` registers every source of the pass in `runningSyncs` before the first starts. A later source shows *Waiting for the pass's earlier kinds to finish...* until its turn. The runs then go through `orchestrateSync` one after another, each taking up the entry the pass registered (`PassSlot`). Each source keeps its own `fetchItems` (its share of the gather, with its own stay line), its own log, admission, sweep, badge, pins, missing detection and changeset. Per source is per kind, so none of those is shared between two kinds.
+- **A pass starts, stops and reads as one run.** A start of any of its sources starts the pass, and `startSync` answers 409 while any of them runs. A Cancel on one sets the flag on every source of the pass that can still read one (`SyncProgress.passSources`). A source that had not started is closed as cancelled with no log, since it read nothing. A run that fails for its own reason leaves the next to run. Every log after the first names the first (`experience_sync_logs.pass_log_id`). The history (`GET /api/admin/sync/logs`) lists a pass's runs together, newest pass first and its runs in the order they ran, and a later run says which run's gather it read. The sources list answers `runsWith`, and each card names the sources a start of it also runs.
+- **Until #1820, a pass reads Wikidata under its first source**: its subset door and its cache key. #1820 widens the gather to every place kind, #1821 gathers the works and #1822 makes the pipeline one build (Epic #1445). #1819 is the one resolver of where a work lies.
+
 ### Shared modules
 
 Common sync logic lives in shared utility files:
 
 - **`syncOrchestrator.ts`** — Generic sync lifecycle orchestration (`orchestrateSync<T>()`) — the order of a run's phases, and the one place that order is stated, since it is the contract: the changeset recorded before the log row is closed, the verdict set before anything that can reject, placement after both — plus `getSyncStatus()` and `cancelSync()` parameterized by the source's id (`source_id`), and `isCancellable()` — the single rule for whether a cancel would be acted on, which `cancelSync` enforces, the status endpoint reports as `cancellable`, and the admin panel disables its button on rather than re-deriving.
+- **`syncPass.ts`** and **`passes.ts`** — Several sources run from one gather (§ Several kinds from one gather): `runSyncPass()`, `sharedGather()`, `passMember()` and `passIsRunning()`, and the list of which sources share a gather (`passOf()`)
 - **`syncContract.ts`** — What a sync service hands the orchestrator and gets back: `SyncServiceConfig<T>`, `FetchResult<T>`, `ProcessItemResult`, `SyncRunContext` and `FilteredEntity`. Its own module so the orchestrator's parts read those shapes without importing the module that runs the loop, which would be a cycle
 - **`itemOutcome.ts`** — What one item leaves behind: its counters and its changeset row (`recordItemOutcome()`, `recordItemFailure()`, `recordFilteredEntities()`), with the word the row carries (`resolveChangeType`: `held`, `returned`, `conflict`, `contents`) and the one predicate behind the `held` word and counter (`wasHeld`). Writes nothing to the database
 - **`admissionStep.ts`** — The admission step after the items, for a source that recomputes its membership (ADR-0024): restore, then the guarded sweep (`applyAdmissionSweep()`), then the must-see badge (`badgeAdmitted()`, ADR-0045 decision 5), whose clear runs only where the sweep ran. The writes are `admission.ts`'s
@@ -2000,6 +2011,8 @@ where a work a traveller goes to a church to see will live). This source fills t
 tier** — what the world knows, by the same fame line as the museums' — and nothing else; the
 regional tier, the monuments a region knows and the world's line does not reach, comes from regional sources
 by the rules of [filling-a-kind.md](filling-a-kind.md) (ADR-0048; #799), and carries no badge.
+
+**Its run is a pass** (ADR-0132, § Several kinds from one gather). `gatherPublicArt` reads stages 1 to 3 below (the classes, the pool and the facts) once for every source of `PUBLIC_ART_PASS`. The rows any of them admits are asked for by id. `classifyPublicArt` takes stages 4 and 5 (the verdict and the line) for each source from that gather, with the source's own admitted rows and the places other kinds offer, and asks Wikidata nothing more. The pass holds this source alone until #1807 splits the kind.
 
 **The pipeline is the museum import's, one level over** (#754). Five stages, each a cached
 question (ADR-0030), wired in `publicArt/pipeline.ts`:
