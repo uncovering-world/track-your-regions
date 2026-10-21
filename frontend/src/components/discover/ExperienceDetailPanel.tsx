@@ -45,6 +45,7 @@ import { extractImageUrl, toThumbnailUrl } from '../../hooks/useExperienceContex
 
 import { experienceColors } from '../../utils/kindColors';
 import { PlaceLinks } from '../shared/PlaceLinks';
+import { PlaceSubtitle, descriptionBeyondSubtitle } from '../shared/PlaceSubtitle';
 import { OpenInMapsLink } from '../shared/OpenInMapsLink';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';
@@ -78,6 +79,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
     queryFn: () => fetchExperience(experience.id),
     staleTime: 300000,
   });
+  const description = descriptionBeyondSubtitle(experience);
 
   // Fetch locations
   const { data: locationsData } = useQuery({
@@ -202,9 +204,12 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
           flexShrink: 0,
         }}
       >
-        <Typography variant="subtitle1" sx={{ fontWeight: 600, flex: 1 }} noWrap>
-          {experience.name}
-        </Typography>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <Typography variant="subtitle1" sx={{ fontWeight: 600 }} noWrap>
+            {experience.name}
+          </Typography>
+          <PlaceSubtitle subtitle={experience.subtitle} />
+        </Box>
         <IconButton aria-label="Close" size="small" onClick={onClose}>
           <CloseIcon />
         </IconButton>
@@ -284,10 +289,10 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
           </Box>
         )}
 
-        {/* Description */}
-        {(experience.description || details?.subtitle) && (
+        {/* Description: the paragraph, the subtitle being under the name */}
+        {description && (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {experience.description || details?.subtitle}
+            {description}
           </Typography>
         )}
 

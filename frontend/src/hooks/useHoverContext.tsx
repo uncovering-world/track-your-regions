@@ -27,6 +27,8 @@ import type { ImageCredit } from '../api/experiences';
 export interface HoverPreview {
   experienceId: number;
   experienceName: string;
+  /** What the place is, in a line under its name (#1795). */
+  subtitle?: string | null;
   locationId: number | null;
   locationName: string | null;
   kindName: string | null;

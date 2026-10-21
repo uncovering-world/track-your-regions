@@ -99,6 +99,7 @@ function previewOf(exp: Experience): HoverPreview {
   return {
     experienceId: exp.id,
     experienceName: exp.name,
+    subtitle: exp.subtitle,
     locationId: null,
     locationName: null,
     kindName: placeKindNames(exp),

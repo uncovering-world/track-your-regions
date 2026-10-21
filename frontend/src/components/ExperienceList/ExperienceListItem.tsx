@@ -19,6 +19,7 @@ import type {
 import { LifecycleChip } from '../shared/LifecycleChip';
 import { TreasuresInsideChip } from '../shared/TreasuresInsideChip';
 import { FindsOnViewChip } from '../shared/FindsOnViewChip';
+import { PlaceSubtitle } from '../shared/PlaceSubtitle';
 import { experienceColor } from '../../utils/kindColors';
 import { placeHasExtent } from '../../utils/placeKinds';
 import { preloadCardImage } from '../../utils/imagePreload';
@@ -494,6 +495,9 @@ function ExperienceListItemComponent({
               )}
             </TitleRow>
           }
+          // What the place is, in a line under its name (#1795).
+          secondary={experience.subtitle ? <PlaceSubtitle subtitle={experience.subtitle} /> : undefined}
+          secondaryTypographyProps={{ component: 'div' }}
         />
 
         {/* Expand indicator, and the whole of what a reader sees while a card is

@@ -16,6 +16,7 @@ import type { Experience } from '../../api/experiences';
 import { LifecycleChip } from '../shared/LifecycleChip';
 import { TreasuresInsideChip } from '../shared/TreasuresInsideChip';
 import { FindsOnViewChip } from '../shared/FindsOnViewChip';
+import { PlaceSubtitle } from '../shared/PlaceSubtitle';
 
 interface CardSurfaceInputs {
   isRejected: boolean | undefined;
@@ -222,6 +223,8 @@ export function ExperienceCard({
             />
           )}
         </Box>
+        {/* What the place is, in a line under its name (#1795). */}
+        <PlaceSubtitle subtitle={experience.subtitle} />
         <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'center' }}>
           {isRejected && (
             <Chip

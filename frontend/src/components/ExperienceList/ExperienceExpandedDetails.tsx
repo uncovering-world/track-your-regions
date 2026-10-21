@@ -41,6 +41,7 @@ import { experienceContentsQuery, experienceDetailsQuery, siteFindsQuery } from 
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';
 import { PlaceLinks } from '../shared/PlaceLinks';
+import { descriptionBeyondSubtitle } from '../shared/PlaceSubtitle';
 import { OpenInMapsLink } from '../shared/OpenInMapsLink';
 import { ShareButton } from '../shared/ShareButton';
 import { ArtworksList } from './ArtworksList';
@@ -121,6 +122,7 @@ function ExperienceExpandedDetailsComponent({
   // why the definitions live in one place (`experienceCardQueries`). By the time
   // this renders they are in cache; issuing them here is what starts them.
   const { data: details } = useQuery(experienceDetailsQuery(experience.id));
+  const description = descriptionBeyondSubtitle(experience);
   const { data: contentsData } = useQuery(experienceContentsQuery(experience.id));
   // The third, for a site alone (#894): the finds dug up here and where they
   // are shown. Decided off the row, before any read, and waited on by the same
@@ -338,10 +340,10 @@ function ExperienceExpandedDetailsComponent({
         )}
       </Box>
 
-      {/* Description */}
-      {experience.description && (
+      {/* Description: the paragraph; the subtitle is on the row above the card */}
+      {description && (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          {experience.description}
+          {description}
         </Typography>
       )}
 
@@ -355,13 +357,6 @@ function ExperienceExpandedDetailsComponent({
       {/* How much ground it covers, and whose map says so (ADR-0059). Rendered
           from the detail read the card already issues. */}
       <ExtentLine areaKm2={details?.area_km2} />
-
-      {/* The subtitle, where the place has no description */}
-      {details?.subtitle && !experience.description && (
-        <Typography variant="body2" color="text.secondary" sx={{ mb: 1.5 }}>
-          {details.subtitle}
-        </Typography>
-      )}
 
       {/* The place's pages, in words, on a line of their own (#1190). */}
       <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mb: 1, ml: -0.5, '&:empty': { display: 'none' } }}>

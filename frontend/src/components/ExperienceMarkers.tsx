@@ -63,6 +63,7 @@ function tryHoverSpecificLocation(
     setHoverPreview({
       experienceId: exp.id,
       experienceName: exp.name,
+      subtitle: exp.subtitle,
       locationId: loc.id,
       locationName: locationLabelWithRef(loc),
       kindName: placeKindNames(exp),
@@ -298,6 +299,7 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     setHoverPreview({
       experienceId: marker.experienceId,
       experienceName: marker.experience.name,
+      subtitle: marker.experience.subtitle,
       locationId: marker.locationId,
       locationName: marker.locationName,
       kindName: placeKindNames(marker.experience),

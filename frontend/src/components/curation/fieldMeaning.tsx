@@ -355,12 +355,12 @@ const MEANINGS: Record<string, FieldMeaning> = {
   },
   subtitle: {
     label: 'subtitle',
-    what: 'The one-line subtitle from Wikidata — “museum in Saint Petersburg, Russia” — which readers see where the place has no description.',
+    what: 'The line under the name that says what the place is — Wikidata’s “museum in Saint Petersburg, Russia” — on every list row, card and hover card.',
     whenItChanges: 'The source rewrote it. Read both; a rewrite can drop what a curator added.',
   },
   description: {
     label: 'description',
-    what: 'The paragraph on the card readers open.',
+    what: 'The paragraph a reader opens, under the subtitle: UNESCO’s text for a World Heritage site, or a curator’s.',
     whenItChanges: 'The source rewrote it. Read both; a rewrite can drop what a curator added.',
   },
   // The fallback for a value no kind declares; a value from a kind's own vocabulary
