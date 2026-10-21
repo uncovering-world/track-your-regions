@@ -293,11 +293,14 @@ export const SyncLog = z.strictObject({
   changeset_lost: z.boolean().describe('The changeset insert threw, so the per-object record is missing or short.'),
   stopped_by_restart: z.boolean()
     .describe('The server was restarted under the run: its figures are how far it got, and its per-object record never left memory.'),
+  pass_log_id: z.number().int().nullable()
+    .describe('The first run of the pass this run was part of, whose gather it read (ADR-0132); null on the first run and on a run that shared no gather.'),
+  pass_source_name: z.string().nullable().describe('The source of that first run.'),
 }).describe('One run of a source.');
 export type SyncLog = z.infer<typeof SyncLog>;
 
 export const SyncLogs = z.strictObject({
-  logs: z.array(SyncLog).describe('Newest first.'),
+  logs: z.array(SyncLog).describe('Newest pass first, and the runs of one pass in the order they ran (ADR-0132).'),
   total: z.number().int(),
   limit: z.number().int(),
   offset: z.number().int(),

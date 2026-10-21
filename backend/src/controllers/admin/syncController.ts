@@ -452,7 +452,17 @@ const SYNC_LOG_COLUMNS_SQL = `
       -- so its counters are how far it got and its changeset never left
       -- memory, which has_changeset alone would read as a run from before
       -- change provenance.
-      ${stoppedByRestartSql('l')} AS stopped_by_restart
+      ${stoppedByRestartSql('l')} AS stopped_by_restart,
+      -- The pass this run was part of (ADR-0132), named by its first run's
+      -- source; ps is joined through SYNC_LOG_PASS_JOIN_SQL.
+      l.pass_log_id,
+      ps.name AS pass_source_name
+`;
+
+/** The first run of a log's pass and its source, for `SYNC_LOG_COLUMNS_SQL`. */
+const SYNC_LOG_PASS_JOIN_SQL = `
+    LEFT JOIN experience_sync_logs p ON p.id = l.pass_log_id
+    LEFT JOIN experience_sources ps ON ps.id = p.source_id
 `;
 
 /**
@@ -468,6 +478,7 @@ export async function getSyncLogs(
     FROM experience_sync_logs l
     JOIN experience_sources s ON l.source_id = s.id
     LEFT JOIN users u ON l.triggered_by = u.id
+    ${SYNC_LOG_PASS_JOIN_SQL}
   `;
 
   const params: (number | string)[] = [];
@@ -478,7 +489,9 @@ export async function getSyncLogs(
     params.push(sourceId);
   }
 
-  query += ` ORDER BY l.started_at DESC LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
+  // A pass reads as one run: newest pass first, its runs in the order they ran.
+  query += ` ORDER BY COALESCE(p.started_at, l.started_at) DESC, COALESCE(l.pass_log_id, l.id) DESC, l.started_at ASC`
+    + ` LIMIT $${paramIndex++} OFFSET $${paramIndex}`;
   params.push(limit, offset);
 
   const result = await pool.query<SyncLogRow>(query, params);
@@ -513,6 +526,7 @@ export async function getSyncLogDetails({ params: { logId } }: { params: LogPara
      FROM experience_sync_logs l
      JOIN experience_sources s ON l.source_id = s.id
      LEFT JOIN users u ON l.triggered_by = u.id
+     ${SYNC_LOG_PASS_JOIN_SQL}
      WHERE l.id = $1`,
     [logId]
   );
