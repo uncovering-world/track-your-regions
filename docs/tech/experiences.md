@@ -700,6 +700,7 @@ The generic sync lifecycle (progress init, already-running check, sync log creat
 
 - **`fetchItems(progress, errorDetails)`** — Fetch and prepare items. Returns `{ items: T[], fetchedCount, filtered?, withdrawalSkippedReason?, unread? }`, where `filtered` names entities the source offered that this kind cannot hold — a Wikidata collection answering a museum query. Those are counted apart from errors and leave the run's status alone; genuine pre-processing failures still go to `errorDetails`. `unread` names the source's rows the run could read nothing about (on the local Wikidata subset, an item newer than the dump): missing detection, the admission sweep, the must-see badge's clear and the questions about a curator's pin leave them as they are. `withdrawalSkippedReason` is a collector's own verdict that it saw too little of the contents it holds to say what left (the museum run's works floor, ADR-0044): recorded on the log row, handed to every `processItem` through the context, and the run is `partial` while it stands.
 - **`processItem(item, progress, context)`** — Process a single item and return a `ProcessItemResult`: the outcome (`'created'` / `'updated'` / `'unchanged'`), the change set, and whether the row had been flagged missing. `context` carries `dryRun`, so a service can skip its own writes in a preview, and `onLocationsChanged(experienceId)`, which a service calls **at the location write** to have the run place that experience before it ends. Called there rather than returned on the result on purpose: a service can throw after moving a point — the museum one upserts treasures afterwards — and a returned field would be lost with the throw while the point had already moved on disk. Throw to count as error.
+- **A record the source lists with nothing to place** — the UNESCO dataset's Routes of Santiago de Compostela in France (868), with no point and no component — is thrown from `processItem` as an `UnplaceableRecord` (`itemOutcome.ts`, #1814), before any write. The run records it as `filtered`, with its reason, rather than as an error. It still counts as seen, so its place is not marked missing, and missing detection still runs: a single error would skip it, and two such records in every UNESCO run had kept it from running at all. Any other throw stays an error.
 - **`afterItems(progress, context)`** (optional) — What the run does once every item is processed and before missing detection: a summary only the whole pass can make, such as the World Heritage run's account of its components' Wikidata items (#1269). A failure is logged and the run goes on.
 - **`getItemName(item)`** / **`getItemId(item)`** — Display name and external ID for progress messages and error reporting.
 
@@ -1299,7 +1300,8 @@ decoded twice is read once (`readOnce`, #1405): Birka and Hovgården's part come
 "HovgÃ¥rden", the two UTF-8 bytes of "å" read as two Latin-1 characters. Such a pair in a name
 made only of bytes that decode as well-formed UTF-8 is that UTF-8; anything else is kept as
 written. The Routes of Santiago de Compostela in France (868) came with no point and no
-component in that update, so the run fails it and the place keeps what it holds.
+component in that update, and 1567 with neither: the run filters each (`UnplaceableRecord`,
+#1814) with its reason, and the place keeps what it holds.
 
 **A site's countries are read from the same update's JSON** (`parseDelimitedField`,
 `unescoSyncService.ts`, #1816). `iso_codes` comes as JSON text, `["FR", "BE"]` for 1567, and
