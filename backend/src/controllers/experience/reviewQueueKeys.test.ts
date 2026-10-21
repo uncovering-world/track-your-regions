@@ -17,7 +17,7 @@ import { pool } from '../../db/index.js';
 import { queryQueueKeys, encodeCursor, decodeCursor, KIND_RANK } from './reviewQueueKeys.js';
 import {
   missingOpenSql, refusedOpenSql, arrivalOpenSql, heldOpenSql, withdrawnPointOpenSql, withdrawnContainerOpenSql,
-  conflictChangeOpenSql, mergeProposalOpenSql,
+  conflictChangeOpenSql, mergeProposalOpenSql, visitQuestionOpenSql,
 } from './reviewQueuePredicates.js';
 import { contentsWaitingSql } from './waitingCounts.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
@@ -94,14 +94,14 @@ describe('queryQueueKeys', () => {
 
   it('carries the scope filter into every branch of the union', async () => {
     await queryQueueKeys(base);
-    // Twelve: conflict, two sources (#1246), arrival, held, contents, withdrawn,
+    // Thirteen: conflict, two sources (#1246), arrival, held, contents, withdrawn,
     // refused, the two missing branches — the place's, and one kind's
     // (#1264) —, component items (#1272), near places with similar names
-    // (#1249) and pin questions (#1367). The scope CTE's own join reads
+    // (#1249), pin questions (#1367) and visit questions (#1770). The scope CTE's own join reads
     // `r.parent_region_id = s.id`, so it is not counted here, and dropping the
     // predicate from one branch fails this.
     expect(lastCall()[0].match(/JOIN curator_scoped_regions s ON s\.id = er\.region_id/g))
-      .toHaveLength(12);
+      .toHaveLength(13);
   });
 
   it('dates a pair of near places by the newest proposal, anchors it on the lower id and scopes it by either place (#1249)', async () => {
@@ -122,6 +122,16 @@ describe('queryQueueKeys', () => {
     expect(sql).toContain("SELECT 'pin-question', 9, e.id, e.name");
     expect(sql).toContain('(array_agg(m.admission_question_sync_log_id ORDER BY m.admission_questioned_at DESC))[1]');
     expect(sql).toContain("m.curated_fields ? 'admission' AND m.admission_questioned_at IS NOT NULL");
+  });
+
+  it('files a question about a place with nothing to see under the run that asked it, last of the classes (#1770)', async () => {
+    await queryQueueKeys(base);
+    const [sql] = lastCall();
+    const visits = between(sql, "SELECT 'visit-question'", ', searched AS (');
+    expect(visits).toContain(`'visit-question', ${KIND_RANK['visit-question']}, e.id, e.name`);
+    expect(Math.max(...Object.values(KIND_RANK))).toBe(KIND_RANK['visit-question']);
+    expect(visits).toContain('(array_agg(q.sync_log_id ORDER BY q.asked_at DESC))[1], max(q.asked_at)');
+    expect(visits).toContain(visitQuestionOpenSql('q', 'm', 'e'));
   });
 
   it('dates a site\'s candidate items by the newest proposal and files them under no run (#1272)', async () => {

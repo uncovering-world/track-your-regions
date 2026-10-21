@@ -23,7 +23,9 @@
  * reading — a kept-out arrival (its log row) against *nothing*, *not a place*
  * or *an object*, a membership first published after it against *something to
  * see*; a reading of a part or of another kind says neither, and compares with
- * nothing.
+ * nothing. The same readings raise a run's questions about an offered place
+ * with nothing to see (#1770), and each answered question is compared too: a
+ * refusal agrees with the reading it was raised on, a place kept does not.
  */
 
 import type { JevUsage } from '../../api/responses/admin.js';
@@ -120,9 +122,16 @@ export async function getJevUsage(): Promise<JevUsage> {
       ) a ON true
      WHERE g.reading IN ('visit', 'nothing', 'not-a-place', 'object')
   `);
+  const questions = await pool.query<Pick<Counted, 'compared' | 'agreed'>>(`
+    SELECT count(*)::int AS compared, count(*) FILTER (WHERE q.answer = 'refused')::int AS agreed
+      FROM experience_visit_questions q
+     WHERE q.answer IS NOT NULL
+  `);
+  const visits = arrivals.rows[0];
+  const asked = questions.rows[0];
   const byQuestion = [
     figures('views', views.rows[0]), figures('componentItems', items.rows[0]), figures('mergeProposals', pairs.rows[0]),
-    figures('visits', arrivals.rows[0]),
+    figures('visits', { ...visits, compared: visits.compared + asked.compared, agreed: visits.agreed + asked.agreed }),
   ];
   const inputTokens = byQuestion.reduce((sum, q) => sum + q.inputTokens, 0);
   return {

@@ -30,7 +30,7 @@ import type { OsmObject } from '../osm/types.js';
 export type Witness = 'guide' | 'photos' | 'formal' | 'map';
 
 /** The order a curator and a run's log read the witnesses in. */
-export const WITNESSES: readonly Witness[] = ['guide', 'photos', 'formal', 'map'];
+export const WITNESSES = ['guide', 'photos', 'formal', 'map'] as const satisfies readonly Witness[];
 
 /** How many witnesses a place needs (#1718). */
 export const WITNESSES_NEEDED = 2;
