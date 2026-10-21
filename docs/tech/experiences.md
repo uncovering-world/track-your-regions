@@ -5917,7 +5917,14 @@ the map) answered by the point's id — except the point the object's own held c
 along (`coordinates_move_point_id`), which that row already asks about — and a no to that row turns
 the point down with it (`pointMovedToProposed`, `declineHeldController.ts`), as a yes publishes it.
 Either no keeps the stored pin where readers see it (ADR-0083). A part's name in the
-`changes` table is likewise the button that opens it.
+`changes` table is likewise the button that opens it, and beside it the heading offers the way
+out to the source (`partSource`, `factRows.ts`, #1777): a work's stored article
+(`treasures.wikipedia_url`, carried on the held part as `wikipediaUrl` and passed through
+`safeHref`) as *Wikipedia*; where none is stored and no works run has read the work yet
+(`wikipediaRead`, off `wikipedia_read_at`), Wikidata's redirect to the article, resolved at the
+click as the other curator surfaces do; where a run read it and found no English article, its
+Wikidata item as *Wikidata*. A place of a serial object offers its item where its reference is one,
+and a World Heritage component's own id offers nothing.
 `ArrivedTable` is mounted **keyed on the object**, which is what stops a dialog opened on one card
 from standing on the next: a card re-rendered with another row can reconcile into the same
 instance, and without the key a point or a work held open would be paired with the next card's id
