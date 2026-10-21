@@ -123,7 +123,7 @@ describe('resolveMainPoint', () => {
   });
 
   it('gives up only when there is no coordinate anywhere', () => {
-    // Site 1567 — the one genuine failure, in July and now
+    // Site 1567, sent with no point and no component; the run files such a record as filtered (#1814)
     expect(resolveMainPoint(record({ id_no: '1567' }), [])).toBeNull();
   });
 

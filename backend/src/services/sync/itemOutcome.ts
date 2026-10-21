@@ -160,7 +160,22 @@ export function recordItemOutcome<T>(
 }
 
 /**
- * Fold a failed item into the run's counters, error list and changeset.
+ * A record the source lists with nothing the run can place, thrown before any
+ * write: the UNESCO dataset sends the Routes of Santiago de Compostela in France
+ * (868) with no point and no component (#1814). It is no failure of the run. The
+ * record is filtered with its reason, still counts as seen, so its place is not
+ * marked missing, and it leaves missing detection to run, which an error stops.
+ */
+export class UnplaceableRecord extends Error {
+  constructor(reason: string) {
+    super(reason);
+    this.name = 'UnplaceableRecord';
+  }
+}
+
+/**
+ * Fold a failed item into the run's counters, error list and changeset. An
+ * `UnplaceableRecord` is filtered instead (`recordFilteredEntities`).
  *
  * error_details already carried the message; the changeset row is what ties it
  * to a named object rather than a bare external id.
@@ -173,6 +188,12 @@ export function recordItemFailure<T>(
   errorDetails: ErrorDetail[],
   changes: ChangeRecord[],
 ): void {
+  if (err instanceof UnplaceableRecord) {
+    recordFilteredEntities(
+      [{ externalId: config.getItemId(item), name: config.getItemName(item), reason: err.message }], progress, changes,
+    );
+    return;
+  }
   progress.errors++;
   const errorMsg = err instanceof Error ? err.message : String(err);
   errorDetails.push({ externalId: config.getItemId(item), error: errorMsg });

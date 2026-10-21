@@ -58,6 +58,8 @@ vi.mock('./missingDetection.js', () => ({
 import { orchestrateSync } from './syncOrchestrator.js';
 import { updateSyncLog } from './syncUtils.js';
 import { recordSyncChanges } from './changeRecorder.js';
+import { missingDetectionSkipReason } from './missingDetection.js';
+import { UnplaceableRecord } from './itemOutcome.js';
 import {
   TEST_SOURCE_ID, processed, makeConfig, resetOrchestratorMocks, restoreOrchestratorTimers,
 } from './syncOrchestrator.fixtures.js';
@@ -111,6 +113,32 @@ describe('orchestrateSync changeset recording', () => {
       experienceId: null,
       error: 'No valid coordinates',
     });
+  });
+
+  it('filters a record with nothing to place, and lets missing detection run (#1814)', async () => {
+    // The Routes of Santiago de Compostela in France, as the UNESCO dataset sends it since 2026-10-20.
+    const config = makeConfig({
+      processItem: vi.fn().mockRejectedValue(new UnplaceableRecord('UNESCO sends this site with no point and no component')),
+    });
+
+    await orchestrateSync(config, 1);
+
+    const recorded = (recordSyncChanges as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(recorded[0]).toMatchObject({
+      changeType: 'filtered',
+      experienceId: null,
+      error: 'UNESCO sends this site with no point and no component',
+    });
+    expect(vi.mocked(missingDetectionSkipReason)).toHaveBeenCalledWith(expect.objectContaining({ errors: 0 }));
+  });
+
+  it('counts a failed item as an error, which stops missing detection', async () => {
+    const config = makeConfig({ processItem: vi.fn().mockRejectedValue(new Error('No valid coordinates')) });
+
+    await orchestrateSync(config, 1);
+
+    // Both of the fixture's items fail.
+    expect(vi.mocked(missingDetectionSkipReason)).toHaveBeenCalledWith(expect.objectContaining({ errors: 2 }));
   });
 
   it('counts curated conflicts across the run', async () => {
