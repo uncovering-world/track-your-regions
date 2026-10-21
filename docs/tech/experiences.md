@@ -1660,9 +1660,9 @@ Two ceilings bound a batch now, not one. The count (50, their documented limit) 
 
 **A credit never outlives its picture.** The converse of "wherever the work appears" is a rule of the feature rather than a nicety: a line naming a photographer beside a frame whose picture answered 403 is a claim about a person made where the thing that would justify it is not. Every component that renders `ImageCreditLine` gates it on the image having arrived — an `onError` that takes the picture and the credit together, rather than the older `style.display = 'none'`, which hid the element and left the line standing. On the surfaces that drew the portal's UNESCO pictures the refusal used to be the *ordinary* outcome, not the edge one (#557); every picture is a Commons file now, and the rule stays for the day one does not load.
 
-The sharp edge is what the failure is held as. **Where a component outlives one picture, it must remember which URL failed, not that one did** — `ArtworkPreviewOverlay` survives many hovers, and `ObjectContext` and `ObjectPreview` are drawn one card at a time by `ReviewBench` with no `key` anywhere on the chain, so a new object reconciles into the same instance. Held as a boolean, one 403 blanks every object after it and takes a credit off a picture that is there, which is a false statement rather than a missing one. A plain flag is correct wherever the parent keys the child, so that a different picture is a different instance — the rows and tiles of a list, `ArtworkRow`, `ContentTile`, `SearchResultBody` and `WorkRow` among them. The distinction is the lifetime, not the surface: ask whether this instance can be handed a second picture.
+The sharp edge is what the failure is held as. **Where a component outlives one picture, it must remember which URL failed, not that one did** — `ArtworkPreviewOverlay` survives many hovers, and `ObjectContext` is drawn one card at a time by `ReviewBench` with no `key` anywhere on the chain, so a new object reconciles into the same instance. Held as a boolean, one 403 blanks every object after it and takes a credit off a picture that is there, which is a false statement rather than a missing one. A plain flag is correct wherever the parent keys the child, so that a different picture is a different instance — the rows and tiles of a list, `ArtworkRow`, `ContentTile`, `SearchResultBody` and `WorkRow` among them. The distinction is the lifetime, not the surface: ask whether this instance can be handed a second picture.
 
-**The curator screens name the photographer too.** `objectContextSelectSql` carries `metadata->'imageCredit'` on every queue kind — nine of them now, and stated as a rule rather than a tally so a list added is covered rather than counted — `countedWorksSelectSql` carries each work's, and the search read behind `AddExperienceDialog` carries it for its 40 px result rows. Those screens are the catalogue being worked on rather than published, which changes nothing about the licence — and answers a question only they raise, since a curator deciding whether to replace a photograph needs to know whose it is. The waiting-to-publish preview draws what `GET /experiences/:id` was already sending it in `metadata`. The two curator dialogs draw their picture through `PictureWithCredit`: `CurationDialog` shows the stored picture under the Image URL box with its credit, and `AddExperienceDialog` the address being typed with none — the object does not exist yet, so no credit does (#801).
+**The curator screens name the photographer too.** `objectContextSelectSql` carries `metadata->'imageCredit'` on every queue kind — nine of them now, and stated as a rule rather than a tally so a list added is covered rather than counted — `countedWorksSelectSql` carries each work's, and the search read behind `AddExperienceDialog` carries it for its 40 px result rows. Those screens are the catalogue being worked on rather than published, which changes nothing about the licence — and answers a question only they raise, since a curator deciding whether to replace a photograph needs to know whose it is. The two curator dialogs draw their picture through `PictureWithCredit`: `CurationDialog` shows the stored picture under the Image URL box with its credit, and `AddExperienceDialog` the address being typed with none — the object does not exist yet, so no credit does (#801).
 
 ### Shared retry (`sourceRetry.ts`)
 
@@ -1839,8 +1839,8 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   folded with the redirects in place (#1650). A museum the door alone admits carries the curator's
   question under its kind's own key (`metadata.museumReadershipNote`; Places of worship write
   `worshipReadershipNote`): the work, its reading, the bar and the burst flag. The key is not
-  `admissionNote`, which Archaeology writes on the same places, and the review card and the
-  object preview read all three. Its
+  `admissionNote`, which Archaeology writes on the same places, and the review card reads all
+  three (`objectContextSelectSql`). Its
   works are written with `readIconic`, which `upsertVenueTreasures` badges. The art test, the
   candidate venues and the report of venues an iconic work named all count a door work as a work
   at the line
@@ -3514,8 +3514,8 @@ came out of it are one kind. The type vocabulary (`experienceTypes.ts`) offers a
 *Museum* and nothing else, and the review card explains either in the same words.
 `TreasuresInsideChip` is silent for this kind as it is for art museums: a museum's row lists its
 holdings already, so a second "N treasures inside" chip would say it twice. A held museum's question
-is drawn on the review card itself as **The run asks: …**, not only behind *Look at the object*,
-because a batch answer (#852) can dispose of a row without the object ever being opened.
+is drawn on the review card itself as **The run asks: …**, because a batch answer (#852) can
+dispose of a row without the object ever being opened.
 
 **A museum in two kinds is two rows until #755** (ADR-0058 decision 6). The Louvre is an art museum
 and an archaeology museum and is admitted here on the same terms as anywhere: two rows, two pins,
@@ -5887,9 +5887,9 @@ the point down with it (`pointMovedToProposed`, `declineHeldController.ts`), as 
 Either no keeps the stored pin where readers see it (ADR-0083). A part's name in the
 `changes` table is likewise the button that opens it.
 `ArrivedTable` is mounted **keyed on the object**, which is what stops a dialog opened on one card
-from standing on the next: `ReviewBench` mounts `GatedCard` unkeyed on purpose, so the object
-preview survives a move down the queue (`ObjectPreview`), and without the key a point or a work
-held open would be paired with the next card's id and name. The card resets `openPart` by hand for
+from standing on the next: a card re-rendered with another row can reconcile into the same
+instance, and without the key a point or a work held open would be paired with the next card's id
+and name. The card resets `openPart` by hand for
 the same reason — and `ItemHeader`, `messageFor` and `GatedRow` come from `queueCard.tsx`, which exists so every page
 file rendering a card shares the idiom without importing another one (`lint:circular`). There are
 three of them today, grouped by what raises the section, and the module's own docblock names them:
@@ -5973,13 +5973,11 @@ label" *is* expressible — edit the field first, which claims it, then publish 
 next to the wording it is showing, because a lever nobody is told about is an accident rather than a
 feature.
 
-A curator can also follow a card through to the object it names — the card's "Look at the object"
-reads `GET /api/experiences/:id`, which is the by-id relaxation's whole purpose (§ What a curator
-can open). An arrival is in no list, no count and on no map, so without it the card names an object
-and offers nothing to judge it by. That read carries no `location_count` at all — the column exists
-only on the region list's own query (`buildRegionQueries`) — so the preview says nothing about how
-many points or works the object holds, rather than printing a count that would read zero regardless
-of the truth; issue #524 tracks the read that would list them properly.
+The card's header is what a curator judges the object by: its picture and credit, its description
+in one line (cut with an ellipsis, whole on hover), how many places and works it is made of, its
+coordinates, its links and the regions it counts in, all read off the queue's own row
+(`objectContextSelectSql`, `ObjectContext.tsx`). An arrival is in no list, no count and on no map,
+so without it the card names an object and offers nothing to judge it by (#1780).
 
 ### Publishing (ADR-0025 § 4.4)
 
