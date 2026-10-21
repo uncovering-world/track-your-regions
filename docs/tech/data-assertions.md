@@ -552,7 +552,8 @@ the button would not merge, nor misses one it would.
 pair of near places with similar names nobody has answered (#1249). Those are
 the universal signals that propose rather than merge (ADR-0046 decision 2,
 ADR-0120): the *Places that may be one place* card beside the merge card runs
-the pass (`services/sync/mergeProposalFinder.ts`) that writes each pair within
+the pass (`services/sync/mergeProposalFinder.ts`) over the whole catalogue — a run
+and a published arrival run it for their own places (#1800) — that writes each pair within
 reach with names alike at 0.5 or better, or with one name's significant words
 all standing in the other's (#1652), to `experience_merge_proposals`, and a person says
 whether they are one place, two places or one part of the other, an answer the

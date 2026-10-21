@@ -5116,6 +5116,17 @@ catalogue on 2026-10-17, after the equal-item pass: 7 pairs proposed, 1 exact (t
 Liberty as a World Heritage site and as public art), 6 left apart in one kind. The check
 `near-places-with-similar-names-unanswered` lists what is open (`PROPOSAL_ROWS_SQL`, the pass's own
 rows, so the two count one set).
+The pass also runs by itself for a place a reader can newly see (#1800), kept to the pairs that
+hold one of those places (`proposeMergesOfPlaces`, `writeProposals`): after every real run, for
+the places it created, once `mergeArrivalsOfRun` has folded those an equal item names
+(`proposeMergesOfRun`, from `syncController.ts`); and when a curator publishes an arrival, for that
+place (`publishExperience`), or once for every arrival a batch published, after its loop
+(`publishWaiting`, the review queue's batch answer). It finds the pairs with the whole pass's
+statement and writes them with its statements, so the two never measure or answer a pair
+differently; every pair that holds none of those places stands as it was. A failure is logged and
+leaves the pair for the next pass, never undoing the run or the publish. A gated arrival is in no
+pair until it is published, which is why the publish asks. The card stays, for a pass over the
+whole catalogue after a rule changes.
 
 **Near places with similar names, on the queue** (`merge-proposals`) — one card per place that
 stays if a pair is made one, the lower id (`place_a`), with a row per open pair. Open while
