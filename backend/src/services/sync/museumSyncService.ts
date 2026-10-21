@@ -418,6 +418,7 @@ async function upsertMuseumExperience(
     countryCodes: [],
     countryNames: details.countryLabel ? [details.countryLabel] : [],
     imageUrl,
+    itemPictures: details.itemPictures,
     metadata,
     // The reason this membership exists, nameable: the most famous iconic work
     // the museum holds. On the membership rather than in metadata since #822 —

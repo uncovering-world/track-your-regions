@@ -25,7 +25,7 @@ import { countryOfPlace, openCountries, standingCountries, type PlaceCountry } f
 import { parseWktPoint, preferredCoordinate, preferredPicture } from '../wikidataUtils.js';
 import { BEST, entitiesOf, termsOf, type Kept, type Terms } from './entities.js';
 import {
-  articleUrl, bestStatements, hasEnded, itemOf, itemsOf, pictureUrl, standingStatements, textOf, wktOf, yearOf,
+  articleUrl, bestStatements, hasEnded, itemOf, itemsOf, picturesOf, standingStatements, textOf, wktOf, yearOf,
 } from './values.js';
 import type { CompactStatement } from '../../dumps/wikidata/compactEntity.js';
 
@@ -37,8 +37,8 @@ function poolEntity(
   const points = bestStatements(claims.P625).filter(s => parseWktPoint(wktOf(s.value) ?? '') !== null);
   const wkt = points.map(s => wktOf(s.value)!).reduce<string | null>((kept, next) => preferredCoordinate(kept, next), null);
   if (!wkt && !placeless) return null;
-  const picture = bestStatements(claims.P18).map(s => textOf(s.value)).filter((f): f is string => f !== null)
-    .reduce<string | null>((kept, file) => preferredPicture(kept, pictureUrl(file)), null);
+  const itemPictures = picturesOf(claims.P18);
+  const picture = itemPictures.reduce<string | null>((kept, url) => preferredPicture(kept, url), null);
   const at = wkt ? parseWktPoint(wkt) : null;
   const parts = points.filter(s => wktOf(s.value) === wkt).flatMap(partsOf);
   const countries = bestStatements(claims.P17).flatMap((statement): PlaceCountry[] => {
@@ -57,6 +57,7 @@ function poolEntity(
     lon: at?.lon ?? null,
     onEarth: !wkt?.startsWith('<'),
     imageUrl: picture,
+    itemPictures,
     sitelinks: kept.sitelinks,
     countryLabel: country ? terms.get(country)?.label ?? null : null,
     countryOptions: open && {

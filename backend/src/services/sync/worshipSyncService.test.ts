@@ -107,6 +107,7 @@ function place(overrides: Partial<CollectedPlaceOfWorship> = {}): CollectedPlace
     lat: 50.9413,
     lon: 6.958,
     imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Cologne.jpg',
+    itemPictures: [],
     sitelinks: 96,
     countryLabel: 'Germany',
     articleUrl: 'https://en.wikipedia.org/wiki/Cologne_Cathedral',

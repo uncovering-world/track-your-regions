@@ -56,6 +56,16 @@ export function pictureUrl(file: string): string {
 }
 
 /**
+ * Every picture of an item's best-ranked `P18` statements, as `pictureUrl` writes them,
+ * deduplicated and in URL order, the order `preferredPicture` keeps the first of (#1778).
+ */
+export function picturesOf(statements: CompactStatement[] | undefined): string[] {
+  const urls = bestStatements(statements).map(s => textOf(s.value)).filter((f): f is string => f !== null).map(pictureUrl);
+  // By UTF-16 code unit, the order `preferredPicture`'s `<` compares in.
+  return [...new Set(urls)].sort();
+}
+
+/**
  * An English Wikipedia article's URL as WDQS writes it (`schema:about`):
  * spaces as underscores, escaped as MediaWiki's `wfUrlencode` escapes a
  * title, which leaves `;:@$!*(),/~` as they are.

@@ -315,6 +315,7 @@ async function processPlace(
     countryCodes: [],
     countryNames: place.countryLabel ? [place.countryLabel] : [],
     imageUrl: place.imageUrl,
+    itemPictures: place.itemPictures,
     metadata,
     // The reason this membership exists, nameable: the most famous treasure the
     // place holds, where a treasure is what admitted it. A place through door

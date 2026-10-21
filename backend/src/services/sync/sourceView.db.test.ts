@@ -83,6 +83,16 @@ async function seed(state: 'pending' | 'auto'): Promise<void> {
   );
 }
 
+/** The place holding the worship picture and its credit, as an earlier run left it. */
+async function holdPicture(): Promise<void> {
+  await pool.query(
+    `UPDATE experiences SET image_url = $2,
+            metadata = jsonb_build_object('wikidataQid', $3::text, 'imageCredit', $4::jsonb)
+      WHERE id = $1`,
+    [CATHEDRAL, WORSHIP_PICTURE, QID, JSON.stringify(CREDIT)],
+  );
+}
+
 beforeEach(async () => {
   await clear();
   const sources = await pool.query<{ id: number; name: string }>(
@@ -126,6 +136,52 @@ describe('a source\'s view of a place (ADR-0084)', () => {
     // (ADR-0109): the worship run left them, so they arrive with this run.
     expect(outcome.changeSet.changedFields.map(f => f.field)).toEqual(['nameLocal.en']);
     expect(outcome.changeSet.heldFields).toEqual([]);
+  });
+
+  it('keeps a picture the item still carries, with its credit, and proposes nothing (#1778)', async () => {
+    // The place holds one of its item's two pictures and the run chose the other, as
+    // every reader keeps the first by URL: the place keeps its picture and the gated
+    // run holds nothing about it (ADR-0130).
+    await seed('auto');
+    await holdPicture();
+
+    const outcome = await upsertExperienceRecord(params(worship, {
+      imageUrl: UNESCO_PICTURE,
+      itemPictures: [UNESCO_PICTURE, WORSHIP_PICTURE],
+      metadata: { wikidataQid: QID, imageCredit: { artist: 'Someone else', license: 'CC BY 4.0' } },
+    }));
+
+    const stored = await place();
+    expect(stored.image_url).toBe(WORSHIP_PICTURE);
+    expect(stored.credit).toEqual(CREDIT);
+    expect(outcome.changeSet.changedFields.map(f => f.field)).not.toContain('imageUrl');
+    expect(outcome.changeSet.heldFields.map(f => f.field)).not.toContain('imageUrl');
+    // The run's own view is still what it chose.
+    expect((await views())[worship].image).toBe(UNESCO_PICTURE);
+  });
+
+  it('previews the kept picture as the run keeps it (#1778)', async () => {
+    await seed('auto');
+    await holdPicture();
+
+    const preview = await upsertExperienceRecord(params(worship, {
+      imageUrl: UNESCO_PICTURE,
+      itemPictures: [UNESCO_PICTURE, WORSHIP_PICTURE],
+    }), { dryRun: true });
+
+    const proposed = [...preview.changeSet.changedFields, ...preview.changeSet.heldFields].map(f => f.field);
+    expect(proposed).not.toContain('imageUrl');
+  });
+
+  it('still takes a picture once the held one left the item (#1778)', async () => {
+    await seed('auto');
+    await holdPicture();
+
+    const outcome = await upsertExperienceRecord(params(worship, { imageUrl: UNESCO_PICTURE, itemPictures: [UNESCO_PICTURE] }));
+
+    // Proposed as the gate decides, held for a curator or written: a change either way.
+    const proposed = [...outcome.changeSet.changedFields, ...outcome.changeSet.heldFields].map(f => f.field);
+    expect(proposed).toContain('imageUrl');
   });
 
   it('writes a field no other source contradicts, beside one another source does', async () => {

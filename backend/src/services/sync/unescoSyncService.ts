@@ -441,6 +441,7 @@ export function transformRecord(
     countryCodes: parseDelimitedField(record.iso_codes),
     countryNames: parseDelimitedField(record.states_names),
     imageUrl,
+    itemPictures: facts.picture?.itemPictures ?? [],
     metadata,
     locations,
   };
@@ -469,6 +470,7 @@ async function upsertExperience(
     countryCodes: exp.countryCodes,
     countryNames: exp.countryNames,
     imageUrl: exp.imageUrl,
+    itemPictures: exp.itemPictures,
     metadata: exp.metadata,
     wikidataItems,
   }, { dryRun: context.dryRun, syncLogId: context.syncLogId });

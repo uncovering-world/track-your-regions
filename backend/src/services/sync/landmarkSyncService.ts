@@ -130,6 +130,7 @@ async function upsertLandmarkExperience(
     countryCodes: [],
     countryNames: landmark.countryLabel ? [landmark.countryLabel] : [],
     imageUrl,
+    itemPictures: landmark.itemPictures,
     metadata,
   }, { dryRun: context.dryRun, syncLogId: context.syncLogId });
 

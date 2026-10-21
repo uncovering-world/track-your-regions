@@ -85,7 +85,7 @@ import { tidyLabel } from '@tyr/shared/labels';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { lockSourcedExperience } from '../../db/experienceWriter.js';
 import { keptForFamilies, otherFamiliesFields } from './fieldFamilies.js';
-import { contestedFields, keptAsStored } from './sourceView.js';
+import { fieldsKeptAsStored, keptAsStored } from './sourceView.js';
 
 export interface ExperienceUpsertParams {
   sourceId: number;
@@ -112,6 +112,12 @@ export interface ExperienceUpsertParams {
   countryCodes: string[];
   countryNames: string[];
   imageUrl: string | null;
+  /**
+   * Every picture the item carries at its best rank, `imageUrl` among them, from a
+   * source that reads a Wikidata item: a place holding another of them keeps it
+   * (`keepsItsPicture`, ADR-0130). Absent from a source with no item to read.
+   */
+  itemPictures?: readonly string[];
   metadata: Record<string, unknown>;
   /**
    * The work whose fame qualified a museum for the works-first source
@@ -338,7 +344,7 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
   // What another source of the place contradicts is no proposal of this run's,
   // asked of the same views the run would ask (`sourceView.ts`).
   const written = keptForFamilies(
-    keptAsStored(params, row, await contestedFields(pool, row.id, params)),
+    keptAsStored(params, row, await fieldsKeptAsStored(pool, row.id, params, row)),
     row, await otherFamiliesFields(pool, row.id, params.sourceId),
   );
   const incoming = snapshotFromParams(written, await measureExtent(pool, params.boundaryWkt));
@@ -511,7 +517,7 @@ async function writeUnderLock(
   const written = locked === null || stored === null
     ? params
     : keptForFamilies(
-      keptAsStored(params, stored, await contestedFields(client, locked.id, params)),
+      keptAsStored(params, stored, await fieldsKeptAsStored(client, locked.id, params, stored)),
       stored, await otherFamiliesFields(client, locked.id, params.sourceId),
     );
 

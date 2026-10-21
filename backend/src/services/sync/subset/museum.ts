@@ -23,7 +23,7 @@ import { BEST, entitiesOf, termsOf, type Kept, type Terms } from './entities.js'
 import { subsetClassTree } from './kit.js';
 import { DISSOLVED_UNKNOWN } from '../museum/venueTest.js';
 import {
-  articleUrl, bestStatements, hasEnded, itemOf, itemsOf, pictureUrl, standingStatements, textOf, wktOf, yearOf,
+  articleUrl, bestStatements, hasEnded, itemOf, itemsOf, picturesOf, standingStatements, textOf, wktOf, yearOf,
 } from './values.js';
 
 /** Wikidata's *unknown value*, which WDQS writes as a skolem node. */
@@ -37,8 +37,7 @@ function pointOf(statements: CompactStatement[] | undefined): string | null {
 }
 
 function pictureOf(statements: CompactStatement[] | undefined): string | null {
-  return bestStatements(statements).map(s => textOf(s.value)).filter((f): f is string => f !== null)
-    .reduce<string | null>((kept, file) => preferredPicture(kept, pictureUrl(file)), null);
+  return picturesOf(statements).reduce<string | null>((kept, url) => preferredPicture(kept, url), null);
 }
 
 /** The makers a work names, labelled, deduped by item and by folded label, never a label that is an id. */
@@ -160,6 +159,7 @@ export async function subsetEntityDetails(qids: string[]): Promise<Map<string, E
       lon: at?.lon ?? null,
       countryLabel: country ? terms.get(country)?.label ?? null : null,
       imageUrl: pictureOf(claims.P18),
+      itemPictures: picturesOf(claims.P18),
       website: bestStatements(claims.P856).map(s => textOf(s.value)).find(Boolean) ?? null,
       articleUrl: entity.sitelinks.enwiki ? articleUrl(entity.sitelinks.enwiki) : null,
       sitelinks,

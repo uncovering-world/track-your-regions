@@ -367,6 +367,7 @@ export async function collectPublicArt(
       lat: entity.lat,
       lon: entity.lon,
       imageUrl: entity.imageUrl,
+      itemPictures: entity.itemPictures,
       creators: known.creators,
       year: entity.year,
       sitelinks: entity.sitelinks,

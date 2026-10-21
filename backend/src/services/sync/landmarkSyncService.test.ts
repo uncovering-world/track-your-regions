@@ -87,7 +87,7 @@ const mockedUpsert = upsertExperienceRecord as unknown as ReturnType<typeof vi.f
 function landmark(over: Partial<WikidataLandmark> = {}): WikidataLandmark {
   return {
     qid: 'Q337179', label: 'Freedom Monument', description: 'monument in Riga', lat: 56.95, lon: 24.11,
-    imageUrl: null, creators: ['Kārlis Zāle'], year: 1935, sitelinks: 41, countryLabel: 'Latvia',
+    imageUrl: null, itemPictures: [], creators: ['Kārlis Zāle'], year: 1935, sitelinks: 41, countryLabel: 'Latvia',
     type: 'monument', classes: ['Q4989906'], artwork: false, articleUrl: null, website: null, ...over,
   };
 }
