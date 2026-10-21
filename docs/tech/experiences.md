@@ -2647,9 +2647,16 @@ twice. Without Jev nothing is asked. A Cancel pressed during the step stops the 
 (`askingVisitQuestions`, which `isCancellable` accepts): what was read by then is asked, and the run
 ends as it would have. The run's closing line says what it did
 (`visitQuestionsSentence`): "places with nothing to see: 34 asked of a curator, of 247 that fewer than
-two witnesses vouch for among 1011 read". The step never fails the run. A mirror that does not answer,
-or a Jev that cannot be reached, is logged, and the next run asks. The answers come from the sources'
-caches, which keep `osm` and `photos` for all four sources.
+two witnesses vouch for among 1011 read". The step never fails the run. The map is read a batch of
+`OSM_BATCH` at a time (`mapOfWhatAnswered`): a batch the mirror does not answer after its retries
+leaves only its places unread, neither read by Jev nor asked; after `MAP_DROPS_IN_A_ROW` (2) dropped
+batches running, the mirror is taken as down and the rest of the map is left unread too, rather than
+each batch spending its own retries. The line adds "200 left for the next
+run as OpenStreetMap did not answer"; the next run reads them, since they carry no question. Archaeology's
+run 184 on 2026-10-21, before this, lost the whole step to one dropped batch. Any other failure (Wikidata or
+Jev unreachable, a question that could not be written) is logged, asks nothing, and is said in the line:
+"places with nothing to see: not asked, the step failed (see the backend log) — the next run asks".
+The answers come from the sources' caches, which keep `osm` and `photos` for all four sources.
 
 **Pompeii is the row both doors see.** English Wikipedia files it under `Archaeological museums
 in Italy`, so the museum door's category walk names it and refuses it for carrying no museum
