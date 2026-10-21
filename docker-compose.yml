@@ -250,7 +250,7 @@ services:
       - CV_MAX_BODY_BYTES=${CV_MAX_BODY_BYTES:-}
     # No restart policy on purpose — see the note on the martin service.
 
-  # One-off GADM loader (GDAL + psycopg2 + dotenv + shapely). Not started by
+  # One-off GADM loader (GDAL + psycopg2 + shapely). Not started by
   # `docker compose up` (tools profile); invoked by `npm run db:load-gadm` via
   # `docker compose run --rm db-loader ...`, so the host needs no Python/GDAL.
   db-loader:

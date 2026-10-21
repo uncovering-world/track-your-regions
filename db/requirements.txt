@@ -1,5 +1,16 @@
-psycopg2-binary>=2.9.0
-python-dotenv>=1.0.0
-GDAL>=3.0.0
-shapely>=2.0.0
-pytest>=7.0.0
+# What the GADM loader runs on, pinned to the versions its image carries
+# (db/Dockerfile: ghcr.io/osgeo/gdal:ubuntu-small-3.13.3 with its numpy, plus
+# Ubuntu's python3-psycopg2 and python3-shapely, which reads that numpy).
+# Nothing installs this file: the image takes its packages from apt, and its
+# build fails where they differ from these lines (check_image_versions.py). It is
+# what `npm run security:py:deps` audits for the loader (`pip-audit --no-deps
+# --disable-pip`, since GDAL has no wheel to resolve), so a bump of the base
+# image moves these lines with it (#1782).
+#
+# Not in the image: python-dotenv, which the loaders use only to read a .env on a
+# host that has it installed, and pytest, which the test lane takes from
+# cv-python's dev tools.
+GDAL==3.13.3
+psycopg2==2.9.11
+shapely==2.1.2
+numpy==2.3.5

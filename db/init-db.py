@@ -21,7 +21,6 @@ import time
 from datetime import timedelta
 
 import psycopg2
-from dotenv import load_dotenv
 from psycopg2.extras import execute_batch
 
 # Which levels of a GADM row are divisions, what each is called and what
@@ -136,6 +135,12 @@ class ProgressTracker:
 def get_db_credentials():
     """Load database credentials from environment."""
     env_files = [".env", "../.env", "../../.env"]
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        # The loader image passes its settings as environment variables and
+        # ships no python-dotenv (#1782): a .env is read only where it is installed.
+        env_files = []
     for env_file in env_files:
         if os.path.exists(env_file):
             print(f"Loading environment from {env_file}")

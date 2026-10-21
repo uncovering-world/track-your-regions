@@ -16,7 +16,7 @@ extend = "../cv-python/pyproject.toml"
 python_version = "3.12"
 # Named one by one, since two loaders are not importable module names; a new
 # db/*.py is added here, or ruff and Bandit read it and mypy does not.
-files = ["gadm_levels.py", "gadm_sample.py", "init-db.py", "precalculate-geometries.py", "tests"]
+files = ["check_image_versions.py", "gadm_levels.py", "gadm_sample.py", "init-db.py", "precalculate-geometries.py", "tests"]
 # GDAL's bindings, psycopg2 and shapely ship no stubs in the venv the gates use,
 # and the loader image installs them from apt, so they are read as untyped.
 ignore_missing_imports = true
