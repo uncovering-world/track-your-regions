@@ -180,14 +180,14 @@ describe('publishing an arrival', () => {
       row: { curation_state: 'pending', pending_change_sync_log_id: 53, curated_fields: ['name'] },
       proposal: [
         { field: 'name', new: 'X', held: true },
-        { field: 'description', new: 'Y', held: true },
+        { field: 'subtitle', new: 'Y', held: true },
       ],
     });
 
     await publish({ expectedSyncLogId: 53 }, client);
 
     expect(JSON.parse(String(only(queries, 'INSERT INTO experience_curation_log').params[3])))
-      .toMatchObject({ fields: ['description'], claimedFieldsSkipped: ['name'], fromSyncLogId: 53 });
+      .toMatchObject({ fields: ['subtitle'], claimedFieldsSkipped: ['name'], fromSyncLogId: 53 });
   });
 
   it('dates the works it passes, since a work is a row in its own right', async () => {

@@ -173,14 +173,14 @@ describe('publishing an object\'s held coordinate', () => {
     const moved = await arrival(MOVED);
     const logId = await heldRun([
       { field: 'location', old: STORED, new: MOVED },
-      { field: 'shortDescription', old: null, new: 'An ancient Greek city on the coast of Ionia.' },
+      { field: 'description', old: null, new: 'An ancient Greek city on the coast of Ionia.' },
     ]);
 
     const { result } = await publishUnderLock(SITE, userId, null, {
-      heldFields: ['shortDescription'], expectedSyncLogId: logId,
+      heldFields: ['description'], expectedSyncLogId: logId,
     });
 
-    expect(result).toMatchObject({ appliedFields: ['shortDescription'], locationsPublished: 0, withdrawalsReleased: 0 });
+    expect(result).toMatchObject({ appliedFields: ['description'], locationsPublished: 0, withdrawalsReleased: 0 });
     expect(await point(moved)).toEqual({ curation_state: 'pending', missing: false });
     expect((await point(storedPoint)).missing).toBe(false);
   });

@@ -2662,9 +2662,10 @@ CREATE TABLE IF NOT EXISTS experiences (
     name VARCHAR(500) NOT NULL,
     name_local JSONB,  -- {"en": "...", "fr": "...", "es": "...", ...}
 
-    -- Description
+    -- Text: a one-line subtitle under the name (Wikidata's description line)
+    -- and the description a reader opens (UNESCO's paragraph, a curator's), #1795
+    subtitle TEXT,
     description TEXT,
-    short_description TEXT,
 
     -- The type within a kind is the membership's (experience_kind_memberships.type,
     -- ADR-0084): the Pantheon is a church as a place of worship and a site as archaeology.
@@ -2706,7 +2707,7 @@ COMMENT ON COLUMN experiences.location IS 'Required point location for the exper
 COMMENT ON COLUMN experiences.boundary IS 'Optional boundary polygon for experiences with defined areas';
 COMMENT ON COLUMN experiences.country_codes IS 'ISO country codes, array for transboundary sites';
 COMMENT ON COLUMN experiences.metadata IS 'Source-specific data (UNESCO: date_inscribed, danger, criteria, etc.)';
-COMMENT ON COLUMN experiences.curated_fields IS 'What a curator has claimed on this place, so every run keeps the stored value: column names (name, short_description, image_url, ...) and, for metadata, one entry per key (metadata.website, metadata.inDanger). Never the bare name metadata (ADR-0077 decision 3): a claim is in the grain the run records, so every key it protects is a key a curator can be asked about.';
+COMMENT ON COLUMN experiences.curated_fields IS 'What a curator has claimed on this place, so every run keeps the stored value: column names (name, subtitle, description, image_url, ...) and, for metadata, one entry per key (metadata.website, metadata.inDanger). Never the bare name metadata (ADR-0077 decision 3): a claim is in the grain the run records, so every key it protects is a key a curator can be asked about.';
 
 -- A claim on metadata names its key (ADR-0077 decision 3, #729): the bare
 -- column name would protect every key while matching none of the names the
@@ -2975,7 +2976,7 @@ CREATE TABLE IF NOT EXISTS experience_kind_memberships (
     -- The source's view of the place: what it last reported, whatever the
     -- place keeps (ADR-0084, #1246).
     reported_name TEXT,
-    reported_description TEXT,
+    reported_subtitle TEXT,
     reported_image_url TEXT,
     reported_location geometry(Point, 4326),
     reported_image_credit JSONB,
@@ -2999,7 +3000,7 @@ ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS first_seen_sync
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS last_seen_sync_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_name TEXT;
-ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_description TEXT;
+ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_subtitle TEXT;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_image_url TEXT;
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_location geometry(Point, 4326);
 ALTER TABLE experience_kind_memberships ADD COLUMN IF NOT EXISTS reported_image_credit JSONB;
@@ -3039,7 +3040,7 @@ COMMENT ON COLUMN experience_kind_memberships.source_membership IS 'present or f
 COMMENT ON COLUMN experience_kind_memberships.first_seen_sync_log_id IS 'The run of this membership''s source that first brought the place into this kind.';
 COMMENT ON COLUMN experience_kind_memberships.last_seen_sync_log_id IS 'The newest run of this membership''s source that listed the place. A conflict this source proposed in an earlier run is withdrawn once a later landed run of the same source saw the place and proposed nothing.';
 COMMENT ON COLUMN experience_kind_memberships.reported_name IS 'The name this membership''s source last reported for the place, tidied as the place stores a name. With the three columns beside it, the source''s view of the place (ADR-0084): written by every run of the source whatever the place keeps, and read to tell whether the sources of one place disagree (#1246). NULL where the source reports nothing, which contradicts no other view.';
-COMMENT ON COLUMN experience_kind_memberships.reported_description IS 'The description this membership''s source last reported for the place (its view, #1246).';
+COMMENT ON COLUMN experience_kind_memberships.reported_subtitle IS 'The subtitle this membership''s source last reported for the place (its view, #1246, #1795).';
 COMMENT ON COLUMN experience_kind_memberships.reported_image_url IS 'The picture this membership''s source last reported for the place, after the run''s picture rule (its view, #1246). Its credit is reported_image_credit.';
 COMMENT ON COLUMN experience_kind_memberships.wikidata_items IS 'The Wikidata items a source that knows the place by another id resolves it to (#1248): for a World Heritage membership, the items its site resolves to through P757 (siteItems, ADR-0088 as narrowed by ADR-0094), leaving out an item whose every such statement is deprecated. NULL for a Wikidata source, whose external_id is the item. One item and one point make the place that item''s, for the catalogue''s merge on an equal item (sharedItemsSql).';
 COMMENT ON COLUMN experience_kind_memberships.reported_image_credit IS 'The credit of reported_image_url as the run resolved it from Commons ({author, license, licenseUrl, detailsUrl}, the shape of metadata.imageCredit): shown beside the picture wherever a curator is asked to choose it, and written with it to the place when chosen (#1246).';
@@ -4347,7 +4348,7 @@ COMMENT ON TABLE experience_conflict_decisions IS 'Source proposals a curator re
 CREATE TABLE IF NOT EXISTS experience_view_choices (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
-    field VARCHAR(20) NOT NULL CHECK (field IN ('name', 'description', 'imageUrl', 'location')),
+    field VARCHAR(20) NOT NULL CHECK (field IN ('name', 'subtitle', 'imageUrl', 'location')),
     chosen_membership_id INTEGER REFERENCES experience_kind_memberships(id) ON DELETE SET NULL,
     views JSONB NOT NULL,
     decided_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -4365,7 +4366,7 @@ COMMENT ON COLUMN experience_view_choices.views IS 'The standing views of the fi
 CREATE TABLE IF NOT EXISTS experience_view_suggestions (
     id SERIAL PRIMARY KEY,
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
-    field VARCHAR(20) NOT NULL CHECK (field IN ('name', 'description', 'imageUrl', 'location')),
+    field VARCHAR(20) NOT NULL CHECK (field IN ('name', 'subtitle', 'imageUrl', 'location')),
     views JSONB NOT NULL,
     suggested_membership_id INTEGER REFERENCES experience_kind_memberships(id) ON DELETE SET NULL,
     confidence NUMERIC(4, 3) NOT NULL CHECK (confidence >= 0 AND confidence <= 1),

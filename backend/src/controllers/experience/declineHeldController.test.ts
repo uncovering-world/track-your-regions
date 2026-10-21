@@ -91,7 +91,7 @@ function makeClient(opts: ClientOptions = {}) {
 const GETBOL = {
   changed_fields: [
     { field: 'name', old: 'Getbol, Korean Tidal Flats (Phase II)', new: 'Getbol, Korean Tidal Flats', held: true },
-    { field: 'shortDescription', old: 'The property comprises four component parts…', new: 'The property comprises six component parts…', held: true },
+    { field: 'description', old: 'The property comprises four component parts…', new: 'The property comprises six component parts…', held: true },
   ],
   contents: null,
 };
@@ -188,7 +188,7 @@ describe('declineHeldValue', () => {
     const { client, queries } = makeClient({ proposal: GETBOL });
     mockedConnect.mockResolvedValue(client);
 
-    await decline({ fields: ['name', 'shortDescription'], expectedSyncLogId: 68 }, client);
+    await decline({ fields: ['name', 'description'], expectedSyncLogId: 68 }, client);
 
     // The other half of the promise above, on the one path that reaches an
     // UPDATE: answering the last open row clears the pointer, and the statement
@@ -202,7 +202,7 @@ describe('declineHeldValue', () => {
     expect(write?.params).toEqual([77, 1138]);
     expect(write?.sql).not.toContain('curated_fields');
     expect(write?.sql).not.toContain('name = ');
-    expect(write?.sql).not.toContain('short_description');
+    expect(write?.sql).not.toContain('description');
   });
 
   it('keeps the pointer while anything on the card is still open', async () => {
@@ -223,7 +223,7 @@ describe('declineHeldValue', () => {
     mockedConnect.mockResolvedValue(client);
 
     const res = await decline({
-      fields: ['name', 'shortDescription'], expectedSyncLogId: 68,
+      fields: ['name', 'description'], expectedSyncLogId: 68,
     }, client);
 
     expect(queries.find(q => q.sql.includes('pending_change_sync_log_id = NULL'))).toBeDefined();
@@ -233,7 +233,7 @@ describe('declineHeldValue', () => {
   it('counts a row someone already answered as closed, not as open', async () => {
     const { client, queries } = makeClient({
       proposal: GETBOL,
-      answered: [{ kind: null, ref: null, name: null, field: 'shortDescription' }],
+      answered: [{ kind: null, ref: null, name: null, field: 'description' }],
     });
     mockedConnect.mockResolvedValue(client);
 

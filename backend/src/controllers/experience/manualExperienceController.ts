@@ -22,7 +22,7 @@ import { refusalFor } from './curatedUrlRefusal.js';
 
 interface CreateManualBody {
   name?: unknown;
-  shortDescription?: unknown;
+  description?: unknown;
   type?: unknown;
   longitude?: unknown;
   latitude?: unknown;
@@ -91,7 +91,7 @@ async function insertManualExperience(
     sourceId,
     externalId,
     name: body.name,
-    shortDescription: body.shortDescription || null,
+    description: body.description || null,
     longitude: body.longitude,
     latitude: body.latitude,
     imageUrl: body.imageUrl || null,
@@ -138,7 +138,7 @@ async function insertManualExperience(
 /**
  * Create a new manual experience
  * POST /api/experiences
- * Body: { name, shortDescription?, type?, longitude, latitude, imageUrl?, tags?, countryCode?, countryName?, regionId, kindId, websiteUrl?, wikipediaUrl? }
+ * Body: { name, description?, type?, longitude, latitude, imageUrl?, tags?, countryCode?, countryName?, regionId, kindId, websiteUrl?, wikipediaUrl? }
  */
 export async function createManualExperience(
   { body, caller }: { body: z.output<typeof createManualExperienceBodySchema>; caller: Express.User },

@@ -197,7 +197,7 @@ describe('editExperience claim locking', () => {
     // value would put the claim back over a value the curator just accepted,
     // and the conflict would return at the next run.
     queueQueries({
-      experienceRows: [{ id: EXPERIENCE_ID, source_id: SOURCE_ID, name: 'Old name', curated_fields: ['name', 'description'] }],
+      experienceRows: [{ id: EXPERIENCE_ID, source_id: SOURCE_ID, name: 'Old name', curated_fields: ['name', 'subtitle'] }],
       lockedCurated: [],
     });
 
@@ -375,7 +375,7 @@ describe('editExperience and an emptied field', () => {
   function stored(column: string): unknown {
     const [sql, params] = update();
     // Preceded by a space whether it is the first clause (`SET `) or a later
-    // one (`, `), so `description` cannot match inside `short_description`.
+    // one (`, `), so a column cannot match inside a longer name ending in it.
     const marker = ` ${column} = $`;
     const at = sql.indexOf(marker);
     expect(at, `expected the UPDATE to set ${column}`).toBeGreaterThan(-1);
@@ -426,17 +426,17 @@ describe('editExperience and an emptied field', () => {
   });
 
   it('stores a cleared description and type as NULL', async () => {
-    queueQueries({ lockedCurated: [], lockedRow: { short_description: 'A valley' } });
+    queueQueries({ lockedCurated: [], lockedRow: { description: 'A valley' } });
     // The membership's own type, which the write answers as the value it replaced.
     const base = mockClientQuery.getMockImplementation()!;
     mockClientQuery.mockImplementation(async (sql: string, ...rest: unknown[]) => (
       typeof sql === 'string' && sql.includes('WITH old AS')
         ? { rows: [{ old_type: 'cultural' }] } : base(sql, ...rest)));
 
-    await editWith({ shortDescription: '', type: '' }).done;
+    await editWith({ description: '', type: '' }).done;
 
-    expect(stored('short_description')).toBeNull();
-    expect(claims()).toEqual(expect.arrayContaining(['short_description']));
+    expect(stored('description')).toBeNull();
+    expect(claims()).toEqual(expect.arrayContaining(['description']));
     // The type within the kind is the membership's (ADR-0084): written there,
     // claimed there, the place's own column untouched.
     const membership = mockClientQuery.mock.calls.find(
@@ -491,7 +491,7 @@ describe('editExperience and the column the type rename removed', () => {
     const columns = projection!.split(',').map((c) => c.trim());
     // The type within a kind is the membership's since ADR-0084, and the place
     // carries neither name for it.
-    expect(columns).toContain('short_description');
+    expect(columns).toContain('description');
     expect(columns).not.toContain('type');
     expect(columns).not.toContain('category');
   });

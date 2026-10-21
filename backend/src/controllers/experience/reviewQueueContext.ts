@@ -77,10 +77,11 @@ export function objectContextSelectSql(alias = 'e'): string {
           ${alias}.metadata->>'website' AS website_url,
           ${alias}.metadata->>'unescoUrl' AS unesco_url,
           ${alias}.metadata->>'wikipediaUrl' AS wikipedia_url,
-          -- What the object is, in a line: Wikidata's description for a museum
-          -- ("museum in Saint Petersburg, Russia"), the long one first where the
-          -- source gave one. The card's header draws it (#1780).
-          COALESCE(NULLIF(${alias}.description, ''), NULLIF(${alias}.short_description, '')) AS object_description,
+          -- What the object is, in a line: its subtitle, Wikidata's line
+          -- ("museum in Saint Petersburg, Russia" for the Hermitage), else its
+          -- description (UNESCO's paragraph, a curator's text). The card's
+          -- header draws it (#1780).
+          COALESCE(NULLIF(${alias}.subtitle, ''), NULLIF(${alias}.description, '')) AS object_description,
           -- The run's own question about a row it could not settle by its rule
           -- (ADR-0058): an art museum with an antiquities department is a
           -- judgement about the exposition that no classes answer, so the run

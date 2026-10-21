@@ -368,7 +368,7 @@ export const ReviewQueueItem = z.strictObject({
   unesco_url: z.string().nullable().optional().describe("UNESCO's page about a World Heritage site, apart from the site's own website (#1538)."),
   wikipedia_url: z.string().nullable().optional(),
   object_description: z.string().nullable().optional().describe(
-    "The object's description, the long one where there is one, else the short one (#1780).",
+    "What the object is, in a line: its subtitle (Wikidata's line) where it has one, else its description (UNESCO's paragraph, a curator's text) (#1780).",
   ),
   region_names: z.array(z.string()).nullable().optional(),
   seen_in: z.array(z.string()).optional().describe(

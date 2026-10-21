@@ -348,7 +348,7 @@ describe('the schema as read', () => {
   it('yields every CREATE TABLE block, with the columns its ADD COLUMN clauses add', () => {
     const headers = schema.match(/^CREATE TABLE\b/gm) ?? [];
     expect(tables.size).toBe(headers.length);
-    expect(tables.get('experiences')).toContain('short_description');
+    expect(tables.get('experiences')).toContain('subtitle');
     expect(tables.get('experiences')).not.toContain('category');
     // The type within a kind is the membership's since ADR-0084, declared in
     // that CREATE TABLE and added again by its ALTER.
@@ -378,7 +378,7 @@ describe('the schema as read', () => {
 describe('the extractor', () => {
   it('names the column the type rename removed, in the statement that broke (#824)', () => {
     const sweep = undeclaredColumns(
-      'SELECT id, source_id, name, short_description, description, category, image_url, tags, metadata, curated_fields\n     FROM experiences WHERE id = $1',
+      'SELECT id, source_id, name, description, subtitle, category, image_url, tags, metadata, curated_fields\n     FROM experiences WHERE id = $1',
       tables,
     );
     expect(sweep.undeclared).toEqual([{ reference: 'category', table: 'experiences' }]);

@@ -114,7 +114,7 @@ describe('whether a source still lists a place (ADR-0084)', () => {
 
     const outcome = await upsertExperienceRecord({
       sourceId: archaeology, externalId: LOUVRE_QID, name: 'Louvre Museum', nameLocal: { en: 'Louvre Museum' },
-      description: null, shortDescription: null, type: null, tags: [], lon: 2.3376, lat: 48.8606,
+      subtitle: null, description: null, type: null, tags: [], lon: 2.3376, lat: 48.8606,
       countryCodes: ['FR'], countryNames: ['France'], imageUrl: null, metadata: {},
     });
 

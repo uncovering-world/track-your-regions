@@ -64,7 +64,7 @@ export interface ExperienceListRow {
   id: number;
   external_id: string;
   name: string;
-  short_description: string | null;
+  description: string | null;
   type: string | null;
   kind_id: number;
   kind_name: string;
@@ -97,7 +97,7 @@ export function experienceOf(row: ExperienceListRow): Experience {
     id: row.id,
     external_id: row.external_id,
     name: row.name,
-    short_description: row.short_description,
+    description: row.description,
     type: row.type,
     kind_id: row.kind_id,
     country_codes: row.country_codes,
@@ -132,8 +132,8 @@ export interface ExperienceDetailRow {
   external_id: string;
   name: string;
   name_local: Record<string, string> | null;
+  subtitle: string | null;
   description: string | null;
-  short_description: string | null;
   type: string | null;
   country_codes: string[] | null;
   country_names: string[] | null;
@@ -166,8 +166,8 @@ export function experienceDetailOf(row: ExperienceDetailRow, regions: Experience
     external_id: row.external_id,
     name: row.name,
     name_local: row.name_local,
+    subtitle: row.subtitle,
     description: row.description,
-    short_description: row.short_description,
     type: row.type,
     country_codes: row.country_codes,
     country_names: row.country_names,
@@ -199,7 +199,7 @@ export function experienceDetailOf(row: ExperienceDetailRow, regions: Experience
 export interface SearchRow {
   id: number;
   name: string;
-  short_description: string | null;
+  description: string | null;
   type: string | null;
   kind_id: number;
   kind_name: string;
@@ -221,7 +221,7 @@ export function searchResultOf(row: SearchRow): ExperienceSearchResult {
   return {
     id: row.id,
     name: row.name,
-    short_description: row.short_description,
+    description: row.description,
     type: row.type,
     kind_id: row.kind_id,
     kind_name: row.kind_name,

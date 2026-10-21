@@ -553,7 +553,7 @@ export async function getSyncLogChanges(
   // source ran into one is `conflict` only when nothing else on it moved; when the
   // run also applied an ordinary edit it is `updated`, and `significance` weighs the
   // refused field like any other — so a claimed `metadata.website` or
-  // `shortDescription` beside an applied `nameLocal.en` computes 'minor' and the first
+  // `description` beside an applied `nameLocal.en` computes 'minor' and the first
   // three terms drop it. That row is the one in the run where a machine and a person
   // disagreed, which is exactly what an admin opens the report to find. The
   // containment test is the idiom the queue and the two verdict endpoints already

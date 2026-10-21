@@ -47,7 +47,7 @@ export interface QueueRow {
   /** UNESCO's page about a World Heritage site (#1538), apart from the site's own. */
   unesco_url?: string | null;
   wikipedia_url?: string | null;
-  /** The object's description, the long one where there is one (#1780). */
+  /** The object's subtitle where it has one, else its description (#1780). */
   object_description?: string | null;
   region_names?: string[] | null;
   admission_note?: string | null;

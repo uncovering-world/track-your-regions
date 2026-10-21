@@ -406,8 +406,8 @@ async function upsertMuseumExperience(
     externalId: museum.qid,
     name: details.museumLabel,
     nameLocal: { en: details.museumLabel },
-    description: details.description,
-    shortDescription: null,
+    subtitle: details.description,
+    description: null,
     // No type: an art museum is a kind, not a type within "Museums" (ADR-0045
     // decision 1), and a literal `art` on every row says nothing the kind does
     // not (#814).

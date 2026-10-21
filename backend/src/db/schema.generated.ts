@@ -340,7 +340,7 @@ export interface ExperienceKindMembershipsRow {
   last_seen_sync_log_id: number | null;
   last_seen_at: Date | null;
   reported_name: string | null;
-  reported_description: string | null;
+  reported_subtitle: string | null;
   reported_image_url: string | null;
   reported_location: string | null;
   reported_image_credit: unknown | null;
@@ -622,8 +622,8 @@ export interface ExperiencesRow {
   external_id: string;
   name: string;
   name_local: unknown | null;
+  subtitle: string | null;
   description: string | null;
-  short_description: string | null;
   tags: unknown | null;
   location: string;
   boundary: string | null;
@@ -1487,10 +1487,10 @@ export const CHECK_VALUES = {
     curation_state: ["pending", "auto", "verified"],
   },
   experience_view_choices: {
-    field: ["name", "description", "imageUrl", "location"],
+    field: ["name", "subtitle", "imageUrl", "location"],
   },
   experience_view_suggestions: {
-    field: ["name", "description", "imageUrl", "location"],
+    field: ["name", "subtitle", "imageUrl", "location"],
   },
   experience_visit_questions: {
     answer: ["kept", "refused"],

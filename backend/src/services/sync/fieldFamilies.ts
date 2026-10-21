@@ -9,7 +9,7 @@
  * reports. A field listed here is the listed family's: a run of another
  * family writes it as the place holds it, so it proposes nothing about it,
  * while that family has a standing membership on the place. A field listed for no family follows the gate and
- * the claims as before, and the name, description, picture and coordinate
+ * the claims as before, and the name, subtitle, picture and coordinate
  * follow the source views (`sourceView.ts`, ADR-0084).
  */
 
@@ -27,7 +27,7 @@ export type SourceFamily = 'unesco' | 'wikidata';
 const SOURCE_FAMILY: Readonly<Record<number, SourceFamily>> = { 1: 'unesco', 2: 'wikidata', 3: 'wikidata', 4: 'wikidata', 5: 'wikidata' };
 
 /** The place's columns a family can own, as the run's record names them. */
-export type FamilyColumn = 'nameLocal' | 'shortDescription' | 'countryCodes' | 'countryNames';
+export type FamilyColumn = 'nameLocal' | 'description' | 'countryCodes' | 'countryNames';
 
 export interface FamilyFields {
   columns: readonly FamilyColumn[];
@@ -46,7 +46,7 @@ export interface FamilyFields {
  */
 export const FAMILY_FIELDS: Readonly<Record<SourceFamily, FamilyFields>> = {
   unesco: {
-    columns: ['nameLocal', 'shortDescription', 'countryCodes', 'countryNames'],
+    columns: ['nameLocal', 'description', 'countryCodes', 'countryNames'],
     metadata: ['dateInscribed', 'inDanger', 'dangerList', 'criteria', 'region', 'transboundary', 'areaHectares', 'unescoUrl'],
   },
   wikidata: {
@@ -118,7 +118,7 @@ export function fieldsOfOthers(sourceId: number, otherSourceIds: readonly number
 /** The part of a run's record the family fields are read from. */
 export interface FamilyRecord {
   nameLocal: Record<string, string>;
-  shortDescription: string | null;
+  description: string | null;
   countryCodes: string[];
   countryNames: string[];
   metadata: Record<string, unknown>;
@@ -127,7 +127,7 @@ export interface FamilyRecord {
 /** The stored columns `keptForFamilies` puts back, as the upsert's snapshot read them. */
 export interface StoredFamilyFields {
   name_local: Record<string, string> | null;
-  short_description: string | null;
+  description: string | null;
   country_codes: string[] | null;
   country_names: string[] | null;
   metadata: Record<string, unknown> | null;
@@ -139,7 +139,7 @@ export function keptForFamilies<T extends FamilyRecord>(params: T, stored: Store
   const kept = { ...params, metadata: { ...params.metadata } };
   for (const column of others.columns) {
     if (column === 'nameLocal') kept.nameLocal = stored.name_local ?? {};
-    if (column === 'shortDescription') kept.shortDescription = stored.short_description;
+    if (column === 'description') kept.description = stored.description;
     if (column === 'countryCodes') kept.countryCodes = stored.country_codes ?? [];
     if (column === 'countryNames') kept.countryNames = stored.country_names ?? [];
   }

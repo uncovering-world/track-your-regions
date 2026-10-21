@@ -56,7 +56,7 @@ function makeClient(claimed?: string[], proposal?: unknown[]) {
 const PROPOSAL = [{
   sync_log_id: 9,
   changed_fields: [
-    { field: 'shortDescription', new: 'The ruins of the ancient city of Aksum…', curatedConflict: true },
+    { field: 'description', new: 'The ruins of the ancient city of Aksum…', curatedConflict: true },
     { field: 'name', new: 'Renamed upstream', curatedConflict: true },
   ],
 }];
@@ -82,7 +82,7 @@ describe('declineSourceValue', () => {
 
   it('records the value from the proposal, not from the request', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 96, source_id: 1 }] });
-    const { client, queries } = makeClient(['short_description'], PROPOSAL);
+    const { client, queries } = makeClient(['description'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
@@ -92,15 +92,15 @@ describe('declineSourceValue', () => {
       // A caller naming its own value is ignored: the queue compares the stored refusal
       // against the live proposal, so a refusal of something nobody proposed silences
       // nothing while looking like an answer.
-      body: { fields: ['shortDescription'], expectedSyncLogId: 9, declined: 'something else' },
+      body: { fields: ['description'], expectedSyncLogId: 9, declined: 'something else' },
     } as never, res as never);
 
     const insert = queries.find(q => q.sql.includes('experience_conflict_decisions'));
-    expect(insert?.params).toContain('shortDescription');
+    expect(insert?.params).toContain('description');
     expect(insert?.params).toContain(JSON.stringify('The ruins of the ancient city of Aksum…'));
     expect(insert?.params).not.toContain(JSON.stringify('something else'));
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-      declined: ['shortDescription'], fromSyncLogId: 9,
+      declined: ['description'], fromSyncLogId: 9,
     }));
   });
 

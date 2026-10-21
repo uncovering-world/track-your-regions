@@ -28,7 +28,7 @@ const LOCATION_ID = 777;
 
 const BODY = {
   name: 'Hand-placed Overlook',
-  shortDescription: 'A curator saw it and typed it in',
+  description: 'A curator saw it and typed it in',
   longitude: 10.5,
   latitude: 50.5,
   regionId: REGION_ID,

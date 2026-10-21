@@ -28,13 +28,13 @@ describe('recording a refusal', () => {
   it('replaces the standing answer per field, on the place whose token it spends', async () => {
     const { client, queries } = fakeClient();
     await recordConflictRefusals(client, AKSUM, CURATOR, [
-      { field: 'shortDescription', proposed: 'The ruins of the ancient city of Aksum…' },
+      { field: 'description', proposed: 'The ruins of the ancient city of Aksum…' },
       { field: 'location', proposed: { lat: 14.13, lon: 38.72 } },
     ]);
     expect(queries).toHaveLength(2);
     expect(queries[0].sql).toContain('INSERT INTO experience_conflict_decisions');
     expect(queries[0].sql).toContain('ON CONFLICT (experience_id, field)');
-    expect(queries[0].params).toEqual([96, 'shortDescription', JSON.stringify('The ruins of the ancient city of Aksum…'), CURATOR]);
+    expect(queries[0].params).toEqual([96, 'description', JSON.stringify('The ruins of the ancient city of Aksum…'), CURATOR]);
     expect(queries[1].params).toEqual([96, 'location', JSON.stringify({ lat: 14.13, lon: 38.72 }), CURATOR]);
   });
 
@@ -42,7 +42,7 @@ describe('recording a refusal', () => {
     const { client, queries } = fakeClient();
     await recordConflictRefusals(client, AKSUM, CURATOR, [
       { field: 'name', proposed: ' Aksum  archaeological site ' },
-      { field: 'shortDescription', proposed: undefined },
+      { field: 'description', proposed: undefined },
     ]);
     expect(queries[0].params[2]).toBe(JSON.stringify('Aksum archaeological site'));
     expect(queries[1].params[2]).toBe('null');

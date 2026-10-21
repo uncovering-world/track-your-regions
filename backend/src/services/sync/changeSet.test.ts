@@ -31,8 +31,8 @@ function snapshot(overrides: Partial<ExperienceSnapshot> = {}): ExperienceSnapsh
   return {
     name: 'Serengeti National Park',
     nameLocal: { en: 'Serengeti National Park', fr: 'Parc national du Serengeti' },
-    description: null,
-    shortDescription: 'Vast plains of the Serengeti.',
+    subtitle: null,
+    description: 'Vast plains of the Serengeti.',
     type: 'natural',
     tags: ['natural', 'unesco'],
     lon: 34.8333,
@@ -77,8 +77,8 @@ describe('computeChangeSet', () => {
   });
 
   it('treats null, empty string and missing text as the same absence', () => {
-    const before = snapshot({ description: null });
-    const incoming = snapshot({ description: '' });
+    const before = snapshot({ subtitle: null });
+    const incoming = snapshot({ subtitle: '' });
 
     expect(computeChangeSet(before, incoming, [], WROTE).changeType).toBe('unchanged');
   });
@@ -126,12 +126,12 @@ describe('computeChangeSet', () => {
   });
 
   it('reports a description rewrite as minor', () => {
-    const incoming = snapshot({ shortDescription: 'A completely rewritten summary.' });
+    const incoming = snapshot({ description: 'A completely rewritten summary.' });
     const result = computeChangeSet(snapshot(), incoming, [], WROTE);
 
     expect(result.changeType).toBe('updated');
     expect(result.significance).toBe('minor');
-    expect(result.changedFields[0]).toMatchObject({ field: 'shortDescription', significance: 'minor' });
+    expect(result.changedFields[0]).toMatchObject({ field: 'description', significance: 'minor' });
   });
 
   it('reports a danger-list entry as a major metadata change', () => {
@@ -216,19 +216,19 @@ describe('computeChangeSet', () => {
   it('still reports unprotected fields when another field is curated', () => {
     const incoming = snapshot({
       name: 'Serengeti NP (renamed upstream)',
-      shortDescription: 'New summary.',
+      description: 'New summary.',
     });
     const result = computeChangeSet(snapshot(), incoming, ['name'], WROTE);
 
     expect(result.changeType).toBe('updated');
-    expect(result.changedFields.map(f => f.field)).toEqual(['shortDescription']);
+    expect(result.changedFields.map(f => f.field)).toEqual(['description']);
     expect(result.curatedConflicts).toHaveLength(1);
   });
 
   it('keeps a major curated conflict visible when a routine edit rides along', () => {
     const incoming = snapshot({
       name: 'Serengeti NP (renamed upstream)',
-      shortDescription: 'New summary.',
+      description: 'New summary.',
     });
     const result = computeChangeSet(snapshot(), incoming, ['name'], WROTE);
 
@@ -241,7 +241,7 @@ describe('computeChangeSet', () => {
   });
 
   it('escalates the row to major when any field is major', () => {
-    const incoming = snapshot({ name: 'Renamed', shortDescription: 'New summary.' });
+    const incoming = snapshot({ name: 'Renamed', description: 'New summary.' });
     const result = computeChangeSet(snapshot(), incoming, [], WROTE);
 
     expect(result.significance).toBe('major');
@@ -250,24 +250,24 @@ describe('computeChangeSet', () => {
 
 describe('a gated source over a row a reader can already see', () => {
   it('files a differing field as held rather than as one the run applied', async () => {
-    const incoming = snapshot({ shortDescription: 'A summary the source now offers.' });
+    const incoming = snapshot({ description: 'A summary the source now offers.' });
     const result = computeChangeSet(snapshot(), incoming, [], HELD);
 
     // The upsert refused this write, so `changedFields` — the bucket that means
     // written — must not carry it: a curator reading `old → new` there reads the
     // held value as the one now live (#519).
     expect(result.changedFields).toEqual([]);
-    expect(result.heldFields.map(f => f.field)).toEqual(['shortDescription']);
+    expect(result.heldFields.map(f => f.field)).toEqual(['description']);
   });
 
   it('reports the row as unchanged, because nothing about it changed', () => {
-    const incoming = snapshot({ shortDescription: 'A summary the source now offers.' });
+    const incoming = snapshot({ description: 'A summary the source now offers.' });
 
     expect(computeChangeSet(snapshot(), incoming, [], HELD).changeType).toBe('unchanged');
   });
 
   it('marks the held field with the reason it was not written', () => {
-    const incoming = snapshot({ shortDescription: 'A summary the source now offers.' });
+    const incoming = snapshot({ description: 'A summary the source now offers.' });
     const result = computeChangeSet(snapshot(), incoming, [], HELD);
 
     // Whole-object equality on the one entry, not `held: true` somewhere in the
@@ -275,7 +275,7 @@ describe('a gated source over a row a reader can already see', () => {
     // both flags off each field, and `curatedConflict: true` here would say a
     // person had claimed the field when nobody has looked at it at all.
     expect(result.heldFields).toEqual([{
-      field: 'shortDescription',
+      field: 'description',
       old: 'Vast plains of the Serengeti.',
       new: 'A summary the source now offers.',
       significance: 'minor',
@@ -287,7 +287,7 @@ describe('a gated source over a row a reader can already see', () => {
   it('keeps a claimed field a curated conflict, and holds only the rest', () => {
     const incoming = snapshot({
       name: 'Serengeti NP (renamed upstream)',
-      shortDescription: 'A summary the source now offers.',
+      description: 'A summary the source now offers.',
     });
     const result = computeChangeSet(snapshot(), incoming, ['name'], HELD);
 
@@ -295,7 +295,7 @@ describe('a gated source over a row a reader can already see', () => {
     // claim is answerable through `accept-source`, the hold through publishing.
     // One field in both buckets would carry two contradictory cards.
     expect(result.curatedConflicts.map(f => f.field)).toEqual(['name']);
-    expect(result.heldFields.map(f => f.field)).toEqual(['shortDescription']);
+    expect(result.heldFields.map(f => f.field)).toEqual(['description']);
     expect(result.changedFields).toEqual([]);
     // And the flags say the same thing the buckets do. A claimed field on a held
     // row is `held: false`, or the queue's `held` card and the publish writer —
@@ -326,14 +326,14 @@ describe('a gated source over a row a reader can already see', () => {
   });
 
   it('marks an ordinary applied change with neither reason', () => {
-    const incoming = snapshot({ shortDescription: 'A summary the source now offers.' });
+    const incoming = snapshot({ description: 'A summary the source now offers.' });
     const result = computeChangeSet(snapshot(), incoming, [], WROTE);
 
     // The three sites that decide "held" read this flag rather than inferring
     // it by elimination. A field that was actually written must therefore say
     // so positively: `curatedConflict: false` alone means nothing.
     expect(result.changedFields).toEqual([{
-      field: 'shortDescription',
+      field: 'description',
       old: 'Vast plains of the Serengeti.',
       new: 'A summary the source now offers.',
       significance: 'minor',
@@ -435,7 +435,7 @@ describe('claimedMetadataKeys', () => {
   });
 
   it('reads only the per-key claims', () => {
-    expect(claimedMetadataKeys(['name', 'short_description', 'metadata'], stored)).toEqual([]);
+    expect(claimedMetadataKeys(['name', 'description', 'metadata'], stored)).toEqual([]);
   });
 });
 
@@ -662,7 +662,8 @@ describe('CURATED_KEY_BY_FIELD', () => {
  */
 describe('claimKeyFor', () => {
   it('sends a column field to its column', () => {
-    expect(claimKeyFor('shortDescription')).toBe('short_description');
+    expect(claimKeyFor('description')).toBe('description');
+    expect(claimKeyFor('subtitle')).toBe('subtitle');
     expect(claimKeyFor('nameLocal')).toBe('name_local');
   });
 

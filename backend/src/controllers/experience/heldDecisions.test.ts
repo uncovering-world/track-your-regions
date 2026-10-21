@@ -42,7 +42,7 @@ describe('recordHeldAnswers', () => {
 
     await recordHeldAnswers(client, 1184, 7, 'refused', [
       { row: { kind: 'locations', ref: '874-752', name: 'marmalo IV', field: 'location' }, value: { lon: 3, lat: 4 } },
-      { row: { kind: null, ref: null, name: null, field: 'description' }, value: 'x  y' },
+      { row: { kind: null, ref: null, name: null, field: 'subtitle' }, value: 'x  y' },
     ], 170);
 
     const bound = query.mock.calls.map(call => call[1]);
@@ -55,7 +55,7 @@ describe('recordHeldAnswers', () => {
 
     await recordHeldAnswers(client, 6192, 7, 'published', [
       { row: { kind: null, ref: null, name: null, field: 'type' }, value: 'museum' },
-      { row: { kind: null, ref: null, name: null, field: 'description' }, value: 'x' },
+      { row: { kind: null, ref: null, name: null, field: 'subtitle' }, value: 'x' },
       { row: { kind: 'treasures', ref: 'Q1', name: 'W', field: 'type' }, value: 'statue' },
     ], 170);
 

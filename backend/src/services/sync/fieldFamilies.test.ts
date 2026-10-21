@@ -9,14 +9,14 @@ import { FAMILY_FIELDS, fieldsOfOthers, keptForFamilies } from './fieldFamilies.
 
 const STORED = {
   name_local: { en: 'Acropolis, Athens', fr: "Acropole d'Athènes" },
-  short_description: 'The Acropolis of Athens and its monuments are universal symbols of the classical spirit.',
+  description: 'The Acropolis of Athens and its monuments are universal symbols of the classical spirit.',
   country_codes: ['GR'],
   country_names: ['Greece'],
   metadata: { dateInscribed: '1987', inDanger: false, wikidataQid: 'Q131013' },
 };
 const RUN = {
   nameLocal: { en: 'Acropolis of Athens' },
-  shortDescription: null,
+  description: null,
   countryCodes: [],
   countryNames: ['Hellenic Republic'],
   metadata: { wikidataQid: 'Q131013', website: 'https://odysseus.culture.gr/' },
@@ -26,7 +26,7 @@ describe('keeping the fields another family of sources brings (#1534)', () => {
   it('puts back UNESCO\'s fields and leaves the run\'s own and the shared ones', () => {
     expect(keptForFamilies(RUN, STORED, FAMILY_FIELDS.unesco)).toEqual({
       nameLocal: STORED.name_local,
-      shortDescription: STORED.short_description,
+      description: STORED.description,
       countryCodes: ['GR'],
       countryNames: ['Greece'],
       metadata: { wikidataQid: 'Q131013', website: 'https://odysseus.culture.gr/', dateInscribed: '1987', inDanger: false },

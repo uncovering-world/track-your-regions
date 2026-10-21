@@ -496,15 +496,15 @@ describe('getReviewQueue', () => {
   it('translates the changeset field name to the key curated_fields holds', async () => {
     await answerRoute(getReviewQueue2, { user: ADMIN, query: {} } as never, makeRes() as never);
 
-    // 'shortDescription' is claimed as 'short_description' — not a mechanical
-    // case change — while 'metadata.inDanger' is in no map at all: a metadata
+    // 'imageUrl' is claimed as 'image_url' — the column, not the changeset's
+    // word — while 'metadata.inDanger' is in no map at all: a metadata
     // claim names its key (ADR-0077 decision 3), and the field falls back to it.
     // Counted back from the end: the tail is the key map, the families, the
     // acceptable fields and the page's ids, one shorter than it was when a
     // `LIMIT` and an `OFFSET` closed it.
     const [, conflictParams] = callMatching("'conflict' AS kind");
     const map = JSON.parse(String(conflictParams.at(-4)));
-    expect(map.shortDescription).toBe('short_description');
+    expect(map.imageUrl).toBe('image_url');
     expect(map['metadata.inDanger']).toBeUndefined();
   });
 
@@ -545,7 +545,7 @@ describe('getReviewQueue', () => {
     // author; the act that put it there is an `edited` log entry, keyed by the
     // *column* name — so the lookup goes through the same map the claim does.
     // Reading it by the changeset's own name would find nothing for
-    // `shortDescription`, and the card would say "a curator" about every edit.
+    // `imageUrl`, and the card would say "a curator" about every edit.
     // Both actions that can put a key in `curated_fields`, not just the object's
     // own edit: a correction to a single-point object's point claims `location`
     // on the experience and records `location_edited` (ADR-0029), and matching

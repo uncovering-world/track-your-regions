@@ -30,8 +30,8 @@ export interface BoundarySnapshot {
 export interface ExperienceSnapshot {
   name: string;
   nameLocal: Record<string, string> | null;
+  subtitle: string | null;
   description: string | null;
-  shortDescription: string | null;
   /** The type within the kind; `null` for a museum (ADR-0045, #814). */
   type: string | null;
   tags: string[] | null;
@@ -315,8 +315,8 @@ const MAJOR_FIELDS = new Set(['name', 'location', 'countryCodes']);
 export const CURATED_KEY_BY_FIELD: Record<string, string> = {
   name: 'name',
   nameLocal: 'name_local',
+  subtitle: 'subtitle',
   description: 'description',
-  shortDescription: 'short_description',
   type: 'type',
   tags: 'tags',
   location: 'location',
@@ -669,7 +669,7 @@ function collectDifferences(
 ): RawDiff[] {
   const diffs: RawDiff[] = [];
 
-  const textFields = ['name', 'description', 'shortDescription', 'type', 'imageUrl'] as const;
+  const textFields = ['name', 'subtitle', 'description', 'type', 'imageUrl'] as const;
   for (const field of textFields) {
     if (!textEquals(before[field], incoming[field])) {
       diffs.push({ field, old: before[field], new: incoming[field], significance: fieldSignificance(field) });

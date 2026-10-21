@@ -38,7 +38,7 @@
  * source of one kind meeting the first's membership is #628's design, not
  * this statement's.
  *
- * **No source owns the name, description, picture or coordinate**
+ * **No source owns the name, subtitle, picture or coordinate**
  * (ADR-0084, #1246). The membership records the run's view of them as the
  * source reported them, and a field another source of the place contradicts is
  * bound as the place already holds it (`sourceView.ts`), so the arms below, the
@@ -92,8 +92,8 @@ export interface ExperienceUpsertParams {
   externalId: string;
   name: string;
   nameLocal: Record<string, string>;
+  subtitle: string | null;
   description: string | null;
-  shortDescription: string | null;
   /**
    * The type within the kind — `cultural` for a World Heritage site, `monument`
    * for public art — and `null` for a museum, whose kind has no types (ADR-0045,
@@ -214,7 +214,7 @@ const PASSING_SLICE = `COALESCE((
 
 /** Columns the diff reads. Declared once; the SQL below is built from them. */
 const SNAPSHOT_COLUMNS = [
-  'name', 'name_local', 'description', 'short_description', 'tags',
+  'name', 'name_local', 'subtitle', 'description', 'tags',
   'country_codes', 'country_names', 'image_url', 'metadata',
 ] as const;
 
@@ -275,8 +275,8 @@ function snapshotFromRow(row: Record<string, unknown>): ExperienceSnapshot {
       : null,
     name: (row.name as string) ?? '',
     nameLocal: (row.name_local as Record<string, string> | null) ?? null,
+    subtitle: (row.subtitle as string | null) ?? null,
     description: (row.description as string | null) ?? null,
-    shortDescription: (row.short_description as string | null) ?? null,
     type: (row.type as string | null) ?? null,
     tags: (row.tags as string[] | null) ?? null,
     lon: Number(row.lon),
@@ -296,8 +296,8 @@ function snapshotFromParams(
     boundary,
     name: params.name,
     nameLocal: params.nameLocal,
+    subtitle: params.subtitle,
     description: params.description,
-    shortDescription: params.shortDescription,
     type: params.type,
     tags: params.tags,
     lon: params.lon,
@@ -541,7 +541,7 @@ async function writeUnderLock(
       -- with an id bound the insert meets its own row and every arm decides,
       -- and nextval is evaluated only when there is none.
       INSERT INTO experiences (
-        id, source_id, external_id, name, name_local, description, short_description,
+        id, source_id, external_id, name, name_local, subtitle, description,
         tags, location, country_codes, country_names, image_url, metadata,
         boundary, area_km2, created_at, updated_at
       ) VALUES (
@@ -556,8 +556,8 @@ async function writeUnderLock(
       ON CONFLICT (id) DO UPDATE SET
         name = CASE WHEN experiences.curated_fields ? 'name' OR ${HELD} THEN experiences.name ELSE EXCLUDED.name END,
         name_local = CASE WHEN experiences.curated_fields ? 'name_local' OR ${HELD} THEN experiences.name_local ELSE EXCLUDED.name_local END,
+        subtitle = CASE WHEN experiences.curated_fields ? 'subtitle' OR ${HELD} THEN experiences.subtitle ELSE EXCLUDED.subtitle END,
         description = CASE WHEN experiences.curated_fields ? 'description' OR ${HELD} THEN experiences.description ELSE EXCLUDED.description END,
-        short_description = CASE WHEN experiences.curated_fields ? 'short_description' OR ${HELD} THEN experiences.short_description ELSE EXCLUDED.short_description END,
         -- Behind a claim but not behind the gate. Tags are labels the import
         -- derives from facts it also stores by name -- the criteria, the danger
         -- listing, the landmark's type -- and no reader-facing read returns
@@ -684,7 +684,7 @@ async function writeUnderLock(
       INSERT INTO ${MEMBERSHIPS} (
         experience_id, kind_id, source_id, external_id, type, admitted_for, curation_state, published_at,
         first_seen_sync_log_id, last_seen_sync_log_id, last_seen_at,
-        reported_name, reported_description, reported_image_url, reported_location, reported_image_credit,
+        reported_name, reported_subtitle, reported_image_url, reported_location, reported_image_credit,
         wikidata_items
       )
       SELECT ins.id,
@@ -720,7 +720,7 @@ async function writeUnderLock(
         -- anything (ADR-0020).
         source_membership = 'present',
         reported_name = EXCLUDED.reported_name,
-        reported_description = EXCLUDED.reported_description,
+        reported_subtitle = EXCLUDED.reported_subtitle,
         reported_image_url = EXCLUDED.reported_image_url,
         reported_location = EXCLUDED.reported_location,
         reported_image_credit = EXCLUDED.reported_image_credit,
@@ -735,8 +735,8 @@ async function writeUnderLock(
       params.externalId,
       written.name,
       JSON.stringify(written.nameLocal),
+      written.subtitle,
       written.description,
-      written.shortDescription,
       written.type,
       JSON.stringify(written.tags),
       written.lon,
@@ -757,7 +757,7 @@ async function writeUnderLock(
       // The run's own view of the place, as it reported it rather than as the
       // place took it (ADR-0084, #1246).
       params.name,
-      params.description,
+      params.subtitle,
       params.imageUrl,
       params.lon,
       params.lat,

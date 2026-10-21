@@ -30,8 +30,8 @@ const params = (sourceId: number, externalId: string, name: string): ExperienceU
   externalId,
   name,
   nameLocal: { en: name },
+  subtitle: null,
   description: null,
-  shortDescription: null,
   type: null,
   tags: [],
   lon: 2.3376,
@@ -435,7 +435,7 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
     const unesco = await sourceNamed('UNESCO World Heritage Sites');
     const arch = await sourceNamed('Archaeology');
     await pool.query(
-      `INSERT INTO experiences (id, source_id, external_id, name, name_local, short_description, country_codes, country_names, metadata, location)
+      `INSERT INTO experiences (id, source_id, external_id, name, name_local, description, country_codes, country_names, metadata, location)
        VALUES ($1, $2, $3, 'Acropolis, Athens', $4, $5, '{GR}', '{Greece}', $6, ST_SetSRID(ST_MakePoint(23.7262, 37.9715), 4326))`,
       [ACROPOLIS, unesco.id, ACROPOLIS_WHC, JSON.stringify(UNESCO_NAMES), UNESCO_TEXT,
         JSON.stringify({ ...UNESCO_FACTS, wikidataQid: ACROPOLIS_QID, wikidataClasses: ['Q570116'] })],
@@ -449,9 +449,9 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
   });
 
   const stored = async () => (await pool.query<{
-    name_local: Record<string, string>; short_description: string | null; country_codes: string[];
+    name_local: Record<string, string>; description: string | null; country_codes: string[];
     country_names: string[]; metadata: Record<string, unknown>;
-  }>('SELECT name_local, short_description, country_codes, country_names, metadata FROM experiences WHERE id = $1', [ACROPOLIS])).rows[0];
+  }>('SELECT name_local, description, country_codes, country_names, metadata FROM experiences WHERE id = $1', [ACROPOLIS])).rows[0];
   const proposed = (outcome: Awaited<ReturnType<typeof upsertExperienceRecord>>) =>
     [...outcome.changeSet.changedFields, ...outcome.changeSet.heldFields].map(f => f.field);
 
@@ -466,12 +466,12 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
     });
 
     expect(await stored()).toMatchObject({
-      name_local: UNESCO_NAMES, short_description: UNESCO_TEXT, country_codes: ['GR'], country_names: ['Greece'],
+      name_local: UNESCO_NAMES, description: UNESCO_TEXT, country_codes: ['GR'], country_names: ['Greece'],
       metadata: { ...UNESCO_FACTS, wikidataClasses: ['Q570116', 'Q839954'] },
     });
     expect(proposed(outcome)).not.toEqual(expect.arrayContaining(['nameLocal.fr']));
     // The Archaeology record names the country 'France' (the fixture's default): UNESCO's 'Greece' stands (#1553).
-    for (const field of ['shortDescription', 'countryCodes', 'countryNames', 'metadata.dateInscribed', 'metadata.inDanger', 'metadata.criteria', 'metadata.region']) {
+    for (const field of ['description', 'countryCodes', 'countryNames', 'metadata.dateInscribed', 'metadata.inDanger', 'metadata.criteria', 'metadata.region']) {
       expect(proposed(outcome)).not.toContain(field);
     }
   });
@@ -481,7 +481,7 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
     await upsertExperienceRecord({
       ...params(unesco.id, ACROPOLIS_WHC, 'Acropolis, Athens'),
       nameLocal: UNESCO_NAMES,
-      shortDescription: UNESCO_TEXT,
+      description: UNESCO_TEXT,
       countryCodes: ['GR'],
       lon: 23.7262,
       lat: 37.9715,
