@@ -11,7 +11,8 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
 import { FactTable, ProposalSummary } from './FactTable';
-import { rowsFor, type FactGroup } from './factRows';
+import { partGroups, rowsFor, type FactGroup } from './factRows';
+import type { HeldPart } from '../../api/reviewQueue';
 import type { ChangeContext, ProposedField } from './fieldMeaning';
 
 /** Bamiyan's held card from run 68: the flag repaired after filing, two facts arriving. */
@@ -183,6 +184,59 @@ describe('FactTable', () => {
     expect(onOpen).toHaveBeenCalled();
     // The object's own group has no heading: the card is its heading.
     expect(screen.queryByText('Royal Capetian Fortresses of Languedoc')).not.toBeInTheDocument();
+  });
+});
+
+describe("a part's way out to the source (#1777)", () => {
+  // The Louvre's card, Art Museums run 177: a held rename of a work by Jacques-Louis David.
+  const rename = [{ field: 'name', old: 'Le Sacre de Napoléon', new: 'The Coronation of Napoleon', held: true }];
+  const work = (over: Partial<HeldPart>): HeldPart => ({
+    kind: 'treasures', item: { name: 'The Coronation of Napoleon', ref: 'Q1231009' }, fields: rename,
+    treasureId: 4210, artists: ['Jacques-Louis David'], ...over,
+  });
+  const drawn = (part: HeldPart) => {
+    const groups: FactGroup[] = partGroups([part], { proposed: [] }, {}, vi.fn());
+    return render(<FactTable groups={groups} labels={HELD_LABELS} />);
+  };
+
+  it("links a work's stored article beside its name, in a new tab", () => {
+    drawn(work({ wikipediaUrl: 'https://en.wikipedia.org/wiki/The_Coronation_of_Napoleon' }));
+    const link = screen.getByRole('link', { name: 'Wikipedia' });
+    expect(link).toHaveAttribute('href', 'https://en.wikipedia.org/wiki/The_Coronation_of_Napoleon');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    // The name still opens our own work.
+    expect(screen.getByRole('button', { name: 'The Coronation of Napoleon' })).toBeInTheDocument();
+  });
+
+  it('links a work a run read with no English article to its Wikidata item', () => {
+    drawn(work({ wikipediaUrl: null, wikipediaRead: true }));
+    expect(screen.queryByRole('link', { name: 'Wikipedia' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Wikidata' })).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q1231009');
+  });
+
+  it('resolves the article at the click for a work no run has read yet', () => {
+    drawn(work({ wikipediaUrl: null, wikipediaRead: false }));
+    expect(screen.getByRole('link', { name: 'Wikipedia' }))
+      .toHaveAttribute('href', 'https://www.wikidata.org/wiki/Special:GoToLinkedPage/enwiki/Q1231009');
+  });
+
+  it('does not link a stored value that is not a web address', () => {
+    drawn(work({ wikipediaUrl: 'javascript:alert(1)', wikipediaRead: true }));
+    expect(screen.queryByRole('link', { name: 'Wikipedia' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Wikidata' })).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q1231009');
+  });
+
+  it('links a place of a serial object to its item, and a component id to nothing', () => {
+    const place = (ref: string): HeldPart => ({
+      kind: 'locations', item: { name: 'Château de Montségur', ref },
+      fields: [{ field: 'name', old: 'Château de Montésgur', new: 'Château de Montségur', held: true }],
+    });
+    const { unmount } = drawn(place('Q1153917'));
+    expect(screen.getByRole('link', { name: 'Wikidata' })).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q1153917');
+    unmount();
+    drawn(place('1755-004'));
+    expect(screen.queryByRole('link')).toBeNull();
   });
 });
 

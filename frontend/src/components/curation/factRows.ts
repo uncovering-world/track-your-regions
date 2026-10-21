@@ -27,6 +27,8 @@ import { claimLabel } from '../../utils/placeClaims';
 import { claimLabel as workClaimLabel } from '../../utils/workClaims';
 import type { ContentKind } from '../../api/curation';
 import { HELD_CREDIT_FIELD, pictureCreditPartner } from '@tyr/shared/pictures';
+import { safeHref } from '../../utils/safeHref';
+import { wikidataItemUrl, wikipediaArticleUrl } from '../../utils/wikidataLinks';
 
 export type FactKind = 'new' | 'changed' | 'removed';
 
@@ -91,6 +93,12 @@ export interface FactSubject {
    * turns down that point by id, not a held proposal.
    */
   movedPointId?: number;
+  /**
+   * The way out to the source a part's heading offers (#1777): a work's stored Wikipedia
+   * article, or, where it has none, its Wikidata item. A place offers its item where its
+   * reference is one. Absent where neither is a page.
+   */
+  source?: { href: string; label: 'Wikipedia' | 'Wikidata' };
 }
 
 export interface FactGroup {
@@ -256,6 +264,25 @@ export function summarize(rows: ReadonlyArray<FactRow>): Record<FactKind, FactRo
   return byKind;
 }
 
+/**
+ * A part's way out to the source. A work's stored article where it is a web address,
+ * through the same `safeHref` the object's heading uses. A work no run has read yet
+ * (`wikipediaRead` false) gets Wikidata's redirect to its article, resolved at the click
+ * as the other curator surfaces do. A work read with no English article, and a place,
+ * get the Wikidata item their reference names. Nothing for a reference that is not an
+ * item (a World Heritage component's own id).
+ */
+function partSource(part: HeldPart): FactSubject['source'] {
+  if (part.kind === 'treasures') {
+    const stored = safeHref(part.wikipediaUrl);
+    if (stored) return { href: stored, label: 'Wikipedia' };
+    const resolved = part.wikipediaRead ? null : wikipediaArticleUrl(part.item.ref);
+    if (resolved) return { href: resolved, label: 'Wikipedia' };
+  }
+  const item = wikidataItemUrl(part.item.ref);
+  return item ? { href: item, label: 'Wikidata' } : undefined;
+}
+
 /** What tells one part from its siblings, as the group heading says it. */
 function partDetail(part: HeldPart, offeredLocations: number | undefined): string | null {
   if (part.kind === 'locations') {
@@ -319,6 +346,7 @@ export function partGroups(
       // name the row the server will find (#722).
       part: { kind: part.kind, ref: part.item.ref, name: part.item.name },
       detail: partDetail(part, shape.offeredLocations),
+      source: partSource(part),
       // Each kind's own claim key *and* its own vocabulary. A work carries
       // `workCuratedFields` — its own, since one `jsonb_build_object` builds
       // both kinds of part and a shared name could not answer for two rows —
