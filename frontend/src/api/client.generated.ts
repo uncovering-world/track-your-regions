@@ -4279,7 +4279,15 @@ export interface Experience {
   id: number;
   external_id: string;
   name: string;
-  /** @nullable */
+  /**
+     * One line under the name that says what the place is, such as Wikidata's "museum in Saint Petersburg, Russia" (#1795). Null where no source gave one.
+     * @nullable
+     */
+  subtitle: string | null;
+  /**
+     * The paragraph a reader opens: UNESCO's for a World Heritage site, or a curator's text (#1795).
+     * @nullable
+     */
   description: string | null;
   /**
      * The type within the kind, such as `cultural` on a World Heritage site or `cathedral` on a place of worship. Null on a museum, whose kind has no types (ADR-0045).

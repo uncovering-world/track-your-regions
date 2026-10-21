@@ -150,7 +150,13 @@ export const Experience = z.strictObject({
   id: z.number().int(),
   external_id: z.string(),
   name: z.string(),
-  description: z.string().nullable(),
+  subtitle: z.string().nullable().describe(
+    'One line under the name that says what the place is, such as Wikidata\'s "museum in Saint Petersburg, Russia"'
+    + ' (#1795). Null where no source gave one.',
+  ),
+  description: z.string().nullable().describe(
+    "The paragraph a reader opens: UNESCO's for a World Heritage site, or a curator's text (#1795).",
+  ),
   type: z.string().nullable().describe(
     'The type within the kind, such as `cultural` on a World Heritage site or `cathedral` on a place of worship. Null'
     + ' on a museum, whose kind has no types (ADR-0045).',

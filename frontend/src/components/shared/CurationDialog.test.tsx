@@ -69,6 +69,7 @@ const bamiyan: Experience = {
   id: 1,
   external_id: '208',
   name: 'Cultural Landscape and Archaeological Remains of the Bamiyan Valley',
+  subtitle: null,
   description: 'The remains of the Buddhas and the monastic caves around them.',
   type: 'cultural',
   // World Heritage: the one kind whose type a curator can set in this dialog.
