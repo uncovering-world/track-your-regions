@@ -2836,6 +2836,16 @@ ALTER TABLE experience_sync_logs ALTER COLUMN unplaced_experience_ids SET DEFAUL
 
 COMMENT ON COLUMN experience_sync_logs.unplaced_experience_ids IS 'The objects whose points this run moved and that are not yet placed in their regions (#1152). Written with the run''s progress, emptied when placement succeeds, taken over by the source''s next real run, and read by the startup sweep, which marks a closed run still naming any partial. Empty on a preview, which moves nothing; NULL on runs from before the column.';
 
+-- Several sources may fill their kinds from one gather (ADR-0132): a pass runs
+-- them one after another, each with a log of its own, and every log after the
+-- first names the first, so the history reads the pass as one run.
+ALTER TABLE experience_sync_logs
+  ADD COLUMN IF NOT EXISTS pass_log_id INTEGER REFERENCES experience_sync_logs(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_experience_sync_logs_pass
+  ON experience_sync_logs(pass_log_id) WHERE pass_log_id IS NOT NULL;
+
+COMMENT ON COLUMN experience_sync_logs.pass_log_id IS 'The log of the first source of the pass this run was part of (ADR-0132): the run read its candidates from the gather that run made, and the history shows the two together. NULL on the first run of a pass and on a run that shared no gather; the pass of a log is COALESCE(pass_log_id, id).';
+
 -- =============================================================================
 -- Experience Change Provenance (issue #480)
 -- =============================================================================
