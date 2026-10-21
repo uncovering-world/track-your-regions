@@ -4,8 +4,9 @@
  * Every museum, monument and work in the catalogue is known to its source by a
  * Wikidata item id, and the next move on a curator's screen is almost always to
  * open what the source actually says. Two pages answer that: the item itself,
- * and the Wikipedia article Wikidata links it to — which the catalogue stores
- * for experiences but never for works, and stores in English only. Wikidata's
+ * and the Wikipedia article Wikidata links it to — which the catalogue stores in
+ * English only, for experiences and, once a works run has read it, for works
+ * (`treasures.wikipedia_url`). Wikidata's
  * own redirect answers for any language without anything being stored:
  * `Special:GoToLinkedPage/<lang>wiki/<QID>` is a 302 to the article when the
  * sitelink exists, and Wikidata's own "no page found for that combination"

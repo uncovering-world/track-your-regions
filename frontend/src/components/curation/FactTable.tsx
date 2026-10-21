@@ -247,6 +247,13 @@ function SubjectRow({ group, columns }: { group: FactGroup; columns: number }) {
             )
             : <Typography variant="body2" sx={{ fontWeight: 600 }}>{subject.label}</Typography>}
           {subject.detail && <Typography variant="body2" color="text.secondary">{subject.detail}</Typography>}
+          {/* Beside the name, which opens our own row: the source's page, in a new tab,
+              where a curator reads what the work is before judging its change (#1777). */}
+          {subject.source && (
+            <Link href={subject.source.href} target="_blank" rel="noopener noreferrer" variant="caption" underline="hover">
+              {subject.source.label}
+            </Link>
+          )}
           {/* A claim a curator already holds on the stored part: the run below is
               proposing over a pin somebody put there, not over the source's own. */}
           {subject.claim && <Chip label={subject.claim} size="small" color="primary" variant="outlined" />}
