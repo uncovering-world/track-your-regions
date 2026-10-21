@@ -54,11 +54,31 @@ export interface SyncProgress {
    */
   pins?: PinTally;
   /**
+   * What the run asked of the places its source offers (#1770), once it has:
+   * how many it read, how many fewer than two visit witnesses vouch for, and
+   * how many it asked a curator about.
+   */
+  visitQuestions?: VisitQuestionTally;
+  /**
+   * Whether the run is asking about its offered places (#1770): its last step,
+   * after the items, which a Cancel stops on its own (`isCancellable`).
+   */
+  askingVisitQuestions?: boolean;
+  /**
    * The step the run is on, of how many, and how far through it (#1356), for
    * a run that reports through the shared shape: the component item finder
    * and the picture repairs so far.
    */
   operation?: Operation;
+}
+
+/** What a run asked of the places its source offers (#1770). */
+export interface VisitQuestionTally {
+  read: number;
+  short: number;
+  asked: number;
+  /** A Cancel stopped the asking: the places not read are read by the next run. */
+  stopped?: boolean;
 }
 
 /** What a run said of the source's pins on admission (#1370). */

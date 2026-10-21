@@ -244,6 +244,11 @@ const VISIT_SUGGESTION_WRITE = 'experience_visit_suggestions is written by its w
   + 'named write to src/services/sync/visit/visitSuggestions.ts, taking the place\'s LockedExperience token.';
 const VISIT_SUGGESTION_WRITE_RULES = spelledWriteRules('experience_visit_suggestions', VISIT_SUGGESTION_WRITE);
 
+/** A curator's question about a place with nothing to see (#1770): the run's `visitQuestions.ts`. */
+const VISIT_QUESTION_WRITE = 'experience_visit_questions is written by its writer modules only (ADR-0077): add a '
+  + 'named write to src/services/sync/visit/visitQuestions.ts, the run that raises the question.';
+const VISIT_QUESTION_WRITE_RULES = spelledWriteRules('experience_visit_questions', VISIT_QUESTION_WRITE);
+
 /** A curator's answer to one row of a held proposal: `recordHeldAnswers` in `heldDecisions.ts`. */
 const HELD_DECISION_WRITE = 'experience_held_decisions is written by its writer module only (ADR-0077): record an answer '
   + 'through recordHeldAnswers in src/controllers/experience/heldDecisions.ts.';
@@ -421,7 +426,7 @@ const SOURCE_RULE_FAMILIES = [
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
   VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES, COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES, MERGE_SUGGESTION_WRITE_RULES,
-  VISIT_SUGGESTION_WRITE_RULES,
+  VISIT_SUGGESTION_WRITE_RULES, VISIT_QUESTION_WRITE_RULES,
   ROUTE_REGISTRY_RULES,
 ];
 
@@ -431,7 +436,7 @@ const TABLE_WRITE_FAMILIES = [
   CONFLICT_DECISION_WRITE_RULES, HELD_DECISION_WRITE_RULES, SYNC_CHANGE_WRITE_RULES, MEMBERSHIP_WRITE_RULES,
   VIEW_CHOICE_WRITE_RULES, VIEW_SUGGESTION_WRITE_RULES, COMPONENT_ITEM_PROPOSAL_WRITE_RULES,
   COMPONENT_ITEM_SUGGESTION_WRITE_RULES, MERGE_PROPOSAL_WRITE_RULES, MERGE_SUGGESTION_WRITE_RULES,
-  VISIT_SUGGESTION_WRITE_RULES,
+  VISIT_SUGGESTION_WRITE_RULES, VISIT_QUESTION_WRITE_RULES,
 ];
 
 /**
@@ -655,6 +660,12 @@ export default [
     files: ['src/services/sync/visit/visitSuggestions.ts'],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(VISIT_SUGGESTION_WRITE_RULES),
+    },
+  },
+  {
+    files: ['src/services/sync/visit/visitQuestions.ts'],
+    rules: {
+      'no-restricted-syntax': restrictedSyntaxWithout(VISIT_QUESTION_WRITE_RULES),
     },
   },
   {

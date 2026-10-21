@@ -32,12 +32,12 @@ import { subsetDoor } from './subset/reader.js';
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 
 describe('CACHED_KINDS_BY_SOURCE', () => {
-  it('declares the four kinds the public-art collector describes', () => {
+  it('declares the kinds the public-art collector describes, and what its visit witnesses read', () => {
     // Decision 4 of ADR-0030: only the kinds a source's collector files exist
     // for it. The panel offers "Sync without cache" and the cache section on
     // the strength of this list, so a kind the collector files and this list
     // omits is a cache an admin cannot see or clear.
-    expect(CACHED_KINDS_BY_SOURCE[3]).toEqual(['classes', 'pool', 'edges', 'entities']);
+    expect(CACHED_KINDS_BY_SOURCE[3]).toEqual(['classes', 'pool', 'statements', 'edges', 'entities', 'osm', 'photos']);
   });
 
   it('still declares nothing for the UNESCO run, which reads its own API', () => {
@@ -239,12 +239,9 @@ describe('the OSM answers of the Archaeology run', () => {
     expect(DEFAULT_TTL_MS.osm).toBe(24 * 60 * 60 * 1000);
   });
 
-  it('is offered on the Archaeology source and on no other', () => {
-    expect(CACHED_KINDS_BY_SOURCE[5]).toContain('osm');
-    for (const [sourceId, kinds] of Object.entries(CACHED_KINDS_BY_SOURCE)) {
-      if (sourceId === '5') continue;
-      expect(kinds).not.toContain('osm');
-    }
+  it('is offered on every source whose runs ask the visit witnesses (#1770), and not on World Heritage', () => {
+    for (const sourceId of [2, 3, 4, 5]) expect(CACHED_KINDS_BY_SOURCE[sourceId]).toContain('osm');
+    expect(CACHED_KINDS_BY_SOURCE[1]).toBeUndefined();
   });
 });
 
@@ -259,9 +256,8 @@ describe('a source that reads the local subset (ADR-0119)', () => {
     expect(() => withCache(door, { sourceId: MUSEUM, enabled: true })).toThrow(/local subset/);
   });
 
-  it('keeps only what it still asks live: OpenStreetMap and Commons for Archaeology, nothing for the others', () => {
-    expect(cachedKindsFor(5, 'subset')).toEqual(['osm', 'photos']);
-    for (const sourceId of [2, 3, 4]) expect(cachedKindsFor(sourceId, 'subset')).toEqual([]);
+  it('keeps only what it still asks live: OpenStreetMap and Commons', () => {
+    for (const sourceId of [2, 3, 4, 5]) expect(cachedKindsFor(sourceId, 'subset')).toEqual(['osm', 'photos']);
     for (const sourceId of [2, 3, 4, 5]) expect(cachedKindsFor(sourceId, 'live')).toEqual(CACHED_KINDS_BY_SOURCE[sourceId]);
   });
 
