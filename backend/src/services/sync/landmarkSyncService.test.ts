@@ -99,7 +99,9 @@ const progress = () => ({ cancel: false, statusMessage: '' } as unknown as SyncP
 
 async function configOf(options: { dryRun?: boolean; refreshCache?: boolean } = {}) {
   await syncLandmarks(1, options);
-  return mockedOrchestrate.mock.calls[0][0] as SyncServiceConfig<WikidataLandmark>;
+  // The newest run's: each run makes its own gather, and an earlier one's may
+  // have failed.
+  return mockedOrchestrate.mock.calls.at(-1)![0] as SyncServiceConfig<WikidataLandmark>;
 }
 
 beforeEach(() => {

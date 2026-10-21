@@ -73,6 +73,8 @@ import {
   cacheSummary, cachedKindsFor, clearCache, setCacheTtl, CACHED_KINDS_BY_SOURCE, type CacheKind,
 } from '../../services/sync/wikidataCache.js';
 import { latestSubset } from '../../services/dumps/wikidata/subsetTables.js';
+import { passOf } from '../../services/sync/passes.js';
+import { passIsRunning } from '../../services/sync/syncPass.js';
 
 const UNESCO_SOURCE_ID = 1;
 const MUSEUM_SOURCE_ID = 2;
@@ -134,10 +136,14 @@ export async function startSync(
   if (source.rows.length === 0) throw notFound('Source not found');
   if (!source.rows[0].is_active) throw badRequest('Source is not active');
 
-  // Check if already running
-  const existing = runningSyncs.get(sourceId);
-  if (existing && !isTerminalSyncStatus(existing.status)) {
-    throw createError('Sync already in progress for this source', 409);
+  // A source that shares a gather starts its whole pass (ADR-0132), so the
+  // start is refused while any source of the pass is running.
+  const pass = passOf(sourceId);
+  if (passIsRunning(pass)) {
+    throw createError(
+      pass.length > 1 ? 'Sync already in progress for this source or one it runs with' : 'Sync already in progress for this source',
+      409,
+    );
   }
 
   const triggeredBy = caller.id;
@@ -166,14 +172,21 @@ export async function startSync(
     // cancelled or failed half-way still wrote the places it created and
     // recorded them, and a merge on one item is right whatever the run's
     // status. The run's progress is still the source's entry: nothing else
-    // starts before this callback runs.
+    // starts before this callback runs, and a pass holds every one of its
+    // sources' entries until its last run ends (`runSyncPass`). Every run of a
+    // pass wrote its own places, so each of their logs is merged.
     .then(async () => {
-      const run = runningSyncs.get(sourceId);
-      if (!run || run.dryRun || !run.logId) return;
-      await mergeArrivalsOfRun(run.logId);
-      // Then the places it created that a reader can see are paired with near
-      // places of similar names, as the admin's pass would pair them (#1800).
-      await proposeMergesOfRun(run.logId);
+      // Every entry read before the first merge: a merge has no time limit,
+      // and meanwhile the pass's release timers run out and, every entry being
+      // closed, a new start may replace one.
+      const runs = pass.map((id) => runningSyncs.get(id));
+      for (const run of runs) {
+        if (!run || run.dryRun || !run.logId) continue;
+        await mergeArrivalsOfRun(run.logId);
+        // Then the places it created that a reader can see are paired with near
+        // places of similar names, as the admin's pass would pair them (#1800).
+        await proposeMergesOfRun(run.logId);
+      }
     });
 
   return {
