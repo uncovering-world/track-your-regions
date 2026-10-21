@@ -17054,12 +17054,13 @@
             "type": "boolean"
           },
           "passedTheGate": {
-            "description": "On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth.",
+            "description": "On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth, or a Wikidata item arriving where the place held none (ADR-0129).",
             "type": "string",
             "enum": [
               "qualifier",
               "same-file-credit",
-              "remeasured"
+              "remeasured",
+              "own-item"
             ]
           }
         },
@@ -28755,12 +28756,13 @@
             "type": "boolean"
           },
           "passedTheGate": {
-            "description": "On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth.",
+            "description": "On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth, or a Wikidata item arriving where the place held none (ADR-0129).",
             "type": "string",
             "enum": [
               "qualifier",
               "same-file-credit",
-              "remeasured"
+              "remeasured",
+              "own-item"
             ]
           },
           "acceptable": {
