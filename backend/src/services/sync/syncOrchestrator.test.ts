@@ -298,6 +298,10 @@ describe('isCancellable', () => {
     expect(isCancellable(at('processing', 10, 10))).toBe(false);
   });
 
+  it('accepts while the run asks about its offered places, which a Cancel stops alone (#1770)', () => {
+    expect(isCancellable({ ...at('processing', 10, 10), askingVisitQuestions: true })).toBe(true);
+  });
+
   it('refuses while regions are being assigned', () => {
     expect(isCancellable(at('assigning', 10, 10))).toBe(false);
   });

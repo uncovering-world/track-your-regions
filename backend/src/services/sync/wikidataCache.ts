@@ -150,9 +150,11 @@ export async function setCacheTtl(
  * museum's. The archaeology run asks the museum's set outright — its own class
  * trees, a pool of museums and a pool of finds, the venue statements, the
  * details and the edges — since its finds are collected with the museum
- * import's own stages — and one kind that is nobody else's: what
- * OpenStreetMap maps at each site candidate, asked of the QLever mirror and
- * kept for a day (#581, ADR-0059 decision 4). It is the same store because it
+ * import's own stages — and what OpenStreetMap maps at each site candidate,
+ * asked of the QLever mirror and kept for a day (#581, ADR-0059 decision 4).
+ * Every one of the four also keeps what the visit witnesses of the places it
+ * offers read (#1770): their statements, the map and the Commons photographs
+ * (`photos`, kept a week). The map's answers are in the same store because it
  * is the same question about a cache — whose run asked, what was asked, when
  * it stops being worth keeping — and the key is the source and the query text,
  * which is as true of a SPARQL question put to a mirror of the OSM planet as
@@ -168,16 +170,17 @@ export async function setCacheTtl(
  * nothing, and a source that caches nothing says exactly that.
  */
 export const CACHED_KINDS_BY_SOURCE: Record<number, CacheKind[]> = {
-  // Art Museums.
-  2: ['classes', 'pool', 'statements', 'entities', 'edges'],
+  // Art Museums. Every kind but World Heritage also keeps what the visit
+  // witnesses of its offered places read (#1770): their statements, the map
+  // and the photographs.
+  2: ['classes', 'pool', 'statements', 'entities', 'edges', 'osm', 'photos'],
   // Public Art & Monuments.
-  3: ['classes', 'pool', 'edges', 'entities'],
+  3: ['classes', 'pool', 'statements', 'edges', 'entities', 'osm', 'photos'],
   // Places of worship.
-  4: ['classes', 'pool', 'statements', 'entities', 'edges'],
-  // Archaeology. The museum import's whole set, plus the two kinds no other
-  // source keeps: what OpenStreetMap maps at each site candidate (#581), and
-  // how many photographs Commons holds of a place its readership door opens
-  // for (#1768).
+  4: ['classes', 'pool', 'statements', 'entities', 'edges', 'osm', 'photos'],
+  // Archaeology. The museum import's whole set, plus what OpenStreetMap maps
+  // at each site candidate (#581), and how many photographs Commons holds of a
+  // place its readership door opens for (#1768).
   5: ['classes', 'pool', 'statements', 'entities', 'edges', 'osm', 'photos'],
 };
 

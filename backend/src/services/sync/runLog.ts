@@ -13,7 +13,7 @@ import { sentenceFor } from '../../api/readerFacingError.js';
 import { recordSyncChanges, type ChangeRecord } from './changeRecorder.js';
 import { CHANGESET_LOST_MARKER } from './syncLogMarkers.js';
 import type { SyncServiceConfig } from './syncContract.js';
-import type { SyncProgress, RunVerdict, ErrorDetail, PinTally } from './types.js';
+import type { SyncProgress, RunVerdict, ErrorDetail, PinTally, VisitQuestionTally } from './types.js';
 
 /**
  * Persist the per-object changeset, or leave a marker saying it was lost.
@@ -136,7 +136,8 @@ export function completionMessage(
     + (guards.admissionSweep === null ? '' : `; delisted nothing — ${guards.admissionSweep}`);
   return `${verdict}: ${progress.created} created, ${progress.updated} updated, `
     + `${progress.unchanged} unchanged (${progress.held} held), ${progress.missing} missing, `
-    + `${progress.errors} errors${skipped}${pinsSentence(progress.pins, progress.dryRun)}`;
+    + `${progress.errors} errors${skipped}${pinsSentence(progress.pins, progress.dryRun)}`
+    + visitQuestionsSentence(progress.visitQuestions, progress.dryRun);
 }
 
 /**
@@ -148,6 +149,18 @@ export function pinsSentence(pins: PinTally | undefined, dryRun = false): string
   const standing = pins.standing ? `, ${pins.standing} left as the curator answered` : '';
   // A preview writes no question, so its history says what it would have asked.
   return `; pins: ${pins.asked} ${dryRun ? 'would be asked' : 'asked'} about again, ${pins.agreed} agreed with${standing}`;
+}
+
+/**
+ * What the run asked of its offered places (#1770), for its closing line:
+ * nothing where it read none.
+ */
+export function visitQuestionsSentence(tally: VisitQuestionTally | undefined, dryRun = false): string {
+  if (tally?.stopped && tally.read === 0) return '; places with nothing to see: stopped by Cancel before any was read';
+  if (!tally || tally.read === 0) return '';
+  return `; places with nothing to see: ${tally.asked} ${dryRun ? 'would be asked' : 'asked'} of a curator, `
+    + `of ${tally.short} that fewer than two witnesses vouch for among ${tally.read} read`
+    + (tally.stopped ? ', stopped by Cancel' : '');
 }
 
 export async function recordSyncFailure(

@@ -24,6 +24,7 @@ import {
 } from './missingDetection.js';
 import { recordItemOutcome, recordItemFailure, recordFilteredEntities } from './itemOutcome.js';
 import { applyAdmissionSweep, badgeAdmitted, questionPins } from './admissionStep.js';
+import { askVisitQuestions } from './visit/visitQuestions.js';
 import {
   completionMessage,
   computeFinalStatus,
@@ -280,6 +281,14 @@ export async function orchestrateSync<T>(
 
     changesRecorded = await recordChangesetOrMark(changes, errorDetails, progress, logPrefix);
 
+    // After the changeset, so the run's own record is kept before its longest
+    // tail. A question is the run's record, not its work: a failure — the
+    // map's mirror down, Jev unreachable — is logged and asks nothing this time,
+    // and a Cancel pressed here stops the asking alone (`askVisitQuestions`).
+    await askVisitQuestions(sourceId, progress, { refreshCache: options.refreshCache }).catch((error: unknown) => {
+      console.error('%s Asking about places with nothing to see failed:', logPrefix, error);
+    });
+
     // Computed after that attempt: a run whose per-object record never landed is
     // not a clean run, whatever the items themselves did, and an operator
     // reading `success` over a missing changeset would be misled.
@@ -373,11 +382,12 @@ export function getSyncStatus(sourceId: number): SyncProgress | null {
 /**
  * Can a cancel still be acted on?
  *
- * Only while there is an item loop left to interrupt: fetching, or processing
- * with items remaining. Past the last item nothing reads the flag — detection,
- * changeset recording, log closure and placement never look at it — so
- * accepting there would report a cancellation that does not happen and let the
- * run finish as a success.
+ * Only while there is an item loop left to interrupt — fetching, or
+ * processing with items remaining — or while the run asks about its offered
+ * places (#1770), a step that reads the flag and stops on it alone. Past the
+ * last item nothing else reads it — detection, changeset recording, log
+ * closure and placement never look at it — so accepting there would report a
+ * cancellation that does not happen and let the run finish as a success.
  *
  * Exported because the admin panel disables its button on exactly this rule.
  * Derived twice, the two would drift, and the drift shows up as a button
@@ -385,14 +395,16 @@ export function getSyncStatus(sourceId: number): SyncProgress | null {
  */
 export function isCancellable(progress: SyncProgress): boolean {
   return progress.status === 'fetching'
-    || (progress.status === 'processing' && progress.progress < progress.total);
+    || (progress.status === 'processing' && progress.progress < progress.total)
+    || progress.askingVisitQuestions === true;
 }
 
 /**
  * Cancel a running sync for any source by ID.
  *
  * Answers whether the press was acted on, not whether the run stopped: it sets
- * a flag the item loop reads, and refuses outright once there is no loop left.
+ * a flag the item loop reads, and refuses outright once there is no loop left,
+ * save while the run asks about its offered places, which the flag stops alone.
  */
 export function cancelSync(sourceId: number): boolean {
   const progress = runningSyncs.get(sourceId);
