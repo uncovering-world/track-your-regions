@@ -510,8 +510,110 @@ describe('ReviewPage', () => {
     fireEvent.click(await screen.findByRole('button', { name: /former/i }));
 
     expect(await screen.findByRole('heading', { name: /Site 79/ })).toBeInTheDocument();
-    expect(mockedFetch).toHaveBeenLastCalledWith(expect.objectContaining({ from: 'KEY-77', anchor: undefined }));
+    expect(mockedFetch).toHaveBeenCalledWith(expect.objectContaining({ from: 'KEY-77', anchor: undefined }));
+    // Read from 77's key, the list cannot say 78 was answered rather than moved away, so
+    // the server is asked at 78 once (#1779), and its answer, gone, moves the page on.
+    expect(mockedFetch).toHaveBeenLastCalledWith(expect.objectContaining({ anchor: 'missing:78' }));
     await waitFor(() => expect(at()).toBe('/review?row=missing:79'));
+  });
+
+  it('keeps a card whose answer moved its row past the loaded pages, and reads the list at it (#1779)', async () => {
+    // The Hermitage's shape: a row dated by its newest question, which the answer took, so
+    // the re-read sorts it under an older day, past the rows loaded. Site 78 is that row.
+    const site = (id: number) => ({ ...MISSING, id, name: `Site ${id}` });
+    mockedFetch
+      .mockResolvedValueOnce({ missing: [site(77), site(78), site(79)], limit: 25 })
+      .mockResolvedValueOnce({ missing: [site(77), site(79)], limit: 25, paging: { nextCursor: 'C-2' } })
+      .mockResolvedValueOnce({ missing: [site(78), site(80)], limit: 25, paging: { from: 'KEY-78' } })
+      .mockResolvedValue({ missing: [site(78), site(80)], limit: 25, paging: { from: 'KEY-78' } });
+    renderQueue();
+
+    await openRow(/Site 78/);
+    fireEvent.click(await screen.findByRole('button', { name: /former/i }));
+
+    // The server still holds it: the list is read again at the row, and the card stays.
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith(expect.objectContaining({ anchor: 'missing:78' })));
+    expect(await screen.findByRole('button', { name: /Site 80/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Site 78/ })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /Site 79/ })).toBeNull();
+    expect(at()).toBe('/review?row=missing:78');
+  });
+
+  it('moves on once the anchored read says the row was answered (#1779)', async () => {
+    const site = (id: number) => ({ ...MISSING, id, name: `Site ${id}` });
+    mockedFetch
+      .mockResolvedValueOnce({ missing: [site(77), site(78), site(79)], limit: 25 })
+      .mockResolvedValue({ missing: [site(77), site(79)], limit: 25 });
+    renderQueue();
+
+    await openRow(/Site 78/);
+    fireEvent.click(await screen.findByRole('button', { name: /former/i }));
+
+    expect(await screen.findByRole('heading', { name: /Site 79/ })).toBeInTheDocument();
+    expect(mockedFetch).toHaveBeenCalledWith(expect.objectContaining({ anchor: 'missing:78' }));
+    await waitFor(() => expect(at()).toBe('/review?row=missing:79'));
+  });
+
+  it('keeps the card on the bench while the server is asked, rather than closing it (#1779)', async () => {
+    const site = (id: number) => ({ ...MISSING, id, name: `Site ${id}` });
+    let answerProbe: (value: unknown) => void = () => {};
+    mockedFetch
+      .mockResolvedValueOnce({ missing: [site(77), site(78), site(79)], limit: 25 })
+      .mockResolvedValueOnce({ missing: [site(77), site(79)], limit: 25 })
+      .mockImplementationOnce(() => new Promise(resolve => { answerProbe = resolve; }))
+      .mockResolvedValue({ missing: [site(78), site(80)], limit: 25, paging: { from: 'KEY-78' } });
+    renderQueue();
+
+    await openRow(/Site 78/);
+    fireEvent.click(await screen.findByRole('button', { name: /former/i }));
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith(expect.objectContaining({ anchor: 'missing:78' })));
+
+    // The probe is out: the row is not in the list, and the card is still in front of the curator.
+    expect(screen.getByRole('heading', { name: /Site 78/ })).toBeInTheDocument();
+    expect(screen.queryByText('Pick a question on the left.')).toBeNull();
+    await act(async () => { answerProbe({ missing: [site(78), site(80)], limit: 25, paging: { from: 'KEY-78' } }); });
+    expect(await screen.findByRole('button', { name: /Site 80/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Site 78/ })).toBeInTheDocument();
+  });
+
+  it('keeps the card in a list a link opened, whose re-read starts at an older key (#1779)', async () => {
+    // A linked list re-reads from the key it began at, and the answer re-dated Site 78 out
+    // of that window: its absence there says nothing, so the server is asked at 78.
+    const site = (id: number) => ({ ...MISSING, id, name: `Site ${id}` });
+    mockedFetch
+      .mockResolvedValueOnce({ missing: [site(77), site(78), site(79)], limit: 25, paging: { from: 'KEY-77' } })
+      .mockResolvedValueOnce({ missing: [site(77), site(79)], limit: 25, paging: { from: 'KEY-77' } })
+      .mockResolvedValue({ missing: [site(78), site(80)], limit: 25, paging: { from: 'KEY-78' } });
+    renderQueue('/review?row=missing:78');
+
+    expect(await screen.findByRole('heading', { name: /Site 78/ })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /former/i }));
+
+    expect(await screen.findByRole('button', { name: /Site 80/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /Site 78/ })).toBeInTheDocument();
+    expect(at()).toBe('/review?row=missing:78');
+  });
+
+  it('drops a late answer about a row the curator has left (#1779)', async () => {
+    const site = (id: number) => ({ ...MISSING, id, name: `Site ${id}` });
+    let answerProbe: (value: unknown) => void = () => {};
+    mockedFetch
+      .mockResolvedValueOnce({ missing: [site(77), site(78), site(79)], limit: 25 })
+      .mockResolvedValueOnce({ missing: [site(77), site(79)], limit: 25 })
+      .mockImplementationOnce(() => new Promise(resolve => { answerProbe = resolve; }))
+      .mockResolvedValue({ missing: [site(77), site(79)], limit: 25 });
+    renderQueue();
+
+    await openRow(/Site 78/);
+    fireEvent.click(await screen.findByRole('button', { name: /former/i }));
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith(expect.objectContaining({ anchor: 'missing:78' })));
+    await openRow(/Site 79/);
+    const calls = mockedFetch.mock.calls.length;
+
+    await act(async () => { answerProbe({ missing: [site(78)], limit: 25 }); });
+    expect(mockedFetch.mock.calls.length).toBe(calls);
+    expect(at()).toBe('/review?row=missing:79');
+
   });
 
   it('reads the questions above once every one from where a link opened is answered (#843)', async () => {
@@ -545,6 +647,72 @@ describe('ReviewPage', () => {
     const last = mockedFetch.mock.calls.at(-1)![0];
     expect([last.anchor, last.from]).toEqual([undefined, undefined]);
     expect(screen.queryByRole('button', { name: 'Show the questions above' })).toBeNull();
+  });
+
+  it('asks again about a row the curator comes back to after a dropped answer (#1779)', async () => {
+    // A list a link opened at Site 78: its answer re-reads from 77's key without it, the
+    // curator moves to 79 before the probe answers, then goes Back. The list is already
+    // opened at 78, so nothing re-reads it; only a forgotten probe lets the server be asked.
+    const site = (id: number) => ({ ...MISSING, id, name: `Site ${id}` });
+    let answerProbe: (value: unknown) => void = () => {};
+    mockedFetch
+      .mockResolvedValueOnce({ missing: [site(77), site(78), site(79)], limit: 25, paging: { from: 'KEY-77' } })
+      .mockResolvedValueOnce({ missing: [site(77), site(79)], limit: 25, paging: { from: 'KEY-77' } })
+      .mockImplementationOnce(() => new Promise(resolve => { answerProbe = resolve; }))
+      .mockResolvedValue({ missing: [site(77), site(79)], limit: 25, paging: { from: 'KEY-77' } });
+    renderQueue('/review?row=missing:78');
+
+    expect(await screen.findByRole('heading', { name: /Site 78/ })).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: /former/i }));
+    await waitFor(() => expect(mockedFetch).toHaveBeenCalledWith(expect.objectContaining({ anchor: 'missing:78' })));
+    await openRow(/Site 79/);
+    await act(async () => { answerProbe({ missing: [site(78)], limit: 25 }); });
+
+    goBack();
+    await waitFor(() => expect(
+      mockedFetch.mock.calls.filter(([params]) => params.anchor === 'missing:78' && params.from === undefined),
+    ).toHaveLength(3));
+    // The second probe says it was answered, so the page moves on rather than hanging.
+    await waitFor(() => expect(at()).toBe('/review?row=missing:79'));
+  });
+
+  it('reads the questions above even when the top read leaves out the linked row (#1779)', async () => {
+    // Show the questions above is the curator asking for the top: the row they had open is
+    // not looked for again, so the list does not jump back to it.
+    const site = (id: number) => ({ ...MISSING, id, name: `Site ${id}` });
+    mockedFetch
+      .mockResolvedValueOnce({ missing: [site(77), site(78)], limit: 25, total: 30, paging: { from: 'KEY-77' } })
+      .mockResolvedValue({ missing: [1, 2, 3].map(site), limit: 3, total: 30, paging: { nextCursor: 'C-3' } });
+    renderQueue('/review?row=missing:78');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Show the questions above' }));
+
+    expect(await screen.findByRole('heading', { name: /Site 1\b/ })).toBeInTheDocument();
+    await waitFor(() => expect(at()).toBe('/review?row=missing:1'));
+    const anchored = mockedFetch.mock.calls.filter(([params]) => params.anchor === 'missing:78');
+    expect(anchored).toHaveLength(1);
+  });
+
+  it('asks about a row again once Show more brings it back after a top read (#1779)', async () => {
+    // The top read marked Site 78 as not to be looked for; reached again and answered in a
+    // way that moves it, it is asked about like any other row.
+    const site = (id: number) => ({ ...MISSING, id, name: `Site ${id}` });
+    mockedFetch
+      .mockResolvedValueOnce({ missing: [site(77), site(78)], limit: 25, total: 30, paging: { from: 'KEY-77' } })
+      .mockResolvedValueOnce({ missing: [site(1), site(2)], limit: 2, total: 30, paging: { nextCursor: 'C-2' } })
+      .mockResolvedValueOnce({ missing: [site(78)], limit: 2, total: 30 })
+      .mockResolvedValue({ missing: [site(1), site(2)], limit: 2, total: 29 });
+    renderQueue('/review?row=missing:78');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Show the questions above' }));
+    await waitFor(() => expect(at()).toBe('/review?row=missing:1'));
+    fireEvent.click(await screen.findByRole('button', { name: /show more/i }));
+    await openRow(/Site 78/);
+    fireEvent.click(await screen.findByRole('button', { name: /former/i }));
+
+    await waitFor(() => expect(
+      mockedFetch.mock.calls.filter(([params]) => params.anchor === 'missing:78' && params.from === undefined),
+    ).toHaveLength(2));
   });
 
   it('opens at a linked row the open list does not hold, rather than replacing it (#843)', async () => {

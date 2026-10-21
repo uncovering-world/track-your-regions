@@ -28,7 +28,7 @@
  * layout.
  */
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { keepPreviousData, useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import {
   fetchReviewQueue,
@@ -95,6 +95,12 @@ export interface ReviewQueueRead {
   startsPastTop: boolean;
   /** Reads the list again from its top, for the questions above the row a link opened it at. */
   openAtTop: () => void;
+  /**
+   * The selected row left the loaded pages and the server is being asked whether it still
+   * holds a question (#1779). Until it answers, the row is neither answered nor in the list,
+   * so nothing may move the selection off it.
+   */
+  settling: boolean;
 }
 
 export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
@@ -132,6 +138,9 @@ export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
   // of the list — read again at the row, the list would open at its top, away from the
   // question after it. Per list, so a new one starts from its own row.
   const fromRef = useRef<{ list: string; from: string } | null>(null);
+  // The row the latest first page was read *at*, or null when it was read from the top or
+  // from the key a linked list began at. Only a read at the row can say the row is gone.
+  const [readAt, setReadAt] = useState<string | null>(null);
   if (lastFilterKey !== filterKey) {
     setLastFilterKey(filterKey);
     setOffsets({});
@@ -141,7 +150,7 @@ export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
 
   const {
     data, isLoading, isPlaceholderData, isError, error,
-    hasNextPage, isFetchingNextPage, fetchNextPage,
+    hasNextPage, isFetchingNextPage, fetchNextPage, refetch,
   } = useInfiniteQuery({
     // `row` is out of the key deliberately: opening a question must not re-read the list
     // it was opened from. `opening` is in it, and moves only for a link (below). The object is hashed by value, so the address re-rendering with
@@ -150,14 +159,15 @@ export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
     queryFn: async ({ pageParam }) => {
       const firstOfLink = pageParam.anchor !== undefined;
       const from = firstOfLink && fromRef.current?.list === list ? fromRef.current.from : undefined;
-      const page = await fetchReviewQueue({
-        ...filters, cursor: pageParam.cursor, anchor: from ? undefined : pageParam.anchor, from,
-      });
+      const anchor = from ? undefined : pageParam.anchor;
+      const page = await fetchReviewQueue({ ...filters, cursor: pageParam.cursor, anchor, from });
+      if (pageParam.cursor === undefined) setReadAt(anchor ?? null);
       // Every question from the key the list began at down has been answered: the ones
       // above it are all that is left, and the list reads them from its top rather than
       // calling itself empty.
       if (from && queueRows(page).length === 0 && page.total > 0) {
         fromRef.current = null;
+        setReadAt(null);
         return fetchReviewQueue({ ...filters, cursor: pageParam.cursor });
       }
       if (firstOfLink && page.paging?.from) fromRef.current = { list, from: page.paging.from };
@@ -193,6 +203,51 @@ export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
     setLastRow(address.row);
     if (address.row !== null && !rows.some(row => row.key === address.row)) setOpening(address.row);
   }
+
+  // The selected row gone from the loaded pages after a re-read is one of two things, and
+  // the list cannot tell them apart (#1779): answered, or moved. A row's date is its newest
+  // question, so answering that one can sort a place holding an older question past the
+  // pages loaded — the Hermitage, whose Art Museums question from run 177 put it under
+  // today and whose Archaeology question from run 169 is still open. One read anchored at
+  // the row asks the server: still there, and the list is read again starting at it, the
+  // way a link opens one (#843), with the selection kept; not there, and it was answered.
+  // Only a page read *at* the row answers that by itself: a linked list re-reads from the
+  // key it began at (`fromRef`), which a re-dated row can have left.
+  const [probe, setProbe] = useState<{ key: string; gone: boolean } | null>(null);
+  const sought = address.row;
+  const missing = sought !== null && data !== undefined && !isPlaceholderData
+    && !rows.some(row => row.key === sought);
+  const asking = missing && readAt !== serverRowOf(sought) && !(probe?.key === sought && probe.gone);
+  // Found again in the list, whatever was decided about it before (a top read marks it
+  // gone): a later answer that moves it is asked about afresh.
+  if (probe !== null && probe.key === sought && !missing && data !== undefined
+    && !isPlaceholderData) setProbe(null);
+  // What the address names now, for a probe answering after the curator moved on: a late
+  // "still there" must not read the list again at a row they left, or under old filters.
+  const current = useRef({ row: sought, filterKey });
+  useEffect(() => { current.current = { row: sought, filterKey }; }, [sought, filterKey]);
+  useEffect(() => {
+    if (!asking || sought === null || probe?.key === sought) return;
+    setProbe({ key: sought, gone: false });
+    const askedUnder = filterKey;
+    const holds = (page: ReviewQueue) => queueRows(page).some(row => row.key === sought);
+    fetchReviewQueue({ ...filters, anchor: serverRowOf(sought) ?? undefined })
+      .then(page => {
+        // Dropped, and forgotten: a curator who comes back to the row is asked about afresh
+        // rather than held on a probe nobody is waiting for.
+        if (current.current.row !== sought || current.current.filterKey !== askedUnder) {
+          setProbe(p => (p?.key === sought && !p.gone ? null : p));
+          return;
+        }
+        if (!holds(page)) { setProbe({ key: sought, gone: true }); return; }
+        // Read again at the row: a new list for a row the list was not opened at, or the
+        // same list re-read without the key it began at, for one it was (a link).
+        fromRef.current = null;
+        if (opening === sought) void refetch();
+        else setOpening(sought);
+      })
+      .catch(() => setProbe({ key: sought, gone: true }));
+  }, [asking, sought, probe, filters, filterKey, opening, refetch]);
 
   // The answered lists once one of them is paged, and only then: at the first pages they
   // are the questions' first page's own. Under `reviewQueueAll`, so an answer that
@@ -236,7 +291,13 @@ export function useReviewQueue(address: ReviewAddress): ReviewQueueRead {
     pageOf: kind => sourceOf(kind)?.paging?.[kind] ?? { offset: offsets[kind] ?? 0, hasMore: false },
     answeredFailed: kind => (offsets[kind] ?? 0) > 0 && answeredError,
     startsPastTop: Boolean(first?.paging?.from),
-    openAtTop: () => { fromRef.current = null; setOpening(null); },
+    // The curator asked for the top: the row they had open is not looked for again there.
+    openAtTop: () => {
+      fromRef.current = null;
+      if (address.row !== null) setProbe({ key: address.row, gone: true });
+      setOpening(null);
+    },
+    settling: asking,
     step: (kind, by) => setOffsets(o => ({
       ...o, [kind]: Math.max(0, (o[kind] ?? 0) + by * (first?.limit ?? 25)),
     })),
