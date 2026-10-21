@@ -944,7 +944,15 @@ by, so a World Heritage site that Places of worship or Archaeology also admits (
 Q184427) was asked the item on every run. No reader surface shows it, and an item replaced by
 another is still held. Migration 139 wrote the item onto the places the earlier runs held it from,
 from the place's standing memberships (190 of the 195 on the development catalogue on 2026-10-21;
-the other 5 hold only a refused one). Each
+the other 5 hold only a refused one). A fifth, `first-subtitle`, is a subtitle arriving where the
+place holds none ([ADR-0133](../decisions/0133-a-subtitle-a-place-holds-none-of-passes-the-gate.md),
+#1795): the UNESCO run writes its paragraph as the description and no subtitle, so the same World
+Heritage sites were asked Wikidata's line on every run. It is the one class a visitor sees, as the
+line under the name, and it replaces nothing. A subtitle replaced or removed is still held. The
+diff marks it in `collectDifferences`, and the upsert's `subtitle` arm writes a held row's empty
+subtitle by the same rule. Migration 143 wrote the line an admitted membership reports
+(`reported_subtitle`), where no standing view contests it, onto 172 places on the development catalogue on 2026-10-21. It also cleared
+the held pointer of the 81 memberships whose pointed run held nothing but that line. Each
 is written on a held row and filed with the written fields, carrying its class in `passedTheGate`,
 so the run's record says what moved and why nobody was asked; none raises a question, sets the held
 pointer or demotes a verified membership (`wroteContent`). On an object the rule is
