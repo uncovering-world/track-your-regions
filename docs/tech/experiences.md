@@ -1301,6 +1301,14 @@ made only of bytes that decode as well-formed UTF-8 is that UTF-8; anything else
 written. The Routes of Santiago de Compostela in France (868) came with no point and no
 component in that update, so the run fails it and the place keeps what it holds.
 
+**A site's countries are read from the same update's JSON** (`parseDelimitedField`,
+`unescoSyncService.ts`, #1816). `iso_codes` comes as JSON text, `["FR", "BE"]` for 1567, and
+the portal splits a text field on its commas, so `states_names` comes as
+`['["France"', '"Belgium"]']`. The pieces are joined and the JSON read as the list it is. Read
+as before, the whole text was one country, and run 192 stored `["IN"]` as Khangchendzonga's
+code. The forms before it, `"FR,ES"` and `["FR","ES"]`, are still read, and JSON text that is
+not a list fails the site by name rather than storing a wrong country.
+
 A name is read as plain text (`feedText`, `unescoText.ts`, #1610): the export marks a foreign
 term in italics with inline HTML, and a name stored that way was drawn with its tags, "Via
 Appia. <em>Regina Viarum</em>" under Lazio. The run reads every language of a site's name
