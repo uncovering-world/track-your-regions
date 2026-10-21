@@ -41,6 +41,7 @@ const KIND_HEADING: Record<RowKind, string> = {
   'component-items': 'Components with candidate Wikidata items',
   'merge-proposals': 'Near places with names alike — one place, or two?',
   'pin-question': 'A run asks again about an answer you pinned',
+  'visit-question': 'Offered places with nothing to see — refuse them?',
 };
 
 /** A group's heading a transition in `rows` opens — never computed for a row that continues its predecessor's group. */

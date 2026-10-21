@@ -39,6 +39,7 @@ export const KIND_COLOR: Record<RowKind | 'arrival' | 'contents', string> = {
   'component-items': '#5D4037',
   'merge-proposals': '#00695C',
   'pin-question': '#4527A0',
+  'visit-question': '#AD1457',
 };
 
 /** The question word a row prints in bold, ahead of its specific text. */
@@ -54,6 +55,14 @@ export const KIND_SHORT: Record<RowKind | 'arrival' | 'contents', string> = {
   'component-items': 'candidate items',
   'merge-proposals': 'may be one place with',
   'pin-question': 'your pin is questioned',
+  'visit-question': 'nothing to see?',
+};
+
+/** Jev's reading a visit question was raised on (#1770), as a row says it in a few words. */
+const VISIT_READING_SHORT: Record<NonNullable<ReviewQueueItem['visit_question']>['reading'], string> = {
+  nothing: 'little or nothing to see',
+  'not-a-place': 'not a place',
+  object: 'an object kept elsewhere',
 };
 
 /** A field two sources disagree on (#1246), in the words the card's rows use. */
@@ -209,6 +218,13 @@ export function rowSpecific(row: {
       return (row.items ?? []).map(item => {
         const asked = item.pin_question;
         const says = asked?.askedVerdict === 'admitted' ? 'the rule would admit it' : (asked?.askedReason ?? '');
+        return row.items && row.items.length > 1 ? `${item.kind_name}: ${says}` : says;
+      }).join('; ');
+    case 'visit-question':
+      // Jev's reading and how many witnesses vouched, per kind where two ask (#1770).
+      return (row.items ?? []).map(item => {
+        const asked = item.visit_question;
+        const says = asked ? `${VISIT_READING_SHORT[asked.reading]}, ${countLabel(asked.witnesses.length, 'witness', 'witnesses')} of 4` : '';
         return row.items && row.items.length > 1 ? `${item.kind_name}: ${says}` : says;
       }).join('; ');
     case 'waiting':

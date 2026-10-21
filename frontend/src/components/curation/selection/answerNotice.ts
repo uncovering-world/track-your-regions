@@ -102,6 +102,8 @@ const ACT: Record<Kind, (answer: ReviewAnswer, rows: Rows) => string> = {
   // Never answered by a batch (#1367): the server refuses every row, which the
   // notice names among the refusals; this is the count of none.
   'pin-question': (_answer, rows) => `${plural(rows.length, 'pin')} answered`,
+  // A refusal is the card's (#1770): the server refuses every accepted row.
+  'visit-question': (answer, rows) => `${plural(rows.length, 'place')} ${answer === 'accept' ? 'answered' : 'kept'}`,
   missing: (answer, rows) => missingAct(answer, rows.length),
   // A withdrawn row is answered point by point, and a point that moved under
   // the batch refuses on its own while the row still counts as answered — so
