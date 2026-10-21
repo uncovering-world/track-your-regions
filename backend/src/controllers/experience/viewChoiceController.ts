@@ -1,6 +1,6 @@
 /**
  * A curator's answer to two data sources that describe one place differently
- * (#1246): which source's name, description, picture or point the place shows.
+ * (#1246): which source's name, subtitle, picture or point the place shows.
  * POST /api/experiences/:id/choose-views
  *
  * The question is open for a field two standing views under different ids
@@ -42,7 +42,7 @@ interface ChoiceRefusal {
 function assignmentOf(field: ViewField, membershipParam: string, creditParam: string): string {
   const from = (column: string) => `(SELECT ${column} FROM ${MEMBERSHIPS} WHERE id = ${membershipParam})`;
   if (field === 'name') return `name = ${from('reported_name')}`;
-  if (field === 'description') return `description = ${from('reported_description')}`;
+  if (field === 'subtitle') return `subtitle = ${from('reported_subtitle')}`;
   if (field === 'location') return `location = ${from('reported_location')}`;
   // The picture's credit goes with the picture: the view's own, or the one
   // read from Commons when the view recorded none. Never without one — the

@@ -48,8 +48,8 @@ interface EditPayload {
 
 const EDIT_FIELD_MAP: Record<string, string> = {
   name: 'name',
-  shortDescription: 'short_description',
   description: 'description',
+  subtitle: 'subtitle',
   type: 'type',
   imageUrl: 'image_url',
   tags: 'tags',
@@ -202,7 +202,7 @@ function buildEditAuditDetails(
 /**
  * Edit an experience's fields
  * PATCH /api/experiences/:id/edit
- * Body: { name?, shortDescription?, description?, type?, imageUrl?, tags?, websiteUrl?, wikipediaUrl? }
+ * Body: { name?, description?, subtitle?, type?, imageUrl?, tags?, websiteUrl?, wikipediaUrl? }
  * An empty string clears the field: the column is stored as NULL, and the
  * clearing is claimed like any other edit (`clearedToNull`).
  *
@@ -225,7 +225,7 @@ export async function editExperience(
   }
 
   const expResult = await pool.query(
-    `SELECT id, source_id, name, short_description, description, image_url, tags, metadata, curated_fields
+    `SELECT id, source_id, name, description, subtitle, image_url, tags, metadata, curated_fields
      FROM experiences WHERE id = $1`,
     [experienceId],
   );
@@ -275,7 +275,7 @@ export async function editExperience(
     // removed; and the `old` values in the audit row would name a version that
     // was already gone when the edit was written.
     const locked = await lockExperience<typeof existing>(
-      client, experienceId, 'curated_fields, name, short_description, description, image_url, tags, metadata',
+      client, experienceId, 'curated_fields, name, description, subtitle, image_url, tags, metadata',
     );
     // A row deleted since the read above has nothing to lock and nothing to
     // edit: 404, as the read would have answered a moment later. The catch

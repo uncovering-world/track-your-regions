@@ -159,7 +159,7 @@ export function buildRegionQueries(opts: {
         e.id,
         e.external_id,
         e.name,
-        e.short_description,
+        e.description,
         -- The type within that kind is the membership's too (ADR-0084).
         m.type,
         -- The kind, off the row's membership: what a colour and a group are
@@ -241,7 +241,7 @@ export function buildRegionQueries(opts: {
         e.id,
         e.external_id,
         e.name,
-        e.short_description,
+        e.description,
         -- The type within that kind is the membership's too (ADR-0084).
         m.type,
         -- The kind, off the row's membership: what a colour and a group are

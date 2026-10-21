@@ -134,7 +134,7 @@ describe('a fact two kinds\' runs both propose', () => {
   it('leaves the other kind\'s proposal standing while it asks something of its own', async () => {
     const artLog = await heldRun(2);
     const archaeologyLog = await heldRun(5, [
-      { field: 'description', old: 'A museum.', new: 'A museum of finds.', significance: 'minor', held: true },
+      { field: 'subtitle', old: 'A museum.', new: 'A museum of finds.', significance: 'minor', held: true },
     ]);
 
     await publishUnderLock(MUSEUM, userId, null, {

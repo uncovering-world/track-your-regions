@@ -150,7 +150,7 @@ export const Experience = z.strictObject({
   id: z.number().int(),
   external_id: z.string(),
   name: z.string(),
-  short_description: z.string().nullable(),
+  description: z.string().nullable(),
   type: z.string().nullable().describe(
     'The type within the kind, such as `cultural` on a World Heritage site or `cathedral` on a place of worship. Null'
     + ' on a museum, whose kind has no types (ADR-0045).',
@@ -217,8 +217,8 @@ export const ExperienceDetail = z.strictObject({
   external_id: z.string(),
   name: z.string(),
   name_local: z.record(z.string(), z.string()).nullable(),
+  subtitle: z.string().nullable(),
   description: z.string().nullable(),
-  short_description: z.string().nullable(),
   type: z.string().nullable(),
   country_codes: z.array(z.string()).nullable()
     .describe('Null on a place created by hand without a country, which the columns allow.'),
@@ -257,7 +257,7 @@ export type ExperienceDetail = z.infer<typeof ExperienceDetail>;
 export const ExperienceSearchResult = z.strictObject({
   id: z.number().int(),
   name: z.string(),
-  short_description: z.string().nullable(),
+  description: z.string().nullable(),
   type: z.string().nullable(),
   kind_id: z.number().int(),
   kind_name: z.string(),

@@ -1,7 +1,7 @@
 /**
  * A source's view of a place, and when two views disagree (ADR-0084, #1246).
  *
- * No source owns a place's name, description, picture or coordinate. Each
+ * No source owns a place's name, subtitle, picture or coordinate. Each
  * membership records what its source last reported of them (`reported_*`), and
  * where two sources of one place report different values the place keeps the
  * one it holds. The rule for "different" is stated here once, as SQL over two
@@ -21,13 +21,13 @@ import { MEMBERSHIPS } from './membership.js';
  * queue's other cards use for them; `claimKeyFor` (`changeSet.ts`) names the
  * place's column and the claim on it.
  */
-export const VIEW_FIELDS = ['name', 'description', 'imageUrl', 'location'] as const;
+export const VIEW_FIELDS = ['name', 'subtitle', 'imageUrl', 'location'] as const;
 export type ViewField = (typeof VIEW_FIELDS)[number];
 
 /** One side of the comparison: an SQL expression per field. */
 export interface ViewSql {
   name: string;
-  description: string;
+  subtitle: string;
   imageUrl: string;
   /** A `geometry(Point, 4326)` expression. */
   location: string;
@@ -37,7 +37,7 @@ export interface ViewSql {
 export function membershipViewSql(alias = 'm'): ViewSql {
   return {
     name: `${alias}.reported_name`,
-    description: `${alias}.reported_description`,
+    subtitle: `${alias}.reported_subtitle`,
     imageUrl: `${alias}.reported_image_url`,
     location: `${alias}.reported_location`,
   };
@@ -67,7 +67,7 @@ export function viewDisagreementsSql(a: ViewSql, b: ViewSql): string {
                AND ${left} <> ${right} THEN '${field}' END`;
   return `array_remove(ARRAY[
       ${text('name', a.name, b.name)},
-      ${text('description', a.description, b.description)},
+      ${text('subtitle', a.subtitle, b.subtitle)},
       ${text('imageUrl', a.imageUrl, b.imageUrl)},
       CASE WHEN ${a.location} IS NOT NULL AND ${b.location} IS NOT NULL
                 AND NOT ST_DWithin(${a.location}::geography, ${b.location}::geography, ${LOCATION_UNCHANGED_METERS})
@@ -89,7 +89,7 @@ export function viewSilencesSql(a: ViewSql, b: ViewSql): string {
     `CASE WHEN NULLIF(${left}, '') IS NULL AND NULLIF(${right}, '') IS NOT NULL THEN '${field}' END`;
   return `array_remove(ARRAY[
       ${text('name', a.name, b.name)},
-      ${text('description', a.description, b.description)},
+      ${text('subtitle', a.subtitle, b.subtitle)},
       ${text('imageUrl', a.imageUrl, b.imageUrl)},
       CASE WHEN ${a.location} IS NULL AND ${b.location} IS NOT NULL THEN 'location' END
     ]::text[], NULL)`;
@@ -103,7 +103,7 @@ export function viewSilencesSql(a: ViewSql, b: ViewSql): string {
 export function viewValueSql(fieldExpr: string, alias = 'm'): string {
   return `CASE ${fieldExpr}
             WHEN 'name' THEN ${alias}.reported_name
-            WHEN 'description' THEN ${alias}.reported_description
+            WHEN 'subtitle' THEN ${alias}.reported_subtitle
             WHEN 'imageUrl' THEN ${alias}.reported_image_url
             WHEN 'location' THEN ST_AsText(${alias}.reported_location)
           END`;
@@ -160,7 +160,7 @@ export function openViewFieldsSql(placeExpr: string): string {
 export function placeViewValueSql(fieldExpr: string, alias = 'e'): string {
   return `CASE ${fieldExpr}
             WHEN 'name' THEN ${alias}.name
-            WHEN 'description' THEN ${alias}.description
+            WHEN 'subtitle' THEN ${alias}.subtitle
             WHEN 'imageUrl' THEN ${alias}.image_url
             WHEN 'location' THEN ST_AsText(${alias}.location)
           END`;

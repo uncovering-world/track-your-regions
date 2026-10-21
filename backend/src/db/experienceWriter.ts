@@ -276,7 +276,7 @@ export async function insertCuratedExperience(
     sourceId: number;
     externalId: string;
     name: unknown;
-    shortDescription: unknown;
+    description: unknown;
     longitude: unknown;
     latitude: unknown;
     imageUrl: unknown;
@@ -289,7 +289,7 @@ export async function insertCuratedExperience(
 ): Promise<LockedExperience> {
   const inserted = await client.query(`
     INSERT INTO experiences (
-      source_id, external_id, name, short_description,
+      source_id, external_id, name, description,
       location, image_url, tags, country_codes, country_names,
       metadata, is_manual, created_by, status
     ) VALUES (
@@ -298,7 +298,7 @@ export async function insertCuratedExperience(
       $11, true, $12, 'active'
     ) RETURNING id
   `, [
-    row.sourceId, row.externalId, row.name, row.shortDescription,
+    row.sourceId, row.externalId, row.name, row.description,
     row.longitude, row.latitude, row.imageUrl, row.tags, row.countryCodes, row.countryNames,
     row.metadata, row.createdBy,
   ]);

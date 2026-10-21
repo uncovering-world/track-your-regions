@@ -147,7 +147,7 @@ describe('acceptSourceValue', () => {
   it('releases the curator claim, or the next run would refuse the value again', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 5, source_id: 1 }] });
     const PROPOSAL = [{ sync_log_id: 9, changed_fields: [{ field: 'name', new: 'Renamed upstream', curatedConflict: true }] }];
-    const { client, queries } = makeClient(['name', 'description'], PROPOSAL);
+    const { client, queries } = makeClient(['name', 'subtitle'], PROPOSAL);
     mockedConnect.mockResolvedValue(client);
     const res = makeRes();
 
@@ -159,8 +159,8 @@ describe('acceptSourceValue', () => {
     const update = queries.find(q => q.sql.includes('UPDATE experiences'));
     expect(update?.sql).toContain('name = $2');
     expect(update?.params).toContain('Renamed upstream');
-    // 'name' released, 'description' still claimed
-    expect(update?.params).toContain(JSON.stringify(['description']));
+    // 'name' released, 'subtitle' still claimed
+    expect(update?.params).toContain(JSON.stringify(['subtitle']));
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ fromSyncLogId: 9 }));
   });
 
@@ -644,7 +644,7 @@ describe('acceptSourceValue', () => {
     const res = makeRes();
 
     await answerRoute(postAcceptSource, 
-      { user: ADMIN, params: { id: '5' }, body: { fields: ['description'], expectedSyncLogId: 9 } } as never,
+      { user: ADMIN, params: { id: '5' }, body: { fields: ['subtitle'], expectedSyncLogId: 9 } } as never,
       res as never,
     );
 

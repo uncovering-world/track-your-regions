@@ -12,8 +12,8 @@ function snapshot(overrides: Partial<ExperienceSnapshot> = {}): ExperienceSnapsh
   return {
     name: 'Salamis',
     nameLocal: {},
+    subtitle: null,
     description: null,
-    shortDescription: null,
     type: null,
     tags: [],
     lon: 33.9,

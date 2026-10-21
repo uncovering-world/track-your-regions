@@ -12,7 +12,7 @@ const RECORD: ViewRecord = {
   sourceId: 5,
   externalId: 'Q9480',
   name: 'Dome of the Rock',
-  description: 'Shrine built by the Umayyads in 691-692',
+  subtitle: 'Shrine built by the Umayyads in 691-692',
   imageUrl: 'https://commons.wikimedia.org/wiki/Special:FilePath/Archaeology.jpg',
   lon: 35.2433,
   lat: 31.7781,
@@ -21,7 +21,7 @@ const RECORD: ViewRecord = {
 
 const STORED: StoredView = {
   name: 'Dome of the Rock',
-  description: 'Islamic shrine on the Temple Mount',
+  subtitle: 'Islamic shrine on the Temple Mount',
   image_url: 'https://commons.wikimedia.org/wiki/Special:FilePath/Worship.jpg',
   metadata: { wikidataQid: 'Q9480', imageCredit: { artist: 'Worship photographer' } },
   lon: '35.2353',
@@ -34,9 +34,9 @@ describe('the record a run writes where another source disagrees', () => {
   });
 
   it('keeps each contested field as the place holds it, and only those', () => {
-    const kept = keptAsStored(RECORD, STORED, ['description', 'location']);
+    const kept = keptAsStored(RECORD, STORED, ['subtitle', 'location']);
 
-    expect(kept.description).toBe(STORED.description);
+    expect(kept.subtitle).toBe(STORED.subtitle);
     expect([kept.lon, kept.lat]).toEqual([35.2353, 31.7781]);
     expect(kept.imageUrl).toBe(RECORD.imageUrl);
     expect(kept.metadata.imageCredit).toEqual(RECORD.metadata.imageCredit);
@@ -73,7 +73,7 @@ describe('the fields another source contradicts', () => {
     expect(sql).toMatch(/m\.missing_since IS NULL AND m\.source_membership = 'present'/);
     // A field the run leaves empty where another view has one is kept too.
     expect(sql).toMatch(/NULLIF\(\$5::text, ''\) IS NULL AND NULLIF\(m\.reported_image_url, ''\) IS NOT NULL/);
-    expect(params).toEqual([9480, 'Q9480', RECORD.name, RECORD.description, RECORD.imageUrl, RECORD.lon, RECORD.lat]);
+    expect(params).toEqual([9480, 'Q9480', RECORD.name, RECORD.subtitle, RECORD.imageUrl, RECORD.lon, RECORD.lat]);
   });
 
   it("does not contest the anchor of a place of several points, which is the run's (ADR-0095)", async () => {

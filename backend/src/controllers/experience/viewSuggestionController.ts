@@ -53,7 +53,7 @@ interface FieldRow {
 const INSTRUCTIONS: Record<ViewField, string> = {
   name: 'Two sources name this place differently. Which name should a traveller see: the one the place is known '
     + 'by and signposted under, in English where English has one, rather than a formal or administrative title?',
-  description: 'Two sources describe this place differently. Which description tells a traveller more truthfully '
+  subtitle: 'Two sources describe this place differently. Which description tells a traveller more truthfully '
     + 'and usefully what the place is?',
   imageUrl: 'Two sources show this place with different photographs. Which should represent it to a traveller '
     + 'deciding whether to go: the place itself, recognisable, as a visitor sees it? Judge from the file name.',

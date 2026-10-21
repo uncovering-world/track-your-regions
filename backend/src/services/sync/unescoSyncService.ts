@@ -467,8 +467,8 @@ export function transformRecord(
     externalId: String(record.id_no),
     name: record.name_en || `Site ${record.id_no}`,
     nameLocal: buildMultilingualNames(record),
-    description: null, // UNESCO API doesn't provide full description
-    shortDescription: record.short_description_en || null,
+    subtitle: null, // UNESCO gives a paragraph, not a one-line subtitle
+    description: record.short_description_en || null,
     // The portal's field is `category`, its own word and not this catalogue's:
     // on our side it is the type within the World Heritage kind — cultural,
     // natural or mixed (ADR-0045, #814). The name is the portal's to choose,
@@ -500,8 +500,8 @@ async function upsertExperience(
     externalId: exp.externalId,
     name: exp.name,
     nameLocal: exp.nameLocal,
+    subtitle: exp.subtitle,
     description: exp.description,
-    shortDescription: exp.shortDescription,
     type: exp.type,
     tags: exp.tags,
     lon: exp.lon,

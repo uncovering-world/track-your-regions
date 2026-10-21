@@ -24,7 +24,7 @@ function record(overrides: Partial<ChangeRecord> = {}): ChangeRecord {
     nameSnapshot: 'Serengeti National Park',
     changeType: 'updated',
     changedFields: [{
-      field: 'shortDescription', old: 'a', new: 'b', significance: 'minor',
+      field: 'description', old: 'a', new: 'b', significance: 'minor',
       curatedConflict: false, held: false,
     }],
     contents: null,
@@ -63,7 +63,7 @@ describe('recordSyncChanges', () => {
     const params = mockedQuery.mock.calls[0][1] as unknown[];
     const serialised = params.find(p => typeof p === 'string' && p.startsWith('[{'));
     expect(serialised).toBeDefined();
-    expect(JSON.parse(String(serialised))[0].field).toBe('shortDescription');
+    expect(JSON.parse(String(serialised))[0].field).toBe('description');
   });
 
   it('splits large runs into batches', async () => {

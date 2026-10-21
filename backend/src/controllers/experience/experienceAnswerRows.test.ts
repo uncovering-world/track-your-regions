@@ -13,7 +13,7 @@ const ACROPOLIS_IN_ARCHAEOLOGY = {
 /** The Acropolis of Athens as the by-id read's driver hands it over. */
 const ACROPOLIS: ExperienceDetailRow = {
   id: 14723, source_id: 5, external_id: 'Q131013', name: 'Acropolis of Athens', name_local: { el: 'Ακρόπολη Αθηνών' },
-  description: null, short_description: 'citadel on a rocky outcrop above Athens', type: 'site',
+  subtitle: null, description: 'citadel on a rocky outcrop above Athens', type: 'site',
   country_codes: ['GR'], country_names: ['Greece'], image_url: null, metadata: { sitelinks: 120 },
   created_at: new Date('2026-09-13T10:00:00.000Z'), updated_at: new Date('2026-09-14T11:30:00.000Z'),
   source_membership: 'present', existence: 'extant', missing_since: null, longitude: 23.7263, latitude: 37.9715,
@@ -53,7 +53,7 @@ describe('experienceDetailOf', () => {
 describe('experienceOf', () => {
   it('writes the curator-only rejection keys as absent for a reader', () => {
     const row: ExperienceListRow = {
-      id: 14723, external_id: 'Q131013', name: 'Acropolis of Athens', short_description: null, type: 'site',
+      id: 14723, external_id: 'Q131013', name: 'Acropolis of Athens', description: null, type: 'site',
       kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, kinds: null, country_codes: ['GR'], country_names: ['Greece'],
       image_url: null, image_credit: null, created_at: null, latitude: 37.9715, longitude: 23.7263,
       in_danger: false, danger_since: null, location_count: 1, treasure_count: 0, finds_count: 6,

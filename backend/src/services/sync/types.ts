@@ -307,8 +307,8 @@ export interface ProcessedExperience {
   externalId: string;
   name: string;
   nameLocal: Record<string, string>;
+  subtitle: string | null;
   description: string | null;
-  shortDescription: string | null;
   /** The type within the kind; `null` for a museum (ADR-0045, #814). */
   type: string | null;
   tags: string[];

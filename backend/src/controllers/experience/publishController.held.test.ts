@@ -37,8 +37,8 @@ import { computeChangeSet, type ExperienceSnapshot } from '../../services/sync/c
 const BEFORE_SNAPSHOT: ExperienceSnapshot = {
   name: 'Old Name',
   nameLocal: { en: 'Old Name' },
-  description: 'Old description',
-  shortDescription: 'Old short',
+  subtitle: 'Old subtitle',
+  description: 'Old short',
   type: 'museum',
   tags: ['old'],
   lon: 4, lat: 50,
@@ -51,8 +51,8 @@ const BEFORE_SNAPSHOT: ExperienceSnapshot = {
 const CHANGED_SNAPSHOT: ExperienceSnapshot = {
   name: 'New Name',
   nameLocal: { en: 'New Name', fr: 'Nouveau' },
-  description: 'New description',
-  shortDescription: 'New short',
+  subtitle: 'New subtitle',
+  description: 'New short',
   type: 'art museum',
   tags: ['new', 'art'],
   // Far enough to count as a move rather than source jitter.
@@ -73,7 +73,7 @@ beforeEach(resetPublishMocks);
 describe('publishing a held proposal', () => {
   const HELD: Proposed[] = [
     { field: 'name', new: 'Museo Nacional del Prado', held: true },
-    { field: 'description', new: 'Longer text', held: true },
+    { field: 'subtitle', new: 'Longer text', held: true },
   ];
 
   it('clears the pointer, which is what makes the card answerable', async () => {
@@ -103,10 +103,10 @@ describe('publishing a held proposal', () => {
     // #722: a run improves and damages in the same breath, so the card answers
     // per field rather than both or neither. What is not named stays open, and
     // the pointer is what keeps it findable — clearing it here would take the
-    // description off every screen there is, unanswered.
+    // subtitle off every screen there is, unanswered.
     const update = only(queries, 'UPDATE experiences');
     expect(update.sql).toContain('name = ');
-    expect(update.sql).not.toContain('description = ');
+    expect(update.sql).not.toContain('subtitle = ');
     expect(only(queries, 'UPDATE experience_kind_memberships').sql)
       .not.toContain('pending_change_sync_log_id = NULL');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
@@ -136,7 +136,7 @@ describe('publishing a held proposal', () => {
     const { client, queries } = makeClient({
       row: { curation_state: 'auto', pending_change_sync_log_id: 53 },
       proposal: HELD,
-      answered: [{ kind: null, ref: null, name: null, field: 'description' }],
+      answered: [{ kind: null, ref: null, name: null, field: 'subtitle' }],
     });
 
     const res = await publish({ expectedSyncLogId: 53 }, client);
@@ -145,7 +145,7 @@ describe('publishing a held proposal', () => {
     // is by value, and this is the same value.
     const update = only(queries, 'UPDATE experiences');
     expect(update.sql).toContain('name = ');
-    expect(update.sql).not.toContain('description = ');
+    expect(update.sql).not.toContain('subtitle = ');
     // Nothing else was left open, so the card goes.
     expect(only(queries, 'UPDATE experience_kind_memberships').sql)
       .toContain('pending_change_sync_log_id = NULL');
@@ -273,8 +273,8 @@ describe('publishing a held proposal', () => {
       proposal: [
         { field: 'name', new: 'N', held: true },
         { field: 'nameLocal', new: { en: 'N' }, held: true },
-        { field: 'description', new: 'D', held: true },
-        { field: 'shortDescription', new: 'S', held: true },
+        { field: 'subtitle', new: 'D', held: true },
+        { field: 'description', new: 'S', held: true },
         { field: 'type', new: 'C', held: true },
         { field: 'tags', new: ['ancient'], held: true },
         { field: 'location', new: { lon: 1.5, lat: -2.5 }, held: true },
@@ -298,7 +298,7 @@ describe('publishing a held proposal', () => {
     expect(update.sql).toContain('country_names = ');
     expect(update.sql).toContain('metadata = ');
     // And the five it can, so the writer is a superset rather than an alternative.
-    for (const column of ['name = ', 'short_description = ', 'description = ', 'image_url = ']) {
+    for (const column of ['name = ', 'description = ', 'subtitle = ', 'image_url = ']) {
       expect(update.sql).toContain(column);
     }
     // The type within the kind is the membership's (ADR-0084): published onto
@@ -335,7 +335,7 @@ describe('publishing a held proposal', () => {
     // more (#570, #1579); the tests above and below keep the writer able to
     // apply the rows earlier runs filed.
     expect(names).toEqual(expect.arrayContaining(
-      ['name', 'description', 'shortDescription', 'type', 'location', 'imageUrl']));
+      ['name', 'subtitle', 'description', 'type', 'location', 'imageUrl']));
     // Metadata arrives one key at a time, never as a catch-all: a key is a fact
     // and a fact is answered on its own. So what has to be writable is each key
     // by name, which is also the direction that catches a key the differ can
@@ -402,10 +402,10 @@ describe('publishing a held proposal', () => {
     // is it". Both can be open at once, so a claim is skipped by the writer and
     // is not a reason to refuse the request.
     const update = only(queries, 'UPDATE experiences');
-    expect(update.sql).toContain('description = ');
+    expect(update.sql).toContain('subtitle = ');
     expect(update.sql).not.toContain('name = ');
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
-      appliedFields: ['description'], claimedFieldsSkipped: ['name'],
+      appliedFields: ['subtitle'], claimedFieldsSkipped: ['name'],
     }));
   });
 
@@ -420,14 +420,14 @@ describe('publishing a held proposal', () => {
         // and no curator ever answered (#519). Unreachable today
         // and deliberately so: the flag is what keeps it unreachable tomorrow.
         { field: 'name', new: 'Refused for some other reason' },
-        { field: 'description', new: 'D', held: true },
+        { field: 'subtitle', new: 'D', held: true },
       ],
     });
 
     const res = await publish({ expectedSyncLogId: 53 }, client);
 
     expect(only(queries, 'UPDATE experiences').sql).not.toContain('name = ');
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ appliedFields: ['description'] }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ appliedFields: ['subtitle'] }));
   });
 
   it('leaves a field the run itself refused to accept-source', async () => {
@@ -436,7 +436,7 @@ describe('publishing a held proposal', () => {
       row: { curation_state: 'auto', pending_change_sync_log_id: 53, curated_fields: [] },
       proposal: [
         { field: 'name', new: 'From the source', curatedConflict: true, held: false },
-        { field: 'description', new: 'D', held: true },
+        { field: 'subtitle', new: 'D', held: true },
       ],
     });
 
@@ -446,7 +446,7 @@ describe('publishing a held proposal', () => {
     // `curatedConflict` field here would apply something no card offered — and
     // `accept-source`, which owns that question, would find it already applied.
     expect(only(queries, 'UPDATE experiences').sql).not.toContain('name = ');
-    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ appliedFields: ['description'] }));
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ appliedFields: ['subtitle'] }));
   });
 
   it('publishes an object publish with no expectedSyncLogId when the only held field is claimed', async () => {

@@ -31,8 +31,8 @@ const params = (sourceId: number, overrides: Partial<ExperienceUpsertParams> = {
   externalId: sourceId === unesco ? WHC : QID,
   name: 'Cologne Cathedral',
   nameLocal: { en: 'Cologne Cathedral' },
-  description: 'Gothic cathedral in Cologne',
-  shortDescription: null,
+  subtitle: 'Gothic cathedral in Cologne',
+  description: null,
   type: null,
   tags: [],
   lon: 6.9583,
@@ -44,9 +44,9 @@ const params = (sourceId: number, overrides: Partial<ExperienceUpsertParams> = {
   ...overrides,
 });
 
-async function place(): Promise<{ name: string; description: string; image_url: string; credit: unknown; lon: number }> {
+async function place(): Promise<{ name: string; subtitle: string; image_url: string; credit: unknown; lon: number }> {
   const result = await pool.query(
-    `SELECT name, description, image_url, metadata->'imageCredit' AS credit, ST_X(location) AS lon
+    `SELECT name, subtitle, image_url, metadata->'imageCredit' AS credit, ST_X(location) AS lon
        FROM experiences WHERE id = $1`,
     [CATHEDRAL],
   );
@@ -186,31 +186,31 @@ describe('a source\'s view of a place (ADR-0084)', () => {
 
   it('writes a field no other source contradicts, beside one another source does', async () => {
     await seed('pending');
-    // Places of worship reports no description, so nobody contradicts UNESCO's.
-    await upsertExperienceRecord(params(worship, { description: null }));
+    // Places of worship reports no subtitle, so nobody contradicts UNESCO's.
+    await upsertExperienceRecord(params(worship, { subtitle: null }));
 
     await upsertExperienceRecord(params(unesco, {
       imageUrl: UNESCO_PICTURE,
-      description: 'Cathedral begun in 1248 and finished in 1880',
+      subtitle: 'Cathedral begun in 1248 and finished in 1880',
     }));
 
     const stored = await place();
     expect(stored.image_url).toBe(WORSHIP_PICTURE);
-    expect(stored.description).toBe('Cathedral begun in 1248 and finished in 1880');
+    expect(stored.subtitle).toBe('Cathedral begun in 1248 and finished in 1880');
   });
 
   it('reads a changed value the other source has not read yet as a disagreement, until it has', async () => {
-    // Two data sources: a new description from one stands contested until the
+    // Two data sources: a new subtitle from one stands contested until the
     // other brings the same value, and then it is written.
     await seed('pending');
     await upsertExperienceRecord(params(worship));
     await upsertExperienceRecord(params(unesco));
 
-    await upsertExperienceRecord(params(worship, { description: 'Cathedral begun in 1248 and finished in 1880' }));
-    expect((await place()).description).toBe('Gothic cathedral in Cologne');
+    await upsertExperienceRecord(params(worship, { subtitle: 'Cathedral begun in 1248 and finished in 1880' }));
+    expect((await place()).subtitle).toBe('Gothic cathedral in Cologne');
 
-    await upsertExperienceRecord(params(unesco, { description: 'Cathedral begun in 1248 and finished in 1880' }));
-    expect((await place()).description).toBe('Cathedral begun in 1248 and finished in 1880');
+    await upsertExperienceRecord(params(unesco, { subtitle: 'Cathedral begun in 1248 and finished in 1880' }));
+    expect((await place()).subtitle).toBe('Cathedral begun in 1248 and finished in 1880');
   });
 
   it('writes the value once the other source agrees with it', async () => {
@@ -281,14 +281,14 @@ describe('a source\'s view of a place (ADR-0084)', () => {
     await seed('auto');
     // A trusted write of the starting state, so the gate has something to protect.
     await pool.query(
-      `UPDATE experiences SET image_url = $2, description = 'Gothic cathedral in Cologne',
+      `UPDATE experiences SET image_url = $2, subtitle = 'Gothic cathedral in Cologne',
               name_local = '{"en": "Cologne Cathedral"}'::jsonb,
               metadata = jsonb_build_object('wikidataQid', $4::text, 'imageCredit', $3::jsonb)
         WHERE id = $1`,
       [CATHEDRAL, WORSHIP_PICTURE, JSON.stringify(CREDIT), QID],
     );
     // UNESCO's view keeps the picture readers see; Places of worship, a gated
-    // source, then proposes another picture and a new description.
+    // source, then proposes another picture and a new subtitle.
     await pool.query(
       `UPDATE experience_kind_memberships SET reported_image_url = $2
         WHERE experience_id = $1 AND source_id = $3`,
@@ -297,10 +297,10 @@ describe('a source\'s view of a place (ADR-0084)', () => {
 
     const outcome = await upsertExperienceRecord(params(worship, {
       imageUrl: UNESCO_PICTURE,
-      description: 'Cathedral begun in 1248 and finished in 1880',
+      subtitle: 'Cathedral begun in 1248 and finished in 1880',
     }));
 
-    expect(outcome.changeSet.heldFields.map(field => field.field)).toEqual(['description']);
+    expect(outcome.changeSet.heldFields.map(field => field.field)).toEqual(['subtitle']);
     expect((await place()).image_url).toBe(WORSHIP_PICTURE);
   });
 });

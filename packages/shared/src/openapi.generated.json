@@ -17524,7 +17524,7 @@
                   "type": "string",
                   "enum": [
                     "name",
-                    "description",
+                    "subtitle",
                     "imageUrl",
                     "location"
                   ]
@@ -19293,7 +19293,7 @@
           "name": {
             "type": "string"
           },
-          "shortDescription": {
+          "description": {
             "type": "string",
             "maxLength": 1000
           },
@@ -21785,11 +21785,11 @@
           "name": {
             "type": "string"
           },
-          "shortDescription": {
+          "description": {
             "type": "string",
             "maxLength": 1000
           },
-          "description": {
+          "subtitle": {
             "type": "string",
             "maxLength": 10000
           },
@@ -22018,7 +22018,7 @@
           "name": {
             "type": "string"
           },
-          "short_description": {
+          "description": {
             "type": [
               "string",
               "null"
@@ -22190,7 +22190,7 @@
           "id",
           "external_id",
           "name",
-          "short_description",
+          "description",
           "type",
           "kind_id",
           "country_codes",
@@ -22278,13 +22278,13 @@
               }
             ]
           },
-          "description": {
+          "subtitle": {
             "type": [
               "string",
               "null"
             ]
           },
-          "short_description": {
+          "description": {
             "type": [
               "string",
               "null"
@@ -22500,8 +22500,8 @@
           "external_id",
           "name",
           "name_local",
+          "subtitle",
           "description",
-          "short_description",
           "type",
           "country_codes",
           "country_names",
@@ -22845,7 +22845,7 @@
           "name": {
             "type": "string"
           },
-          "short_description": {
+          "description": {
             "type": [
               "string",
               "null"
@@ -22952,7 +22952,7 @@
         "required": [
           "id",
           "name",
-          "short_description",
+          "description",
           "type",
           "kind_id",
           "kind_name",
@@ -29449,7 +29449,7 @@
             "type": "string",
             "enum": [
               "name",
-              "description",
+              "subtitle",
               "imageUrl",
               "location"
             ]
@@ -31862,7 +31862,7 @@
             ]
           },
           "object_description": {
-            "description": "The object's description, the long one where there is one, else the short one (#1780).",
+            "description": "What the object is, in a line: its subtitle (Wikidata's line) where it has one, else its description (UNESCO's paragraph, a curator's text) (#1780).",
             "type": [
               "string",
               "null"
@@ -32958,7 +32958,7 @@
             "type": "string",
             "enum": [
               "name",
-              "description",
+              "subtitle",
               "imageUrl",
               "location"
             ]
@@ -34912,7 +34912,7 @@
                   "type": "string",
                   "enum": [
                     "name",
-                    "description",
+                    "subtitle",
                     "imageUrl",
                     "location"
                   ]
@@ -34976,7 +34976,7 @@
               "type": "string",
               "enum": [
                 "name",
-                "description",
+                "subtitle",
                 "imageUrl",
                 "location"
               ]
@@ -34989,7 +34989,7 @@
               "type": "string",
               "enum": [
                 "name",
-                "description",
+                "subtitle",
                 "imageUrl",
                 "location"
               ]

@@ -100,8 +100,8 @@ async function readExperience(id: number, caller: Express.User | undefined): Pro
       e.external_id,
       e.name,
       e.name_local,
+      e.subtitle,
       e.description,
-      e.short_description,
       -- The type within the kind the row is shown under: the membership's (ADR-0084),
       -- or for a part with no kind of its own its whole's (ADR-0100 decision 2).
       COALESCE(m.type, wm.type) AS type,
@@ -335,7 +335,7 @@ export async function searchExperiences(
       SELECT
         e.id,
         e.name,
-        e.short_description,
+        e.description,
         em.type,
         -- The kind, off the row's membership (#819). Its own aliases, since
         -- m outside is this CTE.
@@ -371,7 +371,7 @@ export async function searchExperiences(
     SELECT
       m.id,
       m.name,
-      m.short_description,
+      m.description,
       m.type,
       m.kind_id,
       m.kind_name,

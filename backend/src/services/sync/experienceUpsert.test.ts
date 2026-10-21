@@ -35,8 +35,8 @@ const PARAMS: ExperienceUpsertParams = {
   externalId: '156',
   name: 'Serengeti National Park',
   nameLocal: { en: 'Serengeti National Park' },
-  description: null,
-  shortDescription: 'Vast plains.',
+  subtitle: null,
+  description: 'Vast plains.',
   type: 'natural',
   tags: ['natural'],
   lon: 34.8333,
@@ -56,8 +56,8 @@ function storedRow(overrides: Record<string, unknown> = {}) {
     source_membership: 'present',
     name: PARAMS.name,
     name_local: PARAMS.nameLocal,
+    subtitle: PARAMS.subtitle,
     description: PARAMS.description,
-    short_description: PARAMS.shortDescription,
     type: PARAMS.type,
     tags: PARAMS.tags,
     lon: PARAMS.lon,
@@ -82,8 +82,8 @@ function writtenRow(overrides: Record<string, unknown> = {}) {
     curated_fields: [],
     name: PARAMS.name,
     name_local: PARAMS.nameLocal,
+    subtitle: PARAMS.subtitle,
     description: PARAMS.description,
-    short_description: PARAMS.shortDescription,
     type: PARAMS.type,
     tags: PARAMS.tags,
     lon: PARAMS.lon,
@@ -262,24 +262,24 @@ describe('upsertExperienceRecord', () => {
   });
 
   it('reports the fields that differ from the stored row', async () => {
-    given(storedRow({ short_description: 'An older summary.' }));
+    given(storedRow({ description: 'An older summary.' }));
 
     const result = await upsertExperienceRecord(PARAMS);
 
     expect(result.changeSet.changeType).toBe('updated');
-    expect(result.changeSet.changedFields.map(f => f.field)).toEqual(['shortDescription']);
+    expect(result.changeSet.changedFields.map(f => f.field)).toEqual(['description']);
   });
 
   it('surfaces a curated field as a conflict, using the stored curated_fields', async () => {
     given(
-      storedRow({ curated_fields: ['short_description'], short_description: 'Curator wording.' }),
-      writtenRow({ curated_fields: ['short_description'], short_description: 'Curator wording.' }),
+      storedRow({ curated_fields: ['description'], description: 'Curator wording.' }),
+      writtenRow({ curated_fields: ['description'], description: 'Curator wording.' }),
     );
 
     const result = await upsertExperienceRecord(PARAMS);
 
     expect(result.changeSet.changeType).toBe('unchanged');
-    expect(result.changeSet.curatedConflicts.map(f => f.field)).toEqual(['shortDescription']);
+    expect(result.changeSet.curatedConflicts.map(f => f.field)).toEqual(['description']);
   });
 
   it('stamps provenance on the written row', async () => {
@@ -367,8 +367,8 @@ describe('a dry run', () => {
         curated_fields: [],
         name: 'Serengeti National Park',
         name_local: PARAMS.nameLocal,
-        description: null,
-        short_description: 'An older summary.',
+        subtitle: null,
+        description: 'An older summary.',
         type: 'natural',
         tags: ['natural'],
         lon: PARAMS.lon,
@@ -389,7 +389,7 @@ describe('a dry run', () => {
     // transaction, because it writes nothing to protect.
     expect(mockedConnect).not.toHaveBeenCalled();
     expect(result.changeSet.changeType).toBe('updated');
-    expect(result.changeSet.changedFields.map(f => f.field)).toEqual(['shortDescription']);
+    expect(result.changeSet.changedFields.map(f => f.field)).toEqual(['description']);
   });
 
   it('reports created when no row exists yet', async () => {
@@ -409,8 +409,8 @@ describe('a dry run', () => {
         was_held: true,
         name: 'The name a reader sees',
         name_local: PARAMS.nameLocal,
-        description: null,
-        short_description: PARAMS.shortDescription,
+        subtitle: null,
+        description: PARAMS.description,
         type: 'natural',
         tags: ['natural'],
         lon: PARAMS.lon,
@@ -468,8 +468,8 @@ describe('a dry run', () => {
         missing_since: null,
         name: 'Serengeti National Park (old name)',
         name_local: PARAMS.nameLocal,
-        description: null,
-        short_description: PARAMS.shortDescription,
+        subtitle: null,
+        description: PARAMS.description,
         type: 'natural',
         tags: ['natural'],
         lon: PARAMS.lon,
@@ -496,8 +496,8 @@ describe('a dry run', () => {
         missing_since: null,
         name: 'Curator wording',
         name_local: PARAMS.nameLocal,
-        description: null,
-        short_description: PARAMS.shortDescription,
+        subtitle: null,
+        description: PARAMS.description,
         type: 'natural',
         tags: ['natural'],
         lon: PARAMS.lon,
@@ -783,13 +783,13 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     // Named individually rather than counted: a count goes stale the moment a
     // twelfth content column is added, and the failure would read as a passing
     // test with one column unguarded. Each column's own expression is examined,
-    // so a lost hold on `description` cannot pass by matching the text of
-    // `short_description`'s arm.
+    // so a lost hold on one column cannot pass by matching the text of
+    // another's arm.
     // `tags` is not in this list, and its absence is the point of the test
     // below this one: derived labels nobody reads are written past the gate.
     // `country_codes` and `country_names` are not either, for the same reason (#1579).
     for (const column of [
-      'name', 'name_local', 'description', 'short_description',
+      'name', 'name_local', 'subtitle', 'description',
       'location', 'image_url', 'metadata',
       // `boundary` and `area_km2` are deliberately **not** here — the extent
       // follows the source through the gate, and the test below says why. Every
@@ -856,8 +856,8 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
 
   it('files a gated run\'s refused write as held, not as applied', async () => {
     given(
-      storedRow({ was_held: true, short_description: 'The summary a reader sees.' }),
-      writtenRow({ short_description: 'The summary a reader sees.' }),
+      storedRow({ was_held: true, description: 'The summary a reader sees.' }),
+      writtenRow({ description: 'The summary a reader sees.' }),
     );
 
     const result = await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
@@ -865,7 +865,7 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     // The CASE arms kept the stored value, so reporting the field as changed
     // would tell the curator's screen that the proposal is what is now live.
     expect(result.changeSet.changedFields).toEqual([]);
-    expect(result.changeSet.heldFields.map(f => f.field)).toEqual(['shortDescription']);
+    expect(result.changeSet.heldFields.map(f => f.field)).toEqual(['description']);
     expect(result.changeSet.changeType).toBe('unchanged');
   });
 
@@ -874,18 +874,18 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     // (nobody can see it), and the read says so with `was_held = false`. The
     // diff must follow that answer — a held field here would put a card in the
     // queue about a change already applied to the very row it is about.
-    given(storedRow({ was_held: false, short_description: 'Whatever landed first.' }));
+    given(storedRow({ was_held: false, description: 'Whatever landed first.' }));
 
     const result = await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
 
     expect(result.changeSet.heldFields).toEqual([]);
-    expect(result.changeSet.changedFields.map(f => f.field)).toEqual(['shortDescription']);
+    expect(result.changeSet.changedFields.map(f => f.field)).toEqual(['description']);
   });
 
   it('points a held membership at the run whose proposal the gate kept out', async () => {
     given(
-      storedRow({ was_held: true, short_description: 'The summary a reader sees.' }),
-      writtenRow({ short_description: 'The summary a reader sees.' }),
+      storedRow({ was_held: true, description: 'The summary a reader sees.' }),
+      writtenRow({ description: 'The summary a reader sees.' }),
     );
 
     await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
@@ -970,8 +970,8 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
 
   it('points a held membership at the run whose proposal a claim refused', async () => {
     given(
-      storedRow({ curated_fields: ['short_description'], short_description: 'Curator wording.' }),
-      writtenRow({ curated_fields: ['short_description'], short_description: 'Curator wording.', pending_change_sync_log_id: 41 }),
+      storedRow({ curated_fields: ['description'], description: 'Curator wording.' }),
+      writtenRow({ curated_fields: ['description'], description: 'Curator wording.', pending_change_sync_log_id: 41 }),
     );
 
     await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
@@ -1084,13 +1084,13 @@ describe('a trusted source decays a curator pass', () => {
     // `changedFields` and `curatedConflicts` are separate lists, which is what
     // makes this hold — pinned here so a future merge of the two cannot pass.
     given(
-      storedRow({ curated_fields: ['short_description'], short_description: 'Curator wording.' }),
-      writtenRow({ curated_fields: ['short_description'], short_description: 'Curator wording.' }),
+      storedRow({ curated_fields: ['description'], description: 'Curator wording.' }),
+      writtenRow({ curated_fields: ['description'], description: 'Curator wording.' }),
     );
 
     const result = await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
 
-    expect(result.changeSet.curatedConflicts.map(f => f.field)).toEqual(['shortDescription']);
+    expect(result.changeSet.curatedConflicts.map(f => f.field)).toEqual(['description']);
     expect(sentSql().some(sql => /curation_state = 'auto'/.test(sql))).toBe(false);
   });
 });

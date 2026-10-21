@@ -86,7 +86,7 @@ function processed(outcome: 'created' | 'updated' | 'unchanged'): ProcessItemRes
     changeSet: {
       changeType: outcome,
       changedFields: outcome === 'updated'
-        ? [{ field: 'shortDescription', old: 'a', new: 'b', significance: 'minor', curatedConflict: false, held: false }]
+        ? [{ field: 'description', old: 'a', new: 'b', significance: 'minor', curatedConflict: false, held: false }]
         : [],
       significance: outcome === 'updated' ? 'minor' : null,
       curatedConflicts: [],

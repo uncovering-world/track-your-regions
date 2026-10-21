@@ -115,7 +115,7 @@ describe('orchestrateSync changeset recording', () => {
   it('keeps a claim-only refusal out of the held counter', async () => {
     const conflicted = processed('unchanged');
     conflicted.changeSet.curatedConflicts = [{
-      field: 'shortDescription', old: 'ours', new: 'theirs',
+      field: 'description', old: 'ours', new: 'theirs',
       significance: 'minor' as const, curatedConflict: true, held: false,
     }];
     const config = makeConfig({ processItem: vi.fn().mockResolvedValue(conflicted) });
@@ -157,7 +157,7 @@ describe('orchestrateSync changeset recording', () => {
   it('reports exactly as many held as it records held rows', async () => {
     const conflicted = processed('unchanged');
     conflicted.changeSet.curatedConflicts = [{
-      field: 'shortDescription', old: 'ours', new: 'theirs',
+      field: 'description', old: 'ours', new: 'theirs',
       significance: 'minor' as const, curatedConflict: true, held: false,
     }];
     const gained = processed('unchanged');
@@ -232,7 +232,7 @@ describe('orchestrateSync changeset recording', () => {
   it('labels a row carrying both a claim and a hold as held', async () => {
     const both = heldRun();
     const conflict = {
-      field: 'shortDescription', old: 'ours', new: 'theirs',
+      field: 'description', old: 'ours', new: 'theirs',
       significance: 'minor' as const, curatedConflict: true, held: false,
     };
     both.changeSet.curatedConflicts = [conflict];

@@ -574,7 +574,7 @@ export const experienceCurationRoutes = [
     handler: declineHeldValue,
   }),
 
-  // Which source's name, description, picture or point a place shows where two
+  // Which source's name, subtitle, picture or point a place shows where two
   // data sources describe it differently (#1246), in the scope of every source
   // the place's views come from.
   defineRoute({

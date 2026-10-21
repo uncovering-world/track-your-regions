@@ -32,7 +32,7 @@ export interface ViewRecord {
   sourceId: number;
   externalId: string;
   name: string;
-  description: string | null;
+  subtitle: string | null;
   imageUrl: string | null;
   lon: number;
   lat: number;
@@ -46,7 +46,7 @@ export interface ViewRecord {
 /** The stored columns `keptAsStored` puts back, as the upsert's snapshot read them. */
 export interface StoredView {
   name: string;
-  description: string | null;
+  subtitle: string | null;
   image_url: string | null;
   metadata: Record<string, unknown> | null;
   lon: number | string;
@@ -75,7 +75,7 @@ export async function contestedFields(
 ): Promise<ViewField[]> {
   const incoming = {
     name: '$3::text',
-    description: '$4::text',
+    subtitle: '$4::text',
     imageUrl: '$5::text',
     location: 'ST_SetSRID(ST_MakePoint($6::float8, $7::float8), 4326)',
   };
@@ -87,7 +87,7 @@ export async function contestedFields(
       WHERE m.experience_id = $1
         AND m.external_id <> $2
         AND ${viewStandsSql('m')}`,
-    [placeId, params.externalId, params.name, params.description, params.imageUrl, params.lon, params.lat],
+    [placeId, params.externalId, params.name, params.subtitle, params.imageUrl, params.lon, params.lat],
   );
   const contested = new Set(result.rows.map(row => row.field));
   // An anchor is the run's, not the place's coordinate (ADR-0095): there is no
@@ -143,7 +143,7 @@ export function keptAsStored<T extends ViewRecord>(
   const kept = { ...params, metadata: { ...params.metadata } };
   for (const field of contested) {
     if (field === 'name') kept.name = stored.name;
-    if (field === 'description') kept.description = stored.description;
+    if (field === 'subtitle') kept.subtitle = stored.subtitle;
     if (field === 'location') {
       kept.lon = Number(stored.lon);
       kept.lat = Number(stored.lat);
