@@ -241,7 +241,7 @@ const MERGE_SUGGESTION_WRITE_RULES = spelledWriteRules('experience_merge_suggest
 
 /** Jev's reading of what a visitor finds at a place (#1768): `visitSuggestions.ts`. */
 const VISIT_SUGGESTION_WRITE = 'experience_visit_suggestions is written by its writer module only (ADR-0077): add a '
-  + 'named write to src/controllers/experience/visitSuggestions.ts, taking the place\'s LockedExperience token.';
+  + 'named write to src/services/sync/visit/visitSuggestions.ts, taking the place\'s LockedExperience token.';
 const VISIT_SUGGESTION_WRITE_RULES = spelledWriteRules('experience_visit_suggestions', VISIT_SUGGESTION_WRITE);
 
 /** A curator's answer to one row of a held proposal: `recordHeldAnswers` in `heldDecisions.ts`. */
@@ -652,7 +652,7 @@ export default [
     },
   },
   {
-    files: ['src/controllers/experience/visitSuggestions.ts'],
+    files: ['src/services/sync/visit/visitSuggestions.ts'],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(VISIT_SUGGESTION_WRITE_RULES),
     },
