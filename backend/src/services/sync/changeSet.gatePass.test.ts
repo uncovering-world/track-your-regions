@@ -36,6 +36,24 @@ describe('a metadata rewrite a visitor would not notice', () => {
   });
 });
 
+describe("the Wikidata item a place holds none of (#1794)", () => {
+  // Ajanta Caves: the UNESCO run made the place and writes no item, and Places of
+  // worship and Archaeology both know it as Q184427.
+  it('passes the item arriving where the place holds none', () => {
+    expect(metadataPassesTheGate('wikidataQid', undefined, 'Q184427', true)).toBe('own-item');
+    expect(metadataPassesTheGate('wikidataQid', null, 'Q184427', false)).toBe('own-item');
+    expect(passingMetadataKeys({ inDanger: false }, { inDanger: false, wikidataQid: 'Q184427' }, [], true))
+      .toEqual(['wikidataQid']);
+  });
+
+  it('holds an item replaced by another, and anything that is not an item', () => {
+    expect(metadataPassesTheGate('wikidataQid', 'Q184427', 'Q1', true)).toBeNull();
+    expect(metadataPassesTheGate('wikidataQid', 'Q184427', undefined, true)).toBeNull();
+    expect(metadataPassesTheGate('wikidataQid', undefined, 'Ajanta Caves', true)).toBeNull();
+    expect(metadataPassesTheGate('wikidataQid', undefined, 'Q0', true)).toBeNull();
+  });
+});
+
 describe('a credit beside a picture a curator owns (#1353)', () => {
   it('never passes: the credit is the claim\'s', () => {
     const before = { imageCredit: { author: 'A', license: 'CC BY 4.0' } };

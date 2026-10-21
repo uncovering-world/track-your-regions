@@ -63,10 +63,11 @@ export type FieldSignificance = 'major' | 'minor';
  * with a qualifier added and nothing removed (*Church of All Saints* → *…,
  * Blizne*); a picture credit re-read for the same file under the same licence;
  * a measurement (`MEASURED_METADATA_KEYS`) the source re-took within
- * `REMEASURED_SHARE` (an area of 821.7474 ha → 821.748). Every other rewrite is
- * held as before (ADR-0099).
+ * `REMEASURED_SHARE` (an area of 821.7474 ha → 821.748); the Wikidata item a
+ * place held none of, written by a run that knows the place by it (`own-item`,
+ * ADR-0129). Every other rewrite is held as before (ADR-0099).
  */
-export const GATE_PASSES = ['qualifier', 'same-file-credit', 'remeasured'] as const;
+export const GATE_PASSES = ['qualifier', 'same-file-credit', 'remeasured', 'own-item'] as const;
 export type GatePass = (typeof GATE_PASSES)[number];
 
 /** How far a number may move and still be the same measurement re-taken. */
@@ -79,6 +80,9 @@ export const REMEASURED_SHARE = 0.1;
  * statement, not a re-measurement.
  */
 export const MEASURED_METADATA_KEYS: readonly string[] = ['areaHectares'];
+
+/** A Wikidata item id, as a run writes one: `Q` and a number. */
+const WIKIDATA_ITEM = /^Q[1-9]\d*$/;
 
 /**
  * Whether a metadata key's rewrite passes the gate, and as which class, or
@@ -96,6 +100,13 @@ export function metadataPassesTheGate(key: string, old: unknown, next: unknown, 
     return sameImage && a && b && typeof a === 'object' && typeof b === 'object'
       && typeof a.license === 'string' && a.license !== '' && a.license === b.license
       ? 'same-file-credit' : null;
+  }
+  // Every Wikidata kind writes as the item the id its membership knows the place
+  // by, so an item arriving where the place holds none is that id written down:
+  // a World Heritage site the UNESCO run made, which writes no item (#1794). An
+  // item replaced by another is a different object, and stays a question.
+  if (key === 'wikidataQid' && isEmptyValue(old) && typeof next === 'string' && WIKIDATA_ITEM.test(next)) {
+    return 'own-item';
   }
   if (MEASURED_METADATA_KEYS.includes(key) && typeof old === 'number' && typeof next === 'number' && old > 0
       && Math.abs(next - old) / old < REMEASURED_SHARE) {

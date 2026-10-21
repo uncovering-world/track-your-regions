@@ -347,6 +347,42 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     }
   });
 
+  it('writes the Wikidata item a place holds none of, and asks about another item (#1794)', async () => {
+    // Ajanta Caves: made by the UNESCO run, which writes no item, and known to
+    // Archaeology by its membership's id.
+    const created = await upsertExperienceRecord(site({ wikidataQid: undefined }));
+    await pool.query(
+      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+        WHERE experience_id = $1 AND source_id = $2`,
+      [created.experienceId, archaeology],
+    );
+    const log = (await pool.query<{ id: number }>(
+      `INSERT INTO experience_sync_logs (source_id, status, started_at, is_dry_run)
+       VALUES ($1, 'running', NOW(), FALSE) RETURNING id`, [archaeology],
+    )).rows[0].id;
+    const state = async () => (await pool.query<{ qid: string | null; pointer: number | null; state: string }>(
+      `SELECT e.metadata ->> 'wikidataQid' AS qid, m.pending_change_sync_log_id AS pointer, m.curation_state AS state
+         FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
+        WHERE e.id = $1`,
+      [created.experienceId, archaeology],
+    )).rows[0];
+    try {
+      expect((await state()).qid).toBeNull();
+      const arrived = await upsertExperienceRecord(site({ wikidataQid: 'Q9441' }), { syncLogId: log });
+      expect(arrived.changeSet.heldFields).toEqual([]);
+      expect(arrived.changeSet.changedFields.map(f => [f.field, f.passedTheGate])).toEqual([['metadata.wikidataQid', 'own-item']]);
+      expect(await state()).toEqual({ qid: 'Q9441', pointer: null, state: 'verified' });
+
+      const replaced = await upsertExperienceRecord(site({ wikidataQid: 'Q184427' }), { syncLogId: log });
+      expect(replaced.changeSet.heldFields.map(f => f.field)).toEqual(['metadata.wikidataQid']);
+      expect(await state()).toEqual({ qid: 'Q9441', pointer: log, state: 'verified' });
+    } finally {
+      await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
+      await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
+      await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [log]);
+    }
+  });
+
   it('asks about a credit that changed its licence, and one beside another picture', async () => {
     const created = await upsertExperienceRecord(site({ imageCredit: OLD_CREDIT }));
     await pool.query(
