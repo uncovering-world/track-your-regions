@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://aucklandunlimited.com/terms-conditions
 family: tourism-board
-kinds: [natural-landmarks, beaches-and-swimming, national-parks-and-reserves, festivals-and-events, wineries-and-vineyards, markets, neighbourhoods, parks-and-gardens, outdoor-activities, viewpoints, towns-and-villages, history-museums, tours-and-cruises, regional-food, zoos-and-aquariums, science-and-nature-museums, hiking-trails-and-walks, landmarks, squares-and-streets, historic-hotels-and-restaurants, farms-and-workshops, sports-venues, archaeology, palaces-and-castles, regional-drinks, art-museums, on-site-activities, observatories-and-planetariums, theme-parks, entertainment-venues, cycling-routes]
+kinds: [natural-landmarks, beaches-and-swimming, national-parks-and-reserves, festivals-and-events, wineries-and-vineyards, markets, neighbourhoods, parks-and-gardens, outdoor-activities, viewpoints, towns-and-villages, history-museums, tours-and-cruises, regional-food, zoos-and-aquariums, science-and-nature-museums, hiking-trails-and-walks, lighthouses, towers, squares-and-streets, historic-hotels-and-restaurants, farms-and-workshops, sports-venues, archaeology, palaces-and-castles, regional-drinks, art-museums, on-site-activities, observatories-and-planetariums, theme-parks, entertainment-venues, cycling-routes]
 tier: regional
 unit: { level: city, code: NZ, name: Auckland }
 row:

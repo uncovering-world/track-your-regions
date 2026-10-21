@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.travelchinaguide.com/tour/terms.htm
 family: commercial
-kinds: [entertainment-venues, squares-and-streets, festivals-and-events, landmarks, neighbourhoods, regional-food, shows-and-performances, historic-hotels-and-restaurants, markets, world-heritage, parks-and-gardens, art-museums, places-of-worship, natural-landmarks, shops, palaces-and-castles, intangible-heritage, towns-and-villages, tours-and-cruises, architecture, history-museums, outdoor-activities]
+kinds: [entertainment-venues, squares-and-streets, festivals-and-events, city-gates-and-walls, towers, neighbourhoods, regional-food, shows-and-performances, historic-hotels-and-restaurants, markets, world-heritage, parks-and-gardens, art-museums, places-of-worship, natural-landmarks, shops, palaces-and-castles, intangible-heritage, towns-and-villages, tours-and-cruises, architecture, history-museums, outdoor-activities]
 tier: regional
 unit: { level: country, code: CN, name: China }
 row:

@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.visitberlin.de/en/legal-notice
 family: tourism-board
-kinds: [art-museums, parks-and-gardens, history-museums, architecture, squares-and-streets, historic-hotels-and-restaurants, historical-sites, regional-food, festivals-and-events, palaces-and-castles, viewpoints, places-of-worship, markets, beaches-and-swimming, live-music-venues, landmarks, archaeology, notable-works, zoos-and-aquariums, natural-landmarks, entertainment-venues, science-and-nature-museums, neighbourhoods, public-art, bridges-and-engineering, national-parks-and-reserves, specialty-museums]
+kinds: [art-museums, parks-and-gardens, history-museums, architecture, squares-and-streets, historic-hotels-and-restaurants, historical-sites, regional-food, festivals-and-events, palaces-and-castles, viewpoints, places-of-worship, markets, beaches-and-swimming, live-music-venues, city-gates-and-walls, public-art, towers, archaeology, notable-works, zoos-and-aquariums, natural-landmarks, entertainment-venues, science-and-nature-museums, neighbourhoods, bridges-and-engineering, national-parks-and-reserves, specialty-museums]
 tier: regional
 unit: { level: city, code: DE, name: Berlin }
 row:

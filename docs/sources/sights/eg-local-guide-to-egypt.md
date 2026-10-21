@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.localguidetoegypt.com/privacy-policy
 family: commercial
-kinds: [archaeology, places-of-worship, historic-hotels-and-restaurants, tombs-and-mausoleums, regional-food, neighbourhoods, palaces-and-castles, notable-works, art-museums, landmarks, historic-houses, tours-and-cruises, markets, entertainment-venues, history-museums, regional-drinks, viewpoints]
+kinds: [archaeology, places-of-worship, historic-hotels-and-restaurants, tombs-and-mausoleums, regional-food, neighbourhoods, palaces-and-castles, notable-works, art-museums, city-gates-and-walls, historic-waterworks, towers, historic-houses, tours-and-cruises, markets, entertainment-venues, history-museums, regional-drinks, viewpoints]
 tier: regional
 unit: { level: country, code: EG, name: Egypt }
 row:

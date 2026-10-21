@@ -8,7 +8,7 @@ urls:
   api: none
   terms: none
 family: commercial
-kinds: [neighbourhoods, places-of-worship, historic-hotels-and-restaurants, palaces-and-castles, towns-and-villages, regional-food, parks-and-gardens, art-museums, architecture, archaeology, squares-and-streets, natural-landmarks, landmarks, markets, beaches-and-swimming, science-and-nature-museums, history-museums, notable-works, viewpoints, festivals-and-events, public-art]
+kinds: [neighbourhoods, places-of-worship, historic-hotels-and-restaurants, palaces-and-castles, towns-and-villages, regional-food, parks-and-gardens, art-museums, architecture, archaeology, squares-and-streets, natural-landmarks, city-gates-and-walls, historic-waterworks, towers, markets, beaches-and-swimming, science-and-nature-museums, history-museums, notable-works, viewpoints, festivals-and-events, public-art]
 tier: regional
 unit: { level: country, code: TR, name: "Türkiye" }
 row:

@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://bahia.ws/termos-e-condicoes-de-uso/
 family: commercial
-kinds: [beaches-and-swimming, places-of-worship, squares-and-streets, towns-and-villages, neighbourhoods, regional-food, palaces-and-castles, landmarks, history-museums, natural-landmarks, art-museums, festivals-and-events, specialty-museums, notable-people, markets, zoos-and-aquariums, public-art, traditional-arts-schools]
+kinds: [beaches-and-swimming, places-of-worship, squares-and-streets, towns-and-villages, neighbourhoods, regional-food, palaces-and-castles, bridges-and-engineering, historic-waterworks, lighthouses, history-museums, natural-landmarks, art-museums, festivals-and-events, specialty-museums, notable-people, markets, zoos-and-aquariums, public-art, traditional-arts-schools]
 tier: regional
 unit: { level: region, code: BR-BA, name: Bahia }
 row:
