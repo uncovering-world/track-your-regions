@@ -542,6 +542,7 @@ export interface ExperienceSyncLogsRow {
   progress_total: number | null;
   progress_at: Date | null;
   unplaced_experience_ids: number[] | null;
+  pass_log_id: number | null;
 }
 
 /** The table `experience_treasure_placements`. */
