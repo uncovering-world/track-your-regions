@@ -70,6 +70,12 @@ export interface SyncProgress {
    * and the picture repairs so far.
    */
   operation?: Operation;
+  /**
+   * The sources of the pass this run is part of, in the order they run
+   * (ADR-0132): a Cancel on any of them stops the pass. Absent on a run that
+   * shares no gather.
+   */
+  passSources?: number[];
 }
 
 /** What a run asked of the places its source offers (#1770). */

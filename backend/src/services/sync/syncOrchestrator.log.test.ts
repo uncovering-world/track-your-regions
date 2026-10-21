@@ -61,7 +61,7 @@ import { runningSyncs } from './types.js';
 import { createSyncLog, updateSyncLog, writeSyncLogProgress } from './syncUtils.js';
 import { recordSyncChanges } from './changeRecorder.js';
 import {
-  TEST_SOURCE_ID, processed, makeConfig, resetOrchestratorMocks, restoreOrchestratorTimers,
+  TEST_SOURCE_ID, processed, makeConfig, makeProgress, resetOrchestratorMocks, restoreOrchestratorTimers,
 } from './syncOrchestrator.fixtures.js';
 
 describe('orchestrateSync', () => {
@@ -79,7 +79,7 @@ describe('orchestrateSync', () => {
 
     expect(config.fetchItems).toHaveBeenCalledOnce();
     expect(config.processItem).toHaveBeenCalledTimes(2);
-    expect(createSyncLog).toHaveBeenCalledWith(TEST_SOURCE_ID, 1, false);
+    expect(createSyncLog).toHaveBeenCalledWith(TEST_SOURCE_ID, 1, false, null);
     expect(updateSyncLog).toHaveBeenCalledWith(
       TEST_SOURCE_ID,
       42,
@@ -198,7 +198,7 @@ describe('orchestrateSync changeset recording', () => {
 
     await orchestrateSync(config, 1, { dryRun: true });
 
-    expect(createSyncLog).toHaveBeenCalledWith(TEST_SOURCE_ID, 1, true);
+    expect(createSyncLog).toHaveBeenCalledWith(TEST_SOURCE_ID, 1, true, null);
     expect(config.processItem).toHaveBeenCalledWith(
       expect.anything(),
       expect.anything(),
@@ -206,12 +206,29 @@ describe('orchestrateSync changeset recording', () => {
     );
   });
 
+  it('takes up the entry a pass registered for it and names the pass\'s first log (ADR-0132)', async () => {
+    const waiting = makeProgress({ status: 'fetching', passSources: [TEST_SOURCE_ID - 1, TEST_SOURCE_ID] });
+    runningSyncs.set(TEST_SOURCE_ID, waiting);
+
+    await orchestrateSync(makeConfig(), 1, {}, { progress: waiting, firstLogId: 41 });
+
+    expect(createSyncLog).toHaveBeenCalledWith(TEST_SOURCE_ID, 1, false, 41);
+    expect(runningSyncs.get(TEST_SOURCE_ID)).toBe(waiting);
+    expect(waiting.status).toBe('complete');
+    expect(waiting.logId).toBe(42);
+    expect(waiting.passSources).toEqual([TEST_SOURCE_ID - 1, TEST_SOURCE_ID]);
+    // The pass releases it once its last run ends: a later run of the pass
+    // takes minutes, and a Cancel or a merge reads this entry meanwhile.
+    vi.advanceTimersByTime(60000);
+    expect(runningSyncs.get(TEST_SOURCE_ID)).toBe(waiting);
+  });
+
   it('previews anything it can run, now that no mode deletes first', async () => {
     // The refusal was about force deleting the source before there was
     // anything to preview. With nothing deleted there is nothing to refuse.
     await orchestrateSync(makeConfig(), 1, { force: true, dryRun: true } as never);
 
-    expect(createSyncLog).toHaveBeenCalledWith(TEST_SOURCE_ID, 1, true);
+    expect(createSyncLog).toHaveBeenCalledWith(TEST_SOURCE_ID, 1, true, null);
   });
 
   it('puts the run into the failed state, not just a failed message', async () => {

@@ -251,6 +251,18 @@ describe('cancelSync', () => {
 
     expect(cancelSync(TEST_SOURCE_ID)).toBe(false);
   });
+
+  it('stops every source of a pass, the waiting ones included (ADR-0132)', () => {
+    const passSources = [TEST_SOURCE_ID, TEST_SOURCE_ID + 1];
+    runningSyncs.set(TEST_SOURCE_ID, makeProgress({ passSources, logId: 42 }));
+    runningSyncs.set(TEST_SOURCE_ID + 1, makeProgress({ status: 'fetching', passSources }));
+
+    // Pressed on the source that is still waiting for its turn.
+    expect(cancelSync(TEST_SOURCE_ID + 1)).toBe(true);
+
+    expect(runningSyncs.get(TEST_SOURCE_ID)?.cancel).toBe(true);
+    expect(runningSyncs.get(TEST_SOURCE_ID + 1)?.cancel).toBe(true);
+  });
 });
 
 describe('registering a location write', () => {
