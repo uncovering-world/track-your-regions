@@ -93,7 +93,7 @@ describe('SyncChangeList', () => {
         ...MAJOR_CHANGE,
         significance: 'minor' as const,
         changed_fields: [{
-          field: 'description',
+          field: 'subtitle',
           old: 'x'.repeat(340),
           new: 'y'.repeat(512),
           significance: 'minor' as const,
@@ -164,7 +164,7 @@ describe('SyncChangeList', () => {
             curatedConflict: true, held: false,
           },
           {
-            field: 'description', old: 'a', new: 'b', significance: 'minor' as const,
+            field: 'subtitle', old: 'a', new: 'b', significance: 'minor' as const,
             curatedConflict: false, held: true,
           },
         ],
@@ -179,7 +179,7 @@ describe('SyncChangeList', () => {
     const claimed = await fieldLine('name');
     expect(claimed.textContent).toContain('curated');
     expect(claimed.textContent).not.toContain('held');
-    const held = await fieldLine('description');
+    const held = await fieldLine('subtitle');
     expect(held.textContent).toContain('held');
     expect(held.textContent).not.toContain('curated');
 

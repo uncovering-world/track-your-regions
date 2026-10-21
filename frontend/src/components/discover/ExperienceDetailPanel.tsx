@@ -285,9 +285,9 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
         )}
 
         {/* Description */}
-        {(experience.short_description || details?.description) && (
+        {(experience.description || details?.subtitle) && (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-            {experience.short_description || details?.description}
+            {experience.description || details?.subtitle}
           </Typography>
         )}
 

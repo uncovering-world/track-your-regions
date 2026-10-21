@@ -128,7 +128,7 @@ describe('rowsFor', () => {
 
   it('carries what a conflict card needs: whether it lands now, and who claimed the field', () => {
     const [row] = rowsFor([{
-      field: 'shortDescription', old: 'Six housing estates', new: 'The serial property comprises seven',
+      field: 'description', old: 'Six housing estates', new: 'The serial property comprises seven',
       acceptable: true, claim: { by: 'admin', at: '2026-08-04T12:24:20Z' }, decidedBefore: [],
     }], NO_CONTEXT);
     expect(row.acceptable).toBe(true);
@@ -140,7 +140,7 @@ describe('rowsFor', () => {
     // and no value of the run's own. Nothing moves, so nothing is asked.
     const reinaSofia = [
       { field: 'metadata.creators', old: [], new: undefined },
-      { field: 'shortDescription', old: '', new: null },
+      { field: 'description', old: '', new: null },
       { field: 'metadata.inDanger', old: false, new: true },
     ];
     expect(rowsFor(reinaSofia, NO_CONTEXT).map(r => r.field)).toEqual(['metadata.inDanger']);

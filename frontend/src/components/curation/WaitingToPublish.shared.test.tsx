@@ -4,7 +4,7 @@
  * The Vatican Museums as the development catalogue held them on 2026-10-16:
  * the Art Museums run 170 and the Archaeology run 169 both propose AD 120 for
  * the Apollo Belvedere's year, and the same website for the museum. The
- * Archaeology run also proposes a description of its own.
+ * Archaeology run also proposes a subtitle of its own.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -32,7 +32,7 @@ beforeEach(() => {
 
 const PLACE = { id: 6192, external_id: 'Q182955', name: 'Vatican Museums' };
 const WEBSITE: ProposedField = { field: 'metadata.website', old: null, new: 'https://www.museivaticani.va', held: true };
-const DESCRIPTION: ProposedField = { field: 'description', old: 'A museum.', new: 'Museums of the Vatican City.', held: true };
+const SUBTITLE: ProposedField = { field: 'subtitle', old: 'A museum.', new: 'Museums of the Vatican City.', held: true };
 const apollo = (year: number): HeldPart => ({
   kind: 'treasures', item: { ref: 'Q619135', name: 'Apollo Belvedere' },
   fields: [{ field: 'year', old: -350, new: year, held: true }],
@@ -63,7 +63,7 @@ function renderCard(items: ReviewQueueItem[]) {
 
 describe('a fact two kinds propose alike', () => {
   it('is lifted into one section for the place, leaving each kind what it asks alone', () => {
-    const sections = sectionsOf(held('Art Museums'), held('Archaeology', { proposed: [WEBSITE, DESCRIPTION] }));
+    const sections = sectionsOf(held('Art Museums'), held('Archaeology', { proposed: [WEBSITE, SUBTITLE] }));
 
     expect(sections.map(group => group.sharedBy?.map(run => run.kindName) ?? group.held?.kind_name)).toEqual([
       ['Art Museums', 'Archaeology'],
@@ -71,12 +71,12 @@ describe('a fact two kinds propose alike', () => {
     ]);
     expect(sections[0].held?.proposed).toEqual([WEBSITE]);
     expect(sections[0].held?.proposed_parts).toEqual([apollo(120)]);
-    expect(sections[1].held?.proposed).toEqual([DESCRIPTION]);
+    expect(sections[1].held?.proposed).toEqual([SUBTITLE]);
     expect(sections[1].held?.proposed_parts).toEqual([]);
   });
 
   it('names every run that proposes it, and publishes it under the first kind alone', async () => {
-    renderCard([held('Art Museums'), held('Archaeology', { proposed: [WEBSITE, DESCRIPTION] })]);
+    renderCard([held('Art Museums'), held('Archaeology', { proposed: [WEBSITE, SUBTITLE] })]);
 
     expect(screen.getByText('This place')).toBeInTheDocument();
     expect(screen.queryByText('Art Museums asks')).toBeNull();
@@ -95,12 +95,12 @@ describe('a fact two kinds propose alike', () => {
   });
 
   it('leaves the kind\'s button publishing only what its own section shows', async () => {
-    renderCard([held('Art Museums'), held('Archaeology', { proposed: [WEBSITE, DESCRIPTION] })]);
+    renderCard([held('Art Museums'), held('Archaeology', { proposed: [WEBSITE, SUBTITLE] })]);
 
     fireEvent.click(screen.getByRole('button', { name: 'Publish everything Archaeology asks' }));
 
     await waitFor(() => expect(mockedPublish).toHaveBeenCalledWith(PLACE.id, {
-      heldFields: ['description'],
+      heldFields: ['subtitle'],
       expectedSyncLogId: 169,
       membershipId: 31,
     }));
@@ -119,7 +119,7 @@ describe('a fact two kinds propose alike', () => {
     render(
       <QueryClientProvider client={client}>
         <GatedCard
-          sections={groupGated([], [held('Art Museums'), held('Archaeology', { proposed: [WEBSITE, DESCRIPTION] })], [contents])
+          sections={groupGated([], [held('Art Museums'), held('Archaeology', { proposed: [WEBSITE, SUBTITLE] })], [contents])
             .get(PLACE.id)!}
           onDone={() => {}}
         />
@@ -130,7 +130,7 @@ describe('a fact two kinds propose alike', () => {
 
     await waitFor(() => expect(mockedPublish).toHaveBeenCalledTimes(2));
     expect(mockedPublish.mock.calls.map(([, body]) => body)).toEqual([
-      { heldFields: ['description'], expectedSyncLogId: 169, membershipId: 31 },
+      { heldFields: ['subtitle'], expectedSyncLogId: 169, membershipId: 31 },
       { contentsOnly: true, membershipId: 31 },
     ]);
   });
@@ -145,14 +145,14 @@ describe('a fact two kinds propose alike', () => {
       }],
     };
     mockedPublish
-      .mockResolvedValueOnce({ appliedFields: ['description'], claimedFieldsSkipped: [], appliedParts: [] } as never)
+      .mockResolvedValueOnce({ appliedFields: ['subtitle'], claimedFieldsSkipped: [], appliedParts: [] } as never)
       .mockRejectedValueOnce(new Error('The works could not be released'));
     const done = vi.fn();
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
         <GatedCard
-          sections={groupGated([], [held('Art Museums'), held('Archaeology', { proposed: [WEBSITE, DESCRIPTION] })], [contents])
+          sections={groupGated([], [held('Art Museums'), held('Archaeology', { proposed: [WEBSITE, SUBTITLE] })], [contents])
             .get(PLACE.id)!}
           onDone={done}
         />
@@ -162,7 +162,7 @@ describe('a fact two kinds propose alike', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Publish everything Archaeology asks' }));
 
     await waitFor(() => expect(done).toHaveBeenCalled());
-    expect(done.mock.calls[0][0]).toMatch(/description[\s\S]*The works could not be released/i);
+    expect(done.mock.calls[0][0]).toMatch(/subtitle[\s\S]*The works could not be released/i);
   });
 
   it('counts as one question on the list, and is answered in a batch under the first kind once', () => {
@@ -182,19 +182,19 @@ describe('a fact two later kinds propose alike', () => {
   it('is answered under the kind that shares the most, as Mỹ Sơn\'s are', () => {
     const wikipedia: ProposedField = { field: 'metadata.wikipediaUrl', old: null, new: 'https://en.wikipedia.org/wiki/My_Son', held: true };
     const qid: ProposedField = { field: 'metadata.wikidataQid', old: null, new: 'Q391406', held: true };
-    const description: ProposedField = { field: 'description', old: null, new: 'Cham Hindu temples.', held: true };
+    const subtitle: ProposedField = { field: 'subtitle', old: null, new: 'Cham Hindu temples.', held: true };
     const run = (kindName: string, membership: number, runId: number, proposed: ProposedField[]): ReviewQueueItem => ({
       ...held('Art Museums'), kind_name: kindName, membership_id: membership, sync_log_id: runId, proposed, proposed_parts: [],
     });
     const sections = sectionsOf(
       run('World Heritage Sites', 40, 101, [wikipedia]),
-      run('Places of worship', 41, 102, [description, qid, wikipedia]),
-      run('Archaeology', 42, 103, [description, qid, wikipedia]),
+      run('Places of worship', 41, 102, [subtitle, qid, wikipedia]),
+      run('Archaeology', 42, 103, [subtitle, qid, wikipedia]),
     );
 
     expect(sections).toHaveLength(1);
     expect(sections[0].membershipId).toBe(41);
-    expect(sections[0].held?.proposed).toEqual([description, qid, wikipedia]);
+    expect(sections[0].held?.proposed).toEqual([subtitle, qid, wikipedia]);
     expect(sections[0].sharedBy?.map(by => [by.kindName, by.proposesAll])).toEqual([
       ['World Heritage Sites', false], ['Places of worship', true], ['Archaeology', true],
     ]);
@@ -205,15 +205,15 @@ describe('a section whose runs propose only some of its facts', () => {
   it('names those runs apart, and its button names no kind', () => {
     const wikipedia: ProposedField = { field: 'metadata.wikipediaUrl', old: null, new: 'https://en.wikipedia.org/wiki/My_Son', held: true };
     const qid: ProposedField = { field: 'metadata.wikidataQid', old: null, new: 'Q391406', held: true };
-    const description: ProposedField = { field: 'description', old: null, new: 'Cham Hindu temples.', held: true };
+    const subtitle: ProposedField = { field: 'subtitle', old: null, new: 'Cham Hindu temples.', held: true };
     const picture: ProposedField = { field: 'imageUrl', old: null, new: 'https://upload.wikimedia.org/x.jpg', held: true };
     const run = (kindName: string, membership: number, runId: number, proposed: ProposedField[]): ReviewQueueItem => ({
       ...held('Art Museums'), kind_name: kindName, membership_id: membership, sync_log_id: runId, proposed, proposed_parts: [],
     });
     renderCard([
       run('World Heritage Sites', 40, 101, [wikipedia]),
-      run('Places of worship', 41, 102, [description, qid, wikipedia, picture]),
-      run('Archaeology', 42, 103, [description, qid]),
+      run('Places of worship', 41, 102, [subtitle, qid, wikipedia, picture]),
+      run('Archaeology', 42, 103, [subtitle, qid]),
     ]);
 
     const place = within(screen.getByText('This place').parentElement!);

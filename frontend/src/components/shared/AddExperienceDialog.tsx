@@ -72,7 +72,7 @@ import { queryKeys } from '../../api/queryKeys';
  */
 type NewPlace = {
   name: string;
-  shortDescription: string;
+  description: string;
   type: string;
   kindId: number | '';
   coords: { lat: number; lng: number } | null;
@@ -82,7 +82,7 @@ type NewPlace = {
 };
 
 /** The fields a create sends only when filled in; the rest the body requires. */
-const OPTIONAL_FIELDS = ['shortDescription', 'type', 'imageUrl', 'wikipediaUrl', 'websiteUrl'] as const;
+const OPTIONAL_FIELDS = ['description', 'type', 'imageUrl', 'wikipediaUrl', 'websiteUrl'] as const;
 const COORDS_PATHS = { latitude: 'coords', longitude: 'coords' } as const;
 const REQUIRED_FIELDS = ['name', 'kindId', 'coords'] as const;
 
@@ -311,7 +311,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
   const typeErrorId = useId();
   const form = useEditForm<NewPlace>({
     initial: {
-      name: '', shortDescription: '', type: '', kindId: draftStartKind.current, coords: null,
+      name: '', description: '', type: '', kindId: draftStartKind.current, coords: null,
       imageUrl: '', wikipediaUrl: '', websiteUrl: '',
     },
     resetKey: draft,
@@ -376,8 +376,8 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
     }
     setAutoFillEntity({ label: suggestion.entityLabel, wikidataId: suggestion.wikidataId });
     setNamesake(null);
-    if (suggestion.description && (!current.shortDescription || descAutoFilled.current)) {
-      form.set('shortDescription', suggestion.description);
+    if (suggestion.description && (!current.description || descAutoFilled.current)) {
+      form.set('description', suggestion.description);
       descAutoFilled.current = true;
     }
     if (suggestion.wikipediaUrl && (!current.wikipediaUrl || linkAutoFilled.current)) {
@@ -396,7 +396,7 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
       imageAutoFilled.current = false;
     }
     if (descAutoFilled.current) {
-      form.set('shortDescription', '');
+      form.set('description', '');
       descAutoFilled.current = false;
     }
     if (linkAutoFilled.current) {
@@ -677,9 +677,9 @@ function AddExperienceDialogComponent({ open, onClose, regionId, regionName, def
             </Box>
 
             <TextField
-              label="Short Description"
-              {...form.field('shortDescription')}
-              onChange={(e) => { form.set('shortDescription', e.target.value); descAutoFilled.current = false; }}
+              label="Description"
+              {...form.field('description')}
+              onChange={(e) => { form.set('description', e.target.value); descAutoFilled.current = false; }}
               fullWidth
               multiline
               rows={2}

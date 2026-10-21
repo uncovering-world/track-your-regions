@@ -69,7 +69,7 @@ const bamiyan: Experience = {
   id: 1,
   external_id: '208',
   name: 'Cultural Landscape and Archaeological Remains of the Bamiyan Valley',
-  short_description: 'The remains of the Buddhas and the monastic caves around them.',
+  description: 'The remains of the Buddhas and the monastic caves around them.',
   type: 'cultural',
   // World Heritage: the one kind whose type a curator can set in this dialog.
   kind_id: 1,
@@ -197,11 +197,11 @@ describe('CurationDialog clearing a field', () => {
     renderDialog();
     await screen.findByDisplayValue(PORTAL_PAGE);
 
-    clear('Short Description');
+    clear('Description');
     clear('Website URL');
     save();
 
-    await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(bamiyan.id, { shortDescription: '', websiteUrl: '' }));
+    await waitFor(() => expect(mockedEdit).toHaveBeenCalledWith(bamiyan.id, { description: '', websiteUrl: '' }));
   });
 
   it('sends the kind None as an emptied kind', async () => {

@@ -30,7 +30,8 @@ function change(field: string, before: unknown, after: unknown, context = NO_CON
 
 describe('the label', () => {
   it('says what the field is, not what the column is called', () => {
-    expect(fieldLabel('shortDescription')).toBe('short description');
+    expect(fieldLabel('subtitle')).toBe('subtitle');
+    expect(fieldLabel('description')).toBe('description');
     expect(fieldLabel('imageUrl')).toBe('picture');
     expect(fieldLabel('nameLocal')).toBe('name in other languages');
     expect(fieldLabel('location')).toBe('coordinates');
@@ -366,7 +367,7 @@ describe('what a change means, in one line', () => {
   });
 
   it('has no sentence for a text a person simply rewrote', () => {
-    expect(change('shortDescription', 'a', 'b')).toBeNull();
+    expect(change('description', 'a', 'b')).toBeNull();
     expect(change('name', 'a', 'b')).toBeNull();
   });
 
@@ -375,7 +376,7 @@ describe('what a change means, in one line', () => {
     // the date, the badge, the two links, the picture and its credit — and nothing else.
     ['metadata.criteria', 'metadata.region', 'metadata.areaHectares', 'metadata.sitelinksCount', 'tags', 'metadata.someNewField']
       .forEach(field => expect(meaningOf(field).unseen, field).toBe(true));
-    ['imageUrl', 'shortDescription', 'metadata.imageCredit', 'metadata.inDanger', 'metadata.dateInscribed', 'metadata.website']
+    ['imageUrl', 'description', 'metadata.imageCredit', 'metadata.inDanger', 'metadata.dateInscribed', 'metadata.website']
       .forEach(field => expect(meaningOf(field).unseen, field).toBeUndefined());
   });
 
@@ -384,6 +385,6 @@ describe('what a change means, in one line', () => {
     events.forEach(field => expect(meaningOf(field).event, field).toBe(true));
     // An item arriving is the source's own id; only one replaced by another is an event (ADR-0129).
     expect(meaningOf('metadata.wikidataQid').event).toBe('replaced');
-    ['name', 'shortDescription', 'metadata.criteria', 'metadata.imageCredit'].forEach(field => expect(meaningOf(field).event, field).toBeUndefined());
+    ['name', 'description', 'metadata.criteria', 'metadata.imageCredit'].forEach(field => expect(meaningOf(field).event, field).toBeUndefined());
   });
 });

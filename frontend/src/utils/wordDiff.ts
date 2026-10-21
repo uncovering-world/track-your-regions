@@ -3,7 +3,7 @@
  *
  * Written here rather than taken from a library, and the reason is the size of the
  * problem rather than a dislike of dependencies. The only field where a curator needs
- * this is `shortDescription`: nineteen conflicts on the dev database, longest value 1339
+ * this is `description`: nineteen conflicts on the dev database, longest value 1339
  * characters, average 841 — about a hundred and fifty words. `name` runs to 37, and the
  * longest description in the whole catalogue is 1943 characters. Against that, a word
  * table is milliseconds and forty lines, and the frontend keeps seventeen runtime
@@ -36,7 +36,7 @@ export interface WordDiff {
 /**
  * About one and a half times the longest value measured, in words — which is thinner
  * headroom than a round number suggests, and worth stating rather than rounding away:
- * 1339 characters of conflicted `shortDescription` is roughly 240 words at the 5.6
+ * 1339 characters of conflicted `description` is roughly 240 words at the 5.6
  * characters this catalogue averages, and the longest description in it, at 1943, is
  * roughly 350.
  *

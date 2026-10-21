@@ -46,7 +46,7 @@ import { Search } from './Search';
 const RIJKSMUSEUM = {
   id: 6198,
   name: 'Rijksmuseum',
-  short_description: null,
+  description: null,
   type: null,
   kind_id: 2,
   kind_name: 'Art Museums',

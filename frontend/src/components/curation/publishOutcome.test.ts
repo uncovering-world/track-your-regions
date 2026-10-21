@@ -89,16 +89,16 @@ describe('publishOutcomeFor', () => {
   it('names fields the way the card that asked did', () => {
     // The card's rows are labelled through `fieldLabel`, and the server answers with the
     // changeset's own names. A line confirming a click must not rename what it acted on:
-    // "shortDescription applied" under a row headed "short description" reads as a second
+    // "countryNames applied" under a row headed "countries" reads as a second
     // subject, and it is the schema talking on the one screen written to keep it quiet.
     const line = publishOutcomeFor(item, result({
-      appliedFields: ['shortDescription', 'imageUrl'],
+      appliedFields: ['countryNames', 'imageUrl'],
       claimedFieldsSkipped: ['name'],
     }));
 
-    expect(line).toContain('short description, picture applied');
+    expect(line).toContain('countries, picture applied');
     expect(line).toContain('name left as you wrote them');
-    expect(line).not.toContain('shortDescription');
+    expect(line).not.toContain('countryNames');
     expect(line).not.toContain('imageUrl');
   });
 
@@ -256,13 +256,13 @@ describe('heldRefusalOutcomeFor', () => {
 
 describe('one answer sent as two requests (#1599)', () => {
   it('reports the held half from the first response and the contents from the second', () => {
-    const held = result({ appliedFields: ['description'], fromSyncLogId: 169, placementFailed: true,
+    const held = result({ appliedFields: ['subtitle'], fromSyncLogId: 169, placementFailed: true,
       placementFailedWorldViews: [{ id: 5, name: 'Administrative' }] });
     const contents = result({ treasuresPublished: 1, treasureLinksPublished: 1 });
 
     expect(mergedPublishResult(held, contents)).toEqual({
       ...contents,
-      appliedFields: ['description'],
+      appliedFields: ['subtitle'],
       fromSyncLogId: 169,
       partsNotFound: undefined,
       placementFailed: true,

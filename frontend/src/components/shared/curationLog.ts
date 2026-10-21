@@ -314,7 +314,7 @@ function releasedContents(d: Record<string, unknown>): string[] {
  * A publication, in what it wrote and what it made visible.
  *
  * Field names through `fieldLabel` for the reason the cards' are: the queue names them
- * the way the changeset does — `shortDescription`, `metadata.dateInscribed` — and that is
+ * the way the changeset does — `countryNames`, `metadata.dateInscribed` — and that is
  * our word for a column, not a curator's for a thing. The skipped list is not decoration:
  * it is the difference between a publication that overwrote a curator's text and one that
  * left it standing, which the entry would otherwise be read as having done either way.
@@ -527,7 +527,7 @@ export function formatLogDetails(entry: CurationLogEntry): string | null {
 }
 
 const VIEW_FIELD_LABEL: Record<string, string> = {
-  name: 'Name', description: 'Description', imageUrl: 'Picture', location: 'Where it is',
+  name: 'Name', subtitle: 'Subtitle', imageUrl: 'Picture', location: 'Where it is',
 };
 
 /**

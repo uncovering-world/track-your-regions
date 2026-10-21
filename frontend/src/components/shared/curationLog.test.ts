@@ -272,19 +272,19 @@ describe('an edit that replaced or removed the picture', () => {
 
 describe('a publication', () => {
   it('names the fields in the reader’s words, not the changeset’s', () => {
-    // The card the curator read said "short description"; `shortDescription` is our word
+    // The card the curator read said "countries"; `countryNames` is our word
     // for a column, and reads as a different subject.
     const line = formatLogDetails(entry('published', {
       scope: 'object',
-      fields: ['shortDescription', 'imageUrl'],
+      fields: ['countryNames', 'imageUrl'],
       claimedFieldsSkipped: ['name'],
       fromSyncLogId: 64,
       locations: 0, treasureLinks: 0, treasures: 0, withdrawalsReleased: 0,
     })) as string;
 
-    expect(line).toContain('Applied: short description, picture');
+    expect(line).toContain('Applied: countries, picture');
     expect(line).toContain('Kept as curated: name');
-    expect(line).not.toContain('shortDescription');
+    expect(line).not.toContain('countryNames');
   });
 
   it('says what a one-row publication left waiting', () => {
@@ -367,8 +367,8 @@ describe('an answer to what a source proposed', () => {
 
   it('keeps the proposal a curator refused, which is what they stood against', () => {
     expect(formatLogDetails(entry('declined_source', {
-      fields: [{ field: 'shortDescription', declined: 'A museum in Paris' }],
-    }))).toBe('short description: source proposed "A museum in Paris"');
+      fields: [{ field: 'subtitle', declined: 'A museum in Paris' }],
+    }))).toBe('subtitle: source proposed "A museum in Paris"');
   });
 
   it('prints a refused false as false, not as an absent value', () => {
@@ -391,8 +391,8 @@ describe('an answer to what a source proposed', () => {
 
   it('still calls a value that is not there empty', () => {
     expect(formatLogDetails(entry('accepted_source', {
-      fields: [{ field: 'shortDescription', applied: '' }],
-    }))).toBe('short description: "(empty)"');
+      fields: [{ field: 'description', applied: '' }],
+    }))).toBe('description: "(empty)"');
   });
 });
 

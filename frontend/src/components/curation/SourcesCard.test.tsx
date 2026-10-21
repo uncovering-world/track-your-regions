@@ -2,7 +2,7 @@
  * The card for two data sources that describe one place differently (#1246),
  * on Rila Monastery: UNESCO calls it "Rila Monastery", Wikidata "Monastery of
  * Saint John of Rila", each with its own photograph; the points stand 8 m apart
- * and only Wikidata has a description, so neither is asked.
+ * and only Wikidata has a subtitle, so neither is asked.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -41,7 +41,7 @@ const RILA = {
     },
   ],
   quiet_fields: [
-    { field: 'description', why: 'one_source', metres: null },
+    { field: 'subtitle', why: 'one_source', metres: null },
     { field: 'location', why: 'agree', metres: 8 },
   ],
 } as unknown as ReviewQueueItem;
@@ -67,7 +67,7 @@ describe('a place two sources describe differently', () => {
 
     expect(screen.getByRole('button', { name: /Monastery of Saint John of Rila/ }).getAttribute('aria-pressed')).toBe('false');
     expect(screen.getAllByRole('button', { name: /Readers see this · keeping it/ })).toHaveLength(2);
-    expect(screen.getByText('Not asked: description (only one source has it), where it is (the points are 8 m apart).')).toBeTruthy();
+    expect(screen.getByText('Not asked: subtitle (only one source has it), where it is (the points are 8 m apart).')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Keep what readers see' })).toBeTruthy();
   });
 

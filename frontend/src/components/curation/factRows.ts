@@ -2,7 +2,7 @@
  * A proposal as a table of facts: which rows, of what kind, about which subject.
  *
  * The queue hands a card a list of fields — `metadata` with an object on each side,
- * `tags`, `location`, `shortDescription` — and this turns it into what a curator reads:
+ * `tags`, `location`, `description` — and this turns it into what a curator reads:
  * one row per fact that moved, each knowing what it is (`fieldMeaning`), whether it is
  * new, changed or removed, and what the change means. Pure, so the card's shape is
  * testable without rendering it (#570).
