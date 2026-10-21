@@ -120,7 +120,8 @@ export function recordedTreasureSql(
   { experienceId, ref }: { experienceId: string; ref: string },
 ): string {
   return `SELECT t.id, t.name, t.artists, t.curated_fields ? 'artists' AS artists_curated,
-                 t.year, t.image_url, t.treasure_type,
+                 t.year, t.image_url, t.treasure_type, t.wikipedia_url,
+                 t.wikipedia_read_at IS NOT NULL AS wikipedia_read,
                  t.curated_fields, t.metadata->'imageCredit' AS image_credit,
                  ${venueCountSql('t')} AS venue_count,
                  ${venuesSql('t')} AS venues

@@ -5601,6 +5601,16 @@ export interface HeldPart {
   imageCredit?: ImageCredit | null;
   /** @nullable */
   treasureType?: string | null;
+  /**
+     * The work's stored Wikipedia article (#1777); null on a place.
+     * @nullable
+     */
+  wikipediaUrl?: string | null;
+  /**
+     * Whether a works run has read the article: a null article read means no English one, unread means not looked up yet.
+     * @nullable
+     */
+  wikipediaRead?: boolean | null;
 }
 
 /**
