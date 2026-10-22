@@ -100,6 +100,12 @@ export interface ExperienceUpsertParams {
    * #814). The kind is the one `sourceId`'s source fills.
    */
   type: string | null;
+  /**
+   * The closed vocabulary of the kind `sourceId` fills, where the run declares
+   * one: a stored type that is none or outside it is rewritten past the gate and filed as such
+   * (`type-outside-vocabulary`, ADR-0135). Absent, a type is held as any change is.
+   */
+  typeVocabulary?: readonly string[];
   tags: string[];
   lon: number;
   lat: number;
@@ -299,6 +305,7 @@ function snapshotFromParams(
     subtitle: params.subtitle,
     description: params.description,
     type: params.type,
+    typeVocabulary: params.typeVocabulary,
     tags: params.tags,
     lon: params.lon,
     lat: params.lat,
@@ -705,8 +712,16 @@ async function writeUnderLock(
       ON CONFLICT (source_id, external_id) DO UPDATE SET
         admitted_for = EXCLUDED.admitted_for,
         -- The type within the kind is the membership's (ADR-0084), behind the
-        -- membership's own claim and behind the gate, as the place's content is.
-        type = CASE WHEN ${MEMBERSHIPS}.curated_fields ? 'type' OR ${HELD}
+        -- membership's own claim and behind the gate, as the place's content is
+        -- -- except a stored type that is none, or one the kind's vocabulary
+        -- ($31) has no word for, replaced by one it has: the diff's
+        -- 'type-outside-vocabulary' (ADR-0135).
+        type = CASE WHEN ${MEMBERSHIPS}.curated_fields ? 'type' THEN ${MEMBERSHIPS}.type
+                    WHEN ${HELD} AND NOT ($31::text[] IS NOT NULL
+                                          AND EXCLUDED.type IS NOT NULL
+                                          AND EXCLUDED.type = ANY($31::text[])
+                                          AND (${MEMBERSHIPS}.type IS NULL
+                                               OR NOT ${MEMBERSHIPS}.type = ANY($31::text[])))
                     THEN ${MEMBERSHIPS}.type ELSE EXCLUDED.type END,
         pending_change_sync_log_id = CASE WHEN ${HELD}
                                          THEN ${MEMBERSHIPS}.pending_change_sync_log_id
@@ -778,6 +793,7 @@ async function writeUnderLock(
       // The metadata keys the claims hold, off the locked row: the declaration
       // the diff below reads too (ADR-0077 decision 2).
       claimedMetadataKeys(stored?.curated_fields ?? [], stored?.metadata ?? null),
+      params.typeVocabulary ? [...params.typeVocabulary] : null,
     ]
   );
 
@@ -814,7 +830,7 @@ async function writeUnderLock(
   // `computeChangeSet` files a refused write under the reason it was refused
   // instead (#519). Two kinds of written field are left out: a serial site's
   // anchor moving is the run's own bookkeeping (ADR-0095), and a rewrite that
-  // passed the gate replaces nothing a visitor reads (#1353, ADR-0133) — written and
+  // passed the gate replaces no fact a reader holds (ADR-0099, ADR-0135) — written and
   // recorded, but neither a proposal for the pointer nor a reason to demote a
   // verified membership. Nor does a field no reader sees (`UNSEEN_FIELDS`, #1579).
   const wroteContent = changeSet.changedFields.some(

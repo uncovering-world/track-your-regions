@@ -22,8 +22,10 @@ import {
 } from './classes.js';
 
 /** The types the two kinds file a row under, disjoint so a value names its kind (`experienceTypes.ts`). */
-export type PublicArtType = 'sculpture' | 'fountain' | 'street-art';
-export type MonumentType = 'memorial' | 'monument' | 'arch' | 'column' | 'obelisk';
+const PUBLIC_ART_TYPES = ['sculpture', 'fountain', 'street-art'] as const;
+const MONUMENT_TYPES = ['memorial', 'monument', 'arch', 'column', 'obelisk'] as const;
+export type PublicArtType = (typeof PUBLIC_ART_TYPES)[number];
+export type MonumentType = (typeof MONUMENT_TYPES)[number];
 
 /** What the rule reads of a candidate to decide its kind. */
 export interface KindFacts {
@@ -51,6 +53,8 @@ export interface KindRule {
   memorialLifts: boolean;
   /** The type an admitted row is filed under. */
   type(e: KindFacts, trees: PublicArtTrees): PublicArtType | MonumentType;
+  /** Every type `type` may answer: a stored type outside it is no reader's fact to keep (#1807). */
+  types: readonly string[];
 }
 
 const has = (classes: string[], of: ReadonlySet<string> | Record<string, string>): boolean =>
@@ -68,6 +72,7 @@ export const PUBLIC_ART_RULE: KindRule = {
   admits: (e, trees) => has(e.classes, trees.sculptural) || has(e.classes, trees.fountain),
   answersVeto: (e, trees) => has(e.classes, trees.artwork),
   memorialLifts: false,
+  types: PUBLIC_ART_TYPES,
   type: (e, trees) => {
     if (has(e.classes, STREET_ART_CLASSES)) return 'street-art';
     if (has(e.classes, trees.fountain)) return 'fountain';
@@ -95,6 +100,7 @@ export const MONUMENTS_RULE: KindRule = {
     || e.commemorates.length > 0,
   answersVeto: (e, trees) => has(e.classes, trees.artwork),
   memorialLifts: true,
+  types: MONUMENT_TYPES,
   type: (e, trees) => {
     if (has(e.classes, ARCH_CLASSES)) return 'arch';
     if (has(e.classes, COLUMN_CLASSES)) return 'column';

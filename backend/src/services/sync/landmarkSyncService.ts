@@ -148,6 +148,9 @@ async function upsertLandmarkExperience(
     subtitle: landmark.description,
     description: null,
     type: landmark.type,
+    // The kind's own words, so a type the split left outside them is rewritten
+    // past the gate rather than asked about (#1807).
+    typeVocabulary: RULE_OF_SOURCE[sourceId].types,
     tags: ['outdoor', landmark.type],
     lon: landmark.lon,
     lat: landmark.lat,
