@@ -1,21 +1,22 @@
 /**
  * The OpenStreetMap layer as a door (ADR-0134 decisions 4 and 5): both reads
  * of the map, the per-item read and the dig enumeration, answered from
- * `osm_objects`, the layer the dump worker cuts from the planet, with live
- * Overpass for whatever the layer cannot vouch for.
+ * `osm_objects`, the layer the dump worker cuts from the planet, with a live
+ * door for whatever the layer cannot vouch for: Overpass for a run, the
+ * mirror for the visit witnesses.
  *
  * - **An object the layer finds is the answer**, whatever the layer's age.
  * - **A miss is a fact only on a fresh layer.** The per-item read asks by the
  *   `wikidata` tag, which the layer's selection keeps on every object, so on a
  *   layer at most `LAYER_FRESH_FOR_DAYS` old an item with no object is one
  *   OpenStreetMap maps nothing for. On an older layer, or with none in place,
- *   the items it did not find are asked of Overpass, and only those.
+ *   the items it did not find are asked of the live door, and only those.
  * - **The enumeration asks only selected tags**, so a fresh layer answers it
- *   whole; an older one hands it to Overpass whole. A key's presence names a
+ *   whole; an older one hands it to the live door whole. A key's presence names a
  *   dig unless its value is `no`, and an object is filed under its article
  *   only where it carries no item, as `overpassDigsQueries` asks.
  * - **Each object names where it came from** (`OsmObject.source`): the layer
- *   with the instant it is current to, or Overpass with the moment it was
+ *   with the instant it is current to, or the live door with the moment it was
  *   asked, which the site's `metadata.osm` carries (ADR-0059 decision 2).
  *
  * The objects answer in the shape both live doors fold into (`types.ts`): the
@@ -38,6 +39,20 @@ const KINDS: Record<string, OsmKind> = { N: 'node', W: 'way', R: 'relation' };
 async function layerInPlace(): Promise<{ currentTo: string } | null> {
   const currentTo = await layerCurrentTo();
   return currentTo ? { currentTo: currentTo.toISOString() } : null;
+}
+
+/**
+ * Whether a fresh layer is in place now: what makes the layer every
+ * OpenStreetMap read's default. A layer whose state cannot be read is none, so
+ * the run opens the mirror rather than failing before any door is chosen.
+ */
+export async function freshLayerInPlace(now = new Date()): Promise<boolean> {
+  try {
+    return layerVouches(await layerInPlace(), now);
+  } catch (err) {
+    console.warn(`[OSM layer] Could not read the layer's state, reading the mirror: ${err instanceof Error ? err.message : String(err)}`);
+    return false;
+  }
 }
 
 /**
@@ -97,12 +112,20 @@ async function layerObjects(qids: string[], keep: KeepWkt, currentTo: string): P
   return found;
 }
 
+/** How the misses the layer cannot vouch for are asked of the live door. */
+export type LiveRead = (qids: string[], keep: KeepWkt, run: Pick<QueryRunner, 'phase' | 'step'>) => Promise<Map<string, OsmObject[]>>;
+
 /**
  * The per-item read: what the layer maps at each item, and, where the layer
- * cannot vouch for a miss, what Overpass maps at the items it did not find.
- * `live` is the pass's Overpass door, with the run's cache over it.
+ * cannot vouch for a miss, what the live door maps at the items it did not
+ * find. `live` is the pass's door with the run's cache over it, and its answers
+ * carry its name; `askLive` is how they are asked, every batch whole unless
+ * the caller tolerates a dropped one (the visit witnesses, `mapOfWhatAnswered`).
  */
-export function localOsmReader(live: OsmDoor, now: () => Date = () => new Date()) {
+export function localOsmReader(
+  live: OsmDoor, now: () => Date = () => new Date(),
+  askLive: LiveRead = (qids, keep, run) => readOsmObjects(live, qids, keep, run),
+) {
   return async (qids: string[], keep: KeepWkt, run: Pick<QueryRunner, 'phase' | 'step'>): Promise<Map<string, OsmObject[]>> => {
     const asked = [...new Set(qids.filter(isQid))];
     const out = new Map<string, OsmObject[]>(asked.map(qid => [qid, []]));
@@ -114,9 +137,12 @@ export function localOsmReader(live: OsmDoor, now: () => Date = () => new Date()
     if (layerVouches(layer, now())) return out;
     const misses = asked.filter(qid => out.get(qid)!.length === 0);
     if (!misses.length) return out;
+    // Only what the live door answered is set: an item a dropped batch left
+    // out stays unread, never "OpenStreetMap maps nothing there".
+    for (const qid of misses) out.delete(qid);
     const askedAt = now().toISOString();
-    for (const [qid, objects] of await readOsmObjects(live, misses, keep, run)) {
-      out.set(qid, objects.map(object => ({ ...object, source: { door: 'overpass', asOf: askedAt } })));
+    for (const [qid, objects] of await askLive(misses, keep, run)) {
+      out.set(qid, objects.map(object => ({ ...object, source: { door: live.name, asOf: askedAt } })));
     }
     return out;
   };
@@ -130,11 +156,11 @@ export function localDigsReader(live: OsmDoor, tags: DigTags, now: () => Date = 
   return async (run: Pick<QueryRunner, 'phase' | 'step'>): Promise<OsmDigs> => {
     const layer = await layerInPlace();
     if (!layerVouches(layer, now())) {
-      // Overpass's answer, stamped as the per-item misses are: a site's
+      // The live door's answer, stamped as the per-item misses are: a site's
       // verdict may be read from an object the enumeration alone brought.
       const askedAt = now().toISOString();
       const digs = await readOsmDigs(live, tags, run);
-      const stamped = (objects: OsmObject[]) => objects.map(object => ({ ...object, source: { door: 'overpass' as const, asOf: askedAt } }));
+      const stamped = (objects: OsmObject[]) => objects.map(object => ({ ...object, source: { door: live.name, asOf: askedAt } }));
       return {
         byItem: new Map([...digs.byItem].map(([key, objects]) => [key, stamped(objects)])),
         byArticle: new Map([...digs.byArticle].map(([key, objects]) => [key, stamped(objects)])),

@@ -1,6 +1,6 @@
 import { isUsableContact } from './userAgent.js';
 import {
-  isOsmReaderName, OSM_READER_NAMES, OSM_READER_VARIABLE,
+  isOsmReaderName, OSM_READER_NAMES, OSM_READER_VARIABLE, UNSET_OSM_READER,
 } from '../services/sync/osm/readerChoice.js';
 
 export interface RawEnv {
@@ -68,16 +68,17 @@ export function collectEnvIssues(env: RawEnv): EnvIssue[] {
       scope: 'always',
     });
   }
-  // The door a run reads OpenStreetMap through, by name. Blank is the mirror;
-  // a name the catalogue does not have is refused here and again where the
-  // door is built (`parseOsmReaderName`), so an operator who mistyped it in
-  // the middle of an outage learns at boot rather than from a run that then
-  // failed on the mirror. The rule is the reader module's; this only asks it.
+  // The door a run reads OpenStreetMap through, by name. Blank is the layer
+  // while a fresh one is in place and the mirror otherwise; a name the
+  // catalogue does not have is refused here and again where the door is built
+  // (`parseOsmReaderName`), so an operator who mistyped it in the middle of an
+  // outage learns at boot rather than from a run that then failed on the
+  // mirror. The rule is the reader module's; this only asks it.
   const reader = (env.OSM_READER ?? '').trim();
   if (reader !== '' && !isOsmReaderName(reader)) {
     issues.push({
       key: OSM_READER_VARIABLE,
-      message: `must be one of ${OSM_READER_NAMES.join(', ')}, or unset for the QLever mirror`,
+      message: `must be one of ${OSM_READER_NAMES.join(', ')}, or ${UNSET_OSM_READER}`,
       scope: 'always',
     });
   }

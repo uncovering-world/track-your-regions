@@ -31,6 +31,8 @@ import { usedByAGuide } from '../../dumps/wikivoyage/usageTables.js';
 import { jevConfigured } from '../../jev/jevClient.js';
 import { OSM_BATCH, OsmDoorFailedError, readOsmObjects, type OsmDoor } from '../osm/readOsmObjects.js';
 import { qleverOsmDoor } from '../osm/qleverOsm.js';
+import { freshLayerInPlace, localOsmReader } from '../osm/localOsm.js';
+import { chooseOsmReader, OSM_READER_VARIABLE } from '../osm/readerChoice.js';
 import type { KeepWkt, OsmObject } from '../osm/types.js';
 import { subsetOnlyDoor, wikidataReaderOf } from '../subset/reader.js';
 import type { SyncProgress, VisitQuestionTally } from '../types.js';
@@ -233,9 +235,20 @@ async function writeVisitQuestions(questions: readonly VisitQuestion[], syncLogI
 }
 
 /**
+ * Whether the visit witnesses read the map from the layer: where the run's
+ * reader is the layer (`chooseOsmReader`: named `local`, or unset while a
+ * fresh one is in place). Otherwise they read the mirror, whichever door the
+ * operator named, as they did before the layer: a pass over a thousand places
+ * is not asked of the public Overpass instances.
+ */
+export async function visitReadsLayer(value: string | undefined, freshLayer: () => Promise<boolean>): Promise<boolean> {
+  return (await chooseOsmReader(value, freshLayer)) === 'local';
+}
+
+/**
  * The run's doors: Wikidata as the admin set the source to read it, the map
- * through the mirror, and Commons, each live answer kept in the source's
- * cache like every other the run pays for.
+ * from the layer or through the mirror (`visitReadsLayer`), and Commons, each
+ * live answer kept in the source's cache like every other the run pays for.
  */
 async function doorsOf(sourceId: number, progress: SyncProgress, refreshCache: boolean): Promise<VisitQuestionDoors> {
   const budget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
@@ -250,6 +263,7 @@ async function doorsOf(sourceId: number, progress: SyncProgress, refreshCache: b
     }), cache);
   const mirror = qleverOsmDoor(progress, budget, LOG_PREFIX);
   const door: OsmDoor = { ...mirror, send: withCache(mirror.send, cache) };
+  const readsLayer = await visitReadsLayer(process.env[OSM_READER_VARIABLE], () => freshLayerInPlace());
   const photos = withCache(commonsPhotoDoor({
     userAgent: WIKIDATA_USER_AGENT,
     isCancelled: () => progress.cancel,
@@ -259,7 +273,16 @@ async function doorsOf(sourceId: number, progress: SyncProgress, refreshCache: b
   }), cache);
   return {
     sparql,
-    osm: (qids) => mapOfWhatAnswered(door, qids, progress),
+    // The layer: on a fresh one its misses are facts and nothing is asked
+    // live; on an older one the mirror is asked what it missed (ADR-0134).
+    // The mirror otherwise. Either way a batch the mirror drops leaves only
+    // its own places unread.
+    osm: readsLayer
+      ? (qids) => localOsmReader(door, undefined, (misses) => mapOfWhatAnswered(door, misses, progress))(qids, NO_GEOMETRY, {
+        phase: (message) => { progress.statusMessage = message; },
+        step: async () => { if (progress.cancel) throw new Error('Sync cancelled'); },
+      })
+      : (qids) => mapOfWhatAnswered(door, qids, progress),
     photos,
     leads: (urls) => articleLeads(urls, {
       userAgent: WIKIDATA_USER_AGENT,

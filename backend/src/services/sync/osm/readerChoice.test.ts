@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { isOsmReaderName, OSM_READER_NAMES, parseOsmReaderName } from './readerChoice.js';
+import { chooseOsmReader, isOsmReaderName, OSM_READER_NAMES, parseOsmReaderName } from './readerChoice.js';
 
 describe('parseOsmReaderName', () => {
   it('reads unset and blank as the mirror, which compose passes an optional variable as', () => {
@@ -26,5 +26,28 @@ describe('isOsmReaderName', () => {
     expect(isOsmReaderName('qlever')).toBe(true);
     expect(isOsmReaderName('overpass')).toBe(true);
     expect(isOsmReaderName('osm')).toBe(false);
+  });
+});
+
+describe('chooseOsmReader (ADR-0134)', () => {
+  const fresh = async () => true;
+  const none = async () => false;
+
+  it('opens the layer while a fresh one is in place and the variable is unset, and the mirror otherwise', async () => {
+    expect(await chooseOsmReader(undefined, fresh)).toBe('local');
+    expect(await chooseOsmReader('  ', fresh)).toBe('local');
+    expect(await chooseOsmReader('', none)).toBe('qlever');
+  });
+
+  it('keeps the door an operator named, whatever the layer', async () => {
+    expect(await chooseOsmReader('qlever', fresh)).toBe('qlever');
+    expect(await chooseOsmReader('overpass', fresh)).toBe('overpass');
+    expect(await chooseOsmReader('local', none)).toBe('local');
+  });
+
+  it('refuses a name that is no door before it asks about the layer', async () => {
+    let asked = false;
+    await expect(chooseOsmReader('overpas', async () => { asked = true; return true; })).rejects.toThrow('names no reader');
+    expect(asked).toBe(false);
   });
 });

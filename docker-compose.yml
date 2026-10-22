@@ -67,7 +67,8 @@ services:
       # The contact outbound requests publish; empty means this project's own.
       USER_AGENT_CONTACT: ${USER_AGENT_CONTACT:-}
       # The door the Archaeology run reads OpenStreetMap through first; empty
-      # means the QLever mirror, with the whole read done again through
+      # means the layer cut from the planet while a fresh one is in place
+      # (ADR-0134), and otherwise the QLever mirror, with the whole read done again through
       # Overpass when it fails (#908), `overpass` pins the public Overpass
       # instances with no fallback (#893), and `local` reads the layer cut from
       # the planet, with Overpass for what it cannot vouch for (ADR-0134).

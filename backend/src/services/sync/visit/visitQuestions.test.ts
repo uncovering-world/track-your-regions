@@ -4,7 +4,7 @@ import type { SparqlBinding } from '../wikidataUtils.js';
 import { OSM_BATCH, type OsmDoor } from '../osm/readOsmObjects.js';
 import type { SyncProgress } from '../types.js';
 import {
-  mapOfWhatAnswered, visitQuestionsOf, VISIT_QUESTION_SURE, type OfferedPlace, type VisitQuestionDoors,
+  mapOfWhatAnswered, visitQuestionsOf, visitReadsLayer, VISIT_QUESTION_SURE, type OfferedPlace, type VisitQuestionDoors,
 } from './visitQuestions.js';
 
 /**
@@ -163,5 +163,21 @@ describe('the map, a batch at a time (#1770)', () => {
     };
 
     await expect(mapOfWhatAnswered(door, ['Q1'], progress)).rejects.toThrow('Sync cancelled');
+  });
+});
+
+describe('visitReadsLayer (ADR-0134)', () => {
+  const fresh = async () => true;
+  const none = async () => false;
+
+  it('reads the layer while a fresh one is in place and the variable is unset, and the mirror otherwise', async () => {
+    expect(await visitReadsLayer(undefined, fresh)).toBe(true);
+    expect(await visitReadsLayer('', none)).toBe(false);
+  });
+
+  it('keeps the door an operator named: the layer for local, the mirror for either live door', async () => {
+    expect(await visitReadsLayer('local', none)).toBe(true);
+    expect(await visitReadsLayer('qlever', fresh)).toBe(false);
+    expect(await visitReadsLayer('overpass', fresh)).toBe(false);
   });
 });
