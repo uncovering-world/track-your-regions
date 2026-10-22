@@ -5,7 +5,8 @@
  * The gather reads the candidates of every kind once (`gather.ts`) and each
  * source of `PLACE_PASS` classifies its own share: Public art and Monuments &
  * memorials by their kinds' rules, Places of worship by its door one,
- * Archaeology by its site door. What a kind reads beyond its places — worship's
+ * Archaeology by its site door, Towers by its rule and its line. What a kind
+ * reads beyond its places — worship's
  * works and the second door they open, Archaeology's museums and finds, and the
  * map, the Wikipedias and the witnesses its site door asks — stays in its own
  * run, through its own doors.
@@ -16,7 +17,8 @@ import { admittedExternalIds } from '../admission.js';
 import { wikidataRunDoor } from '../subset/runDoor.js';
 import { passMember, runSyncPass, sharedGather } from '../syncPass.js';
 import { PLACE_PASS, PUBLIC_ART_SOURCES } from '../passes.js';
-import { collectingSparql, publicArtSource } from '../landmarkSyncService.js';
+import { collectingSparql, placeSource, publicArtSource } from '../landmarkSyncService.js';
+import { TOWERS_CLASSIFIER, TOWERS_KIND, TOWERS_SOURCE_ID } from '../towers/kind.js';
 import { worshipSource, WORSHIP_SOURCE_ID } from '../worshipSyncService.js';
 import { archaeologySource } from '../archaeologySyncService.js';
 import { ARCHAEOLOGY_SOURCE_ID } from '../archaeology/runDoors.js';
@@ -57,6 +59,7 @@ function placeGather(refreshCache: boolean): (progress: SyncProgress) => Promise
       // The sites Archaeology admits, not its museums, which its own museum
       // door asks after (`ArchaeologyPipelineDeps.admittedSites`).
       { kind: ARCHAEOLOGY_SITE_KIND, admitted: await admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'site') },
+      { kind: TOWERS_KIND, admitted: await admittedBy([TOWERS_SOURCE_ID]) },
     ]);
     return { gathered, sparql };
   });
@@ -78,6 +81,7 @@ export function syncPlacePass(
       ...PUBLIC_ART_SOURCES.map((sourceId) => passMember(publicArtSource(sourceId, gather))),
       passMember(worshipSource(gather, options)),
       passMember(archaeologySource(gather, options)),
+      passMember(placeSource(TOWERS_SOURCE_ID, gather, TOWERS_CLASSIFIER)),
     ],
     triggeredBy,
     options,

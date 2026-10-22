@@ -46,6 +46,12 @@ vi.mock('./worshipSyncService.js', () => ({
 vi.mock('./archaeologySyncService.js', () => ({ archaeologySource: vi.fn(() => ({ sourceId: 5 })) }));
 vi.mock('./archaeology/sites.js', () => ({ ARCHAEOLOGY_SITE_KIND: { name: 'archaeological sites' } }));
 vi.mock('./archaeology/runDoors.js', () => ({ ARCHAEOLOGY_SOURCE_ID: 5 }));
+// The pass's fifth member, whose rule and line are towers/*.test.ts'.
+vi.mock('./towers/kind.js', () => ({
+  TOWERS_SOURCE_ID: 7,
+  TOWERS_KIND: { name: 'towers' },
+  TOWERS_CLASSIFIER: { classify: vi.fn(), types: ['bell-tower', 'tower'], tag: 'tower' },
+}));
 vi.mock('./pinQuestion.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./pinQuestion.js')>()),
   // The run's questions about a curator's pin read and write the database (#1367).
@@ -95,6 +101,7 @@ import { gatherPlaces } from './places/gather.js';
 import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
 import { syncPlacePass } from './places/placePass.js';
+import { TOWERS_CLASSIFIER, TOWERS_KIND } from './towers/kind.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE } from './publicArt/kindRules.js';
 import type { SyncProgress, WikidataLandmark } from './types.js';
 
@@ -104,7 +111,10 @@ const mockedCollect = classifyPublicArt as unknown as ReturnType<typeof vi.fn>;
 /** Public art's share of the gather; the classification is what the tests say. */
 const SHARE = { trees: {}, pool: new Map(), facts: new Map(), containers: new Map() };
 const GATHERED = {
-  shares: new Map<unknown, unknown>([[PUBLIC_ART_KIND, SHARE], [WORSHIP_KIND, SHARE], [ARCHAEOLOGY_SITE_KIND, SHARE]]), pooled: 0,
+  shares: new Map<unknown, unknown>([
+    [PUBLIC_ART_KIND, SHARE], [WORSHIP_KIND, SHARE], [ARCHAEOLOGY_SITE_KIND, SHARE], [TOWERS_KIND, SHARE],
+  ]),
+  pooled: 0,
 };
 const mockedAdmitted = admittedExternalIds as unknown as ReturnType<typeof vi.fn>;
 const mockedWithCache = withCache as unknown as ReturnType<typeof vi.fn>;
@@ -162,6 +172,7 @@ describe('public art in the place pass', () => {
       { kind: PUBLIC_ART_KIND, admitted: new Set(['Q337179']) },
       { kind: WORSHIP_KIND, admitted: new Set(['Q337179']) },
       { kind: ARCHAEOLOGY_SITE_KIND, admitted: new Set(['Q337179']) },
+      { kind: TOWERS_KIND, admitted: new Set(['Q337179']) },
     ]);
     // Archaeology's sites, not its museums: its museum door asks after its own.
     expect(mockedAdmitted).toHaveBeenCalledWith(5, 'site');
@@ -190,15 +201,29 @@ describe('public art in the place pass', () => {
     expect(art.sourceId).toBe(3);
   });
 
-  it('runs Places of worship third and Archaeology fourth, from the one gather the two read (#1820)', async () => {
+  it('runs Places of worship third, Archaeology fourth and Towers fifth, from the one gather they read (#1820, #1854)', async () => {
     await syncPlacePass(1, {});
-    expect(mockedOrchestrate.mock.calls.map((call) => (call[0] as { sourceId: number }).sourceId)).toEqual([3, 6, 4, 5]);
+    expect(mockedOrchestrate.mock.calls.map((call) => (call[0] as { sourceId: number }).sourceId)).toEqual([3, 6, 4, 5, 7]);
 
     const { worshipSource } = await import('./worshipSyncService.js');
     const gather = vi.mocked(worshipSource).mock.calls[0][0];
     await (mockedOrchestrate.mock.calls[0][0] as SyncServiceConfig<WikidataLandmark>).fetchItems(progress(), []);
     await gather(progress());
     expect(mockedGather).toHaveBeenCalledTimes(1);
+  });
+
+  it('decides Towers by its own classifier, over what its source admits (#1854)', async () => {
+    const towers = await configOf({}, 7);
+    vi.clearAllMocks();
+    mockedAdmitted.mockResolvedValue(new Set(['Q91274']));
+    vi.mocked(TOWERS_CLASSIFIER.classify).mockResolvedValue({
+      items: [landmark({ qid: 'Q91274', label: 'Galata Tower', type: 'tower', classes: ['Q12518'] })], fetched: 1, filtered: [],
+    });
+    const fetched = await towers.fetchItems(progress(), []);
+    expect(mockedAdmitted).toHaveBeenCalledWith(7);
+    expect(vi.mocked(TOWERS_CLASSIFIER.classify).mock.calls[0][1]).toEqual(new Set(['Q91274']));
+    expect(mockedCollect).not.toHaveBeenCalled();
+    expect(fetched.items.map((i) => i.qid)).toEqual(['Q91274']);
   });
 
   it('keeps its answers by default and asks the source afresh when told to', async () => {

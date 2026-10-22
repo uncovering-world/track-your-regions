@@ -66,13 +66,14 @@ export const WITNESS_WORDS: Record<Witness, string> = {
 /** `historic` values that name something standing a visitor goes to. */
 const STANDING_HISTORIC = new Set([
   'temple', 'church', 'monument', 'city_gate', 'fountain', 'bridge', 'aqueduct', 'tomb', 'castle', 'memorial',
+  'tower',
 ]);
 /** `tourism` values that send a visitor there. */
 const VISITED_TOURISM = new Set(['attraction', 'viewpoint', 'museum']);
 /** `amenity` values that stand and are used. */
 const STANDING_AMENITY = new Set(['place_of_worship', 'fountain']);
 /** `man_made` values that stand. */
-const STANDING_MAN_MADE = new Set(['bridge', 'column', 'obelisk']);
+const STANDING_MAN_MADE = new Set(['bridge', 'column', 'obelisk', 'tower']);
 
 /** Whether one object says something stands there or that visitors are sent there. */
 function objectWitnesses(tags: Readonly<Record<string, string>>): boolean {
