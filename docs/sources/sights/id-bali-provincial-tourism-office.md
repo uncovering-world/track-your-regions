@@ -8,7 +8,7 @@ urls:
   api: none
   terms: none
 family: tourism-board
-kinds: [places-of-worship, beaches-and-swimming, towns-and-villages, natural-landmarks, palaces-and-castles, public-art, cultural-landscapes, parks-and-gardens, archaeology]
+kinds: [places-of-worship, beaches-and-swimming, towns-and-villages, natural-landmarks, palaces-and-residences, public-art, cultural-landscapes, parks-and-gardens, archaeology]
 tier: regional
 unit: { level: region, code: ID, name: Bali }
 row:

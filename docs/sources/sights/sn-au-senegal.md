@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.au-senegal.com/auteurs-et-mentions-legales,1101.html
 family: commercial
-kinds: [regional-food, neighbourhoods, history-museums, regional-drinks, places-of-worship, art-museums, natural-landmarks, beaches-and-swimming, markets, festivals-and-events, palaces-and-castles, famous-peoples-places, towns-and-villages]
+kinds: [regional-food, neighbourhoods, history-museums, regional-drinks, places-of-worship, art-museums, natural-landmarks, beaches-and-swimming, markets, festivals-and-events, famous-peoples-places, towns-and-villages]
 tier: regional
 unit: { level: country, code: SN, name: Senegal }
 row:

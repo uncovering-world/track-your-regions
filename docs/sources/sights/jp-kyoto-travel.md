@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://kyoto.travel/en/privacy-policy
 family: tourism-board
-kinds: [places-of-worship, regional-food, parks-and-gardens, festivals-and-events, neighbourhoods, palaces-and-castles, art-museums, hiking-trails-and-walks, squares-and-streets, regional-crafts, intangible-heritage, towns-and-villages, markets, seasonal-phenomena, food-experiences, natural-landmarks, zoos-and-aquariums, specialty-museums, local-customs]
+kinds: [places-of-worship, regional-food, parks-and-gardens, festivals-and-events, neighbourhoods, palaces-and-residences, art-museums, hiking-trails-and-walks, squares-and-streets, regional-crafts, intangible-heritage, towns-and-villages, markets, seasonal-phenomena, food-experiences, natural-landmarks, zoos-and-aquariums, specialty-museums, local-customs]
 tier: regional
 unit: { level: city, code: JP, name: Kyoto }
 row:

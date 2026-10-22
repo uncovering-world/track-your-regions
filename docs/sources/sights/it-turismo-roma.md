@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.turismoroma.it/it/page/copyright
 family: tourism-board
-kinds: [archaeology, notable-works, places-of-worship, regional-food, parks-and-gardens, squares-and-streets, art-museums, public-art, palaces-and-castles, towns-and-villages, neighbourhoods, festivals-and-events, world-heritage, viewpoints, local-customs, city-gates-and-walls, history-museums, regional-drinks, architecture, theme-parks, markets, bridges-and-engineering, natural-landmarks, beaches-and-swimming, on-site-activities, tombs-and-mausoleums, zoos-and-aquariums, historic-hotels-and-restaurants]
+kinds: [archaeology, notable-works, places-of-worship, regional-food, parks-and-gardens, squares-and-streets, art-museums, public-art, palaces-and-residences, towns-and-villages, neighbourhoods, festivals-and-events, world-heritage, viewpoints, local-customs, city-gates-and-walls, history-museums, regional-drinks, architecture, theme-parks, markets, bridges-and-engineering, natural-landmarks, beaches-and-swimming, on-site-activities, tombs-and-mausoleums, zoos-and-aquariums, historic-hotels-and-restaurants]
 tier: regional
 unit: { level: city, code: IT, name: Rome }
 row:

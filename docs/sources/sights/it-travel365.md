@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.travel365.it/privacy.htm
 family: commercial
-kinds: [archaeology, regional-food, places-of-worship, towns-and-villages, neighbourhoods, parks-and-gardens, notable-works, squares-and-streets, public-art, art-museums, world-heritage, viewpoints, historic-hotels-and-restaurants, local-customs, palaces-and-castles, regional-drinks, beaches-and-swimming, theme-parks, festivals-and-events]
+kinds: [archaeology, regional-food, places-of-worship, towns-and-villages, neighbourhoods, parks-and-gardens, notable-works, squares-and-streets, public-art, art-museums, world-heritage, viewpoints, historic-hotels-and-restaurants, local-customs, palaces-and-residences, castles-and-fortresses, regional-drinks, beaches-and-swimming, theme-parks, festivals-and-events]
 tier: regional
 unit: { level: country, code: IT, name: Italy }
 row:

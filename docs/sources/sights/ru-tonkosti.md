@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://tonkosti.ru/Авторские_права
 family: commercial
-kinds: [places-of-worship, parks-and-gardens, palaces-and-castles, art-museums, history-museums, squares-and-streets, architecture, famous-peoples-places, regional-food, science-and-nature-museums, towns-and-villages, festivals-and-events, world-heritage, markets, tombs-and-mausoleums, zoos-and-aquariums, specialty-museums, historic-houses, shops]
+kinds: [places-of-worship, parks-and-gardens, palaces-and-residences, castles-and-fortresses, art-museums, history-museums, squares-and-streets, architecture, famous-peoples-places, regional-food, science-and-nature-museums, towns-and-villages, festivals-and-events, world-heritage, markets, tombs-and-mausoleums, zoos-and-aquariums, specialty-museums, historic-houses, shops]
 tier: regional
 unit: { level: any }
 row:

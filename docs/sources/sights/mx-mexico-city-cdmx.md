@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://mexicocity.cdmx.gob.mx/terms-of-use/
 family: tourism-board
-kinds: [squares-and-streets, historic-hotels-and-restaurants, art-museums, neighbourhoods, archaeology, notable-works, parks-and-gardens, festivals-and-events, markets, places-of-worship, architecture, regional-food, entertainment-venues, history-museums, public-art, sports-venues, world-heritage, specialty-museums, famous-peoples-places, palaces-and-castles, science-and-nature-museums, tours-and-cruises, regional-drinks, historic-houses, theme-parks]
+kinds: [squares-and-streets, historic-hotels-and-restaurants, art-museums, neighbourhoods, archaeology, notable-works, parks-and-gardens, festivals-and-events, markets, places-of-worship, architecture, regional-food, entertainment-venues, history-museums, public-art, sports-venues, world-heritage, specialty-museums, famous-peoples-places, palaces-and-residences, science-and-nature-museums, tours-and-cruises, regional-drinks, historic-houses, theme-parks]
 tier: regional
 unit: { level: city, code: MX, name: "Mexico City" }
 row:
