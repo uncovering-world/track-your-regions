@@ -179,7 +179,8 @@ and the build says so.
 `dumps.wikimedia.org` caps a client at three connections, rate-limits, and
 enforces the Wikimedia User-Agent policy; it publishes no `robots.txt`.
 `fetch.ts` holds at most `HOST_CONNECTIONS` (3) open per host from this
-process, sends the bot `userAgent()` with the purpose `public dump builds` on
+process (eight to `planet.openstreetmap.org`, whose S3 bucket the OSM wiki
+calls unlimited, `CONNECTIONS_OF`), sends the bot `userAgent()` with the purpose `public dump builds` on
 every request, follows redirects, and never retries: a failed request fails
 the build, and an admin starts it again. A read opens one connection and a
 download into the local copy up to three. The worker runs one build at a
@@ -871,6 +872,21 @@ machine's checkout therefore sees a self-queued update coming at least 30
 minutes ahead, with `SELECT id, request FROM dump_builds WHERE status IN
 ('queued', 'running')`, and can cancel it from the panel. A pull in the middle
 of a build stops the worker's passes.
+
+**What the build spends its time on**, and how it is kept short. The first build (2026-10-22)
+took about 78 minutes to download and verify the planet, 21.5 to apply three daily diffs, 10.8
+and 6 to cut the selection and the named objects, and then loaded a cut of 612 million nodes,
+26.6 million ways and 1.4 million relations. Since then:
+- the current planet and the two cuts osmium reads again are written as PBF compressed with lz4
+  (`OSMIUM_OUTPUT`), which writes and reads several times faster than zlib, while the cut
+  osm2pgsql loads is written uncompressed (`OSM2PGSQL_INPUT`): the Debian build of osm2pgsql
+  2.1.1 refuses lz4;
+- the two cuts read the planet side by side (`cutLayer`);
+- the flex style leaves the table unclustered (`cluster = 'no'`), since nothing reads the layer
+  by nearness, and clustering copies the whole loaded table into a sorted one;
+- the indexes are built side by side after the key (`indexNextTable`);
+- the planet's host is held to eight connections rather than three (`CONNECTIONS_OF` in
+  `fetch.ts`), which matters for a first build and for one started again from a weekly copy.
 
 The cut's files live in a directory of their own beside the planet,
 `osm-layer-cut`. A build empties it when it starts, before the planet is
