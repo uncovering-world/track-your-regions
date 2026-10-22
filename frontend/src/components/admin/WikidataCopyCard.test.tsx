@@ -29,6 +29,7 @@ const dump = (keeps: Partial<Keeps>, progress: DumpsDumpsItem['progress'] = null
     rederives: true,
     samples: true,
     fromCopy: true,
+    schedule: null,
     currentTo: false,
     ...keeps,
   },

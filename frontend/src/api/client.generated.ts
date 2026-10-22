@@ -3927,6 +3927,26 @@ export interface DumpBuildStarted {
   progress: DumpBuildProgress;
 }
 
+/**
+ * How often the dump worker queues an update of what is kept by itself (ADR-0134 decision 6). A self-queued update waits 30 minutes as a queued build before the worker takes it.
+ */
+export interface DumpSchedule {
+  /** The interval in days, 1 to 30, or null where the schedule is off and updates are started by hand. */
+  everyDays: number | null;
+  /** Whether an admin chose the interval; otherwise it is the default. */
+  chosen: boolean;
+  /**
+     * The interval in force where no admin chose one.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  defaultEveryDays: number;
+}
+
+export interface DumpScheduleBody {
+  everyDays: number | null;
+}
+
 export type DumpsDumpsItemKey = typeof DumpsDumpsItemKey[keyof typeof DumpsDumpsItemKey];
 
 
@@ -4011,6 +4031,8 @@ export type DumpsDumpsItemKeeps = {
   samples: boolean;
   /** Whether a keeping build may start from the local copy rather than the newest file, which decides whether "Build <date> copy" is offered. */
   fromCopy: boolean;
+  /** How often the dump worker brings what is kept forward by itself, where the keeper does so (the OpenStreetMap layer); null otherwise. */
+  schedule: DumpSchedule | null;
   /** Whether what is kept is brought forward past its dump (the OpenStreetMap layer, by the planet's daily diffs), so `built.dumpDate` is the day it is current to rather than the date of a dump. */
   currentTo: boolean;
 } | null;
@@ -15695,6 +15717,46 @@ export const postAdminDumpsByDumpTrial = async (dump: 'wikidata-entities' | 'wik
     method: 'POST'
 
 
+  }
+);}
+
+
+
+export const getPutAdminDumpsByDumpScheduleUrl = (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects' | 'wikivoyage-usage' | 'osm-planet',) => {
+
+
+
+
+  return `/api/admin/dumps/${encodeURIComponent(String(dump))}/schedule`
+}
+
+/**
+ * Requires an admin.
+ * @summary Set how often the dump worker brings what is kept from a dump forward by itself (the OpenStreetMap layer): 1 to 30 days, or off
+ */
+export const putAdminDumpsByDumpSchedule = async (dump: 'wikidata-entities' | 'wikidata-lexemes' | 'enwiki-page' | 'enwiki-page-props' | 'enwiki-linktarget' | 'enwiki-categorylinks' | 'enwiki-langlinks' | 'pageviews-user' | 'wikipedia-redirects' | 'wikivoyage-usage' | 'osm-planet',
+    dumpScheduleBody: DumpScheduleBody, options?: Parameters<typeof apiFetch>[1]): Promise<DumpSchedule> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<DumpSchedule>(getPutAdminDumpsByDumpScheduleUrl(dump),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(dumpScheduleBody)
   }
 );}
 
