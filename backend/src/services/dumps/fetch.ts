@@ -1,7 +1,8 @@
 /**
  * The pipeline's door to a dump host (ADR-0101 decision 4), within the host's
  * rules: `dumps.wikimedia.org` rate-limits, caps a client at 3 connections and
- * enforces the Wikimedia User-Agent policy. Every request carries the project's
+ * enforces the Wikimedia User-Agent policy; `planet.openstreetmap.org` asks for
+ * HTTPS and keeps agents off its listings (ADR-0134). Every request carries the project's
  * bot `userAgent()`, and at most `HOST_CONNECTIONS` are open to one host from
  * this process at a time; a read opens one, and a download into the local copy
  * up to all of them (`rangedDownload.ts`). Nothing retries in a loop:
@@ -14,6 +15,7 @@ import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { userAgent } from '../../config/userAgent.js';
+import { NotOnHost } from './catalog.js';
 import { downloadRanges } from './rangedDownload.js';
 
 const HOST_CONNECTIONS = 3;
@@ -70,6 +72,7 @@ async function request(url: string, init: RequestInit = {}): Promise<{ response:
 export async function fetchText(url: string, signal?: AbortSignal): Promise<string> {
   const { response, release } = await request(url, { signal });
   try {
+    if (response.status === 404) throw new NotOnHost(`${url} answered 404`);
     if (!response.ok) throw new Error(`${url} answered ${response.status}`);
     return await response.text();
   } finally {

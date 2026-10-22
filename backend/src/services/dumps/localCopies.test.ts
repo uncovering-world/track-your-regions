@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { copyOf, newestLocalCopy, olderCopies } from './localCopies.js';
+import { copyIsoDay, copyOf, newestLocalCopy, olderCopies } from './localCopies.js';
 
 /** The local copies of a dump told apart by their date (#1456), on the names the catalog gives. */
 
@@ -28,6 +28,8 @@ describe('the local copies of one dump (#1456)', () => {
     expect(copyOf('wikidata-20261005-all.json.gz.scope')).toEqual({ dump: 'wikidata-*-all.json.gz', date: '20261005' });
     expect(copyOf('wikidata-20261005-all.json.gz.scope.tmp')).toEqual({ dump: 'wikidata-*-all.json.gz', date: '20261005' });
     expect(copyOf('pageviews-202609-user.bz2')).toEqual({ dump: 'pageviews-*-user.bz2', date: '202609' });
+    expect(copyOf('planet-261012.osm.pbf')).toEqual({ dump: 'planet-*.osm.pbf', date: '261012' });
+    expect(copyOf('planet-261012.osm.pbf.part')).toEqual({ dump: 'planet-*.osm.pbf', date: '261012' });
     expect(copyOf('notes.txt')).toBeNull();
   });
 
@@ -40,10 +42,16 @@ describe('the local copies of one dump (#1456)', () => {
   });
 
   it('finds the newest whole-named copy of a dump, and none of a dump with only a part', async () => {
-    expect(await newestLocalCopy(dir, name => /^wikidata-\d{8}-all\.json\.gz$/.test(name))).toEqual({ fileName: 'wikidata-20261005-all.json.gz', date: '20261005', bytes: 0 });
-    expect(await newestLocalCopy(dir, name => /^enwiki-\d{8}-page\.sql\.gz$/.test(name))).toMatchObject({ fileName: 'enwiki-20261001-page.sql.gz' });
-    expect(await newestLocalCopy(dir, name => /^wikidata-\d{8}-lexemes\.json\.gz$/.test(name))).toMatchObject({ date: '20261005' });
-    expect(await newestLocalCopy(dir, name => /^enwiki-\d{8}-langlinks\.sql\.gz$/.test(name))).toBeNull();
+    expect(await newestLocalCopy(dir, name => /^wikidata-\d{8}-all\.json\.gz$/.test(name), 'day')).toEqual({ fileName: 'wikidata-20261005-all.json.gz', date: '2026-10-05', bytes: 0 });
+    expect(await newestLocalCopy(dir, name => /^enwiki-\d{8}-page\.sql\.gz$/.test(name), 'day')).toMatchObject({ fileName: 'enwiki-20261001-page.sql.gz' });
+    expect(await newestLocalCopy(dir, name => /^wikidata-\d{8}-lexemes\.json\.gz$/.test(name), 'day')).toMatchObject({ date: '2026-10-05' });
+    expect(await newestLocalCopy(dir, name => /^enwiki-\d{8}-langlinks\.sql\.gz$/.test(name), 'day')).toBeNull();
+  });
+
+  it("answers a copy's date as an ISO day, telling the planet's day from a month of counts by how the dump is dated", () => {
+    expect(copyIsoDay('20261005', 'day')).toBe('2026-10-05');
+    expect(copyIsoDay('202609', 'month')).toBe('2026-09-01');
+    expect(copyIsoDay('261012', 'day')).toBe('2026-10-12');
   });
 
   it('names none for the newest copy', async () => {

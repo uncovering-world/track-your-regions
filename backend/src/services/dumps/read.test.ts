@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { gzipSync } from 'node:zlib';
 import type { DumpFile } from './catalog.js';
 import { openStream } from './fetch.js';
-import { countLines, readDump, type DumpConsumer } from './read.js';
+import { countLines, holdVerifiedCopy, readDump, type DumpConsumer } from './read.js';
 import { ScopeReader } from './wikidata/scopeReader.js';
 
 /**
@@ -24,6 +24,10 @@ const GZ = gzipSync(Buffer.from(TEXT));
 const BZ2 = execFileSync('/usr/bin/bzip2', ['-c'], { input: Buffer.from(TEXT) });
 // eslint-disable-next-line sonarjs/hashing -- the host publishes sha1 sums; this checks integrity, not security
 const sha1 = (bytes: Buffer) => createHash('sha1').update(bytes).digest('hex');
+// eslint-disable-next-line sonarjs/hashing -- the planet's host publishes md5 sums; this checks integrity, not security
+const md5 = (bytes: Buffer) => createHash('md5').update(bytes).digest('hex');
+/** A binary file a tool reads whole, with no line in it: the planet's PBF, in miniature. */
+const PBF = Buffer.from(Array.from({ length: 5000 }, (_, i) => (i * 7) % 256));
 
 const files = new Map<string, Buffer>([
   ['/whole.json.gz', GZ],
@@ -31,6 +35,7 @@ const files = new Map<string, Buffer>([
   ['/whole.bz2', BZ2],
   ['/cut.bz2', BZ2.subarray(0, Math.floor(BZ2.length / 2))],
   ['/unsized.json.gz', GZ],
+  ['/planet-261012.osm.pbf', PBF],
 ]);
 /** Files whose size the host does not answer, as a HEAD with no Content-Length. */
 const unsized = new Set(['/unsized.json.gz']);
@@ -309,6 +314,59 @@ describe('reading a dump through the pipeline', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+});
+
+describe('holding a binary file a tool reads whole (ADR-0134)', () => {
+  const planet = (over: Partial<DumpFile> = {}) => file('/planet-261012.osm.pbf', {
+    key: 'osm-planet', checksum: { kind: 'md5', value: md5(PBF) }, expectedBytes: PBF.length, compression: 'none', ...over,
+  });
+
+  it('downloads the local copy, verifies its md5 from disk and answers its path', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dumps-'));
+    try {
+      writeFileSync(join(dir, 'planet-261012.osm.pbf'), PBF.subarray(0, 1000));
+      const held = await holdVerifiedCopy(planet(), { signal: signal(), dumpsDir: dir });
+      expect(held).toEqual({ bytes: PBF.length, lines: 0, checksumActual: md5(PBF), path: join(dir, 'planet-261012.osm.pbf') });
+      expect(readFileSync(held.path).equals(PBF)).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('removes the older planet once the newer one is verified', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dumps-'));
+    try {
+      writeFileSync(join(dir, 'planet-261005.osm.pbf'), 'older');
+      const notes: string[] = [];
+      await holdVerifiedCopy(planet(), { signal: signal(), dumpsDir: dir, onNote: note => notes.push(note) });
+      expect(existsSync(join(dir, 'planet-261005.osm.pbf'))).toBe(false);
+      expect(notes).toEqual(['removed the older planet-261005.osm.pbf']);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('deletes a copy whose md5 is not the published one, so the next build downloads it again', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'dumps-'));
+    try {
+      await expect(holdVerifiedCopy(planet({ checksum: { kind: 'md5', value: 'f'.repeat(32) } }), { signal: signal(), dumpsDir: dir }))
+        .rejects.toThrow(/md5 .* is not the published f{32}; the local copy was deleted/);
+      expect(existsSync(join(dir, 'planet-261012.osm.pbf'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('needs a local copy, since a tool cannot read the host\'s stream', async () => {
+    await expect(holdVerifiedCopy(planet(), { signal: signal() })).rejects.toThrow(/needs a local copy \(DUMPS_DIR is not set\)/);
+  });
+
+  it('is never read by lines, and a text dump is never held whole', async () => {
+    const consumer = recording();
+    await expect(readDump(planet(), consumer, { signal: signal() })).rejects.toThrow(/read whole by a tool, not by lines/);
+    expect(consumer.outcome).not.toBe('committed');
+    await expect(holdVerifiedCopy(file('/whole.json.gz'), { signal: signal() })).rejects.toThrow(/read by lines, through readDump/);
   });
 });
 

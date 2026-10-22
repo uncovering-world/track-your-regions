@@ -50,7 +50,7 @@ export function dumpsDir(): string | undefined {
 /** The file name of the dump's newest local copy; refuses where there is none. */
 async function localCopyName(descriptor: DumpDescriptor): Promise<string> {
   const dir = dumpsDir();
-  const copy = dir ? await newestLocalCopy(dir, descriptor.isFileName) : null;
+  const copy = dir ? await newestLocalCopy(dir, descriptor.isFileName, descriptor.datedBy) : null;
   if (!copy) throw new Error(`There is no local copy of ${descriptor.key} to build from`);
   return copy.fileName;
 }

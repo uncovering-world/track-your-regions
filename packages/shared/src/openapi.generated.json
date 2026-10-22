@@ -5022,7 +5022,8 @@
                 "enwiki-langlinks",
                 "pageviews-user",
                 "wikipedia-redirects",
-                "wikivoyage-usage"
+                "wikivoyage-usage",
+                "osm-planet"
               ]
             },
             "required": true
@@ -5092,7 +5093,8 @@
                 "enwiki-langlinks",
                 "pageviews-user",
                 "wikipedia-redirects",
-                "wikivoyage-usage"
+                "wikivoyage-usage",
+                "osm-planet"
               ]
             },
             "required": true
@@ -5162,7 +5164,8 @@
                 "enwiki-langlinks",
                 "pageviews-user",
                 "wikipedia-redirects",
-                "wikivoyage-usage"
+                "wikivoyage-usage",
+                "osm-planet"
               ]
             },
             "required": true
@@ -5222,7 +5225,8 @@
                 "enwiki-langlinks",
                 "pageviews-user",
                 "wikipedia-redirects",
-                "wikivoyage-usage"
+                "wikivoyage-usage",
+                "osm-planet"
               ]
             },
             "required": true
@@ -5282,7 +5286,8 @@
                 "enwiki-langlinks",
                 "pageviews-user",
                 "wikipedia-redirects",
-                "wikivoyage-usage"
+                "wikivoyage-usage",
+                "osm-planet"
               ]
             },
             "required": true
@@ -5342,7 +5347,8 @@
                 "enwiki-langlinks",
                 "pageviews-user",
                 "wikipedia-redirects",
-                "wikivoyage-usage"
+                "wikivoyage-usage",
+                "osm-planet"
               ]
             },
             "required": true
@@ -21329,7 +21335,8 @@
               "enwiki-langlinks",
               "pageviews-user",
               "wikipedia-redirects",
-              "wikivoyage-usage"
+              "wikivoyage-usage",
+              "osm-planet"
             ]
           },
           "kind": {
@@ -21526,7 +21533,8 @@
                     "enwiki-langlinks",
                     "pageviews-user",
                     "wikipedia-redirects",
-                    "wikivoyage-usage"
+                    "wikivoyage-usage",
+                    "osm-planet"
                   ]
                 },
                 "source": {
@@ -21664,7 +21672,7 @@
                         },
                         "date": {
                           "type": "string",
-                          "description": "The date in the file name: YYYYMMDD, or YYYYMM for a month of counts."
+                          "description": "The date in the file name as an ISO day (YYYY-MM-DD): the dump's day, or the first of the month its counts cover."
                         },
                         "bytes": {
                           "type": "integer",

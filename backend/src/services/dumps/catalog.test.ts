@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { datedDirectories, dumpNamed, sha1Of, wikipediaTableFile, wikiRunFile, type TextReader } from './catalog.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { datedDirectories, dumpNamed, md5Of, NotOnHost, sha1Of, wikipediaTableFile, wikiRunFile, type TextReader } from './catalog.js';
 
 /**
  * Finding the newest complete file of each dump (ADR-0101): a dated directory
@@ -95,6 +95,63 @@ describe('the dump catalog', () => {
     });
   });
 
+  describe("OpenStreetMap's planet (ADR-0134)", () => {
+    const base = 'https://planet.openstreetmap.org/pbf';
+    const MD5 = 'c51bb08eb9fc486d010aaa1a3424cabc';
+    afterEach(() => vi.useRealTimers());
+
+    it("reads a file's md5 from its .md5, and nothing for a file it does not name", () => {
+      expect(md5Of(`${MD5}  planet-261012.osm.pbf\n`, 'planet-261012.osm.pbf')).toBe(MD5);
+      expect(md5Of(`${MD5}  planet-latest.osm.pbf\n`, 'planet-261012.osm.pbf')).toBeNull();
+      expect(md5Of('', 'planet-261012.osm.pbf')).toBeNull();
+    });
+
+    it("takes the most recent Monday's planet whose md5 is published, without reading a listing", async () => {
+      // Thursday 2026-10-22: the planet of Monday the 19th is not out yet.
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-22T08:00:00Z'));
+      const asked: string[] = [];
+      const read: TextReader = async (url) => {
+        asked.push(url);
+        if (url === `${base}/planet-261012.osm.pbf.md5`) return `${MD5}  planet-261012.osm.pbf\n`;
+        throw new NotOnHost(`${url} answered 404`);
+      };
+      const size = async () => 95380942829;
+      expect(await dumpNamed('osm-planet')!.resolve(read, size)).toEqual({
+        key: 'osm-planet', fileName: 'planet-261012.osm.pbf', url: `${base}/planet-261012.osm.pbf`, date: '2026-10-12',
+        checksum: { kind: 'md5', value: MD5 }, expectedBytes: 95380942829, compression: 'none',
+      });
+      expect(asked).toEqual([`${base}/planet-261019.osm.pbf.md5`, `${base}/planet-261012.osm.pbf.md5`]);
+    });
+
+    it('fails on a host that is down or limiting rather than take an older planet', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-22T08:00:00Z'));
+      const read: TextReader = async (url) => {
+        if (url.endsWith('planet-261019.osm.pbf.md5')) throw new Error(`${url} answered 429`);
+        return `${MD5}  planet-261012.osm.pbf\n`;
+      };
+      await expect(dumpNamed('osm-planet')!.resolve(read, async () => null)).rejects.toThrow('answered 429');
+      const garbled: TextReader = async () => '<html>maintenance</html>';
+      await expect(dumpNamed('osm-planet')!.resolve(garbled, async () => null)).rejects.toThrow('gives no md5 for planet-261019.osm.pbf');
+    });
+
+    it('resolves a local copy by its own name, and answers none past the weeks it looks back', async () => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date('2026-10-19T00:30:00Z'));
+      const read: TextReader = async (url) => {
+        const name = /planet-(\d{6})\.osm\.pbf\.md5$/.exec(url)?.[1];
+        return `${MD5}  planet-${name}.osm.pbf\n`;
+      };
+      const planet = dumpNamed('osm-planet')!;
+      expect(await planet.resolve(read, async () => null, name => name === 'planet-261005.osm.pbf'))
+        .toMatchObject({ fileName: 'planet-261005.osm.pbf', date: '2026-10-05', expectedBytes: null });
+      // Six weeks before Monday 2026-10-19 is 2026-09-07, the last Monday it looks at.
+      expect(await planet.resolve(read, async () => null, name => name === 'planet-260907.osm.pbf')).toMatchObject({ date: '2026-09-07' });
+      expect(await planet.resolve(read, async () => null, name => name === 'planet-260831.osm.pbf')).toBeNull();
+    });
+  });
+
   it('tells a dump\'s own dated files from anything else in the dumps directory (#1456)', () => {
     const entities = dumpNamed('wikidata-entities')!;
     expect(entities.isFileName('wikidata-20261005-all.json.gz')).toBe(true);
@@ -104,5 +161,8 @@ describe('the dump catalog', () => {
     expect(dumpNamed('enwiki-page')!.isFileName('enwiki-20261001-page.sql.gz')).toBe(true);
     expect(dumpNamed('enwiki-page')!.isFileName('enwiki-20261001-page_props.sql.gz')).toBe(false);
     expect(dumpNamed('pageviews-user')!.isFileName('pageviews-202609-user.bz2')).toBe(true);
+    expect(dumpNamed('osm-planet')!.isFileName('planet-261012.osm.pbf')).toBe(true);
+    expect(dumpNamed('osm-planet')!.isFileName('planet-latest.osm.pbf')).toBe(false);
+    expect(dumpNamed('osm-planet')!.isFileName('planet-261012.osm.pbf.md5')).toBe(false);
   });
 });

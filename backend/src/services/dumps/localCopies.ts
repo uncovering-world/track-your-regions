@@ -2,7 +2,7 @@
  * The local copies of a dump in `DUMPS_DIR`, told apart by their date
  * (#1456). Every file the catalog names carries its date as the second part
  * of its name — `wikidata-20261005-all.json.gz`, `enwiki-20261001-page.sql.gz`,
- * `pageviews-202609-user.bz2` — and `copyOf` reads a name's dump and date,
+ * `pageviews-202609-user.bz2`, `planet-261012.osm.pbf` — and `copyOf` reads a name's dump and date,
  * with its leftovers: a ranged download's `.part` and its state, and a subset
  * build's terms spool and first-pass result (`.scope`).
  *
@@ -19,7 +19,7 @@ import { readdir, rm, stat, statfs } from 'node:fs/promises';
 import { join } from 'node:path';
 
 const LEFTOVER = /(?:\.part(?:\.json(?:\.tmp)?)?|\.terms\.gz|\.scope(?:\.tmp)?)$/;
-const DATED = /^([a-z]+)-(\d{6}|\d{8})-(.+)$/;
+const DATED = /^([a-z]+)-(\d{6}|\d{8})([-.].+)$/;
 
 export interface Copy {
   /** The name with its date taken out: what every copy of the dump shares. */
@@ -29,7 +29,7 @@ export interface Copy {
 
 export function copyOf(name: string): Copy | null {
   const match = DATED.exec(baseName(name));
-  return match ? { dump: `${match[1]}-*-${match[3]}`, date: match[2] } : null;
+  return match ? { dump: `${match[1]}-*${match[3]}`, date: match[2] } : null;
 }
 
 /**
@@ -92,9 +92,20 @@ export function sameDisk(a: Disk, b: Disk): boolean {
 
 export interface LocalCopy {
   fileName: string;
-  /** The copy's date as its name gives it: `YYYYMMDD`, or `YYYYMM` for a month's counts. */
+  /** The copy's date as an ISO day: its dump's day, or the first of the month its counts cover. */
   date: string;
   bytes: number;
+}
+
+/**
+ * A name's date as an ISO day. Six digits are a month (`202609`) for a dump
+ * dated by month and a day with a two-digit year (`261012`, the planet's) for
+ * one dated by day, which the name alone cannot tell apart.
+ */
+export function copyIsoDay(date: string, datedBy: 'day' | 'month'): string {
+  if (date.length === 8) return `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}`;
+  if (datedBy === 'month') return `${date.slice(0, 4)}-${date.slice(4, 6)}-01`;
+  return `20${date.slice(0, 2)}-${date.slice(2, 4)}-${date.slice(4, 6)}`;
 }
 
 /**
@@ -103,10 +114,12 @@ export interface LocalCopy {
  * a copy written in order before #1455 may still be short, and a build from
  * it brings it to full size first.
  */
-export async function newestLocalCopy(dir: string, isFileName: (name: string) => boolean): Promise<LocalCopy | null> {
+export async function newestLocalCopy(
+  dir: string, isFileName: (name: string) => boolean, datedBy: 'day' | 'month',
+): Promise<LocalCopy | null> {
   const names = (await readdir(dir).catch(() => [] as string[])).filter(isFileName);
   const newest = names.map(name => ({ name, date: copyOf(name)?.date ?? '' })).sort((a, b) => b.date.localeCompare(a.date))[0];
   if (!newest) return null;
   const bytes = await stat(join(dir, newest.name)).then(s => s.size).catch(() => null);
-  return bytes === null ? null : { fileName: newest.name, date: newest.date, bytes };
+  return bytes === null ? null : { fileName: newest.name, date: copyIsoDay(newest.date, datedBy), bytes };
 }

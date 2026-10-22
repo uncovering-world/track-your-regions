@@ -11,14 +11,21 @@
  * `sha1sums.txt`, a Wikipedia run's `dumpstatus.json`); the monthly pageview
  * files have none, so their size and a clean end of the compressed stream are
  * what verifies them (`read.ts`).
+ *
+ * OpenStreetMap's planet is the one dump on another host (ADR-0134). Its
+ * server's `robots.txt` keeps every agent but `wget` off its listings, so the
+ * planet is found without one: its weekly files are named by the Monday they
+ * start (`planet-261012.osm.pbf`), and the newest is the most recent Monday
+ * whose `.md5` the host serves.
  */
 
 export const WIKIMEDIA_DUMPS = 'https://dumps.wikimedia.org';
+export const OSM_PLANET = 'https://planet.openstreetmap.org';
 
 /** Every dump the catalog knows, by key: what a route accepts and a build is named by. */
 export const DUMP_KEYS = [
   'wikidata-entities', 'wikidata-lexemes', 'enwiki-page', 'enwiki-page-props', 'enwiki-linktarget', 'enwiki-categorylinks',
-  'enwiki-langlinks', 'pageviews-user', 'wikipedia-redirects', 'wikivoyage-usage',
+  'enwiki-langlinks', 'pageviews-user', 'wikipedia-redirects', 'wikivoyage-usage', 'osm-planet',
 ] as const;
 export type DumpKey = typeof DUMP_KEYS[number];
 
@@ -29,12 +36,24 @@ export interface DumpFile {
   url: string;
   /** The dump's own date, `YYYY-MM-DD`. */
   date: string;
-  checksum: { kind: 'sha1'; value: string } | null;
+  checksum: { kind: 'sha1' | 'md5'; value: string } | null;
   expectedBytes: number | null;
-  compression: 'gzip' | 'bzip2';
+  /**
+   * How the file's text is decoded to lines, or `none` for a binary file a
+   * tool reads whole (the planet's PBF): that one is kept as a verified local
+   * copy and never read by lines (`holdVerifiedCopy` in `read.ts`).
+   */
+  compression: 'gzip' | 'bzip2' | 'none';
 }
 
-/** Reads a host's page as text: `fetchText` in `fetch.ts`, a fake in the specs. */
+/**
+ * The host has no such file: it answered 404. A resolver passes over a file
+ * the host does not have yet, and fails on any other error, since a host
+ * that is down or limiting is no answer about which file is newest.
+ */
+export class NotOnHost extends Error {}
+
+/** Reads a host's page as text: `fetchText` in `fetch.ts`, a fake in the specs. It throws `NotOnHost` on a 404. */
 export type TextReader = (url: string) => Promise<string>;
 /** The size a host answers for a file (`Content-Length`), or null. */
 export type SizeReader = (url: string) => Promise<number | null>;
@@ -90,6 +109,12 @@ export function sha1Of(sums: string, fileName: string): string | null {
     if (name === fileName && /^[0-9a-f]{40}$/.test(hash ?? '')) return hash;
   }
   return null;
+}
+
+/** The md5 a `.md5` file gives for `fileName` (`<hash>  <name>`), or null where it names another file. */
+export function md5Of(text: string, fileName: string): string | null {
+  const [hash, name] = text.trim().split(/\s+/);
+  return name === fileName && /^[0-9a-f]{32}$/.test(hash ?? '') ? hash : null;
 }
 
 /** How many dated directories back a resolver looks before it says there is none. */
@@ -224,6 +249,49 @@ const pageviews: DumpDescriptor = {
   },
 };
 
+/** How many weeks before this one the planet's resolver looks: the host keeps its weekly files far longer. */
+const PLANET_WEEKS_BACK = 6;
+
+/** `YYMMDD` of the Monday on or before `day`, `weeksBack` weeks earlier, in UTC. */
+function mondayCode(day: Date, weeksBack: number): string {
+  const monday = new Date(Date.UTC(day.getUTCFullYear(), day.getUTCMonth(), day.getUTCDate()));
+  monday.setUTCDate(monday.getUTCDate() - ((monday.getUTCDay() + 6) % 7) - 7 * weeksBack);
+  return monday.toISOString().slice(2, 10).replaceAll('-', '');
+}
+
+const planet: DumpDescriptor = {
+  key: 'osm-planet',
+  source: 'OpenStreetMap',
+  title: 'Planet',
+  datedBy: 'day',
+  about: 'The whole OpenStreetMap database as one PBF file, released weekly and verified by its md5. It is kept as a local '
+    + 'copy, which the OpenStreetMap layer is cut from (ADR-0134); it is never read by lines.',
+  isFileName: datedName('planet-', 6, '.osm.pbf'),
+  async resolve(read, size, only) {
+    const base = `${OSM_PLANET}/pbf`;
+    for (let weeks = 0; weeks <= PLANET_WEEKS_BACK; weeks += 1) {
+      const code = mondayCode(new Date(), weeks);
+      const fileName = safeFileName(`planet-${code}.osm.pbf`);
+      if (only && !only(fileName)) continue;
+      // A week whose file is not out yet answers 404 for its checksum. Any
+      // other failure ends the resolve: passing over it could pick an older
+      // planet, a download of some 95 GB for nothing.
+      const text = await read(`${base}/${fileName}.md5`).catch((error: unknown) => {
+        if (error instanceof NotOnHost) return null;
+        throw error;
+      });
+      if (text === null) continue;
+      // A checksum the host serves but that names no md5 for this file is no
+      // answer either: an older planet is not taken in its place.
+      const md5 = md5Of(text, fileName);
+      if (!md5) throw new Error(`${base}/${fileName}.md5 gives no md5 for ${fileName}`);
+      const url = `${base}/${fileName}`;
+      return { key: 'osm-planet', fileName, url, date: isoDate(`20${code}`), checksum: { kind: 'md5', value: md5 }, expectedBytes: await size(url), compression: 'none' };
+    }
+    return null;
+  },
+};
+
 export const DUMPS: readonly DumpDescriptor[] = [
   wikidataJson('wikidata-entities', 'all', 'All entities',
     'One entity per line, every statement at every rank: the source of the local Wikidata subset (#1434).'),
@@ -239,6 +307,7 @@ export const DUMPS: readonly DumpDescriptor[] = [
     'Wikipedia editions'),
   pageviews,
   wikivoyageUsage,
+  planet,
 ];
 
 export function dumpNamed(key: string): DumpDescriptor | undefined {

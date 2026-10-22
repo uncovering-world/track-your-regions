@@ -14,6 +14,10 @@
  * first, resuming a cut download, and read from disk; otherwise the file is
  * read straight from the host. A local copy that is not the host's file is
  * deleted, since a copy at full size is never downloaded again.
+ *
+ * A binary file that a tool reads whole (the planet's PBF, ADR-0134) is never
+ * read by lines: `holdVerifiedCopy` brings its local copy to full size and
+ * verifies it from disk, and the build hands the tool the path.
  */
 
 import { spawn } from 'node:child_process';
@@ -98,7 +102,7 @@ interface Decompressor {
   stop(): void;
 }
 
-function decompressor(kind: DumpFile['compression']): Decompressor {
+function decompressor(kind: Exclude<DumpFile['compression'], 'none'>): Decompressor {
   if (kind === 'gzip') {
     // In megabyte pieces: at zlib's default 16 KB the image's Node 22 decoded
     // the entities dump at 207 MB/s, at 1 MB at 392 MB/s, and the decoder is
@@ -167,7 +171,7 @@ function verify(file: DumpFile, bytes: number, checksumActual: string | null): v
 }
 
 export async function readDump(file: DumpFile, consumer: DumpConsumer, options: ReadOptions): Promise<ReadResult> {
-  const { signal } = options;
+  if (file.compression === 'none') throw new Error(`${file.fileName} is read whole by a tool, not by lines: hold a verified copy of it`);
   const path = localPath(file, options);
   let downloaded = 0;
   let source: Readable | undefined;
@@ -176,19 +180,67 @@ export async function readDump(file: DumpFile, consumer: DumpConsumer, options: 
       downloaded += n;
       options.onProgress?.({ downloaded, read: 0, lines: 0 });
     });
-    const result = await readSource(file, source, consumer, options, () => downloaded);
+    const result = await readSource(file, file.compression, source, consumer, options, () => downloaded);
     if (options.dumpsDir && !options.held) await retireOlderCopies(file, options.dumpsDir, options);
     return result;
   } catch (error) {
     source?.destroy();
     await consumer.abort();
-    if (path && isDamage(error) && !signal.aborted) {
-      await rm(path, { force: true });
-      const next = options.held ? 'cut it again to read it' : 'the next build downloads it again';
-      throw new Error(`${(error as Error).message}; the local copy was deleted, and ${next}`, { cause: error });
-    }
-    throw error;
+    throw await withDamagedCopyDeleted(error, path, options);
   }
+}
+
+/** How many chunks of a copy are hashed between two progress reports and cancel checks. */
+const HASH_REPORT_EVERY = 256;
+
+/**
+ * A binary file a tool reads whole (`compression: 'none'`): its local copy
+ * brought to full size, then read from disk through the checksum and verified
+ * against the host's checksum and size, as `readDump` verifies a stream.
+ * Answers the copy's path. A copy that is not the host's file is deleted.
+ */
+export async function holdVerifiedCopy(file: DumpFile, options: ReadOptions): Promise<ReadResult & { path: string }> {
+  const { signal } = options;
+  if (file.compression !== 'none') throw new Error(`${file.fileName} is read by lines, through readDump`);
+  const path = localPath(file, options);
+  if (!path) throw new Error(`${file.fileName} is read whole by a tool, so it needs a local copy (DUMPS_DIR is not set)`);
+  let downloaded = 0;
+  try {
+    if (!options.held) {
+      await makeRoom(file, options.dumpsDir!, path, options);
+      await downloadTo(file.url, path, signal, n => {
+        downloaded += n;
+        options.onProgress?.({ downloaded, read: 0, lines: 0 });
+      });
+    }
+    const hash = file.checksum ? createHash(file.checksum.kind) : null;
+    let bytes = 0;
+    let chunks = 0;
+    for await (const chunk of createReadStream(path, { signal })) {
+      hash?.update(chunk as Buffer);
+      bytes += (chunk as Buffer).length;
+      chunks += 1;
+      if (chunks % HASH_REPORT_EVERY === 0) options.onProgress?.({ downloaded, read: bytes, lines: 0 });
+    }
+    const checksumActual = hash ? hash.digest('hex') : null;
+    verify(file, bytes, checksumActual);
+    if (!options.held) await retireOlderCopies(file, options.dumpsDir!, options);
+    return { bytes, lines: 0, checksumActual, path };
+  } catch (error) {
+    throw await withDamagedCopyDeleted(error, path, options);
+  }
+}
+
+/**
+ * The error a failed read ends with: where the local copy is not the host's
+ * file, the copy is deleted first and the message says so, since a copy at
+ * full size is never downloaded again.
+ */
+async function withDamagedCopyDeleted(error: unknown, path: string | null, options: ReadOptions): Promise<unknown> {
+  if (!path || !isDamage(error) || options.signal.aborted) return error;
+  await rm(path, { force: true });
+  const next = options.held ? 'cut it again to read it' : 'the next build downloads it again';
+  return new Error(`${(error as Error).message}; the local copy was deleted, and ${next}`, { cause: error });
 }
 
 /** Once a copy is verified, the older copies of its dump go: two copies of the entities dump do not fit where one does. */
@@ -206,9 +258,10 @@ async function retireOlderCopies(file: DumpFile, dir: string, options: ReadOptio
 
 /** Read `source` through its decoder, which is stopped when the read fails. */
 async function readSource(
-  file: DumpFile, source: Readable, consumer: DumpConsumer, options: ReadOptions, downloaded: () => number,
+  file: DumpFile, compression: Exclude<DumpFile['compression'], 'none'>, source: Readable, consumer: DumpConsumer,
+  options: ReadOptions, downloaded: () => number,
 ): Promise<ReadResult> {
-  const decoder = decompressor(file.compression);
+  const decoder = decompressor(compression);
   try {
     return await decode(file, source, decoder, consumer, options, downloaded);
   } catch (error) {

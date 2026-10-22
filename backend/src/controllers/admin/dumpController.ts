@@ -72,7 +72,7 @@ export async function listDumps(): Promise<Dumps> {
     progress.push(await buildProgress(dump.key));
   }
   const dir = process.env.DUMPS_DIR?.trim();
-  const copies = await Promise.all(DUMPS.map(dump => (dir ? newestLocalCopy(dir, dump.isFileName) : null)));
+  const copies = await Promise.all(DUMPS.map(dump => (dir ? newestLocalCopy(dir, dump.isFileName, dump.datedBy) : null)));
   const samples = await Promise.all(DUMPS.map(dump => (dir && keeperOf(dump.key)?.samples ? newestSample(dir, dump.isFileName) : null)));
   return {
     localCopy: Boolean(process.env.DUMPS_DIR?.trim()),

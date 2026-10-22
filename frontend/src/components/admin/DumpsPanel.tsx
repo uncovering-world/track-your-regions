@@ -129,17 +129,12 @@ function EarlierBuilds({ builds, datedBy }: { builds: DumpBuild[]; datedBy: Dump
   );
 }
 
-/** A copy's date as its name gives it (`20261005`, `202609`), as the ISO day `dumpDate` reads. */
-function copyIsoDate(date: string): string {
-  return date.length === 8 ? `${date.slice(0, 4)}-${date.slice(4, 6)}-${date.slice(6, 8)}` : `${date.slice(0, 4)}-${date.slice(4, 6)}-01`;
-}
-
 /** The newest local copy of the dump, which a build can read instead of downloading the newest file. */
 function LocalCopy({ dump }: { dump: DumpsDumpsItem }) {
   if (!dump.localCopy) return null;
   return (
     <Typography variant="caption" color="text.secondary" display="block">
-      Local copy: {dumpDate(copyIsoDate(dump.localCopy.date), dump.datedBy)}, {size(dump.localCopy.bytes)}
+      Local copy: {dumpDate(dump.localCopy.date, dump.datedBy)}, {size(dump.localCopy.bytes)}
     </Typography>
   );
 }
@@ -191,7 +186,7 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
   const cutSample = useMutation({ mutationFn: () => startDumpSample(dump.key), onSettled: refresh });
   const trial = useMutation({ mutationFn: () => startDumpTrial(dump.key), onSettled: refresh });
   const copy = dump.localCopy;
-  const copyDate = copy ? dumpDate(copyIsoDate(copy.date), dump.datedBy) : null;
+  const copyDate = copy ? dumpDate(copy.date, dump.datedBy) : null;
   // A newer file of a daily dump replaces the local copy: once verified, or first when the disk cannot hold both.
   const replaces = copy && dump.datedBy === 'day'
     ? `Downloads the newest dump if it is newer than the local copy of ${copyDate}. That copy is removed once the new one is verified, or before the download if the disk cannot hold both.`
