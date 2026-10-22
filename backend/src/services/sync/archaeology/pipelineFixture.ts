@@ -82,6 +82,9 @@ import type { OsmObject } from '../osm/types.js';
 import type { SparqlBinding } from '../wikidataUtils.js';
 import type { SourceLine } from '../sourceLine.js';
 import { collectArchaeology, type CollectedArchaeology, type CollectedArchaeologyMuseum } from './pipeline.js';
+import { ARCHAEOLOGY_SITE_KIND } from './sites.js';
+import { gatherPlaces, shareOf, type PlaceKind } from '../places/gather.js';
+import type { QueryRunner } from '../wikidataQueries.js';
 
 const ENTITY = 'http://www.wikidata.org/entity/';
 const RANK = 'http://wikiba.se/ontology#NormalRank';
@@ -800,6 +803,16 @@ const edgeRows = (w: World, asked: string[]): SparqlBinding[] =>
     ];
   });
 
+/**
+ * The place gather's facts question (`fetchEntityFacts`), which every
+ * candidate of every kind is asked: a museum's edges, and a site's classes,
+ * which say which kind's candidate a site is (`places/gather.ts`).
+ */
+const entityFactRows = (w: World, asked: string[]): SparqlBinding[] => [
+  ...edgeRows(w, asked),
+  ...asked.flatMap((qid) => (w.museums[qid] ? [] : (w.sites[qid]?.classes ?? []).map((c) => ({ e: uri(qid), cls: uri(c) })))),
+];
+
 export function answer(w: World, sent: string): SparqlBinding[] {
   const query = sent.trimStart();
   // The recount every pool, find and museum is held to (ADR-0082): this
@@ -823,7 +836,7 @@ export function answer(w: World, sent: string): SparqlBinding[] {
   if (query.includes('?whc')) return siteFactRows(w, asked);
   // Before the statements question: the public-art facts question reads a
   // collection through `p:P195` too, and names `?coll` where the other does not.
-  if (query.includes('?coll')) return edgeRows(w, asked);
+  if (query.includes('?coll')) return entityFactRows(w, asked);
   if (query.includes('?disc')) return findFactRows(w, asked);
   // The venue-side read (#890): what a batch of venues holds — asked before the
   // statements question, which the same `p:P195` is in — and what each object
@@ -924,6 +937,7 @@ export function collect(w: World, opts: {
     previousPlacements: opts.previousPlacements ?? {},
     admittedMuseums: new Set(opts.admitted ?? []),
     admittedSites: new Set<string>(),
+    sites: siteShare(new Set<string>()),
     shownElsewhere: new Set(opts.shownElsewhere ?? SHOWN),
     line: opts.line ?? LINE,
     categories: door.categories,
@@ -945,3 +959,14 @@ export const item = (out: CollectedArchaeology, qid: string): CollectedArchaeolo
 };
 export const reason = (out: CollectedArchaeology, qid: string) =>
   out.filtered.find((f) => f.externalId === qid)?.reason;
+
+/**
+ * The site kind's share of the place gather, asked for this kind alone, as the
+ * place pass asks it with the others (#1820).
+ */
+export function siteShare(admitted: ReadonlySet<string>) {
+  return async (run: QueryRunner) => shareOf(
+    await gatherPlaces(run, [{ kind: ARCHAEOLOGY_SITE_KIND as PlaceKind<unknown>, admitted }]),
+    ARCHAEOLOGY_SITE_KIND,
+  );
+}

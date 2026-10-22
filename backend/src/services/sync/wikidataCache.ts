@@ -185,7 +185,8 @@ export const CACHED_KINDS_BY_SOURCE: Record<number, CacheKind[]> = {
   4: ['classes', 'pool', 'statements', 'entities', 'edges', 'osm', 'photos'],
   // Archaeology. The museum import's whole set, plus what OpenStreetMap maps
   // at each site candidate (#581), and how many photographs Commons holds of a
-  // place its readership door opens for (#1768).
+  // place its readership door opens for (#1768). Its site candidates ask
+  // under source 3's, with the place pass's gather (#1820).
   5: ['classes', 'pool', 'statements', 'entities', 'edges', 'osm', 'photos'],
 };
 

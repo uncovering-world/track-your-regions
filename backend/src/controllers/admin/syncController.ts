@@ -52,7 +52,6 @@ import {
   fixUnescoImages,
   syncPlacePass,
   fixWorshipImages,
-  syncArchaeology,
   fixArchaeologyImages,
   runningSyncs,
   getSyncStatus as getServiceSyncStatus,
@@ -113,7 +112,7 @@ const syncRegistry: Record<
   3: syncPlacePass,
   6: syncPlacePass,
   4: syncPlacePass,
-  5: syncArchaeology,
+  5: syncPlacePass,
 };
 
 /**

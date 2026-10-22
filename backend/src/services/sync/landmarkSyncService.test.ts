@@ -37,11 +37,15 @@ vi.mock('./places/gather.js', () => ({
   gatherPlaces: vi.fn(),
   shareOf: (gathered: { shares: Map<unknown, unknown> }, kind: unknown) => gathered.shares.get(kind),
 }));
-// The pass's third member, whose own spec is worshipSyncService.test.ts.
+// The pass's third and fourth members, whose own specs are
+// worshipSyncService.test.ts and archaeologySyncService.test.ts.
 vi.mock('./worshipSyncService.js', () => ({
   WORSHIP_SOURCE_ID: 4,
   worshipSource: vi.fn(() => ({ sourceId: 4 })),
 }));
+vi.mock('./archaeologySyncService.js', () => ({ archaeologySource: vi.fn(() => ({ sourceId: 5 })) }));
+vi.mock('./archaeology/sites.js', () => ({ ARCHAEOLOGY_SITE_KIND: { name: 'archaeological sites' } }));
+vi.mock('./archaeology/runDoors.js', () => ({ ARCHAEOLOGY_SOURCE_ID: 5 }));
 vi.mock('./pinQuestion.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./pinQuestion.js')>()),
   // The run's questions about a curator's pin read and write the database (#1367).
@@ -86,6 +90,7 @@ import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { withCache } from './wikidataCache.js';
 import { classifyPublicArt, PUBLIC_ART_KIND } from './publicArt/pipeline.js';
 import { WORSHIP_KIND } from './worship/places.js';
+import { ARCHAEOLOGY_SITE_KIND } from './archaeology/sites.js';
 import { gatherPlaces } from './places/gather.js';
 import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
@@ -98,7 +103,9 @@ const mockedGather = gatherPlaces as unknown as ReturnType<typeof vi.fn>;
 const mockedCollect = classifyPublicArt as unknown as ReturnType<typeof vi.fn>;
 /** Public art's share of the gather; the classification is what the tests say. */
 const SHARE = { trees: {}, pool: new Map(), facts: new Map(), containers: new Map() };
-const GATHERED = { shares: new Map<unknown, unknown>([[PUBLIC_ART_KIND, SHARE], [WORSHIP_KIND, SHARE]]), pooled: 0 };
+const GATHERED = {
+  shares: new Map<unknown, unknown>([[PUBLIC_ART_KIND, SHARE], [WORSHIP_KIND, SHARE], [ARCHAEOLOGY_SITE_KIND, SHARE]]), pooled: 0,
+};
 const mockedAdmitted = admittedExternalIds as unknown as ReturnType<typeof vi.fn>;
 const mockedWithCache = withCache as unknown as ReturnType<typeof vi.fn>;
 const mockedUpsert = upsertExperienceRecord as unknown as ReturnType<typeof vi.fn>;
@@ -154,7 +161,10 @@ describe('public art in the place pass', () => {
     expect(mockedGather.mock.calls[0][1]).toEqual([
       { kind: PUBLIC_ART_KIND, admitted: new Set(['Q337179']) },
       { kind: WORSHIP_KIND, admitted: new Set(['Q337179']) },
+      { kind: ARCHAEOLOGY_SITE_KIND, admitted: new Set(['Q337179']) },
     ]);
+    // Archaeology's sites, not its museums: its museum door asks after its own.
+    expect(mockedAdmitted).toHaveBeenCalledWith(5, 'site');
     expect(mockedCollect.mock.calls[0][0]).toBe(SHARE);
     expect(mockedCollect.mock.calls[0][1]).toBe(PUBLIC_ART_RULE);
     expect(mockedCollect.mock.calls[0][2]).toEqual(new Set(['Q337179']));
@@ -180,9 +190,9 @@ describe('public art in the place pass', () => {
     expect(art.sourceId).toBe(3);
   });
 
-  it('runs Places of worship third, from the one gather the two read (#1820)', async () => {
+  it('runs Places of worship third and Archaeology fourth, from the one gather the two read (#1820)', async () => {
     await syncPlacePass(1, {});
-    expect(mockedOrchestrate.mock.calls.map((call) => (call[0] as { sourceId: number }).sourceId)).toEqual([3, 6, 4]);
+    expect(mockedOrchestrate.mock.calls.map((call) => (call[0] as { sourceId: number }).sourceId)).toEqual([3, 6, 4, 5]);
 
     const { worshipSource } = await import('./worshipSyncService.js');
     const gather = vi.mocked(worshipSource).mock.calls[0][0];

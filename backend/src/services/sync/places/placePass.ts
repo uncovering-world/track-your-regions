@@ -4,9 +4,11 @@
  *
  * The gather reads the candidates of every kind once (`gather.ts`) and each
  * source of `PLACE_PASS` classifies its own share: Public art and Monuments &
- * memorials by their kinds' rules, Places of worship by its door one. What a
- * kind reads beyond its places — worship's works, and the second door they
- * open — stays in its own run, through its own door.
+ * memorials by their kinds' rules, Places of worship by its door one,
+ * Archaeology by its site door. What a kind reads beyond its places — worship's
+ * works and the second door they open, Archaeology's museums and finds, and the
+ * map, the Wikipedias and the witnesses its site door asks — stays in its own
+ * run, through its own doors.
  */
 
 import type { SyncProgress, SyncRunOptions } from '../types.js';
@@ -16,6 +18,9 @@ import { passMember, runSyncPass, sharedGather } from '../syncPass.js';
 import { PLACE_PASS, PUBLIC_ART_SOURCES } from '../passes.js';
 import { collectingSparql, publicArtSource } from '../landmarkSyncService.js';
 import { worshipSource, WORSHIP_SOURCE_ID } from '../worshipSyncService.js';
+import { archaeologySource } from '../archaeologySyncService.js';
+import { ARCHAEOLOGY_SOURCE_ID } from '../archaeology/runDoors.js';
+import { ARCHAEOLOGY_SITE_KIND } from '../archaeology/sites.js';
 import { PUBLIC_ART_KIND } from '../publicArt/pipeline.js';
 import { WORSHIP_KIND } from '../worship/places.js';
 import { delay, SPARQL_DELAY_MS } from '../wikidataUtils.js';
@@ -49,6 +54,9 @@ function placeGather(refreshCache: boolean): (progress: SyncProgress) => Promise
     }, [
       { kind: PUBLIC_ART_KIND, admitted: await admittedBy(PUBLIC_ART_SOURCES) },
       { kind: WORSHIP_KIND, admitted: await admittedBy([WORSHIP_SOURCE_ID]) },
+      // The sites Archaeology admits, not its museums, which its own museum
+      // door asks after (`ArchaeologyPipelineDeps.admittedSites`).
+      { kind: ARCHAEOLOGY_SITE_KIND, admitted: await admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'site') },
     ]);
     return { gathered, sparql };
   });
@@ -69,6 +77,7 @@ export function syncPlacePass(
     [
       ...PUBLIC_ART_SOURCES.map((sourceId) => passMember(publicArtSource(sourceId, gather))),
       passMember(worshipSource(gather, options)),
+      passMember(archaeologySource(gather, options)),
     ],
     triggeredBy,
     options,

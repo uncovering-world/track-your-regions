@@ -35,8 +35,11 @@
  * museum only for holding a find the world knows.
  */
 
-import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
-import type { FetchResult } from './syncContract.js';
+import { getSyncStatus, cancelSync } from './syncOrchestrator.js';
+import type { FetchResult, SyncServiceConfig } from './syncContract.js';
+import { readsSubset } from './subset/reader.js';
+import { shareOf, type PlaceGather } from './places/gather.js';
+import { ARCHAEOLOGY_SITE_KIND } from './archaeology/sites.js';
 import type { SyncProgress, SyncRunOptions } from './types.js';
 import { admittedExternalIds } from './admission.js';
 import { worksShownByOtherSources } from './shownElsewhere.js';
@@ -85,6 +88,7 @@ import { placeReadershipDoorFor } from './readershipDoor.js';
 
 async function fetchArchaeologyItems(
   progress: SyncProgress,
+  gather: (progress: SyncProgress) => Promise<PlaceGather>,
   refreshCache: boolean,
 ): Promise<FetchResult<CollectedArchaeologyItem>> {
   // The lines first, because a run that cannot state its own fame lines has no
@@ -142,6 +146,9 @@ async function fetchArchaeologyItems(
           previousPlacements,
           admittedMuseums,
           admittedSites,
+          // The sites, and the trees both doors read, come from the pass's
+          // gather (#1820); every other question goes through this run's doors.
+          sites: async () => shareOf((await gather(progress)).gathered, ARCHAEOLOGY_SITE_KIND),
           shownElsewhere,
           line,
           // What other kinds refused as held at a museum (ADR-0102).
@@ -229,8 +236,10 @@ async function fetchArchaeologyItems(
     imageCredits, storedCredits, storedTreasureCredits, placedThisRun, findsLine, osmDoor: osmDoorName,
   });
 
-  // What the subset cannot read is left as it is, not read as gone.
-  const unread = subset ? await unreadOnSubset(ARCHAEOLOGY_SOURCE_ID) : undefined;
+  // What the subset cannot read is left as it is, not read as gone: the sites
+  // were read through the pass's door, the rest through this run's.
+  const { sparql: placesDoor } = await gather(progress);
+  const unread = subset || readsSubset(placesDoor) ? await unreadOnSubset(ARCHAEOLOGY_SOURCE_ID) : undefined;
   return { items, fetchedCount: fetched, filtered, refusedContents, withdrawalSkippedReason, unread };
 }
 
@@ -239,14 +248,16 @@ async function fetchArchaeologyItems(
 // =============================================================================
 
 /**
- * Main sync function — collects the sites the world knows, the museums it knows
- * for their archaeology, and the finds those museums hold.
+ * The source as a member of the place pass (`places/placePass.ts`): it takes
+ * the sites the world knows from the pass's gather, and collects the museums it
+ * knows for their archaeology, and the finds those museums hold, through its
+ * own doors.
  */
-export function syncArchaeology(
-  triggeredBy: number | null,
-  options: SyncRunOptions = {},
-): Promise<void> {
-  return orchestrateSync<CollectedArchaeologyItem>({
+export function archaeologySource(
+  gather: (progress: SyncProgress) => Promise<PlaceGather>,
+  options: SyncRunOptions,
+): SyncServiceConfig<CollectedArchaeologyItem> {
+  return {
     sourceId: ARCHAEOLOGY_SOURCE_ID,
     logPrefix: LOG_PREFIX,
     // A fame line over two pools, so absence from a run says a row fell below
@@ -269,12 +280,12 @@ export function syncArchaeology(
     badgesAdmitted: (item) => item.type === 'site' || item.findsAboveLine > 0,
     // The one place the run's options reach the collection: the cache is a
     // property of *this* run rather than of the source.
-    fetchItems: (progress) => fetchArchaeologyItems(progress, options.refreshCache === true),
+    fetchItems: (progress) => fetchArchaeologyItems(progress, gather, options.refreshCache === true),
     // One item at a time, dispatched on its type by `archaeology/writer.ts`.
     processItem,
     getItemName: (item) => item.label,
     getItemId: (item) => item.qid,
-  }, triggeredBy, options);
+  };
 }
 
 /**

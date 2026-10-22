@@ -106,6 +106,9 @@ describe('gatherPlaces', () => {
     expect([...shareOf(gathered, ART).pool.keys()].sort()).toEqual(['Q1', 'Q3', 'Q5']);
     expect([...shareOf(gathered, WORSHIP).pool.keys()].sort()).toEqual(['Q1', 'Q2', 'Q3', 'Q4']);
     expect(shareOf(gathered, ART).trees).toEqual({ admitting: [STATUE, MONUMENT] });
+    // The admitted row no class question named is marked as asked for by id.
+    expect(shareOf(gathered, ART).byId).toEqual(new Set(['Q5']));
+    expect(shareOf(gathered, WORSHIP).byId.size).toBe(0);
     expect(gathered.pooled).toBe(4);
   });
 
@@ -127,6 +130,18 @@ describe('gatherPlaces', () => {
     expect(vi.mocked(fetchContainerFacts).mock.calls.flatMap(([, qids]) => qids)).toEqual(['Q100']);
     expect(shareOf(gathered, ART).containers.get('Q100')?.label).toBe('Senate Square');
     expect(shareOf(gathered, WORSHIP).containers.size).toBe(0);
+  });
+
+  it('marks a row a kind admits as asked for by id when none of its classes names it, whoever fetched it', async () => {
+    // Notre-Dame, which worship's church root names, admitted by public art.
+    const gathered = await gatherPlaces(run, [
+      { kind: ART as PlaceKind<unknown>, admitted: new Set(['Q2']) },
+      { kind: WORSHIP as PlaceKind<unknown>, admitted: new Set() },
+    ]);
+
+    expect(shareOf(gathered, ART).pool.has('Q2')).toBe(true);
+    expect(shareOf(gathered, ART).byId).toEqual(new Set(['Q2']));
+    expect(shareOf(gathered, WORSHIP).byId.size).toBe(0);
   });
 
   it('keeps a row a kind does not admit, and its classes do not name, out of that kind', async () => {
