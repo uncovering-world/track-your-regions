@@ -47,7 +47,8 @@ const waiting: SyncStatus = {
 
 const SOURCES = [
   source(3, 'Public art', [3, 6, 4]),
-  source(4, 'Places of worship', [3, 6, 4]),
+  // Places of worship repairs its pictures from the panel (ADR-0043).
+  { ...source(4, 'Places of worship', [3, 6, 4]), repairsPictures: true },
   source(5, 'Archaeology', []),
   source(6, 'Monuments & memorials', [3, 6, 4]),
 ];
@@ -98,6 +99,28 @@ describe('a pass on the Sync panel', () => {
     expect(within(card).getByText(/The gather reads Wikidata as Public art's switch says/)).toBeInTheDocument();
   });
 
+  it('offers a source\'s own picture repair in its section, and the pass\'s starts once on top', async () => {
+    renderPanel();
+
+    const card = await cardOf('Public art · Monuments & memorials · Places of worship');
+    const repairs = within(card).getAllByRole('button', { name: 'Fix pictures' });
+    expect(repairs).toHaveLength(1);
+    const worship = within(card).getByRole('heading', { level: 3, name: 'Places of worship' }).parentElement!.parentElement!.parentElement!;
+    expect(within(worship).getByRole('button', { name: 'Fix pictures' })).toBe(repairs[0]);
+    expect(within(worship).queryByRole('button', { name: 'Start Sync' })).not.toBeInTheDocument();
+  });
+
+  it('holds the pass\'s starts while a member repairs its pictures, and lets the section cancel the repair', async () => {
+    const repairing: SyncStatus = { running: true, kind: 'repair', status: 'fetching', statusMessage: 'Fixing pictures...' };
+    vi.mocked(getSyncStatus).mockImplementation(async (id: number) => (id === 4 ? repairing : idle));
+    renderPanel();
+
+    const card = await cardOf('Public art · Monuments & memorials · Places of worship');
+    const worship = within(card).getByRole('heading', { level: 3, name: 'Places of worship' }).parentElement!.parentElement!.parentElement!;
+    expect(await within(worship).findByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    await waitFor(() => expect(within(card).getByRole('button', { name: 'Start Sync' })).toBeDisabled());
+  });
+
   it('starts the pass through its first source, and follows every later one from then', async () => {
     vi.mocked(startSync).mockResolvedValue({ started: true } as never);
     renderPanel();
@@ -112,7 +135,7 @@ describe('a pass on the Sync panel', () => {
     // The later source says it waits for the earlier one, and the card offers
     // the pass's Cancel while it does.
     // Each later source says so in its own section.
-    expect(await within(card).findAllByText(/Waiting for the pass's earlier kinds/)).toHaveLength(2);
+    await waitFor(() => expect(within(card).getAllByText(/Waiting for the pass's earlier kinds/)).toHaveLength(2));
     expect(within(card).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
   });
 });

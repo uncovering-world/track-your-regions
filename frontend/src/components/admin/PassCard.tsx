@@ -6,9 +6,10 @@
  * stop every source of it, and the sentence saying the gather reads through
  * the first source's Wikidata reader and cache (`places/placePass.ts`). What
  * each source holds of its own is drawn in its section: how its run ended, its
- * gate, its line, what it is holding for a curator, and its own reader and
- * cache, which the rest of its run reads through — its visit witnesses
- * (#1770), and Places of worship's works.
+ * gate, its line, what it is holding for a curator, its own reader and cache,
+ * which the rest of its run reads through — its visit witnesses (#1770),
+ * Places of worship's works, Archaeology's museums and finds — and its own runs
+ * beside a sync, such as a picture repair.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -43,6 +44,8 @@ function MemberSection({ source, run }: { source: ExperienceSource; run: SourceR
       <SourceLineControls source={source} />
       <WikidataReaderControls source={source} />
       <WikidataCacheSection sourceId={source.id} />
+      {/* The source's own runs beside a sync: a picture repair, a component search. */}
+      <SourceRunActions source={source} run={run} running={run.isRunning} runningStatus={run.status} offers="beside" />
     </Box>
   );
 }
@@ -82,9 +85,14 @@ export function PassCard({ sources }: { sources: ExperienceSource[] }) {
   // before the later ones', and the card's Cancel stops them all from there
   // (`cancelSync` in `syncOrchestrator.ts`), reading its phase from the one
   // that is going.
-  const goingLater = later.map((source) => reports[source.id]).find((r) => r?.running);
-  const running = run.isRunning || !!goingLater;
-  const runningStatus = run.isRunning ? run.status : goingLater?.status ?? null;
+  // A section's own repair is not the pass running: only a sync is.
+  const syncing = (r: RunReport | undefined) => !!r?.running && (r.status?.kind ?? 'sync') === 'sync';
+  const firstSyncing = syncing({ running: run.isRunning, status: run.status });
+  const goingLater = later.map((source) => reports[source.id]).find(syncing);
+  const running = firstSyncing || !!goingLater;
+  // Any run of a member holds the pass: a start meanwhile is refused (409).
+  const held = run.isRunning || later.some((source) => reports[source.id]?.running);
+  const runningStatus = firstSyncing ? run.status : goingLater?.status ?? null;
   const lastSynced = sources
     .map((source) => source.last_sync_at)
     .filter((at): at is string => at !== null)
@@ -117,7 +125,7 @@ export function PassCard({ sources }: { sources: ExperienceSource[] }) {
       </CardContent>
 
       <CardActions sx={{ flexDirection: 'column', alignItems: 'flex-start', gap: 1 }}>
-        <SourceRunActions source={first} run={run} running={running} runningStatus={runningStatus} />
+        <SourceRunActions source={first} run={run} running={running} runningStatus={runningStatus} offers="sync" held={held} />
       </CardActions>
     </Card>
   );

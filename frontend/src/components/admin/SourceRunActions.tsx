@@ -34,6 +34,18 @@ interface SourceRunActionsProps {
    */
   running: boolean;
   runningStatus: SyncStatus | null;
+  /**
+   * Which starts the buttons offer: all of them on a source's own card; on a
+   * pass's card, the pass's sync starts on top (`sync`) and each source's
+   * own runs beside a sync in its section (`beside`): a picture repair, a
+   * component search.
+   */
+  offers?: 'all' | 'sync' | 'beside';
+  /**
+   * Another run holds the source's pass, so a start would be refused: a
+   * pass's starts wait while a member repairs its pictures.
+   */
+  held?: boolean;
 }
 
 const START_FAILED: Record<keyof SourceRun['starts'], string> = {
@@ -45,14 +57,20 @@ const START_FAILED: Record<keyof SourceRun['starts'], string> = {
   findComponents: 'Failed to start the component search',
 };
 
-export function SourceRunActions({ source, run, running, runningStatus }: SourceRunActionsProps) {
+export function SourceRunActions({ source, run, running, runningStatus, offers = 'all', held = false }: SourceRunActionsProps) {
   const { starts } = run;
   const [componentSite, setComponentSite] = useState('');
   const componentSiteId = /^\d+$/.test(componentSite.trim()) ? Number(componentSite.trim()) : undefined;
   // `isStarting`, not one button's own request: while a preview or a no-cache
   // run is being started, an ordinary Start would be a second run launched
   // before the first has said it exists.
-  const disabled = !source.is_active || run.isStarting;
+  const disabled = !source.is_active || run.isStarting || held;
+  const syncs = offers !== 'beside';
+  const besides = offers !== 'sync';
+  // A section offers its runs beside the pass's sync only where the source has one.
+  if (!syncs && !source.repairsPictures && !source.findsComponentItems) return null;
+  // And a sync is the pass's to cancel, on top: a section cancels only a run of its own.
+  if (!syncs && running && (runningStatus?.kind ?? 'sync') === 'sync') return null;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, width: '100%' }}>
@@ -79,6 +97,8 @@ export function SourceRunActions({ source, run, running, runningStatus }: Source
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
         {!running ? (
           <>
+            {syncs && (
+            <>
             <Button startIcon={<SyncIcon />} onClick={() => starts.sync.mutate()} disabled={disabled} variant="outlined" color="primary">
               Start Sync
             </Button>
@@ -111,12 +131,14 @@ export function SourceRunActions({ source, run, running, runningStatus }: Source
                 </Button>
               </span>
             </Tooltip>
+            </>
+            )}
             {/* Its own button rather than part of a sync, because it is a
                 different decision: a sync proposes and this writes. Offered
                 where the server says it acts — the museums' missing pictures,
                 and the World Heritage ones whose host does not license them
                 to us. */}
-            {source.repairsPictures && (
+            {besides && source.repairsPictures && (
               <Tooltip title="Puts right the pictures of this source's rows, now, without waiting for review: a picture that was never found is filled in from Commons, and one this product is not allowed to show is replaced from Commons or taken away. A picture a curator chose is left alone.">
                 <span>
                   <Button variant="outlined" onClick={() => starts.fixPictures.mutate()} disabled={disabled}>
@@ -125,7 +147,7 @@ export function SourceRunActions({ source, run, running, runningStatus }: Source
                 </span>
               </Tooltip>
             )}
-            {source.findsComponentItems && (
+            {besides && source.findsComponentItems && (
               <>
                 <Tooltip title="Looks in Wikidata for the item of each component no item records the UNESCO reference of: an item that says it is part of the site, one of the site's kind near the point with a similar name, or one carrying the component's number under another inscription with a similar name. Writes nothing on the components — each candidate waits for a curator.">
                   <span>
@@ -144,11 +166,13 @@ export function SourceRunActions({ source, run, running, runningStatus }: Source
                 />
               </>
             )}
+            {syncs && (
             <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
               A sync preserves curator edits, visit history, manual region assignments and
               rejections. A point the source stops offering is marked, not deleted; so is a
               work, once a run has seen enough of the works its museums hold to be believed.
             </Typography>
+            )}
           </>
         ) : (
           <Button
