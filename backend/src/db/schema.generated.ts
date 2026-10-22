@@ -692,6 +692,14 @@ export interface OsmLayerBuildsRow {
   swapped_at: Date;
 }
 
+/** The table `osm_layer_schedule`. */
+export interface OsmLayerScheduleRow {
+  singleton: boolean;
+  every_days: number | null;
+  updated_by: number | null;
+  updated_at: Date;
+}
+
 /** The table `osm_objects`. */
 export interface OsmObjectsRow {
   osm_type: string;
@@ -1165,6 +1173,7 @@ export const RELATION_SCHEMAS = {
   geometry_computations: "public",
   import_runs: "public",
   osm_layer_builds: "workbench",
+  osm_layer_schedule: "workbench",
   osm_objects: "workbench",
   readership_month_files: "workbench",
   readership_months: "workbench",
