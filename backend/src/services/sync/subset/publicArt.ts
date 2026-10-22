@@ -165,6 +165,8 @@ export async function subsetEntityFacts(ids: string[]): Promise<Map<string, Enti
       parents: itemsOf(standingStatements(claims.P361)),
       collections: itemsOf(standingStatements(claims.P195)),
       creators,
+      commemorates: itemsOf(bestStatements(claims.P547)),
+      depicts: itemsOf(bestStatements(claims.P180)),
     });
   }
   return out;

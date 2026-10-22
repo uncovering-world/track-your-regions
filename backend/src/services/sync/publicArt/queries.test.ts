@@ -173,7 +173,7 @@ describe('POOL_BANDS', () => {
 });
 
 describe('fetchEntityFacts', () => {
-  it('groups every class, container and maker by entity', async () => {
+  it('groups every class, container, maker and subject by entity', async () => {
     const rows: SparqlBinding[] = [
       { e: ref('Q235242'), cls: ref('Q860861') },
       { e: ref('Q235242'), cls: ref('Q2065736') },
@@ -184,12 +184,18 @@ describe('fetchEntityFacts', () => {
       { e: ref('Q79961'), creator: ref('Q5041289'), creatorLabel: { value: 'Carlos Oswald' } },
       { e: ref('Q79961'), parent: ref('Q2') },
       { e: ref('Q79961'), coll: ref('Q5710459') },
+      // The Jefferson Memorial commemorates Thomas Jefferson; the Bronze
+      // Horseman depicts Peter the Great.
+      { e: ref('Q326183'), commemorates: ref('Q11812') },
+      { e: ref('Q672444'), depicts: ref('Q8479') },
     ];
-    const facts = await fetchEntityFacts(answer(rows), ['Q235242', 'Q79961']);
+    const facts = await fetchEntityFacts(answer(rows), ['Q235242', 'Q79961', 'Q326183', 'Q672444']);
     expect(facts.get('Q235242')).toEqual({
       classes: ['Q860861', 'Q2065736'], locations: ['Q12512'], parents: [], collections: [],
-      creators: ['Michelangelo'],
+      creators: ['Michelangelo'], commemorates: [], depicts: [],
     });
+    expect(facts.get('Q326183')?.commemorates).toEqual(['Q11812']);
+    expect(facts.get('Q672444')?.depicts).toEqual(['Q8479']);
     expect(facts.get('Q79961')).toMatchObject({
       classes: ['Q1779653'], parents: ['Q2'], collections: ['Q5710459'],
       creators: ['Paul Landowski', 'Carlos Oswald'],
@@ -226,7 +232,9 @@ describe('fetchEntityFacts', () => {
 
   it('answers for every entity asked about, facts or none', async () => {
     const facts = await fetchEntityFacts(answer([]), ['Q1']);
-    expect(facts.get('Q1')).toEqual({ classes: [], locations: [], parents: [], collections: [], creators: [] });
+    expect(facts.get('Q1')).toEqual({
+      classes: [], locations: [], parents: [], collections: [], creators: [], commemorates: [], depicts: [],
+    });
   });
 });
 
