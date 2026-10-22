@@ -6,7 +6,7 @@ import { writeExperienceLocations } from './locationWriter.js';
  * The pairing of a run's points with the stored ones finds the complete match
  * (#549, ADR-0117), against PostgreSQL. The fixture is the Bronze Horseman as
  * Wikidata gives it: one item, Q672444, with two coordinates under one
- * reference, under the ungated Public Art & Monuments source. The geometry is
+ * reference, under the ungated Public art source. The geometry is
  * the issue's: the run's two points stand 15 m apart; the stored first point is
  * halfway between them, 7.5 m from each, and the stored second point 9 m from
  * the run's eastern one. The run lists them in the other order from the stored
@@ -49,7 +49,7 @@ const RUN = [
 beforeEach(async () => {
   await clear();
   const row = (await pool.query<{ id: number; kind_id: number; requires_curation: boolean }>(
-    "SELECT id, kind_id, requires_curation FROM experience_sources WHERE name = 'Public Art & Monuments'",
+    "SELECT id, kind_id, requires_curation FROM experience_sources WHERE name = 'Public art'",
   )).rows[0];
   expect(row.requires_curation).toBe(false);
   source = row.id;

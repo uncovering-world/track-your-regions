@@ -40,7 +40,7 @@ describe('a refusal records where the work is held (ADR-0102)', () => {
     expect(await recorded()).toEqual([{ external_id: HORSEMAN, held_in: [CATHEDRAL, 'Q-town-fixture'] }]);
 
     const handOvers = await readHandOvers(WORSHIP);
-    expect(handOvers.get(HORSEMAN)).toEqual({ by: 'Public Art & Monuments', reason: REASON, heldIn: [CATHEDRAL, 'Q-town-fixture'] });
+    expect(handOvers.get(HORSEMAN)).toEqual({ by: 'Public art', reason: REASON, heldIn: [CATHEDRAL, 'Q-town-fixture'] });
     // A kind's own refusals are no hand-over to itself.
     expect((await readHandOvers(PUBLIC_ART)).has(HORSEMAN)).toBe(false);
   });

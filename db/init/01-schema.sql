@@ -2541,7 +2541,7 @@ COMMENT ON COLUMN experience_kinds.display_priority IS 'Display order of the kin
 INSERT INTO experience_kinds (id, name, display_priority) VALUES
     (1, 'World Heritage Sites', 1),
     (2, 'Art Museums', 2),
-    (3, 'Public Art & Monuments', 3)
+    (3, 'Public art', 3)
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experience_kinds), 1));
 
@@ -2555,6 +2555,14 @@ SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experienc
 -- for places and one for finds (ADR-0058).
 INSERT INTO experience_kinds (id, name, display_priority) VALUES
     (5, 'Archaeology', 5)
+ON CONFLICT (name) DO NOTHING;
+SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experience_kinds), 1));
+
+-- The sixth kind: what was raised to remember, filled from the gather that
+-- fills Public art (#1807, ADR-0132). Kind 3 was Public Art & Monuments
+-- until migration 144 split it by purpose.
+INSERT INTO experience_kinds (id, name, display_priority) VALUES
+    (6, 'Monuments & memorials', 6)
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experience_kinds), 1));
 
@@ -3453,16 +3461,17 @@ VALUES (
 )
 ON CONFLICT (name) DO NOTHING;
 
--- Seed the public-art source, filling the Public Art & Monuments kind
+-- Seed the public-art source, filling the Public art kind. Seeded as "Public
+-- Art & Monuments" until migration 144 split the kind by purpose (#1807).
 INSERT INTO experience_sources (name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
 VALUES (
-    'Public Art & Monuments',
-    'Notable outdoor sculptures and monuments worldwide, sourced from Wikidata',
+    'Public art',
+    'Notable outdoor sculptures, statues, fountains and murals worldwide, sourced from Wikidata',
     'https://query.wikidata.org/sparql',
     '{}'::jsonb,
     3,
     false,
-    (SELECT id FROM experience_kinds WHERE name = 'Public Art & Monuments')
+    (SELECT id FROM experience_kinds WHERE name = 'Public art')
 )
 ON CONFLICT (name) DO NOTHING;
 
@@ -3500,6 +3509,24 @@ VALUES (
     5,
     true,
     (SELECT id FROM experience_kinds WHERE name = 'Archaeology')
+)
+ON CONFLICT (name) DO NOTHING;
+SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
+
+-- Its one source: Wikidata, read in one pass with Public art's (ADR-0132) --
+-- the gather is made once, under source 3, and each source decides from it by
+-- its kind's rule. The line is in code, as Public art's is. Gated on arrival
+-- (ADR-0025).
+INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+VALUES (
+    6,
+    'Monuments & memorials',
+    'Notable monuments, memorials, triumphal arches, columns and obelisks worldwide, sourced from Wikidata',
+    'https://query.wikidata.org/sparql',
+    '{}'::jsonb,
+    6,
+    true,
+    (SELECT id FROM experience_kinds WHERE name = 'Monuments & memorials')
 )
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));

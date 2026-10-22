@@ -12,7 +12,7 @@ import { ORPHANED_RUN_MARKER } from './syncLogMarkers.js';
  * Three sources, looked up by name, each with a run the restart killed:
  * - Art Museums: a real run 412 of 1,083 objects in, after a run that
  *   succeeded. Closed with its counts, and the source reads `failed`.
- * - Public Art & Monuments: a preview killed while still collecting. Closed,
+ * - Public art: a preview killed while still collecting. Closed,
  *   and the source keeps its own verdict, since a preview synced nothing.
  * - UNESCO World Heritage Sites: a killed run with a real run after it that
  *   closed. Closed, and the source keeps the newer run's verdict.
@@ -27,7 +27,7 @@ const PUBLIC_ART_PREVIEW = 9742;
 const UNESCO_KILLED = 9743;
 const UNESCO_NEWER = 9744;
 const LOG_IDS = [MUSEUMS_DONE, MUSEUMS_KILLED, PUBLIC_ART_PREVIEW, UNESCO_KILLED, UNESCO_NEWER];
-const SOURCE_NAMES = ['Art Museums', 'Public Art & Monuments', 'UNESCO World Heritage Sites'];
+const SOURCE_NAMES = ['Art Museums', 'Public art', 'UNESCO World Heritage Sites'];
 const EARLIER = '2026-09-01T10:00:00Z';
 
 interface SourceState {
@@ -98,7 +98,7 @@ beforeAll(async () => {
        ($4, $8, 'running', NOW(), NULL, FALSE, 0, 3, 0, 'processing', 40, 1248, NOW()),
        ($5, $8, 'success', NOW(), NOW(), FALSE, 1248, 0, 0, 'processing', 1248, 1248, NOW())`,
     [MUSEUMS_DONE, MUSEUMS_KILLED, PUBLIC_ART_PREVIEW, UNESCO_KILLED, UNESCO_NEWER,
-     sourceId['Art Museums'], sourceId['Public Art & Monuments'], sourceId['UNESCO World Heritage Sites'],
+     sourceId['Art Museums'], sourceId['Public art'], sourceId['UNESCO World Heritage Sites'],
      EARLIER],
   );
 });
@@ -160,7 +160,7 @@ describe('closeOrphanedSyncLogs', () => {
   });
 
   it('leaves the source of a killed preview alone: a preview synced nothing', async () => {
-    const state = (await sources())['Public Art & Monuments'];
+    const state = (await sources())['Public art'];
 
     expect(state.last_sync_status).toBe('success');
     expect(state.last_sync_at?.toISOString()).toBe(new Date(EARLIER).toISOString());

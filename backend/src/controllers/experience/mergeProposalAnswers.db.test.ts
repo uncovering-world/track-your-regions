@@ -3,7 +3,7 @@ import { pool } from '../../db/index.js';
 import { answerMergeProposalsOneByOne, mergeProposalSourceIds, openPairs } from './mergeProposalController.js';
 import { undoMerge } from './placeMerge.js';
 
-/** The sources of the fixture's places: World Heritage, Public Art & Monuments, Places of worship. */
+/** The sources of the fixture's places: World Heritage, Public art, Places of worship. */
 const ALL_SOURCES = [1, 3, 4];
 
 /**
@@ -77,7 +77,7 @@ beforeEach(async () => {
   curatorId = user.rows[0].id;
   await place(SITE, 'Durham Castle and Cathedral', 'UNESCO World Heritage Sites', -1.5760);
   await place(CATHEDRAL, 'Durham Cathedral', 'Places of worship', -1.5755);
-  await place(PLAQUE, 'Durham Castle and Cathedral', 'Public Art & Monuments', -1.5758);
+  await place(PLAQUE, 'Durham Castle and Cathedral', 'Public art', -1.5758);
   await place(CHAPEL_A, 'Fixture Chapel', 'Places of worship', -1.5700);
   await place(CHAPEL_B, 'Fixture Chapel', 'Places of worship', -1.5699);
   PAIRS.cathedral = await propose(SITE, CATHEDRAL, 139, 0.65, false);
