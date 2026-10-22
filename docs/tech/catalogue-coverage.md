@@ -115,7 +115,8 @@ region offers within its reach that no entry names (#1601). A judgement on an en
 gap stands; one on a row says whether the row is worth a visit, or why it should not be offered.
 Either way the report and the coverage check count it by cause and stop listing it as needing a
 person. An entry filed under two live kinds has a gap, and a line, per kind: the Arch of
-Constantine, offered by Archaeology and absent from Public Art, is judged under Public Art alone,
+Constantine, offered by Archaeology and absent from Monuments & memorials, is judged under
+Monuments & memorials alone,
 and a run that lost it would show it bare under Archaeology. A row is judged once per region,
 whatever kinds offer it.
 
@@ -138,7 +139,7 @@ The causes, stated in the schema's `CHECK` and read from it by the files' reader
 | `door-missing` | No rule the product runs would admit it yet: a museum with no work over the works line waits for the regional tier of Art Museums (#628) |
 | `kind-missing` | A traveller looks for it under a kind the register has and the product does not; the note names the kind, and the entry is filed under it |
 | `part-of-offered` | The catalogue offers the place it is part of: the Vatican Pinacoteca inside the Vatican Museums, a gallery of the Palace Museum |
-| `offered-elsewhere` | A reader finds it under the kind the product's rules give it to: the Arch of Constantine under Archaeology, not Public Art (ADR-0102) |
+| `offered-elsewhere` | A reader finds it under the kind the product's rules give it to: the Arch of Constantine under Archaeology, not Monuments & memorials (ADR-0102) |
 | `not-a-must` | A visitor misses nothing by the kind not offering it: a commercial gallery, a printmaking workshop; on a row, a stump of brick in the Forum no guide sends anyone to |
 | `worth-a-visit` | On a row only: a traveller would go although no guide names it, so the gap is the guides', not the catalogue's. The row is listed no more |
 
