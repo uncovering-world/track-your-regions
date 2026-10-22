@@ -680,6 +680,28 @@ export interface ImportRunsRow {
   completed_at: Date | null;
 }
 
+/** The table `osm_layer_builds`. */
+export interface OsmLayerBuildsRow {
+  build_id: number;
+  planet_file: string;
+  dump_date: Date;
+  replicated_at: Date;
+  objects: string;
+  pinned: number;
+  pinned_gone: number;
+  swapped_at: Date;
+}
+
+/** The table `osm_objects`. */
+export interface OsmObjectsRow {
+  osm_type: string;
+  osm_id: string;
+  tags: unknown;
+  wikidata: string | null;
+  wikipedia: string | null;
+  geom: string | null;
+}
+
 /** The table `readership_month_files`. */
 export interface ReadershipMonthFilesRow {
   month: Date;
@@ -1142,6 +1164,8 @@ export const RELATION_SCHEMAS = {
   experiences: "public",
   geometry_computations: "public",
   import_runs: "public",
+  osm_layer_builds: "workbench",
+  osm_objects: "workbench",
   readership_month_files: "workbench",
   readership_months: "workbench",
   readership_staging: "workbench",
@@ -1362,6 +1386,9 @@ export const COLUMN_WIDTHS = {
   import_runs: {
     source_type: 50,
     status: 20,
+  },
+  osm_objects: {
+    osm_type: 1,
   },
   refresh_tokens: {
     token_hash: 255,
