@@ -11,6 +11,7 @@ import { pool } from '../../../db/index.js';
 import { inWorkbench } from '../../../db/workbench.js';
 import type { CopyNeeds } from '../wikidata/buildRules.js';
 import { cancellable, indexesOf } from '../wikidata/subsetTables.js';
+import type { KeepWkt } from '../../sync/osm/types.js';
 import { sideBySide } from './tools.js';
 
 const TABLE = 'osm_objects';
@@ -76,6 +77,8 @@ export interface LayerRecord {
   pinned: number;
   /** How many of the objects the catalogue names the planet no longer holds. */
   pinnedGone: number;
+  /** The rule the build kept full geometries by (ADR-0136). */
+  drawn: KeepWkt;
 }
 
 /**
@@ -92,9 +95,10 @@ export async function swapIn(record: LayerRecord, signal: AbortSignal): Promise<
     await client.query(`ALTER TABLE ${NEXT} RENAME TO ${TABLE}`);
     for (const index of indexes) await client.query(`ALTER INDEX ${inWorkbench(index.name + '_next')} RENAME TO ${index.name}`);
     await client.query(
-      `INSERT INTO osm_layer_builds (build_id, planet_file, dump_date, replicated_at, objects, pinned, pinned_gone)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [record.buildId, record.planetFile, record.dumpDate, record.replicatedAt, record.objects, record.pinned, record.pinnedGone],
+      `INSERT INTO osm_layer_builds (build_id, planet_file, dump_date, replicated_at, objects, pinned, pinned_gone, drawn)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [record.buildId, record.planetFile, record.dumpDate, record.replicatedAt, record.objects, record.pinned, record.pinnedGone,
+        JSON.stringify(record.drawn)],
     );
     signal.throwIfAborted();
     await client.query('COMMIT');
@@ -107,13 +111,22 @@ export async function swapIn(record: LayerRecord, signal: AbortSignal): Promise<
 }
 
 /**
- * The instant the layer in place is current to, or null where none is: the
- * one statement of "the layer in place" the schedule and the layer's door both
- * read (`layerSchedule.ts`, `sync/osm/localOsm.ts`).
+ * The layer in place, or null where none is: the instant it is current to and
+ * the rule it kept full geometries by, null for a layer cut before ADR-0136,
+ * which kept every one. The one statement of "the layer in place" the schedule
+ * and the layer's door both read (`layerSchedule.ts`, `sync/osm/localOsm.ts`).
  */
+export async function layerState(): Promise<{ currentTo: Date; drawn: KeepWkt | null } | null> {
+  const result = await pool.query<{ replicated_at: Date; drawn: KeepWkt | null }>(
+    'SELECT replicated_at, drawn FROM osm_layer_builds ORDER BY swapped_at DESC LIMIT 1',
+  );
+  const row = result.rows[0];
+  return row ? { currentTo: row.replicated_at, drawn: row.drawn } : null;
+}
+
+/** The instant the layer in place is current to, or null where none is. */
 export async function layerCurrentTo(): Promise<Date | null> {
-  const result = await pool.query<{ replicated_at: Date }>('SELECT replicated_at FROM osm_layer_builds ORDER BY swapped_at DESC LIMIT 1');
-  return result.rows[0]?.replicated_at ?? null;
+  return (await layerState())?.currentTo ?? null;
 }
 
 /** The layer in place, if any: its planet's date and when it was swapped in. */

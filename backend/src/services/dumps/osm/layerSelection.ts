@@ -12,6 +12,8 @@
  */
 
 import { pool } from '../../../db/index.js';
+import { OSM_KEEP_WKT } from '../../sync/archaeology/siteClasses.js';
+import type { KeepWkt } from '../../sync/osm/types.js';
 
 /**
  * The selection, one `osmium tags-filter` expression per entry: a key on its
@@ -38,6 +40,41 @@ export const LAYER_SELECTION = [
 export function selectionFile(): string {
   const lines = LAYER_SELECTION.map(selector => `nwr/${selector}`);
   return `${lines.join('\n')}\n`;
+}
+
+/**
+ * The objects whose full geometry the layer keeps (ADR-0136): those a kind's
+ * keep rule draws, which today is Archaeology's alone — a ruin, a dig, or the
+ * protected area drawn around one. Every other object keeps a point.
+ */
+export const LAYER_DRAWN: KeepWkt = OSM_KEEP_WKT;
+
+/**
+ * The drawn rule as the flex style reads it, one key a line: `key=a,b` draws
+ * those values, a key on its own draws any value but `no` (`ruins`,
+ * `archaeological_site`), the five clauses every door spells.
+ */
+export function drawnFile(): string {
+  const valued = (key: string, values: string[]) => (values.length ? [`${key}=${values.join(',')}`] : []);
+  const lines = [
+    ...valued('historic', LAYER_DRAWN.historic),
+    'ruins',
+    'archaeological_site',
+    ...valued('man_made', LAYER_DRAWN.manMade),
+    ...valued('boundary', LAYER_DRAWN.boundary),
+  ];
+  return `${lines.join('\n')}\n`;
+}
+
+/**
+ * Whether a layer cut with the drawn rule `drawn` keeps the full geometry of
+ * every object `keep` asks one for. A layer cut before ADR-0136 (`null`) kept
+ * every one. A reader asking for more asks those outlines live.
+ */
+export function layerDraws(drawn: KeepWkt | null, keep: KeepWkt): boolean {
+  if (drawn === null) return true;
+  const within = (asked: string[], kept: string[]) => asked.every(value => kept.includes(value));
+  return within(keep.historic, drawn.historic) && within(keep.manMade, drawn.manMade) && within(keep.boundary, drawn.boundary);
 }
 
 const OSM_REF = /^(node|way|relation)\/([1-9]\d*)$/;
