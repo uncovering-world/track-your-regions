@@ -689,6 +689,7 @@ export interface OsmLayerBuildsRow {
   objects: string;
   pinned: number;
   pinned_gone: number;
+  drawn: unknown | null;
   swapped_at: Date;
 }
 

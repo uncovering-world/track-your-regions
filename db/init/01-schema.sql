@@ -4317,9 +4317,11 @@ CREATE TABLE IF NOT EXISTS workbench.osm_layer_builds (
     objects BIGINT NOT NULL,
     pinned INTEGER NOT NULL,
     pinned_gone INTEGER NOT NULL DEFAULT 0,
+    drawn JSONB,
     swapped_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 COMMENT ON TABLE workbench.osm_layer_builds IS 'Each build of the OpenStreetMap layer that was swapped in (#1437, ADR-0134): the dump build that cut it, the planet file and its date, the replication timestamp the planet was current to (every answer read from the layer carries it), the objects kept, how many objects the catalogue named were cut in whatever their tags, and how many of those the planet no longer held (deleted or redrawn under another id since a place linked them). The newest row is what osm_objects holds.';
+COMMENT ON COLUMN workbench.osm_layer_builds.drawn IS 'The rule the build kept full geometries by (ADR-0136): {historic, manMade, boundary} value lists, with ruins and archaeological_site drawn by their presence. Every other object holds a point. NULL is a layer cut before ADR-0136, which kept every geometry whole.';
 
 CREATE TABLE IF NOT EXISTS workbench.osm_objects (
     osm_type CHAR(1) NOT NULL,
@@ -4333,7 +4335,7 @@ CREATE TABLE IF NOT EXISTS workbench.osm_objects (
 CREATE INDEX IF NOT EXISTS osm_objects_wikidata ON workbench.osm_objects (wikidata) WHERE wikidata IS NOT NULL;
 CREATE INDEX IF NOT EXISTS osm_objects_wikipedia ON workbench.osm_objects (wikipedia) WHERE wikipedia IS NOT NULL;
 CREATE INDEX IF NOT EXISTS osm_objects_geom ON workbench.osm_objects USING GIST (geom);
-COMMENT ON TABLE workbench.osm_objects IS 'An OpenStreetMap object of the layer (#1437, ADR-0134): its type as osm2pgsql writes it (N, W, R) and id, every tag, the wikidata and wikipedia tags for lookup, and its geometry in WGS 84 (a point, a way''s line or the area it encloses, an area relation''s multipolygon, another relation''s collection of members). ODbL: what the catalogue takes from it keeps its provenance (ADR-0059). Never written but by the layer''s build, which swaps a new copy in whole.';
+COMMENT ON TABLE workbench.osm_objects IS 'An OpenStreetMap object of the layer (#1437, ADR-0134): its type as osm2pgsql writes it (N, W, R) and id, every tag, the wikidata and wikipedia tags for lookup, and its geometry in WGS 84: the full shape where a kind draws the object (a ruin, a dig, a protected area: a way''s line or the area it encloses, an area relation''s multipolygon, another relation''s collection of members), one point for every other object (ADR-0136), which locates it and never places anything. ODbL: what the catalogue takes from it keeps its provenance (ADR-0059). Never written but by the layer''s build, which swaps a new copy in whole.';
 
 -- When the OpenStreetMap layer updates itself (#1437). See db/migrations/147.
 CREATE TABLE IF NOT EXISTS workbench.osm_layer_schedule (

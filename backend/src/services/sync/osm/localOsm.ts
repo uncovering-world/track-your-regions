@@ -20,13 +20,15 @@
  *   asked, which the site's `metadata.osm` carries (ADR-0059 decision 2).
  *
  * The objects answer in the shape both live doors fold into (`types.ts`): the
- * tags `OSM_TAG_KEYS` reads, and a geometry only for the objects the kind's
- * keep rule draws, the same five clauses `overpassBatchQuery` spells.
+ * tags `OSM_TAG_KEYS` reads, and a geometry and its type only for the objects
+ * the kind's keep rule draws, the same five clauses `overpassBatchQuery`
+ * spells. The layer keeps no full geometry of any other object (ADR-0136).
  */
 
 import { pool } from '../../../db/index.js';
 import { LAYER_FRESH_FOR_DAYS } from '../../dumps/osm/layerSchedule.js';
-import { layerCurrentTo } from '../../dumps/osm/layerTables.js';
+import { layerDraws } from '../../dumps/osm/layerSelection.js';
+import { layerState } from '../../dumps/osm/layerTables.js';
 import type { QueryRunner } from '../wikidataQueries.js';
 import { isQid } from '../wikidataUtils.js';
 import { OsmEmptyEnumerationError, readOsmDigs, readOsmObjects, type OsmDoor } from './readOsmObjects.js';
@@ -35,10 +37,17 @@ import { OSM_TAG_KEYS, type DigTags, type KeepWkt, type OsmDigs, type OsmKind, t
 const DAY_MS = 24 * 60 * 60 * 1000;
 const KINDS: Record<string, OsmKind> = { N: 'node', W: 'way', R: 'relation' };
 
-/** The layer in place, as the instant it is current to; null where none is. */
-async function layerInPlace(): Promise<{ currentTo: string } | null> {
-  const currentTo = await layerCurrentTo();
-  return currentTo ? { currentTo: currentTo.toISOString() } : null;
+interface LayerInPlace {
+  /** The instant the layer is current to. */
+  currentTo: string;
+  /** The rule it kept full geometries by; null for a layer that kept every one (ADR-0136). */
+  drawn: KeepWkt | null;
+}
+
+/** The layer in place; null where none is. */
+async function layerInPlace(): Promise<LayerInPlace | null> {
+  const state = await layerState();
+  return state ? { currentTo: state.currentTo.toISOString(), drawn: state.drawn } : null;
 }
 
 /**
@@ -88,17 +97,28 @@ function objectOf(row: LayerRow, currentTo: string): OsmObject {
   };
 }
 
-/** What the layer maps carrying each item's `wikidata` tag, with a geometry where the keep rule draws one. */
+/**
+ * What the layer maps carrying each item's `wikidata` tag, with its geometry
+ * and the geometry's type where the keep rule draws one. The layer keeps a
+ * full geometry only for what a kind draws and a point for the rest
+ * (ADR-0136), so it answers no type for an object the rule does not draw:
+ * its point says where the object is, not what shape it has.
+ */
 async function layerObjects(qids: string[], keep: KeepWkt, currentTo: string): Promise<Map<string, OsmObject[]>> {
   const result = await pool.query<LayerRow>(
-    `SELECT osm_type, osm_id::text AS osm_id, tags, wikidata, wikipedia, GeometryType(geom) AS geometry_type,
-            CASE WHEN tags->>'historic' = ANY($2::text[])
-                   OR (tags ? 'ruins' AND tags->>'ruins' <> 'no')
-                   OR (tags ? 'archaeological_site' AND tags->>'archaeological_site' <> 'no')
-                   OR tags->>'man_made' = ANY($3::text[])
-                   OR tags->>'boundary' = ANY($4::text[])
-                 THEN ST_AsText(geom) END AS wkt
+    `SELECT osm_type, osm_id::text AS osm_id, tags, wikidata, wikipedia,
+            CASE WHEN rule.draws THEN GeometryType(shape.geom) END AS geometry_type,
+            CASE WHEN rule.draws THEN ST_AsText(shape.geom) END AS wkt
        FROM osm_objects
+      CROSS JOIN LATERAL (SELECT tags->>'historic' = ANY($2::text[])
+                                 OR (tags ? 'ruins' AND tags->>'ruins' <> 'no')
+                                 OR (tags ? 'archaeological_site' AND tags->>'archaeological_site' <> 'no')
+                                 OR tags->>'man_made' = ANY($3::text[])
+                                 OR tags->>'boundary' = ANY($4::text[]) AS draws) AS rule
+      -- A closed way as its area, as both live doors draw it: osm2pgsql keeps
+      -- a ring that crosses itself as its line (Viminacium's way/1568883618).
+      CROSS JOIN LATERAL (SELECT CASE WHEN GeometryType(geom) = 'LINESTRING' AND ST_IsClosed(geom) AND ST_NPoints(geom) >= 4
+                                      THEN ST_MakePolygon(geom) ELSE geom END AS geom) AS shape
       WHERE wikidata = ANY($1::text[])
       ORDER BY osm_type, osm_id`,
     [qids, keep.historic, keep.manMade, keep.boundary],
@@ -132,7 +152,11 @@ export function localOsmReader(
     if (!asked.length) return out;
     run.phase(`Reading what the OpenStreetMap layer maps at ${asked.length.toLocaleString('en')} sites...`);
     await run.step();
-    const layer = await layerInPlace();
+    // A layer cut with a drawn rule narrower than `keep` holds points where
+    // this read wants outlines: it answers nothing here, and the read goes
+    // live whole until a layer cut with the wider rule is in place (ADR-0136).
+    const placed = await layerInPlace();
+    const layer = placed && layerDraws(placed.drawn, keep) ? placed : null;
     if (layer) for (const [qid, objects] of await layerObjects(asked, keep, layer.currentTo)) out.set(qid, objects);
     if (layerVouches(layer, now())) return out;
     const misses = asked.filter(qid => out.get(qid)!.length === 0);

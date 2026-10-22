@@ -9,7 +9,7 @@ import { describe, expect, it, vi } from 'vitest';
 const query = vi.fn();
 vi.mock('../../../db/index.js', () => ({ pool: { query: (...args: unknown[]) => query(...args) } }));
 
-const { getidOf, LAYER_SELECTION, pinnedObjects, selectionFile } = await import('./layerSelection.js');
+const { drawnFile, getidOf, LAYER_DRAWN, LAYER_SELECTION, layerDraws, pinnedObjects, selectionFile } = await import('./layerSelection.js');
 
 describe('the layer selection', () => {
   it('writes one osmium expression a line, for nodes, ways and relations', () => {
@@ -23,6 +23,24 @@ describe('the layer selection', () => {
 
   it('selects no object by an address alone', () => {
     expect(LAYER_SELECTION.some(selector => selector.startsWith('addr'))).toBe(false);
+  });
+
+  it('writes the drawn rule one key a line, for the flex style (ADR-0136)', () => {
+    const lines = drawnFile().trimEnd().split('\n');
+    expect(lines).toContain('ruins');
+    expect(lines).toContain('archaeological_site');
+    expect(lines).toContain('boundary=protected_area,national_park');
+    expect(lines.find(line => line.startsWith('historic='))).toBe(`historic=${LAYER_DRAWN.historic.join(',')}`);
+    expect(lines.every(line => /^[a-z_]+(=[a-z_,]+)?$/.test(line))).toBe(true);
+  });
+
+  it('says whether a layer cut with a drawn rule keeps the outlines a keep rule asks for', () => {
+    expect(layerDraws(LAYER_DRAWN, LAYER_DRAWN)).toBe(true);
+    expect(layerDraws(LAYER_DRAWN, { historic: [], manMade: [], boundary: [] })).toBe(true);
+    expect(layerDraws(LAYER_DRAWN, { historic: ['memorial'], manMade: [], boundary: [] })).toBe(false);
+    expect(layerDraws(LAYER_DRAWN, { historic: [], manMade: [], boundary: ['administrative'] })).toBe(false);
+    // A layer cut before ADR-0136 kept every geometry whole.
+    expect(layerDraws(null, { historic: ['memorial'], manMade: [], boundary: [] })).toBe(true);
   });
 
   it("names an OSM object as osmium getid does, and nothing that is not one", () => {

@@ -38,7 +38,7 @@ import { fileURLToPath } from 'node:url';
 import type { DumpFile, TextReader } from '../catalog.js';
 import { fetchText } from '../fetch.js';
 import { holdVerifiedCopy, type ReadOptions, type ReadResult } from '../read.js';
-import { pinnedObjects, selectionFile } from './layerSelection.js';
+import { drawnFile, LAYER_DRAWN, pinnedObjects, selectionFile } from './layerSelection.js';
 import { dropImportProperties, dropNextTable, indexNextTable, MIDDLE_PREFIX, nextTableCount, NEXT_TABLE, swapIn } from './layerTables.js';
 import { bringForward, CURRENT_PLANET, dailyState, dropCurrent, firstDiffAfter, readCurrent, type BroughtForward } from './planetCurrent.js';
 import { databaseEnv, OSM2PGSQL, OSM2PGSQL_INPUT, OSMIUM, OSMIUM_OUTPUT, runTool, sideBySide } from './tools.js';
@@ -100,6 +100,7 @@ async function cutLayer(planet: string, work: string, options: LayerBuildOptions
   const pins = join(work, 'pins.txt');
   const named = await pinnedObjects();
   await writeFile(selection, selectionFile());
+  await writeFile(join(work, 'drawn.txt'), drawnFile());
   await writeFile(pins, named.length > 0 ? `${named.join('\n')}\n` : '');
 
   const selected = join(work, 'selected.osm.pbf');
@@ -135,14 +136,17 @@ async function cutLayer(planet: string, work: string, options: LayerBuildOptions
 }
 
 /** Load the cut through the flex style into the `_next` copy. */
-async function loadLayer(cut: string, selection: string, pins: string, signal: AbortSignal): Promise<void> {
+async function loadLayer(cut: string, work: string, pins: string, signal: AbortSignal): Promise<void> {
   await dropNextTable();
   await runTool(OSM2PGSQL, [
     '--create', '--output=flex', `--style=${STYLE}`, '--slim', '--drop', `--cache=${NODE_CACHE_MB}`,
     '--middle-schema=workbench', `--prefix=${MIDDLE_PREFIX}`, cut,
   ], {
     signal,
-    env: { ...databaseEnv(), OSM_LAYER_TABLE: NEXT_TABLE, OSM_LAYER_SELECTION: selection, OSM_LAYER_PINS: pins },
+    env: {
+      ...databaseEnv(), OSM_LAYER_TABLE: NEXT_TABLE, OSM_LAYER_SELECTION: join(work, 'selection.txt'),
+      OSM_LAYER_DRAWN: join(work, 'drawn.txt'), OSM_LAYER_PINS: pins,
+    },
   });
   await dropImportProperties();
 }
@@ -205,7 +209,7 @@ async function cutAndSwap(
     const current = planet.state.timestamp;
     const { cut, pins, pinned, gone } = await cutLayer(planet.path, work, options);
     options.onPhase('Loading the layer into the database...');
-    await loadLayer(cut, join(work, 'selection.txt'), pins, signal);
+    await loadLayer(cut, work, pins, signal);
     const objects = await nextTableCount();
     if (objects === 0) throw new Error('The cut kept no object, so the layer in place stays');
     options.onPhase('Indexing the layer...');
@@ -214,6 +218,7 @@ async function cutAndSwap(
     // is not offered as newer than a layer already brought past it.
     await swapIn({
       buildId: options.buildId, planetFile: planet.state.base, dumpDate: current.slice(0, 10), replicatedAt: current, objects, pinned, pinnedGone: gone,
+      drawn: LAYER_DRAWN,
     }, signal);
     const goneSaid = gone > 0 ? ` (${gone.toLocaleString('en')} of them no longer in the planet)` : '';
     return {
