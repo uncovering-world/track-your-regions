@@ -3,6 +3,7 @@
  */
 
 import type { MonumentType, PublicArtType } from './publicArt/kindRules.js';
+import type { TowerType } from './towers/classes.js';
 import type { Operation } from '../operationProgress.js';
 import type { FieldChange } from './changeSet.js';
 
@@ -263,7 +264,7 @@ export interface CollectedMuseum {
 }
 
 // =============================================================================
-// Wikidata Landmark Types (Public art, Monuments & memorials)
+// Wikidata Landmark Types (Public art, Monuments & memorials, Towers)
 // =============================================================================
 
 /**
@@ -289,8 +290,8 @@ export interface WikidataLandmark {
   year: number | null;
   sitelinks: number;
   countryLabel: string | null;
-  /** The type within the kind the run fills (`publicArt/kindRules.ts`). */
-  type: PublicArtType | MonumentType;
+  /** The type within the kind the run fills (`publicArt/kindRules.ts`, `towers/classes.ts`). */
+  type: PublicArtType | MonumentType | TowerType;
   /**
    * Every `P31` the entity carries, as the rule read them. Stored with the row
    * (`metadata.wikidataClasses`) so that Catalogue Checks can ask, of what is

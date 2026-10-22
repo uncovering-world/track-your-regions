@@ -19,6 +19,7 @@
 import { ROW_CAUSES, type Cause } from '../../../services/catalogueCoverage/files.js';
 import { ICONIC_SITELINKS } from '../../../services/sync/museum/tier1.js';
 import { ENTER_SITELINKS } from '../../../services/sync/publicArt/pipeline.js';
+import { TOWER_LINE } from '../../../services/sync/towers/kind.js';
 import {
   readCoverageFacts,
   type CoverageFacts, type ExpectationRow, type JudgementRow, type KindRow, type MatchRow, type NearbyRow,
@@ -207,11 +208,16 @@ function verdictOf(entry: ExpectationRow, matches: MatchRow[], nearby: NearbyRow
   return entry.type === 'place' && nearby.length > 0 ? 'same_spot' : 'missing_live';
 }
 
-/** The kinds whose line is in code: a monument enters on its own sitelinks, and so does a work. */
+/**
+ * The kinds whose line is in code: a monument enters on its own sitelinks, and
+ * so does a work. A tower also asks a year's readers, which a survey entry does
+ * not carry, so the report reads its editions alone.
+ */
 const CODE_LINES: Readonly<Record<string, number>> = {
   'public-art': ENTER_SITELINKS,
   'monuments-and-memorials': ENTER_SITELINKS,
   'notable-works': ICONIC_SITELINKS,
+  towers: TOWER_LINE.enterEditions,
 };
 
 /**

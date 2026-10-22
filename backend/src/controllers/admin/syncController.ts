@@ -113,6 +113,7 @@ const syncRegistry: Record<
   6: syncPlacePass,
   4: syncPlacePass,
   5: syncPlacePass,
+  7: syncPlacePass,
 };
 
 /**

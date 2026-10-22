@@ -55,7 +55,7 @@ export const VISIT_QUESTION_SURE = 0.7;
 export const NOT_A_VISIT: ReadonlySet<VisitReading> = new Set<VisitReading>(['nothing', 'not-a-place', 'object']);
 
 /** The sources whose runs ask: every kind but World Heritage. */
-export const ASKING_SOURCES: ReadonlySet<number> = new Set([2, 3, 4, 5, 6]);
+export const ASKING_SOURCES: ReadonlySet<number> = new Set([2, 3, 4, 5, 6, 7]);
 
 /** The map is read for its tags alone. */
 const NO_GEOMETRY: KeepWkt = { historic: [], manMade: [], boundary: [] };

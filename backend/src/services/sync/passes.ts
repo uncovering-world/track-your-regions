@@ -16,10 +16,10 @@ export const PUBLIC_ART_SOURCES: readonly number[] = [3, 6];
 /**
  * The place pass (#1820): one gather of the candidate places of every
  * Wikidata place kind (`places/gather.ts`), classified by Public art,
- * Monuments & memorials, Places of worship and Archaeology's sites, in that
- * order.
+ * Monuments & memorials, Places of worship, Archaeology's sites and Towers,
+ * in that order.
  */
-export const PLACE_PASS: readonly number[] = [...PUBLIC_ART_SOURCES, 4, 5];
+export const PLACE_PASS: readonly number[] = [...PUBLIC_ART_SOURCES, 4, 5, 7];
 
 const SYNC_PASSES: ReadonlyArray<readonly number[]> = [PLACE_PASS];
 

@@ -188,6 +188,9 @@ export const CACHED_KINDS_BY_SOURCE: Record<number, CacheKind[]> = {
   // place its readership door opens for (#1768). Its site candidates ask
   // under source 3's, with the place pass's gather (#1820).
   5: ['classes', 'pool', 'statements', 'entities', 'edges', 'osm', 'photos'],
+  // Towers: its visit witnesses ask under its own id, the gather under source
+  // 3's.
+  7: ['classes', 'pool', 'statements', 'edges', 'entities', 'osm', 'photos'],
 };
 
 /**
