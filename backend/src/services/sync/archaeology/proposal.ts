@@ -9,6 +9,7 @@
  * union.
  */
 
+import type { OsmReaderName } from '../osm/types.js';
 import type { SiteCandidate, SiteRefusal } from './sites.js';
 import type { SiteRefusalGroup } from './siteTest.js';
 import type { FilteredEntity } from '../syncContract.js';
@@ -44,6 +45,11 @@ export interface CollectedArchaeologySite {
     tag: string | null;
     extentFrom: string | null;
     readAt: string;
+    /** The door the object came through, where the run read through more than one (ADR-0134 decision 5). */
+    door?: OsmReaderName;
+    /** The extent's own door and time, where it came through another door than the verdict's object. */
+    extentDoor?: OsmReaderName;
+    extentReadAt?: string;
   };
   /** The extent's WKT in EPSG:4326, or null where OSM gave none. */
   extentWkt: string | null;

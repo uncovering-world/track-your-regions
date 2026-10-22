@@ -44,11 +44,10 @@
 import { chunk, type QueryRunner, type SparqlFn } from '../wikidataQueries.js';
 import { isQid, type SparqlBinding } from '../wikidataUtils.js';
 import {
-  foldOsmDigRows, foldOsmRows, type DigTags, type KeepWkt, type OsmDigs, type OsmObject,
+  foldOsmDigRows, foldOsmRows, type DigTags, type KeepWkt, type OsmDigs, type OsmObject, type OsmReaderName,
 } from './types.js';
 
-/** The readers this catalogue can go through, by the name an operator writes. */
-export type OsmReaderName = 'qlever' | 'overpass';
+export type { OsmReaderName } from './types.js';
 
 /**
  * One way of asking OpenStreetMap.

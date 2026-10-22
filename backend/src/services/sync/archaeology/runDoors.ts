@@ -17,6 +17,7 @@ import type { ArchaeologyPipelineDeps } from './pipeline.js';
 import { qleverOsmDoor } from '../osm/qleverOsm.js';
 import { overpassOsmDoor } from '../osm/overpassOsm.js';
 import { readOsmDigs, readOsmObjects, type OsmDoor, type OsmReaderName } from '../osm/readOsmObjects.js';
+import { localDigsReader, localOsmReader } from '../osm/localOsm.js';
 import type { OsmReader, SiteEntrance } from './sites.js';
 import { fetchWikipediaCategories } from '../wikipediaCategories.js';
 import { resolveWikipediaArticles } from '../wikipediaArticles.js';
@@ -180,14 +181,15 @@ function osmDigsReader(door: OsmDoor): SiteEntrance['digs'] {
  * over its `send` so every answer is kept like every other this run pays for —
  * and with a note of every question it answered from the cache or wrote into
  * it, so a door that turns out to be failing can have exactly those answers
- * taken back (`forget`) and the next run does not read them.
+ * taken back (`forget`) and the next run does not read them. The layer's
+ * live door is Overpass's (`localOsm.ts`).
  */
 function cachedOsmDoor(
   reader: OsmReaderName, progress: SyncProgress, refreshCache: boolean, budget: WaitBudget,
 ): { door: OsmDoor; forget: () => Promise<number> } {
-  const door: OsmDoor = reader === 'overpass'
-    ? overpassOsmDoor(progress, budget, LOG_PREFIX)
-    : qleverOsmDoor(progress, budget, LOG_PREFIX);
+  const door: OsmDoor = reader === 'qlever'
+    ? qleverOsmDoor(progress, budget, LOG_PREFIX)
+    : overpassOsmDoor(progress, budget, LOG_PREFIX);
   const cached = withCache(door.send, {
     sourceId: ARCHAEOLOGY_SOURCE_ID,
     enabled: !refreshCache,
@@ -286,14 +288,16 @@ export function doorsForAPass(
       categoryMembers: categoryMembersDoor(progress, budget, shelves, structure),
       // The site door's second signal. Never a default inside the pipeline: a
       // run that silently read no map would refuse Troy and call it a verdict.
-      osm: osmReader(door),
-      osmDigs: osmDigsReader(door),
+      // The layer answers both reads itself and asks this pass's Overpass door
+      // for what it cannot vouch for (ADR-0134 decision 4).
+      osm: reader === 'local' ? localOsmReader(door) : osmReader(door),
+      osmDigs: reader === 'local' ? localDigsReader(door, OSM_DIG_TAGS) : osmDigsReader(door),
       resolveArticles: articlesDoor(progress, budget),
       // The witnesses the readership door's rows need (ADR-0128): the map's
       // is read from the objects this pass's door brought.
       visitWitnesses: visitWitnessReader({ sparql, photos: cachedPhotosDoor(progress, refreshCache, budget) }),
     },
-    osm: door,
+    osm: { ...door, name: reader },
     forgetOsm: forget,
   };
 }

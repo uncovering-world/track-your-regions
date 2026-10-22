@@ -81,11 +81,13 @@ let placedThisRun = new Map<string, Set<string>>();
 let findsLine: LinePair | undefined;
 
 /**
- * The door this run read OpenStreetMap through — the mirror, or Overpass on
- * the day the mirror failed (`osm/oneDoorPerRun.ts`) — stamped on every site's
- * `metadata.osm`, so a curator reading an extent can tell which of the two drew
- * it (ADR-0059 decision 2 names where a fact came from). One door a run, so one
- * value for every site the run writes.
+ * The door this run read OpenStreetMap through — the mirror, Overpass on the
+ * day the mirror failed (`osm/oneDoorPerRun.ts`), or the layer — stamped on a
+ * site's `metadata.osm` so a curator reading an extent can tell which door drew
+ * it (ADR-0059 decision 2 names where a fact came from). Through a live door it
+ * is one value for every site the run writes. Through the layer each site
+ * takes the door its objects name (`provenanceOf`, the layer or the Overpass it
+ * asked), and this is the fallback for a site whose objects name none.
  */
 let osmDoor: OsmReaderName | undefined;
 
@@ -309,7 +311,7 @@ async function processSite(
     wikipediaUrl: item.articleUrl || null,
     // Kept separable, with the object, the tag, the date and the door beside
     // the value (ADR-0059 decision 2). Nothing else on this row comes from OSM.
-    osm: { ...item.osm, door: theOsmDoor() },
+    osm: { ...item.osm, door: item.osm.door ?? theOsmDoor() },
     // The question a row the tree did not vouch for asks a curator (#895),
     // under the museum row's key so the card reads both the same way — and
     // null, never absent, on a row with none: the upsert's held arm merges

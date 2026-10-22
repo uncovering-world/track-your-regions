@@ -81,10 +81,10 @@ function passOver(
 
 function oneDoor(
   preferred: OsmReaderName,
-  passes: Record<OsmReaderName, ReturnType<typeof passOver>>,
+  passes: Partial<Record<OsmReaderName, ReturnType<typeof passOver>>>,
   isCancelled = () => false,
 ) {
-  const pass = vi.fn((name: OsmReaderName) => passes[name]);
+  const pass = vi.fn((name: OsmReaderName) => passes[name]!);
   const onFallback = vi.fn();
   const read = readThroughOneDoor({ preferred, pass, isCancelled, logPrefix: '[T]', onFallback });
   return { read, pass, onFallback };
@@ -99,6 +99,15 @@ function isOneFullRead(questions: string[]): void {
 }
 
 describe('readThroughOneDoor', () => {
+  it('ends the run when the layer\'s live door fails, with no second pass and nothing dropped (ADR-0134)', async () => {
+    const layer = fakeDoor('local', (question) => question === 1);
+    const passes = { local: passOver(layer.door) };
+    const { read, pass } = oneDoor('local', passes);
+    await expect(read).rejects.toThrow('could not be read through local');
+    expect(pass).toHaveBeenCalledTimes(1);
+    expect(passes.local.forget).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['at the first batch', 1],
     ['at the seventh batch', 7],

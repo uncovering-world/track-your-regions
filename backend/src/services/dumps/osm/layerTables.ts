@@ -96,6 +96,16 @@ export async function swapIn(record: LayerRecord, signal: AbortSignal): Promise<
   }
 }
 
+/**
+ * The instant the layer in place is current to, or null where none is: the
+ * one statement of "the layer in place" the schedule and the layer's door both
+ * read (`layerSchedule.ts`, `sync/osm/localOsm.ts`).
+ */
+export async function layerCurrentTo(): Promise<Date | null> {
+  const result = await pool.query<{ replicated_at: Date }>('SELECT replicated_at FROM osm_layer_builds ORDER BY swapped_at DESC LIMIT 1');
+  return result.rows[0]?.replicated_at ?? null;
+}
+
 /** The layer in place, if any: its planet's date and when it was swapped in. */
 export async function latestLayer(): Promise<{ dumpDate: string; swappedAt: Date; needs: CopyNeeds } | null> {
   const result = await pool.query<{ dump_date: string; swapped_at: Date }>(

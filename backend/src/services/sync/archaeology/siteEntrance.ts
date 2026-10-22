@@ -141,7 +141,10 @@ async function keptBySubset(
  * The item's own objects, and the ones that named it: an object both reads
  * carry is one object, with the tags of both (the per-item read's first —
  * it carries the geometry), and one only the enumeration carried — the tumulus
- * that names Nemrut by its article — is listed after the item's own.
+ * that names Nemrut by its article — is listed after the item's own. Where the
+ * two copies came through two doors (the layer's per-item copy and Overpass's
+ * enumeration, ADR-0134), the per-item copy stands whole: its tags and its
+ * source then describe one view of the object, as of one date.
  */
 export function withNamed(mapped: OsmObject[], named: OsmObject[]): OsmObject[] {
   const out = mapped.map((object) => ({ ...object, tags: { ...object.tags } }));
@@ -151,6 +154,7 @@ export function withNamed(mapped: OsmObject[], named: OsmObject[]): OsmObject[] 
       out.push(object);
       continue;
     }
+    if (held.source && object.source && held.source.door !== object.source.door) continue;
     for (const [key, value] of Object.entries(object.tags)) held.tags[key] ??= value;
   }
   return out;
