@@ -49,7 +49,8 @@ import {
   type CollectedArchaeologyItem,
   type CollectedArchaeologyMuseum,
 } from './archaeology/pipeline.js';
-import { OSM_READER_VARIABLE, parseOsmReaderName } from './osm/readerChoice.js';
+import { chooseOsmReader, OSM_READER_VARIABLE } from './osm/readerChoice.js';
+import { freshLayerInPlace } from './osm/localOsm.js';
 import { readThroughOneDoor } from './osm/oneDoorPerRun.js';
 // Every door a pass asks through, built the same way for the mirror's pass and
 // for Overpass's (`archaeology/runDoors.ts`).
@@ -120,12 +121,13 @@ async function fetchArchaeologyItems(
   const openSiteDoor = await placeReadershipDoorFor(ARCHAEOLOGY_SOURCE_ID, line.enterSitelinks, LOG_PREFIX);
 
   // The collection, read through the OpenStreetMap door the environment names
-  // (`osm/oneDoorPerRun.ts`): the mirror unless `OSM_READER` says `overpass` or
-  // `local`. On the day the mirror fails the run reads again through Overpass
+  // (`osm/oneDoorPerRun.ts`): unset, the layer while a fresh one is in place
+  // and the mirror otherwise; `OSM_READER` names `qlever`, `overpass` or
+  // `local` to choose. On the day the mirror fails the run reads again through Overpass
   // from the start. `local` reads the layer cut from the planet with Overpass
   // for its misses, names a door per fact, and takes no second pass. A name
   // that is no door at all ends the run before a question is sent:
-  // `parseOsmReaderName` throws rather than reading a typo as the default.
+  // `chooseOsmReader` throws rather than reading a typo as the default.
   // Wikidata from the local subset, where the admin switched the source to it
   // (#1462): one door for every pass, since the map's fallback changes only
   // the map.
@@ -135,7 +137,7 @@ async function fetchArchaeologyItems(
   // otherwise, as a run on the live service always does.
   const structure = subset ? await wikipediaStructureFor(progress) : false;
   const { result: collected, door: osmDoorName } = await readThroughOneDoor({
-    preferred: parseOsmReaderName(process.env[OSM_READER_VARIABLE]),
+    preferred: await chooseOsmReader(process.env[OSM_READER_VARIABLE], () => freshLayerInPlace()),
     pass: (reader) => {
       const doors = doorsForAPass(reader, progress, refreshCache, subset, structure);
       return {

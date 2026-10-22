@@ -81,6 +81,10 @@ vi.mock('./osm/qleverOsm.js', () => ({
 vi.mock('./osm/overpassOsm.js', () => ({
   overpassOsmDoor: vi.fn(() => ({ name: 'overpass', question: vi.fn(), send: vi.fn() })),
 }));
+vi.mock('./osm/localOsm.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./osm/localOsm.js')>()),
+  freshLayerInPlace: vi.fn().mockResolvedValue(false),
+}));
 vi.mock('./osm/readOsmObjects.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./osm/readOsmObjects.js')>()),
   readOsmObjects: vi.fn().mockResolvedValue(new Map()),
@@ -115,6 +119,7 @@ import type { CollectedArchaeologySite } from './archaeology/proposal.js';
 import { qleverOsmDoor } from './osm/qleverOsm.js';
 import { overpassOsmDoor } from './osm/overpassOsm.js';
 import { readOsmObjects } from './osm/readOsmObjects.js';
+import { freshLayerInPlace } from './osm/localOsm.js';
 import { forgetCached, withCache } from './wikidataCache.js';
 import { fetchWikipediaCategories } from './wikipediaCategories.js';
 import { fetchCategoryMembers } from './wikipediaCategoryMembers.js';
@@ -138,6 +143,7 @@ const mockedUpsert = upsertExperienceRecord as unknown as ReturnType<typeof vi.f
 const mockedLocation = upsertSingleLocation as unknown as ReturnType<typeof vi.fn>;
 const mockedOsmDoor = qleverOsmDoor as unknown as ReturnType<typeof vi.fn>;
 const mockedOverpassDoor = overpassOsmDoor as unknown as ReturnType<typeof vi.fn>;
+const mockedFreshLayer = vi.mocked(freshLayerInPlace);
 const mockedReadOsm = readOsmObjects as unknown as ReturnType<typeof vi.fn>;
 const mockedWithCache = withCache as unknown as ReturnType<typeof vi.fn>;
 const mockedForget = forgetCached as unknown as ReturnType<typeof vi.fn>;
@@ -524,6 +530,20 @@ describe('what the archaeology run fetches', () => {
 
   describe('which door OpenStreetMap is read through', () => {
     afterEach(() => { vi.unstubAllEnvs(); });
+
+    it('is the layer while a fresh one is in place and the environment names no door (ADR-0134)', async () => {
+      vi.stubEnv('OSM_READER', '');
+      mockedFreshLayer.mockResolvedValueOnce(true);
+      const log = vi.spyOn(console, 'log').mockImplementation(() => {});
+      mockedQuery.mockResolvedValueOnce(lineRow()).mockResolvedValueOnce({ rows: [] });
+      collected([site()]);
+
+      await (await configOf()).fetchItems(progress(), []);
+
+      expect(mockedOsmDoor).not.toHaveBeenCalled();
+      expect(log).toHaveBeenCalledWith(expect.stringContaining('OpenStreetMap is read through the OpenStreetMap layer'));
+      log.mockRestore();
+    });
 
     it('is the mirror unless the environment says otherwise, and the run log says which', async () => {
       vi.stubEnv('OSM_READER', '');

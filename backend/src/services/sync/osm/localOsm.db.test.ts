@@ -100,6 +100,13 @@ describe('the layer as a door (ADR-0134)', () => {
     expect(found.get(TROY)).toEqual([expect.objectContaining({ ref: 'way/77', source: { door: 'overpass', asOf: expect.any(String) } })]);
   });
 
+  it('leaves a miss the live door did not answer unread, never mapped as nothing', async () => {
+    await layer(9);
+    const found = await localOsmReader(live, undefined, async () => new Map())([STONEHENGE, TROY], KEEP, run);
+    expect(found.get(STONEHENGE)![0].source).toEqual({ door: 'local', asOf: currentTo.toISOString() });
+    expect(found.has(TROY)).toBe(false);
+  });
+
   it('asks Overpass for every item while no layer is in place', async () => {
     await layer(null);
     await localOsmReader(live)([STONEHENGE, TROY], KEEP, run);
