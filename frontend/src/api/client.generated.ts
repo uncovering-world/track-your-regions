@@ -3790,8 +3790,10 @@ export interface DumpBuild {
      */
   lines: number;
   checksumKind: DumpBuildChecksumKind;
-  /** The published checksum matched, or, where none is published, the size and the end of stream did; never for a re-derive, which reads no file, nor for a sample or a trial, which read no file of the host's. */
+  /** The published checksum matched, or, where none is published, the size and the end of stream did; never for a re-derive, which reads no file, nor for a sample or a trial, which read no file of the host's, nor for a keeping build that brought a kept copy forward (`broughtForward`). */
   verified: boolean;
+  /** Whether this keeping build brought a kept copy forward from its own source rather than reading a file of the host's: the OpenStreetMap layer's current planet, by the daily diffs (#1437). */
+  broughtForward: boolean;
   status: DumpBuildStatus;
   /** @nullable */
   error: string | null;
@@ -4009,6 +4011,8 @@ export type DumpsDumpsItemKeeps = {
   samples: boolean;
   /** Whether a keeping build may start from the local copy rather than the newest file, which decides whether "Build <date> copy" is offered. */
   fromCopy: boolean;
+  /** Whether what is kept is brought forward past its dump (the OpenStreetMap layer, by the planet's daily diffs), so `built.dumpDate` is the day it is current to rather than the date of a dump. */
+  currentTo: boolean;
 } | null;
 
 /**

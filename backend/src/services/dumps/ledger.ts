@@ -32,6 +32,12 @@ export interface BuildRequestRecord {
   kind: BuildKind;
   /** The local file to read: the local copy, or the sample a trial reads; absent, the newest file the host lists. */
   only?: string;
+  /**
+   * Set by the worker when a keeping build took the keeper's update path and
+   * brought a kept copy forward from its own source, reading no file of the
+   * host's (the OpenStreetMap layer's current planet, #1437).
+   */
+  update?: true;
 }
 
 /** What the panel shows of a running build, written with each heartbeat. */
@@ -104,6 +110,11 @@ export async function recordFile(id: number, file: DumpFile): Promise<void> {
   );
 }
 
+/** Mark the running build `id` as one that brings a kept copy forward and reads no file of the host's (#1437). */
+export async function recordUpdate(id: number): Promise<void> {
+  await pool.query(`UPDATE dump_builds SET request = COALESCE(request, '{}'::jsonb) || '{"update": true}'::jsonb WHERE id = $1`, [id]);
+}
+
 /** Say the running build `id` is alive and how far it got; answers whether an admin asked it to stop. */
 export async function beat(id: number, progress: BuildProgressRecord): Promise<{ cancelRequested: boolean }> {
   const result = await pool.query<Pick<DumpBuildsRow, 'cancel_requested_at'>>(
@@ -149,13 +160,16 @@ export async function closeBuild(
 /**
  * The newest builds of each dump, for the admin panel: `perDump` of those that
  * read the dump's file, and as many of each kind that does not (re-derives,
- * #1526; samples and trials, #1527), so these never push the file builds out.
+ * #1526; samples and trials, #1527; keeping builds that brought a kept copy
+ * forward, the OpenStreetMap layer's updates, marked by `recordUpdate`, #1437), so
+ * these never push the file builds out.
  */
 export async function recentBuilds(perDump = 3): Promise<DumpBuildRow[]> {
   const result = await pool.query<DumpBuildRow>(
     `SELECT * FROM (
        SELECT b.*, row_number() OVER (
-                PARTITION BY b.dump, CASE WHEN b.request->>'kind' IN ('rederive', 'sample', 'trial') THEN b.request->>'kind' END
+                PARTITION BY b.dump, CASE WHEN b.request->>'kind' IN ('rederive', 'sample', 'trial') THEN b.request->>'kind'
+                                          WHEN b.request->>'update' = 'true' THEN 'update' END
                 ORDER BY b.started_at DESC, b.id DESC) AS rn
          FROM dump_builds b) ranked
       WHERE rn <= $1

@@ -51,7 +51,8 @@ export const DumpBuild = z.strictObject({
   bytes: z.number().int(),
   lines: z.number().int(),
   checksumKind: z.enum(CHECK_VALUES.dump_builds.checksum_kind).nullable(),
-  verified: z.boolean().describe('The published checksum matched, or, where none is published, the size and the end of stream did; never for a re-derive, which reads no file, nor for a sample or a trial, which read no file of the host\'s.'),
+  verified: z.boolean().describe('The published checksum matched, or, where none is published, the size and the end of stream did; never for a re-derive, which reads no file, nor for a sample or a trial, which read no file of the host\'s, nor for a keeping build that brought a kept copy forward (`broughtForward`).'),
+  broughtForward: z.boolean().describe('Whether this keeping build brought a kept copy forward from its own source rather than reading a file of the host\'s: the OpenStreetMap layer\'s current planet, by the daily diffs (#1437).'),
   status: z.enum(CHECK_VALUES.dump_builds.status).exclude(['queued']),
   error: z.string().nullable(),
   outcome: z.string().nullable().describe('What a build that ended well did, in words: what it kept, how long each step took, an older copy removed (#1527); null otherwise.'),
@@ -81,6 +82,7 @@ export const Dumps = z.strictObject({
       rederives: z.boolean().describe('Whether what is kept can be derived again without the dump, which decides whether "Derive again" is offered.'),
       samples: z.boolean().describe('Whether a sample of the local copy can be cut and the build tried on it, which decides whether "Cut a sample" and "Try the build" are offered.'),
       fromCopy: z.boolean().describe('Whether a keeping build may start from the local copy rather than the newest file, which decides whether "Build <date> copy" is offered.'),
+      currentTo: z.boolean().describe('Whether what is kept is brought forward past its dump (the OpenStreetMap layer, by the planet\'s daily diffs), so `built.dumpDate` is the day it is current to rather than the date of a dump.'),
     }).nullable().describe('What a keeping build of this dump makes (the local Wikidata subset, readership), or null where nothing is built from it yet.'),
     localCopy: z.strictObject({
       fileName: z.string(),

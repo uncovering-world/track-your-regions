@@ -1,10 +1,13 @@
 /**
  * A keeping build of the OpenStreetMap layer (#1437, ADR-0134): the objects of
- * the planet the catalogue asks about, cut from the weekly planet file and
- * swapped in whole.
+ * the planet the catalogue asks about, cut from the planet brought current by
+ * its daily diffs, and swapped in whole.
  *
- * The planet is held as a verified local copy (`holdVerifiedCopy`), never read
- * by lines. From it the build:
+ * The planet is the current one where one is kept (`planetCurrent.ts`),
+ * brought forward with the daily diffs since it was last; on a first build it
+ * is the weekly planet file, held as a verified local copy
+ * (`holdVerifiedCopy`), brought forward the same way, and removed once the
+ * current planet replaces it. From the current planet the build:
  * 1. cuts the selected objects with `osmium tags-filter`, which also keeps
  *    the nodes and members they are drawn from (`layerSelection.ts`);
  * 2. cuts every object the catalogue names with `osmium getid -r`, with what
@@ -32,10 +35,12 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { DumpFile } from '../catalog.js';
-import { holdVerifiedCopy, type ReadOptions } from '../read.js';
+import type { DumpFile, TextReader } from '../catalog.js';
+import { fetchText } from '../fetch.js';
+import { holdVerifiedCopy, type ReadOptions, type ReadResult } from '../read.js';
 import { pinnedObjects, selectionFile } from './layerSelection.js';
 import { dropImportProperties, dropNextTable, indexNextTable, MIDDLE_PREFIX, nextTableCount, NEXT_TABLE, swapIn } from './layerTables.js';
+import { bringForward, CURRENT_PLANET, dailyState, dropCurrent, firstDiffAfter, readCurrent, type BroughtForward } from './planetCurrent.js';
 import { databaseEnv, OSM2PGSQL, OSMIUM, runTool } from './tools.js';
 
 export type LayerBuildOptions = ReadOptions & {
@@ -70,11 +75,11 @@ export function goneObjects(stderr: string): { count: number; ids: string[] } | 
 }
 
 /**
- * The instant the planet is current to, from its header
+ * The instant a weekly planet is current to, from its header
  * (`osmosis_replication_timestamp`), or the start of its date where the header
  * names none.
  */
-async function replicatedAt(planet: string, file: DumpFile, signal: AbortSignal): Promise<string> {
+async function weeklyInstant(planet: string, file: DumpFile, signal: AbortSignal): Promise<string> {
   const header = (await runTool(OSMIUM, ['fileinfo', '-g', 'header.option.osmosis_replication_timestamp', planet], { signal })).stdout.trim();
   const instant = header ? new Date(header) : null;
   return instant && !Number.isNaN(instant.getTime()) ? instant.toISOString() : `${file.date}T00:00:00.000Z`;
@@ -132,32 +137,79 @@ async function loadLayer(cut: string, selection: string, pins: string, signal: A
   await dropImportProperties();
 }
 
-/** Cut the layer from the planet `file`, and swap it in. */
-export async function buildLayer(file: DumpFile, options: LayerBuildOptions): Promise<{ bytes: number; lines: number; checksumActual: string | null; summary?: string }> {
+/** What the layer is cut from: the current planet, and the weekly planet held for it on a first build. */
+type Planet = BroughtForward & { held: ReadResult | null };
+
+/**
+ * Start the current planet again from the weekly planet `file`: held as a
+ * verified local copy, brought forward with every daily diff since the
+ * instant its header names, and removed once the current planet replaces it.
+ * A current planet kept before is dropped once the weekly one is verified, so
+ * a download that fails leaves it to be brought forward.
+ */
+async function planetFromWeekly(file: DumpFile, dir: string, work: string, options: LayerBuildOptions): Promise<Planet> {
+  const { signal } = options;
+  const read: TextReader = url => fetchText(url, signal);
+  const held = await holdVerifiedCopy(file, options);
+  await dropCurrent(dir);
+  const newest = await dailyState(read);
+  const first = await firstDiffAfter(await weeklyInstant(held.path, file, signal), newest, read);
+  const current = await bringForward(held.path, first, file.fileName, newest, { dir, work, signal, onPhase: options.onPhase });
+  await rm(held.path, { force: true });
+  options.onNote?.(`removed ${file.fileName}: the current planet, brought forward to daily diff ${current.state.sequence}, replaces it`);
+  return { ...current, held };
+}
+
+/** The current planet kept under `dir`, brought forward with the daily diffs since its state. */
+async function planetKept(dir: string, work: string, options: LayerBuildOptions): Promise<Planet> {
+  const { signal } = options;
+  const kept = await readCurrent(dir);
+  if (!kept) throw new Error('No current planet is kept to bring forward: build the layer from a weekly planet first');
+  const newest = await dailyState(url => fetchText(url, signal));
+  const current = await bringForward(join(dir, CURRENT_PLANET), kept.sequence + 1, kept.base, newest, { dir, work, signal, onPhase: options.onPhase });
+  return { ...current, held: null };
+}
+
+/** Whether a current planet is kept under `DUMPS_DIR`, which a keeping build from the newest then brings forward. */
+export async function hasCurrentPlanet(): Promise<boolean> {
+  const dir = process.env.DUMPS_DIR?.trim();
+  return dir ? (await readCurrent(dir)) !== null : false;
+}
+
+type LayerResult = { bytes: number; lines: number; checksumActual: string | null; summary?: string };
+
+/** Cut the layer from the planet `planetOf` makes ready in the cut's directory, and swap it in. */
+async function cutAndSwap(
+  options: LayerBuildOptions, planetOf: (dir: string, work: string) => Promise<Planet>,
+): Promise<LayerResult> {
   if (options.trial) throw new Error('The OpenStreetMap layer has no trial build: it is cut from the whole planet');
   const { signal } = options;
+  if (!options.dumpsDir) throw new Error('The OpenStreetMap layer is cut from a local copy of the planet (DUMPS_DIR is not set)');
   // A stopped build's cut goes before the planet is held, so a new planet's
-  // download never waits on disk that cut still holds. Without DUMPS_DIR
-  // there is no cut, and holdVerifiedCopy says so.
-  const work = options.dumpsDir ? join(options.dumpsDir, CUT_DIRECTORY) : null;
-  if (work) await rm(work, { recursive: true, force: true });
-  const held = await holdVerifiedCopy(file, options);
-  if (!work) throw new Error('The OpenStreetMap layer is cut from a local copy (DUMPS_DIR is not set)');
+  // download never waits on disk that cut still holds.
+  const work = join(options.dumpsDir, CUT_DIRECTORY);
+  await rm(work, { recursive: true, force: true });
   await mkdir(work);
   try {
-    const { cut, pins, pinned, gone } = await cutLayer(held.path, work, options);
-    const current = await replicatedAt(held.path, file, signal);
+    const planet = await planetOf(options.dumpsDir, work);
+    const current = planet.state.timestamp;
+    const { cut, pins, pinned, gone } = await cutLayer(planet.path, work, options);
     options.onPhase('Loading the layer into the database...');
     await loadLayer(cut, join(work, 'selection.txt'), pins, signal);
     const objects = await nextTableCount();
     if (objects === 0) throw new Error('The cut kept no object, so the layer in place stays');
     options.onPhase('Indexing the layer...');
     await indexNextTable(signal);
-    await swapIn({ buildId: options.buildId, planetFile: file.fileName, dumpDate: file.date, replicatedAt: current, objects, pinned, pinnedGone: gone }, signal);
+    // The layer's date is the day it is current to, so a newer weekly planet
+    // is not offered as newer than a layer already brought past it.
+    await swapIn({
+      buildId: options.buildId, planetFile: planet.state.base, dumpDate: current.slice(0, 10), replicatedAt: current, objects, pinned, pinnedGone: gone,
+    }, signal);
     const goneSaid = gone > 0 ? ` (${gone.toLocaleString('en')} of them no longer in the planet)` : '';
     return {
-      bytes: held.bytes, lines: held.lines, checksumActual: held.checksumActual,
-      summary: `kept ${objects.toLocaleString('en')} OpenStreetMap objects from ${file.fileName}, current to ${current}, `
+      bytes: planet.held?.bytes ?? planet.bytes, lines: 0, checksumActual: planet.held?.checksumActual ?? null,
+      summary: `kept ${objects.toLocaleString('en')} OpenStreetMap objects from ${planet.state.base} brought forward with `
+        + `${planet.applied} daily diffs to diff ${planet.state.sequence}, current to ${current}, `
         + `with the ${pinned.toLocaleString('en')} objects the catalogue names cut in whatever their tags${goneSaid}`,
     };
   } catch (error) {
@@ -166,4 +218,14 @@ export async function buildLayer(file: DumpFile, options: LayerBuildOptions): Pr
   } finally {
     await rm(work, { recursive: true, force: true });
   }
+}
+
+/** Start the current planet again from the weekly planet `file`, cut the layer from it, and swap it in. */
+export function buildLayer(file: DumpFile, options: LayerBuildOptions): Promise<LayerResult> {
+  return cutAndSwap(options, (dir, work) => planetFromWeekly(file, dir, work, options));
+}
+
+/** Bring the kept current planet forward with the daily diffs since, cut the layer from it, and swap it in; reads no weekly planet. */
+export function updateLayer(options: LayerBuildOptions): Promise<LayerResult> {
+  return cutAndSwap(options, (dir, work) => planetKept(dir, work, options));
 }

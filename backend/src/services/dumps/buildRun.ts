@@ -10,9 +10,9 @@
 
 import { dumpNamed, type DumpDescriptor, type DumpFile } from './catalog.js';
 import { fetchText, sizeOf } from './fetch.js';
-import { BEAT_EVERY_MS, beat, closeBuild, recordFile, type BuildProgressRecord, type ClaimedBuild } from './ledger.js';
+import { BEAT_EVERY_MS, beat, closeBuild, recordFile, recordUpdate, type BuildProgressRecord, type ClaimedBuild } from './ledger.js';
 import { dumpsDir } from './buildQueue.js';
-import { keeperOf } from './keepers.js';
+import { keeperOf, type Keeper } from './keepers.js';
 import { PassClock } from './passClock.js';
 import { countLines, holdVerifiedCopy, readDump, type ReadOptions } from './read.js';
 import { cutSample, SAMPLE_JSON_BYTES, sampleFile, sampleIn } from './samples.js';
@@ -161,6 +161,7 @@ async function readTheDump(
   const keeper = kind === 'keep' ? keeperOf(descriptor.key) : null;
   // Counting the file as a verify would end green with nothing kept.
   if (kind === 'keep' && !keeper) throw new Error(noBuilder(descriptor.key));
+  if (keeper?.update && !only && await keeper.canUpdate?.()) return updateKept(claimed, keeper, descriptor, progress, signal, notes, clock, onPhase, figures);
   onPhase(only ? `Finding ${only} on the host...` : 'Finding the newest complete file...');
   await beat(claimed.id, progress);
   const file = await resolveFile(descriptor, signal, only);
@@ -184,6 +185,27 @@ async function readTheDump(
   const result = built ?? (file.compression === 'none' ? await holdVerifiedCopy(file, options) : await readDump(file, countLines(), options));
   const said = [verifiedMessage(file, result.lines, result.checksumActual), ...(built ? ['built and swapped in', ...(built.summary ? [built.summary] : [])] : [])];
   return { result, said };
+}
+
+/**
+ * Bring what the keeper holds forward from its own source (the OpenStreetMap
+ * layer's current planet, #1437): no file of the host's is resolved, recorded
+ * or said to be verified, since none is read.
+ */
+async function updateKept(
+  claimed: ClaimedBuild, keeper: Keeper, descriptor: DumpDescriptor, progress: BuildProgressRecord, signal: AbortSignal, notes: string[],
+  clock: PassClock, onPhase: (message: string) => boolean, figures: Figures,
+): Promise<{ result: { bytes: number; lines: number; checksumActual: string | null }; said: string[] }> {
+  progress.phase = 'reading';
+  onPhase('Bringing what is kept forward...');
+  await recordUpdate(claimed.id);
+  await beat(claimed.id, progress);
+  const built = await keeper.update!({
+    ...readOptions(descriptor, progress, signal, notes, clock, null, figures),
+    buildId: claimed.id,
+    onPhase: message => { if (onPhase(message)) { progress.etaSeconds = null; clock.reset(); } },
+  });
+  return { result: built, said: ['brought forward and swapped in', ...(built.summary ? [built.summary] : [])] };
 }
 
 /** Derive the kept build's tables again from what it holds (#1526): there is no file to verify. */

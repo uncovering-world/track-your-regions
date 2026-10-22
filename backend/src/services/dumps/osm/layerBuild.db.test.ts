@@ -1,4 +1,4 @@
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -6,11 +6,13 @@ import type { DumpFile } from '../catalog.js';
 
 /**
  * The OpenStreetMap layer's build (#1437, ADR-0134) against PostgreSQL, with
- * the tools stood in: osmium cuts nothing, and osm2pgsql's load is the rows
- * the flex style would write for Stonehenge (a node tagged with its item), the
- * Pompeii excavations (a way) and a bakery a curator linked (a node kept only
- * because the catalogue names it). The swap, the record and the cleanup are
- * the real ones.
+ * the tools and the host stood in: the weekly planet of Monday 2026-10-12 is
+ * current to 2026-10-12T00:00:02Z and the newest daily diff is 5153, ending
+ * 2026-10-22T00:00Z, as on that day; osmium writes what it is asked to, and
+ * osm2pgsql's load is the rows the flex style would write for Stonehenge (a
+ * node tagged with its item), the Pompeii excavations (a way) and a bakery a
+ * curator linked (a node kept only because the catalogue names it). The swap,
+ * the record, the current planet on disk and the cleanup are the real ones.
  */
 
 const planet: DumpFile = {
@@ -19,7 +21,12 @@ const planet: DumpFile = {
 };
 
 const dir = mkdtempSync(join(tmpdir(), 'osm-layer-'));
-writeFileSync(join(dir, planet.fileName), 'planet');
+
+/** Daily diff `n` ends at midnight UTC, 5143 on 2026-10-12. */
+const endOf = (sequence: number) => new Date(Date.UTC(2026, 9, 12) + (sequence - 5143) * 86_400_000).toISOString().replace('.000', '');
+const stateText = (sequence: number) => `sequenceNumber=${sequence}\ntimestamp=${endOf(sequence).replaceAll(':', '\\:')}\n`;
+let newestDiff = 5153;
+const diffsDownloaded: string[] = [];
 
 const calls: string[][] = [];
 let loadFails = false;
@@ -27,6 +34,18 @@ let loadFails = false;
 let getid: { code: number; stderr: string } = { code: 0, stderr: '' };
 let rowsLoaded: Array<[string, number, string, string | null, string]> = [];
 
+vi.mock('../fetch.js', () => ({
+  fetchText: vi.fn(async (url: string) => {
+    if (url.endsWith('/day/state.txt')) return stateText(newestDiff);
+    const match = /day\/(\d{3})\/(\d{3})\/(\d{3})\.state\.txt$/.exec(url);
+    return stateText(Number(match!.slice(1).join('')));
+  }),
+  downloadTo: vi.fn(async (url: string, path: string) => {
+    diffsDownloaded.push(url);
+    writeFileSync(path, 'diff');
+    return 4;
+  }),
+}));
 vi.mock('../read.js', () => ({
   holdVerifiedCopy: vi.fn(async () => ({ bytes: 668, lines: 0, checksumActual: 'c'.repeat(32), path: join(dir, planet.fileName) })),
 }));
@@ -41,7 +60,8 @@ vi.mock('./tools.js', async (importOriginal) => {
     runTool: vi.fn(async (command: string, args: string[], options: { env?: NodeJS.ProcessEnv }) => {
       calls.push([command.split('/').pop()!, ...args]);
       const answer = { stdout: '', stderr: '', code: 0 };
-      if (args[0] === 'fileinfo') return { ...answer, stdout: '2026-10-12T00:59:59Z\n' };
+      if (args[0] === 'fileinfo') return { ...answer, stdout: '2026-10-12T00:00:02Z\n' };
+      if (args[0] === 'apply-changes') writeFileSync(args[args.indexOf('-o') + 1], 'current planet');
       if (args[0] === 'getid') return { ...answer, ...getid };
       if (command === real.OSM2PGSQL) {
         const { pool: db } = await import('../../../db/index.js');
@@ -63,7 +83,7 @@ vi.mock('./tools.js', async (importOriginal) => {
 });
 
 const { pool } = await import('../../../db/index.js');
-const { buildLayer } = await import('./layerBuild.js');
+const { buildLayer, hasCurrentPlanet, updateLayer } = await import('./layerBuild.js');
 const { latestLayer } = await import('./layerTables.js');
 const { pinnedObjects } = await vi.importActual<typeof import('./layerSelection.js')>('./layerSelection.js');
 
@@ -77,9 +97,9 @@ const newBuild = async () => (await pool.query<{ id: number }>(
   `INSERT INTO dump_builds (dump, mode, status) VALUES ('osm-planet', 'local', 'running') RETURNING id`,
 )).rows[0].id;
 const notes: string[] = [];
-const build = () => buildLayer(planet, {
-  buildId, dumpsDir: dir, signal: new AbortController().signal, onPhase: () => undefined, onNote: note => notes.push(note),
-});
+const options = () => ({ buildId, dumpsDir: dir, signal: new AbortController().signal, onPhase: () => undefined, onNote: (note: string) => notes.push(note) });
+const build = () => buildLayer(planet, options());
+const update = () => updateLayer(options());
 const rows = async (sql: string) => (await pool.query(sql)).rows;
 
 async function clear(): Promise<void> {
@@ -89,6 +109,11 @@ async function clear(): Promise<void> {
 }
 
 beforeEach(async () => {
+  rmSync(dir, { recursive: true, force: true });
+  mkdirSync(dir);
+  writeFileSync(join(dir, planet.fileName), 'weekly planet');
+  newestDiff = 5153;
+  diffsDownloaded.length = 0;
   calls.length = 0;
   notes.length = 0;
   loadFails = false;
@@ -104,14 +129,18 @@ afterAll(async () => {
   rmSync(dir, { recursive: true, force: true });
 });
 
+const CURRENT = ['planet-current.osm.pbf', 'planet-current.state.json'];
+
 describe('buildLayer (#1437)', () => {
-  it('cuts the selection and the named objects, loads them, and swaps the layer in with its replication timestamp', async () => {
+  it('brings the weekly planet forward with the daily diffs since, cuts the layer from it, and swaps it in current to the newest diff', async () => {
     const result = await build();
     expect(calls.map(call => call.slice(0, 2))).toEqual([
-      ['osmium', 'tags-filter'], ['osmium', 'getid'], ['osmium', 'merge'], ['osmium', 'fileinfo'], ['osm2pgsql', '--create'],
+      ['osmium', 'fileinfo'], ['osmium', 'apply-changes'], ['osmium', 'tags-filter'], ['osmium', 'getid'], ['osmium', 'merge'], ['osm2pgsql', '--create'],
     ]);
-    expect(calls[1]).toEqual(expect.arrayContaining(['-r', '--verbose-ids']));
-    expect(calls[4].join(' ')).not.toMatch(/PGPASSWORD|password/i);
+    expect(diffsDownloaded).toHaveLength(10);
+    expect(diffsDownloaded[0]).toBe('https://planet.openstreetmap.org/replication/day/000/005/144.osc.gz');
+    expect(calls[3]).toEqual(expect.arrayContaining(['-r', '--verbose-ids', join(dir, 'planet-current.osm.pbf')]));
+    expect(calls[5].join(' ')).not.toMatch(/PGPASSWORD|password/i);
     expect(await rows("SELECT osm_type, osm_id, wikidata, GeometryType(geom) AS geom FROM osm_objects ORDER BY osm_type, osm_id")).toEqual([
       { osm_type: 'N', osm_id: '1', wikidata: 'Q39671', geom: 'POINT' },
       { osm_type: 'N', osm_id: '20', wikidata: null, geom: 'POINT' },
@@ -121,19 +150,56 @@ describe('buildLayer (#1437)', () => {
       { indexname: 'osm_objects_geom' }, { indexname: 'osm_objects_pkey' }, { indexname: 'osm_objects_wikidata' }, { indexname: 'osm_objects_wikipedia' },
     ]);
     const [record] = await rows("SELECT planet_file, dump_date::text AS date, replicated_at, objects::int, pinned, pinned_gone FROM osm_layer_builds");
-    expect(record).toMatchObject({ planet_file: planet.fileName, date: '2026-10-12', objects: 3, pinned: 1, pinned_gone: 0 });
-    expect((record.replicated_at as Date).toISOString()).toBe('2026-10-12T00:59:59.000Z');
-    expect(result.summary).toMatch(/kept 3 OpenStreetMap objects from planet-261012.osm.pbf, current to 2026-10-12T00:59:59.000Z, with the 1 objects the catalogue names/);
-    expect(await latestLayer()).toMatchObject({ dumpDate: '2026-10-12', needs: 'nothing' });
+    expect(record).toMatchObject({ planet_file: planet.fileName, date: '2026-10-22', objects: 3, pinned: 1, pinned_gone: 0 });
+    expect((record.replicated_at as Date).toISOString()).toBe('2026-10-22T00:00:00.000Z');
+    expect(result.summary).toMatch(/kept 3 OpenStreetMap objects from planet-261012.osm.pbf brought forward with 10 daily diffs to diff 5153, current to 2026-10-22T00:00:00.000Z, with the 1 objects the catalogue names/);
+    expect(notes).toContain('removed planet-261012.osm.pbf: the current planet, brought forward to daily diff 5153, replaces it');
+    expect(await latestLayer()).toMatchObject({ dumpDate: '2026-10-22', needs: 'nothing' });
     expect(await rows("SELECT count(*)::int AS n FROM pg_tables WHERE schemaname = 'workbench' AND tablename = 'osm2pgsql_properties'")).toEqual([{ n: 0 }]);
-    expect(readdirSync(dir)).toEqual([planet.fileName]);
+    expect(readdirSync(dir).sort()).toEqual(CURRENT);
+  });
+
+  it('brings the current planet forward from where it was, without the weekly planet', async () => {
+    await build();
+    await pool.query("UPDATE dump_builds SET status = 'success' WHERE id = $1", [buildId]);
+    buildId = await newBuild();
+    calls.length = 0;
+    diffsDownloaded.length = 0;
+    newestDiff = 5155;
+    vi.stubEnv('DUMPS_DIR', dir);
+    expect(await hasCurrentPlanet()).toBe(true);
+    vi.unstubAllEnvs();
+    await update();
+    expect(calls.map(call => call.slice(0, 2))[0]).toEqual(['osmium', 'apply-changes']);
+    expect(calls[0][2]).toBe(join(dir, 'planet-current.osm.pbf'));
+    expect(diffsDownloaded).toEqual([
+      'https://planet.openstreetmap.org/replication/day/000/005/154.osc.gz', 'https://planet.openstreetmap.org/replication/day/000/005/155.osc.gz',
+    ]);
+    expect(await latestLayer()).toMatchObject({ dumpDate: '2026-10-24' });
+  });
+
+  it('starts the current planet again from a weekly planet the admin names, dropping the one kept', async () => {
+    await build();
+    await pool.query("UPDATE dump_builds SET status = 'success' WHERE id = $1", [buildId]);
+    buildId = await newBuild();
+    writeFileSync(join(dir, planet.fileName), 'weekly planet again');
+    calls.length = 0;
+    await build();
+    expect(calls.map(call => call.slice(0, 2)).slice(0, 2)).toEqual([['osmium', 'fileinfo'], ['osmium', 'apply-changes']]);
+    expect(calls[1][2]).toBe(join(dir, planet.fileName));
+    expect(readdirSync(dir).sort()).toEqual(CURRENT);
+  });
+
+  it('refuses to bring forward a current planet that is not kept', async () => {
+    await expect(update()).rejects.toThrow('No current planet is kept to bring forward');
+    expect(await latestLayer()).toBeNull();
   });
 
   it('goes on when an object the catalogue names is gone from the planet, and says which', async () => {
     getid = { code: 1, stderr: '[ 0:00] Did not find 1 object(s).\nMissing node IDs: 20\nMissing way IDs: \n[ 0:00] Done.\n' };
     const result = await build();
     expect(result.summary).toMatch(/\(1 of them no longer in the planet\)/);
-    expect(notes).toEqual(['1 objects the catalogue names are no longer in the planet: n20']);
+    expect(notes).toContain('1 objects the catalogue names are no longer in the planet: n20');
     expect(await rows('SELECT pinned, pinned_gone FROM osm_layer_builds')).toEqual([{ pinned: 1, pinned_gone: 1 }]);
   });
 
@@ -148,7 +214,7 @@ describe('buildLayer (#1437)', () => {
     mkdirSync(join(dir, 'osm-layer-cut'), { recursive: true });
     writeFileSync(join(dir, 'osm-layer-cut', 'layer.osm.pbf'), 'left by a restart');
     await build();
-    expect(readdirSync(dir)).toEqual([planet.fileName]);
+    expect(readdirSync(dir).sort()).toEqual(CURRENT);
   });
 
   it('keeps the layer in place when the load fails, and leaves no copy or cut behind', async () => {
@@ -160,7 +226,7 @@ describe('buildLayer (#1437)', () => {
     expect(await rows('SELECT count(*)::int AS n FROM osm_objects')).toEqual([{ n: 3 }]);
     expect(await rows('SELECT count(*)::int AS n FROM osm_layer_builds')).toEqual([{ n: 1 }]);
     expect(await rows("SELECT count(*)::int AS n FROM pg_tables WHERE tablename IN ('osm_objects_next', 'osm2pgsql_properties') OR tablename LIKE 'osm_layer_middle%'")).toEqual([{ n: 0 }]);
-    expect(readdirSync(dir)).toEqual([planet.fileName]);
+    expect(readdirSync(dir).sort()).toEqual(CURRENT);
   });
 
   it('swaps nothing in from a cut that kept no object', async () => {

@@ -3,7 +3,7 @@ import { pool } from '../../db/index.js';
 import type { DumpFile } from './catalog.js';
 import {
   activeBuildOf, beat, BuildAlreadyRunning, claimNextBuild, closeBuild, closeOrphanedBuilds, enqueueBuild, failBuildsOf,
-  recentBuilds, recordFile, requestCancel,
+  recentBuilds, recordFile, recordUpdate, requestCancel,
 } from './ledger.js';
 
 /**
@@ -118,6 +118,31 @@ describe('the dump build ledger (ADR-0106)', () => {
     }
     const shown = (await recentBuilds()).filter(build => build.dump === 'enwiki-categorylinks').map(build => build.id);
     expect(shown).toEqual([derives[3], derives[2], derives[1], files[1], files[0]]);
+  });
+
+  it('keeps the file builds shown however many updates that read no file followed them (#1437)', async () => {
+    const files: number[] = [];
+    const updates: number[] = [];
+    for (let n = 0; n < 2; n += 1) {
+      const id = await running('osm-planet');
+      await recordFile(id, file(n, { key: 'osm-planet', fileName: `planet-26101${n}.osm.pbf` }));
+      await closeBuild(id, { status: 'success', bytes: 1, lines: 0, checksumActual: null, error: null });
+      files.push(id);
+    }
+    for (let n = 0; n < 4; n += 1) {
+      await enqueueBuild('osm-planet', 'local', { kind: 'keep' }, null);
+      const id = (await claimNextBuild('worker:fixture'))!.id;
+      await recordUpdate(id);
+      await closeBuild(id, { status: 'success', bytes: 4, lines: 0, checksumActual: null, error: null });
+      updates.push(id);
+    }
+    // A keeping build that failed before it found its file names none either, and is no update.
+    await enqueueBuild('osm-planet', 'local', { kind: 'keep' }, null);
+    const failed = (await claimNextBuild('worker:fixture'))!.id;
+    await closeBuild(failed, { status: 'failed', bytes: 0, lines: 0, checksumActual: null, error: 'The host lists no complete planet' });
+    const shown = (await recentBuilds()).filter(build => build.dump === 'osm-planet').map(build => build.id);
+    expect(shown).toEqual([failed, updates[3], updates[2], updates[1], files[1], files[0]]);
+    expect((await row(updates[0])).request).toEqual({ kind: 'keep', update: true });
   });
 
   it('refuses a status or a mode the ledger does not know', async () => {
