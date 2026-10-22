@@ -46,9 +46,10 @@ const waiting: SyncStatus = {
 };
 
 const SOURCES = [
-  source(3, 'Public art', [3, 6]),
-  source(4, 'Places of worship', []),
-  source(6, 'Monuments & memorials', [3, 6]),
+  source(3, 'Public art', [3, 6, 4]),
+  source(4, 'Places of worship', [3, 6, 4]),
+  source(5, 'Archaeology', []),
+  source(6, 'Monuments & memorials', [3, 6, 4]),
 ];
 
 function renderPanel() {
@@ -76,39 +77,42 @@ describe('a pass on the Sync panel', () => {
   it('is one card, with a section per source in the order the pass runs them', async () => {
     renderPanel();
 
-    const card = await cardOf('Public art · Monuments & memorials');
+    const card = await cardOf('Public art · Monuments & memorials · Places of worship');
     const sections = within(card).getAllByRole('heading', { level: 3 }).map((h) => h.textContent);
-    expect(sections).toEqual(['Public art', 'Monuments & memorials']);
+    expect(sections).toEqual(['Public art', 'Monuments & memorials', 'Places of worship']);
     // The pass's card and the source that runs alone: one start each.
     expect(screen.getAllByRole('button', { name: 'Start Sync' })).toHaveLength(2);
     expect(within(card).getAllByRole('button', { name: 'Start Sync' })).toHaveLength(1);
-    expect(await cardOf('Places of worship')).not.toBe(card);
+    expect(await cardOf('Archaeology')).not.toBe(card);
   });
 
-  it('draws the reader and the cache once, as the first source holds them', async () => {
+  it('draws each source\'s own reader and cache, and says the gather reads through the first', async () => {
     renderPanel();
 
-    const card = await cardOf('Public art · Monuments & memorials');
-    expect(within(card).getByText('reader of 3')).toBeInTheDocument();
-    expect(within(card).getByText('cache of 3')).toBeInTheDocument();
-    expect(screen.queryByText('reader of 6')).not.toBeInTheDocument();
-    expect(screen.queryByText('cache of 6')).not.toBeInTheDocument();
+    const card = await cardOf('Public art · Monuments & memorials · Places of worship');
+    // Each source's visit witnesses, and worship's works, read through its own.
+    for (const id of [3, 6, 4]) {
+      expect(within(card).getByText(`reader of ${id}`)).toBeInTheDocument();
+      expect(within(card).getByText(`cache of ${id}`)).toBeInTheDocument();
+    }
+    expect(within(card).getByText(/The gather reads Wikidata as Public art's switch says/)).toBeInTheDocument();
   });
 
   it('starts the pass through its first source, and follows every later one from then', async () => {
     vi.mocked(startSync).mockResolvedValue({ started: true } as never);
     renderPanel();
-    const card = await cardOf('Public art · Monuments & memorials');
-    expect(within(card).getAllByText('Never synced')).toHaveLength(2);
+    const card = await cardOf('Public art · Monuments & memorials · Places of worship');
+    expect(within(card).getAllByText('Never synced')).toHaveLength(3);
 
-    vi.mocked(getSyncStatus).mockImplementation(async (id: number) => (id === 6 ? waiting : idle));
+    vi.mocked(getSyncStatus).mockImplementation(async (id: number) => (id === 3 ? idle : waiting));
     fireEvent.click(within(card).getByRole('button', { name: 'Start Sync' }));
 
     await waitFor(() => expect(startSync).toHaveBeenCalledWith(3));
     expect(startSync).toHaveBeenCalledTimes(1);
     // The later source says it waits for the earlier one, and the card offers
     // the pass's Cancel while it does.
-    expect(await within(card).findByText(/Waiting for the pass's earlier kinds/)).toBeInTheDocument();
+    // Each later source says so in its own section.
+    expect(await within(card).findAllByText(/Waiting for the pass's earlier kinds/)).toHaveLength(2);
     expect(within(card).getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
   });
 });

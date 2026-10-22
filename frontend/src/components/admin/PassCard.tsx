@@ -1,13 +1,14 @@
 /**
  * The Sync panel's card of a pass: several sources that fill their kinds from
- * one gather (ADR-0132), Public art and Monuments & memorials today.
+ * one gather (ADR-0132), the place pass today (#1820).
  *
- * What the pass shares is drawn once, on top: the starts and the Cancel, which
- * run and stop every source of it; the Wikidata reader and the cache, which
- * are the first source's, since the gather reads through it alone
- * (`wikidataRunDoor` in `landmarkSyncService.ts`). What each source holds of
- * its own is drawn in its section below: how its run ended, its gate, its line
- * and what it is holding for a curator.
+ * What the pass shares is drawn once: the starts and the Cancel, which run and
+ * stop every source of it, and the sentence saying the gather reads through
+ * the first source's Wikidata reader and cache (`places/placePass.ts`). What
+ * each source holds of its own is drawn in its section: how its run ended, its
+ * gate, its line, what it is holding for a curator, and its own reader and
+ * cache, which the rest of its run reads through — its visit witnesses
+ * (#1770), and Places of worship's works.
  */
 
 import { useCallback, useEffect, useState } from 'react';
@@ -40,6 +41,8 @@ function MemberSection({ source, run }: { source: ExperienceSource; run: SourceR
       <SourceRunView run={run} />
       <CurationGateControls source={source} />
       <SourceLineControls source={source} />
+      <WikidataReaderControls source={source} />
+      <WikidataCacheSection sourceId={source.id} />
     </Box>
   );
 }
@@ -97,7 +100,8 @@ export function PassCard({ sources }: { sources: ExperienceSource[] }) {
             <Typography variant="h6">{sources.map((source) => source.name).join(' · ')}</Typography>
             <Typography variant="body2" color="text.secondary">
               One run fills these kinds from one gather from Wikidata, in this order: a start runs
-              them all, and a Cancel stops them all.
+              them all, and a Cancel stops them all. The gather reads Wikidata as {first.name}'s
+              switch says and keeps its answers in {first.name}'s cache.
             </Typography>
           </Box>
         </Box>
@@ -105,9 +109,6 @@ export function PassCard({ sources }: { sources: ExperienceSource[] }) {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Last synced: {formatDateTime(lastSynced)}
         </Typography>
-
-        <WikidataReaderControls source={first} />
-        <WikidataCacheSection sourceId={first.id} />
 
         <MemberSection source={first} run={run} />
         {later.map((source) => (
