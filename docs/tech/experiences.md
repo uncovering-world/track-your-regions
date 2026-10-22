@@ -214,7 +214,36 @@ no later run can rebuild. A source that offers the point again finds the same ro
 `(point, external_ref)` identity, clears `missing_since`, restores its ordinal, and sends it
 for placement; the visit and any manual assignment were never touched.
 
-**Identity's point half carries a ten-metre tolerance, and only inside a matching reference**
+**A point a reader sees takes another source's point within the ten metres** (ADR-0137, #1846).
+The reference keeps one source's components apart, and it cannot join two sources' names for one
+place: the Genbaku Dome is UNESCO's `775` and Wikidata's `Q231140`, 5 cm apart. Monuments &
+memorials' first run wrote the second as a new unread point, and the review card asked about a 0 m
+move. After the pairing is decided, a point it paired with nothing, or only with an unread row,
+takes another point:
+- **The run's folded point of its reference**, first. A folded point of a reference the run offers
+  is the run's own when the run places the point it was folded into: Monuments & memorials took
+  that placement from Public Art when the kind was split (#1807), so the Genbaku Dome's folded
+  `Q231140` is its point.
+- **Otherwise, the nearest point a reader sees within `LOCATION_UNCHANGED_METERS`** that no other
+  point of the run holds, preferring one the run already places. The step repeats while it takes a
+  point, so two points nearest one point take the next nearest instead of becoming a second pin:
+  - under the source's own reference, an ordinary pair as `samePointSql()` asks it (exact where the
+    point carries no reference), kept as any is;
+  - under another reference, only for a point the source names by a reference, and only a point
+    another membership places and the run does not place as its own. Such a point is `adopted`: the run places its membership on it and records the
+    reference it took the point under (`experience_location_placements.adopted_ref`), and writes
+    nothing on it. The next run takes it again by that reference, and the fast path matches it.
+    A point the run placed as its own is never taken under another reference: a component UNESCO
+    dropped never lends its point to the one it added at the same coordinate (site 874 lists
+    seventeen rock shelters at one), even after a second source took that point.
+
+A point readers see or saw keeps its pairing, so a point that went missing comes back with its
+visits, and so does the run's folded point. The unread row the pairing had given loses and is
+withdrawn unread, along with the wait it held on the point a reader sees
+(`locationAdoption.db.test.ts`, `foldedPointRun.db.test.ts`). The review card words a proposed
+coordinate within the ten metres as no move (`describeProposedMove`).
+
+**Identity's point half carries a ten-metre tolerance, inside a matching reference**
 ([ADR-0027](../decisions/0027-a-point-rewritten-more-precisely-is-the-same-point.md)). The writer
 compared the geometry exactly until 2026-08-16, so a coordinate rewritten in its last float digits
 was a different place — a withdrawal, an arrival, a pin off every reader-facing read and a card with
@@ -239,7 +268,9 @@ fast path asks for the reference exactly, so the object takes the slow path on t
 it and not after, and the pairing takes an exact reference before one read past its variant. A
 component renumbered at another point is a move as before, which is Getbol, where the extension
 renumbered the parts. `samePointSql()` is the one fragment every site that asks composes, and only two do —
-the relation the pairing is built from and the fast path's `matched` term. Everything else reads the
+the relation the pairing is built from and the fast path's `matched` term. (The step after the
+pairing asks the geometry half alone, `withinUnchangedSql()`, and only of a point a reader sees, as
+the paragraph above says; it is not this question.) Everything else reads the
 pairing — every statement after the one that decides it, which is the five arms that keep, resurrect,
 insert, withdraw and hold, the statement that lets go of a spent pairing, and the lookup that decides
 which point an arrival replaces. The lookup asks it for a reason of its own — the set it withdraws
