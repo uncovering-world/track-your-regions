@@ -39,7 +39,7 @@ export function readsSubset(door: SparqlFn | { sparql: SparqlFn }): boolean {
  * #1461 Places of worship, #1462 Archaeology), and only then can the admin
  * switch it.
  */
-export const SUBSET_READY_SOURCES: ReadonlySet<number> = new Set([2, 3, 4, 5, 6, 7]);
+export const SUBSET_READY_SOURCES: ReadonlySet<number> = new Set([2, 3, 4, 5, 6, 7, 8]);
 
 /**
  * The door a run that reads the subset hands its fetchers: marked, and

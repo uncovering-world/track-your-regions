@@ -52,8 +52,8 @@ const LOG_PREFIX = '[Landmark Sync]';
  * What a source of the place pass decides by: its classifier over the gather,
  * the type vocabulary it files places under, and the tag its places carry
  * beside their type. A place with one point, written the same way whatever
- * its kind: Public art and Monuments & memorials here, Towers in
- * `towers/kind.ts` (#1854).
+ * its kind: Public art's and Monuments & memorials' here, every other place
+ * kind's in its own `kind.ts`.
  */
 export interface PlaceClassifier {
   /** Decide from the gather; `admitted` is what the source holds as admitted before the run. */

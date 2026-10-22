@@ -5,7 +5,8 @@
  * The gather reads the candidates of every kind once (`gather.ts`) and each
  * source of `PLACE_PASS` classifies its own share: Public art and Monuments &
  * memorials by their kinds' rules, Places of worship by its door one,
- * Archaeology by its site door, Towers by its rule and its line. What a kind
+ * Archaeology by its site door, Towers and Bridges & engineering marvels by
+ * their rules and lines. What a kind
  * reads beyond its places — worship's
  * works and the second door they open, Archaeology's museums and finds, and the
  * map, the Wikipedias and the witnesses its site door asks — stays in its own
@@ -19,6 +20,7 @@ import { passMember, runSyncPass, sharedGather } from '../syncPass.js';
 import { PLACE_PASS, PUBLIC_ART_SOURCES } from '../passes.js';
 import { collectingSparql, placeSource, publicArtSource } from '../landmarkSyncService.js';
 import { TOWERS_CLASSIFIER, TOWERS_KIND, TOWERS_SOURCE_ID } from '../towers/kind.js';
+import { BRIDGES_CLASSIFIER, BRIDGES_KIND, BRIDGES_SOURCE_ID } from '../bridges/kind.js';
 import { worshipSource, WORSHIP_SOURCE_ID } from '../worshipSyncService.js';
 import { archaeologySource } from '../archaeologySyncService.js';
 import { ARCHAEOLOGY_SOURCE_ID } from '../archaeology/runDoors.js';
@@ -60,6 +62,7 @@ function placeGather(refreshCache: boolean): (progress: SyncProgress) => Promise
       // door asks after (`ArchaeologyPipelineDeps.admittedSites`).
       { kind: ARCHAEOLOGY_SITE_KIND, admitted: await admittedExternalIds(ARCHAEOLOGY_SOURCE_ID, 'site') },
       { kind: TOWERS_KIND, admitted: await admittedBy([TOWERS_SOURCE_ID]) },
+      { kind: BRIDGES_KIND, admitted: await admittedBy([BRIDGES_SOURCE_ID]) },
     ]);
     return { gathered, sparql };
   });
@@ -82,6 +85,7 @@ export function syncPlacePass(
       passMember(worshipSource(gather, options)),
       passMember(archaeologySource(gather, options)),
       passMember(placeSource(TOWERS_SOURCE_ID, gather, TOWERS_CLASSIFIER)),
+      passMember(placeSource(BRIDGES_SOURCE_ID, gather, BRIDGES_CLASSIFIER)),
     ],
     triggeredBy,
     options,
