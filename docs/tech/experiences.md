@@ -974,7 +974,12 @@ types a curator had not claimed, so each kind's next run files its places in its
 source declares its kind's words on the record it writes (`typeVocabulary`, from
 `KindRule.types`); the diff marks the rewrite in `textDifferences`, and the upsert's membership
 `type` arm writes it by the same rule. A type moved inside the vocabulary, `memorial` →
-`monument`, is still held. Each
+`monument`, is still held. A row a curator put back against the rule's refusal is filed by the held row's rule, on every
+source, since a person kept it against the rule and the run only fills the gap: the run
+writes nothing else of a refusal, so the rule reads the type of every admitted row it refuses
+(`FilteredEntity.type`), and `filePutBackTypes` writes it on the ones a pin keeps admitted,
+recorded as an update past the gate (`recordPutBackTypes`). The Victory Arch and the Warsaw
+Uprising Monument, put back into Monuments & memorials, held no type once migration 146 had run. Each
 is written on a held row and filed with the written fields, carrying its class in `passedTheGate`,
 so the run's record says what moved and why nobody was asked; none raises a question, sets the held
 pointer or demotes a verified membership (`wroteContent`). On an object the rule is
