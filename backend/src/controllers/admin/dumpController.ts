@@ -47,6 +47,7 @@ async function keepsOf(key: Dumps['dumps'][number]['key']): Promise<Dumps['dumps
     rederives: Boolean(keeper.rederive),
     samples: keeper.samples,
     fromCopy: keeper.fromCopy,
+    currentTo: Boolean(keeper.update),
   };
 }
 
@@ -57,6 +58,8 @@ const wireProgress = (progress: DumpBuildProgress | null): Dumps['dumps'][number
 
 // A row from before migration 101 asked for nothing: it was a verify or keep build the old code ran.
 const kindOf = (build: DumpBuildRow): BuildKind => (build.request as BuildRequestRecord | null)?.kind ?? 'verify';
+/** Whether the worker brought a kept copy forward rather than reading a file of the host's (#1437). */
+const broughtForward = (build: DumpBuildRow): boolean => (build.request as BuildRequestRecord | null)?.update === true;
 
 export async function listDumps(): Promise<Dumps> {
   // A build that stopped beating shows as the failure it is, not as running.
@@ -92,7 +95,9 @@ export async function listDumps(): Promise<Dumps> {
         bytes: Number(build.bytes),
         lines: Number(build.lines),
         checksumKind: build.checksum_kind,
-        verified: build.status === 'success' && (kindOf(build) === 'verify' || kindOf(build) === 'keep'),
+        // A keeping build that brought a kept copy forward read no file of the host's.
+        verified: build.status === 'success' && (kindOf(build) === 'verify' || kindOf(build) === 'keep') && !broughtForward(build),
+        broughtForward: broughtForward(build),
         status: build.status as Exclude<typeof build.status, 'queued'>,
         error: build.error,
         outcome: build.outcome,

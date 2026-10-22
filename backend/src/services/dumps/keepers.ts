@@ -10,7 +10,7 @@
  */
 
 import type { DumpFile, DumpKey } from './catalog.js';
-import { buildLayer } from './osm/layerBuild.js';
+import { buildLayer, hasCurrentPlanet, updateLayer } from './osm/layerBuild.js';
 import { latestLayer } from './osm/layerTables.js';
 import type { ReadOptions } from './read.js';
 import { buildReadership, latestReadership } from './readership/readershipBuild.js';
@@ -54,6 +54,16 @@ export interface Keeper {
    * the newest month, and the only copy it leaves is a month not kept yet.
    */
   fromCopy: boolean;
+  /**
+   * Bring what is kept forward from a source the keeper holds itself, reading
+   * no file of the host's: the OpenStreetMap layer's current planet, brought
+   * forward with the daily diffs (#1437). A keeping build from the newest
+   * takes this path where `canUpdate` says so, and records no host file,
+   * since it read none.
+   */
+  update?(options: ReadOptions & { buildId: number; onPhase: (message: string) => void; onMeasure?: (read: number, total: number) => void }):
+    Promise<{ bytes: number; lines: number; checksumActual: string | null; summary?: string }>;
+  canUpdate?(): Promise<boolean>;
   /** Derive the build in place's tables again from what it holds, without the dump (#1526). */
   rederive?(options: RederiveOptions): Promise<void>;
   /** The build now in place, if any. */
@@ -74,8 +84,12 @@ const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
   'wikivoyage-usage': {
     title: 'The items Wikivoyage\'s pages use', build: buildUsage, latest: latestUsage, samples: false, fromCopy: false,
   },
-  // The planet is held as a local copy, so a build may start from the copy already on disk.
-  'osm-planet': { title: 'The OpenStreetMap layer', build: buildLayer, latest: latestLayer, samples: false, fromCopy: true },
+  // A build from the newest brings the kept current planet forward; a build
+  // from a weekly copy on disk starts the current planet again from it.
+  'osm-planet': {
+    title: 'The OpenStreetMap layer', build: buildLayer, update: updateLayer, canUpdate: hasCurrentPlanet, latest: latestLayer,
+    samples: false, fromCopy: true,
+  },
 };
 
 export const keeperOf = (key: DumpKey): Keeper | null => KEEPERS[key] ?? null;

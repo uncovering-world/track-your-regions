@@ -11,6 +11,7 @@ const ledger = vi.hoisted(() => ({
   beat: vi.fn(async (_id: number, _progress: { etaSeconds: number | null }) => ({ cancelRequested: false })),
   closeBuild: vi.fn(async () => undefined),
   recordFile: vi.fn(async () => undefined),
+  recordUpdate: vi.fn(async () => undefined),
   BEAT_EVERY_MS: 5_000,
 }));
 vi.mock('./ledger.js', () => ledger);
@@ -22,9 +23,15 @@ vi.mock('./catalog.js', () => ({ dumpNamed: (key: string) => ({ key, resolve: as
 const keepers = vi.hoisted(() => ({
   rederive: vi.fn(async (_options: { buildId: number; onNote?: (note: string) => void; onPhase: (m: string) => void }) => undefined),
   build: vi.fn(),
+  update: vi.fn(),
+  canUpdate: vi.fn(async () => true),
 }));
 vi.mock('./keepers.js', () => ({
-  keeperOf: (key: string) => (key === 'wikidata-entities' ? { rederive: keepers.rederive, build: keepers.build } : null),
+  keeperOf: (key: string) => {
+    if (key === 'wikidata-entities') return { rederive: keepers.rederive, build: keepers.build };
+    if (key === 'osm-planet') return { build: keepers.build, update: keepers.update, canUpdate: keepers.canUpdate };
+    return null;
+  },
 }));
 const SAMPLE = { fileName: 'sample-4gb-wikidata-20261005-all.json.gz', of: 'wikidata-20261005-all.json.gz', date: '2026-10-05', bytes: 400 };
 const SAMPLE_FILE = { key: 'wikidata-entities', fileName: SAMPLE.fileName, url: '', date: SAMPLE.date, checksum: null, expectedBytes: 400, compression: 'gzip' };
@@ -60,6 +67,27 @@ describe('a build in the dump worker (ADR-0106)', () => {
     expect(ledger.beat).toHaveBeenCalledWith(9, expect.objectContaining({ stepStartedAt: expect.any(String) }));
     expect(ledger.recordFile).toHaveBeenCalledWith(9, FILE);
     expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({ status: 'success', lines: 3 }));
+  });
+
+  it('brings a kept copy forward without finding, recording or verifying a file of the host\'s (#1437)', async () => {
+    keepers.update.mockResolvedValue({ bytes: 40, lines: 0, checksumActual: null, summary: 'kept 3 OpenStreetMap objects' });
+    await runBuild({ id: 9, dump: 'osm-planet', request: { kind: 'keep' } }, new AbortController().signal);
+    expect(keepers.update).toHaveBeenCalledWith(expect.objectContaining({ buildId: 9 }));
+    expect(keepers.build).not.toHaveBeenCalled();
+    expect(ledger.recordFile).not.toHaveBeenCalled();
+    expect(ledger.recordUpdate).toHaveBeenCalledWith(9);
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
+      status: 'success', checksumActual: null, outcome: expect.stringMatching(/^brought forward and swapped in; kept 3 OpenStreetMap objects/),
+    }));
+  });
+
+  it('builds from the local copy named, not from what is kept, when the admin asks for that copy (#1437)', async () => {
+    keepers.build.mockResolvedValue({ bytes: 1, lines: 0, checksumActual: 'c'.repeat(32), summary: 'kept 3 OpenStreetMap objects' });
+    await runBuild({ id: 9, dump: 'osm-planet', request: { kind: 'keep', only: 'planet-261012.osm.pbf' } }, new AbortController().signal);
+    expect(keepers.update).not.toHaveBeenCalled();
+    expect(ledger.recordUpdate).not.toHaveBeenCalled();
+    expect(keepers.build).toHaveBeenCalled();
+    expect(ledger.recordFile).toHaveBeenCalled();
   });
 
   it('derives again without finding or reading a file, and closes as a success (#1526)', async () => {

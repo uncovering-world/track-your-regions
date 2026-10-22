@@ -43,8 +43,12 @@ const OUTCOME: Record<DumpBuild['status'], { label: string; color: 'success' | '
   running: { label: 'Running', color: 'default' },
 };
 
-/** Whether a build read the dump's own file, which its host's checksum or size verifies. */
-const readsTheDump = (build: DumpBuild) => build.kind === 'verify' || build.kind === 'keep';
+/**
+ * Whether a build read the dump's own file, which its host's checksum or size
+ * verifies: not a keeping build that brought a kept copy forward from its own
+ * source (the OpenStreetMap layer's current planet).
+ */
+const readsTheDump = (build: DumpBuild) => (build.kind === 'verify' || build.kind === 'keep') && !build.broughtForward;
 
 /** What a build that ended well is called, by what it did; one that read the dump is verified. */
 const DONE: Partial<Record<DumpBuild['kind'], string>> = { rederive: 'Derived', sample: 'Cut', trial: 'Tried' };
@@ -55,13 +59,20 @@ function checkedBy(build: DumpBuild): string {
   return build.checksumKind ? `${build.checksumKind} matched` : 'size matched';
 }
 
+/** What a build's chip says: the kind's own word for one that ended well, *Built* for one that read no file of the host's. */
+function outcomeLabel(build: DumpBuild): string {
+  if (build.status !== 'success') return OUTCOME[build.status].label;
+  if (DONE[build.kind]) return DONE[build.kind]!;
+  return readsTheDump(build) ? OUTCOME.success.label : 'Built';
+}
+
 function Outcome({ build }: { build: DumpBuild }) {
   const when = build.finishedAt ?? build.startedAt;
   return (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
       <Chip
         size="small"
-        label={build.status === 'success' ? DONE[build.kind] ?? OUTCOME.success.label : OUTCOME[build.status].label}
+        label={outcomeLabel(build)}
         color={OUTCOME[build.status].color}
       />
       <Tooltip title={formatDateTime(when)}>
@@ -103,6 +114,7 @@ function howBuilt(build: DumpBuild): string {
   if (build.kind === 'rederive') return 'Derived again from the subset in place';
   if (build.kind === 'sample') return 'Sample cut from the local copy';
   if (build.kind === 'trial') return 'Trial on the sample, kept nothing';
+  if (build.broughtForward) return 'Brought forward from what is kept';
   return build.mode === 'local' ? 'From the local copy' : 'Streamed from the host';
 }
 
@@ -165,7 +177,7 @@ function Kept({ dump, derived }: { dump: DumpsDumpsItem; derived: DumpBuild | un
   return (
     <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
       {built
-        ? <>{title}: built from the dump of {dumpDate(built.dumpDate, dump.datedBy)}, swapped in {formatRelativeTime(built.swappedAt)}</>
+        ? <>{title}: {dump.keeps.currentTo ? 'current to' : 'built from the dump of'} {dumpDate(built.dumpDate, dump.datedBy)}, swapped in {formatRelativeTime(built.swappedAt)}</>
         : <>{title}: not built yet</>}
       {derived && (
         <Box component="span" display="block">
@@ -194,11 +206,12 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
   const cancel = useMutation({ mutationFn: () => cancelDumpBuild(dump.key), onSettled: refresh });
   const [open, setOpen] = useState(false);
   const running = inFlight(dump.progress);
-  // The build in flight is the progress cell; the rows are the builds that ended. The row's
-  // last build is the last that read the dump's file: a re-derive, a sample and a trial read
-  // none of the host's, and the re-derive and the trial have their own lines.
+  // The build in flight is the progress cell; the rows are the builds that ended. A re-derive,
+  // a sample and a trial read none of the host's files, and the re-derive and the trial have
+  // their own lines.
   const ended = dump.builds.filter(build => build.status !== 'running');
-  const last = ended.find(readsTheDump);
+  // The row's build is the newest verify or keep, a keep that brought a kept copy forward included.
+  const last = ended.find(build => build.kind === 'verify' || build.kind === 'keep');
   const derived = ended.find(build => build.kind === 'rederive');
   const tried = ended.find(build => build.kind === 'trial');
   const earlier = ended.filter(build => build !== last);
