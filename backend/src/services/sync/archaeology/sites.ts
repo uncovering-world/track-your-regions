@@ -38,7 +38,7 @@ import {
   type SiteRefusalGroup,
 } from './siteTest.js';
 import { OSM_KEEP_WKT, SITE_ROOT, type ArchaeologyTrees } from './classes.js';
-import type { KeepWkt, OsmObject } from '../osm/types.js';
+import type { KeepWkt, OsmObject, OsmReaderName } from '../osm/types.js';
 import { OsmEmptyAnswerError } from '../osm/readOsmObjects.js';
 import { lineStanding, type SourceLine } from '../sourceLine.js';
 import type { FilteredEntity } from '../syncContract.js';
@@ -81,13 +81,56 @@ export type PlaceDoor = (places: DoorWork[], held: ReadonlySet<string>) => Promi
 /** A row the readership door alone admits: the door, what it read, and the witnesses it has (ADR-0128). */
 interface OpenedFor { door: ReadershipDoor; read: OpenedWork; witnesses: Witness[] }
 
+/**
+ * When and through which door the object a verdict was read from was read:
+ * that object's own source where it names one (the layer as of its
+ * replication timestamp, or Overpass when it was asked), the run's time and
+ * its one door otherwise. A site's objects can come through two doors (the
+ * per-item read from the layer, an object only the enumeration named from
+ * Overpass), so the source is the deciding object's; only where nothing
+ * decided is the first source among its objects taken. A site with no object
+ * at all names the run's door and time: with `OSM_READER=local` that is the
+ * local door as a whole, the layer or the Overpass it asked for the miss.
+ */
+export function provenanceOf(objects: OsmObject[], decidedBy: string | null, runReadAt: string): { readAt: string; door?: OsmReaderName } {
+  const source = decidedBy
+    ? objects.find(object => object.ref === decidedBy)?.source
+    : objects.find(object => object.source)?.source;
+  return source ? { readAt: source.asOf, door: source.door } : { readAt: runReadAt };
+}
+
+/**
+ * The extent's own door and time, where the object it was drawn from came
+ * through another door, or as of another time, than the object the verdict was
+ * read from (the Nemrut shape on a stale layer: the tumulus from Overpass
+ * decides, the heritage zone from the layer draws the outline). Nothing where
+ * the two agree, so a site read through one door carries one pair.
+ */
+export function extentProvenanceOf(
+  objects: OsmObject[], osm: { object: string | null; extentFrom: string | null }, runReadAt: string,
+): { extentDoor?: OsmReaderName; extentReadAt?: string } {
+  if (!osm.extentFrom || osm.extentFrom === osm.object) return {};
+  const decided = provenanceOf(objects, osm.object, runReadAt);
+  const source = objects.find(object => object.ref === osm.extentFrom)?.source;
+  if (!source || (source.door === decided.door && source.asOf === decided.readAt)) return {};
+  return { extentDoor: source.door, extentReadAt: source.asOf };
+}
+
 /** A site the rule admitted and the line let in, with what the run learned about it. */
 export interface SiteCandidate {
   entity: PoolEntity;
   /** Every `P31` it carries, as the catalogue stores them. */
   classes: string[];
-  /** What OSM said and when, in the shape the row stores it (ADR-0059 decision 2). */
-  osm: OsmSignal & { extentFrom: string | null; readAt: string };
+  /**
+   * What OSM said and when, in the shape the row stores it (ADR-0059 decision
+   * 2), with the door it came through where the run read through more than one
+   * (the layer and Overpass, ADR-0134 decision 5).
+   */
+  osm: OsmSignal & {
+    extentFrom: string | null; readAt: string; door?: OsmReaderName;
+    /** The extent's own door and time, where it came through another door than the verdict's object (ADR-0134 decision 5). */
+    extentDoor?: OsmReaderName; extentReadAt?: string;
+  };
   /** The extent's WKT in EPSG:4326, or null where OSM gave none. */
   extentWkt: string | null;
   /**
@@ -410,7 +453,7 @@ function judgeCandidate(
   return {
     entity,
     classes: input.facts.classes,
-    osm: { ...verdict.osm, readAt },
+    osm: { ...verdict.osm, ...provenanceOf(objects, verdict.osm.object, readAt), ...extentProvenanceOf(objects, verdict.osm, readAt) },
     extentWkt: extent ? extent.wkt : null,
     ...(note ? { note } : {}),
   };
@@ -546,8 +589,9 @@ export async function collectSitesByFame(
     .map((entity) => entity.qid);
 
   // One read, here: after the pool is known and before a single verdict. The
-  // date is the run's rather than each object's, because it is one question
-  // asked once and the row stores when it was asked (ADR-0059 decision 2).
+  // run's time is what a site's row stores where its objects name no source of
+  // their own (a live door's read, asked once); the layer's door stamps each
+  // object with its door and time (`provenanceOf`, ADR-0059 decision 2).
   const objects = await osm(asked, OSM_KEEP_WKT, run);
   const readAt = new Date().toISOString();
   // After the read, since a place used today is said so by its objects (#1352).

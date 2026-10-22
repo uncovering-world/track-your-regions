@@ -15,6 +15,7 @@ import { pool } from '../../../db/index.js';
 import { fetchText } from '../fetch.js';
 import { activeBuildOf, enqueueBuild } from '../ledger.js';
 import { hasCurrentPlanet } from './layerBuild.js';
+import { layerCurrentTo } from './layerTables.js';
 import { dailyState } from './planetCurrent.js';
 
 /**
@@ -108,7 +109,7 @@ function dueOnWhatIsKept(facts: ScheduleFacts, now: Date): boolean {
 async function scheduleFacts(): Promise<ScheduleFacts> {
   const [{ everyDays }, layer, planetKept, active, last] = await Promise.all([
     layerSchedule(),
-    pool.query<{ replicated_at: Date }>('SELECT replicated_at FROM osm_layer_builds ORDER BY swapped_at DESC LIMIT 1'),
+    layerCurrentTo(),
     hasCurrentPlanet(),
     activeBuildOf('osm-planet'),
     pool.query<{ started_at: Date | null }>(
@@ -117,7 +118,7 @@ async function scheduleFacts(): Promise<ScheduleFacts> {
     ),
   ]);
   return {
-    everyDays, layerCurrentTo: layer.rows[0]?.replicated_at ?? null, planetKept, buildActive: active !== null,
+    everyDays, layerCurrentTo: layer, planetKept, buildActive: active !== null,
     lastScheduled: last.rows[0]?.started_at ?? null, newestDiffEnds: null,
   };
 }

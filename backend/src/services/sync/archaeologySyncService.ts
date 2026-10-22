@@ -115,10 +115,12 @@ async function fetchArchaeologyItems(
   // while the source's curator gate is on.
   const openSiteDoor = await placeReadershipDoorFor(ARCHAEOLOGY_SOURCE_ID, line.enterSitelinks, LOG_PREFIX);
 
-  // The collection, read through one OpenStreetMap door (`osm/oneDoorPerRun.ts`):
-  // the one the environment names — the mirror unless `OSM_READER` says
-  // `overpass` — and, on the day the mirror fails, Overpass from the start. A
-  // name that is no door at all ends the run before a question is sent:
+  // The collection, read through the OpenStreetMap door the environment names
+  // (`osm/oneDoorPerRun.ts`): the mirror unless `OSM_READER` says `overpass` or
+  // `local`. On the day the mirror fails the run reads again through Overpass
+  // from the start. `local` reads the layer cut from the planet with Overpass
+  // for its misses, names a door per fact, and takes no second pass. A name
+  // that is no door at all ends the run before a question is sent:
   // `parseOsmReaderName` throws rather than reading a typo as the default.
   // Wikidata from the local subset, where the admin switched the source to it
   // (#1462): one door for every pass, since the map's fallback changes only

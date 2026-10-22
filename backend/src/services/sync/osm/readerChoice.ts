@@ -9,7 +9,9 @@
  * from the first question, so every fact of the run still comes from one door
  * and names it (ADR-0059 decision 2, `oneDoorPerRun.ts`). `overpass` pins the
  * public instances with no way back to the mirror — an operator who chose the
- * door with the stricter manners chose it.
+ * door with the stricter manners chose it. `local` reads the layer the dump
+ * worker cuts from the planet, with Overpass for the misses it cannot vouch
+ * for (`localOsm.ts`, ADR-0134).
  *
  * An unknown name is refused rather than read as the default: an operator
  * who wrote `overpas` in the middle of an outage should learn it at boot and
@@ -19,7 +21,7 @@
 import type { OsmReaderName } from './readOsmObjects.js';
 
 /** What the run log calls each door, and what the variable accepts. */
-export const OSM_READER_NAMES: readonly OsmReaderName[] = ['qlever', 'overpass'];
+export const OSM_READER_NAMES: readonly OsmReaderName[] = ['qlever', 'overpass', 'local'];
 
 /** The variable an operator sets; named once here, read where the door is built. */
 export const OSM_READER_VARIABLE = 'OSM_READER';

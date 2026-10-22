@@ -19,6 +19,13 @@ import type { SparqlBinding } from '../wikidataUtils.js';
 
 export type OsmKind = 'node' | 'way' | 'relation';
 
+/**
+ * The doors OpenStreetMap is read through: QLever's mirror, the public
+ * Overpass instances, or the layer the dump worker cuts from the planet
+ * (`localOsm.ts`, ADR-0134), by the name an operator writes in `OSM_READER`.
+ */
+export type OsmReaderName = 'qlever' | 'overpass' | 'local';
+
 /** One mapped object carrying `wikidata=<item>`. */
 export interface OsmObject {
   /** `way/423938794` — what a reason names and an extent is credited to. */
@@ -30,6 +37,12 @@ export interface OsmObject {
   geometryType: string | null;
   /** The full WKT, only for the objects the query's own rule sends it for. */
   wkt: string | null;
+  /**
+   * Where the object was read and as of when, where a run reads through more
+   * than one door (the layer, with Overpass for what it cannot vouch for,
+   * ADR-0134 decision 5); absent, the run's one door at the run's time.
+   */
+  source?: { door: OsmReaderName; asOf: string };
 }
 
 /**

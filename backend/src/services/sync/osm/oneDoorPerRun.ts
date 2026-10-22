@@ -3,7 +3,9 @@
  * it does when the mirror fails.
  *
  * ADR-0059 decision 2 promises that every OSM fact names where it came from,
- * so a run never switches doors in the middle of a read: a day's extents half
+ * so a run through a live door, the mirror or Overpass, never switches doors
+ * in the middle of a read (the layer names a door per fact instead, ADR-0134
+ * decision 5, and takes no second pass): a day's extents half
  * from the mirror and half from Overpass would carry one provenance for two
  * sources. The fallback is therefore taken at the level of the promise — **the
  * run, not the batch**. When the mirror fails, the whole read is done again
@@ -55,6 +57,7 @@ export class OsmBothDoorsFailedError extends Error {
 
 /** The door in the run log's words, with the name `OSM_READER` takes beside it. */
 export function describeDoor(name: OsmReaderName): string {
+  if (name === 'local') return 'the OpenStreetMap layer cut from the planet, with Overpass for what it cannot vouch for (local)';
   return name === 'overpass'
     ? 'the public Overpass API (overpass)'
     : 'the QLever osm-planet mirror (qlever)';
@@ -73,7 +76,8 @@ function isMapFailure(error: unknown): error is Error {
  * next run ask the instance again.
  */
 async function forgetFailed(pass: DoorPass<unknown>, error: Error, logPrefix: string): Promise<void> {
-  if (pass.door.name === 'overpass' && !(error instanceof OsmEmptyAnswerError)) return;
+  // The layer's live answers are Overpass's, and dropped on the same terms.
+  if (pass.door.name !== 'qlever' && !(error instanceof OsmEmptyAnswerError)) return;
   const dropped = await pass.forget();
   console.warn(
     `${logPrefix} Dropped ${dropped} cached OpenStreetMap answer${dropped === 1 ? '' : 's'} `
@@ -105,7 +109,9 @@ export async function readThroughOneDoor<T>(options: {
   } catch (error) {
     if (options.isCancelled() || !isMapFailure(error)) throw error;
     await forgetFailed(first, error, logPrefix);
-    if (preferred === 'overpass') throw error;
+    // Only the mirror's failure is answered by a second pass: Overpass is the
+    // fallback itself, and the layer already asks it for what it cannot vouch for.
+    if (preferred !== 'qlever') throw error;
     console.warn(
       `${logPrefix} The mirror failed (${error.message}); reading OpenStreetMap again through `
       + `${describeDoor('overpass')}, from the first question`,
