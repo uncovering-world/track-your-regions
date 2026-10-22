@@ -21,9 +21,9 @@ import {
   PricingUpdated, ReviewSuggestionApplied, RuleReviewResult,
 } from '../api/responses/adminAi.js';
 import { DataAssertion, DataAssertionReport } from '../api/responses/dataAssertions.js';
-import { DumpBuildCancelled, DumpBuildStarted, Dumps } from '../api/responses/dumps.js';
+import { DumpBuildCancelled, DumpBuildStarted, Dumps, DumpSchedule } from '../api/responses/dumps.js';
 import {
-  cancelDumpBuild, listDumps, startDumpBuild, startDumpKeep, startDumpRederive, startDumpSample, startDumpTrial,
+  cancelDumpBuild, listDumps, startDumpBuild, startDumpKeep, startDumpRederive, startDumpSample, startDumpTrial, setDumpSchedule,
 } from '../controllers/admin/dumpController.js';
 import {
   startSync, getSyncStatus, cancelSync, fixImages, findComponentItems, getSyncLogs, getWikidataCache, clearWikidataCache,
@@ -52,7 +52,7 @@ import {
   addLearnedRuleBodySchema, adminUserSearchQuerySchema, aiRuleIdParamSchema, aiSettingKeyParamSchema,
   aiSettingValueBodySchema, applyRuleReviewBodySchema, assignmentIdParamSchema, cacheKindParamSchema,
   cacheTtlBodySchema, clearCacheQuerySchema, createCuratorAssignmentBodySchema, curationGateBodySchema, wikidataReaderBodySchema,
-  curationActivityQuerySchema, curatorActivityQuerySchema, dataAssertionAcceptBodySchema, dumpBuildBodySchema, dumpKeyParamSchema, experienceCountsQuerySchema, hierarchyReviewBodySchema,
+  curationActivityQuerySchema, curatorActivityQuerySchema, dataAssertionAcceptBodySchema, dumpBuildBodySchema, dumpKeyParamSchema, dumpScheduleBodySchema, experienceCountsQuerySchema, hierarchyReviewBodySchema,
   findComponentItemsQuerySchema, logIdParamSchema, regionAssignmentStatusQuerySchema, reorderSourcesBodySchema, sourceIdParamSchema,
   sourceLineBodySchema, startRegionAssignmentBodySchema, startSyncBodySchema, syncChangesQuerySchema,
   syncLogsQuerySchema, userIdParamSchema, worldViewIdParamSchema,
@@ -206,6 +206,15 @@ export const adminDeclaredRoutes = [
     params: dumpKeyParamSchema,
     response: DumpBuildStarted,
     handler: startDumpTrial,
+  }),
+  // Writes one setting; the worker reads it on its next look, every ten minutes.
+  defineRoute({
+    ...ADMIN, method: 'put', path: '/dumps/:dump/schedule',
+    summary: 'Set how often the dump worker brings what is kept from a dump forward by itself (the OpenStreetMap layer): 1 to 30 days, or off',
+    params: dumpKeyParamSchema,
+    body: dumpScheduleBodySchema,
+    response: DumpSchedule,
+    handler: setDumpSchedule,
   }),
   defineRoute({
     ...ADMIN, method: 'post', path: '/dumps/:dump/cancel',

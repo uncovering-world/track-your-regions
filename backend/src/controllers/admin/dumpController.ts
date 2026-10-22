@@ -11,7 +11,7 @@
  */
 
 import type { z } from 'zod/v4';
-import type { DumpBuildCancelled, DumpBuildStarted, Dumps } from '../../api/responses/dumps.js';
+import type { DumpBuildCancelled, DumpBuildStarted, Dumps, DumpSchedule } from '../../api/responses/dumps.js';
 import { DUMPS } from '../../services/dumps/catalog.js';
 import { newestLocalCopy } from '../../services/dumps/localCopies.js';
 import { newestSample } from '../../services/dumps/samples.js';
@@ -22,7 +22,7 @@ import {
   closeOrphanedBuilds, recentBuilds, type BuildKind, type BuildRequestRecord, type DumpBuildRow,
 } from '../../services/dumps/ledger.js';
 import { createError } from '../../middleware/errorHandler.js';
-import type { dumpBuildBodySchema, dumpKeyParamSchema } from '../../types/index.js';
+import type { dumpBuildBodySchema, dumpKeyParamSchema, dumpScheduleBodySchema } from '../../types/index.js';
 
 type DumpParams = z.output<typeof dumpKeyParamSchema>;
 type DumpBuildBody = z.output<typeof dumpBuildBodySchema>;
@@ -47,6 +47,7 @@ async function keepsOf(key: Dumps['dumps'][number]['key']): Promise<Dumps['dumps
     rederives: Boolean(keeper.rederive),
     samples: keeper.samples,
     fromCopy: keeper.fromCopy,
+    schedule: keeper.schedule ? { ...await keeper.schedule.read(), defaultEveryDays: keeper.schedule.defaultEveryDays } : null,
     currentTo: Boolean(keeper.update),
   };
 }
@@ -161,6 +162,15 @@ export async function startDumpTrial(
   } catch (error) {
     throw createError(error instanceof Error ? error.message : 'The build could not start', 409);
   }
+}
+
+/** Set how often the dump worker brings what is kept from the dump forward by itself (ADR-0134 decision 6). */
+export async function setDumpSchedule(
+  { params: { dump }, body: { everyDays }, caller }: { params: DumpParams; body: z.infer<typeof dumpScheduleBodySchema>; caller: Express.User },
+): Promise<DumpSchedule> {
+  const schedule = keeperOf(dump)?.schedule;
+  if (!schedule) throw createError(`Nothing kept from ${dump} updates on a schedule`, 409);
+  return { ...await schedule.set(everyDays, caller.id), defaultEveryDays: schedule.defaultEveryDays };
 }
 
 export async function cancelDumpBuild({ params: { dump } }: { params: DumpParams }): Promise<DumpBuildCancelled> {

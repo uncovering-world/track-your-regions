@@ -38,6 +38,10 @@ export interface BuildRequestRecord {
    * host's (the OpenStreetMap layer's current planet, #1437).
    */
   update?: true;
+  /** Queued by the dump worker on the layer's schedule, not by an admin (#1437, `layerSchedule.ts`). */
+  scheduled?: true;
+  /** An ISO instant before which the worker does not take the build: a self-queued update waits visibly first. */
+  notBefore?: string;
 }
 
 /** What the panel shows of a running build, written with each heartbeat. */
@@ -94,7 +98,9 @@ export interface ClaimedBuild {
 export async function claimNextBuild(runner: string): Promise<ClaimedBuild | null> {
   const result = await pool.query<ClaimedBuild>(
     `UPDATE dump_builds SET status = 'running', runner = $1, heartbeat_at = NOW(), started_at = NOW()
-      WHERE id = (SELECT id FROM dump_builds WHERE status = 'queued' ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)
+      WHERE id = (SELECT id FROM dump_builds
+                   WHERE status = 'queued' AND (request->>'notBefore' IS NULL OR (request->>'notBefore')::timestamptz <= NOW())
+                   ORDER BY id LIMIT 1 FOR UPDATE SKIP LOCKED)
       RETURNING id, dump, request`,
     [runner],
   );

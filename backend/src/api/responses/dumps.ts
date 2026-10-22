@@ -42,6 +42,13 @@ export const DumpBuildProgress = z.strictObject({
 }).describe('A dump build queued or running, read from its ledger row whatever process runs it.');
 export type DumpBuildProgress = z.infer<typeof DumpBuildProgress>;
 
+export const DumpSchedule = z.strictObject({
+  everyDays: z.number().int().nullable().describe('The interval in days, 1 to 30, or null where the schedule is off and updates are started by hand.'),
+  chosen: z.boolean().describe('Whether an admin chose the interval; otherwise it is the default.'),
+  defaultEveryDays: z.number().int().describe('The interval in force where no admin chose one.'),
+}).describe('How often the dump worker queues an update of what is kept by itself (ADR-0134 decision 6). A self-queued update waits 30 minutes as a queued build before the worker takes it.');
+export type DumpSchedule = z.infer<typeof DumpSchedule>;
+
 export const DumpBuild = z.strictObject({
   id: z.number().int(),
   kind: BuildKind,
@@ -82,6 +89,7 @@ export const Dumps = z.strictObject({
       rederives: z.boolean().describe('Whether what is kept can be derived again without the dump, which decides whether "Derive again" is offered.'),
       samples: z.boolean().describe('Whether a sample of the local copy can be cut and the build tried on it, which decides whether "Cut a sample" and "Try the build" are offered.'),
       fromCopy: z.boolean().describe('Whether a keeping build may start from the local copy rather than the newest file, which decides whether "Build <date> copy" is offered.'),
+      schedule: DumpSchedule.nullable().describe('How often the dump worker brings what is kept forward by itself, where the keeper does so (the OpenStreetMap layer); null otherwise.'),
       currentTo: z.boolean().describe('Whether what is kept is brought forward past its dump (the OpenStreetMap layer, by the planet\'s daily diffs), so `built.dumpDate` is the day it is current to rather than the date of a dump.'),
     }).nullable().describe('What a keeping build of this dump makes (the local Wikidata subset, readership), or null where nothing is built from it yet.'),
     localCopy: z.strictObject({
