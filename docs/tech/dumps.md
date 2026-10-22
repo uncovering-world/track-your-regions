@@ -90,8 +90,8 @@ at zlib's default 16 KB the image's Node 22 decoded the entities dump at
 207 MB/s, at 1 MB at 392 MB/s, and the decoder bounds a subset build's passes
 once their work runs in worker threads. bzip2 runs as a child process,
 `/usr/bin/bzip2 -dc` by its absolute path, whose exit code is what says the
-stream ended cleanly: Node has no bzip2 of its own, and the Alpine image has
-no parallel decoder (no `lbzip2` or `pbzip2`), so a gzip file is preferred
+stream ended cleanly: Node has no bzip2 of its own, and the worker's image
+installs `bzip2` only, no parallel decoder (no `lbzip2` or `pbzip2`), so a gzip file is preferred
 wherever the host offers both.
 
 ## Stream or local copy
@@ -184,7 +184,9 @@ backend and the worker talk only through the build's `dump_builds` row:
    for (`request`: the kind, and the local copy's file to keep to).
 2. **Taken.** The worker (`workLoop` in `dumpWorker.ts`, entry
    `backend/src/worker.ts`, run as the `dump-worker` compose service with
-   `npm run worker` and no file watcher) takes the oldest queued row
+   `npm run worker` and no file watcher; the service builds the backend's
+   Dockerfile on its Debian base, `BASE=node-osm`, which adds `osmium-tool`
+   and `osm2pgsql` for the OpenStreetMap layer, ADR-0134) takes the oldest queued row
    (`claimNextBuild`, `FOR UPDATE SKIP LOCKED`) and runs it (`runBuild` in
    `buildRun.ts`): it resolves the file and records it (`recordFile`), reads it
    through the counting consumer for a `verify` build or the dump's builder for
