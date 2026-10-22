@@ -736,9 +736,9 @@ export async function getSources(): Promise<ExperienceSources> {
     // Whether every question this source asks has a twin in the local subset,
     // which decides whether its runs may be switched to read it (#1459).
     subsetReady: SUBSET_READY_SOURCES.has(source.id),
-    // The sources a start of this one also runs, from the same registry the
-    // start reads (ADR-0132), so the card says what its button starts.
-    runsWith: passOf(source.id).filter((id) => id !== source.id),
+    // The pass a start of this one runs, from the same registry the start
+    // reads (ADR-0132), so the panel draws the pass as the one run it is.
+    pass: passOf(source.id).length > 1 ? [...passOf(source.id)] : [],
   }));
 }
 
