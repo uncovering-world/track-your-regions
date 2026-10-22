@@ -16,8 +16,8 @@
  * twelve copies would hold some 70 GB beside the entities dump for nothing.
  *
  * One month on this repository's development machine: about half an hour, the
- * single-threaded bzip2 decoder the limit (the Alpine image has no parallel
- * one, `read.ts`). A year from nothing is some six hours; a yearly rebuild
+ * single-threaded bzip2 decoder the limit (the worker's image installs no
+ * parallel one, `read.ts`). A year from nothing is some six hours; a yearly rebuild
  * reads the months it lacks.
  */
 

@@ -1,4 +1,31 @@
-FROM node:22-alpine
+# The base the image is built on, named by a stage below. The backend runs on
+# Alpine. The dump worker builds the same steps on a Debian base that carries
+# the OpenStreetMap tools its layer build runs (ADR-0134): Alpine packages
+# neither osmium-tool nor osm2pgsql. docker-compose.yml passes BASE=node-osm
+# for the dump-worker service.
+ARG BASE=node-alpine
+
+FROM node:22-alpine AS node-alpine
+
+FROM node:22-trixie-slim AS node-osm
+# osmium cuts the layer from the planet and applies the daily diffs; osm2pgsql
+# loads it through a flex style. bzip2 is the decoder the dump reader spawns
+# for a .bz2 file (`decompressor` in src/services/dumps/read.ts), which Alpine
+# has from busybox and the slim Debian image does not ship. Their versions
+# follow the Debian release of the base image, as the GADM loader's do, so they
+# are not pinned one by one.
+# hadolint ignore=DL3008
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends \
+        bzip2 \
+        osmium-tool \
+        osm2pgsql \
+ && rm -rf /var/lib/apt/lists/*
+
+# BASE names one of the two stages above, whose images are tagged there;
+# hadolint cannot resolve a variable to a stage alias.
+# hadolint ignore=DL3006
+FROM ${BASE}
 
 WORKDIR /app
 

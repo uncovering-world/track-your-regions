@@ -106,8 +106,8 @@ function decompressor(kind: DumpFile['compression']): Decompressor {
     const gunzip = createGunzip({ chunkSize: GUNZIP_CHUNK });
     return { input: gunzip, output: gunzip, done: Promise.resolve(), stop: () => gunzip.destroy() };
   }
-  // bzip2 is a child process: the image has no parallel decoder (no lbzip2 or
-  // pbzip2 on Alpine), and Node has no bzip2 of its own. Its exit code is what
+  // bzip2 is a child process: the worker's image installs only bzip2, no
+  // parallel decoder (backend/Dockerfile), and Node has no bzip2 of its own. Its exit code is what
   // says the stream ended cleanly.
   // By its absolute path: a decoder found through PATH is whatever PATH names.
   const child = spawn('/usr/bin/bzip2', ['-dc'], { stdio: ['pipe', 'pipe', 'pipe'] });
