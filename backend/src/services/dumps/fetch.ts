@@ -4,7 +4,7 @@
  * enforces the Wikimedia User-Agent policy; `planet.openstreetmap.org` asks for
  * HTTPS and keeps agents off its listings (ADR-0134). Every request carries the project's
  * bot `userAgent()`, and at most `HOST_CONNECTIONS` are open to one host from
- * this process at a time; a read opens one, and a download into the local copy
+ * this process at a time (eight to the planet's, `CONNECTIONS_OF`); a read opens one, and a download into the local copy
  * up to all of them (`rangedDownload.ts`). Nothing retries in a loop:
  * a failed request fails the build, and the admin starts it again.
  */
@@ -18,7 +18,15 @@ import { userAgent } from '../../config/userAgent.js';
 import { NotOnHost } from './catalog.js';
 import { downloadRanges } from './rangedDownload.js';
 
+/** The connections a host is held to: Wikimedia's three, unless the host says otherwise. */
 const HOST_CONNECTIONS = 3;
+/**
+ * Hosts that allow more. The OpenStreetMap planet is served from the OSM
+ * Foundation's S3 bucket, whose bandwidth the OSM wiki calls unlimited; three
+ * connections fetched the first planet at about 14 MB/s (2026-10-22).
+ */
+const CONNECTIONS_OF: Readonly<Record<string, number>> = { 'planet.openstreetmap.org': 8 };
+const connectionsOf = (host: string) => CONNECTIONS_OF[host] ?? HOST_CONNECTIONS;
 const USER_AGENT = userAgent({ bot: true, purpose: 'public dump builds' });
 const open = new Map<string, number>();
 const waiting = new Map<string, Array<() => void>>();
@@ -42,7 +50,7 @@ function slot(host: string, signal?: AbortSignal): Promise<void> {
 /** Hold one of the host's connections until `release` is called. */
 async function connection(url: string, signal?: AbortSignal): Promise<() => void> {
   const host = new URL(url).host;
-  while ((open.get(host) ?? 0) >= HOST_CONNECTIONS) {
+  while ((open.get(host) ?? 0) >= connectionsOf(host)) {
     signal?.throwIfAborted();
     await slot(host, signal);
   }
@@ -136,7 +144,7 @@ export async function downloadTo(url: string, path: string, signal: AbortSignal,
   if (expected !== null && have > expected) throw new Error(`${path} is larger than the host's file; delete it and build again`);
   if (expected !== null) {
     return downloadRanges({
-      url, path, expected, have, signal, onBytes, connections: HOST_CONNECTIONS,
+      url, path, expected, have, signal, onBytes, connections: connectionsOf(new URL(url).host),
       openRange: (rangeSignal, from, to) => openStream(url, rangeSignal, from, to),
     });
   }

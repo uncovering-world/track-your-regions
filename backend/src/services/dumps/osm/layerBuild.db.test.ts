@@ -140,6 +140,9 @@ describe('buildLayer (#1437)', () => {
     expect(diffsDownloaded).toHaveLength(10);
     expect(diffsDownloaded[0]).toBe('https://planet.openstreetmap.org/replication/day/000/005/144.osc.gz');
     expect(calls[3]).toEqual(expect.arrayContaining(['-r', '--verbose-ids', join(dir, 'planet-current.osm.pbf')]));
+    // osmium writes lz4 for itself, and the cut osm2pgsql reads uncompressed, which its Debian build needs.
+    expect(calls[1]).toContain('--output-format=pbf,pbf_compression=lz4');
+    expect(calls[4]).toContain('--output-format=pbf,pbf_compression=none');
     expect(calls[5].join(' ')).not.toMatch(/PGPASSWORD|password/i);
     expect(await rows("SELECT osm_type, osm_id, wikidata, GeometryType(geom) AS geom FROM osm_objects ORDER BY osm_type, osm_id")).toEqual([
       { osm_type: 'N', osm_id: '1', wikidata: 'Q39671', geom: 'POINT' },

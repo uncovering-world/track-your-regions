@@ -11,6 +11,7 @@ import { pool } from '../../../db/index.js';
 import { inWorkbench } from '../../../db/workbench.js';
 import type { CopyNeeds } from '../wikidata/buildRules.js';
 import { cancellable, indexesOf } from '../wikidata/subsetTables.js';
+import { sideBySide } from './tools.js';
 
 const TABLE = 'osm_objects';
 /** The name osm2pgsql creates the copy under, in the workbench schema (`OSM_LAYER_TABLE`). */
@@ -42,18 +43,27 @@ export async function nextTableCount(): Promise<number> {
   return Number(result.rows[0].objects);
 }
 
-/** Give the `_next` copy the live table's key and indexes, under the live names with `_next` appended. */
+/**
+ * Give the `_next` copy the live table's key and indexes, under the live names
+ * with `_next` appended. The key first, since adding a constraint locks the
+ * table; then the indexes side by side, each on a connection of its own, since
+ * building one only shares the table with the others and the GiST index alone
+ * takes longest.
+ */
 export async function indexNextTable(signal: AbortSignal): Promise<void> {
   const client = await pool.connect();
-  let statements: string[];
+  let indexes: Awaited<ReturnType<typeof indexesOf>>;
   try {
-    statements = (await indexesOf(client, TABLE)).map(index => (index.constraint
-      ? `ALTER TABLE ${NEXT} ADD CONSTRAINT ${index.name}_next ${index.definition}`
-      : index.definition.replace(`INDEX ${index.name} ON`, `INDEX ${index.name}_next ON`).replace(`ON ${inWorkbench(TABLE)} `, `ON ${NEXT} `)));
+    indexes = await indexesOf(client, TABLE);
   } finally {
     client.release();
   }
-  for (const statement of statements) await cancellable(signal, statement);
+  for (const index of indexes.filter(each => each.constraint)) {
+    await cancellable(signal, `ALTER TABLE ${NEXT} ADD CONSTRAINT ${index.name}_next ${index.definition}`);
+  }
+  await sideBySide(signal, indexes.filter(each => !each.constraint).map(index => (each: AbortSignal) => cancellable(
+    each, index.definition.replace(`INDEX ${index.name} ON`, `INDEX ${index.name}_next ON`).replace(`ON ${inWorkbench(TABLE)} `, `ON ${NEXT} `),
+  )));
 }
 
 export interface LayerRecord {
