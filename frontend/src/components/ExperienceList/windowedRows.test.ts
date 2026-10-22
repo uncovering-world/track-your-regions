@@ -145,7 +145,7 @@ describe('what the list opens by itself', () => {
   const groups = [
     group('UNESCO World Heritage Sites', [1, 2, 3]),
     group('Art Museums', [10, 11]),
-    group('Public Art & Monuments', [20]),
+    group('Public art', [20]),
   ];
   const base = {
     groups,

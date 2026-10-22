@@ -87,12 +87,12 @@ describe('admission pins', () => {
 
   it('groups the review page list under its kinds', async () => {
     mockedPins.mockResolvedValue({
-      pins: [FARNESINA, { ...FARNESINA, membershipId: 1, name: 'Victory Arch', kindName: 'Public Art & Monuments' }],
+      pins: [FARNESINA, { ...FARNESINA, membershipId: 1, name: 'Victory Arch', kindName: 'Public art' }],
       more: false,
     });
     show(<PinnedAnswers />);
     fireEvent.click(await screen.findByRole('button', { name: 'Show the answers pinned against a rule (2)' }));
     expect(screen.getByText('Art Museums')).toBeTruthy();
-    expect(screen.getByText('Public Art & Monuments')).toBeTruthy();
+    expect(screen.getByText('Public art')).toBeTruthy();
   });
 });

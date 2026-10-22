@@ -15,11 +15,13 @@ const ART_MUSEUMS = 2;
 const PUBLIC_ART = 3;
 const PLACES_OF_WORSHIP = 4;
 const ARCHAEOLOGY = 5;
+const MONUMENTS = 6;
 
 describe('typeOptionsFor', () => {
-  it('offers a World Heritage site its three, and public art its two', () => {
+  it('offers a World Heritage site its three, public art its three and a monument its five', () => {
     expect(typeOptionsFor(WORLD_HERITAGE).map(o => o.value)).toEqual(['cultural', 'natural', 'mixed']);
-    expect(typeOptionsFor(PUBLIC_ART).map(o => o.value)).toEqual(['monument', 'sculpture']);
+    expect(typeOptionsFor(PUBLIC_ART).map(o => o.value)).toEqual(['sculpture', 'fountain', 'street-art']);
+    expect(typeOptionsFor(MONUMENTS).map(o => o.value)).toEqual(['memorial', 'arch', 'column', 'obelisk', 'monument']);
   });
 
   it('offers a place of worship its eight types', () => {
@@ -50,8 +52,9 @@ describe('typeOptionsFor', () => {
 });
 
 describe('typeVocabularyOf', () => {
-  it('explains a monument in public art\'s words and a natural site in World Heritage\'s', () => {
-    expect(typeVocabularyOf('sculpture')?.what).toMatch(/monument or sculpture/);
+  it('explains a sculpture in public art\'s words, an obelisk in a monument\'s and a natural site in World Heritage\'s', () => {
+    expect(typeVocabularyOf('sculpture')?.what).toMatch(/a fountain before a sculpture/);
+    expect(typeVocabularyOf('obelisk')?.what).toMatch(/an arch, a column, an obelisk/);
     expect(typeVocabularyOf('natural')?.what).toMatch(/World Heritage/);
     expect(typeVocabularyOf('natural')?.what).not.toMatch(/monument/);
   });

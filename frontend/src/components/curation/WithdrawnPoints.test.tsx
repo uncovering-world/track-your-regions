@@ -61,7 +61,7 @@ function item(over: Partial<ReviewQueueItem> = {}): ReviewQueueItem {
     external_id: 'Q127064',
     name: 'Bilbao Fine Arts Museum',
     kind_id: 3,
-    kind_name: 'Public Art & Monuments',
+    kind_name: 'Public art',
     missing_since: null,
     source_membership: 'present',
     existence: 'extant',

@@ -162,11 +162,11 @@ describe('a picture repair found already in flight', () => {
 
   it('offers the repair only where the server says it acts', async () => {
     mockedStatus.mockResolvedValue({ running: false });
-    mockedSources.mockResolvedValue([UNESCO, { ...UNESCO, id: 3, name: 'Public Art & Monuments', repairsPictures: false, findsComponentItems: false }]);
+    mockedSources.mockResolvedValue([UNESCO, { ...UNESCO, id: 3, name: 'Public art', repairsPictures: false, findsComponentItems: false }]);
 
     renderPanel();
 
-    await screen.findByText('Public Art & Monuments');
+    await screen.findByText('Public art');
     expect(screen.getAllByRole('button', { name: 'Fix pictures' })).toHaveLength(1);
   });
 });
