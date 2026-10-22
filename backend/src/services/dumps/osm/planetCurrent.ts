@@ -25,7 +25,7 @@ import { readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { OSM_PLANET, type TextReader } from '../catalog.js';
 import { downloadTo } from '../fetch.js';
-import { OSMIUM, runTool } from './tools.js';
+import { OSMIUM, OSMIUM_OUTPUT, runTool } from './tools.js';
 
 const DAILY = `${OSM_PLANET}/replication/day`;
 export const CURRENT_PLANET = 'planet-current.osm.pbf';
@@ -137,7 +137,7 @@ export async function bringForward(
   }
   options.onPhase(`Applying ${diffs.length} daily diffs to the planet...`);
   const next = join(work, 'planet-next.osm.pbf');
-  await runTool(OSMIUM, ['apply-changes', from, ...diffs, '-o', next, '--overwrite'], { signal });
+  await runTool(OSMIUM, ['apply-changes', from, ...diffs, '-o', next, OSMIUM_OUTPUT, '--overwrite'], { signal });
   // The state is written beside the file first and both are renamed in, so a
   // stop between them leaves at worst a state one step behind its file, and
   // a diff applied twice changes nothing.

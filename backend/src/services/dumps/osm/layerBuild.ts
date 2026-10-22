@@ -41,7 +41,7 @@ import { holdVerifiedCopy, type ReadOptions, type ReadResult } from '../read.js'
 import { pinnedObjects, selectionFile } from './layerSelection.js';
 import { dropImportProperties, dropNextTable, indexNextTable, MIDDLE_PREFIX, nextTableCount, NEXT_TABLE, swapIn } from './layerTables.js';
 import { bringForward, CURRENT_PLANET, dailyState, dropCurrent, firstDiffAfter, readCurrent, type BroughtForward } from './planetCurrent.js';
-import { databaseEnv, OSM2PGSQL, OSMIUM, runTool } from './tools.js';
+import { databaseEnv, OSM2PGSQL, OSM2PGSQL_INPUT, OSMIUM, OSMIUM_OUTPUT, runTool, sideBySide } from './tools.js';
 
 export type LayerBuildOptions = ReadOptions & {
   buildId: number; onPhase: (message: string) => void; trial?: boolean;
@@ -103,16 +103,26 @@ async function cutLayer(planet: string, work: string, options: LayerBuildOptions
   await writeFile(pins, named.length > 0 ? `${named.join('\n')}\n` : '');
 
   const selected = join(work, 'selected.osm.pbf');
-  options.onPhase('Cutting the selected objects from the planet...');
-  await runTool(OSMIUM, ['tags-filter', planet, '-e', selection, '-o', selected, '--overwrite'], { signal });
-  if (named.length === 0) return { cut: selected, pins, pinned: 0, gone: 0 };
+  // Read by osm2pgsql itself where nothing is merged into it.
+  const tagsFilter = ['tags-filter', planet, '-e', selection, '-o', selected, named.length === 0 ? OSM2PGSQL_INPUT : OSMIUM_OUTPUT, '--overwrite'];
+  if (named.length === 0) {
+    options.onPhase('Cutting the selected objects from the planet...');
+    await runTool(OSMIUM, tagsFilter, { signal });
+    return { cut: selected, pins, pinned: 0, gone: 0 };
+  }
 
   const linked = join(work, 'linked.osm.pbf');
   const cut = join(work, 'layer.osm.pbf');
-  options.onPhase(`Cutting the ${named.length.toLocaleString('en')} objects the catalogue names...`);
-  // Exit 1 is also osmium's answer to an error reading the data: it is taken
-  // as "some objects are gone" only where osmium says so.
-  const found = await runTool(OSMIUM, ['getid', '-r', '--verbose-ids', planet, '-i', pins, '-o', linked, '--overwrite'], { signal, exitCodes: [0, 1] });
+  // The two cuts read the planet each, independently: run side by side, they
+  // cost one read's time rather than two (10.8 and 6 minutes one after the
+  // other on the first build). Exit 1 is also osmium's answer to an error
+  // reading the data: it is taken as "some objects are gone" only where
+  // osmium says so.
+  options.onPhase(`Cutting the selected objects and the ${named.length.toLocaleString('en')} objects the catalogue names from the planet...`);
+  const [, found] = await sideBySide(signal, [
+    (each) => runTool(OSMIUM, tagsFilter, { signal: each }),
+    (each) => runTool(OSMIUM, ['getid', '-r', '--verbose-ids', planet, '-i', pins, '-o', linked, OSMIUM_OUTPUT, '--overwrite'], { signal: each, exitCodes: [0, 1] }),
+  ]);
   const gone = found.code === 0 ? { count: 0, ids: [] } : goneObjects(found.stderr);
   if (!gone) throw new Error(`osmium getid failed (1): ${found.stderr.slice(-2000).trim()}`);
   if (gone.count > 0) {
@@ -120,7 +130,7 @@ async function cutLayer(planet: string, work: string, options: LayerBuildOptions
     const which = listed ? ': ' + listed : '';
     options.onNote?.(`${gone.count.toLocaleString('en')} objects the catalogue names are no longer in the planet${which}`);
   }
-  await runTool(OSMIUM, ['merge', selected, linked, '-o', cut, '--overwrite'], { signal });
+  await runTool(OSMIUM, ['merge', selected, linked, '-o', cut, OSM2PGSQL_INPUT, '--overwrite'], { signal });
   return { cut, pins, pinned: named.length, gone: gone.count };
 }
 
