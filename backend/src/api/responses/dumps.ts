@@ -84,7 +84,7 @@ export const Dumps = z.strictObject({
     }).nullable().describe('What a keeping build of this dump makes (the local Wikidata subset, readership), or null where nothing is built from it yet.'),
     localCopy: z.strictObject({
       fileName: z.string(),
-      date: z.string().describe('The date in the file name: YYYYMMDD, or YYYYMM for a month of counts.'),
+      date: z.string().describe('The date in the file name as an ISO day (YYYY-MM-DD): the dump\'s day, or the first of the month its counts cover.'),
       bytes: z.number().int(),
     }).nullable().describe('The newest local copy of the dump in DUMPS_DIR, which a build can read instead of the newest file the host lists (#1456); null without one.'),
     sample: z.strictObject({

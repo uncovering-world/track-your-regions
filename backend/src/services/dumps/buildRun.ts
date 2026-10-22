@@ -14,12 +14,14 @@ import { BEAT_EVERY_MS, beat, closeBuild, recordFile, type BuildProgressRecord, 
 import { dumpsDir } from './buildQueue.js';
 import { keeperOf } from './keepers.js';
 import { PassClock } from './passClock.js';
-import { countLines, readDump, type ReadOptions } from './read.js';
+import { countLines, holdVerifiedCopy, readDump, type ReadOptions } from './read.js';
 import { cutSample, SAMPLE_JSON_BYTES, sampleFile, sampleIn } from './samples.js';
 import { StepTimes } from './stepTimes.js';
 
 function verifiedMessage(file: DumpFile, lines: number, checksumActual: string | null): string {
   const how = checksumActual ? `${file.checksum?.kind} matches the host's` : 'size and stream end match the host\'s';
+  // A binary file is held whole, never read by lines.
+  if (file.compression === 'none') return `${file.fileName} verified and kept: ${how}`;
   return `${file.fileName} verified: ${lines.toLocaleString('en')} lines, ${how}`;
 }
 
@@ -179,7 +181,7 @@ async function readTheDump(
       },
     })
     : null;
-  const result = built ?? await readDump(file, countLines(), options);
+  const result = built ?? (file.compression === 'none' ? await holdVerifiedCopy(file, options) : await readDump(file, countLines(), options));
   const said = [verifiedMessage(file, result.lines, result.checksumActual), ...(built ? ['built and swapped in', ...(built.summary ? [built.summary] : [])] : [])];
   return { result, said };
 }
