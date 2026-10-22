@@ -278,7 +278,7 @@ async function fetchLandmarkItems(
 
   // What the subset cannot read is left as it is, not read as gone.
   const unread = readsSubset(sparql) ? await unreadOnSubset(sourceId) : undefined;
-  return { items, fetchedCount: fetched, filtered, unread };
+  return { items, fetchedCount: fetched, filtered, unread, typeVocabulary: RULE_OF_SOURCE[sourceId].types };
 }
 
 /** One source of the pass: its kind's rule, writing the kind `sourceId` fills. */

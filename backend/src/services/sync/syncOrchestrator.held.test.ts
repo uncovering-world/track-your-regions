@@ -41,6 +41,7 @@ vi.mock('./admission.js', () => ({
   admissionSweepSkipReason: vi.fn().mockReturnValue(null),
   countAdmitted: vi.fn().mockResolvedValue(0),
   markRefused: vi.fn().mockResolvedValue([]),
+  filePutBackTypes: vi.fn().mockResolvedValue([]),
   restoreAdmission: vi.fn().mockResolvedValue([]),
   markIconic: vi.fn().mockResolvedValue([]),
   unmarkIconic: vi.fn().mockResolvedValue([]),

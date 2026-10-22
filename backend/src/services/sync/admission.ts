@@ -387,6 +387,65 @@ export async function markRefused(
   return rowsFrom(result);
 }
 
+/** A put-back's type the run filed: the row, and the type it held before. */
+export interface PutBackType extends AdmissionRow {
+  before: string | null;
+  type: string;
+}
+
+/**
+ * File the rows a curator put back against the rule's refusal under the type
+ * the rule reads from their classes (ADR-0135).
+ *
+ * A run writes what it admits, and a put-back is a refusal, so nothing else
+ * files its type: the Victory Arch, put back into Monuments & memorials, held
+ * none once migration 146 cleared the type the kinds inherited. The type
+ * decides nothing about admission, so it is filed by the rule of a held row,
+ * on every source: a type the membership holds none of, or one its kind's
+ * vocabulary has no word for, is replaced by one it has, and a curator's
+ * claim on the type and a word of the vocabulary stand. An ungated source
+ * rewrites an admitted row's word too, but a put-back is a row a person kept
+ * against the rule, so the run fills the gap and re-files nothing.
+ */
+export async function filePutBackTypes(
+  sourceId: number,
+  refusals: { externalId: string; type?: string }[],
+  vocabulary: readonly string[] | undefined,
+  dryRun: boolean,
+): Promise<PutBackType[]> {
+  if (!vocabulary) return [];
+  const typed = refusals.filter((r): r is { externalId: string; type: string } =>
+    r.type !== undefined && vocabulary.includes(r.type));
+  if (typed.length === 0) return [];
+
+  const named = `(SELECT UNNEST($2::text[]) AS external_id, UNNEST($3::text[]) AS type) v`;
+  const predicate = `m.source_id = $1
+      AND m.external_id = v.external_id
+      AND m.admission = 'admitted'
+      AND ${admissionPinnedSql('m')}
+      AND NOT m.curated_fields ? 'type'
+      AND (m.type IS NULL OR NOT m.type = ANY($4::text[]))`;
+  const params = [sourceId, typed.map((r) => r.externalId), typed.map((r) => r.type), [...vocabulary]];
+
+  // The type before the write is read from the row the update replaces: a
+  // table joined in FROM is read as the statement found it.
+  const result = await pool.query<{ id: number; external_id: string; name: string; before: string | null; type: string }>(
+    dryRun
+      ? `SELECT e.id, m.external_id, e.name, m.type AS before, v.type
+           FROM ${MEMBERSHIPS} m JOIN experiences e ON e.id = m.experience_id, ${named}
+          WHERE ${predicate}`
+      : `UPDATE ${MEMBERSHIPS} m SET type = v.type, updated_at = NOW()
+           FROM experiences e, ${named}, ${MEMBERSHIPS} old
+          WHERE e.id = m.experience_id AND old.id = m.id
+            AND ${predicate}
+      RETURNING e.id, m.external_id, e.name, old.type AS before, m.type AS type`,
+    params,
+  );
+  return result.rows.map((row) => ({
+    id: row.id, externalId: row.external_id, name: row.name, before: row.before, type: row.type,
+  }));
+}
+
 /**
  * Give back admission to a row this run admits.
  *

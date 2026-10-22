@@ -182,6 +182,9 @@ describe('collectPublicArt', () => {
     expect(filtered).toEqual([{
       externalId: 'Q4', name: 'Fountain of Cybele',
       reason: `${STAY_SITELINKS - 1} Wikipedia editions: below the world tier's line (${ENTER_SITELINKS} to enter, ${STAY_SITELINKS} to stay)`,
+      // A row the source admits carries the type its classes read, for a
+      // curator's put-back to be filed under (ADR-0135).
+      type: 'monument',
     }]);
     // And it is the catalogue's one sentence for that verdict, not a copy of it
     // that happens to read the same (#884): this kind asks `lineStanding` and
@@ -220,6 +223,7 @@ describe('collectPublicArt', () => {
         externalId: 'Q3100139', name: 'Dendera zodiac', reason: 'inside Room 325 (Louvre Palace): a work indoors, not public art',
         // The room, and every place the walk reached above it, nearest first (ADR-0102).
         heldIn: ['Q19119449', 'Q7', 'Q17309954', 'Q1075988'],
+        type: 'sculpture',
       },
     ]);
   });
@@ -367,7 +371,7 @@ describe('collectPublicArt', () => {
     };
     const { items, filtered } = await collectPublicArt(doorTo(world), new Set(['Q8']), undefined, MONUMENTS_RULE);
     expect(items).toEqual([]);
-    expect(filtered).toEqual([{ externalId: 'Q8', name: 'A lost pin', reason: 'no coordinates of its own (P625)' }]);
+    expect(filtered).toEqual([{ externalId: 'Q8', name: 'A lost pin', reason: 'no coordinates of its own (P625)', type: 'monument' }]);
   });
 
   it('fetches an admitted row the pool no longer names, so its refusal is named too', async () => {
@@ -384,6 +388,7 @@ describe('collectPublicArt', () => {
     expect(filtered).toEqual([{
       externalId: 'Q2736564', name: 'Fountain of Cybele',
       reason: `14 Wikipedia editions: below the world tier's line (${ENTER_SITELINKS} to enter, ${STAY_SITELINKS} to stay)`,
+      type: 'monument',
     }]);
   });
 

@@ -358,6 +358,12 @@ export function classifyPublicArt(
   const candidates = [...pool.values()].sort((a, b) => b.sitelinks - a.sitelinks);
   for (const entity of candidates) {
     const known = facts.get(entity.qid) ?? emptyFacts();
+    // On a refusal of a row the source admits, the type the classes read: a
+    // curator may have put it back, and a put-back is filed under it too
+    // (`filePutBackTypes`, ADR-0135).
+    const type = admitted.has(entity.qid)
+      ? { type: rule.type({ classes: known.classes, commemorates: known.commemorates }, trees) }
+      : {};
     const verdict = publicArtVerdict({
       qid: entity.qid,
       classes: known.classes,
@@ -371,7 +377,7 @@ export function classifyPublicArt(
     }, trees, rule, offered);
     if (!verdict.pass) {
       filtered.push({
-        externalId: entity.qid, name: entity.label, reason: verdict.reason,
+        externalId: entity.qid, name: entity.label, reason: verdict.reason, ...type,
         // Where it is held, for the kind that holds that place to take it (ADR-0102).
         ...(verdict.heldIn ? { heldIn: verdict.heldIn } : {}),
       });
@@ -387,6 +393,7 @@ export function classifyPublicArt(
         externalId: entity.qid,
         name: entity.label,
         reason: belowLineReason(entity.sitelinks, LINE),
+        ...type,
       });
       continue;
     }

@@ -14,7 +14,7 @@ import { createSyncLog, updateSyncLog } from './syncUtils.js';
 import { startProgressWriter } from './syncProgressWriter.js';
 import type { ChangeRecord } from './changeRecorder.js';
 import { finishPlacement, enterAssigningPhase, takeOverUnplaced, terminalStatus } from './placement.js';
-import { countAdmitted, markRefused } from './admission.js';
+import { countAdmitted, filePutBackTypes, markRefused } from './admission.js';
 import { recordHandOvers } from './handOvers.js';
 import {
   missingDetectionSkipReason,
@@ -22,7 +22,7 @@ import {
   countActiveExperiences,
   countSeenAmongActive,
 } from './missingDetection.js';
-import { recordItemOutcome, recordItemFailure, recordFilteredEntities } from './itemOutcome.js';
+import { recordItemOutcome, recordItemFailure, recordFilteredEntities, recordPutBackTypes } from './itemOutcome.js';
 import { applyAdmissionSweep, badgeAdmitted, questionPins } from './admissionStep.js';
 import { askVisitQuestions } from './visit/visitQuestions.js';
 import {
@@ -238,6 +238,9 @@ export async function orchestrateSync<T>(
     // these and a rule turned them down, which no coverage floor or error count
     // can make less true (ADR-0024).
     const refusedRows = await markRefused(sourceId, filtered ?? [], dryRun);
+    // What a curator put back stays admitted through the refusal, and the run
+    // writes nothing else of it, so its type is filed here (ADR-0135).
+    recordPutBackTypes(await filePutBackTypes(sourceId, filtered ?? [], fetched.typeVocabulary, dryRun), progress, changes);
     // What the run refused as another place's, for the kind that holds that
     // place (ADR-0102): the fetch answered whole, so the set is replaced.
     await recordHandOvers(sourceId, filtered ?? [], progress.logId, dryRun);

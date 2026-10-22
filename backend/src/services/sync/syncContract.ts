@@ -27,12 +27,21 @@ export interface FilteredEntity {
    * kind that admits one of those places takes the work.
    */
   heldIn?: string[];
+  /**
+   * The type the kind's rule reads from the candidate's classes, which decide
+   * nothing about admission: a refusal a curator put back is filed under it
+   * (`filePutBackTypes`, ADR-0135). Absent from a source whose kind declares
+   * no vocabulary (`FetchResult.typeVocabulary`).
+   */
+  type?: string;
 }
 
 export interface FetchResult<T> {
   items: T[];
   fetchedCount: number;
   filtered?: FilteredEntity[];
+  /** The closed vocabulary of the kind the run fills, where it declares one (`KindRule.types`). */
+  typeVocabulary?: readonly string[];
   /**
    * Objects an admitted row holds that the kind's rule turned down — what the
    * venue-side read refused (#890, `museum/venueSide.ts`): the film in an art
