@@ -29,6 +29,7 @@ docs/sources/
 │   ├── ch-kgs-inventar.md
 │   └── …
 └── global/                  ← sources native to no unit: read per unit, or read for the world
+    ├── openstreetmap-planet.md
     ├── openstreetmap-qlever.md
     ├── wikidata-qlever.md
     ├── wikidata-by-class-per-unit.md
