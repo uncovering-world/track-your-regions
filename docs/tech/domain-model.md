@@ -101,7 +101,8 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
 ### ExperienceKind
 
 - **Description**: What a traveller browses by — World Heritage Sites, Art Museums,
-  Public Art & Monuments, Places of worship — a sibling of the others, never a parent
+  Public art, Places of worship, Archaeology, Monuments & memorials — a sibling of the
+  others, never a parent
   (ADR-0045 decision 1).
   Seeded under the ids of the sources that fill them, so every reader keyed on ids
   needs nothing when #819 switches it. See [Experiences System](experiences.md) § Kinds
@@ -143,7 +144,8 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
 ### ExperienceSource
 
 - **Description**: A *source*: the sync that fills a kind (UNESCO World Heritage
-  Sites, Art Museums, Public Art & Monuments, Places of worship). Named
+  Sites, Art Museums, Public art, Places of worship, Archaeology, Monuments &
+  memorials). Named
   `experience_categories` until migration 055 (#819); a reader that means the kind
   reads the membership's `KindID`, and `Experience.SourceID` names the source that
   brought the place.
