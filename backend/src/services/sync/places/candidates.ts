@@ -1,8 +1,8 @@
 /**
  * What a place kind with one point reads of its candidates beside its rule
  * (#1854, #1860): a year's readers for its line, and the landmark a run
- * writes for a candidate it admits. Towers and Bridges & engineering share
- * them; each kind's line and rule stay its own.
+ * writes for a candidate it admits. Every place kind with one point and a
+ * readers' line shares them; each kind's line and rule stay its own.
  */
 
 import type { WikidataLandmark } from '../types.js';
