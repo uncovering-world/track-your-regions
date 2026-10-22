@@ -2566,6 +2566,13 @@ INSERT INTO experience_kinds (id, name, display_priority) VALUES
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experience_kinds), 1));
 
+-- The seventh kind: a tower visited to climb or to look at, whatever it was
+-- built for (#1854, ADR-0131), filled from the same gather.
+INSERT INTO experience_kinds (id, name, display_priority) VALUES
+    (7, 'Towers', 7)
+ON CONFLICT (name) DO NOTHING;
+SELECT setval('experience_kinds_id_seq', GREATEST((SELECT MAX(id) FROM experience_kinds), 1));
+
 -- =============================================================================
 -- Sources (ADR-0045 decision 3)
 -- =============================================================================
@@ -3527,6 +3534,23 @@ VALUES (
     6,
     true,
     (SELECT id FROM experience_kinds WHERE name = 'Monuments & memorials')
+)
+ON CONFLICT (name) DO NOTHING;
+SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
+
+-- Towers' one source: Wikidata, read in the same pass. Its line reads a
+-- year's readers beside the editions and is in code (`towers/kind.ts`).
+-- Gated on arrival (ADR-0025).
+INSERT INTO experience_sources (id, name, description, api_endpoint, api_config, display_priority, requires_curation, kind_id)
+VALUES (
+    7,
+    'Towers',
+    'Bell towers, minarets, pagodas, clock towers, TV towers and towers standing on their own worldwide, sourced from Wikidata',
+    'https://query.wikidata.org/sparql',
+    '{}'::jsonb,
+    7,
+    true,
+    (SELECT id FROM experience_kinds WHERE name = 'Towers')
 )
 ON CONFLICT (name) DO NOTHING;
 SELECT setval('experience_sources_id_seq', GREATEST((SELECT MAX(id) FROM experience_sources), 1));
