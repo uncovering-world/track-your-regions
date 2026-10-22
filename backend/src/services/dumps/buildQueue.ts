@@ -73,14 +73,14 @@ async function localFileOf(descriptor: DumpDescriptor, kind: BuildKind, from: Bu
 
 function progressOf(dump: DumpKey, build: ActiveBuild): DumpBuildProgress {
   // A row from before migration 101 asked for nothing: it was a verify or keep build the old code ran.
-  const request = build.request as { kind: BuildKind } | null;
+  const request = build.request as { kind: BuildKind; scheduled?: true; notBefore?: string } | null;
   const progress = build.progress as Omit<BuildProgressRecord, 'etaSeconds'> & { etaSeconds?: number | null } | null;
   const queued = build.status === 'queued';
   return {
     dump,
     kind: request?.kind ?? 'verify',
     status: queued ? 'queued' : progress?.phase ?? 'resolving',
-    message: queued ? 'Waiting for the dump worker...' : progress?.message ?? 'Starting...',
+    message: queued ? queuedMessage(request) : progress?.message ?? 'Starting...',
     file: build.file_name && build.dump_date
       ? { fileName: build.file_name, date: isoDay(build.dump_date), expectedBytes: build.expected_bytes === null ? null : Number(build.expected_bytes) }
       : null,
@@ -94,6 +94,12 @@ function progressOf(dump: DumpKey, build: ActiveBuild): DumpBuildProgress {
     stepStartedAt: !queued && progress?.stepStartedAt ? new Date(progress.stepStartedAt) : null,
     operation: operationOf(build, progress, queued),
   };
+}
+
+/** What a queued build says: a self-queued update says when the worker may take it. */
+function queuedMessage(request: { scheduled?: true; notBefore?: string } | null): string {
+  if (request?.scheduled && request.notBefore) return `Scheduled update: the dump worker takes it from ${request.notBefore.slice(0, 16).replace('T', ' ')} UTC`;
+  return 'Waiting for the dump worker...';
 }
 
 /**

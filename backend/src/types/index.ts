@@ -399,6 +399,11 @@ export const dumpBuildBodySchema = z.object({
   from: z.enum(['newest', 'local']).default('newest'),
 });
 
+/** How often the dump worker brings what is kept forward by itself (#1437): 1 to 30 days, or null for off. */
+export const dumpScheduleBodySchema = z.object({
+  everyDays: z.number().int().min(1).max(30).nullable(),
+});
+
 /** Which Wikidata a source's runs read (#1459). */
 export const wikidataReaderBodySchema = z.object({
   reader: z.enum(CHECK_VALUES.experience_sources.wikidata_reader),

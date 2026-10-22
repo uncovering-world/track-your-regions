@@ -5317,6 +5317,77 @@
         }
       }
     },
+    "/api/admin/dumps/{dump}/schedule": {
+      "put": {
+        "operationId": "putAdminDumpsByDumpSchedule",
+        "summary": "Set how often the dump worker brings what is kept from a dump forward by itself (the OpenStreetMap layer): 1 to 30 days, or off",
+        "tags": [
+          "admin"
+        ],
+        "description": "Requires an admin.",
+        "x-access": "admin",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "dump",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "wikidata-entities",
+                "wikidata-lexemes",
+                "enwiki-page",
+                "enwiki-page-props",
+                "enwiki-linktarget",
+                "enwiki-categorylinks",
+                "enwiki-langlinks",
+                "pageviews-user",
+                "wikipedia-redirects",
+                "wikivoyage-usage",
+                "osm-planet"
+              ]
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DumpScheduleBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DumpSchedule"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/admin/dumps/{dump}/cancel": {
       "post": {
         "operationId": "postAdminDumpsByDumpCancel",
@@ -21519,6 +21590,61 @@
         "additionalProperties": false,
         "description": "A dump build started in the background, followed through the dump list."
       },
+      "DumpSchedule": {
+        "type": "object",
+        "properties": {
+          "everyDays": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": -9007199254740991,
+                "maximum": 9007199254740991
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The interval in days, 1 to 30, or null where the schedule is off and updates are started by hand."
+          },
+          "chosen": {
+            "type": "boolean",
+            "description": "Whether an admin chose the interval; otherwise it is the default."
+          },
+          "defaultEveryDays": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The interval in force where no admin chose one."
+          }
+        },
+        "required": [
+          "everyDays",
+          "chosen",
+          "defaultEveryDays"
+        ],
+        "additionalProperties": false,
+        "description": "How often the dump worker queues an update of what is kept by itself (ADR-0134 decision 6). A self-queued update waits 30 minutes as a queued build before the worker takes it."
+      },
+      "DumpScheduleBody": {
+        "type": "object",
+        "properties": {
+          "everyDays": {
+            "anyOf": [
+              {
+                "type": "integer",
+                "minimum": 1,
+                "maximum": 30
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "everyDays"
+        ]
+      },
       "Dumps": {
         "type": "object",
         "properties": {
@@ -21649,6 +21775,17 @@
                           "type": "boolean",
                           "description": "Whether a keeping build may start from the local copy rather than the newest file, which decides whether \"Build <date> copy\" is offered."
                         },
+                        "schedule": {
+                          "anyOf": [
+                            {
+                              "$ref": "#/components/schemas/DumpSchedule"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ],
+                          "description": "How often the dump worker brings what is kept forward by itself, where the keeper does so (the OpenStreetMap layer); null otherwise."
+                        },
                         "currentTo": {
                           "type": "boolean",
                           "description": "Whether what is kept is brought forward past its dump (the OpenStreetMap layer, by the planet's daily diffs), so `built.dumpDate` is the day it is current to rather than the date of a dump."
@@ -21663,6 +21800,7 @@
                         "rederives",
                         "samples",
                         "fromCopy",
+                        "schedule",
                         "currentTo"
                       ],
                       "additionalProperties": false

@@ -81,6 +81,17 @@ describe('a build in the dump worker (ADR-0106)', () => {
     }));
   });
 
+  it('downloads nothing for a scheduled update when what is kept can no longer be brought forward (#1437)', async () => {
+    keepers.canUpdate.mockResolvedValueOnce(false);
+    await runBuild({ id: 9, dump: 'osm-planet', request: { kind: 'keep', scheduled: true, notBefore: '2026-10-30T09:30:00.000Z' } }, new AbortController().signal);
+    expect(keepers.update).not.toHaveBeenCalled();
+    expect(keepers.build).not.toHaveBeenCalled();
+    expect(ledger.recordFile).not.toHaveBeenCalled();
+    expect(ledger.closeBuild).toHaveBeenCalledWith(9, expect.objectContaining({
+      status: 'failed', error: expect.stringMatching(/a scheduled update downloads nothing/),
+    }));
+  });
+
   it('builds from the local copy named, not from what is kept, when the admin asks for that copy (#1437)', async () => {
     keepers.build.mockResolvedValue({ bytes: 1, lines: 0, checksumActual: 'c'.repeat(32), summary: 'kept 3 OpenStreetMap objects' });
     await runBuild({ id: 9, dump: 'osm-planet', request: { kind: 'keep', only: 'planet-261012.osm.pbf' } }, new AbortController().signal);

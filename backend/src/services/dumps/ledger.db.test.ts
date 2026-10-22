@@ -145,6 +145,15 @@ describe('the dump build ledger (ADR-0106)', () => {
     expect((await row(updates[0])).request).toEqual({ kind: 'keep', update: true });
   });
 
+  it('does not take a build before its notBefore, and takes it after (#1437)', async () => {
+    const later = new Date(Date.now() + 30 * 60 * 1000).toISOString();
+    const id = await enqueueBuild('osm-planet', 'local', { kind: 'keep', scheduled: true, notBefore: later }, null);
+    expect(await claimNextBuild('worker:fixture')).toBeNull();
+    expect(await row(id)).toMatchObject({ status: 'queued' });
+    await pool.query("UPDATE dump_builds SET request = request || jsonb_build_object('notBefore', (NOW() - interval '1 minute')::text) WHERE id = $1", [id]);
+    expect((await claimNextBuild('worker:fixture'))?.id).toBe(id);
+  });
+
   it('refuses a status or a mode the ledger does not know', async () => {
     const id = await enqueueBuild('wikidata-lexemes', 'stream', { kind: 'verify' }, null);
     await expect(pool.query("UPDATE dump_builds SET status = 'half' WHERE id = $1", [id])).rejects.toThrow(/check constraint/);

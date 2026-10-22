@@ -162,6 +162,9 @@ async function readTheDump(
   // Counting the file as a verify would end green with nothing kept.
   if (kind === 'keep' && !keeper) throw new Error(noBuilder(descriptor.key));
   if (keeper?.update && !only && await keeper.canUpdate?.()) return updateKept(claimed, keeper, descriptor, progress, signal, notes, clock, onPhase, figures);
+  // A build the worker queued on a schedule only brings forward what is kept:
+  // where that can no longer be done, it downloads nothing (ADR-0134 decision 6).
+  if (claimed.request.scheduled) throw new Error('What is kept can no longer be brought forward, and a scheduled update downloads nothing: start a build by hand');
   onPhase(only ? `Finding ${only} on the host...` : 'Finding the newest complete file...');
   await beat(claimed.id, progress);
   const file = await resolveFile(descriptor, signal, only);

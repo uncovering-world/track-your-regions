@@ -12,6 +12,7 @@
 import type { DumpFile, DumpKey } from './catalog.js';
 import { buildLayer, hasCurrentPlanet, updateLayer } from './osm/layerBuild.js';
 import { latestLayer } from './osm/layerTables.js';
+import { DEFAULT_EVERY_DAYS, layerSchedule, setLayerSchedule, type LayerSchedule } from './osm/layerSchedule.js';
 import type { ReadOptions } from './read.js';
 import { buildReadership, latestReadership } from './readership/readershipBuild.js';
 import { buildRedirects } from './wikipedia/redirectBuild.js';
@@ -64,6 +65,15 @@ export interface Keeper {
   update?(options: ReadOptions & { buildId: number; onPhase: (message: string) => void; onMeasure?: (read: number, total: number) => void }):
     Promise<{ bytes: number; lines: number; checksumActual: string | null; summary?: string }>;
   canUpdate?(): Promise<boolean>;
+  /**
+   * How often the dump worker brings what is kept forward by itself, which an
+   * admin may change (the OpenStreetMap layer, ADR-0134 decision 6).
+   */
+  schedule?: {
+    defaultEveryDays: number;
+    read(): Promise<LayerSchedule>;
+    set(everyDays: number | null, adminId: number): Promise<LayerSchedule>;
+  };
   /** Derive the build in place's tables again from what it holds, without the dump (#1526). */
   rederive?(options: RederiveOptions): Promise<void>;
   /** The build now in place, if any. */
@@ -88,6 +98,7 @@ const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
   // from a weekly copy on disk starts the current planet again from it.
   'osm-planet': {
     title: 'The OpenStreetMap layer', build: buildLayer, update: updateLayer, canUpdate: hasCurrentPlanet, latest: latestLayer,
+    schedule: { defaultEveryDays: DEFAULT_EVERY_DAYS, read: layerSchedule, set: setLayerSchedule },
     samples: false, fromCopy: true,
   },
 };

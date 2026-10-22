@@ -8,8 +8,9 @@
 
 import { hostname } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
-import { claimNextBuild, closeOrphanedBuilds } from './ledger.js';
+import { BuildAlreadyRunning, claimNextBuild, closeOrphanedBuilds } from './ledger.js';
 import { runBuild } from './buildRun.js';
+import { queueScheduledUpdate } from './osm/layerSchedule.js';
 
 /**
  * What the worker's builds are run by: its host name, which compose fixes
@@ -21,6 +22,8 @@ export const WORKER_RUNNER = `worker:${hostname()}`;
 
 /** How long the worker waits before it looks for a queued build again. */
 const POLL_EVERY_MS = 3_000;
+/** How often an idle worker asks whether a scheduled update is due (`layerSchedule.ts`). */
+const SCHEDULE_EVERY_MS = 10 * 60 * 1000;
 
 /** Run the oldest queued build, if any; answers whether there was one. */
 export async function runNextBuild(stop: AbortSignal): Promise<boolean> {
@@ -31,11 +34,30 @@ export async function runNextBuild(stop: AbortSignal): Promise<boolean> {
   return true;
 }
 
-/** Take and run queued builds until `stop` aborts. */
+/**
+ * Queue the OpenStreetMap layer's update where its schedule says one is due.
+ * A build an admin queued meanwhile holds the dump's one slot, which is no
+ * error; anything else is logged, and the next look tries again.
+ */
+export async function queueWhatIsDue(stop: AbortSignal): Promise<void> {
+  try {
+    const id = await queueScheduledUpdate(stop);
+    if (id !== null) console.log(`[Dumps] Queued build ${id}: the OpenStreetMap layer's scheduled update`);
+  } catch (error) {
+    if (!(error instanceof BuildAlreadyRunning)) console.error('[Dumps] Could not queue the scheduled update:', error);
+  }
+}
+
+/** Take and run queued builds until `stop` aborts, and between them queue the updates a schedule makes due. */
 export async function workLoop(stop: AbortSignal): Promise<void> {
   const closed = await closeOrphanedBuilds({ runner: WORKER_RUNNER });
   if (closed > 0) console.log(`[Dumps] Closed ${closed} build(s) the worker's previous run left`);
+  let scheduledAt = 0;
   while (!stop.aborted) {
+    if (Date.now() - scheduledAt >= SCHEDULE_EVERY_MS) {
+      scheduledAt = Date.now();
+      await queueWhatIsDue(stop);
+    }
     const ran = await runNextBuild(stop).catch(error => {
       console.error('[Dumps] The worker could not take a build:', error);
       return false;
