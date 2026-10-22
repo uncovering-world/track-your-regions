@@ -29,8 +29,9 @@ reader; such a scale may serve an internal mechanism only.
 on one signal and a line is drawn across it. World Heritage is the UNESCO list itself — the
 list *is* the tier; art museums are the venues holding a work at 22 Wikipedia-language
 sitelinks or more (works-first, [ADR-0023](../decisions/0023-works-first-museum-selection.md));
-public art is the sculptures and monuments above the same line — ADR-0023's, reused by #754
-([experiences.md § Public Art](experiences.md#public-art--monuments-landmarksyncservicets-publicartts)). The
+public art and monuments are the sculptures and the monuments above the same line — ADR-0023's,
+reused by #754 and by both kinds since #1807 split them
+([experiences.md § Public art and Monuments & memorials](experiences.md#public-art-and-monuments--memorials-landmarksyncservicets-publicartts)). The
 **Iconic** badge is written on world-tier places only, by each kind's own rule
 ([ADR-0045](../decisions/0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md)
 decision 5), and what it marks beyond a famous work waits for #1737. What the line leaves out is not a defect of the line: it is the regional tier's

@@ -24,19 +24,20 @@ Four concepts, and the words this document and the code use for each (Epic #815 
 |---|---|---|---|
 | **Kind** | What a traveller browses by — a World Heritage site, an art museum, an archaeology museum, a monument. Siblings: each its own list, pin colour and count, each with a sync of its own and its own rule of what complete means — a kind's sources are that sync's inputs (ADR-0045 §1, §2, §3) | `experience_kinds` (#822), and a place's membership in it is a row of `experience_kind_memberships`; a reader-facing row carries its kind off that membership (`rowKindJoinSql`, #819) | `kind_id`, `kind_name`, `kind_priority`, `kindId`; `experience_kinds`; the chip beside an object's name on a review card, the Discover pills and `?kind=`, the group headers, `kindColors.ts` |
 | **Source** | A list we read to fill a kind — the UNESCO API, a Wikidata query — an input of the kind's sync, carrying its own gate (§3, §7); the sync and the rule of completeness are the kind's. A kind may have several; one source may feed several kinds | `experience_sources` — one row per source, the row the sync service is registered under, naming the kind it fills (`kind_id`, #822); named `experience_categories` until migration 055 (#819) | `experience_sources`, `source_id` on `experiences` (the source that first brought the row, provenance only since ADR-0084), on `experience_sync_logs`, on a membership and on the caches, the curator scope `'source'`, `requires_curation`, the admin panel's Sources tab and its routes (`/api/admin/sync/sources/…`) |
-| **Tier** | Which of a kind's two fillings a source belongs to ([ADR-0048](../decisions/0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md)): the **world tier** — a global source ranks the world on one signal and a line is drawn, the Iconic badge is its (§5) — or the **regional tier** — a source native to its own unit (a country's register, a city's list, a curator) enumerates what the unit holds and the kind's rule cuts within it, no badge. A region's list is both together; the rules, the scorecard and the register of sources looked at are [filling-a-kind.md](filling-a-kind.md) and [`docs/sources/`](../sources/README.md) | Not a column yet: every source that exists — World Heritage, Art Museums, Public Art & Monuments, Places of worship, Archaeology — is world tier; the first regional source (#628) records its tier on its `experience_sources` row | — |
+| **Tier** | Which of a kind's two fillings a source belongs to ([ADR-0048](../decisions/0048-a-kind-is-filled-in-two-tiers-each-from-its-own-kind-of-source.md)): the **world tier** — a global source ranks the world on one signal and a line is drawn, the Iconic badge is its (§5) — or the **regional tier** — a source native to its own unit (a country's register, a city's list, a curator) enumerates what the unit holds and the kind's rule cuts within it, no badge. A region's list is both together; the rules, the scorecard and the register of sources looked at are [filling-a-kind.md](filling-a-kind.md) and [`docs/sources/`](../sources/README.md) | Not a column yet: every source that exists — World Heritage, Art Museums, Public art, Places of worship, Archaeology, Monuments & memorials — is world tier; the first regional source (#628) records its tier on its `experience_sources` row | — |
 | **Type** | A distinction inside a kind whose members a traveller still browses together — cultural / natural / mixed, monument / sculpture, cathedral / church / chapel / monastery / mosque / temple / shrine / synagogue, site / museum — and none for an art museum (§1, #814) | `experience_kind_memberships.type` — the membership's, since a place in two kinds has a type in each (ADR-0084, #1253); the vocabularies in `frontend/src/utils/experienceTypes.ts` | `type`, `?type=`, `TYPE_COLORS`, `typeOptionsFor` |
 | **Treasure type** | What kind of thing a work is, independent of its venue's kind and type | `treasures.treasure_type` | `treasure_type` |
 
 **Every reader says which of the two it means** (#819). A reader that means the kind reads the membership's `kind_id` — through `rowKindJoinSql` / `rowKindSelectSql` (`backend/src/db/membership.ts`), which join the membership the row's own source brought and the kind it names, so a list row, a search result, a review card and the counts all carry `kind_id`, `kind_name` and `kind_priority`, and a kind filter asks every kind of the place (below); the kinds are listed by `GET /api/experiences/kinds`. A reader that means the source reads the source row under its own name: migration 055 renamed `experience_categories` to `experience_sources` and every `category_id` that pointed at it to `source_id` (on `experiences`, `experience_sync_logs`, `curator_assignments`, `wikidata_query_cache`, `wikidata_cache_policy`), and the curator scope that names one is `'source'`. The word *category* is gone from the schema and the code, apart from the guards that remember the `experiences.category` column #814 retired; in the sections below *kind* is what a reader browses by, counts, admits and refuses, and *source* is a run, its gate, its cache, its log, its scope. The vision documents use the same words ([`EXPERIENCE-TYPE-AND-SIGNIFICANCE.md`](../vision/EXPERIENCE-TYPE-AND-SIGNIFICANCE.md), [`EXPERIENCES-OVERVIEW.md`](../vision/EXPERIENCES-OVERVIEW.md)).
 
-**What the code holds today** is three tables for the two words (#822, ADR-0045 decision 4). `experience_kinds` is what a traveller browses by, five rows seeded under the ids of the sources that fill them — `World Heritage Sites` (1), `Art Museums` (2), `Public Art & Monuments` (3), `Places of worship` (4), `Archaeology` (5) — so a reader keyed on those ids reads the same colour and order either way and switching it (#819) is a join, not a renumbering. `experience_sources` is the source table — one row per sync service, with its endpoint, its config, its gate (`requires_curation`, ADR-0025), its `display_priority` (lower first) and the kind it fills (`kind_id`) — and it is what a run, its gate, its cache, its log, the curator scopes and the admin routes key on; what a reader browses by — the groups of the map-mode list, the Discover pills, the pin colour, the chip on a review card — reads the kind off the row's membership (#819). Five rows exist, each the only source of one kind:
+**What the code holds today** is three tables for the two words (#822, ADR-0045 decision 4). `experience_kinds` is what a traveller browses by, six rows seeded under the ids of the sources that fill them — `World Heritage Sites` (1), `Art Museums` (2), `Public art` (3), `Places of worship` (4), `Archaeology` (5), `Monuments & memorials` (6) — so a reader keyed on those ids reads the same colour and order either way and switching it (#819) is a join, not a renumbering. `experience_sources` is the source table — one row per sync service, with its endpoint, its config, its gate (`requires_curation`, ADR-0025), its `display_priority` (lower first) and the kind it fills (`kind_id`) — and it is what a run, its gate, its cache, its log, the curator scopes and the admin routes key on; what a reader browses by — the groups of the map-mode list, the Discover pills, the pin colour, the chip on a review card — reads the kind off the row's membership (#819). Five rows exist, each the only source of one kind:
 
 - `UNESCO World Heritage Sites` (priority `1`) — fills World Heritage Sites
 - `Art Museums` (priority `2`) — fills Art Museums with the works-first selection (ADR-0023); the row read "Top Art Museums", the selection rule's name, until migration 045 gave it the reader's (ADR-0045 §8, #818)
-- `Public Art & Monuments` (priority `3`) — fills Public Art & Monuments
+- `Public art` (priority `3`) — fills Public art; named Public Art & Monuments until migration 144 split the kind by purpose (#1807), § Public art and Monuments & memorials below
 - `Places of worship` (priority `4`) — fills Places of worship from Wikidata through two doors, a place's own fame and the fame of a work it holds (ADR-0052, #753). Seeded by migration 050 with two things the three before it do not carry: its fame line on the row (`api_config.enterSitelinks` 22, `staySitelinks` 18, § Places of worship below) and `requires_curation = true`, so a community-edited source's first rows wait for a curator (ADR-0025)
 - `Archaeology` (priority `5`) — fills Archaeology from Wikidata, sites and museums in one list, both doors built — museums from Wikidata and English Wikipedia, sites from Wikidata with OpenStreetMap as the second signal (ADR-0058, ADR-0059, #581, § Archaeology below). Seeded gated by migration 056, with **two** fame lines on the row rather than one: `enterSitelinks` 22 / `staySitelinks` 18 for a place, `findEnterSitelinks` 18 / `findStaySitelinks` 15 for a find, a find carrying fewer Wikipedia articles than the museum that shows it
+- `Monuments & memorials` (priority `6`) — fills Monuments & memorials from the gather Public art reads, in one pass with it (ADR-0132). Seeded gated by migration 144, which copied every Public Art & Monuments membership into it with its state, for each source's first run to sort (§ Public art and Monuments & memorials below)
 
 `experience_kind_memberships.type` is the **type within a kind** (the place's own `experiences.type` until ADR-0084 moved it onto the membership, #1253; #814; the column was called `category` until then, the word the rest of the code used for the kind and its source until #819): one closed vocabulary per kind, `cultural` / `natural` / `mixed` for World Heritage and `monument` / `sculpture` for public art, `cathedral` / `church` / `chapel` / `monastery` / `mosque` / `temple` / `shrine` / `synagogue` for a place of worship, `site` / `museum` for Archaeology, and **NULL for an art museum** — an art museum and an archaeology museum are two kinds, not two types (ADR-0045 decision 1), while `museum` as an Archaeology type says which of that kind's two things this one is, the excavation or the museum of its finds (ADR-0058 decision 1). Until #814 every museum row carried the literal `art`, written by the museum sync, which is why the archaeological museums of Naples, Athens and Cyprus, the Church of Our Lady in Bruges and the Roman Forum, all admitted for one famous work, were typed `art` too (ADR-0045's context counts them against Wikidata as of its date). `utils/experienceTypes.ts` is the one place the vocabularies live: the dialogs offer a kind its own list and a museum none, and the review card explains a proposed type in the words of the vocabulary its value is from. A place is one row of `experiences` and each of its memberships in a kind is a row of `experience_kind_memberships` (below); a monument that is also a World Heritage point is still two places today — the Statue of Liberty is ids 382 and 11565 — and becomes one place with two memberships by #755's merge. Refusal as a curator-confirmed withdrawal of one membership (ADR-0045 decision 6) lands with #755 as well; today a refusal is the run's write on the membership, and the curator confirms or overrides it.
 
@@ -54,7 +55,7 @@ Three tables hold what one row held (ADR-0045 decision 4; the calls this slice t
 | `experience_kinds` — the **kind** | `name` as a traveller says it, `display_priority`; ids equal to the sources' until #819 |
 | `experience_kind_memberships` — the **membership** | `experience_id` + `kind_id` (unique), `external_id` (the id its source knows the place by, unique per source — what a run finds the place through, ADR-0084), `type` (the type within the kind, #1253), whether its source still lists the place and when it first and last saw it (`missing_since`, `source_membership`, `first_seen_sync_log_id`, `last_seen_sync_log_id`, `last_seen_at`, #1251), `source_id` (the source that brought it — ADR-0045 decision 3: a kind may have several, and a run writes, refuses and badges only what its own source brought), `admission` and `admission_reason` (ADR-0024), `admitted_for` (the work that qualified a museum, ADR-0023 — the run's own bookkeeping, never a question for a curator), the source's view of the place — the name, subtitle, picture and coordinate it last reported (`reported_name`, `reported_subtitle`, `reported_image_url`, `reported_location`, #1246), `is_iconic` (the world tier of the kind, decision 5), the curator's pins on `admission`, `is_iconic` and `type` (`curated_fields`, the shape the place's has), and the gate state of the arrival — `curation_state`, `published_at`, `pending_change_sync_log_id` (ADR-0025; per member, decision 7) |
 
-A place has two text fields, named after what they hold since migration 140 (#1795). Its `subtitle` is Wikidata's one-line description of the item ("museum in Saint Petersburg, Russia"), written by the Art Museums, Public Art & Monuments, Places of worship and Archaeology runs. Its `description` is the paragraph a reader opens: UNESCO's text for a World Heritage site, or a curator's. Both are served on a region's list rows (`Experience`, `experienceRegionQuery.ts`) and on a place's detail, so the line can stand under the name wherever the name heads the place. A reader is shown the subtitle as one line under the name wherever the name heads the place (`PlaceSubtitle`, #1795): the list row by the map, the Discover card, both hover cards and Discover's detail panel. The description is shown when the place is opened, and never when it only repeats the subtitle (`descriptionBeyondSubtitle`). A curator edits both, each under its own label (`CurationDialog`); a source's view (`reported_subtitle`) and a choice between two views are of the subtitle, since only the Wikidata kinds report one.
+A place has two text fields, named after what they hold since migration 140 (#1795). Its `subtitle` is Wikidata's one-line description of the item ("museum in Saint Petersburg, Russia"), written by the Art Museums, Public art, Monuments & memorials, Places of worship and Archaeology runs. Its `description` is the paragraph a reader opens: UNESCO's text for a World Heritage site, or a curator's. Both are served on a region's list rows (`Experience`, `experienceRegionQuery.ts`) and on a place's detail, so the line can stand under the name wherever the name heads the place. A reader is shown the subtitle as one line under the name wherever the name heads the place (`PlaceSubtitle`, #1795): the list row by the map, the Discover card, both hover cards and Discover's detail panel. The description is shown when the place is opened, and never when it only repeats the subtitle (`descriptionBeyondSubtitle`). A curator edits both, each under its own label (`CurationDialog`); a source's view (`reported_subtitle`) and a choice between two views are of the subtitle, since only the Wikidata kinds report one.
 
 What follows from the split, in the code as it stands:
 
@@ -282,7 +283,7 @@ become visible at different moments** — so the withdrawal waits for the insert
 `pending`, invisible; applying the withdrawal in the same run would take the old pin off the map
 while its replacement could not be seen. Measured 2026-08-11, 1119 of the catalogue's 1604
 experiences hold exactly one point — 788 of 1272 UNESCO World Heritage Sites, all 128 Top Art
-Museums, 203 of 204 Public Art & Monuments — so for most of them that is an object still in every
+Museums, 203 of 204 Public Art & Monuments (the kind before #1807 split it) — so for most of them that is an object still in every
 list with nothing on the map.
 
 So `locationWriter` writes the pairing instead: `experience_locations.withdrawal_deferred_for_location_id`
@@ -353,7 +354,7 @@ moment the arrival is published.
 None of this changes an ungated run: every point such a run inserts lands `auto`, so the pairing
 statement is skipped outright when the insert returned no `pending` row, and the two housekeeping
 statements match nothing. Verified by running the same fixture on both sides of the commit:
-identical return values and identical rows. `requires_curation` is false on World Heritage, Art Museums and Public Art & Monuments, the
+identical return values and identical rows. `requires_curation` is false on World Heritage, Art Museums and Public art, the
 sources that predate Places of worship, which is a fact about the data rather than a property to rely on — an
 admin gates a source in one click, and from then on this paragraph describes only the sources they
 left alone.
@@ -708,7 +709,7 @@ Generic `getSyncStatus(sourceId)` and `cancelSync(sourceId)` replace per-service
 
 ### Several kinds from one gather ([ADR-0132](../decisions/0132-several-kinds-are-filled-from-one-gather-each-by-a-source-of-its-own.md))
 
-A Wikidata kind is filled by a source of its own, and sources whose kinds are drawn from the same candidates share one **gather** in a **pass**. The Public Art split (#1807) is the first such pair. The Bronze Horseman, made both to commemorate and as a sculpture, holds a membership in Monuments & memorials through one source and one in Public art through another. A source cannot hold it twice: a membership is unique by `(source_id, external_id)`.
+A Wikidata kind is filled by a source of its own, and sources whose kinds are drawn from the same candidates share one **gather** in a **pass**. Public art and Monuments & memorials (#1807) are the first such pair. The Motherland Calls, a statue raised as a war memorial, holds a membership in Monuments & memorials through one source and one in Public art through another. A source cannot hold it twice: a membership is unique by `(source_id, external_id)`.
 
 - **Which sources share a gather** is `passes.ts`: `PUBLIC_ART_PASS`, in the order a pass runs them, and `passOf(sourceId)`, which the start, the refusal and the sources list all read. A source named in no pass runs alone.
 - **The gather is made once.** `sharedGather` (`syncPass.ts`) hands every source of the pass the same promise. The first source to ask makes it, with that run's progress on screen, and a gather that failed fails every run that needed it, with the same error.
@@ -1223,8 +1224,8 @@ Absence is judged against the external ids the run actually saw, not against
 `last_seen_sync_log_id` — a dry run stamps
 nothing, and a row that arrived but failed to process is not missing either. The machine only
 ever sets `missing_since`, and only when all three guards pass — the source is `authoritative` (declared
-per service in `SyncServiceConfig`, `ranked` for the Wikidata sources — Art Museums, Public Art &
-Monuments, Places of worship and Archaeology), the run
+per service in `SyncServiceConfig`, `ranked` for the Wikidata sources — Art Museums, Public art,
+Monuments & memorials, Places of worship and Archaeology), the run
 finished clean and uncancelled, and it saw at least 90 % of the previously present rows.
 When detection is skipped the reason is stored in `experience_sync_logs.detection_skipped_reason`.
 
@@ -1655,7 +1656,7 @@ path needs.
 
 **The request and the read name a field once.** A wrong name in `select` is a 400; a wrong name in the *read* is nothing at all — `record.source` where the portal sends `category` is `undefined` on every record, and runs 108 and 141 proposed every one of the 1,272 sites with no type (#1231). So the list the request sends is the keys of `REQUESTED` in `unescoApi.ts`, a `Record<keyof UnescoApiRecord, true>`: a field the record type does not declare cannot be asked for, and a field it declares cannot be left out, so renaming one side without the other fails to compile. The site's type is the portal's `category` — `"Cultural"`, `"Natural"`, `"Mixed"` — normalised by `normalizeCategory`.
 
-**What the first run after this proposes**, measured by dry run 66: `tags` on 1255 sites, `metadata.criteria` on 1255 (the criteria string), `metadata.inDanger` on 58, `description` on 7 (3 of them curator-claimed, so they arrive as conflicts rather than proposals), `name` and `nameLocal` on one — Getbol drops "(Phase II)" — and `metadata.dateInscribed` on one, Garamba National Park, where the source now says 1980 and the catalogue holds 2026. **Whether that batch is held or written depends on the deployment, not on the source.** `requires_curation` is false in the seed (`db/init/01-schema.sql`) for World Heritage, Art Museums and Public Art & Monuments, the sources that predate Places of worship, which arrives gated, and gating one of the others is an admin's click — the dry run above was measured on a database where UNESCO had been gated. Where it has been, all of it waits for a curator: a one-off batch that is four missing years landing at once, not a source that suddenly started changing its mind. Where it has not, the same batch simply lands. The `metadata.inDanger` row of that table is spent on a database that has had migration 035: those 58 rows already carry the flag, so a run finds nothing to propose about it — see below for why that half was repaired rather than queued. A card a run has *already* filed keeps its `false → true` line, since a changeset records what a run did (ADR-0026) and publishing it writes the value the migration wrote; the rest of that card — the criteria string — is what still needs a curator; the criterion tags filed beside it are no longer a question and no longer a row on the card (#570), though publishing such a card still writes them. The counts above are the entry shape of the run that was measured, and one of them has since changed: a run records each **language** that differs on its own (#728), so Getbol's single `nameLocal` entry is one entry per moved language now — two of its six on that dry run, six on the runs that followed, which all drop "(Phase II)" from every language. The site count does not move; what a curator answers does.
+**What the first run after this proposes**, measured by dry run 66: `tags` on 1255 sites, `metadata.criteria` on 1255 (the criteria string), `metadata.inDanger` on 58, `description` on 7 (3 of them curator-claimed, so they arrive as conflicts rather than proposals), `name` and `nameLocal` on one — Getbol drops "(Phase II)" — and `metadata.dateInscribed` on one, Garamba National Park, where the source now says 1980 and the catalogue holds 2026. **Whether that batch is held or written depends on the deployment, not on the source.** `requires_curation` is false in the seed (`db/init/01-schema.sql`) for World Heritage, Art Museums and Public art, the sources that predate Places of worship, which arrives gated, and gating one of the others is an admin's click — the dry run above was measured on a database where UNESCO had been gated. Where it has been, all of it waits for a curator: a one-off batch that is four missing years landing at once, not a source that suddenly started changing its mind. Where it has not, the same batch simply lands. The `metadata.inDanger` row of that table is spent on a database that has had migration 035: those 58 rows already carry the flag, so a run finds nothing to propose about it — see below for why that half was repaired rather than queued. A card a run has *already* filed keeps its `false → true` line, since a changeset records what a run did (ADR-0026) and publishing it writes the value the migration wrote; the rest of that card — the criteria string — is what still needs a curator; the criterion tags filed beside it are no longer a question and no longer a row on the card (#570), though publishing such a card still writes them. The counts above are the entry shape of the run that was measured, and one of them has since changed: a run records each **language** that differs on its own (#728), so Getbol's single `nameLocal` entry is one entry per moved language now — two of its six on that dry run, six on the runs that followed, which all drop "(Phase II)" from every language. The site count does not move; what a curator answers does.
 
 **A site in danger, and since when.** The World Heritage list carries 58 sites inscribed on the [List of World Heritage in Danger](https://whc.unesco.org/en/danger/), and the catalogue stores that fact **twice**: as the `in_danger` tag and as `metadata.inDanger`, which is the field every badge keys on. The two came from different halves of the source — the tag from either of `danger` and `danger_list`, the flag from `danger` alone — so the reading bug above left the tag right on 58 rows and the flag false on all 1272, and the badge the expanded list card, Discover's card and Discover's detail panel draw appeared for nobody ([#600](https://github.com/uncovering-world/track-your-regions/issues/600)). Both writers ask one predicate now (`isInDanger`), so a portal that empties either field cannot end the answer in silence, and a delisted site is still not badged: the field's vocabulary is Y/N and the parser reads the answer rather than the field's presence — Belize Barrier Reef Reserve System, off the list since 2018, answers `danger: "False"` with `danger_list: null` (measured 2026-08-27, when the two fields agreed exactly on 58 of 1273 records).
 
@@ -1687,7 +1688,7 @@ The catalogue displays photographs it does not host — Wikimedia Commons files,
 
 `Artist` arrives as wiki HTML and is reduced to text **server-side**, before storage: it is somebody else's markup, and storing it raw would leave it waiting for the one component that renders something unescaped. The input is capped before any pattern scans it. **Where the uploader named nobody** Commons writes a sentence in place of a name — "No machine-readable author provided. Roybb95~commonswiki assumed (based on copyright claims)." under the Sydney Opera House — and `authorText` reduces it to the assumed account, the whole of what Commons claims, or to no author at all where the sentence names nobody, so the line falls back to the licence (#747; 51 places and 5 works carried the sentence on the development database on 2026-09-29). The rows already stored are corrected by their next run, never by SQL, and not only where the run asks Commons again: the museum, landmark, worship and archaeology runs re-fetch every picture's credit, but the UNESCO run asks only about files new to a row — so a stored credit a run resends for the same picture is read through the same reduction (`creditToWrite`). *Fix pictures* asks about the same new files only, and leaves a stored credit to the next run. A picture a curator claimed keeps its stored credit as it is: the upsert writes that credit back whatever the run sends, so a reduced one would read as a change on every run. A credit that cannot be fetched costs a line under a picture, never an import — a failed batch is logged and skipped, and the previous credit stays. Stored as `metadata.imageCredit`, read out as `image_credit` beside `image_url` on both the list and region reads, and rendered by `ImageCreditLine` under the picture on every surface that shows one — and, equally a rule, under none that does not: see § Credits on the works, where the converse and the two rendering rules live. The visitor surfaces — the Discover detail panel, the expanded list card, the map's hover preview and Discover's hover overlay — are enumerated below, and the curator screens that also draw it are in that section. **The credits appear only after a run writes them** — nothing backfills the rows already in the database, and under a gated source a run proposes rather than writes, so they appear when a curator passes the metadata change.
 
-**A credit belongs to a picture, and to whoever owns it.** A run reuses a stored credit only while the row still shows the same file — a source whose `wdt:P18` changes while the Commons batch for the new file fails would otherwise write the new photograph and the previous photographer's name in one statement. And a run writes no credit at all for a picture a curator claimed, because the upsert keeps their `image_url` and would set the source's photographer beside it. Both rules live in `creditToWrite`, and **every collector goes through it** — Art Museums, Public Art & Monuments, Places of worship, Archaeology, and UNESCO, which matters most there: it carries more of the catalogue's photographs than any other source, and since ADR-0043 its credit is a Commons fetch like the others' (it used to come from the portal's record, and an unconditional write would have printed the portal's photographer under a picture a curator had chosen). A site Wikidata states no picture for stores no credit at all.
+**A credit belongs to a picture, and to whoever owns it.** A run reuses a stored credit only while the row still shows the same file — a source whose `wdt:P18` changes while the Commons batch for the new file fails would otherwise write the new photograph and the previous photographer's name in one statement. And a run writes no credit at all for a picture a curator claimed, because the upsert keeps their `image_url` and would set the source's photographer beside it. Both rules live in `creditToWrite`, and **every collector goes through it** — Art Museums, Public art, Monuments & memorials, Places of worship, Archaeology, and UNESCO, which matters most there: it carries more of the catalogue's photographs than any other source, and since ADR-0043 its credit is a Commons fetch like the others' (it used to come from the portal's record, and an unconditional write would have printed the portal's photographer under a picture a curator had chosen). A site Wikidata states no picture for stores no credit at all.
 
 **The admin "fix missing images" action credits what it puts there.** It writes the picture and its credit in one `UPDATE`, omits the key where Commons could not answer — a stored `null` is what the next run reports as a change on `metadata.imageCredit`, for the removal of a nothing — and **skips a row whose `image_url` a curator claims**, so clearing a wrong photograph is not undone by the next click. Rows kept that way are counted and named separately from "no image found", which would blame the source for a person's decision.
 
@@ -2000,28 +2001,35 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
 - Images use remote Wikimedia `Special:FilePath` URLs (not downloaded locally); Wikipedia article
   URL fetched via the same `schema:about` + `schema:isPartOf` SPARQL pattern UNESCO uses
 
-### Public Art & Monuments (`landmarkSyncService.ts`, `publicArt/*.ts`)
+### Public art and Monuments & memorials (`landmarkSyncService.ts`, `publicArt/*.ts`)
 
-**What the kind is for.** A thing a traveller stands in front of, outdoors: a sculpture, a
-statue, a monument, a memorial, a fountain, an obelisk, a triumphal arch — Christ the Redeemer,
-the Little Mermaid, the Trevi Fountain, the Motherland Calls. Not a building Wikidata happens to
-call a monument, and not a work that hangs inside one: a cathedral is a place of worship, a
-museum's sculpture is that museum's work, and a Pietà is St Peter's before it is Rome's (#753 is
-where a work a traveller goes to a church to see will live). This source fills the kind's **world
-tier** — what the world knows, by the same fame line as the museums' — and nothing else; the
-regional tier, the monuments a region knows and the world's line does not reach, comes from regional sources
-by the rules of [filling-a-kind.md](filling-a-kind.md) (ADR-0048; #799), and carries no badge.
+**What the kinds are for.** A thing a traveller stands in front of, outdoors, in two kinds a
+traveller browses apart (#1807). **Public art** (kind and source 3) is what was made to be looked
+at: a sculpture, a statue, a fountain, a mural — the Little Mermaid, the Trevi Fountain, Cloud
+Gate, the Fraternal Kiss on the East Side Gallery. **Monuments & memorials** (kind and source 6)
+is what was raised to remember: a memorial, a triumphal arch, a column, an obelisk, a monument —
+the Arc de Triomphe, Nelson's Column, the Lincoln Memorial, the Memorial to the Murdered Jews of
+Europe. One place may be both: the Motherland Calls is a statue and a memorial, Nelson's Column a
+column with a statue on it. Neither kind is a building Wikidata happens to call a monument, nor a
+work that hangs inside one: a cathedral is a place of worship, a museum's sculpture is that
+museum's work, and a Pietà is St Peter's before it is Rome's (#753 is where a work a traveller
+goes to a church to see will live). These sources fill the kinds' **world tier** — what the world
+knows, by the same fame line as the museums' — and nothing else; the regional tier, the monuments
+a region knows and the world's line does not reach, comes from regional sources by the rules of
+[filling-a-kind.md](filling-a-kind.md) (ADR-0048; #799), and carries no badge.
 
-**Its run is a pass** (ADR-0132, § Several kinds from one gather). `gatherPublicArt` reads stages 1 to 3 below (the classes, the pool and the facts) once for every source of `PUBLIC_ART_PASS`. The rows any of them admits are asked for by id. `classifyPublicArt` takes stages 4 and 5 (the verdict and the line) for each source from that gather, with the source's own admitted rows and the places other kinds offer, and asks Wikidata nothing more. The pass holds this source alone until #1807 splits the kind.
+**Its run is a pass** (ADR-0132, § Several kinds from one gather). `gatherPublicArt` reads stages 1 to 3 below (the classes, the pool and the facts) once for every source of `PUBLIC_ART_PASS`. The rows any of them admits are asked for by id. `classifyPublicArt` takes stages 4 and 5 (the verdict and the line) for each source from that gather, with the source's own admitted rows and the places other kinds offer, and asks Wikidata nothing more. The pass holds Public art and Monuments & memorials (`[3, 6]`), and each decides by its kind's rule (`publicArt/kindRules.ts`, `RULE_OF_SOURCE` in `landmarkSyncService.ts`).
 
 **The pipeline is the museum import's, one level over** (#754). Five stages, each a cached
 question (ADR-0030), wired in `publicArt/pipeline.ts`:
 
 1. **Classes** — `boundedClosure` (the museums' walk, now shared in `classClosure.ts`) under
    sculpture (Q860861) and statue (Q179700), under fountain (Q483453), under war memorial (Q575759)
-   and cenotaph (Q321053); plus the commemorative structures pinned by name in `classes.ts`
-   (`MONUMENT_CLASSES`: triumphal arch, obelisk, victory, rostral and spiral columns, stele, rock
-   relief, runestone, cross, …), the memorial classes pinned by name (`MEMORIAL_CLASSES`: memorial
+   and cenotaph (Q321053); plus the commemorative forms pinned by name in `classes.ts`
+   (`COMMEMORATIVE_FORMS`: triumphal arch, obelisk, victory, rostral, spiral, Holy Trinity and
+   plague columns, stele, rock relief, runestone, cross, equestrian statue, …), the sculptural
+   classes no closure reaches (`SCULPTURAL_CLASSES`: monumental sculpture, group of sculptures,
+   sculptural set, mural Q219423, street art Q17516), the memorial classes pinned by name (`MEMORIAL_CLASSES`: memorial
    Q5003624, Holocaust memorial, cautionary memorial, the tomb of the unknown soldier and their kin —
    with the two commemorative closures, the trees' `commemorative` set, #803) and the heritage-sense
    designations (`HERITAGE_SENSE_CLASSES`: monument Q4989906, national monument, the US National
@@ -2031,7 +2039,7 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    import's rows carried (`WORSHIP_CLASSES`: church building, Catholic cathedral, minor basilica,
    mosque, Shinto shrine, Buddhist temple, monastery, …) and less the designations that are not
    buildings (`WORSHIP_DESIGNATIONS`: pilgrimage site, which is what pilgrims make of Christ the
-   Redeemer). The trees under `monument` (1000 classes in three hops) and
+   Redeemer, and Holy Trinity column, which stands in Olomouc's square). The trees under `monument` (1000 classes in three hops) and
    `memorial` (694) are **not** followed, and the measurement is in the code: of their classes with
    an instance at 15 sitelinks or more, the largest are tomb (95), mausoleum (93), historic site
    (95), tell (66) and hypogeum (57) — burial and archaeology, not public art. `sculpture` refuses
@@ -2058,7 +2066,10 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    an ended statement ranked preferred over a standing normal one would leave the work placeless
    — an editing error upstream, and none among the pool's 13 preferred statements on 2026-09-05);
    and `P170` with the blank-node
-   filter (six rows of the old sculpture query named a `.well-known/genid/…` creator). `P195` the
+   filter (six rows of the old sculpture query named a `.well-known/genid/…` creator); `P547`,
+   whom the candidate commemorates, which admits it to Monuments & memorials, and `P180`, what it
+   depicts (#1807). The subset answers the last two from the entity it holds
+   (`subsetEntityFacts`), so reading them needed no new claim property. `P195` the
    rule reads only when nothing says where a work stands: whose collection a work is in is
    ownership, not a place — HAM Helsinki Art Museum owns the city's outdoor sculpture, and the
    first dry run, which read `P195` as a container, refused the Sibelius Monument as a work
@@ -2106,7 +2117,7 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    archaeological site, a camp — the classes that own their parts) as `part of Babylon:
    archaeological site, not public art` (the Ishtar Gate). **A work stranded outdoors stays
    public art** (#1444): a museum or place-of-worship refusal is lifted when no place of the chain
-   is one another kind offers a reader (`placesOtherSourcesOffer` in
+   is one a kind outside the pass offers a reader (`placesOtherSourcesOffer` in
    `services/sync/shownElsewhere.ts`, read once per run) and the work stands outdoors by what it
    is — a colossal statue or an obelisk (`OUTDOOR_CLASSES`; not a memorial, which may be a plaque
    in a nave). The room and the site are still asked: a colossal statue in a museum's hall is the
@@ -2134,38 +2145,61 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    have one within 50 m — the Lion of Belfort stands 11 m from the History Museum of Belfort,
    the Fontana della Barcaccia 34 m from the Keats-Shelley House — so a radius would refuse real
    monuments and an exact match reaches nothing; and the Nestorian Stele's coordinate, which
-   #804 took for the Stele Forest's, is its find spot forty kilometres away; then a class of
+   #804 took for the Stele Forest's, is its find spot forty kilometres away. **Whether it is of
+   the kind** is asked after what it is and before where it stands (`KindRule.admits`): Public
+   art admits the sculptural closures, the fountain closure and `SCULPTURAL_CLASSES`; Monuments
+   & memorials the `commemorative` set, `COMMEMORATIVE_FORMS`, the two monument senses
+   (`HERITAGE_MONUMENT_CLASSES`: monument, national monument — the Tsar Bell, the Krakus Mound)
+   and anything that commemorates someone (`P547`): the Jefferson Memorial is typed nothing but a
+   National Memorial of the United States, and the designation alone admits nothing — Federal
+   Hall is typed the same and commemorates nobody. The refusals read `no public-art class` and
+   `no monument or memorial class`. **What place it is**: a lake, a road, a trail, a square, a
+   garden, a villa, a house museum or a heritage grouping (`OTHER_PLACE_CLASSES`) beside the
+   kind's class refuses it as `a lake, which no kind holds yet: not a monument or memorial` —
+   Sanabria Lake, the Way of Saint James and the Vía de la Plata are typed monuments, the Field
+   of Mars and the Anne Frank House memorials, the Temple of Literature a monument and a heritage
+   site — unless a sculptural class, a commemorative form or a depiction (`P180`) answers: the
+   Mansu Hill Grand Monument is typed `monument, square` and depicts the two statues it is
+   visited for, and Manneken Pis is a sculpture and a heritage site. A fountain does not answer:
+   the Villa d'Este's fountains are the villa's garden. Then a class of
    `VETO_CLASSES` (cemeteries, buildings and structures) or of the museum tree refuses it
-   **unless an artwork class answers** — the sculptural and fountain closures and the pinned
-   structures, never the heritage-sense designations — and **the museum's veto alone is lifted by
-   a commemorative class as well** (the `commemorative` set: the war-memorial and cenotaph
-   closures and `MEMORIAL_CLASSES`, #803): a memorial Wikidata also types a museum is a memorial
-   complex with a museum in it, and a traveller stands in front of Tsitsernakaberd's flame
-   (`museum, memorial, Armenian Genocide memorial`), the 9/11 pools (`museum, memorial`) and the
-   Victoria Memorial in Kolkata (`museum, memorial`) whether or not there is a museum below;
-   measured on dry run 109 of 2026-09-13 against dry run 99, those three are what the lift admits
-   above the line — and the Anne Frank House (`historic house museum, war memorial`), a house
-   museum, which is the known false admission it costs; the Anzac Memorial and the Gedenkstätte
-   Berliner Mauer pass the rule now and sit below the line. `monument` is not commemorative: it is what Spain's heritage
-   register calls a listed museum. So the Hermannsdenkmal (`sculpture, monument,
-   tower, colossal statue`), Monas in Jakarta (`obelisk, memorial, museum`) and Christ the Redeemer
-   (`colossal statue, pilgrimage site, monument`) stay, and the Aljafería (`palace, castle,
-   parliament building, monument`), Arlington (`cemetery, war memorial`), Montjuïc Castle
-   (`memorial, military museum, castle` — a building typed a memorial is the building), the Reina
-   Sofía (`art museum, monument`) and the Bilbao Fine Arts Museum (`art museum, monument`) go.
-   Open places and landforms (a square, a park, a hill) are not vetoes:
-   the Mansu Hill Grand Monument is typed `monument, square` and is a monument on a square. A
-   coordinate on another globe is refused too (Fallen Astronaut's `P625` is on the Moon). What
-   passes is typed `sculpture` when it carries a sculptural class, else `monument` — the
-   vocabulary readers had.
-   Known false refusals, left to a curator's override: the Bocca della Verità (a church portico),
-   Stonehenge and the Madara Rider (archaeological sites — the Rider is part of the Madara
-   preserve, and World Heritage holds both), the Neue Wache, the Soviet War Memorial in the
-   Tiergarten (`cemetery, military museum, monument`: no commemorative class, and a cemetery's veto
-   is not the museum's); and known false admissions, left to a curator's rejection: a work Wikidata
-   neither places nor gives an owner (the Infant Jesus of Prague; the Nestorian Stele, pinned at
-   its find spot rather than in the Stele Forest that holds it), Villa d'Este (typed fountain), the
-   Anne Frank House (typed a war memorial beside its house museum). The Pakistan Monument,
+   **unless an artwork class answers** — the sculptural and fountain closures and the
+   commemorative forms, never the heritage-sense designations — and **the museum's veto alone is
+   lifted by a commemorative class as well** (the `commemorative` set: the war-memorial and
+   cenotaph closures and `MEMORIAL_CLASSES`, #803): a memorial Wikidata also types a museum is a
+   memorial complex with a museum in it, and a traveller stands in front of Tsitsernakaberd's
+   flame (`museum, memorial, Armenian Genocide memorial`), the 9/11 pools (`museum, memorial`)
+   and the Victoria Memorial in Kolkata (`museum, memorial`) whether or not there is a museum
+   below. For Monuments & memorials a memorial also lifts a cemetery's veto and a bare
+   building's (`MEMORIAL_LIFTS`: cemetery, war cemetery, building, built structure, guardhouse,
+   A-bombed building): Arlington, the Piskaryovskoye Memorial Cemetery and Martyrs' Lane in Baku
+   are cemeteries a traveller visits as memorials, the Neue Wache is a guardhouse and the
+   Hiroshima Peace Memorial an A-bombed building. A building of a kind of its own stays itself:
+   Montjuïc Castle (`memorial, military museum, castle`) is a castle. `monument` is not
+   commemorative: it is what Spain's heritage register calls a listed museum. So the
+   Hermannsdenkmal (`sculpture, monument, tower, colossal statue`), Monas in Jakarta (`obelisk,
+   memorial, museum`) and Christ the Redeemer (`colossal statue, pilgrimage site, monument`)
+   stay, and the Aljafería (`palace, castle, parliament building, monument`), the Reina Sofía
+   (`art museum, monument`) and the Bilbao Fine Arts Museum (`art museum, monument`) go. Parks
+   and landforms (a park, a hill) are not vetoes: Mamayev Kurgan is typed a hill and a war
+   memorial. A coordinate on another globe is refused too (Fallen Astronaut's `P625` is on the
+   Moon). What passes is typed by its kind (`KindRule.type`): Public art files street art before
+   a fountain and a fountain before a sculpture (the Trevi Fountain is typed both and visited as
+   the fountain); Monuments & memorials files the form before the purpose — an `arch`, a
+   `column`, an `obelisk` (the Washington Monument), then a `memorial`, else a `monument`. The two
+   vocabularies are disjoint, so a type value names its kind (`experienceTypes.ts`). Known false
+   refusals, left to a curator's override: the Bocca della Verità (a church portico), Stonehenge
+   and the Madara Rider (archaeological sites — the Rider is part of the Madara preserve, and
+   World Heritage holds both), the Fraternal Kiss (a `mural` on the East Side Gallery, which
+   Wikidata types an art museum and Art Museums refuses by name: a mural may be in a hall, so it
+   is not outdoors by what it is), the Arch of Constantine and Trajan's Column (typed archaeological
+   sites, which World Heritage's Rome holds), Anıtkabir and the mausoleums of Mao and Ho Chi Minh
+   (`mausoleum` is a kill class, and Tombs & mausoleums is a kind of its own still proposed); and
+   known false admissions, left to a curator's rejection: a work Wikidata neither places nor gives
+   an owner (the Infant Jesus of Prague; the Nestorian Stele, pinned at its find spot rather than
+   in the Stele Forest that holds it). Kryptos (`sculpture, fountain, ciphertext`) stands in a
+   courtyard of the CIA's headquarters; nothing in its classes says so, and its visit question is
+   the one that can (§ Archaeology's **A kind's run asks a curator**). The Pakistan Monument,
    Tsitsernakaberd and the 9/11 Memorial were on the first list until #803.
 5. **The line, then the write** — a candidate that passes enters at **22 sitelinks and stays until
    it falls below 18** (`ENTER_SITELINKS`/`STAY_SITELINKS` in the pipeline; the museums' own line,
@@ -2175,8 +2209,11 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    nothing is said about it: a refusal names a rule, and none ran on it. The admitted are written
    most famous first, names disambiguated by the description's location hint, credits asked of
    Commons for them alone; every class the rule read goes onto the row as
-   `metadata.wikidataClasses`, and whether an artwork class answered as `metadata.wikidataArtwork`
-   — both sync-owned keys (§ Change provenance), and the second is what the catalogue check reads.
+   `metadata.wikidataClasses`, and whether the kind answered a building's veto — an artwork
+   class, or for Monuments & memorials a memorial that lifted it — as `metadata.wikidataArtwork`:
+   both sync-owned keys (§ Change provenance), and the second is what the catalogue check reads.
+   They sit on the place, so a place both kinds admit carries what the last of the two runs
+   wrote; both answer yes for a veto they admitted past.
 
 **The cap decision.** The 200 the source used to cut at is gone: the world tier is a **threshold on
 the world's own signal, global, not a count and not per region** — ADR-0045 decision 2's "the
@@ -2220,9 +2257,31 @@ carries them as dead weight until each kind's lifetime passes.
 tier admits carries `is_iconic`, written after the admission step (ADR-0045 decision 5, #760) — a
 flag this source never wrote before; the regional tier, when it comes, carries none.
 
+**The split (#1807).** Kind and source 3 were Public Art & Monuments until migration 144 renamed
+them Public art and seeded kind and source 6, Monuments & memorials, gated on arrival and
+reading Wikidata through the door source 3 reads. The migration copies every membership of kind
+3 into kind 6 with its state — admission and its reason, the pins and their questions, the badge,
+the gate, the run's pointers, the point's placement and the visit question — and source 3's
+answers about a held type and its curator assignments. It decides one thing only: a type a
+curator claimed outside the membership's new vocabulary — a monument on Public art, a sculpture
+on Monuments & memorials — is released for the first run to file, and a claim inside it stands.
+Each source's first
+run refuses, with its rule's reason, what its kind does not hold, and a pin its rule now
+disagrees with in words becomes a question for a curator (#1367): a fountain a curator admitted
+to Public Art & Monuments is asked about in Monuments & memorials. A held proposal is not copied;
+source 6's first run proposes its own. Calibrated before the merge by running the branch's
+gather and both rules over the development catalogue's subset (2026-10-22): of 172 places the
+one rule admitted, Public art admits 92 and Monuments & memorials 116, 38 of them both; the
+eight the split refuses are the lake, the roads, the square, the garden, the house and the
+heritage groupings above and Federal Hall, and the six it adds are the Hiroshima Peace
+Memorial, Arlington, the Piskaryovskoye Memorial Cemetery, Martyrs' Lane, the Neue Wache and the
+Holy Trinity Column in Olomouc.
+
 **What is kept** — four cache kinds (`CACHED_KINDS_BY_SOURCE[3]`): `classes` for the closures
 and the two trees, `pool` for every band and batch and for the admitted rows asked for by id,
-`edges` for the facts pass, `entities` for the containers. The panel offers *Sync without cache*
+`edges` for the facts pass, `entities` for the containers. They are kept under Public art, the
+pass's first source, for both kinds (ADR-0132 decision 5); Monuments & memorials keeps under its
+own id only what its visit witnesses ask. The panel offers *Sync without cache*
 and the cache section on that declaration while the source reads the live service; on the subset
 it keeps none of them (`cachedKindsFor`, ADR-0119).
 
@@ -2231,7 +2290,7 @@ stored rows the rule's question, for the rows the rule never reached.
 
 **SPARQL reliability**: All Wikidata queries use direct `wdt:P31` (instance-of) rather than `wdt:P31/wdt:P279*` (subclass traversal) to avoid timeouts on the Wikidata endpoint. Requests ask for a **55s** server-side timeout (Blazegraph `timeout`) plus a 70s client-side AbortController safety net. The service's own deadline is 60s and asking above it moves nothing — the query dies there either way, but as a *gateway* error (504, then 502 from their nginx) that says nothing about what went wrong, which is how museum run 61 failed. Under the ceiling the query engine answers instead, and five seconds of their cluster go back to the queue. Retries are bounded by **time rather than by count**: exponential backoff capped at three minutes, `Retry-After` honoured where the service sends one, and a wait budget of fifteen minutes **shared across a phase** rather than granted to each query — the collection's queries share one, and the Commons credit pass that follows gets its own, because by then the first is spent — a collection sends a few hundred, and a quarter of an hour of patience each is arithmetically hours of a run nobody is watching. The count exists as a backstop and is set high enough that the budget is what stops the loop; the old shape (four retries, 30s ceiling) gave up after about a minute, which is "the service was busy", not "the service is down". A cancelled run is noticed **inside** a wait and inside a request, not only between queries: the backoff sleeps in one-second slices and returns early, and an in-flight request is aborted — without that, Cancel sat unhonoured for as long as the current backoff, which from the panel is a button that does nothing. **Every query this process sends takes its turn** (`inTurn`, `wikidataUtils.ts`, #1307): one at a time whichever run sent it, and the next starts only after a pause at least as long as the last attempt took, never under a second. The service allows one client — our User-Agent from this address — 60 s of its processing time in every 60 and five parallel queries per IP, and throttles a client over either (Wikidata Query Service User Manual, § Query limits); pacing by the query's own cost keeps a run near half of the first however slow the service is that day. A query that ran into the deadline is what the rule is for: its retry waits out the minute the failed attempt spent, where the 5 s first backoff alone landed it inside that minute. A 429's `Retry-After` or a 5xx's backoff holds back every run's next query, not only the one that received it: the service said it to this client. The hold is capped at the backoff's three-minute ceiling, and a run that did not earn it is told so on its panel (*Wikidata asked this server to wait — next query in …*) and pays for it from its own wait budget (`heldByService`), so it is never a wait nobody can see. A timeout or a dropped connection holds back only its own run, and its cost is already in the pacing pause. A run cancelled while it queues behind another run's query stops within a second, and hands its place on only once that query is done. Everything that goes through `sparqlQuery` takes the same turn, the world-view import's geoshape match included (`geoshapeComposite.ts`): an admin's match started during a sync waits behind each running sync's query and its pause — about two minutes per sync on a slow day — and, while the service holds this client, for up to three minutes more. The curator's image suggestion (`geocodeController.ts`) has its own short client, and a 429 skips the layer that asked the query service — the place's coordinates — rather than waiting: the time the service asks for is longer than a dialog can wait. The name layer, which reads Wikidata's own API, still runs, and a lookup that finds nothing answers 404 as always. Every collector — museums, landmarks, and the Wikipedia-link query the UNESCO run sends — passes the same three things: the wait reporter, the cancel check, and a shared `WaitBudget` — including the admin-only image-fixing pass, which used to send bare queries and so minted a fresh budget per batch. A query sent without them is a query nobody can stop and a wait nobody can see. The label service is asked for `LABEL_LANGS` everywhere (`en,mul,en-gb,…`): asked for `"en"` alone it answers with the bare QID for anything unlabelled in English, which is how the National Gallery of Art once arrived as the string `Q214867`.
 
-**What a run keeps (ADR-0030)**: the Wikidata collectors — Art Museums, Public Art & Monuments, Places of worship and Archaeology — cache what Wikidata answers, in `wikidata_query_cache`, keyed by the hash of the source and the query text — the query is the question, so a changed filter misses by construction rather than by remembering to invalidate, and one source's rows are never another's (§ Public Art's cache paragraph). Two reasons: their front end caches nothing we send, because we POST, so a class closure that has not moved in months is recomputed by their cluster on every run; and a collection that fails in its third phase used to start the next attempt at the first — run 61 threw away 1166 artwork classes it had already paid for. Every row carries its own expiry, written at fetch time, with defaults set to the rate the facts change at: class trees 7 days, work pools 1 day, venue statements and entity edges 12 hours, entity details 6 hours. Per source, and only for the kinds that source's collector describes — the public-art collector describes four (`classes`, `pool`, `edges`, `entities`; § Public Art above), the places-of-worship collector five (those four and `statements`, since it collects works as well; § Places of worship below), the art-museums collector the same five, the archaeology collector those five and two of its own, `osm` — what OpenStreetMap maps at each site candidate, asked of the QLever mirror or, where `OSM_READER` names it, of the public Overpass API, and kept for a day either way — and `photos`, how many of a place's Commons photographs were taken there, kept a week (§ Archaeology below); every one of the four also keeps `statements`, `osm` and `photos` for the visit witnesses its run reads of the places it offers (#1770, § Archaeology's **A kind's run asks a curator** paragraph; what English Wikipedia files an article under is asked of a wiki rather than of Wikidata and is kept nowhere), the UNESCO run reads that source's own API and caches nothing. Only the source that keeps something is offered the bypass: `caches` on the sources listing is `cachedKindsFor(id, reader).length > 0`, and the panel hides "Sync without cache" where it is false, rather than offering to ignore a cache that does not exist. A run started with `refreshCache` ignores the cache **in both directions** — `withCache` short-circuits before the read *and* the write, so what is kept survives with its original `fetched_at`/`expires_at` and the next ordinary run uses it again. Replacing an answer is what Clear is for; the admin panel shows each kind's age, expiry, size and lifetime, can change that lifetime (which re-dates what is already cached, from each answer's own fetch time) and can clear any of it. A cache failure never fails a run: a read that throws falls through to the source, a write that throws is logged and the answer still returned. **The write and a lifetime change serialise** on a transaction-scoped advisory lock keyed by `(source_id, kind)`, and the write reads the policy inside its own `INSERT`: without both, a row could commit carrying an expiry the panel no longer shows — a policy nothing obeys, which is decision 7 read backwards. The locked section is two database statements; the source's answer is already in hand when `writeCached` is called, so nothing waits on a network request while holding it.
+**What a run keeps (ADR-0030)**: the Wikidata collectors — Art Museums, Public art and Monuments & memorials, Places of worship and Archaeology — cache what Wikidata answers, in `wikidata_query_cache`, keyed by the hash of the source and the query text — the query is the question, so a changed filter misses by construction rather than by remembering to invalidate, and one source's rows are never another's (§ Public art and Monuments & memorials, its cache paragraph). Two reasons: their front end caches nothing we send, because we POST, so a class closure that has not moved in months is recomputed by their cluster on every run; and a collection that fails in its third phase used to start the next attempt at the first — run 61 threw away 1166 artwork classes it had already paid for. Every row carries its own expiry, written at fetch time, with defaults set to the rate the facts change at: class trees 7 days, work pools 1 day, venue statements and entity edges 12 hours, entity details 6 hours. Per source, and only for the kinds that source's collector describes — the public-art collector describes four (`classes`, `pool`, `edges`, `entities`; § Public art and Monuments & memorials above), the places-of-worship collector five (those four and `statements`, since it collects works as well; § Places of worship below), the art-museums collector the same five, the archaeology collector those five and two of its own, `osm` — what OpenStreetMap maps at each site candidate, asked of the QLever mirror or, where `OSM_READER` names it, of the public Overpass API, and kept for a day either way — and `photos`, how many of a place's Commons photographs were taken there, kept a week (§ Archaeology below); every one of the four also keeps `statements`, `osm` and `photos` for the visit witnesses its run reads of the places it offers (#1770, § Archaeology's **A kind's run asks a curator** paragraph; what English Wikipedia files an article under is asked of a wiki rather than of Wikidata and is kept nowhere), the UNESCO run reads that source's own API and caches nothing. Only the source that keeps something is offered the bypass: `caches` on the sources listing is `cachedKindsFor(id, reader).length > 0`, and the panel hides "Sync without cache" where it is false, rather than offering to ignore a cache that does not exist. A run started with `refreshCache` ignores the cache **in both directions** — `withCache` short-circuits before the read *and* the write, so what is kept survives with its original `fetched_at`/`expires_at` and the next ordinary run uses it again. Replacing an answer is what Clear is for; the admin panel shows each kind's age, expiry, size and lifetime, can change that lifetime (which re-dates what is already cached, from each answer's own fetch time) and can clear any of it. A cache failure never fails a run: a read that throws falls through to the source, a write that throws is logged and the answer still returned. **The write and a lifetime change serialise** on a transaction-scoped advisory lock keyed by `(source_id, kind)`, and the write reads the policy inside its own `INSERT`: without both, a row could commit carrying an expiry the panel no longer shows — a policy nothing obeys, which is decision 7 read backwards. The locked section is two database statements; the source's answer is already in hand when `writeCached` is called, so nothing waits on a network request while holding it.
 
 **A source that reads the local subset keeps only what it still asks live** ([ADR-0119](../decisions/0119-a-source-that-reads-the-subset-keeps-only-what-it-still-asks-live.md)). Its runs answer Wikidata's class trees, pools, statements, details and edges from the subset (`SUBSET_ANSWERS`), so none of those is written to the cache, and `cachedKindsFor(sourceId, reader)` leaves them out of the source's kinds. What is still asked of a live service is kept as before: the `osm` answers, from the mirror or Overpass, and the `photos` answers, from Commons, of Archaeology's site door (#1768) and of every kind's visit witnesses (#1770). Those two are the whole list, since a Wikidata question with no twin in the subset stops the run instead of going live. `withCache` refuses a door `subsetDoor` marked. A wrapper carries no mark, so the fetchers behind it would send SPARQL, and the cache would answer some of a question family from the live service's Wikidata, of another date than the dump's. The panel reads the source's reader with its kinds (`GET /api/admin/sync/sources/:id/cache` answers `reader`, `subsetDumpDate` and each kind's `answeredBy`). On the subset it names the dump the subset was built from, lists the kinds still cached with their lifetimes, and lists apart, with *Clear* and no lifetime, the rows the source's live runs left (`answeredBy: 'subset'`). No run reads those rows. A switch back to the live service reads what has not expired, as any cached answer. A run on the subset prunes them by the week-past-expiry rule below (`subsetRunDoor`), since it may build no cached door to prune through.
 
@@ -2246,7 +2305,7 @@ shrine — the Hagia Sophia, Angkor Wat, Notre-Dame de Paris, the Sagrada Famíl
 inside it and is worth looking at on its own. Michelangelo's *Pietà* is St Peter's, the *Last
 Supper* is Santa Maria delle Grazie's, the Shroud of Turin is Turin Cathedral's, and the Iron Crown
 is Monza's. Those works had nowhere to
-live until this kind: Public Art & Monuments refuses both the church (`a place of worship, not
+live until this kind: Public Art & Monuments, Public art's name then, refused both the church (`a place of worship, not
 public art`) and the work inside it (`a work of a place of worship, not public art`), and the
 museum rule vetoes a church as a venue. The rule is
 [ADR-0052](../decisions/0052-a-place-of-worship-is-admitted-for-itself-or-for-what-it-holds.md) and
@@ -2305,7 +2364,7 @@ beside it or not):
   resolver refuses it as a venue though the kind admits it as a place. A work nobody can see stays
   unseen. The venue's changeset
   names it: the work added carries `handed_by` (the refusing kind and its reason), which the run's
-  report reads as "gained Bamberg Horseman (handed over by Public Art & Monuments: inside Bamberg
+  report reads as "gained Bamberg Horseman (handed over by Public art: inside Bamberg
   Cathedral: …)". A hand-over is read only after the refusing run has recorded it, so the next run
   of the venue's kind is the first to take it.
 - **What it is**, before whether it is ours: a class of `WORSHIP_KILL_CLASSES` refuses the row
@@ -2440,8 +2499,8 @@ A run whose row states no line **fails** rather than falling back to a constant:
 used 22 would admit a different catalogue than the panel says it does, which is the admission axis
 read backwards (ADR-0024). The two ends share one bound — whole numbers 1 to 1000, the stay line no
 higher than the enter line — enforced in the schema and again in `parseSourceLine`, because the
-panel is not the only caller a stray row could reach. Art Museums and Public Art & Monuments keep
-their constants, so a source whose `api_config` states no line answers **409** (`This source keeps
+panel is not the only caller a stray row could reach. Art Museums, Public art and Monuments &
+memorials keep their constants, so a source whose `api_config` states no line answers **409** (`This source keeps
 its line in code`) rather than gaining one no run was told to read, and the panel renders no fields
 for it.
 
@@ -2509,7 +2568,7 @@ stay apart until identity per location is decided (#1250).
   sitelink and never reaches the pool — so this is the one loss a traveller would call a mosque
   site rather than only a tower. They wait for the kind that is theirs
   ([`PROPOSED-EXPERIENCE-CATEGORIES.md`](../vision/PROPOSED-EXPERIENCE-CATEGORIES.md) § Towers);
-  Public Art & Monuments refuses the same rows as classes of the worship tree, so they
+  Public art and Monuments & memorials refuse the same rows as classes of the worship tree, so they
   are named in two rules and listed in none.
 - **Manuscripts and church bells are not treasures**: a codex is in an archive and a bell is in the
   tower, and the test is being on public view rather than being valuable. The class test is coarser
@@ -2675,7 +2734,7 @@ museum. Neither signal alone tells them from the rest. Over the 2,269 items the 
 outside World Heritage on 2026-10-21, 299 had fewer than two witnesses, and about two thirds of those
 are places a visitor goes to whose traces the sources miss (Saqqara, Cloud Gate). Both signals
 together picked 46, and 45 of them are not places to offer. So once its changeset is kept, every run of
-Art Museums, Public Art & Monuments, Places of worship and Archaeology (`ASKING_SOURCES`; UNESCO is the
+Art Museums, Public art, Monuments & memorials, Places of worship and Archaeology (`ASKING_SOURCES`; UNESCO is the
 authority for World Heritage) reads its source's offered memberships that have a Wikidata item, no
 admission pin and no question yet (`offeredPlaces`, `services/sync/visit/visitQuestions.ts`):
 - **The witnesses, in order of cost** (`witnessesOfPlaces`). The guide and Wikidata's statements are
@@ -4040,7 +4099,7 @@ about admission, honour the flag's own pin instead, so a membership a curator ov
 - `markIconic` — the must-see badge on the memberships the run admits, only for a source whose
   `SyncServiceConfig` declares `badgesAdmitted`, and in one of two shapes. `true` where belonging
   *is* the badge — the works-first museums of ADR-0023, and the rule-cut world tiers that
-  followed, Public Art & Monuments and Places of worship. A **predicate over the run's own items** where it is not: the Archaeology source admits
+  followed, Public art, Monuments & memorials and Places of worship. A **predicate over the run's own items** where it is not: the Archaeology source admits
   a museum for what it is about and badges only the one holding a find at or above the finds' enter
   line, so `badgeAdmitted` builds an external-id → item map and hands `markIconic` the admitted ids
   whose item passes and no others — an admitted id with no item among them is left unbadged, since

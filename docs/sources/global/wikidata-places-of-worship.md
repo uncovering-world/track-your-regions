@@ -175,7 +175,7 @@ class list that would keep the objects is #891's.
   sitelinks) and the Qutb Minar (72), beside the Leaning Tower of Pisa (117), the Giralda, St
   Mark's and Giotto's campaniles, the Kalyan Minaret, the Hassan Tower (37) and the Burana Tower. A
   traveller climbs a tower or stands under it and does not pray in it, so the kind refuses every
-  one of them and hands them to nobody; Public Art & Monuments refuses the same rows as classes of
+  one of them and hands them to nobody; Public art and Monuments & memorials refuse the same rows as classes of
   the worship tree. The Hassan Tower is neither a World Heritage row of its own nor merely a
   tower: it **is** Rabat's mosque site, and its `P361` target, the Hassan Mosque, holds one
   sitelink and never reaches the pool, so its loss is a mosque site a traveller would name. They

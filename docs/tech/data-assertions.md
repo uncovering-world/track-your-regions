@@ -480,10 +480,10 @@ decision 5) and what the badge should mean beyond works-first admission is
 #603's question.
 
 **The public-art rule** (`public-art-row-typed-a-building`) asks the stored rows —
-the memberships the public-art source brought, whose classes its run wrote and
-whose admission is that source's rule — the question the public-art import asks
-every candidate (#754,
-`docs/tech/experiences.md` § Public Art & Monuments): is this admitted row
+the memberships Public art and Monuments & memorials brought, whose classes
+their runs wrote and whose admission is their rule's, once per place — the
+question the public-art import asks every candidate (#754, #1807,
+`docs/tech/experiences.md` § Public art and Monuments & memorials): is this admitted row
 something a traveller stands in front of, or a building, a place of worship, a
 camp, a stadium, an archaeological site, a tomb, an organisation, a settlement
 that Wikidata also calls a monument? The rule refuses such a row on every run
