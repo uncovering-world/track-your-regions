@@ -8,7 +8,7 @@ urls:
   api: none
   terms: none
 family: commercial
-kinds: [regional-food, regional-crafts, natural-landmarks, places-of-worship, world-heritage, squares-and-streets, palaces-and-castles, bridges-and-engineering, parks-and-gardens, zoos-and-aquariums, towns-and-villages, festivals-and-events, markets, intangible-heritage, specialty-museums, historic-hotels-and-restaurants]
+kinds: [regional-food, regional-crafts, natural-landmarks, places-of-worship, world-heritage, squares-and-streets, palaces-and-residences, bridges-and-engineering, parks-and-gardens, zoos-and-aquariums, towns-and-villages, festivals-and-events, markets, intangible-heritage, specialty-museums, historic-hotels-and-restaurants]
 tier: regional
 unit: { level: country, code: IR, name: Iran }
 row:

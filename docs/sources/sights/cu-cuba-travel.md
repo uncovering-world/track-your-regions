@@ -8,7 +8,7 @@ urls:
   api: none
   terms: none
 family: tourism-board
-kinds: [squares-and-streets, beaches-and-swimming, regional-food, historic-hotels-and-restaurants, festivals-and-events, entertainment-venues, palaces-and-castles, public-art, art-museums, neighbourhoods, architecture, intangible-heritage, parks-and-gardens, regional-drinks, world-heritage, places-of-worship, history-museums, viewpoints, famous-peoples-places, historic-houses, towns-and-villages, shows-and-performances, outdoor-activities, live-music-venues]
+kinds: [squares-and-streets, beaches-and-swimming, regional-food, historic-hotels-and-restaurants, festivals-and-events, entertainment-venues, castles-and-fortresses, public-art, art-museums, neighbourhoods, architecture, intangible-heritage, parks-and-gardens, regional-drinks, world-heritage, places-of-worship, history-museums, viewpoints, famous-peoples-places, historic-houses, towns-and-villages, shows-and-performances, outdoor-activities, live-music-venues]
 tier: regional
 unit: { level: country, code: CU, name: Cuba }
 row:

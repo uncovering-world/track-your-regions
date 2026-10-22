@@ -8,7 +8,7 @@ urls:
   api: none
   terms: none
 family: tourism-board
-kinds: [archaeology, places-of-worship, regional-food, tombs-and-mausoleums, neighbourhoods, notable-works, palaces-and-castles, art-museums, festivals-and-events, city-gates-and-walls, historic-waterworks, towers, regional-drinks, world-heritage, squares-and-streets, tours-and-cruises, markets, entertainment-venues, shows-and-performances, historic-houses, day-trips-and-itineraries, public-art, parks-and-gardens]
+kinds: [archaeology, places-of-worship, regional-food, tombs-and-mausoleums, neighbourhoods, notable-works, palaces-and-residences, art-museums, festivals-and-events, city-gates-and-walls, historic-waterworks, towers, regional-drinks, world-heritage, squares-and-streets, tours-and-cruises, markets, entertainment-venues, shows-and-performances, historic-houses, day-trips-and-itineraries, public-art, parks-and-gardens]
 tier: regional
 unit: { level: country, code: EG, name: Egypt }
 row:

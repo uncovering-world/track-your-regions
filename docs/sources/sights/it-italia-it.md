@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.italia.it/it/termini-e-condizioni
 family: tourism-board
-kinds: [notable-works, archaeology, places-of-worship, regional-food, towns-and-villages, art-museums, public-art, squares-and-streets, world-heritage, parks-and-gardens, neighbourhoods, architecture, palaces-and-castles, viewpoints, local-customs, markets, regional-drinks, natural-landmarks, historic-hotels-and-restaurants]
+kinds: [notable-works, archaeology, places-of-worship, regional-food, towns-and-villages, art-museums, public-art, squares-and-streets, world-heritage, parks-and-gardens, neighbourhoods, architecture, palaces-and-residences, viewpoints, local-customs, markets, regional-drinks, natural-landmarks, historic-hotels-and-restaurants]
 tier: regional
 unit: { level: country, code: IT, name: Italy }
 row:

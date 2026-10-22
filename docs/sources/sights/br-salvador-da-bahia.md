@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.salvadordabahia.com/wp-content/uploads/2019/02/termo-de-uso_salvadordabahia.pdf
 family: tourism-board
-kinds: [regional-food, neighbourhoods, squares-and-streets, festivals-and-events, historic-hotels-and-restaurants, places-of-worship, palaces-and-castles, history-museums, natural-landmarks, beaches-and-swimming, music, markets, shows-and-performances, specialty-museums, public-art]
+kinds: [regional-food, neighbourhoods, squares-and-streets, festivals-and-events, historic-hotels-and-restaurants, places-of-worship, castles-and-fortresses, history-museums, natural-landmarks, beaches-and-swimming, music, markets, shows-and-performances, specialty-museums, public-art]
 tier: regional
 unit: { level: city, code: BR, name: Salvador }
 row:

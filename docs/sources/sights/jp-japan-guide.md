@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.japan-guide.com/e/e441.html
 family: commercial
-kinds: [places-of-worship, parks-and-gardens, festivals-and-events, neighbourhoods, palaces-and-castles, markets, art-museums, regional-food, towns-and-villages, natural-landmarks, specialty-museums, regional-drinks, day-trips-and-itineraries, hiking-trails-and-walks, viewpoints, squares-and-streets, zoos-and-aquariums, regional-crafts]
+kinds: [places-of-worship, parks-and-gardens, festivals-and-events, neighbourhoods, palaces-and-residences, markets, art-museums, regional-food, towns-and-villages, natural-landmarks, specialty-museums, regional-drinks, day-trips-and-itineraries, hiking-trails-and-walks, viewpoints, squares-and-streets, zoos-and-aquariums, regional-crafts]
 tier: regional
 unit: { level: country, code: JP, name: Japan }
 row:

@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://surfiran.com/terms-conditions/
 family: commercial
-kinds: [places-of-worship, regional-food, bridges-and-engineering, squares-and-streets, regional-crafts, palaces-and-castles, parks-and-gardens, world-heritage, intangible-heritage, towns-and-villages, viewpoints, baths-and-spas]
+kinds: [places-of-worship, regional-food, bridges-and-engineering, squares-and-streets, regional-crafts, palaces-and-residences, parks-and-gardens, world-heritage, intangible-heritage, towns-and-villages, viewpoints, baths-and-spas]
 tier: regional
 unit: { level: country, code: IR, name: Iran }
 row:

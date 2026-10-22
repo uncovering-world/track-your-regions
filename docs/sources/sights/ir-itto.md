@@ -8,7 +8,7 @@ urls:
   api: none
   terms: none
 family: association
-kinds: [places-of-worship, towns-and-villages, palaces-and-castles, historic-houses, parks-and-gardens, world-heritage, squares-and-streets]
+kinds: [places-of-worship, towns-and-villages, palaces-and-residences, historic-houses, parks-and-gardens, world-heritage, squares-and-streets, archaeology]
 tier: regional
 unit: { level: country, code: IR, name: Iran }
 row:
