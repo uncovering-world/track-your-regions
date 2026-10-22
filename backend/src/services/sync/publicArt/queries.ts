@@ -351,10 +351,14 @@ export interface EntityFacts {
   collections: string[];
   /** Every maker the source names, deduped, in the order the answer arrived (ADR-0040). */
   creators: string[];
+  /** `P547`: whom or what it commemorates, which admits it to Monuments & memorials (#1807). */
+  commemorates: string[];
+  /** `P180`: what it depicts — a figure on a square makes the square a monument's site. */
+  depicts: string[];
 }
 
-const emptyFacts = (): EntityFacts => ({
-  classes: [], locations: [], parents: [], collections: [], creators: [],
+export const emptyFacts = (): EntityFacts => ({
+  classes: [], locations: [], parents: [], collections: [], creators: [], commemorates: [], depicts: [],
 });
 
 /** Add the entity a binding names, when the binding is present and names one. */
@@ -393,7 +397,7 @@ export async function fetchEntityFacts(
   // has left says nothing about where it is today — the Horses of Saint Mark
   // carry nine ended locations and one collection that stands.
   const rows = await sparql(`
-    SELECT ?e ?cls ?loc ?parent ?coll ?creator ?creatorLabel WHERE {
+    SELECT ?e ?cls ?loc ?parent ?coll ?creator ?creatorLabel ?commemorates ?depicts WHERE {
       VALUES ?e { ${values(qids)} }
       { ?e wdt:P31 ?cls } UNION {
         ${standing('?e', 'P276', '?loc')}
@@ -403,9 +407,13 @@ export async function fetchEntityFacts(
         ${standing('?e', 'P195', '?coll')}
       } UNION {
         ?e wdt:P170 ?creator . FILTER(STRSTARTS(STR(?creator), "${ENTITY_PREFIX}Q"))
+      } UNION {
+        ?e wdt:P547 ?commemorates
+      } UNION {
+        ?e wdt:P180 ?depicts
       }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }
-    }`, { kind: 'edges', label: `classes, containers, owners and makers of ${qids.length} entities` });
+    }`, { kind: 'edges', label: `classes, containers, owners, makers and subjects of ${qids.length} entities` });
 
   for (const row of rows) {
     const qid = extractQid(row.e?.value ?? '');
@@ -415,6 +423,8 @@ export async function fetchEntityFacts(
     pushEntity(facts.locations, row.loc);
     pushEntity(facts.parents, row.parent);
     pushEntity(facts.collections, row.coll);
+    pushEntity(facts.commemorates, row.commemorates);
+    pushEntity(facts.depicts, row.depicts);
     if (row.creatorLabel) {
       let seen = seenCreators.get(qid);
       if (!seen) { seen = new Set(); seenCreators.set(qid, seen); }
