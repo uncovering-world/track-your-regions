@@ -1,5 +1,6 @@
 /**
- * How the landmark run wires the public-art collection to the orchestrator.
+ * How the landmark run wires the public-art collection to the orchestrator,
+ * as a member of the place pass (`places/placePass.ts`).
  *
  * The collection is a pure pipeline with its own test and the orchestrator's
  * handling of refusals and the sweep has one too. What neither can see is the
@@ -30,7 +31,17 @@ vi.mock('./wikidataCache.js', () => ({
   pruneExpired: vi.fn().mockResolvedValue(0),
   withCache: vi.fn((door: unknown) => door),
 }));
-vi.mock('./publicArt/pipeline.js', () => ({ gatherPublicArt: vi.fn(), classifyPublicArt: vi.fn() }));
+vi.mock('./publicArt/pipeline.js', () => ({ classifyPublicArt: vi.fn(), PUBLIC_ART_KIND: { name: 'public art' } }));
+vi.mock('./worship/places.js', () => ({ WORSHIP_KIND: { name: 'places of worship' } }));
+vi.mock('./places/gather.js', () => ({
+  gatherPlaces: vi.fn(),
+  shareOf: (gathered: { shares: Map<unknown, unknown> }, kind: unknown) => gathered.shares.get(kind),
+}));
+// The pass's third member, whose own spec is worshipSyncService.test.ts.
+vi.mock('./worshipSyncService.js', () => ({
+  WORSHIP_SOURCE_ID: 4,
+  worshipSource: vi.fn(() => ({ sourceId: 4 })),
+}));
 vi.mock('./pinQuestion.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./pinQuestion.js')>()),
   // The run's questions about a curator's pin read and write the database (#1367).
@@ -73,18 +84,21 @@ import { orchestrateSync } from './syncOrchestrator.js';
 import type { SyncServiceConfig, SyncRunContext } from './syncContract.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { withCache } from './wikidataCache.js';
-import { classifyPublicArt, gatherPublicArt } from './publicArt/pipeline.js';
+import { classifyPublicArt, PUBLIC_ART_KIND } from './publicArt/pipeline.js';
+import { WORSHIP_KIND } from './worship/places.js';
+import { gatherPlaces } from './places/gather.js';
 import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
-import { syncLandmarks } from './landmarkSyncService.js';
+import { syncPlacePass } from './places/placePass.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE } from './publicArt/kindRules.js';
 import type { SyncProgress, WikidataLandmark } from './types.js';
 
 const mockedOrchestrate = orchestrateSync as unknown as ReturnType<typeof vi.fn>;
-const mockedGather = gatherPublicArt as unknown as ReturnType<typeof vi.fn>;
+const mockedGather = gatherPlaces as unknown as ReturnType<typeof vi.fn>;
 const mockedCollect = classifyPublicArt as unknown as ReturnType<typeof vi.fn>;
-/** What the gather hands the classification; the classification is what the tests say. */
-const GATHERED = { trees: {}, pool: new Map(), facts: new Map(), containers: new Map() };
+/** Public art's share of the gather; the classification is what the tests say. */
+const SHARE = { trees: {}, pool: new Map(), facts: new Map(), containers: new Map() };
+const GATHERED = { shares: new Map<unknown, unknown>([[PUBLIC_ART_KIND, SHARE], [WORSHIP_KIND, SHARE]]), pooled: 0 };
 const mockedAdmitted = admittedExternalIds as unknown as ReturnType<typeof vi.fn>;
 const mockedWithCache = withCache as unknown as ReturnType<typeof vi.fn>;
 const mockedUpsert = upsertExperienceRecord as unknown as ReturnType<typeof vi.fn>;
@@ -100,7 +114,7 @@ function landmark(over: Partial<WikidataLandmark> = {}): WikidataLandmark {
 const progress = () => ({ cancel: false, statusMessage: '' } as unknown as SyncProgress);
 
 async function configOf(options: { dryRun?: boolean; refreshCache?: boolean } = {}, sourceId = 3) {
-  await syncLandmarks(1, options);
+  await syncPlacePass(1, options);
   // The newest pass's run of this source: each pass makes its own gather, and
   // an earlier one's may have failed.
   return mockedOrchestrate.mock.calls.map((call) => call[0] as SyncServiceConfig<WikidataLandmark>)
@@ -119,7 +133,7 @@ beforeEach(() => {
     .mockResolvedValue({ needsAssignment: [], unoffered: 0, delta: {} });
 });
 
-describe('syncLandmarks', () => {
+describe('public art in the place pass', () => {
   it('recomputes its membership every run, and belonging is the badge', async () => {
     const config = await configOf();
     expect(config.sourceId).toBe(3);
@@ -136,8 +150,12 @@ describe('syncLandmarks', () => {
     const fetched = await config.fetchItems(progress(), []);
 
     expect(mockedAdmitted).toHaveBeenCalledWith(3);
-    expect(mockedGather.mock.calls[0][1]).toEqual(new Set(['Q337179']));
-    expect(mockedCollect.mock.calls[0][0]).toBe(GATHERED);
+    // Every kind's admitted rows, the pass's other members' too, asked for by id.
+    expect(mockedGather.mock.calls[0][1]).toEqual([
+      { kind: PUBLIC_ART_KIND, admitted: new Set(['Q337179']) },
+      { kind: WORSHIP_KIND, admitted: new Set(['Q337179']) },
+    ]);
+    expect(mockedCollect.mock.calls[0][0]).toBe(SHARE);
     expect(mockedCollect.mock.calls[0][1]).toBe(PUBLIC_ART_RULE);
     expect(mockedCollect.mock.calls[0][2]).toEqual(new Set(['Q337179']));
     // And the places another kind offers, so a work outdoors on a venue no
@@ -160,6 +178,17 @@ describe('syncLandmarks', () => {
     // A place its sibling offers is not another kind's (#1444).
     expect(vi.mocked(placesOtherSourcesOffer)).toHaveBeenCalledWith([3, 6]);
     expect(art.sourceId).toBe(3);
+  });
+
+  it('runs Places of worship third, from the one gather the two read (#1820)', async () => {
+    await syncPlacePass(1, {});
+    expect(mockedOrchestrate.mock.calls.map((call) => (call[0] as { sourceId: number }).sourceId)).toEqual([3, 6, 4]);
+
+    const { worshipSource } = await import('./worshipSyncService.js');
+    const gather = vi.mocked(worshipSource).mock.calls[0][0];
+    await (mockedOrchestrate.mock.calls[0][0] as SyncServiceConfig<WikidataLandmark>).fetchItems(progress(), []);
+    await gather(progress());
+    expect(mockedGather).toHaveBeenCalledTimes(1);
   });
 
   it('keeps its answers by default and asks the source afresh when told to', async () => {

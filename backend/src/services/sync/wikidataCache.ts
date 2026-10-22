@@ -174,13 +174,14 @@ export const CACHED_KINDS_BY_SOURCE: Record<number, CacheKind[]> = {
   // witnesses of its offered places read (#1770): their statements, the map
   // and the photographs.
   2: ['classes', 'pool', 'statements', 'entities', 'edges', 'osm', 'photos'],
-  // Public art, whose pass gathers for Monuments & memorials too and keeps
-  // the answers under this source (ADR-0132 decision 5).
+  // Public art, whose place pass gathers for every place kind and keeps the
+  // answers under this source (ADR-0132 decision 5, #1820).
   3: ['classes', 'pool', 'statements', 'edges', 'entities', 'osm', 'photos'],
   // Monuments & memorials: its visit witnesses ask under its own id, the
   // gather under source 3's.
   6: ['classes', 'pool', 'statements', 'edges', 'entities', 'osm', 'photos'],
-  // Places of worship.
+  // Places of worship: its works and its visit witnesses ask under its own
+  // id, its places under source 3's.
   4: ['classes', 'pool', 'statements', 'entities', 'edges', 'osm', 'photos'],
   // Archaeology. The museum import's whole set, plus what OpenStreetMap maps
   // at each site candidate (#581), and how many photographs Commons holds of a

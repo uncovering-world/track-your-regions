@@ -8,23 +8,24 @@
  * with one point. No grouping, no treasures — simpler than museums, and since
  * #754 the same shape.
  *
- * The run is a pass (ADR-0132): the gather is read once for every source of
- * `PUBLIC_ART_PASS`, and each source decides from it by its kind's rule
+ * Each source is a member of the place pass (ADR-0132, `places/placePass.ts`):
+ * the places are gathered once for every source of `PLACE_PASS`, and each of
+ * these two decides from its kind's share by its kind's rule
  * (`publicArt/kindRules.ts`) and writes its own kind.
  */
 
 import { readsSubset } from './subset/reader.js';
-import { unreadOnSubset, wikidataRunDoor } from './subset/runDoor.js';
+import { unreadOnSubset } from './subset/runDoor.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
-import type { SyncProgress, WikidataLandmark, ContentsByKind, SyncRunOptions } from './types.js';
+import type { SyncProgress, WikidataLandmark, ContentsByKind } from './types.js';
 import { getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { FetchResult, ProcessItemResult, SyncRunContext, SyncServiceConfig } from './syncContract.js';
 import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
-import { classifyPublicArt, gatherPublicArt, type GatheredPublicArt } from './publicArt/pipeline.js';
+import { classifyPublicArt, PUBLIC_ART_KIND } from './publicArt/pipeline.js';
+import { shareOf, type PlaceGather } from './places/gather.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE, type KindRule } from './publicArt/kindRules.js';
-import { passMember, runSyncPass, sharedGather } from './syncPass.js';
-import { PUBLIC_ART_PASS, passOf } from './passes.js';
+import { PUBLIC_ART_SOURCES } from './passes.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import {
   delay,
@@ -91,7 +92,7 @@ function creditPatch(
  * The pass's gather asks it and keeps its answers under its first source
  * (ADR-0132 decision 5).
  */
-function collectingSparql(
+export function collectingSparql(
   sourceId: number, progress: SyncProgress, refreshCache: boolean,
 ): (query: string, descriptor?: CacheDescriptor) => Promise<SparqlBinding[]> {
   return withCache(wikidataDoor(progress, new WaitBudget(SPARQL_WAIT_BUDGET_MS), LOG_PREFIX), {
@@ -205,35 +206,6 @@ function disambiguateDuplicateNames(landmarks: WikidataLandmark[]): void {
   }
 }
 
-/** What the pass's gather hands each of its sources: the facts, and the door they were read through. */
-interface PublicArtGather {
-  gathered: GatheredPublicArt;
-  sparql: Awaited<ReturnType<typeof wikidataRunDoor>>;
-}
-
-/**
- * The gather the sources of a pass share (ADR-0132): read once, by the first
- * source to run, with every source's admitted rows asked for by id.
- */
-function publicArtGather(
-  sourceIds: readonly number[], refreshCache: boolean,
-): (progress: SyncProgress) => Promise<PublicArtGather> {
-  return sharedGather(async (progress) => {
-    const admitted = new Set<string>();
-    for (const id of sourceIds) for (const qid of await admittedExternalIds(id)) admitted.add(qid);
-    const sparql = await wikidataRunDoor(sourceIds[0], progress, () => collectingSparql(sourceIds[0], progress, refreshCache));
-    const gathered = await gatherPublicArt({
-      sparql,
-      phase: (message) => { progress.statusMessage = message; },
-      step: async () => {
-        if (progress.cancel) throw new Error('Sync cancelled');
-        await delay(SPARQL_DELAY_MS);
-      },
-    }, admitted);
-    return { gathered, sparql };
-  });
-}
-
 /**
  * Decide from the gather, and ask Commons about the pictures of what was
  * admitted.
@@ -245,7 +217,7 @@ function publicArtGather(
 async function fetchLandmarkItems(
   sourceId: number,
   credits: RunCredits,
-  gather: (progress: SyncProgress) => Promise<PublicArtGather>,
+  gather: (progress: SyncProgress) => Promise<PlaceGather>,
   progress: SyncProgress,
 ): Promise<FetchResult<WikidataLandmark>> {
   credits.fetched = new Map();
@@ -254,10 +226,11 @@ async function fetchLandmarkItems(
   // The places a kind outside the pass offers a reader, so a work outdoors on a
   // venue no such kind offers stays public art rather than being refused onto
   // no card (#1444).
-  const offered = await placesOtherSourcesOffer(passOf(sourceId));
+  const offered = await placesOtherSourcesOffer(PUBLIC_ART_SOURCES);
 
   const { gathered, sparql } = await gather(progress);
-  const { items, fetched, filtered } = classifyPublicArt(gathered, RULE_OF_SOURCE[sourceId], admitted, offered);
+  const share = shareOf(gathered, PUBLIC_ART_KIND);
+  const { items, fetched, filtered } = classifyPublicArt(share, RULE_OF_SOURCE[sourceId], admitted, offered);
 
   disambiguateDuplicateNames(items);
 
@@ -282,9 +255,9 @@ async function fetchLandmarkItems(
 }
 
 /** One source of the pass: its kind's rule, writing the kind `sourceId` fills. */
-function publicArtSource(
+export function publicArtSource(
   sourceId: number,
-  gather: (progress: SyncProgress) => Promise<PublicArtGather>,
+  gather: (progress: SyncProgress) => Promise<PlaceGather>,
 ): SyncServiceConfig<WikidataLandmark> {
   const credits: RunCredits = { fetched: new Map(), stored: new Map() };
   return {
@@ -313,24 +286,6 @@ function publicArtSource(
 // =============================================================================
 // Public API
 // =============================================================================
-
-/**
- * Main sync function — collects the public art and the monuments the world
- * knows from Wikidata, once, for every source of its pass.
- */
-export function syncLandmarks(
-  triggeredBy: number | null,
-  options: SyncRunOptions = {},
-): Promise<void> {
-  // The one place the run's options reach the collection: the cache is a
-  // property of *this* run rather than of the source.
-  const gather = publicArtGather(PUBLIC_ART_PASS, options.refreshCache === true);
-  return runSyncPass(
-    PUBLIC_ART_PASS.map((sourceId) => passMember(publicArtSource(sourceId, gather))),
-    triggeredBy,
-    options,
-  );
-}
 
 /**
  * Get current landmark sync status

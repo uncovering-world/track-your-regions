@@ -56,7 +56,7 @@ import type { KindShare } from '../places/gather.js';
 // Door two's own rules over the works — which are this kind's, why one is not,
 // which places a fold took out — split out at the seam the review of #890 named.
 import { foldLosses, ourWorks, whyNotOurs } from './works.js';
-import { classifyPlacesByFame, gatherWorshipPlaces, type PlaceCandidate } from './places.js';
+import { classifyPlacesByFame, type PlaceCandidate } from './places.js';
 import { worshipVerdict } from './worshipTest.js';
 import type { WorshipTrees, WorshipType } from './classes.js';
 import { contentsLine, type SourceLine } from '../sourceLine.js';
@@ -139,11 +139,8 @@ export interface WorshipPipelineDeps {
    * or nothing while the source's gate is off or the year cannot be read.
    */
   openDoor?: (works: DoorWork[]) => Promise<ReadershipDoor | null>;
-  /**
-   * The kind's share of the place gather its pass made (`places/gather.ts`,
-   * #1820); absent, the run gathers its own places through its own door.
-   */
-  places?: (run: QueryRunner) => Promise<KindShare<WorshipTrees>>;
+  /** The kind's share of the place gather its pass made (`places/gather.ts`, #1820). */
+  places: (run: QueryRunner) => Promise<KindShare<WorshipTrees>>;
 }
 
 /** A door-two venue the rule admits, with the iconic works that named it. */
@@ -307,7 +304,7 @@ function itemOf(
 
 export async function collectPlacesOfWorship(deps: WorshipPipelineDeps): Promise<CollectedWorship> {
   const run = makeRun(deps);
-  const share = await (deps.places ?? ((own: QueryRunner) => gatherWorshipPlaces(own, deps.admitted)))(run);
+  const share = await deps.places(run);
   const { trees } = share;
   const byFame = classifyPlacesByFame(share, deps.admitted, deps.line);
 

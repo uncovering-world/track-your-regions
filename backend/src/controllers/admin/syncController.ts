@@ -50,8 +50,7 @@ import {
   syncMuseums,
   fixMuseumImages,
   fixUnescoImages,
-  syncLandmarks,
-  syncPlacesOfWorship,
+  syncPlacePass,
   fixWorshipImages,
   syncArchaeology,
   fixArchaeologyImages,
@@ -110,10 +109,10 @@ const syncRegistry: Record<
 > = {
   1: syncUnescoSites,
   2: syncMuseums,
-  3: syncLandmarks,
-  // One pass with source 3 (ADR-0132): a start of either runs both.
-  6: syncLandmarks,
-  4: syncPlacesOfWorship,
+  // The place pass (ADR-0132, #1820): a start of any of them runs them all.
+  3: syncPlacePass,
+  6: syncPlacePass,
+  4: syncPlacePass,
   5: syncArchaeology,
 };
 
@@ -123,24 +122,50 @@ const syncRegistry: Record<
  */
 type SourceParams = z.output<typeof sourceIdParamSchema>;
 
+/**
+ * Refuse a start of a pass one of whose sources it would run wrongly. The pass
+ * runs every source of it, so one switched off would run anyway. And the
+ * gather reads its places through the first source's Wikidata reader while
+ * the rest of each run reads through its own (#1820): a pass whose sources
+ * read different copies would mix two dates of Wikidata in one run.
+ */
+function refuseAPassItCannotRun(
+  pass: readonly number[],
+  members: Pick<ExperienceSourcesRow, 'id' | 'name' | 'is_active' | 'wikidata_reader'>[],
+): void {
+  if (pass.length < 2) return;
+  const off = members.filter((row) => !row.is_active).map((row) => row.name);
+  if (off.length) {
+    throw badRequest(`${off.join(' and ')} runs in one pass with this source and is not active`);
+  }
+  if (new Set(members.map((row) => row.wikidata_reader)).size > 1) {
+    const readers = members.map((row) => `${row.name}: ${row.wikidata_reader === 'subset' ? 'local subset' : 'live service'}`);
+    throw badRequest(
+      `The sources of this pass read different copies of Wikidata (${readers.join(', ')}). `
+      + 'Switch them to the same one: the pass reads its places through the first and the rest of each run through its own.',
+    );
+  }
+}
+
 export async function startSync(
   { params: { sourceId }, body, caller }: {
     params: SourceParams; body: z.output<typeof startSyncBodySchema>; caller: Express.User;
   },
 ): Promise<SyncStarted> {
 
-  // Validate source exists
-  const source = await pool.query<Pick<ExperienceSourcesRow, 'id' | 'name' | 'is_active'>>(
-    'SELECT id, name, is_active FROM experience_sources WHERE id = $1',
-    [sourceId]
-  );
-
-  if (source.rows.length === 0) throw notFound('Source not found');
-  if (!source.rows[0].is_active) throw badRequest('Source is not active');
-
-  // A source that shares a gather starts its whole pass (ADR-0132), so the
-  // start is refused while any source of the pass is running.
+  // The source and every source it runs with in one pass (ADR-0132).
   const pass = passOf(sourceId);
+  const members = await pool.query<Pick<ExperienceSourcesRow, 'id' | 'name' | 'is_active' | 'wikidata_reader'>>(
+    'SELECT id, name, is_active, wikidata_reader FROM experience_sources WHERE id = ANY($1::int[])',
+    [[...pass]]
+  );
+  const source = members.rows.find((row) => row.id === sourceId);
+  if (!source) throw notFound('Source not found');
+  if (!source.is_active) throw badRequest('Source is not active');
+  refuseAPassItCannotRun(pass, members.rows);
+
+  // A source that shares a gather starts its whole pass, so the start is
+  // refused while any source of the pass is running.
   if (passIsRunning(pass)) {
     throw createError(
       pass.length > 1 ? 'Sync already in progress for this source or one it runs with' : 'Sync already in progress for this source',
@@ -161,7 +186,7 @@ export async function startSync(
 
   // Start sync based on source type
   const syncFn = syncRegistry[sourceId];
-  if (!syncFn) throw badRequest(`Sync not implemented for source: ${source.rows[0].name}`);
+  if (!syncFn) throw badRequest(`Sync not implemented for source: ${source.name}`);
 
   syncFn(triggeredBy, { dryRun, refreshCache, askAboutPins })
     .catch((err) => {
@@ -194,7 +219,7 @@ export async function startSync(
   return {
     started: true,
     sourceId,
-    sourceName: source.rows[0].name,
+    sourceName: source.name,
     dryRun,
     refreshCache,
     askAboutPins,
