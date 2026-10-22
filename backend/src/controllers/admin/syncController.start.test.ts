@@ -14,7 +14,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 vi.mock('../../services/sync/index.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../services/sync/index.js')>()),
-  syncPlacesOfWorship: vi.fn(),
+  syncPlacePass: vi.fn(),
 }));
 vi.mock('../experience/equalItemMerges.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../experience/equalItemMerges.js')>()),
@@ -22,14 +22,14 @@ vi.mock('../experience/equalItemMerges.js', async (importOriginal) => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { runningSyncs, syncPlacesOfWorship } from '../../services/sync/index.js';
+import { runningSyncs, syncPlacePass } from '../../services/sync/index.js';
 import { mergeArrivalsOfRun } from '../experience/equalItemMerges.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
 
 const startRoute = routeAt(adminDeclaredRoutes, '/sync/sources/:sourceId/start', 'post');
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
-const mockedSync = syncPlacesOfWorship as unknown as ReturnType<typeof vi.fn>;
+const mockedSync = syncPlacePass as unknown as ReturnType<typeof vi.fn>;
 const mockedMerge = mergeArrivalsOfRun as unknown as ReturnType<typeof vi.fn>;
 
 function makeRes() {

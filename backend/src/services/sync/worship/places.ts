@@ -11,9 +11,8 @@
  * over the sets `classes.ts` composes. This file is the wiring.
  */
 
-import type { QueryRunner } from '../wikidataQueries.js';
 import type { PoolEntity } from '../publicArt/queries.js';
-import { gatherPlaces, shareOf, type KindShare, type PlaceKind } from '../places/gather.js';
+import type { KindShare, PlaceKind } from '../places/gather.js';
 import { worshipVerdict } from './worshipTest.js';
 import { fetchWorshipTrees } from './queries.js';
 import { BROAD_WORSHIP_ROOTS, type WorshipTrees, type WorshipType } from './classes.js';
@@ -65,13 +64,6 @@ export const WORSHIP_KIND: PlaceKind<WorshipTrees> = {
   poolClasses: (trees) => ({ broad: BROAD_WORSHIP_ROOTS, narrow: [...trees.worship, ...trees.parts] }),
   readsContainers: false,
 };
-
-/** The kind's share of a gather of this kind alone, for a run that is in no pass. */
-export async function gatherWorshipPlaces(
-  run: QueryRunner, admitted: ReadonlySet<string>,
-): Promise<KindShare<WorshipTrees>> {
-  return shareOf(await gatherPlaces(run, [{ kind: WORSHIP_KIND, admitted }]), WORSHIP_KIND);
-}
 
 /**
  * The places this run would admit for their own fame, and every candidate the

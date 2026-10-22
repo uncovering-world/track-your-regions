@@ -8,12 +8,19 @@
  */
 
 /**
- * Public Art's gather: the class trees, the pool and the facts
- * (`publicArt/pipeline.ts`), for Public art and Monuments & memorials (#1807).
+ * Public art and Monuments & memorials (#1807): two kinds one declaration
+ * gathers for (`PUBLIC_ART_KIND`), each deciding by its own rule.
  */
-export const PUBLIC_ART_PASS: readonly number[] = [3, 6];
+export const PUBLIC_ART_SOURCES: readonly number[] = [3, 6];
 
-const SYNC_PASSES: ReadonlyArray<readonly number[]> = [PUBLIC_ART_PASS];
+/**
+ * The place pass (#1820): one gather of the candidate places of every
+ * Wikidata place kind (`places/gather.ts`), classified by Public art,
+ * Monuments & memorials and Places of worship, in that order.
+ */
+export const PLACE_PASS: readonly number[] = [...PUBLIC_ART_SOURCES, 4];
+
+const SYNC_PASSES: ReadonlyArray<readonly number[]> = [PLACE_PASS];
 
 /** The sources a source runs with, itself included; itself alone when it shares no gather. */
 export function passOf(sourceId: number): readonly number[] {

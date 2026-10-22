@@ -16,8 +16,8 @@
  */
 
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
-import { orchestrateSync, getSyncStatus, cancelSync } from './syncOrchestrator.js';
-import type { FetchResult, ProcessItemResult, SyncRunContext } from './syncContract.js';
+import { getSyncStatus, cancelSync } from './syncOrchestrator.js';
+import type { FetchResult, ProcessItemResult, SyncRunContext, SyncServiceConfig } from './syncContract.js';
 import type { SyncProgress, ContentsDelta, SyncRunOptions } from './types.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import { admittedExternalIds } from './admission.js';
@@ -53,8 +53,10 @@ import { readHandOvers } from './handOvers.js';
 import { readershipDoorFor } from './readershipDoor.js';
 import { readsSubset } from './subset/reader.js';
 import { unreadOnSubset, wikidataRunDoor } from './subset/runDoor.js';
+import { shareOf, type PlaceGather } from './places/gather.js';
+import { WORSHIP_KIND } from './worship/places.js';
 
-const WORSHIP_SOURCE_ID = 4;
+export const WORSHIP_SOURCE_ID = 4;
 
 const LOG_PREFIX = '[Worship Sync]';
 
@@ -175,6 +177,7 @@ function creditPatch(externalId: string, imageUrl: string | null): { imageCredit
 
 async function fetchWorshipItems(
   progress: SyncProgress,
+  gather: (progress: SyncProgress) => Promise<PlaceGather>,
   refreshCache: boolean,
 ): Promise<FetchResult<CollectedPlaceOfWorship>> {
   // The line first, because a run that cannot state its own fame line has no
@@ -200,6 +203,9 @@ async function fetchWorshipItems(
     line,
     // What other kinds refused as held at a place of worship (ADR-0102).
     handOvers: await readHandOvers(WORSHIP_SOURCE_ID),
+    // The places come from the pass's gather (#1820); the works, below, are
+    // read through this source's own door.
+    places: async () => shareOf((await gather(progress)).gathered, WORSHIP_KIND),
     // A work below the line the world reads (ADR-0056), while the gate is on.
     openDoor: await readershipDoorFor(WORSHIP_SOURCE_ID, line.enterSitelinks, LOG_PREFIX),
     onPhase: (message) => { progress.statusMessage = message; },
@@ -257,7 +263,10 @@ async function fetchWorshipItems(
   });
 
   // What the subset cannot read is left as it is, not read as gone.
-  const unread = readsSubset(sparql) ? await unreadOnSubset(WORSHIP_SOURCE_ID) : undefined;
+  // Its places were read through the pass's door and its works through its
+  // own: either one on the subset leaves what the subset does not hold unread.
+  const { sparql: placesDoor } = await gather(progress);
+  const unread = readsSubset(sparql) || readsSubset(placesDoor) ? await unreadOnSubset(WORSHIP_SOURCE_ID) : undefined;
   return { items, fetchedCount: fetched, filtered, refusedContents, withdrawalSkippedReason, unread };
 }
 
@@ -385,14 +394,15 @@ async function processPlace(
 // =============================================================================
 
 /**
- * Main sync function — collects the places of worship the world knows, and the
- * ones the world knows for what they hold.
+ * The source as a member of the place pass (`places/placePass.ts`): it takes
+ * the places of worship the world knows from the pass's gather, and the ones
+ * the world knows for what they hold from its own works.
  */
-export function syncPlacesOfWorship(
-  triggeredBy: number | null,
-  options: SyncRunOptions = {},
-): Promise<void> {
-  return orchestrateSync<CollectedPlaceOfWorship>({
+export function worshipSource(
+  gather: (progress: SyncProgress) => Promise<PlaceGather>,
+  options: SyncRunOptions,
+): SyncServiceConfig<CollectedPlaceOfWorship> {
+  return {
     sourceId: WORSHIP_SOURCE_ID,
     logPrefix: LOG_PREFIX,
     // A fame line over two pools, so absence from a run says a row fell below
@@ -410,11 +420,11 @@ export function syncPlacesOfWorship(
     badgesAdmitted: true,
     // The one place the run's options reach the collection: the cache is a
     // property of *this* run rather than of the source.
-    fetchItems: (progress) => fetchWorshipItems(progress, options.refreshCache === true),
+    fetchItems: (progress) => fetchWorshipItems(progress, gather, options.refreshCache === true),
     processItem: processPlace,
     getItemName: (p) => p.label,
     getItemId: (p) => p.qid,
-  }, triggeredBy, options);
+  };
 }
 
 /**

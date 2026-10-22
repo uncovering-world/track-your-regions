@@ -9,5 +9,6 @@ export { fixUnescoImages } from './unescoImageRepair.js';
 export * from './museumSyncService.js';
 export * from './landmarkSyncService.js';
 export * from './worshipSyncService.js';
+export * from './places/placePass.js';
 export * from './archaeologySyncService.js';
 export * from './regionAssignmentService.js';

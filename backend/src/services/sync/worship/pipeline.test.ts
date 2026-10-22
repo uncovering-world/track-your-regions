@@ -24,6 +24,8 @@
 
 import { describe, it, expect } from 'vitest';
 import { collectPlacesOfWorship, type CollectedWorship, type WorshipPipelineDeps } from './pipeline.js';
+import { WORSHIP_KIND } from './places.js';
+import { gatherPlaces, shareOf } from '../places/gather.js';
 import { LOST_WORK_ROOT } from '../museum/worksCollector.js';
 import { POOL_MIN_SITELINKS } from '../publicArt/queries.js';
 import type { SourceLine } from '../sourceLine.js';
@@ -474,10 +476,13 @@ function collect(w: World, opts: {
   line?: SourceLine; admitted?: string[]; previousPlacements?: Record<string, string[]>;
   openDoor?: WorshipPipelineDeps['openDoor'];
 } = {}): Promise<CollectedWorship> {
+  const admitted = new Set(opts.admitted ?? []);
   return collectPlacesOfWorship({
     sparql: (query: string) => Promise.resolve(answer(w, query)),
     previousPlacements: opts.previousPlacements ?? {},
-    admitted: new Set(opts.admitted ?? []),
+    admitted,
+    // The place gather asked for this kind alone, as the place pass asks it with the others.
+    places: async (run) => shareOf(await gatherPlaces(run, [{ kind: WORSHIP_KIND, admitted }]), WORSHIP_KIND),
     line: opts.line ?? LINE,
     openDoor: opts.openDoor,
   });

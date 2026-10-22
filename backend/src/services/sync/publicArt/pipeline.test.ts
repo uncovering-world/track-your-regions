@@ -7,7 +7,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { classifyPublicArt, gatherPublicArt, ENTER_SITELINKS, STAY_SITELINKS } from './pipeline.js';
+import { classifyPublicArt, PUBLIC_ART_KIND, ENTER_SITELINKS, STAY_SITELINKS } from './pipeline.js';
+import { gatherPlaces, shareOf } from '../places/gather.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE, type KindRule } from './kindRules.js';
 import { belowLineReason } from '../sourceLine.js';
 import type { QueryRunner } from '../wikidataQueries.js';
@@ -103,6 +104,11 @@ const MONUMENT = 'Q4989906';
 const SCULPTURE = 'Q860861';
 const CATHEDRAL = 'Q56242215';
 const BASILICA = 'Q120560';
+
+/** The place gather asked for this kind alone, and the kind's share of it. */
+async function gatherPublicArt(run: QueryRunner, admitted: ReadonlySet<string>) {
+  return shareOf(await gatherPlaces(run, [{ kind: PUBLIC_ART_KIND, admitted }]), PUBLIC_ART_KIND);
+}
 
 /** The run as a pass of one source: the gather, then this source's classification. */
 async function collectPublicArt(

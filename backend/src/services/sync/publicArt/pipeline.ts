@@ -34,7 +34,7 @@ import { belowLineReason, lineStanding, type LinePair } from '../sourceLine.js';
 import { publicArtVerdict, type ContainerFact } from './publicArtTest.js';
 import type { KindRule } from './kindRules.js';
 import { emptyFacts, type PoolEntity, type EntityFacts, type ContainerFacts } from './queries.js';
-import { CONTAINER_HOPS, gatherPlaces, shareOf, type PlaceKind } from '../places/gather.js';
+import { CONTAINER_HOPS, type PlaceKind } from '../places/gather.js';
 import type { FilteredEntity } from '../syncContract.js';
 import type { WikidataLandmark } from '../types.js';
 
@@ -228,21 +228,6 @@ export const PUBLIC_ART_KIND: PlaceKind<PublicArtTrees> = {
   poolClasses: (trees) => ({ broad: BROAD_ROOTS, narrow: trees.admitting }),
   readsContainers: true,
 };
-
-/**
- * Gather the candidates of public art the world knows, and what each is,
- * through a gather of this kind alone.
- *
- * `admitted` is every row the kind's sources hold as admitted before the run:
- * a row the class questions no longer name is asked for by id, so that each
- * kind's rule gives it its own reason rather than the sweep's.
- */
-export async function gatherPublicArt(
-  run: QueryRunner,
-  admitted: ReadonlySet<string>,
-): Promise<GatheredPublicArt> {
-  return shareOf(await gatherPlaces(run, [{ kind: PUBLIC_ART_KIND, admitted }]), PUBLIC_ART_KIND);
-}
 
 /**
  * Decide what of the gather is of the kind `rule` names: the candidates that
