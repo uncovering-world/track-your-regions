@@ -1,4 +1,4 @@
-import { distanceMeters, LOCATION_MAJOR_METERS } from '@tyr/shared/moves';
+import { distanceMeters, LOCATION_MAJOR_METERS, LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
 
 /**
  * How far a pin moved, and which way — the one rule for a sentence about a
@@ -65,6 +65,22 @@ export function describeMove(before: unknown, after: unknown): string | null {
   if (!move) return null;
   const far = move.meters > LOCATION_MAJOR_METERS ? ' — may fall in a different region; check the pin' : '';
   return `Moved ${distanceLabel(move.meters)} ${move.heading}${far}.`;
+}
+
+/**
+ * The sentence under a coordinate a source proposes: the move, or, within
+ * `LOCATION_UNCHANGED_METERS`, the same place written again, which the server
+ * pairs as one point (ADR-0027) and the queue never words as a move. The
+ * Genbaku Dome's held "Moved 0 m south" was a point 5 cm from the one it named
+ * (#1846). A curator's own correction keeps `describeMove`: a pin they drag
+ * five metres did move.
+ */
+export function describeProposedMove(before: unknown, after: unknown): string | null {
+  const move = movedBy(before, after);
+  if (move && move.meters <= LOCATION_UNCHANGED_METERS) {
+    return `Not a move: the source writes the same place again, within ${LOCATION_UNCHANGED_METERS} m.`;
+  }
+  return describeMove(before, after);
 }
 
 /**

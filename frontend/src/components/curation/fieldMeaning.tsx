@@ -35,7 +35,7 @@ import { safeHref } from '../../utils/safeHref';
 import { wikidataItemUrl } from '../../utils/wikidataLinks';
 import { creators } from '../../utils/creatorList';
 import { typeVocabularyOf } from '../../utils/experienceTypes';
-import { describeMove } from '../../utils/moveDescription';
+import { describeProposedMove } from '../../utils/moveDescription';
 import { yearLabel } from '../../utils/yearLabel';
 import { extentLabel } from '../shared/ExtentLine';
 import { PictureFact } from './PictureFact';
@@ -393,8 +393,9 @@ const MEANINGS: Record<string, FieldMeaning> = {
       ? <MoveFact before={context.proposed.find(f => f.field === 'location')?.old} after={value} label={coordinateLabel(value)} />
       : coordinateLabel(value)),
     event: true,
-    // The one rule for a moved pin, shared with the correction dialog (`utils/moveDescription.ts`).
-    describeChange: (before, after) => describeMove(before, after),
+    // The one rule for a moved pin, shared with the correction dialog (`utils/moveDescription.ts`),
+    // which also says when a proposed point is no move at all.
+    describeChange: (before, after) => describeProposedMove(before, after),
   },
   boundary: {
     label: 'extent',
