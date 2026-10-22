@@ -759,9 +759,40 @@ a list, by its absolute path, killed on a cancel). The database password
 reaches osm2pgsql through libpq's environment (`databaseEnv`), never its
 command line.
 
-1. **The planet** is held as a verified local copy (`holdVerifiedCopy`,
-   § Reading and verifying), so the build needs `DUMPS_DIR`. A build may start
-   from the copy already on disk (`fromCopy`).
+1. **The planet, brought current** (`planetCurrent.ts`). The layer is cut
+   from `planet-current.osm.pbf` under `DUMPS_DIR`, the planet brought forward
+   with the planet's daily replication diffs (`replication/day/`, each ending
+   at midnight UTC). Beside it, `planet-current.state.json` names the diff it
+   was brought to, the instant that diff ends, and the weekly planet it
+   started from; the state lives with the file, so a file that is gone is
+   never taken for one that is there.
+   - **Bringing it forward** (`updateLayer`). Where a current planet is kept,
+     a keeping build from the newest takes the keeper's `update` path
+     (`Keeper.update`, offered where `canUpdate`, here `hasCurrentPlanet`,
+     says so): the worker resolves and records no file of the host's, since
+     it reads none, marks the row as an update (`recordUpdate`, `update` in
+     its request), and the build brings the current planet forward with
+     every diff since its state, in one `osmium apply-changes` pass, renaming
+     the result in with its new state. Its row closes as *brought forward and
+     swapped in*; the panel calls it *Built* rather than *Verified*, with no
+     check; the API answers `broughtForward` true and `verified` false.
+   - **Starting it again** (`buildLayer`). A first build, and *Build \<date\>
+     copy* from a weekly planet on disk (which is also how a current planet
+     that cannot be brought forward is replaced), holds the weekly planet as a
+     verified local copy (`holdVerifiedCopy`, § Reading and verifying), drops
+     the current planet kept before once the weekly one is verified, reads
+     the instant it is current to from its header
+     (`osmosis_replication_timestamp`, `2026-10-12T00:00:02Z` for the planet of
+     Monday 2026-10-12), and starts from the first diff that ends after it
+     (`firstDiffAfter`: estimated from the days between it and the newest
+     diff, then checked against that diff's state and the one before; 5144
+     for that planet). The weekly file is removed once the current planet
+     replaces it.
+   - The diffs publish no checksum: each is downloaded to the host's size
+     (`downloadTo`), and osmium refuses a gzip stream cut short. A change the
+     planet already holds is applied again harmlessly.
+   - The build needs `DUMPS_DIR`, and holds about two planets of disk while
+     it applies the diffs (the current one and the next).
 2. **The selection** is `LAYER_SELECTION` (`layerSelection.ts`), written as an
    `osmium tags-filter` expression file: an object with `wikidata`,
    `wikipedia`, `historic`, `heritage`, `archaeological_site`, `ruins`,
@@ -794,12 +825,12 @@ command line.
 5. **The swap.** The `_next` copy is given the live table's key and indexes
    (by `wikidata`, by `wikipedia`, and a GiST index on the geometry) and
    swapped in with its row in `osm_layer_builds` in one transaction
-   (`swapIn`, `layerTables.ts`). The row records the planet file, its date,
-   the objects kept, how many objects the catalogue named, and the
-   replication timestamp the planet was current to. That timestamp is read
-   from the planet's header (`osmosis_replication_timestamp`), or is the
-   start of its date where the header names none, and every answer read from
-   the layer carries it. A failed tool, a cut that kept nothing, or a cancel
+   (`swapIn`, `layerTables.ts`). The row records the weekly planet the
+   current one started from, the objects kept, how many objects the catalogue
+   named, and the instant the planet was current to (the newest diff's end),
+   which every answer read from the layer carries. Its `dump_date` is that
+   instant's day, so a newer weekly planet is not offered as newer than a
+   layer already brought past it. A failed tool, a cut that kept nothing, or a cancel
    drops the copy and leaves the layer in place.
 
 The cut's files live in a directory of their own beside the planet,
@@ -898,11 +929,19 @@ every build button, the sample and the trial, and the build history.
 The developers' section (`frontend/src/components/admin/DumpsPanel.tsx`)
 groups the catalog's dumps by who publishes them (each descriptor's `source`),
 one table per publisher on one column grid. A row is a dump with what it holds
-and how its last build ended: *Verified*, *Failed* or *Cancelled*, when, the
+and how its last build ended: *Verified*, *Failed* or *Cancelled* (or
+*Built*, for a keeping build that brought a kept copy forward and read no file
+of the host's, § The OpenStreetMap layer), when, the
 dump's date — a day, or for the pageview files the month their counts cover
 (`datedBy`) — its size and lines, and what verified it (`sha1 matched`,
 `size matched`); a failed build's error sits under its row. The other builds
-among its last three (`recentBuilds`) open under the row. *Verify newest* queues
+among its last three (`recentBuilds`) open under the row. The row's build is
+the newest *verify* or *keep*, an update that brought the OpenStreetMap
+layer's current planet forward included; such updates are counted apart from
+the builds that read a file, as re-derives are, so three of them never push
+the last file build out. A keeper whose copy is brought forward past its dump
+(`keeps.currentTo`) is said to be *current to* its date rather than *built
+from the dump of* it. *Verify newest* queues
 a build of the counting consumer over the newest complete file and the row
 turns into its progress, polled every three seconds while the page is visible:
 *Waiting for the dump worker* while it is queued, then the worker's phase, its
