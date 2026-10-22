@@ -77,13 +77,13 @@ export const BROAD_WORSHIP_ROOTS: { qid: string; label: string }[] = [
  *   sitelinks), Prague's Old Jewish Cemetery (29), the Mount of Olives Jewish
  *   Cemetery (27), Sarajevo's Old Jewish Cemetery (23) and Powązki (23). A
  *   traveller visits all five, and not one of them to pray: the burial ground
- *   is not the synagogue beside it. Public Art & Monuments vetoes `cemetery`
+ *   is not the synagogue beside it. Public art vetoes `cemetery`
  *   for the same reason. The two classes are listed separately because they
  *   share no parent inside the worship tree.
  * - **a column in a square**. `Holy Trinity column` is under the tree and
  *   admitted the Holy Trinity Column in Olomouc (40) and Vienna's Pestsäule
- *   (22) — monuments a city raised after a plague, which is Public Art &
- *   Monuments' object and not a building anyone enters. (`plague column`,
+ *   (22) — monuments a city raised after a plague, which are Monuments &
+ *   memorials' object and not a building anyone enters. (`plague column`,
  *   Q26789694, which both rows also carry, is *not* under the tree and admits
  *   nothing on its own.)
  * - **a palace**. `palace of the Popes` is filed under `religious building`,
@@ -359,7 +359,7 @@ export const TYPE_OVERRIDES: Record<string, WorshipType> = {
  * places and offered to nobody, which is why that refusal names a missing kind
  * rather than a hand-over.
  *
- * `tomb` and `crypt` are on Public Art & Monuments' kill list, and that is not
+ * `tomb` and `crypt` are on the public-art rule's kill list, and that is not
  * a contradiction: a mausoleum is not a work in a square, and the same tomb
  * inside a cathedral is one of the things you came in to see.
  */

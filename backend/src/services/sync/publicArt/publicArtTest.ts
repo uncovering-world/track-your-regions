@@ -23,9 +23,11 @@ import {
   INDOOR_CLASSES,
   OUTDOOR_CLASSES,
   SITE_CLASSES,
-  MONUMENT_CLASSES,
+  OTHER_PLACE_CLASSES,
+  MEMORIAL_LIFTS,
   type PublicArtTrees,
 } from './classes.js';
+import type { KindRule, MonumentType, PublicArtType } from './kindRules.js';
 // The works-first kinds' exception for a lost work whose remains are on show (#872).
 import { REMAINS_ON_SHOW } from '../museum/worksCollector.js';
 
@@ -71,6 +73,10 @@ export interface PublicArtFacts {
    * Sibelius Monument, in a park, owned by a museum).
    */
   collections: ContainerFact[];
+  /** `P547`, whom or what the entity commemorates. */
+  commemorates: string[];
+  /** `P180`, what the entity depicts: a figure stands on it. */
+  depicts: string[];
   /** Whether `P625` is on this planet — Fallen Astronaut's is not. */
   onEarth: boolean;
   lat: number | null;
@@ -80,13 +86,12 @@ export interface PublicArtFacts {
 export type PublicArtResult =
   | {
     pass: true;
-    type: 'sculpture' | 'monument';
-    why: string;
+    type: PublicArtType | MonumentType;
     /**
-     * Whether an artwork class answered — the sculptural and fountain closures
-     * or a pinned structure, the classes that lift a building's veto. Stored
-     * with the row, so the catalogue check can read the rule's own answer
-     * rather than approximate closures it cannot hold.
+     * Whether the kind's classes answered a building's veto — an artwork
+     * class, and for Monuments & memorials a memorial too. Stored with the
+     * row, so the catalogue check can read the rule's own answer rather than
+     * approximate closures it cannot hold.
      */
     artwork: boolean;
   }
@@ -131,7 +136,7 @@ function named(classes: string[], of: Record<string, string>): string[] {
  * Sibelius Monument, which stands in a park — see `ownedElsewhere` for the
  * one case it is read.
  */
-function heldElsewhere(places: ContainerFact[], trees: PublicArtTrees, venues = true): HeldElsewhere | null {
+function heldElsewhere(places: ContainerFact[], trees: PublicArtTrees, noun: string, venues = true): HeldElsewhere | null {
   // The places from the one the reason names outward, nearest first: what a
   // works kind reads to find the venue it admits among them (ADR-0102).
   const from = (index: number): string[] => places.slice(index).map((c) => c.qid);
@@ -143,21 +148,21 @@ function heldElsewhere(places: ContainerFact[], trees: PublicArtTrees, venues = 
   // and is still asked about a room and a site.
   for (const [index, container] of venues ? places.entries() : []) {
     if (container.classes.some((c) => trees.museum.has(c))) {
-      return { reason: `inside ${container.label}: a work of a museum, not public art`, heldIn: from(index), venue: true };
+      return { reason: `inside ${container.label}: a work of a museum, not ${noun}`, heldIn: from(index), venue: true };
     }
     if (container.classes.some((c) => trees.worship.has(c))) {
-      return { reason: `inside ${container.label}: a work of a place of worship, not public art`, heldIn: from(index), venue: true };
+      return { reason: `inside ${container.label}: a work of a place of worship, not ${noun}`, heldIn: from(index), venue: true };
     }
   }
   for (const [index, container] of places.entries()) {
     if (container.classes.some((c) => INDOOR_CLASSES[c])) {
       const where = container.building ? `${container.label} (${container.building})` : container.label;
-      return { reason: `inside ${where}: a work indoors, not public art`, heldIn: from(index) };
+      return { reason: `inside ${where}: a work indoors, not ${noun}`, heldIn: from(index) };
     }
     const site = named(container.classes, SITE_CLASSES);
     if (site.length) {
       // A site owns its parts; no works kind holds a site, so nothing is handed over.
-      return { reason: `part of ${container.label}: ${site[0]}, not public art`, heldIn: [] };
+      return { reason: `part of ${container.label}: ${site[0]}, not ${noun}`, heldIn: [] };
     }
   }
   return null;
@@ -230,14 +235,14 @@ function placesAndOwners(
  * three of those an owner, and the fallback refuses exactly the two whose
  * owner is a museum or a basilica (#804).
  */
-function ownedElsewhere(owners: ContainerFact[], trees: PublicArtTrees): HeldElsewhere | null {
+function ownedElsewhere(owners: ContainerFact[], trees: PublicArtTrees, noun: string): HeldElsewhere | null {
   for (const owner of owners) {
     const how = owner.relation === 'part of' ? 'part of' : 'in the collection of';
     if (owner.classes.some((c) => trees.museum.has(c))) {
-      return { reason: `${how} ${owner.label}: a work of a museum, not public art`, heldIn: [owner.qid] };
+      return { reason: `${how} ${owner.label}: a work of a museum, not ${noun}`, heldIn: [owner.qid] };
     }
     if (owner.classes.some((c) => trees.worship.has(c))) {
-      return { reason: `${how} ${owner.label}: a work of a place of worship, not public art`, heldIn: [owner.qid] };
+      return { reason: `${how} ${owner.label}: a work of a place of worship, not ${noun}`, heldIn: [owner.qid] };
     }
   }
   return null;
@@ -248,15 +253,32 @@ function ownedElsewhere(owners: ContainerFact[], trees: PublicArtTrees): HeldEls
  * building and cemetery list, and the museum tree read from Wikidata. The
  * museum's veto is lifted by a commemorative class as well: a memorial typed
  * a museum is a memorial complex with a museum in it — Tsitsernakaberd, the
- * 9/11 Memorial — where a building typed a memorial is still the building,
- * and a cemetery typed a war memorial is Arlington (#803).
+ * 9/11 Memorial (#803). Where `memorialLifts`, Monuments & memorials', a
+ * memorial lifts a cemetery's veto and a bare building's too
+ * (`MEMORIAL_LIFTS`): Arlington is a cemetery a traveller visits as a
+ * memorial, and Montjuïc Castle, typed a memorial, is still a castle.
  */
-function vetoes(classes: string[], trees: PublicArtTrees): string[] {
+function vetoes(classes: string[], trees: PublicArtTrees, memorialLifts: boolean): string[] {
   const commemorative = classes.some((c) => trees.commemorative.has(c));
+  const lifted = (c: string) => memorialLifts && commemorative && Boolean(MEMORIAL_LIFTS[c]);
   return [
     ...(!commemorative && classes.some((c) => trees.museum.has(c)) ? ['a museum'] : []),
-    ...named(classes, VETO_CLASSES),
+    ...named(classes.filter((c) => !lifted(c)), VETO_CLASSES),
   ];
+}
+
+/**
+ * The place an entity is before it is a monument, or nothing
+ * (`OTHER_PLACE_CLASSES`): a lake, a road, a square, a house. Answered by a
+ * sculptural class, a commemorative form or a depiction — something on the
+ * square is a work — and by nothing a monument class says.
+ */
+function otherPlace(e: PublicArtFacts, trees: PublicArtTrees): string | null {
+  const place = named(e.classes, OTHER_PLACE_CLASSES)[0];
+  if (!place) return null;
+  const answered = e.depicts.length > 0
+    || e.classes.some((c) => trees.artwork.has(c) && !trees.fountain.has(c));
+  return answered ? null : place;
 }
 
 /**
@@ -264,13 +286,15 @@ function vetoes(classes: string[], trees: PublicArtTrees): string[] {
  * where it stands decides, and whose it is only when nothing says where it
  * stands.
  */
-function anothersWork(e: PublicArtFacts, trees: PublicArtTrees, offered?: ReadonlySet<string>): HeldElsewhere | null {
+function anothersWork(
+  e: PublicArtFacts, trees: PublicArtTrees, noun: string, offered?: ReadonlySet<string>,
+): HeldElsewhere | null {
   const { places, owners } = placesAndOwners(e.containers, trees);
-  const venue = heldElsewhere(places, trees);
+  const venue = heldElsewhere(places, trees, noun);
   // The room and the site are still asked of a work stranded outdoors: a
   // colossal statue in a museum's hall is the hall's.
-  if (venue && offered && strandedOutdoors(venue, e.classes, offered)) return heldElsewhere(places, trees, false);
-  return venue ?? (places.length ? null : ownedElsewhere([...owners, ...e.collections], trees));
+  if (venue && offered && strandedOutdoors(venue, e.classes, offered)) return heldElsewhere(places, trees, noun, false);
+  return venue ?? (places.length ? null : ownedElsewhere([...owners, ...e.collections], trees, noun));
 }
 
 /**
@@ -289,15 +313,20 @@ function strandedOutdoors(held: HeldElsewhere, classes: string[], offered: Reado
 }
 
 /**
+ * Whether an entity is of the kind `rule` names, and why not.
+ *
  * `offered` is the item ids of the places another kind offers a reader. Given, a
  * work stranded outdoors on a venue none of them is stays this kind's
  * (`strandedOutdoors`); omitted, every venue refusal stands.
  */
-export function publicArtVerdict(e: PublicArtFacts, trees: PublicArtTrees, offered?: ReadonlySet<string>): PublicArtResult {
+export function publicArtVerdict(
+  e: PublicArtFacts, trees: PublicArtTrees, rule: KindRule, offered?: ReadonlySet<string>,
+): PublicArtResult {
+  const not = `not ${rule.noun}`;
   // What it is, before whether it is ours: a kill class names the thing
   // better than "no public-art class" would, so it is asked first.
   if (e.classes.some((c) => trees.worship.has(c))) {
-    return { pass: false, reason: 'a place of worship, not public art' };
+    return { pass: false, reason: `a place of worship, ${not}` };
   }
   // Not the museum rule's `kill-list:` prefix: the review page translates
   // that one and explains it as curatorial departments and museum networks,
@@ -305,45 +334,49 @@ export function publicArtVerdict(e: PublicArtFacts, trees: PublicArtTrees, offer
   // the card as it is.
   const killed = named(e.classes, KILL_CLASSES);
   if (killed.length) {
-    return { pass: false, reason: `not public art: ${killed.join('; ')}` };
+    return { pass: false, reason: `${not}: ${killed.join('; ')}` };
   }
   // The works-first kinds' one exception by name holds here too: a destroyed
   // work whose remains are what a traveller stands in front of.
   if (!REMAINS_ON_SHOW[e.qid] && e.classes.some((c) => trees.lost.has(c))) {
-    return { pass: false, reason: 'not public art: lost or destroyed, nothing to stand in front of' };
+    return { pass: false, reason: `${not}: lost or destroyed, nothing to stand in front of` };
   }
 
-  if (!e.classes.some((c) => trees.admitting.has(c))) {
-    return { pass: false, reason: 'no public-art class' };
+  if (!rule.admits(e, trees)) {
+    return { pass: false, reason: rule.noClass };
   }
 
   if (!e.onEarth) {
     return { pass: false, reason: 'not on Earth: its coordinate (P625) is on another globe' };
   }
 
-  const another = anothersWork(e, trees, offered);
+  const place = otherPlace(e, trees);
+  if (place) {
+    return { pass: false, reason: `a ${place}, which no kind holds yet: ${not}` };
+  }
+
+  const another = anothersWork(e, trees, rule.noun, offered);
   if (another) {
     return another.heldIn.length
       ? { pass: false, reason: another.reason, heldIn: another.heldIn }
       : { pass: false, reason: another.reason };
   }
 
-  const artwork = e.classes.some((c) => trees.artwork.has(c));
-  if (!artwork) {
-    const vetoed = vetoes(e.classes, trees);
+  const answered = rule.answersVeto(e, trees);
+  if (!answered) {
+    const vetoed = vetoes(e.classes, trees, rule.memorialLifts);
     if (vetoed.length) {
-      return { pass: false, reason: `not an artwork, and typed: ${vetoed.join('; ')}` };
+      return { pass: false, reason: `${rule.unanswered}, and typed: ${vetoed.join('; ')}` };
     }
   }
+  // Answered by the kind: an artwork class, or a memorial that lifted every
+  // veto the place carries.
+  const artwork = answered || (rule.memorialLifts && named(e.classes, VETO_CLASSES).length > 0);
 
   // Number.isFinite, not truthiness: a monument on the equator has a coordinate of 0.
   if (!Number.isFinite(e.lat) || !Number.isFinite(e.lon)) {
     return { pass: false, reason: 'no coordinates of its own (P625)' };
   }
 
-  if (e.classes.some((c) => trees.sculptural.has(c))) {
-    return { pass: true, type: 'sculpture', why: 'sculptural class', artwork };
-  }
-  const structure = named(e.classes, MONUMENT_CLASSES)[0];
-  return { pass: true, type: 'monument', why: structure ?? 'monument class', artwork };
+  return { pass: true, type: rule.type(e, trees), artwork };
 }

@@ -210,6 +210,7 @@ function verdictOf(entry: ExpectationRow, matches: MatchRow[], nearby: NearbyRow
 /** The kinds whose line is in code: a monument enters on its own sitelinks, and so does a work. */
 const CODE_LINES: Readonly<Record<string, number>> = {
   'public-art': ENTER_SITELINKS,
+  'monuments-and-memorials': ENTER_SITELINKS,
   'notable-works': ICONIC_SITELINKS,
 };
 

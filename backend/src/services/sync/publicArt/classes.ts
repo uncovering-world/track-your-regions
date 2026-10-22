@@ -1,7 +1,7 @@
 /**
- * Which Wikidata classes make something public art, which make it something
- * else, and which are the heritage sense of "monument" that says nothing
- * either way.
+ * Which Wikidata classes make something public art or a monument, which make
+ * it something else, and which are the heritage sense of "monument" — which
+ * admits a monument and lifts no veto.
  *
  * Read off the real rows the first import admitted (205 on the dev database,
  * classes fetched on 2026-09-04) rather than off a label search, the way the
@@ -59,9 +59,11 @@ export const COMMEMORATIVE_ROOTS: Record<string, string> = {
  * flame and the 9/11 pools whether or not there is a museum below (#803). So
  * the commemorative classes lift the museum veto alone. Measured on the pool
  * of 2026-09-13: above the line, that admits Tsitsernakaberd, the 9/11
- * Memorial and the Victoria Memorial in Kolkata — and the Anne Frank House,
- * which Wikidata types `historic house museum, war memorial`, a house museum
- * left to a curator's rejection.
+ * Memorial and the Victoria Memorial in Kolkata. For Monuments & memorials
+ * they lift a cemetery's veto and a bare building's too (`MEMORIAL_LIFTS`):
+ * the Neue Wache is a guardhouse raised as a memorial, and Arlington is a
+ * cemetery a traveller visits as one. The Anne Frank House, which Wikidata types `historic house
+ * museum, war memorial`, is a house (`OTHER_PLACE_CLASSES`).
  */
 export const MEMORIAL_CLASSES: Record<string, string> = {
   Q5003624: 'memorial',
@@ -77,23 +79,38 @@ export const MEMORIAL_CLASSES: Record<string, string> = {
  * museum a monument (the Reina Sofía, the Bilbao Fine Arts Museum); a national
  * monument is a designation; a National Memorial of the United States is a
  * kind of protected area. None of these lifts a veto — not even the museum's.
+ *
+ * Monuments & memorials admits by the two monument senses: a row typed only
+ * that is the Tsar Bell or the Krakus Mound, something a traveller visits as a
+ * monument, once the place vetoes have refused the lake and the road. The
+ * National Memorial designation alone admits nothing: Federal Hall is a
+ * building with a museum, and the Jefferson Memorial, typed nothing else, is
+ * admitted by whom it commemorates (`P547`).
  */
-export const HERITAGE_SENSE_CLASSES: Record<string, string> = {
+export const HERITAGE_MONUMENT_CLASSES: Record<string, string> = {
   Q4989906: 'monument',
   Q893745: 'national monument',
+};
+
+export const HERITAGE_SENSE_CLASSES: Record<string, string> = {
+  ...HERITAGE_MONUMENT_CLASSES,
   Q1967454: 'National Memorial of the United States',
 };
 
 /**
- * Structures a traveller stands in front of, pinned because no closure the
- * run follows reaches them: they sit under `monument`, whose tree is not
- * walked. Each is an artwork for the veto rule — an obelisk inside a museum's
- * grounds is still an obelisk, which is how Monas in Jakarta (typed museum
- * too) stays. `cross` (Q40843) is labelled a geometrical figure, and it is
- * the class the Millennium Cross in Skopje and the Three Crosses in Vilnius
- * carry; a figure has no coordinates, so nothing else reaches the pool by it.
+ * The commemorative forms: structures a traveller stands in front of, raised
+ * to remember, pinned because no closure the run follows reaches them — they
+ * sit under `monument`, whose tree is not walked. Each is an artwork for the
+ * veto rule — an obelisk inside a museum's grounds is still an obelisk, which
+ * is how Monas in Jakarta (typed museum too) stays. `cross` (Q40843) is
+ * labelled a geometrical figure, and it is the class the Millennium Cross in
+ * Skopje and the Three Crosses in Vilnius carry; a figure has no coordinates,
+ * so nothing else reaches the pool by it. An equestrian statue is a monument
+ * to its rider by tradition — Genghis Khan at Tsonjin Boldog, Emperor William
+ * at the Deutsches Eck — where a statue may be anyone's. What Monuments &
+ * memorials admits, with the commemorative set and the heritage sense.
  */
-export const MONUMENT_CLASSES: Record<string, string> = {
+export const COMMEMORATIVE_FORMS: Record<string, string> = {
   Q143912: 'triumphal arch',
   Q12277: 'arch',
   Q170980: 'obelisk',
@@ -101,15 +118,77 @@ export const MONUMENT_CLASSES: Record<string, string> = {
   Q1112897: 'rostral column',
   Q60234534: 'spiral column',
   Q11741382: 'Holy Trinity column',
+  Q26789694: 'plague column',
   Q492255: 'tetrapylon',
   Q1753584: 'tropaion',
   Q178743: 'stele',
   Q22022298: 'rock relief',
+  Q815241: 'runestone',
+  Q40843: 'cross',
+  Q659396: 'equestrian statue',
+};
+
+/** The forms a Monuments & memorials type names, beside `memorial` and `monument`. */
+export const ARCH_CLASSES: Record<string, string> = {
+  Q143912: 'triumphal arch',
+  Q12277: 'arch',
+  Q492255: 'tetrapylon',
+};
+export const COLUMN_CLASSES: Record<string, string> = {
+  Q1930585: 'victory column',
+  Q1112897: 'rostral column',
+  Q60234534: 'spiral column',
+  Q11741382: 'Holy Trinity column',
+  Q26789694: 'plague column',
+};
+export const OBELISK_CLASSES: Record<string, string> = {
+  Q170980: 'obelisk',
+};
+
+/**
+ * Sculptural classes pinned by name, beside the sculpture, statue and
+ * fountain closures: what Public art admits. A sculpture group or a sculptural
+ * set is typed by neither closure; a mural and street art are painted, and a
+ * traveller walks to the Fraternal Kiss on the East Side Gallery for the same
+ * reason as to a statue.
+ */
+export const SCULPTURAL_CLASSES: Record<string, string> = {
   Q3476533: 'monumental sculpture',
   Q2293362: 'group of sculptures',
   Q107338575: 'sculptural set',
-  Q815241: 'runestone',
-  Q40843: 'cross',
+  Q219423: 'mural',
+  Q17516: 'street art',
+};
+
+/** What a Public art type `street-art` names. */
+export const STREET_ART_CLASSES: Record<string, string> = {
+  Q219423: 'mural',
+  Q17516: 'street art',
+};
+
+/**
+ * A place a monument class says nothing about: the row is the lake, the road,
+ * the square or the house, and a traveller visiting it is not standing in
+ * front of a monument (#1807). Wikidata types Sanabria Lake a monument, the
+ * Way of Saint James a monument, the Field of Mars a memorial and the Anne
+ * Frank House a war memorial; no kind holds a lake, a trail or a house museum
+ * yet. Refused unless a sculptural class, a commemorative form or a depiction
+ * answers it — the Mansu Hill Grand Monument is typed a square and depicts the
+ * two statues it is visited for, and Manneken Pis is a sculpture and a
+ * heritage site. A fountain does not: the Villa d'Este's fountains are the
+ * villa's garden.
+ */
+export const OTHER_PLACE_CLASSES: Record<string, string> = {
+  Q23397: 'lake',
+  Q34442: 'road',
+  Q194029: 'Roman road',
+  Q67179750: 'trail system',
+  Q3317612: 'historic grouping',
+  Q358: 'heritage site',
+  Q174782: 'square',
+  Q12781: "Giardino all'italiana",
+  Q3950: 'villa',
+  Q2087181: 'historic house museum',
 };
 
 // =============================================================================
@@ -149,14 +228,17 @@ export const WORSHIP_CLASSES: Record<string, string> = {
 
 /**
  * What the worship tree reaches that is not a building: a designation a
- * statue can carry. The first dry run refused Christ the Redeemer as a place
- * of worship because Wikidata's tree under "structure of worship" reaches
- * "pilgrimage site", which is what pilgrims make of a statue on a mountain.
- * Taken out of the tree by name, so the rest of it — every church, temple,
- * mosque and shrine class Wikidata knows — still refuses outright.
+ * statue can carry, and a column raised in a square. The first dry run
+ * refused Christ the Redeemer as a place of worship because Wikidata's tree
+ * under "structure of worship" reaches "pilgrimage site", which is what
+ * pilgrims make of a statue on a mountain; it refused the Holy Trinity Column
+ * in Olomouc because the tree reaches "Holy Trinity column". Taken out of the
+ * tree by name, so the rest of it — every church, temple, mosque and shrine
+ * class Wikidata knows — still refuses outright.
  */
 export const WORSHIP_DESIGNATIONS: Record<string, string> = {
   Q15135589: 'pilgrimage site',
+  Q11741382: 'Holy Trinity column',
 };
 
 /**
@@ -333,11 +415,29 @@ export const VETO_CLASSES: Record<string, string> = {
   Q327328: 'stoa',
   Q95652804: 'A-bombed building',
   Q109607: 'ruins',
-  // Not here: open places and landforms (park, square, avenue, garden, hill,
-  // mound). The first dry run refused the Mansu Hill Grand Monument as a
-  // square and Mamayev Kurgan as a hill — a monument Wikidata types with its
-  // site is a monument on a site, and nothing about a square says a traveller
-  // is not standing in front of something.
+  // Not here: parks and landforms (park, avenue, hill, mound). The first dry
+  // run refused Mamayev Kurgan as a hill — a monument Wikidata types with its
+  // site is a monument on a site. A square, a garden or a road is a place of
+  // its own unless something on it is a work (`OTHER_PLACE_CLASSES`).
+};
+
+/**
+ * The vetoes a memorial lifts for Monuments & memorials: a cemetery, and a
+ * building Wikidata names no more than a building. The Hiroshima Peace
+ * Memorial is an A-bombed building, the Neue Wache a guardhouse, Arlington and
+ * Piskaryovskoye cemeteries a traveller visits as memorials. A building of a
+ * kind of its own is still that building — Montjuïc Castle is typed a memorial
+ * and a castle, and is a castle.
+ */
+export const MEMORIAL_LIFTS: Record<string, string> = {
+  Q39614: 'cemetery',
+  Q1241568: 'war cemetery',
+  Q1516659: 'United States national cemetery',
+  Q2305029: 'Soviet war cemeteries in Germany',
+  Q41176: 'building',
+  Q811979: 'built structure',
+  Q2914427: 'guardhouse',
+  Q95652804: 'A-bombed building',
 };
 
 // =============================================================================
@@ -359,9 +459,11 @@ export const LOST_CLASSES: Record<string, string> = {
 };
 
 export interface PublicArtTrees {
-  /** The sculpture and statue closures: a row carrying one is typed `sculpture`. */
+  /** The sculpture and statue closures and the pinned sculptural classes. */
   sculptural: ReadonlySet<string>;
-  /** Everything that lifts a veto: sculptural, fountains, and the pinned structures. */
+  /** The fountain closure: a Public art row carrying one is typed `fountain`. */
+  fountain: ReadonlySet<string>;
+  /** Everything that lifts a veto: sculptural, fountains, and the commemorative forms. */
   artwork: ReadonlySet<string>;
   /**
    * The commemorative closures and the pinned memorial classes: what admits,
@@ -398,14 +500,16 @@ export function buildTrees(fetched: {
   worship: Iterable<string>;
   lost: Iterable<string>;
 }): PublicArtTrees {
-  const sculptural = new Set(fetched.sculptural);
-  const artwork = new Set([...sculptural, ...fetched.fountain, ...Object.keys(MONUMENT_CLASSES)]);
+  const sculptural = new Set([...fetched.sculptural, ...Object.keys(SCULPTURAL_CLASSES)]);
+  const fountain = new Set(fetched.fountain);
+  const artwork = new Set([...sculptural, ...fountain, ...Object.keys(COMMEMORATIVE_FORMS)]);
   const commemorative = new Set([...fetched.commemorative, ...Object.keys(MEMORIAL_CLASSES)]);
   const admitting = new Set([...artwork, ...commemorative, ...Object.keys(HERITAGE_SENSE_CLASSES)]);
   const worship = new Set([...fetched.worship, ...Object.keys(WORSHIP_CLASSES)]);
   for (const designation of Object.keys(WORSHIP_DESIGNATIONS)) worship.delete(designation);
   return {
     sculptural,
+    fountain,
     artwork,
     commemorative,
     admitting,

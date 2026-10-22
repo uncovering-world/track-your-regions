@@ -297,10 +297,12 @@ const REFUSED_UNLESS_ARTWORK = qidArray(Object.keys(VETO_CLASSES));
 /**
  * A public-art row admitted with a class the rule refuses.
  *
- * The public-art rule (`publicArtTest.ts`) reads what Wikidata types an entity
- * and turns down a place of worship, a camp, a stadium, an archaeological
- * site, a tomb, an organisation, a settlement; and a building, a cemetery or
- * a place unless an artwork class answers it. It runs on every candidate every
+ * The rule of Public art and of Monuments & memorials (`publicArtTest.ts`,
+ * one gather and two kinds, #1807) reads what Wikidata types an entity and
+ * turns down a place of worship, a camp, a stadium, an archaeological site, a
+ * tomb, an organisation, a settlement; and a building, a cemetery or a place
+ * unless the kind's classes answer it — an artwork class, and for Monuments &
+ * memorials a memorial too. It runs on every candidate every
  * run, and it stores what it read on the row (`metadata.wikidataClasses`).
  * This asks the stored rows the same question, for the rows the rule never
  * reached: the 205 created before it existed (eleven Spanish cathedrals among
@@ -310,14 +312,18 @@ const REFUSED_UNLESS_ARTWORK = qidArray(Object.keys(VETO_CLASSES));
  * since a wrong list is not what this can see; a row the list never met is.
  *
  * Three things the rule reads that a constant cannot: the museum tree, the
- * worship tree and the lost tree, walked from Wikidata each run. The worship
+ * worship tree and the lost tree, walked from Wikidata each run. The place
+ * classes (`OTHER_PLACE_CLASSES`) are not asked here: what answers them is a
+ * depiction as well as a class, which the row does not store. The worship
  * and lost floors are pinned (`WORSHIP_CLASSES`, `LOST_CLASSES`) and read
  * here, the lost one with the rule's one exception by name
  * (`REMAINS_ON_SHOW`); a museum class the veto would catch is
  * not, so a museum typed only by a class outside these lists is the rule's to
  * find, not this check's. Whether an artwork class answered a building's veto
  * is not approximated at all: the rule stores its own answer on the row
- * (`metadata.wikidataArtwork`), which is what a check that cannot hold the
+ * (`metadata.wikidataArtwork`, written by whichever of the two kinds' runs
+ * wrote the place last — both answer yes for a veto they admitted past),
+ * which is what a check that cannot hold the
  * closures reads — a holy well built into a building is in the fountain
  * closure, and no constant here could say so. A row written before that key
  * existed reads as no answer, which is the conservative reading.
@@ -332,9 +338,10 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
   title: 'A public-art row admitted with a class the rule refuses',
   kind: 'invariant',
   meaning:
-    'The row is admitted to Public Art & Monuments and carries a Wikidata class the source\'s '
-    + 'rule refuses — a place of worship, a camp, a stadium, an archaeological site, a tomb, an '
-    + 'organisation, a settlement, or a building or cemetery with no artwork class to answer it. '
+    'The row is admitted to Public art or to Monuments & memorials and carries a Wikidata class '
+    + 'the kinds\' rule refuses — a place of worship, a camp, a stadium, an archaeological site, '
+    + 'a tomb, an organisation, a settlement, or a building or cemetery that nothing of the kind '
+    + 'answers. '
     + 'The rule refuses such a row on every run it reaches, so a row here was admitted before '
     + 'the rule existed or by a path that did not run it: a live run of the source re-evaluates '
     + 'it, and a curator can confirm or override the refusal from the review page. A row a '
@@ -346,12 +353,16 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
                  WHERE c = ANY(${REFUSED_OUTRIGHT}) OR c = ANY(${REFUSED_UNLESS_ARTWORK})
                     OR (c = ANY(${REFUSED_AS_LOST}) AND NOT e.external_id = ANY(${REMAINS_SHOWN}))) AS classes
           FROM experiences e
-          -- The public-art source's own membership (#822): the classes were
-          -- written by its run and the admission is that source's rule.
-          JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.source_id = 3
-         WHERE m.admission = 'admitted'
+          -- A membership of the pass's sources (#822, ADR-0132): the classes
+          -- were written by their runs and the admission is their rule's. Once
+          -- per place, however many of the two kinds admit it.
+         WHERE EXISTS (
+                 SELECT 1 FROM ${MEMBERSHIPS} m
+                  WHERE m.experience_id = e.id AND m.source_id IN (3, 6)
+                    AND m.admission = 'admitted'
+                    AND NOT ${admissionPinnedSql('m')}
+               )
            AND e.is_manual = FALSE
-           AND NOT ${admissionPinnedSql('m')}
            -- A row the run never wrote classes onto is a row the rule never
            -- reached, and the question has no answer yet rather than a clean
            -- one: it is counted by its absence from every run, not here.
@@ -377,7 +388,7 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
     const label = (qid: string) =>
       WORSHIP_CLASSES[qid] ?? KILL_CLASSES[qid] ?? LOST_CLASSES[qid] ?? VETO_CLASSES[qid] ?? qid;
     const classes = text(row, 'classes').split(', ').filter(Boolean).map(label).join(', ');
-    return `${text(row, 'experience_name')}: admitted to Public Art & Monuments, typed `
+    return `${text(row, 'experience_name')}: admitted to Public art or Monuments & memorials, typed `
       + `${classes} (experience ${count(row, 'experience_id')})`;
   },
 };

@@ -53,7 +53,7 @@ describe('startSync for a source of a pass', () => {
   });
 
   it('answers 409 while another source of its pass is running', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 3, name: 'Public Art & Monuments', is_active: true }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 3, name: 'Public art', is_active: true }] });
     runningSyncs.set(6, { cancel: false, kind: 'sync', status: 'fetching' } as never);
     const res = makeRes();
 
@@ -67,7 +67,7 @@ describe('startSync for a source of a pass', () => {
   });
 
   it('merges the places every run of the pass created', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 3, name: 'Public Art & Monuments', is_active: true }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 3, name: 'Public art', is_active: true }] });
     vi.mocked(syncLandmarks).mockImplementationOnce(async () => {
       runningSyncs.set(3, { kind: 'sync', status: 'complete', dryRun: false, logId: 101 } as never);
       runningSyncs.set(6, { kind: 'sync', status: 'complete', dryRun: false, logId: 102 } as never);
@@ -82,7 +82,7 @@ describe('startSync for a source of a pass', () => {
   });
 
   it('merges a later run\'s arrivals even when its entry goes while an earlier merge runs', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 3, name: 'Public Art & Monuments', is_active: true }] });
+    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 3, name: 'Public art', is_active: true }] });
     vi.mocked(syncLandmarks).mockImplementationOnce(async () => {
       runningSyncs.set(3, { kind: 'sync', status: 'complete', dryRun: false, logId: 101 } as never);
       runningSyncs.set(6, { kind: 'sync', status: 'complete', dryRun: false, logId: 102 } as never);

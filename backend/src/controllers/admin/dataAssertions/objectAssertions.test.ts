@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import { heldFieldAnsweredSql, heldFieldRefusedSql } from '../../experience/heldDecisions.js';
 import { MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql } from '../../../db/membership.js';
 import {
-  KILL_CLASSES, VETO_CLASSES, WORSHIP_CLASSES, MONUMENT_CLASSES, FOUNTAIN_ROOT, LOST_CLASSES,
+  KILL_CLASSES, VETO_CLASSES, WORSHIP_CLASSES, COMMEMORATIVE_FORMS, SCULPTURAL_CLASSES, FOUNTAIN_ROOT, LOST_CLASSES,
 } from '../../../services/sync/publicArt/classes.js';
 import { readFileSync } from 'node:fs';
 import { repoFile } from '../../../testSupport/repoFile.js';
@@ -140,10 +140,12 @@ describe('an admitted public-art row typed as a building', () => {
   const assertion = byId('public-art-row-typed-a-building');
   const sql = collapse(assertion.sql);
 
-  it('asks only the admitted, source-written rows of the public-art source', () => {
-    // The membership the public-art source brought (#822): its classes and
-    // its admission are that source's, whatever else the place belongs to.
-    expect(sql).toContain('JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = 3');
+  it('asks only the admitted, source-written rows of the pass\'s two sources, once per place', () => {
+    // The memberships Public art and Monuments & memorials brought (#822,
+    // ADR-0132): their classes and their admission are those sources',
+    // whatever else the place belongs to, and a place both admit is one row.
+    expect(sql).toContain('WHERE EXISTS ( SELECT 1 FROM experience_kind_memberships m');
+    expect(sql).toContain('m.experience_id = e.id AND m.source_id IN (3, 6)');
     expect(sql).toContain("m.admission = 'admitted'");
     expect(sql).toContain('e.is_manual = FALSE');
     expect(assertion.kind).toBe('invariant');
@@ -181,7 +183,9 @@ describe('an admitted public-art row typed as a building', () => {
     expect(sql).toContain("NOT COALESCE((e.metadata->>'wikidataArtwork')::boolean, FALSE)");
     expect(sql).not.toContain("e.type IS DISTINCT FROM");
     expect(sql).not.toContain("e.type <>");
-    for (const qid of [...Object.keys(MONUMENT_CLASSES), FOUNTAIN_ROOT]) expect(sql).not.toContain(`'${qid}'`);
+    for (const qid of [...Object.keys(COMMEMORATIVE_FORMS), ...Object.keys(SCULPTURAL_CLASSES), FOUNTAIN_ROOT]) {
+      expect(sql).not.toContain(`'${qid}'`);
+    }
   });
 
   it('leaves alone a row whose admission a curator pinned', () => {
@@ -195,11 +199,11 @@ describe('an admitted public-art row typed as a building', () => {
     // labels the lists know them by, and an id no list knows stays an id.
     expect(assertion.describe({
       experience_id: 6301, experience_name: 'Segovia Cathedral', classes: 'Q56242215',
-    })).toBe('Segovia Cathedral: admitted to Public Art & Monuments, typed Catholic cathedral '
+    })).toBe('Segovia Cathedral: admitted to Public art or Monuments & memorials, typed Catholic cathedral '
       + '(experience 6301)');
     expect(assertion.describe({
       experience_id: 1477, experience_name: 'Aljafería', classes: 'Q16560, Q23413, Q999999',
-    })).toBe('Aljafería: admitted to Public Art & Monuments, typed palace, castle, Q999999 '
+    })).toBe('Aljafería: admitted to Public art or Monuments & memorials, typed palace, castle, Q999999 '
       + '(experience 1477)');
   });
 });
@@ -220,8 +224,8 @@ describe('a place that belongs to no kind', () => {
 
   it('names the source the row is keyed on, which is the kind it wants', () => {
     expect(assertion.describe({
-      experience_id: 12001, experience_name: 'Kartlis Deda', source_name: 'Public Art & Monuments',
-    })).toBe('Kartlis Deda: keyed on Public Art & Monuments and a member of no kind (experience 12001)');
+      experience_id: 12001, experience_name: 'Kartlis Deda', source_name: 'Public art',
+    })).toBe('Kartlis Deda: keyed on Public art and a member of no kind (experience 12001)');
   });
 });
 

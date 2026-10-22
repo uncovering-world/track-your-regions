@@ -25,7 +25,7 @@ const KINDS: KindRow[] = [
   kind({}),
   kind({ slug: 'world-heritage', name: 'World Heritage Sites', experience_kind_id: 1, enter_sitelinks: null }),
   kind({ slug: 'art-museums', name: 'Art Museums', experience_kind_id: 2, enter_sitelinks: null }),
-  kind({ slug: 'public-art', name: 'Public Art & Monuments', experience_kind_id: 3, enter_sitelinks: null }),
+  kind({ slug: 'public-art', name: 'Public art', experience_kind_id: 3, enter_sitelinks: null }),
   kind({ slug: 'notable-works', name: 'Notable works', form: 'work', experience_kind_id: null, in_venue: true, enter_sitelinks: null }),
   kind({ slug: 'markets', name: 'Markets', status: 'proposed', experience_kind_id: null, enter_sitelinks: null }),
   kind({ slug: 'festivals-and-events', name: 'Festivals & events', form: 'event', status: 'proposed', experience_kind_id: null, issue_number: 1300, enter_sitelinks: null }),

@@ -1,14 +1,16 @@
 /**
- * Landmark Sync Service — the Public Art & Monuments source.
+ * Landmark Sync Service — the Public art and the Monuments & memorials sources.
  *
- * Collects the public art the world knows, in stages (`publicArt/pipeline.ts`),
- * admits what the rule admits and refuses what it refuses with the reason on
- * the row (ADR-0024), keeps Wikidata's answers between runs (ADR-0030), and
- * writes each landmark as one experience with one point. No grouping, no
- * treasures — simpler than museums, and since #754 the same shape.
+ * Collects the outdoor art and monuments the world knows, in stages
+ * (`publicArt/pipeline.ts`), admits what each kind's rule admits and refuses
+ * what it refuses with the reason on the row (ADR-0024), keeps Wikidata's
+ * answers between runs (ADR-0030), and writes each landmark as one experience
+ * with one point. No grouping, no treasures — simpler than museums, and since
+ * #754 the same shape.
  *
  * The run is a pass (ADR-0132): the gather is read once for every source of
- * `PUBLIC_ART_PASS`, and each source decides from it and writes its own kind.
+ * `PUBLIC_ART_PASS`, and each source decides from it by its kind's rule
+ * (`publicArt/kindRules.ts`) and writes its own kind.
  */
 
 import { readsSubset } from './subset/reader.js';
@@ -20,8 +22,9 @@ import type { FetchResult, ProcessItemResult, SyncRunContext, SyncServiceConfig 
 import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
 import { classifyPublicArt, gatherPublicArt, type GatheredPublicArt } from './publicArt/pipeline.js';
+import { MONUMENTS_RULE, PUBLIC_ART_RULE, type KindRule } from './publicArt/kindRules.js';
 import { passMember, runSyncPass, sharedGather } from './syncPass.js';
-import { PUBLIC_ART_PASS } from './passes.js';
+import { PUBLIC_ART_PASS, passOf } from './passes.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
 import {
   delay,
@@ -43,6 +46,12 @@ import {
 
 const LANDMARK_SOURCE_ID = 3;
 const LOG_PREFIX = '[Landmark Sync]';
+
+/** The rule each source of the pass decides by. */
+const RULE_OF_SOURCE: Readonly<Record<number, KindRule>> = {
+  [LANDMARK_SOURCE_ID]: PUBLIC_ART_RULE,
+  6: MONUMENTS_RULE,
+};
 
 /**
  * A source's credits for its run's photographs, keyed by image URL, and what
@@ -239,12 +248,13 @@ async function fetchLandmarkItems(
   credits.fetched = new Map();
   credits.stored = await readStoredCredits(sourceId);
   const admitted = await admittedExternalIds(sourceId);
-  // The places another kind offers a reader, so a work outdoors on a venue no
-  // kind offers stays public art rather than being refused onto no card (#1444).
-  const offered = await placesOtherSourcesOffer(sourceId);
+  // The places a kind outside the pass offers a reader, so a work outdoors on a
+  // venue no such kind offers stays public art rather than being refused onto
+  // no card (#1444).
+  const offered = await placesOtherSourcesOffer(passOf(sourceId));
 
   const { gathered, sparql } = await gather(progress);
-  const { items, fetched, filtered } = classifyPublicArt(gathered, admitted, offered);
+  const { items, fetched, filtered } = classifyPublicArt(gathered, RULE_OF_SOURCE[sourceId], admitted, offered);
 
   disambiguateDuplicateNames(items);
 
@@ -268,7 +278,7 @@ async function fetchLandmarkItems(
   return { items, fetchedCount: fetched, filtered, unread };
 }
 
-/** One source of the pass: Public Art's rule, writing the kind `sourceId` fills. */
+/** One source of the pass: its kind's rule, writing the kind `sourceId` fills. */
 function publicArtSource(
   sourceId: number,
   gather: (progress: SyncProgress) => Promise<PublicArtGather>,
@@ -302,8 +312,8 @@ function publicArtSource(
 // =============================================================================
 
 /**
- * Main sync function — collects the public art the world knows from Wikidata,
- * once, for every source of its pass.
+ * Main sync function — collects the public art and the monuments the world
+ * knows from Wikidata, once, for every source of its pass.
  */
 export function syncLandmarks(
   triggeredBy: number | null,

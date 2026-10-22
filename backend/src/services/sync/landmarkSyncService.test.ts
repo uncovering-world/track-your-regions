@@ -75,7 +75,9 @@ import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { withCache } from './wikidataCache.js';
 import { classifyPublicArt, gatherPublicArt } from './publicArt/pipeline.js';
 import { admittedExternalIds } from './admission.js';
+import { placesOtherSourcesOffer } from './shownElsewhere.js';
 import { syncLandmarks } from './landmarkSyncService.js';
+import { MONUMENTS_RULE, PUBLIC_ART_RULE } from './publicArt/kindRules.js';
 import type { SyncProgress, WikidataLandmark } from './types.js';
 
 const mockedOrchestrate = orchestrateSync as unknown as ReturnType<typeof vi.fn>;
@@ -97,11 +99,12 @@ function landmark(over: Partial<WikidataLandmark> = {}): WikidataLandmark {
 
 const progress = () => ({ cancel: false, statusMessage: '' } as unknown as SyncProgress);
 
-async function configOf(options: { dryRun?: boolean; refreshCache?: boolean } = {}) {
+async function configOf(options: { dryRun?: boolean; refreshCache?: boolean } = {}, sourceId = 3) {
   await syncLandmarks(1, options);
-  // The newest run's: each run makes its own gather, and an earlier one's may
-  // have failed.
-  return mockedOrchestrate.mock.calls.at(-1)![0] as SyncServiceConfig<WikidataLandmark>;
+  // The newest pass's run of this source: each pass makes its own gather, and
+  // an earlier one's may have failed.
+  return mockedOrchestrate.mock.calls.map((call) => call[0] as SyncServiceConfig<WikidataLandmark>)
+    .filter((config) => config.sourceId === sourceId).at(-1)!;
 }
 
 beforeEach(() => {
@@ -135,13 +138,28 @@ describe('syncLandmarks', () => {
     expect(mockedAdmitted).toHaveBeenCalledWith(3);
     expect(mockedGather.mock.calls[0][1]).toEqual(new Set(['Q337179']));
     expect(mockedCollect.mock.calls[0][0]).toBe(GATHERED);
-    expect(mockedCollect.mock.calls[0][1]).toEqual(new Set(['Q337179']));
+    expect(mockedCollect.mock.calls[0][1]).toBe(PUBLIC_ART_RULE);
+    expect(mockedCollect.mock.calls[0][2]).toEqual(new Set(['Q337179']));
     // And the places another kind offers, so a work outdoors on a venue no
     // kind offers stays public art (#1444).
-    expect(mockedCollect.mock.calls[0][2]).toEqual(new Set(['Q19675']));
+    expect(mockedCollect.mock.calls[0][3]).toEqual(new Set(['Q19675']));
     expect(fetched.fetchedCount).toBe(5);
     expect(fetched.filtered).toEqual([refusal]);
     expect(fetched.items.map((i) => i.qid)).toEqual(['Q337179']);
+  });
+
+  it('runs Monuments & memorials beside Public art, each by its kind\'s rule, from one gather (#1807)', async () => {
+    const art = await configOf();
+    const monuments = await configOf({}, 6);
+    vi.clearAllMocks();
+    mockedAdmitted.mockResolvedValue(new Set());
+    mockedCollect.mockReturnValue({ items: [], fetched: 0, filtered: [] });
+    await monuments.fetchItems(progress(), []);
+    expect(mockedAdmitted).toHaveBeenCalledWith(6);
+    expect(mockedCollect.mock.calls[0][1]).toBe(MONUMENTS_RULE);
+    // A place its sibling offers is not another kind's (#1444).
+    expect(vi.mocked(placesOtherSourcesOffer)).toHaveBeenCalledWith([3, 6]);
+    expect(art.sourceId).toBe(3);
   });
 
   it('keeps its answers by default and asks the source afresh when told to', async () => {

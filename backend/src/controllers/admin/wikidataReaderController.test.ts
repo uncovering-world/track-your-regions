@@ -17,9 +17,9 @@ describe('setWikidataReader (#1459)', () => {
   });
 
   it('switches Public Art to the subset and answers what is stored', async () => {
-    db.query.mockResolvedValue({ rows: [{ id: 3, name: 'Public Art & Monuments', wikidata_reader: 'subset' }] });
+    db.query.mockResolvedValue({ rows: [{ id: 3, name: 'Public art', wikidata_reader: 'subset' }] });
     expect(await setWikidataReader({ params: { sourceId: 3 }, body: { reader: 'subset' }, caller: { id: 1 } as Express.User }))
-      .toEqual({ sourceId: 3, name: 'Public Art & Monuments', wikidataReader: 'subset' });
+      .toEqual({ sourceId: 3, name: 'Public art', wikidataReader: 'subset' });
   });
 
   it('lets any source go back to the live service, and 404s an unknown one', async () => {

@@ -8,6 +8,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { classifyPublicArt, gatherPublicArt, ENTER_SITELINKS, STAY_SITELINKS } from './pipeline.js';
+import { MONUMENTS_RULE, PUBLIC_ART_RULE, type KindRule } from './kindRules.js';
 import { belowLineReason } from '../sourceLine.js';
 import type { QueryRunner } from '../wikidataQueries.js';
 import type { CacheDescriptor } from '../wikidataCache.js';
@@ -104,8 +105,10 @@ const CATHEDRAL = 'Q56242215';
 const BASILICA = 'Q120560';
 
 /** The run as a pass of one source: the gather, then this source's classification. */
-async function collectPublicArt(run: QueryRunner, admitted: ReadonlySet<string>, offered?: ReadonlySet<string>) {
-  return classifyPublicArt(await gatherPublicArt(run, admitted), admitted, offered);
+async function collectPublicArt(
+  run: QueryRunner, admitted: ReadonlySet<string>, offered?: ReadonlySet<string>, rule: KindRule = PUBLIC_ART_RULE,
+) {
+  return classifyPublicArt(await gatherPublicArt(run, admitted), rule, admitted, offered);
 }
 
 describe('collectPublicArt', () => {
@@ -120,16 +123,19 @@ describe('collectPublicArt', () => {
           locations: ['Q12512'], creators: ['Michelangelo'] },
       ],
     };
-    const { items, filtered, fetched } = await collectPublicArt(doorTo(world), new Set());
+    const monuments = await collectPublicArt(doorTo(world), new Set(), undefined, MONUMENTS_RULE);
+    expect(monuments.items.map((i) => i.qid)).toEqual(['Q337179']);
+    expect(monuments.items[0]).toMatchObject({ type: 'monument', classes: [MONUMENT], creators: [], artwork: false });
+    expect(monuments.fetched).toBe(3);
 
-    expect(items.map((i) => i.qid)).toEqual(['Q337179']);
-    expect(items[0]).toMatchObject({ type: 'monument', classes: [MONUMENT], creators: [], artwork: false });
-    expect(fetched).toBe(3);
+    const { items, filtered } = await collectPublicArt(doorTo(world), new Set());
+    expect(items).toEqual([]);
     expect(filtered).toEqual([
       {
         externalId: 'Q235242', name: 'Pietà', reason: "inside St. Peter's Basilica: a work of a place of worship, not public art",
         heldIn: ['Q12512'],
       },
+      { externalId: 'Q337179', name: 'Freedom Monument', reason: 'no public-art class' },
       { externalId: 'Q1499912', name: 'Segovia Cathedral', reason: 'a place of worship, not public art' },
     ]);
   });
@@ -139,6 +145,8 @@ describe('collectPublicArt', () => {
       entities: [
         { qid: 'Q1', label: 'Stays', under: MONUMENT, sitelinks: STAY_SITELINKS + 1, classes: [MONUMENT] },
         { qid: 'Q3', label: 'Enters', under: MONUMENT, sitelinks: ENTER_SITELINKS, classes: [MONUMENT] },
+        { qid: 'Q4', label: 'A statue', under: SCULPTURE, sitelinks: ENTER_SITELINKS, classes: [SCULPTURE] },
+        { qid: 'Q5', label: 'Both', under: SCULPTURE, sitelinks: ENTER_SITELINKS, classes: [SCULPTURE, MONUMENT] },
       ],
     };
     let questions = 0;
@@ -146,9 +154,13 @@ describe('collectPublicArt', () => {
     const gathered = await gatherPublicArt({ ...door, sparql: (q, d) => { questions++; return door.sparql(q, d); } }, new Set(['Q1']));
     const asked = questions;
 
-    // Each source holds its own stay line: the one that admitted Q1 keeps it.
-    expect(classifyPublicArt(gathered, new Set(['Q1'])).items.map((i) => i.qid).sort()).toEqual(['Q1', 'Q3']);
-    expect(classifyPublicArt(gathered, new Set()).items.map((i) => i.qid)).toEqual(['Q3']);
+    // Each kind decides by its own rule, and each source holds its own stay
+    // line: the one that admitted Q1 keeps it.
+    const ids = (rule: KindRule, admitted: string[]) =>
+      classifyPublicArt(gathered, rule, new Set(admitted)).items.map((i) => i.qid).sort();
+    expect(ids(MONUMENTS_RULE, ['Q1'])).toEqual(['Q1', 'Q3', 'Q5']);
+    expect(ids(MONUMENTS_RULE, [])).toEqual(['Q3', 'Q5']);
+    expect(ids(PUBLIC_ART_RULE, [])).toEqual(['Q4', 'Q5']);
     expect(questions).toBe(asked);
   });
 
@@ -162,7 +174,7 @@ describe('collectPublicArt', () => {
         { qid: 'Q5', label: 'Never in', under: MONUMENT, sitelinks: STAY_SITELINKS - 1, classes: [MONUMENT] },
       ],
     };
-    const { items, filtered } = await collectPublicArt(doorTo(world), new Set(['Q1', 'Q4']));
+    const { items, filtered } = await collectPublicArt(doorTo(world), new Set(['Q1', 'Q4']), undefined, MONUMENTS_RULE);
 
     expect(items.map((i) => i.qid).sort()).toEqual(['Q1', 'Q3']);
     // An admitted row that fell below the stay line is refused by name, with
@@ -257,9 +269,10 @@ describe('collectPublicArt', () => {
         { qid: 'Q8', label: 'A bust', under: SCULPTURE, sitelinks: 30, classes: [SCULPTURE], parents: ['Q86452047'] },
       ],
     };
-    const { items, filtered } = await collectPublicArt(doorTo(world), new Set());
-    expect(items.map((i) => i.qid)).toEqual(['Q3695640']);
-    expect(filtered).toEqual([{
+    const monuments = await collectPublicArt(doorTo(world), new Set(), undefined, MONUMENTS_RULE);
+    expect(monuments.items.map((i) => i.qid)).toEqual(['Q3695640']);
+    const { filtered } = await collectPublicArt(doorTo(world), new Set());
+    expect(filtered.filter((f) => f.externalId === 'Q8')).toEqual([{
       externalId: 'Q8', name: 'A bust',
       reason: 'part of Pakistan Monument Museum: a work of a museum, not public art',
       heldIn: ['Q86452047'],
@@ -352,7 +365,7 @@ describe('collectPublicArt', () => {
         { qid: 'Q8', label: 'A lost pin', under: 'nobody', sitelinks: 40, classes: [MONUMENT], coord: '' },
       ],
     };
-    const { items, filtered } = await collectPublicArt(doorTo(world), new Set(['Q8']));
+    const { items, filtered } = await collectPublicArt(doorTo(world), new Set(['Q8']), undefined, MONUMENTS_RULE);
     expect(items).toEqual([]);
     expect(filtered).toEqual([{ externalId: 'Q8', name: 'A lost pin', reason: 'no coordinates of its own (P625)' }]);
   });
@@ -366,7 +379,7 @@ describe('collectPublicArt', () => {
         { qid: 'Q2736564', label: 'Fountain of Cybele', under: 'nobody', sitelinks: 14, classes: [MONUMENT] },
       ],
     };
-    const { items, filtered } = await collectPublicArt(doorTo(world), new Set(['Q2736564']));
+    const { items, filtered } = await collectPublicArt(doorTo(world), new Set(['Q2736564']), undefined, MONUMENTS_RULE);
     expect(items).toEqual([]);
     expect(filtered).toEqual([{
       externalId: 'Q2736564', name: 'Fountain of Cybele',

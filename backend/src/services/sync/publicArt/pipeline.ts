@@ -34,7 +34,9 @@ import {
 } from './classes.js';
 import { belowLineReason, lineStanding, type LinePair } from '../sourceLine.js';
 import { publicArtVerdict, type ContainerFact } from './publicArtTest.js';
+import type { KindRule } from './kindRules.js';
 import {
+  emptyFacts,
   fetchBroadPool,
   fetchClassPool,
   fetchEntitiesByIds,
@@ -334,8 +336,8 @@ export async function gatherPublicArt(
 }
 
 /**
- * Decide what of the gather is public art: the candidates that pass the rule
- * and clear the fame line, and every candidate the rule refused, with the
+ * Decide what of the gather is of the kind `rule` names: the candidates that
+ * pass it and clear the fame line, and every candidate it refused, with the
  * reason it gave.
  *
  * `admitted` is what the source holds as admitted before the run, so the
@@ -347,6 +349,7 @@ export async function gatherPublicArt(
  */
 export function classifyPublicArt(
   { trees, pool, facts, containers }: GatheredPublicArt,
+  rule: KindRule,
   admitted: ReadonlySet<string>,
   offered?: ReadonlySet<string>,
 ): CollectedPublicArt {
@@ -354,17 +357,18 @@ export function classifyPublicArt(
   const filtered: FilteredEntity[] = [];
   const candidates = [...pool.values()].sort((a, b) => b.sitelinks - a.sitelinks);
   for (const entity of candidates) {
-    const known = facts.get(entity.qid)
-      ?? { classes: [], locations: [], parents: [], collections: [], creators: [] };
+    const known = facts.get(entity.qid) ?? emptyFacts();
     const verdict = publicArtVerdict({
       qid: entity.qid,
       classes: known.classes,
       containers: containerFacts(known, containers),
       collections: collectionFacts(known, containers),
+      commemorates: known.commemorates,
+      depicts: known.depicts,
       onEarth: entity.onEarth,
       lat: entity.lat,
       lon: entity.lon,
-    }, trees, offered);
+    }, trees, rule, offered);
     if (!verdict.pass) {
       filtered.push({
         externalId: entity.qid, name: entity.label, reason: verdict.reason,
@@ -407,7 +411,7 @@ export function classifyPublicArt(
   }
 
   console.log(
-    `[Landmark Sync] Pool of ${pool.size}: ${items.length} admitted, ${filtered.length} refused, `
+    `[Landmark Sync] Pool of ${pool.size} for ${rule.noun}: ${items.length} admitted, ${filtered.length} refused, `
     + `${pool.size - items.length - filtered.length} below the line and never in`,
   );
   return { items, fetched: pool.size, filtered };
