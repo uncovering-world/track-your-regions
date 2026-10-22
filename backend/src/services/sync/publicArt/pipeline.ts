@@ -16,10 +16,8 @@ import { boundedClosure } from '../classClosure.js';
 // The works-first kinds' root for a lost or destroyed work, read here too (#872).
 import { LOST_WORK_ROOT } from '../museum/worksCollector.js';
 import {
-  chunk,
   fetchClassTree,
   fetchSubclasses,
-  unique,
   MUSEUM_ROOT,
   type QueryRunner,
 } from '../wikidataQueries.js';
@@ -35,17 +33,8 @@ import {
 import { belowLineReason, lineStanding, type LinePair } from '../sourceLine.js';
 import { publicArtVerdict, type ContainerFact } from './publicArtTest.js';
 import type { KindRule } from './kindRules.js';
-import {
-  emptyFacts,
-  fetchBroadPool,
-  fetchClassPool,
-  fetchEntitiesByIds,
-  fetchEntityFacts,
-  fetchContainerFacts,
-  type PoolEntity,
-  type EntityFacts,
-  type ContainerFacts,
-} from './queries.js';
+import { emptyFacts, type PoolEntity, type EntityFacts, type ContainerFacts } from './queries.js';
+import { CONTAINER_HOPS, gatherPlaces, shareOf, type PlaceKind } from '../places/gather.js';
 import type { FilteredEntity } from '../syncContract.js';
 import type { WikidataLandmark } from '../types.js';
 
@@ -81,17 +70,6 @@ const BROAD_ROOTS = [
   { qid: 'Q4989906', label: 'monument' },
   { qid: 'Q5003624', label: 'memorial' },
 ];
-
-const CLASS_BATCH = 25;
-const FACT_BATCH = 50;
-
-/**
- * How far up from a work its containers are followed: a room, its wing, the
- * museum. The Venus de Milo is located in Room 345 of the Sully Wing of the
- * Louvre, and only the third of those carries a museum class. The museum
- * import walks `P361` the same distance (`VENUE_HOPS`).
- */
-const CONTAINER_HOPS = 3;
 
 export interface CollectedPublicArt {
   items: WikidataLandmark[];
@@ -149,87 +127,6 @@ async function collectTrees(run: QueryRunner): Promise<PublicArtTrees> {
     worship,
     lost,
   });
-}
-
-/**
- * Every entity an admitting class names, at the pool's floor or above, once.
- *
- * The broad roots are asked in bands; every other admitting class — the
- * closures' children and the pinned structures — in batches, taken whole. An
- * entity two questions both offer is one entity: a memorial that is also a
- * cenotaph, a colossal statue that is also a sculpture.
- */
-async function collectPool(
-  run: QueryRunner, trees: PublicArtTrees, admitted: ReadonlySet<string>,
-): Promise<Map<string, PoolEntity>> {
-  const pool = new Map<string, PoolEntity>();
-  for (const root of BROAD_ROOTS) {
-    for (const entity of await fetchBroadPool(run, root)) pool.set(entity.qid, entity);
-  }
-
-  const broad = new Set(BROAD_ROOTS.map((r) => r.qid));
-  const narrow = [...trees.admitting].filter((c) => !broad.has(c));
-  const batches = chunk(narrow, CLASS_BATCH);
-  for (let i = 0; i < batches.length; i++) {
-    run.phase(`Fetching the narrow classes (batch ${i + 1}/${batches.length})...`);
-    await run.step();
-    for (const entity of await fetchClassPool(run, batches[i])) {
-      if (!pool.has(entity.qid)) pool.set(entity.qid, entity);
-    }
-  }
-
-  // The rows the source admits that no class question named — fallen below
-  // the pool floor, or retyped by Wikidata — are asked for by id, so that
-  // every admitted row gets the rule's own reason rather than the sweep's.
-  const missing = [...admitted].filter((qid) => !pool.has(qid));
-  const missingBatches = chunk(missing, FACT_BATCH);
-  for (let i = 0; i < missingBatches.length; i++) {
-    run.phase(`Asking after admitted rows the pool did not name (batch ${i + 1}/${missingBatches.length})...`);
-    await run.step();
-    for (const entity of await fetchEntitiesByIds(run, missingBatches[i])) pool.set(entity.qid, entity);
-  }
-  return pool;
-}
-
-async function collectFacts(
-  run: QueryRunner, qids: string[],
-): Promise<{ facts: Map<string, EntityFacts>; containers: Map<string, ContainerFacts> }> {
-  const facts = new Map<string, EntityFacts>();
-  const batches = chunk(qids, FACT_BATCH);
-  for (let i = 0; i < batches.length; i++) {
-    run.phase(`Asking what each candidate is (batch ${i + 1}/${batches.length})...`);
-    await run.step();
-    for (const [qid, entry] of await fetchEntityFacts(run.sparql, batches[i])) facts.set(qid, entry);
-  }
-
-  // What holds the candidates, then what holds that, up to CONTAINER_HOPS: each
-  // hop asks only about containers no earlier hop answered for.
-  const containers = new Map<string, ContainerFacts>();
-  let frontier = unique([...facts.values()].flatMap((f) => [...f.locations, ...f.parents]));
-  for (let hop = 1; hop <= CONTAINER_HOPS && frontier.length; hop++) {
-    const batches = chunk(frontier, FACT_BATCH);
-    for (let i = 0; i < batches.length; i++) {
-      run.phase(`Asking what holds them (hop ${hop}/${CONTAINER_HOPS}, batch ${i + 1}/${batches.length})...`);
-      await run.step();
-      for (const [qid, entry] of await fetchContainerFacts(run.sparql, batches[i])) containers.set(qid, entry);
-    }
-    frontier = unique(frontier.flatMap((qid) => containers.get(qid)?.parents ?? []))
-      .filter((qid) => !containers.has(qid));
-  }
-
-  // What owns the candidates: one hop and no walk, because ownership is not
-  // a place — the rule reads an owner only for a candidate nothing places,
-  // and asks only whether it is a museum or a church (#804). The same
-  // question the containers are asked, for the owners no hop reached.
-  const owners = unique([...facts.values()].flatMap((f) => f.collections))
-    .filter((qid) => !containers.has(qid));
-  const ownerBatches = chunk(owners, FACT_BATCH);
-  for (let i = 0; i < ownerBatches.length; i++) {
-    run.phase(`Asking what owns them (batch ${i + 1}/${ownerBatches.length})...`);
-    await run.step();
-    for (const [qid, entry] of await fetchContainerFacts(run.sparql, ownerBatches[i])) containers.set(qid, entry);
-  }
-  return { facts, containers };
 }
 
 /**
@@ -319,9 +216,24 @@ function collectionFacts(facts: EntityFacts, containers: Map<string, ContainerFa
 }
 
 /**
- * Gather the candidates of public art the world knows, and what each is.
+ * Public art and Monuments & memorials as the place gather reads them
+ * (`places/gather.ts`): the trees their rules read, and the classes whose
+ * instances are their candidates — the broad roots in bands, then every other
+ * class a kind admits. The two kinds share one declaration, since both rules
+ * read the same trees and each refuses what the other admits by name.
+ */
+export const PUBLIC_ART_KIND: PlaceKind<PublicArtTrees> = {
+  name: 'public art and monuments',
+  trees: collectTrees,
+  poolClasses: (trees) => ({ broad: BROAD_ROOTS, narrow: trees.admitting }),
+  readsContainers: true,
+};
+
+/**
+ * Gather the candidates of public art the world knows, and what each is,
+ * through a gather of this kind alone.
  *
- * `admitted` is every row the pass's sources hold as admitted before the run:
+ * `admitted` is every row the kind's sources hold as admitted before the run:
  * a row the class questions no longer name is asked for by id, so that each
  * kind's rule gives it its own reason rather than the sweep's.
  */
@@ -329,10 +241,7 @@ export async function gatherPublicArt(
   run: QueryRunner,
   admitted: ReadonlySet<string>,
 ): Promise<GatheredPublicArt> {
-  const trees = await collectTrees(run);
-  const pool = await collectPool(run, trees, admitted);
-  const { facts, containers } = await collectFacts(run, [...pool.keys()]);
-  return { trees, pool, facts, containers };
+  return shareOf(await gatherPlaces(run, [{ kind: PUBLIC_ART_KIND, admitted }]), PUBLIC_ART_KIND);
 }
 
 /**

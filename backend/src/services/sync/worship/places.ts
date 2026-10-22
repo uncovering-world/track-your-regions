@@ -1,32 +1,24 @@
 /**
  * Door one: a place of worship the world already knows by name.
  *
- * The public-art shape over the worship tree — a banded pool of what the
- * admitting classes name, the facts about each candidate, the rule, and then
- * the fame line — with one difference of its own: the line is not a constant
- * here but a number the source row states (`sourceLine.ts`), so a kind can be
- * widened from the admin panel rather than by a deploy.
+ * A classifier over the kind's share of the place gather (`places/gather.ts`,
+ * #1820): the rule over each candidate, and then the fame line — with one
+ * difference from public art's: the line is not a constant here but a number
+ * the source row states (`sourceLine.ts`), so a kind can be widened from the
+ * admin panel rather than by a deploy.
  *
  * Nothing here decides what a place of worship is: that is `worshipTest.ts`,
  * over the sets `classes.ts` composes. This file is the wiring.
  */
 
-import { chunk, type QueryRunner } from '../wikidataQueries.js';
-import {
-  fetchBroadPool,
-  fetchClassPool,
-  fetchEntitiesByIds,
-  fetchEntityFacts,
-  type EntityFacts,
-  type PoolEntity,
-} from '../publicArt/queries.js';
+import type { QueryRunner } from '../wikidataQueries.js';
+import type { PoolEntity } from '../publicArt/queries.js';
+import { gatherPlaces, shareOf, type KindShare, type PlaceKind } from '../places/gather.js';
 import { worshipVerdict } from './worshipTest.js';
+import { fetchWorshipTrees } from './queries.js';
 import { BROAD_WORSHIP_ROOTS, type WorshipTrees, type WorshipType } from './classes.js';
 import { belowLineReason, lineStanding, type SourceLine } from '../sourceLine.js';
 import type { FilteredEntity } from '../syncContract.js';
-
-const CLASS_BATCH = 25;
-const FACT_BATCH = 50;
 
 /** A place the rule admitted and the line let in, with what the run learned about it. */
 export interface PlaceCandidate {
@@ -54,69 +46,31 @@ export interface PlacesByFame {
 }
 
 /**
- * Every entity an admitting class names, at the pool's floor or above, once.
- *
- * The nine broad roots are asked in fame bands; every other class of the tree
- * in batches, taken whole. **The part classes are asked too**, though the rule
- * refuses every one of them: a bell tower Wikidata types nothing else is a row
- * a person looking at the run should see refused by name — the Leaning Tower,
+ * Places of worship as the place gather reads them (`places/gather.ts`): the
+ * worship tree and its type trees, and the classes whose instances are its
+ * candidates — the nine broad roots in fame bands, every other class of the
+ * tree whole. **The part classes are asked too**, though the rule refuses
+ * every one of them: a bell tower Wikidata types nothing else is a row a
+ * person looking at the run should see refused by name — the Leaning Tower,
  * the Giralda, St Mark's Campanile — rather than one that silently never
  * arrived. It is 22 rows at the pool's floor, measured on 2026-09-04.
- */
-async function collectPool(
-  run: QueryRunner,
-  trees: WorshipTrees,
-  admitted: ReadonlySet<string>,
-): Promise<Map<string, PoolEntity>> {
-  const pool = new Map<string, PoolEntity>();
-  for (const root of BROAD_WORSHIP_ROOTS) {
-    for (const entity of await fetchBroadPool(run, root)) pool.set(entity.qid, entity);
-  }
-
-  const broad = new Set(BROAD_WORSHIP_ROOTS.map((r) => r.qid));
-  const narrow = [...trees.worship, ...trees.parts].filter((c) => !broad.has(c));
-  const batches = chunk(narrow, CLASS_BATCH);
-  for (let i = 0; i < batches.length; i++) {
-    run.phase(`Fetching the narrow worship classes (batch ${i + 1}/${batches.length})...`);
-    await run.step();
-    for (const entity of await fetchClassPool(run, batches[i])) {
-      if (!pool.has(entity.qid)) pool.set(entity.qid, entity);
-    }
-  }
-
-  // The rows the source admits that no class question named — fallen below the
-  // pool floor, or retyped by Wikidata — are asked for by id, so that every
-  // admitted row gets a reason of its own rather than the sweep's silence.
-  const missing = [...admitted].filter((qid) => !pool.has(qid));
-  const missingBatches = chunk(missing, FACT_BATCH);
-  for (let i = 0; i < missingBatches.length; i++) {
-    run.phase(`Asking after admitted rows the pool did not name (batch ${i + 1}/${missingBatches.length})...`);
-    await run.step();
-    for (const entity of await fetchEntitiesByIds(run, missingBatches[i])) {
-      pool.set(entity.qid, entity);
-    }
-  }
-  return pool;
-}
-
-/**
- * What each candidate is: every `P31` it carries, in batches of 50.
  *
  * The rule reads a row's own classes and nothing else — a tower is a tower
- * whether a cathedral stands beside it or not (`WORSHIP_PART_CLASSES`) — so the
- * containers `fetchEntityFacts` also answers with are not read here.
+ * whether a cathedral stands beside it or not (`WORSHIP_PART_CLASSES`) — so no
+ * container is asked about.
  */
-async function collectFacts(run: QueryRunner, qids: string[]): Promise<Map<string, EntityFacts>> {
-  const facts = new Map<string, EntityFacts>();
-  const batches = chunk(qids, FACT_BATCH);
-  for (let i = 0; i < batches.length; i++) {
-    run.phase(`Asking what each candidate is (batch ${i + 1}/${batches.length})...`);
-    await run.step();
-    for (const [qid, row] of await fetchEntityFacts(run.sparql, batches[i])) {
-      facts.set(qid, row);
-    }
-  }
-  return facts;
+export const WORSHIP_KIND: PlaceKind<WorshipTrees> = {
+  name: 'places of worship',
+  trees: fetchWorshipTrees,
+  poolClasses: (trees) => ({ broad: BROAD_WORSHIP_ROOTS, narrow: [...trees.worship, ...trees.parts] }),
+  readsContainers: false,
+};
+
+/** The kind's share of a gather of this kind alone, for a run that is in no pass. */
+export async function gatherWorshipPlaces(
+  run: QueryRunner, admitted: ReadonlySet<string>,
+): Promise<KindShare<WorshipTrees>> {
+  return shareOf(await gatherPlaces(run, [{ kind: WORSHIP_KIND, admitted }]), WORSHIP_KIND);
 }
 
 /**
@@ -127,14 +81,11 @@ async function collectFacts(run: QueryRunner, qids: string[]): Promise<Map<strin
  * line has something to hold. Candidates are judged most famous first, which is
  * the order the refusals are reported in.
  */
-export async function collectPlacesByFame(
-  run: QueryRunner,
-  trees: WorshipTrees,
+export function classifyPlacesByFame(
+  { trees, pool, facts }: KindShare<WorshipTrees>,
   admitted: ReadonlySet<string>,
   line: SourceLine,
-): Promise<PlacesByFame> {
-  const pool = await collectPool(run, trees, admitted);
-  const facts = await collectFacts(run, [...pool.keys()]);
+): PlacesByFame {
   const classesOf = new Map([...facts].map(([qid, row]) => [qid, row.classes]));
 
   const places = new Map<string, PlaceCandidate>();
