@@ -64,8 +64,8 @@ export const ExperienceSource = z.strictObject({
   wikidataReader: z.enum(CHECK_VALUES.experience_sources.wikidata_reader)
     .describe('Which Wikidata the source\'s runs read: the live query service, or the local subset built from the entities dump (#1459, ADR-0105).'),
   subsetReady: z.boolean().describe('Whether every question this source asks has a twin in the local subset, so its runs may be switched to read it.'),
-  runsWith: z.array(z.number().int())
-    .describe('The other sources this one fills its kind with from one gather, in the order the pass runs them (ADR-0132); empty for a source that runs alone. Starting any of them starts them all.'),
+  pass: z.array(z.number().int())
+    .describe('The sources that fill their kinds from one gather with this one, itself included, in the order the pass runs them (ADR-0132); empty for a source that runs alone. Starting any of them starts them all, and the first one\'s Wikidata reader and cache are the ones the gather reads.'),
 }).describe('One active source, with its gate, its line and what it is holding.');
 export type ExperienceSource = z.infer<typeof ExperienceSource>;
 

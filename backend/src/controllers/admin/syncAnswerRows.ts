@@ -51,7 +51,7 @@ export function experienceSourceOf(
   row: SourceRow,
   extra: {
     waiting: WaitingCounts | null; caches: boolean; repairsPictures: boolean; findsComponentItems: boolean;
-    subsetReady: boolean; runsWith: number[];
+    subsetReady: boolean; pass: number[];
   },
 ): ExperienceSource {
   return {
@@ -74,7 +74,7 @@ export function experienceSourceOf(
     repairsPictures: extra.repairsPictures,
     findsComponentItems: extra.findsComponentItems,
     subsetReady: extra.subsetReady,
-    runsWith: extra.runsWith,
+    pass: extra.pass,
   };
 }
 
