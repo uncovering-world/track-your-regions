@@ -13,7 +13,7 @@ import type {
   ImportStarted, ImportStatus, InstancesSynced, MatchAccepted, MatchAcceptedRestRejected, MatchesAccepted,
   MatchReset, MatchStats, MatchTree, RematchCancelled, RematchStarted, RematchStatus, RemainingRejected, SuggestionRejected,
   TransferAccepted, TransferPreview,
-} from '../client.generated';
+} from '../adminClient.generated';
 import {
   getAdminWvImportGeoshapeByWikidataId, getAdminWvImportImportStatus,
   getAdminWvImportMatchesByWorldViewIdRematchStatus, getAdminWvImportMatchesByWorldViewIdStats,
@@ -29,10 +29,10 @@ import {
   postAdminWvImportMatchesByWorldViewIdSyncInstances, postAdminWvImportMatchesByWorldViewIdTransferPreview,
   type ImportTreeNode,
   type BaseLayerImportBody,
-} from '../client.generated';
+} from '../adminClient.generated';
 
 // What the migrated calls here answer is declared once, as a backend schema
-// (ADR-0066), and generated into `client.generated.ts`. Passed on from here, so a
+// (ADR-0066), and generated into `adminClient.generated.ts`. Passed on from here, so a
 // component imports a call's answer from the module of the call.
 export type {
   AIMatchOneResult, AssignedDivision, CoveringMatchResult, DbSearchResult, FoundSuggestion, GeocodeMatchResult,
@@ -40,7 +40,7 @@ export type {
   MatchAcceptedRestRejected, MatchesAccepted, MatchReset, MatchStats, MatchStatus, MatchSuggestion, MatchTree,
   MatchTreeNode, RematchCancelled, RematchStarted, RematchStatus, RemainingRejected, SuggestionConflict, SuggestionRejected,
   TransferAccepted, TransferPreview,
-} from '../client.generated';
+} from '../adminClient.generated';
 
 
 // =============================================================================

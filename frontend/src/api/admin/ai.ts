@@ -1,21 +1,21 @@
 import type {
   AISettings, AIUsageSummary, HierarchyReviewResult, LearnedRule, LearnedRules, PricingUpdated, ReviewSuggestion,
   ReviewSuggestionApplied, RuleReviewResult,
-} from '../client.generated';
+} from '../adminClient.generated';
 import {
   deleteAdminAiRulesById, getAdminAiRules, getAdminAiSettings, getAdminAiUsage, postAdminAiHierarchyReviewByWorldViewId,
   postAdminAiRules, postAdminAiRulesApplyReview, postAdminAiRulesReview, postAdminAiUpdatePricing,
   putAdminAiSettingsByKey,
-} from '../client.generated';
+} from '../adminClient.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
-// and generated into `client.generated.ts`. Passed on from here, so a component
+// and generated into `adminClient.generated.ts`. Passed on from here, so a component
 // imports a call's answer from the module of the call.
 export type {
   AIModelOption, AISettings, AISettingSaved, AIUsageByModelFeature, AIUsageSummary, HierarchyReviewAction,
   HierarchyReviewResult, LearnedRule, LearnedRuleDeleted, LearnedRules, PredefinedRule, PricingUpdated,
   ReviewSuggestion, ReviewSuggestionApplied, RuleReviewResult,
-} from '../client.generated';
+} from '../adminClient.generated';
 
 export async function getAISettings(): Promise<AISettings> {
   return getAdminAiSettings();

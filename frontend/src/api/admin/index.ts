@@ -7,9 +7,12 @@
 import type {
   AssignmentCancelled, AssignmentStarted, AssignmentStatus, ComponentItemSearchStarted, CurationActivity, CuratorActivity,
   CuratorAssignmentCreated, CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, WikidataReaderSet, PictureRepairStarted, PlacementCounts,
-  PublishWaitingResult, SourceLineSet, SourcesReordered, SyncCancelled, SyncChanges, SyncLogDetail, SyncLogs,
+  SourceLineSet, SourcesReordered, SyncCancelled, SyncChanges, SyncLogDetail, SyncLogs,
   SyncStarted, SyncStatus, UserSearchResults, WikidataCache, WikidataCacheCleared, WikidataCacheTtlSet,
-} from '../client.generated';
+} from '../adminClient.generated';
+// Publishing a source's waiting arrivals is a curator's call too, so it is not an admin operation.
+import type { PublishWaitingResult } from '../client.generated';
+import { postExperiencesSourcesBySourceIdPublishWaiting } from '../client.generated';
 import {
   deleteAdminCuratorsByAssignmentId, deleteAdminSyncSourcesBySourceIdCache, getAdminCurators,
   getAdminCurationActivity, getAdminCuratorsByUserIdActivity, getAdminExperiencesAssignRegionsStatus, getAdminExperiencesCountsByRegion,
@@ -18,24 +21,64 @@ import {
   getAdminSyncSourcesBySourceIdCache, getAdminSyncSourcesBySourceIdStatus, getAdminUsersSearch, postAdminCurators,
   postAdminExperiencesAssignRegions, postAdminExperiencesAssignRegionsCancel, postAdminSyncSourcesBySourceIdCancel,
   postAdminSyncSourcesBySourceIdFindComponentItems, postAdminSyncSourcesBySourceIdFixImages,
-  postAdminSyncSourcesBySourceIdStart, postExperiencesSourcesBySourceIdPublishWaiting, putAdminSyncSourcesBySourceIdCacheByKindTtl,
+  postAdminSyncSourcesBySourceIdStart, putAdminSyncSourcesBySourceIdCacheByKindTtl,
   putAdminSyncSourcesBySourceIdCurationGate, putAdminSyncSourcesBySourceIdWikidataReader, putAdminSyncSourcesBySourceIdLine, putAdminSyncSourcesReorder,
   type CreateCuratorAssignmentBody, type GetAdminCurationActivityParams, type GetAdminSyncLogsByLogIdChangesParams,
   type SourceLineBody,
-} from '../client.generated';
+} from '../adminClient.generated';
 
 // What every call here answers is declared once, as a backend schema (ADR-0066),
-// and generated into `client.generated.ts`. Passed on from here, so a component
+// and generated into `adminClient.generated.ts`, or `client.generated.ts` for
+// what the curator's operations share. Passed on from here, so a component
 // imports a call's answer from the module of the call.
 export type {
-  AssignmentCancelled, AssignmentStarted, AssignmentStatus, ChangedField, ComponentItemSearchStarted, CuratorActivity, CuratorActivityEntry,
-  CuratorAssignmentCreated, CuratorAssignmentRevoked, CuratorInfo, Curators, CuratorScope, CurationGateSet,
-  ExperienceSource, ExperienceSources, OperationProgressAnswer, OperationStepAnswer, PictureRepairStarted, PlacementCount, PlacementCounts,
-  PublishedWaitingObject, PublishWaitingResult, RefusedWaitingObject, SourceLineSet, SourcesReordered,
-  SyncCancelled, SyncChange, SyncChanges, SyncContentItem, SyncContentsDelta, SyncErrorDetail, SyncLastRun,
-  SyncLog, SyncLogDetail, SyncLogs, SyncStarted, SyncStatus, UserSearchResult, UserSearchResults, WaitingCounts,
-  WikidataCache, WikidataCacheCleared, WikidataCacheKind, WikidataCacheTtlSet,
+  ChangedField,
+  CuratorScope,
+  OperationProgressAnswer,
+  OperationStepAnswer,
+  PublishedWaitingObject,
+  PublishWaitingResult,
+  RefusedWaitingObject,
 } from '../client.generated';
+export type {
+  AssignmentCancelled,
+  AssignmentStarted,
+  AssignmentStatus,
+  ComponentItemSearchStarted,
+  CuratorActivity,
+  CuratorActivityEntry,
+  CuratorAssignmentCreated,
+  CuratorAssignmentRevoked,
+  CuratorInfo,
+  Curators,
+  CurationGateSet,
+  ExperienceSource,
+  ExperienceSources,
+  PictureRepairStarted,
+  PlacementCount,
+  PlacementCounts,
+  SourceLineSet,
+  SourcesReordered,
+  SyncCancelled,
+  SyncChange,
+  SyncChanges,
+  SyncContentItem,
+  SyncContentsDelta,
+  SyncErrorDetail,
+  SyncLastRun,
+  SyncLog,
+  SyncLogDetail,
+  SyncLogs,
+  SyncStarted,
+  SyncStatus,
+  UserSearchResult,
+  UserSearchResults,
+  WaitingCounts,
+  WikidataCache,
+  WikidataCacheCleared,
+  WikidataCacheKind,
+  WikidataCacheTtlSet,
+} from '../adminClient.generated';
 
 // =============================================================================
 // Types
@@ -48,7 +91,7 @@ export type {
  * sent for a one-door source would give it a line no run of its would read.
  * The shape is the document's.
  */
-export type { SourceLineBody } from '../client.generated';
+export type { SourceLineBody } from '../adminClient.generated';
 
 // =============================================================================
 // Sync API

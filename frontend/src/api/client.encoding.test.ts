@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   getDeleteAdminWvExtractCachesByNameUrl, getPutAdminAiSettingsByKeyUrl, getPutAdminSyncSourcesBySourceIdCacheByKindTtlUrl,
-} from './client.generated';
+} from './adminClient.generated';
 
 /**
  * A string path parameter is encoded into the path it is written into

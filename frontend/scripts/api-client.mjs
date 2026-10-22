@@ -2,8 +2,8 @@
 /**
  * Generate the web's API client from the OpenAPI document (ADR-0073).
  *
- *   node scripts/api-client.mjs           write src/api/client.generated.ts
- *   node scripts/api-client.mjs --check   exit 1 when the committed file is not what the document generates
+ *   node scripts/api-client.mjs           write src/api/client.generated.ts and adminClient.generated.ts
+ *   node scripts/api-client.mjs --check   exit 1 when a committed file is not what the document generates
  *
  * Orval renders one plain `fetch` function per operation, with its path and
  * query parameters, body and answer typed from the document, and a URL builder
@@ -11,8 +11,14 @@
  * place the token is handled. No TanStack Query hooks are generated:
  * `queryKeys.ts` owns the keys.
  *
+ * The admin operations (the `admin` tag) are generated into a module of their
+ * own, `adminClient.generated.ts`, which only the admin screens' modules
+ * import (`src/api/admin/`): Rollup keeps every export something imports in
+ * the chunk of the module that defines it, so in one module every admin
+ * endpoint would load on every visitor's page (#1850).
+ *
  * Orval writes the mutator's import relative to the file it generates, so the
- * check generates beside the committed file, under a scratch name, compares,
+ * check generates beside each committed file, under a scratch name, compares,
  * and removes it.
  */
 import { readFileSync, rmSync } from 'node:fs';
@@ -21,15 +27,18 @@ import { fileURLToPath } from 'node:url';
 import { generate } from 'orval';
 
 const frontend = join(dirname(fileURLToPath(import.meta.url)), '..');
-export const CLIENT = 'src/api/client.generated.ts';
-const SCRATCH = 'src/api/client.check.generated.ts';
+/** Each generated module: the file, its scratch name for the check, and the operations it holds. */
+export const CLIENTS = [
+  { file: 'src/api/client.generated.ts', scratch: 'src/api/client.check.generated.ts', filters: { mode: 'exclude', tags: ['admin'] } },
+  { file: 'src/api/adminClient.generated.ts', scratch: 'src/api/adminClient.check.generated.ts', filters: { mode: 'include', tags: ['admin'] } },
+];
 
 /** Orval logs a failed generation and resolves; this makes it fail the command. */
 const THROW = { throwOnError: true };
 
-function options(target) {
+function options(target, filters) {
   return {
-    input: { target: '../packages/shared/src/openapi.generated.json' },
+    input: { target: '../packages/shared/src/openapi.generated.json', filters },
     output: {
       target,
       mode: 'single',
@@ -48,23 +57,28 @@ function options(target) {
 
 async function main() {
   if (!process.argv.includes('--check')) {
-    await generate(options(CLIENT), frontend, THROW);
+    for (const client of CLIENTS) await generate(options(client.file, client.filters), frontend, THROW);
     return 0;
   }
-  // An interrupted check leaves its scratch file behind (.gitignore names it);
-  // it goes before a new one is written.
-  rmSync(join(frontend, SCRATCH), { force: true });
-  try {
-    await generate(options(SCRATCH), frontend, THROW);
-    const generated = readFileSync(join(frontend, SCRATCH), 'utf8');
-    let committed = '';
-    try { committed = readFileSync(join(frontend, CLIENT), 'utf8'); } catch { /* reported below */ }
-    if (generated === committed) return 0;
-    console.error(`${CLIENT} is not what the OpenAPI document generates: run \`npm --prefix frontend run api:client\` and commit the result.`);
-    return 1;
-  } finally {
-    rmSync(join(frontend, SCRATCH), { force: true });
+  let stale = 0;
+  for (const client of CLIENTS) {
+    // An interrupted check leaves its scratch file behind (.gitignore names it);
+    // it goes before a new one is written.
+    rmSync(join(frontend, client.scratch), { force: true });
+    try {
+      await generate(options(client.scratch, client.filters), frontend, THROW);
+      const generated = readFileSync(join(frontend, client.scratch), 'utf8');
+      let committed = '';
+      try { committed = readFileSync(join(frontend, client.file), 'utf8'); } catch { /* reported below */ }
+      if (generated !== committed) {
+        console.error(`${client.file} is not what the OpenAPI document generates: run \`npm --prefix frontend run api:client\` and commit the result.`);
+        stale += 1;
+      }
+    } finally {
+      rmSync(join(frontend, client.scratch), { force: true });
+    }
   }
+  return stale === 0 ? 0 : 1;
 }
 
 process.exit(await main());
