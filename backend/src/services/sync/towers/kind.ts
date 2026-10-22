@@ -14,9 +14,8 @@
 
 import type { FilteredEntity } from '../syncContract.js';
 import type { WikidataLandmark } from '../types.js';
-import { readershipYear, readWorks } from '../../dumps/readership/workReadership.js';
 import { shareOf, type GatheredPlaces, type KindShare, type PlaceKind } from '../places/gather.js';
-import type { PoolEntity } from '../publicArt/queries.js';
+import { placeLandmark, yearlyReaders } from '../places/candidates.js';
 import { fetchTowerTrees, TOWER_ROOTS, TOWER_TYPES, type TowerTrees } from './classes.js';
 import { towerVerdict } from './towerTest.js';
 
@@ -68,42 +67,14 @@ export function belowTowerLine(editions: number, readers: number | null, line: T
     + `${line.stayReaders.toLocaleString('en')} to stay)`;
 }
 
-/** A year's readers of each candidate, or null when no year can be read. */
-async function readersOf(qids: string[]): Promise<Map<string, number> | null> {
-  const year = await readershipYear();
-  if (!year) {
-    console.log('[Towers] No year of readership is folded with the redirects in place: no tower enters, and the admitted keep their place on editions');
-    return null;
-  }
-  return (await readWorks(year, qids)).views;
-}
-
-const landmarkOf = (entity: PoolEntity, classes: string[], type: (typeof TOWER_TYPES)[number]): WikidataLandmark => ({
-  qid: entity.qid,
-  label: entity.label,
-  description: entity.description,
-  lat: entity.lat!,
-  lon: entity.lon!,
-  imageUrl: entity.imageUrl,
-  itemPictures: entity.itemPictures,
-  creators: [],
-  year: entity.year,
-  sitelinks: entity.sitelinks,
-  countryLabel: entity.countryLabel,
-  type,
-  classes,
-  artwork: false,
-  articleUrl: entity.articleUrl,
-  website: entity.website,
-});
-
 /** Decide from the kind's share: the rule, then the line. Items come back most famous first. */
 export async function classifyTowers(
   { trees, pool, facts }: KindShare<TowerTrees>,
   admitted: ReadonlySet<string>,
   readers?: Map<string, number> | null,
 ): Promise<{ items: WikidataLandmark[]; fetched: number; filtered: FilteredEntity[] }> {
-  const read = readers === undefined ? await readersOf([...pool.keys()]) : readers;
+  const read = readers === undefined ? await yearlyReaders([...pool.keys()], '[Towers]') : readers;
+  if (read === null) console.log('[Towers] No tower enters, and the admitted keep their place on editions');
   const items: WikidataLandmark[] = [];
   const filtered: FilteredEntity[] = [];
   for (const entity of [...pool.values()].sort((a, b) => b.sitelinks - a.sitelinks)) {
@@ -120,7 +91,7 @@ export async function classifyTowers(
       filtered.push({ externalId: entity.qid, name: entity.label, reason: belowTowerLine(entity.sitelinks, readers), type: verdict.type });
       continue;
     }
-    items.push(landmarkOf(entity, classes, verdict.type));
+    items.push(placeLandmark(entity, classes, verdict.type));
   }
   console.log(`[Towers] Pool of ${pool.size}: ${items.length} admitted, ${filtered.length} refused`);
   return { items, fetched: pool.size, filtered };
