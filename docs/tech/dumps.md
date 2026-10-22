@@ -40,17 +40,28 @@ indexes onto its copy.
 | `pageviews-user` | `other/pageview_complete/monthly/<year>/<year-month>/pageviews-<yyyymm>-user.bz2` | the host's `Content-Length` and a clean end of the bzip2 stream — no checksum is published |
 | `wikipedia-redirects` | `enwiki/<date>/enwiki-<date>-redirect.sql.gz`, and its build reads `<wiki>/<date>/<wiki>-<date>-{redirect,page}.sql.gz` of every counted edition | the sha1 and size each edition's `dumpstatus.json` gives (`wikipediaTableFile`) |
 | `wikivoyage-usage` | `enwikivoyage/<date>/enwikivoyage-<date>-wbc_entity_usage.sql.gz`, and its build reads `<wiki>/<date>/<wiki>-<date>-{wbc_entity_usage,page}.sql.gz` of every Wikivoyage edition, English Wikivoyage's page table included | the sha1 and size each edition's `dumpstatus.json` gives its `wbcentityusagetable` job (`wikiRunFile`) |
+| `osm-planet` | `planet.openstreetmap.org/pbf/planet-<yymmdd>.osm.pbf`, the weekly planet named by its Monday | the md5 in `planet-<yymmdd>.osm.pbf.md5` beside it, and the host's `Content-Length` |
 
-Each descriptor's `resolve()` reads the host's own listing and answers the
-newest dated file that is **complete**, or nothing. It never reads a
+Each descriptor's `resolve()` reads the host's own listing (for the planet,
+the dated `.md5` files instead) and answers the newest dated file that is
+**complete**, or nothing. It never reads a
 `latest-` link: a `latest-` link can be repointed while a 100 GB download is
 in flight, and while a new Wikidata dump is being written
 `latest-all.json.gz` is a 38-byte stub. A dated directory whose checksum is
 not yet published is passed over for the one before it, up to six
 directories back.
 
-Every URL is built here from the fixed host (`WIKIMEDIA_DUMPS`) and a name
-the listing gave, and every such name passes `safeFileName` — one plain path
+The planet is found without a listing. The `robots.txt` of
+`planet.openstreetmap.org` keeps every agent but `wget` off its listings
+(ADR-0134), so `resolve()` asks for the `.md5` of the most recent Monday's
+file and of each Monday before it, up to six weeks back, and takes the first
+that the host serves (`md5Of`). A week whose planet is not out yet answers 404
+for its checksum, and is passed over; any other failure (a 429, a 5xx, a
+dropped connection, a checksum file that names no md5 for the file) ends the
+resolve rather than take an older planet.
+
+Every URL is built here from a fixed host (`WIKIMEDIA_DUMPS`, `OSM_PLANET`)
+and a name the listing gave or the catalog built from a date, and every such name passes `safeFileName` — one plain path
 segment — before it becomes part of a URL or a path. A request names a dump by
 key and nothing else.
 
@@ -93,6 +104,15 @@ once their work runs in worker threads. bzip2 runs as a child process,
 stream ended cleanly: Node has no bzip2 of its own, and the worker's image
 installs `bzip2` only, no parallel decoder (no `lbzip2` or `pbzip2`), so a gzip file is preferred
 wherever the host offers both.
+
+**A binary file is held, never read by lines.** A file whose `compression` is
+`none` (the planet's PBF) is read whole by a tool rather than line by line.
+`readDump` refuses it. `holdVerifiedCopy(file, options)` brings its local copy
+to full size, reads it once from disk through the checksum, verifies the
+checksum and the size, removes the older copy, and answers the copy's path. A
+copy that does not verify is deleted, as `readDump` deletes one. It needs
+`DUMPS_DIR`, since a tool cannot read the host's stream. A verify build of
+such a dump holds the copy and reports it as kept, with no line count.
 
 ## Stream or local copy
 
@@ -166,9 +186,17 @@ download into the local copy up to three. The worker runs one build at a
 time, so a second build waits as a queued row (§ A build), not on a
 connection.
 
+`planet.openstreetmap.org` redirects every file to the OpenStreetMap
+Foundation's S3 bucket, whose bandwidth the OSM wiki calls unlimited. It
+asks for HTTPS and no downloads through a web browser, and its `robots.txt`
+keeps every agent but `wget` off the listings, which the catalog never reads
+(§ The catalog). The same three connections, User-Agent and no-retry rule
+apply; the cap is counted against the host the URL names.
+
 What the files may be used for is the dump's own licence, and a table built
 from one carries it (ADR-0101): Wikidata's entities and the pageview counts
-are CC0; a table derived from the Wikipedia dumps is CC BY-SA and attributed.
+are CC0; a table derived from the Wikipedia dumps is CC BY-SA and attributed;
+the planet and anything cut from it are ODbL (ADR-0059, ADR-0134 decision 7).
 
 ## A build
 
