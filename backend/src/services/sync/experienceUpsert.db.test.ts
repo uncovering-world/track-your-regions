@@ -427,6 +427,49 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     }
   });
 
+  it('writes a type the kind has a word for over one it has none for, and asks about the rest (#1807)', async () => {
+    // A monument the split of Public Art & Monuments left typed `sculpture`:
+    // the vocabulary here is Archaeology's, and the stored type is outside it.
+    const created = await upsertExperienceRecord(site({}));
+    const held = (await pool.query<{ metadata: Record<string, unknown> }>(
+      'SELECT metadata FROM experiences WHERE id = $1', [created.experienceId],
+    )).rows[0].metadata;
+    const record = (type: string | null) => ({ ...site(held), type, typeVocabulary: ['site', 'museum'] });
+    await pool.query(
+      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW(), type = 'sculpture'
+        WHERE experience_id = $1 AND source_id = $2`,
+      [created.experienceId, archaeology],
+    );
+    const log = (await pool.query<{ id: number }>(
+      `INSERT INTO experience_sync_logs (source_id, status, started_at, is_dry_run)
+       VALUES ($1, 'running', NOW(), FALSE) RETURNING id`, [archaeology],
+    )).rows[0].id;
+    const state = async () => (await pool.query<{ type: string | null; pointer: number | null; state: string }>(
+      `SELECT m.type, m.pending_change_sync_log_id AS pointer, m.curation_state AS state
+         FROM experience_kind_memberships m WHERE m.experience_id = $1 AND m.source_id = $2`,
+      [created.experienceId, archaeology],
+    )).rows[0];
+    try {
+      // A record that proposes no type replaces none, whatever is stored.
+      const erased = await upsertExperienceRecord(record(null), { syncLogId: log });
+      expect(erased.changeSet.heldFields.map(f => f.field)).toEqual(['type']);
+      expect((await state()).type).toBe('sculpture');
+
+      const filed = await upsertExperienceRecord(record('site'), { syncLogId: log });
+      expect(filed.changeSet.heldFields).toEqual([]);
+      expect(filed.changeSet.changedFields.map(f => [f.field, f.passedTheGate])).toEqual([['type', 'type-outside-vocabulary']]);
+      expect(await state()).toEqual({ type: 'site', pointer: null, state: 'verified' });
+
+      const retyped = await upsertExperienceRecord(record('museum'), { syncLogId: log });
+      expect(retyped.changeSet.heldFields.map(f => f.field)).toEqual(['type']);
+      expect(await state()).toEqual({ type: 'site', pointer: log, state: 'verified' });
+    } finally {
+      await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
+      await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
+      await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [log]);
+    }
+  });
+
   it('asks about a credit that changed its licence, and one beside another picture', async () => {
     const created = await upsertExperienceRecord(site({ imageCredit: OLD_CREDIT }));
     await pool.query(

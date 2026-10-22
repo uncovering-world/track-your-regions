@@ -675,8 +675,8 @@ describe('the keys a run computes about its own pass go past both guards', () =>
     // membership's work, the site's extent and the place the lock found, which
     // are this statement's own, and the run's view of the place with its
     // picture's credit (#1246), and the items another id resolves to (#1248).
-    // The last is the metadata keys the claims hold (`claimedMetadataKeys`).
-    expect(params).toHaveLength(30);
+    // Then the claims' metadata keys, and last the kind's words (`typeVocabulary`, #1807).
+    expect(params).toHaveLength(31);
     expect(sql).not.toContain("'artworkCount'");
   });
 
@@ -806,7 +806,7 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     // claimed there, and the place carries none.
     expect(assigned.has('type')).toBe(false);
     const typeArm = assignmentsIn(membershipSetListOf(upsert()[0])).get('type');
-    expect(typeArm).toMatch(/^CASE WHEN experience_kind_memberships\.curated_fields \? 'type' OR/);
+    expect(typeArm).toMatch(/^CASE WHEN experience_kind_memberships\.curated_fields \? 'type' THEN experience_kind_memberships\.type/);
     expect(typeArm).toContain(HOLD);
     expect(typeArm).toContain('THEN experience_kind_memberships.type ELSE EXCLUDED.type END');
   });
