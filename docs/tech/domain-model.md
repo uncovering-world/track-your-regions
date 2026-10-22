@@ -101,7 +101,7 @@ For an overview of Domain-Driven Design (DDD) and key terms used in this documen
 ### ExperienceKind
 
 - **Description**: What a traveller browses by — World Heritage Sites, Art Museums,
-  Public art, Places of worship, Archaeology, Monuments & memorials — a sibling of the
+  Public art, Places of worship, Archaeology, Monuments & memorials, Towers — a sibling of the
   others, never a parent
   (ADR-0045 decision 1).
   Seeded under the ids of the sources that fill them, so every reader keyed on ids

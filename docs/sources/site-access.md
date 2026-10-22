@@ -75,6 +75,7 @@ are under [`sights/`](sights/), where a source the surveys counted has its terms
 | `www.gob.mx` | Gobierno de México | open | [silent on automated reading](https://www.gob.mx/terminos) | allowed | — | 2026-10-02 |
 | `www.gob.pe` | Estado Peruano (gob.pe) | open | no terms page linked | allowed | — | 2026-10-02 |
 | `goturkiye.com` | Türkiye Tourism Promotion and Development Agency (TGA) | allows Anthropic agents by name | no terms page linked | refused | answered a 403 challenge page to the fetch tool | 2026-10-02 |
+| `www.great-towers.com` | World Federation of Great Towers | some paths closed | [silent on automated reading](https://www.great-towers.com/privacy-policy) | allowed | closed paths not read | 2026-10-22 |
 | `guia.melhoresdestinos.com.br` | Melhores Destinos | open | no terms page linked | allowed | — | 2026-10-02 |
 | `www.guiarepsol.com` | Repsol (Guía Repsol) | open | [silent on automated reading](https://www.guiarepsol.com/es/condiciones-de-servicio/) | allowed | — | 2026-10-02 |
 | `guias-viajar.com` | Guías Viajar S.L. | open | [silent on automated reading](https://guias-viajar.com/aviso-legal-politica-cookies/) | allowed | — | 2026-10-02 |
