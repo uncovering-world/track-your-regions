@@ -12,7 +12,7 @@ Where the schema is a third statement of a rule (a `CHECK` list, an enum), the s
 
 ## The generated files
 
-`src/openapi.generated.json`, exported as `@tyr/shared/openapi`, is the API's OpenAPI 3.1 document, the contract every client is generated from: the web's (`frontend/src/api/client.generated.ts`, ADR-0073) and a native one. `npm --prefix backend run api:openapi` renders it from the route declarations and the response schemas in `backend/src/api/responses/` (ADR-0072), and `backend/src/api/openApi.test.ts` fails while it lags them. `npm run lint:openapi` lints it with the rules in `redocly.yaml`. It is not written by hand: to change a response shape, change its schema. No module imports it.
+`src/openapi.generated.json`, exported as `@tyr/shared/openapi`, is the API's OpenAPI 3.1 document, the contract every client is generated from: the web's (`frontend/src/api/client.generated.ts` and, for the `admin` operations, `adminClient.generated.ts`, ADR-0073) and a native one. `npm --prefix backend run api:openapi` renders it from the route declarations and the response schemas in `backend/src/api/responses/` (ADR-0072), and `backend/src/api/openApi.test.ts` fails while it lags them. `npm run lint:openapi` lints it with the rules in `redocly.yaml`. It is not written by hand: to change a response shape, change its schema. No module imports it.
 
 ## How it is consumed
 
