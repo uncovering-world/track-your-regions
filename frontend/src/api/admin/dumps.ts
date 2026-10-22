@@ -6,13 +6,13 @@
  * brings what is kept forward by itself (#1437).
  */
 
-import type { DumpBuildCancelled, DumpBuildStarted, Dumps, DumpSchedule } from '../client.generated';
+import type { DumpBuildCancelled, DumpBuildStarted, Dumps, DumpSchedule } from '../adminClient.generated';
 import {
   getAdminDumps, postAdminDumpsByDumpBuild, postAdminDumpsByDumpCancel, postAdminDumpsByDumpKeep, postAdminDumpsByDumpRederive,
   postAdminDumpsByDumpSample, postAdminDumpsByDumpTrial, putAdminDumpsByDumpSchedule,
-} from '../client.generated';
+} from '../adminClient.generated';
 
-export type { DumpBuild, DumpBuildProgress, Dumps, DumpSchedule, DumpsDumpsItem, DumpsDumpsItemKey } from '../client.generated';
+export type { DumpBuild, DumpBuildProgress, Dumps, DumpSchedule, DumpsDumpsItem, DumpsDumpsItemKey } from '../adminClient.generated';
 
 export async function getDumps(): Promise<Dumps> {
   return getAdminDumps();

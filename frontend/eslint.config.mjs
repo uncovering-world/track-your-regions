@@ -42,6 +42,14 @@ const SCREEN_TEXT_SELECTORS = [
   `TemplateElement[value.raw=/${RECORD}/]`,
 ];
 
+// The icon package's index loads every one of its thousands of icons:
+// the bundle tree-shakes it, but each spec that reaches the import pays
+// for the whole package, seconds a file (#1377). One path per icon.
+const ICONS_INDEX = {
+  name: '@mui/icons-material',
+  message: "Import each icon by its path ('@mui/icons-material/Delete'), never the package index (#1377).",
+};
+
 export default [
   {
     // Orval's output (ADR-0073) is generated, and api:client holds it to the document.
@@ -110,13 +118,15 @@ export default [
       // raw-line cap would tax exactly those. The guide states this number
       // and names this entry, so a change here is a change there too (#530).
       'max-lines': ['error', { max: 800, skipBlankLines: true, skipComments: true }],
-      // The icon package's index loads every one of its thousands of icons:
-      // the bundle tree-shakes it, but each spec that reaches the import pays
-      // for the whole package, seconds a file (#1377). One path per icon.
+      // One path per icon (ICONS_INDEX). The admin operations' generated
+      // module loads with the admin screens (#1850): imported from anywhere
+      // else, every admin endpoint is back in the chunk every visitor's page
+      // loads at startup. Allowed below for src/api/admin/ alone.
       'no-restricted-imports': ['error', {
-        paths: [{
-          name: '@mui/icons-material',
-          message: "Import each icon by its path ('@mui/icons-material/Delete'), never the package index (#1377).",
+        paths: [ICONS_INDEX],
+        patterns: [{
+          group: ['**/adminClient.generated'],
+          message: 'Only src/api/admin/ imports the admin client (#1850): call the admin module that wraps the operation.',
         }],
       }],
       // A TanStack Query key is built by the factory in src/api/queryKeys.ts
@@ -158,6 +168,14 @@ export default [
       react: {
         version: 'detect',
       },
+    },
+  },
+  // The admin screens' API modules, and the spec that pins how the client
+  // encodes a path, which reads admin operations.
+  {
+    files: ['src/api/admin/**/*.ts', 'src/api/client.encoding.test.ts'],
+    rules: {
+      'no-restricted-imports': ['error', { paths: [ICONS_INDEX] }],
     },
   },
   // The factory itself, and the specs that pin the arrays it has to produce.

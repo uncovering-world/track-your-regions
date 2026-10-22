@@ -8,7 +8,7 @@
 
 import type {
   ClusterRegionSuggestions, ColorMatchEvent, ColorMatchResult, MapshapeMatchResult,
-} from '../client.generated';
+} from '../adminClient.generated';
 import { API_URL, ensureFreshToken } from '../fetchUtils';
 import {
   postAdminWvImportClusterReviewByReviewId, postAdminWvImportIcpAdjustmentByReviewId,
@@ -22,11 +22,11 @@ import {
   getGetAdminWvImportClusterPreviewByReviewIdUrl,
   getGetAdminWvImportMatchesByWorldViewIdColorMatchStreamUrl,
   getGetAdminWvImportWaterCropByReviewIdByComponentIdBySubClusterUrl,
-} from '../client.generated';
+} from '../adminClient.generated';
 
 // What the calls here answer, and every event of the colour-match stream, is
 // declared once, as a backend schema (ADR-0066), and generated into
-// `client.generated.ts`. Passed on from here, so a component imports a call's
+// `adminClient.generated.ts`. Passed on from here, so a component imports a call's
 // answer from the module of the call.
 export type {
   AdjacencyEdge, BorderPath, ChildRegionRef, ClusterGeoInfo, ClusterRegionMatch, ClusterRegionSuggestions,
@@ -35,7 +35,7 @@ export type {
   IcpAdjustmentOffered, MapshapeDivision, MapshapeGroup, MapshapeMatchResult, MapshapePreviewFeature,
   MapshapesFound, MapshapesNotFound, NamedDivision, ReviewAnswered, WaterComponent, WaterReviewRequested,
   WikivoyageShapeFeature,
-} from '../client.generated';
+} from '../adminClient.generated';
 
 
 // =============================================================================

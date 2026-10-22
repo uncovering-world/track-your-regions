@@ -130,3 +130,4 @@ ds-bundle/
 # The api:client check's scratch output (frontend/scripts/api-client.mjs), left behind
 # only when a check is interrupted.
 frontend/src/api/client.check.generated.ts
+frontend/src/api/adminClient.check.generated.ts

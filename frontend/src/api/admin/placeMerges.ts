@@ -3,12 +3,12 @@
  * decision 2, ADR-0086).
  */
 
-import type { EqualItemMerges } from '../client.generated';
-import { postAdminPlacesMergeEqualItems } from '../client.generated';
+import type { EqualItemMerges } from '../adminClient.generated';
+import { postAdminPlacesMergeEqualItems } from '../adminClient.generated';
 
 // The answer is declared once, as a backend schema (ADR-0066), and generated
-// into `client.generated.ts`; passed on from the module of the call.
-export type { EqualItemMerges } from '../client.generated';
+// into `adminClient.generated.ts`; passed on from the module of the call.
+export type { EqualItemMerges } from '../adminClient.generated';
 
 /**
  * Merge every place that shares a Wikidata item with another into one place:
