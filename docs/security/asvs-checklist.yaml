@@ -38,7 +38,7 @@ chapters:
       desc: "OS command injection protection"
       level: 1
       status: pass
-      notes: "No spawn/subprocess calls with user input on the Node side. cv-python source verified free of subprocess.* calls (audit 2026-05-10)."
+      notes: "No spawn/subprocess calls with user input on the Node side: the dump builds' bzip2, osmium and osm2pgsql run by absolute path with argument lists and no shell, from fixed names and the worker's own files (docs/security/SECURITY.md, public dump builds). cv-python source verified free of subprocess.* calls (audit 2026-05-10)."
     V1.2.6:
       desc: "SPARQL/external query injection protection"
       level: 1

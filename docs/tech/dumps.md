@@ -748,6 +748,69 @@ fails its check, or a cancel, drops the copy. Both tables are `UNLOGGED`, so a
 crash empties them and the panel asks for a build (`latestUsage` answers
 none). There is no trial build.
 
+## The OpenStreetMap layer
+
+Code: `backend/src/services/dumps/osm/`. A keeping build of `osm-planet`
+(`buildLayer`, `layerBuild.ts`) cuts the objects of the planet the
+catalogue asks about into `osm_objects`, with every tag and their full
+geometry (ADR-0134). It runs in the dump worker, whose image carries osmium
+and osm2pgsql (`tools.ts`: each runs as a child process with its arguments as
+a list, by its absolute path, killed on a cancel). The database password
+reaches osm2pgsql through libpq's environment (`databaseEnv`), never its
+command line.
+
+1. **The planet** is held as a verified local copy (`holdVerifiedCopy`,
+   § Reading and verifying), so the build needs `DUMPS_DIR`. A build may start
+   from the copy already on disk (`fromCopy`).
+2. **The selection** is `LAYER_SELECTION` (`layerSelection.ts`), written as an
+   `osmium tags-filter` expression file: an object with `wikidata`,
+   `wikipedia`, `historic`, `heritage`, `archaeological_site`, `ruins`,
+   `tourism`, `man_made` or `place`, `amenity=place_of_worship`, or a protected
+   `boundary` (`protected_area`, `national_park`). An address selects
+   nothing on its own; a kept object keeps its `addr:*` tags. `osmium
+   tags-filter` also passes the nodes a kept way is drawn from and the members
+   of a kept relation.
+3. **The objects the catalogue names** are kept whatever their tags
+   (`pinnedObjects`): the `object` and `extentFrom` of every place's
+   `metadata.osm`, cut from the planet with `osmium getid -r` (with what they
+   are drawn from) and merged into the cut. A cached OSM answer names nothing
+   beyond the selection, since it was asked by a `wikidata` tag or by the dig
+   tags. A named object may since have been deleted from OSM or redrawn under
+   another id: `osmium getid --verbose-ids` exits 1 and says so, and the build
+   goes on, counting them in its record (`pinned_gone`) and naming up to 20 of
+   them in its notes (`goneObjects`). An exit 1 that does not say an object is
+   gone fails the build.
+4. **The load** runs osm2pgsql in slim mode with its node store in the
+   workbench schema (`osm_layer_middle_*`), dropped after the load and by a
+   failed one too, through the flex style
+   `layer.lua`. The style reads the same expression file and the same list of
+   named objects, so a row is written for a selected or named object and
+   never for a node or member that only draws one: the cut and the rows
+   cannot disagree. A point for a node; a closed way's area, or its line where
+   the area is not valid; an open way's line; an area relation's
+   multipolygon; any other relation's collection of members. osm2pgsql writes
+   no editor field (`user`, `uid`, `changeset`), and its record of the import
+   (`osm2pgsql_properties`) is dropped.
+5. **The swap.** The `_next` copy is given the live table's key and indexes
+   (by `wikidata`, by `wikipedia`, and a GiST index on the geometry) and
+   swapped in with its row in `osm_layer_builds` in one transaction
+   (`swapIn`, `layerTables.ts`). The row records the planet file, its date,
+   the objects kept, how many objects the catalogue named, and the
+   replication timestamp the planet was current to. That timestamp is read
+   from the planet's header (`osmosis_replication_timestamp`), or is the
+   start of its date where the header names none, and every answer read from
+   the layer carries it. A failed tool, a cut that kept nothing, or a cancel
+   drops the copy and leaves the layer in place.
+
+The cut's files live in a directory of their own beside the planet,
+`osm-layer-cut`. A build empties it when it starts, before the planet is
+held, so the cut of a build that the worker's restart stopped never takes the
+disk a new planet's download needs; it removes the directory when it ends,
+whatever the end. The tables
+are logged: a rebuild re-reads the whole planet. There is no trial build.
+Nothing reads the layer yet; the Archaeology run's door is a later slice of
+#1437.
+
 ## Trying a change on a sample
 
 A build of the subset reads the whole entities dump twice, about ten hours on
@@ -847,7 +910,7 @@ bytes and lines, the time the pass has left, and when it was last seen alive; *C
 running. A dump something is built from (`keeps` in the list) also has *Build
 newest*, which starts a `keep` build, and, where a local copy exists
 (`localCopy` in the list, shown under the row's description with its date and
-size) and its builder builds from a copy (`keeps.fromCopy`, the subset's), *Build \<date\> copy*, which starts one from that copy. Where a build
+size) and its builder builds from a copy (`keeps.fromCopy`: the subset's and the OpenStreetMap layer's), *Build \<date\> copy*, which starts one from that copy. Where a build
 is in place and its builder can derive again without the dump (`keeps.rederives`,
 the subset's), *Derive again* starts a `rederive` (#1526), which reads no file.
 *Cut a sample* and *Try the build* are offered only where the builder can be
