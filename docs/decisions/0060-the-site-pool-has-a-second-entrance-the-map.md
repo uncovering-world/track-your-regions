@@ -1,7 +1,7 @@
 # ADR-0060: The site pool has a second entrance, what the map calls a dig, and one rule judges both
 
 **Date:** 2026-09-15
-**Status:** Accepted — decisions 2 and 3 narrowed by ADR-0098; decision 1 narrowed by ADR-0101 (the enumeration reads the OSM extract layer once it exists)
+**Status:** Accepted — decisions 2 and 3 narrowed by ADR-0098; decision 1 narrowed by ADR-0101 and ADR-0134 (the enumeration reads the OSM layer cut from the planet once it exists)
 
 ---
 
