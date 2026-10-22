@@ -2809,14 +2809,15 @@ doors** (`OsmDoor`: a name, the question for one batch in the endpoint's own lan
 send), because the first is a third-party mirror that has moved host once and ADR-0059 asks the
 connector for a fallback (#893). **`OSM_READER` names the door a run opens first**: unset or
 blank is the QLever osm-planet mirror (`osm/qleverOsm.ts`), `overpass` is the public Overpass
-instances (`osm/overpassOsm.ts`), and any other value is refused — at boot in production and as a
+instances (`osm/overpassOsm.ts`), `local` is the layer the dump worker cuts from the planet
+(`osm/localOsm.ts`, below), and any other value is refused — at boot in production and as a
 warning in development, the treatment `validateEnv` gives every insecure value, and in any case
 before a question is sent — a typo read as the default would be a run that failed on the mirror
 an hour later, in the middle of the outage the operator was working around
 (`osm/readerChoice.ts`).
 
-**One run, one door** (`osm/oneDoorPerRun.ts`, #908). ADR-0059 decision 2 promises that an OSM
-fact names where it came from, so a run never switches doors in the middle of a read — a day's
+**One run, one door** (`osm/oneDoorPerRun.ts`, #908), for the live doors. ADR-0059 decision 2 promises that an OSM
+fact names where it came from, so a run through the mirror or Overpass never switches doors in the middle of a read — a day's
 extents half from the mirror and half from Overpass would carry one provenance for two sources.
 The fallback is taken at the level of that promise, **the run, not the batch**: when the mirror
 fails — a question it could not answer once the retries and the wait budget were spent
@@ -2833,8 +2834,37 @@ it — and a fallback that fails too ends the run by name with both failures
 (`OsmBothDoorsFailedError`). A failure that is not about the map — a Wikidata batch lost, a
 Wikipedia category unreadable, a cancel — ends the run, with no second pass. The run
 log names the door it opened and, where it fell back, why, and **every site's `metadata.osm`
-carries `door`** (`qlever` or `overpass`), so a curator reading an extent can tell which door drew
-it. Both doors carry the project's bot `User-Agent`
+carries `door`** (`qlever`, `overpass` or `local`), so a curator reading an extent can tell which door drew
+it.
+
+**The layer as a door** (`osm/localOsm.ts`, ADR-0134 decisions 4 and 5). With `OSM_READER=local`
+both reads of the map are answered from `osm_objects`, the layer the dump worker cuts from the
+planet (`docs/tech/dumps.md` § The OpenStreetMap layer):
+- **The per-item read** (`localOsmReader`) reads the objects carrying each item's `wikidata` tag,
+  with the tags `OSM_TAG_KEYS` names and a geometry only where the kind's keep rule draws one: the
+  five clauses `overpassBatchQuery` spells, in SQL. An object the layer finds is the answer,
+  whatever the layer's age.
+- **A miss is a fact only on a fresh layer**, one current to at most `LAYER_FRESH_FOR_DAYS` (8)
+  days ago (`layerVouches`). The age is the layer's own: a later update that failed left the layer
+  as it was, and it is judged as it is. The `wikidata` tag selects an object into the layer, so a fresh layer
+  that holds none for an item is OpenStreetMap mapping none. On an older layer, or with none in
+  place, the items it did not find, and only those, are asked of the pass's Overpass door with the
+  run's cache over it.
+- **The enumeration** (`localDigsReader`) asks only selected tags, so a fresh layer answers it
+  whole: an object with a dig's `historic` value, or a `ruins` or `archaeological_site` key whose
+  value is not `no`, filed under its item, or under its article only where it carries no item, as
+  `overpassDigsQueries` asks. An older layer hands the enumeration to Overpass whole.
+- **One door a fact, rather than one door a run.** Each object carries its `source`: `local` as of
+  the layer's replication timestamp, or `overpass` as of when it was asked, an enumeration Overpass
+  answered included. A site's
+  `metadata.osm` takes its `door` and `readAt` from the object its verdict was read from
+  (`provenanceOf` in `archaeology/sites.ts`). Where the extent was drawn from an object that came
+  through another door, or as of another time (a stale layer's zone beside a tumulus only Overpass's
+  enumeration named, as at Nemrut), `metadata.osm` also carries `extentDoor` and `extentReadAt`
+  (`extentProvenanceOf`). A site with no OSM object at all names the run's door and time. An object both reads return through two doors keeps the per-item copy
+  whole (`withNamed`), so its tags and its source are one view. The run-wide fallback stays the mirror's alone: when
+  the layer's Overpass questions fail, the run ends, with no second pass, and Overpass's answers
+  are kept or dropped on Overpass's terms. Both doors carry the project's bot `User-Agent`
 (ADR-0043's rule), retry on the pass's shared wait budget — a pass waits on Wikidata, Wikipedia and the
 OpenStreetMap door, and a budget per door would let it wait three times over (#886) — and keep the same promise: **the
 geometry crosses the wire only for a ruin object or a protected area**, a city's administrative
@@ -3738,7 +3768,7 @@ that each list holds what its name says, which the nature rule secures.
 
 - Every outbound call says who is calling through `userAgent()` (`backend/src/config/userAgent.ts`), which is the one place the header is built. The shape is the one Wikimedia's User-Agent policy states — `<client>/<version> (<contact information>)` — the version comes from `backend/package.json`, and a run asks for the `bot` marker the policy wants for automated agents, which a curator's own lookup does not carry — the marker names the traffic, not who set it going. The contact is a website and a mailbox that answer; `USER_AGENT_CONTACT` lets a deployment that is not this one publish its own. It matters more than politeness: the policy answers a caller without a working contact by blocking it "without notice", and the OSM Foundation's Nominatim policy refuses a stock agent outright, so the header is a dependency of filling the catalogue. It used to be written at each call site, which drifted into six spellings naming a repository, an account and a domain that do not exist (#864); `userAgentOneSource.test.ts` fails the gate if a second home appears
 - The source rows carry no header of their own: `experience_sources.api_config` held a `userAgent` key nothing read, and migration 053 removed it
-- The Archaeology run reads OpenStreetMap through one door per run — `OSM_READER` names the one it opens first: unset for the QLever mirror, with the whole read done again through Overpass when the mirror fails; `overpass` for the public Overpass instances, with no fallback; anything else refused at boot in production, warned about in development, and in any case before a question is sent (`osm/readerChoice.ts`, `osm/oneDoorPerRun.ts`, § Archaeology) — and the run log and each site's `metadata.osm` name the one that answered
+- The Archaeology run reads OpenStreetMap through one live door per run, or through the layer with Overpass for its misses, each fact naming its own door — `OSM_READER` names the one it opens first: unset for the QLever mirror, with the whole read done again through Overpass when the mirror fails; `overpass` for the public Overpass instances, with no fallback; `local` for the layer cut from the planet, with Overpass for what it cannot vouch for; anything else refused at boot in production, warned about in development, and in any case before a question is sent (`osm/readerChoice.ts`, `osm/oneDoorPerRun.ts`, § Archaeology) — and the run log and each site's `metadata.osm` name the one that answered
 - SPARQL retries with exponential backoff bounded by a fifteen-minute wait budget shared across a phase (`WaitBudget`) — a collection's queries share one, and the credit pass after it gets its own, 429 + `Retry-After` header handling, 55s server-side + 70s client-side timeouts, an optional `isCancelled` hook that wakes the backoff and aborts the request in flight, and an optional `onWait` reporter so a run can say on screen that it is waiting for the source rather than looking hung (all in `sparqlQuery()`)
 - 1.5s delay between image downloads
 - `curated_fields` JSONB on `experiences` protects curator edits during sync upserts — each field is checked individually in the `ON CONFLICT` clause (implemented in `upsertExperienceRecord()`)
