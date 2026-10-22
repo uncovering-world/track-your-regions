@@ -161,7 +161,7 @@ describe('reorderSources', () => {
     const client = pinClient();
     const res = makeRes();
 
-    // Public Art & Monuments first, then UNESCO, then the museums.
+    // Public art first, then UNESCO, then the museums.
     await answerRoute(reorderSourcesRoute, { body: { sourceIds: [3, 1, 2] } } as never, res as never);
 
     const onClient = client.query.mock.calls.map(call => String(call[0]));

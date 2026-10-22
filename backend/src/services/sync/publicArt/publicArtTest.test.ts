@@ -1,5 +1,6 @@
 /**
- * What Public Art & Monuments admits, asked on the rows the first run got wrong.
+ * What Public art and Monuments & memorials admit, asked on the rows the first
+ * runs got wrong.
  *
  * Every case below is a real entity with the classes Wikidata gave it on
  * 2026-09-04, so a rule that passes here has been tried on the catalogue's own
@@ -9,6 +10,7 @@
 import { describe, it, expect } from 'vitest';
 import { publicArtVerdict, type PublicArtFacts, type ContainerFact } from './publicArtTest.js';
 import { buildTrees } from './classes.js';
+import { MONUMENTS_RULE as monuments, PUBLIC_ART_RULE as art } from './kindRules.js';
 
 const SCULPTURE = 'Q860861';
 const STATUE = 'Q179700';
@@ -19,6 +21,14 @@ const WAR_MEMORIAL = 'Q575759';
 const MONUMENT = 'Q4989906';
 const MEMORIAL = 'Q5003624';
 const OBELISK = 'Q170980';
+const TRIUMPHAL_ARCH = 'Q143912';
+const VICTORY_COLUMN = 'Q1930585';
+const EQUESTRIAN_STATUE = 'Q659396';
+const MURAL = 'Q219423';
+const US_NATIONAL_MEMORIAL = 'Q1967454';
+const SQUARE = 'Q174782';
+const LAKE = 'Q23397';
+const HOLY_TRINITY_COLUMN = 'Q11741382';
 const MUSEUM = 'Q33506';
 const ART_MUSEUM = 'Q207694';
 const MILITARY_MUSEUM = 'Q2772772';
@@ -50,7 +60,8 @@ const trees = buildTrees({
 });
 
 const facts = (over: Partial<PublicArtFacts>): PublicArtFacts => ({
-  qid: 'Q1', classes: [SCULPTURE], containers: [], collections: [], onEarth: true, lat: 41.9, lon: 12.5, ...over,
+  qid: 'Q1', classes: [SCULPTURE], containers: [], collections: [], commemorates: [], depicts: [],
+  onEarth: true, lat: 41.9, lon: 12.5, ...over,
 });
 
 /** A container the entity is located in (`P276`), or walked up to when `via` names the ones below. */
@@ -76,31 +87,29 @@ describe('publicArtVerdict — what it refuses', () => {
   it('refuses a cathedral Wikidata also types a monument', () => {
     // Segovia Cathedral: `Catholic cathedral, monument` — eleven Spanish
     // cathedrals arrived this way, "monument" being the heritage designation.
-    const v = publicArtVerdict(facts({ classes: [CATHOLIC_CATHEDRAL, MONUMENT] }), trees);
+    const v = publicArtVerdict(facts({ classes: [CATHOLIC_CATHEDRAL, MONUMENT] }), trees, art);
     expect(reasonOf(v)).toContain('place of worship');
   });
 
   it('refuses a shrine typed a war memorial', () => {
     // Yasukuni Shrine: Shinto shrine, chokusaisha, war memorial, gokoku shrine.
-    const v = publicArtVerdict(facts({ classes: [SHINTO_SHRINE, 'Q175288', WAR_MEMORIAL, 'Q1534477'] }), trees);
+    const v = publicArtVerdict(facts({ classes: [SHINTO_SHRINE, 'Q175288', WAR_MEMORIAL, 'Q1534477'] }), trees, art);
     expect(reasonOf(v)).toContain('place of worship');
   });
 
-  it('refuses a cemetery whose only commemorative class is war memorial', () => {
+  it('lets a war memorial lift a cemetery\'s veto for Monuments & memorials, and nothing for Public art', () => {
     // Arlington: war cemetery, US national cemetery, cemetery, war memorial,
-    // Direct Reporting Unit. A war memorial is commemorative, not an artwork,
-    // so it does not lift the veto a cemetery carries.
-    const v = publicArtVerdict(
-      facts({ classes: ['Q1241568', 'Q1516659', 'Q39614', WAR_MEMORIAL, 'Q127701543'] }), trees,
-    );
-    expect(reasonOf(v)).toContain('cemetery');
+    // Direct Reporting Unit — a cemetery a traveller visits as a memorial.
+    const arlington = facts({ classes: ['Q1241568', 'Q1516659', 'Q39614', WAR_MEMORIAL, 'Q127701543'] });
+    expect(publicArtVerdict(arlington, trees, monuments)).toMatchObject({ pass: true, type: 'memorial', artwork: true });
+    expect(reasonOf(publicArtVerdict(arlington, trees, art))).toBe('no public-art class');
   });
 
   it('refuses a concentration camp typed a memorial and a museum', () => {
     // Stutthof: Nazi concentration camp, military museum, concentration camp,
     // memorial, crime scene.
     const v = publicArtVerdict(
-      facts({ classes: ['Q328468', MILITARY_MUSEUM, 'Q152081', MEMORIAL, 'Q1360677'] }), trees,
+      facts({ classes: ['Q328468', MILITARY_MUSEUM, 'Q152081', MEMORIAL, 'Q1360677'] }), trees, art,
     );
     expect(reasonOf(v)).toContain('camp');
   });
@@ -109,7 +118,7 @@ describe('publicArtVerdict — what it refuses', () => {
     // Panathenaic Stadium: Ancient Greek stadium, multi-purpose stadium,
     // monument, Olympic stadium, pitch, all-seater stadium.
     const v = publicArtVerdict(
-      facts({ classes: ['Q64722124', 'Q1049757', MONUMENT, 'Q589481', 'Q2310214', 'Q4728370'] }), trees,
+      facts({ classes: ['Q64722124', 'Q1049757', MONUMENT, 'Q589481', 'Q2310214', 'Q4728370'] }), trees, art,
     );
     expect(reasonOf(v)).toContain('stadium');
   });
@@ -118,7 +127,7 @@ describe('publicArtVerdict — what it refuses', () => {
     // Reina Sofía: art museum, national museum, monument, former hospital,
     // arts center — also a museum row already.
     const v = publicArtVerdict(
-      facts({ classes: [ART_MUSEUM, 'Q17431399', MONUMENT, 'Q64578911', 'Q2190251'] }), trees,
+      facts({ classes: [ART_MUSEUM, 'Q17431399', MONUMENT, 'Q64578911', 'Q2190251'] }), trees, monuments,
     );
     expect(reasonOf(v)).toContain('museum');
   });
@@ -126,7 +135,7 @@ describe('publicArtVerdict — what it refuses', () => {
   it('refuses a palace that is also a monument', () => {
     // Aljafería: palace, castle, parliament building, monument, fortified palace.
     const v = publicArtVerdict(
-      facts({ classes: ['Q16560', 'Q23413', 'Q7138926', MONUMENT, 'Q98795663'] }), trees,
+      facts({ classes: ['Q16560', 'Q23413', 'Q7138926', MONUMENT, 'Q98795663'] }), trees, monuments,
     );
     expect(reasonOf(v)).toContain('palace');
   });
@@ -136,7 +145,7 @@ describe('publicArtVerdict — what it refuses', () => {
     // `kill-list:` prefix: the review page's help panel explains that one as
     // curatorial departments and museum networks, which is nobody's reason
     // for turning down a mausoleum. This form reaches the card untranslated.
-    const v = publicArtVerdict(facts({ classes: ['Q162875', MEMORIAL] }), trees);
+    const v = publicArtVerdict(facts({ classes: ['Q162875', MEMORIAL] }), trees, art);
     expect(reasonOf(v)).toBe('not public art: mausoleum');
   });
 
@@ -144,26 +153,26 @@ describe('publicArtVerdict — what it refuses', () => {
     // Stonehenge: cromlech, monument, archaeological site, history museum, henge.
     // Named for what it is, not for the museum class Wikidata also hangs on it.
     const v = publicArtVerdict(
-      facts({ classes: ['Q935773', MONUMENT, 'Q839954', 'Q16735822', 'Q1035294'] }), trees,
+      facts({ classes: ['Q935773', MONUMENT, 'Q839954', 'Q16735822', 'Q1035294'] }), trees, art,
     );
     expect(reasonOf(v)).toContain('archaeological site');
   });
 
   it('refuses a sidewalk of stars', () => {
     // Hollywood Walk of Fame: monument, hall of fame, walk of fame.
-    const v = publicArtVerdict(facts({ classes: [MONUMENT, 'Q1046088', 'Q47502370'] }), trees);
+    const v = publicArtVerdict(facts({ classes: [MONUMENT, 'Q1046088', 'Q47502370'] }), trees, art);
     expect(reasonOf(v)).toContain('walk of fame');
   });
 
   it('refuses a play', () => {
     // Mystery Play of Elche: liturgical drama, party, literary work.
-    const v = publicArtVerdict(facts({ classes: ['Q1253136', 'Q200538', 'Q7725634'] }), trees);
+    const v = publicArtVerdict(facts({ classes: ['Q1253136', 'Q200538', 'Q7725634'] }), trees, art);
     expect(reasonOf(v)).toContain('liturgical drama');
   });
 
   it('refuses a French commune typed a memorial', () => {
     // Le Gua: commune of France, memorial.
-    const v = publicArtVerdict(facts({ classes: ['Q484170', MEMORIAL] }), trees);
+    const v = publicArtVerdict(facts({ classes: ['Q484170', MEMORIAL] }), trees, art);
     expect(reasonOf(v)).toContain('commune');
   });
 
@@ -171,7 +180,7 @@ describe('publicArtVerdict — what it refuses', () => {
     // Columbus Circle: traffic circle, neighborhood of Manhattan, monument,
     // rostral column, statue — the row is the circle, not the monument on it.
     const v = publicArtVerdict(
-      facts({ classes: ['Q1529', 'Q61297932', MONUMENT, 'Q1112897', STATUE] }), trees,
+      facts({ classes: ['Q1529', 'Q61297932', MONUMENT, 'Q1112897', STATUE] }), trees, art,
     );
     expect(reasonOf(v)).toContain('neighborhood');
   });
@@ -179,7 +188,7 @@ describe('publicArtVerdict — what it refuses', () => {
   it('refuses an amusement park even though it names a sculpture', () => {
     // Madurodam: amusement park, miniature park, war memorial, sculpture.
     const v = publicArtVerdict(
-      facts({ classes: ['Q194195', 'Q974968', WAR_MEMORIAL, SCULPTURE] }), trees,
+      facts({ classes: ['Q194195', 'Q974968', WAR_MEMORIAL, SCULPTURE] }), trees, art,
     );
     expect(reasonOf(v)).toContain('amusement park');
   });
@@ -187,14 +196,14 @@ describe('publicArtVerdict — what it refuses', () => {
   it('refuses a work the source records as destroyed, by the lost tree alone', () => {
     // The Floating Piers: an installation artwork typed destroyed artwork and
     // nothing under lost sculpture — which a pinned kill class let through.
-    const v = publicArtVerdict(facts({ classes: [SCULPTURE, INSTALLATION, DESTROYED_ARTWORK] }), trees);
+    const v = publicArtVerdict(facts({ classes: [SCULPTURE, INSTALLATION, DESTROYED_ARTWORK] }), trees, art);
     expect(v.pass).toBe(false);
     expect(reasonOf(v)).toContain('nothing to stand in front of');
   });
 
   it('keeps refusing a lost sculpture, now through the same tree', () => {
     // The Lemnian Athena: sculpture, lost sculpture.
-    const v = publicArtVerdict(facts({ classes: [SCULPTURE, LOST_SCULPTURE] }), trees);
+    const v = publicArtVerdict(facts({ classes: [SCULPTURE, LOST_SCULPTURE] }), trees, art);
     expect(reasonOf(v)).toContain('nothing to stand in front of');
   });
 
@@ -202,19 +211,19 @@ describe('publicArtVerdict — what it refuses', () => {
     // The Colossus of Constantine: a destroyed artwork whose fragments are what
     // a traveller stands in front of (REMAINS_ON_SHOW). Where it stands is the
     // container rule's question; being lost is not a reason on its own.
-    const v = publicArtVerdict(facts({ qid: 'Q1289781', classes: [SCULPTURE, DESTROYED_ARTWORK] }), trees);
+    const v = publicArtVerdict(facts({ qid: 'Q1289781', classes: [SCULPTURE, DESTROYED_ARTWORK] }), trees, art);
     expect(v.pass ? '' : (v as { reason: string }).reason).not.toContain('nothing to stand in front of');
   });
 
   it('refuses a lost sculpture from the pinned floor when the fetched tree came back short', () => {
     const short = buildTrees({ sculptural: [SCULPTURE], fountain: [], commemorative: [], museum: [], worship: [], lost: [] });
-    const v = publicArtVerdict(facts({ classes: [SCULPTURE, LOST_SCULPTURE] }), short);
+    const v = publicArtVerdict(facts({ classes: [SCULPTURE, LOST_SCULPTURE] }), short, art);
     expect(reasonOf(v)).toContain('nothing to stand in front of');
   });
 
   it('refuses what the source records as destroyed', () => {
     // Georgia Guidestones: monument, destroyed building or structure.
-    const v = publicArtVerdict(facts({ classes: [MONUMENT, 'Q19860854'] }), trees);
+    const v = publicArtVerdict(facts({ classes: [MONUMENT, 'Q19860854'] }), trees, art);
     expect(reasonOf(v)).toContain('destroyed');
   });
 
@@ -224,7 +233,7 @@ describe('publicArtVerdict — what it refuses', () => {
     const v = publicArtVerdict(facts({
       classes: [SCULPTURE, 'Q2065736'],
       containers: [inside('Q12512', "St. Peter's Basilica", [BASILICA, 'Q16970'])],
-    }), trees);
+    }), trees, art);
     expect(reasonOf(v)).toContain("inside St. Peter's Basilica");
     // Where it is held, for the places of worship to take it (ADR-0102).
     expect(v).toMatchObject({ pass: false, heldIn: ['Q12512'] });
@@ -239,7 +248,7 @@ describe('publicArtVerdict — what it refuses', () => {
         inside('Q19119449', 'Room 325', ['Q180516']),
         inside('Q19675', 'Louvre', [ART_MUSEUM], undefined, 'Q19119449'),
       ],
-    }), trees);
+    }), trees, art);
     expect(reasonOf(v)).toContain('inside Louvre');
     // From the place the reason names outward: the museum, not the room below it.
     expect(v).toMatchObject({ pass: false, heldIn: ['Q19675'] });
@@ -253,7 +262,7 @@ describe('publicArtVerdict — what it refuses', () => {
     const v = publicArtVerdict(facts({
       classes: [SCULPTURE],
       containers: [partOf('Q637248', 'Naples National Archaeological Museum', ['Q3329412', MUSEUM])],
-    }), trees);
+    }), trees, art);
     expect(reasonOf(v)).toBe('part of Naples National Archaeological Museum: a work of a museum, not public art');
   });
 
@@ -269,8 +278,8 @@ describe('publicArtVerdict — what it refuses', () => {
         partOf('Q12292250', 'Shumen History museum', [HISTORY_MUSEUM]),
         partOf('Q12285540', 'Madara (Archeological Preserve)', ['Q839954']),
       ],
-    }), trees);
-    expect(reasonOf(v)).toBe('part of Madara (Archeological Preserve): archaeological site, not public art');
+    }), trees, monuments);
+    expect(reasonOf(v)).toBe('part of Madara (Archeological Preserve): archaeological site, not a monument or memorial');
   });
 
   it('keeps a church typed a museum as a place, though the work is only part of it', () => {
@@ -284,24 +293,49 @@ describe('publicArtVerdict — what it refuses', () => {
         inside('Q1', 'A square', ['Q174782']),
         partOf('Q2', 'A former church, now a museum', [ART_MUSEUM, 'Q16970']),
       ],
-    }), trees);
+    }), trees, art);
     expect(reasonOf(v)).toBe('inside A former church, now a museum: a work of a museum, not public art');
   });
 
   it('refuses a memorial typed a museum and a castle, for the castle', () => {
     // Montjuïc Castle: memorial, military museum, prison, castle. A
-    // commemorative class lifts the museum's veto and no other: a building
-    // typed a memorial is still the building.
-    const v = publicArtVerdict(facts({ classes: [MEMORIAL, MILITARY_MUSEUM, 'Q40357', 'Q23413'] }), trees);
-    expect(reasonOf(v)).toBe('not an artwork, and typed: castle');
+    // commemorative class lifts the museum's veto, and a cemetery's and a bare
+    // building's (`MEMORIAL_LIFTS`): a castle typed a memorial is still the
+    // castle.
+    const v = publicArtVerdict(facts({ classes: [MEMORIAL, MILITARY_MUSEUM, 'Q40357', 'Q23413'] }), trees, monuments);
+    expect(reasonOf(v)).toBe('not a memorial, and typed: castle');
+  });
+
+  it('refuses a place a monument class says nothing about, as belonging to no kind yet', () => {
+    // Sanabria Lake: lake, monument, historic site. The Field of Mars: square,
+    // memorial. The Anne Frank House: historic house museum, war memorial.
+    // The Temple of Literature: monument, heritage site.
+    const cases: [string[], string][] = [
+      [[LAKE, MONUMENT, 'Q1081138'], 'a lake, which no kind holds yet: not a monument or memorial'],
+      [[SQUARE, MEMORIAL], 'a square, which no kind holds yet: not a monument or memorial'],
+      [['Q2087181', WAR_MEMORIAL], 'a historic house museum, which no kind holds yet: not a monument or memorial'],
+      [[MONUMENT, 'Q358'], 'a heritage site, which no kind holds yet: not a monument or memorial'],
+    ];
+    for (const [classes, reason] of cases) {
+      expect(reasonOf(publicArtVerdict(facts({ classes }), trees, monuments))).toBe(reason);
+    }
+  });
+
+  it('lets a sculpture answer a place class, and not a fountain', () => {
+    // Manneken Pis: sculpture, heritage site. The Villa d'Este: Italian
+    // garden, villa, fountain — its fountains are the villa's garden.
+    expect(publicArtVerdict(facts({ classes: [SCULPTURE, 'Q358'] }), trees, art))
+      .toMatchObject({ pass: true, type: 'sculpture' });
+    expect(reasonOf(publicArtVerdict(facts({ classes: ['Q12781', 'Q3950', FOUNTAIN] }), trees, art)))
+      .toBe("a Giardino all'italiana, which no kind holds yet: not public art");
   });
 
   it('refuses a museum the heritage register calls a monument', () => {
     // Bilbao Fine Arts Museum: art museum, monument — "Monumento" being what
     // Spain's register calls a listed building. A designation is not a
     // memorial, and lifts nothing.
-    const v = publicArtVerdict(facts({ classes: [ART_MUSEUM, MONUMENT] }), trees);
-    expect(reasonOf(v)).toBe('not an artwork, and typed: a museum');
+    const v = publicArtVerdict(facts({ classes: [ART_MUSEUM, MONUMENT] }), trees, monuments);
+    expect(reasonOf(v)).toBe('not a memorial, and typed: a museum');
   });
 
   it('refuses a work a museum owns when nothing says where it stands, naming the museum', () => {
@@ -318,7 +352,7 @@ describe('publicArtVerdict — what it refuses', () => {
         owned('Q4410161', 'Sverdlovsk Regional Natural History Museum', [LOCAL_MUSEUM, NATURAL_HISTORY_MUSEUM, 'Q1081138']),
         owned('Q105486673', 'Museum of History and Archaeology of the Middle Urals', [MUSEUM]),
       ],
-    }), trees);
+    }), trees, art);
     expect(reasonOf(v)).toBe(
       'in the collection of Sverdlovsk Regional Natural History Museum: a work of a museum, not public art',
     );
@@ -333,7 +367,7 @@ describe('publicArtVerdict — what it refuses', () => {
     const v = publicArtVerdict(facts({
       classes: ['Q2293362'],
       collections: [owned('Q172988', "St Mark's Basilica", ['Q2977', BASILICA])],
-    }), trees);
+    }), trees, art);
     expect(reasonOf(v)).toBe("in the collection of St Mark's Basilica: a work of a place of worship, not public art");
     expect(v).toMatchObject({ pass: false, heldIn: ['Q172988'] });
   });
@@ -343,7 +377,7 @@ describe('publicArtVerdict — what it refuses', () => {
     // building. The second dry run admitted it — the holy well is in the
     // fountain closure and lifted the veto the tree then was. A building of
     // worship refuses outright, whatever else the entity carries.
-    const v = publicArtVerdict(facts({ classes: ['Q1371047', 'Q2031836'] }), trees);
+    const v = publicArtVerdict(facts({ classes: ['Q1371047', 'Q2031836'] }), trees, art);
     expect(reasonOf(v)).toContain('place of worship');
   });
 
@@ -361,7 +395,7 @@ describe('publicArtVerdict — what it refuses', () => {
         inside('Q17309954', 'Sully Wing', ['Q1125776'], 'Louvre Palace'),
         inside('Q1075988', 'Louvre Palace', ['Q16560']),
       ],
-    }), trees);
+    }), trees, art);
     expect(reasonOf(v)).toBe('inside Room 325 (Louvre Palace): a work indoors, not public art');
   });
 
@@ -369,7 +403,7 @@ describe('publicArtVerdict — what it refuses', () => {
     const v = publicArtVerdict(facts({
       classes: [SCULPTURE],
       containers: [inside('Q19119449', 'Room 325', ['Q180516'])],
-    }), trees);
+    }), trees, art);
     expect(reasonOf(v)).toBe('inside Room 325: a work indoors, not public art');
   });
 
@@ -379,8 +413,8 @@ describe('publicArtVerdict — what it refuses', () => {
     const v = publicArtVerdict(facts({
       classes: ['Q12277'],
       containers: [inside('Q5684', 'Babylon', ['Q839954', 'Q15661340'])],
-    }), trees);
-    expect(reasonOf(v)).toBe('part of Babylon: archaeological site, not public art');
+    }), trees, monuments);
+    expect(reasonOf(v)).toBe('part of Babylon: archaeological site, not a monument or memorial');
     // A site owns its parts, and no works kind holds a site: nothing is handed over.
     expect(v).not.toHaveProperty('heldIn');
   });
@@ -396,7 +430,7 @@ describe('publicArtVerdict — what it refuses', () => {
       ['Lucerne', ['Q486972']],
       ['Paseo del Prado', ['Q1129474']],
     ] as const) {
-      const v = publicArtVerdict(facts({ classes: [SCULPTURE], containers: [inside('Q1', label, [...classes])] }), trees);
+      const v = publicArtVerdict(facts({ classes: [SCULPTURE], containers: [inside('Q1', label, [...classes])] }), trees, art);
       expect(v.pass, label).toBe(true);
     }
   });
@@ -404,23 +438,23 @@ describe('publicArtVerdict — what it refuses', () => {
   it('refuses a find, which is a museum object wherever Wikidata locates it', () => {
     // The Venus of Willendorf: Venus figurine, sculpture, archaeological find;
     // located in Austria. Nothing about a figurine is somewhere to stand.
-    const v = publicArtVerdict(facts({ classes: ['Q248726', SCULPTURE, 'Q10855061'] }), trees);
+    const v = publicArtVerdict(facts({ classes: ['Q248726', SCULPTURE, 'Q10855061'] }), trees, art);
     expect(reasonOf(v)).toContain('Venus figurine');
   });
 
   it('refuses a sculpture that stands on the Moon', () => {
     // Fallen Astronaut: sculpture, monument; P625 on Q405.
-    const v = publicArtVerdict(facts({ classes: [SCULPTURE, MONUMENT], onEarth: false }), trees);
+    const v = publicArtVerdict(facts({ classes: [SCULPTURE, MONUMENT], onEarth: false }), trees, art);
     expect(reasonOf(v)).toContain('not on Earth');
   });
 
   it('refuses an entity with no public-art class at all', () => {
-    const v = publicArtVerdict(facts({ classes: ['Q515'] }), trees); // city
+    const v = publicArtVerdict(facts({ classes: ['Q515'] }), trees, art); // city
     expect(reasonOf(v)).toContain('no public-art class');
   });
 
   it('refuses an entity with no coordinates of its own', () => {
-    const v = publicArtVerdict(facts({ lat: null, lon: null }), trees);
+    const v = publicArtVerdict(facts({ lat: null, lon: null }), trees, art);
     expect(reasonOf(v)).toContain('coordinates');
   });
 });
@@ -434,61 +468,109 @@ describe('publicArtVerdict — a work stranded outdoors on a venue no kind offer
   const nothingOffered = new Set<string>();
 
   it('keeps the Mother Ukraine Monument, a colossal statue on the grounds of a museum no kind offers', () => {
-    const v = publicArtVerdict(facts({ qid: 'Q142917', classes: [COLOSSAL_STATUE], containers: [WAR_MUSEUM] }), trees, nothingOffered);
+    const v = publicArtVerdict(facts({ qid: 'Q142917', classes: [COLOSSAL_STATUE], containers: [WAR_MUSEUM] }), trees, art, nothingOffered);
     expect(v.pass).toBe(true);
   });
 
   it('keeps the Philae obelisk in the garden of Kingston Lacy', () => {
-    const v = publicArtVerdict(facts({ qid: 'Q1245805', classes: [OBELISK], containers: [KINGSTON_LACY] }), trees, nothingOffered);
+    const v = publicArtVerdict(facts({ qid: 'Q1245805', classes: [OBELISK], containers: [KINGSTON_LACY] }), trees, monuments, nothingOffered);
     expect(v.pass).toBe(true);
   });
 
   it('keeps refusing the Veiled Christ: a sculpture in a hall is the venue\'s, offered or not', () => {
-    const v = publicArtVerdict(facts({ qid: 'Q3697674', classes: [SCULPTURE], containers: [SANSEVERO] }), trees, nothingOffered);
+    const v = publicArtVerdict(facts({ qid: 'Q3697674', classes: [SCULPTURE], containers: [SANSEVERO] }), trees, art, nothingOffered);
     expect(reasonOf(v)).toBe('inside Cappella Sansevero: a work of a museum, not public art');
   });
 
   it('keeps refusing a colossal statue at a venue a kind offers, which that kind takes (ADR-0102)', () => {
-    const v = publicArtVerdict(facts({ qid: 'Q142917', classes: [COLOSSAL_STATUE], containers: [WAR_MUSEUM] }), trees, new Set(['Q2457600']));
+    const v = publicArtVerdict(facts({ qid: 'Q142917', classes: [COLOSSAL_STATUE], containers: [WAR_MUSEUM] }), trees, art, new Set(['Q2457600']));
     expect(reasonOf(v)).toBe('inside National Museum of the History of Ukraine in World War II: a work of a museum, not public art');
   });
 
   it('still refuses a colossal statue its own statements put in a room of that museum', () => {
     const room = inside('Q2', 'Hall of Glory', ['Q180516'], 'National Museum of the History of Ukraine in World War II');
     const museum = inside('Q2457600', 'National Museum of the History of Ukraine in World War II', [MILITARY_MUSEUM], undefined, 'Q2');
-    const v = publicArtVerdict(facts({ qid: 'Q1', classes: [COLOSSAL_STATUE], containers: [room, museum] }), trees, nothingOffered);
+    const v = publicArtVerdict(facts({ qid: 'Q1', classes: [COLOSSAL_STATUE], containers: [room, museum] }), trees, art, nothingOffered);
     expect(reasonOf(v)).toBe('inside Hall of Glory (National Museum of the History of Ukraine in World War II): a work indoors, not public art');
   });
 
   it('refuses as before when the run states no offered places', () => {
-    const v = publicArtVerdict(facts({ qid: 'Q142917', classes: [COLOSSAL_STATUE], containers: [WAR_MUSEUM] }), trees);
+    const v = publicArtVerdict(facts({ qid: 'Q142917', classes: [COLOSSAL_STATUE], containers: [WAR_MUSEUM] }), trees, art);
     expect(v.pass).toBe(false);
   });
 });
 
 describe('publicArtVerdict — what it admits', () => {
-  it('admits a bare monument as a monument', () => {
+  it('admits a bare monument to Monuments & memorials as a monument, and not to Public art', () => {
     // Freedom Monument, Riga: monument.
-    expect(publicArtVerdict(facts({ classes: [MONUMENT] }), trees))
+    expect(publicArtVerdict(facts({ classes: [MONUMENT] }), trees, monuments))
       .toMatchObject({ pass: true, type: 'monument' });
+    expect(reasonOf(publicArtVerdict(facts({ classes: [MONUMENT] }), trees, art))).toBe('no public-art class');
   });
 
-  it('admits a fountain with sculpture as a sculpture', () => {
+  it('admits a fountain with sculpture to Public art as a fountain', () => {
     // Trevi Fountain: sculpture, fountain; located on Piazza di Trevi.
-    const v = publicArtVerdict(facts({
+    const trevi = facts({
       classes: [SCULPTURE, FOUNTAIN],
       containers: [inside('Q2075166', 'Piazza di Trevi', ['Q174782'])],
-    }), trees);
-    expect(v).toMatchObject({ pass: true, type: 'sculpture' });
+    });
+    expect(publicArtVerdict(trevi, trees, art)).toMatchObject({ pass: true, type: 'fountain' });
+    expect(reasonOf(publicArtVerdict(trevi, trees, monuments))).toBe('no monument or memorial class');
+  });
+
+  it('admits a mural to Public art as street art', () => {
+    // The Fraternal Kiss on the East Side Gallery: mural.
+    expect(publicArtVerdict(facts({ classes: [MURAL] }), trees, art))
+      .toMatchObject({ pass: true, type: 'street-art' });
+  });
+
+  it('files a monument under its form before its purpose', () => {
+    // The Arc de Triomphe: triumphal arch. The Victory Column in Berlin:
+    // victory column. The Washington Monument: obelisk, National Memorial —
+    // and it commemorates George Washington. India Gate: triumphal arch and a
+    // war memorial.
+    const typeOf = (over: Partial<PublicArtFacts>) => publicArtVerdict(facts(over), trees, monuments);
+    expect(typeOf({ classes: [TRIUMPHAL_ARCH] })).toMatchObject({ pass: true, type: 'arch' });
+    expect(typeOf({ classes: [VICTORY_COLUMN] })).toMatchObject({ pass: true, type: 'column' });
+    expect(typeOf({ classes: [OBELISK, US_NATIONAL_MEMORIAL], commemorates: ['Q23'] }))
+      .toMatchObject({ pass: true, type: 'obelisk' });
+    expect(typeOf({ classes: [TRIUMPHAL_ARCH, WAR_MEMORIAL] })).toMatchObject({ pass: true, type: 'arch' });
+  });
+
+  it('admits to Monuments & memorials what Wikidata says commemorates someone, and not a bare designation', () => {
+    // The Jefferson Memorial is typed nothing but a National Memorial of the
+    // United States, and commemorates Thomas Jefferson; Federal Hall is typed
+    // the same and commemorates nobody — a building with a museum.
+    expect(publicArtVerdict(facts({ classes: [US_NATIONAL_MEMORIAL], commemorates: ['Q11812'] }), trees, monuments))
+      .toMatchObject({ pass: true, type: 'monument' });
+    expect(reasonOf(publicArtVerdict(facts({ classes: [US_NATIONAL_MEMORIAL] }), trees, monuments)))
+      .toBe('no monument or memorial class');
+  });
+
+  it('admits an equestrian statue to both kinds', () => {
+    // Genghis Khan Equestrian Statue: colossal statue, equestrian statue — a
+    // monument to its rider by tradition, and a sculpture.
+    const statue = facts({ classes: [COLOSSAL_STATUE, EQUESTRIAN_STATUE] });
+    expect(publicArtVerdict(statue, trees, monuments)).toMatchObject({ pass: true, type: 'monument' });
+    expect(publicArtVerdict(statue, trees, art)).toMatchObject({ pass: true, type: 'sculpture' });
+  });
+
+  it('lets a memorial lift a bare building\'s veto for Monuments & memorials', () => {
+    // The Neue Wache: guardhouse, memorial. The Hiroshima Peace Memorial:
+    // A-bombed building, memorial.
+    for (const classes of [['Q2914427', MEMORIAL], ['Q95652804', MEMORIAL]]) {
+      expect(publicArtVerdict(facts({ classes }), trees, monuments))
+        .toMatchObject({ pass: true, type: 'memorial', artwork: true });
+    }
   });
 
   it('lets a sculpture class lift the veto a tower carries, and says an artwork class answered', () => {
     // Hermannsdenkmal: sculpture, monument, tower, colossal statue. Whether an
     // artwork class answered is stored with the row, so the catalogue check
     // can ask it of the rule's own answer rather than approximate the closure.
-    const v = publicArtVerdict(facts({ classes: [SCULPTURE, MONUMENT, 'Q12518', COLOSSAL_STATUE] }), trees);
+    const v = publicArtVerdict(facts({ classes: [SCULPTURE, MONUMENT, 'Q12518', COLOSSAL_STATUE] }), trees, art);
     expect(v).toMatchObject({ pass: true, type: 'sculpture', artwork: true });
-    expect(publicArtVerdict(facts({ classes: [MONUMENT] }), trees)).toMatchObject({ pass: true, artwork: false });
+    expect(publicArtVerdict(facts({ classes: [MONUMENT] }), trees, monuments)).toMatchObject({ pass: true, artwork: false });
   });
 
   it('names the nearer container, whichever kind it is', () => {
@@ -498,35 +580,34 @@ describe('publicArtVerdict — what it admits', () => {
     const v = publicArtVerdict(facts({
       classes: [SCULPTURE],
       containers: [inside('Q1', 'A chapel', [BASILICA]), inside('Q2', 'A museum complex', [MUSEUM])],
-    }), trees);
+    }), trees, art);
     expect(reasonOf(v)).toBe('inside A chapel: a work of a place of worship, not public art');
     const w = publicArtVerdict(facts({
       classes: [SCULPTURE],
       containers: [inside('Q2', 'A museum', [MUSEUM]), inside('Q1', 'A cathedral', [CATHOLIC_CATHEDRAL])],
-    }), trees);
+    }), trees, art);
     expect(reasonOf(w)).toBe('inside A museum: a work of a museum, not public art');
   });
 
   it('lets an obelisk lift the veto a museum carries', () => {
     // National Monument of Indonesia: national monument, memorial, museum, obelisk.
-    const v = publicArtVerdict(facts({ classes: ['Q893745', MEMORIAL, MUSEUM, OBELISK] }), trees);
-    expect(v).toMatchObject({ pass: true, type: 'monument' });
+    const v = publicArtVerdict(facts({ classes: ['Q893745', MEMORIAL, MUSEUM, OBELISK] }), trees, monuments);
+    expect(v).toMatchObject({ pass: true, type: 'obelisk' });
   });
 
   it('lets a monumental sculpture lift the veto a war cemetery carries', () => {
     // Soviet War Memorial, Treptower Park: memorial, war cemetery, monumental
     // sculpture, Soviet war cemeteries in Germany.
-    const v = publicArtVerdict(
-      facts({ classes: [MEMORIAL, 'Q1241568', MONUMENTAL_SCULPTURE, 'Q2305029'] }), trees,
-    );
-    expect(v).toMatchObject({ pass: true, type: 'sculpture' });
+    const memorial = facts({ classes: [MEMORIAL, 'Q1241568', MONUMENTAL_SCULPTURE, 'Q2305029'] });
+    expect(publicArtVerdict(memorial, trees, art)).toMatchObject({ pass: true, type: 'sculpture' });
+    expect(publicArtVerdict(memorial, trees, monuments)).toMatchObject({ pass: true, type: 'memorial' });
   });
 
   it('admits a war memorial that is nothing else', () => {
     // Vietnam Veterans Memorial: National Memorial of the US, war memorial,
     // Passport to Your National Parks cancellation location.
-    const v = publicArtVerdict(facts({ classes: ['Q1967454', WAR_MEMORIAL, 'Q35989030'] }), trees);
-    expect(v).toMatchObject({ pass: true, type: 'monument' });
+    const v = publicArtVerdict(facts({ classes: [US_NATIONAL_MEMORIAL, WAR_MEMORIAL, 'Q35989030'] }), trees, monuments);
+    expect(v).toMatchObject({ pass: true, type: 'memorial' });
   });
 
   it('admits a colossal statue whatever else it is called, a pilgrimage site included', () => {
@@ -536,19 +617,19 @@ describe('publicArtVerdict — what it admits', () => {
     // "pilgrimage site", which is what pilgrims make of a statue, not a
     // building — so that designation is taken out of the tree by name.
     const v = publicArtVerdict(
-      facts({ classes: ['Q29168169', PILGRIMAGE_SITE, COLOSSAL_STATUE, STATUE, MONUMENT] }), trees,
+      facts({ classes: ['Q29168169', PILGRIMAGE_SITE, COLOSSAL_STATUE, STATUE, MONUMENT] }), trees, art,
     );
     expect(v).toMatchObject({ pass: true, type: 'sculpture' });
   });
 
   it('admits a monument that is only a pilgrimage site besides', () => {
-    expect(publicArtVerdict(facts({ classes: [PILGRIMAGE_SITE, MONUMENT] }), trees).pass).toBe(true);
+    expect(publicArtVerdict(facts({ classes: [PILGRIMAGE_SITE, MONUMENT] }), trees, monuments).pass).toBe(true);
   });
 
-  it('admits a monument Wikidata also types as the square it stands on', () => {
-    // Mansu Hill Grand Monument: monument, square. Open places and landforms
-    // are not vetoes: a monument typed with its site is a monument on a site.
-    expect(publicArtVerdict(facts({ classes: [MONUMENT, 'Q174782'] }), trees))
+  it('admits a monument Wikidata also types as the square it stands on when it depicts what stands there', () => {
+    // Mansu Hill Grand Monument: monument, square; depicts Kim Jong-il and
+    // Kim Il-sung, the two statues it is visited for.
+    expect(publicArtVerdict(facts({ classes: [MONUMENT, SQUARE], depicts: ['Q10665', 'Q41117'] }), trees, monuments))
       .toMatchObject({ pass: true, type: 'monument' });
   });
 
@@ -561,7 +642,7 @@ describe('publicArtVerdict — what it admits', () => {
       classes: [SCULPTURE, MONUMENT, MEMORIAL],
       containers: [inside('Q3481120', 'Sibelius Park', ['Q22698'])],
       collections: [owned('Q5710459', 'HAM Helsinki Art Museum', [ART_MUSEUM])],
-    }), trees);
+    }), trees, art);
     expect(v).toMatchObject({ pass: true, type: 'sculpture' });
   });
 
@@ -572,7 +653,7 @@ describe('publicArtVerdict — what it admits', () => {
     const v = publicArtVerdict(facts({
       classes: [SCULPTURE],
       collections: [owned('Q83627', 'Akademgorodok', ['Q209465'])],
-    }), trees);
+    }), trees, art);
     expect(v).toMatchObject({ pass: true, type: 'sculpture' });
   });
 
@@ -594,8 +675,8 @@ describe('publicArtVerdict — what it admits', () => {
       ['Victoria Memorial', { classes: [MUSEUM, MEMORIAL] }],
     ];
     for (const [label, over] of complexes) {
-      const v = publicArtVerdict(facts(over), trees);
-      expect(v, label).toMatchObject({ pass: true, type: 'monument', artwork: false });
+      const v = publicArtVerdict(facts(over), trees, monuments);
+      expect(v, label).toMatchObject({ pass: true, type: 'memorial', artwork: false });
     }
   });
 
@@ -615,7 +696,7 @@ describe('publicArtVerdict — what it admits', () => {
         partOf('Q86452047', 'Pakistan Monument Museum', [MUSEUM]),
         inside('Q3695640', 'Pakistan Monument', [MONUMENT], undefined, 'Q86452047'),
       ],
-    }), trees);
+    }), trees, monuments);
     expect(v).toMatchObject({ pass: true, type: 'monument' });
   });
 
@@ -630,7 +711,7 @@ describe('publicArtVerdict — what it admits', () => {
         partOf('Q2', 'A site museum', [MUSEUM]),
         inside('Q3', 'A museum complex', [MUSEUM], undefined, 'Q2'),
       ],
-    }), trees);
+    }), trees, monuments);
     expect(v).toMatchObject({ pass: true, type: 'monument' });
     // Reached from the square instead, the complex is where the monument stands.
     const w = publicArtVerdict(facts({
@@ -639,8 +720,8 @@ describe('publicArtVerdict — what it admits', () => {
         inside('Q1', 'A square', ['Q174782']),
         inside('Q3', 'A museum complex', [MUSEUM], undefined, 'Q1'),
       ],
-    }), trees);
-    expect(reasonOf(w)).toBe('inside A museum complex: a work of a museum, not public art');
+    }), trees, monuments);
+    expect(reasonOf(w)).toBe('inside A museum complex: a work of a museum, not a monument or memorial');
   });
 
   it('reads a museum the work is part of as where it stands when it is located inside it', () => {
@@ -654,7 +735,7 @@ describe('publicArtVerdict — what it admits', () => {
         inside('Q4', 'A courtyard', ['Q1178342']),
         { qid: 'Q2', label: 'A museum', classes: [MUSEUM], relation: 'part of', via: ['Q4'] },
       ],
-    }), trees);
+    }), trees, art);
     expect(reasonOf(v)).toBe('inside A museum: a work of a museum, not public art');
   });
 
@@ -672,8 +753,8 @@ describe('publicArtVerdict — what it admits', () => {
           partOf('Q4', 'A courtyard', ['Q1178342']),
           inside('Q3', 'A museum complex', [MUSEUM], undefined, ...via),
         ],
-      }), trees);
-      expect(reasonOf(v), via.join(',')).toBe('inside A museum complex: a work of a museum, not public art');
+      }), trees, monuments);
+      expect(reasonOf(v), via.join(',')).toBe('inside A museum complex: a work of a museum, not a monument or memorial');
     }
     // A route listed after the container it leads to — a later hop arriving
     // at something an earlier one reached — is read all the same.
@@ -685,12 +766,12 @@ describe('publicArtVerdict — what it admits', () => {
         inside('Q1', 'A square', ['Q174782']),
         inside('Q5', 'A block', ['Q123705'], undefined, 'Q1'),
       ],
-    }), trees);
-    expect(reasonOf(late)).toBe('inside A museum complex: a work of a museum, not public art');
+    }), trees, monuments);
+    expect(reasonOf(late)).toBe('inside A museum complex: a work of a museum, not a monument or memorial');
   });
 
   it('treats a coordinate of zero as a position, not an absence', () => {
-    expect(publicArtVerdict(facts({ lat: 0, lon: 0 }), trees).pass).toBe(true);
+    expect(publicArtVerdict(facts({ lat: 0, lon: 0 }), trees, art).pass).toBe(true);
   });
 });
 
@@ -706,6 +787,19 @@ describe('buildTrees', () => {
   it('takes the designations that are not buildings out of the fetched worship tree', () => {
     expect(trees.worship.has(PILGRIMAGE_SITE)).toBe(false);
     expect(trees.worship.has(SHINTO_SHRINE)).toBe(true);
+    // Wikidata's tree reaches the Holy Trinity column, which stands in a square.
+    const withColumn = buildTrees({
+      sculptural: [], fountain: [], commemorative: [], museum: [], worship: [WORSHIP, HOLY_TRINITY_COLUMN], lost: [],
+    });
+    expect(withColumn.worship.has(HOLY_TRINITY_COLUMN)).toBe(false);
+    expect(publicArtVerdict(facts({ classes: ['Q26789694', HOLY_TRINITY_COLUMN] }), withColumn, monuments))
+      .toMatchObject({ pass: true, type: 'column' });
+  });
+
+  it('counts the pinned sculptural classes as sculptural, for Public art', () => {
+    expect(trees.sculptural.has(MURAL)).toBe(true);
+    expect(trees.sculptural.has('Q2293362')).toBe(true); // group of sculptures
+    expect(trees.admitting.has(MURAL)).toBe(true);
   });
 
   it('counts the pinned structures as artworks but not the heritage-sense classes', () => {

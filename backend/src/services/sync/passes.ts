@@ -7,8 +7,11 @@
  * is refused while any of its sources is running.
  */
 
-/** Public Art's gather: the class trees, the pool and the facts (`publicArt/pipeline.ts`). */
-export const PUBLIC_ART_PASS: readonly number[] = [3];
+/**
+ * Public Art's gather: the class trees, the pool and the facts
+ * (`publicArt/pipeline.ts`), for Public art and Monuments & memorials (#1807).
+ */
+export const PUBLIC_ART_PASS: readonly number[] = [3, 6];
 
 const SYNC_PASSES: ReadonlyArray<readonly number[]> = [PUBLIC_ART_PASS];
 

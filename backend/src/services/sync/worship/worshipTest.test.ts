@@ -293,7 +293,7 @@ describe('worshipVerdict — what it refuses', () => {
 
   it('refuses Christ the Redeemer: a pilgrimage site is a designation, not a building', () => {
     // Q79961: `colossal statue of Jesus, pilgrimage site, colossal statue,
-    // statue, monument`. It is Public Art & Monuments' already.
+    // statue, monument`. It is Public art' already.
     expect(reasonOf(worshipVerdict(facts([
       'Q29168169', PILGRIMAGE_SITE, 'Q1779653', STATUE, 'Q4989906']), trees)))
       .toBe('no place-of-worship class');

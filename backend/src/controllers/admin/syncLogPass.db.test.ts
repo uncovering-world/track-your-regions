@@ -31,9 +31,8 @@ beforeEach(async () => {
   await clear();
   ids.first = await run(3, '10:00');
   ids.between = await run(1, '10:05');
-  // The second source of the pass: any source but the first serves, since
-  // Public Art's second kind does not exist yet (#1807).
-  ids.second = await run(2, '10:10', ids.first);
+  // The pass's second source, Monuments & memorials (#1807).
+  ids.second = await run(6, '10:10', ids.first);
 });
 
 afterAll(async () => {
@@ -53,7 +52,7 @@ describe('the run history', () => {
     const second = logs.find((log) => log.id === ids.second);
     const first = logs.find((log) => log.id === ids.first);
 
-    expect(second).toMatchObject({ pass_log_id: ids.first, pass_source_name: expect.stringMatching(/Public Art/) });
+    expect(second).toMatchObject({ pass_log_id: ids.first, pass_source_name: 'Public art' });
     expect(first).toMatchObject({ pass_log_id: null, pass_source_name: null });
   });
 });

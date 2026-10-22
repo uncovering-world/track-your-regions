@@ -111,6 +111,8 @@ const syncRegistry: Record<
   1: syncUnescoSites,
   2: syncMuseums,
   3: syncLandmarks,
+  // One pass with source 3 (ADR-0132): a start of either runs both.
+  6: syncLandmarks,
   4: syncPlacesOfWorship,
   5: syncArchaeology,
 };

@@ -164,14 +164,14 @@ describe('what a person has judged', () => {
 
 describe('the lines beside the rows', () => {
   it('says how much of what is expected each live kind offers, and what sits under its line', () => {
-    const { context } = coverageFindings(report([archaeology, artMuseums, worldHeritage, liveKind({ slug: 'public-art', name: 'Public Art & Monuments' })]));
+    const { context } = coverageFindings(report([archaeology, artMuseums, worldHeritage, liveKind({ slug: 'public-art', name: 'Public art' })]));
 
     expect(context).toEqual([
       'Archaeology offers 81 of the 213 expected of it; 2 it lacks are at or over its line of 22 sitelinks '
         + 'and listed, and 116 under the line are the regional tier\'s to hold.',
       'Art Museums offers 8 of the 135 expected of it; it draws no sitelinks line, so the one it lacks is listed.',
       'World Heritage Sites offers 54 of the 54 expected of it.',
-      'Public Art & Monuments: no survey expects anything of it yet.',
+      'Public art: no survey expects anything of it yet.',
     ]);
   });
 
@@ -189,11 +189,11 @@ describe('the lines beside the rows', () => {
 
   it('says a kind lacks nothing well known when all it lacks sits under its line', () => {
     const { context } = coverageFindings(report([liveKind({
-      slug: 'public-art', name: 'Public Art & Monuments', expected: 93, offered: 92, belowLineMissing: 1,
+      slug: 'public-art', name: 'Public art', expected: 93, offered: 92, belowLineMissing: 1,
     })]));
 
     expect(context).toEqual([
-      'Public Art & Monuments offers 92 of the 93 expected of it; none it lacks is at or over its line '
+      'Public art offers 92 of the 93 expected of it; none it lacks is at or over its line '
         + 'of 22 sitelinks, and 1 under the line is the regional tier\'s to hold.',
     ]);
   });
@@ -225,7 +225,7 @@ describe('what a region offers that no guide names', () => {
     judgedByCause: [{ cause: 'worth-a-visit', count: 1, issues: [] }, { cause: 'not-a-must', count: 1, issues: [] }, { cause: 'rule-defect', count: 1, issues: [1700] }],
     standing: [
       place('Umbilicus urbis Romae', { sitelinks: 22, judgement: judgedRow('not-a-must') }),
-      place('Via Salaria', { sitelinks: 35, kinds: ['Archaeology', 'Public Art & Monuments'], judgement: judgedRow('rule-defect', 1700) }),
+      place('Via Salaria', { sitelinks: 35, kinds: ['Archaeology', 'Public art'], judgement: judgedRow('rule-defect', 1700) }),
     ],
   };
   const withUnnamed = (unnamed: RegionUnnamed[], stale: CoverageReport['staleRowJudgements'] = []): CoverageReport =>
@@ -236,7 +236,7 @@ describe('what a region offers that no guide names', () => {
 
     expect(rows.map(row => junk.describe(row))).toEqual([
       'Umbilicus urbis Romae (Rome), Archaeology, 22 sitelinks: judged not-a-must on 2026-10-17, and the kind still offers it: its rule or a curator answers it.',
-      'Via Salaria (Rome), Archaeology, Public Art & Monuments, 35 sitelinks: judged rule-defect (#1700) on 2026-10-17, and the kind still offers it: its rule or a curator answers it.',
+      'Via Salaria (Rome), Archaeology, Public art, 35 sitelinks: judged rule-defect (#1700) on 2026-10-17, and the kind still offers it: its rule or a curator answers it.',
     ]);
     expect(context).toEqual([
       'Rome offers 4 within its reach that no guide names; 3 are judged: 1 worth-a-visit; 1 not-a-must; 1 rule-defect (#1700); 1 waits for a person.',
