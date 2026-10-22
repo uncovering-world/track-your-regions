@@ -203,5 +203,6 @@ describe('shortKindName', () => {
     expect(shortKindName('Public art')).toBe('Art');
     expect(shortKindName('Monuments & memorials')).toBe('Monuments');
     expect(shortKindName('Bridges & engineering marvels')).toBe('Bridges');
+    expect(shortKindName('Squares & streets')).toBe('Squares');
   });
 });

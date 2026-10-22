@@ -66,6 +66,14 @@ const TOWERS: KindColorSet = { primary: '#B91C1C', bg: '#FEE2E2', text: '#991B1B
  * front, and the eye has to find it among them.
  */
 const BRIDGES: KindColorSet = { primary: '#4D7C0F', bg: '#ECFCCB', text: '#3F6212' };
+/**
+ * Squares & streets: a bright fuchsia. A square shares the map with the
+ * cathedral on it and with a World Heritage pin, so its hue sits between
+ * worship's crimson and World Heritage's violet, lighter than the one and
+ * redder than the other, and the three were told apart side by side at marker
+ * size; a darker fuchsia, #A21CAF, read as worship's.
+ */
+const SQUARES: KindColorSet = { primary: '#C026D3', bg: '#FAE8FF', text: '#86198F' };
 /** A kind with no palette of its own, and a World Heritage row with no type. */
 const UNKNOWN: KindColorSet = { primary: '#6366F1', bg: '#E0E7FF', text: '#4F46E5' };
 
@@ -86,7 +94,8 @@ export const TYPE_COLORS: Record<string, KindColorSet> = {
  * The kinds with a colour of their own, by the id `experience_kinds` is
  * seeded with in `db/init/01-schema.sql` (1 World Heritage Sites, 2 Art
  * Museums, 3 Public art, 4 Places of worship, 5 Archaeology, 6 Monuments &
- * memorials, 7 Towers, 8 Bridges & engineering marvels) — the id a list row carries as `kind_id`, off its membership (#819). World
+ * memorials, 7 Towers, 8 Bridges & engineering marvels, 9 Squares & streets)
+ * — the id a list row carries as `kind_id`, off its membership (#819). World
  * Heritage's is the purple of its cultural sites, which is what the kind reads
  * as where no type refines it — a count chip, a row whose type is not stored.
  */
@@ -99,6 +108,7 @@ const KIND_COLORS: Record<number, KindColorSet> = {
   6: MONUMENTS,
   7: TOWERS,
   8: BRIDGES,
+  9: SQUARES,
 };
 
 /**
@@ -217,5 +227,6 @@ export function shortKindName(name: string): string {
     .replace('Public art', 'Art')
     .replace('Monuments & memorials', 'Monuments')
     .replace('Places of worship', 'Worship')
-    .replace('Bridges & engineering marvels', 'Bridges');
+    .replace('Bridges & engineering marvels', 'Bridges')
+    .replace('Squares & streets', 'Squares');
 }
