@@ -202,5 +202,6 @@ describe('shortKindName', () => {
     expect(shortKindName('Art Museums')).toBe('Art Museums');
     expect(shortKindName('Public art')).toBe('Art');
     expect(shortKindName('Monuments & memorials')).toBe('Monuments');
+    expect(shortKindName('Bridges & engineering marvels')).toBe('Bridges');
   });
 });

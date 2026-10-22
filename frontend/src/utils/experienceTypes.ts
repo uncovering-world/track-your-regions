@@ -7,7 +7,8 @@
  * memorial, an arch, a column, an obelisk or a monument; a place of worship is a
  * cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue; a
  * tower is a pagoda, a minaret, a clock tower, a bell tower, an observation tower, a
- * fortified tower or a tower. An
+ * fortified tower or a tower; an engineering work is an aqueduct, a bridge, a
+ * dam, a canal or a tunnel. An
  * art museum has no type; Archaeology has two, site and museum, because a
  * traveller browses the dig and its museum as one list (ADR-0058). An art
  * museum carries no literal `art`: it says nothing the kind does not (#814).
@@ -103,10 +104,23 @@ const TOWERS: TypeVocabulary = {
   whenItChanges: 'Retyped on Wikidata. The same tower either way; the filter chip it answers to changes.',
 };
 
+const BRIDGES: TypeVocabulary = {
+  options: [
+    { value: 'aqueduct', label: 'Aqueduct' },
+    { value: 'bridge', label: 'Bridge' },
+    { value: 'dam', label: 'Dam' },
+    { value: 'canal', label: 'Canal' },
+    { value: 'tunnel', label: 'Tunnel' },
+  ],
+  what: 'What was built, read from Wikidata’s classes: an aqueduct before a bridge, so the Pont du Gard is an aqueduct, and a bridge before a tunnel.',
+  whenItChanges: 'Retyped on Wikidata. The same work either way; the filter chip it answers to changes.',
+};
+
 /**
  * The kinds' vocabularies, by the id each kind's source row is seeded with in
  * `db/init/01-schema.sql` (1 World Heritage, 2 Art Museums, 3 Public art,
- * 4 Places of worship, 5 Archaeology, 6 Monuments & memorials, 7 Towers). Until the kind
+ * 4 Places of worship, 5 Archaeology, 6 Monuments & memorials, 7 Towers,
+ * 8 Bridges & engineering marvels). Until the kind
  * table of ADR-0045 §4 lands, a kind is its source row and the id is what
  * every read carries — a name is renamed (#815). A kind absent here has no types; Art
  * Museums is absent on purpose.
@@ -118,6 +132,7 @@ const VOCABULARY_BY_KIND: Record<number, TypeVocabulary> = {
   5: ARCHAEOLOGY,
   6: MONUMENTS,
   7: TOWERS,
+  8: BRIDGES,
 };
 
 /** The types a curator may set on an object of this kind — none for an art museum. */
