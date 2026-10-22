@@ -959,12 +959,22 @@ from the place's standing memberships (190 of the 195 on the development catalog
 the other 5 hold only a refused one). A fifth, `first-subtitle`, is a subtitle arriving where the
 place holds none ([ADR-0133](../decisions/0133-a-subtitle-a-place-holds-none-of-passes-the-gate.md),
 #1795): the UNESCO run writes its paragraph as the description and no subtitle, so the same World
-Heritage sites were asked Wikidata's line on every run. It is the one class a visitor sees, as the
+Heritage sites were asked Wikidata's line on every run. It is a class a visitor sees, as the
 line under the name, and it replaces nothing. A subtitle replaced or removed is still held. The
 diff marks it in `collectDifferences`, and the upsert's `subtitle` arm writes a held row's empty
 subtitle by the same rule. Migration 143 wrote the line an admitted membership reports
 (`reported_subtitle`), where no standing view contests it, onto 172 places on the development catalogue on 2026-10-21. It also cleared
-the held pointer of the 81 memberships whose pointed run held nothing but that line. Each
+the held pointer of the 81 memberships whose pointed run held nothing but that line. A sixth,
+`type-outside-vocabulary`, is a type where the membership holds none, or one its kind's
+vocabulary has no word for, replaced by one it has (ADR-0135). When Public Art & Monuments split,
+both new kinds inherited its `monument` and `sculpture`, and the dry runs of 2026-10-22 held 98
+retypes of places a reader sees (Arc de Triomphe `monument` → `arch`, Nelson's Column
+`sculpture` → `column`), none a change the source made; migration 146 cleared the inherited
+types a curator had not claimed, so each kind's next run files its places in its own words. A
+source declares its kind's words on the record it writes (`typeVocabulary`, from
+`KindRule.types`); the diff marks the rewrite in `textDifferences`, and the upsert's membership
+`type` arm writes it by the same rule. A type moved inside the vocabulary, `memorial` →
+`monument`, is still held. Each
 is written on a held row and filed with the written fields, carrying its class in `passedTheGate`,
 so the run's record says what moved and why nobody was asked; none raises a question, sets the held
 pointer or demotes a verified membership (`wroteContent`). On an object the rule is
@@ -2265,6 +2275,8 @@ the gate, the run's pointers, the point's placement and the visit question — a
 answers about a held type and its curator assignments. It decides one thing only: a type a
 curator claimed outside the membership's new vocabulary — a monument on Public art, a sculpture
 on Monuments & memorials — is released for the first run to file, and a claim inside it stands.
+Migration 146 then clears every inherited type no curator claimed, and the first runs file them
+past the gate (`type-outside-vocabulary`, § What a run did to an object's contents).
 Each source's first
 run refuses, with its rule's reason, what its kind does not hold, and a pin its rule now
 disagrees with in words becomes a question for a curator (#1367): a fountain a curator admitted
