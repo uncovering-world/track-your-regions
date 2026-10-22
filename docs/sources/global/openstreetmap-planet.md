@@ -40,7 +40,7 @@ scorecard:
   cadence: 2
   total: 14
   verdict: adoptable
-status: looked-at
+status: adopted
 issue: 1437
 looked_at: 2026-10-22
 ---
@@ -75,8 +75,10 @@ name and never walks a listing. The planet carries a `.md5` beside it, which the
 **Personal data.** The planet carries each object's last editor. The layer keeps none of it: the flex
 style writes no `user`, `uid` or `changeset` (ADR-0134 decision 2).
 
-**Status.** `looked-at` by #1437. It is `adopted` once the Archaeology run reads its OSM questions from
-the layer.
+**Status.** `adopted` by #1437. The Archaeology run (`experience_sources` id 5) and its visit questions
+read OpenStreetMap from the layer while a fresh one is in place (`OSM_READER` unset, ADR-0134). The
+misses the layer cannot vouch for are asked live: of Overpass by the run, of the QLever mirror by its
+visit questions.
 
 **Scorecard notes.**
 - **Completeness: 2.** Every object mapped as of the layer's replication timestamp.
