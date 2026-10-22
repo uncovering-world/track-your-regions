@@ -5,6 +5,7 @@
 import type { MonumentType, PublicArtType } from './publicArt/kindRules.js';
 import type { TowerType } from './towers/classes.js';
 import type { BridgeType } from './bridges/classes.js';
+import type { SquareType } from './squares/classes.js';
 import type { Operation } from '../operationProgress.js';
 import type { FieldChange } from './changeSet.js';
 
@@ -292,7 +293,7 @@ export interface WikidataLandmark {
   sitelinks: number;
   countryLabel: string | null;
   /** The type within the kind the run fills, in that kind's own vocabulary. */
-  type: PublicArtType | MonumentType | TowerType | BridgeType;
+  type: PublicArtType | MonumentType | TowerType | BridgeType | SquareType;
   /**
    * Every `P31` the entity carries, as the rule read them. Stored with the row
    * (`metadata.wikidataClasses`) so that Catalogue Checks can ask, of what is

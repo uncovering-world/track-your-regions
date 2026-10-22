@@ -191,8 +191,9 @@ export const CACHED_KINDS_BY_SOURCE: Record<number, CacheKind[]> = {
   // Towers: its visit witnesses ask under its own id, the gather under source
   // 3's.
   7: ['classes', 'pool', 'statements', 'edges', 'entities', 'osm', 'photos'],
-  // Bridges & engineering marvels, the same way.
+  // Bridges & engineering marvels and Squares & streets, the same way.
   8: ['classes', 'pool', 'statements', 'edges', 'entities', 'osm', 'photos'],
+  9: ['classes', 'pool', 'statements', 'edges', 'entities', 'osm', 'photos'],
 };
 
 /**

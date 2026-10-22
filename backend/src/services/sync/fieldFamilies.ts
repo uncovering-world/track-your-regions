@@ -24,7 +24,7 @@ export type SourceFamily = 'unesco' | 'wikidata';
  * Wikidata, which read one item each whichever of them reads it (ADR-0085).
  * A source in no family owns nothing and keeps nothing from another.
  */
-const SOURCE_FAMILY: Readonly<Record<number, SourceFamily>> = { 1: 'unesco', 2: 'wikidata', 3: 'wikidata', 4: 'wikidata', 5: 'wikidata', 6: 'wikidata', 7: 'wikidata', 8: 'wikidata' };
+const SOURCE_FAMILY: Readonly<Record<number, SourceFamily>> = { 1: 'unesco', 2: 'wikidata', 3: 'wikidata', 4: 'wikidata', 5: 'wikidata', 6: 'wikidata', 7: 'wikidata', 8: 'wikidata', 9: 'wikidata' };
 
 /** The place's columns a family can own, as the run's record names them. */
 export type FamilyColumn = 'nameLocal' | 'description' | 'countryCodes' | 'countryNames';
