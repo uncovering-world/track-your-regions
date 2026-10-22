@@ -116,6 +116,22 @@ describe('the source of a folded point, run again (#1662)', () => {
     expect(await points()).toHaveLength(2);
   });
 
+  it('keeps its pairing with the folded point when the two points are one place (#1846)', async () => {
+    // The Genbaku Dome's shape: the item's point 5 cm from UNESCO's, folded
+    // into it by the merge. The fold places the run on the point a reader
+    // sees; the run neither takes that point another way nor takes the slow
+    // path again.
+    await pool.query('UPDATE experience_locations SET location = ST_SetSRID(ST_MakePoint($2, $3), 4326) WHERE id = $1',
+      [digPoint, MOGAO.lon, MOGAO.lat + 0.00000045]);
+    await merge();
+    const first = await run(MOGAO.lon);
+    expect(first.delta).toEqual({ added: [], withdrawn: [], returned: [], changed: [] });
+    expect((await points()).map(p => [p.id, p.merged_into_id])).toEqual([[heritagePoint, null], [digPoint, heritagePoint]]);
+    expect((await points())[1].lon).toBeCloseTo(MOGAO.lon, 6);
+    const again = await run(MOGAO.lon);
+    expect(again).toEqual({ unchanged: [heritagePoint], needsAssignment: [], unoffered: 0, delta: { added: [], withdrawn: [], returned: [], changed: [] } });
+  });
+
   it('finds its point down a chain of merges', async () => {
     // The Archaeology row first merged into a place of worship, which a later merge folded into the site.
     await place(SHRINE, 'Places of worship', 'Q99992-fixture', MOGAO.lon + 0.002);

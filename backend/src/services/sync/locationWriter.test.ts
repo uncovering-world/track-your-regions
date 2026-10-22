@@ -287,7 +287,9 @@ describe('writeExperienceLocations', () => {
     expect(place).toBeGreaterThan(-1);
     expect(place).toBeLessThan(mark);
     expect(statements[place]).toContain('FROM paired_rows p');
-    expect(statements[place]).toContain('ON CONFLICT DO NOTHING');
+    // A placement already there is kept; only the reference an adopted point is
+    // placed under is brought up to date (ADR-0137).
+    expect(statements[place]).toContain('ON CONFLICT (location_id, membership_id) DO UPDATE SET adopted_ref = EXCLUDED.adopted_ref');
   });
 
   it('withdraws only a point the run answers for, and marks it once no placement is left', async () => {

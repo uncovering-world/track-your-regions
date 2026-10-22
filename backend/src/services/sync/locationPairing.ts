@@ -104,6 +104,21 @@ export function samePointSql(alias: string): string {
 }
 
 /**
+ * When a stored row lies within `LOCATION_UNCHANGED_METERS` of the point the
+ * source is offering, whatever either is called: the geometry half of
+ * `samePointSql` alone. Composed only for a point a reader already sees
+ * (`locationWriter.ts`, the adopting statement), where two points of one place
+ * that close are one point (ADR-0137) however differently two sources name it:
+ * UNESCO's `775` and Wikidata's `Q231140` are the Genbaku Dome's one point,
+ * 5 cm apart (#1846).
+ */
+export function withinUnchangedSql(alias: string): string {
+  return `ST_DWithin(${alias}.location::geography,
+                     ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)::geography,
+                     ${LOCATION_UNCHANGED_METERS})`;
+}
+
+/**
  * The pairing a claimed coordinate needs, and the reason the tolerance cannot
  * serve it.
  *

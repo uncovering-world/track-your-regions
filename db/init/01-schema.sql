@@ -3226,9 +3226,11 @@ CREATE TABLE IF NOT EXISTS experience_location_placements (
     location_id INTEGER NOT NULL REFERENCES experience_locations(id) ON DELETE CASCADE,
     membership_id INTEGER NOT NULL REFERENCES experience_kind_memberships(id) ON DELETE CASCADE,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    adopted_ref TEXT,
     PRIMARY KEY (location_id, membership_id)
 );
 COMMENT ON TABLE experience_location_placements IS 'Which memberships place a point (ADR-0084): a run adds and takes away only its own, and the point is marked missing once none is left.';
+COMMENT ON COLUMN experience_location_placements.adopted_ref IS 'The reference the membership offers another source''s point under, where its run adopted that point within ten metres of its own (ADR-0137); NULL where the run placed the point as its own.';
 CREATE INDEX IF NOT EXISTS idx_experience_location_placements_membership
     ON experience_location_placements(membership_id);
 COMMENT ON COLUMN experience_locations.name IS 'Component name (e.g., individual fort name within a serial nomination)';
