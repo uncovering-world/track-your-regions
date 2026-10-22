@@ -183,7 +183,7 @@ process (eight to `planet.openstreetmap.org`, whose S3 bucket the OSM wiki
 calls unlimited, `CONNECTIONS_OF`), sends the bot `userAgent()` with the purpose `public dump builds` on
 every request, follows redirects, and never retries: a failed request fails
 the build, and an admin starts it again. A read opens one connection and a
-download into the local copy up to three. The worker runs one build at a
+download into the local copy up to the host's cap. The worker runs one build at a
 time, so a second build waits as a queued row (§ A build), not on a
 connection.
 
@@ -191,8 +191,9 @@ connection.
 Foundation's S3 bucket, whose bandwidth the OSM wiki calls unlimited. It
 asks for HTTPS and no downloads through a web browser, and its `robots.txt`
 keeps every agent but `wget` off the listings, which the catalog never reads
-(§ The catalog). The same three connections, User-Agent and no-retry rule
-apply; the cap is counted against the host the URL names.
+(§ The catalog). Its cap is eight connections (ADR-0136 decision 3); the
+User-Agent and no-retry rule apply as to any host, and the cap is counted
+against the host the URL names.
 
 What the files may be used for is the dump's own licence, and a table built
 from one carries it (ADR-0101): Wikidata's entities and the pageview counts
@@ -753,8 +754,8 @@ none). There is no trial build.
 
 Code: `backend/src/services/dumps/osm/`. A keeping build of `osm-planet`
 (`buildLayer`, `layerBuild.ts`) cuts the objects of the planet the
-catalogue asks about into `osm_objects`, with every tag and their full
-geometry (ADR-0134). It runs in the dump worker, whose image carries osmium
+catalogue asks about into `osm_objects`, with every tag, the full geometry
+of what a kind draws and a point for everything else (ADR-0134, ADR-0136). It runs in the dump worker, whose image carries osmium
 and osm2pgsql (`tools.ts`: each runs as a child process with its arguments as
 a list, by its absolute path, killed on a cancel). The database password
 reaches osm2pgsql through libpq's environment (`databaseEnv`), never its
@@ -818,9 +819,23 @@ command line.
    `layer.lua`. The style reads the same expression file and the same list of
    named objects, so a row is written for a selected or named object and
    never for a node or member that only draws one: the cut and the rows
-   cannot disagree. A point for a node; a closed way's area, or its line where
-   the area is not valid; an open way's line; an area relation's
-   multipolygon; any other relation's collection of members. osm2pgsql writes
+   cannot disagree. **The full geometry** is kept only for an object a kind's
+   keep rule draws (`LAYER_DRAWN`, written as `drawn.txt`; today
+   Archaeology's: a ruin, a dig, a protected area): a point for a node; a
+   closed way's area, or its line where the area is not valid; an open way's
+   line; an area relation's multipolygon; any other relation's collection of
+   members. **Every other object keeps one point** (ADR-0136): a node its own;
+   an area, or a relation with areas, the pole of inaccessibility of its
+   largest polygon, which lies inside it; a line, or a relation of lines, its
+   centroid, which may lie off it. The point locates an object and places
+   nothing. The layer's door answers no shape for such an object
+   (`geometryType` null). A read whose keep rule asks for outlines the layer
+   in place was cut without (`layerDraws` against the build's recorded
+   `drawn`) is not answered from the layer at all: it goes live whole until a
+   layer cut with the wider rule is swapped in, so a kind that needs more
+   outlines widens `LAYER_DRAWN` and waits one update. On the first
+   build the drawn objects held 60.6 million of the layer's 1,020 million
+   points. osm2pgsql writes
    no editor field (`user`, `uid`, `changeset`), and its record of the import
    (`osm2pgsql_properties`) is dropped.
 5. **The swap.** The `_next` copy is given the live table's key and indexes
@@ -828,7 +843,9 @@ command line.
    swapped in with its row in `osm_layer_builds` in one transaction
    (`swapIn`, `layerTables.ts`). The row records the weekly planet the
    current one started from, the objects kept, how many objects the catalogue
-   named, and the instant the planet was current to (the newest diff's end),
+   named, the drawn rule its full geometries were kept by (`drawn`, null for
+   a layer cut before ADR-0136), and the instant the planet was current to
+   (the newest diff's end),
    which every answer read from the layer carries. Its `dump_date` is that
    instant's day, so a newer weekly planet is not offered as newer than a
    layer already brought past it. A failed tool, a cut that kept nothing, or a cancel
@@ -886,7 +903,10 @@ and 6 to cut the selection and the named objects, and then loaded a cut of 612 m
   by nearness, and clustering copies the whole loaded table into a sorted one;
 - the indexes are built side by side after the key (`indexNextTable`);
 - the planet's host is held to eight connections rather than three (`CONNECTIONS_OF` in
-  `fetch.ts`), which matters for a first build and for one started again from a weekly copy.
+  `fetch.ts`, ADR-0136 decision 3: the wiki caps none, and the planet is served from S3), which
+  matters for a first build and for one started again from a weekly copy;
+- an object no kind draws is loaded as one point (ADR-0136), which on the first build would have
+  left out about 94 % of the geometry's points.
 
 The cut's files live in a directory of their own beside the planet,
 `osm-layer-cut`. A build empties it when it starts, before the planet is

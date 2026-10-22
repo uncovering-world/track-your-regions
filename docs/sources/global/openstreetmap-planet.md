@@ -27,7 +27,7 @@ access:
   format: "PBF, the weekly planet file; OsmChange XML, gzipped, for the daily diffs"
   cadence: "a planet file weekly; a replication diff daily"
   volume: "planet-261012.osm.pbf: 95,380,942,829 bytes; a daily diff about 40–80 MB, at times 300–400 MB (the OSM wiki)"
-  rate: "no published rate: the S3 buckets have unlimited bandwidth, the wiki asks for HTTPS and no browser downloads; the pipeline's host rules apply (at most three connections, the bot User-Agent, no retry)"
+  rate: "no published rate: the S3 buckets have unlimited bandwidth, the wiki asks for HTTPS and no browser downloads; the pipeline's host rules apply (at most eight connections to this host, ADR-0136; the bot User-Agent; no retry)"
 scorecard:
   date: 2026-10-22
   completeness: 2
