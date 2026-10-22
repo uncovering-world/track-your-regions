@@ -13,43 +13,44 @@ vi.mock('../../dumps/wikivoyage/usageTables.js', () => ({ latestUsage: vi.fn(), 
 import type { PoolEntity } from '../publicArt/queries.js';
 import type { KindShare } from '../places/gather.js';
 import type { BridgeTrees } from './classes.js';
-import { belowBridgeLine, bridgeStanding, classifyBridges } from './kind.js';
+import { belowGuidedLine, guidedStanding } from '../places/guidedLine.js';
+import { BRIDGE_LINE, classifyBridges } from './kind.js';
 
-describe('bridgeStanding', () => {
+describe('guidedStanding, on Bridges\' line', () => {
   it('lets in a work read widely, guided or not', () => {
     // The Lake Pontchartrain Causeway: 36 editions, 435,000 readers, one guide.
-    expect(bridgeStanding(36, 435_000, false, false)).toBe('in');
+    expect(guidedStanding(BRIDGE_LINE, 36, 435_000, false, false)).toBe('in');
   });
 
   it('lets in a work a guide names on fewer readers, and keeps out one no guide names', () => {
     // The Khaju Bridge in Isfahan: 25 editions, 43,000 readers, three guides.
-    expect(bridgeStanding(25, 43_351, true, false)).toBe('in');
-    expect(bridgeStanding(25, 43_351, false, false)).toBe('out');
+    expect(guidedStanding(BRIDGE_LINE, 25, 43_351, true, false)).toBe('in');
+    expect(guidedStanding(BRIDGE_LINE, 25, 43_351, false, false)).toBe('out');
     // Ponte Sisto: 21 editions, under 19,000 readers, named by guides.
-    expect(bridgeStanding(21, 18_668, true, false)).toBe('in');
+    expect(guidedStanding(BRIDGE_LINE, 21, 18_668, true, false)).toBe('in');
   });
 
   it('keeps out a work under 15 editions however read', () => {
-    expect(bridgeStanding(14, 900_000, true, false)).toBe('out');
+    expect(guidedStanding(BRIDGE_LINE, 14, 900_000, true, false)).toBe('out');
   });
 
   it('keeps a work the source holds on the stay line, and lets it fall below it', () => {
-    expect(bridgeStanding(13, 40_000, false, true)).toBe('in');
-    expect(bridgeStanding(13, 30_000, false, true)).toBe('fell');
-    expect(bridgeStanding(13, 8_000, true, true)).toBe('in');
-    expect(bridgeStanding(11, 900_000, true, true)).toBe('fell');
+    expect(guidedStanding(BRIDGE_LINE, 13, 40_000, false, true)).toBe('in');
+    expect(guidedStanding(BRIDGE_LINE, 13, 30_000, false, true)).toBe('fell');
+    expect(guidedStanding(BRIDGE_LINE, 13, 8_000, true, true)).toBe('in');
+    expect(guidedStanding(BRIDGE_LINE, 11, 900_000, true, true)).toBe('fell');
   });
 
   it('lets nothing new in when no year of readers can be read, and keeps what the source holds on editions', () => {
-    expect(bridgeStanding(60, null, true, false)).toBe('out');
-    expect(bridgeStanding(12, null, false, true)).toBe('in');
-    expect(bridgeStanding(11, null, true, true)).toBe('fell');
+    expect(guidedStanding(BRIDGE_LINE, 60, null, true, false)).toBe('out');
+    expect(guidedStanding(BRIDGE_LINE, 12, null, false, true)).toBe('in');
+    expect(guidedStanding(BRIDGE_LINE, 11, null, true, true)).toBe('fell');
   });
 });
 
-describe('belowBridgeLine', () => {
+describe('belowGuidedLine, on Bridges\' line', () => {
   it('names the measures, the guide and both lines', () => {
-    expect(belowBridgeLine(13, 30_000, false)).toBe(
+    expect(belowGuidedLine(BRIDGE_LINE, 13, 30_000, false)).toBe(
       '13 Wikipedia editions and 30,000 readers a year, named by no Wikivoyage guide: below the line '
       + '(15 editions and 50,000 readers to enter, 10,000 with a guide; 12 and 35,000, 7,000 with a guide, to stay)',
     );
@@ -95,7 +96,7 @@ describe('classifyBridges', () => {
     expect(result.fetched).toBe(5);
     expect(result.filtered).toEqual([
       { externalId: 'Q3907993', name: 'Polcevera Viaduct', reason: 'destroyed or demolished' },
-      { externalId: 'Q2', name: 'A held bridge', reason: belowBridgeLine(13, 30_000, false), type: 'bridge' },
+      { externalId: 'Q2', name: 'A held bridge', reason: belowGuidedLine(BRIDGE_LINE, 13, 30_000, false), type: 'bridge' },
     ]);
   });
   it('shuts the guide door while no Wikivoyage usage is built', async () => {
