@@ -54,6 +54,12 @@ const PLACES_OF_WORSHIP: KindColorSet = { primary: '#BE185D', bg: '#FCE7F3', tex
  * on — a "Museum" chip on it would read as the same family of thing.
  */
 const ARCHAEOLOGY: KindColorSet = { primary: '#B45309', bg: '#FFEDD5', text: '#92400E' };
+/**
+ * Towers: brick red, the campanile's and the minaret's, far from worship's
+ * rose — a bell tower often stands beside the church it rings for, and a
+ * traveller tells the two pins apart.
+ */
+const TOWERS: KindColorSet = { primary: '#B91C1C', bg: '#FEE2E2', text: '#991B1B' };
 /** A kind with no palette of its own, and a World Heritage row with no type. */
 const UNKNOWN: KindColorSet = { primary: '#6366F1', bg: '#E0E7FF', text: '#4F46E5' };
 
@@ -74,8 +80,7 @@ export const TYPE_COLORS: Record<string, KindColorSet> = {
  * The kinds with a colour of their own, by the id `experience_kinds` is
  * seeded with in `db/init/01-schema.sql` (1 World Heritage Sites, 2 Art
  * Museums, 3 Public art, 4 Places of worship, 5 Archaeology, 6 Monuments &
- * memorials) — the
- * id a list row carries as `kind_id`, off its membership (#819). World
+ * memorials, 7 Towers) — the id a list row carries as `kind_id`, off its membership (#819). World
  * Heritage's is the purple of its cultural sites, which is what the kind reads
  * as where no type refines it — a count chip, a row whose type is not stored.
  */
@@ -86,6 +91,7 @@ const KIND_COLORS: Record<number, KindColorSet> = {
   4: PLACES_OF_WORSHIP,
   5: ARCHAEOLOGY,
   6: MONUMENTS,
+  7: TOWERS,
 };
 
 /**

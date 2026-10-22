@@ -5,7 +5,9 @@
  * together (ADR-0045): a World Heritage site is cultural, natural or mixed; a
  * piece of public art is a sculpture, a fountain or street art; a monument is a
  * memorial, an arch, a column, an obelisk or a monument; a place of worship is a
- * cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue. An
+ * cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue; a
+ * tower is a pagoda, a minaret, a clock tower, a bell tower, an observation tower, a
+ * fortified tower or a tower. An
  * art museum has no type; Archaeology has two, site and museum, because a
  * traveller browses the dig and its museum as one list (ADR-0058). An art
  * museum carries no literal `art`: it says nothing the kind does not (#814).
@@ -87,10 +89,24 @@ const ARCHAEOLOGY: TypeVocabulary = {
   whenItChanges: 'Retyped by the run from Wikidata’s classes; the same place either way.',
 };
 
+const TOWERS: TypeVocabulary = {
+  options: [
+    { value: 'pagoda', label: 'Pagoda' },
+    { value: 'minaret', label: 'Minaret' },
+    { value: 'clock-tower', label: 'Clock tower' },
+    { value: 'bell-tower', label: 'Bell tower' },
+    { value: 'observation-tower', label: 'Observation tower' },
+    { value: 'fortified-tower', label: 'Fortified tower' },
+    { value: 'tower', label: 'Tower' },
+  ],
+  what: 'What kind of tower it is, read from Wikidata’s classes: a pagoda, a minaret or a clock tower before a bell tower, a TV tower as an observation tower, and a tower otherwise.',
+  whenItChanges: 'Retyped on Wikidata. The same tower either way; the filter chip it answers to changes.',
+};
+
 /**
  * The kinds' vocabularies, by the id each kind's source row is seeded with in
  * `db/init/01-schema.sql` (1 World Heritage, 2 Art Museums, 3 Public art,
- * 4 Places of worship, 5 Archaeology, 6 Monuments & memorials). Until the kind
+ * 4 Places of worship, 5 Archaeology, 6 Monuments & memorials, 7 Towers). Until the kind
  * table of ADR-0045 §4 lands, a kind is its source row and the id is what
  * every read carries — a name is renamed (#815). A kind absent here has no types; Art
  * Museums is absent on purpose.
@@ -101,6 +117,7 @@ const VOCABULARY_BY_KIND: Record<number, TypeVocabulary> = {
   4: PLACES_OF_WORSHIP,
   5: ARCHAEOLOGY,
   6: MONUMENTS,
+  7: TOWERS,
 };
 
 /** The types a curator may set on an object of this kind — none for an art museum. */
