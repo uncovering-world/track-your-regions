@@ -25,6 +25,7 @@ import {
   type DumpBuild, type DumpBuildFrom, type DumpBuildProgress, type DumpsDumpsItem,
 } from '../../api/admin/dumps';
 import { queryKeys } from '../../api/queryKeys';
+import { DumpScheduleLine } from './DumpScheduleLine';
 import { BuildProgressDetails, compact, dumpDate, inFlight, size } from './DumpBuildProgress';
 import { WikidataCopyCard } from './WikidataCopyCard';
 import { formatDateTime, formatDuration, formatRelativeTime } from '../../utils/dateFormat';
@@ -226,6 +227,7 @@ function DumpRow({ dump }: { dump: DumpsDumpsItem }) {
           <Typography variant="body2" fontWeight={500}>{dump.title}</Typography>
           <Typography variant="caption" color="text.secondary">{dump.about}</Typography>
           <Kept dump={dump} derived={derived} />
+          <DumpScheduleLine dump={dump} />
           <LocalCopy dump={dump} />
           <SampleLine dump={dump} tried={tried} />
         </TableCell>
