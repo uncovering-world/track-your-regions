@@ -878,8 +878,9 @@ held, so the cut of a build that the worker's restart stopped never takes the
 disk a new planet's download needs; it removes the directory when it ends,
 whatever the end. The tables
 are logged: a rebuild re-reads the whole planet. There is no trial build.
-Nothing reads the layer yet; the Archaeology run's door is a later slice of
-#1437.
+The Archaeology run and its visit witnesses read the layer while a fresh one
+is in place (`docs/tech/experiences.md` § Archaeology, **The layer as a
+door**).
 
 ## Trying a change on a sample
 
