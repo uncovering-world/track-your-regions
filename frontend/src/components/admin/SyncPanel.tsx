@@ -11,6 +11,9 @@ import { getSources, reorderSources, type ExperienceSource } from '../../api/adm
 import { LoadingSpinner } from '../shared/LoadingSpinner';
 import { queryKeys } from '../../api/queryKeys';
 import { SourceCard } from './SourceCard';
+import { PassCard } from './PassCard';
+import { cardsOf } from './passCards';
+
 
 export function SyncPanel() {
   const queryClient = useQueryClient();
@@ -47,13 +50,17 @@ export function SyncPanel() {
     dragOverItemRef.current = index;
   };
 
+  const cards = cardsOf(orderedSources);
+
+  // A card moves whole: a pass's sources keep their places beside each other.
   const handleDrop = () => {
     if (dragItemRef.current === null || dragOverItemRef.current === null) return;
     if (dragItemRef.current === dragOverItemRef.current) return;
 
-    const newOrder = [...orderedSources];
-    const [draggedItem] = newOrder.splice(dragItemRef.current, 1);
-    newOrder.splice(dragOverItemRef.current, 0, draggedItem);
+    const newCards = [...cards];
+    const [draggedCard] = newCards.splice(dragItemRef.current, 1);
+    newCards.splice(dragOverItemRef.current, 0, draggedCard);
+    const newOrder = newCards.flat();
 
     setOrderedSources(newOrder);
     reorderMutation.mutate(newOrder.map(s => s.id));
@@ -76,18 +83,15 @@ export function SyncPanel() {
       </Typography>
 
       <Box sx={{ display: 'grid', gap: 3 }}>
-        {orderedSources.map((source, index) => (
+        {cards.map((members, index) => (
           <Box
-            key={source.id}
+            key={members[0].id}
             draggable
             onDragStart={() => handleDragStart(index)}
             onDragOver={(e) => handleDragOver(e, index)}
             onDrop={handleDrop}
           >
-            <SourceCard
-              source={source}
-              runsWith={source.runsWith.map((id) => orderedSources.find((other) => other.id === id)?.name ?? `source ${id}`)}
-            />
+            {members.length > 1 ? <PassCard sources={members} /> : <SourceCard source={members[0]} />}
           </Box>
         ))}
       </Box>

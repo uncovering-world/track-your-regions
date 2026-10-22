@@ -52,7 +52,7 @@ const MUSEUMS: ExperienceSource = {
   findsComponentItems: true,
   wikidataReader: 'live',
   subsetReady: false,
-  runsWith: [],
+  pass: [],
 };
 
 /** A museum run the restart stopped 412 of 1,083 objects in. */

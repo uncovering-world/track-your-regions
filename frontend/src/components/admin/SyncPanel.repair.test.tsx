@@ -56,7 +56,7 @@ const UNESCO: ExperienceSource = {
   findsComponentItems: true,
   wikidataReader: 'live',
   subsetReady: false,
-  runsWith: [],
+  pass: [],
 };
 
 const inFlight: SyncStatus = {
