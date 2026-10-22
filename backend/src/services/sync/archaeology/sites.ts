@@ -20,13 +20,9 @@
  */
 
 import { chunk, type QueryRunner } from '../wikidataQueries.js';
-import {
-  fetchBroadPool,
-  fetchClassPool,
-  fetchEntitiesByIds,
-  type PoolEntity,
-} from '../publicArt/queries.js';
-import { fetchSiteFacts, type SiteFactsRow } from './queries.js';
+import type { PoolEntity } from '../publicArt/queries.js';
+import type { KindShare, PlaceKind } from '../places/gather.js';
+import { fetchArchaeologyTrees, fetchSiteFacts, type SiteFactsRow } from './queries.js';
 import { categoryVotes, collectOsmEntrance, withNamed, type SiteEntrance } from './siteEntrance.js';
 export type { SiteEntrance } from './siteEntrance.js';
 import {
@@ -46,7 +42,6 @@ import { fewWitnessesReason, placeDoorNote, type DoorWork, type OpenedWork, type
 import { isVisited, type Witness } from '../visit/witnesses.js';
 import type { VisitWitnessReader } from '../visit/visitWitnesses.js';
 
-const CLASS_BATCH = 25;
 const FACT_BATCH = 50;
 
 /** The one broad root, asked in fame bands: everything else in the tree is narrow. */
@@ -160,28 +155,42 @@ export interface SitesByFame {
 }
 
 /**
- * Every entity the site tree names, at the pool's floor or above, once.
- *
- * The root in fame bands and the rest of the tree in batches, which is worship's
- * shape and not the museums': 1,960 candidates carry a coordinate at 15
- * sitelinks (measured 2026-09-14) against the museums' 87, and `archaeological
- * site` alone is most of them.
+ * Archaeology's sites as the place gather reads them (`places/gather.ts`,
+ * #1820): the kind's class trees, and the classes whose instances are its
+ * candidates — the root in fame bands and the rest of the site tree whole,
+ * which is worship's shape and not the museums': 1,960 candidates carry a
+ * coordinate at 15 sitelinks (measured 2026-09-14) against the museums' 87,
+ * and `archaeological site` alone is most of them.
  *
  * The narrow classes are what carry the canon. Troy is `city-state, polis,
  * Bronze Age settlement, settlement site` and Athens is `big city, largest
- * city, metropolis, free city` — neither carries the root, and both are in this
- * pool because a class of theirs is under it.
+ * city, metropolis, free city` — neither carries the root, and both are
+ * candidates because a class of theirs is under it.
  *
- * The rows the source already admits that no class question named — retyped by
- * Wikidata, or fallen below the floor — are asked for by id afterwards, so each
- * gets a refusal with a reason of its own rather than the sweep's silence.
- * `byId` names them, because the collector has to know: a class question
- * vouches that its row is under the tree, and a question by id vouches for
- * nothing but the id.
+ * The site rule reads facts of its own (`fetchSiteFacts`), so no container is
+ * asked about.
+ */
+export const ARCHAEOLOGY_SITE_KIND: PlaceKind<ArchaeologyTrees> = {
+  name: 'archaeological sites',
+  trees: fetchArchaeologyTrees,
+  poolClasses: (trees) => ({ broad: [SITE_POOL_ROOT], narrow: [...trees.site].filter((cls) => cls !== SITE_ROOT) }),
+  readsContainers: false,
+};
+
+/**
+ * The site door's pool: the kind's share of the place gather, and the rows
+ * only OpenStreetMap named.
+ *
+ * The map is asked about the rows the class questions named, and a row the
+ * source admits that no class question named is one it can still name (#895).
+ * Only a row neither entrance named stays a row asked for by id, and `byId`
+ * names those, because the collector has to know: a class question vouches
+ * that its row is under the tree, and a question by id vouches for nothing but
+ * the id.
  */
 async function collectPool(
   run: QueryRunner,
-  trees: ArchaeologyTrees,
+  share: KindShare<ArchaeologyTrees>,
   admitted: ReadonlySet<string>,
   entrance: SiteEntrance,
 ): Promise<{
@@ -194,34 +203,16 @@ async function collectPool(
   /** The items only an article reached: no dig carries their tag, though another object may. */
   byArticleOnly: Set<string>;
 }> {
-  const pool = new Map<string, PoolEntity>();
-  for (const entity of await fetchBroadPool(run, SITE_POOL_ROOT)) pool.set(entity.qid, entity);
-
-  const narrow = [...trees.site].filter((cls) => cls !== SITE_ROOT);
-  const batches = chunk(narrow, CLASS_BATCH);
-  for (let i = 0; i < batches.length; i++) {
-    run.phase(`Fetching the narrow site classes (batch ${i + 1}/${batches.length})...`);
-    await run.step();
-    for (const entity of await fetchClassPool(run, batches[i])) {
-      if (!pool.has(entity.qid)) pool.set(entity.qid, entity);
-    }
-  }
-
+  const pool = new Map([...share.pool].filter(([qid]) => !share.byId.has(qid)));
   const { byOsm, named, byArticleOnly } = await collectOsmEntrance(run, pool, admitted, entrance);
 
-  const missing = [...admitted].filter((qid) => !pool.has(qid));
-  const missingBatches = chunk(missing, FACT_BATCH);
-  for (let i = 0; i < missingBatches.length; i++) {
-    run.phase(
-      `Asking after admitted sites the pool did not name (batch ${i + 1}/${missingBatches.length})...`,
-    );
-    await run.step();
-    const about = 'admitted sites the pool did not name';
-    for (const entity of await fetchEntitiesByIds(run, missingBatches[i], about)) {
-      pool.set(entity.qid, entity);
-    }
+  const byId = new Set<string>();
+  for (const qid of share.byId) {
+    if (pool.has(qid)) continue;
+    pool.set(qid, share.pool.get(qid)!);
+    byId.add(qid);
   }
-  return { pool, byId: new Set(missing), byOsm, named, byArticleOnly };
+  return { pool, byId, byOsm, named, byArticleOnly };
 }
 
 /**
@@ -544,7 +535,7 @@ function keepWitnessed(
  */
 export async function collectSitesByFame(
   run: QueryRunner,
-  trees: ArchaeologyTrees,
+  share: KindShare<ArchaeologyTrees>,
   admitted: ReadonlySet<string>,
   line: SourceLine,
   osm: OsmReader,
@@ -552,7 +543,8 @@ export async function collectSitesByFame(
   openDoor?: PlaceDoor,
   witnesses?: VisitWitnessReader,
 ): Promise<SitesByFame> {
-  const { pool, byId, byOsm, named, byArticleOnly } = await collectPool(run, trees, admitted, entrance);
+  const { trees } = share;
+  const { pool, byId, byOsm, named, byArticleOnly } = await collectPool(run, share, admitted, entrance);
   const qids = [...pool.keys()];
   // Vouched for by a class question or by the map: a row asked for by id
   // vouches for nothing but the id. A row the map named carries no class

@@ -35,6 +35,8 @@ vi.mock('./wikidataCache.js', () => ({
 }));
 vi.mock('./pictureRepair.js', () => ({ writeFoundPicture: vi.fn() }));
 vi.mock('./archaeology/pipeline.js', () => ({ collectArchaeology: vi.fn() }));
+// The sites come from the pass's gather, which the mocked pipeline never asks.
+vi.mock('./places/gather.js', () => ({ shareOf: vi.fn() }));
 vi.mock('./museum/pipeline.js', () => ({ collectTier1Museums: vi.fn() }));
 vi.mock('./museum/queries.js', () => ({ fetchEntityDetails: vi.fn(), isQid: vi.fn(), POOL_MIN_SITELINKS: 10 }));
 vi.mock('./pinQuestion.js', async (importOriginal) => ({
@@ -100,7 +102,6 @@ vi.mock('./imageCredit.js', () => ({
 }));
 
 import { pool } from '../../db/index.js';
-import { orchestrateSync } from './syncOrchestrator.js';
 import type { SyncServiceConfig, SyncRunContext } from './syncContract.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { admittedExternalIds } from './admission.js';
@@ -123,11 +124,10 @@ import { OsmDoorFailedError, OsmEmptyEnumerationError } from './osm/readOsmObjec
 import { OsmBothDoorsFailedError } from './osm/oneDoorPerRun.js';
 import { upsertVenueTreasures } from './museum/treasureWriter.js';
 import { readsSubset } from './subset/reader.js';
-import { syncArchaeology } from './archaeologySyncService.js';
+import { archaeologySource } from './archaeologySyncService.js';
 import type { ProcessedContent, SyncProgress } from './types.js';
 
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
-const mockedOrchestrate = orchestrateSync as unknown as ReturnType<typeof vi.fn>;
 const mockedCollect = collectArchaeology as unknown as ReturnType<typeof vi.fn>;
 const mockedCategories = fetchWikipediaCategories as unknown as ReturnType<typeof vi.fn>;
 const mockedMembers = fetchCategoryMembers as unknown as ReturnType<typeof vi.fn>;
@@ -243,10 +243,11 @@ function lineRow(): { rows: { api_config: unknown }[] } {
   };
 }
 
-/** The config the run hands the orchestrator, captured rather than run. */
-async function configOf(): Promise<SyncServiceConfig<CollectedArchaeologyItem>> {
-  await syncArchaeology(1);
-  return mockedOrchestrate.mock.calls[0][0] as SyncServiceConfig<CollectedArchaeologyItem>;
+/** The config the place pass hands the orchestrator for this source. */
+async function configOf(placesDoor: unknown = vi.fn()): Promise<SyncServiceConfig<CollectedArchaeologyItem>> {
+  // The pipeline is mocked, so the pass's gather is asked only for the door
+  // it read the sites through: the live service unless a test says otherwise.
+  return archaeologySource(vi.fn(async () => ({ gathered: {}, sparql: placesDoor })) as never, {});
 }
 
 /**
@@ -317,6 +318,24 @@ describe('what the archaeology run fetches', () => {
     const deps = mockedCollect.mock.calls[0][0];
     expect(readsSubset(deps.sparql)).toBe(true);
     expect(deps.pause).toBeUndefined();
+  });
+
+  it('leaves what the subset does not hold unread when the pass read its sites there, its own switch live (#1820)', async () => {
+    const { subsetOnlyDoor } = await import('./subset/reader.js');
+    const unread = [{ externalId: 'Q130000003', name: 'A dig newer than the dump' }];
+    mockedQuery.mockImplementation(async (sql: string) => {
+      if (sql.includes('wikidata_reader')) return { rows: [{ wikidata_reader: 'live' }] };
+      return { rows: sql.includes('NOT EXISTS') ? unread : [] };
+    });
+    mockedQuery.mockResolvedValueOnce(lineRow());
+    collected([museum()]);
+    const onSubset = await (await configOf(subsetOnlyDoor())).fetchItems(progress(), []);
+    expect(onSubset.unread).toEqual(unread);
+
+    mockedQuery.mockResolvedValueOnce(lineRow());
+    collected([museum()]);
+    const live = await (await configOf()).fetchItems(progress(), []);
+    expect(live.unread).toBeUndefined();
   });
 
   it('reads both lines off the source row before collecting, and hands them to the collector', async () => {

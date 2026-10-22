@@ -84,7 +84,9 @@ import { holdingReason, keptElsewhere, refusedHoldingReason, type HandOver } fro
 import { judgeToAFixedPoint, readAdmittedHoldings } from './museumHoldings.js';
 import { chunk, type QueryRunner, type SparqlFn } from '../wikidataQueries.js';
 import { isQid } from '../wikidataUtils.js';
-import { collectMuseumPool, fetchArchaeologyTrees, fetchFindFacts } from './queries.js';
+import { collectMuseumPool, fetchFindFacts } from './queries.js';
+import type { KindShare } from '../places/gather.js';
+import type { ArchaeologyTrees } from './classes.js';
 import { findsCollectorOptions, type FindFacts } from './finds.js';
 import {
   candidatesOf,
@@ -175,6 +177,11 @@ export interface ArchaeologyPipelineDeps {
    */
   admittedMuseums: ReadonlySet<string>;
   admittedSites: ReadonlySet<string>;
+  /**
+   * The site kind's share of the place gather its pass made (`places/gather.ts`,
+   * #1820): the kind's trees, which both doors read, and the site candidates.
+   */
+  sites: (run: QueryRunner) => Promise<KindShare<ArchaeologyTrees>>;
   /** The two lines the source row states: one for places, one for finds (`sourceLine.ts`). */
   line: SourceLine;
   /**
@@ -354,7 +361,8 @@ export async function collectArchaeology(
   deps: ArchaeologyPipelineDeps,
 ): Promise<CollectedArchaeology> {
   const run = makeRun(deps);
-  const trees = await fetchArchaeologyTrees(run);
+  const share = await deps.sites(run);
+  const { trees } = share;
   const pool = await collectMuseumPool(run, trees, deps.admittedMuseums);
 
   // Asked here, beside the pool it stands next to, though the ids it answers
@@ -458,7 +466,7 @@ export async function collectArchaeology(
   // (ADR-0058 decision 1). One collector and one proposal, because the
   // orchestrator's sweep reads absence from `items` as a withdrawal: two runs
   // would have each door retire the other's rows on every pass.
-  const sites = await collectSitesByFame(run, trees, deps.admittedSites, deps.line, deps.osm, {
+  const sites = await collectSitesByFame(run, share, deps.admittedSites, deps.line, deps.osm, {
     digs: deps.osmDigs,
     resolveArticles: deps.resolveArticles,
     categories: deps.categories,

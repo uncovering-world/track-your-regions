@@ -33,6 +33,7 @@ import {
   MUSEUM,
   NATIONAL_MUSEUM,
   PALACE,
+  siteShare,
   type World,
 } from './pipelineFixture.js';
 
@@ -196,6 +197,7 @@ describe('collectArchaeology', () => {
       previousPlacements: {},
       admittedMuseums: new Set<string>(),
       admittedSites: new Set<string>(),
+      sites: siteShare(new Set<string>()),
       shownElsewhere: SHOWN,
       line: LINE,
       categories: door.categories,
@@ -843,6 +845,11 @@ describe('collectArchaeology', () => {
       previousPlacements: {},
       admittedMuseums: new Set<string>(),
       admittedSites: new Set<string>(),
+      // Gathered through the pass's door, as the place pass gathers it: the
+      // question counted here is the museum door's own.
+      sites: () => siteShare(new Set<string>())({
+        sparql: (query: string) => Promise.resolve(answer(w, query)), phase: () => {}, step: async () => {},
+      }),
       shownElsewhere: SHOWN,
       line: LINE,
       categories: door.categories,
@@ -888,6 +895,7 @@ describe('collectArchaeology', () => {
       previousPlacements: {},
       admittedMuseums: new Set<string>(),
       admittedSites: new Set<string>(),
+      sites: siteShare(new Set<string>()),
       shownElsewhere: SHOWN,
       line: LINE,
       categories: door.categories,
@@ -1061,6 +1069,7 @@ describe('what an admitted museum holds, read from its own side (#890)', () => {
       previousPlacements: {},
       admittedMuseums: new Set(),
       admittedSites: new Set<string>(),
+      sites: siteShare(new Set<string>()),
       shownElsewhere: SHOWN,
       line: LINE,
       categories: door.categories,
@@ -1110,6 +1119,7 @@ describe('what an admitted museum holds, read from its own side (#890)', () => {
       previousPlacements: {},
       admittedMuseums: new Set(),
       admittedSites: new Set<string>(),
+      sites: siteShare(new Set<string>()),
       shownElsewhere: SHOWN,
       line: LINE,
       categories: door.categories,
@@ -1143,6 +1153,7 @@ describe('the site door, beside the museums', () => {
       previousPlacements: {},
       admittedMuseums: new Set<string>(),
       admittedSites: new Set<string>(),
+      sites: siteShare(new Set<string>()),
       shownElsewhere: SHOWN,
       line: LINE,
       categories: door.categories,

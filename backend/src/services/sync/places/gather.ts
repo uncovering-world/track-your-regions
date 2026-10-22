@@ -70,6 +70,12 @@ export interface PlaceKind<Trees> {
 export interface KindShare<Trees> {
   trees: Trees;
   pool: Map<string, PoolEntity>;
+  /**
+   * The rows of `pool` the kind admits that no class question named, asked
+   * for by id: such a row vouches for nothing but its id, and a kind that reads
+   * other entrances (Archaeology's map) asks them about it first.
+   */
+  byId: Set<string>;
   facts: Map<string, EntityFacts>;
   /** What holds and owns its candidates; empty for a kind that reads none. */
   containers: Map<string, ContainerFacts>;
@@ -211,16 +217,20 @@ function candidatesOf(
   pooled: Map<string, PoolEntity>,
   byId: Map<string, PoolEntity>,
   facts: Map<string, EntityFacts>,
-): { pool: Map<string, PoolEntity>; facts: Map<string, EntityFacts> } {
-  const named = (qid: string) => admitted.has(qid) || (facts.get(qid)?.classes ?? []).some((c) => classes.has(c));
-  const pool = new Map([...pooled].filter(([qid]) => named(qid)));
+): { pool: Map<string, PoolEntity>; byId: Set<string>; facts: Map<string, EntityFacts> } {
+  const byClass = (qid: string) => (facts.get(qid)?.classes ?? []).some((c) => classes.has(c));
+  const pool = new Map([...pooled].filter(([qid]) => admitted.has(qid) || byClass(qid)));
   for (const [qid, entity] of byId) if (admitted.has(qid)) pool.set(qid, entity);
+  // A row the kind admits that none of its own classes names is one it has by
+  // id, whichever question fetched it: another kind's class question may name
+  // a site Archaeology admits, and that vouches for nothing of the site's.
+  const askedById = new Set([...pool.keys()].filter((qid) => admitted.has(qid) && (byId.has(qid) || !byClass(qid))));
   const known = new Map<string, EntityFacts>();
   for (const qid of pool.keys()) {
     const entry = facts.get(qid);
     if (entry) known.set(qid, entry);
   }
-  return { pool, facts: known };
+  return { pool, byId: askedById, facts: known };
 }
 
 /** Gather the candidate places of every kind asked for, and what each of them is. */

@@ -15,7 +15,9 @@
  */
 import { describe, it, expect } from 'vitest';
 import { buildArchaeologyTrees, OSM_KEEP_WKT, SITE_ROOT } from './classes.js';
-import { collectSitesByFame, OsmAnswerFloorError, type SiteEntrance } from './sites.js';
+import { ARCHAEOLOGY_SITE_KIND, collectSitesByFame, OsmAnswerFloorError, type SiteEntrance } from './sites.js';
+import { gatherPlaces, shareOf, type PlaceKind } from '../places/gather.js';
+import type { QueryRunner } from '../wikidataQueries.js';
 import type { Witness } from '../visit/witnesses.js';
 import type { ReadershipDoor } from '../readershipDoor.js';
 import type { KeepWkt, OsmDigs, OsmObject } from '../osm/types.js';
@@ -103,6 +105,11 @@ function factRows(query: string): SparqlBinding[] {
 function door(query: string): SparqlBinding[] {
   if (/wdt:P279\* wd:/.test(query)) throw new Error('the trees are fetched elsewhere');
   if (query.includes('?whc')) return factRows(query);
+  // The place gather's facts question, whose classes say which kind's candidate a row is.
+  if (query.includes('?commemorates')) {
+    return [...query.matchAll(/wd:(Q\d+)/g)].map((m) => m[1])
+      .flatMap((qid) => (CLASSES[qid] ?? []).map((cls) => ({ e: uri(qid), cls: uri(cls) })));
+  }
 
   // The editions count every line reads, the second entrance's included (ADR-0082).
   if (isWikipediaEditionsQuery(query)) return wikipediaEditionsRows(query, (qid) => POOL[qid]?.sitelinks);
@@ -172,6 +179,15 @@ const OSM: Record<string, OsmObject[]> = {
   }],
 };
 
+/**
+ * The site kind's share of the place gather (#1820), its trees the spec's own:
+ * a gather of this kind alone, through the same door the site door reads.
+ */
+const SITE_KIND = { ...ARCHAEOLOGY_SITE_KIND, trees: async () => TREES };
+async function shareFor(run: QueryRunner, admitted: ReadonlySet<string>) {
+  return shareOf(await gatherPlaces(run, [{ kind: SITE_KIND as PlaceKind<unknown>, admitted }]), SITE_KIND);
+}
+
 function runner() {
   const phases: string[] = [];
   let steps = 0;
@@ -205,7 +221,7 @@ const NO_ENTRANCE: SiteEntrance = {
 describe('collectSitesByFame', () => {
   it('admits the dig, refuses the city, and says which object decided each', async () => {
     const { run } = runner();
-    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader([]), NO_ENTRANCE);
+    const answer = await collectSitesByFame(run, await shareFor(run, new Set<string>()), new Set<string>(), LINE, osmReader([]), NO_ENTRANCE);
 
     expect([...answer.sites.keys()].sort()).toEqual(['Q22647', 'Q43332']);
     const troy = answer.sites.get('Q22647')!;
@@ -233,7 +249,7 @@ describe('collectSitesByFame', () => {
   it('reads OpenStreetMap once, after the pool is known, about every candidate', async () => {
     const { run } = runner();
     const asked: OsmCall[] = [];
-    await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader(asked), NO_ENTRANCE);
+    await collectSitesByFame(run, await shareFor(run, new Set<string>()), new Set<string>(), LINE, osmReader(asked), NO_ENTRANCE);
     expect(asked).toHaveLength(1);
     expect([...asked[0].qids].sort()).toEqual(['Q1524', 'Q22647', 'Q43332']);
   });
@@ -241,7 +257,7 @@ describe('collectSitesByFame', () => {
   it('asks the reader for this kind\'s geometries and no others', async () => {
     const { run } = runner();
     const asked: OsmCall[] = [];
-    await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader(asked), NO_ENTRANCE);
+    await collectSitesByFame(run, await shareFor(run, new Set<string>()), new Set<string>(), LINE, osmReader(asked), NO_ENTRANCE);
     // Without it the reader would fetch the administrative outline of every
     // city in the pool — megabytes of geometry this kind never draws.
     expect(asked[0].keep).toBe(OSM_KEEP_WKT);
@@ -254,7 +270,7 @@ describe('collectSitesByFame', () => {
     // settlement branch with no site class of its own, it is a city. Judged
     // with a defaulted `settlementBranch: false` it would be admitted.
     const answer = await collectSitesByFame(
-      run, TREES, new Set<string>(), LINE, osmReader([], { ...OSM, Q1524: [] }), NO_ENTRANCE,
+      run, await shareFor(run, new Set<string>()), new Set<string>(), LINE, osmReader([], { ...OSM, Q1524: [] }), NO_ENTRANCE,
     );
     expect(answer.sites.has('Q1524')).toBe(false);
     const athens = answer.filtered.find((row) => row.externalId === 'Q1524')!;
@@ -276,7 +292,7 @@ describe('collectSitesByFame', () => {
         ref: 'node/9', kind: 'node', tags: { historic: 'ruins', name: 'Stoa of Attalos' }, geometryType: null, wkt: null,
       }]]]),
     };
-    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader([]), {
+    const answer = await collectSitesByFame(run, await shareFor(run, new Set<string>()), new Set<string>(), LINE, osmReader([]), {
       ...NO_ENTRANCE, digs: async () => digs, resolveArticles: async () => new Map([['en:Athens', 'Q1524']]),
     });
     expect(answer.sites.has('Q1524')).toBe(false);
@@ -301,7 +317,7 @@ describe('collectSitesByFame', () => {
         ref: 'node/9', kind: 'node', tags: { historic: 'ruins', name: 'Stoa of Attalos' }, geometryType: null, wkt: null,
       }]]]),
     };
-    const answer = await collectSitesByFame(gone, TREES, new Set<string>(), LINE, osmReader([]), {
+    const answer = await collectSitesByFame(gone, await shareFor(gone, new Set<string>()), new Set<string>(), LINE, osmReader([]), {
       ...NO_ENTRANCE, digs: async () => digs, resolveArticles: async () => new Map([['en:Athens', 'Q1524']]),
     });
     expect(answer.sites.has('Q1524')).toBe(false);
@@ -311,7 +327,7 @@ describe('collectSitesByFame', () => {
 
   it('counts every entity it named as fetched, refused and admitted alike', async () => {
     const { run } = runner();
-    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader([]), NO_ENTRANCE);
+    const answer = await collectSitesByFame(run, await shareFor(run, new Set<string>()), new Set<string>(), LINE, osmReader([]), NO_ENTRANCE);
     expect([...answer.fetched].sort()).toEqual(['Q1524', 'Q22647', 'Q43332']);
   });
 
@@ -325,7 +341,7 @@ describe('collectSitesByFame', () => {
     const { run } = runner();
     const asked: OsmCall[] = [];
     await collectSitesByFame(
-      run, TREES, new Set<string>(), { enterSitelinks: 200, staySitelinks: 150 }, osmReader(asked), NO_ENTRANCE,
+      run, await shareFor(run, new Set<string>()), new Set<string>(), { enterSitelinks: 200, staySitelinks: 150 }, osmReader(asked), NO_ENTRANCE,
     );
     expect(asked).toHaveLength(1);
     expect(asked[0].qids).toEqual(['Q1524']);
@@ -338,7 +354,7 @@ describe('collectSitesByFame', () => {
     const { run } = runner();
     const asked: OsmCall[] = [];
     await collectSitesByFame(
-      run, TREES, new Set(['Q22647']), { enterSitelinks: 200, staySitelinks: 100 }, osmReader(asked), NO_ENTRANCE,
+      run, await shareFor(run, new Set(['Q22647'])), new Set(['Q22647']), { enterSitelinks: 200, staySitelinks: 100 }, osmReader(asked), NO_ENTRANCE,
     );
     expect([...asked[0].qids].sort()).toEqual(['Q1524', 'Q22647']);
   });
@@ -354,7 +370,7 @@ describe('collectSitesByFame', () => {
     const handed: { qids: string[]; held: string[] }[] = [];
     const door: ReadershipDoor = { opened: new Map([['Q43332', { views: 2_400_000, burst: false }]]), bar: 1_000_000, exit: 700_000 };
     const answer = await collectSitesByFame(
-      run, TREES, new Set<string>(), { enterSitelinks: 200, staySitelinks: 150 }, osmReader(asked), NO_ENTRANCE,
+      run, await shareFor(run, new Set<string>()), new Set<string>(), { enterSitelinks: 200, staySitelinks: 150 }, osmReader(asked), NO_ENTRANCE,
       async (places, held) => {
         handed.push({ qids: places.map((place) => place.qid).sort(), held: [...held] });
         return door;
@@ -380,7 +396,7 @@ describe('collectSitesByFame', () => {
     };
     const asked: string[][] = [];
     const answer = await collectSitesByFame(
-      run, TREES, new Set<string>(), { enterSitelinks: 200, staySitelinks: 150 }, osmReader([]), NO_ENTRANCE,
+      run, await shareFor(run, new Set<string>()), new Set<string>(), { enterSitelinks: 200, staySitelinks: 150 }, osmReader([]), NO_ENTRANCE,
       async () => door,
       async (places) => {
         asked.push(places.map((place) => place.qid).sort());
@@ -407,7 +423,7 @@ describe('collectSitesByFame', () => {
     };
     const asked: string[][] = [];
     const answer = await collectSitesByFame(
-      run, TREES, new Set<string>(), { enterSitelinks: 10_000, staySitelinks: 9_000 }, osmReader([]), NO_ENTRANCE,
+      run, await shareFor(run, new Set<string>()), new Set<string>(), { enterSitelinks: 10_000, staySitelinks: 9_000 }, osmReader([]), NO_ENTRANCE,
       async () => door,
       async (places) => {
         asked.push(places.map((place) => place.qid));
@@ -425,7 +441,7 @@ describe('collectSitesByFame', () => {
     const { run } = runner();
     const door: ReadershipDoor = { opened: new Map([['Q22647', { views: 800_000, burst: false }]]), bar: 1_000_000, exit: 700_000 };
     const answer = await collectSitesByFame(
-      run, TREES, new Set(['Q22647']), { enterSitelinks: 200, staySitelinks: 100 }, osmReader([]), NO_ENTRANCE,
+      run, await shareFor(run, new Set(['Q22647'])), new Set(['Q22647']), { enterSitelinks: 200, staySitelinks: 100 }, osmReader([]), NO_ENTRANCE,
       async () => door,
     );
     expect(answer.sites.has('Q22647')).toBe(true);
@@ -441,9 +457,9 @@ describe('collectSitesByFame', () => {
     // half of that share.
     const { run } = runner();
     const empty = async (qids: string[]) => new Map(qids.map((qid) => [qid, []]));
-    await expect(collectSitesByFame(run, TREES, new Set<string>(), LINE, empty, NO_ENTRANCE))
+    await expect(collectSitesByFame(run, await shareFor(run, new Set<string>()), new Set<string>(), LINE, empty, NO_ENTRANCE))
       .rejects.toThrow(OsmAnswerFloorError);
-    await expect(collectSitesByFame(run, TREES, new Set<string>(), LINE, empty, NO_ENTRANCE))
+    await expect(collectSitesByFame(run, await shareFor(run, new Set<string>()), new Set<string>(), LINE, empty, NO_ENTRANCE))
       .rejects.toThrow(
         /answered for 0 of 3 site candidates it can answer about \(0%\), below the floor of 50%/,
       );
@@ -455,7 +471,7 @@ describe('collectSitesByFame', () => {
     // mapping, and Athens is refused on the branch rather than on the read.
     const { run } = runner();
     const answer = await collectSitesByFame(
-      run, TREES, new Set<string>(), LINE, osmReader([], { ...OSM, Q1524: [] }), NO_ENTRANCE,
+      run, await shareFor(run, new Set<string>()), new Set<string>(), LINE, osmReader([], { ...OSM, Q1524: [] }), NO_ENTRANCE,
     );
     expect(answer.sites.has('Q22647')).toBe(true);
     expect(answer.filtered.map((row) => row.externalId)).toContain('Q1524');
@@ -463,14 +479,14 @@ describe('collectSitesByFame', () => {
 
   it('tags each refusal with the answer it came from, for the run to group by', async () => {
     const { run } = runner();
-    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader([]), NO_ENTRANCE);
+    const answer = await collectSitesByFame(run, await shareFor(run, new Set<string>()), new Set<string>(), LINE, osmReader([]), NO_ENTRANCE);
     expect(answer.filtered.map((row) => [row.externalId, row.group])).toEqual([['Q1524', 'living']]);
   });
 
   it('asks after an admitted row the pool no longer names', async () => {
     const { run } = runner();
     const answer = await collectSitesByFame(
-      run, TREES, new Set(['Q999999']), LINE, osmReader([]), NO_ENTRANCE,
+      run, await shareFor(run, new Set(['Q999999'])), new Set(['Q999999']), LINE, osmReader([]), NO_ENTRANCE,
     );
     // Wikidata answers nothing about it, so nothing is admitted and nothing
     // crashes: a row asked for by id that has vanished is simply not in the pool.
@@ -484,7 +500,7 @@ describe('collectSitesByFame', () => {
     // its 109 sitelinks and be written as a site.
     const seen: OsmCall[] = [];
     const { run } = runner();
-    const answer = await collectSitesByFame(run, TREES, new Set(['Q6373']), LINE, osmReader(seen), NO_ENTRANCE);
+    const answer = await collectSitesByFame(run, await shareFor(run, new Set(['Q6373'])), new Set(['Q6373']), LINE, osmReader(seen), NO_ENTRANCE);
     expect(answer.sites.has('Q6373')).toBe(false);
     expect(answer.filtered.find((row) => row.externalId === 'Q6373')).toEqual({
       externalId: 'Q6373',
@@ -505,7 +521,7 @@ describe('collectSitesByFame', () => {
       ...run,
       sparql: async (query: string) => (query.includes('?whc') ? [] : door(query)),
     };
-    await expect(collectSitesByFame(silent, TREES, new Set<string>(), LINE, osmReader([]), NO_ENTRANCE))
+    await expect(collectSitesByFame(silent, await shareFor(silent, new Set<string>()), new Set<string>(), LINE, osmReader([]), NO_ENTRANCE))
       .rejects.toThrow(/answered nothing about any of the 3 rows/);
   });
 
@@ -521,7 +537,7 @@ describe('collectSitesByFame', () => {
       sparql: async (query: string) => door(query)
         .filter((row) => !(query.includes('?whc') && row.e?.value.endsWith('/Q22647'))),
     };
-    const answer = await collectSitesByFame(merged, TREES, new Set<string>(), LINE, osmReader(seen), NO_ENTRANCE);
+    const answer = await collectSitesByFame(merged, await shareFor(merged, new Set<string>()), new Set<string>(), LINE, osmReader(seen), NO_ENTRANCE);
     expect(answer.sites.has('Q43332')).toBe(true);
     expect(answer.filtered.find((row) => row.externalId === 'Q22647')).toEqual({
       externalId: 'Q22647',
@@ -545,7 +561,7 @@ describe('collectSitesByFame', () => {
           : Boolean(row.e?.value.endsWith('/Q1524'))
       )),
     };
-    const answer = await collectSitesByFame(alone, TREES, new Set<string>(), LINE, osmReader([]), NO_ENTRANCE);
+    const answer = await collectSitesByFame(alone, await shareFor(alone, new Set<string>()), new Set<string>(), LINE, osmReader([]), NO_ENTRANCE);
     expect(answer.filtered.map((row) => [row.externalId, row.group]))
       .toEqual([['Q1524', 'class-or-name']]);
   });
@@ -563,7 +579,7 @@ describe('collectSitesByFame', () => {
         .filter((row) => !(query.includes('?whc') && row.e?.value.endsWith('/Q22647'))),
     };
     const raised = { enterSitelinks: 130, staySitelinks: 125 };
-    const answer = await collectSitesByFame(merged, TREES, new Set<string>(), raised, osmReader(seen), NO_ENTRANCE);
+    const answer = await collectSitesByFame(merged, await shareFor(merged, new Set<string>()), new Set<string>(), raised, osmReader(seen), NO_ENTRANCE);
     expect(answer.filtered.map((row) => row.externalId)).not.toContain('Q22647');
     expect(seen.flatMap((call) => call.qids)).not.toContain('Q22647');
   });
@@ -621,7 +637,7 @@ describe('the OpenStreetMap entrance', () => {
     const { run, phases } = runner();
     const seen: OsmCall[] = [];
     const { doors, articlesAsked } = entrance();
-    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader(seen, MAPPED), doors);
+    const answer = await collectSitesByFame(run, await shareFor(run, new Set<string>()), new Set<string>(), LINE, osmReader(seen, MAPPED), doors);
 
     // Ajanta on the enumeration's object alone: the per-item read carried nothing.
     const ajanta = answer.sites.get('Q184427')!;
@@ -653,7 +669,8 @@ describe('the OpenStreetMap entrance', () => {
     const { run } = runner();
     const sent: string[] = [];
     const counting = { ...run, sparql: async (query: string) => { sent.push(query); return door(query); } };
-    const answer = await collectSitesByFame(counting, TREES, new Set<string>(), LINE, osmReader([], MAPPED), entrance().doors);
+    // The share is gathered through the pass's door, as the place pass gathers it, so only the site door's own questions are counted.
+    const answer = await collectSitesByFame(counting, await shareFor(run, new Set<string>()), new Set<string>(), LINE, osmReader([], MAPPED), entrance().doors);
 
     // The entrance's count is one of the editions questions; the rest recount
     // the pools the run fetched (ADR-0082).
@@ -682,7 +699,7 @@ describe('the OpenStreetMap entrance', () => {
         return new Map([['Jerash', ['Archaeological sites in Jordan', 'Roman towns and cities in Jordan']]]);
       },
     });
-    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, osmReader([], MAPPED), doors);
+    const answer = await collectSitesByFame(run, await shareFor(run, new Set<string>()), new Set<string>(), LINE, osmReader([], MAPPED), doors);
     expect(titlesAsked).toEqual([['Jerash']]);
     expect(answer.sites.get('Q31565')?.note).toContain('English Wikipedia files it under its archaeological sites');
   });
@@ -709,7 +726,7 @@ describe('the OpenStreetMap entrance, on the rows the class pool named', () => {
       sparql: async (query: string) => door(query)
         .filter((row) => !(query.includes('?whc') && row.e?.value.endsWith('/Q22647'))),
     };
-    const answer = await collectSitesByFame(merged, TREES, new Set<string>(), LINE, osmReader([]), naming);
+    const answer = await collectSitesByFame(merged, await shareFor(merged, new Set<string>()), new Set<string>(), LINE, osmReader([]), naming);
     expect(answer.filtered.map((row) => row.externalId)).not.toContain('Q22647');
     expect(answer.sites.get('Q22647')?.note).toContain('OpenStreetMap maps an archaeological site here');
   });
@@ -734,7 +751,7 @@ describe('the OpenStreetMap entrance, on the rows the class pool named', () => {
         .map((row) => (row.eLabel && row.e?.value.endsWith('/Q1524')
           ? { ...row, article: { value: 'https://en.wikipedia.org/wiki/Athens' } } : row)),
     };
-    const answer = await collectSitesByFame(withArticle, TREES, new Set<string>(), LINE, reader, {
+    const answer = await collectSitesByFame(withArticle, await shareFor(withArticle, new Set<string>()), new Set<string>(), LINE, reader, {
       ...NO_ENTRANCE,
       digs: async () => digs,
       categories: async (titles) => {
@@ -759,7 +776,7 @@ describe('the OpenStreetMap entrance, on the rows the class pool named', () => {
       byArticle: new Map([['tr:Nemrut Dağı', [obj('way/1069114387', { historic: 'archaeological_site' })]]]),
     };
     const reader = async (qids: string[]) => new Map(qids.map((qid) => [qid, OSM[qid] ?? []]));
-    const answer = await collectSitesByFame(run, TREES, new Set<string>(), LINE, reader, {
+    const answer = await collectSitesByFame(run, await shareFor(run, new Set<string>()), new Set<string>(), LINE, reader, {
       ...NO_ENTRANCE, digs: async () => digs, resolveArticles: async () => new Map([['tr:Nemrut Dağı', 'Q207917']]),
     });
     expect(answer.sites.has('Q207917')).toBe(true);
@@ -783,7 +800,7 @@ describe('the OpenStreetMap entrance, on the rows the class pool named', () => {
     const resolveArticles = async () => new Map([
       ['tr:Nemrut Dağı', 'Q207917'], ['en:Ajanta Caves', 'Q184427'], ['en:Jerash', 'Q31565'],
     ]);
-    await expect(collectSitesByFame(run, TREES, new Set<string>(), LINE, silent, { ...NO_ENTRANCE, digs: async () => digs, resolveArticles }))
+    await expect(collectSitesByFame(run, await shareFor(run, new Set<string>()), new Set<string>(), LINE, silent, { ...NO_ENTRANCE, digs: async () => digs, resolveArticles }))
       .rejects.toThrow(OsmAnswerFloorError);
   });
 
@@ -800,7 +817,7 @@ describe('the OpenStreetMap entrance, on the rows the class pool named', () => {
       ]),
       byArticle: new Map(),
     };
-    await expect(collectSitesByFame(run, TREES, new Set<string>(), LINE, silent, { ...NO_ENTRANCE, digs: async () => digs }))
+    await expect(collectSitesByFame(run, await shareFor(run, new Set<string>()), new Set<string>(), LINE, silent, { ...NO_ENTRANCE, digs: async () => digs }))
       .rejects.toThrow(OsmAnswerFloorError);
   });
 
@@ -825,7 +842,7 @@ describe('the OpenStreetMap entrance, on the rows the class pool named', () => {
         .filter((row) => !/\/(Q22647|Q1524|Q43332)$/.test(row.e?.value ?? ''))
         .filter((row) => !(query.includes('?whc') && /\/(Q184427|Q3543)$/.test(row.e?.value ?? ''))),
     };
-    await expect(collectSitesByFame(silentAboutThem, TREES, new Set<string>(), LINE, osmReader([]), { ...NO_ENTRANCE, digs: async () => digs }))
+    await expect(collectSitesByFame(silentAboutThem, await shareFor(silentAboutThem, new Set<string>()), new Set<string>(), LINE, osmReader([]), { ...NO_ENTRANCE, digs: async () => digs }))
       .rejects.toThrow(/answered nothing about any of the/);
   });
 });
