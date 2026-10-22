@@ -407,12 +407,12 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
     await pool.query(
       `INSERT INTO experiences (id, source_id, external_id, name, location)
        SELECT $1, s.id, 'Q9699-merge-fixture', 'Pantheon (merge fixture monument)', ST_SetSRID(ST_MakePoint(12.4768, 41.8986), 4326)
-         FROM experience_sources s WHERE s.name = 'Public Art & Monuments'`,
+         FROM experience_sources s WHERE s.name = 'Public art'`,
       [MUSEUM],
     );
     await pool.query(
       `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
-       SELECT $1, s.kind_id, s.id, 'Q9699-merge-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Public Art & Monuments'`,
+       SELECT $1, s.kind_id, s.id, 'Q9699-merge-fixture', 'auto', NOW() FROM experience_sources s WHERE s.name = 'Public art'`,
       [MUSEUM],
     );
     // Both fold into the place of worship, the monument second.

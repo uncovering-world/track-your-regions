@@ -14,7 +14,7 @@ import { ORPHANED_RUN_MARKER, PLACEMENT_FAILED_MARKER, PLACEMENT_STOPPED_MARKER 
  *   sweep closed, one that placed everything, a preview, and — newest — a
  *   successful run still naming two objects. Only the last is marked, and
  *   the source reads `partial`.
- * - Public Art & Monuments: a cancelled run still naming an object, marked
+ * - Public art: a cancelled run still naming an object, marked
  *   and left cancelled, and a run still going in another process.
  * - UNESCO World Heritage Sites: a successful run still naming an object,
  *   marked, with a newer real run after it, so the source keeps its verdict.
@@ -37,7 +37,7 @@ const LOG_IDS = [
   PUBLIC_ART_CANCELLED, UNESCO_STOPPED, UNESCO_NEWER, PUBLIC_ART_RUNNING,
 ];
 const AFTER_FIXTURE = 9759;
-const SOURCE_NAMES = ['Art Museums', 'Public Art & Monuments', 'UNESCO World Heritage Sites'];
+const SOURCE_NAMES = ['Art Museums', 'Public art', 'UNESCO World Heritage Sites'];
 const EARLIER = '2026-09-01T10:00:00Z';
 const PLACEMENT_FAILED = { ...PLACEMENT_FAILED_MARKER, error: 'Region assignment failed after the run closed: world view 5: boom' };
 const CANCELLED_NOTE = { externalId: 'system', error: 'Sync cancelled' };
@@ -95,7 +95,7 @@ beforeAll(async () => {
     [saved.map(row => row.id), EARLIER],
   );
   const museums = sourceId['Art Museums'];
-  const publicArt = sourceId['Public Art & Monuments'];
+  const publicArt = sourceId['Public art'];
   const unesco = sourceId['UNESCO World Heritage Sites'];
   const rows: [number, number, string, boolean, unknown, number[]][] = [
     [MUSEUMS_PLACEMENT_FAILED, museums, 'partial', false, [PLACEMENT_FAILED], [103]],
@@ -152,7 +152,7 @@ describe('closeStoppedPlacements', () => {
     expect(await logOf(PUBLIC_ART_CANCELLED)).toMatchObject({
       status: 'cancelled', error_details: [CANCELLED_NOTE, PLACEMENT_STOPPED_MARKER],
     });
-    expect((await sources())['Public Art & Monuments'].last_sync_status).toBe('success');
+    expect((await sources())['Public art'].last_sync_status).toBe('success');
   });
 
   it('leaves a source alone whose newer real run closed after the stopped one', async () => {
@@ -206,7 +206,7 @@ describe('what the next run takes over', () => {
 
   it('reads only the runs before its own, and not a run still going', async () => {
     const museums = await readUnplacedExperiences(sourceId['Art Museums'], MUSEUMS_STOPPED);
-    const publicArt = await readUnplacedExperiences(sourceId['Public Art & Monuments'], AFTER_FIXTURE);
+    const publicArt = await readUnplacedExperiences(sourceId['Public art'], AFTER_FIXTURE);
 
     expect(ours(museums.logIds)).toEqual([MUSEUMS_PLACEMENT_FAILED, MUSEUMS_ORPHANED]);
     expect(ours(publicArt.logIds)).toEqual([PUBLIC_ART_CANCELLED]);

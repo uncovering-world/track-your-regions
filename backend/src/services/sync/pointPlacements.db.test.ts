@@ -8,7 +8,7 @@ import { writeExperienceLocations } from './locationWriter.js';
  * the placement and the withdrawal reach is decided in SQL.
  *
  * The fixture is the Cave of Altamira as Epic #755 will leave it: one place
- * that Public Art & Monuments and Archaeology both fill, each with a point of
+ * that Public art and Archaeology both fill, each with a point of
  * its own 752 m apart, as the two rows stand on the development catalogue
  * today. Wikidata holds two coordinates for the cave, one of them rounded to
  * the arc-minute, and each source reads a different one. Ids and references
@@ -53,9 +53,9 @@ async function clear(): Promise<void> {
 beforeEach(async () => {
   await clear();
   const sources = await pool.query<{ id: number; kind_id: number; name: string }>(
-    `SELECT id, kind_id, name FROM experience_sources WHERE name IN ('Public Art & Monuments', 'Archaeology')`,
+    `SELECT id, kind_id, name FROM experience_sources WHERE name IN ('Public art', 'Archaeology')`,
   );
-  const art = sources.rows.find(row => row.name === 'Public Art & Monuments')!;
+  const art = sources.rows.find(row => row.name === 'Public art')!;
   const arch = sources.rows.find(row => row.name === 'Archaeology')!;
   publicArt = art.id;
   archaeology = arch.id;

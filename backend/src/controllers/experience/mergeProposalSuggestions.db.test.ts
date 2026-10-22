@@ -92,7 +92,7 @@ beforeEach(async () => {
   )).rows[0].id;
   await place(SITE, 'Durham Castle and Cathedral', 'UNESCO World Heritage Sites', -1.5760);
   await place(CATHEDRAL, 'Durham Cathedral', 'Places of worship', -1.5755);
-  await place(PLAQUE, 'Durham Castle and Cathedral', 'Public Art & Monuments', -1.5758);
+  await place(PLAQUE, 'Durham Castle and Cathedral', 'Public art', -1.5758);
   PAIRS.cathedral = await propose(SITE, CATHEDRAL, 139, 0.65, false);
   PAIRS.plaque = await propose(SITE, PLAQUE, 20, 1, true);
   mockedAsk.mockResolvedValue(jevSays({

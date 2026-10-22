@@ -152,15 +152,16 @@ const SOURCES_BEFORE_THE_GATE = [
 ];
 
 /**
- * The same three rows as `01-schema.sql` seeds them today. One differs: the
+ * The same three rows as `01-schema.sql` seeds them today. Two differ: the
  * museum row is seeded as "Art Museums" since migration 045 renamed it
- * (ADR-0045 §8, #818), so a fresh database never holds the old name and the
- * seed, not the guard, is where its gate is decided.
+ * (ADR-0045 §8, #818), and the public-art row as "Public art" since migration
+ * 144 split its kind by purpose (#1807), so a fresh database never holds the
+ * old names and the seed, not the guard, is where their gate is decided.
  */
 const SEEDED_SOURCES = [
   'UNESCO World Heritage Sites',
   'Art Museums',
-  'Public Art & Monuments',
+  'Public art',
 ];
 
 /** Where 018 constrained the state column: the object and its three parts. */
@@ -919,9 +920,11 @@ describe('a kind and a membership exist in both schema homes', () => {
     'admission', 'admission_reason', 'is_iconic',
     'curation_state', 'published_at', 'pending_change_sync_log_id',
   ];
-  const KIND_SEED =
+  // Kind 3 under the name each file seeds it by: migration 144 renamed it
+  // Public art (#1807), and the schema file seeds the new name.
+  const kindSeed = (third: string) =>
     "INSERT INTO experience_kinds (id, name, display_priority) VALUES "
-    + "(1, 'World Heritage Sites', 1), (2, 'Art Museums', 2), (3, 'Public Art & Monuments', 3) "
+    + `(1, 'World Heritage Sites', 1), (2, 'Art Museums', 2), (3, '${third}', 3) `
     + 'ON CONFLICT (name) DO NOTHING;';
 
   it('both files create the kinds table and seed the kinds under the sources\' ids', () => {
@@ -930,9 +933,9 @@ describe('a kind and a membership exist in both schema homes', () => {
     // fresh database's kinds under the same numbers as its sources, so the two
     // readings land on the same colour. Explicit ids need the sequence moved
     // past them, in both files, or the next kind collides with the last seeded.
-    for (const sql of [schema, splitMigration]) {
+    for (const [sql, third] of [[schema, 'Public art'], [splitMigration, 'Public Art & Monuments']] as const) {
       expect(createTable(sql, 'experience_kinds')).toContain('name VARCHAR(255) NOT NULL UNIQUE');
-      expect(sql).toContain(KIND_SEED);
+      expect(sql).toContain(kindSeed(third));
       expect(sql).toContain("SELECT setval('experience_kinds_id_seq'");
     }
   });
