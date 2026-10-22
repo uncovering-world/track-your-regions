@@ -4,11 +4,14 @@
  * monthly pageview files (#1436), English Wikipedia's structure from its
  * page table's dump and the three of the same date (#1440), and the redirects
  * readership folds from the redirect and page tables of every edition a door
- * counts (#1650), and the Wikidata items every Wikivoyage edition uses, the
- * travel-guide witness of a place a visitor goes to (#1768).
+ * counts (#1650), the Wikidata items every Wikivoyage edition uses, the
+ * travel-guide witness of a place a visitor goes to (#1768), and the
+ * OpenStreetMap layer cut from the planet (#1437, ADR-0134).
  */
 
 import type { DumpFile, DumpKey } from './catalog.js';
+import { buildLayer } from './osm/layerBuild.js';
+import { latestLayer } from './osm/layerTables.js';
 import type { ReadOptions } from './read.js';
 import { buildReadership, latestReadership } from './readership/readershipBuild.js';
 import { buildRedirects } from './wikipedia/redirectBuild.js';
@@ -71,6 +74,8 @@ const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
   'wikivoyage-usage': {
     title: 'The items Wikivoyage\'s pages use', build: buildUsage, latest: latestUsage, samples: false, fromCopy: false,
   },
+  // The planet is held as a local copy, so a build may start from the copy already on disk.
+  'osm-planet': { title: 'The OpenStreetMap layer', build: buildLayer, latest: latestLayer, samples: false, fromCopy: true },
 };
 
 export const keeperOf = (key: DumpKey): Keeper | null => KEEPERS[key] ?? null;
