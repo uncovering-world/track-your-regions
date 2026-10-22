@@ -19,11 +19,11 @@ import { unreadOnSubset } from './subset/runDoor.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import type { SyncProgress, WikidataLandmark, ContentsByKind } from './types.js';
 import { getSyncStatus, cancelSync } from './syncOrchestrator.js';
-import type { FetchResult, ProcessItemResult, SyncRunContext, SyncServiceConfig } from './syncContract.js';
+import type { FetchResult, FilteredEntity, ProcessItemResult, SyncRunContext, SyncServiceConfig } from './syncContract.js';
 import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
 import { classifyPublicArt, PUBLIC_ART_KIND } from './publicArt/pipeline.js';
-import { shareOf, type PlaceGather } from './places/gather.js';
+import { shareOf, type GatheredPlaces, type PlaceGather } from './places/gather.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE, type KindRule } from './publicArt/kindRules.js';
 import { PUBLIC_ART_SOURCES } from './passes.js';
 import { withCache, type CacheDescriptor } from './wikidataCache.js';
@@ -48,10 +48,40 @@ import {
 const LANDMARK_SOURCE_ID = 3;
 const LOG_PREFIX = '[Landmark Sync]';
 
-/** The rule each source of the pass decides by. */
-const RULE_OF_SOURCE: Readonly<Record<number, KindRule>> = {
-  [LANDMARK_SOURCE_ID]: PUBLIC_ART_RULE,
-  6: MONUMENTS_RULE,
+/**
+ * What a source of the place pass decides by: its classifier over the gather,
+ * the type vocabulary it files places under, and the tag its places carry
+ * beside their type. A place with one point, written the same way whatever
+ * its kind: Public art and Monuments & memorials here, Towers in
+ * `towers/kind.ts` (#1854).
+ */
+export interface PlaceClassifier {
+  /** Decide from the gather; `admitted` is what the source holds as admitted before the run. */
+  classify(gathered: GatheredPlaces, admitted: ReadonlySet<string>): Promise<{
+    items: WikidataLandmark[]; fetched: number; filtered: FilteredEntity[];
+  }>;
+  types: readonly string[];
+  tag: string;
+}
+
+/** Public art's and Monuments & memorials' classifier: their kind's rule over the public-art share. */
+function publicArtClassifier(rule: KindRule): PlaceClassifier {
+  return {
+    // The places a kind outside these two offers a reader, so a work outdoors
+    // on a venue no such kind offers stays public art rather than being
+    // refused onto no card (#1444).
+    classify: async (gathered, admitted) => classifyPublicArt(
+      shareOf(gathered, PUBLIC_ART_KIND), rule, admitted, await placesOtherSourcesOffer(PUBLIC_ART_SOURCES),
+    ),
+    types: rule.types,
+    tag: 'outdoor',
+  };
+}
+
+/** The classifier each public-art source decides by. */
+const PUBLIC_ART_CLASSIFIERS: Readonly<Record<number, PlaceClassifier>> = {
+  [LANDMARK_SOURCE_ID]: publicArtClassifier(PUBLIC_ART_RULE),
+  6: publicArtClassifier(MONUMENTS_RULE),
 };
 
 /**
@@ -110,6 +140,7 @@ export function collectingSparql(
  */
 async function upsertLandmarkExperience(
   sourceId: number,
+  classifier: PlaceClassifier,
   credits: RunCredits,
   landmark: WikidataLandmark,
   context: SyncRunContext,
@@ -151,8 +182,8 @@ async function upsertLandmarkExperience(
     type: landmark.type,
     // The kind's own words, so a type the split left outside them is rewritten
     // past the gate rather than asked about (#1807).
-    typeVocabulary: RULE_OF_SOURCE[sourceId].types,
-    tags: ['outdoor', landmark.type],
+    typeVocabulary: classifier.types,
+    tags: [classifier.tag, landmark.type],
     lon: landmark.lon,
     lat: landmark.lat,
     countryCodes: [],
@@ -216,6 +247,7 @@ function disambiguateDuplicateNames(landmarks: WikidataLandmark[]): void {
  */
 async function fetchLandmarkItems(
   sourceId: number,
+  classifier: PlaceClassifier,
   credits: RunCredits,
   gather: (progress: SyncProgress) => Promise<PlaceGather>,
   progress: SyncProgress,
@@ -223,14 +255,9 @@ async function fetchLandmarkItems(
   credits.fetched = new Map();
   credits.stored = await readStoredCredits(sourceId);
   const admitted = await admittedExternalIds(sourceId);
-  // The places a kind outside the pass offers a reader, so a work outdoors on a
-  // venue no such kind offers stays public art rather than being refused onto
-  // no card (#1444).
-  const offered = await placesOtherSourcesOffer(PUBLIC_ART_SOURCES);
 
   const { gathered, sparql } = await gather(progress);
-  const share = shareOf(gathered, PUBLIC_ART_KIND);
-  const { items, fetched, filtered } = classifyPublicArt(share, RULE_OF_SOURCE[sourceId], admitted, offered);
+  const { items, fetched, filtered } = await classifier.classify(gathered, admitted);
 
   disambiguateDuplicateNames(items);
 
@@ -251,13 +278,22 @@ async function fetchLandmarkItems(
 
   // What the subset cannot read is left as it is, not read as gone.
   const unread = readsSubset(sparql) ? await unreadOnSubset(sourceId) : undefined;
-  return { items, fetchedCount: fetched, filtered, unread, typeVocabulary: RULE_OF_SOURCE[sourceId].types };
+  return { items, fetchedCount: fetched, filtered, unread, typeVocabulary: classifier.types };
 }
 
-/** One source of the pass: its kind's rule, writing the kind `sourceId` fills. */
+/** One public-art source of the pass: its kind's rule, writing the kind `sourceId` fills. */
 export function publicArtSource(
   sourceId: number,
   gather: (progress: SyncProgress) => Promise<PlaceGather>,
+): SyncServiceConfig<WikidataLandmark> {
+  return placeSource(sourceId, gather, PUBLIC_ART_CLASSIFIERS[sourceId]);
+}
+
+/** One source of the pass whose places have one point: its classifier, writing the kind `sourceId` fills. */
+export function placeSource(
+  sourceId: number,
+  gather: (progress: SyncProgress) => Promise<PlaceGather>,
+  classifier: PlaceClassifier,
 ): SyncServiceConfig<WikidataLandmark> {
   const credits: RunCredits = { fetched: new Map(), stored: new Map() };
   return {
@@ -276,8 +312,8 @@ export function publicArtSource(
     badgesAdmitted: true,
     // Nothing appends to the orchestrator's error list any more: a collection
     // that fails throws, and fails the run.
-    fetchItems: (progress) => fetchLandmarkItems(sourceId, credits, gather, progress),
-    processItem: (landmark, _progress, context) => upsertLandmarkExperience(sourceId, credits, landmark, context),
+    fetchItems: (progress) => fetchLandmarkItems(sourceId, classifier, credits, gather, progress),
+    processItem: (landmark, _progress, context) => upsertLandmarkExperience(sourceId, classifier, credits, landmark, context),
     getItemName: (lm) => lm.label,
     getItemId: (lm) => lm.qid,
   };
