@@ -118,7 +118,7 @@ and accepted by it.
 | [0096](0096-the-unread-batchs-pins-are-released-once-read.md) | The pins of the unread batch of 2026-09-14 are released once a curator has read them | Accepted | 2026-10-12 |
 | [0097](0097-a-cards-put-back-pins-only-when-the-curator-remembers-it.md) | A card's put-back pins only when the curator chooses to remember it | Accepted | 2026-10-12 |
 | [0098](0098-a-place-the-map-shows-in-use-is-refused-on-the-maps-entrance.md) | A place the map shows in use is refused on the map's entrance | Accepted | 2026-10-12 |
-| [0099](0099-a-rewrite-a-visitor-would-not-notice-passes-the-gate.md) | A rewrite a visitor would not notice passes the gate | Accepted — decision 1 narrowed by [0129](0129-a-wikidata-item-a-place-holds-none-of-passes-the-gate.md) and [0133](0133-a-subtitle-a-place-holds-none-of-passes-the-gate.md) | 2026-10-12 |
+| [0099](0099-a-rewrite-a-visitor-would-not-notice-passes-the-gate.md) | A rewrite a visitor would not notice passes the gate | Accepted — decision 1 narrowed by [0129](0129-a-wikidata-item-a-place-holds-none-of-passes-the-gate.md), [0133](0133-a-subtitle-a-place-holds-none-of-passes-the-gate.md) and [0135](0135-a-type-its-kind-has-no-word-for-passes-the-gate.md) | 2026-10-12 |
 | [0100](0100-a-serial-sites-components-are-places-part-of-the-site.md) | A serial site's components are places, part of the site | Accepted | 2026-10-13 |
 | [0101](0101-bulk-reads-come-from-public-dumps-and-wikidata-is-kept-as-a-wide-subset.md) | Bulk reads come from public dumps, and Wikidata is kept as a wide subset cut by entity | Accepted — decision 2 narrowed by [0105](0105-the-wikidata-subset-follows-containment-chains-and-is-kept-compact-and-swapped-in-whole.md), decision 6 narrowed by [0121](0121-english-wikipedias-structure-is-kept-as-articles-categories-and-their-links.md) and [0134](0134-openstreetmap-is-read-from-a-layer-cut-from-the-planet-and-a-miss-the-layer-cannot-vouch-for-is-asked-live.md), decision 4 narrowed by [0134](0134-openstreetmap-is-read-from-a-layer-cut-from-the-planet-and-a-miss-the-layer-cannot-vouch-for-is-asked-live.md) | 2026-10-13 |
 | [0102](0102-a-work-one-kind-refuses-as-held-by-a-place-is-handed-to-the-kind-that-holds-it.md) | A work one kind refuses as held by a place is handed to the kind that holds that place | Accepted — decision 2 narrowed by [0112](0112-a-handed-over-work-its-statements-place-nowhere-goes-where-the-refusal-named.md) | 2026-10-13 |
@@ -154,6 +154,7 @@ and accepted by it.
 | [0132](0132-several-kinds-are-filled-from-one-gather-each-by-a-source-of-its-own.md) | Several kinds are filled from one gather, each by a source of its own | Accepted | 2026-10-21 |
 | [0133](0133-a-subtitle-a-place-holds-none-of-passes-the-gate.md) | A subtitle a place holds none of passes the gate | Accepted | 2026-10-21 |
 | [0134](0134-openstreetmap-is-read-from-a-layer-cut-from-the-planet-and-a-miss-the-layer-cannot-vouch-for-is-asked-live.md) | OpenStreetMap is read from a layer cut from the planet, and a miss the layer cannot vouch for is asked live | Accepted | 2026-10-22 |
+| [0135](0135-a-type-its-kind-has-no-word-for-passes-the-gate.md) | A type its kind has no word for passes the gate | Accepted | 2026-10-22 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
