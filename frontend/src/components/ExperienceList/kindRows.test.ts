@@ -28,7 +28,7 @@ const DRESDEN = {
   kinds: [
     { kind_id: 1, kind_name: 'World Heritage Sites', kind_priority: 1, type: 'cultural', source_id: 1,
       external_id: '1156', source_membership: 'former' },
-    { kind_id: 3, kind_name: 'Public Art & Monuments', kind_priority: 3, type: null, source_id: 3,
+    { kind_id: 3, kind_name: 'Public art', kind_priority: 3, type: null, source_id: 3,
       external_id: 'dresden-elbe-valley', source_membership: 'present' },
   ],
 } as Experience;
@@ -48,7 +48,7 @@ describe('a place in the group of every kind it is offered in', () => {
 
     expect(groups.map(group => [group.kindName, group.experiences[0].source_membership])).toEqual([
       ['World Heritage Sites', 'former'],
-      ['Public Art & Monuments', 'present'],
+      ['Public art', 'present'],
     ]);
   });
 

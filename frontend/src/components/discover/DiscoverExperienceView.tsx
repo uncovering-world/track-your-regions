@@ -250,13 +250,12 @@ export function DiscoverExperienceView({
   });
 
   // Not `utils/kindColors.shortKindName`: this heading has room for
-  // "Public Art" where a chip does not, and the shared one shortens that to
-  // "Art". The museum row reads "Art Museums" on its own since #818, so it needs
+  // "Public art" and "Monuments & memorials" where a chip does not, and the
+  // shared one shortens them to "Art" and "Monuments". The museum row reads "Art Museums" on its own since #818, so it needs
   // no shortening here or there.
   const shortKindName = activeView
     ? activeView.kindName
         .replace('UNESCO World Heritage Sites', 'UNESCO')
-        .replace('Public Art & Monuments', 'Public Art')
         .replace('Places of worship', 'Worship')
     : '';
 

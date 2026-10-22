@@ -12,14 +12,15 @@ import { describe, it, expect } from 'vitest';
 import { meaningOf } from './fieldMeaning';
 
 describe("a type's meaning", () => {
-  it('speaks public art\'s vocabulary for a monument and World Heritage\'s for a natural site', () => {
-    expect(meaningOf('type', 'sculpture', 'monument').what).toMatch(/monument or sculpture/);
+  it('speaks a monument\'s vocabulary for a memorial and World Heritage\'s for a natural site', () => {
+    expect(meaningOf('type', 'memorial', 'monument').what).toMatch(/an arch, a column, an obelisk/);
+    expect(meaningOf('type', 'fountain', 'sculpture').what).toMatch(/a fountain before a sculpture/);
     expect(meaningOf('type', 'natural', 'cultural').what).toMatch(/World Heritage/);
     expect(meaningOf('type', 'natural', 'cultural').what).not.toMatch(/monument/);
   });
 
   it('reads the stored value where the proposal clears the field', () => {
-    expect(meaningOf('type', '', 'monument').what).toMatch(/monument or sculpture/);
+    expect(meaningOf('type', '', 'monument').what).toMatch(/an arch, a column, an obelisk/);
     expect(meaningOf('type', null, 'cultural').what).toMatch(/World Heritage/);
   });
 
@@ -27,7 +28,8 @@ describe("a type's meaning", () => {
     const fallback = meaningOf('type', '', null);
     expect(fallback.label).toBe('type');
     expect(fallback.what).toMatch(/cultural, natural or mixed/);
-    expect(fallback.what).toMatch(/monument or sculpture/);
+    expect(fallback.what).toMatch(/sculpture, fountain or street art/);
+    expect(fallback.what).toMatch(/memorial, arch, column, obelisk or monument/);
   });
 
   it('is never called category', () => {

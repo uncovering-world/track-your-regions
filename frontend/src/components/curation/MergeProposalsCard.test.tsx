@@ -30,7 +30,7 @@ const DURHAM = {
       exact: false, reachM: 300, foundBy: 'similar', proposedAt: '2026-10-17T10:00:00.000Z',
     },
     {
-      proposalId: 42, otherId: 11800, otherName: 'Durham Castle and Cathedral', otherKinds: ['Public Art & Monuments'],
+      proposalId: 42, otherId: 11800, otherName: 'Durham Castle and Cathedral', otherKinds: ['Public art'],
       otherImageUrl: null, otherImageCredit: null, otherLatitude: 54.7745, otherLongitude: -1.5760,
       otherWikidataItem: 'Q5316567', anchorWikidataItem: 'Q1250209', distanceM: 20, nameSimilarity: 1,
       exact: true, reachM: 300, foundBy: 'similar', proposedAt: '2026-10-17T10:00:00.000Z',

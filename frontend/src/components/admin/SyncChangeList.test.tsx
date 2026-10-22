@@ -298,7 +298,7 @@ describe('SyncChangeList', () => {
       treasures: {
         added: [
           { name: 'Bamberg Horseman', ref: 'Q680156',
-            handed_by: 'Public Art & Monuments: inside Bamberg Cathedral: a work of a place of worship, not public art' },
+            handed_by: 'Public art: inside Bamberg Cathedral: a work of a place of worship, not public art' },
           { name: 'Tomb of Henry II and Kunigunde', ref: null },
         ],
         withdrawn: [], returned: [],
@@ -306,7 +306,7 @@ describe('SyncChangeList', () => {
     });
 
     expect(lines).toEqual([
-      'works: gained Bamberg Horseman (handed over by Public Art & Monuments: inside Bamberg Cathedral: '
+      'works: gained Bamberg Horseman (handed over by Public art: inside Bamberg Cathedral: '
       + 'a work of a place of worship, not public art), Tomb of Henry II and Kunigunde',
     ]);
   });

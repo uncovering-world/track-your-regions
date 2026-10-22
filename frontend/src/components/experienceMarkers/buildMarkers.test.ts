@@ -311,7 +311,7 @@ describe('a place in several kinds', () => {
     const markers = buildExperienceMarkers([capitoline], {}, new Set(['Archaeology']));
 
     expect(markers.map(m => m.experienceId)).toEqual([6214]);
-    expect(buildExperienceMarkers([capitoline], {}, new Set(['Public Art & Monuments']))).toEqual([]);
+    expect(buildExperienceMarkers([capitoline], {}, new Set(['Public art']))).toEqual([]);
   });
 
   it('shows the colours of the kinds the surface is showing (#1262)', () => {

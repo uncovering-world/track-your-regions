@@ -46,7 +46,7 @@ vi.mock('../api/experiences', async (importOriginal) => {
     fetchExperienceKinds: vi.fn().mockResolvedValue([
       { id: 1, name: 'World Heritage Sites' },
       { id: 2, name: 'Art Museums', is_active: true },
-      { id: 3, name: 'Public Art & Monuments', is_active: true },
+      { id: 3, name: 'Public art', is_active: true },
     ]),
     fetchExperiencesByRegion: mockFetchByRegion,
     fetchExperience: mockFetchOne,
@@ -379,8 +379,8 @@ describe('useDiscoverExperiences — places that no longer exist (#609)', () => 
     kinds: [{ kind_id: kindId, kind_name: kindName, kind_priority: kindId, type: null, source_id: kindId, external_id: String(id) }],
   } as unknown as Experience);
   // Valletta: the Triton Fountain stands; the Royal Opera House was destroyed in 1942.
-  const TRITON = kindRow(9101, 'Triton Fountain', 3, 'Public Art & Monuments', 'extant');
-  const OPERA = kindRow(9102, 'Royal Opera House, Valletta', 3, 'Public Art & Monuments', 'lost');
+  const TRITON = kindRow(9101, 'Triton Fountain', 3, 'Public art', 'extant');
+  const OPERA = kindRow(9102, 'Royal Opera House, Valletta', 3, 'Public art', 'lost');
   const TEMPLES = kindRow(9103, 'Megalithic Temples of Malta', 1, 'World Heritage Sites', 'extant');
 
   beforeEach(() => {

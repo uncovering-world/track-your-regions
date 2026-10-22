@@ -28,7 +28,10 @@ test.describe('Explore Workflows @smoke', () => {
 
     // The tag names the kind, never the source (ADR-0045 §8, #819).
     const kindTag = page
-      .locator('[aria-label*="World Heritage Sites in"], [aria-label*="Art Museums in"], [aria-label*="Public Art & Monuments in"]')
+      .locator([
+        '[aria-label*="World Heritage Sites in"]', '[aria-label*="Art Museums in"]',
+        '[aria-label*="Public art in"]', '[aria-label*="Monuments & memorials in"]',
+      ].join(', '))
       .first();
 
     await expect(kindTag).toBeVisible();

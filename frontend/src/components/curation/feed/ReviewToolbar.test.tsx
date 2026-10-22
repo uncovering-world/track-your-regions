@@ -39,7 +39,7 @@ const FACETS: QueueFacets = {
   source: [
     { id: 1, name: 'UNESCO World Heritage', count: 1200 },
     { id: 2, name: 'Art Museums', count: 340 },
-    { id: 3, name: 'Public Art & Monuments', count: 93 },
+    { id: 3, name: 'Public art', count: 93 },
   ],
   region: [
     { id: 6737, name: 'Europe', worldView: 'Administrative', count: 505 },
@@ -108,7 +108,7 @@ describe('ReviewToolbar', () => {
     const { onChange } = renderToolbar();
 
     openChip('Source');
-    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Public Art & Monuments/ }));
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Public art/ }));
 
     expect(asked(onChange)).toEqual({ sourceIds: [3] });
   });
@@ -118,7 +118,7 @@ describe('ReviewToolbar', () => {
     const { onChange } = renderToolbar({ address });
 
     openChip('Source');
-    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Public Art & Monuments/ }));
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Public art/ }));
 
     expect(asked(onChange, address)).toEqual({ sourceIds: [] });
   });
@@ -154,7 +154,7 @@ describe('ReviewToolbar', () => {
         source: [
           { id: 1, name: 'UNESCO World Heritage', count: 1200 },
           { id: 2, name: 'Art Museums', count: 0 },
-          { id: 3, name: 'Public Art & Monuments', count: 93 },
+          { id: 3, name: 'Public art', count: 93 },
         ],
       },
     });
@@ -372,7 +372,7 @@ describe('ReviewToolbar', () => {
     const { onChange } = renderToolbar();
 
     openChip('Source');
-    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Public Art & Monuments/ }));
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Public art/ }));
     fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Art Museums/ }));
 
     expect(onChange).toHaveBeenCalledTimes(2);

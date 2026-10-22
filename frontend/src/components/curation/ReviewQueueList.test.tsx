@@ -207,11 +207,11 @@ describe('ReviewQueueList', () => {
 
   it('reads an arrival as "new arrival" with nothing after it', () => {
     renderList([row({
-      key: 'a', name: 'The Kelpies', kind: 'waiting', placeKind: 'Public Art & Monuments', specific: '', subs: ['arrival'],
+      key: 'a', name: 'The Kelpies', kind: 'waiting', placeKind: 'Public art', specific: '', subs: ['arrival'],
     })]);
 
     const rowButton = screen.getByRole('button', { name: /The Kelpies/ });
-    expect(rowButton.textContent).toContain('Public Art & Monuments · new arrival');
+    expect(rowButton.textContent).toContain('Public art · new arrival');
     expect(rowButton.textContent).not.toContain('new arrival:');
   });
 

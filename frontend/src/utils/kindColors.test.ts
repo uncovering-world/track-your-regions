@@ -20,6 +20,7 @@ const ART_MUSEUMS = 2;
 const PUBLIC_ART = 3;
 const PLACES_OF_WORSHIP = 4;
 const ARCHAEOLOGY = 5;
+const MONUMENTS = 6;
 
 describe('experienceColors', () => {
   it('refines a World Heritage site by its type, which is what the map tells apart', () => {
@@ -34,10 +35,12 @@ describe('experienceColors', () => {
     expect(experienceColor(ART_MUSEUMS, null)).toBe('#2563EB');
   });
 
-  it('gives a monument and a sculpture one colour: they are one kind', () => {
-    expect(experienceColor(PUBLIC_ART, 'monument')).toBe(experienceColor(PUBLIC_ART, 'sculpture'));
+  it('gives a fountain and a sculpture one colour, and an arch and a memorial another', () => {
+    expect(experienceColor(PUBLIC_ART, 'fountain')).toBe(experienceColor(PUBLIC_ART, 'sculpture'));
     // The teal the map always drew public art in — nothing readers see moved.
-    expect(experienceColor(PUBLIC_ART, 'monument')).toBe('#0d9488');
+    expect(experienceColor(PUBLIC_ART, 'sculpture')).toBe('#0d9488');
+    expect(experienceColor(MONUMENTS, 'arch')).toBe(experienceColor(MONUMENTS, 'memorial'));
+    expect(experienceColor(MONUMENTS, 'arch')).toBe('#475569');
   });
 
   it('never lends a kind another kind\'s colour', () => {
@@ -48,7 +51,7 @@ describe('experienceColors', () => {
       experienceColor(WORLD_HERITAGE, 'cultural'), experienceColor(WORLD_HERITAGE, 'natural'),
       experienceColor(WORLD_HERITAGE, 'mixed'), experienceColor(ART_MUSEUMS, null),
       experienceColor(PUBLIC_ART, null), experienceColor(PLACES_OF_WORSHIP, null),
-      experienceColor(ARCHAEOLOGY, null),
+      experienceColor(ARCHAEOLOGY, null), experienceColor(MONUMENTS, null),
     ];
     expect(new Set(primaries).size).toBe(primaries.length);
     // The tints too, not the line colours alone: `bg` and `text` are what the
@@ -61,7 +64,7 @@ describe('experienceColors', () => {
       experienceColors(WORLD_HERITAGE, 'cultural').bg, experienceColors(WORLD_HERITAGE, 'natural').bg,
       experienceColors(WORLD_HERITAGE, 'mixed').bg, experienceColors(ART_MUSEUMS, null).bg,
       experienceColors(PUBLIC_ART, null).bg, experienceColors(PLACES_OF_WORSHIP, null).bg,
-      experienceColors(ARCHAEOLOGY, null).bg,
+      experienceColors(ARCHAEOLOGY, null).bg, experienceColors(MONUMENTS, null).bg,
     ];
     expect(new Set(backgrounds).size).toBe(backgrounds.length);
   });
@@ -197,5 +200,7 @@ describe('shortKindName', () => {
     expect(shortKindName('Places of worship')).toBe('Worship');
     expect(shortKindName('World Heritage Sites')).toBe('World Heritage');
     expect(shortKindName('Art Museums')).toBe('Art Museums');
+    expect(shortKindName('Public art')).toBe('Art');
+    expect(shortKindName('Monuments & memorials')).toBe('Monuments');
   });
 });

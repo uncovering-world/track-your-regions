@@ -3,7 +3,8 @@
  *
  * A type is a distinction inside a kind whose members a traveller still browses
  * together (ADR-0045): a World Heritage site is cultural, natural or mixed; a
- * piece of public art is a monument or a sculpture; a place of worship is a
+ * piece of public art is a sculpture, a fountain or street art; a monument is a
+ * memorial, an arch, a column, an obelisk or a monument; a place of worship is a
  * cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue. An
  * art museum has no type; Archaeology has two, site and museum, because a
  * traveller browses the dig and its museum as one list (ADR-0058). An art
@@ -42,11 +43,24 @@ const WORLD_HERITAGE: TypeVocabulary = {
 
 const PUBLIC_ART: TypeVocabulary = {
   options: [
-    { value: 'monument', label: 'Monument' },
     { value: 'sculpture', label: 'Sculpture' },
+    { value: 'fountain', label: 'Fountain' },
+    { value: 'street-art', label: 'Street art' },
   ],
-  what: 'Which of the source’s two lists the object came from — monument or sculpture.',
-  whenItChanges: 'Reclassified on Wikidata. The same object either way; nothing readers browse by changes.',
+  what: 'What the work is, read from Wikidata’s classes: a fountain before a sculpture, a mural as street art.',
+  whenItChanges: 'Retyped on Wikidata. The same work either way; the filter chip it answers to changes.',
+};
+
+const MONUMENTS: TypeVocabulary = {
+  options: [
+    { value: 'memorial', label: 'Memorial' },
+    { value: 'arch', label: 'Arch' },
+    { value: 'column', label: 'Column' },
+    { value: 'obelisk', label: 'Obelisk' },
+    { value: 'monument', label: 'Monument' },
+  ],
+  what: 'What was raised, read from Wikidata’s classes: the form first — an arch, a column, an obelisk — then a memorial, and a monument otherwise.',
+  whenItChanges: 'Retyped on Wikidata. The same monument either way; the filter chip it answers to changes.',
 };
 
 const PLACES_OF_WORSHIP: TypeVocabulary = {
@@ -75,10 +89,10 @@ const ARCHAEOLOGY: TypeVocabulary = {
 
 /**
  * The kinds' vocabularies, by the id each kind's source row is seeded with in
- * `db/init/01-schema.sql` (1 World Heritage, 2 Art Museums, 3 Public Art &
- * Monuments, 4 Places of worship, 5 Archaeology). Until the kind table of
- * ADR-0045 §4 lands, a kind is its source row and the id is what every read
- * carries — a name is renamed (#815). A kind absent here has no types; Art
+ * `db/init/01-schema.sql` (1 World Heritage, 2 Art Museums, 3 Public art,
+ * 4 Places of worship, 5 Archaeology, 6 Monuments & memorials). Until the kind
+ * table of ADR-0045 §4 lands, a kind is its source row and the id is what
+ * every read carries — a name is renamed (#815). A kind absent here has no types; Art
  * Museums is absent on purpose.
  */
 const VOCABULARY_BY_KIND: Record<number, TypeVocabulary> = {
@@ -86,6 +100,7 @@ const VOCABULARY_BY_KIND: Record<number, TypeVocabulary> = {
   3: PUBLIC_ART,
   4: PLACES_OF_WORSHIP,
   5: ARCHAEOLOGY,
+  6: MONUMENTS,
 };
 
 /** The types a curator may set on an object of this kind — none for an art museum. */

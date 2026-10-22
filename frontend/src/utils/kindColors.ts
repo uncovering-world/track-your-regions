@@ -34,6 +34,12 @@ const MIXED: KindColorSet = { primary: '#F59E0B', bg: '#FEF3C7', text: '#D97706'
 const ART_MUSEUMS: KindColorSet = { primary: '#2563EB', bg: '#DBEAFE', text: '#1D4ED8' };
 /** Public art: the teal the map's fallback always drew it in, now a colour of its own. */
 const PUBLIC_ART: KindColorSet = { primary: '#0d9488', bg: '#CCFBF1', text: '#0F766E' };
+/**
+ * Monuments & memorials: slate, the stone and bronze a memorial is raised in,
+ * and far from public art's teal — the two kinds share a gather and often a
+ * square, and a traveller tells the column from the fountain at a glance.
+ */
+const MONUMENTS: KindColorSet = { primary: '#475569', bg: '#E2E8F0', text: '#334155' };
 /** Places of worship: rose, beside the museums' blue and public art's teal. */
 const PLACES_OF_WORSHIP: KindColorSet = { primary: '#BE185D', bg: '#FCE7F3', text: '#9D174D' };
 /**
@@ -53,9 +59,10 @@ const UNKNOWN: KindColorSet = { primary: '#6366F1', bg: '#E0E7FF', text: '#4F46E
 
 /**
  * The types a traveller tells apart by colour: World Heritage's three. No other
- * kind's types are coloured — a monument and a sculpture are one kind and one
- * pin, and so are an excavation and the museum that shows what came out of it
- * (ADR-0058) — and an art museum has no type at all.
+ * kind's types are coloured — a fountain and a sculpture are one kind and one
+ * pin, an arch and a memorial another, and so are an excavation and the museum
+ * that shows what came out of it (ADR-0058) — and an art museum has no type at
+ * all.
  */
 export const TYPE_COLORS: Record<string, KindColorSet> = {
   cultural: CULTURAL,
@@ -66,7 +73,8 @@ export const TYPE_COLORS: Record<string, KindColorSet> = {
 /**
  * The kinds with a colour of their own, by the id `experience_kinds` is
  * seeded with in `db/init/01-schema.sql` (1 World Heritage Sites, 2 Art
- * Museums, 3 Public Art & Monuments, 4 Places of worship, 5 Archaeology) — the
+ * Museums, 3 Public art, 4 Places of worship, 5 Archaeology, 6 Monuments &
+ * memorials) — the
  * id a list row carries as `kind_id`, off its membership (#819). World
  * Heritage's is the purple of its cultural sites, which is what the kind reads
  * as where no type refines it — a count chip, a row whose type is not stored.
@@ -77,6 +85,7 @@ const KIND_COLORS: Record<number, KindColorSet> = {
   3: PUBLIC_ART,
   4: PLACES_OF_WORSHIP,
   5: ARCHAEOLOGY,
+  6: MONUMENTS,
 };
 
 /**
@@ -172,7 +181,7 @@ export const KIND_PALETTE = [
  * A kind's colour for a surface that shows the kind and not one object — the
  * count chips of Discover — which is the same colour its objects are drawn in:
  * `experienceColors` with no type, so "Art Museums 12" is the blue of the
- * museum cards under it and "Art 40" the teal of the monument pins, rather
+ * museum cards under it and "Art 40" the teal of the public-art pins, rather
  * than the palette's amber and blue over them. The palette answers only for a
  * kind this file gives no colour of its own.
  */
@@ -192,6 +201,7 @@ export function kindColor(kindId: number): string {
 export function shortKindName(name: string): string {
   return name
     .replace('World Heritage Sites', 'World Heritage')
-    .replace('Public Art & Monuments', 'Art')
+    .replace('Public art', 'Art')
+    .replace('Monuments & memorials', 'Monuments')
     .replace('Places of worship', 'Worship');
 }
