@@ -4284,6 +4284,33 @@ CREATE UNLOGGED TABLE IF NOT EXISTS workbench.wikivoyage_usage (
 );
 COMMENT ON TABLE workbench.wikivoyage_usage IS 'A Wikidata item some article of one Wikivoyage edition uses (#1768, decided on #1718), from the edition''s wbc_entity_usage and page dump tables, with the edition''s database name (enwikivoyage): namespace 0, no redirect, no heritage register''s list. An article uses the item of a place it lists, so this is the travel-guide witness of whether a place is one a visitor goes to.';
 
+-- The OpenStreetMap layer (#1437, ADR-0134). See db/migrations/145.
+CREATE TABLE IF NOT EXISTS workbench.osm_layer_builds (
+    build_id INTEGER PRIMARY KEY REFERENCES workbench.dump_builds(id),
+    planet_file TEXT NOT NULL,
+    dump_date DATE NOT NULL,
+    replicated_at TIMESTAMPTZ NOT NULL,
+    objects BIGINT NOT NULL,
+    pinned INTEGER NOT NULL,
+    pinned_gone INTEGER NOT NULL DEFAULT 0,
+    swapped_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+COMMENT ON TABLE workbench.osm_layer_builds IS 'Each build of the OpenStreetMap layer that was swapped in (#1437, ADR-0134): the dump build that cut it, the planet file and its date, the replication timestamp the planet was current to (every answer read from the layer carries it), the objects kept, how many objects the catalogue named were cut in whatever their tags, and how many of those the planet no longer held (deleted or redrawn under another id since a place linked them). The newest row is what osm_objects holds.';
+
+CREATE TABLE IF NOT EXISTS workbench.osm_objects (
+    osm_type CHAR(1) NOT NULL,
+    osm_id BIGINT NOT NULL,
+    tags JSONB NOT NULL,
+    wikidata TEXT,
+    wikipedia TEXT,
+    geom geometry(Geometry, 4326),
+    PRIMARY KEY (osm_type, osm_id)
+);
+CREATE INDEX IF NOT EXISTS osm_objects_wikidata ON workbench.osm_objects (wikidata) WHERE wikidata IS NOT NULL;
+CREATE INDEX IF NOT EXISTS osm_objects_wikipedia ON workbench.osm_objects (wikipedia) WHERE wikipedia IS NOT NULL;
+CREATE INDEX IF NOT EXISTS osm_objects_geom ON workbench.osm_objects USING GIST (geom);
+COMMENT ON TABLE workbench.osm_objects IS 'An OpenStreetMap object of the layer (#1437, ADR-0134): its type as osm2pgsql writes it (N, W, R) and id, every tag, the wikidata and wikipedia tags for lookup, and its geometry in WGS 84 (a point, a way''s line or the area it encloses, an area relation''s multipolygon, another relation''s collection of members). ODbL: what the catalogue takes from it keeps its provenance (ADR-0059). Never written but by the layer''s build, which swaps a new copy in whole.';
+
 COMMENT ON COLUMN workbench.readership_month_files.redirects_dump_date IS 'The dump date of the redirects the month was folded with (#1650), or null where no redirects were in place when it was kept.';
 COMMENT ON COLUMN workbench.readership_month_files.redirects_build_id IS 'The build of the redirects the month was folded with (#1650): a build reads again a month folded with another, since one dump date can be built twice over a changed subset.';
 
