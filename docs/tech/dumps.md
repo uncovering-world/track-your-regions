@@ -833,6 +833,45 @@ command line.
    layer already brought past it. A failed tool, a cut that kept nothing, or a cancel
    drops the copy and leaves the layer in place.
 
+**The schedule** (`layerSchedule.ts`, ADR-0134 decision 6). The dump worker
+brings the layer forward by itself. Between builds, at most every ten minutes
+(`SCHEDULE_EVERY_MS` in `dumpWorker.ts`), it asks whether an update is due
+(`updateDue`), and an update is due only when all of these hold:
+- the schedule is on;
+- a layer and a current planet are kept, so an admin's first build has run;
+  a first build and any download of the weekly planet stay an admin's;
+- nothing of the planet is queued or running;
+- the layer is older than the interval;
+- no self-queued update that failed or was cancelled started within the
+  interval, so such a one waits for the next interval rather than being tried
+  again at once. A successful one is not counted, so the layer's age alone
+  decides and the updates do not drift later each cycle;
+- the host publishes a daily diff that ends after the layer. It is asked only
+  when everything above holds, since an update with nothing newer would cut
+  the planet again for an hour and leave the layer as old.
+
+A scheduled update only brings the kept planet forward. Where that can no
+longer be done by the time the worker takes it, the build fails and downloads
+nothing (`readTheDump` in `buildRun.ts`); the weekly planet is downloaded only
+by a build an admin starts.
+
+The interval defaults to 7 days in code (`DEFAULT_EVERY_DAYS`, the planet's
+weekly release). An admin sets 1 to 30 days, or off, under the *Planet* row
+(`PUT /api/admin/dumps/:dump/schedule`, one row in `osm_layer_schedule`; no
+row means the default). The freshness bound a reader holds a miss to stays 8
+days whatever the interval (`LAYER_FRESH_FOR_DAYS`), so a longer interval
+only sends more misses live.
+
+A self-queued update is a queued `dump_builds` row whose request reads
+`{kind: 'keep', scheduled: true, notBefore}`, with `notBefore` 30 minutes
+after it was queued (`QUEUED_LEAD_MS`). The worker does not take a queued row
+before its `notBefore` (`claimNextBuild`), and the panel says when it will
+(*Scheduled update: the dump worker takes it from …*). Whoever pulls the
+machine's checkout therefore sees a self-queued update coming at least 30
+minutes ahead, with `SELECT id, request FROM dump_builds WHERE status IN
+('queued', 'running')`, and can cancel it from the panel. A pull in the middle
+of a build stops the worker's passes.
+
 The cut's files live in a directory of their own beside the planet,
 `osm-layer-cut`. A build empties it when it starts, before the planet is
 held, so the cut of a build that the worker's restart stopped never takes the
@@ -977,7 +1016,7 @@ step started and when the worker was last seen alive, or, after a minute
 with no beat, that the worker may have stopped.
 The routes are `GET /api/admin/dumps`, `POST /api/admin/dumps/:dump/build`,
 `POST /api/admin/dumps/:dump/keep`, `POST /api/admin/dumps/:dump/rederive`,
-`POST /api/admin/dumps/:dump/sample`, `POST /api/admin/dumps/:dump/trial`
-and `POST /api/admin/dumps/:dump/cancel`
+`POST /api/admin/dumps/:dump/sample`, `POST /api/admin/dumps/:dump/trial`,
+`POST /api/admin/dumps/:dump/cancel` and `PUT /api/admin/dumps/:dump/schedule`
 (`backend/src/controllers/admin/dumpController.ts`);
 `docs/security/SECURITY.md` § Current Security Stack has their controls.
