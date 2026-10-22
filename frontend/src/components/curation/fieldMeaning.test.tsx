@@ -307,6 +307,12 @@ describe('what a change means, in one line', () => {
       .toBe('Moved 500 m east.');
   });
 
+  it('never words a point within the server’s ten metres as a move (#1846)', () => {
+    // The Genbaku Dome: a source's point 5 cm from the one it named.
+    expect(change('location', { lon: 132.4536, lat: 34.3956 }, { lon: 132.4536, lat: 34.39560045 }))
+      .toBe('Not a move: the source writes the same place again, within 10 m.');
+  });
+
   it('says an extent in the card\'s own units, and names none where a row had none', () => {
     // Troy's excavation polygon, re-traced from 5.7 ha; the record carries the
     // area, and the hash that decided the change is nobody's to read.
