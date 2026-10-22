@@ -106,7 +106,7 @@ import {
 // stored row the point the source is offering, and what a kept row's own columns
 // say happened to it.
 import {
-  claimed, claimedPointSql, keptChanges, named, sameReferenceSql, samePointSql, NO_CHANGE,
+  claimed, claimedPointSql, keptChanges, named, sameReferenceSql, samePointSql, withinUnchangedSql, NO_CHANGE,
 } from './locationPairing.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { lockExperience } from '../../db/experienceWriter.js';
@@ -162,6 +162,31 @@ export type LocationWriteRun = WriteRun & {
  */
 const ownPointSql = (alias: string) => `(${shownBySql(alias, 'ARRAY[$1::int]')} AND ${alias}.merged_into_id IS NULL)`;
 
+/** A point of the place a reader sees: offered and read (ADR-0025). */
+const standingPointSql = (alias: string) => `(${ownPointSql(alias)} AND ${offeredLocationSql(alias)} AND ${publishedContentSql(alias)})`;
+
+/**
+ * A point another membership places as well as, or instead of, the run's
+ * (`run` names the run's membership). Only such a point is taken under another
+ * reference: a source's own references are its own components, and UNESCO
+ * gives one coordinate to seventeen rock shelters of site 874, so its point
+ * for a component it dropped is not the point of one it added there.
+ */
+const placedByAnotherSql = (alias: string, run: string) => `EXISTS (SELECT 1 FROM experience_location_placements other
+                    WHERE other.location_id = ${alias}.id AND other.membership_id IS DISTINCT FROM ${run})`;
+
+/**
+ * Whether the run places a point as its own rather than under the reference it
+ * offers now (`adopted_ref`, ADR-0137): a point the run wrote, or one it took
+ * under another of its references. Such a point is never taken under another
+ * reference, or a component UNESCO dropped would lend its point, name and
+ * visits to the one it added at the same coordinate once a second source
+ * shared the place.
+ */
+const placedAsOwnSql = (alias: string, run: string) => `EXISTS (SELECT 1 FROM experience_location_placements own_placement
+                    WHERE own_placement.location_id = ${alias}.id AND own_placement.membership_id = ${run}
+                      AND own_placement.adopted_ref IS DISTINCT FROM i.external_ref)`;
+
 /**
  * Make `experience_locations` for one experience match `incoming`, keeping the
  * row — and the id — of every point that is still offered.
@@ -213,9 +238,12 @@ export async function writeExperienceLocations(
   // The run's own: the merge that folded a point recorded the membership that
   // placed it (`FoldedPoints.removed`, `placeMerge.ts`), and that membership
   // is this run's on the place now. Another source's folded point under the same
-  // reference is that source's to pair.
+  // reference is that source's to pair, unless the run's membership places the
+  // point it was folded into: a kind split from the source whose point was
+  // folded took that placement with it (Monuments & memorials from Public Art,
+  // #1807), and the folded point under the reference it offers is its own (#1846).
   const folded = `ARRAY(SELECT fp.id FROM ${foldedPointsSql('ARRAY[$1::int]')} fp
-    WHERE EXISTS (SELECT 1 FROM experience_merges mg
+    WHERE (EXISTS (SELECT 1 FROM experience_merges mg
                    CROSS JOIN jsonb_array_elements(mg.moved->'foldedPoints'->'removed') placed
                    WHERE mg.undone_at IS NULL AND (placed->>'location')::int = fp.id
                      AND (placed->>'membership')::int = ${runMembership})
@@ -224,7 +252,11 @@ export async function writeExperienceLocations(
       AND NOT EXISTS (SELECT 1 FROM experience_merges mg
                    CROSS JOIN jsonb_array_elements(mg.moved->'foldedPoints'->'added') gained
                    WHERE mg.undone_at IS NULL AND (gained->>'location')::int = fp.id
-                     AND (gained->>'membership')::int = ${runMembership}))`;
+                     AND (gained->>'membership')::int = ${runMembership}))
+       OR (EXISTS (SELECT 1 FROM experience_locations twin JOIN incoming i ON ${sameReferenceSql('twin')}
+                    WHERE twin.missing_since IS NULL AND twin.id = fp.id)
+           AND EXISTS (SELECT 1 FROM experience_location_placements kept_placement
+                        WHERE kept_placement.location_id = fp.kept_id AND kept_placement.membership_id = ${runMembership})))`;
   const runsOver = (alias: string) =>
     `(${ownPointSql(alias)} OR (${alias}.id = ANY(${folded}) AND ${alias}.missing_since IS NULL))`;
   /**
@@ -291,8 +323,11 @@ export async function writeExperienceLocations(
    * and the difference is load-bearing. In the held shape both rows carry
    * `missing_since NULL`, so the first term ties and `metres` gives the pairing to
    * the `pending` arrival sitting on the source's own coordinate rather than to the
-   * visible row a centimetre off it. Which is right: what keeps the visible row
-   * visible is the arrival's pointer at it, not the pairing. A tie reaching
+   * visible row a centimetre off it. Which is right here: what keeps the visible
+   * row visible is the arrival's pointer at it, not the pairing. It is not the
+   * last word, though: the statement after the pairing (ADR-0137) hands an unread
+   * arrival's point to the point a reader sees within the ten metres, so in that
+   * shape the visible row is kept and the arrival withdrawn. A tie reaching
    * `location_id` is two rows equidistant under one reference, where nothing
    * distinguishes them and any choice is the same choice.
    *
@@ -361,7 +396,24 @@ export async function writeExperienceLocations(
   // and counting them would put this run on the slow path for ever.
   const same = await pool.query(
     `WITH ${cte}
-     SELECT (SELECT count(*) FROM experience_locations el
+     SELECT -- A point that is another reference's point a reader sees, within the
+            -- ten metres, which this run placed under the reference it offers (the
+            -- adopting statement below): it matches, since there is nothing to write on it.
+            (SELECT count(*) FROM incoming i
+              -- What the pairing would keep: an own row within the ten metres, or a
+              -- claimed one; a row of the reference that went missing far off is
+              -- no claim on this point (Tel Be'er Sheva's moved Wikidata point).
+              WHERE NOT EXISTS (SELECT 1 FROM experience_locations own
+                                 WHERE ${ownPointSql('own')} AND (${samePointSql('own')} OR ${claimedPointSql('own')})
+                                   AND (own.missing_since IS NULL OR ${publishedContentSql('own')}))
+                AND NOT EXISTS (SELECT 1 FROM experience_locations f
+                                 WHERE f.missing_since IS NULL AND f.id = ANY(${folded}) AND ${sameReferenceSql('f')})
+                AND EXISTS (SELECT 1 FROM experience_locations el
+                             WHERE ${standingPointSql('el')} AND ${withinUnchangedSql('el')}
+                               AND EXISTS (SELECT 1 FROM experience_location_placements mine
+                                            WHERE mine.location_id = el.id AND mine.membership_id = ${runMembership}
+                                              AND mine.adopted_ref = i.external_ref))) AS adopted,
+            (SELECT count(*) FROM experience_locations el
                WHERE ${ownPointSql('el')} AND el.missing_since IS NULL AND ${runsPoint('el')}
                  AND NOT ${standsForFolded('el', `twin.missing_since IS NULL
                                                   AND EXISTS (SELECT 1 FROM incoming i WHERE ${sameReferenceSql('twin')})`)})
@@ -413,10 +465,10 @@ export async function writeExperienceLocations(
                WHERE ${ownPointSql('el')} AND el.missing_since IS NULL AND ${runsPoint('el')}) AS ids`,
     withSource,
   );
-  const { stored, matched, ids } = same.rows[0] as
-    { stored: string; matched: string; ids: number[] | null };
+  const { adopted, stored, matched, ids } = same.rows[0] as
+    { adopted?: string; stored: string; matched: string; ids: number[] | null };
 
-  if (Number(stored) === incoming.length && Number(matched) === incoming.length) {
+  if (Number(stored) === incoming.length && Number(matched) + Number(adopted ?? 0) === incoming.length) {
     return { unchanged: ids ?? [], needsAssignment: [], unoffered: 0, delta: NO_CHANGE };
   }
 
@@ -482,7 +534,10 @@ export async function writeExperienceLocations(
               el.name AS old_name,
               ST_X(el.location::geometry) AS old_lon,
               ST_Y(el.location::geometry) AS old_lat,
-              el.curated_fields AS old_curated_fields
+              el.curated_fields AS old_curated_fields,
+              -- Set only by the adopting statement below: another reference's
+              -- point, which the run places and never writes.
+              false AS adopted
        FROM paired p JOIN experience_locations el ON el.id = p.location_id`,
       withSource,
     );
@@ -519,6 +574,73 @@ export async function writeExperienceLocations(
         );
       }
     }
+
+    // **Two points of a place within ten metres are one point** (ADR-0137, #1846),
+    // whichever source placed the one a reader sees and whatever either calls it.
+    // A source's point the pairing gave nothing a reader sees or saw — none, or
+    // an unread arrival, withdrawn or not — takes the nearest one within
+    // `LOCATION_UNCHANGED_METERS` that no other point of the run holds,
+    // preferring one the run already places, and under another reference only a
+    // point another source places too. The Genbaku Dome's Wikidata point
+    // sits 5 cm from UNESCO's `775`: written as a new point, it asked a curator
+    // about a 0 m move. The row it had (an unread arrival) loses the pairing and
+    // is withdrawn below, unread. Another reference's point is `adopted`: the run
+    // places it and writes nothing on it, so no source's name or coordinate is
+    // rewritten by another's. One of its own reference is kept as any pair is.
+    //
+    // Repeated while it takes a point: two of the run's points nearest one
+    // point a reader sees leave one of them to the next pass, which finds it the
+    // next nearest, rather than writing it as a second pin beside it.
+    const adoptPass = () => client.query(
+      `WITH ${cte},
+       wanting AS (
+         SELECT i.* FROM incoming i
+          WHERE NOT EXISTS (SELECT 1 FROM paired_rows p JOIN experience_locations el ON el.id = p.location_id
+                             WHERE p.ordinal = i.ordinal
+                               -- Only an unread row is given up: one a reader sees or
+                               -- saw is the run's to keep or bring back with its
+                               -- visits, and the run's folded point already places it
+                               -- on the point a reader sees (#1662).
+                               AND (${publishedContentSql('el')} OR el.id = ANY(${folded})))
+       ),
+       near AS (
+         SELECT DISTINCT ON (i.ordinal) i.ordinal, el.id AS location_id,
+                ST_Distance(el.location::geography, ST_SetSRID(ST_MakePoint(i.lon, i.lat), 4326)::geography) AS metres
+           FROM wanting i
+           JOIN experience_locations el
+             ON NOT EXISTS (SELECT 1 FROM paired_rows p WHERE p.location_id = el.id)
+            -- The run's folded point of this reference first: the fold placed
+            -- the run on the point a reader sees (#1662).
+            AND ((el.id = ANY(${folded}) AND ${sameReferenceSql('el')})
+                 OR (${standingPointSql('el')}
+                     -- Its own reference as the pairing asks it: exact where the
+                     -- point carries none (ADR-0027).
+                     AND (${samePointSql('el')}
+                          -- Another reference's only where the source names its
+                          -- point: the placement records the adoption by that name.
+                          OR (i.external_ref IS NOT NULL AND ${withinUnchangedSql('el')}
+                              AND ${placedByAnotherSql('el', runMembership)} AND NOT ${placedAsOwnSql('el', runMembership)}))))
+          ORDER BY i.ordinal, (el.id = ANY(${folded})) DESC,
+                   EXISTS (SELECT 1 FROM experience_location_placements mine
+                            WHERE mine.location_id = el.id AND mine.membership_id = ${runMembership}) DESC,
+                   metres, el.id
+       ),
+       chosen AS (
+         SELECT DISTINCT ON (location_id) ordinal, location_id, metres FROM near ORDER BY location_id, metres, ordinal
+       ),
+       dropped AS (
+         DELETE FROM paired_rows p USING chosen c WHERE p.ordinal = c.ordinal
+       )
+       INSERT INTO paired_rows (ordinal, location_id, metres, old_name, old_lon, old_lat, old_curated_fields, adopted)
+       SELECT c.ordinal, c.location_id, c.metres, el.name,
+              ST_X(el.location::geometry), ST_Y(el.location::geometry), el.curated_fields,
+              NOT ${sameReferenceSql('el')}
+         FROM chosen c
+         JOIN experience_locations el ON el.id = c.location_id
+         JOIN incoming i ON i.ordinal = c.ordinal`,
+      withSource,
+    );
+    for (let pass = 0; pass < incoming.length && ((await adoptPass()).rowCount ?? 0) > 0; pass++) { /* until none is taken */ }
 
     // Survivors keep their id. At most one incoming entry can match, since the
     // incoming list is deduped by identity above.
@@ -572,6 +694,7 @@ export async function writeExperienceLocations(
        WHERE ${ownPointSql('el')}
          AND el.id = p.location_id
          AND el.missing_since IS NULL
+         AND p.adopted IS NOT TRUE
        -- The distance decides whether this row still holds the place it was assigned
        -- to. A traveller cannot be in the wrong place ten metres out, but a region
        -- polygon can: its edge is a line, so a rewrite of a centimetre across it is two
@@ -703,13 +826,16 @@ export async function writeExperienceLocations(
     // it included. The withdrawals below read it, so it is written first.
     await client.query(
       `WITH ${cte}
-       INSERT INTO experience_location_placements (location_id, membership_id)
-       SELECT p.location_id, ${runMembership}
-         FROM paired_rows p
+       INSERT INTO experience_location_placements (location_id, membership_id, adopted_ref)
+       -- An adopted point records the reference the run offers it under, which
+       -- is what lets the next run take it again and the fast path match it.
+       SELECT p.location_id, ${runMembership}, CASE WHEN p.adopted THEN i.external_ref END
+         FROM paired_rows p JOIN incoming i ON i.ordinal = p.ordinal
         WHERE ${runMembership} IS NOT NULL
           -- A folded point's placements moved onto the point it was folded into.
           AND p.location_id <> ALL(${folded})
-       ON CONFLICT DO NOTHING`,
+       ON CONFLICT (location_id, membership_id) DO UPDATE SET adopted_ref = EXCLUDED.adopted_ref
+        WHERE experience_location_placements.adopted_ref IS DISTINCT FROM EXCLUDED.adopted_ref`,
       withSource,
     );
 

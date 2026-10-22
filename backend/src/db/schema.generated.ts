@@ -362,6 +362,7 @@ export interface ExperienceLocationPlacementsRow {
   location_id: number;
   membership_id: number;
   created_at: Date;
+  adopted_ref: string | null;
 }
 
 /** The table `experience_location_regions`. */
