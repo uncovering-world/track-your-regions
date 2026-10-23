@@ -2170,6 +2170,7 @@ export const CuratorActivityEntryAction = {
   admission_pin_handed_back: 'admission_pin_handed_back',
   merge_proposal_answered: 'merge_proposal_answered',
   visit_question_answered: 'visit_question_answered',
+  identifier_settled: 'identifier_settled',
 } as const;
 
 /**
@@ -6161,6 +6162,7 @@ export const GetAdminCuratorsByUserIdActivityAction = {
   admission_pin_handed_back: 'admission_pin_handed_back',
   merge_proposal_answered: 'merge_proposal_answered',
   visit_question_answered: 'visit_question_answered',
+  identifier_settled: 'identifier_settled',
 } as const;
 
 export type GetAdminCurationActivityParams = {
@@ -6234,6 +6236,7 @@ export const GetAdminCurationActivityAction = {
   admission_pin_handed_back: 'admission_pin_handed_back',
   merge_proposal_answered: 'merge_proposal_answered',
   visit_question_answered: 'visit_question_answered',
+  identifier_settled: 'identifier_settled',
 } as const;
 
 export type GetAdminUsersSearchParams = {

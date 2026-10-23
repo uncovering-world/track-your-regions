@@ -141,6 +141,10 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // A pin handed back with no question asked (#1369): the curator's word
   // withdrawn, nothing moved yet, and the next run decides.
   admission_pin_handed_back: { label: 'Pin handed back', color: AMBER },
+  // A curator's word on one of the place's identifiers (#1896, ADR-0143
+  // decision 5): the value names the place, only refers to it, the place does
+  // not carry it, or the word is taken back and the sources decide again.
+  identifier_settled: { label: 'Identifier settled', color: BLUE },
 };
 
 /**
@@ -499,6 +503,7 @@ const PLACE_ACT_DETAILS: Record<string, (d: Record<string, unknown>) => string |
   component_item_taken_back: d => formatComponentItemTakenBack(d),
   merge_proposal_answered: d => formatMergeProposalAnswered(d),
   visit_question_answered: d => formatVisitQuestionAnswered(d),
+  identifier_settled: d => formatIdentifierSettled(d),
 };
 
 export function formatLogDetails(entry: CurationLogEntry): string | null {
@@ -593,6 +598,23 @@ function formatMergeProposalAnswered(d: Record<string, unknown>): string | null 
   if (d.answer === 'one') return `${other}: one place, merged into this one`;
   if (d.answer === 'two') return `${other}: two places`;
   return d.partId === d.otherId ? `${other}: part of this place` : `${other}: this place is part of it`;
+}
+
+/** What each word a curator may say of an identifier reads as in the history (#1896). */
+const IDENTIFIER_PHRASES: Record<string, string> = {
+  identifies: 'names this place',
+  refers: 'only refers to this place',
+  removed: 'is not this place’s',
+  derived: 'is left to the sources again',
+};
+
+function formatIdentifierSettled(d: Record<string, unknown>): string | null {
+  const word = typeof d.verdict === 'string' ? IDENTIFIER_PHRASES[d.verdict] : undefined;
+  if (!word || typeof d.value !== 'string') return null;
+  return [
+    `${d.value} ${word}`,
+    typeof d.note === 'string' && d.note !== '' ? `“${d.note}”` : null,
+  ].filter(Boolean).join(' — ');
 }
 
 /** An answer to a run's question about a place with nothing to see (#1770): which kind, and what was done. */

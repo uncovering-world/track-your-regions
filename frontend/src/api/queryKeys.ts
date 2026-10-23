@@ -84,6 +84,8 @@ export const queryKeys = {
     siteFinds: (id: Id) => ['site-finds', id] as const,
     curationLogAll: ['curation-log'] as const,
     curationLog: (id: Id) => ['curation-log', id] as const,
+    /** The place's identifiers and the curator's words on them (#1896). */
+    identifiers: (id: Id) => ['experience', 'identifiers', id] as const,
     /** Jev's suggestion for the sources card (#1260), for the views the card shows (serialised). */
     viewSuggestions: (id: Id, views: string) => ['experience', 'view-suggestions', id, views] as const,
     /** Jev's judgement of a site's candidate component items (#1272), for the candidates the card shows (serialised). */

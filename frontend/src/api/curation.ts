@@ -8,6 +8,7 @@
  */
 
 import type {
+  IdentifierSettled, IdentifierVerdictBody, PlaceIdentifiers,
   AcceptSourceResult, AdmissionResult, ComponentItemsAnswered, ComponentItemSuggestions, ContentKind, CurationLog,
   DeclineHeldResult,
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
@@ -24,6 +25,7 @@ import {
   postExperiencesByIdMergeProposals, type AnswerMergeProposalsBody, postExperiencesByIdMergeProposalSuggestions,
   postExperiencesByIdVisitSuggestion, postExperiencesByIdVisitQuestion, type VisitQuestionAnswerBody,
   postExperiencesByIdAdmission, postExperiencesByIdAdmissionPin, type PinQuestionAnswerBody,
+  getExperiencesByIdIdentifiers, postExperiencesByIdIdentifiers,
   getExperiencesReviewPins, postExperiencesByIdAdmissionPinHandBack, type HandBackPinBody, postExperiencesByIdAssign, postExperiencesByIdDeclineHeld,
   postExperiencesByIdDeclineSource, postExperiencesByIdPublish, postExperiencesByIdRefuseArrival,
   postExperiencesByIdRefuseContents, postExperiencesByIdReject, postExperiencesByIdState,
@@ -43,7 +45,7 @@ export type {
   ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MergeProposalsAnswered, MergeProposalSuggestions, MergeUndone, NearbyPicture,
   NearbyPictures,
   AdmissionPin, AdmissionPinHandedBack, AdmissionPins, HandBackPinBody,
-  PartNotFound, PinQuestionAnswerBody, PinQuestionAnswered, PointItemTakenBack, ViewsChosen, ViewSuggestions, VisitQuestionAnswerBody, VisitQuestionAnswered, VisitSuggestion, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
+  PartNotFound, PinQuestionAnswerBody, PinQuestionAnswered, PlaceIdentifier, PlaceIdentifiers, IdentifierSettled, IdentifierVerdictBody, PointItemTakenBack, ViewsChosen, ViewSuggestions, VisitQuestionAnswerBody, VisitQuestionAnswered, VisitSuggestion, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
   RefuseContentsResult,
   RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
@@ -544,4 +546,23 @@ export async function removeExperienceFromRegion(
   regionId: number,
 ): Promise<RegionMembershipResult> {
   return deleteExperiencesByIdRemoveFromRegionByRegionId(experienceId, regionId);
+}
+
+/** A curator's word on one identifier (#1896): what the dialog may say of it. */
+export type IdentifierVerdict = IdentifierVerdictBody['verdict'];
+
+/** The place's identifiers, each with the other places that hold it (#1896). */
+export async function fetchPlaceIdentifiers(experienceId: number): Promise<PlaceIdentifiers> {
+  return getExperiencesByIdIdentifiers(experienceId);
+}
+
+/**
+ * Say what an identifier is to this place (#1896): it names it, only refers
+ * to it, is not its own, or is the sources' to decide again.
+ */
+export async function settlePlaceIdentifier(
+  experienceId: number,
+  body: IdentifierVerdictBody,
+): Promise<IdentifierSettled> {
+  return postExperiencesByIdIdentifiers(experienceId, body);
 }

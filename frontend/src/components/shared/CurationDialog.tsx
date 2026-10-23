@@ -56,6 +56,7 @@ import { CurationPlaces } from './CurationPlaces';
 import { verdictOf } from './LifecycleChip';
 import { CurationHistory } from './CurationHistory';
 import { PlacePins } from './AdmissionPins';
+import { PlaceIdentifiers } from './PlaceIdentifiers';
 import { typeOptionsFor } from '../../utils/experienceTypes';
 import { tidyLabel } from '@tyr/shared/labels';
 import { queryKeys } from '../../api/queryKeys';
@@ -483,6 +484,8 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
         )}
 
         <PlacePins experienceId={experience.id} regionId={regionId} />
+        {/* Keyed by the place, as the history is: the next one opens with its own identifiers. */}
+        <PlaceIdentifiers key={`identifiers-${experience.id}`} experienceId={experience.id} />
         {/* Keyed by the place: the next one opens with its history folded. */}
         <CurationHistory key={experience.id} experienceId={experience.id} regionId={regionId} />
       </DialogContent>

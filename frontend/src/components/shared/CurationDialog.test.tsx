@@ -21,6 +21,8 @@ vi.mock('../../utils/queryInvalidation', () => ({
 }));
 
 vi.mock('../../api/curation', () => ({
+  fetchPlaceIdentifiers: vi.fn(async () => ({ experienceId: 0, identifiers: [] })),
+  settlePlaceIdentifier: vi.fn(),
   editExperience: vi.fn(),
   rejectExperience: vi.fn(),
   unrejectExperience: vi.fn(),

@@ -24,6 +24,8 @@ vi.mock('../../api/reviewQueue', () => ({
   bringRunBack: vi.fn(),
 }));
 vi.mock('../../api/curation', () => ({
+  fetchPlaceIdentifiers: vi.fn(async () => ({ experienceId: 0, identifiers: [] })),
+  settlePlaceIdentifier: vi.fn(),
   setExperienceState: vi.fn(),
   setExperienceAdmission: vi.fn(),
   setLocationState: vi.fn(),
