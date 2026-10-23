@@ -11,7 +11,7 @@ import type {
   AcceptSourceResult, AdmissionResult, ComponentItemsAnswered, ComponentItemSuggestions, ContentKind, CurationLog,
   DeclineHeldResult,
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
-  LocationStateResult, ManualExperienceCreated, MergeProposalsAnswered, MergeProposalSuggestions, MergeUndone, NearbyPictures, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointItemTakenBack, PublishResult,
+  LocationStateResult, ManualExperienceCreated, MergeProposalsAnswered, MergeProposalSuggestions, MergeUndone, NearbyPictures, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointHintSuggestions, PointItemTakenBack, PublishResult,
   ViewsChosen, ViewSuggestions, VisitQuestionAnswered, VisitSuggestion, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
 import {
@@ -20,7 +20,7 @@ import {
   patchExperiencesLocationsByLocationIdEdit, postExperiences, postExperiencesByIdAcceptSource,
   postExperiencesMergesByMergeIdUndo, postExperiencesByIdChooseViews, type ChooseViewsBody,
   postExperiencesByIdViewSuggestions, postExperiencesByIdComponentItems, type AnswerComponentItemsBody,
-  postExperiencesByIdComponentItemSuggestions,
+  postExperiencesByIdComponentItemSuggestions, postExperiencesByIdPointHintSuggestions,
   postExperiencesByIdMergeProposals, type AnswerMergeProposalsBody, postExperiencesByIdMergeProposalSuggestions,
   postExperiencesByIdVisitSuggestion, postExperiencesByIdVisitQuestion, type VisitQuestionAnswerBody,
   postExperiencesByIdAdmission, postExperiencesByIdAdmissionPin, type PinQuestionAnswerBody,
@@ -38,7 +38,7 @@ import {
 // imports a call's answer from the module of the call.
 export type {
   AcceptSourceResult, AdmissionResult, AnswerComponentItemsBody, AnswerMergeProposalsBody, AppliedPart, ComponentItemsAnswered,
-  ComponentItemSuggestions, ContentKind, CurationLog, CurationLogEntry,
+  ComponentItemSuggestions, ContentKind, CurationLog, CurationLogEntry, PointHintSuggestions,
   DeclineHeldResult, DeclineSourceResult, DeclinedPart, ExperienceEditResult,
   ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MergeProposalsAnswered, MergeProposalSuggestions, MergeUndone, NearbyPicture,
   NearbyPictures,
@@ -474,6 +474,16 @@ export async function suggestSourceViews(experienceId: number): Promise<ViewSugg
  */
 export async function suggestComponentItems(experienceId: number): Promise<ComponentItemSuggestions> {
   return postExperiencesByIdComponentItemSuggestions(experienceId);
+}
+
+/**
+ * Jev's judgement of the hints of where a site's roughly placed components
+ * stand (#1913): per hint, whether it is where the component stands or another
+ * place, with its confidence. A suggestion only; a POST since the server may
+ * ask Jev, which is paid for per call.
+ */
+export async function suggestPointHints(experienceId: number): Promise<PointHintSuggestions> {
+  return postExperiencesByIdPointHintSuggestions(experienceId);
 }
 
 /**

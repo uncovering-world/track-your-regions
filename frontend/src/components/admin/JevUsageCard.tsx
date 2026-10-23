@@ -36,6 +36,7 @@ const agreementOf = (compared: number, agreed: number) => (compared > 0 ? `${Mat
 const QUESTION_WORDS: Record<JevUsage['byQuestion'][number]['question'], string> = {
   views: 'which source’s view a place shows',
   componentItems: 'whether a candidate item is the component',
+  pointHints: 'whether a hint is where a roughly placed component stands',
   mergeProposals: 'what two near places with alike names are',
   visits: 'what a visitor finds at an arriving place',
 };

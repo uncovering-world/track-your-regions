@@ -88,6 +88,8 @@ export const queryKeys = {
     viewSuggestions: (id: Id, views: string) => ['experience', 'view-suggestions', id, views] as const,
     /** Jev's judgement of a site's candidate component items (#1272), for the candidates the card shows (serialised). */
     componentItemSuggestions: (id: Id, candidates: string) => ['experience', 'component-item-suggestions', id, candidates] as const,
+    /** Jev's judgement of the hints of a site's rough points (#1913), for the hints the card shows (serialised). */
+    pointHintSuggestions: (id: Id, hints: string) => ['experience', 'point-hint-suggestions', id, hints] as const,
     /** Jev's judgement of a place's pairs of near places (#1249), for the pairs the card shows (serialised). */
     mergeProposalSuggestions: (id: Id, pairs: string) => ['experience', 'merge-proposal-suggestions', id, pairs] as const,
     /** Jev's reading of an arriving place (#1768), for the place as the card shows it (serialised). */

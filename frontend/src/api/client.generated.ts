@@ -5577,6 +5577,56 @@ export interface ComponentItemSuggestions {
 }
 
 /**
+ * Where the hint comes from.
+ */
+export type PointHintSuggestionsSuggestionsItemSource = typeof PointHintSuggestionsSuggestionsItemSource[keyof typeof PointHintSuggestionsSuggestionsItemSource];
+
+
+export const PointHintSuggestionsSuggestionsItemSource = {
+  item: 'item',
+  'osm-ref': 'osm-ref',
+  'osm-name': 'osm-name',
+  candidate: 'candidate',
+} as const;
+
+/**
+ * `same`: the hint is where the component stands; `other`: another place.
+ */
+export type PointHintSuggestionsSuggestionsItemJudgement = typeof PointHintSuggestionsSuggestionsItemJudgement[keyof typeof PointHintSuggestionsSuggestionsItemJudgement];
+
+
+export const PointHintSuggestionsSuggestionsItemJudgement = {
+  same: 'same',
+  other: 'other',
+} as const;
+
+export type PointHintSuggestionsSuggestionsItem = {
+  /**
+     * The roughly placed point the hint is for.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  locationId: number;
+  /** Where the hint comes from. */
+  source: PointHintSuggestionsSuggestionsItemSource;
+  /** The hint's own id: an OpenStreetMap object's (`W194252618`) or a Wikidata item's. */
+  ref: string;
+  /** `same`: the hint is where the component stands; `other`: another place. */
+  judgement: PointHintSuggestionsSuggestionsItemJudgement;
+  /** Its confidence, 0 to 1. */
+  confidence: number;
+};
+
+/**
+ * Jev's judgement of the hints of where a site's roughly placed components stand (#1913), per hint it could judge; never applied.
+ */
+export interface PointHintSuggestions {
+  /** Whether this deployment asks Jev at all. False: no judgement, nothing else changes. */
+  configured: boolean;
+  suggestions: PointHintSuggestionsSuggestionsItem[];
+}
+
+/**
  * `one`: the two are one place; `two`: two places; `part_of`: one lies within the other, which one being the curator's to say.
  */
 export type MergeProposalSuggestionsSuggestionsItemJudgement = typeof MergeProposalSuggestionsSuggestionsItemJudgement[keyof typeof MergeProposalSuggestionsSuggestionsItemJudgement];
@@ -10654,6 +10704,31 @@ export const getPostExperiencesByIdComponentItemSuggestionsUrl = (id: number,) =
 export const postExperiencesByIdComponentItemSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<ComponentItemSuggestions> => {
 
   return apiFetch<ComponentItemSuggestions>(getPostExperiencesByIdComponentItemSuggestionsUrl(id),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostExperiencesByIdPointHintSuggestionsUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/point-hint-suggestions`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Ask Jev whether each hint is where a roughly placed component stands; a suggestion, never applied
+ */
+export const postExperiencesByIdPointHintSuggestions = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<PointHintSuggestions> => {
+
+  return apiFetch<PointHintSuggestions>(getPostExperiencesByIdPointHintSuggestionsUrl(id),
   {
     ...options,
     method: 'POST'

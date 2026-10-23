@@ -67,8 +67,8 @@ export const JEV_SURE = 0.9;
 const MAP_TOP = 8;
 const MAP_ROOM = MAP_TOP + MAP_HEIGHT + 16;
 
-/** What Jev makes of a candidate, in the words the caption uses. */
-const JUDGEMENT_WORDS: Record<Judgement['judgement'], string> = {
+/** What Jev makes of a candidate, or of a hint (#1913), in the words the caption uses. */
+const JUDGEMENT_WORDS: Record<'same' | 'other', string> = {
   same: 'the same place',
   other: 'another place',
 };
@@ -77,7 +77,7 @@ const JUDGEMENT_WORDS: Record<Judgement['judgement'], string> = {
  * Jev's confidence is the margin between its two options, so a low one is a
  * near coin toss rather than a weak yes: said as leaning, not as saying.
  */
-function judgementWords(judgement: Judgement): string {
+export function judgementWords(judgement: { judgement: 'same' | 'other'; confidence: number }): string {
   const percent = `${Math.round(judgement.confidence * 100)} %`;
   return judgement.confidence < 0.5
     ? `Jev is unsure, leans ${JUDGEMENT_WORDS[judgement.judgement]} · ${percent}`
