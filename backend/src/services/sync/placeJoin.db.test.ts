@@ -1,4 +1,4 @@
-import { afterAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { upsertExperienceRecord, type ExperienceUpsertParams } from './experienceUpsert.js';
 import { upsertSingleLocation } from './syncUtils.js';
@@ -20,7 +20,9 @@ const SERIAL = 9981;
 const ITEM = 'Q9980001';
 const SERIAL_ITEM = 'Q9980002';
 const NEW_ITEM = 'Q9980003';
-const ITEMS = [ITEM, SERIAL_ITEM, NEW_ITEM];
+const OLD_ITEM = 'Q9980004';
+const MOVED_ITEM = 'Q9980005';
+const ITEMS = [ITEM, SERIAL_ITEM, NEW_ITEM, OLD_ITEM, MOVED_ITEM];
 const AJANTA_POINT = { lon: 75.7033, lat: 20.5519 };
 
 let heritage = 0;
@@ -53,6 +55,7 @@ async function clear(): Promise<void> {
         OR id IN (SELECT experience_id FROM experience_kind_memberships WHERE external_id = ANY($2::text[]))`,
     [[AJANTA, SERIAL], ITEMS],
   );
+  await pool.query('DELETE FROM workbench.wikidata_redirects WHERE source = ANY($1::text[]) OR target = ANY($1::text[])', [ITEMS]);
 }
 
 /** A published World Heritage site with these points, its items on its membership. */
@@ -200,5 +203,72 @@ describe('a run finds the place its item identifies (ADR-0143 decision 3)', () =
     const places = await placesOf(NEW_ITEM);
     expect(places).toHaveLength(2);
     expect(new Set(places).size).toBe(1);
+  });
+
+  describe('an item Wikidata redirected to another (#1895)', () => {
+    // The kept redirects say the old item now points to the one the runs read,
+    // and a run of the source has a log of its own, so a held pointer could be set.
+    let runId = 0;
+    beforeEach(async () => {
+      await pool.query('INSERT INTO workbench.wikidata_redirects (source, target) VALUES ($1, $2)', [OLD_ITEM, MOVED_ITEM]);
+      runId = (await pool.query<{ id: number }>(
+        `INSERT INTO experience_sync_logs (source_id, status, completed_at) VALUES ($1, 'success', NOW()) RETURNING id`, [worship],
+      )).rows[0].id;
+    });
+    afterEach(async () => {
+      await clear();
+      await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [runId]);
+      await pool.query('UPDATE experience_sources SET requires_curation = true WHERE id = $1', [worship]);
+    });
+
+    /** The membership after the run read the new item: still passed, nothing held. */
+    async function membershipOf(experienceId: number) {
+      return (await pool.query<{ curation_state: string; pending_change_sync_log_id: number | null }>(
+        'SELECT curation_state, pending_change_sync_log_id FROM experience_kind_memberships WHERE experience_id = $1', [experienceId],
+      )).rows;
+    }
+
+    it('finds a place registered under the old item by the new one, and joins it', async () => {
+      // A place of worship registered under the old item, which Wikidata has since merged into MOVED_ITEM.
+      const { experienceId } = await upsertExperienceRecord(params(worship, OLD_ITEM, { name: 'A moved temple' }), { syncLogId: null });
+      const outcome = await upsertExperienceRecord(params(archaeology, MOVED_ITEM, { name: 'A moved temple' }), { syncLogId: null });
+      expect(outcome.experienceId).toBe(experienceId);
+      expect(outcome.changeSet.changeType).not.toBe('created');
+    });
+
+    it('finds its own membership by the old item, moves its key to the new one, and files the move past the gate', async () => {
+      const { experienceId } = await upsertExperienceRecord(params(worship, OLD_ITEM, { name: 'A moved temple' }), { syncLogId: null });
+      // A curator passed the arrival: the move must neither retire that pass nor raise a card.
+      await pool.query(
+        `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW() WHERE experience_id = $1`, [experienceId],
+      );
+      // Under the run's own log, so a proposal would set the held pointer (Places of worship is gated).
+      const outcome = await upsertExperienceRecord(params(worship, MOVED_ITEM, { name: 'A moved temple' }), { syncLogId: runId });
+
+      expect(outcome.experienceId).toBe(experienceId);
+      expect(await placesOf(OLD_ITEM)).toEqual([]);
+      expect(await placesOf(MOVED_ITEM)).toEqual([experienceId]);
+      expect(outcome.changeSet.changedFields).toContainEqual(expect.objectContaining({
+        field: 'external_id', old: OLD_ITEM, new: MOVED_ITEM, passedTheGate: 'unseen',
+      }));
+      expect(await membershipOf(experienceId)).toEqual([{ curation_state: 'verified', pending_change_sync_log_id: null }]);
+      // The registry followed the key: the place is found by the new item alone.
+      const registered = await pool.query<{ value: string; identifies: boolean }>(
+        'SELECT value, identifies FROM place_identifiers WHERE experience_id = $1 AND scheme = $2 ORDER BY value', [experienceId, 'wikidata'],
+      );
+      expect(registered.rows).toEqual([{ value: MOVED_ITEM, identifies: true }]);
+    });
+
+    it("keeps a trusted source's pass over the key's move", async () => {
+      // A trusted source writes content at once, and a written field retires a
+      // curator's pass (`verified` → `auto`); the key's move is no such field.
+      await pool.query('UPDATE experience_sources SET requires_curation = false WHERE id = $1', [worship]);
+      const { experienceId } = await upsertExperienceRecord(params(worship, OLD_ITEM, { name: 'A moved temple' }), { syncLogId: null });
+      await pool.query(`UPDATE experience_kind_memberships SET curation_state = 'verified' WHERE experience_id = $1`, [experienceId]);
+
+      await upsertExperienceRecord(params(worship, MOVED_ITEM, { name: 'A moved temple' }), { syncLogId: runId });
+
+      expect(await membershipOf(experienceId)).toEqual([{ curation_state: 'verified', pending_change_sync_log_id: null }]);
+    });
   });
 });

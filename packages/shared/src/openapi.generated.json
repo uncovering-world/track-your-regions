@@ -5022,6 +5022,7 @@
                 "enwiki-langlinks",
                 "pageviews-user",
                 "wikipedia-redirects",
+                "wikidata-redirects",
                 "wikivoyage-usage",
                 "osm-planet"
               ]
@@ -5093,6 +5094,7 @@
                 "enwiki-langlinks",
                 "pageviews-user",
                 "wikipedia-redirects",
+                "wikidata-redirects",
                 "wikivoyage-usage",
                 "osm-planet"
               ]
@@ -5164,6 +5166,7 @@
                 "enwiki-langlinks",
                 "pageviews-user",
                 "wikipedia-redirects",
+                "wikidata-redirects",
                 "wikivoyage-usage",
                 "osm-planet"
               ]
@@ -5225,6 +5228,7 @@
                 "enwiki-langlinks",
                 "pageviews-user",
                 "wikipedia-redirects",
+                "wikidata-redirects",
                 "wikivoyage-usage",
                 "osm-planet"
               ]
@@ -5286,6 +5290,7 @@
                 "enwiki-langlinks",
                 "pageviews-user",
                 "wikipedia-redirects",
+                "wikidata-redirects",
                 "wikivoyage-usage",
                 "osm-planet"
               ]
@@ -5347,6 +5352,7 @@
                 "enwiki-langlinks",
                 "pageviews-user",
                 "wikipedia-redirects",
+                "wikidata-redirects",
                 "wikivoyage-usage",
                 "osm-planet"
               ]
@@ -5418,6 +5424,7 @@
                 "enwiki-langlinks",
                 "pageviews-user",
                 "wikipedia-redirects",
+                "wikidata-redirects",
                 "wikivoyage-usage",
                 "osm-planet"
               ]
@@ -21680,6 +21687,7 @@
               "enwiki-langlinks",
               "pageviews-user",
               "wikipedia-redirects",
+              "wikidata-redirects",
               "wikivoyage-usage",
               "osm-planet"
             ]
@@ -21933,6 +21941,7 @@
                     "enwiki-langlinks",
                     "pageviews-user",
                     "wikipedia-redirects",
+                    "wikidata-redirects",
                     "wikivoyage-usage",
                     "osm-planet"
                   ]

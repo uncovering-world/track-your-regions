@@ -17,6 +17,8 @@ import type { ReadOptions } from './read.js';
 import { buildReadership, latestReadership } from './readership/readershipBuild.js';
 import { buildRedirects } from './wikipedia/redirectBuild.js';
 import { latestRedirects } from './wikipedia/redirectTables.js';
+import { buildWikidataRedirects } from './wikidata/redirectBuild.js';
+import { latestWikidataRedirects } from './wikidata/redirectTables.js';
 import { buildStructure } from './wikipedia/structureBuild.js';
 import { latestStructure } from './wikipedia/structureTables.js';
 import { buildSubset, rederiveSubset, type RederiveOptions } from './wikidata/subsetBuild.js';
@@ -90,6 +92,9 @@ const KEEPERS: Partial<Record<DumpKey, Keeper>> = {
   },
   'wikipedia-redirects': {
     title: 'The redirects readership counts under an article', build: buildRedirects, latest: latestRedirects, samples: false, fromCopy: false,
+  },
+  'wikidata-redirects': {
+    title: 'The items Wikidata redirected to another', build: buildWikidataRedirects, latest: latestWikidataRedirects, samples: false, fromCopy: false,
   },
   'wikivoyage-usage': {
     title: 'The items Wikivoyage\'s pages use', build: buildUsage, latest: latestUsage, samples: false, fromCopy: false,
