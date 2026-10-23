@@ -177,3 +177,49 @@ describe("a serial site's components become its parts (ADR-0100)", () => {
     expect(left.rowCount).toBe(0);
   });
 });
+
+describe('a component that stands for its whole site is not parted (#1899)', () => {
+  const readsAsWholeSite = async (point: string | null, ref: string | null, site: string, siteRef: string, standing: number) =>
+    (await pool.query<{ whole: boolean }>(
+      'SELECT stands_for_whole_site($1, $2, $3, $4, $5) AS whole', [point, ref, site, siteRef, standing],
+    )).rows[0].whole;
+
+  it('reads a point named like its site, carrying its reference, or alone, as the site', async () => {
+    expect(await readsAsWholeSite('Historic Centre of Siena', '717-001', 'Historic Centre of Siena', '717', 3)).toBe(true);
+    expect(await readsAsWholeSite('Pilgrimage Church of Wies', '271', 'Pilgrimage Church of Wies', '271', 1)).toBe(true);
+    expect(await readsAsWholeSite('Via Appia. Regina Viarum', '1708-001', 'Via Appia. <em>Regina Viarum</em>', '1708', 22)).toBe(true);
+    expect(await readsAsWholeSite('Château de Chambord', '933-001', 'chateau de chambord', '933', 2)).toBe(true);
+    // Baalbek's own point, which the list gives the site's reference.
+    expect(await readsAsWholeSite(null, '294', 'Baalbek', '294', 2)).toBe(true);
+    expect(await readsAsWholeSite('Bologa - Grădiște', '1718-027', 'Frontiers of the Roman Empire – Dacia', '1718', 277)).toBe(false);
+    // Named after its site and similar to it, and still a part of it.
+    expect(await readsAsWholeSite('Historic Centre of Siena (Cathedral)', '717-002', 'Historic Centre of Siena', '717', 3)).toBe(false);
+  });
+
+  it('keeps a point named like the site, or carrying its reference, as the site\'s own, and parts the rest', async () => {
+    const own = { name: 'Ancient Thebes (parts fixture)', externalRef: '87-000', lon: 32.65, lat: 25.71 };
+    const siteRef = { name: null, externalRef: `${THEBES}-fixture`, lon: 32.651, lat: 25.711 };
+    await writeExperienceLocations(THEBES, [own, siteRef, KARNAK], run);
+
+    expect((await parts(THEBES)).map(p => p.external_ref)).toEqual(['87-001']);
+    expect(await ownPoints(THEBES)).toHaveLength(2);
+  });
+
+  it('revives a part migration 161 folded once its point stops standing for the site', async () => {
+    await writeExperienceLocations(THEBES, [KARNAK, LUXOR], run);
+    const karnak = (await parts(THEBES)).find(p => p.external_ref === '87-001')!;
+    // Folded as migration 161 folds a part: the point home, the relation gone, the place folded into the site.
+    await pool.query('UPDATE experience_locations SET experience_id = $1 WHERE id = $2', [THEBES, karnak.location_id]);
+    await pool.query('DELETE FROM experience_parts WHERE part_id = $1', [karnak.part_id]);
+    await pool.query('UPDATE experiences SET merged_into_id = $1 WHERE id = $2', [THEBES, karnak.part_id]);
+
+    const membership = (await pool.query<{ id: number }>(
+      'SELECT id FROM experience_kind_memberships WHERE experience_id = $1', [THEBES],
+    )).rows[0].id;
+    await pool.query('SELECT part_site_components($1, $2)', [THEBES, membership]);
+
+    const revived = (await parts(THEBES)).find(p => p.external_ref === '87-001')!;
+    expect(revived.part_id).toBe(karnak.part_id);
+    expect((await pool.query('SELECT merged_into_id FROM experiences WHERE id = $1', [karnak.part_id])).rows[0].merged_into_id).toBeNull();
+  });
+});
