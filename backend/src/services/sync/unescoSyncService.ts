@@ -38,7 +38,7 @@ import { pool } from '../../db/index.js';
 import { sourcePlacesSql } from '../../db/membership.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { WaitBudget } from './sourceRetry.js';
-import { longitudeDelta } from './longitude.js';
+import { medoidOf } from './anchorPoint.js';
 import { parseDangerListing } from './dangerListing.js';
 import { UnplaceableRecord } from './itemOutcome.js';
 import type {
@@ -398,34 +398,8 @@ export function resolveMainPoint(
     return { lat: lat as number, lon: lon as number };
   }
   if (locations.length === 0) return null;
-
-  const centroidLat = locations.reduce((sum, l) => sum + l.lat, 0) / locations.length;
-  const centroidLon = meanLongitude(locations);
-  // Comparing squared offsets is enough to rank candidates; longitude is scaled
-  // by cos(lat) so the comparison stays sane away from the equator, and the
-  // difference is taken the short way round so a site spanning the
-  // antimeridian is not judged against a point on the far side of the planet.
-  const lonScale = Math.cos((centroidLat * Math.PI) / 180);
-  const offset = (l: ParsedLocation) =>
-    (l.lat - centroidLat) ** 2 + (longitudeDelta(l.lon, centroidLon) * lonScale) ** 2;
-
-  const medoid = locations.reduce((best, l) => (offset(l) < offset(best) ? l : best));
+  const medoid = medoidOf(locations);
   return { lat: medoid.lat, lon: medoid.lon };
-}
-
-/**
- * Mean of longitudes, taken as directions rather than numbers.
- *
- * An arithmetic mean puts parts at 179.5 and -179.5 — half a degree apart
- * across the antimeridian — at longitude 0, on the opposite side of the world.
- * Averaging the unit vectors and reading the angle back gives 180, which is
- * where the site actually is. See CLAUDE.md § Antimeridian Handling.
- */
-function meanLongitude(locations: ParsedLocation[]): number {
-  const toRad = Math.PI / 180;
-  const x = locations.reduce((sum, l) => sum + Math.cos(l.lon * toRad), 0);
-  const y = locations.reduce((sum, l) => sum + Math.sin(l.lon * toRad), 0);
-  return (Math.atan2(y, x) * 180) / Math.PI;
 }
 
 /**
