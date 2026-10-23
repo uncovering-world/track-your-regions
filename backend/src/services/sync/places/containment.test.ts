@@ -22,7 +22,7 @@ const UNREAD = 'Q999999999';
 const PALEOLITHIC = 'Q40203';
 
 const facts = (over: Partial<EntityFacts>): EntityFacts => ({
-  classes: [], locations: [], parents: [], collections: [], creators: [], commemorates: [], depicts: [], ...over,
+  classes: [], locations: [], parents: [], collections: [], creators: [], commemorates: [], depicts: [], genres: [], ...over,
 });
 const run = { sparql: vi.fn() as never, phase: vi.fn(), step: vi.fn(async () => {}) };
 

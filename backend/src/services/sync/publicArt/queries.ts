@@ -356,10 +356,16 @@ export interface EntityFacts {
   commemorates: string[];
   /** `P180`: what it depicts — a figure on a square makes the square a monument's site. */
   depicts: string[];
+  /**
+   * `P136`: the genre Wikidata files the work under. A commemorative form is
+   * stated here as often as in `P31` — the Bronze Horseman is typed a
+   * monumental sculpture and filed as an equestrian statue (#1832).
+   */
+  genres: string[];
 }
 
 export const emptyFacts = (): EntityFacts => ({
-  classes: [], locations: [], parents: [], collections: [], creators: [], commemorates: [], depicts: [],
+  classes: [], locations: [], parents: [], collections: [], creators: [], commemorates: [], depicts: [], genres: [],
 });
 
 /** Add the entity a binding names, when the binding is present and names one. */
@@ -398,7 +404,7 @@ export async function fetchEntityFacts(
   // has left says nothing about where it is today — the Horses of Saint Mark
   // carry nine ended locations and one collection that stands.
   const rows = await sparql(`
-    SELECT ?e ?cls ?loc ?parent ?coll ?creator ?creatorLabel ?commemorates ?depicts WHERE {
+    SELECT ?e ?cls ?loc ?parent ?coll ?creator ?creatorLabel ?commemorates ?depicts ?genre WHERE {
       VALUES ?e { ${values(qids)} }
       { ?e wdt:P31 ?cls } UNION {
         ${standing('?e', 'P276', '?loc')}
@@ -412,9 +418,11 @@ export async function fetchEntityFacts(
         ?e wdt:P547 ?commemorates
       } UNION {
         ?e wdt:P180 ?depicts
+      } UNION {
+        ?e wdt:P136 ?genre
       }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }
-    }`, { kind: 'edges', label: `classes, containers, owners, makers and subjects of ${qids.length} entities` });
+    }`, { kind: 'edges', label: `classes, containers, owners, makers, subjects and genres of ${qids.length} entities` });
 
   for (const row of rows) {
     const qid = extractQid(row.e?.value ?? '');
@@ -426,6 +434,7 @@ export async function fetchEntityFacts(
     pushEntity(facts.collections, row.coll);
     pushEntity(facts.commemorates, row.commemorates);
     pushEntity(facts.depicts, row.depicts);
+    pushEntity(facts.genres, row.genre);
     if (row.creatorLabel) {
       let seen = seenCreators.get(qid);
       if (!seen) { seen = new Set(); seenCreators.set(qid, seen); }
