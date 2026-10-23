@@ -10,9 +10,7 @@
  * been hidden.
  */
 
-import {
-  describe, it, expect, vi,
-} from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   render, screen, fireEvent, act, cleanup,
 } from '@testing-library/react';
@@ -29,6 +27,26 @@ const RUN_93_AT = new Date(2026, 8, 4, 9, 10).toISOString();
  * The development catalogue's own shape, trimmed: three sources, the two roots
  * called Europe (world views 2 and 5) beside one Asia, and two runs.
  */
+// The Region chip's search (#1920) asks the review API; the rest of the toolbar never does.
+vi.mock('../../../api/reviewQueue', () => ({ searchReviewRegions: vi.fn() }));
+
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { searchReviewRegions } from '../../../api/reviewQueue';
+
+const mockedRegionSearch = searchReviewRegions as unknown as ReturnType<typeof vi.fn>;
+
+/**
+ * The toolbar asks the review API for the Region chip's search (#1920), so
+ * every render has a client — the rerenders too, since `rerender` replaces the
+ * whole tree, provider included.
+ */
+function renderWithClient(ui: React.ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const wrap = (el: React.ReactElement) => <QueryClientProvider client={client}>{el}</QueryClientProvider>;
+  const result = render(wrap(ui));
+  return { ...result, rerender: (el: React.ReactElement) => result.rerender(wrap(el)) };
+}
+
 const FACETS: QueueFacets = {
   kind: [
     { kind: 'held', count: 1451 },
@@ -47,6 +65,7 @@ const FACETS: QueueFacets = {
     { id: 5212, name: 'Asia', worldView: 'Administrative', count: 300 },
     { id: null, name: 'Unplaced', worldView: null, count: 28 },
   ],
+  picked: null,
   run: [
     {
       id: 98, sourceId: 1, completedAt: RUN_98_AT, count: 1255, setAside: false,
@@ -66,7 +85,7 @@ function renderToolbar(over: {
   const onChange = vi.fn();
   const onSetAside = vi.fn();
   const onBringBack = vi.fn();
-  render(
+  renderWithClient(
     <ReviewToolbar
       address={{ ...EMPTY_REVIEW, ...over.address }}
       facets={{ ...FACETS, ...over.facets }}
@@ -104,6 +123,11 @@ function asked(
 }
 
 describe('ReviewToolbar', () => {
+  beforeEach(() => {
+    mockedRegionSearch.mockReset();
+    mockedRegionSearch.mockResolvedValue([]);
+  });
+
   it('turns a source on from its own row, with no Apply in the way', () => {
     const { onChange } = renderToolbar();
 
@@ -203,6 +227,79 @@ describe('ReviewToolbar', () => {
     fireEvent.click(screen.getByRole('menuitemradio', { name: /Unplaced/ }));
 
     expect(asked(onChange)).toEqual({ regionId: 'none' });
+  });
+
+  it('names the region the address picked where it is none of the roots, and offers the row to clear it (#1920)', () => {
+    const address = { ...EMPTY_REVIEW, regionId: 6901 };
+    const picked = { id: 6901, name: 'Berlin', path: 'Europe > Germany > Berlin', worldView: 'Administrative' };
+    const { onChange } = renderToolbar({ address, facets: { picked } });
+
+    expect(screen.getByRole('button', { name: /^Region: Berlin/ })).toBeInTheDocument();
+    openChip('Region');
+    const row = screen.getByRole('menuitemradio', { name: /Berlin/ });
+    expect(row).toHaveAttribute('aria-checked', 'true');
+    expect(row).toHaveTextContent('Europe > Germany > Berlin · Administrative');
+    // Its count is the feed's total, which is already under this filter.
+    expect(row).toHaveTextContent('1,633');
+    fireEvent.click(row);
+    expect(asked(onChange, address)).toEqual({ regionId: null });
+  });
+
+  it('finds a region of any depth by name and narrows the feed to it (#1920)', async () => {
+    mockedRegionSearch.mockResolvedValue([
+      { id: 6901, name: 'Berlin', path: 'Europe > Germany > Berlin', worldViewId: 5, worldView: 'Administrative' },
+      { id: 1431, name: 'Berlin', path: 'Europe > Germany > Berlin', worldViewId: 2, worldView: 'Wikivoyage Regions' },
+    ]);
+    const { onChange } = renderToolbar();
+
+    openChip('Region');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search a region' }), { target: { value: 'berl' } });
+    const rows = await screen.findAllByRole('menuitemradio', { name: /Berlin/ });
+    expect(rows).toHaveLength(2);
+    expect(rows[1]).toHaveTextContent('Wikivoyage Regions');
+    // The roots stay under the found rows, so the menu never loses what it offered.
+    expect(screen.getByRole('menuitemradio', { name: /^Asia/ })).toBeInTheDocument();
+    expect(mockedRegionSearch).toHaveBeenCalledWith('berl');
+
+    fireEvent.click(rows[0]);
+    expect(asked(onChange)).toEqual({ regionId: 6901 });
+  });
+
+  it("lets the menu's own keys through from the search field and keeps the typing ones (#1920)", () => {
+    // Read off what the menu does, since jsdom draws no focus for MUI to move:
+    // a letter typed in the field is not claimed by the menu's type-ahead,
+    // which would have matched the Asia root and cancelled the keystroke; Tab,
+    // which the menu answers by closing, reaches it from the field; so does
+    // Escape.
+    renderToolbar();
+    openChip('Region');
+    let field = screen.getByRole('textbox', { name: 'Search a region' });
+    fireEvent.change(field, { target: { value: 'eu' } });
+    expect(fireEvent.keyDown(field, { key: 'a' })).toBe(true);
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    fireEvent.keyDown(field, { key: 'Tab' });
+    expect(screen.queryByRole('menu')).toBeNull();
+
+    openChip('Region');
+    field = screen.getByRole('textbox', { name: 'Search a region' });
+    fireEvent.keyDown(field, { key: 'Escape' });
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
+  it('says a failed search failed, not that nothing was found (#1920)', async () => {
+    mockedRegionSearch.mockRejectedValue(new Error('503'));
+    renderToolbar();
+    openChip('Region');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search a region' }), { target: { value: 'berl' } });
+    expect(await screen.findByText('Search failed — try again')).toBeInTheDocument();
+    expect(screen.queryByText('No region by that name')).toBeNull();
+  });
+
+  it('asks nothing of one character (#1920)', () => {
+    renderToolbar();
+    openChip('Region');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Search a region' }), { target: { value: 'b' } });
+    expect(mockedRegionSearch).not.toHaveBeenCalled();
   });
 
   it('clears the region a second pick of the same root asks for', () => {
@@ -331,7 +428,7 @@ describe('ReviewToolbar', () => {
     try {
       const rest = { facets: FACETS, total: 1633, onSetAside: vi.fn(), onBringBack: vi.fn() };
       const typed = vi.fn();
-      const { rerender } = render(
+      const { rerender } = renderWithClient(
         <ReviewToolbar address={EMPTY_REVIEW} onChange={typed} {...rest} />,
       );
 
@@ -422,7 +519,7 @@ describe('ReviewToolbar', () => {
     try {
       const rest = { facets: FACETS, total: 1633, onSetAside: vi.fn(), onBringBack: vi.fn() };
       const onChange = vi.fn();
-      const { rerender } = render(
+      const { rerender } = renderWithClient(
         <ReviewToolbar address={EMPTY_REVIEW} onChange={onChange} {...rest} />,
       );
 
@@ -449,7 +546,7 @@ describe('ReviewToolbar', () => {
       const rest = { facets: FACETS, total: 1633, onSetAside: vi.fn(), onBringBack: vi.fn() };
       const onChange = vi.fn();
       const long = 'x'.repeat(101);
-      const { rerender } = render(
+      const { rerender } = renderWithClient(
         <ReviewToolbar address={EMPTY_REVIEW} onChange={onChange} {...rest} />,
       );
 
@@ -512,7 +609,7 @@ describe('ReviewToolbar', () => {
   });
 
   it('claims no count at all before the facets arrive', () => {
-    render(
+    renderWithClient(
       <ReviewToolbar
         address={EMPTY_REVIEW}
         facets={undefined}

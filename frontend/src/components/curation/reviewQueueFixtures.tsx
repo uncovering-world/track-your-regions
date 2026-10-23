@@ -55,7 +55,7 @@ const RUN_ID = 98;
 
 /** No counts at all, but every field the toolbar reads — an unfiltered, unrun catalogue. */
 export const NO_FACETS = {
-  kind: [], source: [], region: [], run: [], setAside: { batches: 0 },
+  kind: [], source: [], region: [], picked: null, run: [], setAside: { batches: 0 },
 };
 
 /**

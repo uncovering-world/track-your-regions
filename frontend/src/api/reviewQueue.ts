@@ -8,11 +8,11 @@
  */
 
 import type {
-  ReviewAnswer, ReviewAnswerResult, ReviewQueue, RunSetAside,
+  ReviewAnswer, ReviewAnswerResult, ReviewQueue, ReviewRegionSearchResults, RunSetAside,
 } from './client.generated';
 import {
-  deleteExperiencesReviewSetAsideBySyncLogId, getExperiencesReviewQueue, postExperiencesReviewAnswer,
-  putExperiencesReviewSetAsideBySyncLogId,
+  deleteExperiencesReviewSetAsideBySyncLogId, getExperiencesReviewQueue, getExperiencesReviewRegionsSearch,
+  postExperiencesReviewAnswer, putExperiencesReviewSetAsideBySyncLogId,
   type ReviewAnswerBodyRowsItem,
 } from './client.generated';
 import type { ReviewAddress } from '../utils/appUrl';
@@ -23,8 +23,20 @@ import type { ReviewAddress } from '../utils/appUrl';
 export type {
   AnsweredPoint, ChangedField, CountedWork, EarlierAnswer, FieldClaim, HeldPart, PendingPoint, PendingWork,
   ProposedField, QueueFacets, QueueKind, QueueOrderEntry, RefusedPoint, RefusedWork, ReviewAnswer,
-  ReviewAnswerDid, ReviewAnswerResult, ReviewQueue, ReviewQueueItem, RunSetAside, WaitingSub, WithdrawnPoint,
+  ReviewAnswerDid, ReviewAnswerResult, ReviewQueue, ReviewQueueItem, ReviewRegionSearchResult, ReviewRegionSearchResults,
+  RunSetAside, WaitingSub, WithdrawnPoint,
 } from './client.generated';
+
+/**
+ * The regions a curator may narrow the feed to, found by name across every
+ * public world view (#1920): each with its path and world view, at most ten,
+ * best first. Nothing for fewer than two characters, which the field says.
+ */
+export async function searchReviewRegions(query: string): Promise<ReviewRegionSearchResults> {
+  const typed = query.trim();
+  if (typed.length < 2) return [];
+  return getExperiencesReviewRegionsSearch({ query: typed });
+}
 
 /**
  * The three answered lists that still page by their own offset, outside the
