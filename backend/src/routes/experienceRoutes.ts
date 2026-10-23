@@ -28,6 +28,7 @@ import {
   LocationStateResult,
   ManualExperienceCreated,
   MembershipSeparated,
+  SeparationUndone,
   MergeUndone,
   NearbyPictures,
   ViewsChosen,
@@ -41,7 +42,7 @@ import {
 } from '../api/responses/curation.js';
 import { PublishWaitingResult } from '../api/responses/admin.js';
 import { undoPlaceMerge } from '../controllers/experience/placeMergeController.js';
-import { separatePlaceMembership } from '../controllers/experience/membershipSeparationController.js';
+import { separatePlaceMembership, undoPlaceSeparation } from '../controllers/experience/membershipSeparationController.js';
 import { chooseViews } from '../controllers/experience/viewChoiceController.js';
 import { answerComponentItems } from '../controllers/experience/componentItemController.js';
 import { answerMergeProposals } from '../controllers/experience/mergeProposalController.js';
@@ -118,6 +119,7 @@ import {
   idParamSchema,
   sourceIdParamSchema,
   kindOfPlaceParamSchema,
+  separationIdParamSchema,
   mergeIdParamSchema,
   chooseViewsBodySchema,
   answerComponentItemsBodySchema,
@@ -726,6 +728,15 @@ export const experienceCurationRoutes = [
     params: kindOfPlaceParamSchema,
     response: MembershipSeparated,
     handler: separatePlaceMembership,
+  }),
+  // Undo a separation by merging the two again (ADR-0142 decision 4). Under
+  // `separations/` for the reason `merges/` is: no `:id` route reads it.
+  defineRoute({
+    method: 'post', path: '/separations/:separationId/undo', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Undo a separation: the place it made is merged back into the original',
+    params: separationIdParamSchema,
+    response: SeparationUndone,
+    handler: undoPlaceSeparation,
   }),
   defineRoute({
     method: 'post', path: '/sources/:sourceId/publish-waiting', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,

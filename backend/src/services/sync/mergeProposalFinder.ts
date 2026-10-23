@@ -215,8 +215,9 @@ export function candidatePairsSql(): string {
    WHERE (m.name_similarity >= ${MIN_SIMILARITY} OR ${nameWithinSql('m.a_names', 'm.b_names')})
      -- Two places a curator separated are two places (ADR-0142): never proposed as one.
      AND NOT EXISTS (SELECT 1 FROM experience_separations sep
-                      WHERE (sep.original_id = m.place_a AND sep.separated_id = m.place_b)
-                         OR (sep.original_id = m.place_b AND sep.separated_id = m.place_a))`;
+                      WHERE sep.undone_at IS NULL
+                        AND ((sep.original_id = m.place_a AND sep.separated_id = m.place_b)
+                          OR (sep.original_id = m.place_b AND sep.separated_id = m.place_a)))`;
 }
 
 /** A proposal as the pass and the check read it, with both places named. */

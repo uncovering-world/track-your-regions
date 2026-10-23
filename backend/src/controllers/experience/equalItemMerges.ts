@@ -78,7 +78,7 @@ export function sharedItemsSql(onlyParam: string): string {
         -- (ADR-0142): it is no longer that item's place, and another source
         -- bringing the item later joins the original.
         AND NOT EXISTS (SELECT 1 FROM experience_separations sep
-                         WHERE sep.wikidata_item = held.qid AND sep.separated_id = held.place_id)
+                         WHERE sep.wikidata_item = held.qid AND sep.separated_id = held.place_id AND sep.undone_at IS NULL)
       GROUP BY held.qid
      HAVING count(DISTINCT held.place_id) > 1`;
 }

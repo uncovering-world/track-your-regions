@@ -371,7 +371,8 @@ export async function undoMerge(
     // undoing would leave the folded place with no membership.
     const separated = await client.query(
       `SELECT 1 FROM experience_separations
-        WHERE original_id = $1 AND membership_id IN (SELECT jsonb_array_elements_text($2::jsonb)::int) LIMIT 1`,
+        WHERE original_id = $1 AND undone_at IS NULL
+          AND membership_id IN (SELECT jsonb_array_elements_text($2::jsonb)::int) LIMIT 1`,
       [merge.survivor_id, JSON.stringify(merge.moved.memberships)],
     );
     if ((separated.rowCount ?? 0) > 0) {

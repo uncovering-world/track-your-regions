@@ -470,6 +470,10 @@ export const mergeIdParamSchema = z.object({
   mergeId: rowIdSchema,
 });
 
+export const separationIdParamSchema = z.object({
+  separationId: rowIdSchema,
+});
+
 export const logIdParamSchema = z.object({
   logId: rowIdSchema,
 });

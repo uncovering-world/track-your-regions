@@ -52,6 +52,7 @@ describe('the pairs the rule finds', () => {
 
   it('never proposes two places a curator separated (ADR-0142)', () => {
     expect(sql).toContain('AND NOT EXISTS (SELECT 1 FROM experience_separations sep');
+    expect(sql).toContain('WHERE sep.undone_at IS NULL');
     expect(sql).toContain('(sep.original_id = m.place_a AND sep.separated_id = m.place_b)');
     expect(sql).toContain('(sep.original_id = m.place_b AND sep.separated_id = m.place_a)');
   });

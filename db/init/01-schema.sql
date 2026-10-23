@@ -4000,11 +4000,16 @@ CREATE TABLE IF NOT EXISTS experience_separations (
     separated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
     moved JSONB NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    CHECK (original_id <> separated_id)
+    -- Undone by merging the two again (ADR-0142 decision 4): the merge that did it.
+    undone_at TIMESTAMPTZ,
+    undone_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    merge_id INTEGER REFERENCES experience_merges(id),
+    CHECK (original_id <> separated_id),
+    CHECK ((undone_at IS NULL) = (merge_id IS NULL))
 );
 CREATE INDEX IF NOT EXISTS idx_experience_separations_original ON experience_separations(original_id);
 CREATE INDEX IF NOT EXISTS idx_experience_separations_separated ON experience_separations(separated_id);
-COMMENT ON TABLE experience_separations IS 'A curator''s separation of one kind''s membership of a place into a place of its own (ADR-0142): what moved, and the Wikidata item the two places were set apart on, which the equal-item pass then leaves apart.';
+COMMENT ON TABLE experience_separations IS 'A curator''s separation of one kind''s membership of a place into a place of its own (ADR-0142): what moved, and the Wikidata item the two places were set apart on, which the equal-item pass and the near-places pass then leave apart until a curator undoes it by merging the two again.';
 
 CREATE TABLE IF NOT EXISTS separated_visit_questions (
     id SERIAL PRIMARY KEY,

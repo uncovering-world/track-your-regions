@@ -35,6 +35,7 @@ import { membershipItemSql } from './equalItemMerges.js';
 import { copyPointsFor, movePoints } from './experienceLocationWriter.js';
 import { moveHeldDecisions } from './heldDecisions.js';
 import { moveMemberships } from './membershipWriter.js';
+import { mergePlaces } from './placeMerge.js';
 import { placeAfterRelease } from './publishContents.js';
 import { copyLinksFor, moveLinks } from './workWriter.js';
 
@@ -144,7 +145,7 @@ export async function separateMembership(
     }
     const found = (await client.query<Separable>(
       `SELECT m.experience_id, e.merged_into_id, m.source_id, k.name AS kind_name,
-              (e.source_id = m.source_id AND e.external_id = m.external_id) AS own_kind,
+              (e.source_id = m.source_id) AS own_kind,
               (SELECT count(*)::int FROM ${MEMBERSHIPS} other WHERE other.experience_id = e.id) AS memberships,
               EXISTS (SELECT 1 FROM experience_parts prt WHERE prt.part_id = e.id AND prt.reason = 'component') AS is_part,
               ${membershipItemSql('m', 'e')} AS item
@@ -157,8 +158,9 @@ export async function separateMembership(
       return await refuse({ status: 409, error: 'This is the place\'s only kind: there is nothing to separate it from' });
     }
     if (found.own_kind) {
-      // Every reader names a place's kind by the source that brought it
-      // (`rowKindJoinSql`): with that kind gone the original would show none.
+      // Every reader names a place's kind by the source that brought it, the
+      // row's source alone (`rowKindJoinSql`): with that kind gone the original
+      // would show none.
       // What a misleading item brought is the other kind, and that is the one
       // separated.
       return await refuse({
@@ -210,4 +212,33 @@ export async function separateMembership(
   await placeAfterRelease(placeId, 'Separating a membership moved points off experience %d');
   await placeAfterRelease(separatedId, 'Separating a membership placed points on experience %d');
   return { result: { separationId, originalId: placeId, separatedId } };
+}
+
+/**
+ * Undo a separation (ADR-0142 decision 4): the place it made is merged back
+ * into the original, by the merge every other pair of places goes through
+ * (ADR-0086), so the undo of that merge separates them again. The separation
+ * stops keeping the two apart, and the travellers' questions it raised and
+ * nobody answered are withdrawn.
+ */
+export async function undoSeparation(
+  separationId: number,
+  userId: number,
+): Promise<{ result?: { separationId: number; mergeId: number; originalId: number; separatedId: number }; refusal?: Refusal }> {
+  const found = (await pool.query<{ original_id: number; separated_id: number; undone_at: Date | null }>(
+    'SELECT original_id, separated_id, undone_at FROM experience_separations WHERE id = $1', [separationId],
+  )).rows[0];
+  if (!found) return { refusal: { status: 404, error: 'Separation not found' } };
+  if (found.undone_at !== null) return { refusal: { status: 409, error: 'Already answered: this separation was undone' } };
+  const merged = await mergePlaces({
+    survivorId: found.original_id, foldedId: found.separated_id, mergedBy: userId, reason: 'curator', detail: { separationId },
+  });
+  if (merged.refusal) return { refusal: merged.refusal };
+  const mergeId = merged.result!.mergeId;
+  await pool.query(
+    'UPDATE experience_separations SET undone_at = NOW(), undone_by = $2, merge_id = $3 WHERE id = $1 AND undone_at IS NULL',
+    [separationId, userId, mergeId],
+  );
+  await pool.query('DELETE FROM separated_visit_questions WHERE separation_id = $1 AND answer IS NULL', [separationId]);
+  return { result: { separationId, mergeId, originalId: found.original_id, separatedId: found.separated_id } };
 }

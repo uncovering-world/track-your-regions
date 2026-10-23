@@ -500,6 +500,14 @@ const membershipSourceDisagreesWithRow: CatalogueAssertion = {
                 AND m.source_id = e.source_id
                 AND m.external_id = e.external_id
            )
+           -- A place a curator's separation made, named by it because the
+           -- membership's own pair was still held (ADR-0142): its run finds it
+           -- by the membership, and the row's source still names its kind.
+           AND NOT EXISTS (
+             SELECT 1 FROM experience_separations sep
+              WHERE sep.separated_id = e.id AND e.external_id = 'separated-' || sep.original_id || '-' || sep.membership_id
+                AND EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id AND m.source_id = e.source_id)
+           )
          ORDER BY e.name`,
   describe: row =>
     `${text(row, 'experience_name')}: brought by ${text(row, 'row_source_name')} as `
