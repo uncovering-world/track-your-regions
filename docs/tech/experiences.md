@@ -2322,7 +2322,11 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    **unless an artwork class answers** — the sculptural and fountain closures and the
    commemorative forms, never the heritage-sense designations — and **the museum's veto alone is
    lifted by a commemorative class as well** (the `commemorative` set: the war-memorial and
-   cenotaph closures and `MEMORIAL_CLASSES`, #803): a memorial Wikidata also types a museum is a
+   cenotaph closures and `MEMORIAL_CLASSES`, #803 — which since #1832 also pins the memorial park,
+   memorial complex, memorial cemetery, Rwanda genocide memorial, skull tower and Bismarck monument
+   classes, read off what commemorates someone and no class question named: the Hiroshima Peace
+   Memorial Park, the Mask of Sorrow, the Skull Tower in Niš, Srebrenica; and `memorial column` is a
+   commemorative form, the Monument to the Great Fire of London): a memorial Wikidata also types a museum is a
    memorial complex with a museum in it, and a traveller stands in front of Tsitsernakaberd's
    flame (`museum, memorial, Armenian Genocide memorial`), the 9/11 pools (`museum, memorial`)
    and the Victoria Memorial in Kolkata (`museum, memorial`) whether or not there is a museum
@@ -2331,8 +2335,11 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    A-bombed building): Arlington, the Piskaryovskoye Memorial Cemetery and Martyrs' Lane in Baku
    are cemeteries a traveller visits as memorials, the Neue Wache is a guardhouse and the
    Hiroshima Peace Memorial an A-bombed building. For that kind a `P547` statement is a memorial
-   too: the Vittoriano is typed only by Italian museum classes and commemorates Victor Emmanuel II,
-   and the USS Arizona Memorial is typed a museum and commemorates the ship. A work Wikidata files
+   too, of a candidate a class question named: the USS Arizona Memorial is typed a museum and
+   commemorates the ship. Nothing is pooled for its `P547` alone. Measured on 2026-10-23, that
+   question brought feast days, a university, an airport and world's fairs, and the museums it
+   reached are museums. One of them is the Vittoriano, typed only by Italian museum classes, which
+   waits for museum kinds of their own (#882). A work Wikidata files
    under public art (`P136` `public art`, `PUBLIC_ART_GENRE`) answers that kind's vetoes as an
    artwork class does: the Soviet War Memorial in the Tiergarten is typed cemetery, military
    museum and monument, and the Monument to the Conquerors of Space historic site, monument and
