@@ -16,7 +16,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { CURATION_LOG_ACTIONS } from '@tyr/shared/curationLog';
-import { ACTION_LABELS, actionLabel, catalogueMerge, formatLogDetails, takeableItems } from './curationLog';
+import { ACTION_LABELS, actionLabel, catalogueActor, catalogueMerge, formatLogDetails, takeableItems } from './curationLog';
 
 /** An entry as the controllers write it. */
 function entry(action: string, details: Record<string, unknown>) {
@@ -439,5 +439,17 @@ describe('a confirmed component item taken back (#1317)', () => {
     // Ordered by the log's id, not the timestamp, which two rows can share.
     const again = { ...confirmed, id: 5, created_at: '2026-10-10T09:00:00Z' };
     expect(takeableItems(again, [again, takenBack, confirmed]).map(c => c.item)).toEqual(['Q98501', 'Q98505']);
+  });
+});
+
+describe("the catalogue's own acts in the history (ADR-0086, ADR-0141)", () => {
+  it('names the catalogue for its merge and its acceptance of an exact component candidate, and nobody else', () => {
+    expect(catalogueActor({ action: 'merged', details: { reason: 'equal_wikidata_item', mergeId: 1 } }))
+      .toBe('The catalogue — one Wikidata item');
+    // The Nagatsuka Kofun's item, the point's own name 7 m off (#1839).
+    expect(catalogueActor({ action: 'component_items_answered', details: { accepted: [], refused: [], catalogue: 'exact' } }))
+      .toBe('The catalogue — the same name at the point');
+    expect(catalogueActor({ action: 'component_items_answered', details: { accepted: [], refused: [] } })).toBeNull();
+    expect(catalogueActor({ action: 'merged', details: { reason: 'curator', mergeId: 2 } })).toBeNull();
   });
 });

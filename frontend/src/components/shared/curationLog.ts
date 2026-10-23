@@ -690,3 +690,18 @@ export function catalogueMerge(entry: { action: string; details?: unknown }): bo
   const details = entry.details as { reason?: unknown } | null | undefined;
   return entry.action === 'merged' && details?.reason === 'equal_wikidata_item';
 }
+
+/**
+ * Who a history row names when the catalogue made it rather than a curator,
+ * or null for a curator's row: its own merge of two places on one Wikidata
+ * item (ADR-0086), and its own acceptance of component candidates of the
+ * point's own name at the point (ADR-0141).
+ */
+export function catalogueActor(entry: { action: string; details?: unknown }): string | null {
+  if (catalogueMerge(entry)) return 'The catalogue — one Wikidata item';
+  const details = entry.details as { catalogue?: unknown } | null | undefined;
+  if (entry.action === 'component_items_answered' && details?.catalogue === 'exact') {
+    return 'The catalogue — the same name at the point';
+  }
+  return null;
+}
