@@ -4,10 +4,12 @@
  * Two sources that read one Wikidata item read one place — the Pantheon as a
  * place of worship and as an archaeological site — and the catalogue holds
  * them as two rows, two pins on one spot. This card runs the one pass that
- * merges every such pair into the place with the lower id — or, for a serial
- * site's component part, into the place a kind holds — and shows what it
- * did: the places merged, and the ones it left apart with the reason. Each
- * merge can be undone from the place's history in its curation dialog.
+ * merges every such pair into the place some kind offers, with the lower id
+ * — or, where no kind offers either, into the serial site's component part,
+ * shown through its site, which keeps the arrival nobody has passed — and
+ * shows what it did:
+ * the places merged, and the ones it left apart with the reason. Each merge
+ * can be undone from the place's history in its curation dialog.
  */
 
 import { useState } from 'react';
@@ -83,10 +85,12 @@ export function EqualItemMergeCard() {
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
           Two sources that read one Wikidata item read one place: the Pantheon as a place of worship and
           as an archaeological site. Merging makes each such pair one place — one pin, offered in both
-          kinds — keeping the older row, or, for one place of a serial site such as the Temple of Karnak, the
-          place a kind holds; travellers&apos; visits move with it. A pair in the same kind is left apart, and
-          so is a site&apos;s place whose match still waits for a curator: it merges on the next pass after
-          that place is published. Each merge can be undone from the place&apos;s history.
+          kinds — keeping the row a kind offers, the older one where both are: the Temple of Karnak folds
+          into the Karnak Temple Complex. Where no kind offers either yet, one place of a serial site, seen
+          through its site, keeps its row and the arrival nobody has passed joins it, still waiting for a
+          curator. Travellers&apos; visits
+          move with it. A pair in the same kind is left apart. Each merge can be undone from the
+          place&apos;s history.
         </Typography>
         <Button
           variant="contained"
