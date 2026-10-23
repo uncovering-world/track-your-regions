@@ -116,9 +116,9 @@ export async function takeBackPointItem(
   },
 ): Promise<PointItemTakenBack> {
   // The sources whose memberships place the point, as the confirmation was
-  // scoped; the object's first source where none does.
-  const found = await pool.query<{ experience_id: number; source_ids: number[] | null; source_id: number }>(
-    `SELECT ${answeringPlaceSql()} AS experience_id, e.source_id,
+  // scoped; the place as a whole where none does.
+  const found = await pool.query<{ experience_id: number; source_ids: number[] | null }>(
+    `SELECT ${answeringPlaceSql()} AS experience_id,
             (SELECT array_agg(DISTINCT m.source_id)
                FROM experience_location_placements pl JOIN ${MEMBERSHIPS} m ON m.id = pl.membership_id
               WHERE pl.location_id = el.id) AS source_ids
@@ -130,7 +130,7 @@ export async function takeBackPointItem(
   if (!row) throw notFound('Location not found');
   let logRegionId: number | null = null;
   let permitted = false;
-  for (const sourceId of row.source_ids?.length ? row.source_ids : [row.source_id]) {
+  for (const sourceId of row.source_ids?.length ? row.source_ids : ['place' as const]) {
     const scope = await resolveExperienceScope(caller.id, caller.role, row.experience_id, sourceId);
     if (scope.permitted) { ({ permitted, logRegionId } = scope); break; }
   }

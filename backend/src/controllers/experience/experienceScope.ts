@@ -8,11 +8,11 @@
  */
 
 import { pool } from '../../db/index.js';
-import { MEMBERSHIPS } from '../../db/membership.js';
+import { MEMBERSHIPS, membershipToAnswerSql } from '../../db/membership.js';
 import { answeringPlaceOfSql } from '../../db/placePoints.js';
 import { contentsMembershipToAnswerSql } from './waitingCounts.js';
 import type { UserRole } from '../../types/auth.js';
-import { CURATOR_SCOPED_REGIONS_CTE, CURATOR_UNRESTRICTED_SCOPE_EXISTS } from '../../middleware/auth.js';
+import { CURATOR_PLACE_SCOPE_EXISTS, CURATOR_SCOPED_REGIONS_CTE, CURATOR_UNRESTRICTED_SCOPE_EXISTS } from '../../middleware/auth.js';
 
 /**
  * Resolve whether a caller may act on this experience, and which region the
@@ -23,6 +23,13 @@ import { CURATOR_SCOPED_REGIONS_CTE, CURATOR_UNRESTRICTED_SCOPE_EXISTS } from '.
  * scope" — not "the first row Postgres happened to return does" (#450).
  * `CURATOR_SCOPED_REGIONS_CTE` answers that in one query, by intersecting the
  * experience's assignments with the caller's closure.
+ *
+ * `sourceId` names the source whose answer this is: a membership's, for an
+ * answer about one membership of the place. `'place'` asks about the place as a
+ * whole, and a curator scoped to a source reaches it when the place holds a
+ * membership of that source (`CURATOR_PLACE_SCOPE_EXISTS`, the maintainer's
+ * decision on #1893); the source that first brought the place decides nothing
+ * (ADR-0143 decision 6).
  *
  * The region it hands back is the audit row's, and deliberately not just some
  * region the experience sits in. `unrestricted` callers — admins, global
@@ -39,20 +46,25 @@ export async function resolveExperienceScope(
   userId: number,
   userRole: UserRole,
   experienceId: number,
-  sourceId: number,
+  sourceId: number | 'place',
 ): Promise<{ permitted: boolean; logRegionId: number | null }> {
   if (userRole === 'admin') return { permitted: true, logRegionId: null };
 
+  // A parameter a statement never names has no type Postgres can infer, so the
+  // place's form binds two and the source's three.
+  const [unrestricted, params] = sourceId === 'place'
+    ? [CURATOR_PLACE_SCOPE_EXISTS, [userId, experienceId]]
+    : [CURATOR_UNRESTRICTED_SCOPE_EXISTS, [userId, experienceId, sourceId]];
   const result = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT
-      ${CURATOR_UNRESTRICTED_SCOPE_EXISTS} AS unrestricted,
+      ${unrestricted} AS unrestricted,
       (
         SELECT MIN(er.region_id)
         FROM experience_regions er
         JOIN curator_scoped_regions s ON s.id = er.region_id
         WHERE er.experience_id = $2
       ) AS scoped_region_id
-  `, [userId, experienceId, sourceId]);
+  `, params);
 
   const row = result.rows[0] as { unrestricted: boolean; scoped_region_id: number | null };
   if (row.unrestricted === true) return { permitted: true, logRegionId: null };
@@ -60,34 +72,44 @@ export async function resolveExperienceScope(
 }
 
 /**
- * The source whose curators may answer a question about this place, or null
- * where there is no such place (#1264).
+ * The source whose curators may answer a question about this place (#1264),
+ * or null where there is no such place.
  *
- * The place's own source, unless the answer names a membership of the place:
- * then that membership's source, since an answer about the Capitoline Museums'
- * Archaeology arrival is Archaeology's to give, and a curator scoped to Art
- * Museums alone must not reach it by naming it. A named membership the place
- * does not hold leaves the place's source, and the writer refuses the answer.
+ * The membership the writer answers decides: an answer about the Capitoline
+ * Museums' Archaeology arrival is Archaeology's to give, and a curator scoped
+ * to Art Museums alone must not reach it by naming it, nor by naming none. So
+ * the membership is chosen as the writer chooses it (`membershipToAnswerSql`):
+ * the named one, or, unnamed, the one `prefer` picks: the one waiting for a
+ * publish or a decline, or the refused one for a verdict. `'named'` takes only
+ * a named membership, for a question the place answers as a whole when none is
+ * named (a lifecycle verdict, a conflict). Where no membership answers, the
+ * question is the place's as a whole (`'place'`, `resolveExperienceScope`), and
+ * a writer refuses a membership the place does not hold.
  */
 export async function answeredSourceId(
   experienceId: number,
-  membershipId?: number | null,
-): Promise<number | null> {
-  const result = await pool.query<{ source_id: number }>(
-    `SELECT COALESCE(
-              (SELECT m.source_id FROM ${MEMBERSHIPS} m WHERE m.id = $2 AND m.experience_id = e.id),
-              e.source_id) AS source_id
+  membershipId: number | null | undefined,
+  prefer: 'waiting' | 'refused' | 'named',
+): Promise<number | 'place' | null> {
+  const named = membershipId ?? null;
+  const answering = prefer === 'named'
+    ? `(SELECT own.id FROM ${MEMBERSHIPS} own WHERE own.experience_id = e.id AND own.id = $2::int)`
+    : membershipToAnswerSql('e.id', prefer, '$2::int');
+  const result = await pool.query<{ source_id: number | null }>(
+    `SELECT (SELECT m.source_id FROM ${MEMBERSHIPS} m WHERE m.id = ${answering}) AS source_id
        FROM experiences e WHERE e.id = $1`,
-    [experienceId, membershipId ?? null],
+    [experienceId, named],
   );
-  return result.rows[0]?.source_id ?? null;
+  if (result.rows.length === 0) return null;
+  return result.rows[0].source_id ?? 'place';
 }
 
 /**
  * The membership a refusal of unread contents, or its take-back, answers
  * through (`contentsMembershipToAnswerSql`, #1264, #1290) — the one the body
  * names, else the first holding such rows — so its scope is that membership's
- * source's; undefined where none does, and the place's own source decides.
+ * source's; undefined where none does, and the question is then the place's as
+ * a whole ('place', `curatorPlaceScopeExists`).
  */
 export async function contentsMembershipId(
   experienceId: number, which: 'unread' | 'refused', named: number | undefined,
@@ -132,14 +154,14 @@ export async function maySeeUnreadExperience(
   if (userRole === 'admin') return true;
   if (!userId || userRole !== 'curator') return false;
 
-  const placeResult = await pool.query<{ source_id: number; scoped_id: number }>(
-    `SELECT e.source_id, ${answeringPlaceOfSql('e.id')} AS scoped_id FROM experiences e WHERE e.id = $1`,
+  const placeResult = await pool.query<{ scoped_id: number }>(
+    `SELECT ${answeringPlaceOfSql('e.id')} AS scoped_id FROM experiences e WHERE e.id = $1`,
     [experienceId],
   );
   if (placeResult.rows.length === 0) return false;
 
-  const { source_id: sourceId, scoped_id: scopedId } = placeResult.rows[0];
-  const { permitted } = await resolveExperienceScope(userId, userRole, scopedId, sourceId);
+  const { scoped_id: scopedId } = placeResult.rows[0];
+  const { permitted } = await resolveExperienceScope(userId, userRole, scopedId, 'place');
   return permitted;
 }
 

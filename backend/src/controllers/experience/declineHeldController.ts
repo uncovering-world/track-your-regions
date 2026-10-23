@@ -68,8 +68,9 @@ export async function declineHeldValue(
   const userId = caller.id;
   const userRole = caller.role;
 
-  // The answered membership's source decides the scope where the body names one (#1264).
-  const sourceId = await answeredSourceId(experienceId, membershipId);
+  // The answered membership's source decides the scope: the one the body names,
+  // else the one the decline answers (#1264).
+  const sourceId = await answeredSourceId(experienceId, membershipId, 'waiting');
   if (sourceId === null) {
     throw notFound('Experience not found');
   }

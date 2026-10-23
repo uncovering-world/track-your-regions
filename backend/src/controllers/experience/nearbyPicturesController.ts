@@ -24,8 +24,8 @@ import { answeringPlaceSql } from '../../db/placePoints.js';
 export async function getNearbyPictures(
   { params: { locationId }, caller }: { params: z.output<typeof locationIdParamSchema>; caller: Express.User },
 ): Promise<NearbyPictures> {
-  const found = await pool.query<{ experience_id: number; source_id: number; lat: number | null; lon: number | null }>(
-    `SELECT ${answeringPlaceSql()} AS experience_id, e.source_id, ST_Y(el.location) AS lat, ST_X(el.location) AS lon
+  const found = await pool.query<{ experience_id: number; lat: number | null; lon: number | null }>(
+    `SELECT ${answeringPlaceSql()} AS experience_id, ST_Y(el.location) AS lat, ST_X(el.location) AS lon
        FROM experience_locations el
        JOIN experiences e ON e.id = ${answeringPlaceSql()}
       WHERE el.id = $1`,
@@ -33,7 +33,7 @@ export async function getNearbyPictures(
   );
   const point = found.rows[0];
   if (!point) throw notFound('Location not found');
-  const { permitted } = await resolveExperienceScope(caller.id, caller.role, point.experience_id, point.source_id);
+  const { permitted } = await resolveExperienceScope(caller.id, caller.role, point.experience_id, 'place');
   if (!permitted) throw createError('You do not have curator permissions for this experience', 403);
   if (point.lat === null || point.lon === null) return { radiusM: NEARBY_RADIUS_M, pictures: [] };
 

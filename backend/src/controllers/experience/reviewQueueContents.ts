@@ -239,7 +239,7 @@ export async function queryContents(
   // works" over a list of 25 of 93 points is telling the truth twice rather than
   // once, and a list without its total is a silent cap.
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, COALESCE(m.external_id, e.external_id) AS external_id, e.name, e.source_id, m.kind_id,
+    SELECT e.id, COALESCE(m.external_id, e.external_id) AS external_id, e.name, m.kind_id,
            kd.name AS kind_name, ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'contents' AS kind,
            m.id AS membership_id,
@@ -420,7 +420,7 @@ export async function queryWithdrawn(
   { scopeFilter, sourceFilter, params, ids }: QueueQueryContext,
 ): Promise<QueryResult> {
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'withdrawn' AS kind,
            jsonb_agg(jsonb_build_object(
@@ -530,7 +530,7 @@ export async function queryWithdrawn(
       AND ${withdrawnContainerOpenSql('e')}
       AND ${scopeFilter} ${sourceFilter}
       AND e.id = ANY($${params.length + 1}::int[])
-    GROUP BY e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name
+    GROUP BY e.id, e.external_id, e.name, mk.kind_id, kd.name
     ORDER BY e.id
   `, [...params, ids]);
 }
@@ -620,7 +620,7 @@ export async function queryAnsweredWithdrawals(
   // shown. `locationStateController.ts` names them one branch at a time and has
   // no list to import.
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'withdrawn-answered' AS kind,
            answered.total AS answered_points_total,

@@ -260,15 +260,16 @@ describe('getReviewQueue', () => {
       user: ADMIN, query: { q: '100%', source: '1', region: 6737, run: 98 },
     } as never, makeRes() as never);
 
-    for (const [anchor, source] of [["'kept-out' AS kind", 'm'], ["'withdrawn-answered' AS kind", 'e']]) {
+    for (const [anchor, source] of [["'kept-out' AS kind", 'm.source_id = ANY($'], ["'withdrawn-answered' AS kind", 'ps.experience_id = e.id ORDER BY 1) && $']]) {
       const [sql, params] = callMatching(anchor);
       expect(sql).toContain('e.name ILIKE $');
       expect(sql).toContain("ESCAPE '\\'");
       // The union's own escaping (`likeParam`), not a second spelling of it: a
       // curator typing `100%` wants a per-cent sign, not every name there is.
       expect(params).toContain('%100\\%%');
-      // A kept-out row is a membership's, narrowed by its own source (#1264).
-      expect(sql).toContain(`${source}.source_id = ANY($`);
+      // A kept-out row is a membership's, narrowed by its own source (#1264); a
+      // withdrawn point's by any source of its place (#1893).
+      expect(sql).toContain(source);
       // The region does not reach them, and neither does the run: these rows are
       // answers rather than questions, and a run is what a question was asked by.
       expect(sql).not.toContain('region_subtree');
@@ -285,7 +286,8 @@ describe('getReviewQueue', () => {
       await answerRoute(getReviewQueue2, { user: CURATOR, query } as never, makeRes() as never);
 
       const [sql] = callMatching("'missing' AS kind");
-      expect(sql).toContain('ca.source_id = e.source_id');
+      // A whole place's question: a curator of any source the place holds (#1893).
+      expect(sql).toContain('held_by.experience_id = e.id AND held_by.source_id = ca.source_id');
       expect(sql).not.toMatch(/ca\.source_id = \$\d/);
     }
   });
@@ -916,13 +918,11 @@ describe('getReviewQueue', () => {
   it('names the kind, the source and the external id on all three new kinds, like the older four do', async () => {
     // An arrival names an object without naming what it is or which gated
     // source it arrived from, and "which kind is this" is most of the
-    // judgement. The kind is the membership's (#819); the source id rides
-    // beside it for the feed's filter. The external id is the membership's,
+    // judgement. The kind is the membership's (#819). The external id is the membership's,
     // the id its own source knows the place by (#1264).
     for (const kind of ['arrival', 'held', 'contents'] as const) {
       const sql = await capturedQueueSql(kind);
       expect(sql).toContain('m.external_id');
-      expect(sql).toContain('e.source_id');
       expect(sql).toContain('kd.name AS kind_name');
     }
   });

@@ -463,16 +463,11 @@ const placeWithoutMembership: CatalogueAssertion = {
  *
  * A run finds its places through its memberships — `(source_id,
  * external_id)` on the membership (ADR-0084) — and the place's own pair says
- * which source first brought the row and under what id. Until a merge (#755)
- * folds a second source's membership onto a place, the two name the same
- * membership, and every reader-facing row still reads its kind through that
- * equality (`rowKindJoinSql`, #819). A place where none matches has lost the
- * membership its first source would find it by: that source's next run does
- * not find it, tries to create the place, and fails on that item on every
- * run, since the place's own pair is still unique among places. Where no
- * membership of it names the place's own source at all, every list also
- * shows it with a null kind, which no group, pin colour or chip can draw;
- * one that names the source under another id still gives it that kind.
+ * which source first brought the row and under what id, which no reader reads
+ * (ADR-0143 decision 6). A place where none matches has lost the membership
+ * its first source would find it by: that source's next run does not find it,
+ * tries to create the place, and fails on that item on every run, since the
+ * place's own pair is still unique among places.
  */
 const membershipSourceDisagreesWithRow: CatalogueAssertion = {
   id: 'membership-source-disagrees-with-row',
@@ -483,9 +478,7 @@ const membershipSourceDisagreesWithRow: CatalogueAssertion = {
     'The place says which source first brought it and under what id, and no membership of it '
     + 'carries that pair. A run finds its places by the pair on the membership, so that source\'s '
     + 'next run does not find this one, tries to create it, and fails on it on every run, since the '
-    + 'place\'s own pair is still taken. Where no membership names the place\'s source at all, every '
-    + 'list, search, visit and review card, which read the row\'s kind off that source\'s membership '
-    + '(#819), also show the row with no kind. Either the membership was written for the wrong source or id, or '
+    + 'place\'s own pair is still taken. Either the membership was written for the wrong source or id, or '
     + 'the row was re-keyed by hand; whichever it is, the two have to be made to agree.',
   sql: `SELECT e.id AS experience_id,
                e.name AS experience_name,

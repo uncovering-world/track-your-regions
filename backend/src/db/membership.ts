@@ -205,27 +205,54 @@ export function iconicPinnedSql(alias = 'm'): string {
 }
 
 /**
- * The kind a row is shown under — its group, its pin colour, the chip beside
- * its name — read from the membership the row's own source brought (#819).
+ * The membership a place is shown under where the reader names no kind: its
+ * group, its pin colour, the chip beside its name (ADR-0143 decision 6, #1893).
+ * The first of the place's kinds in the kinds' display order, an offered one
+ * before one a reader is not shown, then the kind's id, so the answer is total.
+ * The Ajanta Caves, offered as a World Heritage Site and a place of worship,
+ * are shown as a World Heritage Site because that kind comes first, not because
+ * UNESCO brought them first: the source that first brought a place
+ * (`experiences.source_id`) decides nothing. A reader that names a kind joins
+ * that kind's membership instead (`kindMembershipJoinSql`).
  *
- * `experiences.source_id` names the source that brought the place, and that
- * source fills one kind (`experience_sources.kind_id`), so the membership
- * with `source_id = e.source_id` is the row's own: exactly one per place, the
- * equality the catalogue check `membership-source-disagrees-with-row` holds.
- * A place in two kinds (#755) has a card in each list by ADR-0045 decision 4,
- * and which membership a region's list shows it under — or whether it shows
- * both — is that merge's design; until then the join is one row per place and
- * reads exactly as `e.source_id` did, since the kinds carry their sources'
- * ids.
+ * `experienceExpr` is an SQL expression naming the place's id. A scalar
+ * subquery, so a caller compares a membership id with it.
+ */
+export function shownMembershipSql(experienceExpr: string): string {
+  return `(SELECT shown.id FROM ${MEMBERSHIPS} shown
+             JOIN ${KINDS} shown_kind ON shown_kind.id = shown.kind_id
+            WHERE shown.experience_id = ${experienceExpr}
+            ORDER BY ${SHOWN_ORDER}
+            LIMIT 1)`;
+}
+
+/** The order `shownMembershipSql` takes a place's memberships in, over `shown` and its kind `shown_kind`. */
+const SHOWN_ORDER = `(${membershipOfferedSql('shown')}) DESC, shown_kind.display_priority, shown.kind_id`;
+
+/**
+ * The sources of a place's memberships, as an `int[]` in id order: who a
+ * question about the place as a whole belongs to, for the review queue's
+ * source chip and filter (ADR-0143 decision 6). `experience` is the
+ * `experiences` alias.
+ */
+export function placeSourceIdsSql(experience = 'e'): string {
+  return `ARRAY(SELECT DISTINCT ps.source_id FROM ${MEMBERSHIPS} ps WHERE ps.experience_id = ${experience}.id ORDER BY 1)`;
+}
+
+/**
+ * The kind a row is shown under, joined: the membership `shownMembershipSql`
+ * names, as `membership`, and its kind, as `kind`. Read per row (a lateral
+ * join), for a read of some places: a region's list, a card, a queue page.
+ * A read over the whole catalogue takes `catalogueKindJoinSql`, the same order
+ * read once for every place.
  *
  * A LEFT JOIN, deliberately. The kind is a column the row is shown with, not
  * a predicate that decides whether it is shown: the four questions that
  * decide that are asked of the place (`placeOfferedSql` and its parts), and
- * a count, a page of keys and the rows under them must agree. An inner join
- * here would drop a row whose membership names another source — the state
- * the catalogue check reports — from the list but not from its count, and
- * from the review queue's cards but not from its keys and facets. Such a row
- * comes back with a null kind instead, and the check names it.
+ * a count, a page of keys and the rows under them must agree. A place with no
+ * membership at all, the state the catalogue check `place-without-membership`
+ * reports, comes back with a null kind rather than dropping from a list but
+ * not from its count.
  *
  * `experience` is the `experiences` alias; `membership` and `kind` the
  * aliases the two joined tables take, so a query that already joins the
@@ -233,7 +260,26 @@ export function iconicPinnedSql(alias = 'm'): string {
  * `m`.
  */
 export function rowKindJoinSql(experience = 'e', membership = 'm', kind = 'k'): string {
-  return `LEFT JOIN ${MEMBERSHIPS} ${membership} ON ${membership}.experience_id = ${experience}.id AND ${membership}.source_id = ${experience}.source_id
+  return `LEFT JOIN LATERAL (SELECT shown.* FROM ${MEMBERSHIPS} shown
+             JOIN ${KINDS} shown_kind ON shown_kind.id = shown.kind_id
+            WHERE shown.experience_id = ${experience}.id
+            ORDER BY ${SHOWN_ORDER}
+            LIMIT 1) ${membership} ON true
+      LEFT JOIN ${KINDS} ${kind} ON ${kind}.id = ${membership}.kind_id`;
+}
+
+/**
+ * `rowKindJoinSql` for a read over the whole catalogue, the world map's first
+ * screen: every place's shown membership picked in one pass over the
+ * memberships (`DISTINCT ON`), which is cheaper than one lateral read per point
+ * once nearly every place is read, and dearer when only some are. Measured on
+ * the development catalogue on 2026-10-23: the world points overview took
+ * 38 ms with the lateral form and 20 ms with the first-source join it replaces.
+ */
+export function catalogueKindJoinSql(experience = 'e', membership = 'm', kind = 'k'): string {
+  return `LEFT JOIN (SELECT DISTINCT ON (shown.experience_id) shown.* FROM ${MEMBERSHIPS} shown
+             JOIN ${KINDS} shown_kind ON shown_kind.id = shown.kind_id
+            ORDER BY shown.experience_id, ${SHOWN_ORDER}) ${membership} ON ${membership}.experience_id = ${experience}.id
       LEFT JOIN ${KINDS} ${kind} ON ${kind}.id = ${membership}.kind_id`;
 }
 

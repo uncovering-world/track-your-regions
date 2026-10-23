@@ -53,7 +53,7 @@ import type { WorldPointsResponse } from '../../api/responses/worldPoints.js';
 import type { worldPointsQuerySchema } from '../../types/index.js';
 import type { PointsDetail } from './worldPointsVocabulary.js';
 import { pool } from '../../db/index.js';
-import { kindMembershipJoinSql, placeKindsSql, placeOfferedSql, rowKindJoinSql } from '../../db/membership.js';
+import { catalogueKindJoinSql, kindMembershipJoinSql, placeKindsSql, placeOfferedSql } from '../../db/membership.js';
 import { bboxIntersectsSql, parseBbox } from '../../db/bboxEnvelopes.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
 import { overPlacePoints, type PlacePointArm } from '../../db/placePoints.js';
@@ -197,8 +197,9 @@ export async function getWorldPoints(
   // A place is in the kind by any of its offered memberships, and its pin then
   // carries that kind and that membership's type (ADR-0084, #1245): the
   // Capitoline Museums are an archaeology pin on the Archaeology map. Without a
-  // kind the pin is the row's own membership's.
-  let kindJoin = rowKindJoinSql();
+  // kind the pin is the kind the place is shown under, read for every place at
+  // once (`catalogueKindJoinSql`), since this read is the whole catalogue's.
+  let kindJoin = catalogueKindJoinSql();
   if (kindId !== null) {
     params.push(kindId);
     kindJoin = kindMembershipJoinSql('e', 'm', 'k', `$${params.length}`);

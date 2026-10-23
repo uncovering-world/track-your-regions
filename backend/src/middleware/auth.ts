@@ -200,15 +200,17 @@ export function requireCurator(req: AuthenticatedRequest, res: Response, next: N
 // Helper: Check Curator Scope
 // =============================================================================
 /**
- * Checks if a curator has permission for the given region (and optionally source).
- * Admin always has access. Checks global scope, then source scope, then walks
- * up the region hierarchy via recursive CTE.
+ * Checks if a curator has permission for the given region, and optionally for
+ * the place `experienceId` whose place in it is being changed. Admin always has
+ * access. Checks global scope, then a source scope over a source the place
+ * holds a membership of (the place as a whole, `curatorPlaceScopeExists`'s
+ * rule, #1893), then walks up the region hierarchy via recursive CTE.
  */
 export async function checkCuratorScope(
   userId: number,
   userRole: UserRole,
   regionId: number,
-  sourceId?: number,
+  experienceId?: number,
 ): Promise<boolean> {
   // Admin bypass
   if (userRole === 'admin') return true;
@@ -220,13 +222,13 @@ export async function checkCuratorScope(
   );
   if (globalResult.rows.length > 0) return true;
 
-  // Check source scope if sourceId provided
-  if (sourceId) {
+  // Check a source scope over the place, where the caller names one
+  if (experienceId !== undefined) {
     const sourceResult = await pool.query(
-      `SELECT id FROM curator_assignments WHERE user_id = $1 AND scope_type = 'source' AND source_id = $2 LIMIT 1`,
-      [userId, sourceId],
+      `SELECT ${curatorPlaceScopeExists('$2')} AS permitted`,
+      [userId, experienceId],
     );
-    if (sourceResult.rows.length > 0) return true;
+    if (sourceResult.rows[0]?.permitted === true) return true;
   }
 
   // Check region scope: walk up the region hierarchy
@@ -292,9 +294,11 @@ export const CURATOR_SCOPED_REGIONS_CTE = `
  * silently lose the scope they hold. `m.source_id` is the column for a row a
  * membership asks about (#1264): the review queue's arrivals and held proposals
  * belong to the membership's source, not to the source that brought the place.
+ * A question about the place as a whole asks `curatorPlaceScopeExists` instead:
+ * the source that first brought a place decides nothing (ADR-0143 decision 6).
  */
 export function curatorUnrestrictedScopeExists(
-  source: '$3' | 'e.source_id' | 'm.source_id' = '$3',
+  source: '$3' | 'm.source_id' = '$3',
   user: '$1' | '$4' = '$1',
 ): string {
   return `
@@ -306,10 +310,33 @@ export function curatorUnrestrictedScopeExists(
 }
 
 /**
+ * SQL fragment: is this caller's curator scope unrestricted for the place
+ * `place` as a whole: its name, picture and coordinate, which every kind of
+ * the place shows? True for a global assignment, or a source assignment naming
+ * a source the place holds a membership of. One such source is enough (the
+ * maintainer's decision on #1893): a Places of worship curator curates the
+ * Ajanta Caves, which UNESCO brought first, since Places of worship holds them
+ * too. The source that first brought the place decides nothing (ADR-0143
+ * decision 6). `place` is an SQL expression naming the place's id; `$1` or `$4`
+ * the curator, as for `curatorUnrestrictedScopeExists`.
+ */
+export function curatorPlaceScopeExists(place: '$2' | 'e.id', user: '$1' | '$4' = '$1'): string {
+  return `
+    EXISTS (
+      SELECT 1 FROM curator_assignments ca
+      WHERE ca.user_id = ${user}
+        AND (ca.scope_type = 'global'
+             OR (ca.scope_type = 'source'
+                 AND EXISTS (SELECT 1 FROM experience_kind_memberships held_by
+                              WHERE held_by.experience_id = ${place} AND held_by.source_id = ca.source_id)))
+    )`;
+}
+
+/**
  * SQL expression: may this curator act on the row's experience `e` as a whole?
  * The question `resolveExperienceScope` answers for one experience, asked of
- * every row of a list (#613): an unrestricted scope for the experience's
- * source, or a region-scoped assignment on any region the experience sits in
+ * every row of a list (#613): an unrestricted scope for the place
+ * (`curatorPlaceScopeExists`), or a region-scoped assignment on any region the experience sits in
  * or on an ancestor of one. That is `CURATOR_SCOPED_REGIONS_CTE`'s set reached
  * from the other end, walking up from the row rather than down from the
  * assignments, so it needs no prelude and takes the user from whichever
@@ -317,7 +344,7 @@ export function curatorUnrestrictedScopeExists(
  * server's own check on every write stays what decides.
  */
 export function canCurateExperienceSql(user: '$1' | '$4'): string {
-  return `(${curatorUnrestrictedScopeExists('e.source_id', user)}
+  return `(${curatorPlaceScopeExists('e.id', user)}
     OR EXISTS (
       WITH RECURSIVE up AS (
         SELECT er_up.region_id AS id FROM experience_regions er_up WHERE er_up.experience_id = e.id
@@ -331,3 +358,6 @@ export function canCurateExperienceSql(user: '$1' | '$4'): string {
 
 /** The single-experience form, which binds the source as `$3`. */
 export const CURATOR_UNRESTRICTED_SCOPE_EXISTS = curatorUnrestrictedScopeExists();
+
+/** The single-place form, which binds the place as `$2`. */
+export const CURATOR_PLACE_SCOPE_EXISTS = curatorPlaceScopeExists('$2');

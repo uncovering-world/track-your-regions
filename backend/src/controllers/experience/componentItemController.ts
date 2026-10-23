@@ -277,23 +277,22 @@ export async function openCandidates(experienceId: number, only: 'exact' | 'all'
  * The sources whose curators answer a site's candidate items: every source of
  * a membership that places a point with an open candidate — what the queue
  * scopes the question by, admitting the site for a curator of any of them —
- * or, where none is left, the site's own. Null for no such place.
+ * or, where none is left, the site as a whole (`'place'`). Null for no such place.
  */
-export async function componentItemsSourceIds(experienceId: number): Promise<number[] | null> {
-  const result = await pool.query<{ source_ids: number[] | null; source_id: number }>(
+export async function componentItemsSourceIds(experienceId: number): Promise<(number | 'place')[] | null> {
+  const result = await pool.query<{ source_ids: number[] | null }>(
     `SELECT (SELECT array_agg(DISTINCT m.source_id)
                FROM ${pointsShownSql('e.id', 'el')}
                JOIN experience_component_item_proposals p ON p.location_id = el.id
                JOIN experience_location_placements pl ON pl.location_id = el.id
                JOIN ${MEMBERSHIPS} m ON m.id = pl.membership_id
-              WHERE ${openProposalSql('p', 'el')}) AS source_ids,
-            e.source_id
+              WHERE ${openProposalSql('p', 'el')}) AS source_ids
        FROM experiences e WHERE e.id = $1`,
     [experienceId],
   );
   const row = result.rows[0];
   if (!row) return null;
-  return row.source_ids?.length ? row.source_ids : [row.source_id];
+  return row.source_ids?.length ? row.source_ids : ['place'];
 }
 
 /**

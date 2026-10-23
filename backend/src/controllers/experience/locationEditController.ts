@@ -92,9 +92,9 @@ export async function editLocation(
   };
 
   // The point carries no scope of its own: it is judged through the object
-  // holding it, which is where the regions and the source live.
+  // holding it, as a whole, which is where the regions and the memberships live.
   const found = await pool.query(
-    `SELECT ${answeringPlaceSql()} AS experience_id, e.source_id
+    `SELECT ${answeringPlaceSql()} AS experience_id
        FROM experience_locations el
        JOIN experiences e ON e.id = ${answeringPlaceSql()}
       WHERE el.id = $1`,
@@ -103,10 +103,10 @@ export async function editLocation(
   if (found.rows.length === 0) {
     throw notFound('Location not found');
   }
-  const { experience_id: experienceId, source_id: sourceId } = found.rows[0];
+  const { experience_id: experienceId } = found.rows[0];
 
   const { permitted, logRegionId } = await resolveExperienceScope(
-    userId, userRole, experienceId as number, sourceId as number,
+    userId, userRole, experienceId as number, 'place',
   );
   if (!permitted) {
     throw createError('You do not have curator permissions for this experience', 403);

@@ -48,16 +48,16 @@ describe("the scope of a place's pairs", () => {
   });
 
   it('is the sources of every membership of either place of an open pair', async () => {
-    mockedQuery.mockResolvedValue({ rows: [{ source_ids: [1, 4], source_id: 1 }] });
+    mockedQuery.mockResolvedValue({ rows: [{ source_ids: [1, 4] }] });
     expect(await mergeProposalSourceIds(1225)).toEqual([1, 4]);
     const [sql] = mockedQuery.mock.calls[0] as [string];
     expect(sql).toContain('m.experience_id IN (p.place_a, p.place_b)');
     expect(collapse(sql)).toContain(collapse(mergeProposalOpenSql('p', 'a', 'b')));
   });
 
-  it("falls back to the place's own source once no pair is open, and to nothing for no such place", async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ source_ids: null, source_id: 4 }] });
-    expect(await mergeProposalSourceIds(13341)).toEqual([4]);
+  it('falls back to the place as a whole once no pair is open, and to nothing for no such place', async () => {
+    mockedQuery.mockResolvedValueOnce({ rows: [{ source_ids: null }] });
+    expect(await mergeProposalSourceIds(13341)).toEqual(['place']);
     mockedQuery.mockResolvedValueOnce({ rows: [] });
     expect(await mergeProposalSourceIds(1)).toBeNull();
   });

@@ -108,7 +108,9 @@ describe('getWorldPoints', () => {
 
     it('is a column the point is drawn with, not a predicate — so the join is LEFT', async () => {
       const { sql } = await ask();
-      expect(sql).toMatch(/LEFT JOIN experience_kind_memberships m/);
+      // The kind the place is shown under, read once for every place (#1893).
+      expect(sql).toMatch(/LEFT JOIN \(SELECT DISTINCT ON \(shown\.experience_id\) shown\.\* FROM experience_kind_memberships shown/);
+      expect(sql).toMatch(/\) m ON m\.experience_id = e\.id/);
     });
   });
 

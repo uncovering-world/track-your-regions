@@ -11,7 +11,7 @@ import type { ExperienceCurationLogRow, ExperiencesRow, RegionsRow, UsersRow } f
 import { createError, notFound } from '../../middleware/errorHandler.js';
 import type { idParamSchema } from '../../types/index.js';
 import type { UserRole } from '../../types/auth.js';
-import { CURATOR_SCOPED_REGIONS_CTE, CURATOR_UNRESTRICTED_SCOPE_EXISTS } from '../../middleware/auth.js';
+import { CURATOR_PLACE_SCOPE_EXISTS, CURATOR_SCOPED_REGIONS_CTE } from '../../middleware/auth.js';
 
 type IdParams = z.output<typeof idParamSchema>;
 
@@ -36,8 +36,8 @@ const LOG_PLACES_CTE = `log_places AS (
 /**
  * Resolve what a caller may see of one experience's curation log.
  *
- * `unrestricted` — admins, global curators, and curators of the experience's
- * source see every row. `hasScopedRegion` — a region-scoped curator reaches
+ * `unrestricted` — admins, global curators, and curators of a source the
+ * place holds a membership of see every row. `hasScopedRegion` — a region-scoped curator reaches
  * the log at all only if something in it is attributable to their scope: a
  * region the experience is assigned to, or a region already named by one of
  * its log rows. The second half matters because a curator's last act in a
@@ -57,13 +57,12 @@ async function resolveCurationLogScope(
   userId: number,
   userRole: UserRole,
   experienceId: number,
-  sourceId: number,
 ): Promise<{ unrestricted: boolean; hasScopedRegion: boolean }> {
   if (userRole === 'admin') return { unrestricted: true, hasScopedRegion: true };
 
   const result = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}, ${LOG_PLACES_CTE}
     SELECT
-      ${CURATOR_UNRESTRICTED_SCOPE_EXISTS} AS unrestricted,
+      ${CURATOR_PLACE_SCOPE_EXISTS} AS unrestricted,
       (EXISTS (
         SELECT 1 FROM experience_regions er
         JOIN curator_scoped_regions s ON s.id = er.region_id
@@ -73,7 +72,7 @@ async function resolveCurationLogScope(
         JOIN experience_curation_log cl ON cl.experience_id = p.id
         JOIN curator_scoped_regions s ON s.id = cl.region_id
       )) AS has_scoped_region
-  `, [userId, experienceId, sourceId]);
+  `, [userId, experienceId]);
 
   const row = result.rows[0];
   return { unrestricted: row.unrestricted === true, hasScopedRegion: row.has_scoped_region === true };
@@ -93,20 +92,12 @@ export async function getCurationLog(
   const userId = caller.id;
   const userRole = caller.role;
 
-  const expResult = await pool.query(
-    'SELECT source_id FROM experiences WHERE id = $1',
-    [experienceId],
-  );
+  const expResult = await pool.query('SELECT 1 FROM experiences WHERE id = $1', [experienceId]);
   if (expResult.rows.length === 0) {
     throw notFound('Experience not found');
   }
 
-  const { unrestricted, hasScopedRegion } = await resolveCurationLogScope(
-    userId,
-    userRole,
-    experienceId,
-    expResult.rows[0].source_id as number,
-  );
+  const { unrestricted, hasScopedRegion } = await resolveCurationLogScope(userId, userRole, experienceId);
   if (!unrestricted && !hasScopedRegion) {
     throw createError('You do not have curator permissions for this experience', 403);
   }

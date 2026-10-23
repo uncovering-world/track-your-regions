@@ -237,24 +237,23 @@ export async function openPairs(anchorId: number, only: 'exact' | 'all'): Promis
 /**
  * The sources whose curators answer a place's pairs: every source of a
  * membership of either place of an open pair — what the queue scopes the
- * question by — or, where none is left, the place's own. Null for no such
- * place.
+ * question by — or, where none is left, the place as a whole (`'place'`).
+ * Null for no such place.
  */
-export async function mergeProposalSourceIds(anchorId: number): Promise<number[] | null> {
-  const result = await pool.query<{ source_ids: number[] | null; source_id: number }>(
+export async function mergeProposalSourceIds(anchorId: number): Promise<(number | 'place')[] | null> {
+  const result = await pool.query<{ source_ids: number[] | null }>(
     `SELECT (SELECT array_agg(DISTINCT m.source_id)
                FROM experience_merge_proposals p
                JOIN experiences a ON a.id = p.place_a
                JOIN experiences b ON b.id = p.place_b
                JOIN ${MEMBERSHIPS} m ON m.experience_id IN (p.place_a, p.place_b)
-              WHERE p.place_a = e.id AND ${mergeProposalOpenSql('p', 'a', 'b')}) AS source_ids,
-            e.source_id
+              WHERE p.place_a = e.id AND ${mergeProposalOpenSql('p', 'a', 'b')}) AS source_ids
        FROM experiences e WHERE e.id = $1`,
     [anchorId],
   );
   const row = result.rows[0];
   if (!row) return null;
-  return row.source_ids?.length ? row.source_ids : [row.source_id];
+  return row.source_ids?.length ? row.source_ids : ['place'];
 }
 
 /**
@@ -273,14 +272,16 @@ export async function mergeProposalsScope(
   const sourceIds = await mergeProposalSourceIds(anchorId);
   if (sourceIds === null) return { permitted: false, logRegionId: null, found: false, sourceIds: [] };
   const permittedSources: number[] = [];
+  let permitted = false;
   let logRegionId: number | null = null;
   for (const sourceId of sourceIds) {
     const scope = await resolveExperienceScope(userId, userRole, anchorId, sourceId);
     if (!scope.permitted) continue;
-    if (permittedSources.length === 0) logRegionId = scope.logRegionId;
-    permittedSources.push(sourceId);
+    if (!permitted) logRegionId = scope.logRegionId;
+    permitted = true;
+    if (sourceId !== 'place') permittedSources.push(sourceId);
   }
-  return { permitted: permittedSources.length > 0, logRegionId, found: true, sourceIds: permittedSources };
+  return { permitted, logRegionId, found: true, sourceIds: permittedSources };
 }
 
 /** The card's answer: one place, two places or one part of the other, per pair, each in the scope of its own places' sources. */
