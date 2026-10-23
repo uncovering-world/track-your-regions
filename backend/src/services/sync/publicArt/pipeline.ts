@@ -147,6 +147,33 @@ export const PUBLIC_ART_KIND: PlaceKind<PublicArtTrees> = {
   readsSubjects: true,
 };
 
+/** The row the run writes for an admitted entity: the pool's facts, the verdict's type, and an edition's casts (#880). */
+function landmarkOf(
+  entity: PoolEntity, lat: number, lon: number, known: EntityFacts, verdict: { type: WikidataLandmark['type']; artwork: boolean },
+): WikidataLandmark {
+  return {
+    qid: entity.qid,
+    label: entity.label,
+    description: entity.description,
+    lat,
+    lon,
+    ...(entity.casts ? {
+      casts: entity.casts.map(cast => ({ name: cast.placeLabel, lat: cast.lat, lon: cast.lon, countryLabel: cast.countryLabel })),
+    } : {}),
+    imageUrl: entity.imageUrl,
+    itemPictures: entity.itemPictures,
+    creators: known.creators,
+    year: entity.year,
+    sitelinks: entity.sitelinks,
+    countryLabel: entity.countryLabel,
+    type: verdict.type,
+    classes: known.classes,
+    artwork: verdict.artwork,
+    articleUrl: entity.articleUrl,
+    website: entity.website,
+  };
+}
+
 /**
  * Decide what of the gather is of the kind `rule` names: the candidates that
  * pass it and clear the fame line, and every candidate it refused, with the
@@ -212,24 +239,7 @@ export function classifyPublicArt(
       });
       continue;
     }
-    items.push({
-      qid: entity.qid,
-      label: entity.label,
-      description: entity.description,
-      lat: entity.lat,
-      lon: entity.lon,
-      imageUrl: entity.imageUrl,
-      itemPictures: entity.itemPictures,
-      creators: known.creators,
-      year: entity.year,
-      sitelinks: entity.sitelinks,
-      countryLabel: entity.countryLabel,
-      type: verdict.type,
-      classes: known.classes,
-      artwork: verdict.artwork,
-      articleUrl: entity.articleUrl,
-      website: entity.website,
-    });
+    items.push(landmarkOf(entity, entity.lat, entity.lon, known, verdict));
   }
 
   console.log(

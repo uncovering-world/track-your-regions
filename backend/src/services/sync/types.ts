@@ -274,8 +274,16 @@ export interface CollectedMuseum {
 }
 
 // =============================================================================
-// Wikidata Landmark Types (the place kinds with one point)
+// Wikidata Landmark Types (the place kinds with one point, and an edition's casts)
 // =============================================================================
+
+/** One cast of an edition, as the run writes it: a point named for where it stands (#880). */
+export interface LandmarkCast {
+  name: string | null;
+  lat: number;
+  lon: number;
+  countryLabel: string | null;
+}
 
 /**
  * Raw landmark record from Wikidata SPARQL query
@@ -286,6 +294,13 @@ export interface WikidataLandmark {
   description: string | null;
   lat: number;
   lon: number;
+  /**
+   * The casts of an edition — *Maman* in Bilbao, Ottawa, London and Minato —
+   * each a point of the one place (#880, ADR-0145). Absent for a work that
+   * stands in one place; `lat`/`lon` are then the point, and otherwise the
+   * kept one the verdict was read on.
+   */
+  casts?: LandmarkCast[];
   imageUrl: string | null;
   /** Every picture the item carries at its best rank, `imageUrl` among them (#1778). */
   itemPictures: readonly string[];

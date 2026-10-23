@@ -17,7 +17,9 @@
 import { readsSubset } from './subset/reader.js';
 import { unreadOnSubset } from './subset/runDoor.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
-import type { SyncProgress, WikidataLandmark, ContentsByKind } from './types.js';
+import { writeExperienceLocations } from './locationWriter.js';
+import { medoidOf } from './anchorPoint.js';
+import type { SyncProgress, WikidataLandmark, LandmarkCast, ContentsByKind } from './types.js';
 import { getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { FetchResult, FilteredEntity, ProcessItemResult, SyncRunContext, SyncServiceConfig } from './syncContract.js';
 import { admittedExternalIds } from './admission.js';
@@ -147,6 +149,17 @@ export function collectingSparql(
 }
 
 /**
+ * The countries a landmark is in: for an edition every cast's, the anchor's
+ * first — a reader that shows one country shows the first (ADR-0145) — else
+ * the one the kept point is in.
+ */
+function countriesOf(landmark: WikidataLandmark, casts: readonly LandmarkCast[] | null, anchor: LandmarkCast | WikidataLandmark): string[] {
+  if (!casts) return landmark.countryLabel ? [landmark.countryLabel] : [];
+  const named = [anchor, ...casts].map(cast => cast.countryLabel).filter((c): c is string => c !== null);
+  return [...new Set(named)];
+}
+
+/**
  * Upsert a landmark as an experience + experience_location, in the kind
  * `sourceId` fills.
  */
@@ -184,6 +197,16 @@ async function upsertLandmarkExperience(
     ...creditPatch(credits, landmark.qid, imageUrl),
   };
 
+  // An edition is one place with a point at every cast (#880, ADR-0145): the
+  // place is told to be at the cast nearest the casts' centroid, the way a
+  // serial site is at its most central component (ADR-0095), and that anchor
+  // is written past the gate — it is derived from the points, not a move of
+  // the work. Its countries are every cast's, the anchor's first. A work
+  // standing in one place keeps its one point.
+  const casts = landmark.casts && landmark.casts.length > 1 ? landmark.casts : null;
+  const anchor = casts ? medoidOf(casts) : landmark;
+  const countryNames = countriesOf(landmark, casts, anchor);
+
   const { experienceId, changeSet, nameSnapshot, returnedFromMissing } = await upsertExperienceRecord({
     sourceId,
     externalId: landmark.qid,
@@ -196,10 +219,11 @@ async function upsertLandmarkExperience(
     // past the gate rather than asked about (#1807).
     typeVocabulary: classifier.types,
     tags: [classifier.tag, landmark.type],
-    lon: landmark.lon,
-    lat: landmark.lat,
+    lon: anchor.lon,
+    lat: anchor.lat,
+    ...(casts ? { locationIsAnchor: true } : {}),
     countryCodes: [],
-    countryNames: landmark.countryLabel ? [landmark.countryLabel] : [],
+    countryNames,
     imageUrl,
     itemPictures: landmark.itemPictures,
     metadata,
@@ -207,9 +231,16 @@ async function upsertLandmarkExperience(
 
   let contents: ContentsByKind | undefined;
   if (!context.dryRun) {
-    const written = await upsertSingleLocation(
-      experienceId, landmark.qid, landmark.lon, landmark.lat, { syncLogId: context.syncLogId, sourceId },
-    );
+    const run = { syncLogId: context.syncLogId, sourceId };
+    // Every cast carries the work's own reference, as the one point did: identity
+    // is the reference together with the point (ADR-0022, ADR-0027), so the casts
+    // are told apart by where they stand, and a cast already written as the work's
+    // one point is the same row with a name now.
+    const written = casts
+      ? await writeExperienceLocations(
+        experienceId, casts.map(cast => ({ name: cast.name, externalRef: landmark.qid, lon: cast.lon, lat: cast.lat })), run,
+      )
+      : await upsertSingleLocation(experienceId, landmark.qid, landmark.lon, landmark.lat, run);
     if (written.needsAssignment.length > 0 || written.unoffered > 0) {
       context.onLocationsChanged(experienceId);
     }
@@ -217,7 +248,7 @@ async function upsertLandmarkExperience(
     // and an arrival, since identity is the point together with the source's reference
     // (ADR-0022), and a coordinate rewritten more than ten metres away is a different
     // point (ADR-0027). Inside that the writer reads it as the same place and nothing
-    // is reported at all.
+    // is reported at all. For an edition it reports a cast that arrived or left.
     // Worth recording even where the object's own `lon`/`lat` diff says the same:
     // the row was replaced, and a reader's tick did not follow it.
     contents = { locations: written.delta };
