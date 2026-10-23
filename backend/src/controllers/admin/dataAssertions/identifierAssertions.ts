@@ -10,7 +10,7 @@
  * differently from the registry it checks.
  */
 
-import { text } from './assertion.js';
+import { count, text } from './assertion.js';
 import type { CatalogueAssertion } from './assertion.js';
 
 /**
@@ -103,8 +103,39 @@ const placeIdentifiersOutOfStep: CatalogueAssertion = {
   },
 };
 
-/** The registry's rules: the duplicates it reports, then its own drift. */
+/**
+ * A registered item Wikidata has since redirected to another.
+ *
+ * The kept redirects (`workbench.wikidata_redirects`, the `wikidata-redirects`
+ * keeper) widen every lookup, so a run reading the target still finds the
+ * place, and the next run of a Wikidata source moves its membership's key to
+ * the target. What stays registered under the old item is a World Heritage
+ * site's items or a component point's item, which no run rewrites, and this
+ * lists them for a curator. Empty until the keeper has built, since the table
+ * is then empty.
+ */
+const identifiersRedirected: CatalogueAssertion = {
+  id: 'identifiers-redirected',
+  area: 'objects',
+  title: 'A registered Wikidata item that Wikidata redirected to another',
+  kind: 'invariant',
+  meaning:
+    'Wikidata merged this item into another since the place was registered under it. A run looking the '
+    + 'place up follows the redirect, so nothing is lost, and a Wikidata source\'s next run moves its '
+    + 'membership to the target by itself; a site\'s or a component\'s item is moved by a curator. Empty '
+    + 'until the item redirects are built from the dump (Public Dumps).',
+  sql: `SELECT pi.experience_id, e.name, pi.value, r.target
+          FROM place_identifiers pi
+          JOIN workbench.wikidata_redirects r ON r.source = pi.value
+          JOIN experiences e ON e.id = pi.experience_id
+         WHERE pi.scheme = 'wikidata'
+         ORDER BY e.name, pi.value`,
+  describe: row => `${text(row, 'name')} (#${count(row, 'experience_id')}): ${text(row, 'value')} redirects to ${text(row, 'target')}`,
+};
+
+/** The registry's rules: the duplicates it reports, its own drift, then the items Wikidata moved. */
 export const identifierAssertions: CatalogueAssertion[] = [
   identifiersOnSeveralPlaces,
   placeIdentifiersOutOfStep,
+  identifiersRedirected,
 ];

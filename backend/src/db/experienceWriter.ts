@@ -117,22 +117,53 @@ export async function lockSourcedExperience(
   client: PoolClient,
   sourceId: number,
   externalId: string,
-): Promise<LockedExperience | null> {
-  const placeOf = async (): Promise<number | undefined> => (await client.query(
-    `SELECT experience_id FROM ${MEMBERSHIPS} WHERE source_id = $1 AND external_id = $2`,
+): Promise<(LockedExperience & { redirectedFrom?: string }) | null> {
+  // The run's own id first; then, for a Wikidata source reading an item, the
+  // membership keyed by an item Wikidata has since redirected to it (ADR-0143
+  // decision 3, #1895): the place is the same, under the id the source knew it
+  // by before the merge on Wikidata. The upsert moves the membership's key to
+  // the item the run reads, under the lock this takes.
+  const placeOf = async (): Promise<{ id: number; from: string } | undefined> => (await client.query<{ id: number; from: string }>(
+    `SELECT m.experience_id AS id, m.external_id AS "from" FROM ${MEMBERSHIPS} m
+      WHERE m.source_id = $1
+        AND (m.external_id = $2
+             OR m.external_id IN (SELECT r.source FROM workbench.wikidata_redirects r WHERE r.target = $2))
+      ORDER BY (m.external_id = $2) DESC, m.id
+      LIMIT 1`,
     [sourceId, externalId],
-  )).rows[0]?.experience_id as number | undefined;
+  )).rows[0];
 
   await client.query('SELECT pg_advisory_xact_lock($1::integer, hashtext($2))', [sourceId, externalId]);
-  let id = await placeOf();
+  let found = await placeOf();
   for (let attempt = 0; attempt < 3; attempt++) {
-    if (id === undefined) return null;
-    await client.query(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [id]);
+    if (found === undefined) return null;
+    await client.query(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [found.id]);
     const now = await placeOf();
-    if (now === id) return { id } as LockedExperience;
-    id = now;
+    if (now?.id === found.id) {
+      return { id: found.id, ...(found.from === externalId ? {} : { redirectedFrom: found.from }) } as LockedExperience & { redirectedFrom?: string };
+    }
+    found = now;
   }
   throw new Error(`${sourceId}/${externalId} kept moving between places while a run locked it`);
+}
+
+/**
+ * `items` with every item Wikidata redirected to or from one of them (ADR-0143
+ * decision 3, #1895), as the kept redirects say (`wikidata-redirects`, a
+ * keeper of the dumps panel): a place registered under an item Wikidata has
+ * since merged into another is found by the item a run reads now, and one
+ * registered under the target is found by a stale source. Nothing while no
+ * build is in place.
+ */
+export async function withRedirects(client: Pick<PoolClient, 'query'>, items: readonly string[]): Promise<string[]> {
+  if (items.length === 0) return [];
+  const rows = await client.query<{ item: string }>(
+    `SELECT r.source AS item FROM workbench.wikidata_redirects r WHERE r.target = ANY($1::text[])
+     UNION
+     SELECT r.target FROM workbench.wikidata_redirects r WHERE r.source = ANY($1::text[])`,
+    [items],
+  );
+  return [...new Set([...items, ...rows.rows.map(row => row.item)])];
 }
 
 /**
@@ -150,6 +181,9 @@ export async function lockSourcedExperience(
  * membership per kind; the run creates its own and the catalogue check lists
  * the item.
  *
+ * The items are widened to those Wikidata redirected to or from them
+ * (`withRedirects`, #1895) before anything is looked up.
+ *
  * Looked up first without the keys, and the place locked as any writer locks
  * it, row before keys. Only a first read that found nothing takes the keys and
  * reads again; where that second read finds a place another run created
@@ -162,8 +196,9 @@ export async function lockSourcedExperience(
 export async function lockIdentifiedPlace(
   client: PoolClient,
   sourceId: number,
-  items: readonly string[],
+  candidateItems: readonly string[],
 ): Promise<LockedExperience | null> {
+  const items = await withRedirects(client, candidateItems);
   if (items.length === 0) return null;
   const placeOf = async (): Promise<number | undefined> => (await client.query(
     `SELECT pi.experience_id FROM place_identifiers pi

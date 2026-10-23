@@ -86,7 +86,7 @@ import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
 import { distanceMeters, LOCATION_UNCHANGED_METERS, SHORT_MOVE_METERS } from '@tyr/shared/moves';
 import { shortMovePassesSql } from '../../db/shortMove.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
-import { lockIdentifiedPlace, lockSourcedExperience } from '../../db/experienceWriter.js';
+import { lockIdentifiedPlace, lockSourcedExperience, type LockedExperience } from '../../db/experienceWriter.js';
 import { keptForFamilies, otherFamiliesFields } from './fieldFamilies.js';
 import { fieldsKeptAsStored, keptAsStored } from './sourceView.js';
 
@@ -578,6 +578,45 @@ export async function upsertExperienceRecord(
   }
 }
 
+/**
+ * The membership was keyed by an item Wikidata has since redirected to the
+ * one the run reads (#1895): its key moves to that item, under the lock, so
+ * the read and the write that follow find it by the run's own id, and the
+ * registry follows. Answers the old key, which the changeset records
+ * (`fileKeyMove`), or undefined where the key was the run's own.
+ */
+async function moveMembershipKey(
+  client: PoolClient,
+  locked: (LockedExperience & { redirectedFrom?: string }) | null,
+  params: ExperienceUpsertParams,
+): Promise<string | undefined> {
+  const redirectedFrom = locked && 'redirectedFrom' in locked ? locked.redirectedFrom : undefined;
+  if (locked === null || redirectedFrom === undefined) return undefined;
+  await client.query(
+    `UPDATE ${MEMBERSHIPS} SET external_id = $3, updated_at = NOW()
+      WHERE experience_id = $1 AND source_id = $2 AND external_id = $4`,
+    [locked.id, params.sourceId, params.externalId, redirectedFrom],
+  );
+  return redirectedFrom;
+}
+
+/**
+ * The key's move, filed on the changeset so the history says under which
+ * item the source knew the place before. Filed as passed unseen: a
+ * membership's key is no field of the place a reader is shown, so the move
+ * neither retires a curator's pass nor raises a card (`wroteContent` below
+ * leaves out a change that passed the gate). It carries the pass itself
+ * rather than a mark in `PLACE_FIELD_MARKS`, which names the place's fields
+ * `computeChangeSet` can file, and this is not one of them.
+ */
+function fileKeyMove(changeSet: ChangeSetResult, from: string | undefined, to: string): void {
+  if (from === undefined) return;
+  changeSet.changedFields.push({
+    field: 'external_id', old: from, new: to, significance: 'minor', curatedConflict: false, held: false, passedTheGate: 'unseen',
+  });
+  if (changeSet.changeType === 'unchanged') changeSet.changeType = 'updated';
+}
+
 async function writeUnderLock(
   client: PoolClient,
   params: ExperienceUpsertParams,
@@ -590,6 +629,7 @@ async function writeUnderLock(
     // No membership of the run's own: the place an item identifies, which the
     // run joins rather than creating a copy (ADR-0143 decision 3).
     ?? await lockIdentifiedPlace(client, params.sourceId, identifyingItems(params));
+  const redirectedFrom = await moveMembershipKey(client, locked, params);
   // The row as it stands under that lock, and the hold decided on the same
   // snapshot. A second statement rather than columns of the locking one: a
   // statement's snapshot is taken before it waits for the lock, and once the
@@ -893,6 +933,7 @@ async function writeUnderLock(
   const before = stored && !row.inserted ? snapshotFromRow(stored) : null;
   const incoming = snapshotFromParams(written, await measureExtent(client, params.boundaryWkt), shortMove);
   const changeSet = computeChangeSet(before, incoming, withTypeClaim(row.curated_fields, stored?.type_claimed), held);
+  fileKeyMove(changeSet, redirectedFrom, params.externalId);
 
   // A curator's pass covered the object that was there; a changed object has not
   // been passed (ADR-0025). Resolved here rather than in SQL because the

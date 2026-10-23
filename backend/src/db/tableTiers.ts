@@ -112,6 +112,8 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   wikidata_geoshapes: 'workbench',
   wikidata_labels: 'workbench',
   wikidata_query_cache: 'workbench',
+  wikidata_redirect_builds: 'workbench',
+  wikidata_redirects: 'workbench',
   wikidata_sitelinks: 'workbench',
   wikidata_subset_builds: 'workbench',
   wikipedia_redirect_builds: 'workbench',

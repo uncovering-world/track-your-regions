@@ -1111,6 +1111,20 @@ export interface WikidataQueryCacheRow {
   expires_at: Date;
 }
 
+/** The table `wikidata_redirect_builds`. */
+export interface WikidataRedirectBuildsRow {
+  build_id: number;
+  dump_date: Date;
+  kept: number;
+  swapped_at: Date;
+}
+
+/** The table `wikidata_redirects`. */
+export interface WikidataRedirectsRow {
+  source: string;
+  target: string;
+}
+
 /** The table `wikidata_sitelinks`. */
 export interface WikidataSitelinksRow {
   id: string;
@@ -1265,6 +1279,8 @@ export const RELATION_SCHEMAS = {
   wikidata_geoshapes: "workbench",
   wikidata_labels: "workbench",
   wikidata_query_cache: "workbench",
+  wikidata_redirect_builds: "workbench",
+  wikidata_redirects: "workbench",
   wikidata_sitelinks: "workbench",
   wikidata_subset_builds: "workbench",
   wikipedia_redirect_builds: "workbench",

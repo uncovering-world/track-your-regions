@@ -25,7 +25,7 @@ export const OSM_PLANET = 'https://planet.openstreetmap.org';
 /** Every dump the catalog knows, by key: what a route accepts and a build is named by. */
 export const DUMP_KEYS = [
   'wikidata-entities', 'wikidata-lexemes', 'enwiki-page', 'enwiki-page-props', 'enwiki-linktarget', 'enwiki-categorylinks',
-  'enwiki-langlinks', 'pageviews-user', 'wikipedia-redirects', 'wikivoyage-usage', 'osm-planet',
+  'enwiki-langlinks', 'pageviews-user', 'wikipedia-redirects', 'wikidata-redirects', 'wikivoyage-usage', 'osm-planet',
 ] as const;
 export type DumpKey = typeof DUMP_KEYS[number];
 
@@ -206,20 +206,25 @@ const wikivoyageUsage: DumpDescriptor = {
   },
 };
 
-function enwikiTable(key: DumpKey, job: string, table: string, title: string, about: string, source = 'English Wikipedia'): DumpDescriptor {
-  const base = `${WIKIMEDIA_DUMPS}/enwiki`;
+/** One table of a wiki's run, found in the newest run that has written it. */
+function wikiTable(wiki: string, key: DumpKey, job: string, table: string, title: string, about: string, source: string): DumpDescriptor {
+  const base = `${WIKIMEDIA_DUMPS}/${wiki}`;
   return {
     key, source, title, datedBy: 'day', about: `The ${table} table: ${about}`,
-    isFileName: datedName('enwiki-', 8, `-${table}.sql.gz`),
+    isFileName: datedName(`${wiki}-`, 8, `-${table}.sql.gz`),
     async resolve(read, _size, only) {
       for (const dir of datedDirectories(await read(`${base}/`)).slice(0, DIRECTORIES_TRIED)) {
-        if (only && !only(`enwiki-${dir}-${table}.sql.gz`)) continue;
-        const file = await wikipediaTableFile(read, key, 'enwiki', dir, job, table);
+        if (only && !only(`${wiki}-${dir}-${table}.sql.gz`)) continue;
+        const file = await wikipediaTableFile(read, key, wiki, dir, job, table);
         if (file) return file;
       }
       return null;
     },
   };
+}
+
+function enwikiTable(key: DumpKey, job: string, table: string, title: string, about: string, source = 'English Wikipedia'): DumpDescriptor {
+  return wikiTable('enwiki', key, job, table, title, about, source);
 }
 
 const pageviews: DumpDescriptor = {
@@ -305,6 +310,9 @@ export const DUMPS: readonly DumpDescriptor[] = [
   enwikiTable('wikipedia-redirects', 'redirecttable', 'redirect', 'Redirects',
     'each redirect page and the title it points to. A build reads this and the page table of the same date in every edition readership counts, and keeps the redirects to an article with a Wikidata item, so their views count under it (#1650, ADR-0055 decision 2).',
     'Wikipedia editions'),
+  wikiTable('wikidatawiki', 'wikidata-redirects', 'redirecttable', 'redirect', 'Item redirects',
+    'each redirect page of Wikidata and the item it points to. A build reads this and the page table of the same run, and keeps every item redirected to another, so a place registered under an item Wikidata has since merged away is still found (ADR-0143 decision 3, #1895).',
+    'Wikidata'),
   pageviews,
   wikivoyageUsage,
   planet,

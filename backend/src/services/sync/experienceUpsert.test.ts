@@ -109,9 +109,10 @@ function given(stored: Record<string, unknown> | null, written: Record<string, u
   client.query.mockImplementation(async (sql: string) => {
     if (/INSERT INTO experiences/.test(sql)) return { rows: [written] };
     // The membership names the place the run's source knows by its id, before
-    // the lock and again after it (`lockSourcedExperience`, ADR-0084).
-    if (/SELECT experience_id FROM experience_kind_memberships/.test(sql)) {
-      return { rows: stored ? [{ experience_id: stored.id }] : [] };
+    // the lock and again after it (`lockSourcedExperience`, ADR-0084), under
+    // the run's own key (no redirect followed, #1895).
+    if (/SELECT m\.experience_id AS id, m\.external_id AS "from" FROM experience_kind_memberships m/.test(sql)) {
+      return { rows: stored ? [{ id: stored.id, from: PARAMS.externalId }] : [] };
     }
     // The lock, in a statement of its own, answers with the id or nothing;
     // the read after it answers with the row (`db/locks.ts`).
@@ -552,9 +553,10 @@ describe('one transaction per object, the row locked first', () => {
     expect(params).toEqual([501]);
     // The place is found through the source's membership (ADR-0084), before
     // the lock and again once it is held.
-    const lookups = sql.filter(s => /SELECT experience_id FROM experience_kind_memberships/.test(s));
+    const lookups = sql.filter(s => /SELECT m\.experience_id AS id, m\.external_id AS "from" FROM experience_kind_memberships m/.test(s));
     expect(lookups).toHaveLength(2);
-    expect(lookups[0]).toContain('WHERE source_id = $1 AND external_id = $2');
+    // By the run's own key, or by an item Wikidata has since redirected to it (#1895).
+    expect(collapse(lookups[0])).toContain('WHERE m.source_id = $1 AND (m.external_id = $2 OR m.external_id IN (SELECT r.source FROM workbench.wikidata_redirects r WHERE r.target = $2))');
     expect(sql.indexOf(lookups[0])).toBeLessThan(sql.indexOf(locked));
     // The source's name for the object is locked before anything is looked
     // up, so two writers of the same new object cannot both find nothing.
@@ -1280,8 +1282,8 @@ describe('the extent a run writes', () => {
     const stored = storedRow({ boundary_hash: 'a-first-tracing', area_km2: '0.0568', was_held: true });
     client.query.mockImplementation(async (sql: string) => {
       if (/INSERT INTO experiences/.test(sql)) return { rows: [writtenRow()] };
-      if (/SELECT experience_id FROM experience_kind_memberships/.test(sql)) {
-        return { rows: [{ experience_id: stored.id }] };
+      if (/SELECT m\.experience_id AS id, m\.external_id AS "from" FROM experience_kind_memberships m/.test(sql)) {
+        return { rows: [{ id: stored.id, from: PARAMS.externalId }] };
       }
       if (/FOR NO KEY UPDATE/.test(sql)) return { rows: [{ id: stored.id }] };
       if (/AS was_held/.test(sql)) return { rows: [stored] };
