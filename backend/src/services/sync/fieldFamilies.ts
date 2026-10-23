@@ -8,7 +8,8 @@
  * record over the place, which would remove whatever only the other family
  * reports. A field listed here is the listed family's: a run of another
  * family writes it as the place holds it, so it proposes nothing about it,
- * while that family has a standing membership on the place. A field listed for no family follows the gate and
+ * while that family has a standing membership on the place, and UNESCO's page
+ * about a site whatever memberships stand (ADR-0138). A field listed for no family follows the gate and
  * the claims as before, and the name, subtitle, picture and coordinate
  * follow the source views (`sourceView.ts`, ADR-0084).
  */
@@ -62,6 +63,19 @@ export const FAMILY_FIELDS: Readonly<Record<SourceFamily, FamilyFields>> = {
 const familyOf = (sourceId: number): SourceFamily | null => SOURCE_FAMILY[sourceId] ?? null;
 
 /**
+ * A field one family alone ever writes, which every other family's run keeps as
+ * the place holds it whatever memberships stand: UNESCO's page about a site
+ * (#1851). Migration 107 moved the World Heritage Centre addresses Wikidata had
+ * given as websites into it, on places no UNESCO membership holds (Khajuraho's
+ * place of worship), and a Wikidata run, which never writes it, would otherwise
+ * propose removing it (ADR-0138).
+ */
+const KEPT_BY_EVERY_OTHER_FAMILY: Readonly<Record<SourceFamily, readonly string[]>> = {
+  unesco: ['unescoUrl'],
+  wikidata: [],
+};
+
+/**
  * The question each source's run asks a curator about a place, one key per
  * source. The four Wikidata kinds share a family, so the family rule keeps
  * none of these: without this list a museum run on the Israel Museum would
@@ -79,8 +93,9 @@ const SOURCE_OWN_METADATA: Readonly<Record<number, readonly string[]>> = {
 /**
  * The fields of the place that another family's standing membership brings
  * and the run's own family does not, and the questions another source of the
- * place asks: those the run writes as the place holds them. None for a place
- * no other source holds, or a source in no family.
+ * place asks: those the run writes as the place holds them. On a place no
+ * other source holds, only the fields another family alone writes
+ * (`KEPT_BY_EVERY_OTHER_FAMILY`, ADR-0138); none for a source in no family.
  */
 export async function otherFamiliesFields(
   query: Pick<PoolClient, 'query'>,
@@ -110,6 +125,8 @@ export function fieldsOfOthers(sourceId: number, otherSourceIds: readonly number
     columns: [...others].flatMap(family => FAMILY_FIELDS[family].columns),
     metadata: [...new Set([
       ...[...others].flatMap(family => FAMILY_FIELDS[family].metadata),
+      ...(Object.keys(KEPT_BY_EVERY_OTHER_FAMILY) as SourceFamily[])
+        .filter(family => family !== own).flatMap(family => KEPT_BY_EVERY_OTHER_FAMILY[family]),
       ...otherSourceIds.filter(id => id !== sourceId).flatMap(id => SOURCE_OWN_METADATA[id] ?? []),
     ])],
   };

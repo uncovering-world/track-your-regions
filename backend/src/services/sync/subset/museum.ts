@@ -22,6 +22,7 @@ import { isQid, parseWktPoint, preferredCoordinate, preferredPicture } from '../
 import { BEST, entitiesOf, termsOf, type Kept, type Terms } from './entities.js';
 import { subsetClassTree } from './kit.js';
 import { DISSOLVED_UNKNOWN } from '../museum/venueTest.js';
+import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
 import {
   articleUrl, bestStatements, hasEnded, itemOf, itemsOf, picturesOf, standingStatements, textOf, wktOf, yearOf,
 } from './values.js';
@@ -160,7 +161,7 @@ export async function subsetEntityDetails(qids: string[]): Promise<Map<string, E
       countryLabel: country ? terms.get(country)?.label ?? null : null,
       imageUrl: pictureOf(claims.P18),
       itemPictures: picturesOf(claims.P18),
-      website: bestStatements(claims.P856).map(s => textOf(s.value)).find(Boolean) ?? null,
+      website: bestStatements(claims.P856).map(s => textOf(s.value)).find(url => url && !isWorldHeritageCentreUrl(url)) ?? null,
       articleUrl: entity.sitelinks.enwiki ? articleUrl(entity.sitelinks.enwiki) : null,
       sitelinks,
       dissolved: dissolvedOf(claims.P576),

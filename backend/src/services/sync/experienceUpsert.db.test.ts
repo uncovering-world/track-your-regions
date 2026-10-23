@@ -595,3 +595,42 @@ describe('a field another family of sources brings (ADR-0109, #1534)', () => {
     expect(proposed(outcome)).toEqual(expect.arrayContaining(['metadata.dateInscribed', 'countryCodes']));
   });
 });
+
+/**
+ * A place's own website is never UNESCO's page about it (#1851), and UNESCO's
+ * page is UNESCO's run's alone. Wikidata gives Gelati Monastery's item the
+ * World Heritage Centre's page as its official website; migration 107 had
+ * moved such addresses into `unescoUrl`, on places no UNESCO membership holds
+ * (Khajuraho's place of worship). The Louvre fixture stands in, with no UNESCO
+ * membership and the page in `unescoUrl`.
+ */
+describe("a World Heritage Centre page offered as a place's website (#1851)", () => {
+  const PAGE = 'https://whc.unesco.org/en/list/600';
+
+  it('is not written, and the page UNESCO\'s run wrote is neither removed nor asked about', async () => {
+    await pool.query(
+      `UPDATE experiences SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('unescoUrl', $2::text) WHERE id = $1`, [LOUVRE, PAGE],
+    );
+    const outcome = await upsertExperienceRecord({
+      ...params(archaeology, LOUVRE_QID, 'Louvre Museum'),
+      metadata: { wikidataQid: LOUVRE_QID, website: 'http://whc.unesco.org/en/list/600' },
+    });
+
+    const fields = [...outcome.changeSet.changedFields, ...outcome.changeSet.heldFields].map(f => f.field);
+    expect(fields).not.toContain('metadata.website');
+    expect(fields).not.toContain('metadata.unescoUrl');
+    const stored = await pool.query<{ metadata: Record<string, unknown> }>('SELECT metadata FROM experiences WHERE id = $1', [LOUVRE]);
+    expect(stored.rows[0].metadata).toMatchObject({ unescoUrl: PAGE });
+    expect(stored.rows[0].metadata).not.toHaveProperty('website');
+  });
+
+  it("writes a website of the place's own", async () => {
+    const outcome = await upsertExperienceRecord({
+      ...params(archaeology, LOUVRE_QID, 'Louvre Museum'),
+      metadata: { wikidataQid: LOUVRE_QID, website: 'https://www.louvre.fr/' },
+    });
+
+    const fields = [...outcome.changeSet.changedFields, ...outcome.changeSet.heldFields].map(f => f.field);
+    expect(fields).toContain('metadata.website');
+  });
+});

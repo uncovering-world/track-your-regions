@@ -86,6 +86,13 @@ describe('keeping the question another source of the place asks', () => {
   });
 
   it('keeps no question of a source whose membership no longer stands', () => {
-    expect(fieldsOfOthers(2, []).metadata).toEqual([]);
+    // UNESCO's page alone, which no Wikidata run writes (#1851).
+    expect(fieldsOfOthers(2, []).metadata).toEqual(['unescoUrl']);
+  });
+
+  it("keeps UNESCO's page on a place no UNESCO membership holds, and UNESCO's run writes it (#1851)", () => {
+    // Khajuraho's place of worship carries the page migration 107 moved out of its website.
+    expect(fieldsOfOthers(4, [2]).metadata).toContain('unescoUrl');
+    expect(fieldsOfOthers(1, []).metadata).toEqual([]);
   });
 });
