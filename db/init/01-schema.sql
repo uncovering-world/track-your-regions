@@ -3285,6 +3285,10 @@ ALTER TABLE experience_component_item_proposals
     ADD COLUMN IF NOT EXISTS register_disagrees BOOLEAN NOT NULL DEFAULT false;
 COMMENT ON COLUMN experience_component_item_proposals.register_code IS 'The candidate''s national register code as the card shows it, the register named first ("LMI CJ-I-s-A-07208"); null where the item carries none the finder reads (#1340).';
 COMMENT ON COLUMN experience_component_item_proposals.register_disagrees IS 'Whether the code''s group differs from the group most of the site''s coded candidates carry: an architecture entry offered for a Roman fort. Such a candidate sorts below the ones that agree (#1340).';
+-- A candidate the catalogue accepted by its rule (ADR-0141). See db/migrations/156.
+ALTER TABLE experience_component_item_proposals
+    ADD COLUMN IF NOT EXISTS answered_by_catalogue BOOLEAN NOT NULL DEFAULT false;
+COMMENT ON COLUMN experience_component_item_proposals.answered_by_catalogue IS 'Whether the catalogue accepted this candidate by its rule rather than a curator (#1839, ADR-0141): the point''s own name within 50 m, nothing contradicting it. answered_by is null then, as it is for a curator since deleted, so the figures about curators'' answers read this instead.';
 CREATE INDEX IF NOT EXISTS idx_experience_locations_wikidata_item
     ON experience_locations(wikidata_item) WHERE wikidata_item IS NOT NULL;
 
@@ -3934,10 +3938,13 @@ ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_actio
     CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered'));
 
 -- An existing database's NOT NULL goes with migration 076; a fresh one never had it.
+-- Two acts are the catalogue's own and name no curator: a merge of two places
+-- on one Wikidata item (ADR-0086), and an exact component candidate accepted
+-- by its rule (ADR-0141, migration 156).
 ALTER TABLE experience_curation_log ALTER COLUMN curator_id DROP NOT NULL;
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_curator_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_curator_check
-    CHECK (curator_id IS NOT NULL OR action = 'merged');
+    CHECK (curator_id IS NOT NULL OR action IN ('merged', 'component_items_answered'));
 CREATE INDEX IF NOT EXISTS idx_curation_log_experience ON experience_curation_log(experience_id);
 CREATE INDEX IF NOT EXISTS idx_curation_log_curator ON experience_curation_log(curator_id);
 CREATE INDEX IF NOT EXISTS idx_curation_log_created ON experience_curation_log(created_at DESC);
