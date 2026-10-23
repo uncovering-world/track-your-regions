@@ -15,6 +15,7 @@ import {
 } from '../../db/regionWriter.js';
 import { moveMembersToRegion } from './helpers.js';
 import { REGION_SELECT_SQL, regionOf, regionSearchResultOf, type RegionRow, type RegionSearchRow } from './regionAnswerRows.js';
+import { runRegionSearch } from './regionSearchSql.js';
 import type {
   createRegionBodySchema, deleteRegionQuerySchema, regionIdParamSchema, regionSearchQuerySchema,
   updateRegionBodySchema, worldViewIdParamSchema,
@@ -114,125 +115,12 @@ export async function searchRegions(
   // The schema counts what was typed; two characters of it may be blanks.
   const inputQuery = query.trim();
   if (inputQuery.length < 2) return [];
-
-  const queryTerms = inputQuery.split(/\s+/).filter(t => t.length > 0);
-  const params: (string | number)[] = [inputQuery, worldViewId];
-  const nameMatchClauses: string[] = [];
-  const nameMatchClausesUnaccent: string[] = [];
-  const pathMatchClausesUnaccent: string[] = [];
-
-  queryTerms.forEach((term, i) => {
-    const paramIndex = i + 3; // $3, $4, ...
-    params.push(`%${term}%`);
-    nameMatchClauses.push(`r.name ILIKE $${paramIndex}`);
-    nameMatchClausesUnaccent.push(`unaccent(r.name) ILIKE unaccent($${paramIndex})`);
-    pathMatchClausesUnaccent.push(`unaccent(path) ILIKE unaccent($${paramIndex})`);
-  });
-
-  const executeSearch = async (mode: 'regular' | 'unaccent' | 'fuzzy') => {
-    let matchCondition: string;
-    let fuzzyScoring: string;
-
-    if (mode === 'regular') {
-      matchCondition = `(${nameMatchClauses.join(' OR ')})`;
-      fuzzyScoring = '0';
-    } else if (mode === 'unaccent') {
-      matchCondition = `(${nameMatchClausesUnaccent.join(' OR ')})`;
-      fuzzyScoring = '0';
-    } else {
-      matchCondition = `similarity(unaccent(r.name), unaccent($1)) > 0.3`;
-      fuzzyScoring = `(similarity(unaccent(r.name), unaccent($1)) * 400)::int`;
-    }
-
-    const query = `
-      WITH RECURSIVE path_cte AS (
-        SELECT
-          r.id, r.name, r.parent_region_id,
-          r.name::text AS path,
-          r.id AS target_id,
-          1 AS depth
-        FROM regions r
-        WHERE r.world_view_id = $2 AND ${matchCondition}
-
-        UNION ALL
-
-        SELECT
-          p.id, p.name, p.parent_region_id,
-          p.name || ' > ' || c.path,
-          c.target_id,
-          c.depth + 1
-        FROM regions p
-        JOIN path_cte c ON p.id = c.parent_region_id
-      ),
-      full_paths AS (
-        SELECT
-          target_id,
-          path,
-          depth
-        FROM path_cte
-        WHERE parent_region_id IS NULL
-      ),
-      scored AS (
-        SELECT
-          fp.target_id,
-          fp.path,
-          fp.depth,
-          r.name,
-          r.parent_region_id,
-          r.description,
-          r.color,
-          r.uses_hull,
-          r.focus_bbox,
-          r.anchor_point,
-          (
-            CASE WHEN LOWER(unaccent(r.name)) = LOWER(unaccent($1)) THEN 1000 ELSE 0 END
-            + CASE WHEN unaccent(r.name) ILIKE unaccent($1) || '%' THEN 500 ELSE 0 END
-            + ${fuzzyScoring}
-            + CASE WHEN unaccent(fp.path) ILIKE '%' || unaccent($1) || '%' THEN 300 ELSE 0 END
-            + CASE WHEN unaccent(r.name) ILIKE '%' || unaccent($1) || '%' THEN 200 ELSE 0 END
-            + CASE WHEN ${pathMatchClausesUnaccent.join(' AND ')} THEN 100 ELSE 0 END
-            + CASE WHEN fp.depth <= 10 THEN (10 - fp.depth) * 10 ELSE 0 END
-            + CASE WHEN LENGTH(r.name) < 20 THEN (20 - LENGTH(r.name)) * 2 ELSE 0 END
-          ) as relevance_score
-        FROM full_paths fp
-        JOIN regions r ON r.id = fp.target_id
-      )
-      SELECT DISTINCT ON (target_id)
-        target_id as id,
-        name,
-        parent_region_id,
-        description,
-        color,
-        uses_hull,
-        CASE WHEN focus_bbox IS NOT NULL
-          THEN json_build_array(focus_bbox[1], focus_bbox[2], focus_bbox[3], focus_bbox[4])
-        END as focus_bbox,
-        CASE WHEN anchor_point IS NOT NULL
-          THEN json_build_array(ST_X(anchor_point), ST_Y(anchor_point))
-        END as anchor_point,
-        EXISTS (SELECT 1 FROM regions WHERE parent_region_id = target_id) as has_subregions,
-        path,
-        relevance_score
-      FROM scored
-      ORDER BY target_id, relevance_score DESC
-    `;
-
-    return pool.query<RegionSearchRow>(query, params);
-  };
-
-  let result = await executeSearch('regular');
-  if (result.rows.length === 0) {
-    result = await executeSearch('unaccent');
-  }
-  if (result.rows.length === 0) {
-    result = await executeSearch('fuzzy');
-  }
-
-  const sorted = result.rows
-    .sort((a, b) => b.relevance_score - a.relevance_score)
-    .slice(0, limit);
-
-  return sorted.map(regionSearchResultOf);
+  // The matching is `runRegionSearch`'s, shared with the review feed's region
+  // search (#1920); this caller's scope is one world view.
+  const rows = await runRegionSearch<RegionSearchRow>(pool, inputQuery, {
+    predicate: 'r.world_view_id = $2', params: [worldViewId],
+  }, limit);
+  return rows.map(regionSearchResultOf);
 }
 
 /**

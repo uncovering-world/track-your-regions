@@ -1193,7 +1193,7 @@ describe('getReviewQueue', () => {
     // union rather than over the page — a client holding 25 rows of 1 630 can
     // count nothing, and without the union the page could only say "the first
     // N of this kind, and there may be more".
-    const facets = { kind: [{ kind: 'arrival', count: 52 }], source: [], region: [], run: [], setAside: { batches: 0 } };
+    const facets = { kind: [{ kind: 'arrival', count: 52 }], source: [], region: [], picked: null, run: [], setAside: { batches: 0 } };
     mockedQuery.mockImplementation(async (sql: string) => (
       String(sql).includes('AS page')
         ? { rows: [{ page: [], total: 1630, facets }] }

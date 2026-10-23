@@ -48,12 +48,13 @@ import { answerComponentItems } from '../controllers/experience/componentItemCon
 import { answerMergeProposals } from '../controllers/experience/mergeProposalController.js';
 import { suggestComponentItems } from '../controllers/experience/componentItemSuggestionController.js';
 import { suggestPointHints } from '../controllers/experience/pointHintSuggestionController.js';
+import { searchReviewRegions } from '../controllers/experience/reviewRegionSearchController.js';
 import { suggestMergeProposals } from '../controllers/experience/mergeProposalSuggestionController.js';
 import { suggestVisit } from '../controllers/experience/visitSuggestionController.js';
 import { takeBackPointItem } from '../controllers/experience/pointItemTakeBackController.js';
 import { getNearbyPictures } from '../controllers/experience/nearbyPicturesController.js';
 import { suggestViews } from '../controllers/experience/viewSuggestionController.js';
-import { ReviewAnswerResult, ReviewQueue, RunSetAside } from '../api/responses/reviewQueue.js';
+import { ReviewAnswerResult, ReviewQueue, ReviewRegionSearchResults, RunSetAside } from '../api/responses/reviewQueue.js';
 import {
   ExperienceDetail,
   ExperienceKinds,
@@ -126,6 +127,7 @@ import {
   answerComponentItemsBodySchema,
   answerMergeProposalsBodySchema,
   reviewQueueQuerySchema,
+  reviewRegionSearchQuerySchema,
   syncLogIdParamSchema,
   experienceAdmissionBodySchema,
   pinQuestionAnswerBodySchema,
@@ -373,6 +375,15 @@ export const experienceCurationRoutes = [
     query: admissionPinsQuerySchema,
     response: AdmissionPins,
     handler: listAdmissionPins,
+  }),
+  // The regions a curator may narrow the feed to, found by name across every
+  // public world view (#1920): what the Region chip's search field asks.
+  defineRoute({
+    method: 'get', path: '/review/regions/search', access: 'curator', cache: 'revalidate', limiter: authenticatedLimiter,
+    summary: 'Find regions of every public world view by name, to narrow the review feed to one',
+    query: reviewRegionSearchQuerySchema,
+    response: ReviewRegionSearchResults,
+    handler: searchReviewRegions,
   }),
   defineRoute({
     method: 'get', path: '/review/queue', access: 'curator', cache: 'no-store',

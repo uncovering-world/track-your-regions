@@ -380,6 +380,34 @@ describe('queryQueueKeys', () => {
     expect(lastCall()[0]).toMatch(/NOT EXISTS \(\s*SELECT 1 FROM experience_regions/);
   });
 
+  it('names the region the address picked, whatever its depth, and nothing for none or the unplaced bucket (#1920)', async () => {
+    await queryQueueKeys({ ...base, filters: { ...base.filters, regionId: 6901 } });
+    const [deepSql, params] = lastCall();
+    let sql = deepSql;
+    const picked = between(sql, ', picked_path AS (', ', picked_region AS (');
+    // One ancestors walk from the bound id, root first in the path.
+    expect(picked).toContain("p.name || ' > ' || up.path");
+    expect(picked).toMatch(/WHERE r\.id = \$\d+/);
+    expect(params).toContain(6901);
+    expect(sql).toContain("'picked', (SELECT json_build_object('id', x.id, 'name', x.name, 'path', x.path, 'worldView', x.world_view)");
+    // Named under the world view's visibility: a curator typing a hidden world
+    // view's region id into the address is told nothing of it; an admin is.
+    const named = between(sql, ', picked_region AS (', ', facet_kind AS (');
+    expect(named).toContain('(w.is_public OR EXISTS (SELECT 1 FROM curator_assignments ca');
+    // The one exception region_roots makes, kept: a region this curator is assigned is named whatever its world view.
+    expect(named).toContain("ca.scope_type = 'region' AND ca.region_id = r.id");
+    mockedQuery.mockClear();
+    await queryQueueKeys({ ...base, isAdmin: true, filters: { ...base.filters, regionId: 6901 } });
+    expect(between(lastCall()[0], ', picked_region AS (', ', facet_kind AS (')).toContain('(TRUE OR EXISTS');
+
+    for (const regionId of ['none' as const, undefined]) {
+      mockedQuery.mockClear();
+      await queryQueueKeys({ ...base, filters: { ...base.filters, regionId } });
+      [sql] = lastCall();
+      expect(between(sql, ', picked_path AS (', ', picked_region AS (')).toContain('WHERE r.id = NULL');
+    }
+  });
+
   it('counts each facet under every filter but its own', async () => {
     await queryQueueKeys({
       ...base,
