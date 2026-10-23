@@ -1376,7 +1376,7 @@ export const ChangedFieldSignificance = {
 } as const;
 
 /**
- * On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth, a Wikidata item arriving where the place held none (ADR-0129), a subtitle arriving where the place held none (ADR-0133), or a type its kind has no word for, replaced by one it has (ADR-0135).
+ * On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth, a Wikidata item arriving where the place held none (ADR-0129), a subtitle arriving where the place held none (ADR-0133), a type its kind has no word for, replaced by one it has (ADR-0135), a field no reader is shown, or a text rewritten in its typesetting alone (ADR-0139).
  */
 export type ChangedFieldPassedTheGate = typeof ChangedFieldPassedTheGate[keyof typeof ChangedFieldPassedTheGate];
 
@@ -1388,6 +1388,8 @@ export const ChangedFieldPassedTheGate = {
   'own-item': 'own-item',
   'first-subtitle': 'first-subtitle',
   'type-outside-vocabulary': 'type-outside-vocabulary',
+  unseen: 'unseen',
+  typography: 'typography',
 } as const;
 
 /**
@@ -1404,7 +1406,7 @@ export interface ChangedField {
   curatedConflict?: boolean;
   /** The source's gate kept the write out of a row readers see, so a verdict is waiting (ADR-0025). */
   held?: boolean;
-  /** On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth, a Wikidata item arriving where the place held none (ADR-0129), a subtitle arriving where the place held none (ADR-0133), or a type its kind has no word for, replaced by one it has (ADR-0135). */
+  /** On a row the gate holds, a rewrite it let through unasked, and why (#1353): a qualifier added to a name, a credit re-read for the same picture, an area re-measured by under a tenth, a Wikidata item arriving where the place held none (ADR-0129), a subtitle arriving where the place held none (ADR-0133), a type its kind has no word for, replaced by one it has (ADR-0135), a field no reader is shown, or a text rewritten in its typesetting alone (ADR-0139). */
   passedTheGate?: ChangedFieldPassedTheGate;
 }
 

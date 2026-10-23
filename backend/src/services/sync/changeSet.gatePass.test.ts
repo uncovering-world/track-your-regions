@@ -19,11 +19,12 @@ describe('a metadata rewrite a visitor would not notice', () => {
     expect(metadataPassesTheGate('imageCredit', { author: 'A' }, { author: 'B' }, true)).toBeNull();
   });
 
-  it('passes a number re-measured by under a tenth, and holds a larger move', () => {
+  it('passes a number re-measured by under a tenth as re-measured, and a larger move as unseen', () => {
     expect(metadataPassesTheGate('areaHectares', 821.7474, 821.748, true)).toBe('remeasured');
     expect(metadataPassesTheGate('areaHectares', 770, 796.08, true)).toBe('remeasured');
-    expect(metadataPassesTheGate('areaHectares', 770, 1000, true)).toBeNull();
-    expect(metadataPassesTheGate('areaHectares', 0, 5, true)).toBeNull();
+    // No reader is shown the area (#1834): Cologne Cathedral's only open question was it.
+    expect(metadataPassesTheGate('areaHectares', 770, 1000, true)).toBe('unseen');
+    expect(metadataPassesTheGate('areaHectares', 0, 5, true)).toBe('unseen');
   });
 
   it('never passes a key the gate weighs as major, an inscription year among them', () => {
@@ -31,8 +32,9 @@ describe('a metadata rewrite a visitor would not notice', () => {
   });
 
   it('re-measures only a measurement: a monument\'s year is a number, and a different statement', () => {
-    expect(metadataPassesTheGate('year', 1935, 2100, true)).toBeNull();
-    expect(metadataPassesTheGate('year', 1935, 1936, true)).toBeNull();
+    // Passed all the same, as a field no reader is shown (#1834), never as re-measured.
+    expect(metadataPassesTheGate('year', 1935, 2100, true)).toBe('unseen');
+    expect(metadataPassesTheGate('year', 1935, 1936, true)).toBe('unseen');
   });
 });
 
@@ -60,5 +62,35 @@ describe('a credit beside a picture a curator owns (#1353)', () => {
     const incoming = { imageCredit: { author: 'B', license: 'CC BY 4.0' } };
     expect(passingMetadataKeys(before, incoming, [], true)).toEqual(['imageCredit']);
     expect(passingMetadataKeys(before, incoming, ['image_url'], true)).toEqual([]);
+  });
+});
+
+describe('a field no reader is shown (#1834)', () => {
+  it('passes every rewrite of an unseen key, an appearing value and one sent as null included', () => {
+    expect(metadataPassesTheGate('creators', ['Ana'], ['Ana', 'Bo'], true)).toBe('unseen');
+    expect(metadataPassesTheGate('criteria', '(ii)(iv)', '(ii)(iv)(vi)', true)).toBe('unseen');
+    expect(metadataPassesTheGate('year', undefined, 1915, true)).toBe('unseen');
+    expect(metadataPassesTheGate('year', 1915, null, true)).toBe('unseen');
+  });
+
+  it('holds a key the incoming record lacks, which the held row would not take', () => {
+    // A museum's run sends no year; the held metadata arm merges only the keys sent.
+    expect(metadataPassesTheGate('year', 1915, undefined, true)).toBeNull();
+    expect(passingMetadataKeys({ year: 1915 }, {}, [], true)).toEqual([]);
+  });
+
+  it('holds a key a reader is shown, and a key with no mark', () => {
+    expect(metadataPassesTheGate('website', 'https://a.example', 'https://b.example', true)).toBeNull();
+    expect(metadataPassesTheGate('wikipediaUrl', 'https://en.wikipedia.org/wiki/A', null, true)).toBeNull();
+    expect(metadataPassesTheGate('neverMarked', 1, 2, true)).toBeNull();
+  });
+
+  it('holds another Wikidata item, which no reader is shown either: the row may describe another object', () => {
+    expect(metadataPassesTheGate('wikidataQid', 'Q184427', 'Q1', true)).toBeNull();
+  });
+
+  it('writes a curator\'s claimed unseen key as the curator\'s', () => {
+    expect(passingMetadataKeys({ year: 1915 }, { year: 1945 }, ['metadata.year'], true)).toEqual([]);
+    expect(passingMetadataKeys({ year: 1915 }, { year: 1945 }, [], true)).toEqual(['year']);
   });
 });

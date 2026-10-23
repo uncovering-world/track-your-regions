@@ -78,7 +78,7 @@ import {
 } from '../../db/membership.js';
 import { pointHeldProposalAt } from './heldProposalPointer.js';
 import {
-  claimedMetadataKeys, computeChangeSet, METADATA_SET_KEYS, passingMetadataKeys, SYNC_OWNED_METADATA_KEYS, UNSEEN_FIELDS,
+  claimedMetadataKeys, computeChangeSet, METADATA_SET_KEYS, passesAsUnseen, passingColumns, passingMetadataKeys, SYNC_OWNED_METADATA_KEYS,
   type BoundarySnapshot, type ChangeSetResult, type ExperienceSnapshot,
 } from './changeSet.js';
 import { tidyLabel } from '@tyr/shared/labels';
@@ -213,6 +213,13 @@ const SYNC_OWNED_SLICE = `COALESCE((
  * (`passingMetadataKeys`, `changeSet.ts`). `$29`, worked out in TS from the
  * stored row read under the lock and filed by the diff with the same rule.
  */
+/**
+ * Whether a held row takes the incoming value of a column all the same
+ * (#1834): `$32`, the columns `passingColumns` (`changeSet.ts`) answers for the
+ * stored row read under the lock, by the rule the diff files them with.
+ */
+const PASSES = (column: string): string => `('${column}' = ANY($32::text[]))`;
+
 const PASSING_SLICE = `COALESCE((
                  SELECT jsonb_object_agg(passed.k, EXCLUDED.metadata -> passed.k)
                  FROM unnest($29::text[]) AS passed(k)
@@ -577,14 +584,18 @@ async function writeUnderLock(
         NOW(), NOW()
       )
       ON CONFLICT (id) DO UPDATE SET
-        name = CASE WHEN experiences.curated_fields ? 'name' OR ${HELD} THEN experiences.name ELSE EXCLUDED.name END,
-        name_local = CASE WHEN experiences.curated_fields ? 'name_local' OR ${HELD} THEN experiences.name_local ELSE EXCLUDED.name_local END,
-        -- A subtitle where the place holds none passes the gate (ADR-0133,
-        -- the diff's 'first-subtitle'); one it holds is replaced only unheld.
-        subtitle = CASE WHEN experiences.curated_fields ? 'subtitle' THEN experiences.subtitle
-                        WHEN ${HELD} AND COALESCE(experiences.subtitle, '') <> '' THEN experiences.subtitle
-                        ELSE EXCLUDED.subtitle END,
-        description = CASE WHEN experiences.curated_fields ? 'description' OR ${HELD} THEN experiences.description ELSE EXCLUDED.description END,
+        -- A held row keeps each of these unless its rewrite passes the gate:
+        -- typesetting alone for the texts, a subtitle where the place holds none
+        -- (ADR-0133), and every rewrite of a field no reader is shown, the local
+        -- names and the countries (ADR-0139). A curator's claim keeps it always.
+        name = CASE WHEN experiences.curated_fields ? 'name' OR (${HELD} AND NOT ${PASSES('name')})
+                    THEN experiences.name ELSE EXCLUDED.name END,
+        name_local = CASE WHEN experiences.curated_fields ? 'name_local' OR (${HELD} AND NOT ${PASSES('name_local')})
+                          THEN experiences.name_local ELSE EXCLUDED.name_local END,
+        subtitle = CASE WHEN experiences.curated_fields ? 'subtitle' OR (${HELD} AND NOT ${PASSES('subtitle')})
+                        THEN experiences.subtitle ELSE EXCLUDED.subtitle END,
+        description = CASE WHEN experiences.curated_fields ? 'description' OR (${HELD} AND NOT ${PASSES('description')})
+                           THEN experiences.description ELSE EXCLUDED.description END,
         -- Behind a claim but not behind the gate. Tags are labels the import
         -- derives from facts it also stores by name -- the criteria, the danger
         -- listing, the landmark's type -- and no reader-facing read returns
@@ -608,10 +619,10 @@ async function writeUnderLock(
         location = CASE WHEN experiences.curated_fields ? 'location' THEN experiences.location
                         WHEN $28::boolean THEN EXCLUDED.location
                         WHEN ${HELD} THEN experiences.location ELSE EXCLUDED.location END,
-        -- A place's countries are shown to no reader (#1579): written past the
-        -- gate, recorded as written; a curator's claim still keeps them.
-        country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
-        country_names = CASE WHEN experiences.curated_fields ? 'country_names' THEN experiences.country_names ELSE EXCLUDED.country_names END,
+        country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' OR (${HELD} AND NOT ${PASSES('country_codes')})
+                             THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
+        country_names = CASE WHEN experiences.curated_fields ? 'country_names' OR (${HELD} AND NOT ${PASSES('country_names')})
+                             THEN experiences.country_names ELSE EXCLUDED.country_names END,
         image_url = CASE WHEN experiences.curated_fields ? 'image_url' OR ${HELD} THEN experiences.image_url ELSE EXCLUDED.image_url END,
         -- A claim on this column is always per key -- 'metadata.website',
         -- 'metadata.inDanger' -- and re-applies just that key over whatever the
@@ -810,6 +821,7 @@ async function writeUnderLock(
       // the diff below reads too (ADR-0077 decision 2).
       claimedMetadataKeys(stored?.curated_fields ?? [], stored?.metadata ?? null),
       params.typeVocabulary ? [...params.typeVocabulary] : null,
+      held && stored ? passingColumns(snapshotFromRow(stored), snapshotFromParams(written, null), stored.curated_fields ?? []) : [],
     ]
   );
 
@@ -848,9 +860,10 @@ async function writeUnderLock(
   // anchor moving is the run's own bookkeeping (ADR-0095), and a rewrite that
   // passed the gate replaces no fact a reader holds (ADR-0099, ADR-0135) — written and
   // recorded, but neither a proposal for the pointer nor a reason to demote a
-  // verified membership. Nor does a field no reader sees (`UNSEEN_FIELDS`, #1579).
+  // verified membership. Nor does a field no reader is shown, held row or not
+  // (`passesAsUnseen`, ADR-0139).
   const wroteContent = changeSet.changedFields.some(
-    f => !(f.field === 'location' && params.locationIsAnchor) && !f.passedTheGate && !UNSEEN_FIELDS.has(f.field),
+    f => !(f.field === 'location' && params.locationIsAnchor) && !f.passedTheGate && !passesAsUnseen(f.field),
   );
   // The pointer follows every proposal this statement refused, not only the ones
   // it wrote — and both kinds of refusal are proposals. A field a curator claimed

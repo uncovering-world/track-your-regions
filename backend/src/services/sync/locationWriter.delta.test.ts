@@ -295,9 +295,10 @@ describe('a visible point under a gated source', () => {
     // The same guard the object's upsert puts on its columns: the claim, or the
     // gate over a row a reader can see — read through the experience, as the
     // insert arm reads the gate, so the two cannot disagree.
-    // A qualifier added to the stored name passes the gate (#1353).
-    expect(kept).toMatch(/name = CASE WHEN el\.curated_fields \? 'name'\s+OR \(\(\(SELECT requires_curation FROM experience_sources WHERE id = \$\d+\)[\s\S]*el\.curation_state <> 'pending'\)\s+AND NOT COALESCE\(length\(el\.name\) > 0[\s\S]*left\(i\.name, length\(el\.name\)\) = el\.name[\s\S]*substr\(i\.name, length\(el\.name\) \+ 1\) ~ [\s\S]*, false\)\) THEN el\.name ELSE i\.name END/);
-    expect(kept).toMatch(/RETURNING[\s\S]*AS name_passed/);
+    // A qualifier added to the stored name passes the gate (#1353), and so does
+    // a rewrite of its typesetting alone (#1834).
+    expect(kept).toMatch(/name = CASE WHEN el\.curated_fields \? 'name'\s+OR \(\(\(SELECT requires_curation FROM experience_sources WHERE id = \$\d+\)[\s\S]*el\.curation_state <> 'pending'\)\s+AND NOT \(COALESCE\(length\(el\.name\) > 0[\s\S]*left\(i\.name, length\(el\.name\)\) = el\.name[\s\S]*substr\(i\.name, length\(el\.name\) \+ 1\) ~ [\s\S]*, false\) OR COALESCE\(el\.name <> i\.name\s+AND i\.name !~ [\s\S]*normalize\(el\.name, NFC\)[\s\S]*\)\) THEN el\.name ELSE i\.name END/);
+    expect(kept).toMatch(/RETURNING[\s\S]*'qualifier'[\s\S]*'typography' END AS name_pass/);
     // The guard's own expression answers for the report, on the row the
     // statement locked — the arrangement that keeps the write and the record
     // from disagreeing about one run (experienceUpsert.ts, #519).

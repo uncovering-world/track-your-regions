@@ -12,7 +12,9 @@
 
 import { isEmptyValue, jsonEquals } from '@tyr/shared/equality';
 import { sameLabelSet } from './labelFold.js';
+import { sameTypography } from '@tyr/shared/labels';
 import { distanceMeters, LOCATION_MAJOR_METERS, LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
+import { placeFieldUnseen } from '@tyr/shared/readerFields';
 
 /**
  * The outline a row holds, as the diff compares it: a hash of the geometry the
@@ -77,12 +79,15 @@ export type FieldSignificance = 'major' | 'minor';
  * ADR-0133), a line where there was none; and a type where the membership
  * holds none, or one its kind's vocabulary has no word for, replaced by one it
  * has (`type-outside-vocabulary`, ADR-0135): a value its kind has no word for
- * answers no filter of the kind, so it is no reader's fact to keep. The last
- * two are the classes a visitor sees. Every other rewrite is held as before
- * (ADR-0099).
+ * answers no filter of the kind, so it is no reader's fact to keep. Those
+ * two are the classes a visitor sees. A field no reader is shown
+ * (`unseen`, ADR-0139: its mark in `@tyr/shared/readerFields`), and a text
+ * rewritten only in its typesetting (`typography`, ADR-0139: `sameTypography`)
+ * pass too. Every other rewrite is held as before (ADR-0099).
  */
 export const GATE_PASSES = [
   'qualifier', 'same-file-credit', 'remeasured', 'own-item', 'first-subtitle', 'type-outside-vocabulary',
+  'unseen', 'typography',
 ] as const;
 export type GatePass = (typeof GATE_PASSES)[number];
 
@@ -99,6 +104,16 @@ export const MEASURED_METADATA_KEYS: readonly string[] = ['areaHectares'];
 
 /** A Wikidata item id, as a run writes one: `Q` and a number. */
 const WIKIDATA_ITEM = /^Q[1-9]\d*$/;
+
+/**
+ * Whether a rewrite of a field passes the gate as `unseen` (ADR-0139): no
+ * reader is shown the field. The Wikidata item is the one unseen field that
+ * does not pass: a different item means the row may now describe another
+ * object, which a curator reads (ADR-0129 decision 2).
+ */
+export function passesAsUnseen(field: string): boolean {
+  return field !== `${METADATA_CLAIM_PREFIX}wikidataQid` && placeFieldUnseen(field);
+}
 
 /**
  * Whether a metadata key's rewrite passes the gate, and as which class, or
@@ -128,7 +143,10 @@ export function metadataPassesTheGate(key: string, old: unknown, next: unknown, 
       && Math.abs(next - old) / old < REMEASURED_SHARE) {
     return 'remeasured';
   }
-  return null;
+  // A key the incoming record lacks is no rewrite the held row can take: the
+  // upsert merges only the keys the record carries (`PASSING_SLICE`), so a
+  // removal stays a question. A key sent as null is written.
+  return next !== undefined && passesAsUnseen(`${METADATA_CLAIM_PREFIX}${key}`) ? 'unseen' : null;
 }
 
 export interface FieldChange {
@@ -668,11 +686,13 @@ function nameLocalChanges(
   const changes: RawDiff[] = [];
   for (const language of [...new Set([...Object.keys(left), ...Object.keys(right)])].sort()) {
     if (jsonEquals(ownValue(left, language), ownValue(right, language))) continue;
+    const field = `${NAME_LOCAL_CLAIM_PREFIX}${language}`;
     changes.push({
-      field: `${NAME_LOCAL_CLAIM_PREFIX}${language}`,
+      field,
       old: ownValue(left, language),
       new: ownValue(right, language),
       significance: 'minor',
+      ...(passesAsUnseen(field) ? { passedTheGate: 'unseen' as const } : {}),
     });
   }
   return changes;
@@ -696,6 +716,8 @@ function outsideVocabulary(stored: string | null, incoming: ExperienceSnapshot):
  * A subtitle replaced or removed stays a question. A type its kind's vocabulary
  * has no word for, or none, replaced by one it has, is written past the gate
  * the same way (ADR-0135); a type moved inside the vocabulary stays a question.
+ * A name, subtitle or description rewritten only in its typesetting passes as
+ * `typography` (ADR-0139).
  */
 function textDifferences(before: ExperienceSnapshot, incoming: ExperienceSnapshot): RawDiff[] {
   const textFields = ['name', 'subtitle', 'description', 'type', 'imageUrl'] as const;
@@ -703,9 +725,20 @@ function textDifferences(before: ExperienceSnapshot, incoming: ExperienceSnapsho
     .filter(field => !textEquals(before[field], incoming[field]))
     .map(field => ({
       field, old: before[field], new: incoming[field], significance: fieldSignificance(field),
-      ...(field === 'subtitle' && isEmptyValue(before.subtitle) ? { passedTheGate: 'first-subtitle' as const } : {}),
-      ...(field === 'type' && outsideVocabulary(before.type, incoming) ? { passedTheGate: 'type-outside-vocabulary' as const } : {}),
+      ...textPass(field, before, incoming),
     }));
+}
+
+/** The class a text field's rewrite passes the gate as, if any. */
+function textPass(
+  field: 'name' | 'subtitle' | 'description' | 'type' | 'imageUrl', before: ExperienceSnapshot, incoming: ExperienceSnapshot,
+): { passedTheGate?: GatePass } {
+  if (field === 'subtitle' && isEmptyValue(before.subtitle)) return { passedTheGate: 'first-subtitle' };
+  if (field === 'type' && outsideVocabulary(before.type, incoming)) return { passedTheGate: 'type-outside-vocabulary' };
+  if (field !== 'type' && field !== 'imageUrl' && sameTypography(before[field], incoming[field])) {
+    return { passedTheGate: 'typography' };
+  }
+  return {};
 }
 
 function collectDifferences(
@@ -728,11 +761,14 @@ function collectDifferences(
   // value the source disagrees with is therefore kept and not reported either
   // -- there is no decision in it, since nobody reads the outcome (#570).
 
-  // A place's countries are shown to no reader (`UNSEEN_FIELDS`): written past
-  // the gate, recorded rather than asked, as the upsert writes them.
+  // A place's countries are shown to no reader (#1579, `@tyr/shared/readerFields`):
+  // written past the gate as `unseen`, as the upsert writes them.
   for (const field of ['countryCodes', 'countryNames'] as const) {
     if (!setEquals(before[field], incoming[field])) {
-      diffs.push({ field, old: before[field], new: incoming[field], significance: fieldSignificance(field), pastTheGate: true });
+      diffs.push({
+        field, old: before[field], new: incoming[field], significance: fieldSignificance(field),
+        ...(passesAsUnseen(field) ? { passedTheGate: 'unseen' as const } : {}),
+      });
     }
   }
 
@@ -762,14 +798,30 @@ function collectDifferences(
 }
 
 /**
- * A place's fields no reader sees (#1579): its countries. The world view the
- * reader browses says where a place is, and which state a disputed or a
- * vanished one belongs to is the question of points of view (#587), not one a
- * curator can settle card by card. A change to one is written past the gate,
- * and is no reason to retire a curator's verification either, since nothing a
- * reader sees moved; a curator's claim still keeps it.
+ * The place's columns a held row takes all the same, by the classes that pass
+ * (#1834): `passingMetadataKeys`'s counterpart for the guarded columns, by the
+ * same diff, so the write and the record cannot disagree. A column passes only
+ * when every change filed under it passes and no claim protects it; the local
+ * names are one column, reported one language at a time.
  */
-export const UNSEEN_FIELDS: ReadonlySet<string> = new Set(['countryCodes', 'countryNames']);
+const PASSING_COLUMNS: ReadonlySet<string> = new Set([
+  'name', 'name_local', 'subtitle', 'description', 'country_codes', 'country_names',
+]);
+
+export function passingColumns(
+  before: ExperienceSnapshot,
+  incoming: ExperienceSnapshot,
+  curatedFields: string[],
+): string[] {
+  const curated = new Set(curatedFields);
+  const verdicts = new Map<string, boolean>();
+  for (const diff of collectDifferences(before, incoming, curatedFields)) {
+    const column = claimKeyFor(diff.field);
+    if (!PASSING_COLUMNS.has(column)) continue;
+    verdicts.set(column, (verdicts.get(column) ?? true) && diff.passedTheGate !== undefined && !curated.has(column));
+  }
+  return [...verdicts].filter(([, passes]) => passes).map(([column]) => column);
+}
 
 /** Which of the three buckets one difference lands in, and as what (`computeChangeSet`). */
 function filed(

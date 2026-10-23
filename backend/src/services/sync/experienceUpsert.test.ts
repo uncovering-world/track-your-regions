@@ -675,8 +675,10 @@ describe('the keys a run computes about its own pass go past both guards', () =>
     // membership's work, the site's extent and the place the lock found, which
     // are this statement's own, and the run's view of the place with its
     // picture's credit (#1246), and the items another id resolves to (#1248).
-    // Then the claims' metadata keys, and last the kind's words (`typeVocabulary`, #1807).
-    expect(params).toHaveLength(31);
+    // Then the claims' metadata keys, the kind's words (`typeVocabulary`, #1807),
+    // and last the columns a held row takes all the same (`passingColumns`, #1834).
+    expect(params).toHaveLength(32);
+    expect(params[31]).toEqual([]);
     expect(sql).not.toContain("'artworkCount'");
   });
 
@@ -787,9 +789,9 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     // another's arm.
     // `tags` is not in this list, and its absence is the point of the test
     // below this one: derived labels nobody reads are written past the gate.
-    // `country_codes` and `country_names` are not either, for the same reason (#1579).
+    // The countries are, and pass by their mark (#1579, #1834).
     for (const column of [
-      'name', 'name_local', 'subtitle', 'description',
+      'name', 'name_local', 'subtitle', 'description', 'country_codes', 'country_names',
       'location', 'image_url', 'metadata',
       // `boundary` and `area_km2` are deliberately **not** here — the extent
       // follows the source through the gate, and the test below says why. Every
@@ -801,6 +803,8 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
       expect(arm, `${column} is not assigned`).toBeDefined();
       expect(arm, `${column} has no CASE arm`).toMatch(/^CASE/);
       expect(arm, `${column} is not held`).toContain(HOLD);
+      // Unless its rewrite passes the gate, by the columns the run binds (#1834).
+      if (!['location', 'image_url', 'metadata'].includes(column)) expect(arm).toContain(`NOT ('${column}' = ANY($32::text[]))`);
     }
     // The type within the kind is the membership's (ADR-0084), held and
     // claimed there, and the place carries none.
@@ -811,21 +815,16 @@ describe('a gated run holds a visible place\'s content, not an unread one\'s', (
     expect(typeArm).toContain('THEN experience_kind_memberships.type ELSE EXCLUDED.type END');
   });
 
-  it('writes tags and a place\'s countries past the gate and keeps them behind a claim', async () => {
+  it('writes tags past the gate, and keeps them behind a claim', async () => {
     await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
 
     // Tags are derived from facts the row stores by name and returned by no
     // reader-facing read, so the gate has nothing to protect: held, they filed
-    // 3785 rows that restated the row beside them (#570). A place's countries are
-    // drawn on no reader's screen either (#1579). The claim stays, because a
+    // 3785 rows that restated the row beside them (#570). The claim stays, because a
     // curator can set these through the edit endpoint and a person's write is not
     // a measurement. Both halves examined, since an arm that dropped the claim
     // with the hold would also pass a test that only checked the hold was gone.
-    for (const column of ['tags', 'country_codes', 'country_names']) {
-      const arm = assignmentsOf(upsert()[0]).get(column) ?? '';
-      expect(arm, column).not.toContain(HOLD);
-      expect(arm).toMatch(new RegExp(`experiences\\.curated_fields \\? '${column}' THEN experiences\\.${column} ELSE EXCLUDED\\.${column} END`));
-    }
+    expect(assignmentsOf(upsert()[0]).get('tags')).toMatch(/^CASE WHEN experiences\.curated_fields \? 'tags' THEN experiences\.tags ELSE EXCLUDED\.tags END,?$/);
   });
 
   it('tells the statement the answer the locked read gave, once', async () => {
