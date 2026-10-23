@@ -534,12 +534,7 @@ run finds its places by the `(source_id, external_id)` its membership carries
 and the id it brought it under. Some membership of the place has to carry that
 pair. One that none carries is a place its first source's next run does not
 find: the run tries to create the place and fails on that item on every run,
-since the place's own pair is still unique among places. Every reader-facing
-row still reads its kind off the membership with `source_id = e.source_id`
-(`rowKindJoinSql`, #819), so where no membership names the place's own source
-at all, the row also comes back with no kind, which no group, pin colour or
-chip can draw; a membership naming that source under another id still gives
-the row its kind, and only the run fails.
+since the place's own pair is still unique among places. No reader reads the place's pair since #1893 (ADR-0143 decision 6): the kind a row is shown under is `shownMembershipSql`'s, whatever source first brought the place, so only the run fails.
 
 **The merge rule** (`places-sharing-a-wikidata-item`) lists every Wikidata item
 more than one place still carries on a membership (#1247). Two sources that read

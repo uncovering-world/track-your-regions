@@ -36,6 +36,7 @@ Level 3 requirements are tracked but optional for now.
 - **Frontend**: MapLibre GL (WebGL) map rendering, SPA with React + MUI
 - **Sessions**: JWT access tokens (15min, in-memory) + refresh tokens (httpOnly cookie, hashed in DB). What a sign-in answers is declared as a schema (`backend/src/api/responses/auth.ts`, ADR-0066): the access token and the public account, never the refresh token, a hash or a provider id, and the parse outside production refuses any other key
 - **Roles**: user, curator (scope-based), admin
+- **Curator scope over a place**: a curator scoped to a source reaches a place as a whole (its name, picture, coordinate, points, works and history) when the place holds a membership of that source, whichever source first brought it (#1893, `curatorPlaceScopeExists` in `backend/src/middleware/auth.ts`, and `checkCuratorScope` for its region assignments and rejections); an answer about one membership is the scope of the membership the writer answers, named or picked as the writer picks it (`answeredSourceId`), and a type edit is the scope of the shown membership it writes; a choice between sources' views needs every source of the place (`resolveEverySourceScope`). The place's first source (`experiences.source_id`) decides no scope, and the backend lint refuses a comparison with it (`provenance/no-first-source-key`)
 
 ## Relevant ASVS Chapters (Priority Order)
 
