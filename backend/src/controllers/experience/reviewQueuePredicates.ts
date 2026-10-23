@@ -74,9 +74,31 @@ export function membershipMissingOpenSql(m = 'm', e = 'e'): string {
  * `admission_answered_at` instead (ADR-0067). `admissionAnsweredSql` is either,
  * and `keptOut` is the mirror that shows the answered rows instead of hiding
  * them.
+ *
+ * Asked only while no other membership of the place is offered to readers
+ * (#1838): Archaeology refusing Reims Cathedral, which Places of worship
+ * offers, changes nothing a traveller finds, so the card is work whose answer
+ * is always yes. Nothing is written for it: the refusal stays the rule's and
+ * unanswered, a later run may still admit the place, and the card comes back
+ * once the other kind stops offering it, when the refusal decides whether the
+ * place stays at all.
  */
 export function refusedOpenSql(m = 'm'): string {
-  return `${m}.admission = 'refused' AND NOT ${admissionAnsweredSql(m)}`;
+  return `${m}.admission = 'refused' AND NOT ${admissionAnsweredSql(m)}
+    AND NOT EXISTS (SELECT 1 FROM ${MEMBERSHIPS} offered_elsewhere WHERE ${offeredElsewhereSql(m, 'offered_elsewhere')})`;
+}
+
+/**
+ * Whether `other` is another membership of the place of `m` that readers find
+ * the place in: admitted and passed (`membershipOfferedSql`), as the place's
+ * kinds are read (`placeKindsSql`). A membership whose source stopped listing
+ * the place still counts until a curator says otherwise, as readers still find
+ * the place there. One rule for the refusal that asks nothing
+ * (`refusedOpenSql`) and for the line a card says where readers still see the
+ * place (`seenInSql`, `reviewQueueController.ts`).
+ */
+export function offeredElsewhereSql(m: string, other: string): string {
+  return `${other}.experience_id = ${m}.experience_id AND ${other}.id <> ${m}.id AND ${membershipOfferedSql(other)}`;
 }
 
 /**
