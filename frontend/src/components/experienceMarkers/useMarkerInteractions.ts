@@ -19,9 +19,10 @@ import { useEffect, useRef } from 'react';
 import type { MapRef } from 'react-map-gl/maplibre';
 import * as maplibregl from 'maplibre-gl';
 import {
-  LAYER_MARKERS, LAYER_HIGHLIGHT_POINT, MARKER_LAYERS,
+  LAYER_HIGHLIGHT_POINT, MARKER_LAYERS,
   EMPTY_FC, buildPointHoverData,
 } from './layers';
+import { markerUnderPointer, hoverKeyOf, type MarkerUnderPointer } from './markerUnderPointer';
 import type { MarkerData } from './buildMarkers';
 import type { HoverPreview } from '../../hooks/useHoverContext';
 import type { Experience, ExperienceLocation } from '../../api/experiences';
@@ -125,26 +126,20 @@ export function useMarkerInteractions({
       setHoverPreview(null);
     };
 
+    // Hover and click read the same feature, the topmost under the pointer,
+    // through `markerUnderPointer` (#1916): where the selected object's dot
+    // lies over another place's pin, a click opens what the hover card names.
     const onMarkerClick = (e: maplibregl.MapMouseEvent) => {
-      // What the per-layer registrations gave for free: MapLibre's delegated
-      // listener checks `getLayer(id)` before querying, and this component
-      // unmounts its sources while a region loads, with this effect still
-      // attached. Naming a missing layer makes `queryRenderedFeatures` fire an
-      // ErrorEvent and log, on the ordinary path of clicking the map mid-load.
-      if (!map.getLayer(LAYER_MARKERS)) return;
-      const features = map.queryRenderedFeatures(e.point, { layers: [...MARKER_LAYERS] });
-      if (features.length === 0) {
+      const under = markerUnderPointer(map, e.point);
+      if (!under) return;
+
+      if (under.kind === 'highlight') {
         // A dot of the open object's places, which the markers source does not
         // hold: a part's dot opens that part's card (#1271).
-        if (!map.getLayer(LAYER_HIGHLIGHT_POINT)) return;
-        const dot = map.queryRenderedFeatures(e.point, { layers: [LAYER_HIGHLIGHT_POINT] })[0];
-        const dotLocation = dot?.properties?.locationId as number | null | undefined;
         const selected = selectedExpIdRef.current;
-        if (dotLocation != null && selected != null) openPartRef.current(selected, dotLocation);
+        if (under.locationId != null && selected != null) openPartRef.current(selected, under.locationId);
         return;
       }
-      const experienceId = features[0].properties?.experienceId;
-      if (experienceId == null) return;
 
       // A pin the reader folded is unfolded by clicking it, which is the way back
       // from the only action the map offers on a folded object — and the badge is
@@ -158,82 +153,109 @@ export function useMarkerInteractions({
       // folded, and a stand-in pin — an object whose places the batch does not
       // hold — has the same null `locationId` and count above one without being
       // one. A click that unfolded that would visibly do nothing.
-      if (features[0].properties?.folded === true) {
-        toggleCollapsedRef.current(experienceId);
+      if (under.folded) {
+        toggleCollapsedRef.current(under.experienceId);
         return;
       }
 
       // A part's pin opens the part's card with its object's (#1271); a
       // museum's one pin selects the museum, as before.
-      const locationId = features[0].properties?.locationId as number | null | undefined;
-      if (locationId != null && openPartRef.current(experienceId, locationId)) return;
+      if (under.locationId != null && openPartRef.current(under.experienceId, under.locationId)) return;
 
-      toggleSelectedRef.current(experienceId);
+      toggleSelectedRef.current(under.experienceId);
     };
 
-    const onMarkerMouseMove = (e: maplibregl.MapMouseEvent) => {
-      map.getCanvas().style.cursor = 'pointer';
-      const features = map.queryRenderedFeatures(e.point, { layers: [...MARKER_LAYERS] });
-      if (features.length > 0) {
-        const feature = features[0];
-        const experienceId = feature.properties?.experienceId as number;
-        const locationId = feature.properties?.locationId as number | undefined;
-        const coords = (feature.geometry as GeoJSON.Point).coordinates as [number, number];
+    /** The popup, the ring and the store for a pin the pointer has arrived on. */
+    const hoverPin = (pin: Extract<MarkerUnderPointer, { kind: 'pin' }>) => {
+      const { experienceId, locationId, coordinates } = pin;
 
-        const hoveredKey = `${experienceId}:${locationId ?? ''}`;
-        if (hoveredKey !== mapCurrentHoveredKey) {
-          mapCurrentHoveredKey = hoveredKey;
+      // Straight to the map's source — see `setHoverData` in
+      // `ExperienceMarkers`. A marker hover re-renders nothing.
+      setHoverData(buildPointHoverData(coordinates));
 
-          // Straight to the map's source — see `setHoverData` in
-          // `ExperienceMarkers`. A marker hover re-renders nothing.
-          setHoverData(buildPointHoverData(coords));
+      popup
+        .setLngLat(coordinates)
+        .setDOMContent(buildPopupContent(pin.name))
+        .addTo(map);
 
-          // Show popup
-          popup
-            .setLngLat(coords)
-            .setDOMContent(buildPopupContent(
-              String(feature.properties?.experienceName || feature.properties?.name || '')))
-            .addTo(map);
-
-          // Tell the hover store, which is what draws the row and the card.
-          setHoveredRef.current(experienceId, locationId ?? null);
-          const marker = markersRef.current.find(
-            m => m.experienceId === experienceId && (locationId == null || m.locationId === locationId));
-          if (marker) {
-            setHoverPreview({
-              experienceId: marker.experienceId,
-              experienceName: marker.experience.name,
-              subtitle: marker.experience.subtitle,
-              locationId: marker.locationId,
-              locationName: marker.locationName,
-              kindName: placeKindNames(marker.experience),
-              kindId: marker.experience.kind_id,
-              treasureCount: marker.experience.treasure_count,
-              findsCount: marker.experience.finds_count,
-              ...pointPicture(marker.experience, marker.location),
-              longitude: marker.longitude,
-              latitude: marker.latitude,
-            });
-          }
-        }
+      // Tell the hover store, which is what draws the row and the card.
+      setHoveredRef.current(experienceId, locationId);
+      const marker = markersRef.current.find(
+        m => m.experienceId === experienceId && (locationId == null || m.locationId === locationId));
+      if (marker) {
+        setHoverPreview({
+          experienceId: marker.experienceId,
+          experienceName: marker.experience.name,
+          subtitle: marker.experience.subtitle,
+          locationId: marker.locationId,
+          locationName: marker.locationName,
+          kindName: placeKindNames(marker.experience),
+          kindId: marker.experience.kind_id,
+          treasureCount: marker.experience.treasure_count,
+          findsCount: marker.experience.finds_count,
+          ...pointPicture(marker.experience, marker.location),
+          longitude: marker.longitude,
+          latitude: marker.latitude,
+        });
       }
     };
 
-    /**
-     * What is under a point, in the same key space as `mapCurrentHoveredKey`:
-     * a pin answers with its object and place, a highlight dot with `highlight:`
-     * and its place. Topmost feature wins, which is the one the reader sees.
-     */
-    const hoverKeyAt = (point: maplibregl.Point): string | null => {
-      const layers = [...MARKER_LAYERS, LAYER_HIGHLIGHT_POINT].filter(id => map.getLayer(id));
-      if (layers.length === 0) return null;
-      const under = map.queryRenderedFeatures(point, { layers });
-      if (under.length === 0) return null;
-      const top = under[0];
-      const props = top.properties;
-      if (top.layer.id === LAYER_HIGHLIGHT_POINT) return `highlight:${props?.locationId ?? ''}`;
-      return `${props?.experienceId}:${props?.locationId ?? ''}`;
+    /** The same for a dot of the selected object's places (the red dots). */
+    const hoverHighlight = (dot: Extract<MarkerUnderPointer, { kind: 'highlight' }>) => {
+      const { locationId, coordinates } = dot;
+
+      setHoverData(buildPointHoverData(coordinates));
+
+      popup
+        .setLngLat(coordinates)
+        .setDOMContent(buildPopupContent(dot.name))
+        .addTo(map);
+
+      // Notify the store — the highlight layer draws the selected experience
+      const selExpId = selectedExpIdRef.current;
+      if (selExpId == null) return;
+      setHoveredRef.current(selExpId, locationId);
+      const exp = getExperienceByIdRef.current(selExpId);
+      if (!exp) return;
+      setHoverPreview({
+        experienceId: exp.id,
+        experienceName: exp.name,
+        subtitle: exp.subtitle,
+        locationId,
+        locationName: dot.name || null,
+        kindName: placeKindNames(exp),
+        kindId: exp.kind_id,
+        treasureCount: exp.treasure_count,
+        findsCount: exp.finds_count,
+        // The point as the region's batch holds it, whether or not a
+        // pin draws it: the highlight shows the selected object's
+        // places, out-of-region ones included.
+        ...pointPicture(exp, locationId == null ? null : getLocationRef.current(selExpId, locationId)),
+        longitude: coordinates[0],
+        latitude: coordinates[1],
+      });
     };
+
+    // One move handler for the pins and the dots alike: registered per layer,
+    // so a move over either calls it, and it answers for whatever is topmost —
+    // which is what keeps the order the layers were registered in out of what
+    // the card names where a dot and a pin overlap.
+    const onPointerMove = (e: maplibregl.MapMouseEvent) => {
+      const under = markerUnderPointer(map, e.point);
+      if (!under) return;
+      map.getCanvas().style.cursor = 'pointer';
+      const hoveredKey = hoverKeyOf(under);
+      if (hoveredKey === mapCurrentHoveredKey) return;
+      mapCurrentHoveredKey = hoveredKey;
+      if (under.kind === 'pin') hoverPin(under);
+      else hoverHighlight(under);
+    };
+
+    /**
+     * What is under a point, in the same key space as `mapCurrentHoveredKey`.
+     * Topmost feature wins, which is the one the reader sees.
+     */
+    const hoverKeyAt = (point: maplibregl.Point): string | null => hoverKeyOf(markerUnderPointer(map, point));
 
     // One leave handler for every layer here, because they all overlap and a
     // leave from any of them can be a move onto another. A pin and its badge are
@@ -264,60 +286,6 @@ export function useMarkerInteractions({
       clearHoverState();
     };
 
-    // Highlight layer (red dots) hover — shows popup + orange ring + scrolls list
-    const onHighlightMouseMove = (e: maplibregl.MapMouseEvent) => {
-      map.getCanvas().style.cursor = 'pointer';
-      const features = map.queryRenderedFeatures(e.point, { layers: [LAYER_HIGHLIGHT_POINT] });
-      if (features.length > 0) {
-        const feature = features[0];
-        const locationId = feature.properties?.locationId as number | undefined;
-        const coords = (feature.geometry as GeoJSON.Point).coordinates as [number, number];
-        const name = feature.properties?.name || '';
-
-        // Same key space as the marker layer's, so moving between the two
-        // cannot look like staying on one thing: the highlight draws the
-        // selected object's places, and its own id is what tells them apart.
-        const hoverKey = `highlight:${locationId ?? ''}`;
-        if (hoverKey !== mapCurrentHoveredKey) {
-          mapCurrentHoveredKey = hoverKey;
-
-          setHoverData(buildPointHoverData(coords));
-
-          popup
-            .setLngLat(coords)
-            .setDOMContent(buildPopupContent(name))
-            .addTo(map);
-
-          // Notify the store — the highlight layer draws the selected experience
-          const selExpId = selectedExpIdRef.current;
-          if (selExpId != null) {
-            setHoveredRef.current(selExpId, locationId ?? null);
-            const exp = getExperienceByIdRef.current(selExpId);
-            if (exp) {
-              setHoverPreview({
-                experienceId: exp.id,
-                experienceName: exp.name,
-                subtitle: exp.subtitle,
-                locationId: locationId ?? null,
-                locationName: (feature.properties?.name as string | null | undefined) ?? null,
-                kindName: placeKindNames(exp),
-                kindId: exp.kind_id,
-                treasureCount: exp.treasure_count,
-                findsCount: exp.finds_count,
-                // The point as the region's batch holds it, whether or not a
-                // pin draws it: the highlight shows the selected object's
-                // places, out-of-region ones included.
-                ...pointPicture(exp, locationId == null ? null : getLocationRef.current(selExpId, locationId)),
-                longitude: coords[0],
-                latitude: coords[1],
-              });
-            }
-          }
-        }
-      }
-    };
-
-
     // Wait for layers to exist before attaching handlers
     const attachHandlers = () => {
       if (MARKER_LAYERS.some(id => !map.getLayer(id))) return false;
@@ -334,12 +302,10 @@ export function useMarkerInteractions({
       // pointer never made, and clearing once there is already too many. See
       // `docs/tech/maplibre-patterns.md` § One listener per registration.
       map.on('click', onMarkerClick);
-      for (const id of MARKER_LAYERS) {
-        map.on('mousemove', id, onMarkerMouseMove);
+      for (const id of [...MARKER_LAYERS, LAYER_HIGHLIGHT_POINT]) {
+        map.on('mousemove', id, onPointerMove);
         map.on('mouseleave', id, onHoverLayerLeave);
       }
-      map.on('mousemove', LAYER_HIGHLIGHT_POINT, onHighlightMouseMove);
-      map.on('mouseleave', LAYER_HIGHLIGHT_POINT, onHoverLayerLeave);
       return true;
     };
 
@@ -359,12 +325,10 @@ export function useMarkerInteractions({
       popup.remove();
       setHoverPreview(null);
       map.off('click', onMarkerClick);
-      for (const id of MARKER_LAYERS) {
-        map.off('mousemove', id, onMarkerMouseMove);
+      for (const id of [...MARKER_LAYERS, LAYER_HIGHLIGHT_POINT]) {
+        map.off('mousemove', id, onPointerMove);
         map.off('mouseleave', id, onHoverLayerLeave);
       }
-      map.off('mousemove', LAYER_HIGHLIGHT_POINT, onHighlightMouseMove);
-      map.off('mouseleave', LAYER_HIGHLIGHT_POINT, onHoverLayerLeave);
     };
   }, [mapRef, markersRef, setHoverPreview, setHoverData]);
 }
