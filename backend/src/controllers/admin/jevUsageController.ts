@@ -1,9 +1,9 @@
 /**
  * What Jev has cost, and how often curators chose what it suggested (#1260,
- * #1272, #1249, #1768).
+ * #1272, #1249, #1768, #1913).
  * GET /api/admin/jev/usage
  *
- * Four questions are asked of it, counted apart and added up. The sources
+ * Five questions are asked of it, counted apart and added up. The sources
  * card's: the rows of `experience_view_suggestions`, one per call, and the
  * agreement compares each curator's choice of a source with the newest
  * suggestion made for the same views — a choice that kept the place's own
@@ -26,6 +26,11 @@
  * nothing. The same readings raise a run's questions about an offered place
  * with nothing to see (#1770), and each answered question is compared too: a
  * refusal agrees with the reading it was raised on, a place kept does not.
+ * The hints of where a roughly placed component stands (#1913): the rows of
+ * `experience_point_hint_suggestions`, one per hint judged, and the agreement
+ * compares each point a curator has placed with the newest judgement of each
+ * of its hints — a placement within `HINT_TAKEN_M` of the hint against *same*,
+ * one elsewhere, the list's point kept included, against *other*.
  */
 
 import type { JevUsage } from '../../api/responses/admin.js';
@@ -34,6 +39,7 @@ import { MEMBERSHIPS } from '../../db/membership.js';
 import { jevConfigured, JEV_USD_PER_MILLION_INPUT_TOKENS } from '../../services/jev/jevClient.js';
 import { askedSql } from '../experience/componentItemSuggestions.js';
 import { askedPairSql } from '../experience/mergeProposalSuggestions.js';
+import { HINT_TAKEN_M } from '../experience/pointHintSuggestions.js';
 
 interface Counted {
   calls: number;
@@ -129,11 +135,24 @@ export async function getJevUsage(): Promise<JevUsage> {
       FROM experience_visit_questions q
      WHERE q.answer IS NOT NULL
   `);
+  const hints = await pool.query<Counted>(`
+    SELECT (SELECT count(*) FROM experience_point_hint_suggestions)::int AS calls,
+           (SELECT COALESCE(sum(input_tokens), 0) FROM experience_point_hint_suggestions)::float8 AS input_tokens,
+           count(*)::int AS compared,
+           count(*) FILTER (WHERE (g.judgement = 'same') = ST_DWithin(g.hint_location::geography, el.location::geography, ${HINT_TAKEN_M}))::int AS agreed
+      FROM (SELECT DISTINCT ON (s.location_id, s.source, s.ref) s.location_id, s.judgement, s.hint_location
+              FROM experience_point_hint_suggestions s
+             ORDER BY s.location_id, s.source, s.ref, s.asked_at DESC, s.id DESC) g
+      JOIN experience_locations el ON el.id = g.location_id
+     -- A curator's placement only: until then the question is open.
+     WHERE g.judgement IS NOT NULL AND el.curated_fields ? 'location'
+  `);
   const visits = arrivals.rows[0];
   const asked = questions.rows[0];
   const byQuestion = [
     figures('views', views.rows[0]), figures('componentItems', items.rows[0]), figures('mergeProposals', pairs.rows[0]),
     figures('visits', { ...visits, compared: visits.compared + asked.compared, agreed: visits.agreed + asked.agreed }),
+    figures('pointHints', hints.rows[0]),
   ];
   const inputTokens = byQuestion.reduce((sum, q) => sum + q.inputTokens, 0);
   return {

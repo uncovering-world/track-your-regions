@@ -24,13 +24,17 @@ import { SITE_POINTS } from './reviewQueueComponentItems.js';
 import { objectContextSelectSql } from './reviewQueueContext.js';
 import { approximatePointAskedSql, approximatePointsOpenSql, candidateHintsSql } from './reviewQueuePredicates.js';
 
-/** Every hint of the point `el`, with its distance from it. */
-const HINTS = `
-  SELECT h.source, h.ref, h.label, h.location AS at, h.metres
+/**
+ * Every hint of the point `el`, with its distance from it and, for an
+ * OpenStreetMap object, its tags: what the card lists and what Jev is asked
+ * about (`pointHintSuggestionController.ts`).
+ */
+export const HINTS = `
+  SELECT h.source, h.ref, h.label, h.location AS at, h.metres, h.tags
     FROM experience_point_hints h WHERE h.location_id = el.id
   UNION ALL
   SELECT 'candidate', p.wikidata_item, p.item_label, p.item_location,
-         round(ST_Distance(p.item_location::geography, el.location::geography))::int
+         round(ST_Distance(p.item_location::geography, el.location::geography))::int, NULL::jsonb
     ${candidateHintsSql('p', 'el')}`;
 
 /** A point's hints, the component's own reference first, nearest first within each source. */

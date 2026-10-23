@@ -15,6 +15,7 @@ import {
   AdmissionPinHandedBack,
   ComponentItemsAnswered,
   ComponentItemSuggestions,
+  PointHintSuggestions,
   MergeProposalsAnswered,
   MergeProposalSuggestions,
   VisitSuggestion,
@@ -44,6 +45,7 @@ import { chooseViews } from '../controllers/experience/viewChoiceController.js';
 import { answerComponentItems } from '../controllers/experience/componentItemController.js';
 import { answerMergeProposals } from '../controllers/experience/mergeProposalController.js';
 import { suggestComponentItems } from '../controllers/experience/componentItemSuggestionController.js';
+import { suggestPointHints } from '../controllers/experience/pointHintSuggestionController.js';
 import { suggestMergeProposals } from '../controllers/experience/mergeProposalSuggestionController.js';
 import { suggestVisit } from '../controllers/experience/visitSuggestionController.js';
 import { takeBackPointItem } from '../controllers/experience/pointItemTakeBackController.js';
@@ -627,6 +629,17 @@ export const experienceCurationRoutes = [
     params: idParamSchema,
     response: ComponentItemSuggestions,
     handler: suggestComponentItems,
+  }),
+  // Jev's judgement of the hints of where a site's roughly placed components
+  // stand (#1913): the stored one for each hint as it stands, or a new one
+  // asked for — one call for the card's hints, a POST since it may be paid for.
+  defineRoute({
+    method: 'post', path: '/:id/point-hint-suggestions', access: 'curator', cache: 'no-store',
+    limiter: authenticatedLimiter,
+    summary: 'Ask Jev whether each hint is where a roughly placed component stands; a suggestion, never applied',
+    params: idParamSchema,
+    response: PointHintSuggestions,
+    handler: suggestPointHints,
   }),
   // Jev's judgement of a place's pairs of near places with similar names
   // (#1249): the stored one for each pair as it stands, or a new one asked for
