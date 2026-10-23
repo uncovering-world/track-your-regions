@@ -3965,6 +3965,13 @@ CREATE INDEX IF NOT EXISTS idx_experience_locations_merged_into
 ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS moved_to_location_id INTEGER
     REFERENCES experience_locations(id) ON DELETE SET NULL;
 COMMENT ON COLUMN experience_locations.moved_to_location_id IS 'The point a move replaced this one with (#1448, #1837): the old spot of the Trevi Fountain names the point 24 m away. Set by a curator''s published move, with source_membership former, which is its answer; and by a run whose move of a verified point is short (ADR-0140), which leaves the point present and marks it missing as any point the source stops listing. Either way the point raises no withdrawal question and the answered withdrawals leave it out; a run that lists the old spot again, or a curator who answers it still listed, clears it.';
+-- How roughly the World Heritage list placed a component (#1853): to the whole
+-- minute, or on a point another component of the property shares. Recorded by
+-- the World Heritage run (approximateReasons, @tyr/shared/precision); null for
+-- a point given to the second, and for one a curator placed.
+ALTER TABLE experience_locations ADD COLUMN IF NOT EXISTS approximate VARCHAR(12)
+    CHECK (approximate IN ('whole-minute', 'shared'));
+COMMENT ON COLUMN experience_locations.approximate IS 'Why the World Heritage list''s point for this component only says roughly where it is (#1853): whole-minute, a coordinate to the whole minute (the Longmen Grottoes, 10 km off), or shared, a point another component of the property under another reference also stands on (Echmiatsin''s cathedral, church and cemetery). Null for a point given to the second and for one a curator placed (curated_fields location). Written by the World Heritage run.';
 CREATE TABLE IF NOT EXISTS experience_merges (
     id SERIAL PRIMARY KEY,
     survivor_id INTEGER NOT NULL REFERENCES experiences(id),
