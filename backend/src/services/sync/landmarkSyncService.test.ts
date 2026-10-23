@@ -23,6 +23,7 @@ vi.mock('./syncOrchestrator.js', () => ({
   getSyncStatus: vi.fn(),
   cancelSync: vi.fn(),
 }));
+vi.mock('./locationWriter.js', () => ({ writeExperienceLocations: vi.fn() }));
 vi.mock('./syncUtils.js', () => ({
   upsertExperienceRecord: vi.fn(),
   upsertSingleLocation: vi.fn(),
@@ -104,6 +105,7 @@ import { pool } from '../../db/index.js';
 import { orchestrateSync } from './syncOrchestrator.js';
 import type { SyncServiceConfig, SyncRunContext } from './syncContract.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
+import { writeExperienceLocations } from './locationWriter.js';
 import { withCache } from './wikidataCache.js';
 import { classifyPublicArt, PUBLIC_ART_KIND } from './publicArt/pipeline.js';
 import { WORSHIP_KIND } from './worship/places.js';
@@ -296,6 +298,50 @@ describe('public art in the place pass', () => {
       creators: ['Kārlis Zāle'],
       sitelinksCount: 41,
     });
+  });
+
+  it('writes an edition as one place with a point at every cast, told to be at the most central one (#880)', async () => {
+    const mockedWrite = writeExperienceLocations as unknown as ReturnType<typeof vi.fn>;
+    mockedWrite.mockResolvedValue({ unchanged: 0, needsAssignment: [1, 2, 3, 4], unoffered: 0, delta: {} });
+    const config = await configOf();
+    await config.fetchItems(progress(), []);
+    const context: SyncRunContext = {
+      dryRun: false, syncLogId: 9, onLocationsChanged: vi.fn(), withdrawalSkippedReason: null,
+    };
+    // Maman: the kept point is Minato's, the casts stand on three continents.
+    // Ottawa is listed first and Bilbao is the most central, so the anchor
+    // below is the medoid's and not the first cast's.
+    const maman = landmark({
+      qid: 'Q180887', label: 'Maman', description: 'sculpture by Louise Bourgeois', lat: 35.6610104, lon: 139.7296602,
+      countryLabel: 'Japan', type: 'sculpture',
+      casts: [
+        { name: 'Ottawa', lat: 45.429333, lon: -75.697277, countryLabel: 'Canada' },
+        { name: 'Bilbao', lat: 43.269189, lon: -2.932958, countryLabel: 'Spain' },
+        { name: 'London', lat: 51.507694, lon: -0.099333, countryLabel: 'United Kingdom' },
+        { name: 'Minato', lat: 35.6610104, lon: 139.7296602, countryLabel: 'Japan' },
+      ],
+    });
+
+    await config.processItem(maman, progress(), context);
+
+    const params = mockedUpsert.mock.calls.at(-1)![0];
+    // The anchor is a cast, the most central one, written past the gate; the countries are every cast's.
+    expect(params.locationIsAnchor).toBe(true);
+    expect([params.lat, params.lon]).toEqual([43.269189, -2.932958]);
+    // Every cast's country, the anchor's first: a reader showing one country shows the anchor's.
+    expect(params.countryNames).toEqual(['Spain', 'Canada', 'United Kingdom', 'Japan']);
+    // Every cast is a point of the one place, named for where it stands, under the work's own reference.
+    expect(upsertSingleLocation).not.toHaveBeenCalled();
+    const [experienceId, offered, run] = mockedWrite.mock.calls.at(-1)!;
+    expect(experienceId).toBe(7);
+    expect(offered).toEqual([
+      { name: 'Ottawa', externalRef: 'Q180887', lon: -75.697277, lat: 45.429333 },
+      { name: 'Bilbao', externalRef: 'Q180887', lon: -2.932958, lat: 43.269189 },
+      { name: 'London', externalRef: 'Q180887', lon: -0.099333, lat: 51.507694 },
+      { name: 'Minato', externalRef: 'Q180887', lon: 139.7296602, lat: 35.6610104 },
+    ]);
+    expect(run).toEqual({ syncLogId: 9, sourceId: 3 });
+    expect(context.onLocationsChanged).toHaveBeenCalled();
   });
 
   it('tells two landmarks of one name apart by where the description puts them', async () => {
