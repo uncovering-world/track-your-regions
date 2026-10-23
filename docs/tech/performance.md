@@ -440,6 +440,13 @@ Across all eighteen CI runs of the region and card pages, on #1641, #1644 and
 included, is still read on every run at `warn`, because a visitor pays for
 those tiles whoever serves them. #651, which moves the basemap off
 OpenStreetMap's public server, is the change that would let it gate again.
+The flight was the spread's cause. Since #1842 the map frames a region opened
+from the whole world at once rather than flying in, and the basemap held at
+18 tiles and 333.8–333.9 kB on each of three CI runs of #1900. The totals with
+it held at 1 006.5–1 006.7 kB on 60 requests on the region page and
+1 011.7–1 011.8 kB on 63 on the card. The `warn` lines were lowered to those
+figures plus the usual headroom. They stay at `warn` while the tiles' bytes
+are a public server's rendering.
 
 On the CI runner the pull request that added the pages measured LCP 1.21–1.30 s,
 TBT 125–197 ms and TTI 1.61–1.78 s on the region page, and LCP 0.93–1.25 s,
@@ -921,8 +928,8 @@ unchanged, since only the overview tier was cut. They belong in the next full ru
 | `interactive` | error | 2 500 ms | 1.33–1.64 s on the CI runner (1.90 / 1.59 s locally) |
 | `categories:performance` | warn | 0.8 | informational — the composite score moves ±5 points on identical hardware and is not a gate |
 | region page `/wv/9001/r/9001` and card page `/wv/9001/r/9001/e/9001`: `requests-except:openstreetmap.org:size` | error | 715 000 B | 682 912 B, the heaviest of eighteen CI runs on #1641, #1644 and #1646 (+ ~5 %): everything the page fetched but the OpenStreetMap basemap, which held within 5 kB |
-| both pages: `requests-except:openstreetmap.org:count` | error | 105 | 44–82 requests, the spread being Martin's vector tiles, with the shells' quarter of headroom over the heaviest |
-| both pages: `resource-summary:total:size` and `:count` | warn | 2 200 000 B, 145 | 1 365 877–2 317 656 B on 108–132 requests on the region page in CI, the basemap's 34–52 raster tiles included: read, not gated, while the basemap is a public server's (#651) |
+| both pages: `requests-except:openstreetmap.org:count` | error | 57 | 42 / 45 requests on the region / card page, the same on each of three CI runs on #1900, with the shells' quarter of headroom over the heavier. Was 105 over 44–122: the map flew to the region from the whole world and fetched Martin's vector tiles at every zoom the animation rendered; it now frames the region at once, and fetches the tiles of zoom 1 and of the region's zoom only (#1842) |
+| both pages: `resource-summary:total:size` and `:count` | warn | 1 065 000 B, 79 | 1 006 525–1 011 773 B on 60 / 63 requests on the region / card page on each of three CI runs of #1900, the basemap's 18 raster tiles included (+ ~5 %, and the quarter of headroom on the count). Was 2 200 000 B and 145 over 1 365 877–2 317 656 B on 108–132 requests, while a flight into the region fetched 34–52 tiles (#1842). Read, not gated, while the basemap is a public server's (#651) |
 | both pages: `largest-contentful-paint`, `total-blocking-time`, `interactive` | warn | the shells' 2 000 ms / 300 ms / 2 500 ms, as the pages' own lines | LCP 0.93–1.30 s, TBT 125–304 ms, TTI 1.51–1.78 s on the CI runner across #1641 and #1644. `error` once more CI runs show where they sit |
 | region page: `cumulative-layout-shift` | warn | the shells' 0.02 | 0.011 on the CI runner, 0.001–0.017 on the mini PC |
 | card page: `cumulative-layout-shift` | error | the shells' 0.02 | 0.00005 on each of three runs on the mini PC, where main measured 0.259–0.309 (#1639) |
