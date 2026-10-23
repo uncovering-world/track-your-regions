@@ -33,8 +33,8 @@ declare const locked: unique symbol;
 /**
  * Proof that this transaction holds the object's row lock, on the connection it
  * runs on. Produced only in this module: by `lockExperience`,
- * `lockSourcedExperience`, and `insertCuratedExperience`, whose insert's own row
- * lock is the object lock.
+ * `lockSourcedExperience`, `lockIdentifiedPlace`, and `insertCuratedExperience`,
+ * whose insert's own row lock is the object lock.
  */
 export type LockedExperience = { readonly id: number; readonly [locked]: true };
 
@@ -133,6 +133,65 @@ export async function lockSourcedExperience(
     id = now;
   }
   throw new Error(`${sourceId}/${externalId} kept moving between places while a run locked it`);
+}
+
+/**
+ * The live place a Wikidata item identifies, locked, for a run whose own
+ * membership found nothing (ADR-0143 decision 3, #1894): the place the run
+ * joins instead of creating one. `null` when no place is identified by any of
+ * `items` and holds no membership in the run's kind yet, and the items' keys
+ * are then held (`lock_place_identifiers`), so a second writer of the same new
+ * item waits for this transaction's place and then finds it.
+ *
+ * Only an identifying row is followed (`place_identifiers.identifies`): an item
+ * a serial site's parts all carry refers to them, and an item two places claim
+ * identifies neither until a person settles it. A place that already holds a
+ * membership in the run's kind is not joined, since a place holds one
+ * membership per kind; the run creates its own and the catalogue check lists
+ * the item.
+ *
+ * Looked up first without the keys, and the place locked as any writer locks
+ * it, row before keys. Only a first read that found nothing takes the keys and
+ * reads again; where that second read finds a place another run created
+ * meanwhile, the row is locked after the keys, and a writer of that place
+ * waiting on the same keys meets this run in a cycle, which PostgreSQL ends by
+ * aborting one (40P01). The run records that item as failed and its next run
+ * writes it. Read again once the row is locked, since a merge or an edit
+ * during the wait may have moved the item to another place.
+ */
+export async function lockIdentifiedPlace(
+  client: PoolClient,
+  sourceId: number,
+  items: readonly string[],
+): Promise<LockedExperience | null> {
+  if (items.length === 0) return null;
+  const placeOf = async (): Promise<number | undefined> => (await client.query(
+    `SELECT pi.experience_id FROM place_identifiers pi
+      WHERE pi.scheme = 'wikidata' AND pi.value = ANY($1::text[]) AND pi.identifies
+        AND NOT EXISTS (SELECT 1 FROM ${MEMBERSHIPS} own
+                         WHERE own.experience_id = pi.experience_id
+                           AND own.kind_id = (SELECT kind_id FROM experience_sources WHERE id = $2))
+      ORDER BY pi.experience_id
+      LIMIT 1`,
+    [items, sourceId],
+  )).rows[0]?.experience_id as number | undefined;
+
+  let id = await placeOf();
+  let keysHeld = false;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (id === undefined) {
+      if (keysHeld) return null;
+      await client.query(`SELECT lock_place_identifiers('wikidata', $1::text[])`, [items]);
+      keysHeld = true;
+      id = await placeOf();
+      continue;
+    }
+    await client.query(`SELECT id FROM experiences WHERE id = $1 ${OBJECT_LOCK}`, [id]);
+    const now = await placeOf();
+    if (now === id) return { id } as LockedExperience;
+    id = now;
+  }
+  throw new Error(`${items.join(', ')} kept moving between places while a run locked it`);
 }
 
 /**

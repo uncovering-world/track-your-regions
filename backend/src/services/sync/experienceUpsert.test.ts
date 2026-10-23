@@ -122,6 +122,9 @@ function given(stored: Record<string, unknown> | null, written: Record<string, u
 }
 
 /** Every statement the connection ran, in order. */
+/** A statement with its whitespace folded, for matching a clause across lines. */
+const collapse = (sql: string): string => sql.replace(/\s+/g, ' ');
+
 function sentSql(): string[] {
   return client.query.mock.calls.map(call => String(call[0]));
 }
@@ -456,8 +459,10 @@ describe('a dry run', () => {
     );
     expect(sql).not.toMatch(/experiences\.curation_state/);
     // And it finds the place the way the run does: through the source's own
-    // membership and the id the source knows it by (ADR-0084).
-    expect(sql).toContain('WHERE sm.source_id = $1 AND sm.external_id = $2');
+    // membership and the id the source knows it by (ADR-0084), and else the
+    // place the run's item identifies (ADR-0143 decision 3).
+    expect(sql).toContain('WHERE own_m.source_id = $1 AND own_m.external_id = $2');
+    expect(collapse(sql)).toContain("pi.scheme = 'wikidata' AND pi.value = ANY($3::text[]) AND pi.identifies");
   });
 
   it('previews a rename with the name the real run would store', async () => {
@@ -559,7 +564,9 @@ describe('one transaction per object, the row locked first', () => {
     // The read after it, on the same row, with no lock of its own.
     const [snapshot, snapshotParams] = snapshotRead();
     expect(snapshot).not.toContain('FOR NO KEY UPDATE');
-    expect(snapshot).toContain('WHERE e.id = $2 AND sm.source_id = $1 AND sm.external_id = $3');
+    // The run's own membership joined, not required: a place the run joins by
+    // its item has none yet (ADR-0143 decision 3).
+    expect(collapse(snapshot)).toContain('LEFT JOIN experience_kind_memberships sm ON sm.experience_id = e.id AND sm.source_id = $1 AND sm.external_id = $3 WHERE e.id = $2');
     // Whether the source had stopped listing the place is its own membership's.
     expect(snapshot).toContain('sm.missing_since, sm.source_membership');
     expect(snapshotParams).toEqual([PARAMS.sourceId, 501, PARAMS.externalId]);

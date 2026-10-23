@@ -7,12 +7,14 @@ import { writeExperienceLocations } from './locationWriter.js';
  * own (#1256, ADR-0084), executed against PostgreSQL: which rows the pairing,
  * the placement and the withdrawal reach is decided in SQL.
  *
- * The fixture is the Cave of Altamira as Epic #755 will leave it: one place
- * that Public art and Archaeology both fill, each with a point of
- * its own 752 m apart, as the two rows stand on the development catalogue
- * today. Wikidata holds two coordinates for the cave, one of them rounded to
- * the arc-minute, and each source reads a different one. Ids and references
- * are the fixture's own, deleted before and after.
+ * The fixture is the Cave of Altamira as two sources left it before a run of
+ * one point joined a place of one point at its point (ADR-0143 decision 3): one
+ * place that Public art and Archaeology both fill, each with a point of its
+ * own 752 m apart. Wikidata holds two coordinates for the cave, one of them
+ * rounded to the arc-minute, and each source reads a different one. The
+ * second point is laid down as that earlier run wrote it, since a run writing
+ * it now takes the first instead (the last case). Ids and references are the
+ * fixture's own, deleted before and after.
  */
 
 const ALTAMIRA = 9470;
@@ -71,7 +73,15 @@ beforeEach(async () => {
   );
   // Each source has written its own point once.
   await writeExperienceLocations(ALTAMIRA, [ROUNDED], run(publicArt));
-  await writeExperienceLocations(ALTAMIRA, [PRECISE], run(archaeology));
+  await pool.query(
+    `WITH point AS (
+       INSERT INTO experience_locations (experience_id, external_ref, ordinal, location)
+       VALUES ($1, $2, 1, ST_SetSRID(ST_MakePoint($3, $4), 4326)) RETURNING id)
+     INSERT INTO experience_location_placements (location_id, membership_id)
+     SELECT point.id, m.id FROM point, experience_kind_memberships m
+      WHERE m.experience_id = $1 AND m.source_id = $5`,
+    [ALTAMIRA, PRECISE.externalRef, PRECISE.lon, PRECISE.lat, archaeology],
+  );
 });
 
 afterAll(async () => {
@@ -116,5 +126,16 @@ describe('a point and the memberships that place it (ADR-0084)', () => {
       { external_ref: PRECISE.externalRef, ordinal: 1 },
       { external_ref: ROUNDED.externalRef, ordinal: 1 },
     ]);
+  });
+
+  it('places a second source on the one point of a place of one point, 752 m off (ADR-0143 decision 3)', async () => {
+    await pool.query(
+      `DELETE FROM experience_locations WHERE experience_id = $1 AND external_ref = $2`, [ALTAMIRA, PRECISE.externalRef],
+    );
+    const result = await writeExperienceLocations(ALTAMIRA, [PRECISE], run(archaeology));
+
+    expect(result.delta.added).toEqual([]);
+    expect(await placers(ROUNDED.externalRef)).toEqual([publicArt, archaeology].sort((a, b) => a - b));
+    expect(await offered()).toEqual({ [ROUNDED.externalRef]: true });
   });
 });
