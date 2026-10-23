@@ -110,6 +110,18 @@ function creditPatch(
 }
 
 /**
+ * The live service with nothing kept: what a run on the subset asks about
+ * what the subset in place does not hold (`publicArt/subjects.ts`). An
+ * answer kept here would be read back into a later run on the subset, which
+ * no run may mix in (ADR-0119).
+ */
+export function liveSparql(progress: SyncProgress): (query: string, descriptor?: CacheDescriptor) => Promise<SparqlBinding[]> {
+  const door = wikidataDoor(progress, new WaitBudget(SPARQL_WAIT_BUDGET_MS), LOG_PREFIX);
+  // The descriptor names a cache entry, and there is none to name.
+  return (query) => door(query);
+}
+
+/**
  * The run's door to Wikidata, with the answers kept.
  *
  * The museum collector's shape (ADR-0030): one wait budget for the whole

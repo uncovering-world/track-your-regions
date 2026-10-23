@@ -18,7 +18,7 @@ import { admittedExternalIds } from '../admission.js';
 import { wikidataRunDoor } from '../subset/runDoor.js';
 import { passMember, runSyncPass, sharedGather } from '../syncPass.js';
 import { PLACE_PASS, PUBLIC_ART_SOURCES } from '../passes.js';
-import { collectingSparql, placeSource, publicArtSource } from '../landmarkSyncService.js';
+import { collectingSparql, liveSparql, placeSource, publicArtSource } from '../landmarkSyncService.js';
 import { TOWERS_CLASSIFIER, TOWERS_KIND, TOWERS_SOURCE_ID } from '../towers/kind.js';
 import { BRIDGES_CLASSIFIER, BRIDGES_KIND, BRIDGES_SOURCE_ID } from '../bridges/kind.js';
 import { SQUARES_CLASSIFIER, SQUARES_KIND, SQUARES_SOURCE_ID } from '../squares/kind.js';
@@ -50,6 +50,11 @@ function placeGather(refreshCache: boolean): (progress: SyncProgress) => Promise
     const sparql = await wikidataRunDoor(lead, progress, () => collectingSparql(lead, progress, refreshCache));
     const gathered = await gatherPlaces({
       sparql,
+      // The bridge a subset run asks what the subset in place does not keep
+      // (`publicArt/subjects.ts`), uncached: no cached live answer is read
+      // into a run on the subset (ADR-0119).
+      live: () => liveSparql(progress),
+      cancelled: () => progress.cancel === true,
       phase: (message) => { progress.statusMessage = message; },
       step: async () => {
         if (progress.cancel) throw new Error('Sync cancelled');

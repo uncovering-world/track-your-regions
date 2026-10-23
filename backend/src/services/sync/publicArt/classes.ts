@@ -144,6 +144,22 @@ export const COMMEMORATIVE_FORMS: Record<string, string> = {
  */
 export const PUBLIC_ART_GENRE = 'Q557141';
 
+/**
+ * Whom a statue is raised to, read from what it depicts (`P180`, #1832): a
+ * person — Sardar Vallabhbhai Patel on the Statue of Unity, Jan Hus in the Old
+ * Town Square — or a nation, as Mother Ukraine depicts Ukraine. A depicted
+ * person Wikidata says is worshipped (`P1049`) or types a biblical figure is a
+ * devotional image, not a monument: the Tian Tan Buddha depicts the Buddha,
+ * Christ the King in Świebodzin Jesus, and the Rondanini Pietà Mary. Being a
+ * saint is not that: St Wenceslas on Wenceslas Square is a monument.
+ */
+export const PERSON_CLASS = 'Q5';
+export const BIBLICAL_FIGURE_CLASS = 'Q20643955';
+export const NATION_CLASSES: Record<string, string> = {
+  Q6256: 'country',
+  Q3624078: 'sovereign state',
+};
+
 /** The forms a Monuments & memorials type names, beside `memorial` and `monument`. */
 export const ARCH_CLASSES: Record<string, string> = {
   Q143912: 'triumphal arch',

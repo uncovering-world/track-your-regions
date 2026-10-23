@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../../db/index.js';
 import { fetchClassPool, fetchContainerFacts, fetchEntitiesByIds, fetchEntityFacts } from '../publicArt/queries.js';
+import { fetchSubjectFacts } from '../publicArt/subjects.js';
 import { subsetOnlyDoor } from './reader.js';
 
 /**
@@ -19,6 +20,9 @@ const MONA_LISA = 'Q12418';
 const LISA_DEL_GIOCONDO = 'Q153032';
 const PORTRAIT = 'Q134307';
 const LEONARDO = 'Q762';
+const THE_BUDDHA = 'Q9441';
+const BUDDHISM = 'Q748';
+const HUMAN = 'Q5';
 const MUSEUM = 'Q33506';
 const PAINTING = 'Q3305213';
 const ROOM_325 = 'Q19119449';
@@ -119,6 +123,11 @@ const ENTITIES: Array<[string, number, Record<string, unknown>]> = [
   }],
   [MEDIOLANUM, 40, {
     claims: { P625: [statement('M1', point(45.4642, 9.19))], P17: [statement('M2', 'Q1747689')] },
+    sitelinks: {},
+  }],
+  // A depicted person the scope keeps as a seed's subject (#1832), worshipped by Buddhism.
+  [THE_BUDDHA, 200, {
+    claims: { P31: [statement('B1', HUMAN)], P1049: [statement('B2', BUDDHISM)] },
     sitelinks: {},
   }],
   ...CASTS.map(([host, country]): [string, number, Record<string, unknown>] =>
@@ -241,6 +250,12 @@ describe('Public Art read from the subset (#1459)', () => {
       classes: [PAINTING], locations: [LOUVRE], parents: [], collections: [], creators: ['Leonardo da Vinci'],
       commemorates: [], depicts: [LISA_DEL_GIOCONDO], genres: [PORTRAIT],
     });
+  });
+
+  it('reads what a depicted subject is, and nothing of one the subset did not keep', async () => {
+    const subjects = await fetchSubjectFacts(door, [THE_BUDDHA, LISA_DEL_GIOCONDO]);
+    expect(subjects.get(THE_BUDDHA)).toEqual({ classes: [HUMAN], worshipped: true });
+    expect(subjects.has(LISA_DEL_GIOCONDO)).toBe(false);
   });
 
   it('reads what a container is called and is in', async () => {

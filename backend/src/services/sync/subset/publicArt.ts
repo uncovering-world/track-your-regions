@@ -21,6 +21,7 @@
 import { foldLabel } from '@tyr/shared/labels';
 import { pool } from '../../../db/index.js';
 import type { ContainerFacts, EntityFacts, PoolEntity } from '../publicArt/queries.js';
+import type { SubjectFacts } from '../publicArt/subjects.js';
 import { countryOfPlace, openCountries, standingCountries, type PlaceCountry } from '../publicArt/countryOfPlace.js';
 import { parseWktPoint, preferredCoordinate, preferredPicture } from '../wikidataUtils.js';
 import { BEST, entitiesOf, termsOf, type Kept, type Terms } from './entities.js';
@@ -169,6 +170,18 @@ export async function subsetEntityFacts(ids: string[]): Promise<Map<string, Enti
       commemorates: itemsOf(bestStatements(claims.P547)),
       depicts: itemsOf(bestStatements(claims.P180)),
       genres: itemsOf(bestStatements(claims.P136)),
+    });
+  }
+  return out;
+}
+
+/** What each kept depicted item is, as `fetchSubjectFacts` answers; an item the subset did not keep has no entry. */
+export async function subsetSubjectFacts(ids: string[]): Promise<Map<string, SubjectFacts>> {
+  const out = new Map<string, SubjectFacts>();
+  for (const [id, { entity }] of await entitiesOf(ids)) {
+    out.set(id, {
+      classes: itemsOf(bestStatements(entity.claims.P31)),
+      worshipped: bestStatements(entity.claims.P1049).length > 0,
     });
   }
   return out;

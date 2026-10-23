@@ -62,7 +62,7 @@ const trees = buildTrees({
 });
 
 const facts = (over: Partial<PublicArtFacts>): PublicArtFacts => ({
-  qid: 'Q1', classes: [SCULPTURE], containers: [], collections: [], commemorates: [], depicts: [], genres: [],
+  qid: 'Q1', classes: [SCULPTURE], containers: [], collections: [], commemorates: [], depicts: [], genres: [], subjects: [],
   onEarth: true, lat: 41.9, lon: 12.5, ...over,
 });
 
@@ -644,6 +644,27 @@ describe('publicArtVerdict — what it admits', () => {
     });
     expect(publicArtVerdict(liberty, trees, monuments)).toMatchObject({ pass: true, type: 'monument', artwork: true });
     expect(publicArtVerdict(liberty, trees, art)).toMatchObject({ pass: true, type: 'sculpture' });
+  });
+
+  it('admits a statue raised to a person or a nation to Monuments & memorials, and not a devotional image', () => {
+    // The Statue of Unity depicts Sardar Vallabhbhai Patel; Mother Ukraine
+    // depicts Ukraine. The Tian Tan Buddha depicts the Buddha, whom Buddhism
+    // worships; the Rondanini Pietà depicts Mary, a biblical figure. Neither
+    // is a monument, and all four are public art.
+    const person = { classes: ['Q5'], worshipped: false };
+    const unity = facts({ classes: [STATUE, COLOSSAL_STATUE], subjects: [person] });
+    expect(publicArtVerdict(unity, trees, monuments)).toMatchObject({ pass: true, type: 'monument' });
+    expect(publicArtVerdict(unity, trees, art)).toMatchObject({ pass: true, type: 'sculpture' });
+    expect(publicArtVerdict(facts({ classes: [COLOSSAL_STATUE], subjects: [{ classes: ['Q6256', 'Q3624078'], worshipped: false }] }), trees, monuments))
+      .toMatchObject({ pass: true, type: 'monument' });
+    for (const subject of [{ classes: ['Q5'], worshipped: true }, { classes: ['Q20643955', 'Q5'], worshipped: false }]) {
+      expect(reasonOf(publicArtVerdict(facts({ classes: [STATUE], subjects: [subject] }), trees, monuments)))
+        .toBe('no monument or memorial class');
+    }
+    // A person depicted by something no sculptural class names says nothing:
+    // a mural of Brezhnev and Honecker is not a monument to them.
+    expect(reasonOf(publicArtVerdict(facts({ classes: [MURAL], subjects: [person] }), trees, monuments)))
+      .toBe('no monument or memorial class');
   });
 
   it('lets a P547 statement lift the museum veto for Monuments & memorials', () => {

@@ -79,6 +79,7 @@ describe('classifyBridges', () => {
     byId: new Set(),
     facts: new Map(rows.map(([e, classes]) => [e.qid, { classes }])) as never,
     containers: emptyContainment(),
+    subjects: new Map(),
   });
 
   it('admits by the rule and both doors, refuses what the rule refuses, and names a fallen work', async () => {

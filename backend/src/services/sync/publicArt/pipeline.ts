@@ -35,6 +35,7 @@ import type { KindRule } from './kindRules.js';
 import { emptyFacts, type PoolEntity, type EntityFacts } from './queries.js';
 import type { PlaceKind } from '../places/gather.js';
 import { chainOf, ownersOf, type Containment } from '../places/containment.js';
+import type { SubjectFacts } from './subjects.js';
 import type { FilteredEntity } from '../syncContract.js';
 import type { WikidataLandmark } from '../types.js';
 
@@ -89,6 +90,8 @@ export interface GatheredPublicArt {
   pool: Map<string, PoolEntity>;
   facts: Map<string, EntityFacts>;
   containers: Containment;
+  /** What the candidates depict, by item id. */
+  subjects: Map<string, SubjectFacts>;
 }
 
 async function collectTrees(run: QueryRunner): Promise<PublicArtTrees> {
@@ -141,6 +144,7 @@ export const PUBLIC_ART_KIND: PlaceKind<PublicArtTrees> = {
   trees: collectTrees,
   poolClasses: (trees) => ({ broad: BROAD_ROOTS, narrow: trees.admitting }),
   readsContainers: true,
+  readsSubjects: true,
 };
 
 /**
@@ -156,7 +160,7 @@ export const PUBLIC_ART_KIND: PlaceKind<PublicArtTrees> = {
  * reads.
  */
 export function classifyPublicArt(
-  { trees, pool, facts, containers }: GatheredPublicArt,
+  { trees, pool, facts, containers, subjects }: GatheredPublicArt,
   rule: KindRule,
   admitted: ReadonlySet<string>,
   offered?: ReadonlySet<string>,
@@ -169,8 +173,9 @@ export function classifyPublicArt(
     // On a refusal of a row the source admits, the type the classes read: a
     // curator may have put it back, and a put-back is filed under it too
     // (`filePutBackTypes`, ADR-0135).
+    const depicted = known.depicts.flatMap((qid) => subjects.get(qid) ?? []);
     const type = admitted.has(entity.qid)
-      ? { type: rule.type({ classes: known.classes, commemorates: known.commemorates, genres: known.genres }, trees) }
+      ? { type: rule.type({ classes: known.classes, commemorates: known.commemorates, genres: known.genres, subjects: depicted }, trees) }
       : {};
     const verdict = publicArtVerdict({
       qid: entity.qid,
@@ -180,6 +185,7 @@ export function classifyPublicArt(
       commemorates: known.commemorates,
       depicts: known.depicts,
       genres: known.genres,
+      subjects: depicted,
       onEarth: entity.onEarth,
       lat: entity.lat,
       lon: entity.lon,

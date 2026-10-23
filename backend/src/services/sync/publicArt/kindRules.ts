@@ -15,12 +15,16 @@ import {
   ARCH_CLASSES,
   COLUMN_CLASSES,
   COMMEMORATIVE_FORMS,
+  BIBLICAL_FIGURE_CLASS,
   HERITAGE_MONUMENT_CLASSES,
+  NATION_CLASSES,
   OBELISK_CLASSES,
+  PERSON_CLASS,
   PUBLIC_ART_GENRE,
   STREET_ART_CLASSES,
   type PublicArtTrees,
 } from './classes.js';
+import type { SubjectFacts } from './subjects.js';
 
 /** The types the two kinds file a row under, disjoint so a value names its kind (`experienceTypes.ts`). */
 const PUBLIC_ART_TYPES = ['sculpture', 'fountain', 'street-art'] as const;
@@ -35,6 +39,8 @@ export interface KindFacts {
   commemorates: string[];
   /** `P136`, the genre the candidate is filed under. */
   genres: string[];
+  /** What each item it depicts (`P180`) is, for the ones that were read. */
+  subjects: SubjectFacts[];
 }
 
 export interface KindRule {
@@ -65,6 +71,11 @@ export interface KindRule {
 
 const has = (classes: string[], of: ReadonlySet<string> | Record<string, string>): boolean =>
   classes.some((c) => (of instanceof Set ? of.has(c) : Object.hasOwn(of, c)));
+
+/** Whether a depicted item is someone a statue is raised to: a person no one worships, or a nation (`NATION_CLASSES`). */
+const raisedTo = (subject: SubjectFacts): boolean =>
+  (subject.classes.includes(PERSON_CLASS) && !subject.worshipped && !subject.classes.includes(BIBLICAL_FIGURE_CLASS))
+  || has(subject.classes, NATION_CLASSES);
 
 /** What a candidate's form is said to be: its classes, and the genre it is filed under. */
 export const formsOf = (e: KindFacts): string[] => [...e.classes, ...e.genres];
@@ -98,7 +109,10 @@ export const PUBLIC_ART_RULE: KindRule = {
  * equestrian statue. A memorial lifts the cemetery veto and a bare
  * building's, since the Neue Wache is a guardhouse raised to remember and
  * Arlington a cemetery a traveller visits as a memorial; a work filed under
- * public art (`PUBLIC_ART_GENRE`) answers them as an artwork class does.
+ * public art (`PUBLIC_ART_GENRE`) answers them as an artwork class does. A
+ * statue raised to someone is a monument to them: the Statue of Unity depicts
+ * Sardar Vallabhbhai Patel, Mother Ukraine depicts Ukraine (`raisedTo`) — a
+ * statue, not a painting: the Fraternal Kiss depicts Brezhnev and Honecker.
  * The form names the type before the purpose: the Arc de Triomphe is an arch
  * and the Washington Monument an obelisk, whatever else they are.
  */
@@ -109,7 +123,8 @@ export const MONUMENTS_RULE: KindRule = {
   admits: (e, trees) => has(e.classes, trees.commemorative)
     || has(formsOf(e), COMMEMORATIVE_FORMS)
     || has(e.classes, HERITAGE_MONUMENT_CLASSES)
-    || e.commemorates.length > 0,
+    || e.commemorates.length > 0
+    || (has(e.classes, trees.sculptural) && !has(e.classes, STREET_ART_CLASSES) && e.subjects.some(raisedTo)),
   answersVeto: (e, trees) => has(formsOf(e), trees.artwork) || e.genres.includes(PUBLIC_ART_GENRE),
   memorialLifts: true,
   types: MONUMENT_TYPES,

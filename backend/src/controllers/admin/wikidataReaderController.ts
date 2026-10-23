@@ -19,7 +19,10 @@ import type { sourceIdParamSchema, wikidataReaderBodySchema } from '../../types/
  * The subset is offered only for a source every question of which has a twin
  * (`SUBSET_READY_SOURCES`): a run that read some answers from the subset and
  * the rest from the live service would mix two dates of Wikidata, and the
- * run's door refuses a question with no twin anyway. Whether the subset is
+ * run's door refuses a question with no twin anyway. One question is the
+ * exception, until a copy built under the scope that keeps a seed's depicted
+ * items is in place: what a candidate depicts, asked live for the items the
+ * copy lacks (`publicArt/subjects.ts`, `keepsSubjects`). Whether the subset is
  * built is the run's to check when it starts, where it can say so.
  */
 export async function setWikidataReader(

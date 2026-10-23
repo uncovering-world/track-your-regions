@@ -33,6 +33,7 @@ import { formsOf, type KindRule, type MonumentType, type PublicArtType } from '.
 // The works-first kinds' exception for a lost work whose remains are on show (#872).
 import { REMAINS_ON_SHOW } from '../museum/worksCollector.js';
 import type { ContainerFact } from '../places/containment.js';
+import type { SubjectFacts } from './subjects.js';
 
 export interface PublicArtFacts {
   qid: string;
@@ -53,6 +54,8 @@ export interface PublicArtFacts {
   depicts: string[];
   /** `P136`, the genre the entity is filed under. */
   genres: string[];
+  /** What each item it depicts is, for the ones that were read. */
+  subjects: SubjectFacts[];
   /** Whether `P625` is on this planet — Fallen Astronaut's is not. */
   onEarth: boolean;
   lat: number | null;
