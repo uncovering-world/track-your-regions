@@ -27,6 +27,7 @@
 import type { ReactNode } from 'react';
 import { Chip, Link, Stack, Tooltip } from '@mui/material';
 import { isEmptyValue } from '@tyr/shared/equality';
+import { placeFieldUnseen } from '@tyr/shared/readerFields';
 import type { ImageCredit } from '../../api/experiences';
 import type { ChangedField } from '../../api/reviewQueue';
 import { parseCriteria } from '../../utils/unescoCriteria';
@@ -666,22 +667,6 @@ function unknownMeaning(label: string): FieldMeaning {
 }
 
 /**
- * The facts no reader-facing surface shows today, measured on the tree (2026-08-30): the
- * expanded row, Discover's card and its detail panel read `dateInscribed`, `inDanger` (and
- * the listing's year), `website`, `wikipediaUrl`, the picture and its credit, the name and
- * the descriptions. Everything else the sources store is stored and shown nowhere — the
- * gap #574 is about — and a card must not say "nothing readers see changes" from the
- * *kind* of a change: a picture arriving is a fact appearing, and readers see it. This is
- * what lets the summary say it from the fact instead.
- */
-const UNSEEN_BY_READERS = new Set([
-  'tags',
-  'metadata.criteria', 'metadata.region', 'metadata.areaHectares', 'metadata.transboundary',
-  'metadata.wikidataQid', 'metadata.artworkCount', 'metadata.totalArtworkSitelinks',
-  'metadata.creators', 'metadata.year', 'metadata.sitelinksCount',
-]);
-
-/**
  * The meaning of a field the changeset names: a column, `metadata.<key>`, or
  * `nameLocal.<lang>`.
  *
@@ -689,9 +674,8 @@ const UNSEEN_BY_READERS = new Set([
  * to. A run records each local name that differs on its own since #728, so the
  * card no longer splits a language map itself — the row arrives named
  * `nameLocal.ko` and must still say *name in Korean*, which is the vocabulary
- * `keyMeaningOf` already holds. Without it a real fact, and one readers see,
- * would fall through to "extra data from the source" and be marked as seen by
- * nobody.
+ * `keyMeaningOf` already holds. Without it a real fact would fall through to
+ * "extra data from the source".
  */
 export function meaningOf(field: string, ...samples: unknown[]): FieldMeaning {
   // A type is explained in the words of the vocabulary its value is from — a
@@ -705,7 +689,11 @@ export function meaningOf(field: string, ...samples: unknown[]): FieldMeaning {
     if (vocabulary) return { ...MEANINGS.type, what: vocabulary.what, whenItChanges: vocabulary.whenItChanges };
   }
   const known = MEANINGS[field];
-  if (known) return UNSEEN_BY_READERS.has(field) ? { ...known, unseen: true } : known;
+  // Whether readers see a field is its mark (`@tyr/shared/readerFields`), the
+  // one the gate passes an unseen rewrite by: a card must not say "nothing
+  // readers see changes" from the *kind* of a change, since a picture arriving
+  // is a fact appearing, and readers see it.
+  if (known) return placeFieldUnseen(field) ? { ...known, unseen: true } : known;
   if (field.startsWith('nameLocal.')) {
     return keyMeaningOf('nameLocal', field.slice('nameLocal.'.length));
   }
@@ -729,6 +717,7 @@ export function keyMeaningOf(field: string, key: string): FieldMeaning {
       label: `name in ${language}`,
       what: `The name in ${language}, as the source publishes it.`,
       whenItChanges: 'Routine: a translation corrected or added.',
+      ...(placeFieldUnseen(`nameLocal.${key}`) ? { unseen: true } : {}),
     };
   }
   return unknownMeaning(humaniseKey(key));
