@@ -1,7 +1,7 @@
 # ADR-0099: A rewrite a visitor would not notice passes the gate
 
 **Date:** 2026-10-12
-**Status:** Accepted — decision 1 narrowed by [ADR-0129](0129-a-wikidata-item-a-place-holds-none-of-passes-the-gate.md), [ADR-0133](0133-a-subtitle-a-place-holds-none-of-passes-the-gate.md) and [ADR-0135](0135-a-type-its-kind-has-no-word-for-passes-the-gate.md)
+**Status:** Accepted — decision 1 narrowed by [ADR-0129](0129-a-wikidata-item-a-place-holds-none-of-passes-the-gate.md), [ADR-0133](0133-a-subtitle-a-place-holds-none-of-passes-the-gate.md), [ADR-0135](0135-a-type-its-kind-has-no-word-for-passes-the-gate.md) and [ADR-0139](0139-a-field-no-reader-sees-and-a-typographic-rewrite-pass-the-gate.md)
 **Issue:** [#1353](https://github.com/uncovering-world/track-your-regions/issues/1353)
 **Narrows:** [ADR-0037](0037-a-part-field-readers-see-is-held-like-the-objects.md) decision 1, and the object's own hold it mirrors (ADR-0025's gate, held per field since #519)
 
