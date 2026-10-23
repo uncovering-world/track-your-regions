@@ -701,7 +701,13 @@ read some answers from the subset and the rest live would mix two dates of
 Wikidata. Such a run is handed `subsetOnlyDoor()` by `wikidataRunDoor`
 (`sync/subset/runDoor.ts`): marked, and failing by name if any question
 reaches SPARQL; the museum, worship and archaeology runs and the place pass's gather then skip
-the pause they keep between questions to the live service. Archaeology takes the door through
+the pause they keep between questions to the live service. One question is the exception, and
+until a copy built under the scope that keeps a seed's depicted items is in place
+(`keepsSubjects`): what a candidate depicts, which the gather asks the live service about for
+the items the copy lacks — 107 on the subset of 2026-10-05 — through an uncached door
+(`liveSparql`, ADR-0119) and paced (`publicArt/subjects.ts`, #1832). It is best-effort: when the
+live service does not answer, the run carries on with what the subset answered and logs how many
+subjects it left unread, and those statues stay in Public art alone. Archaeology takes the door through
 `subsetRunDoor` once for the run and hands it to every pass, since its
 fallback from the OpenStreetMap mirror to Overpass changes only the map. A run switched to the subset before one is built stops at once
 and says so. A wrapper around a marked door is marked again (`subsetDoor`), or
@@ -2276,7 +2282,16 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    (`P136`) as well as the class (`formsOf`, #1832): the Bronze Horseman (`monumental sculpture`)
    and Gattamelata in Padua (`sculpture`) are filed as equestrian statues, and the Statue of
    Liberty as a monumental sculpture, which is a form of its own — a sculpture made as a monument,
-   as the Lion of Belfort is. The refusals read `no public-art class` and
+   as the Lion of Belfort is. A statue raised to someone is a monument to them (`raisedTo` in
+   `kindRules.ts`, over the facts `publicArt/subjects.ts` reads): a sculpture, not a painting, that depicts (`P180`) a person nobody
+   worships (`P1049`) and Wikidata does not type a biblical figure — the Statue of Unity (Sardar
+   Vallabhbhai Patel), the Jan Hus Memorial — or a nation (`NATION_CLASSES`: Mother Ukraine). The
+   Tian Tan Buddha, Christ the King in Świebodzin and the Rondanini Pietà are devotional images and
+   stay in Public art alone, and being a saint does not count (St Wenceslas on Wenceslas Square is
+   a monument). What a depicted item is comes through the run's door; a subset built before its
+   scope kept a seed's depicted items (`keepsSubjects`, `docs/tech/dumps.md`) answers it for the
+   items that are seeds themselves (Ukraine), and the run asks the live service about the rest —
+   107 on the subset of 2026-10-05 — until one built under that scope is in place. The refusals read `no public-art class` and
    `no monument or memorial class`. **What place it is**: a lake, a road, a trail, a square, a
    garden, a villa, a house museum or a heritage grouping (`OTHER_PLACE_CLASSES`) beside the
    kind's class refuses it as `a lake, which no kind holds yet: not a monument or memorial` —
