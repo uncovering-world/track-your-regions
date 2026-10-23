@@ -66,3 +66,50 @@ export function sameLabel(a: string | null | undefined, b: string | null | undef
 export function tidyLabel(value: string): string {
   return value.replace(/\s+/g, ' ').trim();
 }
+
+/**
+ * A text with its typesetting removed, for the gate's `typography` class
+ * (#1834, ADR-0139): canonically composed (NFC), every quote and apostrophe
+ * shape folded to the plain one and every dash to the hyphen, a trailing
+ * literal `\t` or `\n` escape dropped, runs of whitespace collapsed to one
+ * space and the ends trimmed. Case and accents stay, and so does every space
+ * between two characters: *Hollokö* written *Hollok ö* is a corruption, not
+ * typesetting.
+ *
+ * The escape is the World Heritage list's: it once wrote some component names
+ * with a backslash and a `t` at the end (*Maltepe Tumulus\t* at Pergamon), and
+ * the stored names still carry them as text.
+ *
+ * Spelled for SQL in `backend/src/services/sync/labelFold.ts`
+ * (`typographyFoldSql`), for the location writer and migration 154.
+ */
+export function foldTypography(value: string): string {
+  return withoutTrailingEscapes(value.normalize('NFC'))
+    .replace(/[‘’‚‛ʼ′]/g, "'")
+    .replace(/[“”„‟″«»]/g, '"')
+    .replace(/[‐-―−]/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+/** The text without the whitespace and literal `\t` / `\n` escapes it ends in. */
+function withoutTrailingEscapes(value: string): string {
+  let end = value.length;
+  for (;;) {
+    if (end > 0 && /\s/.test(value[end - 1])) end -= 1;
+    else if (end > 1 && value[end - 2] === '\\' && (value[end - 1] === 't' || value[end - 1] === 'n')) end -= 2;
+    else return value.slice(0, end);
+  }
+}
+
+/**
+ * Whether `incoming` rewrites `stored` only in its typesetting (`foldTypography`).
+ * One way only for the escape: a rewrite that drops a trailing literal `\t` is
+ * the source's correction, and one that adds it would write the garbage this
+ * rule exists to clear.
+ */
+export function sameTypography(stored: string | null | undefined, incoming: string | null | undefined): boolean {
+  return typeof stored === 'string' && typeof incoming === 'string' && stored !== incoming
+    && withoutTrailingEscapes(incoming) === incoming.trimEnd()
+    && foldTypography(stored) === foldTypography(incoming);
+}

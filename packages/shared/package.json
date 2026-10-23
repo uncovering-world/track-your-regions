@@ -19,6 +19,7 @@
     "./openapi": "./src/openapi.generated.json",
     "./pictures": "./src/pictures.ts",
     "./preferences": "./src/preferences.ts",
+    "./readerFields": "./src/readerFields.ts",
     "./runStatuses": "./src/runStatuses.ts"
   },
   "scripts": {
