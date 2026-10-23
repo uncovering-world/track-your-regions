@@ -258,6 +258,12 @@ describe('a place none of whose memberships carries the source and id it was bro
     expect(assertion.kind).toBe('invariant');
   });
 
+  it('leaves a serial site\'s component part alone, whose own pair no membership ever carries', () => {
+    // A part holding a kind's membership (the Tower of Belem as a tower) is the
+    // resolver's own state (ADR-0143), and its run finds it through its whole.
+    expect(sql).toContain('NOT EXISTS (SELECT 1 FROM experience_parts prt WHERE prt.part_id = e.id)');
+  });
+
   it('leaves a place with no membership at all to the check that names that', () => {
     expect(sql).toContain(`WHERE EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id)`);
   });
