@@ -1792,7 +1792,7 @@ export interface MergeProposalPass {
 }
 
 /**
- * Which card asked: the sources card (#1260), the component-items card (#1272), the near-places card (#1249), or an arriving place's card (#1768).
+ * Which card asked: the sources card (#1260), the component-items card (#1272), the near-places card (#1249), an arriving place's card (#1768), or the Where is it? card's hints (#1913).
  */
 export type JevUsageByQuestionItemQuestion = typeof JevUsageByQuestionItemQuestion[keyof typeof JevUsageByQuestionItemQuestion];
 
@@ -1802,13 +1802,14 @@ export const JevUsageByQuestionItemQuestion = {
   componentItems: 'componentItems',
   mergeProposals: 'mergeProposals',
   visits: 'visits',
+  pointHints: 'pointHints',
 } as const;
 
 export type JevUsageByQuestionItem = {
-  /** Which card asked: the sources card (#1260), the component-items card (#1272), the near-places card (#1249), or an arriving place's card (#1768). */
+  /** Which card asked: the sources card (#1260), the component-items card (#1272), the near-places card (#1249), an arriving place's card (#1768), or the Where is it? card's hints (#1913). */
   question: JevUsageByQuestionItemQuestion;
   /**
-     * Suggestions asked for: one call each on the sources and arriving-place cards, one question each on the component-items and near-places cards.
+     * Suggestions asked for: one call each on the sources and arriving-place cards, one question each on the component-items and near-places cards and per hint on the Where is it? card.
      * @minimum -9007199254740991
      * @maximum 9007199254740991
      */

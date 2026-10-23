@@ -11,15 +11,23 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReviewQueueItem } from '../../api/reviewQueue';
 
-vi.mock('../../api/curation', () => ({ editLocation: vi.fn() }));
+vi.mock('../../api/curation', () => ({ editLocation: vi.fn(), suggestPointHints: vi.fn() }));
+// The map, as the card hands it its focus: the hint picked, by its label.
+vi.mock('./ComponentItemsMap', async (original) => ({
+  ...(await original<typeof import('./ComponentItemsMap')>()),
+  ComponentItemsMap: ({ focus }: { focus: { candidate: { label: string } | null } }) => (
+    <div>{`map on ${focus.candidate?.label ?? 'no hint'}`}</div>
+  ),
+}));
 vi.mock('../shared/PointPreviewDialog', () => ({
   PointPreviewDialog: ({ name }: { name: string }) => <div>{`placing ${name} by hand`}</div>,
 }));
 
-import { editLocation } from '../../api/curation';
-import { ApproximatePointsCard, hintHref, minuteCell, reasonWords, type ApproximatePoint } from './ApproximatePointsCard';
+import { editLocation, suggestPointHints } from '../../api/curation';
+import { ApproximatePointsCard, hintHref, hintsInOrder, minuteCell, reasonWords, type ApproximatePoint } from './ApproximatePointsCard';
 
 const mockedEdit = editLocation as unknown as ReturnType<typeof vi.fn>;
+const mockedSuggest = suggestPointHints as unknown as ReturnType<typeof vi.fn>;
 
 const GAYANEH: ApproximatePoint = {
   locationId: 10741, name: 'Church Saint Gayaneh and surrounding buildings', ref: '1011-002',
@@ -54,6 +62,8 @@ function renderCard(onDone = vi.fn()) {
 beforeEach(() => {
   mockedEdit.mockReset();
   mockedEdit.mockResolvedValue({ locationId: 1 });
+  mockedSuggest.mockReset();
+  mockedSuggest.mockResolvedValue({ configured: false, suggestions: [] });
 });
 
 describe('the card for components placed only roughly', () => {
@@ -99,5 +109,47 @@ describe("the card's words and links", () => {
     expect(hintHref(GAYANEH.hints[0])).toBe('https://www.openstreetmap.org/way/194252618');
     expect(hintHref({ ...GAYANEH.hints[0], ref: 'R3284827' })).toBe('https://www.openstreetmap.org/relation/3284827');
     expect(hintHref({ ...GAYANEH.hints[1], ref: 'Q1450786' })).toBe('https://www.wikidata.org/wiki/Q1450786');
+  });
+});
+
+describe("Jev's judgement of the hints (#1913)", () => {
+  it('says what Jev makes of a hint beside it', async () => {
+    mockedSuggest.mockResolvedValue({ configured: true, suggestions: [
+      { locationId: 10741, source: 'osm-ref', ref: 'W194252618', judgement: 'same', confidence: 0.93 },
+    ] });
+    renderCard();
+    expect(await screen.findByText('Jev says the same place · 93 %')).toBeTruthy();
+  });
+
+  it('moves a hint Jev is sure is another place after the rest, and keeps it', () => {
+    const sure = { locationId: 10741, source: 'osm-ref' as const, ref: 'W194252618', judgement: 'other' as const, confidence: 0.95 };
+    const ordered = hintsInOrder(GAYANEH, key => (key === '10741:osm-ref:W194252618' ? sure : undefined));
+    expect(ordered.map(h => h.source)).toEqual(['candidate', 'osm-ref']);
+    // Unsure, it stays where it was.
+    const unsure = hintsInOrder(GAYANEH, () => ({ ...sure, confidence: 0.6 }));
+    expect(unsure.map(h => h.source)).toEqual(['osm-ref', 'candidate']);
+  });
+});
+
+describe('the hint picked on the map (#1913)', () => {
+  it('stays the one picked when the judgements arrive and move another hint after it', async () => {
+    let answer: (value: unknown) => void = () => {};
+    mockedSuggest.mockReturnValue(new Promise(resolve => { answer = resolve; }));
+    const candidate = { ...GAYANEH.hints[1], label: 'The candidate item' };
+    const site = { ...ECHMIATSIN, approximate_points: [{ ...GAYANEH, hints: [GAYANEH.hints[0], candidate] }, ROUNDED] } as unknown as ReviewQueueItem;
+    render(
+      <QueryClientProvider client={new QueryClient()}>
+        <ApproximatePointsCard item={site} onDone={vi.fn()} />
+      </QueryClientProvider>,
+    );
+    fireEvent.click(screen.getAllByRole('button', { name: 'Show on the map' })[1]);
+    expect(screen.getByText('map on The candidate item')).toBeTruthy();
+
+    // Jev is sure the church above it is another place, which moves the church last.
+    answer({ configured: true, suggestions: [
+      { locationId: 10741, source: 'osm-ref', ref: 'W194252618', judgement: 'other', confidence: 0.95 },
+    ] });
+    expect(await screen.findByText('Jev says another place · 95 %')).toBeTruthy();
+    expect(screen.getByText('map on The candidate item')).toBeTruthy();
   });
 });
