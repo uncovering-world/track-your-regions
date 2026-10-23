@@ -304,3 +304,46 @@ export async function insertCuratedExperience(
   ]);
   return { id: inserted.rows[0].id as number } as LockedExperience;
 }
+
+/**
+ * The place a curator's separation makes of one kind's membership (ADR-0142):
+ * the original's content, under the membership's own view of the name, the
+ * subtitle, the picture and its credit, and the point (`reported_*`), and the
+ * membership's source and id. The source's next run writes the rest through
+ * the usual rules, finding its membership on this place. Answers with the
+ * object's token: the insert's own row lock is the object lock, as for a
+ * curator's created place.
+ */
+export async function insertSeparatedExperience(
+  client: PoolClient,
+  original: LockedExperience,
+  membershipId: number,
+): Promise<LockedExperience> {
+  const inserted = await client.query(`
+    INSERT INTO experiences (
+      source_id, external_id, name, name_local, subtitle, description, tags, location,
+      country_codes, country_names, image_url, metadata, status
+    )
+    SELECT m.source_id,
+           -- Which source first brought a place, and under what id, is all
+           -- these two say (a run finds its place through its membership): the
+           -- original keeps its own, and where the membership's is that, this
+           -- place is named by the separation.
+           CASE WHEN EXISTS (SELECT 1 FROM experiences taken WHERE taken.source_id = m.source_id AND taken.external_id = m.external_id)
+                THEN 'separated-' || e.id || '-' || m.id ELSE m.external_id END,
+           COALESCE(m.reported_name, e.name), e.name_local,
+           CASE WHEN m.reported_name IS NULL THEN e.subtitle ELSE m.reported_subtitle END,
+           e.description, e.tags, COALESCE(m.reported_location, e.location),
+           e.country_codes, e.country_names,
+           CASE WHEN m.reported_name IS NULL THEN e.image_url ELSE m.reported_image_url END,
+           (COALESCE(e.metadata, '{}'::jsonb) - 'imageCredit')
+             || CASE WHEN m.reported_name IS NULL THEN jsonb_strip_nulls(jsonb_build_object('imageCredit', e.metadata -> 'imageCredit'))
+                     ELSE jsonb_strip_nulls(jsonb_build_object('imageCredit', m.reported_image_credit)) END,
+           e.status
+      FROM experiences e
+      JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.id = $2
+     WHERE e.id = $1
+    RETURNING id
+  `, [original.id, membershipId]);
+  return { id: inserted.rows[0].id as number } as LockedExperience;
+}

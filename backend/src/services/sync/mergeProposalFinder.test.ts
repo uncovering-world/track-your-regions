@@ -46,8 +46,14 @@ describe('the pairs the rule finds', () => {
   it('asks the best similarity over every folded name of each, at the threshold ADR-0046 fixes', () => {
     expect(MIN_SIMILARITY).toBe(0.5);
     expect(sql).toContain('(SELECT max(similarity(an, bn)) FROM unnest(a.names) AS an, unnest(b.names) AS bn)::real AS name_similarity');
-    expect(sql).toContain(`WHERE m.name_similarity >= ${MIN_SIMILARITY} OR EXISTS`);
+    expect(sql).toContain(`WHERE (m.name_similarity >= ${MIN_SIMILARITY} OR EXISTS`);
     expect(sql).toContain(`CASE WHEN m.name_similarity >= ${MIN_SIMILARITY} THEN 'similar' ELSE 'words' END AS found_by`);
+  });
+
+  it('never proposes two places a curator separated (ADR-0142)', () => {
+    expect(sql).toContain('AND NOT EXISTS (SELECT 1 FROM experience_separations sep');
+    expect(sql).toContain('(sep.original_id = m.place_a AND sep.separated_id = m.place_b)');
+    expect(sql).toContain('(sep.original_id = m.place_b AND sep.separated_id = m.place_a)');
   });
 
   it('finds a pair too where every word of one name stands in the other, its generic words left out (#1652)', () => {

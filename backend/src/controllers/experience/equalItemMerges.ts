@@ -44,7 +44,8 @@ export function membershipItemSql(membership = 'm', place = 'e'): string {
  * The Wikidata items held by more than one place, one row each: `qid`, its
  * places in id order (`place_ids`), their names in that order (`names`) and
  * the kinds that hold them (`kinds`); for an item a component part holds, the
- * place it folds into (`survivor_id`, `survivor_name`). Narrowed to the items named by
+ * place it folds into (`survivor_id`, `survivor_name`). The place a curator's separation
+ * made is left out of the item it was separated on (ADR-0142). Narrowed to the items named by
  * `onlyParam` — a placeholder bound to a `text[]`, or `NULL` for every item.
  * The pass merges what this finds, and the catalogue check
  * `places-sharing-a-wikidata-item` counts what it still finds, so the two ask
@@ -73,6 +74,11 @@ export function sharedItemsSql(onlyParam: string): string {
          ${partItemsSql()}
        ) held
       WHERE held.qid IS NOT NULL AND (${onlyParam}::text[] IS NULL OR held.qid = ANY(${onlyParam}::text[]))
+        -- A curator separated this place out of the one the item names
+        -- (ADR-0142): it is no longer that item's place, and another source
+        -- bringing the item later joins the original.
+        AND NOT EXISTS (SELECT 1 FROM experience_separations sep
+                         WHERE sep.wikidata_item = held.qid AND sep.separated_id = held.place_id)
       GROUP BY held.qid
      HAVING count(DISTINCT held.place_id) > 1`;
 }

@@ -366,6 +366,19 @@ export async function undoMerge(
         status: 409, error: 'A later merge into the same place is still in effect — undo that merge first',
       });
     }
+    // A kind this merge brought was separated into a place of its own since
+    // (ADR-0142): what the record names is not on the survivor any more, and
+    // undoing would leave the folded place with no membership.
+    const separated = await client.query(
+      `SELECT 1 FROM experience_separations
+        WHERE original_id = $1 AND membership_id IN (SELECT jsonb_array_elements_text($2::jsonb)::int) LIMIT 1`,
+      [merge.survivor_id, JSON.stringify(merge.moved.memberships)],
+    );
+    if ((separated.rowCount ?? 0) > 0) {
+      return await refuse({
+        status: 409, error: 'A kind this merge brought has since been separated into a place of its own; that place is what the merge brought now',
+      });
+    }
     await moveEverythingBack(client, merge.moved, folded.lock, survivor.lock);
     await markFolded(client, folded.lock, null);
     // A pair a curator answered *one place* ran this merge (#1249): apart
