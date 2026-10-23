@@ -635,8 +635,9 @@ describe('a held withdrawal has a column in both schema homes', () => {
     // a different row version than the one the statement acted on — the shape
     // of #519, with nothing failing.
     //
-    // Every trigger in this schema is on `regions` or `administrative_divisions`
-    // (geometry simplification, region metadata, focus data, is_leaf). Asserted
+    // So a trigger on `experiences` fires AFTER the row is written, which can
+    // change other tables and never the row: the identifier registry's, which
+    // follows a merge (`place_identifiers_follow_place`, ADR-0143). Asserted
     // rather than assumed, because the invariant lives nowhere else in code and
     // the next person to add a trigger here has no reason to know it exists.
     // `OR REPLACE` is optional in the grammar, and the first version of this
@@ -669,9 +670,10 @@ describe('a held withdrawal has a column in both schema homes', () => {
       .toBe(starts.length);
     expect(definitions.length).toBeGreaterThan(0);
 
-    for (const definition of definitions) {
-      expect(definition, `a trigger fires on experiences: ${definition.slice(0, 120)}`)
-        .not.toMatch(/\bON experiences\b/);
+    const onPlaces = definitions.filter(definition => /\bON experiences\b/.test(definition));
+    for (const definition of onPlaces) {
+      expect(definition, `a trigger fires on experiences before the row is written: ${definition.slice(0, 120)}`)
+        .toMatch(/ AFTER /);
     }
   });
 });

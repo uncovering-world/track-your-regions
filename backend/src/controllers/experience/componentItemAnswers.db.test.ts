@@ -224,7 +224,7 @@ describe("a site's candidate component items (#1272)", () => {
     const other = await pool.connect();
     try {
       await other.query('BEGIN');
-      await other.query(`SELECT pg_advisory_xact_lock(hashtext('wikidata_item:' || $1::text))`, [BOLOGA_FORT]);
+      await other.query(`SELECT lock_place_identifiers('wikidata', ARRAY[$1::text])`, [BOLOGA_FORT]);
       let settled = false;
       const answer = answerComponentItemsUnderLock(SITE, curatorId, null, [
         { proposalId: proposals.fort, answer: 'accepted' },

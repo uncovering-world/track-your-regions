@@ -72,6 +72,7 @@ import type { AnyAssertion, AssertionRow, CatalogueAssertion } from './assertion
 import { coverageAssertions } from './coverageAssertions.js';
 import { divisionTreeAssertions } from './divisionTreeAssertions.js';
 import { objectAssertions } from './objectAssertions.js';
+import { identifierAssertions } from './identifierAssertions.js';
 import { workAssertions } from './workAssertions.js';
 import { regionGeometryAssertions } from './regionGeometryAssertions.js';
 import { borderPlacementAssertions } from './borderPlacementAssertions.js';
@@ -644,6 +645,7 @@ export const catalogueAssertions: CatalogueAssertion[] = [
   ...borderPlacementAssertions,
   ...divisionTreeAssertions,
   ...objectAssertions,
+  ...identifierAssertions,
   ...workAssertions,
   pictureTheProductMayNotShow,
   pictureWithNobodyCredited,

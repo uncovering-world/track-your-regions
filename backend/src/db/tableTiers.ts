@@ -78,6 +78,7 @@ export const TABLE_TIERS: Record<RelationName, Tier> = {
   osm_layer_builds: 'workbench',
   osm_layer_schedule: 'workbench',
   osm_objects: 'workbench',
+  place_identifiers: 'serving',
   readership_month_files: 'workbench',
   readership_months: 'workbench',
   readership_staging: 'workbench',
