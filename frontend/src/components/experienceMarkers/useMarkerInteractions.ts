@@ -203,19 +203,21 @@ export function useMarkerInteractions({
     /** The same for a dot of the selected object's places (the red dots). */
     const hoverHighlight = (dot: Extract<MarkerUnderPointer, { kind: 'highlight' }>) => {
       const { locationId, coordinates } = dot;
+      // The highlight layer draws the selected experience; a dot named for
+      // nothing of its own is the object's one point (#1917), so the popup
+      // reads the object and the card names no part.
+      const selExpId = selectedExpIdRef.current;
+      const exp = selExpId == null ? undefined : getExperienceByIdRef.current(selExpId);
 
       setHoverData(buildPointHoverData(coordinates));
 
       popup
         .setLngLat(coordinates)
-        .setDOMContent(buildPopupContent(dot.name))
+        .setDOMContent(buildPopupContent(dot.name || exp?.name || ''))
         .addTo(map);
 
-      // Notify the store — the highlight layer draws the selected experience
-      const selExpId = selectedExpIdRef.current;
       if (selExpId == null) return;
       setHoveredRef.current(selExpId, locationId);
-      const exp = getExperienceByIdRef.current(selExpId);
       if (!exp) return;
       setHoverPreview({
         experienceId: exp.id,

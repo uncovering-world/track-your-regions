@@ -207,18 +207,21 @@ export function ExperienceMarkers({ regionId }: ExperienceMarkersProps) {
     if (!shown) {
       const exp = getExperienceById(selectedExperienceId);
       if (!exp) return EMPTY_FC;
+      // The object's own point stands for no one place and carries no name of
+      // its own, like the folded pin; the popup reads the object (#1917).
       return buildHighlightData([
-        { coordinates: [exp.longitude, exp.latitude], locationId: null, name: exp.name },
+        { coordinates: [exp.longitude, exp.latitude], locationId: null, name: null },
       ]);
     }
 
-    // Named as the pin is: the one point of a museum reads the museum (#1268).
+    // Named as the pin is: the one point of a museum is the museum and carries
+    // no name of its own, so its hover card names no part (#1268, #1917); the
+    // popup falls back to the object's name in `useMarkerInteractions`.
     const objectPoints = locationsByExperience[selectedExperienceId]?.length ?? shown.length;
-    const objectName = getExperienceById(selectedExperienceId)?.name ?? '';
     return buildHighlightData(shown.map(loc => ({
       coordinates: [loc.longitude, loc.latitude],
       locationId: loc.id,
-      name: pinLabel(loc, objectPoints) ?? objectName,
+      name: pinLabel(loc, objectPoints),
     })));
   }, [selectedExperienceId, shownPlacesFor, getExperienceById, locationsByExperience]);
 

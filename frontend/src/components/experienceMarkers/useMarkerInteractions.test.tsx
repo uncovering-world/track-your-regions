@@ -123,6 +123,17 @@ describe('useMarkerInteractions', () => {
     expect(toggleSelectedExperience).toHaveBeenCalledWith(11671);
   });
 
+  it("names no part on the dot of a one-point place, and reads the place in the popup (#1917)", () => {
+    // The Serapeum's one point carries no name of its own: the card shows the
+    // place, no part line and no "whole site's picture" note.
+    const ownPoint = feature(LAYER_HIGHLIGHT_POINT, { locationId: 14249, name: null }, SERAPEUM);
+    const { emit } = mount(() => [ownPoint]);
+    emit('mousemove', LAYER_HIGHLIGHT_POINT, event);
+    expect(setHoverPreview).toHaveBeenCalledWith(expect.objectContaining({
+      experienceId: 13926, experienceName: 'Serapeum of Alexandria', locationId: 14249, locationName: null,
+    }));
+  });
+
   it('does nothing over empty map', () => {
     const { emit } = mount(() => []);
     emit('mousemove', LAYER_MARKERS, event);
