@@ -499,9 +499,13 @@ something a check reading the list's output could see. It reads the lists a
 constant can hold — the kill classes, the pinned worship floor, the pinned floor
 of the lost tree (`LOST_CLASSES`: a lost sculpture, a destroyed artwork — with the rule's one
 exception by name, `REMAINS_ON_SHOW`, left alone here as the rule leaves it), the buildings
-and cemeteries of the veto list — and answers a building class the way the rule
-does, by an artwork class: not approximated, but read from the rule's own
-answer, which the run stores beside the classes (`metadata.wikidataArtwork`)
+and cemeteries of the veto list, and the burial classes (`BURIAL_CLASSES`), which Monuments &
+memorials lets a commemorative form lift, read from the genre too (#1832) — and answers a
+building class the way the rule does, by an artwork class, and a burial class by a
+commemorative form, which only Monuments & memorials reads (a Public art admission of a burial
+class is reported whatever the answer): not approximated, but read from the
+rule's own answer, which the run stores beside the classes (`metadata.wikidataArtwork`, one per
+place, whichever kind's run wrote it last)
 because the closures that answer — a holy well is in the fountain closure — are
 walked from Wikidata each run and no constant could hold them. A row written
 before that key existed reads as no answer, the conservative reading. The

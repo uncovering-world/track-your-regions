@@ -2248,7 +2248,11 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    (`HERITAGE_MONUMENT_CLASSES`: monument, national monument — the Tsar Bell, the Krakus Mound)
    and anything that commemorates someone (`P547`): the Jefferson Memorial is typed nothing but a
    National Memorial of the United States, and the designation alone admits nothing — Federal
-   Hall is typed the same and commemorates nobody. The refusals read `no public-art class` and
+   Hall is typed the same and commemorates nobody. A commemorative form is read from the genre
+   (`P136`) as well as the class (`formsOf`, #1832): the Bronze Horseman (`monumental sculpture`)
+   and Gattamelata in Padua (`sculpture`) are filed as equestrian statues, and the Statue of
+   Liberty as a monumental sculpture, which is a form of its own — a sculpture made as a monument,
+   as the Lion of Belfort is. The refusals read `no public-art class` and
    `no monument or memorial class`. **What place it is**: a lake, a road, a trail, a square, a
    garden, a villa, a house museum or a heritage grouping (`OTHER_PLACE_CLASSES`) beside the
    kind's class refuses it as `a lake, which no kind holds yet: not a monument or memorial` —
@@ -2270,7 +2274,13 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    building's (`MEMORIAL_LIFTS`: cemetery, war cemetery, building, built structure, guardhouse,
    A-bombed building): Arlington, the Piskaryovskoye Memorial Cemetery and Martyrs' Lane in Baku
    are cemeteries a traveller visits as memorials, the Neue Wache is a guardhouse and the
-   Hiroshima Peace Memorial an A-bombed building. A building of a kind of its own stays itself:
+   Hiroshima Peace Memorial an A-bombed building. For that kind a `P547` statement is a memorial
+   too: the Vittoriano is typed only by Italian museum classes and commemorates Victor Emmanuel II,
+   and the USS Arizona Memorial is typed a museum and commemorates the ship. A work Wikidata files
+   under public art (`P136` `public art`, `PUBLIC_ART_GENRE`) answers that kind's vetoes as an
+   artwork class does: the Soviet War Memorial in the Tiergarten is typed cemetery, military
+   museum and monument, and the Monument to the Conquerors of Space historic site, monument and
+   museum, with the museum in its base. A building of a kind of its own stays itself:
    Montjuïc Castle (`memorial, military museum, castle`) is a castle. `monument` is not
    commemorative: it is what Spain's heritage register calls a listed museum. So the
    Hermannsdenkmal (`sculpture, monument, tower, colossal statue`), Monas in Jakarta (`obelisk,
@@ -2290,7 +2300,9 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    Wikidata types an art museum and Art Museums refuses by name: a mural may be in a hall, so it
    is not outdoors by what it is), the Arch of Constantine and Trajan's Column (typed archaeological
    sites, which World Heritage's Rome holds), Anıtkabir and the mausoleums of Mao and Ho Chi Minh
-   (`mausoleum` is a kill class, and Tombs & mausoleums is a kind of its own still proposed); and
+   (`mausoleum` is a kill class, and Tombs & mausoleums is a kind of its own still proposed — for
+   Monuments & memorials a commemorative form beside a burial class lifts it, `BURIAL_CLASSES`:
+   the Monumento a la Revolución is typed mausoleum and triumphal arch); and
    known false admissions, left to a curator's rejection: a work Wikidata neither places nor gives
    an owner (the Infant Jesus of Prague; the Nestorian Stele, pinned at its find spot rather than
    in the Stele Forest that holds it). Kryptos (`sculpture, fountain, ciphertext`) stands in a
