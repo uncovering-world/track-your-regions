@@ -51,7 +51,6 @@ import {
   type DataAssertionReport,
 } from '../../api/admin/dataAssertions';
 import { EmptyState } from '../shared/EmptyState';
-import { EqualItemMergeCard } from './EqualItemMergeCard';
 import { MergeProposalFinderCard } from './MergeProposalFinderCard';
 import { formatDateTime } from '../../utils/dateFormat';
 import { plural } from '../../utils/plural';
@@ -303,7 +302,6 @@ export function CatalogueChecksPanel() {
         past it means something is writing those rows now.
       </Typography>
 
-      <EqualItemMergeCard />
       <MergeProposalFinderCard />
 
       {data?.acceptancesUnavailable && (
