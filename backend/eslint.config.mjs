@@ -579,6 +579,7 @@ export default [
       'src/controllers/experience/experienceLocationWriter.ts',
       'src/services/sync/locationWriter.ts',
       'src/services/sync/pointContentWriter.ts',
+      'src/services/sync/shortMoveWriter.ts',
     ],
     rules: {
       'no-restricted-syntax': restrictedSyntaxWithout(EXPERIENCE_LOCATION_WRITE_RULES),

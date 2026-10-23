@@ -95,6 +95,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { retirePassAfterNewContent } from './curationDecay.js';
 import { pointHeldProposalAt, type WriteRun } from './heldProposalPointer.js';
 import { tidyLabel } from '@tyr/shared/labels';
+import { settleShortMoves, shortMoveChange, type ShortMove } from './shortMoveWriter.js';
 import { sameTypographySql } from './labelFold.js';
 import type { ContentsDelta } from './types.js';
 // The source's list, before anything is known about the store: how it becomes a
@@ -859,6 +860,7 @@ export async function writeExperienceLocations(
     const unreadArrivals = inserted.rows
       .filter(r => r.curation_state === 'pending')
       .map(r => r.id as number);
+    let shortMoves: ShortMove[] = [];
     if (unreadArrivals.length > 0) {
       await client.query(
         `WITH ${cte},
@@ -1013,6 +1015,10 @@ export async function writeExperienceLocations(
          WHERE n.id = m.new_id`,
         [...withSource, unreadArrivals],
       );
+      // A short move of a verified point takes the new spot at once (ADR-0140):
+      // its arrival is published and its hold ends, so the withdrawal below
+      // marks the old point as for any point the source no longer lists.
+      shortMoves = await settleShortMoves(client, experienceId, unreadArrivals);
     }
 
     // A point the source is offering again is not being withdrawn, so nothing is
@@ -1131,7 +1137,7 @@ export async function writeExperienceLocations(
     // values the pairing carried in, since the arm above has already replaced
     // them: a point that moved 1.2 km and one whose name gained an en dash both
     // reach here, and only the first survives `contentsChangeSet`'s normalisation.
-    const changed = keptChanges(kept.rows);
+    const changed = [...keptChanges(kept.rows), ...shortMoves.map(shortMoveChange)];
 
     // A held name is a proposal a curator has to be able to find, and the card
     // finds it through the object's pointer (ADR-0037). In the same transaction

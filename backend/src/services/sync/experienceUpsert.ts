@@ -83,6 +83,8 @@ import {
 } from './changeSet.js';
 import { tidyLabel } from '@tyr/shared/labels';
 import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
+import { distanceMeters, LOCATION_UNCHANGED_METERS, SHORT_MOVE_METERS } from '@tyr/shared/moves';
+import { shortMovePassesSql } from '../../db/shortMove.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { lockSourcedExperience } from '../../db/experienceWriter.js';
 import { keptForFamilies, otherFamiliesFields } from './fieldFamilies.js';
@@ -305,9 +307,11 @@ function snapshotFromRow(row: Record<string, unknown>): ExperienceSnapshot {
 function snapshotFromParams(
   params: ExperienceUpsertParams,
   boundary: BoundarySnapshot | null,
+  shortMovePasses = false,
 ): ExperienceSnapshot {
   return {
     boundary,
+    shortMovePasses,
     name: params.name,
     nameLocal: params.nameLocal,
     subtitle: params.subtitle,
@@ -331,6 +335,30 @@ function snapshotFromParams(
  * Backs dry runs: a preview has to be able to say what would change without
  * spending the change.
  */
+/**
+ * Whether the run's coordinate is a short move of the held place's
+ * (`shortMovePassesSql`, ADR-0140), asked only where the answer can matter: a
+ * held place whose own coordinate moved by at least ten metres and less than
+ * `SHORT_MOVE_METERS`. An anchor is written past the gate anyway (ADR-0095).
+ */
+async function shortMovePasses(
+  query: Pick<PoolClient, 'query'>,
+  placeId: number,
+  stored: { lon: unknown; lat: unknown },
+  written: ExperienceUpsertParams,
+  held: boolean,
+): Promise<boolean> {
+  if (!held || written.locationIsAnchor) return false;
+  const moved = distanceMeters(Number(stored.lon), Number(stored.lat), written.lon, written.lat);
+  if (moved < LOCATION_UNCHANGED_METERS || moved >= SHORT_MOVE_METERS) return false;
+  const point = (lon: string, lat: string) => `ST_SetSRID(ST_MakePoint(${lon}::float8, ${lat}::float8), 4326)`;
+  const result = await query.query<{ passes: boolean }>(
+    `SELECT ${shortMovePassesSql('$1::int', point('$2', '$3'), point('$4', '$5'))} AS passes`,
+    [placeId, Number(stored.lon), Number(stored.lat), written.lon, written.lat],
+  );
+  return Boolean(result.rows[0]?.passes);
+}
+
 async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutcome> {
   const result = await pool.query(
     `SELECT e.id, e.curated_fields, sm.missing_since, sm.source_membership,
@@ -362,7 +390,10 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
     keptAsStored(params, row, await fieldsKeptAsStored(pool, row.id, params, row)),
     row, await otherFamiliesFields(pool, row.id, params.sourceId),
   );
-  const incoming = snapshotFromParams(written, await measureExtent(pool, params.boundaryWkt));
+  const incoming = snapshotFromParams(
+    written, await measureExtent(pool, params.boundaryWkt),
+    await shortMovePasses(pool, row.id, row, written, Boolean(row.was_held)),
+  );
 
   // What the run this preview stands in for would refuse to write, asked of the
   // same expression that run's own guards are built from. Asked at all because
@@ -551,6 +582,8 @@ async function writeUnderLock(
       stored, await otherFamiliesFields(client, locked.id, params.sourceId),
     );
 
+  const shortMove = stored !== null && await shortMovePasses(client, stored.id as number, stored, written, held);
+
   const result = await client.query(
     `WITH gate AS (
       SELECT requires_curation FROM experience_sources WHERE id = $1
@@ -616,9 +649,10 @@ async function writeUnderLock(
         -- the one stored is an anchor the run derives from its points, written
         -- past the gate, since a curator can decide nothing by answering it.
         -- A curator's claim still keeps it.
+        -- A short move passes the gate too (ADR-0140, the diff's 'short-move').
         location = CASE WHEN experiences.curated_fields ? 'location' THEN experiences.location
                         WHEN $28::boolean THEN EXCLUDED.location
-                        WHEN ${HELD} THEN experiences.location ELSE EXCLUDED.location END,
+                        WHEN ${HELD} AND NOT ${PASSES('location')} THEN experiences.location ELSE EXCLUDED.location END,
         country_codes = CASE WHEN experiences.curated_fields ? 'country_codes' OR (${HELD} AND NOT ${PASSES('country_codes')})
                              THEN experiences.country_codes ELSE EXCLUDED.country_codes END,
         country_names = CASE WHEN experiences.curated_fields ? 'country_names' OR (${HELD} AND NOT ${PASSES('country_names')})
@@ -821,13 +855,13 @@ async function writeUnderLock(
       // the diff below reads too (ADR-0077 decision 2).
       claimedMetadataKeys(stored?.curated_fields ?? [], stored?.metadata ?? null),
       params.typeVocabulary ? [...params.typeVocabulary] : null,
-      held && stored ? passingColumns(snapshotFromRow(stored), snapshotFromParams(written, null), stored.curated_fields ?? []) : [],
+      held && stored ? passingColumns(snapshotFromRow(stored), snapshotFromParams(written, null, shortMove), stored.curated_fields ?? []) : [],
     ]
   );
 
   const row = result.rows[0];
   const before = stored && !row.inserted ? snapshotFromRow(stored) : null;
-  const incoming = snapshotFromParams(written, await measureExtent(client, params.boundaryWkt));
+  const incoming = snapshotFromParams(written, await measureExtent(client, params.boundaryWkt), shortMove);
   const changeSet = computeChangeSet(before, incoming, withTypeClaim(row.curated_fields, stored?.type_claimed), held);
 
   // A curator's pass covered the object that was there; a changed object has not

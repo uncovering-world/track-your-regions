@@ -137,14 +137,17 @@ export function heldOpenSql(e = 'e', m = 'm', ch = 'ch'): string {
  * guard, which is here for the *other* row of a paired withdrawal, still on
  * the map while an arrival names it. `publishedContentSql` is the
  * gate: a point nobody ever saw raises no question about its departure, the
- * same reasoning ADR-0025 § 3.6 applies to an unread object. `el` is the
- * `experience_locations` alias.
+ * same reasoning ADR-0025 § 3.6 applies to an unread object. A point that
+ * names the one it moved to raises none either: a short move took it there
+ * (ADR-0140), and the move is its record. `el` is the `experience_locations`
+ * alias.
  */
 export function withdrawnPointOpenSql(el = 'el'): string {
   return `${el}.missing_since IS NOT NULL
     AND ${el}.source_membership = 'present'
     AND ${el}.existence = 'extant'
     AND ${el}.withdrawal_deferred_for_location_id IS NULL
+    AND ${el}.moved_to_location_id IS NULL
     AND ${publishedContentSql(el)}`;
 }
 
