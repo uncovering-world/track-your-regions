@@ -73,6 +73,7 @@ import { coverageAssertions } from './coverageAssertions.js';
 import { divisionTreeAssertions } from './divisionTreeAssertions.js';
 import { objectAssertions } from './objectAssertions.js';
 import { identifierAssertions } from './identifierAssertions.js';
+import { roughPointAssertions } from './roughPointAssertions.js';
 import { workAssertions } from './workAssertions.js';
 import { regionGeometryAssertions } from './regionGeometryAssertions.js';
 import { borderPlacementAssertions } from './borderPlacementAssertions.js';
@@ -646,6 +647,7 @@ export const catalogueAssertions: CatalogueAssertion[] = [
   ...divisionTreeAssertions,
   ...objectAssertions,
   ...identifierAssertions,
+  ...roughPointAssertions,
   ...workAssertions,
   pictureTheProductMayNotShow,
   pictureWithNobodyCredited,
