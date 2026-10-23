@@ -262,3 +262,26 @@ describe("an item carrying the component's number under another inscription (#13
     expect(numberedMatches(COLONY, [frederiksoord, second]).map(m => m.item)).toEqual(['Q2483434', 'Q1881045']);
   });
 });
+
+describe('a candidate whose coordinate is the approximate point copied (#1853)', () => {
+  // Echmiatsin: the cathedral, Saint Gayaneh and the Cemetery of Congregation
+  // share the property's point, and Wikidata's item for ancient Zvartnots
+  // carries that point too.
+  const cemetery = { locationId: 1, name: 'Cemetery of Congregation', lat: 40.1593055556, lon: 44.2951388889 };
+  const zvartnots = {
+    item: 'Q-zvartnots-fixture', labels: ['Cemetery of Congregation'], coords: [[40.1593055556, 44.2951388889]] as Array<[number, number]>,
+  };
+
+  it('is no candidate "1 m away" for a component on that shared point', () => {
+    expect(bestMatch({ ...cemetery, approximate: true }, [zvartnots], 'near')).toBeNull();
+  });
+
+  it('is measured as before where the point was given to the second', () => {
+    expect(bestMatch(cemetery, [zvartnots], 'near')).toMatchObject({ item: 'Q-zvartnots-fixture', distanceM: 0 });
+  });
+
+  it('is measured by its other coordinates where it states more', () => {
+    const twoPoints = { ...zvartnots, coords: [...zvartnots.coords, [40.1597, 44.2955]] as Array<[number, number]> };
+    expect(bestMatch({ ...cemetery, approximate: true }, [twoPoints], 'near')).toMatchObject({ distanceM: 54 });
+  });
+});

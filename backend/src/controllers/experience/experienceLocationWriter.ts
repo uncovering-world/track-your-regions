@@ -337,6 +337,8 @@ export async function correctPoint(
                             WHEN $10::jsonb IS NULL THEN metadata - 'imageCredit'
                             ELSE metadata || jsonb_build_object('imageCredit', $10::jsonb) END,
             description = CASE WHEN $11::boolean THEN $12 ELSE description END,
+            -- A point a curator placed is no longer the list's rough one (#1853).
+            approximate = CASE WHEN $6::jsonb ? 'location' THEN NULL ELSE approximate END,
             curated_fields = $6::jsonb
       WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$7::int]')}`,
     [locationId, correction.name, correction.movesPoint, correction.longitude, correction.latitude,
