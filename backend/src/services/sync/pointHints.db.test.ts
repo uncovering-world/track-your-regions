@@ -49,6 +49,8 @@ beforeEach(async () => {
   );
   await osm(985501, { name: 'Saint Gayane Church', 'ref:whc': '9855-002' }, { lon: 44.2925, lat: 40.1587 });
   await osm(985502, { name: 'Church Saint Gayaneh' }, { lon: 44.2960, lat: 40.1600 });
+  // A village named like the component is the place it is named after, never a hint (#1903).
+  await osm(985504, { name: 'Church Saint Gayaneh', place: 'village' }, { lon: 44.2980, lat: 40.1610 });
   // A copy of the shared point, named like the component: not a measurement.
   await osm(985503, { name: 'Church Saint Gayaneh and surrounding buildings' }, SHARED);
   await pool.query(
