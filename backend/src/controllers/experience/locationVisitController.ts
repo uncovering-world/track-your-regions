@@ -17,7 +17,7 @@ import type {
   VisitedLocationIds, VisitedStatus,
 } from '../../api/responses/visited.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
-import { partOfPointSql, placePointsSql, pointsShownSql, visitedPointsSql } from '../../db/placePoints.js';
+import { partOfPointSql, placePointsSql, pointNameSql, pointsShownSql, visitedPointsSql } from '../../db/placePoints.js';
 import type { ExperienceLocationsRow, ExperiencesRow, UserVisitedLocationsRow } from '../../db/schema.generated.js';
 import {
   claimablePlaceSql,
@@ -470,7 +470,8 @@ export async function getExperienceVisitedStatus(
   >(`
     SELECT
       el.id as location_id,
-      el.name,
+      -- A reader's read: a part's unnamed point is called by its place (#1924).
+      ${pointNameSql('el')} AS name,
       el.ordinal,
       ST_X(el.location) as longitude,
       ST_Y(el.location) as latitude,

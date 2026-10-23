@@ -395,6 +395,52 @@ describe("a place's points are its own and its parts' (ADR-0100)", () => {
   });
 });
 
+describe("a part's point with no name of its own (#1924)", () => {
+  it("is named by its part place on every reader's read, and left unnamed on the curator's", async () => {
+    // Etchmiadzin Cathedral's shape: a place of worship, holding its kind of its
+    // own, which became the site's part 1011-001 when the two were found to be
+    // one place; its point, which that kind placed, carries no name. A part
+    // that holds a kind names itself (`part_follows_point`), so the point's
+    // emptied name does not rename the part.
+    await pool.query(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, $2, 'verified', NOW() FROM experience_sources s WHERE s.id = 4`,
+      [KARNAK, `${KARNAK}-worship`],
+    );
+    await pool.query('UPDATE experience_locations SET name = NULL WHERE id = $1', [karnakPoint]);
+
+    const own = await getExperienceLocations({
+      params: { id: SITE }, query: experienceLocationsQuerySchema.parse({}), caller: undefined,
+    });
+    expect(own.locations.find(l => l.id === karnakPoint)?.name).toBe('Temple of Karnak (parts fixture)');
+
+    for (const query of [{}, { includeChildren: 'false' }]) {
+      const { locationsByExperience } = await getRegionExperienceLocations({
+        params: { regionId }, query: regionLocationsQuerySchema.parse(query),
+      });
+      expect(locationsByExperience[SITE]?.find(l => l.id === karnakPoint)?.name).toBe('Temple of Karnak (parts fixture)');
+    }
+
+    const world = await getWorldPoints({ query: worldPointsQuerySchema.parse({ detail: 'markers' }) });
+    const at = (world.locationId ?? []).indexOf(karnakPoint);
+    expect(world.name?.[at]).toBe('Temple of Karnak (parts fixture)');
+
+    // A signed-in reader's rows come from the visited-status read, which Discover takes its names from.
+    const status = await getExperienceVisitedStatus({ params: { id: SITE }, caller: traveller() });
+    expect(status.locations.find(l => l.id === karnakPoint)?.name).toBe('Temple of Karnak (parts fixture)');
+
+    // The curator's card reads what the source wrote, which it corrects.
+    await pool.query(
+      `INSERT INTO experience_component_item_proposals
+              (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
+       VALUES ($1, 'Q9891', 'Karnak Temple Complex', 125, 0.62, false, 'near')`,
+      [karnakPoint],
+    );
+    const card = (await queryComponentItems([SITE])).rows[0];
+    expect(card.component_items.find((c: { locationId: number }) => c.locationId === karnakPoint)?.pointName).toBeNull();
+  });
+});
+
 describe('a part reads as a place (ADR-0100, #1425)', () => {
   it("opens the part's own card, under its site's kind, naming the site and the point its card opens it at", async () => {
     const card = await getExperience({ params: { id: KARNAK }, caller: undefined });
