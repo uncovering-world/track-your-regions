@@ -24,7 +24,11 @@ import { RefusalLine } from './RefusalLine';
 
 type OnDone = (message?: string, experienceId?: number) => void;
 
-/** Where readers still see a place a kind's rule refused, said beside the refusal. */
+/**
+ * Where readers still see a place a kind's rule kept out, said beside the refusal. Only
+ * the kept-out list carries it: an open refusal is asked only where no other kind offers
+ * the place (#1838), so there is nowhere else readers see it.
+ */
 function SeenElsewhere({ item }: { item: ReviewQueueItem }) {
   const seen = item.seen_in ?? [];
   if (seen.length === 0) return null;
@@ -101,7 +105,6 @@ function RefusalSection({ item, heading, onDone }: { item: ReviewQueueItem; head
         held={item.counted_works_total}
         name={item.name}
       />
-      <SeenElsewhere item={item} />
 
       {/* This one really is read again, and soon: a kept-out row shows its note in the
           list at the foot of the page, which is where someone decides whether the

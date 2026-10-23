@@ -1,10 +1,12 @@
 /**
  * Tests for a refusal of a place in two kinds (#1264).
  *
- * The Capitoline Museums as Epic #755 leaves them: an art museum on every map,
- * which the Archaeology rule and the Places of worship rule have both refused.
- * One place, so one header; two refusals, each answered under its own kind's
- * membership, and each saying where readers still see the place.
+ * The Capitoline Museums with no kind offering them: the Archaeology rule and
+ * the Places of worship rule have refused them, and Art Museums has too, so the
+ * refusals decide whether the place stays at all (#1838). One place, so one
+ * header; two refusals, each answered under its own kind's membership. Kept out
+ * of one kind while still an art museum on every map, the kept-out card says
+ * where readers still see the place.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -18,7 +20,7 @@ vi.mock('../../api/curation', async (original) => ({
 }));
 
 import { setExperienceAdmission } from '../../api/curation';
-import { RefusedCard } from './RefusedCards';
+import { KeptOutCard, RefusedCard } from './RefusedCards';
 
 const mockedAdmission = vi.mocked(setExperienceAdmission);
 
@@ -30,7 +32,7 @@ function refusal(over: Partial<ReviewQueueItem>): ReviewQueueItem {
   return {
     id: 6214, external_id: 'Q207694', name: 'Capitoline Museums', kind_id: 5, kind_name: 'Archaeology',
     missing_since: null, source_membership: 'present', existence: 'extant',
-    kind: 'refused', proposed: null, seen_in: ['Art Museums'],
+    kind: 'refused', proposed: null,
     ...over,
   };
 }
@@ -54,15 +56,16 @@ function sectionOf(heading: string): HTMLElement {
 }
 
 describe('a place two kinds\' rules refused', () => {
-  it('is drawn once, with a section per kind saying where readers still see it', () => {
+  it('is drawn once, with a section per kind and no "readers still see it" line', () => {
+    // An open refusal is asked only where no other kind offers the place
+    // (#1838), so there is nowhere else readers see it; the kept-out list
+    // carries that line.
     renderCard(ITEMS);
 
     expect(screen.getAllByText('Capitoline Museums')).toHaveLength(1);
-    const archaeology = within(sectionOf('Archaeology’s rule turned it down'));
-    expect(archaeology.getByText('Readers still see this place under Art Museums; this keeps it out of Archaeology alone.'))
-      .toBeInTheDocument();
-    expect(within(sectionOf('Places of worship’s rule turned it down'))
-      .getByText(/this keeps it out of Places of worship alone/)).toBeInTheDocument();
+    expect(sectionOf('Archaeology’s rule turned it down')).toBeInTheDocument();
+    expect(sectionOf('Places of worship’s rule turned it down')).toBeInTheDocument();
+    expect(screen.queryByText(/Readers still see this place/)).toBeNull();
   });
 
   it('answers each refusal under its own kind\'s membership', async () => {
@@ -79,5 +82,20 @@ describe('a place two kinds\' rules refused', () => {
 
     expect(screen.queryByText(/rule turned it down/)).toBeNull();
     expect(screen.queryByText(/Readers still see this place/)).toBeNull();
+  });
+});
+
+describe('a refusal a curator kept out', () => {
+  it('says where readers still see the place', () => {
+    // Kept out of Archaeology, still an art museum on every map.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <KeptOutCard item={refusal({ membership_id: 21, admission_reason: 'not an archaeological site', seen_in: ['Art Museums'] })} onDone={() => {}} />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText('Readers still see this place under Art Museums; this keeps it out of Archaeology alone.'))
+      .toBeInTheDocument();
   });
 });

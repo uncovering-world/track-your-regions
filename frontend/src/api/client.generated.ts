@@ -3965,7 +3965,7 @@ export interface ReviewQueueItem {
      */
   object_description?: string | null;
   region_names?: string[] | null;
-  /** On an arrival or a refusal: the kinds readers already see the place in, through another membership (#1264). Empty where the membership asked about is the whole place. */
+  /** On an arrival, a kind its source stopped listing, or a kept-out refusal: the kinds readers already see the place in, through another membership (#1264). Empty where the membership asked about is the whole place. An open refusal carries none, since it is asked only where no other kind offers the place (#1838). */
   seen_in?: string[];
   /** On a kind its source stopped listing (#1264): whether that kind keeps a delisted place, marked former, rather than letting it go. Absent on every other card. */
   kept_as_former?: boolean;
