@@ -639,3 +639,42 @@ export async function movePoints(
   );
   return result.rows.map(row => row.id);
 }
+
+/**
+ * A point another membership places too, given to the place a curator's
+ * separation made (ADR-0144): a copy there, which the separated membership
+ * places instead of the original, so each place keeps a point its own
+ * memberships place. Answers each original point's id with its copy's.
+ */
+export async function copyPointsFor(
+  client: PoolClient,
+  from: LockedExperience,
+  to: LockedExperience,
+  membershipId: number,
+  ids: number[],
+): Promise<Array<{ from: number; to: number }>> {
+  const copies: Array<{ from: number; to: number }> = [];
+  for (const id of ids) {
+    const copied = await client.query<{ id: number }>(
+      `INSERT INTO experience_locations (
+         experience_id, name, external_ref, ordinal, location, missing_since, wikidata_item, image_url, description,
+         metadata, curation_state, refused_at, curated_fields, source_membership, existence,
+         state_decided_by, state_decided_at, state_note
+       )
+       SELECT $2, name, external_ref, ordinal, location, missing_since, wikidata_item, image_url, description,
+              metadata, curation_state, refused_at, curated_fields, source_membership, existence,
+              state_decided_by, state_decided_at, state_note
+         FROM experience_locations WHERE id = $3 AND experience_id = $1
+       RETURNING id`,
+      [from.id, to.id, id],
+    );
+    const copy = copied.rows[0]?.id;
+    if (copy === undefined) continue;
+    await client.query(
+      'UPDATE experience_location_placements SET location_id = $1 WHERE location_id = $2 AND membership_id = $3',
+      [copy, id, membershipId],
+    );
+    copies.push({ from: id, to: copy });
+  }
+  return copies;
+}

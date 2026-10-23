@@ -466,10 +466,14 @@ const placeWithoutMembership: CatalogueAssertion = {
  * (ADR-0143 decision 6). A place where none matches has lost the membership
  * its first source would find it by: that source's next run does not find it,
  * tries to create the place, and fails on that item on every run, since the
- * place's own pair is still unique among places. A serial site's component
- * part is brought under a pair of its own (`part:<id>`) that no membership
- * carries, and its run finds it through its whole (ADR-0100), so a part that
- * holds a kind's membership — the Tower of Belem as a tower — is not one.
+ * place's own pair is still unique among places. A pair a live membership
+ * carries on another place is in order: the run finds that membership, and
+ * the place's pair says only where it first came from — a separation leaves
+ * the original its pair while the membership that carried it is the new
+ * place's (ADR-0144). A serial site's component part is brought under a pair
+ * of its own (`part:<id>`) that no membership carries, and its run finds it
+ * through its whole (ADR-0100), so a part that holds a kind's membership —
+ * the Tower of Belem as a tower — is not one.
  */
 const membershipSourceDisagreesWithRow: CatalogueAssertion = {
   id: 'membership-source-disagrees-with-row',
@@ -481,7 +485,8 @@ const membershipSourceDisagreesWithRow: CatalogueAssertion = {
     + 'carries that pair. A run finds its places by the pair on the membership, so that source\'s '
     + 'next run does not find this one, tries to create it, and fails on it on every run, since the '
     + 'place\'s own pair is still taken. Either the membership was written for the wrong source or id, or '
-    + 'the row was re-keyed by hand; whichever it is, the two have to be made to agree.',
+    + 'the row was re-keyed by hand; whichever it is, the two have to be made to agree. A pair a '
+    + 'membership of another live place carries is in order: that is where the run finds it.',
   sql: `SELECT e.id AS experience_id,
                e.name AS experience_name,
                e.external_id,
@@ -495,8 +500,23 @@ const membershipSourceDisagreesWithRow: CatalogueAssertion = {
                 AND m.source_id = e.source_id
                 AND m.external_id = e.external_id
            )
+           -- The pair a live membership carries elsewhere is where the run finds it
+           -- (ADR-0143 decision 6): the original of a separation keeps its pair.
+           AND NOT EXISTS (
+             SELECT 1 FROM ${MEMBERSHIPS} elsewhere
+             JOIN experiences holder ON holder.id = elsewhere.experience_id AND holder.merged_into_id IS NULL
+              WHERE elsewhere.source_id = e.source_id AND elsewhere.external_id = e.external_id
+           )
            -- A component part's pair is its own, found through its whole (ADR-0100).
            AND NOT EXISTS (SELECT 1 FROM experience_parts prt WHERE prt.part_id = e.id)
+           -- A place a curator's separation made, named after itself because the
+           -- membership's own pair was still held (ADR-0144): its run finds it
+           -- by the membership, and the row's source still names its kind.
+           AND NOT EXISTS (
+             SELECT 1 FROM experience_separations sep
+              WHERE sep.separated_id = e.id AND e.external_id = 'separated-' || e.id
+                AND EXISTS (SELECT 1 FROM ${MEMBERSHIPS} m WHERE m.experience_id = e.id AND m.source_id = e.source_id)
+           )
          ORDER BY e.name`,
   describe: row =>
     `${text(row, 'experience_name')}: brought by ${text(row, 'row_source_name')} as `

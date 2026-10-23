@@ -30,6 +30,8 @@ import {
   LocationEditResult,
   LocationStateResult,
   ManualExperienceCreated,
+  MembershipSeparated,
+  SeparationUndone,
   MergeUndone,
   NearbyPictures,
   ViewsChosen,
@@ -43,6 +45,7 @@ import {
 } from '../api/responses/curation.js';
 import { PublishWaitingResult } from '../api/responses/admin.js';
 import { undoPlaceMerge } from '../controllers/experience/placeMergeController.js';
+import { separatePlaceMembership, undoPlaceSeparation } from '../controllers/experience/membershipSeparationController.js';
 import { chooseViews } from '../controllers/experience/viewChoiceController.js';
 import { answerComponentItems } from '../controllers/experience/componentItemController.js';
 import { answerMergeProposals } from '../controllers/experience/mergeProposalController.js';
@@ -122,6 +125,8 @@ import {
   regionLocationsQuerySchema,
   idParamSchema,
   sourceIdParamSchema,
+  kindOfPlaceParamSchema,
+  separationIdParamSchema,
   mergeIdParamSchema,
   chooseViewsBodySchema,
   answerComponentItemsBodySchema,
@@ -760,6 +765,24 @@ export const experienceCurationRoutes = [
     params: mergeIdParamSchema,
     response: MergeUndone,
     handler: undoPlaceMerge,
+  }),
+  // Separate one kind's membership of a place into a place of its own (ADR-0144):
+  // the way back from a merge or a join on arrival that an item misled.
+  defineRoute({
+    method: 'post', path: '/:id/kinds/:kindId/separate', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Separate one kind\'s membership of a place into a place of its own, with the points and works it places',
+    params: kindOfPlaceParamSchema,
+    response: MembershipSeparated,
+    handler: separatePlaceMembership,
+  }),
+  // Undo a separation by merging the two again (ADR-0144 decision 4). Under
+  // `separations/` for the reason `merges/` is: no `:id` route reads it.
+  defineRoute({
+    method: 'post', path: '/separations/:separationId/undo', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Undo a separation: the place it made is merged back into the original',
+    params: separationIdParamSchema,
+    response: SeparationUndone,
+    handler: undoPlaceSeparation,
   }),
   defineRoute({
     method: 'post', path: '/sources/:sourceId/publish-waiting', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
