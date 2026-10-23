@@ -14472,6 +14472,56 @@
         }
       }
     },
+    "/api/experiences/{id}/point-hint-suggestions": {
+      "post": {
+        "operationId": "postExperiencesByIdPointHintSuggestions",
+        "summary": "Ask Jev whether each hint is where a roughly placed component stands; a suggestion, never applied",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PointHintSuggestions"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/merge-proposal-suggestions": {
       "post": {
         "operationId": "postExperiencesByIdMergeProposalSuggestions",
@@ -25685,15 +25735,16 @@
                     "views",
                     "componentItems",
                     "mergeProposals",
-                    "visits"
+                    "visits",
+                    "pointHints"
                   ],
-                  "description": "Which card asked: the sources card (#1260), the component-items card (#1272), the near-places card (#1249), or an arriving place's card (#1768)."
+                  "description": "Which card asked: the sources card (#1260), the component-items card (#1272), the near-places card (#1249), an arriving place's card (#1768), or the Where is it? card's hints (#1913)."
                 },
                 "calls": {
                   "type": "integer",
                   "minimum": -9007199254740991,
                   "maximum": 9007199254740991,
-                  "description": "Suggestions asked for: one call each on the sources and arriving-place cards, one question each on the component-items and near-places cards."
+                  "description": "Suggestions asked for: one call each on the sources and arriving-place cards, one question each on the component-items and near-places cards and per hint on the Where is it? card."
                 },
                 "inputTokens": {
                   "type": "integer",
@@ -28906,6 +28957,69 @@
         ],
         "additionalProperties": false,
         "description": "A world view whose regions the publication could not recompute."
+      },
+      "PointHintSuggestions": {
+        "type": "object",
+        "properties": {
+          "configured": {
+            "type": "boolean",
+            "description": "Whether this deployment asks Jev at all. False: no judgement, nothing else changes."
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "locationId": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991,
+                  "description": "The roughly placed point the hint is for."
+                },
+                "source": {
+                  "type": "string",
+                  "enum": [
+                    "item",
+                    "osm-ref",
+                    "osm-name",
+                    "candidate"
+                  ],
+                  "description": "Where the hint comes from."
+                },
+                "ref": {
+                  "type": "string",
+                  "description": "The hint's own id: an OpenStreetMap object's (`W194252618`) or a Wikidata item's."
+                },
+                "judgement": {
+                  "type": "string",
+                  "enum": [
+                    "same",
+                    "other"
+                  ],
+                  "description": "`same`: the hint is where the component stands; `other`: another place."
+                },
+                "confidence": {
+                  "type": "number",
+                  "description": "Its confidence, 0 to 1."
+                }
+              },
+              "required": [
+                "locationId",
+                "source",
+                "ref",
+                "judgement",
+                "confidence"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "configured",
+          "suggestions"
+        ],
+        "additionalProperties": false,
+        "description": "Jev's judgement of the hints of where a site's roughly placed components stand (#1913), per hint it could judge; never applied."
       },
       "PointItemTakenBack": {
         "type": "object",

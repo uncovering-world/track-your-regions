@@ -48,17 +48,18 @@ export function approximatePointOpenSql(el = 'el'): string {
 /** Every hint for the point `el`, before its distance is worked out. */
 const HINTS = `
   SELECT 'item' AS source, el.wikidata_item AS ref, NULL::text AS label,
-         ST_SetSRID(ST_MakePoint((c.value->>'longitude')::float8, (c.value->>'latitude')::float8), 4326) AS at
+         ST_SetSRID(ST_MakePoint((c.value->>'longitude')::float8, (c.value->>'latitude')::float8), 4326) AS at,
+         NULL::jsonb AS tags
     FROM (SELECT c.value FROM wikidata_claims c
            WHERE c.subject = el.wikidata_item AND c.property = 'P625' AND c.rank >= 0 AND c.value ? 'latitude'
            ORDER BY c.rank DESC LIMIT 1) c
   UNION ALL
-  SELECT 'osm-ref', o.osm_type || o.osm_id, COALESCE(o.tags->>'name:en', o.tags->>'name'), ST_PointOnSurface(o.geom)
+  SELECT 'osm-ref', o.osm_type || o.osm_id, COALESCE(o.tags->>'name:en', o.tags->>'name'), ST_PointOnSurface(o.geom), o.tags
     FROM osm_objects o
    WHERE el.external_ref IS NOT NULL AND o.tags ? 'ref:whc' AND o.tags->>'ref:whc' = el.external_ref
   UNION ALL
   SELECT * FROM (
-    SELECT 'osm-name', o.osm_type || o.osm_id, COALESCE(o.tags->>'name:en', o.tags->>'name'), ST_PointOnSurface(o.geom)
+    SELECT 'osm-name', o.osm_type || o.osm_id, COALESCE(o.tags->>'name:en', o.tags->>'name'), ST_PointOnSurface(o.geom), o.tags
       FROM osm_objects o
      WHERE el.name IS NOT NULL
        -- A box the spatial index answers first, the radius in degrees, wider in
@@ -108,14 +109,14 @@ export async function findPointHints(siteId?: number): Promise<PointHintsReport>
     `WITH gone AS (
        DELETE FROM experience_point_hints h WHERE h.location_id = ANY($1::int[])
      ), found AS (
-       SELECT el.id AS location_id, hint.source, hint.ref, hint.label, hint.at,
+       SELECT el.id AS location_id, hint.source, hint.ref, hint.label, hint.at, hint.tags,
               ST_Distance(hint.at::geography, el.location::geography) AS metres
          FROM experience_locations el
         CROSS JOIN LATERAL (${HINTS}) hint
         WHERE el.id = ANY($1::int[]) AND hint.at IS NOT NULL AND hint.ref IS NOT NULL
      )
-     INSERT INTO experience_point_hints (location_id, source, ref, label, location, metres)
-     SELECT location_id, source, ref, label, at, round(metres)::int FROM found
+     INSERT INTO experience_point_hints (location_id, source, ref, label, location, metres, tags)
+     SELECT location_id, source, ref, label, at, round(metres)::int, tags FROM found
       WHERE metres >= ${COPIED_COORDINATE_M}`,
     [ids],
   );

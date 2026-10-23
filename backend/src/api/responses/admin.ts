@@ -565,11 +565,11 @@ export const MergeProposalPass = z.strictObject({
 export type MergeProposalPass = z.infer<typeof MergeProposalPass>;
 
 const JevQuestionUsage = z.strictObject({
-  question: z.enum(['views', 'componentItems', 'mergeProposals', 'visits']).describe(
+  question: z.enum(['views', 'componentItems', 'mergeProposals', 'visits', 'pointHints']).describe(
     'Which card asked: the sources card (#1260), the component-items card (#1272), the near-places card (#1249), '
-    + 'or an arriving place\'s card (#1768).',
+    + 'an arriving place\'s card (#1768), or the Where is it? card\'s hints (#1913).',
   ),
-  calls: z.number().int().describe('Suggestions asked for: one call each on the sources and arriving-place cards, one question each on the component-items and near-places cards.'),
+  calls: z.number().int().describe('Suggestions asked for: one call each on the sources and arriving-place cards, one question each on the component-items and near-places cards and per hint on the Where is it? card.'),
   inputTokens: z.number().int(),
   usd: z.number(),
   compared: z.number().int().describe("Curators' answers for which Jev had suggested one for the same question."),

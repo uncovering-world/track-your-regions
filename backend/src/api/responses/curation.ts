@@ -429,6 +429,19 @@ export const ComponentItemSuggestions = z.strictObject({
 }).describe("Jev's judgement of the candidate items of a site's components (#1272), per candidate it could judge; never applied.");
 export type ComponentItemSuggestions = z.infer<typeof ComponentItemSuggestions>;
 
+export const PointHintSuggestions = z.strictObject({
+  configured: z.boolean().describe('Whether this deployment asks Jev at all. False: no judgement, nothing else changes.'),
+  suggestions: z.array(z.strictObject({
+    locationId: z.number().int().describe('The roughly placed point the hint is for.'),
+    source: z.enum(CHECK_VALUES.experience_point_hint_suggestions.source).describe('Where the hint comes from.'),
+    ref: z.string().describe("The hint's own id: an OpenStreetMap object's (`W194252618`) or a Wikidata item's."),
+    judgement: z.enum(CHECK_VALUES.experience_point_hint_suggestions.judgement)
+      .describe('`same`: the hint is where the component stands; `other`: another place.'),
+    confidence: z.number().describe('Its confidence, 0 to 1.'),
+  })),
+}).describe("Jev's judgement of the hints of where a site's roughly placed components stand (#1913), per hint it could judge; never applied.");
+export type PointHintSuggestions = z.infer<typeof PointHintSuggestions>;
+
 export const MergeProposalSuggestions = z.strictObject({
   configured: z.boolean().describe('Whether this deployment asks Jev at all. False: no judgement, nothing else changes.'),
   suggestions: z.array(z.strictObject({
