@@ -169,6 +169,12 @@ describe('getWorldPoints', () => {
       expect((await ask({ detail: 'markers', folded: 'true' })).sql).toContain(placeKindsSql('e'));
       expect((await ask()).sql).not.toContain(placeKindsSql('e'));
     });
+
+    it("reads whether an unfolded marker's point is placed only roughly, and a folded or overview one's never (#1912)", async () => {
+      expect((await ask({ detail: 'markers' })).sql).toContain('el.approximate IS NOT NULL AS approximate');
+      expect((await ask({ detail: 'markers', folded: 'true' })).sql).not.toContain('approximate');
+      expect((await ask()).sql).not.toContain('approximate');
+    });
   });
 
   describe('the fold', () => {

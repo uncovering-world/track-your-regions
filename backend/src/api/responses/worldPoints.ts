@@ -39,6 +39,8 @@ export const WorldPointsResponse = z.strictObject({
   })).nullable()).optional()
     .describe('Markers only: every kind a place in more than one is offered in, in the kinds\' display order;'
       + ' null for a place in one kind, which `kindId` names.'),
+  approximate: z.array(z.boolean()).optional()
+    .describe('Markers, unfolded only: whether the source placed the point only roughly (#1912), which the pin draws as a ring.'),
   locationCount: z.array(z.number().int()).optional()
     .describe("Folded only: how many places the pin stands for, which is the badge's number."),
 }).describe('The map\'s points, one array per field, all of them the same length.');

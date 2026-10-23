@@ -177,6 +177,24 @@ describe('reads that show a point', () => {
     }
   });
 
+  it('carries how roughly the source placed each point, on the object read and on both shapes of the batch (#1912)', async () => {
+    // The Longmen Grottoes' point, given to the whole minute: the map draws it as
+    // a ring and the row says so, so every read a reader's surface takes carries it.
+    mockedQuery.mockResolvedValue({ rows: [placeRow({ approximate: 'whole-minute' })], rowCount: 1 });
+
+    let res = makeRes();
+    await answerRoute(routeAt(experienceReadRoutes, '/:id/locations'), { params: { id: '42' }, query: {} } as never, res as never);
+    expect(res.json.mock.calls[0][0].locations[0].approximate).toBe('whole-minute');
+
+    for (const query of [{}, { includeChildren: 'false' }]) {
+      mockedQuery.mockClear();
+      res = makeRes();
+      await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'), { params: { regionId: '7' }, query } as never, res as never);
+      expect(locationRead()).toMatch(/el\.approximate/);
+      expect(res.json.mock.calls[0][0].locationsByExperience[42][0].approximate).toBe('whole-minute');
+    }
+  });
+
   it('leaves a withdrawn point out of the markers a region asks for', async () => {
     await answerRoute(routeAt(experienceReadRoutes, '/by-region/:regionId/locations'),
       { params: { regionId: '7' }, query: {} } as never, makeRes() as never);

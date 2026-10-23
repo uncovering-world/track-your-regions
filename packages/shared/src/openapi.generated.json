@@ -22912,6 +22912,21 @@
           "latitude": {
             "type": "number"
           },
+          "approximate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "whole-minute",
+                  "shared"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the source placed the point only roughly, null where it did not or a curator has placed it (#1853): `whole-minute`, its coordinates given to the whole minute of arc, often a kilometre or more from the place; `shared`, one point several components of the site share. A reader is told (#1912)."
+          },
           "created_at": {
             "anyOf": [
               {
@@ -22992,6 +23007,7 @@
           "ordinal",
           "longitude",
           "latitude",
+          "approximate",
           "created_at",
           "curated_fields",
           "in_region",
@@ -30392,6 +30408,21 @@
           "latitude": {
             "type": "number"
           },
+          "approximate": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "whole-minute",
+                  "shared"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "Why the source placed the point only roughly, null where it did not or a curator has placed it (#1853): `whole-minute`, its coordinates given to the whole minute of arc, often a kilometre or more from the place; `shared`, one point several components of the site share. A reader is told (#1912)."
+          },
           "created_at": {
             "anyOf": [
               {
@@ -30449,6 +30480,7 @@
           "ordinal",
           "longitude",
           "latitude",
+          "approximate",
           "created_at",
           "curated_fields",
           "in_region",
@@ -36440,6 +36472,13 @@
                   "type": "null"
                 }
               ]
+            }
+          },
+          "approximate": {
+            "description": "Markers, unfolded only: whether the source placed the point only roughly (#1912), which the pin draws as a ring.",
+            "type": "array",
+            "items": {
+              "type": "boolean"
             }
           },
           "locationCount": {
