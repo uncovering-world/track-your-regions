@@ -460,6 +460,22 @@ export interface ExperiencePartsRow {
   created_at: Date;
 }
 
+/** The table `experience_point_hint_suggestions`. */
+export interface ExperiencePointHintSuggestionsRow {
+  id: number;
+  location_id: number;
+  source: string;
+  ref: string;
+  asked: unknown;
+  hint_location: string;
+  judgement: string | null;
+  confidence: string;
+  probabilities: unknown;
+  model: string;
+  input_tokens: number;
+  asked_at: Date;
+}
+
 /** The table `experience_point_hints`. */
 export interface ExperiencePointHintsRow {
   id: number;
@@ -470,6 +486,7 @@ export interface ExperiencePointHintsRow {
   location: string;
   metres: number;
   found_at: Date;
+  tags: unknown | null;
 }
 
 /** The table `experience_regions`. */
@@ -1185,6 +1202,7 @@ export const RELATION_SCHEMAS = {
   experience_merge_suggestions: "public",
   experience_merges: "public",
   experience_parts: "public",
+  experience_point_hint_suggestions: "public",
   experience_point_hints: "public",
   experience_regions: "public",
   experience_rejections: "public",
@@ -1372,6 +1390,11 @@ export const COLUMN_WIDTHS = {
   experience_parts: {
     reason: 20,
   },
+  experience_point_hint_suggestions: {
+    source: 10,
+    judgement: 10,
+    model: 40,
+  },
   experience_point_hints: {
     source: 10,
   },
@@ -1545,6 +1568,10 @@ export const CHECK_VALUES = {
   },
   experience_parts: {
     reason: ["component", "wikidata_part_of", "curator"],
+  },
+  experience_point_hint_suggestions: {
+    judgement: ["same", "other"],
+    source: ["item", "osm-ref", "osm-name", "candidate"],
   },
   experience_point_hints: {
     source: ["item", "osm-ref", "osm-name"],
