@@ -93,7 +93,14 @@ const ENTITIES: Array<[string, number, Record<string, unknown>]> = [
   [ROOM_325, 0, { claims: { P276: [statement('R1', SULLY_WING)] }, sitelinks: {} }],
   [MAMAN, 30, {
     claims: {
-      P625: CASTS.map(([host, , lat, lon], i) => statement(`X${i}`, point(lat, lon), { qualifiers: { P518: [host] } })),
+      P625: [
+        ...CASTS.map(([host, , lat, lon], i) => statement(`X${i}`, point(lat, lon), { qualifiers: { P518: [host] } })),
+        // Minato's point once more, rounded — the same cast written twice — and once
+        // more at the precise point named for the park in it too: one cast under two
+        // names (#880).
+        statement('X9', point(35.66, 139.73), { qualifiers: { P518: ['Q190088'] } }),
+        statement('X10', point(35.6610104, 139.7296602), { qualifiers: { P518: ['Q1071084', 'Q190088'] } }),
+      ],
       P17: CASTS.map(([, country], i) => statement(`C${i}`, country)),
     },
     sitelinks: {},
@@ -187,8 +194,9 @@ beforeAll(async () => {
   ]) {
     await pool.query(`INSERT INTO wikidata_labels (id, language, label) VALUES ($1, 'en', $2)`, [country, label]);
   }
-  for (const [, country] of CASTS) {
+  for (const [host, country] of CASTS) {
     await pool.query(`INSERT INTO wikidata_labels (id, language, label) VALUES ($1, 'en', $2)`, [country, `country ${country}`]);
+    await pool.query(`INSERT INTO wikidata_labels (id, language, label) VALUES ($1, 'en', $2)`, [host, `place ${host}`]);
   }
 });
 
@@ -215,6 +223,16 @@ describe('Public Art read from the subset (#1459)', () => {
     const drawn = CASTS.find(([, , lat, lon]) => lat === maman.lat && lon === maman.lon);
     expect(drawn).toBeDefined();
     expect(maman.countryLabel).toBe(`country ${drawn![1]}`);
+  });
+
+  it('reads an edition\'s casts off its qualified points, each named for where it stands (#880)', async () => {
+    const [maman] = await fetchEntitiesByIds(door, [MAMAN]);
+    expect(maman.casts).toEqual(CASTS.map(([host, country, lat, lon]) => ({
+      lat, lon, placeQid: host, placeLabel: `place ${host}`, countryLabel: `country ${country}`,
+    })));
+    // A place with one point has no casts, whatever its countries say.
+    const [louvre] = await fetchEntitiesByIds(door, [LOUVRE]);
+    expect(louvre.casts).toBeUndefined();
   });
 
   it('names the country a place is in today, and the point\'s where none stands (#757, #1564)', async () => {
