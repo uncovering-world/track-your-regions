@@ -189,9 +189,10 @@ export async function answerComponentItemsUnderLock(
     // The site's lock serialises this site's answers; two sites confirming
     // one item for a point each would both read it as free, since no
     // constraint says an item is one component. So the items confirmed are
-    // locked by name for the transaction, in one order, after the site and
-    // before the candidates are read for the answer: the second site waits on
-    // the first and then reads the item as taken.
+    // locked for the transaction, after the site and before the candidates are
+    // read for the answer, by the keys every writer of an identifier takes
+    // (`lock_place_identifiers`, ADR-0143): the second site waits on the first
+    // and then reads the item as taken.
     const ids = answers.map(one => one.proposalId);
     const named = await namedCandidates(client, lock, ids);
     const confirmedItems = [...new Set(answers
@@ -200,7 +201,7 @@ export async function answerComponentItemsUnderLock(
       .filter((item): item is string => item !== undefined))].sort();
     if (confirmedItems.length > 0) {
       await client.query(
-        `SELECT pg_advisory_xact_lock(hashtext('wikidata_item:' || item)) FROM unnest($1::text[]) AS item`,
+        `SELECT lock_place_identifiers('wikidata', $1::text[])`,
         [confirmedItems],
       );
     }

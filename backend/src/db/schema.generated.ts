@@ -726,6 +726,17 @@ export interface OsmObjectsRow {
   geom: string | null;
 }
 
+/** The table `place_identifiers`. */
+export interface PlaceIdentifiersRow {
+  experience_id: number;
+  scheme: string;
+  value: string;
+  identifies: boolean;
+  claims_identity: boolean;
+  basis: string[];
+  recorded_at: Date;
+}
+
 /** The table `readership_month_files`. */
 export interface ReadershipMonthFilesRow {
   month: Date;
@@ -1192,6 +1203,7 @@ export const RELATION_SCHEMAS = {
   osm_layer_builds: "workbench",
   osm_layer_schedule: "workbench",
   osm_objects: "workbench",
+  place_identifiers: "public",
   readership_month_files: "workbench",
   readership_months: "workbench",
   readership_staging: "workbench",
@@ -1420,6 +1432,10 @@ export const COLUMN_WIDTHS = {
   osm_objects: {
     osm_type: 1,
   },
+  place_identifiers: {
+    scheme: 12,
+    value: 64,
+  },
   refresh_tokens: {
     token_hash: 255,
     family_id: 64,
@@ -1571,6 +1587,9 @@ export const CHECK_VALUES = {
   },
   import_runs: {
     status: ["running", "matching", "reviewing", "failed"],
+  },
+  place_identifiers: {
+    scheme: ["wikidata", "whc", "osm"],
   },
   region_image_overlays: {
     image_type: ["image/png", "image/jpeg", "image/webp"],
