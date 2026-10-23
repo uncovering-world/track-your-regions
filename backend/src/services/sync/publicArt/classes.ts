@@ -71,6 +71,18 @@ export const MEMORIAL_CLASSES: Record<string, string> = {
   Q1885014: 'cautionary memorial',
   Q114125020: 'victims of communism memorial',
   Q1541043: 'tomb of the unknown soldier',
+  // Read off what Wikidata says commemorates someone (P547) and no class
+  // question named, on 2026-10-23 (#1832): at 15 sitelinks or more these
+  // classes hold the Hiroshima and Nagasaki peace parks, the Mask of Sorrow,
+  // the Šumarice Memorial Park, the Srebrenica Genocide Memorial and the
+  // United Nations Memorial Cemetery, the Murambi, Nyamata and Kigali
+  // genocide memorials, the Skull Tower in Niš and the Bismarck Memorial.
+  Q12327290: 'memorial park',
+  Q56190453: 'memorial complex',
+  Q2532223: 'memorial cemetery',
+  Q130753722: 'Memorial of the Genocide against the Tutsi in Rwanda',
+  Q16052426: 'skull tower',
+  Q820243: 'Bismarck monument',
 };
 
 /**
@@ -131,6 +143,8 @@ export const COMMEMORATIVE_FORMS: Record<string, string> = {
   Q40843: 'cross',
   Q659396: 'equestrian statue',
   Q3476533: 'monumental sculpture',
+  // The Monument to the Great Fire of London (#1832).
+  Q51845395: 'memorial column',
 };
 
 /**
@@ -168,6 +182,7 @@ export const ARCH_CLASSES: Record<string, string> = {
 };
 export const COLUMN_CLASSES: Record<string, string> = {
   Q1930585: 'victory column',
+  Q51845395: 'memorial column',
   Q1112897: 'rostral column',
   Q60234534: 'spiral column',
   Q11741382: 'Holy Trinity column',

@@ -233,9 +233,8 @@ function ownedElsewhere(owners: ContainerFact[], trees: PublicArtTrees, noun: st
  * museum's veto is lifted by a commemorative class as well: a memorial typed
  * a museum is a memorial complex with a museum in it — Tsitsernakaberd, the
  * 9/11 Memorial (#803). Where `memorialLifts`, Monuments & memorials', a
- * `P547` statement is a memorial too — the Vittoriano, typed only by museum
- * classes, commemorates Victor Emmanuel II, and the USS Arizona Memorial the
- * ship (#1832) — and a memorial lifts a cemetery's veto and a bare
+ * `P547` statement is a memorial too — the USS Arizona Memorial, typed a
+ * museum, commemorates the ship (#1832) — and a memorial lifts a cemetery's veto and a bare
  * building's (`MEMORIAL_LIFTS`): Arlington is a cemetery a traveller visits
  * as a memorial, and Montjuïc Castle, typed a memorial, is still a castle.
  */
