@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { currentRules, whatTheCopyNeeds } from './buildRules.js';
+import { currentRules, keepsSubjects, whatTheCopyNeeds } from './buildRules.js';
 
 describe('what the copy in place needs to match the code (#1583)', () => {
   const current = { scope: '1:{"depth":3}', write: 1, derive: 1 };
@@ -23,6 +23,19 @@ describe('what the copy in place needs to match the code (#1583)', () => {
 
   it('records the scope by its version and its rules written whole', () => {
     expect(currentRules().scope).toMatch(/^\d+:\{/);
+  });
+});
+
+describe('whether the copy keeps what its seeds depict and commemorate (#1832)', () => {
+  it('says yes for a copy built under the scope that keeps them', () => {
+    expect(keepsSubjects(currentRules())).toBe(true);
+  });
+
+  it('says no for a copy built before, and for one that recorded no rules', () => {
+    // The rules build 22 of the development subset was recorded with, 2026-10-18.
+    const before = '1:{"coordinate":625,"subclassOf":279,"instanceOf":31,"place":[131,276,361,527,195,189],"chain":[276,361,195],"chainDepth":8}';
+    expect(keepsSubjects({ scope: before, write: 1, derive: 1 })).toBe(false);
+    expect(keepsSubjects(null)).toBe(false);
   });
 });
 
