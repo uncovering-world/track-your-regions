@@ -75,6 +75,33 @@ describe('the items the local Wikidata subset keeps (#1434)', () => {
     expect(counts.keptBytes).toBeLessThan(counts.bytes);
   });
 
+  it('keeps what a seed depicts or commemorates, one hop, and not what a work depicts (#1832)', () => {
+    // The Bronze Horseman stands on Senate Square and depicts Peter the Great;
+    // the Jefferson Memorial commemorates Thomas Jefferson. Neither person has
+    // a coordinate. The Mona Lisa is no seed, so Lisa del Giocondo stays out,
+    // and nothing Peter the Great names is followed.
+    const HORSEMAN = 672444, PETER = 8479, JEFFERSON_MEMORIAL = 326183, JEFFERSON = 11812;
+    const LISA = 153032, MOSCOW = 649;
+    const subjects = scopeOf([
+      dumpLine(`Q${HORSEMAN}`, 'Bronze Horseman', [
+        { property: 625, value: at(59.9364, 30.3022) }, { property: 180, value: item(PETER) },
+      ]),
+      dumpLine(`Q${JEFFERSON_MEMORIAL}`, 'Jefferson Memorial', [
+        { property: 625, value: at(38.8814, -77.0365) }, { property: 547, value: item(JEFFERSON) },
+      ]),
+      dumpLine(`Q${PETER}`, 'Peter the Great', [{ property: 31, value: item(5) }, { property: 180, value: item(MOSCOW) }]),
+      dumpLine(`Q${JEFFERSON}`, 'Thomas Jefferson', [{ property: 31, value: item(5) }]),
+      dumpLine(`Q${MONA_LISA}`, 'Mona Lisa', [{ property: 180, value: item(LISA) }]),
+      dumpLine(`Q${LISA}`, 'Lisa del Giocondo', [{ property: 31, value: item(5) }]),
+      dumpLine(`Q${MOSCOW}`, 'Moscow', []),
+    ]);
+    expect(subjects.kept.has(PETER)).toBe(true);
+    expect(subjects.kept.has(JEFFERSON)).toBe(true);
+    expect(subjects.kept.has(LISA)).toBe(false);
+    expect(subjects.kept.has(MOSCOW)).toBe(false);
+    expect(subjects.counts.seedNeighbours).toBe(2);
+  });
+
   it('gives up a chain that never reaches a coordinate', () => {
     const lost = scopeOf([
       dumpLine('Q1', 'a', [{ property: 361, value: item(2) }]),

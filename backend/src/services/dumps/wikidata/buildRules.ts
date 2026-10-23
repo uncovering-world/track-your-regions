@@ -8,7 +8,7 @@
  */
 
 import { WRITE_VERSION } from './lineWork.js';
-import { SCOPE_RULES } from './scope.js';
+import { SCOPE_RULES, SUBJECT_PROPERTIES } from './scope.js';
 import { SCOPE_VERSION } from './scopeFile.js';
 
 /**
@@ -41,4 +41,22 @@ export function whatTheCopyNeeds(stored: BuildRules | null, current: BuildRules 
   if (!stored) return 'nothing';
   if (stored.scope !== current.scope || stored.write !== current.write) return 'rebuild';
   return stored.derive === current.derive ? 'nothing' : 'recompute';
+}
+
+/**
+ * Whether a copy was built under a scope that keeps a seed's depicted and
+ * commemorated items (`SUBJECT_PROPERTIES`, #1832): a copy built before keeps
+ * only those that are seeds themselves — Ukraine, never Sardar Vallabhbhai
+ * Patel — and a run asks the live service about the rest until one is built.
+ * A copy that recorded no rules was built before them.
+ */
+export function keepsSubjects(stored: BuildRules | null): boolean {
+  if (!stored) return false;
+  const rules = stored.scope.slice(stored.scope.indexOf(':') + 1);
+  try {
+    const subject = (JSON.parse(rules) as { subject?: unknown }).subject;
+    return Array.isArray(subject) && SUBJECT_PROPERTIES.every((property) => subject.includes(property));
+  } catch {
+    return false;
+  }
 }

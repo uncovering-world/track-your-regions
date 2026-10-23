@@ -8,6 +8,9 @@
  * - the items a seed names through a place, part or collection property, and
  *   the items that name a seed through one: a painting names its museum, a
  *   find its find spot;
+ * - the items a seed depicts (P180) or commemorates (P547): whether the
+ *   Statue of Unity depicts a person is a question about Sardar Vallabhbhai
+ *   Patel, who has no coordinate (#1832);
  * - every item whose containment chain (P276, P361, P195) reaches an item with
  *   a coordinate, with every item on the way: the Dendera zodiac lies in Room
  *   325, which is part of the Louvre Palace, and neither the zodiac nor the
@@ -25,6 +28,13 @@ const SUBCLASS_OF = 279;
 const INSTANCE_OF = 31;
 /** The properties through which a kept item brings in its neighbours, in both directions. */
 export const PLACE_PROPERTIES = [131, 276, 361, 527, 195, 189] as const;
+/**
+ * The properties whose values a seed brings in, one way and one hop: what it
+ * depicts and what it commemorates. Not walked and not followed back — a
+ * person is depicted by thousands of paintings, none of which that makes a
+ * place.
+ */
+export const SUBJECT_PROPERTIES = [180, 547] as const;
 /** The properties a containment chain follows: location, part of, collection. */
 export const CHAIN_PROPERTIES = [276, 361, 195] as const;
 /** How far a chain is followed before it is given up as never reaching a coordinate. */
@@ -39,11 +49,12 @@ export const CHAIN_DEPTH = 8;
  */
 export const SCOPE_RULES = JSON.stringify({
   coordinate: COORDINATE, subclassOf: SUBCLASS_OF, instanceOf: INSTANCE_OF,
-  place: PLACE_PROPERTIES, chain: CHAIN_PROPERTIES, chainDepth: CHAIN_DEPTH,
+  place: PLACE_PROPERTIES, chain: CHAIN_PROPERTIES, chainDepth: CHAIN_DEPTH, subject: SUBJECT_PROPERTIES,
 });
 
 const PLACE_TAG = new Map<number, number>(PLACE_PROPERTIES.map((property, index) => [property, index]));
 const CHAIN_TAGS = new Set<number>(CHAIN_PROPERTIES.map(property => PLACE_TAG.get(property)!));
+const SUBJECT = new Set<number>(SUBJECT_PROPERTIES);
 
 export interface ScopeCounts {
   items: number;
@@ -51,7 +62,7 @@ export interface ScopeCounts {
   coordinates: number;
   classes: number;
   seeds: number;
-  /** Items kept as a seed's class or a seed's place, part or collection. */
+  /** Items kept as a seed's class, its place, part or collection, or what it depicts or commemorates. */
   seedNeighbours: number;
   /** Items kept because they name a seed through a place, part or collection property. */
   namingSeeds: number;
@@ -82,7 +93,7 @@ export interface ScopeFacts {
   sizes: Uint32Array;
   coordinates: Uint32Array;
   classes: Uint32Array;
-  /** Items a seed names as its class or through a place property. */
+  /** Items a seed names as its class, through a place property, or as what it depicts or commemorates. */
   neighbours: Uint32Array;
   /** From, to, place tag; in threes. */
   edges: Uint32Array;
@@ -119,7 +130,7 @@ export function scopeFactsOf(lines: readonly string[]): ScopeFacts {
     const seed = coordinate || isClass;
     forEachMainItemValue(line, (property, item) => {
       const tag = PLACE_TAG.get(property);
-      if (seed && (property === INSTANCE_OF || tag !== undefined)) neighbours.push(item);
+      if (seed && (property === INSTANCE_OF || tag !== undefined || SUBJECT.has(property))) neighbours.push(item);
       if (tag !== undefined) {
         edges.push(entity.id);
         edges.push(item);
