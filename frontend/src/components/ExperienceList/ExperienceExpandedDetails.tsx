@@ -43,6 +43,7 @@ import { ExtentLine } from '../shared/ExtentLine';
 import { PlaceLinks } from '../shared/PlaceLinks';
 import { descriptionBeyondSubtitle } from '../shared/PlaceSubtitle';
 import { OpenInMapsLink } from '../shared/OpenInMapsLink';
+import { ApproximateLocationNote } from '../shared/ApproximateLocationNote';
 import { ShareButton } from '../shared/ShareButton';
 import { ArtworksList } from './ArtworksList';
 import { SiteFindsList } from './SiteFindsList';
@@ -153,6 +154,7 @@ function ExperienceExpandedDetailsComponent({
       longitude: loc.longitude,
       latitude: loc.latitude,
       curatedFields: loc.curated_fields,
+      approximate: loc.approximate,
       hasPicture: Boolean(loc.image_url),
       isVisited: isLocationVisited(loc.id),
       inRegion: loc.in_region,
@@ -365,6 +367,8 @@ function ExperienceExpandedDetailsComponent({
             from each place's row (#1194). */}
         {onlyPoint && <OpenInMapsLink point={onlyPoint} label={experience.name} />}
       </Box>
+      {/* Where the maps link leads only roughly, the card says so (#1912). */}
+      <ApproximateLocationNote reason={onlyPoint?.approximate} />
 
       {/* What was dug up here and where a traveller sees it — a site's
           counterpart of the works list below, which a site never has. */}

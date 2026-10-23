@@ -45,14 +45,17 @@ describe('the world layer borrows the region layer\'s paint', () => {
     expect(world['heatmap-intensity']).not.toEqual(shared['heatmap-intensity']);
   });
 
-  it('keeps the marker\'s radius and fade, changing only the colour it has to derive', () => {
+  it('keeps the marker\'s radius and fade, changing only the colours it has to derive', () => {
     const shared = asRecord(asRecord(markerLayer).paint);
     const world = asRecord(asRecord(worldMarkerLayer).paint);
+    const derived = ['circle-color', 'circle-stroke-color'];
     for (const property of Object.keys(shared)) {
-      if (property === 'circle-color') continue;
+      if (derived.includes(property)) continue;
       expect(world[property]).toEqual(shared[property]);
     }
     expect(world['circle-color']).not.toEqual(shared['circle-color']);
+    // The ring of a point placed only roughly, in the kind's colour (#1912).
+    expect(JSON.stringify(world['circle-stroke-color'])).toContain('"approximate"');
   });
 
   it('keeps the cross-fade zooms, so the heat and the pins hand over together', () => {

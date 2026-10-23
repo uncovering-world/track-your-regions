@@ -51,6 +51,8 @@ export interface WorldPointProperties {
    * (`markerCountBadgeBgLayer`) is reused rather than restated.
    */
   locationCount: number;
+  /** Whether the source placed the point only roughly (#1912), drawn as a ring. */
+  approximate?: boolean;
   /**
    * Every kind of a place in more than one, comma-joined: a feature's property
    * comes back from `queryRenderedFeatures` as a scalar, so a list travels as
@@ -138,7 +140,8 @@ export function worldPointsCollection(
   for (let index = 0; index < count; index += 1) {
     const geometry: GeoJSON.Point = { type: 'Point', coordinates: [lng[index], lat[index]] };
     const kinds = answer.kinds?.[index] ?? null;
-    const icon = kinds ? iconFor?.(kinds) : undefined;
+    // A point placed only roughly keeps its ring rather than a split disc over it (#1912).
+    const icon = kinds && answer.approximate?.[index] !== true ? iconFor?.(kinds) : undefined;
     features[index] = labelled
       ? {
         type: 'Feature',
@@ -152,6 +155,8 @@ export function worldPointsCollection(
           kindId: answer.kindId![index],
           type: answer.type![index],
           locationCount: answer.locationCount?.[index] ?? 1,
+          // The scene's pin paint reads it: a ring for a point placed only roughly (#1912).
+          approximate: answer.approximate?.[index] === true,
           ...(kinds ? { kindIds: kinds.map(kind => kind.kindId).join(',') } : {}),
           ...(icon ? { icon } : {}),
         },

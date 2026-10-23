@@ -47,6 +47,7 @@ import { experienceColors } from '../../utils/kindColors';
 import { PlaceLinks } from '../shared/PlaceLinks';
 import { PlaceSubtitle, descriptionBeyondSubtitle } from '../shared/PlaceSubtitle';
 import { OpenInMapsLink } from '../shared/OpenInMapsLink';
+import { ApproximateLocationNote } from '../shared/ApproximateLocationNote';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { ExtentLine } from '../shared/ExtentLine';
 import { ContentsSection } from './ContentsSection';
@@ -165,6 +166,8 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
     // is about the visit. Joined by id here, so a corrected pin says so on a
     // signed-in reader's row as on anyone else's.
     const claimsById = new Map(publicLocs.map(loc => [loc.id, loc.curated_fields]));
+    // And how roughly the source placed it (#1912), which the visit read lacks too.
+    const approximateById = new Map(publicLocs.map(loc => [loc.id, loc.approximate]));
     // And the source's reference, which names a part the source left unnamed
     // (#1268): the public read carries it, the visited-status read does not.
     const refsById = new Map(publicLocs.map(loc => [loc.id, loc.external_ref]));
@@ -172,6 +175,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
       // Auth data available — use it (has isVisited field)
       return locationsWithVisitedStatus.map(loc => placed({
         ...loc, curatedFields: claimsById.get(loc.id), externalRef: refsById.get(loc.id) ?? null,
+        approximate: approximateById.get(loc.id) ?? null,
       }));
     }
     // Not authenticated or auth data not yet loaded — map public locations
@@ -184,6 +188,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
       isVisited: false,
       curatedFields: loc.curated_fields,
       externalRef: loc.external_ref,
+      approximate: loc.approximate,
     }));
   }, [locationsData?.locations, locationsWithVisitedStatus, regionPlaces]);
 
@@ -440,6 +445,8 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
           {/* A place of one point goes to a maps app from here, one of several from each row (#1194). */}
           {displayLocations.length === 1 && <OpenInMapsLink point={displayLocations[0]} label={experience.name} />}
         </Box>
+        {/* Where the maps link leads only roughly, the panel says so (#1912). */}
+        {displayLocations.length === 1 && <ApproximateLocationNote reason={displayLocations[0].approximate} />}
       </Box>
     </Box>
   );

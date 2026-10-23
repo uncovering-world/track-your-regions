@@ -37,6 +37,8 @@ import { EmptyState } from '../shared/EmptyState';
 import { locationLabel, pointFullName, pointOfRow } from '../../utils/locationLabel';
 import { CopyNameButton } from '../shared/CopyButton';
 import { OpenInMapsLink } from '../shared/OpenInMapsLink';
+import { ApproximateLocationNote } from '../shared/ApproximateLocationNote';
+import type { ExperienceLocation } from '../../api/experiences';
 import { claimLabel } from '../../utils/placeClaims';
 import { foldLabel } from '@tyr/shared/labels';
 import { filterParts, groupParts } from '../../utils/partGroups';
@@ -62,6 +64,8 @@ export type PanelLocation = Pick<
 > & {
   curatedFields?: string[];
   externalRef?: string | null;
+  /** Why the source placed it only roughly, which the row says (#1912). */
+  approximate?: ExperienceLocation['approximate'];
   /** Where the part lies, `Europe > Switzerland > Aargau`, for the groups of a long list (#1271). */
   regionPath?: string | null;
   /** Whether it lies in the region the list is about; the parts there come first. */
@@ -478,6 +482,8 @@ function PanelLocationRow({
           {claim}
         </Typography>
       )}
+      {/* A corrected name leaves the point as rough as it was; only a placement clears it (#1912). */}
+      {!loc.curatedFields?.includes('location') && <ApproximateLocationNote reason={loc.approximate} compact />}
       <CopyNameButton fullName={pointFullName(objectName, point)} className="place-copy" />
       <OpenInMapsLink point={loc} label={pointFullName(objectName, point)} compact className="place-maps" />
       {onCorrect && (

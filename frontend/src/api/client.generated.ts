@@ -2202,6 +2202,8 @@ export interface WorldPointsResponse {
   type?: (string | null)[];
   /** Markers only: every kind a place in more than one is offered in, in the kinds' display order; null for a place in one kind, which `kindId` names. */
   kinds?: WorldPointsResponseKindsItem[];
+  /** Markers, unfolded only: whether the source placed the point only roughly (#1912), which the pin draws as a ring. */
+  approximate?: boolean[];
   /**
      * Folded only: how many places the pin stands for, which is the badge's number.
      * @items.minimum -9007199254740991
@@ -2377,6 +2379,17 @@ export interface ExperiencesByRegionResponse {
 }
 
 /**
+ * Why the source placed the point only roughly, null where it did not or a curator has placed it (#1853): `whole-minute`, its coordinates given to the whole minute of arc, often a kilometre or more from the place; `shared`, one point several components of the site share. A reader is told (#1912).
+ */
+export type RegionExperienceLocationApproximate = typeof RegionExperienceLocationApproximate[keyof typeof RegionExperienceLocationApproximate] | null;
+
+
+export const RegionExperienceLocationApproximate = {
+  'whole-minute': 'whole-minute',
+  shared: 'shared',
+} as const;
+
+/**
  * One point as the map and the region list read it.
  */
 export interface RegionExperienceLocation {
@@ -2404,6 +2417,8 @@ export interface RegionExperienceLocation {
   ordinal: number | null;
   longitude: number;
   latitude: number;
+  /** Why the source placed the point only roughly, null where it did not or a curator has placed it (#1853): `whole-minute`, its coordinates given to the whole minute of arc, often a kilometre or more from the place; `shared`, one point several components of the site share. A reader is told (#1912). */
+  approximate: RegionExperienceLocationApproximate;
   created_at: string | null;
   /** The fields a curator has claimed on the point, such as `name` and `location`, so a row can say it is corrected. */
   curated_fields: string[];
@@ -2538,6 +2553,17 @@ export interface ExperienceDetail {
 }
 
 /**
+ * Why the source placed the point only roughly, null where it did not or a curator has placed it (#1853): `whole-minute`, its coordinates given to the whole minute of arc, often a kilometre or more from the place; `shared`, one point several components of the site share. A reader is told (#1912).
+ */
+export type ExperienceLocationWithStateApproximate = typeof ExperienceLocationWithStateApproximate[keyof typeof ExperienceLocationWithStateApproximate] | null;
+
+
+export const ExperienceLocationWithStateApproximate = {
+  'whole-minute': 'whole-minute',
+  shared: 'shared',
+} as const;
+
+/**
  * Whether readers see the point yet. `pending` is shown to nobody but a curator until it is published. `auto` and `verified` are shown to readers.
  */
 export type LocationCurationState = typeof LocationCurationState[keyof typeof LocationCurationState];
@@ -2577,6 +2603,8 @@ export interface ExperienceLocationWithState {
   ordinal: number | null;
   longitude: number;
   latitude: number;
+  /** Why the source placed the point only roughly, null where it did not or a curator has placed it (#1853): `whole-minute`, its coordinates given to the whole minute of arc, often a kilometre or more from the place; `shared`, one point several components of the site share. A reader is told (#1912). */
+  approximate: ExperienceLocationWithStateApproximate;
   created_at: string | null;
   /** The fields a curator has claimed on the point, such as `name` and `location`, so a row can say it is corrected. */
   curated_fields: string[];
