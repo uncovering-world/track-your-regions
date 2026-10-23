@@ -532,7 +532,9 @@ did not. The second rule is about the two halves of the catalogue agreeing: a
 run finds its places by the `(source_id, external_id)` its membership carries
 (ADR-0084), and the place's own pair names the source that first brought it
 and the id it brought it under. Some membership of the place has to carry that
-pair — a serial site's component part excepted: it is brought under a pair of its own
+pair, or a membership of another live place, where the run then finds it (the original of a
+separation keeps its pair while the membership that carried it is the new place's, ADR-0144) — and a
+serial site's component part excepted: it is brought under a pair of its own
 (`part:<id>`) that no membership carries, its run finds it through its whole (ADR-0100), and
 holding a kind's membership (the Tower of Belem as a tower, the state the resolver reaches)
 does not make it a mis-keyed place. One that none carries is a place its first source's next run does not
