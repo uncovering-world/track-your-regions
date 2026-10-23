@@ -25,6 +25,7 @@ import { safeHref } from '../../utils/safeHref';
 import { ImageCreditLine } from '../shared/ImageCreditLine';
 import { PointPreviewDialog } from '../shared/PointPreviewDialog';
 import { proposedPoint } from './MoveFact';
+import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
 
 /** Four decimals is about 11 m at the equator — finer than this screen can use. */
 function coordinateLabel(lat: number, lon: number): string {
@@ -98,7 +99,9 @@ export function ObjectContext({ item }: { item: ReviewQueueItem }) {
   const wikipediaHref = safeHref(item.wikipedia_url);
   // UNESCO's page about a World Heritage site, apart from the site's own (#1538).
   const unescoHref = safeHref(item.unesco_url);
-  const officialSiteHref = safeHref(item.website_url);
+  // UNESCO's page given as the official website, under any scheme or page of
+  // it, is no official site of the place (`isWorldHeritageCentreUrl`, #1851).
+  const officialSiteHref = safeHref(item.website_url && !isWorldHeritageCentreUrl(item.website_url) ? item.website_url : null);
 
   const madeOf = madeOfLabel(item.offered_locations, item.counted_works_total ?? undefined);
   const description = item.object_description?.trim() || null;

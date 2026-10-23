@@ -39,6 +39,7 @@ import { CopyNameButton } from './CopyButton';
 import { OpenInMapsLink } from './OpenInMapsLink';
 import { ImageCreditLine } from './ImageCreditLine';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
+import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
 
 /** The object the part belongs to, as the surface that opened the card knows it. */
 export interface PointCardObject {
@@ -140,7 +141,9 @@ export function PointCard({
   const wikidata = safeHref(wikidataItemUrl(point.wikidata_item));
   const article = safeHref(wikipediaArticleUrl(point.wikidata_item));
   const unescoPage = safeHref(unescoUrl);
-  const official = safeHref(officialUrl);
+  // Some items give UNESCO's page as their official website, under any scheme
+  // or page of it: never a second link to it (`isWorldHeritageCentreUrl`, #1851).
+  const official = safeHref(officialUrl && !isWorldHeritageCentreUrl(officialUrl) ? officialUrl : null);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column' }}>
@@ -243,7 +246,6 @@ export function PointCard({
               UNESCO page
             </Link>
           )}
-          {/* Some items give UNESCO's page as their official website: one link, not two. */}
           {official && official !== unescoPage && (
             <Link href={official} target="_blank" rel="noopener noreferrer" variant="body2">
               Official website

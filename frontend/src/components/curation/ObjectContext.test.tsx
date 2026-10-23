@@ -81,6 +81,16 @@ describe('ObjectContext', () => {
     expect(screen.queryByRole('link', { name: 'official site' })).not.toBeInTheDocument();
   });
 
+  it('offers no official site that is a World Heritage Centre page under another scheme or page (#1851)', () => {
+    // Zvartnots: Wikidata's website is UNESCO's documents page of its property.
+    render(<ObjectContext item={item({
+      unesco_url: 'https://whc.unesco.org/en/list/1011',
+      website_url: 'https://whc.unesco.org/en/list/1011/documents/',
+    })} />);
+    expect(screen.getByRole('link', { name: 'UNESCO page' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'official site' })).not.toBeInTheDocument();
+  });
+
   it('opens an outbound link without handing it this page', () => {
     render(<ObjectContext item={item({ unesco_url: 'https://whc.unesco.org/en/list/15' })} />);
 

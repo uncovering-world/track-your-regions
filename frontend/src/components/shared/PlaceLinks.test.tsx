@@ -25,6 +25,13 @@ describe('PlaceLinks', () => {
     expect(screen.queryByRole('link', { name: 'Official website' })).toBeNull();
   });
 
+  it("offers no website that is a World Heritage Centre page under another scheme (#1851)", () => {
+    // Gelati Monastery: Wikidata's website is its UNESCO page over http.
+    render(<PlaceLinks metadata={{ website: 'http://whc.unesco.org/en/list/710', unescoUrl: 'https://whc.unesco.org/en/list/710' }} />);
+    expect(screen.queryByRole('link', { name: 'Official website' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'UNESCO page' })).toHaveAttribute('href', 'https://whc.unesco.org/en/list/710');
+  });
+
   it('offers nothing for an address the rule refuses', () => {
     render(<PlaceLinks metadata={{ website: 'javascript:alert(1)' }} />);
 

@@ -10,13 +10,17 @@
  * Every address passes `safeHref` where it meets the DOM: a sync writes these
  * keys through no request schema, so the write-path rule does not hold every
  * stored row, and a refused value offers no link at all. The site's own page is
- * left out where it is the Wikipedia article or the UNESCO page again.
+ * left out where it is the Wikipedia article or the UNESCO page again, under
+ * any scheme: a World Heritage Centre address is never the site's own
+ * (`isWorldHeritageCentreUrl`, #1851), and Gelati Monastery's `http://` copy
+ * of its `https://` UNESCO page would otherwise be a second link to it.
  */
 
 import { Button } from '@mui/material';
 import WikiIcon from '@mui/icons-material/MenuBook';
 import WebsiteIcon from '@mui/icons-material/Language';
 import HeritagePageIcon from '@mui/icons-material/AccountBalance';
+import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
 import { safeHref } from '../../utils/safeHref';
 
 function storedHref(metadata: Record<string, unknown> | null | undefined, key: string): string | null {
@@ -48,7 +52,7 @@ export function PlaceLinks({ metadata }: { metadata: Record<string, unknown> | n
   return (
     <>
       <PlaceLink stored={wikiUrl} icon={<WikiIcon />} words="Wikipedia" />
-      <PlaceLink stored={websiteUrl !== wikiUrl && websiteUrl !== unescoUrl ? websiteUrl : null}
+      <PlaceLink stored={websiteUrl !== wikiUrl && websiteUrl !== unescoUrl && !isWorldHeritageCentreUrl(websiteUrl ?? '') ? websiteUrl : null}
         icon={<WebsiteIcon />} words="Official website" />
       <PlaceLink stored={unescoUrl} icon={<HeritagePageIcon />} words="UNESCO page" />
     </>

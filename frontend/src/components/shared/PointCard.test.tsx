@@ -10,10 +10,11 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 vi.mock('../../api/experiences', () => ({ fetchExperienceLocations: vi.fn() }));
+const details = vi.hoisted(() => ({ metadata: { unescoUrl: 'https://whc.unesco.org/en/list/1363' } as Record<string, unknown> }));
 vi.mock('../../api/experienceCardQueries', () => ({
   experienceDetailsQuery: (id: number) => ({
     queryKey: ['experience', id],
-    queryFn: async () => ({ id, metadata: { unescoUrl: 'https://whc.unesco.org/en/list/1363' } }),
+    queryFn: async () => ({ id, metadata: details.metadata }),
   }),
 }));
 
@@ -60,6 +61,7 @@ function renderCard(pointId: number, extra: Partial<Parameters<typeof PointCard>
 }
 
 beforeEach(() => {
+  details.metadata = { unescoUrl: 'https://whc.unesco.org/en/list/1363' };
   mockedLocations.mockReset();
   mockedLocations.mockResolvedValue({
     experienceId: 418, experienceName: SITE.name, totalLocations: 3, regionId: null,
@@ -80,6 +82,13 @@ describe('PointCard', () => {
     // The steps count the parts a visitor sees, not the unread one a curator would.
     expect(screen.getByText('2 of 3')).toBeInTheDocument();
     expect(screen.queryByText(/whole site's picture/)).not.toBeInTheDocument();
+  });
+
+  it('offers no official website that is a World Heritage Centre page under another scheme (#1851)', async () => {
+    details.metadata = { unescoUrl: 'https://whc.unesco.org/en/list/1363', website: 'http://whc.unesco.org/en/list/1363' };
+    renderCard(8189);
+    expect(await screen.findByRole('link', { name: 'UNESCO page' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /official website/i })).not.toBeInTheDocument();
   });
 
   it("hands the part's own point to a maps app (#1194)", async () => {
