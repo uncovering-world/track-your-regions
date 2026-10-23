@@ -552,6 +552,8 @@ a person. The question is the pass's own (`sharedItemsSql`,
 `controllers/experience/equalItemMerges.ts`), so the check never counts a pair
 the button would not merge, nor misses one it would.
 
+**The identifier rules** (`identifiers-on-several-places`, `place-identifiers-out-of-step`, `identifierAssertions.ts`) read the place identifier registry (ADR-0143, #1892). The first lists every Wikidata item or World Heritage reference two live places each claim to be: a duplicate the merges missed, which the registry holds as referring on both and reports rather than merges. On the development catalogue on 2026-10-23 it listed 18 items, mostly a component part of a serial site and the place a newer kind made for the same item (the Tower of Belem, the Belfry of Bruges, Kotor), and 2 references a site's own part carries (Baalbek, Wudang). A merge or the removal of the wrong claim settles a row. The second compares the registry with what its columns derive (`place_identifiers_expected()` over `place_identifier_values()`); a row there means a write skipped the triggers that keep it current.
+
 **The near-pairs rule** (`near-places-with-similar-names-unanswered`) lists every
 pair of near places with similar names nobody has answered (#1249). Those are
 the universal signals that propose rather than merge (ADR-0046 decision 2,
