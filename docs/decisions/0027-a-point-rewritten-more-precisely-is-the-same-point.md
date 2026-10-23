@@ -1,7 +1,7 @@
 # ADR-0027: A point the source rewrites more precisely is the same point
 
 **Date:** 2026-08-16
-**Status:** Accepted — decisions 1 and 5 narrowed by ADR-0029, decision 5a-i narrowed by [ADR-0117](0117-the-location-pairing-is-made-complete-before-any-arm-reads-it.md)
+**Status:** Accepted — decisions 1 and 5 narrowed by ADR-0029, decision 5a-i narrowed by [ADR-0117](0117-the-location-pairing-is-made-complete-before-any-arm-reads-it.md), decisions 1 and 5a narrowed by [ADR-0137](0137-a-point-a-reader-sees-is-another-sources-point-within-ten-metres.md)
 
 ---
 

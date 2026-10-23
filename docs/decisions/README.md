@@ -46,7 +46,7 @@ and accepted by it.
 | [0024](0024-a-category-may-refuse-what-the-source-still-lists.md) | A category may refuse what the source still lists | Accepted — decisions 2 and 4 narrowed by [0045](0045-a-traveller-browses-by-kind-a-source-is-how-a-kind-is-filled.md) | 2026-08-07 |
 | [0025](0025-per-source-curation-gate.md) | A source is trusted or it is not, and the product says which | Accepted — decision 5 narrowed by [0037](0037-a-part-field-readers-see-is-held-like-the-objects.md) | 2026-08-10 |
 | [0026](0026-a-run-records-what-a-container-holds.md) | A run records what a container's contents did, per kind of contents | Accepted — decisions 1 and 2 narrowed by [0029](0029-what-an-object-is-made-of-can-be-curated.md) | 2026-08-15 |
-| [0027](0027-a-point-rewritten-more-precisely-is-the-same-point.md) | A point the source rewrites more precisely is the same point | Accepted — decisions 1 and 5 narrowed by [0029](0029-what-an-object-is-made-of-can-be-curated.md); decision 5a-i narrowed by [0117](0117-the-location-pairing-is-made-complete-before-any-arm-reads-it.md) | 2026-08-16 |
+| [0027](0027-a-point-rewritten-more-precisely-is-the-same-point.md) | A point the source rewrites more precisely is the same point | Accepted — decisions 1 and 5 narrowed by [0029](0029-what-an-object-is-made-of-can-be-curated.md); decision 5a-i narrowed by [0117](0117-the-location-pairing-is-made-complete-before-any-arm-reads-it.md); decisions 1 and 5a narrowed by [0137](0137-a-point-a-reader-sees-is-another-sources-point-within-ten-metres.md) | 2026-08-16 |
 | [0028](0028-a-reader-is-positioned-by-places-they-can-go-to.md) | A reader is positioned by places they can go to, never by a point that names the whole | Accepted — decision 2 narrowed by [0095](0095-a-place-of-several-points-has-no-coordinate-of-its-own.md) | 2026-08-17 |
 | [0029](0029-what-an-object-is-made-of-can-be-curated.md) | What an object is made of can be curated, and a correction outlives the run | Accepted | 2026-08-20 |
 | [0030](0030-answers-from-a-source-are-kept-with-an-expiry.md) | What a source answers is kept, with an expiry a person can change | Accepted — decision 1 narrowed by [0047](0047-a-cached-answer-belongs-to-the-source-that-asked.md); decision 4 narrowed by [0119](0119-a-source-that-reads-the-subset-keeps-only-what-it-still-asks-live.md) | 2026-08-21 |
@@ -156,6 +156,7 @@ and accepted by it.
 | [0134](0134-openstreetmap-is-read-from-a-layer-cut-from-the-planet-and-a-miss-the-layer-cannot-vouch-for-is-asked-live.md) | OpenStreetMap is read from a layer cut from the planet, and a miss the layer cannot vouch for is asked live | Accepted — decisions 1 and 2 narrowed by [0136](0136-the-openstreetmap-layer-keeps-a-full-geometry-only-for-what-a-kind-draws.md) | 2026-10-22 |
 | [0135](0135-a-type-its-kind-has-no-word-for-passes-the-gate.md) | A type its kind has no word for passes the gate | Accepted | 2026-10-22 |
 | [0136](0136-the-openstreetmap-layer-keeps-a-full-geometry-only-for-what-a-kind-draws.md) | The OpenStreetMap layer keeps a full geometry only for what a kind draws | Accepted | 2026-10-22 |
+| [0137](0137-a-point-a-reader-sees-is-another-sources-point-within-ten-metres.md) | A point a reader sees is another source's point within ten metres | Accepted | 2026-10-23 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
