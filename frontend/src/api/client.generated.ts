@@ -2983,6 +2983,7 @@ export const CurationLogEntryAction = {
   admission_pin_handed_back: 'admission_pin_handed_back',
   merge_proposal_answered: 'merge_proposal_answered',
   visit_question_answered: 'visit_question_answered',
+  identifier_settled: 'identifier_settled',
 } as const;
 
 /**
@@ -5041,6 +5042,120 @@ export interface PinQuestionAnswered {
   admission: PinQuestionAnsweredAdmission;
   /** Whether the pin still stands: true after `keep`, false after `release`. */
   pinned: boolean;
+}
+
+export type IdentifierScheme = typeof IdentifierScheme[keyof typeof IdentifierScheme];
+
+
+export const IdentifierScheme = {
+  wikidata: 'wikidata',
+  whc: 'whc',
+  osm: 'osm',
+} as const;
+
+export type IdentifierVerdict = typeof IdentifierVerdict[keyof typeof IdentifierVerdict];
+
+
+export const IdentifierVerdict = {
+  identifies: 'identifies',
+  refers: 'refers',
+  removed: 'removed',
+} as const;
+
+export type PlaceIdentifierOthersItem = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  name: string;
+  identifies: boolean;
+};
+
+export interface PlaceIdentifier {
+  scheme: IdentifierScheme;
+  value: string;
+  /** Whether a run finds this place by the value: it names this place and no other live one. */
+  identifies: boolean;
+  /** Whether some column, or the curator, says the value is this place; false where it only refers to it. */
+  claimsIdentity: boolean;
+  /** The columns that carry the value for this place: membership, site-items, point, component, curator. */
+  basis: string[];
+  /** The curator's word standing on it, or null where the sources decide. */
+  verdict: IdentifierVerdict | null;
+  /** @nullable */
+  note: string | null;
+  /** The other live places the registry holds the value on. */
+  others: PlaceIdentifierOthersItem[];
+}
+
+/**
+ * A place's external identifiers, for its curation dialog (#1896).
+ */
+export interface PlaceIdentifiers {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  identifiers: PlaceIdentifier[];
+}
+
+export type IdentifierVerdictBodyScheme = typeof IdentifierVerdictBodyScheme[keyof typeof IdentifierVerdictBodyScheme];
+
+
+export const IdentifierVerdictBodyScheme = {
+  wikidata: 'wikidata',
+  whc: 'whc',
+  osm: 'osm',
+} as const;
+
+export type IdentifierVerdictBodyVerdict = typeof IdentifierVerdictBodyVerdict[keyof typeof IdentifierVerdictBodyVerdict];
+
+
+export const IdentifierVerdictBodyVerdict = {
+  identifies: 'identifies',
+  refers: 'refers',
+  removed: 'removed',
+  derived: 'derived',
+} as const;
+
+export interface IdentifierVerdictBody {
+  scheme: IdentifierVerdictBodyScheme;
+  /**
+     * @minLength 1
+     * @maxLength 64
+     */
+  value: string;
+  verdict: IdentifierVerdictBodyVerdict;
+  /** @maxLength 1000 */
+  note?: string;
+}
+
+export type IdentifierSettledVerdict = typeof IdentifierSettledVerdict[keyof typeof IdentifierSettledVerdict];
+
+
+export const IdentifierSettledVerdict = {
+  identifies: 'identifies',
+  refers: 'refers',
+  removed: 'removed',
+  derived: 'derived',
+} as const;
+
+/**
+ * A curator's word on one identifier, written (#1896).
+ */
+export interface IdentifierSettled {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  experienceId: number;
+  scheme: IdentifierScheme;
+  value: string;
+  verdict: IdentifierSettledVerdict;
+  /** Whether the value identifies this place now. */
+  identifies: boolean;
 }
 
 export type VisitQuestionAnswerBodyDecision = typeof VisitQuestionAnswerBodyDecision[keyof typeof VisitQuestionAnswerBodyDecision];
@@ -10339,6 +10454,71 @@ return apiFetch<PinQuestionAnswered>(getPostExperiencesByIdAdmissionPinUrl(id),
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
     body: JSON.stringify(pinQuestionAnswerBody)
+  }
+);}
+
+
+
+export const getGetExperiencesByIdIdentifiersUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/identifiers`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary A place's external identifiers, each with the other places that hold it and the curator's word on it
+ */
+export const getExperiencesByIdIdentifiers = async (id: number, options?: Parameters<typeof apiFetch>[1]): Promise<PlaceIdentifiers> => {
+
+  return apiFetch<PlaceIdentifiers>(getGetExperiencesByIdIdentifiersUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getPostExperiencesByIdIdentifiersUrl = (id: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/identifiers`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Say that an identifier names this place, only refers to it, is not its own, or is the sources' to decide again
+ */
+export const postExperiencesByIdIdentifiers = async (id: number,
+    identifierVerdictBody: IdentifierVerdictBody, options?: Parameters<typeof apiFetch>[1]): Promise<IdentifierSettled> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiFetch<IdentifierSettled>(getPostExperiencesByIdIdentifiersUrl(id),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(identifierVerdictBody)
   }
 );}
 
