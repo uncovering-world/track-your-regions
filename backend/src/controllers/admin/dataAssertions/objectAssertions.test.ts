@@ -8,7 +8,7 @@ import { describe, it, expect } from 'vitest';
 import { heldFieldAnsweredSql, heldFieldRefusedSql } from '../../experience/heldDecisions.js';
 import { MEMBERSHIPS, admissionPinnedSql, iconicPinnedSql } from '../../../db/membership.js';
 import {
-  KILL_CLASSES, VETO_CLASSES, WORSHIP_CLASSES, COMMEMORATIVE_FORMS, SCULPTURAL_CLASSES, FOUNTAIN_ROOT, LOST_CLASSES,
+  BURIAL_CLASSES, KILL_CLASSES, VETO_CLASSES, WORSHIP_CLASSES, COMMEMORATIVE_FORMS, SCULPTURAL_CLASSES, FOUNTAIN_ROOT, LOST_CLASSES,
 } from '../../../services/sync/publicArt/classes.js';
 import { readFileSync } from 'node:fs';
 import { repoFile } from '../../../testSupport/repoFile.js';
@@ -161,6 +161,23 @@ describe('an admitted public-art row typed as a building', () => {
       expect(sql).toContain(`'${qid}'`);
     }
     for (const qid of Object.keys(VETO_CLASSES)) expect(sql).toContain(`'${qid}'`);
+  });
+
+  it('refuses a burial class outright for Public art, and asks it of the rule\'s answer for Monuments & memorials', () => {
+    // Monuments & memorials lets a commemorative form lift the burial kill,
+    // read from the genre too (#1832): the Monumento a la Revolución is a
+    // mausoleum inside a triumphal arch. A constant cannot see the genre, so
+    // that kind's admission is asked of the stored answer; Public art never
+    // lifts it, so its admission is refused whatever the answer.
+    const array = (qids: string[]) => 'ARRAY[' + qids.map((qid) => "'" + qid + "'").join(', ') + ']';
+    const outright = Object.keys(KILL_CLASSES).filter((qid) => !BURIAL_CLASSES[qid]);
+    expect(sql).toContain(`?| ${array([...Object.keys(WORSHIP_CLASSES), ...outright])} OR`);
+    expect(sql).toContain(`?| ${array(Object.keys(VETO_CLASSES))} -- The rule's own answer`);
+    const burial = sql.slice(sql.indexOf(`?| ${array(Object.keys(BURIAL_CLASSES))} AND (`));
+    expect(burial).toMatch(/^\?\| ARRAY\[[^\]]*\] AND \( EXISTS \( SELECT 1 FROM experience_kind_memberships m WHERE m\.experience_id = e\.id AND m\.source_id IN \(3\) /);
+    expect(burial).toContain("m.source_id IN (6) AND m.admission = 'admitted'");
+    expect(burial).toContain("AND NOT COALESCE((e.metadata->>'wikidataArtwork')::boolean, FALSE)) ) )");
+    expect(Object.keys(BURIAL_CLASSES)).toContain('Q162875');
   });
 
   it('refuses a lost work but not the one whose remains are on show, as the rule does', () => {

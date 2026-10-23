@@ -17,6 +17,7 @@ import {
   COMMEMORATIVE_FORMS,
   HERITAGE_MONUMENT_CLASSES,
   OBELISK_CLASSES,
+  PUBLIC_ART_GENRE,
   STREET_ART_CLASSES,
   type PublicArtTrees,
 } from './classes.js';
@@ -32,6 +33,8 @@ export interface KindFacts {
   classes: string[];
   /** `P547`, whom or what the candidate commemorates. */
   commemorates: string[];
+  /** `P136`, the genre the candidate is filed under. */
+  genres: string[];
 }
 
 export interface KindRule {
@@ -46,9 +49,12 @@ export interface KindRule {
   /** Whether the candidate's classes answer a building's or a cemetery's veto. */
   answersVeto(e: KindFacts, trees: PublicArtTrees): boolean;
   /**
-   * Whether a memorial class lifts the cemetery's veto and a bare building's
-   * (`MEMORIAL_LIFTS`): the Neue Wache is a guardhouse raised to remember,
-   * and Montjuïc Castle a castle with a memorial in it.
+   * Whether a memorial — a memorial class, or a `P547` statement — lifts the
+   * museum's veto, the cemetery's and a bare building's (`MEMORIAL_LIFTS`),
+   * and a commemorative form the burial kill (`BURIAL_CLASSES`): the Neue
+   * Wache is a guardhouse raised to remember, Montjuïc Castle a castle with a
+   * memorial in it, and the Monumento a la Revolución a triumphal arch with a
+   * mausoleum in it.
    */
   memorialLifts: boolean;
   /** The type an admitted row is filed under. */
@@ -59,6 +65,9 @@ export interface KindRule {
 
 const has = (classes: string[], of: ReadonlySet<string> | Record<string, string>): boolean =>
   classes.some((c) => (of instanceof Set ? of.has(c) : Object.hasOwn(of, c)));
+
+/** What a candidate's form is said to be: its classes, and the genre it is filed under. */
+export const formsOf = (e: KindFacts): string[] => [...e.classes, ...e.genres];
 
 /**
  * Public art: a sculpture, a statue, a fountain, a mural. A fountain before a
@@ -84,9 +93,12 @@ export const PUBLIC_ART_RULE: KindRule = {
  * Monuments & memorials: a memorial, a commemorative form — an arch, a
  * column, an obelisk, a stele — a monument in the heritage sense, or whatever
  * Wikidata says commemorates someone (`P547`): the Jefferson Memorial is
- * typed nothing but a National Memorial. A memorial lifts the cemetery veto
- * and a bare building's, since the Neue Wache is a guardhouse raised to
- * remember and Arlington a cemetery a traveller visits as a memorial.
+ * typed nothing but a National Memorial. A form is read from the genre
+ * (`P136`) as well as the class: the Bronze Horseman is filed as an
+ * equestrian statue. A memorial lifts the cemetery veto and a bare
+ * building's, since the Neue Wache is a guardhouse raised to remember and
+ * Arlington a cemetery a traveller visits as a memorial; a work filed under
+ * public art (`PUBLIC_ART_GENRE`) answers them as an artwork class does.
  * The form names the type before the purpose: the Arc de Triomphe is an arch
  * and the Washington Monument an obelisk, whatever else they are.
  */
@@ -95,16 +107,17 @@ export const MONUMENTS_RULE: KindRule = {
   noClass: 'no monument or memorial class',
   unanswered: 'not a memorial',
   admits: (e, trees) => has(e.classes, trees.commemorative)
-    || has(e.classes, COMMEMORATIVE_FORMS)
+    || has(formsOf(e), COMMEMORATIVE_FORMS)
     || has(e.classes, HERITAGE_MONUMENT_CLASSES)
     || e.commemorates.length > 0,
-  answersVeto: (e, trees) => has(e.classes, trees.artwork),
+  answersVeto: (e, trees) => has(formsOf(e), trees.artwork) || e.genres.includes(PUBLIC_ART_GENRE),
   memorialLifts: true,
   types: MONUMENT_TYPES,
   type: (e, trees) => {
-    if (has(e.classes, ARCH_CLASSES)) return 'arch';
-    if (has(e.classes, COLUMN_CLASSES)) return 'column';
-    if (has(e.classes, OBELISK_CLASSES)) return 'obelisk';
+    const forms = formsOf(e);
+    if (has(forms, ARCH_CLASSES)) return 'arch';
+    if (has(forms, COLUMN_CLASSES)) return 'column';
+    if (has(forms, OBELISK_CLASSES)) return 'obelisk';
     if (has(e.classes, trees.commemorative)) return 'memorial';
     return 'monument';
   },

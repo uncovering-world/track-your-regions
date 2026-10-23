@@ -42,6 +42,7 @@ const SHINTO_SHRINE = 'Q845945';
 const BASILICA = 'Q120560';
 
 const PILGRIMAGE_SITE = 'Q15135589';
+const PUBLIC_ART_GENRE = 'Q557141';
 
 const LOST_ARTWORK = 'Q4140840';
 const DESTROYED_ARTWORK = 'Q21745157';
@@ -61,7 +62,7 @@ const trees = buildTrees({
 });
 
 const facts = (over: Partial<PublicArtFacts>): PublicArtFacts => ({
-  qid: 'Q1', classes: [SCULPTURE], containers: [], collections: [], commemorates: [], depicts: [],
+  qid: 'Q1', classes: [SCULPTURE], containers: [], collections: [], commemorates: [], depicts: [], genres: [],
   onEarth: true, lat: 41.9, lon: 12.5, ...over,
 });
 
@@ -619,6 +620,66 @@ describe('publicArtVerdict — what it admits', () => {
     // National Monument of Indonesia: national monument, memorial, museum, obelisk.
     const v = publicArtVerdict(facts({ classes: ['Q893745', MEMORIAL, MUSEUM, OBELISK] }), trees, monuments);
     expect(v).toMatchObject({ pass: true, type: 'obelisk' });
+  });
+
+  it('reads a commemorative form from the genre as well as the class', () => {
+    // The Bronze Horseman: monumental sculpture, filed as an equestrian
+    // statue. Gattamelata in Padua: a sculpture filed as an equestrian
+    // statue; without the genre it says nothing of a monument.
+    const horseman = facts({ classes: [MONUMENTAL_SCULPTURE], genres: [EQUESTRIAN_STATUE, PUBLIC_ART_GENRE] });
+    expect(publicArtVerdict(horseman, trees, monuments)).toMatchObject({ pass: true, type: 'monument' });
+    expect(publicArtVerdict(facts({ classes: [SCULPTURE], genres: [EQUESTRIAN_STATUE] }), trees, monuments))
+      .toMatchObject({ pass: true, type: 'monument' });
+    expect(reasonOf(publicArtVerdict(facts({ classes: [SCULPTURE] }), trees, monuments)))
+      .toBe('no monument or memorial class');
+  });
+
+  it('admits a monumental sculpture to Monuments & memorials, filed under that genre or typed it', () => {
+    // The Statue of Liberty: statue, colossal statue and observation tower,
+    // filed as allegorical and monumental sculpture. The statue answers the
+    // tower's veto.
+    const liberty = facts({
+      classes: ['Q43113623', 'Q1440300', STATUE, COLOSSAL_STATUE],
+      genres: ['Q4731380', MONUMENTAL_SCULPTURE, PUBLIC_ART_GENRE, COLOSSAL_STATUE],
+    });
+    expect(publicArtVerdict(liberty, trees, monuments)).toMatchObject({ pass: true, type: 'monument', artwork: true });
+    expect(publicArtVerdict(liberty, trees, art)).toMatchObject({ pass: true, type: 'sculpture' });
+  });
+
+  it('lets a P547 statement lift the museum veto for Monuments & memorials', () => {
+    // The Vittoriano: typed only by Italian museum classes, and commemorates
+    // Victor Emmanuel II. The same museum classes commemorating nobody are a
+    // museum.
+    expect(publicArtVerdict(facts({ classes: ['Q17431399', MUSEUM], commemorates: ['Q168691'] }), trees, monuments))
+      .toMatchObject({ pass: true, type: 'monument' });
+    expect(reasonOf(publicArtVerdict(facts({ classes: ['Q17431399', MUSEUM, MONUMENT] }), trees, monuments)))
+      .toBe('not a memorial, and typed: a museum');
+  });
+
+  it('lets a work filed under public art answer the museum and cemetery vetoes for Monuments & memorials', () => {
+    // The Soviet War Memorial in the Tiergarten: cemetery, military museum,
+    // monument. The Monument to the Conquerors of Space: historic site,
+    // monument, museum. Both are filed under public art; the Bilbao Fine Arts
+    // Museum (art museum, monument) is not.
+    const tiergarten = { classes: ['Q39614', MILITARY_MUSEUM, MONUMENT] };
+    expect(publicArtVerdict(facts({ ...tiergarten, genres: [PUBLIC_ART_GENRE] }), trees, monuments))
+      .toMatchObject({ pass: true, type: 'monument', artwork: true });
+    expect(reasonOf(publicArtVerdict(facts(tiergarten), trees, monuments)))
+      .toBe('not a memorial, and typed: a museum; cemetery');
+    expect(publicArtVerdict(facts({ classes: ['Q1081138', MONUMENT, MUSEUM], genres: [PUBLIC_ART_GENRE] }), trees, monuments))
+      .toMatchObject({ pass: true, type: 'monument' });
+    expect(reasonOf(publicArtVerdict(facts({ classes: [ART_MUSEUM, MONUMENT] }), trees, monuments)))
+      .toBe('not a memorial, and typed: a museum');
+  });
+
+  it('lets a commemorative form lift the burial kill for Monuments & memorials alone', () => {
+    // The Monumento a la Revolución: mausoleum, triumphal arch. The Mausoleum
+    // of Mao Zedong (mausoleum, memorial) has no form, and stays refused.
+    const revolucion = facts({ classes: ['Q162875', TRIUMPHAL_ARCH] });
+    expect(publicArtVerdict(revolucion, trees, monuments)).toMatchObject({ pass: true, type: 'arch' });
+    expect(reasonOf(publicArtVerdict(revolucion, trees, art))).toBe('not public art: mausoleum');
+    expect(reasonOf(publicArtVerdict(facts({ classes: ['Q162875', MEMORIAL] }), trees, monuments)))
+      .toBe('not a monument or memorial: mausoleum');
   });
 
   it('lets a monumental sculpture lift the veto a war cemetery carries', () => {

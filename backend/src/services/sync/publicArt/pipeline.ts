@@ -170,7 +170,7 @@ export function classifyPublicArt(
     // curator may have put it back, and a put-back is filed under it too
     // (`filePutBackTypes`, ADR-0135).
     const type = admitted.has(entity.qid)
-      ? { type: rule.type({ classes: known.classes, commemorates: known.commemorates }, trees) }
+      ? { type: rule.type({ classes: known.classes, commemorates: known.commemorates, genres: known.genres }, trees) }
       : {};
     const verdict = publicArtVerdict({
       qid: entity.qid,
@@ -179,6 +179,7 @@ export function classifyPublicArt(
       collections: ownersOf(known, containers),
       commemorates: known.commemorates,
       depicts: known.depicts,
+      genres: known.genres,
       onEarth: entity.onEarth,
       lat: entity.lat,
       lon: entity.lon,

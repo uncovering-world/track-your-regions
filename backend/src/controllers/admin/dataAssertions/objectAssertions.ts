@@ -18,7 +18,7 @@ import {
 } from '../../../db/membership.js';
 import { parseDangerListing } from '../../../services/sync/dangerListing.js';
 import {
-  KILL_CLASSES, LOST_CLASSES, VETO_CLASSES, WORSHIP_CLASSES,
+  BURIAL_CLASSES, KILL_CLASSES, LOST_CLASSES, VETO_CLASSES, WORSHIP_CLASSES,
 } from '../../../services/sync/publicArt/classes.js';
 import { REMAINS_ON_SHOW } from '../../../services/sync/museum/worksCollector.js';
 import { tidyLabelSql } from '../../../services/sync/labelFold.js';
@@ -287,22 +287,39 @@ function qidArray(qids: string[]): string {
   return 'ARRAY[' + quoted + ']';
 }
 
-const REFUSED_OUTRIGHT = qidArray([...Object.keys(WORSHIP_CLASSES), ...Object.keys(KILL_CLASSES)]);
+// A burial class is refused outright for Public art, and for Monuments &
+// memorials unless a commemorative form stands with it, which that kind reads
+// from the genre as well (#1832): a constant cannot see the genre, so that
+// kind's admission is asked of the rule's own answer, as a building veto is.
+const REFUSED_OUTRIGHT = qidArray([
+  ...Object.keys(WORSHIP_CLASSES),
+  ...Object.keys(KILL_CLASSES).filter((qid) => !BURIAL_CLASSES[qid]),
+]);
 // A lost or destroyed work is refused unless it is the one work the rule
 // names as remains on show (`REMAINS_ON_SHOW`, read by `publicArtVerdict`).
 const REFUSED_AS_LOST = qidArray(Object.keys(LOST_CLASSES));
 const REMAINS_SHOWN = qidArray(Object.keys(REMAINS_ON_SHOW));
 const REFUSED_UNLESS_ARTWORK = qidArray(Object.keys(VETO_CLASSES));
+const BURIAL = qidArray(Object.keys(BURIAL_CLASSES));
+
+/** An admitted membership of `source` the rule decided, a curator's pin aside. */
+const admittedBy = (source: string) => `EXISTS (
+                 SELECT 1 FROM ${MEMBERSHIPS} m
+                  WHERE m.experience_id = e.id AND m.source_id IN (${source})
+                    AND m.admission = 'admitted'
+                    AND NOT ${admissionPinnedSql('m')}
+               )`;
 
 /**
  * A public-art row admitted with a class the rule refuses.
  *
  * The rule of Public art and of Monuments & memorials (`publicArtTest.ts`,
  * one gather and two kinds, #1807) reads what Wikidata types an entity and
- * turns down a place of worship, a camp, a stadium, an archaeological site, a
- * tomb, an organisation, a settlement; and a building, a cemetery or a place
- * unless the kind's classes answer it — an artwork class, and for Monuments &
- * memorials a memorial too. It runs on every candidate every
+ * turns down a place of worship, a camp, a stadium, an archaeological site, an
+ * organisation, a settlement; and a building, a cemetery or a place unless the
+ * kind's classes answer it — an artwork class, and for Monuments & memorials a
+ * memorial too — and a tomb unless, for Monuments & memorials, a commemorative
+ * form stands with it (#1832). It runs on every candidate every
  * run, and it stores what it read on the row (`metadata.wikidataClasses`).
  * This asks the stored rows the same question, for the rows the rule never
  * reached: the 205 created before it existed (eleven Spanish cathedrals among
@@ -340,8 +357,8 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
   meaning:
     'The row is admitted to Public art or to Monuments & memorials and carries a Wikidata class '
     + 'the kinds\' rule refuses — a place of worship, a camp, a stadium, an archaeological site, '
-    + 'a tomb, an organisation, a settlement, or a building or cemetery that nothing of the kind '
-    + 'answers. '
+    + 'an organisation, a settlement, or a building, cemetery or tomb that nothing of the kind '
+    + 'answers (for a tomb, a commemorative form such as an arch, in Monuments & memorials). '
     + 'The rule refuses such a row on every run it reaches, so a row here was admitted before '
     + 'the rule existed or by a path that did not run it: a live run of the source re-evaluates '
     + 'it, and a curator can confirm or override the refusal from the review page. A row a '
@@ -350,18 +367,13 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
                e.name AS experience_name,
                (SELECT string_agg(c, ', ' ORDER BY c)
                   FROM jsonb_array_elements_text(e.metadata->'wikidataClasses') c
-                 WHERE c = ANY(${REFUSED_OUTRIGHT}) OR c = ANY(${REFUSED_UNLESS_ARTWORK})
+                 WHERE c = ANY(${REFUSED_OUTRIGHT}) OR c = ANY(${REFUSED_UNLESS_ARTWORK}) OR c = ANY(${BURIAL})
                     OR (c = ANY(${REFUSED_AS_LOST}) AND NOT e.external_id = ANY(${REMAINS_SHOWN}))) AS classes
           FROM experiences e
           -- A membership of the pass's sources (#822, ADR-0132): the classes
           -- were written by their runs and the admission is their rule's. Once
           -- per place, however many of the two kinds admit it.
-         WHERE EXISTS (
-                 SELECT 1 FROM ${MEMBERSHIPS} m
-                  WHERE m.experience_id = e.id AND m.source_id IN (3, 6)
-                    AND m.admission = 'admitted'
-                    AND NOT ${admissionPinnedSql('m')}
-               )
+         WHERE ${admittedBy('3, 6')}
            AND e.is_manual = FALSE
            -- A row the run never wrote classes onto is a row the rule never
            -- reached, and the question has no answer yet rather than a clean
@@ -379,6 +391,16 @@ const publicArtRowTypedABuilding: CatalogueAssertion = {
                -- veto; a row written before the key existed has none, and is
                -- read as if none did.
                AND NOT COALESCE((e.metadata->>'wikidataArtwork')::boolean, FALSE)
+             )
+             OR (
+               -- A burial class: Public art never lifts it, and Monuments &
+               -- memorials only where a form stands with it, which the stored
+               -- answer says.
+               e.metadata->'wikidataClasses' ?| ${BURIAL}
+               AND (
+                 ${admittedBy('3')}
+                 OR (${admittedBy('6')} AND NOT COALESCE((e.metadata->>'wikidataArtwork')::boolean, FALSE))
+               )
              )
            )
          ORDER BY e.name`,

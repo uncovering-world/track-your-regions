@@ -18,6 +18,8 @@
  */
 
 import {
+  BURIAL_CLASSES,
+  COMMEMORATIVE_FORMS,
   KILL_CLASSES,
   VETO_CLASSES,
   INDOOR_CLASSES,
@@ -27,7 +29,7 @@ import {
   MEMORIAL_LIFTS,
   type PublicArtTrees,
 } from './classes.js';
-import type { KindRule, MonumentType, PublicArtType } from './kindRules.js';
+import { formsOf, type KindRule, type MonumentType, type PublicArtType } from './kindRules.js';
 // The works-first kinds' exception for a lost work whose remains are on show (#872).
 import { REMAINS_ON_SHOW } from '../museum/worksCollector.js';
 import type { ContainerFact } from '../places/containment.js';
@@ -49,6 +51,8 @@ export interface PublicArtFacts {
   commemorates: string[];
   /** `P180`, what the entity depicts: a figure stands on it. */
   depicts: string[];
+  /** `P136`, the genre the entity is filed under. */
+  genres: string[];
   /** Whether `P625` is on this planet — Fallen Astronaut's is not. */
   onEarth: boolean;
   lat: number | null;
@@ -226,17 +230,30 @@ function ownedElsewhere(owners: ContainerFact[], trees: PublicArtTrees, noun: st
  * museum's veto is lifted by a commemorative class as well: a memorial typed
  * a museum is a memorial complex with a museum in it — Tsitsernakaberd, the
  * 9/11 Memorial (#803). Where `memorialLifts`, Monuments & memorials', a
- * memorial lifts a cemetery's veto and a bare building's too
- * (`MEMORIAL_LIFTS`): Arlington is a cemetery a traveller visits as a
- * memorial, and Montjuïc Castle, typed a memorial, is still a castle.
+ * `P547` statement is a memorial too — the Vittoriano, typed only by museum
+ * classes, commemorates Victor Emmanuel II, and the USS Arizona Memorial the
+ * ship (#1832) — and a memorial lifts a cemetery's veto and a bare
+ * building's (`MEMORIAL_LIFTS`): Arlington is a cemetery a traveller visits
+ * as a memorial, and Montjuïc Castle, typed a memorial, is still a castle.
  */
-function vetoes(classes: string[], trees: PublicArtTrees, memorialLifts: boolean): string[] {
-  const commemorative = classes.some((c) => trees.commemorative.has(c));
-  const lifted = (c: string) => memorialLifts && commemorative && Boolean(MEMORIAL_LIFTS[c]);
+function vetoes(e: PublicArtFacts, trees: PublicArtTrees, memorialLifts: boolean): string[] {
+  const memorial = e.classes.some((c) => trees.commemorative.has(c))
+    || (memorialLifts && e.commemorates.length > 0);
+  const lifted = (c: string) => memorialLifts && memorial && Boolean(MEMORIAL_LIFTS[c]);
   return [
-    ...(!commemorative && classes.some((c) => trees.museum.has(c)) ? ['a museum'] : []),
-    ...named(classes.filter((c) => !lifted(c)), VETO_CLASSES),
+    ...(!memorial && e.classes.some((c) => trees.museum.has(c)) ? ['a museum'] : []),
+    ...named(e.classes.filter((c) => !lifted(c)), VETO_CLASSES),
   ];
+}
+
+/**
+ * The kill classes the entity carries, named. Where `memorialLifts`, a
+ * commemorative form lifts the burial ones: the Monumento a la Revolución is
+ * a triumphal arch with a mausoleum in it (#1832).
+ */
+function kills(e: PublicArtFacts, memorialLifts: boolean): string[] {
+  const form = memorialLifts && formsOf(e).some((c) => COMMEMORATIVE_FORMS[c]);
+  return named(e.classes.filter((c) => !(form && BURIAL_CLASSES[c])), KILL_CLASSES);
 }
 
 /**
@@ -317,7 +334,7 @@ export function publicArtVerdict(
   // that one and explains it as curatorial departments and museum networks,
   // which is nobody's reason for turning down a mausoleum. This form reaches
   // the card as it is.
-  const killed = named(e.classes, KILL_CLASSES);
+  const killed = kills(e, rule.memorialLifts);
   if (killed.length) {
     return { pass: false, reason: `${not}: ${killed.join('; ')}` };
   }
@@ -349,7 +366,7 @@ export function publicArtVerdict(
 
   const answered = rule.answersVeto(e, trees);
   if (!answered) {
-    const vetoed = vetoes(e.classes, trees, rule.memorialLifts);
+    const vetoed = vetoes(e, trees, rule.memorialLifts);
     if (vetoed.length) {
       return { pass: false, reason: `${rule.unanswered}, and typed: ${vetoed.join('; ')}` };
     }
