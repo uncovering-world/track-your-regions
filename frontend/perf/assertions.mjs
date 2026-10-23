@@ -212,14 +212,12 @@ function resolveTarget(lhr, key, check) {
 }
 
 /**
- * What a page fetched from everyone but one host. A page flown into a region
- * pulls the OpenStreetMap basemap, and how many of its raster tiles land before
- * Lighthouse calls the page loaded moved the fixture's region page between
- * 1.37 and 2.32 MB across CI runs, while the repository's own bytes held within
- * 8 kB. A byte line over that spread gates nothing the repository decides, so
- * these pages gate their bytes without the basemap and read the total (#669).
- * A preflight is left out too: it carries no body, and the resource summary
- * counts none.
+ * What a page fetched from everyone but one host. A region page pulls the
+ * OpenStreetMap basemap, whose tiles are a public server's rendering rather
+ * than anything the repository decides (#651), so these pages gate their bytes
+ * without the basemap and read the total. The measurements are in #669 and
+ * #1842. A preflight is left out too: it carries no body, and the resource
+ * summary counts none.
  */
 function resolveRequestsExcept(lhr, key, check) {
   const [, host, measure] = key.split(':');

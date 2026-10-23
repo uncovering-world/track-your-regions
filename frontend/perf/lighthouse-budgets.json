@@ -12,13 +12,13 @@
         "resource-summary:total:size": [
           "warn",
           {
-            "maxNumericValue": 2200000
+            "maxNumericValue": 1065000
           }
         ],
         "resource-summary:total:count": [
           "warn",
           {
-            "maxNumericValue": 145
+            "maxNumericValue": 79
           }
         ],
         "largest-contentful-paint": [
@@ -54,7 +54,7 @@
         "requests-except:openstreetmap.org:count": [
           "error",
           {
-            "maxNumericValue": 105
+            "maxNumericValue": 57
           }
         ]
       }
@@ -69,13 +69,13 @@
         "resource-summary:total:size": [
           "warn",
           {
-            "maxNumericValue": 2200000
+            "maxNumericValue": 1065000
           }
         ],
         "resource-summary:total:count": [
           "warn",
           {
-            "maxNumericValue": 145
+            "maxNumericValue": 79
           }
         ],
         "cumulative-layout-shift": [
@@ -111,7 +111,7 @@
         "requests-except:openstreetmap.org:count": [
           "error",
           {
-            "maxNumericValue": 105
+            "maxNumericValue": 57
           }
         ]
       }
