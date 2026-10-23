@@ -169,6 +169,24 @@ const ownPointSql = (alias: string) => `(${shownBySql(alias, 'ARRAY[$1::int]')} 
 const standingPointSql = (alias: string) => `(${ownPointSql(alias)} AND ${offeredLocationSql(alias)} AND ${publishedContentSql(alias)})`;
 
 /**
+ * Whether a run's point may take the point a reader sees `alias` under another
+ * reference: within ten metres (ADR-0137), or at any distance where the run
+ * offers one point and the place stands on one, which is the one point a merge
+ * makes of two places of one point (ADR-0088 decision 3) and a run joining such
+ * a place keeps (ADR-0143 decision 3). The Cave of Altamira's Wikidata point and
+ * UNESCO's stand 753 m apart: the second source's view of the coordinate is its
+ * membership's (`reported_location`), and the sources card asks which stands.
+ * Only a point another source places is taken that way: a source's own point
+ * moved far is its own move to ask about. Read inside a statement whose
+ * `incoming` holds the run's points and whose `i` is one of them; `run` names
+ * the run's membership.
+ */
+const adoptableSql = (alias: string, run: string) => `(${withinUnchangedSql(alias)}
+  OR ((SELECT count(*) FROM incoming) = 1
+      AND (SELECT count(*) FROM experience_locations one_point WHERE ${standingPointSql('one_point')}) = 1
+      AND ${placedByAnotherSql(alias, run)}))`;
+
+/**
  * A point another membership places as well as, or instead of, the run's
  * (`run` names the run's membership). Only such a point is taken under another
  * reference: a source's own references are its own components, and UNESCO
@@ -405,9 +423,10 @@ export async function writeExperienceLocations(
   // and counting them would put this run on the slow path for ever.
   const same = await pool.query(
     `WITH ${cte}
-     SELECT -- A point that is another reference's point a reader sees, within the
-            -- ten metres, which this run placed under the reference it offers (the
-            -- adopting statement below): it matches, since there is nothing to write on it.
+     SELECT -- A point that is another reference's point a reader sees, one
+            -- adoptableSql lets the run take, which this run placed under the
+            -- reference it offers (the adopting statement below): it matches,
+            -- since there is nothing to write on it.
             (SELECT count(*) FROM incoming i
               -- What the pairing would keep: an own row within the ten metres, or a
               -- claimed one; a row of the reference that went missing far off is
@@ -418,7 +437,7 @@ export async function writeExperienceLocations(
                 AND NOT EXISTS (SELECT 1 FROM experience_locations f
                                  WHERE f.missing_since IS NULL AND f.id = ANY(${folded}) AND ${sameReferenceSql('f')})
                 AND EXISTS (SELECT 1 FROM experience_locations el
-                             WHERE ${standingPointSql('el')} AND ${withinUnchangedSql('el')}
+                             WHERE ${standingPointSql('el')} AND ${adoptableSql('el', runMembership)}
                                AND EXISTS (SELECT 1 FROM experience_location_placements mine
                                             WHERE mine.location_id = el.id AND mine.membership_id = ${runMembership}
                                               AND mine.adopted_ref = i.external_ref))) AS adopted,
@@ -588,7 +607,9 @@ export async function writeExperienceLocations(
     // whichever source placed the one a reader sees and whatever either calls it.
     // A source's point the pairing gave nothing a reader sees or saw — none, or
     // an unread arrival, withdrawn or not — takes the nearest one within
-    // `LOCATION_UNCHANGED_METERS` that no other point of the run holds,
+    // `LOCATION_UNCHANGED_METERS` that no other point of the run holds (or, a
+    // run of one point on a place of one, that point at any distance:
+    // `adoptableSql`),
     // preferring one the run already places, and under another reference only a
     // point another source places too. The Genbaku Dome's Wikidata point
     // sits 5 cm from UNESCO's `775`: written as a new point, it asked a curator
@@ -627,7 +648,7 @@ export async function writeExperienceLocations(
                      AND (${samePointSql('el')}
                           -- Another reference's only where the source names its
                           -- point: the placement records the adoption by that name.
-                          OR (i.external_ref IS NOT NULL AND ${withinUnchangedSql('el')}
+                          OR (i.external_ref IS NOT NULL AND ${adoptableSql('el', runMembership)}
                               AND ${placedByAnotherSql('el', runMembership)} AND NOT ${placedAsOwnSql('el', runMembership)}))))
           ORDER BY i.ordinal, (el.id = ANY(${folded})) DESC,
                    EXISTS (SELECT 1 FROM experience_location_placements mine

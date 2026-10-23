@@ -210,12 +210,29 @@ describe('a source\'s point within ten metres of a point a reader sees (#1846)',
     expect(await points()).toHaveLength(2);
   });
 
-  it('writes a point farther than ten metres as a point of its own', async () => {
-    // 20 m north: another point of the place, which a curator reads.
+  it('takes the one point of a place of one point at any distance (ADR-0143 decision 3)', async () => {
+    // 20 m north: the dome is one place of one point, and a second source's
+    // one point is that point, as a merge of two such places makes it.
     const farther = { ...WIKIDATA_POINT, lat: UNESCO_POINT.lat + 0.00018 };
     const result = await writeExperienceLocations(DOME, [farther], { syncLogId: null, sourceId: archaeology });
 
-    expect(await points()).toHaveLength(2);
+    const rows = await points();
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ id: standing, external_ref: '775' });
+    expect(rows[0].memberships).toEqual([unescoMembership, archaeologyMembership].sort((a, b) => a - b));
+    expect(result.delta.added).toEqual([]);
+  });
+
+  it('writes a point farther than ten metres as a point of its own on a place of several points', async () => {
+    // A second UNESCO component: the place stands on two points, and the
+    // ten metres decide (ADR-0137).
+    const second = { externalRef: '775-b', name: 'A second component', lon: UNESCO_POINT.lon + 0.01, lat: UNESCO_POINT.lat };
+    await writeExperienceLocations(DOME, [UNESCO_POINT, second], { syncLogId: null, sourceId: unesco });
+    await pool.query("UPDATE experience_locations SET curation_state = 'verified' WHERE experience_id = $1 AND curation_state = 'pending'", [DOME]);
+    const farther = { ...WIKIDATA_POINT, lat: UNESCO_POINT.lat + 0.00018 };
+    const result = await writeExperienceLocations(DOME, [farther], { syncLogId: null, sourceId: archaeology });
+
+    expect(await points()).toHaveLength(3);
     expect(result.delta.added).toEqual([{ name: farther.name, ref: farther.externalRef }]);
   });
 });

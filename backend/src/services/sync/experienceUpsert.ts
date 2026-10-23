@@ -86,7 +86,7 @@ import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
 import { distanceMeters, LOCATION_UNCHANGED_METERS, SHORT_MOVE_METERS } from '@tyr/shared/moves';
 import { shortMovePassesSql } from '../../db/shortMove.js';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
-import { lockSourcedExperience } from '../../db/experienceWriter.js';
+import { lockIdentifiedPlace, lockSourcedExperience } from '../../db/experienceWriter.js';
 import { keptForFamilies, otherFamiliesFields } from './fieldFamilies.js';
 import { fieldsKeptAsStored, keptAsStored } from './sourceView.js';
 
@@ -242,6 +242,33 @@ const SNAPSHOT_COLUMNS = [
 const MEMBERSHIP_TYPE_SELECT = `sm.type, sm.curated_fields ? 'type' AS type_claimed`;
 
 /**
+ * The place a run writes, as it stands: `$1` the source, `place` an expression
+ * naming the place, `externalId` the parameter of the id the source knows it
+ * by. The run's own membership is joined where it has one; a place the run
+ * joins by its identifier (ADR-0143 decision 3) has none yet, and is read as
+ * the place another source's run left it, the state the run's second visit
+ * would find after a merge.
+ */
+function storedPlaceSql(place: string, externalId: string): string {
+  return `SELECT e.id, e.curated_fields, sm.missing_since, sm.source_membership,
+         ${snapshotSelect('e.')}, ${MEMBERSHIP_TYPE_SELECT},
+         ST_X(e.location) AS lon, ST_Y(e.location) AS lat,
+         ${PLACE_HELD} AS was_held
+    FROM experiences e
+    LEFT JOIN ${MEMBERSHIPS} sm ON sm.experience_id = e.id AND sm.source_id = $1 AND sm.external_id = ${externalId}
+   WHERE e.id = ${place}`;
+}
+
+/**
+ * The Wikidata items a run's place is known by, for finding a place another
+ * source already holds (ADR-0143 decision 3): a Wikidata source knows its place
+ * by its item. A source that knows it by an id of its own names none here.
+ */
+function identifyingItems(params: ExperienceUpsertParams): string[] {
+  return /^Q\d+$/.test(params.externalId) ? [params.externalId] : [];
+}
+
+/**
  * The extent, repaired and made insertable in one expression, so the geometry
  * and its area can never be read off two different expressions (#763) — and
  * so the diff measures the incoming outline exactly as the statement stores it.
@@ -360,14 +387,20 @@ async function shortMovePasses(
 }
 
 async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutcome> {
+  // The place the run would write: its own membership's, or else the one an
+  // item identifies, as the run finds it (unlocked, since nothing is written).
   const result = await pool.query(
-    `SELECT e.id, e.curated_fields, sm.missing_since, sm.source_membership,
-            ${PLACE_HELD} AS was_held,
-            ${snapshotSelect('e.')}, ${MEMBERSHIP_TYPE_SELECT},
-            ST_X(e.location) AS lon, ST_Y(e.location) AS lat
-     FROM ${sourcePlacesSql('e', 'sm')}
-     WHERE sm.source_id = $1 AND sm.external_id = $2`,
-    [params.sourceId, params.externalId]
+    storedPlaceSql(`(SELECT own_m.experience_id FROM ${sourcePlacesSql('own_e', 'own_m')}
+                      WHERE own_m.source_id = $1 AND own_m.external_id = $2
+                     UNION ALL
+                     (SELECT pi.experience_id FROM place_identifiers pi
+                       WHERE pi.scheme = 'wikidata' AND pi.value = ANY($3::text[]) AND pi.identifies
+                         AND NOT EXISTS (SELECT 1 FROM ${MEMBERSHIPS} kin
+                                          WHERE kin.experience_id = pi.experience_id
+                                            AND kin.kind_id = (SELECT kind_id FROM experience_sources WHERE id = $1))
+                       ORDER BY pi.experience_id LIMIT 1)
+                     LIMIT 1)`, '$2'),
+    [params.sourceId, params.externalId, identifyingItems(params)],
   );
 
   if (result.rows.length === 0) {
@@ -553,7 +586,10 @@ async function writeUnderLock(
   // The lock first, in a statement of its own — the mode every curator write
   // takes on the same row. A place the run has not created yet locks nothing
   // and holds nothing: the insert writes every column.
-  const locked = await lockSourcedExperience(client, params.sourceId, params.externalId);
+  const locked = await lockSourcedExperience(client, params.sourceId, params.externalId)
+    // No membership of the run's own: the place an item identifies, which the
+    // run joins rather than creating a copy (ADR-0143 decision 3).
+    ?? await lockIdentifiedPlace(client, params.sourceId, identifyingItems(params));
   // The row as it stands under that lock, and the hold decided on the same
   // snapshot. A second statement rather than columns of the locking one: a
   // statement's snapshot is taken before it waits for the lock, and once the
@@ -562,13 +598,7 @@ async function writeUnderLock(
   // during the wait (`db/locks.ts`). This statement starts with the lock held,
   // so its snapshot has that publish in it.
   const stored = locked === null ? null : (await client.query(
-    `SELECT e.id, e.curated_fields, sm.missing_since, sm.source_membership,
-            ${snapshotSelect('e.')}, ${MEMBERSHIP_TYPE_SELECT},
-            ST_X(e.location) AS lon, ST_Y(e.location) AS lat,
-            ${PLACE_HELD} AS was_held
-       FROM ${sourcePlacesSql('e', 'sm')}
-      WHERE e.id = $2 AND sm.source_id = $1 AND sm.external_id = $3`,
-    [params.sourceId, locked.id, params.externalId],
+    storedPlaceSql('$2', '$3'), [params.sourceId, locked.id, params.externalId],
   )).rows[0] ?? null;
   const held = Boolean(stored?.was_held);
   // The run's record as the place will take it: a field another source of the
