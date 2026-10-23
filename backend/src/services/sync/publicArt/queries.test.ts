@@ -185,17 +185,18 @@ describe('fetchEntityFacts', () => {
       { e: ref('Q79961'), parent: ref('Q2') },
       { e: ref('Q79961'), coll: ref('Q5710459') },
       // The Jefferson Memorial commemorates Thomas Jefferson; the Bronze
-      // Horseman depicts Peter the Great.
+      // Horseman depicts Peter the Great and is filed as an equestrian statue.
       { e: ref('Q326183'), commemorates: ref('Q11812') },
       { e: ref('Q672444'), depicts: ref('Q8479') },
+      { e: ref('Q672444'), genre: ref('Q659396') },
     ];
     const facts = await fetchEntityFacts(answer(rows), ['Q235242', 'Q79961', 'Q326183', 'Q672444']);
     expect(facts.get('Q235242')).toEqual({
       classes: ['Q860861', 'Q2065736'], locations: ['Q12512'], parents: [], collections: [],
-      creators: ['Michelangelo'], commemorates: [], depicts: [],
+      creators: ['Michelangelo'], commemorates: [], depicts: [], genres: [],
     });
     expect(facts.get('Q326183')?.commemorates).toEqual(['Q11812']);
-    expect(facts.get('Q672444')?.depicts).toEqual(['Q8479']);
+    expect(facts.get('Q672444')).toMatchObject({ depicts: ['Q8479'], genres: ['Q659396'] });
     expect(facts.get('Q79961')).toMatchObject({
       classes: ['Q1779653'], parents: ['Q2'], collections: ['Q5710459'],
       creators: ['Paul Landowski', 'Carlos Oswald'],
@@ -233,7 +234,7 @@ describe('fetchEntityFacts', () => {
   it('answers for every entity asked about, facts or none', async () => {
     const facts = await fetchEntityFacts(answer([]), ['Q1']);
     expect(facts.get('Q1')).toEqual({
-      classes: [], locations: [], parents: [], collections: [], creators: [], commemorates: [], depicts: [],
+      classes: [], locations: [], parents: [], collections: [], creators: [], commemorates: [], depicts: [], genres: [],
     });
   });
 });

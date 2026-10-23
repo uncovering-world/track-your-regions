@@ -17,6 +17,7 @@ const door = subsetOnlyDoor();
 const LOUVRE = 'Q19675';
 const MONA_LISA = 'Q12418';
 const LISA_DEL_GIOCONDO = 'Q153032';
+const PORTRAIT = 'Q134307';
 const LEONARDO = 'Q762';
 const MUSEUM = 'Q33506';
 const PAINTING = 'Q3305213';
@@ -79,8 +80,9 @@ const ENTITIES: Array<[string, number, Record<string, unknown>]> = [
       P31: [statement('M1', PAINTING)],
       P276: [statement('M2', LOUVRE), statement('M3', PALACE, { qualifiers: { P582: [{ time: '+1800-00-00T00:00:00Z' }] } })],
       P170: [statement('M4', LEONARDO), statement('M5', { somevalue: true })],
-      // Whom it depicts, read from the entity like every other statement here.
+      // Whom it depicts and its genre, read from the entity like every other statement here.
       P180: [statement('M6', LISA_DEL_GIOCONDO)],
+      P136: [statement('M7', PORTRAIT)],
     },
     sitelinks: { enwiki: 'Mona Lisa' },
   }],
@@ -234,10 +236,10 @@ describe('Public Art read from the subset (#1459)', () => {
     expect(mona).toMatchObject({ qid: MONA_LISA, label: MONA_LISA, lat: null, lon: null });
   });
 
-  it('reads where a work stands today, who made it and whom it depicts', async () => {
+  it('reads where a work stands today, who made it, whom it depicts and its genre', async () => {
     expect((await fetchEntityFacts(door, [MONA_LISA])).get(MONA_LISA)).toEqual({
       classes: [PAINTING], locations: [LOUVRE], parents: [], collections: [], creators: ['Leonardo da Vinci'],
-      commemorates: [], depicts: [LISA_DEL_GIOCONDO],
+      commemorates: [], depicts: [LISA_DEL_GIOCONDO], genres: [PORTRAIT],
     });
   });
 
