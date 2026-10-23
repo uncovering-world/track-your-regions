@@ -37,7 +37,7 @@ import { MAP_STYLE } from '../constants/mapStyles';
 import { useRegionMetadata } from './regionMap/useRegionMetadata';
 import { useTileUrls } from './regionMap/useTileUrls';
 import { useMapFeatureState } from './regionMap/useMapFeatureState';
-import { useMapInteractions } from './regionMap/useMapInteractions';
+import { useMapInteractions, WORLD_ZOOM } from './regionMap/useMapInteractions';
 import { useWorldLayer } from './regionMap/useWorldLayer';
 import {
   hullFillPaint,
@@ -318,7 +318,7 @@ export function RegionMapVT() {
         initialViewState={{
           longitude: 0,
           latitude: 15,
-          zoom: 1,
+          zoom: WORLD_ZOOM,
         }}
         style={{ width: '100%', height: '100%' }}
         mapStyle={MAP_STYLE}

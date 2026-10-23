@@ -14,6 +14,36 @@ import { isAnswerablePin } from '../../api/worldPoints';
 import type { Region } from '../../types';
 import type { AnchorPoint, FocusBbox } from '../../api/regions';
 
+/** The zoom the map opens on, and returns to at a world view's root: the whole world. */
+export const WORLD_ZOOM = 1;
+
+/** The height of the whole world at zoom 0, in CSS pixels: MapLibre's tile size. */
+const WORLD_HEIGHT_AT_ZOOM_0 = 512;
+
+/**
+ * The zoom at which the map shows the whole world: `WORLD_ZOOM`, or more on a
+ * container taller than the world drawn at that zoom, since MapLibre zooms in
+ * until the world fills the height (1 024 px at zoom 1, doubling per level).
+ */
+function wholeWorldZoom(map: Pick<MapRef, 'getContainer'>): number {
+  return Math.max(WORLD_ZOOM, Math.log2(map.getContainer().clientHeight / WORLD_HEIGHT_AT_ZOOM_0));
+}
+
+/**
+ * How long the flight to a selection takes: none from the whole world.
+ *
+ * A flight from the whole world crosses every zoom on the way, and the map
+ * fetches the vector tiles of each level the animation happens to render, so
+ * how much a page opened on a region fetches would depend on the frames it got
+ * (#1842). From there the flight shows nothing but those tiles loading, so the
+ * map frames the selection at once. From a region it flies, since the movement
+ * says where the next region lies.
+ */
+export function selectionDuration(map: Pick<MapRef, 'getZoom' | 'getContainer'>, flight: number): number {
+  // A hundredth of a level absorbs the float the clamp leaves behind.
+  return map.getZoom() <= wholeWorldZoom(map) + 0.01 ? 0 : flight;
+}
+
 interface ClickMeta {
   name?: string;
   hasChildren?: boolean;
@@ -171,7 +201,7 @@ export function useMapInteractions({
       console.log('[RegionMapVT] Flying to region using pre-computed focusBbox:', selectedRegion.name);
       smartFitBounds(mapRef.current, selectedRegion.focusBbox, {
         padding: 60,
-        duration: 400,
+        duration: selectionDuration(mapRef.current, 400),
         anchorPoint: selectedRegion.anchorPoint,
       });
     }
@@ -206,7 +236,7 @@ export function useMapInteractions({
     const map = mapRef.current;
     const fly = (bbox: FocusBbox, anchor: AnchorPoint | null | undefined) => {
       console.log('[RegionMapVT] Flying to division from list selection:', id, name);
-      smartFitBounds(map, bbox, { padding: 100, duration: 500, anchorPoint: anchor });
+      smartFitBounds(map, bbox, { padding: 100, duration: selectionDuration(map, 500), anchorPoint: anchor });
     };
     if (focusBbox) {
       fly(focusBbox, anchorPoint);
@@ -233,7 +263,7 @@ export function useMapInteractions({
     if (isCustomWorldView && prevRegionIdRef.current !== undefined && currentRegionId === null) {
       mapRef.current.flyTo({
         center: [0, 15],
-        zoom: 1,
+        zoom: WORLD_ZOOM,
         duration: 500,
       });
     }
