@@ -18,6 +18,7 @@
     "./moves": "./src/moves.ts",
     "./openapi": "./src/openapi.generated.json",
     "./pictures": "./src/pictures.ts",
+    "./precision": "./src/precision.ts",
     "./preferences": "./src/preferences.ts",
     "./readerFields": "./src/readerFields.ts",
     "./runStatuses": "./src/runStatuses.ts"
