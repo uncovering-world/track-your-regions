@@ -336,11 +336,15 @@ export function buildPointHoverData(coords: [number, number]): GeoJSON.FeatureCo
   return buildPointsHoverData([coords]);
 }
 
-/** A place the highlight draws: where, which place (null for the object's own point), what it is called. */
+/**
+ * A place the highlight draws: where, which place (null for the object's own
+ * point), what it is called — null for the one point of an object with no
+ * other, which is the object and is called nothing of its own (#1917).
+ */
 export interface HighlightPlace {
   coordinates: [number, number];
   locationId: number | null;
-  name: string;
+  name: string | null;
 }
 
 /**
