@@ -13,7 +13,7 @@
  *   components share, and the Longmen Grottoes' object stands 10 km from the
  *   list's point;
  * - `osm-name`, up to `OSM_NAME_HINTS` objects within `OSM_NAME_RADIUS_M`
- *   named like the component.
+ *   named like the component, a settlement or a boundary never among them.
  *
  * A hint within `COPIED_COORDINATE_M` of the point is the point copied, not a
  * measurement, and is left out. The finder's own candidates are hints too, and
@@ -70,6 +70,10 @@ const HINTS = `
        -- A copy of the point takes no namesake's place before it is left out.
        AND NOT ST_DWithin(o.geom::geography, el.location::geography, ${COPIED_COORDINATE_M})
        AND o.tags->>'ref:whc' IS DISTINCT FROM el.external_ref
+       -- A settlement or an area's boundary named like the component is the
+       -- place it is named after, not where it stands: the Dacian forts were
+       -- offered their villages (#1903).
+       AND NOT (o.tags ? 'place' OR o.tags ? 'boundary')
        AND (similarity(lower(o.tags->>'name'), lower(el.name)) >= ${OSM_NAME_SIMILARITY}
             OR similarity(lower(o.tags->>'name:en'), lower(el.name)) >= ${OSM_NAME_SIMILARITY})
      ORDER BY ST_Distance(o.geom::geography, el.location::geography)

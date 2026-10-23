@@ -99,4 +99,33 @@ describe('how roughly the list placed a component', () => {
     )).rows;
     expect(rows.map(row => row.approximate)).toEqual(['whole-minute', null]);
   });
+
+  it('leaves a point that stands for a site ten times its minute unmarked (#1903)', async () => {
+    // The Okavango Delta, 2 023 590 ha, given one point to the whole minute: it stands for the delta well enough.
+    await pool.query(`UPDATE experiences SET metadata = '{"areaHectares": 2023590}'::jsonb WHERE id = $1`, [SITE]);
+    await writeExperienceLocations(SITE, [{ externalRef: '9853-fixture', name: 'Okavango fixture', lon: 22.9, lat: -19.3 }],
+      { syncLogId: null, sourceId: UNESCO, components: true });
+    expect(await recorded()).toEqual([{ ref: '9853-fixture', approximate: null }]);
+  });
+
+  it("still marks a compact site's own point (#1903)", async () => {
+    // The Longmen Grottoes, 331 ha, whose list point stands 10 km from the caves: still asked.
+    await pool.query(`UPDATE experiences SET metadata = '{"areaHectares": 331}'::jsonb WHERE id = $1`, [SITE]);
+    await writeExperienceLocations(SITE, [{ externalRef: '9853-fixture', name: 'Longmen fixture', lon: 112.4666666667, lat: 34.4666666667 }],
+      { syncLogId: null, sourceId: UNESCO, components: true });
+    expect(await recorded()).toEqual([{ ref: '9853-fixture', approximate: 'whole-minute' }]);
+  });
+
+  it('marks the same point again when only the site\'s area crosses its minute ten times', async () => {
+    const wholeSite = [{ externalRef: '9853-fixture', name: 'Okavango fixture', lon: 22.9, lat: -19.3 }];
+    const run = { syncLogId: null, sourceId: UNESCO, components: true };
+    await pool.query(`UPDATE experiences SET metadata = '{"areaHectares": 331}'::jsonb WHERE id = $1`, [SITE]);
+    await writeExperienceLocations(SITE, wholeSite, run);
+    expect(await recorded()).toEqual([{ ref: '9853-fixture', approximate: 'whole-minute' }]);
+
+    // The same point offered again: only the area moved, past the fast path that leaves points as they are.
+    await pool.query(`UPDATE experiences SET metadata = '{"areaHectares": 2023590}'::jsonb WHERE id = $1`, [SITE]);
+    await writeExperienceLocations(SITE, wholeSite, run);
+    expect(await recorded()).toEqual([{ ref: '9853-fixture', approximate: null }]);
+  });
 });

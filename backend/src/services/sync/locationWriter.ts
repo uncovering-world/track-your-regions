@@ -166,6 +166,57 @@ export type LocationWriteRun = WriteRun & {
  */
 const ownPointSql = (alias: string) => `(${shownBySql(alias, 'ARRAY[$1::int]')} AND ${alias}.merged_into_id IS NULL)`;
 
+/**
+ * Why the list's coordinate says only roughly where each component the run
+ * writes stands (#1853), per own point matched by reference and coordinate,
+ * since one reference covers a component listed once per country. A point
+ * that stands for the whole site of an area that outsizes its minute
+ * (`stands_for_whole_site`, `outsizes_its_minute`) is not approximate:
+ * anywhere in the minute stands for Virunga well enough, while the Longmen
+ * Grottoes' point, 10 km off, is still asked (#1903). Read with
+ * `approximateParams`.
+ */
+const APPROXIMATE_REASONS = `(SELECT p.id AS point_id,
+         CASE WHEN stands_for_whole_site(p.name, u.ref, site.name, m.external_id, $6)
+               AND outsizes_its_minute((site.metadata->>'areaHectares')::numeric, u.lat) THEN NULL
+              ELSE u.reason END AS reason
+    FROM unnest($2::text[], $3::float8[], $4::float8[], $5::text[]) AS u(ref, lon, lat, reason)
+    JOIN experience_locations p ON ${ownPointSql('p')} AND p.missing_since IS NULL
+     AND p.external_ref IS NOT DISTINCT FROM u.ref
+     AND round(ST_X(p.location)::numeric, 6) = round(u.lon::numeric, 6)
+     AND round(ST_Y(p.location)::numeric, 6) = round(u.lat::numeric, 6)
+    JOIN experiences site ON site.id = $1
+    JOIN ${MEMBERSHIPS} m ON m.experience_id = $1 AND m.source_id = $7)`;
+
+/**
+ * A point whose recorded mark is not the one `r` reads for it. A curator's own
+ * placement is not approximate, and the run's point under a claim stands
+ * elsewhere, so a claimed point never drifts.
+ */
+const APPROXIMATE_DRIFTS = `NOT el.curated_fields ? 'location' AND el.approximate IS DISTINCT FROM r.reason`;
+
+/** The parameters `APPROXIMATE_REASONS` reads. */
+function approximateParams(experienceId: number, incoming: readonly IncomingLocation[], sourceId: number): unknown[] {
+  const reasons = approximateReasons(incoming.map(point => ({ ref: point.externalRef, lon: point.lon, lat: point.lat })));
+  return [experienceId, incoming.map(point => point.externalRef), incoming.map(point => point.lon),
+    incoming.map(point => point.lat), reasons, incoming.length, sourceId];
+}
+
+/**
+ * Whether a point the run would leave as it is carries another mark than the
+ * one it reads now: the site's area crossed the ten cells of its minute, say
+ * (#1903). The fast path then gives way to the write, which records it under
+ * the object's lock as every other change of the points is.
+ */
+async function approximateDrifts(experienceId: number, incoming: readonly IncomingLocation[], sourceId: number): Promise<boolean> {
+  const drift = await pool.query(
+    `SELECT 1 FROM ${APPROXIMATE_REASONS} AS r JOIN experience_locations el ON el.id = r.point_id
+      WHERE ${APPROXIMATE_DRIFTS} LIMIT 1`,
+    approximateParams(experienceId, incoming, sourceId),
+  );
+  return (drift.rowCount ?? 0) > 0;
+}
+
 /** A point of the place a reader sees: offered and read (ADR-0025). */
 const standingPointSql = (alias: string) => `(${ownPointSql(alias)} AND ${offeredLocationSql(alias)} AND ${publishedContentSql(alias)})`;
 
@@ -497,7 +548,8 @@ export async function writeExperienceLocations(
   const { adopted, stored, matched, ids } = same.rows[0] as
     { adopted?: string; stored: string; matched: string; ids: number[] | null };
 
-  if (Number(stored) === incoming.length && Number(matched) + Number(adopted ?? 0) === incoming.length) {
+  if (Number(stored) === incoming.length && Number(matched) + Number(adopted ?? 0) === incoming.length
+      && !(run.components && await approximateDrifts(experienceId, incoming, run.sourceId))) {
     return { unchanged: ids ?? [], needsAssignment: [], unoffered: 0, delta: NO_CHANGE };
   }
 
@@ -1171,24 +1223,12 @@ export async function writeExperienceLocations(
     }
 
     if (run.components) {
-      // How precisely the list placed each component (#1853): to the whole
-      // minute, or on a point another component shares. Matched by reference
-      // and coordinate, since one reference covers a component listed once per
-      // country. A curator's own placement is not approximate, and the run's
-      // point under a claim stands elsewhere, so it matches nothing here.
-      const reasons = approximateReasons(incoming.map(point => ({ ref: point.externalRef, lon: point.lon, lat: point.lat })));
+      // How precisely the list placed each component (#1853, `APPROXIMATE_REASONS`).
       await client.query(
-        `UPDATE experience_locations el
-            SET approximate = r.reason
-           FROM unnest($2::text[], $3::float8[], $4::float8[], $5::text[]) AS r(ref, lon, lat, reason)
-          WHERE ${ownPointSql('el')} AND el.missing_since IS NULL
-            AND NOT el.curated_fields ? 'location'
-            AND el.external_ref IS NOT DISTINCT FROM r.ref
-            AND round(ST_X(el.location)::numeric, 6) = round(r.lon::numeric, 6)
-            AND round(ST_Y(el.location)::numeric, 6) = round(r.lat::numeric, 6)
-            AND el.approximate IS DISTINCT FROM r.reason`,
-        [experienceId, incoming.map(point => point.externalRef), incoming.map(point => point.lon),
-          incoming.map(point => point.lat), reasons],
+        `UPDATE experience_locations el SET approximate = r.reason
+           FROM ${APPROXIMATE_REASONS} AS r
+          WHERE el.id = r.point_id AND ${APPROXIMATE_DRIFTS}`,
+        approximateParams(experienceId, incoming, run.sourceId),
       );
       await client.query(
         `SELECT part_site_components($1, (SELECT id FROM ${MEMBERSHIPS} WHERE experience_id = $1 AND source_id = $2))`,
