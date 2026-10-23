@@ -23,6 +23,7 @@ vi.mock('../../utils/queryInvalidation', () => ({
 vi.mock('../../api/curation', () => ({
   fetchPlaceIdentifiers: vi.fn(async () => ({ experienceId: 0, identifiers: [] })),
   settlePlaceIdentifier: vi.fn(),
+  separateKind: vi.fn(),
   editExperience: vi.fn(),
   rejectExperience: vi.fn(),
   unrejectExperience: vi.fn(),
@@ -30,6 +31,7 @@ vi.mock('../../api/curation', () => ({
   fetchCurationLog: vi.fn(),
   setExperienceState: vi.fn(),
   undoPlaceMerge: vi.fn(),
+  undoSeparation: vi.fn(),
   takeBackPointItem: vi.fn(),
 }));
 vi.mock('../../api/experiences', () => ({

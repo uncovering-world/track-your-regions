@@ -2984,6 +2984,7 @@ export const CurationLogEntryAction = {
   merge_proposal_answered: 'merge_proposal_answered',
   visit_question_answered: 'visit_question_answered',
   identifier_settled: 'identifier_settled',
+  separated: 'separated',
 } as const;
 
 /**
@@ -5990,6 +5991,58 @@ export interface MergeUndone {
      * @maximum 9007199254740991
      */
   foldedId: number;
+}
+
+/**
+ * One kind's membership of a place separated into a place of its own (ADR-0144).
+ */
+export interface MembershipSeparated {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  separationId: number;
+  /**
+     * The place the membership left, which keeps its other kinds, its visits and its own records.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  originalId: number;
+  /**
+     * The new place, holding the membership with the points and works it places.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  separatedId: number;
+}
+
+/**
+ * A separation undone (ADR-0144): the place it made merged back into the original.
+ */
+export interface SeparationUndone {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  separationId: number;
+  /**
+     * The merge that put the two back together, which its own undo takes apart again.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  mergeId: number;
+  /**
+     * The place that is whole again.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  originalId: number;
+  /**
+     * The place the separation made, folded back into the original.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  separatedId: number;
 }
 
 /**
@@ -11188,6 +11241,58 @@ export const getPostExperiencesMergesByMergeIdUndoUrl = (mergeId: number,) => {
 export const postExperiencesMergesByMergeIdUndo = async (mergeId: number, options?: Parameters<typeof apiFetch>[1]): Promise<MergeUndone> => {
 
   return apiFetch<MergeUndone>(getPostExperiencesMergesByMergeIdUndoUrl(mergeId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostExperiencesByIdKindsByKindIdSeparateUrl = (id: number,
+    kindId: number,) => {
+
+
+
+
+  return `/api/experiences/${encodeURIComponent(String(id))}/kinds/${encodeURIComponent(String(kindId))}/separate`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Separate one kind's membership of a place into a place of its own, with the points and works it places
+ */
+export const postExperiencesByIdKindsByKindIdSeparate = async (id: number,
+    kindId: number, options?: Parameters<typeof apiFetch>[1]): Promise<MembershipSeparated> => {
+
+  return apiFetch<MembershipSeparated>(getPostExperiencesByIdKindsByKindIdSeparateUrl(id,kindId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+export const getPostExperiencesSeparationsBySeparationIdUndoUrl = (separationId: number,) => {
+
+
+
+
+  return `/api/experiences/separations/${encodeURIComponent(String(separationId))}/undo`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Undo a separation: the place it made is merged back into the original
+ */
+export const postExperiencesSeparationsBySeparationIdUndo = async (separationId: number, options?: Parameters<typeof apiFetch>[1]): Promise<SeparationUndone> => {
+
+  return apiFetch<SeparationUndone>(getPostExperiencesSeparationsBySeparationIdUndoUrl(separationId),
   {
     ...options,
     method: 'POST'

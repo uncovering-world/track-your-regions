@@ -11,7 +11,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { CurationLogEntry } from '../../api/curation';
 
 vi.mock('../../utils/queryInvalidation', () => ({ invalidateExperiences: vi.fn() }));
-vi.mock('../../api/curation', () => ({ fetchCurationLog: vi.fn(), undoPlaceMerge: vi.fn(), takeBackPointItem: vi.fn() }));
+vi.mock('../../api/curation', () => ({ fetchCurationLog: vi.fn(), undoPlaceMerge: vi.fn(), undoSeparation: vi.fn(), takeBackPointItem: vi.fn() }));
 
 import { fetchCurationLog, takeBackPointItem, undoPlaceMerge } from '../../api/curation';
 import { CurationHistory } from './CurationHistory';
