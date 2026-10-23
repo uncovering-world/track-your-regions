@@ -4420,6 +4420,18 @@ CREATE OR REPLACE FUNCTION stands_for_whole_site(point_name TEXT, point_ref TEXT
       OR (point_name IS NOT NULL AND name_match_key(point_name) = name_match_key(site_name))
 $$ LANGUAGE sql IMMUTABLE;
 
+-- Whether a site of `area_hectares` outsizes the cell of a point given to the
+-- whole minute at `latitude` so far that the point stands for it well enough
+-- wherever in the cell it falls (#1903): ten cells or more. A minute of
+-- latitude is 1.852 km and a minute of longitude 1.852 km times the cosine, so
+-- the cell is about 340 ha at the equator. The Okavango Delta (2 023 590 ha)
+-- and Virunga (800 000 ha) outsize theirs thousands of times; the Longmen
+-- Grottoes (331 ha), whose list point stands 10 km from the caves, do not. An
+-- area the list does not state outsizes nothing.
+CREATE OR REPLACE FUNCTION outsizes_its_minute(area_hectares NUMERIC, latitude DOUBLE PRECISION) RETURNS BOOLEAN AS $$
+  SELECT COALESCE(area_hectares, 0) >= 10 * 1.852 * 1.852 * cos(radians(latitude)) * 100
+$$ LANGUAGE sql IMMUTABLE;
+
 -- A serial site's components are places, part of the site (ADR-0100): the one
 -- statement of which of a site's points are its components and how each
 -- becomes a part. Called by migration 094 over every World Heritage site and
