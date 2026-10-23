@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   admittedClasses, bestMatch, distanceM, nameReadings, nameSimilarity, numberedMatches, ofTheSitesKind, placeAsCandidate,
-  standsAtTheComponent, standsForWholeSite,
+  standsAtTheComponent,
   type CandidateItem,
 } from './componentItemMatching.js';
 
@@ -148,15 +148,6 @@ describe('the classes a near candidate may be of', () => {
 });
 
 describe('what is not searched or not taken', () => {
-  it('reads a component that stands for its whole site as the site, not as something inside it', () => {
-    expect(standsForWholeSite('Historic Centre of Siena', 'Historic Centre of Siena', 3)).toBe(true);
-    expect(standsForWholeSite('Pilgrimage Church of Wies', 'Pilgrimage Church of Wies', 1)).toBe(true);
-    expect(standsForWholeSite('Via Appia. Regina Viarum', 'Via Appia. <em>Regina Viarum</em>', 22)).toBe(true);
-    expect(standsForWholeSite('Bologa - Grădiște', 'Frontiers of the Roman Empire – Dacia', 277)).toBe(false);
-    // Named after its site and similar to it at 0.71, and still a part of it.
-    expect(standsForWholeSite('Historic Centre of Siena (Cathedral)', 'Historic Centre of Siena', 3)).toBe(false);
-  });
-
   it('compares a label without the town in its trailing brackets', () => {
     // A house in Žatec is not the component named after the town.
     const zatec = { locationId: 5, name: 'Žatec', lat: 50.3271, lon: 13.5458 };

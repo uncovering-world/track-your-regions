@@ -123,13 +123,6 @@ export const MIN_SIMILARITY = 0.3;
  */
 export const PART_SAME_SPOT_M = 25;
 /**
- * A component named like its site is the whole site, whose item is the site's
- * own (ADR-0088): the same name, folded, and no looser. "Historic Centre of
- * Siena (Cathedral)" is similar to its site at 0.71 and is a part of it.
- */
-
-
-/**
  * A name as the comparison reads it: accents, case and punctuation dropped, so
  * "Château de Chambord" and "chateau de chambord" are one name. Looser than
  * `foldLabel`, which keeps accents because it decides what a stored label is.
@@ -213,29 +206,6 @@ function withoutQualifier(label: string): string {
   const open = trimmed.lastIndexOf('(');
   if (!trimmed.endsWith(')') || open <= 0) return label;
   return trimmed.slice(0, open).trimEnd() || label;
-}
-
-/** A name with its markup taken out: UNESCO writes `<em>Regina Viarum</em>` into a few. */
-function withoutTags(name: string): string {
-  let out = '';
-  let inTag = false;
-  for (const ch of name) {
-    if (ch === '<') inTag = true;
-    else if (ch === '>') inTag = false;
-    else if (!inTag) out += ch;
-  }
-  return out;
-}
-
-/**
- * Whether a component stands for its whole site: the only standing point of a
- * site of one, or a point named like the site ("Historic Centre of Siena"). Its
- * item is the site's own, which carries the site's World Heritage reference and
- * is never a candidate; anything near it is a building inside, not the place.
- */
-export function standsForWholeSite(pointName: string | null, siteName: string, standingPoints: number): boolean {
-  if (standingPoints <= 1) return true;
-  return pointName !== null && sameName(pointName, withoutTags(siteName));
 }
 
 /** The candidate's coordinate nearest the point, with the distance; null where it states none. */

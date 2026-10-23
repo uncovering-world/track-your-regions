@@ -28,7 +28,6 @@ import { byComponentKey, numberedFor } from './componentItemNumbered.js';
 import { listRef, parseWhcRef } from './unescoWikidata.js';
 import {
   admittedClasses, bestMatch, namesMoreThanTheTown, nearestM, numberedMatches, ofTheSitesKind, placeAsCandidate, standsAtTheComponent,
-  standsForWholeSite,
   BY_THE_TOWN_ALONE, NEAR_SAME_NAME_RADIUS_M, NEVER_BY_THE_CATALOGUE, NOT_BY_PLACE_NAME_ALONE, SAME_NAME_RADIUS_M,
   type CandidateItem, type ComponentMatch, type ComponentPoint,
 } from './componentItemMatching.js';
@@ -60,15 +59,10 @@ interface PointRow extends ComponentPoint {
   externalRef: string;
 }
 
-interface PointRead extends PointRow {
-  siteName: string;
-  standingPoints: number;
-}
-
 export interface ComponentItemReport {
   /** Components no item records, that no curator has claimed the item of, less the whole-site ones. */
   points: number;
-  /** Components standing for their whole site, which are not searched (`standsForWholeSite`). */
+  /** Components standing for their whole site, which are not searched (`stands_for_whole_site`). */
   wholeSites: number;
   /** Near candidates set aside as settlements, on sites whose parts are not settlements. */
   settlements: number;
@@ -142,10 +136,11 @@ const listsPoint = (alias: string) => `(EXISTS (SELECT 1 FROM experience_locatio
  */
 function sitePointsArm({ from, placeId }: PlacePointArm): string {
   return `SELECT el.id, el.name, ST_Y(el.location) AS lat, ST_X(el.location) AS lon, el.approximate IS NOT NULL AS approximate,
-            ${placeId} AS experience_id, el.external_ref, m.wikidata_items, e.name AS site_name,
+            ${placeId} AS experience_id, el.external_ref, m.wikidata_items,
             ${listsPoint('el')} AS listed,
-            (SELECT count(*)::int FROM ${pointsShownSql(placeId, 's')}
-              WHERE s.missing_since IS NULL AND s.merged_into_id IS NULL AND ${listsPoint('s')}) AS standing_points
+            stands_for_whole_site(el.name, el.external_ref, e.name, m.external_id,
+              (SELECT count(*)::int FROM ${pointsShownSql(placeId, 's')}
+                WHERE s.missing_since IS NULL AND s.merged_into_id IS NULL AND ${listsPoint('s')})) AS whole_site
        FROM ${from}
        JOIN experience_kind_memberships m ON m.experience_id = ${placeId} AND m.source_id = $1
       WHERE el.wikidata_item IS NULL
@@ -157,8 +152,9 @@ function sitePointsArm({ from, placeId }: PlacePointArm): string {
 
 /**
  * The components no item records and no curator has claimed one for, less the
- * ones that stand for their whole site (`standsForWholeSite`): a site of one
- * point, or a point named like the site, is the site's own item, and anything
+ * ones that stand for their whole site (`stands_for_whole_site` in the schema):
+ * a site of one point, a point carrying the site's own reference, or a point
+ * named like the site, is the site's own item, and anything
  * near it is a building inside rather than the place. `clearedIds` are the
  * points the pass answers for without searching them: those whole-site
  * points, and the points another kind gives the place, whose open proposals
@@ -168,19 +164,18 @@ function sitePointsArm({ from, placeId }: PlacePointArm): string {
 async function readPoints(siteId?: number): Promise<{ points: PointRow[]; wholeSites: number; clearedIds: number[] }> {
   const result = await pool.query<{
     id: number; name: string | null; lat: number; lon: number; approximate: boolean; experience_id: number; external_ref: string;
-    wikidata_items: string[] | null; site_name: string; standing_points: number; listed: boolean;
+    wikidata_items: string[] | null; whole_site: boolean; listed: boolean;
   }>(
     overPlacePoints(sitePointsArm),
     [UNESCO_SOURCE_ID],
   );
   const rows = result.rows.filter(row => siteId === undefined || row.experience_id === siteId);
-  const read: PointRead[] = rows.filter(row => row.listed).map(row => ({
+  const listed = rows.filter(row => row.listed);
+  const points: PointRow[] = listed.filter(row => !row.whole_site).map(row => ({
     locationId: row.id, name: row.name, lat: row.lat, lon: row.lon, approximate: row.approximate,
     experienceId: row.experience_id, siteItems: row.wikidata_items ?? [], externalRef: row.external_ref,
-    siteName: row.site_name, standingPoints: row.standing_points,
   }));
-  const points = read.filter(p => !standsForWholeSite(p.name, p.siteName, p.standingPoints));
-  const wholeSiteIds = read.filter(p => !points.includes(p)).map(p => p.locationId);
+  const wholeSiteIds = listed.filter(row => row.whole_site).map(row => row.id);
   const othersIds = rows.filter(row => !row.listed).map(row => row.id);
   return { points, wholeSites: wholeSiteIds.length, clearedIds: [...wholeSiteIds, ...othersIds] };
 }
