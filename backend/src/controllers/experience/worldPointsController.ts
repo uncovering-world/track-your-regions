@@ -116,6 +116,7 @@ interface PointRow {
   type?: string | null;
   kinds?: Array<{ kind_id: number; type: string | null }>;
   location_count?: number;
+  approximate?: boolean;
 }
 
 /**
@@ -144,6 +145,9 @@ function selectSql(
       'm.type',
       `${placeKindsSql('e')} AS kinds`,
     );
+    // Whether the source placed the point only roughly (#1912), which the pin
+    // draws as a ring. A folded pin stands for its place, never for its point.
+    if (!folded) columns.push(`${locationRow}.approximate IS NOT NULL AS approximate`);
   }
   return columns.join(',\n        ');
 }
@@ -339,6 +343,7 @@ function toColumns(
     answer.kindId = new Array<number | null>(count);
     answer.type = new Array<string | null>(count);
     answer.kinds = new Array<WorldPointKinds>(count);
+    if (!folded) answer.approximate = new Array<boolean>(count);
   }
   for (let index = 0; index < count; index += 1) {
     const row = rows[index];
@@ -353,6 +358,7 @@ function toColumns(
       (answer.kindId as (number | null)[])[index] = row.kind_id ?? null;
       (answer.type as (string | null)[])[index] = row.type ?? null;
       (answer.kinds as WorldPointKinds[])[index] = pointKinds(row.kinds);
+      if (answer.approximate) answer.approximate[index] = row.approximate === true;
     }
   }
   return answer;

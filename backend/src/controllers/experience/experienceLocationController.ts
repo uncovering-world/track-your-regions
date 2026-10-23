@@ -38,6 +38,7 @@ import type {
  * of column names by its NOT NULL default and by every writer.
  */
 type LocationRow = Pick<ExperienceLocationsRow, 'id' | 'experience_id' | 'name' | 'external_ref' | 'ordinal' | 'created_at' | 'image_url'> & {
+  approximate: ExperienceLocation['approximate'];
   image_credit: ExperienceLocation['image_credit'];
   longitude: number;
   latitude: number;
@@ -61,6 +62,7 @@ function locationOf(row: LocationRow): ExperienceLocation {
     ordinal: row.ordinal,
     longitude: row.longitude,
     latitude: row.latitude,
+    approximate: row.approximate ?? null,
     created_at: row.created_at?.toISOString() ?? null,
     curated_fields: row.curated_fields,
     in_region: row.in_region,
@@ -128,6 +130,7 @@ export async function getRegionExperienceLocations(
         el.name,
         el.external_ref,
         el.ordinal,
+        el.approximate,
         ST_X(el.location) as longitude,
         ST_Y(el.location) as latitude,
         el.created_at,
@@ -183,6 +186,7 @@ export async function getRegionExperienceLocations(
         el.name,
         el.external_ref,
         el.ordinal,
+        el.approximate,
         ST_X(el.location) as longitude,
         ST_Y(el.location) as latitude,
         el.created_at,
@@ -294,6 +298,7 @@ export async function getExperienceLocations(
       el.name,
       el.external_ref,
       el.ordinal,
+      el.approximate,
       ST_X(el.location) as longitude,
       ST_Y(el.location) as latitude,
       el.created_at,
