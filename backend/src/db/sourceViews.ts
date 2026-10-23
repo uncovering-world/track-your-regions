@@ -13,7 +13,7 @@
  * controller both compose it.
  */
 
-import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
+import { SHORT_MOVE_METERS } from '@tyr/shared/moves';
 import { MEMBERSHIPS } from './membership.js';
 
 /**
@@ -58,10 +58,13 @@ export function viewStandsSql(alias = 'm'): string {
  * A field either side leaves empty is no disagreement: a source with no picture
  * of the Gol Stave Church does not contradict the one that has a winter
  * photograph of it. Text is compared as stored, the run having tidied names
- * before either view was written. Two coordinates within ADR-0027's ten metres
- * are one place, by `ST_DWithin` as the point writers pair them.
+ * before either view was written. Two coordinates within `metres` of each
+ * other are one place, by `ST_DWithin`: ADR-0027's ten metres where a run
+ * decides which coordinate to keep, `SHORT_MOVE_METERS` where a curator is
+ * asked (ADR-0140), since two views a few dozen metres apart stand on the same
+ * building and the place keeps the one it holds.
  */
-export function viewDisagreementsSql(a: ViewSql, b: ViewSql): string {
+export function viewDisagreementsSql(a: ViewSql, b: ViewSql, metres: number): string {
   const text = (field: ViewField, left: string, right: string) =>
     `CASE WHEN NULLIF(${left}, '') IS NOT NULL AND NULLIF(${right}, '') IS NOT NULL
                AND ${left} <> ${right} THEN '${field}' END`;
@@ -70,7 +73,7 @@ export function viewDisagreementsSql(a: ViewSql, b: ViewSql): string {
       ${text('subtitle', a.subtitle, b.subtitle)},
       ${text('imageUrl', a.imageUrl, b.imageUrl)},
       CASE WHEN ${a.location} IS NOT NULL AND ${b.location} IS NOT NULL
-                AND NOT ST_DWithin(${a.location}::geography, ${b.location}::geography, ${LOCATION_UNCHANGED_METERS})
+                AND NOT ST_DWithin(${a.location}::geography, ${b.location}::geography, ${metres})
            THEN 'location' END
     ]::text[], NULL)`;
 }
@@ -133,7 +136,7 @@ export function contestedViewFieldsSql(placeExpr: string): string {
              FROM ${MEMBERSHIPS} a
              JOIN ${MEMBERSHIPS} b ON b.experience_id = a.experience_id AND a.id < b.id
                                   AND a.external_id <> b.external_id AND ${viewStandsSql('b')}
-            CROSS JOIN LATERAL unnest(${viewDisagreementsSql(membershipViewSql('a'), membershipViewSql('b'))}) AS field
+            CROSS JOIN LATERAL unnest(${viewDisagreementsSql(membershipViewSql('a'), membershipViewSql('b'), SHORT_MOVE_METERS)}) AS field
             WHERE a.experience_id = ${placeExpr} AND ${viewStandsSql('a')})`;
 }
 

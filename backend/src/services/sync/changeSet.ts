@@ -13,7 +13,7 @@
 import { isEmptyValue, jsonEquals } from '@tyr/shared/equality';
 import { sameLabelSet } from './labelFold.js';
 import { sameTypography } from '@tyr/shared/labels';
-import { distanceMeters, LOCATION_MAJOR_METERS, LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
+import { distanceMeters, LOCATION_MAJOR_METERS, LOCATION_UNCHANGED_METERS, SHORT_MOVE_METERS } from '@tyr/shared/moves';
 import { placeFieldUnseen } from '@tyr/shared/readerFields';
 
 /**
@@ -45,6 +45,13 @@ export interface ExperienceSnapshot {
    * the gate. Absent on a stored row, which says nothing either way.
    */
   locationIsAnchor?: boolean;
+  /**
+   * On an incoming record: the move from the stored coordinate is a short move
+   * (`shortMovePassesSql`, ADR-0140), which the upsert asks the database under
+   * the lock: shorter than `SHORT_MOVE_METERS`, in the same GADM leaf division,
+   * and no nearer another place. Absent, a move is held as before.
+   */
+  shortMovePasses?: boolean;
   /**
    * On an incoming record: the closed vocabulary of the kind the run fills
    * (`publicArt/kindRules.ts`), where it declares one. A stored type that is
@@ -83,11 +90,12 @@ export type FieldSignificance = 'major' | 'minor';
  * two are the classes a visitor sees. A field no reader is shown
  * (`unseen`, ADR-0139: its mark in `@tyr/shared/readerFields`), and a text
  * rewritten only in its typesetting (`typography`, ADR-0139: `sameTypography`)
- * pass too. Every other rewrite is held as before (ADR-0099).
+ * pass too, and so does a coordinate moved a short way (`short-move`, ADR-0140).
+ * Every other rewrite is held as before (ADR-0099).
  */
 export const GATE_PASSES = [
   'qualifier', 'same-file-credit', 'remeasured', 'own-item', 'first-subtitle', 'type-outside-vocabulary',
-  'unseen', 'typography',
+  'unseen', 'typography', 'short-move',
 ] as const;
 export type GatePass = (typeof GATE_PASSES)[number];
 
@@ -641,7 +649,9 @@ export function passingMetadataKeys(
  * The place's coordinate as a diff, or none within `LOCATION_UNCHANGED_METERS`.
  * A place of several points has no coordinate of its own (ADR-0095): its
  * anchor moving says nothing a reader sees, so it is minor and written past
- * the gate, recorded rather than asked.
+ * the gate, recorded rather than asked. A short move (`shortMovePasses`,
+ * ADR-0140) passes the gate as `short-move`; the distance is checked here too,
+ * so the write, which follows this diff (`passingColumns`), and the record agree.
  */
 function locationDiff(before: ExperienceSnapshot, incoming: ExperienceSnapshot): RawDiff | null {
   const moved = distanceMeters(before.lon, before.lat, incoming.lon, incoming.lat);
@@ -652,6 +662,8 @@ function locationDiff(before: ExperienceSnapshot, incoming: ExperienceSnapshot):
     new: { lon: incoming.lon, lat: incoming.lat },
     significance: !incoming.locationIsAnchor && moved > LOCATION_MAJOR_METERS ? 'major' : 'minor',
     ...(incoming.locationIsAnchor ? { pastTheGate: true } : {}),
+    ...(!incoming.locationIsAnchor && incoming.shortMovePasses && moved < SHORT_MOVE_METERS
+      ? { passedTheGate: 'short-move' as const } : {}),
   };
 }
 
@@ -805,7 +817,7 @@ function collectDifferences(
  * names are one column, reported one language at a time.
  */
 const PASSING_COLUMNS: ReadonlySet<string> = new Set([
-  'name', 'name_local', 'subtitle', 'description', 'country_codes', 'country_names',
+  'name', 'name_local', 'subtitle', 'description', 'country_codes', 'country_names', 'location',
 ]);
 
 export function passingColumns(

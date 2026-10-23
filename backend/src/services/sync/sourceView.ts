@@ -18,6 +18,7 @@
  */
 
 import type { PoolClient } from 'pg';
+import { LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import {
   membershipViewSql, viewDisagreementsSql, viewSilencesSql, viewStandsSql, VIEW_FIELDS, type ViewField,
@@ -81,7 +82,7 @@ export async function contestedFields(
   };
   const result = await query.query<{ field: ViewField }>(
     `SELECT DISTINCT unnest(
-              ${viewDisagreementsSql(incoming, membershipViewSql('m'))}
+              ${viewDisagreementsSql(incoming, membershipViewSql('m'), LOCATION_UNCHANGED_METERS)}
               || ${viewSilencesSql(incoming, membershipViewSql('m'))}) AS field
        FROM ${MEMBERSHIPS} m
       WHERE m.experience_id = $1
