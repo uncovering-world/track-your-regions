@@ -667,13 +667,26 @@ describe('publicArtVerdict — what it admits', () => {
       .toBe('no monument or memorial class');
   });
 
+  it('admits the memorial classes no class question used to name (#1832)', () => {
+    // The Monument to the Great Fire of London: memorial column. The Skull
+    // Tower in Niš: skull tower. The Srebrenica Genocide Memorial: memorial
+    // cemetery, whose cemetery a memorial lifts. The Kigali Genocide Memorial:
+    // museum and Memorial of the Genocide against the Tutsi in Rwanda, a
+    // memorial with a museum in it.
+    expect(publicArtVerdict(facts({ classes: ['Q51845395'] }), trees, monuments)).toMatchObject({ pass: true, type: 'column' });
+    expect(publicArtVerdict(facts({ classes: ['Q16052426'] }), trees, monuments)).toMatchObject({ pass: true, type: 'memorial' });
+    expect(publicArtVerdict(facts({ classes: ['Q2532223', 'Q39614'] }), trees, monuments)).toMatchObject({ pass: true, type: 'memorial' });
+    expect(publicArtVerdict(facts({ classes: [MUSEUM, 'Q130753722'] }), trees, monuments)).toMatchObject({ pass: true, type: 'memorial' });
+    expect(reasonOf(publicArtVerdict(facts({ classes: ['Q12327290'] }), trees, art))).toBe('no public-art class');
+  });
+
   it('lets a P547 statement lift the museum veto for Monuments & memorials', () => {
-    // The Vittoriano: typed only by Italian museum classes, and commemorates
-    // Victor Emmanuel II. The same museum classes commemorating nobody are a
-    // museum.
-    expect(publicArtVerdict(facts({ classes: ['Q17431399', MUSEUM], commemorates: ['Q168691'] }), trees, monuments))
+    // The USS Arizona Memorial: military museum, National Memorial of the
+    // United States, and commemorates the ship. Commemorating nobody, the same
+    // classes are a museum.
+    expect(publicArtVerdict(facts({ classes: [MILITARY_MUSEUM, US_NATIONAL_MEMORIAL, MONUMENT], commemorates: ['Q506022'] }), trees, monuments))
       .toMatchObject({ pass: true, type: 'monument' });
-    expect(reasonOf(publicArtVerdict(facts({ classes: ['Q17431399', MUSEUM, MONUMENT] }), trees, monuments)))
+    expect(reasonOf(publicArtVerdict(facts({ classes: [MILITARY_MUSEUM, US_NATIONAL_MEMORIAL, MONUMENT] }), trees, monuments)))
       .toBe('not a memorial, and typed: a museum');
   });
 
