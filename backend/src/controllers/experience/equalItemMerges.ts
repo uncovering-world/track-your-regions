@@ -14,7 +14,9 @@
  * that holds a kind of its own, whatever their ids: the Temple of Karnak into
  * the Karnak Temple Complex of Places of worship, which becomes the part of
  * Ancient Thebes and keeps its name, its list row and its address. A pair the merge
- * refuses — both places in one kind — is reported and left apart.
+ * refuses — both places in one kind — is reported and left apart, and so is a
+ * place whose curator said the item only refers to it or is not its own
+ * (`place_identifier_verdicts`, #1896).
  */
 
 import { pool } from '../../db/index.js';
@@ -73,6 +75,11 @@ export function sharedItemsSql(onlyParam: string): string {
          ${partItemsSql()}
        ) held
       WHERE held.qid IS NOT NULL AND (${onlyParam}::text[] IS NULL OR held.qid = ANY(${onlyParam}::text[]))
+        -- A curator's word that the item only refers to a place, or is not its
+        -- own, keeps that place out of the pair (ADR-0143 decision 5, #1896).
+        AND NOT EXISTS (SELECT 1 FROM place_identifier_verdicts v
+                         WHERE v.experience_id = held.place_id AND v.scheme = 'wikidata' AND v.value = held.qid
+                           AND v.verdict IN ('refers', 'removed'))
       GROUP BY held.qid
      HAVING count(DISTINCT held.place_id) > 1`;
 }

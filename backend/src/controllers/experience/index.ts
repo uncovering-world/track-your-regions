@@ -31,3 +31,4 @@ export * from './unrefuseContentsController.js';
 export * from './reviewAnswerController.js';
 export * from './publishController.js';
 export * from './experienceNewBadge.js';
+export { getPlaceIdentifiers, settlePlaceIdentifier } from './placeIdentifierController.js';

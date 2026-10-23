@@ -4,6 +4,7 @@
  */
 
 import { z } from 'zod/v4';
+import { IDENTIFIER_SCHEMES, IDENTIFIER_WORDS, isIdentifier } from '@tyr/shared/identifiers';
 import { MAPS_APPS } from '@tyr/shared/preferences';
 import { bodyRowIdSchema, rowIdSchema } from './rowId.js';
 import { VIEW_FIELDS } from '../db/sourceViews.js';
@@ -682,6 +683,16 @@ export const pinQuestionAnswerBodySchema = z.object({
     reason: z.string().max(2000).nullable(),
   }),
   note: z.string().max(1000).optional(),
+});
+
+/** A curator's word on one identifier of a place (#1896): see `placeIdentifierController.ts`. */
+export const identifierVerdictBodySchema = z.object({
+  scheme: z.enum(IDENTIFIER_SCHEMES),
+  value: z.string().min(1).max(64),
+  verdict: z.enum(IDENTIFIER_WORDS),
+  note: z.string().max(1000).optional(),
+}).refine(body => isIdentifier(body.scheme, body.value), {
+  message: 'The value is not an identifier of that scheme', path: ['value'],
 });
 
 /**

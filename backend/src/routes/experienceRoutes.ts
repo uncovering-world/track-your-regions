@@ -10,6 +10,8 @@ import {
   AcceptSourceResult,
   AdmissionResult,
   PinQuestionAnswered,
+  PlaceIdentifiers,
+  IdentifierSettled,
   VisitQuestionAnswered,
   AdmissionPins,
   AdmissionPinHandedBack,
@@ -89,6 +91,8 @@ import {
   bringRunBack,
   setExperienceAdmission,
   answerPinQuestion,
+  getPlaceIdentifiers,
+  settlePlaceIdentifier,
   answerVisitQuestion,
   listAdmissionPins,
   handBackPin,
@@ -125,6 +129,7 @@ import {
   syncLogIdParamSchema,
   experienceAdmissionBodySchema,
   pinQuestionAnswerBodySchema,
+  identifierVerdictBodySchema,
   visitQuestionAnswerBodySchema,
   admissionPinsQuerySchema,
   handBackPinBodySchema,
@@ -514,6 +519,23 @@ export const experienceCurationRoutes = [
     body: pinQuestionAnswerBodySchema,
     response: PinQuestionAnswered,
     handler: answerPinQuestion,
+  }),
+  // A place's identifiers and a curator's word on one (#1896, ADR-0143
+  // decision 5): read and written in the scope of the place as a whole.
+  defineRoute({
+    method: 'get', path: '/:id/identifiers', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'A place\'s external identifiers, each with the other places that hold it and the curator\'s word on it',
+    params: idParamSchema,
+    response: PlaceIdentifiers,
+    handler: getPlaceIdentifiers,
+  }),
+  defineRoute({
+    method: 'post', path: '/:id/identifiers', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Say that an identifier names this place, only refers to it, is not its own, or is the sources\' to decide again',
+    params: idParamSchema,
+    body: identifierVerdictBodySchema,
+    response: IdentifierSettled,
+    handler: settlePlaceIdentifier,
   }),
   // The answer to a run's question about a place with nothing to see (#1770):
   // a membership row, the question and a log row in one transaction, limited

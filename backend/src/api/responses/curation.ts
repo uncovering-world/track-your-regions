@@ -15,6 +15,7 @@
 
 import { VIEW_FIELDS } from '../../db/sourceViews.js';
 import { CURATION_LOG_ACTIONS } from '@tyr/shared/curationLog';
+import { IDENTIFIER_SCHEMES, IDENTIFIER_VERDICTS, IDENTIFIER_WORDS } from '@tyr/shared/identifiers';
 import { z } from 'zod/v4';
 import { CHECK_VALUES } from '../../db/schema.generated.js';
 import { CONTENT_KINDS } from '../../services/sync/types.js';
@@ -162,6 +163,42 @@ export const VisitQuestionAnswered = z.strictObject({
     .describe('The verdict now standing on the membership: refused by the curator, or admitted as before.'),
 }).describe("A curator's answer to a run's question about an offered place with nothing to see (#1770).");
 export type VisitQuestionAnswered = z.infer<typeof VisitQuestionAnswered>;
+
+// The shared lists, held to the schema's CHECKs by `curationLogActions.test.ts`.
+export const IdentifierScheme = z.enum(IDENTIFIER_SCHEMES);
+export const IdentifierVerdict = z.enum(IDENTIFIER_VERDICTS);
+
+/** One identifier a place carries, as the registry holds it and as a curator may have settled it (#1896). */
+export const PlaceIdentifier = z.strictObject({
+  scheme: IdentifierScheme,
+  value: z.string(),
+  identifies: z.boolean().describe('Whether a run finds this place by the value: it names this place and no other live one.'),
+  claimsIdentity: z.boolean().describe('Whether some column, or the curator, says the value is this place; false where it only refers to it.'),
+  basis: z.array(z.string()).describe('The columns that carry the value for this place: membership, site-items, point, component, curator.'),
+  verdict: IdentifierVerdict.nullable().describe("The curator's word standing on it, or null where the sources decide."),
+  note: z.string().nullable(),
+  others: z.array(z.strictObject({
+    id: z.number().int(),
+    name: z.string(),
+    identifies: z.boolean(),
+  })).describe('The other live places the registry holds the value on.'),
+});
+export type PlaceIdentifier = z.infer<typeof PlaceIdentifier>;
+
+export const PlaceIdentifiers = z.strictObject({
+  experienceId: z.number().int(),
+  identifiers: z.array(PlaceIdentifier),
+}).describe("A place's external identifiers, for its curation dialog (#1896).");
+export type PlaceIdentifiers = z.infer<typeof PlaceIdentifiers>;
+
+export const IdentifierSettled = z.strictObject({
+  experienceId: z.number().int(),
+  scheme: IdentifierScheme,
+  value: z.string(),
+  verdict: z.enum(IDENTIFIER_WORDS),
+  identifies: z.boolean().describe('Whether the value identifies this place now.'),
+}).describe("A curator's word on one identifier, written (#1896).");
+export type IdentifierSettled = z.infer<typeof IdentifierSettled>;
 
 /**
  * Publish's own answer with the verdict in front: a curator who clicks "Put it

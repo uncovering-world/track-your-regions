@@ -6547,7 +6547,8 @@
                 "admission_pin_kept",
                 "admission_pin_handed_back",
                 "merge_proposal_answered",
-                "visit_question_answered"
+                "visit_question_answered",
+                "identifier_settled"
               ]
             }
           },
@@ -6678,7 +6679,8 @@
                 "admission_pin_kept",
                 "admission_pin_handed_back",
                 "merge_proposal_answered",
-                "visit_question_answered"
+                "visit_question_answered",
+                "identifier_settled"
               ]
             }
           },
@@ -13892,6 +13894,114 @@
         }
       }
     },
+    "/api/experiences/{id}/identifiers": {
+      "get": {
+        "operationId": "getExperiencesByIdIdentifiers",
+        "summary": "A place's external identifiers, each with the other places that hold it and the curator's word on it",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaceIdentifiers"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "operationId": "postExperiencesByIdIdentifiers",
+        "summary": "Say that an identifier names this place, only refers to it, is not its own, or is the sources' to decide again",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IdentifierVerdictBody"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IdentifierSettled"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/{id}/visit-question": {
       "post": {
         "operationId": "postExperiencesByIdVisitQuestion",
@@ -19817,7 +19927,8 @@
               "admission_pin_kept",
               "admission_pin_handed_back",
               "merge_proposal_answered",
-              "visit_question_answered"
+              "visit_question_answered",
+              "identifier_settled"
             ]
           },
           "region_id": {
@@ -19987,7 +20098,8 @@
               "admission_pin_kept",
               "admission_pin_handed_back",
               "merge_proposal_answered",
-              "visit_question_answered"
+              "visit_question_answered",
+              "identifier_settled"
             ]
           },
           "created_at": {
@@ -25311,6 +25423,96 @@
         "additionalProperties": false,
         "description": "The run, paused for up to five minutes on whether to retry a poorly fitting alignment."
       },
+      "IdentifierScheme": {
+        "type": "string",
+        "enum": [
+          "wikidata",
+          "whc",
+          "osm"
+        ]
+      },
+      "IdentifierSettled": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "scheme": {
+            "$ref": "#/components/schemas/IdentifierScheme"
+          },
+          "value": {
+            "type": "string"
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "identifies",
+              "refers",
+              "removed",
+              "derived"
+            ]
+          },
+          "identifies": {
+            "type": "boolean",
+            "description": "Whether the value identifies this place now."
+          }
+        },
+        "required": [
+          "experienceId",
+          "scheme",
+          "value",
+          "verdict",
+          "identifies"
+        ],
+        "additionalProperties": false,
+        "description": "A curator's word on one identifier, written (#1896)."
+      },
+      "IdentifierVerdict": {
+        "type": "string",
+        "enum": [
+          "identifies",
+          "refers",
+          "removed"
+        ]
+      },
+      "IdentifierVerdictBody": {
+        "type": "object",
+        "properties": {
+          "scheme": {
+            "type": "string",
+            "enum": [
+              "wikidata",
+              "whc",
+              "osm"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 64
+          },
+          "verdict": {
+            "type": "string",
+            "enum": [
+              "identifies",
+              "refers",
+              "removed",
+              "derived"
+            ]
+          },
+          "note": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "scheme",
+          "value",
+          "verdict"
+        ]
+      },
       "ImageCredit": {
         "type": "object",
         "properties": {
@@ -28788,6 +28990,108 @@
         ],
         "additionalProperties": false,
         "description": "A curator's answer to a run that asked again about their admission pin (#1367)."
+      },
+      "PlaceIdentifier": {
+        "type": "object",
+        "properties": {
+          "scheme": {
+            "$ref": "#/components/schemas/IdentifierScheme"
+          },
+          "value": {
+            "type": "string"
+          },
+          "identifies": {
+            "type": "boolean",
+            "description": "Whether a run finds this place by the value: it names this place and no other live one."
+          },
+          "claimsIdentity": {
+            "type": "boolean",
+            "description": "Whether some column, or the curator, says the value is this place; false where it only refers to it."
+          },
+          "basis": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The columns that carry the value for this place: membership, site-items, point, component, curator."
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IdentifierVerdict"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The curator's word standing on it, or null where the sources decide."
+          },
+          "note": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "others": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "minimum": -9007199254740991,
+                  "maximum": 9007199254740991
+                },
+                "name": {
+                  "type": "string"
+                },
+                "identifies": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "id",
+                "name",
+                "identifies"
+              ],
+              "additionalProperties": false
+            },
+            "description": "The other live places the registry holds the value on."
+          }
+        },
+        "required": [
+          "scheme",
+          "value",
+          "identifies",
+          "claimsIdentity",
+          "basis",
+          "verdict",
+          "note",
+          "others"
+        ],
+        "additionalProperties": false
+      },
+      "PlaceIdentifiers": {
+        "type": "object",
+        "properties": {
+          "experienceId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "identifiers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PlaceIdentifier"
+            }
+          }
+        },
+        "required": [
+          "experienceId",
+          "identifiers"
+        ],
+        "additionalProperties": false,
+        "description": "A place's external identifiers, for its curation dialog (#1896)."
       },
       "PlaceKind": {
         "type": "object",
