@@ -1,7 +1,7 @@
 # ADR-0088: A World Heritage site of one point is its one Wikidata item, and merges to one point
 
 **Date:** 2026-10-08
-**Status:** Accepted — decision 1 narrowed by ADR-0094
+**Status:** Accepted — decision 1 narrowed by ADR-0094; decisions 2 and 3 narrowed by [ADR-0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md): a site of one point and one item is that item's in the place identifier registry, which the run's lookup reads, rather than for the merge, and two places of one point are one point when a run joins one to the other
 
 ---
 

@@ -1,7 +1,7 @@
 # ADR-0100: A serial site's components are places, part of the site
 
 **Date:** 2026-10-13
-**Status:** Accepted
+**Status:** Accepted — decision 4 narrowed by [ADR-0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md): the run finds a part by its item and adds its kind there, rather than the catalogue merging the two afterwards
 
 ---
 

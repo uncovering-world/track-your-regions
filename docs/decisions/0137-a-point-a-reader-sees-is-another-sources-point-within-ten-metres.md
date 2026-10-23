@@ -1,7 +1,7 @@
 # ADR-0137: A point a reader sees is another source's point within ten metres
 
 **Date:** 2026-10-23
-**Status:** Accepted
+**Status:** Accepted — decision 1 narrowed by [ADR-0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md): on a place of one point, a joining run's one point is that point at any distance
 **Issue:** [#1846](https://github.com/uncovering-world/track-your-regions/issues/1846)
 **Narrows:** [ADR-0027](0027-a-point-rewritten-more-precisely-is-the-same-point.md) decision 1 (identity is the reference first, and geometry within a tolerance second) and decision 5a (the pairing's order between an unread arrival and the visible row)
 
