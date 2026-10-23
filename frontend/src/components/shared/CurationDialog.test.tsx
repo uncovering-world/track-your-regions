@@ -21,6 +21,7 @@ vi.mock('../../utils/queryInvalidation', () => ({
 }));
 
 vi.mock('../../api/curation', () => ({
+  separateKind: vi.fn(),
   editExperience: vi.fn(),
   rejectExperience: vi.fn(),
   unrejectExperience: vi.fn(),

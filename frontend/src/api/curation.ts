@@ -11,14 +11,14 @@ import type {
   AcceptSourceResult, AdmissionResult, ComponentItemsAnswered, ComponentItemSuggestions, ContentKind, CurationLog,
   DeclineHeldResult,
   DeclineSourceResult, ExperienceEditResult, ExperienceStateResult, LocationEditResult,
-  LocationStateResult, ManualExperienceCreated, MergeProposalsAnswered, MergeProposalSuggestions, MergeUndone, NearbyPictures, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointItemTakenBack, PublishResult,
+  LocationStateResult, ManualExperienceCreated, MembershipSeparated, MergeProposalsAnswered, MergeProposalSuggestions, MergeUndone, NearbyPictures, AdmissionPinHandedBack, AdmissionPins, PinQuestionAnswered, PointItemTakenBack, PublishResult,
   ViewsChosen, ViewSuggestions, VisitQuestionAnswered, VisitSuggestion, RefuseArrivalResult, RefuseContentsResult, RegionMembershipResult, UnrefuseContentsResult, WorkEditResult,
 } from './client.generated';
 import {
   deleteExperiencesByIdAssignByRegionId, deleteExperiencesByIdRemoveFromRegionByRegionId,
   getExperiencesByIdCurationLog, patchExperiencesByIdEdit, patchExperiencesByIdWorksByTreasureIdEdit,
   patchExperiencesLocationsByLocationIdEdit, postExperiences, postExperiencesByIdAcceptSource,
-  postExperiencesMergesByMergeIdUndo, postExperiencesByIdChooseViews, type ChooseViewsBody,
+  postExperiencesMergesByMergeIdUndo, postExperiencesByIdKindsByKindIdSeparate, postExperiencesByIdChooseViews, type ChooseViewsBody,
   postExperiencesByIdViewSuggestions, postExperiencesByIdComponentItems, type AnswerComponentItemsBody,
   postExperiencesByIdComponentItemSuggestions,
   postExperiencesByIdMergeProposals, type AnswerMergeProposalsBody, postExperiencesByIdMergeProposalSuggestions,
@@ -40,7 +40,7 @@ export type {
   AcceptSourceResult, AdmissionResult, AnswerComponentItemsBody, AnswerMergeProposalsBody, AppliedPart, ComponentItemsAnswered,
   ComponentItemSuggestions, ContentKind, CurationLog, CurationLogEntry,
   DeclineHeldResult, DeclineSourceResult, DeclinedPart, ExperienceEditResult,
-  ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MergeProposalsAnswered, MergeProposalSuggestions, MergeUndone, NearbyPicture,
+  ExperienceStateResult, LocationEditResult, LocationStateResult, ManualExperienceCreated, MembershipSeparated, MergeProposalsAnswered, MergeProposalSuggestions, MergeUndone, NearbyPicture,
   NearbyPictures,
   AdmissionPin, AdmissionPinHandedBack, AdmissionPins, HandBackPinBody,
   PartNotFound, PinQuestionAnswerBody, PinQuestionAnswered, PointItemTakenBack, ViewsChosen, ViewSuggestions, VisitQuestionAnswerBody, VisitQuestionAnswered, VisitSuggestion, PlacementFailure, PublishResult, RefuseArrivalResult, RefuseContentsBody,
@@ -503,6 +503,15 @@ export async function suggestVisit(experienceId: number): Promise<VisitSuggestio
  */
 export async function undoPlaceMerge(mergeId: number): Promise<MergeUndone> {
   return postExperiencesMergesByMergeIdUndo(mergeId);
+}
+
+/**
+ * Separate one kind of a place into a place of its own (ADR-0142): its
+ * membership leaves, with the points and works it places, and travellers who
+ * marked the place visited are asked which of the two they visited.
+ */
+export async function separateKind(experienceId: number, kindId: number): Promise<MembershipSeparated> {
+  return postExperiencesByIdKindsByKindIdSeparate(experienceId, kindId);
 }
 
 /**
