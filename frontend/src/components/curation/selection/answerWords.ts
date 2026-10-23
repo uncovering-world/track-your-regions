@@ -37,7 +37,7 @@ export interface AnswerableRow {
 
 export type AnswerableKind =
   | 'arrival' | 'held' | 'contents' | 'conflicts' | 'sources' | 'refused' | 'missing' | 'withdrawn' | 'component-items'
-  | 'merge-proposals' | 'pin-question' | 'visit-question' | 'approximate-points';
+  | 'merge-proposals' | 'pin-question' | 'visit-question' | 'approximate-points' | 'approximate-unhinted';
 
 export interface AnswerWords {
   /** What the row proposes, as the bar's expansion states it. */
@@ -133,6 +133,11 @@ export const ANSWER_WORDS: Record<AnswerableKind, AnswerWords> = {
     accept: 'Place them on each card',
     reject: 'Place them on each card',
   },
+  'approximate-unhinted': {
+    proposes: 'keep or place a component placed only roughly that nothing says more about',
+    accept: 'Answer them on each card',
+    reject: 'Answer them on each card',
+  },
 };
 
 /** The plural noun the bar counts a kind by. */
@@ -150,6 +155,7 @@ export const KIND_NOUN: Record<AnswerableKind, [string, string]> = {
   'pin-question': ['questioned pin', 'questioned pins'],
   'visit-question': ['place with nothing to see', 'places with nothing to see'],
   'approximate-points': ['site placed only roughly', 'sites placed only roughly'],
+  'approximate-unhinted': ['site placed only roughly, with no hint', 'sites placed only roughly, with no hint'],
 };
 
 /**

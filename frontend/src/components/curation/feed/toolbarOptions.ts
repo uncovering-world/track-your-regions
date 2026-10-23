@@ -104,6 +104,12 @@ const KIND_OPTIONS: Array<{ key: string; label: string; short: string; swatch: s
     short: 'placed roughly',
     swatch: KIND_COLOR['approximate-points'],
   },
+  {
+    key: 'approximate-unhinted',
+    label: 'Components placed only roughly, with no hint',
+    short: 'roughly, no hint',
+    swatch: KIND_COLOR['approximate-unhinted'],
+  },
 ];
 
 /** What the question chip says once a kind is picked: its short word, never the API's. */

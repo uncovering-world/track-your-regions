@@ -3159,6 +3159,7 @@ export const ReviewQueueItemKind = {
   'pin-question': 'pin-question',
   'visit-question': 'visit-question',
   'approximate-points': 'approximate-points',
+  'approximate-unhinted': 'approximate-unhinted',
 } as const;
 
 export type ProposedFieldSignificance = typeof ProposedFieldSignificance[keyof typeof ProposedFieldSignificance];
@@ -4141,9 +4142,9 @@ export interface ReviewQueueItem {
   quiet_fields?: QuietField[];
   /** The candidate items of the site's components, the points in the source's order and the better candidate first (#1272). `component-items` items only. */
   component_items?: ComponentItemProposal[] | null;
-  /** Every place the site is made of, in the source's order, each with its own picture where it has one: what the card's map draws around the candidates (#1342), and around a point the list placed only roughly (#1853). `component-items` and `approximate-points` items only. */
+  /** Every place the site is made of, in the source's order, each with its own picture where it has one: what the card's map draws around the candidates (#1342), and around a point the list placed only roughly (#1853). `component-items`, `approximate-points` and `approximate-unhinted` items only. */
   site_points?: SitePoint[] | null;
-  /** The components the World Heritage list placed only roughly, each with where it may really stand (#1853). `approximate-points` items only. */
+  /** The components the World Heritage list placed only roughly, each with where it may really stand (#1853). `approximate-points` and `approximate-unhinted` items only. */
   approximate_points?: ApproximatePoint[] | null;
   /** The open pairs of near places with similar names this place is the lower id of, the most alike first (#1249). `merge-proposals` items only. */
   merge_pairs?: MergePair[] | null;
@@ -4171,6 +4172,7 @@ export const QueueKind = {
   'pin-question': 'pin-question',
   'visit-question': 'visit-question',
   'approximate-points': 'approximate-points',
+  'approximate-unhinted': 'approximate-unhinted',
 } as const;
 
 /**
@@ -4217,6 +4219,7 @@ export const QueueFacetsKindItemKind = {
   'pin-question': 'pin-question',
   'visit-question': 'visit-question',
   'approximate-points': 'approximate-points',
+  'approximate-unhinted': 'approximate-unhinted',
   arrival: 'arrival',
   held: 'held',
   contents: 'contents',
@@ -4329,6 +4332,8 @@ export interface ReviewQueue {
   visitQuestions: ReviewQueueItem[];
   /** Serial sites whose components the World Heritage list placed only roughly (#1853). */
   approximatePoints: ReviewQueueItem[];
+  /** Serial sites with a component the World Heritage list placed only roughly and nothing says where else it may stand (#1903): kept or placed by hand. */
+  approximateUnhinted: ReviewQueueItem[];
   arrivals: ReviewQueueItem[];
   held: ReviewQueueItem[];
   /** One per place and membership holding unread rows it placed (#1290). */
@@ -4381,6 +4386,7 @@ export const ReviewAnswerBodyRowsItemKind = {
   'pin-question': 'pin-question',
   'visit-question': 'visit-question',
   'approximate-points': 'approximate-points',
+  'approximate-unhinted': 'approximate-unhinted',
 } as const;
 
 export type ReviewAnswerBodyRowsItem = {

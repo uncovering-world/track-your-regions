@@ -76,6 +76,10 @@ const KIND_NOTE: Record<RowKind, string> = {
   'approximate-points': 'The World Heritage list places these components only roughly: to the whole minute, a cell '
     + 'of about two kilometres, or on a point another component shares. The Longmen Grottoes stand 10 km from theirs. '
     + 'Pick where each stands from the hints, place it by hand, or keep the list\'s point; readers see it until you do.',
+  'approximate-unhinted': 'The World Heritage list places these components only roughly, and nothing else says where '
+    + 'they stand: no map object carries their number, no Wikidata entry or namesake stands near. Keep the list\'s '
+    + 'point where it serves a large area well enough, or place it by hand; a later search that finds a hint moves it '
+    + 'to the cards that ask.',
 };
 
 /** The note above a kind whose source stopped listing a place other sources still list (#1264). */
@@ -116,7 +120,9 @@ export function ReviewBench({ row, onDone }: {
       {row.kind === 'refused' && row.items && <RefusedCard items={row.items} onDone={onDone} />}
       {row.kind === 'pin-question' && row.items && <PinQuestionCard items={row.items} onDone={onDone} />}
       {row.kind === 'visit-question' && row.items && <VisitQuestionCard items={row.items} onDone={onDone} />}
-      {row.kind === 'approximate-points' && row.item && <ApproximatePointsCard item={row.item} onDone={onDone} />}
+      {(row.kind === 'approximate-points' || row.kind === 'approximate-unhinted') && row.item && (
+        <ApproximatePointsCard item={row.item} onDone={onDone} />
+      )}
       {row.kind === 'missing' && row.items && asksOfKinds(row.items) && <KindMissingCard items={row.items} onDone={onDone} />}
       {row.kind === 'missing' && row.item && !asksOfKinds(row.items) && <MissingCard item={row.item} onDone={onDone} />}
       {row.kind === 'withdrawn' && row.item && <WithdrawnCard item={row.item} onDone={onDone} />}

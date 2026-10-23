@@ -41,6 +41,7 @@ export const KIND_COLOR: Record<RowKind | 'arrival' | 'contents', string> = {
   'pin-question': '#4527A0',
   'visit-question': '#AD1457',
   'approximate-points': '#1565C0',
+  'approximate-unhinted': '#78909C',
 };
 
 /** The question word a row prints in bold, ahead of its specific text. */
@@ -58,6 +59,7 @@ export const KIND_SHORT: Record<RowKind | 'arrival' | 'contents', string> = {
   'pin-question': 'your pin is questioned',
   'visit-question': 'nothing to see?',
   'approximate-points': 'where is it?',
+  'approximate-unhinted': 'roughly placed',
 };
 
 /** Jev's reading a visit question was raised on (#1770), as a row says it in a few words. */
@@ -228,7 +230,8 @@ export function rowSpecific(row: {
         const says = asked ? `${VISIT_READING_SHORT[asked.reading]}, ${countLabel(asked.witnesses.length, 'witness', 'witnesses')} of 4` : '';
         return row.items && row.items.length > 1 ? `${item.kind_name}: ${says}` : says;
       }).join('; ');
-    case 'approximate-points': {
+    case 'approximate-points':
+    case 'approximate-unhinted': {
       // How many components the list placed only roughly, and how many of them it gives one shared point (#1853).
       const points = row.item?.approximate_points ?? [];
       const shared = points.filter(point => point.reason === 'shared').length;
