@@ -5501,6 +5501,29 @@ answer confirms the exact candidates only — the same name within
 50 m, which the product review allowed a batch to take — and turns every open one down
 (`answerComponentItems` in `reviewAnswerDispatch.ts`); the rest is judged on the card.
 
+**An exact candidate nothing contradicts is the catalogue's own answer** (#1839,
+[ADR-0141](../decisions/0141-the-catalogue-accepts-a-component-candidate-of-the-points-own-name-at-the-point.md)).
+After its search, *Find component items* accepts every open candidate that is exact, the point's
+only exact candidate, for an item open for no other point of the site, with no register disagreeing
+and never taken back (`acceptExactCandidates`, `controllers/experience/exactCandidates.ts`, handed
+to the job by the admin controller, since the answer is a curator-side write). It goes through the
+writer a curator's confirmation goes through (`answerComponentItemsUnderLock`, one site per
+transaction, its content read before the lock as the card's is), with no curator: the proposal's
+`answered_by` and the log row's `curator_id` are null, the proposal is marked
+`answered_by_catalogue` (which AI Settings' agreement with Jev leaves out), and the row carries
+`catalogue: 'exact'`,
+which the history names *The catalogue — the same name at the point* (`catalogueActor`,
+`curationLog.ts`). The history's curator check admits that action without a curator, as it admits
+a catalogue merge (migration 156). It is taken back like a curator's, and a taken-back candidate is
+never accepted this way again. The item's content is read with a run's patience and strictly: a
+site whose content Wikidata does not answer waits for the next pass, and so does an item whose
+picture Commons gives no credit for, rather than being accepted without the picture nothing would
+later fill in, while the site's other candidates are accepted; a cancelled pass writes no further
+site. The pass's
+closing line counts what it recorded and the candidates it left. Measured on the
+development catalogue on 2026-10-22: 151 of 566 open candidates were exact and every one met the
+conditions; curators had accepted every exact candidate they answered.
+
 **Jev's judgement on the component-items card** (#1272, ADR-0087). Where `JEV_API_KEY` is set,
 the card asks `POST /api/experiences/:id/component-item-suggestions`
 (`componentItemSuggestionController.ts`) when it opens: for each open candidate, the newest
