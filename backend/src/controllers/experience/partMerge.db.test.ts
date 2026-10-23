@@ -30,7 +30,8 @@ async function clear(): Promise<void> {
   await pool.query(`DELETE FROM experience_merges WHERE survivor_id = $1 OR folded_id = $1`, [COMPLEX]);
   await pool.query(`UPDATE experience_locations SET merged_into_id = NULL
                      WHERE experience_id IN ${PLACES} OR experience_id = ANY($1::int[])`, [[THEBES, COMPLEX]]);
-  await pool.query(`UPDATE experiences SET merged_into_id = NULL WHERE id IN ${PLACES}`);
+  // The complex itself may be the folded one: a gated arrival folds into the part.
+  await pool.query(`UPDATE experiences SET merged_into_id = NULL WHERE id IN ${PLACES} OR id = ANY($1::int[])`, [[THEBES, COMPLEX]]);
   await pool.query(`DELETE FROM experiences WHERE id IN ${PLACES} AND id <> $1`, [COMPLEX]);
   await pool.query(`DELETE FROM experiences WHERE id IN (SELECT experience_id FROM experience_locations
                      WHERE external_ref LIKE '87-00%' AND experience_id <> ALL($1::int[]))`, [[THEBES, COMPLEX]]);
@@ -218,7 +219,7 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
       expect((await parts())[0]).toMatchObject({ external_ref: '87-001', part_id: COMPLEX });
     });
 
-    it('waits while the place the item names is an arrival nobody has passed', async () => {
+    it('folds an arrival nobody has passed into the part, the place a run would have found by its item', async () => {
       await itemOn(KARNAK.externalRef);
       // The complex as a gated source's run leaves it: its membership an arrival nobody has passed.
       await pool.query('DELETE FROM experience_kind_memberships WHERE experience_id = $1', [COMPLEX]);
@@ -227,13 +228,17 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
          SELECT $1, s.kind_id, s.id, $2, 'pending' FROM experience_sources s WHERE s.name = 'Places of worship'`,
         [COMPLEX, ITEM],
       );
+      const templeId = (await parts()).find(p => p.external_ref === KARNAK.externalRef)!.part_id;
       const report = await mergeEqualItems([ITEM]);
-      expect(report.merged).toEqual([]);
-      expect(report.refused).toMatchObject([{
-        qid: ITEM, name: 'Karnak Temple Complex',
-        error: 'A component part waits until the place its item names is published, and merges on the next pass after that',
-      }]);
-      expect((await parts())[0].part_id).not.toBe(COMPLEX);
+      expect(report.refused).toEqual([]);
+      expect(report.merged).toMatchObject([{ qid: ITEM, survivorId: templeId, foldedId: COMPLEX, name: 'Temple of Karnak' }]);
+      // The site keeps its part under the same reference, and the part now holds
+      // the arrival, still waiting for a curator: the resolver's state (ADR-0143).
+      expect((await parts())[0]).toMatchObject({ external_ref: '87-001', part_id: templeId });
+      const held = await pool.query<{ curation_state: string; external_id: string }>(
+        'SELECT curation_state, external_id FROM experience_kind_memberships WHERE experience_id = $1', [templeId],
+      );
+      expect(held.rows).toEqual([{ curation_state: 'pending', external_id: ITEM }]);
     });
 
     it('takes an item two components hold for their ensemble\'s, and merges neither', async () => {

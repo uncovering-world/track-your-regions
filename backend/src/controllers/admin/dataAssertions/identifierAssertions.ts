@@ -18,10 +18,12 @@ import type { CatalogueAssertion } from './assertion.js';
  *
  * A value is identifying on a place only where no other live place's claim
  * says it is that place too; where two do, both hold it as only referring, so
- * a run's lookup follows it to neither. Such a value is a duplicate the
- * equal-item merges missed, such as the Tower of Belem as a part of the
- * Jeronimos site and as a tower, or a part whose reference is its site's own.
- * It is reported for a person, never merged by the registry.
+ * a run's lookup follows it to neither. Such a value is a duplicate, such as
+ * the Tower of Belem as a part of the Jeronimos site and as a tower, or a
+ * part whose reference is its site's own. The registry reports it and never
+ * merges it; the Wikidata rows are what the equal-item pass merges
+ * (`sharedItemsSql`, `controllers/experience/equalItemMerges.ts`), so the two
+ * ask one question, and a World Heritage reference waits for a person.
  */
 const identifiersOnSeveralPlaces: CatalogueAssertion = {
   id: 'identifiers-on-several-places',

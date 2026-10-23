@@ -23,7 +23,6 @@ import {
 import { REMAINS_ON_SHOW } from '../../../services/sync/museum/worksCollector.js';
 import { tidyLabelSql } from '../../../services/sync/labelFold.js';
 
-import { sharedItemsSql } from '../../experience/equalItemMerges.js';
 import { PROPOSAL_ROWS_SQL } from '../../../services/sync/mergeProposalFinder.js';
 import { count, text } from './assertion.js';
 import type { CatalogueAssertion } from './assertion.js';
@@ -824,42 +823,6 @@ const archaeologySiteTwinOfWorldHeritage: CatalogueAssertion = {
 };
 
 /**
- * Places that share a Wikidata item across rows (#1247).
- *
- * Two sources that read one item read one place (ADR-0046 decision 2,
- * ADR-0085), and the catalogue makes them one: a run merges what it creates
- * into the place that already holds its item, and the admin's pass in this
- * panel merges what was there before. What is left is a pair the merge
- * refused — both rows in one kind, which one place cannot hold twice
- * (ADR-0086 decision 4) — a serial site's component part whose item names a
- * place no reader is shown yet, which waits for that place to be published
- * and the pass to run again (#1250), or a pair nobody has run the pass over yet. The
- * question is the pass's own (`sharedItemsSql`), so the two cannot disagree
- * on what sharing an item means.
- */
-const placesSharingAnItem: CatalogueAssertion = {
-  id: 'places-sharing-a-wikidata-item',
-  area: 'objects',
-  title: 'Two places that are one Wikidata item',
-  kind: 'invariant',
-  meaning:
-    'Two sources read the same Wikidata item, so these rows are one place shown twice: two pins '
-    + 'on one spot and two cards that each tell half of it. "Merge places that share a Wikidata '
-    + 'item" above makes each such pair one place; what it leaves apart is a pair in the same '
-    + 'kind, which one place cannot hold twice, and wants a person to decide which row is right, '
-    + 'and a serial site\'s component whose item names a place still waiting for a curator, which '
-    + 'merges when the pass runs again after that place is published (or stays apart if it is refused).',
-  sql: `SELECT * FROM (${sharedItemsSql('NULL')}) shared
-         ORDER BY shared.names[1], shared.qid`,
-  describe: row => {
-    // node-postgres hands an array column back as an array.
-    const list = (key: string) => (Array.isArray(row[key]) ? (row[key] as unknown[]).map(String) : []);
-    return `${list('names')[0] ?? ''} (${text(row, 'qid')}): places ${list('place_ids').join(', ')} `
-      + `in ${list('kinds').join(', ')}`;
-  },
-};
-
-/**
  * Two near places with similar names nobody has answered (#1249).
  *
  * The universal signals that propose rather than merge (ADR-0046 decision 2,
@@ -909,7 +872,6 @@ export const objectAssertions: CatalogueAssertion[] = [
   workMakersUnconfirmed,
   publicArtRowTypedABuilding,
   archaeologySiteTwinOfWorldHeritage,
-  placesSharingAnItem,
   nearPlacesUnanswered,
   placeWithoutMembership,
   membershipSourceDisagreesWithRow,

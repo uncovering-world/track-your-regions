@@ -4095,7 +4095,8 @@ CREATE INDEX IF NOT EXISTS idx_experience_parts_external_ref
     ON experience_parts (external_ref) WHERE external_ref IS NOT NULL;
 
 -- Which live places carry each value, and whether each says the value is the
--- place. The rules are the equal-item merge's (membershipItemSql, partItemsSql):
+-- place. The one statement of the rules (ADR-0143 decision 2), which the
+-- equal-item merge reads through the registry:
 -- a Wikidata source's id is its place; a World Heritage site's items are its
 -- place only as one item on a place of one standing point, and otherwise name
 -- its parts; a standing point's item is its place unless another live place's
