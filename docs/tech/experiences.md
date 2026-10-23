@@ -532,8 +532,8 @@ Treasures are independently trackable things inside venue experiences. Currently
 
 **Which venue a work belongs to is decided, not read.** A source names whatever holds the work —
 often a curatorial department or an exhibition room, neither of which is a venue this catalogue
-shows. `resolveVenue` walks `P361` to the nearest ancestor that passes the venue test, and
-`placeArtwork` then decides between what ownership and location each say. Measured 2026-08-20, the
+shows. `resolveVenue` walks `P361` to the nearest ancestor that passes the venue test, by the shared
+walk (`nearest`, § Where a work lies), and `placeArtwork` then decides between what ownership and location each say. Measured 2026-08-20, the
 Louvre is the case that makes this load-bearing: for 113 of the 122 works shown there, no statement
 names the museum at all — ownership names *Department of Paintings*, location names *Room 702* —
 and read literally, those works have left the building. **So anything that compares one run's
@@ -759,6 +759,42 @@ A Wikidata kind is filled by a source of its own, and sources whose kinds are dr
 Adding a place kind is a declaration and its seed: a `PlaceKind` with its trees and pool classes, its classifier (the verdict, the fame line, the type), its source row and kind row, and its member in `places/placePass.ts` and `PLACE_PASS`. It has no fetchers, run or service of its own. Towers was the first kind added that way, then Bridges & engineering marvels and Squares & streets: their members are `placeSource(7, gather, TOWERS_CLASSIFIER)`, `placeSource(8, gather, BRIDGES_CLASSIFIER)` and `placeSource(9, gather, SQUARES_CLASSIFIER)`, the run Public art and Monuments & memorials have, over a `PlaceClassifier` of its own (`landmarkSyncService.ts`), which names its types and its tag. The source is then registered where every Wikidata source is: the run registry (`syncController.ts`), the field families (`fieldFamilies.ts`), the subset's ready sources (`SUBSET_READY_SOURCES`), the visit questions (`ASKING_SOURCES`), its cache kinds (`CACHED_KINDS_BY_SOURCE`) and, on the web, its colour (`kindColors.ts`) and its types (`experienceTypes.ts`).
 
 Measured on the development subset on 2026-10-22, read-only in the dev container: the place gather and main's separate gathers proposed the same places and the same refusals, by item id and reason, for all three kinds (Public art 92 and 404, Monuments & memorials 116 and 358, Places of worship 1,078 and 71). Only the order of equally famous places of worship differed. The pool named 2,722 entities: 554 public-art candidates, 2,229 places-of-worship candidates and 61 shared. The gather took 48 to 73 s over three runs and the two separate gathers 44 to 68 s, so on the subset one gather saves no time while the kinds barely overlap. What it saves is the second set of fetchers.
+
+### Where a work lies (#1819)
+
+One resolver answers where a work lies, for every kind. `places/containment.ts` reads the
+containment chain once, through the run's door (the subset or the live service):
+`loadContainment` follows `P276` and `P361` up to `CONTAINMENT_HOPS`, and `P195` one hop and not
+walked, since ownership is not a place. `chainOf` lists what a work stands in or is part of,
+nearest first, each link with how it was reached, and `ownersOf` its owners; Public art and
+Monuments & memorials read both (§ Public art and Monuments & memorials). `places/nearest.ts`
+`nearest` is the walk to the nearest place a kind's test passes, with no answer when two pass at
+one level; the museum import's `resolveVenue` reads it over its venue graph, which reads venue
+facts the containment chain does not (coordinates, dissolution, parts and folds) and walks `P361`
+alone. The two walks share the hop limit and not code: `chainOf` lists every link with how it was
+reached, which the rule of Public art reads and a nearest answer drops.
+
+**A link nobody could read is not the end of the chain.** The subset keeps every place, part and
+collection a seed names (ADR-0105), so a link a candidate's own statement names and the subset
+has no answer for is one Postgres refused (`wikidata_subset_builds.counts.refused`), as is one
+the live service answers nothing for. Such an id is `unknown`, whichever hop happened to ask about
+it first: `chainOf` lists it as `unknown` with no classes where the candidate names it itself, and
+nowhere else, since the gather's candidates share one containment and the same id may be only
+above another candidate's container. When nothing read decides, Public art refuses the candidate as "where it
+stands could not be read (Q…)", or "whose it is could not be read" for an unread owner, rather
+than taking it for a work standing outdoors. A link further up that got no answer is no place,
+since the subset keeps a container's own container only when the chain reaches a coordinate: the
+Venus of Tan-Tan is part of the Acheulean, which is part of the Paleolithic, and the walk ends
+there as it should. The museum import's start is the place a work's own statement names, so a
+start nobody fetched is `resolveVenue`'s 'no facts', and an ancestor nobody fetched is no place.
+
+Measured on the development subset on 2026-10-23, read-only in the dev container: the place
+gather's Public art and Monuments & memorials verdicts under this resolver and under the walks it
+replaced are the same for all 554 candidates, by item id, reason and hand-over chain (92 and 116
+admitted, 404 and 358 refused); no candidate's own link is unread.
+
+The hand-over (ADR-0102) records the resolver's chain: the `heldIn` a Public art refusal carries,
+from the place its reason names outward, is what `chainOf` listed.
 
 ### Shared modules
 
@@ -2133,8 +2169,9 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    ownership, not a place — HAM Helsinki Art Museum owns the city's outdoor sculpture, and the
    first dry run, which read `P195` as a container, refused the Sibelius Monument as a work
    inside it (#804). Then what the containers are (label,
-   `P31`) and what they are in turn inside or part of, walked up to **three hops**
-   (`CONTAINER_HOPS`, the museum import's `VENUE_HOPS`): the Venus de Milo is located in Room 345,
+   `P31`) and what they are in turn inside or part of, walked up to **three hops** by the one
+   resolver (`loadContainment`, `chainOf`, § Where a work lies; `CONTAINMENT_HOPS`, the museum
+   import's `VENUE_HOPS`): the Venus de Milo is located in Room 345,
    which names the Louvre Museum; the Dendera zodiac in Room 325, in the Sully Wing, part of the
    Louvre *Palace* — which Wikidata types a palace, not a museum, so a room or a wing
    (`INDOOR_CLASSES`) is indoors whatever the building is called. Each container is handed to the
