@@ -14,7 +14,6 @@ import { readFileSync } from 'node:fs';
 import { repoFile } from '../../../testSupport/repoFile.js';
 import { SQL_WHITESPACE_ALTERNATION, tidyLabelSql } from '../../../services/sync/labelFold.js';
 import { objectAssertions } from './objectAssertions.js';
-import { sharedItemsSql } from '../../experience/equalItemMerges.js';
 import { PROPOSAL_ROWS_SQL } from '../../../services/sync/mergeProposalFinder.js';
 
 const byId = (id: string) => {
@@ -441,23 +440,6 @@ describe('an archaeology site that is already a World Heritage row', () => {
     expect(assertion.describe({
       experience_name: 'Troy', world_heritage_name: 'Archaeological Site of Troy', metres: 12,
     })).toBe('Troy sits 12 m from the World Heritage row "Archaeological Site of Troy"');
-  });
-});
-
-describe('places that share a Wikidata item', () => {
-  const assertion = byId('places-sharing-a-wikidata-item');
-
-  it("asks the merge pass's own question, over every item", () => {
-    // Composed, not spelled: a check that meant "sharing an item" differently
-    // from the pass would report pairs the button cannot merge, or miss ones it can.
-    expect(assertion.sql).toContain(sharedItemsSql('NULL'));
-  });
-
-  it('says the place by name, its item, its rows and its kinds', () => {
-    expect(assertion.describe({
-      qid: 'Q43473', place_ids: [13178, 14708], names: ['Angkor Wat', 'Angkor Wat'],
-      kinds: ['Archaeology', 'Places of worship'],
-    })).toBe('Angkor Wat (Q43473): places 13178, 14708 in Archaeology, Places of worship');
   });
 });
 

@@ -2,25 +2,30 @@
  * Places that share a Wikidata item are one place, and merge without a
  * question (ADR-0046 decision 2, ADR-0086).
  *
- * The item is read off the memberships (`membershipItemSql`): a Wikidata
- * source knows a place by its item (`experience_kind_memberships.external_id`),
- * a World Heritage site of one point by the one item its id resolves to
- * (`wikidata_items`, #1248), and two sources that read one item read one place
- * — the Pantheon as a place of worship and as archaeology, Chartres Cathedral as
- * a World Heritage site and as a place of worship. Each item held by several places is merged into the one with
- * the lowest id, one place at a time, so a place in three sources (the
- * National Archaeological Museum in Madrid) ends as one. A component part of a
- * serial site holds its point's item too (#1250), and folds into the place
- * that holds a kind of its own, whatever their ids: the Temple of Karnak into
- * the Karnak Temple Complex of Places of worship, which becomes the part of
- * Ancient Thebes and keeps its name, its list row and its address. A pair the merge
- * refuses — both places in one kind — is reported and left apart, and so is a
- * place whose curator said the item only refers to it or is not its own
- * (`place_identifier_verdicts`, #1896).
+ * Which places share an item is the place identifier registry's word
+ * (ADR-0143 decision 2, #1892): a value two live places each claim as their
+ * own — `place_identifiers.claims_identity` on both, `identifies` on neither —
+ * through a Wikidata source's own id, a World Heritage site's one item on a
+ * place of one standing point (#1248) or a standing point's item (#1250), and
+ * never an item two parts carry, which names their ensemble, nor one a
+ * curator said only refers to the place (#1896): the registry states those
+ * rules once, and the catalogue check `identifiers-on-several-places` lists
+ * the same rows. Each such item is merged into one place, one place at a
+ * time, so a place in three sources (the National Archaeological Museum in
+ * Madrid) ends as one. The place a reader is shown, with the lowest id, keeps
+ * its id and its address: the Temple of Karnak folds into the Karnak Temple
+ * Complex of Places of worship, which becomes the part of Ancient Thebes and
+ * keeps its name, its list row and its address. Where no kind offers any of
+ * them — a serial site's component part is shown through its whole and holds
+ * no kind of its own — the part keeps its row and the arrival nobody has
+ * passed folds into it, the state the resolver reaches when a run finds the
+ * part by its item (ADR-0143 decision 3): the Tower of Belem holding its
+ * pending Towers membership; otherwise the lowest id stays. A pair the merge
+ * refuses — both places in one kind — is reported and left apart.
  */
 
 import { pool } from '../../db/index.js';
-import { KINDS, MEMBERSHIPS, membershipOfferedSql } from '../../db/membership.js';
+import { MEMBERSHIPS, placeOfferedSql } from '../../db/membership.js';
 import type { EqualItemMerges } from '../../api/responses/admin.js';
 import { mergePlaces } from './placeMerge.js';
 
@@ -31,7 +36,8 @@ import { mergePlaces } from './placeMerge.js';
  * #1248, ADR-0088) — and only for a place of exactly one standing point, since
  * a serial site's items name its parts and wait for identity per location, and
  * a place whose point was never written is not yet the place its item names. A
- * point its source withdrew is not one of the place's points (#1360).
+ * point its source withdrew is not one of the place's points (#1360). The
+ * registry's `site-items` claim states the same rule (`place_identifier_claims()`).
  */
 export function membershipItemSql(membership = 'm', place = 'e'): string {
   return `CASE WHEN ${membership}.external_id ~ '^Q[0-9]+$' THEN ${membership}.external_id
@@ -43,78 +49,40 @@ export function membershipItemSql(membership = 'm', place = 'e'): string {
 }
 
 /**
- * The Wikidata items held by more than one place, one row each: `qid`, its
- * places in id order (`place_ids`), their names in that order (`names`) and
- * the kinds that hold them (`kinds`); for an item a component part holds, the
- * place it folds into (`survivor_id`, `survivor_name`). Narrowed to the items named by
- * `onlyParam` — a placeholder bound to a `text[]`, or `NULL` for every item.
- * The pass merges what this finds, and the catalogue check
- * `places-sharing-a-wikidata-item` counts what it still finds, so the two ask
- * one question.
+ * The Wikidata items two or more live places each claim as their own, one
+ * row each: `qid`, its places in id order (`place_ids`), their names in that
+ * order (`names`) and the place that keeps its id (`survivor_id`). Narrowed
+ * to the items named by `onlyParam` — a placeholder bound to a `text[]`, or
+ * `NULL` for every item. The rows are the registry's, the ones
+ * `identifiers-on-several-places` lists, so the check and the pass ask one
+ * question.
  */
-export function sharedItemsSql(onlyParam: string): string {
+function sharedItemsSql(onlyParam: string): string {
   return `SELECT held.qid,
-            array_agg(DISTINCT held.place_id ORDER BY held.place_id) AS place_ids,
+            array_agg(held.place_id ORDER BY held.place_id) AS place_ids,
             array_agg(held.name ORDER BY held.place_id) AS names,
-            array_agg(DISTINCT held.kind ORDER BY held.kind) AS kinds,
-            bool_or(NOT held.kinded) AS has_part,
-            -- A part folds into a place a kind holds and a reader is shown, never into a
-            -- gated arrival nobody has passed: the part's published point would be hidden
-            -- with it until a curator answered.
-            min(held.place_id) FILTER (WHERE held.kinded AND held.offered) AS survivor_id,
-            -- The name of the place a part folds into, or of the one it waits for: the
-            -- kept place need not be the lowest id, so names[1] may be the part's.
-            (array_agg(held.name ORDER BY held.offered DESC, held.place_id) FILTER (WHERE held.kinded))[1] AS survivor_name
+            -- The place that keeps its id: one some kind offers, whose address is
+            -- known, with the lowest id; where none is, a serial site's component
+            -- part — shown through its whole, of no kind — which a run would have
+            -- found by its item (ADR-0143 decision 3); else the lowest id.
+            COALESCE(min(held.place_id) FILTER (WHERE held.offered),
+                     min(held.place_id) FILTER (WHERE NOT held.kinded),
+                     min(held.place_id)) AS survivor_id
        FROM (
-         SELECT ${membershipItemSql('m', 'e')} AS qid, e.id AS place_id, e.name, k.name AS kind, true AS kinded,
-                ${membershipOfferedSql('m')} AS offered
-           FROM ${MEMBERSHIPS} m
-           JOIN experiences e ON e.id = m.experience_id AND e.merged_into_id IS NULL
-           JOIN ${KINDS} k ON k.id = m.kind_id
-         UNION ALL
-         ${partItemsSql()}
+         SELECT pi.value AS qid, e.id AS place_id, e.name,
+                EXISTS (SELECT 1 FROM ${MEMBERSHIPS} own WHERE own.experience_id = e.id) AS kinded,
+                ${placeOfferedSql('e')} AS offered
+           FROM place_identifiers pi
+           JOIN experiences e ON e.id = pi.experience_id
+          WHERE pi.scheme = 'wikidata' AND pi.claims_identity AND NOT pi.identifies
+            AND (${onlyParam}::text[] IS NULL OR pi.value = ANY(${onlyParam}::text[]))
        ) held
-      WHERE held.qid IS NOT NULL AND (${onlyParam}::text[] IS NULL OR held.qid = ANY(${onlyParam}::text[]))
-        -- A curator's word that the item only refers to a place, or is not its
-        -- own, keeps that place out of the pair (ADR-0143 decision 5, #1896).
-        AND NOT EXISTS (SELECT 1 FROM place_identifier_verdicts v
-                         WHERE v.experience_id = held.place_id AND v.scheme = 'wikidata' AND v.value = held.qid
-                           AND v.verdict IN ('refers', 'removed'))
       GROUP BY held.qid
-     HAVING count(DISTINCT held.place_id) > 1`;
-}
-
-/**
- * The item a component part of a serial site is (ADR-0100 decision 4, #1250):
- * its one standing point's item, recorded by the World Heritage run from the
- * component's reference (#1269) or confirmed by a curator (#1272), under its
- * site's kind. A part that holds a kind of its own is read through its
- * membership above. An item two parts hold names their ensemble, not either
- * of them, so it makes no part anyone's: the chapels and the village of the
- * Saint Thaddeus ensemble all carry the monastery's item, and the two Meroe
- * components carry Meroë's.
- */
-function partItemsSql(): string {
-  return `SELECT point.wikidata_item AS qid, part.id AS place_id, part.name, k.name AS kind, false AS kinded, false AS offered
-             FROM experience_parts prt
-             JOIN experiences part ON part.id = prt.part_id AND part.merged_into_id IS NULL
-             JOIN experience_locations point ON point.experience_id = part.id
-              AND point.merged_into_id IS NULL AND point.missing_since IS NULL
-             JOIN ${MEMBERSHIPS} site ON site.id = prt.membership_id
-             JOIN ${KINDS} k ON k.id = site.kind_id
-            WHERE prt.reason = 'component' AND point.wikidata_item IS NOT NULL
-              AND NOT EXISTS (SELECT 1 FROM ${MEMBERSHIPS} own WHERE own.experience_id = part.id)
-              AND NOT EXISTS (SELECT 1 FROM experience_parts other_prt
-                                JOIN experience_locations other ON other.experience_id = other_prt.part_id
-                                 AND other.merged_into_id IS NULL AND other.missing_since IS NULL
-                               WHERE other_prt.part_id <> part.id AND other.wikidata_item = point.wikidata_item)`;
+     HAVING count(*) > 1`;
 }
 
 /** The items `sharedItemsSql` finds, in item order. */
-type SharedItem = {
-  qid: string; place_ids: number[]; names: string[]; has_part: boolean;
-  survivor_id: number | null; survivor_name: string | null;
-};
+type SharedItem = { qid: string; place_ids: number[]; names: string[]; survivor_id: number };
 
 async function sharedItems(only?: string[]): Promise<SharedItem[]> {
   const result = await pool.query<SharedItem>(
@@ -127,18 +95,16 @@ async function sharedItems(only?: string[]): Promise<SharedItem[]> {
 /**
  * What a run does with the places it created (#1247): one that another source
  * already holds as the same Wikidata item is that place, and merges into it —
- * the older row, so the place readers know keeps its id, unless the older row
- * is a serial site's component part: a part folds into the place a kind holds,
- * the newer row then. Read off the run's
- * own changeset, once the run is over: its `created` rows name what it
+ * the place a reader is shown keeps its id (`sharedItemsSql`). Read off the
+ * run's own changeset, once the run is over: its `created` rows name what it
  * created, and each created place's item is its membership's
  * (`membershipItemSql`) — none for a serial World Heritage site. Only what the
  * run created, never every place it saw: a place a curator took out of a merge
  * would otherwise be merged again by every run of its source. A place that
  * already existed and now shares an item — a site whose item the run first
- * recorded — is the admin's pass's, which the catalogue check counts. A
- * failure is logged and leaves the two apart for the admin's pass and the
- * catalogue check to find.
+ * recorded — is the admin's pass's, which the catalogue check
+ * `identifiers-on-several-places` counts. A failure is logged and leaves the
+ * two apart for the admin's pass and the catalogue check to find.
  */
 export async function mergeArrivalsOfRun(syncLogId: number): Promise<EqualItemMerges | null> {
   try {
@@ -168,25 +134,15 @@ export async function mergeArrivalsOfRun(syncLogId: number): Promise<EqualItemMe
 }
 
 /**
- * Merge every place that shares a Wikidata item with another into the one a
- * kind holds with the lowest id — every such item, or the ones named. The catalogue's own
- * merge: it names no curator.
+ * Merge every place that shares a Wikidata item with another into the one
+ * that keeps its id (`sharedItemsSql`) — every such item, or the ones named.
+ * The catalogue's own merge: it names no curator.
  */
 export async function mergeEqualItems(only?: string[]): Promise<EqualItemMerges> {
   const report: EqualItemMerges = { merged: [], refused: [] };
   for (const item of await sharedItems(only)) {
-    // Among places alone, the lowest id stays. A part needs a place a reader is
-    // shown to fold into; until one is published the item waits, and the
-    // catalogue check counts it.
-    if (item.has_part && item.survivor_id === null) {
-      report.refused.push({
-        qid: item.qid, placeIds: item.place_ids, name: item.survivor_name ?? item.names[0],
-        error: 'A component part waits until the place its item names is published, and merges on the next pass after that',
-      });
-      continue;
-    }
-    const survivorId = item.has_part ? item.survivor_id! : item.place_ids[0];
-    const name = (item.has_part ? item.survivor_name : null) ?? item.names[0];
+    const survivorId = item.survivor_id;
+    const name = item.names[item.place_ids.indexOf(survivorId)];
     for (const foldedId of item.place_ids.filter(id => id !== survivorId)) {
       await mergeOnePair(report, { qid: item.qid, survivorId, foldedId, name });
     }
