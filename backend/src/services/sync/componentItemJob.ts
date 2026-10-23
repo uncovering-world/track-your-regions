@@ -3,8 +3,11 @@
  * the background for the World Heritage source, reported through the same
  * status the source's card polls for a sync or a picture repair.
  *
- * It writes proposals only — a curator's answer is what records an item on a
- * point (ADR-0046) — so it needs no review of its own and can be run again:
+ * It writes proposals, and a curator's answer is what records an item on a
+ * point (ADR-0046), save one kind whose answer is already known: an exact
+ * candidate nothing contradicts, which the pass then accepts itself through
+ * `accept` (ADR-0141), the caller's, since the answer is a curator-side write.
+ * It can be run again:
  * a second pass replaces what is still unanswered and never brings back a
  * candidate a curator refused. Given a site (#1429), it asks about that site's
  * components only, for a curator working through one site or a change measured
@@ -21,7 +24,18 @@ import { SPARQL_WAIT_BUDGET_MS, sayWait } from './wikidataUtils.js';
 const UNESCO_SOURCE_ID = 1;
 const LOG_PREFIX = '[Component items]';
 
-export async function findUnescoComponentItems(_triggeredBy: number | null, site?: { id: number; name: string }): Promise<void> {
+/** What the pass's own answers recorded: the points, on how many sites, and the candidates left for the next pass. */
+export interface CatalogueAnswers {
+  accepted: number;
+  sites: number;
+  leftForNextPass: number;
+}
+
+export async function findUnescoComponentItems(
+  _triggeredBy: number | null,
+  site?: { id: number; name: string },
+  accept?: (siteId: number | undefined, run: { isCancelled: () => boolean }) => Promise<CatalogueAnswers>,
+): Promise<void> {
   const existing = runningSyncs.get(UNESCO_SOURCE_ID);
   if (existing && !isTerminalSyncStatus(existing.status)) {
     throw new Error('UNESCO sync already in progress');
@@ -74,9 +88,17 @@ export async function findUnescoComponentItems(_triggeredBy: number | null, site
       operation.finish('cancelled');
       return;
     }
+    progress.statusMessage = 'Recording the exact candidates nothing contradicts...';
+    const taken = accept ? await accept(site?.id, { isCancelled: () => progress.cancel }) : null;
+    if (progress.cancel) {
+      progress.status = 'cancelled';
+      progress.statusMessage = 'Cancelled.';
+      operation.finish('cancelled');
+      return;
+    }
     progress.status = 'complete';
     progress.created = report.partOf + report.near + report.toponym + report.numbered;
-    progress.statusMessage = sentenceOf(report, site);
+    progress.statusMessage = sentenceOf(report, site) + acceptedSentence(taken);
     operation.finish(`${report.queries} requests to Wikidata's API; ${progress.statusMessage}`);
   } catch (err) {
     progress.status = progress.cancel ? 'cancelled' : 'failed';
@@ -93,10 +115,17 @@ export async function findUnescoComponentItems(_triggeredBy: number | null, site
   }
 }
 
+/** What the pass's own answers recorded, as the closing line's last clause. */
+function acceptedSentence(taken: CatalogueAnswers | null): string {
+  if (!taken) return '';
+  const left = taken.leftForNextPass > 0 ? `, ${taken.leftForNextPass} left for the next pass` : '';
+  return `; ${taken.accepted} of the same name at the point recorded without a curator, on ${taken.sites} sites${left}`;
+}
+
 /** What a finished pass found, as the source's card says it. */
 function sentenceOf(report: ComponentItemReport, site?: { id: number; name: string }): string {
   return (site ? `${site.name}: ` : '')
-    + `${report.partOf + report.near + report.toponym} of ${report.points} components without an item have a candidate for a curator`
+    + `${report.partOf + report.near + report.toponym} of ${report.points} components without an item have a candidate`
     + ` — ${report.partOf} named as parts of their site, ${report.near} found near the point`
     + (report.toponym > 0 ? `, ${report.toponym} near the point carrying a place name of the component's` : '')
     + `, ${report.exact} of the same name at the point`

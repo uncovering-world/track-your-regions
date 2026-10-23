@@ -43,6 +43,7 @@ import { heldRunStatusOf, idleStatusOf, rowRunStatusOf } from './syncStatusAnswe
 import { CHANGESET_LOST_MARKER, stoppedByRestartSql } from '../../services/sync/syncLogMarkers.js';
 import { readLatestSyncLog } from '../../services/sync/syncUtils.js';
 import { findUnescoComponentItems } from '../../services/sync/componentItemJob.js';
+import { acceptExactCandidates } from '../experience/exactCandidates.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { waitingCountsBySource } from '../experience/waitingCounts.js';
 import {
@@ -97,8 +98,9 @@ const PICTURE_REPAIRS: Record<number, (triggeredBy: number | null) => Promise<vo
  * Which sources the panel can search Wikidata for their components' items
  * (#1272): the one whose objects are serial, with components a reference names.
  */
-const COMPONENT_ITEM_SEARCHES: Record<number, typeof findUnescoComponentItems> = {
-  [UNESCO_SOURCE_ID]: findUnescoComponentItems,
+const COMPONENT_ITEM_SEARCHES: Record<number, (triggeredBy: number | null, site?: { id: number; name: string }) => Promise<void>> = {
+  // The pass accepts the exact candidates nothing contradicts itself (ADR-0141).
+  [UNESCO_SOURCE_ID]: (triggeredBy, site) => findUnescoComponentItems(triggeredBy, site, acceptExactCandidates),
 };
 
 /** Registry mapping source IDs to their sync functions */

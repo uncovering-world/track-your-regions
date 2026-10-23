@@ -127,7 +127,8 @@ export async function getCurationLog(
     FROM log_places p
     JOIN experience_curation_log cl ON cl.experience_id = p.id
     LEFT JOIN experiences f ON f.id = p.folded_id
-    -- LEFT: the catalogue's own merge names no curator (ADR-0086).
+    -- LEFT: the catalogue's own merge and its own acceptance of an exact
+    -- component candidate name no curator (ADR-0086, ADR-0141).
     LEFT JOIN users u ON cl.curator_id = u.id
     LEFT JOIN regions r ON cl.region_id = r.id
     WHERE ($3::boolean OR cl.region_id IS NULL OR cl.region_id IN (SELECT id FROM curator_scoped_regions))

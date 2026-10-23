@@ -26,6 +26,7 @@ vi.mock('../../services/sync/componentItemJob.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { findUnescoComponentItems } from '../../services/sync/componentItemJob.js';
+import { acceptExactCandidates } from '../experience/exactCandidates.js';
 import { fixUnescoImages, runningSyncs } from '../../services/sync/index.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
@@ -130,7 +131,8 @@ describe('findComponentItems', () => {
 
     await answerRoute(findItemsRoute, request(1) as never, res as never);
 
-    expect(mockedSearch).toHaveBeenCalledWith(7, undefined);
+    // With the catalogue's own answer to the exact candidates (ADR-0141).
+    expect(mockedSearch).toHaveBeenCalledWith(7, undefined, acceptExactCandidates);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ started: true }));
   });
 
@@ -142,7 +144,7 @@ describe('findComponentItems', () => {
 
     await answerRoute(findItemsRoute, { ...request(1), query: { experienceId: '1234' } } as never, res as never);
 
-    expect(mockedSearch).toHaveBeenCalledWith(7, { id: 1234, name: 'Frontiers of the Roman Empire – Dacia' });
+    expect(mockedSearch).toHaveBeenCalledWith(7, { id: 1234, name: 'Frontiers of the Roman Empire – Dacia' }, acceptExactCandidates);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ started: true }));
   });
 

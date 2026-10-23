@@ -38,14 +38,14 @@ export interface AnsweredProposal {
 export async function answerProposals(
   client: PoolClient,
   lock: LockedExperience,
-  userId: number,
+  userId: number | null,
   proposalIds: readonly number[],
   answer: ProposalAnswer,
 ): Promise<AnsweredProposal[]> {
   if (proposalIds.length === 0) return [];
   const result = await client.query<{ id: number; location_id: number; wikidata_item: string; item_label: string }>(
     `UPDATE experience_component_item_proposals p
-        SET answer = $3, answered_by = $4, answered_at = NOW()
+        SET answer = $3, answered_by = $4, answered_at = NOW(), answered_by_catalogue = $4::int IS NULL
        FROM experience_locations el
       WHERE el.id = p.location_id AND ${shownBySql('el', 'ARRAY[$1::int]')}
         AND p.id = ANY($2::int[]) AND p.answer IS NULL
@@ -95,7 +95,7 @@ export async function reopenConfirmed(
 ): Promise<boolean> {
   const result = await client.query(
     `UPDATE experience_component_item_proposals p
-        SET answer = NULL, answered_by = NULL, answered_at = NULL, taken_back_at = NOW()
+        SET answer = NULL, answered_by = NULL, answered_at = NULL, answered_by_catalogue = false, taken_back_at = NOW()
        FROM experience_locations el
       WHERE el.id = p.location_id AND ${shownBySql('el', 'ARRAY[$1::int]')}
         AND p.location_id = $2 AND p.wikidata_item = $3`,
