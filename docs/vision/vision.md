@@ -81,7 +81,7 @@ The registration form shows a "Check your email" confirmation state after submis
 
 ### Curator
 
-Everything an authenticated user can do, plus content quality controls scoped to their assigned regions or sources:
+Everything an authenticated user can do, plus content quality controls scoped to their assigned regions or sources: a curator of one source curates every place that source holds, even a place another source brought first (the Ajanta Caves, brought by UNESCO, are a Places of worship curator's to edit because they are a place of worship too), and answers that source's own questions about a shared place.
 
 - **Reject experiences** — hide incorrectly assigned or low-quality experiences from a region, with an optional reason. Rejections are region-scoped (rejecting from "Europe" doesn't affect "France")
 - **Unreject experiences** — reverse a previous rejection if it was a mistake or circumstances changed
