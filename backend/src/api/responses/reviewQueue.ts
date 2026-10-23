@@ -462,11 +462,11 @@ export const ReviewQueueItem = z.strictObject({
   site_points: z.array(SitePoint).nullable().optional().describe(
     'Every place the site is made of, in the source\'s order, each with its own picture where it has one: what the'
     + ' card\'s map draws around the candidates (#1342), and around a point the list placed only roughly (#1853).'
-    + ' `component-items` and `approximate-points` items only.',
+    + ' `component-items`, `approximate-points` and `approximate-unhinted` items only.',
   ),
   approximate_points: z.array(ApproximatePoint).nullable().optional().describe(
     'The components the World Heritage list placed only roughly, each with where it may really stand (#1853).'
-    + ' `approximate-points` items only.',
+    + ' `approximate-points` and `approximate-unhinted` items only.',
   ),
   merge_pairs: z.array(MergePair).nullable().optional().describe(
     'The open pairs of near places with similar names this place is the lower id of, the most alike first (#1249).'
@@ -526,6 +526,7 @@ export const ReviewQueue = z.strictObject({
   pinQuestions: z.array(ReviewQueueItem).describe("Curators' admission pins a run no longer agrees with (#1367)."),
   visitQuestions: z.array(ReviewQueueItem).describe('Offered places few witnesses vouch for and Jev reads as nothing to see (#1770).'),
   approximatePoints: z.array(ReviewQueueItem).describe('Serial sites whose components the World Heritage list placed only roughly (#1853).'),
+  approximateUnhinted: z.array(ReviewQueueItem).describe('Serial sites with a component the World Heritage list placed only roughly and nothing says where else it may stand (#1903): kept or placed by hand.'),
   arrivals: z.array(ReviewQueueItem),
   held: z.array(ReviewQueueItem),
   contents: z.array(ReviewQueueItem).describe('One per place and membership holding unread rows it placed (#1290).'),

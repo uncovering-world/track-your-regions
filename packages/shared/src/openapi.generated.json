@@ -29498,6 +29498,7 @@
                     "pin-question",
                     "visit-question",
                     "approximate-points",
+                    "approximate-unhinted",
                     "arrival",
                     "held",
                     "contents"
@@ -29674,7 +29675,8 @@
           "merge-proposals",
           "pin-question",
           "visit-question",
-          "approximate-points"
+          "approximate-points",
+          "approximate-unhinted"
         ],
         "description": "The class of an open question, which a batch answer names a row by."
       },
@@ -31524,7 +31526,8 @@
                     "merge-proposals",
                     "pin-question",
                     "visit-question",
-                    "approximate-points"
+                    "approximate-points",
+                    "approximate-unhinted"
                   ]
                 },
                 "id": {
@@ -31860,6 +31863,13 @@
             },
             "description": "Serial sites whose components the World Heritage list placed only roughly (#1853)."
           },
+          "approximateUnhinted": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueItem"
+            },
+            "description": "Serial sites with a component the World Heritage list placed only roughly and nothing says where else it may stand (#1903): kept or placed by hand."
+          },
           "arrivals": {
             "type": "array",
             "items": {
@@ -32017,6 +32027,7 @@
           "pinQuestions",
           "visitQuestions",
           "approximatePoints",
+          "approximateUnhinted",
           "arrivals",
           "held",
           "contents",
@@ -32098,7 +32109,8 @@
               "merge-proposals",
               "pin-question",
               "visit-question",
-              "approximate-points"
+              "approximate-points",
+              "approximate-unhinted"
             ]
           },
           "membership_id": {
@@ -32498,7 +32510,7 @@
             ]
           },
           "site_points": {
-            "description": "Every place the site is made of, in the source's order, each with its own picture where it has one: what the card's map draws around the candidates (#1342), and around a point the list placed only roughly (#1853). `component-items` and `approximate-points` items only.",
+            "description": "Every place the site is made of, in the source's order, each with its own picture where it has one: what the card's map draws around the candidates (#1342), and around a point the list placed only roughly (#1853). `component-items`, `approximate-points` and `approximate-unhinted` items only.",
             "anyOf": [
               {
                 "type": "array",
@@ -32512,7 +32524,7 @@
             ]
           },
           "approximate_points": {
-            "description": "The components the World Heritage list placed only roughly, each with where it may really stand (#1853). `approximate-points` items only.",
+            "description": "The components the World Heritage list placed only roughly, each with where it may really stand (#1853). `approximate-points` and `approximate-unhinted` items only.",
             "anyOf": [
               {
                 "type": "array",

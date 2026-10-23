@@ -32,6 +32,7 @@ import {
   heldFieldExistsSql, heldPartExistsSql,
 } from './waitingCounts.js';
 import { somePointShownSql } from '../../db/placePoints.js';
+import { COPIED_COORDINATE_M } from '../../services/sync/componentItemMatching.js';
 
 /**
  * `missing`: a row the source stopped listing and nobody has judged
@@ -245,14 +246,49 @@ export function openProposalSql(p = 'p', el = 'el'): string {
 export { approximatePointOpenSql };
 
 /**
- * `approximate-points`: a site some component of which the list placed only
- * roughly and nobody has placed since (#1853), under the object's own lifecycle
- * guards, as `component-items` is.
+ * Whether something says where the roughly placed point `el` may really stand:
+ * a hint the *Find component items* pass kept for it (`experience_point_hints`),
+ * or a candidate item nobody has answered that is not the point copied. The
+ * card asks about a point with one; a point with none is listed apart, since
+ * all a curator can do there is keep it or place it by hand (#1903).
  */
-export function approximatePointsOpenSql(e = 'e'): string {
+export function pointHasHintSql(el = 'el'): string {
+  return `(EXISTS (SELECT 1 FROM experience_point_hints hint WHERE hint.location_id = ${el}.id)
+    OR EXISTS (SELECT 1 ${candidateHintsSql('hp', el)}))`;
+}
+
+/**
+ * The candidate items that are hints of the point `el`: open, with a
+ * coordinate, and not the point copied (`COPIED_COORDINATE_M`), as the `FROM`
+ * and `WHERE` of a query over the proposals aliased `p`. The card lists them
+ * (`reviewQueueApproximatePoints.ts`) and `pointHasHintSql` asks whether there
+ * is one, so a point on the asking card always has a hint to show.
+ */
+export function candidateHintsSql(p = 'p', el = 'el'): string {
+  return `FROM experience_component_item_proposals ${p}
+   WHERE ${p}.location_id = ${el}.id AND ${p}.item_location IS NOT NULL AND ${openProposalSql(p, el)}
+     AND ST_Distance(${p}.item_location::geography, ${el}.location::geography) >= ${COPIED_COORDINATE_M}`;
+}
+
+/**
+ * A roughly placed point of a site (#1853) asked about on the *Where is it?*
+ * card when `hinted`, listed apart when not (#1903). `el` is the point's alias.
+ */
+export function approximatePointAskedSql(hinted: boolean, el = 'el'): string {
+  return `${approximatePointOpenSql(el)} AND ${hinted ? '' : 'NOT '}${pointHasHintSql(el)}`;
+}
+
+/**
+ * `approximate-points`: a site some component of which the list placed only
+ * roughly and nobody has placed since (#1853), with something saying where it
+ * may stand; `approximate-unhinted`: one with such a point nothing says
+ * anything about (#1903). Under the object's own lifecycle guards, as
+ * `component-items` is.
+ */
+export function approximatePointsOpenSql(e = 'e', hinted = true): string {
   const site = e + '.id';
   return `${experienceOfferedToReaderSql(e)} AND ${e}.missing_since IS NULL
-    AND ${somePointShownSql(site, 'el', approximatePointOpenSql('el'))}`;
+    AND ${somePointShownSql(site, 'el', approximatePointAskedSql(hinted, 'el'))}`;
 }
 
 /**
