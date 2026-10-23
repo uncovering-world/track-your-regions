@@ -185,6 +185,14 @@ part's point, the id the site's card opens it at; a curator's scope over a part 
 whole (`maySeeUnreadExperience`, `wholeOfSql` in `placePoints.ts`). The web follows a part's address
 to the site's card opened at that point (`useFoldedCard`, `docs/tech/addresses.md`).
 
+A reader calls a part's point by its own name, else by the part place's (`pointNameSql`,
+`placePoints.ts`, #1924): a place another kind brought and a merge made a site's part carries its name
+on the part row, and its point, which that kind placed, none of its own, so Etchmiadzin Cathedral's
+point read as "40.16186, 44.29100" on its site's card — 173 such points on 78 sites on the development
+catalogue on 2026-10-23. The object's own read, both shapes of the region batch, the world layer's
+markers and a signed-in reader's visited-status read, which Discover takes its rows' names from, read
+it; the curator's reads keep the point's name as the source wrote it, which is what a curator corrects.
+
 A visit to a component is recorded on its part, as a place visit in `user_visited_experiences`, and
 cascades to the site: a merge with another kind's place reconciles it as any two places' visits. The
 point-keyed endpoints keep working for every point (`locationVisitController.ts`): a tick on a part's
