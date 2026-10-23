@@ -1,7 +1,7 @@
 # ADR-0086: A merge is a record that moves one place into another, and can move it back
 
 **Date:** 2026-10-07
-**Status:** Accepted — decision 3 narrowed by ADR-0088 and ADR-0100
+**Status:** Accepted — decision 3 narrowed by ADR-0088 and ADR-0100; decision 5 narrowed by [ADR-0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md): the equal-item merge is retired, so a merge that names no curator is found only in the records of the merges already made
 
 ---
 

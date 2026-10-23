@@ -7,7 +7,11 @@ that stays physically, with no kind or source of its own. Decisions 1 and 5 narr
 [ADR-0100](0100-a-serial-sites-components-are-places-part-of-the-site.md): a component is a place
 row, part of the site, and a merged component's address is its own card. Decisions 2 and 3
 narrowed by [ADR-0120](0120-a-near-pair-is-also-asked-when-one-names-words-stand-in-the-others.md):
-a third universal signal, one name's words all standing in the other's, proposes a pair. Every
+a third universal signal, one name's words all standing in the other's, proposes a pair. Decisions
+1, 2 and 4 narrowed by [ADR-0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md):
+a place's identifiers are held on the place, in a registry, rather than on its memberships, and an
+equal identifier is found before a run creates a place, so it neither merges on its own nor waits as
+a proposal. Every
 other decision stands
 
 ---
