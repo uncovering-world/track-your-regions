@@ -25,8 +25,23 @@ import FixPlaceIcon from '@mui/icons-material/EditLocationAlt';
 import { locationLabel, pointFullName, pointOfRow } from '../../utils/locationLabel';
 import { CopyNameButton } from '../shared/CopyButton';
 import { OpenInMapsLink } from '../shared/OpenInMapsLink';
+import { ApproximateLocationNote } from '../shared/ApproximateLocationNote';
+import type { ExperienceLocation } from '../../api/experiences';
 import { claimLabel } from '../../utils/placeClaims';
 import { resolveLocationColor } from './utils';
+
+/**
+ * A row's second line: what it says already (a curator's claim, or where a
+ * place outside the region lies), and the word that the source placed the
+ * point only roughly unless a curator placed it (#1912). A name corrected
+ * leaves the point as rough as it was.
+ */
+function withApproximate(said: string | null, location: LocationRowData) {
+  const placed = location.curatedFields?.includes('location') ?? false;
+  const rough = !placed && location.approximate ? <ApproximateLocationNote reason={location.approximate} compact /> : null;
+  if (!rough) return said ?? undefined;
+  return said ? <>{said} · {rough}</> : rough;
+}
 
 /** What a row needs of a place — the card's own display shape, not the API's. */
 export interface LocationRowData {
@@ -43,6 +58,8 @@ export interface LocationRowData {
   curatedFields?: string[];
   /** The place has a picture of its own (#1270), which the "with a photo" filter keeps (#1271). */
   hasPicture?: boolean;
+  /** Why the source placed it only roughly, which the row says (#1912). */
+  approximate?: ExperienceLocation['approximate'];
 }
 
 interface LocationRowProps {
@@ -147,8 +164,9 @@ function LocationRowComponent({
           </ListItemIcon>
           <ListItemText
             primary={label}
-            // An empty path is a place whose group already says where it is (#1271).
-            secondary={regionPath ?? 'Outside region'}
+            // An empty path is a place whose group already says where it is
+            // (#1271); a point placed only roughly says so beside it (#1912).
+            secondary={withApproximate(regionPath ?? 'Outside region', location)}
             slotProps={{
               primary: { variant: 'body2', sx: { color: 'text.disabled' }, ...opener.name },
               secondary: { variant: 'caption', sx: { fontSize: '0.65rem' } },
@@ -218,8 +236,10 @@ function LocationRowComponent({
         <ListItemText
           primary={label}
           // "pin corrected" under the name where a curator has moved it: without
-          // the word, a pin somebody put there reads as the source's.
-          secondary={claimLabel(location.curatedFields) ?? undefined}
+          // the word, a pin somebody put there reads as the source's. Else the
+          // word that the source placed it only roughly (#1912), which a curator's
+          // placement clears.
+          secondary={withApproximate(claimLabel(location.curatedFields), location)}
           slotProps={{
             primary: {
               ...opener.name,

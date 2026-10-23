@@ -24,6 +24,7 @@
  */
 
 import type { LayerProps } from 'react-map-gl/maplibre';
+import type { CircleLayerSpecification } from 'maplibre-gl';
 import type { WorldPointKinds, WorldPointsResponse } from '../../api/worldPoints';
 import {
   HEATMAP_MAX_ZOOM, heatmapLayer, hoverGlowLayer, hoverRingLayer,
@@ -127,12 +128,22 @@ export const worldHeatmapLayer: LayerProps = {
   },
 };
 
+/**
+ * A pin's colours, read off its kind rather than off a `color` property: a disc,
+ * or the scene's ring for a point placed only roughly (#1912). A point the
+ * overview tier carries has no `approximate`, so it is always a disc there.
+ */
+const KIND_PIN_COLOURS: NonNullable<CircleLayerSpecification['paint']> = {
+  'circle-color': ['case', ['==', ['get', 'approximate'], true], '#ffffff', kindColorExpression()],
+  'circle-stroke-color': ['case', ['==', ['get', 'approximate'], true], kindColorExpression(), '#ffffff'],
+};
+
 /** One pin per place, or — folded — one per object, at the place the catalogue answers with. */
 export const worldMarkerLayer: LayerProps = {
   ...markerLayer,
   id: LAYER_WORLD_MARKERS,
   ...onSource,
-  paint: { ...markerLayer.paint, 'circle-color': kindColorExpression() },
+  paint: { ...markerLayer.paint, ...KIND_PIN_COLOURS },
 };
 
 /**
@@ -193,7 +204,7 @@ export const worldCappedMarkerLayer: LayerProps = {
   minzoom: 0,
   paint: {
     ...markerLayer.paint,
-    'circle-color': kindColorExpression(),
+    ...KIND_PIN_COLOURS,
     // Flat rather than the band's ramp: below the band that ramp is zero, which
     // is exactly the blankness this layer exists to avoid.
     'circle-opacity': 0.85,

@@ -73,10 +73,14 @@ export const sceneMarkerLayer: CircleLayerSpecification = {
     // where the types are told apart), and carried on the feature: a `match` on
     // the type value here has no literal to key a museum's blue on and drops a
     // monument into the fallback (#814).
-    'circle-color': ['get', 'color'],
+    //
+    // A pin the source placed only roughly (#1853) is a ring in that colour
+    // rather than a disc (#1912): "about here", so a traveller does not
+    // navigate to it as if it were exact. The point's card says why.
+    'circle-color': ['case', ['==', ['get', 'approximate'], true], '#ffffff', ['get', 'color']],
     'circle-radius': 6,
-    'circle-stroke-width': 2,
-    'circle-stroke-color': '#ffffff',
+    'circle-stroke-width': ['case', ['==', ['get', 'approximate'], true], 3, 2],
+    'circle-stroke-color': ['case', ['==', ['get', 'approximate'], true], ['get', 'color'], '#ffffff'],
   },
 };
 
@@ -393,14 +397,21 @@ export function buildMarkerFeatures(
         // The pin's colour, decided once for every surface (`experienceColor`):
         // the kind's, refined by the type where the types are told apart.
         color: m.kindColors?.[0] ?? experienceColor(m.experience.kind_id, m.experience.type),
-        // A pin that shows several kinds of the place draws them as a split disc (#1262).
-        ...splitIconProperty(m.kindColors),
+        // A pin that shows several kinds of the place draws them as a split disc
+        // (#1262), except a point placed only roughly, whose ring the disc would
+        // cover: its card says so either way, and the ring is what a traveller
+        // navigating by the map needs (#1912).
+        ...(m.folded !== true && m.location?.approximate != null ? {} : splitIconProperty(m.kindColors)),
         // 1 for a place drawn as itself, the count only for a pin standing in
         // for places it does not draw — which is what the badge means.
         locationCount: m.locationCount,
         // Whether this pin was drawn folded, which a click needs and cannot
         // infer: a stand-in pin looks the same from the outside.
         folded: m.folded === true,
+        // Whether the source placed the point only roughly (#1853), which the
+        // pin shows as a ring rather than a disc (#1912). A folded pin stands
+        // for the place, not for its point.
+        approximate: m.folded !== true && m.location?.approximate != null,
       },
     })),
   };

@@ -37,6 +37,7 @@ import { wikidataItemUrl, wikipediaArticleUrl } from '../../utils/wikidataLinks'
 import { safeHref } from '../../utils/safeHref';
 import { CopyNameButton } from './CopyButton';
 import { OpenInMapsLink } from './OpenInMapsLink';
+import { ApproximateLocationNote } from './ApproximateLocationNote';
 import { ImageCreditLine } from './ImageCreditLine';
 import { extractImageUrl, toThumbnailUrl } from '../../utils/imageUrl';
 import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
@@ -214,6 +215,8 @@ export function PointCard({
               {point.external_ref}
             </Typography>
           )}
+          {/* The maps link below leads to the source's point, which may be off (#1912). */}
+          <ApproximateLocationNote reason={point.approximate} />
         </Box>
 
         {unread && (

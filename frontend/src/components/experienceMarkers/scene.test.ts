@@ -172,6 +172,7 @@ describe('buildMarkerFeatures', () => {
       color: experienceColor(2, null),
       locationCount: 1,
       folded: false,
+      approximate: false,
     });
   });
 
@@ -180,6 +181,21 @@ describe('buildMarkerFeatures', () => {
     expect(feature.properties).toMatchObject({
       name: 'Aalto Works', locationId: null, locationCount: 13, folded: true,
     });
+  });
+
+  it('marks a pin the source placed only roughly, drawn as a ring (#1912)', () => {
+    // The Longmen Grottoes' point, given to the whole minute 10 km from the caves.
+    const longmen = { ...pin, location: { approximate: 'whole-minute' } as MarkerData['location'] };
+    expect(buildMarkerFeatures([longmen]).features[0].properties).toMatchObject({ approximate: true });
+    // A folded pin stands for the place, not for its point.
+    expect(buildMarkerFeatures([{ ...folded, location: longmen.location }]).features[0].properties)
+      .toMatchObject({ approximate: false });
+    // A place in two kinds keeps its ring rather than a split disc over it.
+    const twoKinds = { ...longmen, kindColors: [experienceColor(1, null), experienceColor(4, null)] };
+    expect(buildMarkerFeatures([twoKinds]).features[0].properties).not.toHaveProperty('icon');
+    const ringed = (paint: unknown) => JSON.stringify(paint).includes('"approximate"');
+    expect(ringed(sceneMarkerLayer.paint?.['circle-color'])).toBe(true);
+    expect(ringed(sceneMarkerLayer.paint?.['circle-stroke-color'])).toBe(true);
   });
 });
 

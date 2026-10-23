@@ -373,7 +373,7 @@ describe("a place marker's name (#1268)", () => {
     kind_priority: 1, type: 'cultural', longitude: 12.5, latitude: 41.8 } as unknown as Experience;
   const part = (id: number, ref: string) => ({
     id, experience_id: 1045, name: null, external_ref: ref, ordinal: 1, longitude: 12.7273, latitude: 41.6718,
-    created_at: '2026-08-04T00:00:00Z', curated_fields: [], in_region: true, region_path: null,
+    created_at: '2026-08-04T00:00:00Z', approximate: null, curated_fields: [], in_region: true, region_path: null,
     image_url: null, image_credit: null,
   });
 
