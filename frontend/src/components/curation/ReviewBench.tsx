@@ -14,6 +14,7 @@ import { MissingCard, ConflictCard } from './ReviewQueue';
 import { RefusedCard } from './RefusedCards';
 import { PinQuestionCard } from './PinQuestionCard';
 import { VisitQuestionCard } from './VisitQuestionCard';
+import { ApproximatePointsCard } from './ApproximatePointsCard';
 import { SourcesCard } from './SourcesCard';
 import { ComponentItemsCard } from './ComponentItemsCard';
 import { MergeProposalsCard } from './MergeProposalsCard';
@@ -72,6 +73,9 @@ const KIND_NOTE: Record<RowKind, string> = {
     + 'it, and Jev reads it as a place with nothing to see, not one place, or an object kept elsewhere. Eboracum is '
     + 'Roman York under the living city; the Venus of Tan-Tan is a stone in a museum. Visitors still see it: refuse it '
     + 'from the list, as suggested, or keep it, and it is not asked again.',
+  'approximate-points': 'The World Heritage list places these components only roughly: to the whole minute, a cell '
+    + 'of about two kilometres, or on a point another component shares. The Longmen Grottoes stand 10 km from theirs. '
+    + 'Pick where each stands from the hints, place it by hand, or keep the list\'s point; readers see it until you do.',
 };
 
 /** The note above a kind whose source stopped listing a place other sources still list (#1264). */
@@ -112,6 +116,7 @@ export function ReviewBench({ row, onDone }: {
       {row.kind === 'refused' && row.items && <RefusedCard items={row.items} onDone={onDone} />}
       {row.kind === 'pin-question' && row.items && <PinQuestionCard items={row.items} onDone={onDone} />}
       {row.kind === 'visit-question' && row.items && <VisitQuestionCard items={row.items} onDone={onDone} />}
+      {row.kind === 'approximate-points' && row.item && <ApproximatePointsCard item={row.item} onDone={onDone} />}
       {row.kind === 'missing' && row.items && asksOfKinds(row.items) && <KindMissingCard items={row.items} onDone={onDone} />}
       {row.kind === 'missing' && row.item && !asksOfKinds(row.items) && <MissingCard item={row.item} onDone={onDone} />}
       {row.kind === 'withdrawn' && row.item && <WithdrawnCard item={row.item} onDone={onDone} />}

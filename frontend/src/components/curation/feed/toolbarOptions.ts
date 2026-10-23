@@ -98,6 +98,12 @@ const KIND_OPTIONS: Array<{ key: string; label: string; short: string; swatch: s
     short: 'nothing to see',
     swatch: KIND_COLOR['visit-question'],
   },
+  {
+    key: 'approximate-points',
+    label: 'Components placed only roughly',
+    short: 'placed roughly',
+    swatch: KIND_COLOR['approximate-points'],
+  },
 ];
 
 /** What the question chip says once a kind is picked: its short word, never the API's. */

@@ -86,7 +86,25 @@ function SitePin({ name }: { name: string | null }) {
   );
 }
 
-export function ComponentItemsMap({ sitePoints, focus }: { sitePoints: readonly SitePoint[]; focus: MapFocus }) {
+/** A box in degrees, as a dashed outline: the whole minute a World Heritage point was given to (#1853). */
+export interface MinuteCell { west: number; south: number; east: number; north: number }
+
+function cellOutline({ west, south, east, north }: MinuteCell): GeoJSON.Feature<GeoJSON.LineString> {
+  return {
+    type: 'Feature',
+    properties: {},
+    geometry: { type: 'LineString', coordinates: [[west, south], [east, south], [east, north], [west, north], [west, south]] },
+  };
+}
+
+export function ComponentItemsMap({ sitePoints, focus, cell, noCandidate = 'The candidate’s position is not read yet' }: {
+  sitePoints: readonly SitePoint[];
+  focus: MapFocus;
+  /** The minute the point was given to, drawn around it where the list gave no closer coordinate. */
+  cell?: MinuteCell | null;
+  /** What the legend says where the second pin is not drawn. */
+  noCandidate?: string;
+}) {
   const box = useRef<HTMLDivElement>(null);
   const map = useRef<MapRef>(null);
   const near = useNearViewport(box);
@@ -119,6 +137,11 @@ export function ComponentItemsMap({ sitePoints, focus }: { sitePoints: readonly 
               <SitePin name={other.name ?? other.ref} />
             </Marker>
           ))}
+          {cell && (
+            <Source id="minute-cell" type="geojson" data={cellOutline(cell)}>
+              <Layer id="minute-cell-line" type="line" paint={{ 'line-color': '#1565C0', 'line-width': 1.5, 'line-dasharray': [1, 1] }} />
+            </Source>
+          )}
           {to && (
             <Source id="candidate-distance" type="geojson" data={distanceLine(from, to)}>
               <Layer id="candidate-distance-line" type="line"
@@ -148,7 +171,8 @@ export function ComponentItemsMap({ sitePoints, focus }: { sitePoints: readonly 
         <Box><Box component="span" sx={{ color: 'primary.main', fontWeight: 700 }}>●</Box> {point.name}</Box>
         {candidate
           ? <Box><Box component="span" sx={{ color: CANDIDATE_PIN, fontWeight: 700 }}>●</Box> {candidate.label}</Box>
-          : <Typography variant="caption" color="text.secondary">The candidate’s position is not read yet</Typography>}
+          : <Typography variant="caption" color="text.secondary">{noCandidate}</Typography>}
+        {cell && <Box><Box component="span" sx={{ color: '#1565C0', fontWeight: 700 }}>⬚</Box> the whole minute the list gives</Box>}
         <Box><Box component="span" sx={{ color: SITE_PIN, fontWeight: 700 }}>●</Box> the site’s other places</Box>
       </Box>
     </Box>
