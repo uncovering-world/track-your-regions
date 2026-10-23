@@ -513,6 +513,10 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // A curator's answer to a run's question about an offered place with
     // nothing to see (#1770): refused from the kind, or kept.
     'visit_question_answered',
+    // One kind's membership separated into a place of its own (ADR-0142,
+    // #1885): written on both places' histories, the way back from a merge or
+    // a join on arrival that a shared item misled.
+    'separated',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;

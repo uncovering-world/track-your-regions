@@ -113,6 +113,7 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // place each history belongs to says which side of the merge it was on.
   merged: { label: 'Merged', color: VIOLET },
   merge_undone: { label: 'Merge undone', color: GREEN },
+  separated: { label: 'Separated', color: VIOLET },
   // Which of two sources' names, pictures or points a place shows, where the
   // two describe it differently (#1246).
   views_chosen: { label: 'Source chosen', color: BLUE },
@@ -494,6 +495,7 @@ function formatPartEdit(
 const PLACE_ACT_DETAILS: Record<string, (d: Record<string, unknown>) => string | null> = {
   merged: d => formatMerge('merged', d),
   merge_undone: d => formatMerge('merge_undone', d),
+  separated: d => formatSeparation(d),
   views_chosen: d => formatViewsChosen(d),
   component_items_answered: d => formatComponentItemsAnswered(d),
   component_item_taken_back: d => formatComponentItemTakenBack(d),
@@ -622,6 +624,16 @@ function formatMerge(action: 'merged' | 'merge_undone', d: Record<string, unknow
   if (action === 'merge_undone') return [`${folded} is its own place again`, kinds && `with ${kinds}`].filter(Boolean).join(', ');
   const into = `${folded} merged into ${mergedPlace(d.survivorName, d.survivorId)}`;
   return [into, kinds && `bringing ${kinds}`].filter(Boolean).join(', ');
+}
+
+/**
+ * A separation (ADR-0142): which kind left which place for a place of its own —
+ * "Places of worship separated from Ajanta Caves (#158) into Ajanta Caves
+ * (#30411)".
+ */
+function formatSeparation(d: Record<string, unknown>): string {
+  const kind = typeof d.kind === 'string' ? d.kind : 'A kind';
+  return `${kind} separated from ${mergedPlace(d.originalName, d.originalId)} into ${mergedPlace(d.separatedName, d.separatedId)}`;
 }
 
 /**
