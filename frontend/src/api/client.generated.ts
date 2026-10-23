@@ -3107,6 +3107,32 @@ export interface AdmissionPins {
   more: boolean;
 }
 
+/**
+ * A region a curator may narrow the review feed to, found by name (#1920).
+ */
+export interface ReviewRegionSearchResult {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  name: string;
+  /** Root first: `Europe > Germany > Berlin`. */
+  path: string;
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  worldViewId: number;
+  /** The world view the region is in: two regions may be called Berlin. */
+  worldView: string;
+}
+
+/**
+ * The best matches across every public world view, best first, at most ten.
+ */
+export type ReviewRegionSearchResults = ReviewRegionSearchResult[];
+
 export type ReviewQueuePagingKeptOut = {
   /**
      * @minimum -9007199254740991
@@ -4293,6 +4319,21 @@ export type QueueFacetsRegionItem = {
   count: number;
 };
 
+/**
+ * The region `?region=` names, whatever its depth, so the chip can say it when it is none of the roots above (#1920); null when no region is picked or the unplaced bucket is.
+ */
+export type QueueFacetsPicked = {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  id: number;
+  name: string;
+  /** Root first: `Europe > Germany > Berlin`. */
+  path: string;
+  worldView: string;
+} | null;
+
 export type QueueFacetsRunItem = {
   /**
      * @minimum -9007199254740991
@@ -4333,6 +4374,8 @@ export interface QueueFacets {
   kind: QueueFacetsKindItem[];
   source: QueueFacetsSourceItem[];
   region: QueueFacetsRegionItem[];
+  /** The region `?region=` names, whatever its depth, so the chip can say it when it is none of the roots above (#1920); null when no region is picked or the unplaced bucket is. */
+  picked: QueueFacetsPicked;
   /** The runs with open questions, counted before the set-aside exclusion, because a hidden batch is exactly the one the chip has to name, or there is no way back to it. The search still narrows this list. */
   run: QueueFacetsRunItem[];
   /** How many runs this curator has set aside, which is the unit the chip names. */
@@ -6561,6 +6604,15 @@ export type GetExperiencesReviewPinsParams = {
  * @exclusiveMinimum 0
  */
 experienceId?: number;
+};
+
+export type GetExperiencesReviewRegionsSearchParams = {
+/**
+ * @minLength 2
+ * @maxLength 255
+ * @pattern ^[^\u0000]*$
+ */
+query: string;
 };
 
 export type GetExperiencesReviewQueueParams = {
@@ -10021,6 +10073,38 @@ export const getGetExperiencesReviewPinsUrl = (params?: GetExperiencesReviewPins
 export const getExperiencesReviewPins = async (params?: GetExperiencesReviewPinsParams, options?: Parameters<typeof apiFetch>[1]): Promise<AdmissionPins> => {
 
   return apiFetch<AdmissionPins>(getGetExperiencesReviewPinsUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+export const getGetExperiencesReviewRegionsSearchUrl = (params: GetExperiencesReviewRegionsSearchParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/experiences/review/regions/search?${stringifiedParams}` : `/api/experiences/review/regions/search`
+}
+
+/**
+ * Requires a curator or an admin.
+ * @summary Find regions of every public world view by name, to narrow the review feed to one
+ */
+export const getExperiencesReviewRegionsSearch = async (params: GetExperiencesReviewRegionsSearchParams, options?: Parameters<typeof apiFetch>[1]): Promise<ReviewRegionSearchResults> => {
+
+  return apiFetch<ReviewRegionSearchResults>(getGetExperiencesReviewRegionsSearchUrl(params),
   {
     ...options,
     method: 'GET'

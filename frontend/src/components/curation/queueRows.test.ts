@@ -57,7 +57,7 @@ function queue(over: Partial<ReviewQueue> = {}): ReviewQueue {
     order: [],
     total: 0,
     facets: {
-      kind: [], source: [], region: [], run: [], setAside: { batches: 0 },
+      kind: [], source: [], region: [], picked: null, run: [], setAside: { batches: 0 },
     },
     paging: {} as ReviewQueue['paging'],
     ...over,

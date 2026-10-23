@@ -20,14 +20,16 @@ import {
   Box, Button, InputAdornment, TextField, ToggleButton, ToggleButtonGroup, Typography,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import type { QueueFacets } from '../../../api/reviewQueue';
+import { useQuery } from '@tanstack/react-query';
+import { searchReviewRegions, type QueueFacets } from '../../../api/reviewQueue';
+import { queryKeys } from '../../../api/queryKeys';
 import { isFilteredReview, normaliseReviewQ, type ReviewAddress } from '../../../utils/appUrl';
 import type { ReviewPatch } from '../../../hooks/useReviewAddress';
 import { useDebouncedValue } from '../../../hooks/useDebouncedValue';
 import { FilterChip } from './FilterChip';
 import { RunChip } from './RunChip';
 import {
-  kindOptions, kindShort, regionOptions, sourceOptions,
+  kindOptions, kindShort, regionOptions, searchedRegionOption, sourceOptions,
 } from './toolbarOptions';
 
 /** How long the search box waits for the typing to stop, in ms. */
@@ -92,8 +94,22 @@ export function ReviewToolbar({
   const pending = facets === undefined;
   const sources = sourceOptions(facets, address.sourceIds);
   const kinds = kindOptions(facets, address.kinds);
-  const regions = regionOptions(facets, address.regionId);
+  const regions = regionOptions(facets, address.regionId, total);
   const pickedRegion = regions.find(r => r.checked);
+
+  // The Region chip's search (#1920): any region of a public world view, by
+  // name, asked once the typing settles and the text is two characters or more.
+  // The rows it finds join the roots in the menu; picking one writes `?region=`
+  // as picking a root does.
+  const [regionQuery, setRegionQuery] = useState('');
+  const settledRegionQuery = useDebouncedValue(regionQuery, SEARCH_DEBOUNCE_MS).trim();
+  const regionSearch = useQuery({
+    queryKey: queryKeys.curation.reviewRegionSearch(settledRegionQuery),
+    queryFn: () => searchReviewRegions(settledRegionQuery),
+    enabled: settledRegionQuery.length >= 2,
+    staleTime: 60_000,
+  });
+  const foundRegions = (regionSearch.data ?? []).map(found => searchedRegionOption(found, address.regionId));
 
   // Every toggle reports a *function* of the address, never the array it rendered with.
   // These menus stay open on a tick — a multi-select with no Apply — and the location
@@ -204,6 +220,18 @@ export function ReviewToolbar({
           pending={pending}
           onToggle={toggleRegion}
           single
+          search={{
+            value: regionQuery,
+            onChange: setRegionQuery,
+            placeholder: 'Search a region',
+            found: foundRegions,
+            // Searching from the keystroke, not from the request: until the
+            // typing settles nothing has been asked, and "nothing found" would
+            // be said of a text never sent.
+            searching: regionQuery.trim() !== settledRegionQuery || regionSearch.isFetching,
+            nothingFound: 'No region by that name',
+            failed: regionSearch.isError,
+          }}
         />
         <RunChip
           runs={facets?.run ?? []}

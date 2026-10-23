@@ -160,10 +160,19 @@ function regionLabel(row: QueueFacets['region'][number], repeated: Set<string>):
   return repeated.has(row.name) && row.worldView ? `${row.name} · ${row.worldView}` : row.name;
 }
 
-/** The offered roots in the facet's own order, unplaced last because it is not a place. */
+/**
+ * The offered roots in the facet's own order, unplaced last because it is not
+ * a place — and, first, the region the address picked where it is none of the
+ * roots (#1920): a curator who narrowed the feed to Berlin, by the chip's
+ * search or by an address opened directly, reads "Berlin" on the chip and
+ * finds the row to clear it by. Its count is the feed's total under that very
+ * filter, which the caller hands in; the row says the path too.
+ */
 export function regionOptions(
   facets: QueueFacets | undefined,
   picked: ReviewAddress['regionId'],
+  /** The feed's total under the current filter: the picked region's own count. */
+  total: number,
 ): FilterOption[] {
   if (!facets) return [];
   const seen = new Map<string, number>();
@@ -172,10 +181,26 @@ export function regionOptions(
   const pickedKey = picked === null ? '' : String(picked);
   const placed = facets.region.filter(r => r.id !== null);
   const unplaced = facets.region.filter(r => r.id === null);
-  return [...placed, ...unplaced].map(r => ({
+  const roots = [...placed, ...unplaced].map(r => ({
     key: regionKey(r.id),
     label: regionLabel(r, repeated),
     count: r.count,
     checked: regionKey(r.id) === pickedKey,
   }));
+  const deep = facets.picked;
+  if (!deep || roots.some(r => r.key === String(deep.id))) return roots;
+  return [{ key: String(deep.id), label: deep.name, detail: `${deep.path} · ${deep.worldView}`, count: total, checked: true }, ...roots];
+}
+
+/** A region the search found, as a row of the chip (#1920): named with its path, and its world view beside. */
+export function searchedRegionOption(
+  found: { id: number; name: string; path: string; worldView: string },
+  picked: ReviewAddress['regionId'],
+): FilterOption {
+  return {
+    key: String(found.id),
+    label: found.name,
+    detail: `${found.path} · ${found.worldView}`,
+    checked: picked === found.id,
+  };
 }

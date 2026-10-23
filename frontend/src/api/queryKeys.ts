@@ -135,6 +135,8 @@ export const queryKeys = {
     /** Every page of the queue, under whatever filter: what an answer invalidates. */
     reviewQueueAll: ['curation', 'reviewQueue'] as const,
     reviewQueue: (...page: readonly unknown[]) => ['curation', 'reviewQueue', ...page] as const,
+    /** The regions the review feed's Region chip found by name (#1920), for the text typed. */
+    reviewRegionSearch: (query: string) => ['curation', 'reviewRegionSearch', query] as const,
     /** The admission pins in scope (#1369): every one, or one place's. What a hand-back invalidates. */
     admissionPinsAll: ['curation', 'admissionPins'] as const,
     admissionPins: (experienceId: Id | null) => ['curation', 'admissionPins', experienceId] as const,
