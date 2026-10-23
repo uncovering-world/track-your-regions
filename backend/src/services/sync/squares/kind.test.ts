@@ -10,6 +10,7 @@ vi.mock('../../dumps/wikivoyage/usageTables.js', () => ({ latestUsage: vi.fn(), 
 
 import type { PoolEntity } from '../publicArt/queries.js';
 import type { KindShare } from '../places/gather.js';
+import { emptyContainment } from '../places/containment.js';
 import type { SquareTrees } from './classes.js';
 import { classifySquares } from './kind.js';
 
@@ -35,7 +36,7 @@ describe('classifySquares', () => {
     pool: new Map(rows.map(([e]) => [e.qid, e])),
     byId: new Set(),
     facts: new Map(rows.map(([e, classes]) => [e.qid, { classes }])) as never,
-    containers: new Map(),
+    containers: emptyContainment(),
   });
 
   it('admits on readers or on a guide, and refuses what the rule refuses', async () => {

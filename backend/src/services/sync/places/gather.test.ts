@@ -128,8 +128,8 @@ describe('gatherPlaces', () => {
     const gathered = await gatherBoth();
 
     expect(vi.mocked(fetchContainerFacts).mock.calls.flatMap(([, qids]) => qids)).toEqual(['Q100']);
-    expect(shareOf(gathered, ART).containers.get('Q100')?.label).toBe('Senate Square');
-    expect(shareOf(gathered, WORSHIP).containers.size).toBe(0);
+    expect(shareOf(gathered, ART).containers.nodes.get('Q100')?.label).toBe('Senate Square');
+    expect(shareOf(gathered, WORSHIP).containers.nodes.size).toBe(0);
   });
 
   it('marks a row a kind admits as asked for by id when none of its classes names it, whoever fetched it', async () => {

@@ -266,6 +266,19 @@ describe('fetchContainerFacts', () => {
     expect(flat).not.toMatch(/wdt:P(276|361)/);
   });
 
+  it('answers every item that exists, though it has no class and no container (#1819)', async () => {
+    // Asked by its revision, so that no answer means nobody could read it, as on the subset.
+    let sent = '';
+    const sparql: SparqlFn = (q) => {
+      sent = q;
+      return Promise.resolve([{ c: ref('Q8'), cLabel: { value: 'A bare item' } }]);
+    };
+    const containers = await fetchContainerFacts(sparql, ['Q8', 'Q9']);
+    expect(sent.replace(/\s+/g, ' ')).toContain('{ ?c schema:version ?revision } UNION');
+    expect(containers.get('Q8')).toEqual({ label: 'A bare item', classes: [], parents: [] });
+    expect(containers.has('Q9')).toBe(false);
+  });
+
   it('names a container by its QID when the label service has no name for it', async () => {
     const rows: SparqlBinding[] = [{ c: ref('Q7'), cLabel: { value: 'Q7' }, cls: ref('Q33506') }];
     const containers = await fetchContainerFacts(answer(rows), ['Q7']);
