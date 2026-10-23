@@ -12,6 +12,7 @@
     "./durations": "./src/durations.ts",
     "./equality": "./src/equality.ts",
     "./geometry": "./src/geometry.ts",
+    "./identifiers": "./src/identifiers.ts",
     "./labels": "./src/labels.ts",
     "./lifecycle": "./src/lifecycle.ts",
     "./links": "./src/links.ts",

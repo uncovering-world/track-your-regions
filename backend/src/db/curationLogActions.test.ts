@@ -2,10 +2,11 @@
  * The vocabularies both sides import are the schema's own — held by a type,
  * not by reading a file.
  *
- * `@tyr/shared/curationLog`, `@tyr/shared/auth` and `@tyr/shared/runStatuses`
- * declare, once for both sides, what an `experience_curation_log.action` may
- * be, what a user's role and sign-in provider may be, and what a run's, an
- * import's and a match's status may be. The schema is the third statement of each:
+ * `@tyr/shared/curationLog`, `@tyr/shared/auth`, `@tyr/shared/runStatuses` and
+ * `@tyr/shared/identifiers` declare, once for both sides, what an
+ * `experience_curation_log.action` may be, what a user's role and sign-in
+ * provider may be, what a run's, an import's and a match's status may be, and
+ * what a place's identifier and a curator's word on it may be. The schema is the third statement of each:
  * a CHECK list and two Postgres enums, which ADR-0064 renders into
  * `schema.generated.ts` as `CheckValue<…>` and two unions. The two
  * declarations have to be the same set, and TypeScript can say whether two
@@ -25,6 +26,7 @@ import { describe, it, expect, expectTypeOf } from 'vitest';
 import { CURATION_LOG_ACTIONS, POINT_VERDICT_ACTIONS, type CurationLogAction } from '@tyr/shared/curationLog';
 import { AUTH_PROVIDERS, USER_ROLES, type AuthProvider, type UserRole } from '@tyr/shared/auth';
 import { MAPS_APPS, type MapsApp } from '@tyr/shared/preferences';
+import { IDENTIFIER_SCHEMES, IDENTIFIER_VERDICTS, type IdentifierScheme, type IdentifierVerdict } from '@tyr/shared/identifiers';
 import {
   CLOSED_SYNC_STATUSES, IMPORT_RUN_STATUSES, MATCH_STATUSES, SYNC_LOG_STATUSES,
   type ClosedSyncStatus, type ImportRunStatus, type MatchStatus, type SyncLogStatus,
@@ -90,5 +92,17 @@ describe('the vocabularies both sides import', () => {
   it('name exactly the maps apps a visitor may choose', () => {
     expectTypeOf<MapsApp>().toEqualTypeOf<SchemaMapsApp>();
     expect(MAPS_APPS).toHaveLength(3);
+  });
+});
+
+describe('the identifier vocabularies both sides import (#1896)', () => {
+  it("name exactly the schemes place_identifiers.scheme allows", () => {
+    expectTypeOf<IdentifierScheme>().toEqualTypeOf<CheckValue<'place_identifiers', 'scheme'>>();
+    expect([...IDENTIFIER_SCHEMES]).toEqual([...CHECK_VALUES.place_identifiers.scheme]);
+  });
+
+  it("name exactly the words place_identifier_verdicts.verdict allows", () => {
+    expectTypeOf<IdentifierVerdict>().toEqualTypeOf<CheckValue<'place_identifier_verdicts', 'verdict'>>();
+    expect([...IDENTIFIER_VERDICTS]).toEqual([...CHECK_VALUES.place_identifier_verdicts.verdict]);
   });
 });

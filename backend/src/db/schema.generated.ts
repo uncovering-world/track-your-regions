@@ -743,6 +743,17 @@ export interface OsmObjectsRow {
   geom: string | null;
 }
 
+/** The table `place_identifier_verdicts`. */
+export interface PlaceIdentifierVerdictsRow {
+  experience_id: number;
+  scheme: string;
+  value: string;
+  verdict: string;
+  curator_id: number | null;
+  note: string | null;
+  decided_at: Date;
+}
+
 /** The table `place_identifiers`. */
 export interface PlaceIdentifiersRow {
   experience_id: number;
@@ -1221,6 +1232,7 @@ export const RELATION_SCHEMAS = {
   osm_layer_builds: "workbench",
   osm_layer_schedule: "workbench",
   osm_objects: "workbench",
+  place_identifier_verdicts: "public",
   place_identifiers: "public",
   readership_month_files: "workbench",
   readership_months: "workbench",
@@ -1455,6 +1467,11 @@ export const COLUMN_WIDTHS = {
   osm_objects: {
     osm_type: 1,
   },
+  place_identifier_verdicts: {
+    scheme: 12,
+    value: 64,
+    verdict: 10,
+  },
   place_identifiers: {
     scheme: 12,
     value: 64,
@@ -1539,7 +1556,7 @@ export const CHECK_VALUES = {
     judgement: ["same", "other"],
   },
   experience_curation_log: {
-    action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone", "views_chosen", "component_items_answered", "component_item_taken_back", "admission_pin_released", "admission_pin_kept", "admission_pin_handed_back", "merge_proposal_answered", "visit_question_answered"],
+    action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone", "views_chosen", "component_items_answered", "component_item_taken_back", "admission_pin_released", "admission_pin_kept", "admission_pin_handed_back", "merge_proposal_answered", "visit_question_answered", "identifier_settled"],
   },
   experience_held_decisions: {
     answer: ["published", "refused"],
@@ -1614,6 +1631,10 @@ export const CHECK_VALUES = {
   },
   import_runs: {
     status: ["running", "matching", "reviewing", "failed"],
+  },
+  place_identifier_verdicts: {
+    scheme: ["wikidata", "whc", "osm"],
+    verdict: ["identifies", "refers", "removed"],
   },
   place_identifiers: {
     scheme: ["wikidata", "whc", "osm"],

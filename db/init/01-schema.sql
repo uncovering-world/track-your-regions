@@ -3915,7 +3915,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     -- Null on the catalogue's own merge alone (ADR-0086): the check below.
     curator_id INTEGER REFERENCES users(id),
-    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered')),
+    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered', 'identifier_settled')),
     region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -3935,7 +3935,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
 -- schema change and not a code-only one.
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check
-    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered'));
+    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered', 'identifier_settled'));
 
 -- An existing database's NOT NULL goes with migration 076; a fresh one never had it.
 -- Two acts are the catalogue's own and name no curator: a merge of two places
@@ -4068,8 +4068,23 @@ CREATE INDEX IF NOT EXISTS place_identifiers_value ON place_identifiers (scheme,
 COMMENT ON TABLE place_identifiers IS 'A place''s external identifiers (ADR-0143 decision 2): a Wikidata item, a World Heritage reference (whc: a site''s id or a component''s), an OpenStreetMap object. Derived from the columns that hold them (a membership''s external id and items, a component point''s item, a part''s reference) by place_identifier_claims() and kept current by refresh_place_identifiers(); written by nothing else. A membership''s (source, external id) is its own key and is not repeated here.';
 COMMENT ON COLUMN place_identifiers.identifies IS 'This value names this place, and no other live place: what a run''s lookup may follow. False where it only refers to the place (a serial site''s items, an item two components carry) and on every place of a value two places claim.';
 COMMENT ON COLUMN place_identifiers.claims_identity IS 'Some column this row is derived from says the value is this place. A value claimed by two live places is identifying on neither, and the catalogue check identifiers-on-several-places lists it.';
-COMMENT ON COLUMN place_identifiers.basis IS 'Which columns carry the value for this place: membership (a source knows the place by it), site-items (a World Heritage site''s items), point (a standing point''s item), component (a part''s reference).';
+COMMENT ON COLUMN place_identifiers.basis IS 'Which columns carry the value for this place: membership (a source knows the place by it), site-items (a World Heritage site''s items), point (a standing point''s item), component (a part''s reference), curator (a curator''s word, place_identifier_verdicts).';
 COMMENT ON COLUMN place_identifiers.recorded_at IS 'When the place first carried the value; kept while it carries it.';
+
+-- A curator's word on one identifier of a place (ADR-0143 decision 5, #1896):
+-- what stands over what the columns say. See db/migrations/164.
+CREATE TABLE IF NOT EXISTS place_identifier_verdicts (
+    experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
+    scheme VARCHAR(12) NOT NULL CHECK (scheme IN ('wikidata', 'whc', 'osm')),
+    value VARCHAR(64) NOT NULL,
+    verdict VARCHAR(10) NOT NULL CHECK (verdict IN ('identifies', 'refers', 'removed')),
+    curator_id INTEGER REFERENCES users(id),
+    note TEXT,
+    decided_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    PRIMARY KEY (experience_id, scheme, value)
+);
+CREATE INDEX IF NOT EXISTS place_identifier_verdicts_value ON place_identifier_verdicts (scheme, value);
+COMMENT ON TABLE place_identifier_verdicts IS 'A curator''s word on one identifier of a place (ADR-0143 decision 5): identifies, the value names this place whatever column carries it, or none does; refers, it only refers to the place; removed, the place does not carry it. Read by place_identifier_claims() and place_identifiers_expected(), so the registry row follows the word and no run writes it back (the curator''s pin). Written only by controllers/experience/placeIdentifierController.ts, under the place''s lock.';
 
 -- The lookups the claims make by value.
 CREATE INDEX IF NOT EXISTS idx_experience_kind_memberships_external_id
@@ -4131,6 +4146,14 @@ LANGUAGE sql STABLE AS $$
     FROM experience_parts prt
     JOIN experiences e ON e.id = prt.part_id AND e.merged_into_id IS NULL
    WHERE p_scheme = 'whc' AND prt.reason = 'component' AND prt.external_ref = ANY(p_values)
+  UNION ALL
+  -- A curator's word (ADR-0143 decision 5): identifies claims whether or not a
+  -- column carries the value; refers carries it without claiming; removed is
+  -- applied by place_identifiers_expected(), which drops the row.
+  SELECT v.experience_id, v.value::text, 'curator', v.verdict = 'identifies'
+    FROM place_identifier_verdicts v
+    JOIN experiences e ON e.id = v.experience_id AND e.merged_into_id IS NULL
+   WHERE v.scheme = p_scheme AND v.value = ANY(p_values) AND v.verdict IN ('identifies', 'refers')
 $$;
 COMMENT ON FUNCTION place_identifier_claims(TEXT, TEXT[]) IS 'The live places that carry each of the values of one scheme, with the column that carries it and whether it says the value is the place (ADR-0143 decision 2). The one statement of what the registry holds.';
 
@@ -4181,10 +4204,15 @@ LANGUAGE sql STABLE AS $$
   SELECT held.experience_id, held.value, held.claims AND held.claimants = 1, held.claims, held.basis
     FROM (SELECT per_place.*,
                  count(*) FILTER (WHERE per_place.claims) OVER (PARTITION BY per_place.value) AS claimants
-            FROM (SELECT c.experience_id, c.value, bool_or(c.claims) AS claims,
+            FROM (SELECT c.experience_id, c.value,
+                         -- A curator's word stands over the columns (ADR-0143 decision 5).
+                         CASE v.verdict WHEN 'identifies' THEN true WHEN 'refers' THEN false ELSE bool_or(c.claims) END AS claims,
                          array_agg(DISTINCT c.basis ORDER BY c.basis) AS basis
                     FROM place_identifier_claims(p_scheme, p_values) c
-                   GROUP BY c.experience_id, c.value) per_place) held
+                    LEFT JOIN place_identifier_verdicts v
+                      ON v.experience_id = c.experience_id AND v.scheme = p_scheme AND v.value = c.value
+                   WHERE v.verdict IS DISTINCT FROM 'removed'
+                   GROUP BY c.experience_id, c.value, v.verdict) per_place) held
 $$;
 COMMENT ON FUNCTION place_identifiers_expected(TEXT, TEXT[]) IS 'The registry''s rows for these values of one scheme, as place_identifier_claims() makes them (ADR-0143 decision 2): what refresh_place_identifiers() writes and the catalogue check place-identifiers-out-of-step compares.';
 
@@ -4198,6 +4226,7 @@ LANGUAGE sql STABLE AS $$
   UNION SELECT 'wikidata', wikidata_item::text FROM experience_locations WHERE wikidata_item IS NOT NULL
   UNION SELECT 'whc', external_id::text FROM experience_kind_memberships WHERE source_id = 1
   UNION SELECT 'whc', external_ref FROM experience_parts WHERE reason = 'component' AND external_ref IS NOT NULL
+  UNION SELECT scheme::text, value::text FROM place_identifier_verdicts
 $$;
 COMMENT ON FUNCTION place_identifier_values() IS 'Every value of each scheme a column carries (ADR-0143 decision 2).';
 
@@ -4216,10 +4245,12 @@ BEGIN
   END IF;
   PERFORM lock_place_identifiers(p_scheme, wanted);
 
+  -- A row no longer expected goes: no column carries the value for the place,
+  -- or a curator's word took it off (ADR-0143 decision 5).
   DELETE FROM place_identifiers pi
    WHERE pi.scheme = p_scheme AND pi.value = ANY(wanted)
-     AND NOT EXISTS (SELECT 1 FROM place_identifier_claims(p_scheme, wanted) c
-                      WHERE c.experience_id = pi.experience_id AND c.value = pi.value);
+     AND NOT EXISTS (SELECT 1 FROM place_identifiers_expected(p_scheme, wanted) x
+                      WHERE x.experience_id = pi.experience_id AND x.value = pi.value);
   UPDATE place_identifiers SET identifies = false
    WHERE scheme = p_scheme AND value = ANY(wanted) AND identifies;
   INSERT INTO place_identifiers AS pi (experience_id, scheme, value, identifies, claims_identity, basis)
@@ -4245,6 +4276,7 @@ RETURNS void LANGUAGE plpgsql AS $$
 DECLARE
   items TEXT[];
   refs TEXT[];
+  osms TEXT[];
 BEGIN
   SELECT array_agg(DISTINCT v) INTO items FROM (
     SELECT unnest(p_items) AS v
@@ -4258,7 +4290,9 @@ BEGIN
      WHERE experience_id = ANY(p_places) AND wikidata_items IS NOT NULL
     UNION ALL
     SELECT wikidata_item FROM experience_locations
-     WHERE experience_id = ANY(p_places) AND wikidata_item IS NOT NULL) carried
+     WHERE experience_id = ANY(p_places) AND wikidata_item IS NOT NULL
+    UNION ALL
+    SELECT value FROM place_identifier_verdicts WHERE scheme = 'wikidata' AND experience_id = ANY(p_places)) carried
    WHERE v IS NOT NULL;
   SELECT array_agg(DISTINCT v) INTO refs FROM (
     SELECT unnest(p_refs) AS v
@@ -4268,13 +4302,23 @@ BEGIN
     SELECT external_id FROM experience_kind_memberships WHERE experience_id = ANY(p_places) AND source_id = 1
     UNION ALL
     SELECT external_ref FROM experience_parts
-     WHERE part_id = ANY(p_places) AND reason = 'component' AND external_ref IS NOT NULL) carried
+     WHERE part_id = ANY(p_places) AND reason = 'component' AND external_ref IS NOT NULL
+    UNION ALL
+    SELECT value FROM place_identifier_verdicts WHERE scheme = 'whc' AND experience_id = ANY(p_places)) carried
+   WHERE v IS NOT NULL;
+  -- An OpenStreetMap object is carried by a curator's word alone until a run records one.
+  SELECT array_agg(DISTINCT v) INTO osms FROM (
+    SELECT value AS v FROM place_identifiers WHERE scheme = 'osm' AND experience_id = ANY(p_places)
+    UNION ALL
+    SELECT value FROM place_identifier_verdicts WHERE scheme = 'osm' AND experience_id = ANY(p_places)) carried
    WHERE v IS NOT NULL;
   PERFORM lock_place_identifier_keys(ARRAY(
     SELECT place_identifier_lock_key('wikidata', v) FROM unnest(items) AS v
-    UNION SELECT place_identifier_lock_key('whc', v) FROM unnest(refs) AS v));
+    UNION SELECT place_identifier_lock_key('whc', v) FROM unnest(refs) AS v
+    UNION SELECT place_identifier_lock_key('osm', v) FROM unnest(osms) AS v));
   PERFORM refresh_place_identifiers('wikidata', items);
   PERFORM refresh_place_identifiers('whc', refs);
+  PERFORM refresh_place_identifiers('osm', osms);
 END;
 $$;
 COMMENT ON FUNCTION refresh_place_identifiers_of(INTEGER[], TEXT[], TEXT[]) IS 'Refreshes every value these places hold in the registry or carry now, and the Wikidata items and World Heritage references named beside them, all their keys taken in one ordered pass (ADR-0143 decision 2).';
@@ -4362,6 +4406,24 @@ CREATE OR REPLACE TRIGGER trg_place_identifiers_part_update
   FOR EACH ROW
   WHEN ((OLD.part_id, OLD.reason, OLD.external_ref) IS DISTINCT FROM (NEW.part_id, NEW.reason, NEW.external_ref))
   EXECUTE FUNCTION place_identifiers_follow_part();
+
+-- A curator's word refreshes its value: the row follows the word at once.
+CREATE OR REPLACE FUNCTION place_identifiers_follow_verdict() RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  IF TG_OP <> 'INSERT' THEN
+    PERFORM refresh_place_identifiers(OLD.scheme, ARRAY[OLD.value::text]);
+  END IF;
+  IF TG_OP <> 'DELETE' THEN
+    PERFORM refresh_place_identifiers(NEW.scheme, ARRAY[NEW.value::text]);
+  END IF;
+  RETURN NULL;
+END;
+$$;
+
+CREATE OR REPLACE TRIGGER trg_place_identifier_verdicts_write
+  AFTER INSERT OR UPDATE OR DELETE ON place_identifier_verdicts
+  FOR EACH ROW EXECUTE FUNCTION place_identifiers_follow_verdict();
 
 CREATE OR REPLACE TRIGGER trg_place_identifiers_place_merged
   AFTER UPDATE OF merged_into_id ON experiences
