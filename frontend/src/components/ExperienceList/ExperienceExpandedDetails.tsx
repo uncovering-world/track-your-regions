@@ -51,7 +51,7 @@ import { VisitedStatusButton } from './VisitedStatusButton';
 import { computeVisitedStatus } from './utils';
 import { CardLocationList } from './CardLocationList';
 import type { LocationRowData } from './LocationRow';
-import { experienceColors } from '../../utils/kindColors';
+import { typeChipsFor } from './typeChips';
 import { placeHasExtent } from '../../utils/placeKinds';
 
 export interface ExperienceExpandedDetailsProps {
@@ -230,18 +230,9 @@ function ExperienceExpandedDetailsComponent({
 
   const isMultiLocation = totalLocations > 1;
 
-  // The type chips in the colour every other surface draws this object in —
-  // one rule, `experienceColors`, rather than a third copy of the palette (#814):
-  // the row's own kind, or every kind of the place on the card above the groups.
-  const typeChips = everyKind && experience.kinds?.length
-    ? experience.kinds.map(kind => ({
-      key: kind.kind_id, label: kind.type ?? kind.kind_name, isType: kind.type !== null,
-      style: experienceColors(kind.kind_id, kind.type),
-    }))
-    : [{
-      key: experience.kind_id, label: experience.type, isType: true,
-      style: experienceColors(experience.kind_id, experience.type),
-    }];
+  // The row's own type, or every kind of the place beside its type on the card
+  // above the groups (#1915) — built where the two cards' rule is stated once.
+  const typeChips = typeChipsFor(experience, everyKind);
 
   return (
     <Box
@@ -309,19 +300,12 @@ function ExperienceExpandedDetailsComponent({
 
       {/* Kind & Country chips */}
       <Box sx={{ display: 'flex', gap: 1, mb: 1.5, flexWrap: 'wrap' }}>
-        {typeChips.map(chip => chip.label && (
+        {typeChips.map(chip => (
           <Chip
             key={chip.key}
             label={chip.label}
             size="small"
-            sx={{
-              bgcolor: chip.style.bg,
-              color: chip.style.text,
-              fontWeight: 500,
-              // A type is a lower-case value; a kind's name is written as its
-              // group header writes it, "Places of worship".
-              textTransform: chip.isType ? 'capitalize' : 'none',
-            }}
+            sx={{ bgcolor: chip.style.bg, color: chip.style.text, fontWeight: 500 }}
           />
         ))}
         {experience.in_danger && (
