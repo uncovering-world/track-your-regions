@@ -1607,50 +1607,6 @@ export interface PlacementCount {
  */
 export type PlacementCounts = PlacementCount[];
 
-export type EqualItemMergesMergedItem = {
-  /** The Wikidata item the places share. */
-  qid: string;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  survivorId: number;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  foldedId: number;
-  /**
-     * @minimum -9007199254740991
-     * @maximum 9007199254740991
-     */
-  mergeId: number;
-  /** The place that stayed. */
-  name: string;
-};
-
-export type EqualItemMergesRefusedItem = {
-  qid: string;
-  /**
-     * @items.minimum -9007199254740991
-     * @items.maximum 9007199254740991
-     */
-  placeIds: number[];
-  /** The place that would have stayed. */
-  name: string;
-  /** Why these places were not made one, such as both belonging to the same kind. */
-  error: string;
-};
-
-/**
- * Places that share a Wikidata item, merged into one place each (ADR-0046 decision 2).
- */
-export interface EqualItemMerges {
-  merged: EqualItemMergesMergedItem[];
-  /** Items whose places were left apart, each with its reason. */
-  refused: EqualItemMergesRefusedItem[];
-}
-
 /**
  * The place with the lower id, which stays if the two are made one.
  */
@@ -7185,31 +7141,6 @@ export const getAdminExperiencesCountsByRegion = async (params: GetAdminExperien
   {
     ...options,
     method: 'GET'
-
-
-  }
-);}
-
-
-
-export const getPostAdminPlacesMergeEqualItemsUrl = () => {
-
-
-
-
-  return `/api/admin/places/merge-equal-items`
-}
-
-/**
- * Requires an admin.
- * @summary Merge every place that shares a Wikidata item with another into one place
- */
-export const postAdminPlacesMergeEqualItems = async ( options?: Parameters<typeof apiFetch>[1]): Promise<EqualItemMerges> => {
-
-  return apiFetch<EqualItemMerges>(getPostAdminPlacesMergeEqualItemsUrl(),
-  {
-    ...options,
-    method: 'POST'
 
 
   }
