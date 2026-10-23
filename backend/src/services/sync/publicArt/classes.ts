@@ -107,8 +107,12 @@ export const HERITAGE_SENSE_CLASSES: Record<string, string> = {
  * Skopje and the Three Crosses in Vilnius carry; a figure has no coordinates,
  * so nothing else reaches the pool by it. An equestrian statue is a monument
  * to its rider by tradition — Genghis Khan at Tsonjin Boldog, Emperor William
- * at the Deutsches Eck — where a statue may be anyone's. What Monuments &
- * memorials admits, with the commemorative set and the heritage sense.
+ * at the Deutsches Eck — where a statue may be anyone's. A monumental
+ * sculpture is one made as a monument: the Bronze Horseman, the Lion of
+ * Belfort, and the Statue of Liberty by its genre (#1832). What Monuments &
+ * memorials admits, with the commemorative set and the heritage sense, read
+ * from the genre (`P136`) as well as the class: the Bronze Horseman and
+ * Gattamelata are typed sculptures and filed as equestrian statues.
  */
 export const COMMEMORATIVE_FORMS: Record<string, string> = {
   Q143912: 'triumphal arch',
@@ -126,7 +130,19 @@ export const COMMEMORATIVE_FORMS: Record<string, string> = {
   Q815241: 'runestone',
   Q40843: 'cross',
   Q659396: 'equestrian statue',
+  Q3476533: 'monumental sculpture',
 };
+
+/**
+ * The genre (`P136`) Wikidata files a work of public art under: a work, then,
+ * whatever building, museum or cemetery it is also typed. For Monuments &
+ * memorials it answers those vetoes as an artwork class does: the Soviet War
+ * Memorial in the Tiergarten is typed cemetery, military museum and monument,
+ * and the Monument to the Conquerors of Space historic site, monument and
+ * museum, with the museum in its base; neither the Reina Sofía nor the Bilbao
+ * Fine Arts Museum is filed under it (#1832).
+ */
+export const PUBLIC_ART_GENRE = 'Q557141';
 
 /** The forms a Monuments & memorials type names, beside `memorial` and `monument`. */
 export const ARCH_CLASSES: Record<string, string> = {
@@ -267,6 +283,22 @@ export const INDOOR_CLASSES: Record<string, string> = {
 };
 
 /**
+ * Burial: a building around the dead, not a work in a square, and refused as
+ * such (`KILL_CLASSES`) — unless, for Monuments & memorials, a commemorative
+ * form stands with it: the Monumento a la Revolución is typed mausoleum and
+ * triumphal arch, and a traveller visits the arch (#1832). A mausoleum alone
+ * stays refused: Anıtkabir and the mausoleums of Mao and Ho Chi Minh are a
+ * kind of their own, still proposed.
+ */
+export const BURIAL_CLASSES: Record<string, string> = {
+  Q381885: 'tomb',
+  Q162875: 'mausoleum',
+  Q173387: 'grave',
+  Q192619: 'crypt',
+  Q838159: 'türbe',
+};
+
+/**
  * Refused whatever else the entity carries, with the reason named. These are
  * other kinds' objects or nobody's: a place of worship is a place of worship
  * though a statue stands in it, a camp is a camp though it is also a memorial,
@@ -291,11 +323,7 @@ export const KILL_CLASSES: Record<string, string> = {
   Q755017: 'tell',
   Q665247: 'hypogeum',
   // Burial: a building around the dead, not a work in a square.
-  Q381885: 'tomb',
-  Q162875: 'mausoleum',
-  Q173387: 'grave',
-  Q192619: 'crypt',
-  Q838159: 'türbe',
+  ...BURIAL_CLASSES,
   // Finds: a museum object wherever Wikidata locates it. The Venus of
   // Willendorf is "located in" Austria and stands in a case in Vienna.
   Q248726: 'Venus figurine',
