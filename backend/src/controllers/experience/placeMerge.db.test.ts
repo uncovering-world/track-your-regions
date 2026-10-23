@@ -1,7 +1,7 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { mergePlaces, undoMerge } from './placeMerge.js';
-import { mergeArrivalsOfRun, mergeEqualItems } from './equalItemMerges.js';
+import { joinPlacesClaimingOneItem } from './equalItemMerges.js';
 import { getExperience } from './experienceQueryController.js';
 import { getCurationLog } from './curationLogController.js';
 
@@ -249,37 +249,23 @@ describe('a merge of two rows that are one place (ADR-0086)', () => {
     ]);
   });
 
-  it('merges the places sharing a Wikidata item into the one with the lower id', async () => {
-    const report = await mergeEqualItems([QID]);
+  it('joins the places claiming one Wikidata item into the one with the lower id', async () => {
+    const report = await joinPlacesClaimingOneItem([QID]);
 
     expect(report.merged).toEqual([expect.objectContaining({ qid: QID, survivorId: WORSHIP, foldedId: SITE })]);
     expect(report.refused).toEqual([]);
     expect((await placesOf([SITE]))[0].merged_into_id).toBe(WORSHIP);
   });
 
-  it('merges a place a run created into the place that shares its item, and nothing after a preview', async () => {
-    // The archaeology run that brought the site: its changeset names it created.
-    const run = async (dryRun: boolean) => (await pool.query<{ id: number }>(
-      `INSERT INTO experience_sync_logs (source_id, status, is_dry_run, error_details)
-       SELECT id, 'success', $1, '[{"fixture": "merge"}]'::jsonb FROM experience_sources WHERE name = 'Archaeology' RETURNING id`,
-      [dryRun],
-    )).rows[0].id;
-    const created = async (logId: number) => pool.query(
-      `INSERT INTO experience_sync_changes (sync_log_id, experience_id, external_id, change_type) VALUES ($1, $2, $3, 'created')`,
-      [logId, SITE, QID],
-    );
+  it('never joins again a pair a curator took apart: the undone join is their word', async () => {
+    const first = await joinPlacesClaimingOneItem([QID]);
+    expect(first.merged).toHaveLength(1);
+    expect((await undoMerge(first.merged[0].mergeId, curatorId)).refusal).toBeUndefined();
 
-    const preview = await run(true);
-    await created(preview);
-    expect(await mergeArrivalsOfRun(preview)).toBeNull();
+    const again = await joinPlacesClaimingOneItem([QID]);
+
+    expect(again).toEqual({ merged: [], refused: [] });
     expect((await placesOf([SITE]))[0].merged_into_id).toBeNull();
-
-    const real = await run(false);
-    await created(real);
-    const report = await mergeArrivalsOfRun(real);
-
-    expect(report?.merged).toEqual([expect.objectContaining({ qid: QID, survivorId: WORSHIP, foldedId: SITE })]);
-    expect((await placesOf([SITE]))[0].merged_into_id).toBe(WORSHIP);
   });
 
   it('keeps a visit a traveller wrote to after the merge when it is undone', async () => {

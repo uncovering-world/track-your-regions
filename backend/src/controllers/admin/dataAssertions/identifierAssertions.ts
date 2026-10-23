@@ -21,9 +21,12 @@ import type { CatalogueAssertion } from './assertion.js';
  * a run's lookup follows it to neither. Such a value is a duplicate, such as
  * the Tower of Belem as a part of the Jeronimos site and as a tower, or a
  * part whose reference is its site's own. The registry reports it and never
- * merges it; the Wikidata rows are what the equal-item pass merges
- * (`sharedItemsSql`, `controllers/experience/equalItemMerges.ts`), so the two
- * ask one question, and a World Heritage reference waits for a person.
+ * merges it; the Wikidata rows are what the join after a run and after a
+ * component-items answer makes one place (`joinPlacesClaimingOneItem`,
+ * `controllers/experience/equalItemMerges.ts`), so the two ask one question,
+ * and what is listed is a pair the join refused, one a curator took apart,
+ * which the join never touches again, or a World Heritage reference — each
+ * waiting for a person.
  */
 const identifiersOnSeveralPlaces: CatalogueAssertion = {
   id: 'identifiers-on-several-places',
@@ -33,9 +36,11 @@ const identifiersOnSeveralPlaces: CatalogueAssertion = {
   meaning:
     'Two places each say they are the same Wikidata item or World Heritage reference, so one thing '
     + 'is most likely shown twice: two pins on one spot, two cards that each tell half of it. Until '
-    + 'it is settled, a run reading that identifier finds neither place. Merging the two (the "Places '
-    + 'that are one place" card above, or a curator\'s merge) settles it; so does taking the identifier '
-    + 'off the place it does not name.',
+    + 'it is settled, a run reading that identifier finds neither place. Two places claiming one Wikidata '
+    + 'item are joined by the catalogue after a run and after a component-items answer, so a Wikidata row '
+    + 'here is a pair that join refused, such as two places in one kind, or one a curator took apart, which '
+    + 'the join never touches again. Merging the two settles it; so does taking the identifier off the place '
+    + 'it does not name.',
   sql: `SELECT pi.scheme, pi.value,
                array_agg(pi.experience_id ORDER BY pi.experience_id) AS place_ids,
                array_agg(e.name ORDER BY pi.experience_id) AS names

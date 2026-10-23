@@ -6,7 +6,7 @@
 
 import { operationAnswer } from '../../services/operationProgress.js';
 import { SUBSET_READY_SOURCES, wikidataReaderOf, type WikidataReader } from '../../services/sync/subset/reader.js';
-import { mergeArrivalsOfRun } from '../experience/equalItemMerges.js';
+import { joinPlacesClaimingOneItem } from '../experience/equalItemMerges.js';
 import { proposeMergesOfRun } from '../../services/sync/mergeProposalFinder.js';
 import type { z } from 'zod/v4';
 import type {
@@ -196,27 +196,32 @@ export async function startSync(
     .catch((err) => {
       console.error('[Sync Controller] Sync error for source %s:', sourceId, err);
     })
-    // A place the run created that another source already holds as the same
-    // Wikidata item is that place (ADR-0046 decision 2, #1247), merged once
-    // the run is over — here rather than inside it, since the merge is a
-    // curation write the sync layer sits below. However the run ended: a run
-    // cancelled or failed half-way still wrote the places it created and
-    // recorded them, and a merge on one item is right whatever the run's
-    // status. The run's progress is still the source's entry: nothing else
-    // starts before this callback runs, and a pass holds every one of its
-    // sources' entries until its last run ends (`runSyncPass`). Every run of a
-    // pass wrote its own places, so each of their logs is merged.
+    // A run finds the place an item names before it creates one (ADR-0143
+    // decision 3), and what it can still leave is an item recorded on a place
+    // that exists — a World Heritage run recording a component's item that
+    // another kind's place already is (#1269). Two places that claim one item
+    // are one place (ADR-0046 decision 2, #1247), joined once the run is over —
+    // here rather than inside it, since the join is a curation write the sync
+    // layer sits below. However the run ended: a run cancelled or failed
+    // half-way still wrote what it wrote, and a join on one item is right
+    // whatever the run's status. The run's progress is still the source's
+    // entry: nothing else starts before this callback runs, and a pass holds
+    // every one of its sources' entries until its last run ends
+    // (`runSyncPass`).
     .then(async () => {
-      // Every entry read before the first merge: a merge has no time limit,
-      // and meanwhile the pass's release timers run out and, every entry being
+      // Every entry read before the first join: a join has no time limit, and
+      // meanwhile the pass's release timers run out and, every entry being
       // closed, a new start may replace one.
-      const runs = pass.map((id) => runningSyncs.get(id));
+      const runs = pass.map((id) => runningSyncs.get(id))
+        .filter((run): run is NonNullable<typeof run> => !!run && !run.dryRun && !!run.logId);
+      // One join for the pass: it reads the whole registry, whichever run
+      // wrote the item.
+      if (runs.length > 0) await joinPlacesClaimingOneItem();
       for (const run of runs) {
-        if (!run || run.dryRun || !run.logId) continue;
-        await mergeArrivalsOfRun(run.logId);
-        // Then the places it created that a reader can see are paired with near
-        // places of similar names, as the admin's pass would pair them (#1800).
-        await proposeMergesOfRun(run.logId);
+        // Then the places each run created that a reader can see are paired
+        // with near places of similar names, as the admin's pass would pair
+        // them (#1800).
+        await proposeMergesOfRun(run.logId!);
       }
     });
 

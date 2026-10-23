@@ -6128,45 +6128,6 @@
         }
       }
     },
-    "/api/admin/places/merge-equal-items": {
-      "post": {
-        "operationId": "postAdminPlacesMergeEqualItems",
-        "summary": "Merge every place that shares a Wikidata item with another into one place",
-        "tags": [
-          "admin"
-        ],
-        "description": "Requires an admin.",
-        "x-access": "admin",
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "The answer.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/EqualItemMerges"
-                }
-              }
-            }
-          },
-          "default": {
-            "description": "A failure.",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/Error"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/api/admin/places/find-merge-proposals": {
       "post": {
         "operationId": "postAdminPlacesFindMergeProposals",
@@ -22356,91 +22317,6 @@
             "type": "string"
           }
         }
-      },
-      "EqualItemMerges": {
-        "type": "object",
-        "properties": {
-          "merged": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "qid": {
-                  "type": "string",
-                  "description": "The Wikidata item the places share."
-                },
-                "survivorId": {
-                  "type": "integer",
-                  "minimum": -9007199254740991,
-                  "maximum": 9007199254740991
-                },
-                "foldedId": {
-                  "type": "integer",
-                  "minimum": -9007199254740991,
-                  "maximum": 9007199254740991
-                },
-                "mergeId": {
-                  "type": "integer",
-                  "minimum": -9007199254740991,
-                  "maximum": 9007199254740991
-                },
-                "name": {
-                  "type": "string",
-                  "description": "The place that stayed."
-                }
-              },
-              "required": [
-                "qid",
-                "survivorId",
-                "foldedId",
-                "mergeId",
-                "name"
-              ],
-              "additionalProperties": false
-            }
-          },
-          "refused": {
-            "type": "array",
-            "items": {
-              "type": "object",
-              "properties": {
-                "qid": {
-                  "type": "string"
-                },
-                "placeIds": {
-                  "type": "array",
-                  "items": {
-                    "type": "integer",
-                    "minimum": -9007199254740991,
-                    "maximum": 9007199254740991
-                  }
-                },
-                "name": {
-                  "type": "string",
-                  "description": "The place that would have stayed."
-                },
-                "error": {
-                  "type": "string",
-                  "description": "Why these places were not made one, such as both belonging to the same kind."
-                }
-              },
-              "required": [
-                "qid",
-                "placeIds",
-                "name",
-                "error"
-              ],
-              "additionalProperties": false
-            },
-            "description": "Items whose places were left apart, each with its reason."
-          }
-        },
-        "required": [
-          "merged",
-          "refused"
-        ],
-        "additionalProperties": false,
-        "description": "Places that share a Wikidata item, merged into one place each (ADR-0046 decision 2)."
       },
       "Error": {
         "type": "object",

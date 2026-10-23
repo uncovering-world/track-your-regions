@@ -4,8 +4,8 @@
  *
  * A pair is a proposal by place and name, never a fact (ADR-0046 decision
  * 2): the curator says what the two are. *One place* runs the merge the
- * equal-item pass runs for a shared item (`mergePlaces`, ADR-0086), the other
- * place folded into this one, the lower id; the merge is undone from the
+ * catalogue's join runs for a shared item (`mergePlaces`, ADR-0086), the
+ * other place folded into this one, the lower id; the merge is undone from the
  * history like any other. *Two places* keeps the pair apart and never
  * proposed again (decision 4). *Part of* records which place is the part on
  * the proposal, for #823, and merges nothing (decision 6). Each answer is one

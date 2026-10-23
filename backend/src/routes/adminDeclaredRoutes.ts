@@ -9,7 +9,7 @@
 
 import { defineRoute, IMAGE } from '../api/route.js';
 import {
-  AssignmentCancelled, AssignmentStarted, AssignmentStatus, CurationActivity, CuratorActivity, CuratorAssignmentCreated, EqualItemMerges,
+  AssignmentCancelled, AssignmentStarted, AssignmentStatus, CurationActivity, CuratorActivity, CuratorAssignmentCreated,
   JevUsage, MergeProposalPass,
   ComponentItemSearchStarted, CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, WikidataReaderSet, PictureRepairStarted,
   PlacementCounts,
@@ -33,7 +33,6 @@ import {
 import { setCurationGate } from '../controllers/admin/curationGateController.js';
 import { setWikidataReader } from '../controllers/admin/wikidataReaderController.js';
 import { setSourceLine } from '../controllers/admin/sourceLineController.js';
-import { mergePlacesSharingAnItem } from '../controllers/admin/equalItemMergeController.js';
 import { findPlacesThatMayBeOne } from '../controllers/admin/mergeProposalController.js';
 import { getJevUsage } from '../controllers/admin/jevUsageController.js';
 import { acceptDataAssertion, getDataAssertions } from '../controllers/admin/dataAssertionsController.js';
@@ -327,17 +326,8 @@ export const adminDeclaredRoutes = [
   }),
 
   // ===========================================================================
-  // Places that are one place (ADR-0046, ADR-0086)
+  // Places that may be one place (ADR-0046, ADR-0086)
   // ===========================================================================
-  // The one pass over the catalogue as it stands: every place sharing a
-  // Wikidata item with another merged into one. Rate-limited with the other
-  // expensive admin work: it walks every shared item, one transaction each.
-  defineRoute({
-    ...ADMIN, method: 'post', path: '/places/merge-equal-items', limiter: expensiveAdminLimiter,
-    summary: 'Merge every place that shares a Wikidata item with another into one place',
-    response: EqualItemMerges,
-    handler: mergePlacesSharingAnItem,
-  }),
   // The pass over near places with similar names (#1249, ADR-0046 decision
   // 2): what it finds is proposed for a person to answer — one place, two
   // places or one part of the other. One pass over every offered place's
