@@ -43,6 +43,7 @@ const KIND_HEADING: Record<RowKind, string> = {
   'pin-question': 'A run asks again about an answer you pinned',
   'visit-question': 'Offered places with nothing to see — refuse them?',
   'approximate-points': 'Components the World Heritage list placed only roughly — where are they?',
+  'approximate-unhinted': 'Components placed only roughly that nothing says more about — keep or place them',
 };
 
 /** A group's heading a transition in `rows` opens — never computed for a row that continues its predecessor's group. */
