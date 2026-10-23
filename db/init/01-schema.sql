@@ -4396,6 +4396,30 @@ CREATE TABLE IF NOT EXISTS experience_hand_overs (
 );
 COMMENT ON TABLE experience_hand_overs IS 'A work a source''s rule refused as held by another place (ADR-0102): the reason, and the places it found it held in, item ids nearest first (the Cornaro chapel, then Santa Maria della Vittoria). The refusing run writes what it filtered and, on a complete run, drops what it no longer refuses this way; a works kind admitting one of the places takes the work.';
 
+-- A name as a comparison of two names reads it: markup, accents, case and
+-- punctuation dropped, so "Château de Chambord" and "chateau de chambord" are
+-- one name, and UNESCO's "Via Appia. <em>Regina Viarum</em>" is "via appia
+-- regina viarum".
+CREATE OR REPLACE FUNCTION name_match_key(name TEXT) RETURNS TEXT AS $$
+  SELECT btrim(regexp_replace(lower(immutable_unaccent(regexp_replace(name, '<[^>]*>', '', 'g'))),
+                              '[^[:alnum:]]+', ' ', 'g'))
+$$ LANGUAGE sql IMMUTABLE;
+
+-- Whether a World Heritage point stands for its whole site rather than for one
+-- component of it (#1899): the only standing point of a site of one, a point
+-- the list gives the site's own reference (Baalbek's 294), or a point named
+-- like the site, folded and no looser ("Historic Centre of Prague" of the
+-- Historic Centre of Prague; "Historic Centre of Siena (Cathedral)" is a
+-- component). Its item is the site's own and anything near it is a building
+-- inside, so the component-item finder searches nothing for it, and it is not
+-- parted as a place of its own (part_site_components).
+CREATE OR REPLACE FUNCTION stands_for_whole_site(point_name TEXT, point_ref TEXT, site_name TEXT, site_ref TEXT,
+                                                 standing_points INTEGER) RETURNS BOOLEAN AS $$
+  SELECT standing_points <= 1
+      OR (point_ref IS NOT NULL AND point_ref = site_ref)
+      OR (point_name IS NOT NULL AND name_match_key(point_name) = name_match_key(site_name))
+$$ LANGUAGE sql IMMUTABLE;
+
 -- A serial site's components are places, part of the site (ADR-0100): the one
 -- statement of which of a site's points are its components and how each
 -- becomes a part. Called by migration 094 over every World Heritage site and
@@ -4412,8 +4436,12 @@ COMMENT ON TABLE experience_hand_overs IS 'A work a source''s rule refused as he
 -- record a merge reconciles with another kind's visits to the same place.
 -- Its name and coordinate are the point's; the rest of its content stays on
 -- the point until the part's card reads the place. A part with no kind of
--- its own has no regions of its own: lists find it through its site. Answers
--- how many points it parted.
+-- its own has no regions of its own: lists find it through its site. A
+-- component that stands for its whole site (stands_for_whole_site) is not
+-- parted: it stays the site's own point, since a part named like the site
+-- would show the site twice (#1899); one that stops standing for it is
+-- parted again, reviving the part migration 161 folded. Answers how many
+-- points it parted.
 CREATE OR REPLACE FUNCTION part_site_components(site INTEGER, site_membership INTEGER)
 RETURNS INTEGER AS $$
 DECLARE
@@ -4445,13 +4473,31 @@ BEGIN
                      WHERE pl.location_id = el.id AND pl.membership_id = site_membership)
             OR NOT EXISTS (SELECT 1 FROM experience_location_placements pl
                             WHERE pl.location_id = el.id))
+       AND NOT stands_for_whole_site(el.name, el.external_ref,
+             (SELECT whole.name FROM experiences whole WHERE whole.id = site),
+             (SELECT m.external_id FROM experience_kind_memberships m WHERE m.id = site_membership), 2)
      ORDER BY el.id
   LOOP
-    INSERT INTO experiences (source_id, external_id, name, location)
-    SELECT whole.source_id, 'part:' || component.id,
-           COALESCE(NULLIF(component.name, ''), component.external_ref, whole.name), component.location
-      FROM experiences whole WHERE whole.id = site
-    RETURNING id INTO part;
+    -- A part folded back into this site once its point stood for the whole
+    -- site (migration 161) is revived rather than made again: it keeps the
+    -- point's key, and a link to it opens it again.
+    SELECT folded.id INTO part
+      FROM experiences folded JOIN experiences whole ON whole.id = site
+     WHERE folded.source_id = whole.source_id AND folded.external_id = 'part:' || component.id
+       AND folded.merged_into_id = site;
+    IF part IS NOT NULL THEN
+      UPDATE experiences
+         SET merged_into_id = NULL, location = component.location, updated_at = NOW(),
+             name = COALESCE(NULLIF(component.name, ''), component.external_ref,
+                             (SELECT whole.name FROM experiences whole WHERE whole.id = site))
+       WHERE id = part;
+    ELSE
+      INSERT INTO experiences (source_id, external_id, name, location)
+      SELECT whole.source_id, 'part:' || component.id,
+             COALESCE(NULLIF(component.name, ''), component.external_ref, whole.name), component.location
+        FROM experiences whole WHERE whole.id = site
+      RETURNING id INTO part;
+    END IF;
 
     INSERT INTO experience_parts (whole_id, part_id, reason, membership_id, external_ref)
     VALUES (site, part, 'component', site_membership, component.external_ref);
