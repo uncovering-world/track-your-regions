@@ -460,6 +460,18 @@ export interface ExperiencePartsRow {
   created_at: Date;
 }
 
+/** The table `experience_point_hints`. */
+export interface ExperiencePointHintsRow {
+  id: number;
+  location_id: number;
+  source: string;
+  ref: string;
+  label: string | null;
+  location: string;
+  metres: number;
+  found_at: Date;
+}
+
 /** The table `experience_regions`. */
 export interface ExperienceRegionsRow {
   id: number;
@@ -1162,6 +1174,7 @@ export const RELATION_SCHEMAS = {
   experience_merge_suggestions: "public",
   experience_merges: "public",
   experience_parts: "public",
+  experience_point_hints: "public",
   experience_regions: "public",
   experience_rejections: "public",
   experience_sources: "public",
@@ -1347,6 +1360,9 @@ export const COLUMN_WIDTHS = {
   experience_parts: {
     reason: 20,
   },
+  experience_point_hints: {
+    source: 10,
+  },
   experience_regions: {
     assignment_type: 20,
   },
@@ -1513,6 +1529,9 @@ export const CHECK_VALUES = {
   },
   experience_parts: {
     reason: ["component", "wikidata_part_of", "curator"],
+  },
+  experience_point_hints: {
+    source: ["item", "osm-ref", "osm-name"],
   },
   experience_sources: {
     last_sync_status: ["success", "partial", "failed", "cancelled"],

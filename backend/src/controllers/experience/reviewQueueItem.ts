@@ -10,7 +10,8 @@
  */
 
 import type {
-  ChangedField, ComponentItemProposal, CountedWork, AnsweredPoint, HeldPart, MergePair, PendingPoint, PendingWork,
+  ApproximatePoint, ChangedField, ComponentItemProposal, CountedWork, AnsweredPoint, HeldPart, MergePair, PendingPoint,
+  PendingWork,
   PinQuestion, ProposedField, QuietField, RefusedPoint, RefusedWork, ReviewQueueItem, SitePoint, SourceViewField,
   VisitQuestion, WithdrawnPoint,
 } from '../../api/responses/reviewQueue.js';
@@ -84,6 +85,7 @@ export interface QueueRow {
   quiet_fields?: QuietField[];
   component_items?: ComponentItemProposal[] | null;
   site_points?: SitePoint[] | null;
+  approximate_points?: ApproximatePoint[] | null;
   /** The open pairs of a `merge-proposals` card (#1249). */
   merge_pairs?: MergePair[] | null;
   /** Postgres's jsonb renders the dates as strings, in the schema's shape. */
@@ -214,6 +216,7 @@ export function queueItemOf(row: QueueRow): ReviewQueueItem {
     quiet_fields: row.quiet_fields,
     component_items: row.component_items,
     site_points: row.site_points,
+    approximate_points: row.approximate_points,
     merge_pairs: row.merge_pairs,
     pin_question: row.pin_question,
     visit_question: row.visit_question,

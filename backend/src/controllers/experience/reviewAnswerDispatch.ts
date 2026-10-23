@@ -21,6 +21,7 @@
  * | merge-proposals | make the exact pairs one place: the same name within fifty metres | keep every open pair two places | — |
  * | pin-question | refused: a pin is a person's answer, answered on its card | refused, the same | — |
  * | visit-question | refused: a refusal pins the place out of its kind, answered on its card | keep it in the kind | — |
+ * | approximate-points | refused: where a component stands is read off its card's map | refused, the same | — |
  * | refused | keep it out (confirm, unpinned) | put it back for now (override, unpinned; publishes an arrival) | — |
  * | missing | former: delisted, still there | the object stays: false alarm | no longer exists |
  * | missing, one kind (#1264) | no longer that kind (former, or out of the kind) | it stays in the kind | — |
@@ -112,6 +113,9 @@ export async function answerRow(
     // takes one back (ADR-0067, ADR-0096): the card asks it (#1367).
     case 'pin-question': return refused(409, 'A pin is answered on its own card, where the curator\'s answer and the run\'s are read side by side');
     case 'visit-question': return answerVisitQuestion(who, answer);
+    // Where a component stands is a pin placed on a map, one point at a time,
+    // never a batch's verdict (#1853).
+    case 'approximate-points': return refused(409, 'Where a component stands is answered on its card, one point at a time, off its map');
     case 'refused': return answerRefused(who, answer);
     case 'missing': return answerMissing(who, answer);
     case 'withdrawn': return answerWithdrawn(who, answer);

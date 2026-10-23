@@ -16538,6 +16538,109 @@
           "deleteIds"
         ]
       },
+      "ApproximatePoint": {
+        "type": "object",
+        "properties": {
+          "locationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ref": {
+            "description": "The component's reference in the list.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "reason": {
+            "type": "string",
+            "enum": [
+              "whole-minute",
+              "shared"
+            ],
+            "description": "Why the point is rough: given to the whole minute, or shared with another component of the property."
+          },
+          "hints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ApproximatePointHint"
+            },
+            "description": "Where it may really stand, the component's own reference first."
+          }
+        },
+        "required": [
+          "locationId",
+          "name",
+          "ref",
+          "latitude",
+          "longitude",
+          "reason",
+          "hints"
+        ],
+        "additionalProperties": false,
+        "description": "A component the World Heritage list placed only roughly, which nobody has placed since (#1853)."
+      },
+      "ApproximatePointHint": {
+        "type": "object",
+        "properties": {
+          "source": {
+            "type": "string",
+            "enum": [
+              "osm-ref",
+              "item",
+              "candidate",
+              "osm-name"
+            ],
+            "description": "Where the hint comes from: an OpenStreetMap object carrying the component's World Heritage reference, the component's own Wikidata item, an item the component-item finder proposes for it, or an OpenStreetMap object within 2 km named like it."
+          },
+          "ref": {
+            "type": "string",
+            "description": "The Wikidata item (Q-number) or the OpenStreetMap object (N, W or R and its id)."
+          },
+          "label": {
+            "description": "The hint's name, where it has one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "latitude": {
+            "type": "number"
+          },
+          "longitude": {
+            "type": "number"
+          },
+          "metres": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "How far from the list's point the hint stands."
+          }
+        },
+        "required": [
+          "source",
+          "ref",
+          "label",
+          "latitude",
+          "longitude",
+          "metres"
+        ],
+        "additionalProperties": false,
+        "description": "One place a component the list placed only roughly may really stand (#1853)."
+      },
       "AreaGeometry": {
         "anyOf": [
           {
@@ -29394,6 +29497,7 @@
                     "merge-proposals",
                     "pin-question",
                     "visit-question",
+                    "approximate-points",
                     "arrival",
                     "held",
                     "contents"
@@ -29569,7 +29673,8 @@
           "component-items",
           "merge-proposals",
           "pin-question",
-          "visit-question"
+          "visit-question",
+          "approximate-points"
         ],
         "description": "The class of an open question, which a batch answer names a row by."
       },
@@ -31418,7 +31523,8 @@
                     "component-items",
                     "merge-proposals",
                     "pin-question",
-                    "visit-question"
+                    "visit-question",
+                    "approximate-points"
                   ]
                 },
                 "id": {
@@ -31747,6 +31853,13 @@
             },
             "description": "Offered places few witnesses vouch for and Jev reads as nothing to see (#1770)."
           },
+          "approximatePoints": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReviewQueueItem"
+            },
+            "description": "Serial sites whose components the World Heritage list placed only roughly (#1853)."
+          },
           "arrivals": {
             "type": "array",
             "items": {
@@ -31903,6 +32016,7 @@
           "mergeProposals",
           "pinQuestions",
           "visitQuestions",
+          "approximatePoints",
           "arrivals",
           "held",
           "contents",
@@ -31983,7 +32097,8 @@
               "component-items",
               "merge-proposals",
               "pin-question",
-              "visit-question"
+              "visit-question",
+              "approximate-points"
             ]
           },
           "membership_id": {
@@ -32383,12 +32498,26 @@
             ]
           },
           "site_points": {
-            "description": "Every place the site is made of, in the source's order, each with its own picture where it has one: what the card's map draws around the candidates (#1342). `component-items` items only.",
+            "description": "Every place the site is made of, in the source's order, each with its own picture where it has one: what the card's map draws around the candidates (#1342), and around a point the list placed only roughly (#1853). `component-items` and `approximate-points` items only.",
             "anyOf": [
               {
                 "type": "array",
                 "items": {
                   "$ref": "#/components/schemas/SitePoint"
+                }
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "approximate_points": {
+            "description": "The components the World Heritage list placed only roughly, each with where it may really stand (#1853). `approximate-points` items only.",
+            "anyOf": [
+              {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/ApproximatePoint"
                 }
               },
               {

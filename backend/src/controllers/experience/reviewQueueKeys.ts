@@ -60,7 +60,8 @@ import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js
 import { contentsWaitingSql, linkMembershipSql, pointMembershipSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
 import {
-  arrivalOpenSql, claimKeySql, componentItemsOpenSql, conflictChangeOpenSql, heldOpenSql,
+  approximatePointOpenSql, approximatePointsOpenSql, arrivalOpenSql, claimKeySql, componentItemsOpenSql,
+  conflictChangeOpenSql, heldOpenSql,
   membershipMissingOpenSql, mergeProposalOpenSql, missingOpenSql, openProposalSql, pinQuestionOpenSql, refusedOpenSql,
   sourcesOpenSql, visitQuestionOpenSql, withdrawnContainerOpenSql, withdrawnPointOpenSql,
 } from './reviewQueuePredicates.js';
@@ -84,7 +85,7 @@ import { answeringPlaceSql, pointsShownSql } from '../../db/placePoints.js';
  */
 export const KIND_RANK: Record<QueueKind, number> = {
   conflict: 1, sources: 2, waiting: 3, withdrawn: 4, refused: 5, missing: 6, 'component-items': 7,
-  'merge-proposals': 8, 'pin-question': 9, 'visit-question': 10,
+  'merge-proposals': 8, 'pin-question': 9, 'visit-question': 10, 'approximate-points': 11,
 };
 
 // The words a `kind` chip may carry, and the only ones, are `QUEUE_KINDS` and
@@ -406,6 +407,28 @@ function componentItemsKeysSql(membershipScopeFilter: string): string {
     JOIN ${MEMBERSHIPS} m ON m.id = pl.membership_id
     WHERE ${openProposalSql('p', 'el')}
       AND ${componentItemsOpenSql('e')}
+      AND ${membershipScopeFilter}
+    GROUP BY e.id, e.name`;
+}
+
+/**
+ * A site some component of which the World Heritage list placed only roughly
+ * and nobody has placed since (#1853, `approximatePointOpenSql`): one row per
+ * site, in scope by the source of a membership that places such a point, as
+ * `component-items` is. Undated: the list placed the point, no run proposed
+ * anything.
+ */
+function approximatePointsKeysSql(membershipScopeFilter: string): string {
+  return `
+    SELECT 'approximate-points', ${KIND_RANK['approximate-points']}, e.id, e.name, array_agg(DISTINCT m.source_id), NULL,
+           NULL, ARRAY[]::text[]
+    FROM experience_locations el
+    -- The site whose card asks about the point, its part's included (ADR-0100).
+    JOIN experiences e ON e.id = ${answeringPlaceSql()}
+    JOIN experience_location_placements pl ON pl.location_id = el.id
+    JOIN ${MEMBERSHIPS} m ON m.id = pl.membership_id
+    WHERE ${approximatePointOpenSql('el')}
+      AND ${approximatePointsOpenSql('e')}
       AND ${membershipScopeFilter}
     GROUP BY e.id, e.name`;
 }
@@ -784,6 +807,7 @@ export async function queryQueueKeys(
     UNION ALL${mergeProposalsKeysSql(membershipScopeFilter)}
     UNION ALL${pinQuestionKeysSql(membershipScopeFilter)}
     UNION ALL${visitQuestionKeysSql(membershipScopeFilter)}
+    UNION ALL${approximatePointsKeysSql(membershipScopeFilter)}
   )
 , searched AS (
     SELECT k.kind, k.rank, k.id, k.name, k.source_ids, k.run_id, k.asked_at, k.subs

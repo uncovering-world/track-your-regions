@@ -32,6 +32,7 @@ import { queryComponentItems } from './reviewQueueComponentItems.js';
 import { queryMergeProposals } from './reviewQueueMergeProposals.js';
 import { queryPinQuestions } from './reviewQueuePinQuestions.js';
 import { queryVisitQuestions } from './reviewQueueVisitQuestions.js';
+import { queryApproximatePoints } from './reviewQueueApproximatePoints.js';
 import { queryConflicts } from './reviewQueueConflicts.js';
 import {
   QUEUE_KINDS, WAITING_SUBS, likeParam, queryQueueKeys, queueScopeSql,
@@ -456,6 +457,10 @@ export async function getReviewQueue(
   const visitQuestions = await hydrate(visitQuestionIds, () => queryVisitQuestions(
     visitQuestionIds, { params, membershipSourceFilter, membershipScopeFilter },
   ));
+  // A site some component of which the list placed only roughly (#1853), one
+  // card per site with its points and where each may stand.
+  const approximatePointsIds = idsOf('approximate-points');
+  const approximatePoints = await hydrate(approximatePointsIds, () => queryApproximatePoints(approximatePointsIds));
 
   // What counts as `arrival`: the reasoning is on `arrivalOpenSql`
   // (`reviewQueuePredicates.ts`).
@@ -617,6 +622,7 @@ export async function getReviewQueue(
     mergeProposals: cards(mergeProposals),
     pinQuestions: cards(pinQuestions),
     visitQuestions: cards(visitQuestions),
+    approximatePoints: cards(approximatePoints),
     arrivals: cards(arrivals),
     held: cards(held),
     contents: cards(contents),

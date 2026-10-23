@@ -303,6 +303,33 @@ export const SitePoint = z.strictObject({
 }).describe('One of the places a site is made of (#1342).');
 export type SitePoint = z.infer<typeof SitePoint>;
 
+export const ApproximatePointHint = z.strictObject({
+  source: z.enum(['osm-ref', 'item', 'candidate', 'osm-name']).describe(
+    "Where the hint comes from: an OpenStreetMap object carrying the component's World Heritage reference, the"
+    + " component's own Wikidata item, an item the component-item finder proposes for it, or an OpenStreetMap object"
+    + ' within 2 km named like it.',
+  ),
+  ref: z.string().describe('The Wikidata item (Q-number) or the OpenStreetMap object (N, W or R and its id).'),
+  label: z.string().nullable().describe("The hint's name, where it has one."),
+  latitude: z.number(),
+  longitude: z.number(),
+  metres: z.number().int().describe("How far from the list's point the hint stands."),
+}).describe('One place a component the list placed only roughly may really stand (#1853).');
+export type ApproximatePointHint = z.infer<typeof ApproximatePointHint>;
+
+export const ApproximatePoint = z.strictObject({
+  locationId: z.number().int(),
+  name: z.string().nullable(),
+  ref: z.string().nullable().describe("The component's reference in the list."),
+  latitude: z.number(),
+  longitude: z.number(),
+  reason: z.enum(CHECK_VALUES.experience_locations.approximate).describe(
+    'Why the point is rough: given to the whole minute, or shared with another component of the property.',
+  ),
+  hints: z.array(ApproximatePointHint).describe("Where it may really stand, the component's own reference first."),
+}).describe('A component the World Heritage list placed only roughly, which nobody has placed since (#1853).');
+export type ApproximatePoint = z.infer<typeof ApproximatePoint>;
+
 export const MergePair = z.strictObject({
   proposalId: z.number().int().describe('What an answer names.'),
   otherId: z.number().int().describe('The other place of the pair; the card is the place with the lower id, which stays if the two are made one.'),
@@ -434,7 +461,12 @@ export const ReviewQueueItem = z.strictObject({
   ),
   site_points: z.array(SitePoint).nullable().optional().describe(
     'Every place the site is made of, in the source\'s order, each with its own picture where it has one: what the'
-    + ' card\'s map draws around the candidates (#1342). `component-items` items only.',
+    + ' card\'s map draws around the candidates (#1342), and around a point the list placed only roughly (#1853).'
+    + ' `component-items` and `approximate-points` items only.',
+  ),
+  approximate_points: z.array(ApproximatePoint).nullable().optional().describe(
+    'The components the World Heritage list placed only roughly, each with where it may really stand (#1853).'
+    + ' `approximate-points` items only.',
   ),
   merge_pairs: z.array(MergePair).nullable().optional().describe(
     'The open pairs of near places with similar names this place is the lower id of, the most alike first (#1249).'
@@ -493,6 +525,7 @@ export const ReviewQueue = z.strictObject({
   mergeProposals: z.array(ReviewQueueItem).describe('Places with a near place of a similar name nobody has answered (#1249).'),
   pinQuestions: z.array(ReviewQueueItem).describe("Curators' admission pins a run no longer agrees with (#1367)."),
   visitQuestions: z.array(ReviewQueueItem).describe('Offered places few witnesses vouch for and Jev reads as nothing to see (#1770).'),
+  approximatePoints: z.array(ReviewQueueItem).describe('Serial sites whose components the World Heritage list placed only roughly (#1853).'),
   arrivals: z.array(ReviewQueueItem),
   held: z.array(ReviewQueueItem),
   contents: z.array(ReviewQueueItem).describe('One per place and membership holding unread rows it placed (#1290).'),

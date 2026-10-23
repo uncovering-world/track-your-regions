@@ -150,7 +150,9 @@ describe('buildLayer (#1437)', () => {
       { osm_type: 'W', osm_id: '10', wikidata: null, geom: 'POLYGON' },
     ]);
     expect(await rows("SELECT indexname FROM pg_indexes WHERE schemaname = 'workbench' AND tablename = 'osm_objects' ORDER BY 1")).toEqual([
-      { indexname: 'osm_objects_geom' }, { indexname: 'osm_objects_pkey' }, { indexname: 'osm_objects_wikidata' }, { indexname: 'osm_objects_wikipedia' },
+      // The reference index the review card's hints are found by (#1853), copied like the rest.
+      { indexname: 'osm_objects_geom' }, { indexname: 'osm_objects_pkey' }, { indexname: 'osm_objects_ref_whc' },
+      { indexname: 'osm_objects_wikidata' }, { indexname: 'osm_objects_wikipedia' },
     ]);
     const [record] = await rows("SELECT planet_file, dump_date::text AS date, replicated_at, objects::int, pinned, pinned_gone, drawn FROM osm_layer_builds");
     expect(record).toMatchObject({ planet_file: planet.fileName, date: '2026-10-22', objects: 3, pinned: 1, pinned_gone: 0 });
