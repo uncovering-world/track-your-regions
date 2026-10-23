@@ -56,29 +56,42 @@ export type ItemContents = ReadonlyMap<string, ClaimedItemContent>;
 
 const RELOAD = ' — reload to see where it stands';
 
+/** The rule a catalogue-made answer names on its log row (ADR-0141). */
+export const CATALOGUE_RULE = 'exact';
+
 /**
  * What each confirmed item gives its point, read before the lock: the picture
- * and the description from Wikidata, the picture's credit from Commons. A
- * read that fails gives nothing — the point still takes its identity, which
- * is what the curator decided, and the picture waits for a curator's edit —
- * and never fails the save.
+ * and the description from Wikidata, the picture's credit from Commons. For a
+ * curator's save a read that fails gives nothing — the point still takes its
+ * identity, which is what the curator decided, and the picture waits for a
+ * curator's edit — and never fails the save. With `strict`, the catalogue's
+ * own pass (ADR-0141), a read Wikidata did not answer throws, and an item
+ * whose picture Commons gave no credit for is left out of the answer: nobody
+ * decided that point, and one accepted without its content would stay so,
+ * since the run's content writer leaves a claimed point alone. `budget` is how long it may wait on the
+ * services, none by default, since the person who pressed Save is watching.
  */
-export async function readItemContents(items: readonly string[]): Promise<ItemContents> {
+export async function readItemContents(
+  items: readonly string[],
+  { budget = new WaitBudget(0), strict = false }: { budget?: WaitBudget; strict?: boolean } = {},
+): Promise<ItemContents> {
   const contents = new Map<string, ClaimedItemContent>();
   if (items.length === 0) return contents;
   try {
-    // No patience at all, as a curator's own picture edit has none: the person
-    // who pressed Save is watching.
-    const budget = new WaitBudget(0);
     const read = await contentsOf(items, { budget });
     const credits = await fetchCommonsCredits(
       [...read.values()].map(content => content.image), { userAgent: userAgent(), budget, timeoutMs: CONTENT_TIMEOUT_MS },
     );
     for (const [item, content] of read) {
       const credit: ImageCredit | null = content.image ? credits.get(content.image) ?? null : null;
+      // A picture nobody is credited for is not written (claimPointItem), and
+      // Commons' failures are swallowed upstream; under `strict` an item with a
+      // missing credit is left out, or its point would keep no picture for good.
+      if (strict && content.image && !credit) continue;
       contents.set(item, { imageUrl: content.image, credit, description: content.description });
     }
   } catch (error) {
+    if (strict) throw error;
     // A literal format string: a template literal here trips the
     // unsafe-formatstring rule, and the count belongs in the arguments anyway.
     console.warn('%s The contents of %d confirmed items could not be read:', LOG_PREFIX, items.length, error);
@@ -149,10 +162,14 @@ function logged(candidate: NamedCandidate, pictured?: boolean) {
  * on its point with what the item gives it, every answer on its proposal, the
  * candidates the confirmations made moot cleared, and one log row. Refuses,
  * changing nothing, a batch any candidate of which cannot be answered as sent.
+ *
+ * `userId` null is the catalogue's own answer (ADR-0141): an exact candidate
+ * accepted by its rule, written by the same statements with no curator named,
+ * and marked so on the log row (`catalogue`) for the history to say so.
  */
 export async function answerComponentItemsUnderLock(
   experienceId: number,
-  userId: number,
+  userId: number | null,
   logRegionId: number | null,
   answers: readonly CandidateAnswer[],
   contents: ItemContents,
@@ -209,7 +226,10 @@ export async function answerComponentItemsUnderLock(
     await client.query(
       `INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
        VALUES ($1, $2, 'component_items_answered', $3, $4)`,
-      [experienceId, userId, logRegionId, JSON.stringify({ accepted, refused: turnedDown.map(c => logged(c)) })],
+      [experienceId, userId, logRegionId, JSON.stringify({
+        accepted, refused: turnedDown.map(c => logged(c)),
+        ...(userId === null ? { catalogue: CATALOGUE_RULE } : {}),
+      })],
     );
     await client.query('COMMIT');
     return { result: { experienceId, accepted: confirmed.length, refused: turnedDown.length, pictured } };

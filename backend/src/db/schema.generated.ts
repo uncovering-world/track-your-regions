@@ -248,6 +248,7 @@ export interface ExperienceComponentItemProposalsRow {
   taken_back_at: Date | null;
   register_code: string | null;
   register_disagrees: boolean;
+  answered_by_catalogue: boolean;
 }
 
 /** The table `experience_component_item_suggestions`. */

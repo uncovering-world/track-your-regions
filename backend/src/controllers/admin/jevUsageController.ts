@@ -80,7 +80,9 @@ export async function getJevUsage(): Promise<JevUsage> {
          WHERE s.location_id = p.location_id AND s.wikidata_item = p.wikidata_item AND s.asked = ${askedSql('p')}
          ORDER BY s.asked_at DESC, s.id DESC LIMIT 1
       ) g ON true
-     WHERE p.answer IS NOT NULL
+     -- A curator's answers only: the catalogue's own acceptance (ADR-0141) is no
+     -- curator agreeing with anyone.
+     WHERE p.answer IS NOT NULL AND NOT p.answered_by_catalogue
   `);
   const pairs = await pool.query<Counted>(`
     SELECT (SELECT count(*) FROM experience_merge_suggestions)::int AS calls,
