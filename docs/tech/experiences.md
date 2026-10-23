@@ -215,7 +215,7 @@ development catalogue on 2026-10-13. The curator's cards about a withdrawn, lost
 reader is shown counts `pointVisitsSql`, which names a place and never a person; and viewing a work
 records a part's point of its venue on the part.
 
-**Where a reader is told an object is** ([ADR-0028](../decisions/0028-a-reader-is-positioned-by-places-they-can-go-to.md)). An object carries a coordinate of its own, `experiences.location`, and its places carry theirs. They are independent answers, and they disagreed by more than a kilometre for 106 objects and by up to 191 km (#502) — a list row and a map pin naming different countries for the same site. Every reader-facing read now positions an object with `readerPositionSql()`: **the place nearest the object's own published coordinate**, falling back to that coordinate for an object with no visible place. For an object of several places the stored coordinate is no longer the source's but the anchor the run derives, its most central component ([ADR-0095](../decisions/0095-a-place-of-several-points-has-no-coordinate-of-its-own.md), § Serial nominations below), so the place a reader is given is that component.
+**Where a reader is told an object is** ([ADR-0028](../decisions/0028-a-reader-is-positioned-by-places-they-can-go-to.md)). An object carries a coordinate of its own, `experiences.location`, and its places carry theirs. They are independent answers, and they disagreed by more than a kilometre for 106 objects and by up to 191 km (#502) — a list row and a map pin naming different countries for the same site. Every reader-facing read now positions an object with `readerPositionSql()`: **the place nearest the object's own published coordinate**, falling back to that coordinate for an object with no visible place. For an object of several places the stored coordinate is no longer the source's but the anchor the run derives, its most central component ([ADR-0095](../decisions/0095-a-place-of-several-points-has-no-coordinate-of-its-own.md), § Serial nominations below) — or, for an edition cast in several cities, its most central cast ([ADR-0145](../decisions/0145-an-edition-is-one-place-with-a-point-at-every-cast.md), § Public Art & Monuments) — so the place a reader is given is that component or cast; `medoidOf` in `anchorPoint.ts` is the one rule both runs read.
 
 One rule, and no tolerance in it. For most objects — nine in ten on 2026-09-22 — the coordinate already *is* one of the places, so the distance is zero and nothing moves; of the rest the average move is 9.5 km, and the largest are the ones the issue was opened about — Wet Tropics of Queensland 191 km, Gondwana 171 km, Virgin Komi 144 km. The rule ADR-0028 first proposed — the coordinate when it matches a place to within ADR-0027's ten metres, the medoid otherwise — was measured and dropped: it is discontinuous, moving eight objects over 100 km because their coordinate misses a place by a few hundred metres, the worst of them 2068 km. Nearest is measured in metres, on `geography`, never in degrees: 42 multi-place objects sit above 60° — Struve Geodetic Arc's 34 points reach 70.7°N — where a degree of longitude is a third of a degree of latitude, and degree ordering was measured picking a further place for six objects. A tie is broken by `el.id`, so the two axes always name one place. The places considered are only those the same reader may see, so an object is never positioned at a point that reader is not shown — except that the caller which shows a curator an object the queue has not passed yet relaxes the same gate here, because a curator deciding a coordinate has to preview where publishing will put the pin rather than the anchor they are deciding against. It cost 25 ms on a whole-region read of Europe's 661 experiences and the 3725 places under them, measured 2026-08-19.
 
@@ -2236,6 +2236,14 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    in 56 s; the whole admitting set holds 600 entities at 15 sitelinks, 447 at 18 and 300 at 22.
    The pool no longer carries the five `OPTIONAL`s that made a monument with seven makers arrive
    seven times and spend a cap that counted rows (#720).
+   **An edition's casts are read here** ([ADR-0145](../decisions/0145-an-edition-is-one-place-with-a-point-at-every-cast.md), #880): an item carrying two or
+   more best-rank coordinates each qualified "applies to part" (`pq:P518`) — *Maman* in Bilbao,
+   Ottawa, London and Minato — answers `PoolEntity.casts`, one per distinct point — two parts named on one point are one
+   cast, called by the lowest-numbered — named for the part's label and set in that part's country (`castsOf` in `queries.ts`; `poolEntity` in
+   `subset/publicArt.ts` reads the same off the subset's qualifiers). The item's `lat`/`lon` stay
+   the fold's kept point, which the verdict is read on; one qualified point is a place given
+   precisely, not an edition, and two points no part tells apart are the same place written twice,
+   which the fold settles (ADR-0085).
 3. **Facts** — per 50 candidates, one `UNION` question: every `P31`; `P276`, `P361` and `P195`,
    each read statement by statement as what still holds (the shared kit's `standing`, `wikidataQueries.ts`: best-ranked,
    what `wdt:` would answer, and carrying no `pq:P582` end time — the end-time rule the museum
@@ -2422,6 +2430,14 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    both sync-owned keys (§ Change provenance), and the second is what the catalogue check reads.
    They sit on the place, so a place both kinds admit carries what the last of the two runs
    wrote; both answer yes for a veto they admitted past.
+   **An edition is written as one place with a point at every cast** (ADR-0145): `upsertLandmarkExperience`
+   hands `writeExperienceLocations` one `IncomingLocation` per cast, named for where it stands and
+   carrying the work's own reference — identity is the reference with the point (ADR-0022,
+   ADR-0027), so a cast the run wrote as the work's one point is the same row, named now, and a
+   cast that leaves Wikidata is withdrawn, never moved. The place is told to be at the cast nearest
+   the casts' centroid (`medoidOf`, `anchorPoint.ts`, shared with the World Heritage run's
+   `resolveMainPoint`), written past the gate as any anchor is (ADR-0095, `locationIsAnchor`), and
+   its countries are every cast's. A work standing in one place keeps its one point as before.
 
 **The cap decision.** The 200 the source used to cut at is gone: the world tier is a **threshold on
 the world's own signal, global, not a count and not per region** — ADR-0045 decision 2's "the
