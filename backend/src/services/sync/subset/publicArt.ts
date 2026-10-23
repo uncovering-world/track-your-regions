@@ -20,7 +20,8 @@
 
 import { foldLabel } from '@tyr/shared/labels';
 import { pool } from '../../../db/index.js';
-import type { ContainerFacts, EntityFacts, PoolEntity } from '../publicArt/queries.js';
+import type { ContainerFacts, EntityFacts, PoolCast, PoolEntity } from '../publicArt/queries.js';
+import { namingPart } from '../publicArt/castNaming.js';
 import type { SubjectFacts } from '../publicArt/subjects.js';
 import { countryOfPlace, openCountries, standingCountries, type PlaceCountry } from '../publicArt/countryOfPlace.js';
 import { parseWktPoint, preferredCoordinate, preferredPicture } from '../wikidataUtils.js';
@@ -49,6 +50,37 @@ function poolEntity(
   });
   const partCountries = parts.length ? new Set(parts.flatMap(part => around.partCountries.get(part) ?? [])) : null;
   const country = countryOfPlace(standingCountries(countries), partCountries);
+  // The casts of an edition: two or more points each qualified with the place
+  // it applies to, named for that place and set in its country (#880).
+  // Two points qualified with one place are the same cast written twice,
+  // folded as any item's point is (`preferredCoordinate`, ADR-0085).
+  // Every part a statement names, the point kept per part; then one cast per
+  // point — two parts named on one point are one cast, called by the
+  // lowest-numbered (`namingPart`) — and the edition is two or more points, as
+  // the live reader reads the same rows (`castsOf` in `publicArt/queries.ts`).
+  const byPlace = new Map<string, string>();
+  for (const statement of points) {
+    const wkt = wktOf(statement.value);
+    if (!wkt) continue;
+    for (const place of partsOf(statement)) byPlace.set(place, preferredCoordinate(byPlace.get(place) ?? null, wkt) ?? wkt);
+  }
+  const byPoint = new Map<string, string[]>();
+  for (const [place, placeWkt] of byPlace) byPoint.set(placeWkt, [...(byPoint.get(placeWkt) ?? []), place]);
+  const casts: PoolCast[] | undefined = byPoint.size >= 2 ? [...byPoint].flatMap(([pointWkt, places]) => {
+    const at = parseWktPoint(pointWkt);
+    if (!at) return [];
+    // The parts' own countries, empty where they name none.
+    const ofPlaces = new Set(places.flatMap(place => around.partCountries.get(place) ?? []));
+    const castCountry = countryOfPlace(standingCountries(countries), ofPlaces);
+    const part = namingPart(places);
+    return [{
+      lat: at.lat,
+      lon: at.lon,
+      placeQid: part,
+      placeLabel: terms.get(part)?.label ?? null,
+      countryLabel: castCountry ? terms.get(castCountry)?.label ?? null : null,
+    }];
+  }) : undefined;
   const open = openCountries(countries, partCountries);
   const enwiki = kept.entity.sitelinks.enwiki;
   return {
@@ -62,6 +94,7 @@ function poolEntity(
     itemPictures,
     sitelinks: kept.sitelinks,
     countryLabel: country ? terms.get(country)?.label ?? null : null,
+    ...(casts ? { casts } : {}),
     countryOptions: open && {
       candidates: open.keys.map(qid => ({ qid, label: terms.get(qid)?.label ?? qid })),
       noneStands: open.noneStands,
@@ -110,7 +143,8 @@ async function poolOf(ids: string[], placeless: boolean): Promise<PoolEntity[]> 
     partCountries: new Map([...partEntities].map(([id, { entity }]) => [id, itemsOf(bestStatements(entity.claims.P17))])),
     dissolved,
   };
-  const terms = await termsOf([...kept.keys(), ...countries]);
+  // The parts' labels name an edition's casts, and their countries set them (#880).
+  const terms = await termsOf([...kept.keys(), ...countries, ...parts, ...[...around.partCountries.values()].flat()]);
   return [...kept].map(([id, entity]) => poolEntity(id, entity, terms, around, placeless))
     .filter((e): e is PoolEntity => e !== null);
 }

@@ -14,7 +14,7 @@
  */
 
 import {
-  applyPreferred, extractQid, foldPreferred, isQid, parseWktPoint, LABEL_LANGS, type PreferredValues, type SparqlBinding,
+  applyPreferred, extractQid, foldPreferred, isQid, parseWktPoint, preferredCoordinate, LABEL_LANGS, type PreferredValues, type SparqlBinding,
 } from '../wikidataUtils.js';
 import { foldLabel } from '@tyr/shared/labels';
 import {
@@ -40,6 +40,7 @@ import {
   countryOfPlace, openCountries, standingCountries, type CountryOptions, type PlaceCountry,
 } from './countryOfPlace.js';
 import { settleCountriesByPoint } from './countryByPoint.js';
+import { namingPart } from './castNaming.js';
 
 /**
  * The floor of the pool sits below the line a row *stays* above
@@ -69,11 +70,29 @@ export const POOL_BANDS: Band[] = [
   { min: POOL_MIN_SITELINKS, max: 18 },
 ];
 
+/** One cast of an edition: where it stands, what that place is called, and its country (#880). */
+export interface PoolCast {
+  lat: number;
+  lon: number;
+  /** The place the coordinate applies to (`pq:P518`), and its label. */
+  placeQid: string | null;
+  placeLabel: string | null;
+  countryLabel: string | null;
+}
+
 /** Everything single-valued about a candidate, from the pool row that named it. */
 export interface PoolEntity {
   qid: string;
   label: string;
   description: string | null;
+  /**
+   * The casts of an edition, where the item carries two or more best-rank
+   * coordinates each qualified by the place it applies to (`pq:P518`) —
+   * *Maman* in Bilbao, Ottawa, London and Minato (#880). Absent for an item
+   * with one point, or with several that no part tells apart (the same place
+   * written twice, which the fold settles). `lat`/`lon` stay the kept point.
+   */
+  casts?: PoolCast[];
   /**
    * Null only for an admitted row asked for by id whose coordinate Wikidata
    * has removed: the pool questions require one, and the by-id question does
@@ -113,7 +132,7 @@ const POOL_DETAILS = `
       OPTIONAL { ?article schema:about ?e ; schema:isPartOf <https://en.wikipedia.org/> }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }`;
 
-const POOL_COLUMNS = '?e ?eLabel ?eDescription ?coord ?sl ?img ?country ?countryLabel ?countryEnded ?countryDissolved ?part ?partCountryLabel ?article ?site (YEAR(?inception) AS ?year)';
+const POOL_COLUMNS = '?e ?eLabel ?eDescription ?coord ?sl ?img ?country ?countryLabel ?countryEnded ?countryDissolved ?part ?partLabel ?partCountryLabel ?article ?site (YEAR(?inception) AS ?year)';
 
 function bandedPoolQuery(rootQid: string, band: Band, limit: number): string {
   return `${HINT_PREFIX}
@@ -142,11 +161,18 @@ function classPoolQuery(classQids: string[], limit: number): string {
 interface CountryReading {
   countries: PlaceCountry[];
   parts: Map<string, Set<string>>;
+  /**
+   * Per part a point applies to, the point kept for it and the part's label:
+   * what a cast is called and where it stands (#880). Two points qualified with
+   * one part are the same cast written twice, folded as any item's point is
+   * (`preferredCoordinate`, ADR-0085).
+   */
+  places: Map<string, { wkt: string; label: string | null }>;
 }
 
 /** One more row of an entity folded into what its rows say about its country. */
 function readCountry(reading: CountryReading | undefined, row: SparqlBinding, wkt: string | null): CountryReading {
-  const next = reading ?? { countries: [], parts: new Map<string, Set<string>>() };
+  const next: CountryReading = reading ?? { countries: [], parts: new Map(), places: new Map() };
   if (row.countryLabel?.value) {
     next.countries.push({
       country: row.countryLabel.value, qid: extractQid(row.country?.value ?? ''), stands: !row.countryEnded && !row.countryDissolved,
@@ -156,8 +182,49 @@ function readCountry(reading: CountryReading | undefined, row: SparqlBinding, wk
     const named = next.parts.get(wkt) ?? new Set<string>();
     if (row.partCountryLabel?.value) named.add(row.partCountryLabel.value);
     next.parts.set(wkt, named);
+    const part = extractQid(row.part.value);
+    const place = next.places.get(part);
+    next.places.set(part, {
+      wkt: preferredCoordinate(place?.wkt ?? null, wkt) ?? wkt,
+      label: place?.label ?? row.partLabel?.value ?? null,
+    });
   }
   return next;
+}
+
+/**
+ * The casts of an edition, read off the points its rows qualify with a part:
+ * two or more distinct points, each named for the place it applies to and set
+ * in that place's country (#880). One qualified point is a place given
+ * precisely, not an edition, and answers nothing here.
+ */
+function castsOf(reading: CountryReading | undefined): PoolCast[] | undefined {
+  if (!reading || reading.places.size < 2) return undefined;
+  // One cast per point: two parts named on one point — a city and the park in
+  // it — are one cast, called by the lowest-numbered (`namingPart`), an order
+  // the data carries rather than the rows; the edition is two or more points.
+  const byPoint = new Map<string, Map<string, string | null>>();
+  for (const [part, place] of reading.places) {
+    const named = byPoint.get(place.wkt) ?? new Map<string, string | null>();
+    named.set(part, place.label);
+    byPoint.set(place.wkt, named);
+  }
+  const casts: PoolCast[] = [];
+  for (const [wkt, named] of byPoint) {
+    const at = parseWktPoint(wkt);
+    if (!at) continue;
+    const part = namingPart([...named.keys()]);
+    casts.push({
+      lat: at.lat,
+      lon: at.lon,
+      placeQid: isQid(part) ? part : null,
+      placeLabel: named.get(part) ?? null,
+      // The parts' own countries, empty where they name none: a cast in a place
+      // the data puts in no country is in none, not in the work's first.
+      countryLabel: countryOfPlace(standingCountries(reading.countries), reading.parts.get(wkt) ?? new Set()),
+    });
+  }
+  return casts.length >= 2 ? casts : undefined;
 }
 
 /** The country of an entity drawn at `point`: of the countries that stand today, `countryOfPlace`'s. */
@@ -224,11 +291,16 @@ function parsePool(rows: SparqlBinding[], options: { placeless?: boolean } = {})
     });
   }
   applyPreferred(out, kept);
-  for (const [qid, entity] of out) {
-    entity.countryLabel = countryAt(countries.get(qid), kept.get(qid)?.wkt ?? null);
-    entity.countryOptions = countryOptionsAt(countries.get(qid), kept.get(qid)?.wkt ?? null);
-  }
+  for (const [qid, entity] of out) settleCountry(entity, countries.get(qid), kept.get(qid)?.wkt ?? null);
   return [...out.values()];
+}
+
+/** What the rows said about where an entity is, written onto it once the point is kept. */
+function settleCountry(entity: PoolEntity, reading: CountryReading | undefined, point: string | null): void {
+  entity.countryLabel = countryAt(reading, point);
+  entity.countryOptions = countryOptionsAt(reading, point);
+  const casts = castsOf(reading);
+  if (casts) entity.casts = casts;
 }
 
 /**

@@ -75,6 +75,61 @@ describe('fetchClassPool', () => {
     expect(maman.countryLabel).toBe('Japan');
   });
 
+  it('reads an edition\'s casts off its qualified points, each named for where it stands (#880)', async () => {
+    const casts = [
+      ['Point(-2.932958 43.269189)', 'Q8692', 'Bilbao', 'Spain'], ['Point(-75.697277 45.429333)', 'Q1930', 'Ottawa', 'Canada'],
+      ['Point(-0.099333 51.507694)', 'Q84', 'London', 'United Kingdom'], ['Point(139.7296602 35.6610104)', 'Q190088', 'Minato', 'Japan'],
+    ];
+    const rows: SparqlBinding[] = casts.flatMap(([coord, host, hostLabel, hostCountry]) => casts.map(([, , , country]) => ({
+      e: ref('Q180887'), eLabel: { value: 'Maman' }, coord: { value: coord }, sl: { value: '30' },
+      countryLabel: { value: country }, part: ref(host), partLabel: { value: hostLabel }, partCountryLabel: { value: hostCountry },
+    })));
+    const [maman] = await fetchClassPool(answer(rows), ['Q860861']);
+    expect(maman.casts).toEqual([
+      { lat: 43.269189, lon: -2.932958, placeQid: 'Q8692', placeLabel: 'Bilbao', countryLabel: 'Spain' },
+      { lat: 45.429333, lon: -75.697277, placeQid: 'Q1930', placeLabel: 'Ottawa', countryLabel: 'Canada' },
+      { lat: 51.507694, lon: -0.099333, placeQid: 'Q84', placeLabel: 'London', countryLabel: 'United Kingdom' },
+      { lat: 35.6610104, lon: 139.7296602, placeQid: 'Q190088', placeLabel: 'Minato', countryLabel: 'Japan' },
+    ]);
+
+    // One qualified point is a place given precisely, not an edition.
+    const [one] = await fetchClassPool(answer(rows.filter(row => row.part?.value.endsWith('Q1930'))), ['Q860861']);
+    expect(one.casts).toBeUndefined();
+    // Minato's point written twice, once rounded, is one cast at the precise
+    // point (the fold of ADR-0085); a cast whose place names no country is in none.
+    const again: SparqlBinding[] = [...rows, {
+      e: ref('Q180887'), eLabel: { value: 'Maman' }, coord: { value: 'Point(139.73 35.66)' }, sl: { value: '30' },
+      countryLabel: { value: 'Spain' }, part: ref('Q190088'), partLabel: { value: 'Minato' }, partCountryLabel: { value: 'Japan' },
+    }, {
+      e: ref('Q180887'), eLabel: { value: 'Maman' }, coord: { value: 'Point(126.9780 37.5665)' }, sl: { value: '30' },
+      countryLabel: { value: 'Spain' }, part: ref('Q8684'), partLabel: { value: 'Seoul' },
+    }];
+    const [folded] = await fetchClassPool(answer(again), ['Q860861']);
+    expect(folded.casts).toHaveLength(5);
+    expect(folded.casts!.filter(cast => cast.placeQid === 'Q190088')).toEqual([
+      { lat: 35.6610104, lon: 139.7296602, placeQid: 'Q190088', placeLabel: 'Minato', countryLabel: 'Japan' },
+    ]);
+    expect(folded.casts!.find(cast => cast.placeQid === 'Q8684')).toMatchObject({ placeLabel: 'Seoul', countryLabel: null });
+    // Two parts named on one point — Minato and Roppongi Hills in it — are one cast, and
+    // one point under two names is no edition.
+    // The park's row arrives first: the name is the lowest-numbered part's, not the first row's.
+    const twoNames: SparqlBinding[] = [['Q1071084', 'Roppongi Hills'], ['Q190088', 'Minato']].map(([host, label]) => ({
+      e: ref('Q180887'), eLabel: { value: 'Maman' }, coord: { value: 'Point(139.7296602 35.6610104)' }, sl: { value: '30' },
+      countryLabel: { value: 'Japan' }, part: ref(host), partLabel: { value: label }, partCountryLabel: { value: 'Japan' },
+    }));
+    const [oneUnderTwoNames] = await fetchClassPool(answer(twoNames), ['Q860861']);
+    expect(oneUnderTwoNames.casts).toBeUndefined();
+    const [named] = await fetchClassPool(answer([...rows, ...twoNames]), ['Q860861']);
+    expect(named.casts).toHaveLength(4);
+    expect(named.casts!.find(cast => cast.lat === 35.6610104)).toMatchObject({ placeQid: 'Q190088', placeLabel: 'Minato' });
+    // Two points no part tells apart are the same place written twice: the fold's, not casts.
+    const twice: SparqlBinding[] = ['Point(-4.1225 43.3773)', 'Point(-4.12 43.38)'].map(coord => ({
+      e: ref('Q166788'), eLabel: { value: 'Cave of Altamira' }, coord: { value: coord }, sl: { value: '60' },
+    }));
+    const [altamira] = await fetchClassPool(answer(twice), ['Q839954']);
+    expect(altamira.casts).toBeUndefined();
+  });
+
   it('names the country a place is in today, not a state that is gone (#757)', async () => {
     // The Stutthof camp (Q326193) is stated in Nazi Germany, its statement ended in 1945, and
     // in Poland; the answer lists Nazi Germany first.
