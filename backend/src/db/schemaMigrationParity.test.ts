@@ -517,6 +517,10 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // decision 5): it names the place, only refers to it, is taken off, or
     // is the sources' to decide again.
     'identifier_settled',
+    // One kind's membership separated into a place of its own (ADR-0144,
+    // #1885): written on both places' histories, the way back from a merge or
+    // a run's join that a shared identifier misled.
+    'separated',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;
