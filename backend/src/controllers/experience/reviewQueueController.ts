@@ -461,6 +461,10 @@ export async function getReviewQueue(
   // card per site with its points and where each may stand.
   const approximatePointsIds = idsOf('approximate-points');
   const approximatePoints = await hydrate(approximatePointsIds, () => queryApproximatePoints(approximatePointsIds));
+  // The same sites' points nothing says where they may stand (#1903): listed
+  // apart, answered on the same card by keeping or placing each by hand.
+  const approximateUnhintedIds = idsOf('approximate-unhinted');
+  const approximateUnhinted = await hydrate(approximateUnhintedIds, () => queryApproximatePoints(approximateUnhintedIds, false));
 
   // What counts as `arrival`: the reasoning is on `arrivalOpenSql`
   // (`reviewQueuePredicates.ts`).
@@ -623,6 +627,7 @@ export async function getReviewQueue(
     pinQuestions: cards(pinQuestions),
     visitQuestions: cards(visitQuestions),
     approximatePoints: cards(approximatePoints),
+    approximateUnhinted: cards(approximateUnhinted),
     arrivals: cards(arrivals),
     held: cards(held),
     contents: cards(contents),

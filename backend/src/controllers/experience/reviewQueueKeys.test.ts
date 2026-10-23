@@ -97,12 +97,12 @@ describe('queryQueueKeys', () => {
     // Conflict, two sources (#1246), arrival, held, contents, withdrawn,
     // refused, the two missing branches — the place's, and one kind's
     // (#1264) —, component items (#1272), near places with similar names
-    // (#1249), pin questions (#1367), visit questions (#1770) and roughly
-    // placed components (#1853). The scope CTE's own join reads
+    // (#1249), pin questions (#1367), visit questions (#1770), and roughly
+    // placed components with a hint (#1853) and with none (#1903). The scope CTE's own join reads
     // `r.parent_region_id = s.id`, so it is not counted here, and dropping the
     // predicate from one branch fails this.
     expect(lastCall()[0].match(/JOIN curator_scoped_regions s ON s\.id = er\.region_id/g))
-      .toHaveLength(14);
+      .toHaveLength(15);
   });
 
   it('dates a pair of near places by the newest proposal, anchors it on the lower id and scopes it by either place (#1249)', async () => {
@@ -137,10 +137,16 @@ describe('queryQueueKeys', () => {
   it('files a site with a roughly placed component, undated and under no run, last of the classes (#1853)', async () => {
     await queryQueueKeys(base);
     const [sql] = lastCall();
-    const rough = between(sql, "SELECT 'approximate-points'", ', searched AS (');
+    const rough = between(sql, "SELECT 'approximate-points'", "SELECT 'approximate-unhinted'");
     expect(rough).toContain(`'approximate-points', ${KIND_RANK['approximate-points']}, e.id, e.name`);
     expect(rough).toContain("el.approximate IS NOT NULL AND NOT el.curated_fields ? 'location'");
-    expect(Math.max(...Object.values(KIND_RANK))).toBe(KIND_RANK['approximate-points']);
+    expect(rough).toContain('AND (EXISTS (SELECT 1 FROM experience_point_hints hint');
+    expect(rough).not.toContain('AND NOT (EXISTS (SELECT 1 FROM experience_point_hints hint');
+    // The points nothing says more about are listed apart, after them (#1903).
+    const unhinted = between(sql, "SELECT 'approximate-unhinted'", ', searched AS (');
+    expect(unhinted).toContain('AND NOT (EXISTS (SELECT 1 FROM experience_point_hints hint');
+    expect(Math.max(...Object.values(KIND_RANK))).toBe(KIND_RANK['approximate-unhinted']);
+    expect(KIND_RANK['approximate-unhinted']).toBe(KIND_RANK['approximate-points'] + 1);
   });
 
   it('dates a site\'s candidate items by the newest proposal and files them under no run (#1272)', async () => {
