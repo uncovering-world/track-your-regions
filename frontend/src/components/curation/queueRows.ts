@@ -62,6 +62,7 @@ const QUESTION: Record<RowKind, string> = {
   'merge-proposals': 'a near place with a name alike',
   'pin-question': 'a run asks again about a pin',
   'visit-question': 'offered, with nothing to see',
+  'approximate-points': 'placed only roughly',
 };
 
 /** The server's word for a question kind, mapped to this file's own — only `conflict` differs. */
@@ -76,6 +77,7 @@ const ROW_KIND: Record<QueueOrderEntry['kind'], RowKind> = {
   'merge-proposals': 'merge-proposals',
   'pin-question': 'pin-question',
   'visit-question': 'visit-question',
+  'approximate-points': 'approximate-points',
 };
 
 /**
@@ -167,6 +169,7 @@ export function queueRows(data: ReviewQueue | undefined): QueueRow[] {
     'merge-proposals': byPlace(data.mergeProposals),
     'pin-question': byPlace(data.pinQuestions),
     'visit-question': byPlace(data.visitQuestions),
+    'approximate-points': byPlace(data.approximatePoints),
   };
 
   const rows: QueueRow[] = [];

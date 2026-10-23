@@ -37,7 +37,7 @@ export interface AnswerableRow {
 
 export type AnswerableKind =
   | 'arrival' | 'held' | 'contents' | 'conflicts' | 'sources' | 'refused' | 'missing' | 'withdrawn' | 'component-items'
-  | 'merge-proposals' | 'pin-question' | 'visit-question';
+  | 'merge-proposals' | 'pin-question' | 'visit-question' | 'approximate-points';
 
 export interface AnswerWords {
   /** What the row proposes, as the bar's expansion states it. */
@@ -126,6 +126,13 @@ export const ANSWER_WORDS: Record<AnswerableKind, AnswerWords> = {
     accept: 'Refuse on each card',
     reject: 'Keep them all',
   },
+  // Where a component stands is read off its card's map, one point at a time
+  // (#1853): the server refuses both batch answers.
+  'approximate-points': {
+    proposes: 'place a component the World Heritage list placed only roughly',
+    accept: 'Place them on each card',
+    reject: 'Place them on each card',
+  },
 };
 
 /** The plural noun the bar counts a kind by. */
@@ -142,6 +149,7 @@ export const KIND_NOUN: Record<AnswerableKind, [string, string]> = {
   'merge-proposals': ['place with a near place of a name alike', 'places with a near place of a name alike'],
   'pin-question': ['questioned pin', 'questioned pins'],
   'visit-question': ['place with nothing to see', 'places with nothing to see'],
+  'approximate-points': ['site placed only roughly', 'sites placed only roughly'],
 };
 
 /**

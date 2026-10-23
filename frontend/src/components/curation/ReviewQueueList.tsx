@@ -42,6 +42,7 @@ const KIND_HEADING: Record<RowKind, string> = {
   'merge-proposals': 'Near places with names alike — one place, or two?',
   'pin-question': 'A run asks again about an answer you pinned',
   'visit-question': 'Offered places with nothing to see — refuse them?',
+  'approximate-points': 'Components the World Heritage list placed only roughly — where are they?',
 };
 
 /** A group's heading a transition in `rows` opens — never computed for a row that continues its predecessor's group. */
