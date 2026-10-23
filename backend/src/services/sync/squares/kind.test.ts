@@ -37,6 +37,7 @@ describe('classifySquares', () => {
     byId: new Set(),
     facts: new Map(rows.map(([e, classes]) => [e.qid, { classes }])) as never,
     containers: emptyContainment(),
+    subjects: new Map(),
   });
 
   it('admits on readers or on a guide, and refuses what the rule refuses', async () => {

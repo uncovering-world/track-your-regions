@@ -27,6 +27,7 @@ import {
   type PoolEntity,
 } from '../publicArt/queries.js';
 import { emptyContainment, loadContainment, type Containment } from './containment.js';
+import { loadSubjects, type SubjectFacts, type SubjectRunner } from '../publicArt/subjects.js';
 
 const CLASS_BATCH = 25;
 const FACT_BATCH = 50;
@@ -54,6 +55,8 @@ export interface PlaceKind<Trees> {
    * owns it (`P195`). Only those kinds' candidates have them asked.
    */
   readsContainers: boolean;
+  /** Whether its rule reads what a candidate depicts (`P180`): what that item is (`publicArt/subjects.ts`). */
+  readsSubjects?: boolean;
 }
 
 /** A kind's share of the gather: its trees, and its candidates with what is known of them. */
@@ -69,6 +72,8 @@ export interface KindShare<Trees> {
   facts: Map<string, EntityFacts>;
   /** What holds and owns its candidates; empty for a kind that reads none. */
   containers: Containment;
+  /** What its candidates depict, by item id; empty for a kind that reads none. */
+  subjects: Map<string, SubjectFacts>;
 }
 
 /** The kinds a gather was asked for, with what each of them admits before the run. */
@@ -192,7 +197,7 @@ function candidatesOf(
 }
 
 /** Gather the candidate places of every kind asked for, and what each of them is. */
-export async function gatherPlaces(run: QueryRunner, requests: GatherRequest[]): Promise<GatheredPlaces> {
+export async function gatherPlaces(run: SubjectRunner, requests: GatherRequest[]): Promise<GatheredPlaces> {
   const { trees, classesOf, roots, narrow } = await askedClasses(run, requests);
   const pooled = await collectPool(run, roots, narrow);
   const admitted = new Set(requests.flatMap(({ admitted: ids }) => [...ids]));
@@ -202,7 +207,7 @@ export async function gatherPlaces(run: QueryRunner, requests: GatherRequest[]):
   const shares = new Map<PlaceKind<unknown>, KindShare<unknown>>();
   for (const { kind, admitted: ids } of requests) {
     const share = candidatesOf(classesOf.get(kind)!, ids, pooled, byId, facts);
-    shares.set(kind, { trees: trees.get(kind), ...share, containers: emptyContainment() });
+    shares.set(kind, { trees: trees.get(kind), ...share, containers: emptyContainment(), subjects: new Map() });
   }
 
   // Containers once, for the candidates of the kinds that read them.
@@ -211,6 +216,12 @@ export async function gatherPlaces(run: QueryRunner, requests: GatherRequest[]):
     const asked = new Map(reading.flatMap((share) => [...share.facts]));
     const containers = await loadContainment(run, [...asked.values()]);
     for (const share of reading) share.containers = containers;
+  }
+  // Subjects once, for the candidates of the kinds that read them.
+  const depicting = requests.filter(({ kind }) => kind.readsSubjects).map(({ kind }) => shares.get(kind)!);
+  if (depicting.length) {
+    const subjects = await loadSubjects(run, depicting.flatMap((share) => [...share.facts.values()].flatMap((f) => f.depicts)));
+    for (const share of depicting) share.subjects = subjects;
   }
   return { shares, pooled: pooled.size };
 }
