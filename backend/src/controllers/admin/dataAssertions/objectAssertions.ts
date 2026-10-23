@@ -466,7 +466,10 @@ const placeWithoutMembership: CatalogueAssertion = {
  * (ADR-0143 decision 6). A place where none matches has lost the membership
  * its first source would find it by: that source's next run does not find it,
  * tries to create the place, and fails on that item on every run, since the
- * place's own pair is still unique among places.
+ * place's own pair is still unique among places. A serial site's component
+ * part is brought under a pair of its own (`part:<id>`) that no membership
+ * carries, and its run finds it through its whole (ADR-0100), so a part that
+ * holds a kind's membership — the Tower of Belem as a tower — is not one.
  */
 const membershipSourceDisagreesWithRow: CatalogueAssertion = {
   id: 'membership-source-disagrees-with-row',
@@ -492,6 +495,8 @@ const membershipSourceDisagreesWithRow: CatalogueAssertion = {
                 AND m.source_id = e.source_id
                 AND m.external_id = e.external_id
            )
+           -- A component part's pair is its own, found through its whole (ADR-0100).
+           AND NOT EXISTS (SELECT 1 FROM experience_parts prt WHERE prt.part_id = e.id)
          ORDER BY e.name`,
   describe: row =>
     `${text(row, 'experience_name')}: brought by ${text(row, 'row_source_name')} as `
