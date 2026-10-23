@@ -96,3 +96,46 @@ describe('keeping the question another source of the place asks', () => {
     expect(fieldsOfOthers(1, []).metadata).toEqual([]);
   });
 });
+
+describe("keeping a monument's year and makers under a kind that never reads them (#1879)", () => {
+  // Charminar is held by Places of worship (4) and by Monuments & memorials (6),
+  // which reads its year off the item. A worship run writes no year.
+  const CHARMINAR = { ...STORED, metadata: { wikidataQid: 'Q11015', year: 1591, creators: ['Muhammad Quli Qutb Shah'] } };
+  const record = (metadata: Record<string, unknown>) => ({ ...RUN, metadata });
+
+  it('writes them as the place holds them while a kind that writes them holds the place', () => {
+    const kept = keptForFamilies(record({ wikidataQid: 'Q11015', worshipReadershipNote: null }), CHARMINAR, fieldsOfOthers(4, [6]));
+    expect(kept.metadata).toEqual({
+      wikidataQid: 'Q11015', worshipReadershipNote: null, year: 1591, creators: ['Muhammad Quli Qutb Shah'],
+    });
+  });
+
+  it('lets a kind that reads the year propose its removal, as before', () => {
+    // Towers (7) reads the year too: an item that stops stating one is a change.
+    expect(fieldsOfOthers(7, [6]).metadata).not.toContain('year');
+    const kept = keptForFamilies(record({ wikidataQid: 'Q11015', year: null, creators: [] }), CHARMINAR, fieldsOfOthers(7, [6]));
+    expect(kept.metadata).toMatchObject({ year: null });
+  });
+
+  it('keeps the makers Monuments reads under a Towers run, which writes them empty', () => {
+    const kept = keptForFamilies(record({ wikidataQid: 'Q11015', year: 1591, creators: [] }), CHARMINAR, fieldsOfOthers(7, [6]));
+    expect(kept.metadata).toMatchObject({ year: 1591, creators: ['Muhammad Quli Qutb Shah'] });
+    // On a tower no maker-reading kind holds, the run writes its own empty list,
+    // Tower Bridge's under Bridges too, so makers nobody reads leave the place.
+    expect(fieldsOfOthers(7, [4]).metadata).not.toContain('creators');
+    expect(fieldsOfOthers(7, [8]).metadata).not.toContain('creators');
+    expect(fieldsOfOthers(7, [8]).metadata).not.toContain('year');
+  });
+
+  it("keeps a Towers run's empty makers under a kind that reads none", () => {
+    // A church tower held by Places of worship and Towers alone.
+    const tower = { ...STORED, metadata: { wikidataQid: 'Q1', year: 1400, creators: [] } };
+    const kept = keptForFamilies(record({ wikidataQid: 'Q1', worshipReadershipNote: null }), tower, fieldsOfOthers(4, [7]));
+    expect(kept.metadata).toEqual({ wikidataQid: 'Q1', worshipReadershipNote: null, year: 1400, creators: [] });
+  });
+
+  it('keeps nothing once no kind that writes them holds the place', () => {
+    expect(fieldsOfOthers(4, [2, 5]).metadata).not.toContain('year');
+    expect(fieldsOfOthers(4, []).metadata).not.toContain('creators');
+  });
+});
