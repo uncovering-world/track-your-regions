@@ -27,7 +27,7 @@ import { displayNameOf } from '../../utils/displayName';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { LoadingSpinner } from './LoadingSpinner';
 import {
-  actionLabel, catalogueMerge, formatLogDetails, takeableItems, undoableMerge, type TakeableItem,
+  actionLabel, catalogueActor, formatLogDetails, takeableItems, undoableMerge, type TakeableItem,
 } from './curationLog';
 
 interface CurationHistoryProps {
@@ -83,8 +83,8 @@ function HistoryRow({ entry, onUndo, undoing, takeBacks = [], onTakeBack, taking
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Typography variant="caption" sx={{ fontWeight: 500 }}>
           {/* A curator who set no display name, or a blank one, is still somebody; the
-              catalogue's own merge of two places on one Wikidata item is nobody's (ADR-0086). */}
-          {catalogueMerge(entry) ? 'The catalogue — one Wikidata item' : displayNameOf(entry.curator_name) ?? 'A curator'}
+              catalogue's own acts are nobody's (ADR-0086, ADR-0141). */}
+          {catalogueActor(entry) ?? displayNameOf(entry.curator_name) ?? 'A curator'}
         </Typography>
         {entry.region_name && (
           <Typography variant="caption" color="text.secondary">
