@@ -509,6 +509,23 @@ export interface ExperienceRejectionsRow {
   created_at: Date | null;
 }
 
+/** The table `experience_separations`. */
+export interface ExperienceSeparationsRow {
+  id: number;
+  original_id: number;
+  separated_id: number;
+  membership_id: number | null;
+  scheme: string | null;
+  value: string | null;
+  verdict_written: boolean;
+  separated_by: number | null;
+  moved: unknown;
+  created_at: Date;
+  undone_at: Date | null;
+  undone_by: number | null;
+  merge_id: number | null;
+}
+
 /** The table `experience_sources`. */
 export interface ExperienceSourcesRow {
   id: number;
@@ -956,6 +973,17 @@ export interface SchemaMigrationsRow {
   applied_at: Date;
 }
 
+/** The table `separated_visit_questions`. */
+export interface SeparatedVisitQuestionsRow {
+  id: number;
+  separation_id: number;
+  visit_id: number;
+  user_id: number;
+  asked_at: Date;
+  answer: string | null;
+  answered_at: Date | null;
+}
+
 /** The table `treasures`. */
 export interface TreasuresRow {
   id: number;
@@ -1231,6 +1259,7 @@ export const RELATION_SCHEMAS = {
   experience_point_hints: "public",
   experience_regions: "public",
   experience_rejections: "public",
+  experience_separations: "public",
   experience_sources: "public",
   experience_sync_changes: "public",
   experience_sync_logs: "public",
@@ -1264,6 +1293,7 @@ export const RELATION_SCHEMAS = {
   region_subdivision_groups: "public",
   regions: "public",
   schema_migrations: "public",
+  separated_visit_questions: "public",
   treasures: "public",
   user_auth_providers: "public",
   user_new_badge_views: "public",
@@ -1429,6 +1459,10 @@ export const COLUMN_WIDTHS = {
   experience_regions: {
     assignment_type: 20,
   },
+  experience_separations: {
+    scheme: 12,
+    value: 64,
+  },
   experience_sources: {
     name: 255,
     api_endpoint: 1000,
@@ -1511,6 +1545,9 @@ export const COLUMN_WIDTHS = {
     description: 1000,
     color: 7,
   },
+  separated_visit_questions: {
+    answer: 10,
+  },
   treasures: {
     external_id: 255,
     name: 500,
@@ -1572,7 +1609,7 @@ export const CHECK_VALUES = {
     judgement: ["same", "other"],
   },
   experience_curation_log: {
-    action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone", "views_chosen", "component_items_answered", "component_item_taken_back", "admission_pin_released", "admission_pin_kept", "admission_pin_handed_back", "merge_proposal_answered", "visit_question_answered", "identifier_settled"],
+    action: ["created", "rejected", "unrejected", "edited", "added_to_region", "removed_from_region", "marked_former", "marked_lost", "state_restored", "accepted_source", "declined_source", "declined_held", "missing_dismissed", "admission_confirmed", "admission_overridden", "published", "location_marked_former", "location_marked_lost", "location_state_restored", "location_missing_dismissed", "location_edited", "work_edited", "arrival_refused", "contents_refused", "contents_unrefused", "merged", "merge_undone", "views_chosen", "component_items_answered", "component_item_taken_back", "admission_pin_released", "admission_pin_kept", "admission_pin_handed_back", "merge_proposal_answered", "visit_question_answered", "identifier_settled", "separated"],
   },
   experience_held_decisions: {
     answer: ["published", "refused"],
@@ -1660,6 +1697,9 @@ export const CHECK_VALUES = {
   },
   region_import_state: {
     match_status: ["no_candidates", "needs_review", "auto_matched", "manual_matched", "children_matched", "suggested"],
+  },
+  separated_visit_questions: {
+    answer: ["original", "separated", "both"],
   },
   treasures: {
     curation_state: ["pending", "auto", "verified"],
