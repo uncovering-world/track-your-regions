@@ -5597,7 +5597,10 @@ site's other places on one map (`ComponentItemsMap`), with the whole minute's ce
 point, and answers through the curator's correction of the point (`editLocation`): *Move here* to a
 hint, *Place it by hand* in the correction dialog, or *Keep the list's point*, which is the same
 correction at the point's own coordinate. Each is a claim on the coordinate, which clears the mark
-and closes the question, and a later run keeps it. A batch answers none of them
+and closes the question, and a later run keeps it. Until then a reader is told (#1912): the reader reads carry `approximate` on each point
+(`ExperienceLocation`, `experienceLocationController.ts`), the map draws the pin as a ring and the
+point's card, rows and a place of one point say it is approximate and why
+(`docs/tech/experience-map-ui.md`). A batch answers none of them
 (`reviewAnswerDispatch.ts`): where a component stands is read off its card's map. #1730, the
 question about UNESCO's point against its item's, will share the card once it is built.
 
