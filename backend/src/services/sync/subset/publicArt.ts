@@ -28,6 +28,7 @@ import {
   articleUrl, bestStatements, hasEnded, itemOf, itemsOf, picturesOf, standingStatements, textOf, wktOf, yearOf,
 } from './values.js';
 import type { CompactStatement } from '../../dumps/wikidata/compactEntity.js';
+import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
 
 /** The pool row's facts about one kept entity; null for one with no point where a point is required. */
 function poolEntity(
@@ -65,7 +66,7 @@ function poolEntity(
       noneStands: open.noneStands,
     },
     articleUrl: enwiki ? articleUrl(enwiki) : null,
-    website: bestStatements(claims.P856).map(s => textOf(s.value)).find(Boolean) ?? null,
+    website: bestStatements(claims.P856).map(s => textOf(s.value)).find(url => url && !isWorldHeritageCentreUrl(url)) ?? null,
     year: bestStatements(claims.P571).map(s => yearOf(s.value)).find(year => year !== null) ?? null,
   };
 }

@@ -500,7 +500,8 @@ async function liveEntityDetails(sparql: SparqlFn, qids: string[]): Promise<Map<
       OPTIONAL { ?e wdt:P625 ?coord }
       OPTIONAL { ?e wdt:P576 ?dissolved }
       OPTIONAL { ?e wdt:P18 ?img }
-      OPTIONAL { ?e wdt:P856 ?site }
+      # An official website that is not the World Heritage Centre's page (#1851).
+      OPTIONAL { ?e wdt:P856 ?site FILTER(!REGEX(STR(?site), "^https?://whc\\\\.unesco\\\\.org([/:?#]|$)", "i")) }
       OPTIONAL { ?e wdt:P17 ?country }
       OPTIONAL { ?e wikibase:sitelinks ?sl }
       OPTIONAL { ?article schema:about ?e ; schema:isPartOf <https://en.wikipedia.org/> }

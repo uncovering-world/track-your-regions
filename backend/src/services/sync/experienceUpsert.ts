@@ -82,6 +82,7 @@ import {
   type BoundarySnapshot, type ChangeSetResult, type ExperienceSnapshot,
 } from './changeSet.js';
 import { tidyLabel } from '@tyr/shared/labels';
+import { isWorldHeritageCentreUrl } from '@tyr/shared/links';
 import { isCommonsPictureUrl } from '../../types/urlSafety.js';
 import { lockSourcedExperience } from '../../db/experienceWriter.js';
 import { keptForFamilies, otherFamiliesFields } from './fieldFamilies.js';
@@ -378,6 +379,21 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
 }
 
 /**
+ * A place's own website, asked of every source in one place as the picture is
+ * below: never the World Heritage Centre's page about it (#1851), which is
+ * `unescoUrl` and UNESCO's run's to write. Wikidata gives some heritage items
+ * that page as their official website (P856), and the card would show it twice.
+ * The collectors take another of the item's websites where there is one.
+ */
+function withOwnWebsite(params: ExperienceUpsertParams): ExperienceUpsertParams {
+  const website = params.metadata.website;
+  if (typeof website !== 'string' || !isWorldHeritageCentreUrl(website)) return params;
+  const metadata = { ...params.metadata };
+  delete metadata.website;
+  return { ...params, metadata };
+}
+
+/**
  * What a run may put in `image_url`, asked of every source in one place.
  *
  * A run writes this column through no request schema at all — the rule a
@@ -471,7 +487,7 @@ export async function upsertExperienceRecord(
 ): Promise<UpsertOutcome> {
   // Before the dry-run branch, so a preview says what the run would do rather
   // than what the source proposed.
-  const params = withShowablePicture(withTidyNames(rawParams));
+  const params = withOwnWebsite(withShowablePicture(withTidyNames(rawParams)));
   if (options.dryRun) return previewUpsert(params);
 
   const client = await pool.connect();

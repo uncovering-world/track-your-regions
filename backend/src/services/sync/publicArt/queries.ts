@@ -108,7 +108,8 @@ const POOL_DETAILS = `
                  OPTIONAL { ?country wdt:P576 ?countryDissolved } }
       OPTIONAL { ?e p:P625 ?coordStatement . ?coordStatement a wikibase:BestRank ; ps:P625 ?coord ; pq:P518 ?part .
                  OPTIONAL { ?part wdt:P17 ?partCountry } }
-      OPTIONAL { ?e wdt:P856 ?site }
+      # An official website that is not the World Heritage Centre's page (#1851).
+      OPTIONAL { ?e wdt:P856 ?site FILTER(!REGEX(STR(?site), "^https?://whc\\\\.unesco\\\\.org([/:?#]|$)", "i")) }
       OPTIONAL { ?article schema:about ?e ; schema:isPartOf <https://en.wikipedia.org/> }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "${LABEL_LANGS}" }`;
 
