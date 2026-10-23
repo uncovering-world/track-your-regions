@@ -113,6 +113,7 @@ export const ACTION_LABELS: Record<CurationLogAction, { label: string; color: st
   // place each history belongs to says which side of the merge it was on.
   merged: { label: 'Merged', color: VIOLET },
   merge_undone: { label: 'Merge undone', color: GREEN },
+  separated: { label: 'Separated', color: VIOLET },
   // Which of two sources' names, pictures or points a place shows, where the
   // two describe it differently (#1246).
   views_chosen: { label: 'Source chosen', color: BLUE },
@@ -498,6 +499,7 @@ function formatPartEdit(
 const PLACE_ACT_DETAILS: Record<string, (d: Record<string, unknown>) => string | null> = {
   merged: d => formatMerge('merged', d),
   merge_undone: d => formatMerge('merge_undone', d),
+  separated: d => formatSeparation(d),
   views_chosen: d => formatViewsChosen(d),
   component_items_answered: d => formatComponentItemsAnswered(d),
   component_item_taken_back: d => formatComponentItemTakenBack(d),
@@ -647,6 +649,16 @@ function formatMerge(action: 'merged' | 'merge_undone', d: Record<string, unknow
 }
 
 /**
+ * A separation (ADR-0144): which kind left which place for a place of its own —
+ * "Places of worship separated from Ajanta Caves (#158) into Ajanta Caves
+ * (#30411)".
+ */
+function formatSeparation(d: Record<string, unknown>): string {
+  const kind = typeof d.kind === 'string' ? d.kind : 'A kind';
+  return `${kind} separated from ${mergedPlace(d.originalName, d.originalId)} into ${mergedPlace(d.separatedName, d.separatedId)}`;
+}
+
+/**
  * The merge a history row can still undo: a `merged` row of the place that
  * stayed, with no `merge_undone` row for the same merge after it. Whether the
  * undo may run now — merges into one place are undone last first — is the
@@ -666,6 +678,25 @@ export function undoableMerge(
   const undone = log.some(other => other.action === 'merge_undone'
     && (other.details as { mergeId?: unknown } | null | undefined)?.mergeId === mergeId);
   return undone ? null : mergeId;
+}
+
+/**
+ * The separation a `separated` row offers to undo (ADR-0144 decision 5): the
+ * row on the original place, while no later merge names the separation as
+ * what it put back together — the undo is a merge of the two, recorded as
+ * `merged` with the separation's id.
+ */
+export function undoableSeparation(
+  entry: { action: string; details?: unknown },
+  log: readonly { action: string; details?: unknown }[],
+  placeId: number,
+): number | null {
+  const details = entry.details as { separationId?: unknown; originalId?: unknown } | null | undefined;
+  if (entry.action !== 'separated' || typeof details?.separationId !== 'number' || details.originalId !== placeId) return null;
+  const separationId = details.separationId;
+  const undone = log.some(other => other.action === 'merged'
+    && (other.details as { separationId?: unknown } | null | undefined)?.separationId === separationId);
+  return undone ? null : separationId;
 }
 
 /** One confirmed component item a history row can still take back (#1317). */

@@ -2129,6 +2129,7 @@ export const CuratorActivityEntryAction = {
   merge_proposal_answered: 'merge_proposal_answered',
   visit_question_answered: 'visit_question_answered',
   identifier_settled: 'identifier_settled',
+  separated: 'separated',
 } as const;
 
 /**
@@ -6121,6 +6122,7 @@ export const GetAdminCuratorsByUserIdActivityAction = {
   merge_proposal_answered: 'merge_proposal_answered',
   visit_question_answered: 'visit_question_answered',
   identifier_settled: 'identifier_settled',
+  separated: 'separated',
 } as const;
 
 export type GetAdminCurationActivityParams = {
@@ -6195,6 +6197,7 @@ export const GetAdminCurationActivityAction = {
   merge_proposal_answered: 'merge_proposal_answered',
   visit_question_answered: 'visit_question_answered',
   identifier_settled: 'identifier_settled',
+  separated: 'separated',
 } as const;
 
 export type GetAdminUsersSearchParams = {

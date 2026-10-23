@@ -57,6 +57,7 @@ import { verdictOf } from './LifecycleChip';
 import { CurationHistory } from './CurationHistory';
 import { PlacePins } from './AdmissionPins';
 import { PlaceIdentifiers } from './PlaceIdentifiers';
+import { KindSeparation } from './KindSeparation';
 import { typeOptionsFor } from '../../utils/experienceTypes';
 import { tidyLabel } from '@tyr/shared/labels';
 import { queryKeys } from '../../api/queryKeys';
@@ -483,6 +484,7 @@ function CurationDialogComponent({ experience, regionId, curatesRegion, onClose 
           </>
         )}
 
+        <KindSeparation experience={experience} regionId={regionId} onSeparated={onClose} />
         <PlacePins experienceId={experience.id} regionId={regionId} />
         {/* Keyed by the place, as the history is: the next one opens with its own identifiers. */}
         <PlaceIdentifiers key={`identifiers-${experience.id}`} experienceId={experience.id} />

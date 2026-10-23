@@ -20,14 +20,14 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import UndoIcon from '@mui/icons-material/Undo';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { fetchCurationLog, takeBackPointItem, undoPlaceMerge, type CurationLogEntry } from '../../api/curation';
+import { fetchCurationLog, takeBackPointItem, undoPlaceMerge, undoSeparation, type CurationLogEntry } from '../../api/curation';
 import { queryKeys } from '../../api/queryKeys';
 import { formatRelativeTime } from '../../utils/dateFormat';
 import { displayNameOf } from '../../utils/displayName';
 import { invalidateExperiences } from '../../utils/queryInvalidation';
 import { LoadingSpinner } from './LoadingSpinner';
 import {
-  actionLabel, catalogueActor, formatLogDetails, takeableItems, undoableMerge, type TakeableItem,
+  actionLabel, catalogueActor, formatLogDetails, takeableItems, undoableMerge, undoableSeparation, type TakeableItem,
 } from './curationLog';
 
 interface CurationHistoryProps {
@@ -36,16 +36,27 @@ interface CurationHistoryProps {
   regionId: number | null;
 }
 
+/** The one act a history row offers to undo: a merge (ADR-0086), or a separation (ADR-0144). */
+type UndoableAct = { merge: number } | { separation: number };
+
+function undoableAct(entry: CurationLogEntry, log: readonly CurationLogEntry[], placeId: number): UndoableAct | null {
+  const mergeId = undoableMerge(entry, log, placeId);
+  if (mergeId !== null) return { merge: mergeId };
+  const separationId = undoableSeparation(entry, log, placeId);
+  return separationId === null ? null : { separation: separationId };
+}
+
 /** The words of a take-back button: the point, then the item it was confirmed as. */
 function takeBackLabel(item: TakeableItem): string {
   const point = item.point ?? `point #${item.locationId}`;
   return `Take back: ${point} ← ${item.label ?? item.item}`;
 }
 
-function HistoryRow({ entry, onUndo, undoing, takeBacks = [], onTakeBack, takingBack }: {
+function HistoryRow({ entry, onUndo, undoLabel = 'Undo this merge', undoing, takeBacks = [], onTakeBack, takingBack }: {
   entry: CurationLogEntry;
-  /** Present on a merge this place can still undo. */
+  /** Present on a merge, or a separation (ADR-0144), this place can still undo. */
   onUndo?: () => void;
+  undoLabel?: string;
   undoing: boolean;
   /** The confirmed component items this row can still take back (#1317). */
   takeBacks?: TakeableItem[];
@@ -113,7 +124,7 @@ function HistoryRow({ entry, onUndo, undoing, takeBacks = [], onTakeBack, taking
             onClick={onUndo}
             sx={{ mt: 0.25, py: 0, textTransform: 'none', fontSize: '0.7rem' }}
           >
-            {undoing ? 'Undoing…' : 'Undo this merge'}
+            {undoing ? 'Undoing…' : undoLabel}
           </Button>
         )}
         {takeBacks.map(item => (
@@ -165,6 +176,23 @@ export function CurationHistory({ experienceId, regionId }: CurationHistoryProps
     },
   });
 
+  const undoSep = useMutation({
+    mutationFn: undoSeparation,
+    onSuccess: ({ separatedId }) => {
+      // The place the separation made is folded back into this one, which
+      // holds its kind again; the other's card and address answer with this.
+      invalidateExperiences(queryClient, { regionId, experienceId });
+      queryClient.invalidateQueries({ queryKey: queryKeys.experience.one(separatedId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.experience.survivor(separatedId) });
+      queryClient.invalidateQueries({ queryKey: queryKeys.experience.curationLogAll });
+    },
+  });
+
+  const startUndo = (act: UndoableAct) => ('merge' in act ? undo.mutate(act.merge) : undoSep.mutate(act.separation));
+  const isUndoing = (act: UndoableAct) => ('merge' in act
+    ? undo.isPending && undo.variables === act.merge
+    : undoSep.isPending && undoSep.variables === act.separation);
+
   const takeBack = useMutation({
     // The item the row showed goes with the point: a history read before
     // another curator changed the point is refused rather than taking the
@@ -205,6 +233,9 @@ export function CurationHistory({ experienceId, regionId }: CurationHistoryProps
         {undo.isError && (
           <Alert severity="error" sx={{ py: 0, mb: 1 }}>{(undo.error as Error).message}</Alert>
         )}
+        {undoSep.isError && (
+          <Alert severity="error" sx={{ py: 0, mb: 1 }}>{(undoSep.error as Error).message}</Alert>
+        )}
         {takeBack.isError && (
           <Alert severity="error" sx={{ py: 0, mb: 1 }}>{(takeBack.error as Error).message}</Alert>
         )}
@@ -224,13 +255,14 @@ export function CurationHistory({ experienceId, regionId }: CurationHistoryProps
           )}
           {log.map((entry) => {
             const own = entry.folded_id === null;
-            const mergeId = own ? undoableMerge(entry, log, experienceId) : null;
+            const act = own ? undoableAct(entry, log, experienceId) : null;
             return (
               <HistoryRow
                 key={entry.id}
                 entry={entry}
-                onUndo={mergeId === null ? undefined : () => undo.mutate(mergeId)}
-                undoing={undo.isPending && undo.variables === mergeId}
+                onUndo={act === null ? undefined : () => startUndo(act)}
+                undoLabel={act !== null && 'separation' in act ? 'Undo this separation' : 'Undo this merge'}
+                undoing={act !== null && isUndoing(act)}
                 takeBacks={own ? takeableItems(entry, log) : []}
                 onTakeBack={item => takeBack.mutate(item)}
                 takingBack={takeBack.isPending ? takeBack.variables?.locationId : undefined}
