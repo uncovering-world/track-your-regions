@@ -452,3 +452,37 @@ export async function moveLinks(
   );
   return result.rows.map(row => row.id);
 }
+
+/**
+ * A work link another membership places too, given to the place a curator's
+ * separation made (ADR-0144): a link there, which the separated membership
+ * places instead of the original's. Answers each original link's id with the
+ * new one's.
+ */
+export async function copyLinksFor(
+  client: PoolClient,
+  from: LockedExperience,
+  to: LockedExperience,
+  membershipId: number,
+  ids: number[],
+): Promise<Array<{ from: number; to: number }>> {
+  const copies: Array<{ from: number; to: number }> = [];
+  for (const id of ids) {
+    const copied = await client.query<{ id: number }>(
+      `INSERT INTO experience_treasures (experience_id, treasure_id, curation_state, refused_at, missing_since)
+       SELECT $2, treasure_id, curation_state, refused_at, missing_since
+         FROM experience_treasures WHERE id = $3 AND experience_id = $1
+       ON CONFLICT (experience_id, treasure_id) DO NOTHING
+       RETURNING id`,
+      [from.id, to.id, id],
+    );
+    const copy = copied.rows[0]?.id;
+    if (copy === undefined) continue;
+    await client.query(
+      'UPDATE experience_treasure_placements SET link_id = $1 WHERE link_id = $2 AND membership_id = $3',
+      [copy, id, membershipId],
+    );
+    copies.push({ from: id, to: copy });
+  }
+  return copies;
+}

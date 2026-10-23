@@ -25,6 +25,7 @@ import { lockExperience, type LockedExperience } from '../../db/experienceWriter
 import { createError, notFound, Refusal } from '../../middleware/errorHandler.js';
 import type { idParamSchema, identifierVerdictBodySchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
+import { takeBackIdentifierVerdict, writeIdentifierVerdict } from './placeIdentifierVerdictWriter.js';
 import type { AnswerRefusal } from './lifecycleController.js';
 import type { PoolClient } from 'pg';
 import type { IdentifierScheme, IdentifierVerdict } from '@tyr/shared/identifiers';
@@ -148,10 +149,7 @@ export async function settleIdentifierUnderLock(
       if (standing === null) {
         return await refuse({ status: 409, error: 'No curator’s word stands on this identifier — the sources already decide it' });
       }
-      await client.query(
-        `DELETE FROM place_identifier_verdicts WHERE experience_id = $1 AND scheme = $2 AND value = $3`,
-        [experienceId, scheme, value],
-      );
+      await takeBackIdentifierVerdict(client, { experienceId, scheme, value });
     } else {
       if (verdict !== 'identifies' && before === null && standing === null) {
         return await refuse({ status: 409, error: `This place does not carry ${value}` });
@@ -171,13 +169,7 @@ export async function settleIdentifierUnderLock(
           });
         }
       }
-      await client.query(
-        `INSERT INTO place_identifier_verdicts (experience_id, scheme, value, verdict, curator_id, note)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (experience_id, scheme, value) DO UPDATE
-           SET verdict = EXCLUDED.verdict, curator_id = EXCLUDED.curator_id, note = EXCLUDED.note, decided_at = NOW()`,
-        [experienceId, scheme, value, verdict, userId, note ?? null],
-      );
+      await writeIdentifierVerdict(client, { experienceId, scheme, value, verdict, userId, note: note ?? null });
     }
 
     const after = await registryRow(client, locked.lock, scheme, value);

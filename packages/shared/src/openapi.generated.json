@@ -6516,7 +6516,8 @@
                 "admission_pin_handed_back",
                 "merge_proposal_answered",
                 "visit_question_answered",
-                "identifier_settled"
+                "identifier_settled",
+                "separated"
               ]
             }
           },
@@ -6648,7 +6649,8 @@
                 "admission_pin_handed_back",
                 "merge_proposal_answered",
                 "visit_question_answered",
-                "identifier_settled"
+                "identifier_settled",
+                "separated"
               ]
             }
           },
@@ -14981,6 +14983,116 @@
         }
       }
     },
+    "/api/experiences/{id}/kinds/{kindId}/separate": {
+      "post": {
+        "operationId": "postExperiencesByIdKindsByKindIdSeparate",
+        "summary": "Separate one kind's membership of a place into a place of its own, with the points and works it places",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "kindId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipSeparated"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/experiences/separations/{separationId}/undo": {
+      "post": {
+        "operationId": "postExperiencesSeparationsBySeparationIdUndo",
+        "summary": "Undo a separation: the place it made is merged back into the original",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "separationId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SeparationUndone"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/sources/{sourceId}/publish-waiting": {
       "post": {
         "operationId": "postExperiencesSourcesBySourceIdPublishWaiting",
@@ -19947,7 +20059,8 @@
               "admission_pin_handed_back",
               "merge_proposal_answered",
               "visit_question_answered",
-              "identifier_settled"
+              "identifier_settled",
+              "separated"
             ]
           },
           "region_id": {
@@ -20118,7 +20231,8 @@
               "admission_pin_handed_back",
               "merge_proposal_answered",
               "visit_question_answered",
-              "identifier_settled"
+              "identifier_settled",
+              "separated"
             ]
           },
           "created_at": {
@@ -27375,6 +27489,35 @@
         ],
         "description": "Where the object stands at the curation gate of its kind. `pending` is shown to nobody but a curator. `auto` and `verified` are shown to readers, `verified` because a person passed it."
       },
+      "MembershipSeparated": {
+        "type": "object",
+        "properties": {
+          "separationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "originalId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The place the membership left, which keeps its other kinds, its visits and its own records."
+          },
+          "separatedId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The new place, holding the membership with the points and works it places."
+          }
+        },
+        "required": [
+          "separationId",
+          "originalId",
+          "separatedId"
+        ],
+        "additionalProperties": false,
+        "description": "One kind's membership of a place separated into a place of its own (ADR-0144)."
+      },
       "MergeFoundBy": {
         "type": "string",
         "enum": [
@@ -33225,6 +33368,42 @@
         ],
         "additionalProperties": false,
         "description": "A selection of a region's suggestions rejected, and taken out of its members."
+      },
+      "SeparationUndone": {
+        "type": "object",
+        "properties": {
+          "separationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "mergeId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The merge that put the two back together, which its own undo takes apart again."
+          },
+          "originalId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The place that is whole again."
+          },
+          "separatedId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The place the separation made, folded back into the original."
+          }
+        },
+        "required": [
+          "separationId",
+          "mergeId",
+          "originalId",
+          "separatedId"
+        ],
+        "additionalProperties": false,
+        "description": "A separation undone (ADR-0144): the place it made merged back into the original."
       },
       "SessionStarted": {
         "type": "object",

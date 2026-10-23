@@ -29,6 +29,7 @@ import { moveHeldDecisions } from './heldDecisions.js';
 import { moveMemberships } from './membershipWriter.js';
 import { arePartAndWhole, followItsPoints, moveParts } from './partWriter.js';
 import { reopenMergedPair } from './mergeProposalAnswers.js';
+import { reopenSeparationsUndoneBy } from './separationReopening.js';
 import { placeAfterRelease } from './publishContents.js';
 import { moveViewChoices } from './viewChoices.js';
 import { foldLinks, moveLinks, unfoldLinks, type FoldedLinks } from './workWriter.js';
@@ -87,8 +88,12 @@ interface Refusal {
  * one place of, saying why, and changes nothing then.
  */
 export async function mergePlaces(
-  { survivorId, foldedId, mergedBy, reason, detail }: {
+  { survivorId, foldedId, mergedBy, reason, detail, regionId = null, within }: {
     survivorId: number; foldedId: number; mergedBy: number | null; reason: MergeReason; detail?: Record<string, unknown>;
+    /** The region the curator's authority came from, named on the audit rows. */
+    regionId?: number | null;
+    /** Bookkeeping that rides in the merge's transaction, after its record is written (a separation's undo). */
+    within?: (client: PoolClient, mergeId: number) => Promise<void>;
   },
 ): Promise<{ result?: { mergeId: number }; refusal?: Refusal }> {
   if (survivorId === foldedId) return { refusal: { status: 400, error: 'A place cannot be merged into itself' } };
@@ -131,8 +136,9 @@ export async function mergePlaces(
     );
     mergeId = inserted.rows[0].id;
     await logOnBoth(client, 'merged', {
-      survivorId, foldedId, mergeId, userId: mergedBy, reason, detail, memberships: record.memberships,
+      survivorId, foldedId, mergeId, userId: mergedBy, reason, detail, regionId, memberships: record.memberships,
     });
+    if (within) await within(client, mergeId);
     await client.query('COMMIT');
   } catch (error) {
     unusable = await rollbackQuietly(client);
@@ -366,12 +372,30 @@ export async function undoMerge(
         status: 409, error: 'A later merge into the same place is still in effect — undo that merge first',
       });
     }
+    // A kind this merge brought was separated into a place of its own since
+    // (ADR-0144): what the record names is not on the survivor any more, and
+    // undoing would leave the folded place with no membership.
+    const separated = await client.query(
+      `SELECT 1 FROM experience_separations
+        WHERE original_id = $1 AND undone_at IS NULL
+          AND membership_id IN (SELECT jsonb_array_elements_text($2::jsonb)::int) LIMIT 1`,
+      [merge.survivor_id, JSON.stringify(merge.moved.memberships)],
+    );
+    if ((separated.rowCount ?? 0) > 0) {
+      return await refuse({
+        status: 409, error: 'A kind this merge brought has since been separated into a place of its own; that place is what the merge brought now',
+      });
+    }
     await moveEverythingBack(client, merge.moved, folded.lock, survivor.lock);
     await markFolded(client, folded.lock, null);
     // A pair a curator answered *one place* ran this merge (#1249): apart
     // again, the two are a question again, or the record would say one place
     // of two places and the pass would never ask.
     await reopenMergedPair(client, { a: survivor.lock, b: folded.lock }, mergeId);
+    // A merge that undid a separation (ADR-0144 decision 5): undone, the two
+    // are separate again, so the separation stands again, with its word and
+    // its questions.
+    await reopenSeparationsUndoneBy(client, mergeId, userId, folded.lock);
     await client.query(
       'UPDATE experience_merges SET undone_at = NOW(), undone_by = $2 WHERE id = $1', [mergeId, userId],
     );

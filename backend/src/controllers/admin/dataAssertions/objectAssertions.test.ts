@@ -258,6 +258,11 @@ describe('a place none of whose memberships carries the source and id it was bro
     expect(assertion.kind).toBe('invariant');
   });
 
+  it('reads a pair a live membership carries on another place as in order: a separation\'s original (ADR-0144)', () => {
+    expect(sql).toContain('elsewhere.source_id = e.source_id AND elsewhere.external_id = e.external_id');
+    expect(sql).toContain('holder.merged_into_id IS NULL');
+  });
+
   it('leaves a serial site\'s component part alone, whose own pair no membership ever carries', () => {
     // A part holding a kind's membership (the Tower of Belem as a tower) is the
     // resolver's own state (ADR-0143), and its run finds it through its whole.
