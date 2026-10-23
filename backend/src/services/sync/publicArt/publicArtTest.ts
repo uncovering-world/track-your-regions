@@ -30,35 +30,7 @@ import {
 import type { KindRule, MonumentType, PublicArtType } from './kindRules.js';
 // The works-first kinds' exception for a lost work whose remains are on show (#872).
 import { REMAINS_ON_SHOW } from '../museum/worksCollector.js';
-
-/**
- * Something the entity stands in, or is part of, with what that thing is —
- * the container itself, or one the pipeline reached by walking up from it: a
- * room, then its wing, then the museum.
- */
-export interface ContainerFact {
-  qid: string;
-  label: string;
-  classes: string[];
-  /**
-   * The outermost thing this container was walked up to, when the walk went
-   * past it: the palace above a room's wing. What the reason names beside a
-   * room, so that "inside Room 325 (Louvre Palace)" says where the room is.
-   */
-  building?: string;
-  /**
-   * How the entity reaches it: by its own `located in` (P276), `part of`
-   * (P361) or `in the collection of` (P195) statement, or `above` — walked up
-   * to from other containers. `via` names every container the walk reached
-   * it from, a container the entity's own statement names included. Read for
-   * one thing (#803): a museum the entity itself is *part of* is an
-   * institution it belongs to, not a place it stands in — the Pakistan
-   * Monument is part of the Pakistan Monument Museum, which stands in its
-   * base — where a room that is part of a museum is inside it.
-   */
-  relation: 'located in' | 'part of' | 'in the collection of' | 'above';
-  via?: string[];
-}
+import type { ContainerFact } from '../places/containment.js';
 
 export interface PublicArtFacts {
   qid: string;
@@ -282,6 +254,16 @@ function otherPlace(e: PublicArtFacts, trees: PublicArtTrees): string | null {
 }
 
 /**
+ * A link of the chain nobody could read (`containment.ts`), when nothing read
+ * decided: the place it names may be the museum or the church the work is in,
+ * so the work is not taken for one standing outdoors (#1819).
+ */
+function unreadLink(links: ContainerFact[], what: 'where it stands' | 'whose it is', noun: string): HeldElsewhere | null {
+  const unread = links.find((c) => c.unknown);
+  return unread ? { reason: `${what} could not be read (${unread.qid}): not taken for ${noun}`, heldIn: [] } : null;
+}
+
+/**
  * The place or owner that makes the entity somebody else's work, or nothing:
  * where it stands decides, and whose it is only when nothing says where it
  * stands.
@@ -294,7 +276,10 @@ function anothersWork(
   // The room and the site are still asked of a work stranded outdoors: a
   // colossal statue in a museum's hall is the hall's.
   if (venue && offered && strandedOutdoors(venue, e.classes, offered)) return heldElsewhere(places, trees, noun, false);
-  return venue ?? (places.length ? null : ownedElsewhere([...owners, ...e.collections], trees, noun));
+  if (venue) return venue;
+  if (places.length) return unreadLink(places, 'where it stands', noun);
+  const allOwners = [...owners, ...e.collections];
+  return ownedElsewhere(allOwners, trees, noun) ?? unreadLink(allOwners, 'whose it is', noun);
 }
 
 /**

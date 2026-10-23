@@ -8,7 +8,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { publicArtVerdict, type PublicArtFacts, type ContainerFact } from './publicArtTest.js';
+import { publicArtVerdict, type PublicArtFacts } from './publicArtTest.js';
+import type { ContainerFact } from '../places/containment.js';
 import { buildTrees } from './classes.js';
 import { MONUMENTS_RULE as monuments, PUBLIC_ART_RULE as art } from './kindRules.js';
 
@@ -237,6 +238,31 @@ describe('publicArtVerdict — what it refuses', () => {
     expect(reasonOf(v)).toContain("inside St. Peter's Basilica");
     // Where it is held, for the places of worship to take it (ADR-0102).
     expect(v).toMatchObject({ pass: false, heldIn: ['Q12512'] });
+  });
+
+  it('still names the church when another link up the chain could not be read (#1819)', () => {
+    const v = publicArtVerdict(facts({
+      containers: [
+        inside('Q12512', "St. Peter's Basilica", [BASILICA, 'Q16970']),
+        { qid: 'Q999999999', label: 'Q999999999', classes: [], relation: 'located in', unknown: true },
+      ],
+    }), trees, art);
+    expect(reasonOf(v)).toContain("inside St. Peter's Basilica");
+  });
+
+  it('does not take a work for one outdoors when where it stands could not be read (#1819)', () => {
+    // A link a subset build left out: it may be the museum the work is in.
+    const v = publicArtVerdict(facts({
+      containers: [{ qid: 'Q999999999', label: 'Q999999999', classes: [], relation: 'located in', unknown: true }],
+    }), trees, art);
+    expect(v).toEqual({ pass: false, reason: 'where it stands could not be read (Q999999999): not taken for public art' });
+  });
+
+  it('does not take a work for one outdoors when nothing places it and its owner could not be read (#1819)', () => {
+    const v = publicArtVerdict(facts({
+      collections: [{ qid: 'Q999999999', label: 'Q999999999', classes: [], relation: 'in the collection of', unknown: true }],
+    }), trees, art);
+    expect(reasonOf(v)).toBe('whose it is could not be read (Q999999999): not taken for public art');
   });
 
   it('refuses a work a museum holds, naming the museum', () => {

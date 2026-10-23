@@ -15,31 +15,21 @@
 
 import {
   chunk,
-  unique,
   type QueryRunner,
   type SparqlFn,
 } from '../wikidataQueries.js';
 import {
   fetchBroadPool,
   fetchClassPool,
-  fetchContainerFacts,
   fetchEntitiesByIds,
   fetchEntityFacts,
-  type ContainerFacts,
   type EntityFacts,
   type PoolEntity,
 } from '../publicArt/queries.js';
+import { emptyContainment, loadContainment, type Containment } from './containment.js';
 
 const CLASS_BATCH = 25;
 const FACT_BATCH = 50;
-
-/**
- * How far up from a candidate its containers are followed: a room, its wing,
- * the museum. The Venus de Milo is located in Room 345 of the Sully Wing of
- * the Louvre, and only the third of those carries a museum class. The museum
- * import walks `P361` the same distance (`VENUE_HOPS`).
- */
-export const CONTAINER_HOPS = 3;
 
 /** A class broad enough to be asked in bands, with the word its phase message names it by. */
 export interface PoolRoot {
@@ -78,7 +68,7 @@ export interface KindShare<Trees> {
   byId: Set<string>;
   facts: Map<string, EntityFacts>;
   /** What holds and owns its candidates; empty for a kind that reads none. */
-  containers: Map<string, ContainerFacts>;
+  containers: Containment;
 }
 
 /** The kinds a gather was asked for, with what each of them admits before the run. */
@@ -159,38 +149,6 @@ async function collectFacts(run: QueryRunner, qids: string[]): Promise<Map<strin
   return facts;
 }
 
-/**
- * What holds the candidates, then what holds that, up to `CONTAINER_HOPS` —
- * each hop asks only about containers no earlier hop answered for — and what
- * owns them, one hop and no walk: ownership is not a place, so a rule reads an
- * owner only for a candidate nothing places, and asks only whether it is a
- * museum or a church (#804).
- */
-async function collectContainers(
-  run: QueryRunner, facts: EntityFacts[],
-): Promise<Map<string, ContainerFacts>> {
-  const containers = new Map<string, ContainerFacts>();
-  let frontier = unique(facts.flatMap((f) => [...f.locations, ...f.parents]));
-  for (let hop = 1; hop <= CONTAINER_HOPS && frontier.length; hop++) {
-    const batches = chunk(frontier, FACT_BATCH);
-    for (let i = 0; i < batches.length; i++) {
-      run.phase(`Asking what holds them (hop ${hop}/${CONTAINER_HOPS}, batch ${i + 1}/${batches.length})...`);
-      await run.step();
-      for (const [qid, entry] of await fetchContainerFacts(run.sparql, batches[i])) containers.set(qid, entry);
-    }
-    frontier = unique(frontier.flatMap((qid) => containers.get(qid)?.parents ?? []))
-      .filter((qid) => !containers.has(qid));
-  }
-  const owners = unique(facts.flatMap((f) => f.collections)).filter((qid) => !containers.has(qid));
-  const ownerBatches = chunk(owners, FACT_BATCH);
-  for (let i = 0; i < ownerBatches.length; i++) {
-    run.phase(`Asking what owns them (batch ${i + 1}/${ownerBatches.length})...`);
-    await run.step();
-    for (const [qid, entry] of await fetchContainerFacts(run.sparql, ownerBatches[i])) containers.set(qid, entry);
-  }
-  return containers;
-}
-
 /** Every kind's trees, and the classes the pool is asked by: the broad roots once each, then the rest. */
 async function askedClasses(run: QueryRunner, requests: GatherRequest[]) {
   const trees = new Map<PlaceKind<unknown>, unknown>();
@@ -244,14 +202,14 @@ export async function gatherPlaces(run: QueryRunner, requests: GatherRequest[]):
   const shares = new Map<PlaceKind<unknown>, KindShare<unknown>>();
   for (const { kind, admitted: ids } of requests) {
     const share = candidatesOf(classesOf.get(kind)!, ids, pooled, byId, facts);
-    shares.set(kind, { trees: trees.get(kind), ...share, containers: new Map() });
+    shares.set(kind, { trees: trees.get(kind), ...share, containers: emptyContainment() });
   }
 
   // Containers once, for the candidates of the kinds that read them.
   const reading = requests.filter(({ kind }) => kind.readsContainers).map(({ kind }) => shares.get(kind)!);
   if (reading.length) {
     const asked = new Map(reading.flatMap((share) => [...share.facts]));
-    const containers = await collectContainers(run, [...asked.values()]);
+    const containers = await loadContainment(run, [...asked.values()]);
     for (const share of reading) share.containers = containers;
   }
   return { shares, pooled: pooled.size };

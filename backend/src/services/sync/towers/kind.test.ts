@@ -9,6 +9,7 @@ vi.mock('../../dumps/readership/workReadership.js', () => ({ readershipYear: vi.
 
 import type { PoolEntity } from '../publicArt/queries.js';
 import type { KindShare } from '../places/gather.js';
+import { emptyContainment } from '../places/containment.js';
 import type { TowerTrees } from './classes.js';
 import { belowTowerLine, classifyTowers, towerStanding } from './kind.js';
 
@@ -72,7 +73,7 @@ describe('classifyTowers', () => {
     pool: new Map(rows.map(([e]) => [e.qid, e])),
     byId: new Set(),
     facts: new Map(rows.map(([e, classes]) => [e.qid, { classes }])) as never,
-    containers: new Map(),
+    containers: emptyContainment(),
   });
 
   it('admits by the rule and the line, refuses what the rule refuses, and names a fallen tower', async () => {

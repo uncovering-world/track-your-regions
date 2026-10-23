@@ -25,16 +25,16 @@ import {
   buildTrees,
   COMMEMORATIVE_ROOTS,
   FOUNTAIN_ROOT,
-  INDOOR_CLASSES,
   SCULPTURAL_ROOTS,
   WORSHIP_ROOT,
   type PublicArtTrees,
 } from './classes.js';
 import { belowLineReason, lineStanding, type LinePair } from '../sourceLine.js';
-import { publicArtVerdict, type ContainerFact } from './publicArtTest.js';
+import { publicArtVerdict } from './publicArtTest.js';
 import type { KindRule } from './kindRules.js';
-import { emptyFacts, type PoolEntity, type EntityFacts, type ContainerFacts } from './queries.js';
-import { CONTAINER_HOPS, type PlaceKind } from '../places/gather.js';
+import { emptyFacts, type PoolEntity, type EntityFacts } from './queries.js';
+import type { PlaceKind } from '../places/gather.js';
+import { chainOf, ownersOf, type Containment } from '../places/containment.js';
 import type { FilteredEntity } from '../syncContract.js';
 import type { WikidataLandmark } from '../types.js';
 
@@ -88,7 +88,7 @@ export interface GatheredPublicArt {
   trees: PublicArtTrees;
   pool: Map<string, PoolEntity>;
   facts: Map<string, EntityFacts>;
-  containers: Map<string, ContainerFacts>;
+  containers: Containment;
 }
 
 async function collectTrees(run: QueryRunner): Promise<PublicArtTrees> {
@@ -126,92 +126,6 @@ async function collectTrees(run: QueryRunner): Promise<PublicArtTrees> {
     museum,
     worship,
     lost,
-  });
-}
-
-/**
- * The building above a container along its own chain: the first thing up the
- * first-parent line that is not itself a room or a wing — the palace above a
- * room's wing, or directly above a room, and never the city above the palace
- * that a deeper fetch happened to reach. Follows the chain as far as the facts
- * pass fetched; where every fetched ancestor is a room or a wing, the
- * outermost of them; nothing when the container is the top of what is known.
- */
-function buildingAbove(qid: string, containers: Map<string, ContainerFacts>): string | undefined {
-  let top: string | undefined;
-  let current = qid;
-  for (let hop = 1; hop < CONTAINER_HOPS; hop++) {
-    const parent = containers.get(current)?.parents[0];
-    if (parent === undefined) break;
-    const known = containers.get(parent);
-    if (!known) break;
-    top = known.label;
-    if (!known.classes.some((c) => INDOOR_CLASSES[c])) break;
-    current = parent;
-  }
-  return top;
-}
-
-/** A container still to be described: how the entity reaches it, and from where when walked. */
-type Reach = Pick<ContainerFact, 'qid' | 'relation' | 'via'>;
-
-/**
- * Everything a candidate stands in or is part of, the containers' own
- * containers included, nearest first — so the reason names the room's museum
- * rather than the room — each saying how it was reached: by the candidate's
- * own `located in` or `part of`, or walked up to from the containers `via`
- * names — every one of them, so that the rule, which reads a museum the
- * candidate is part of as its owner rather than its place and drops what
- * stands only above that museum (#803), sees a second route to the same
- * thing whichever order the source listed the statements in. As many levels
- * as the facts pass fetched and no further: a level nothing was asked about
- * would come back as a bare QID with no classes, and a reason that names
- * one.
- */
-function containerFacts(facts: EntityFacts, containers: Map<string, ContainerFacts>): ContainerFact[] {
-  const out: ContainerFact[] = [];
-  const seen = new Map<string, ContainerFact>();
-  let frontier: Reach[] = [
-    ...facts.locations.map((qid): Reach => ({ qid, relation: 'located in' })),
-    ...facts.parents.map((qid): Reach => ({ qid, relation: 'part of' })),
-  ];
-  for (let hop = 0; hop < CONTAINER_HOPS && frontier.length; hop++) {
-    const next: Reach[] = [];
-    for (const reach of frontier) {
-      const already = seen.get(reach.qid);
-      if (already) {
-        // Listed once, reached again: another walk arrives at it, which is
-        // recorded — on a container the candidate's own statement names too,
-        // so that a museum the candidate is part of and stands in the
-        // courtyard of is read as where it stands.
-        if (reach.via) already.via = [...(already.via ?? []), ...reach.via];
-        continue;
-      }
-      const known = containers.get(reach.qid);
-      const fact: ContainerFact = {
-        ...reach,
-        label: known?.label ?? reach.qid,
-        classes: known?.classes ?? [],
-        building: buildingAbove(reach.qid, containers),
-      };
-      seen.set(reach.qid, fact);
-      out.push(fact);
-      next.push(...(known?.parents ?? []).map((qid): Reach => ({ qid, relation: 'above', via: [reach.qid] })));
-    }
-    frontier = next;
-  }
-  return out;
-}
-
-/**
- * What owns a candidate, one level and no further: an owner is not a place,
- * so it has no chain and no building above it. Handed in whatever the
- * candidate's containers say; the rule decides when to read it.
- */
-function collectionFacts(facts: EntityFacts, containers: Map<string, ContainerFacts>): ContainerFact[] {
-  return facts.collections.map((qid) => {
-    const known = containers.get(qid);
-    return { qid, label: known?.label ?? qid, classes: known?.classes ?? [], relation: 'in the collection of' };
   });
 }
 
@@ -261,8 +175,8 @@ export function classifyPublicArt(
     const verdict = publicArtVerdict({
       qid: entity.qid,
       classes: known.classes,
-      containers: containerFacts(known, containers),
-      collections: collectionFacts(known, containers),
+      containers: chainOf(known, containers),
+      collections: ownersOf(known, containers),
       commemorates: known.commemorates,
       depicts: known.depicts,
       onEarth: entity.onEarth,

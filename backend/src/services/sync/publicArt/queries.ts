@@ -456,11 +456,13 @@ export async function fetchContainerFacts(
 
   // A location or a whole the container has left is dropped, by the rule the
   // entity facts read a work's own under (`standing`): a museum a chapel was
-  // once inside must not make the chapel's work the museum's.
+  // once inside must not make the chapel's work the museum's. Every item that
+  // exists answers, by its revision, so that no answer means nobody could read
+  // it, as on the subset (`places/containment.ts`).
   const rows = await sparql(`
     SELECT ?c ?cLabel ?cls ?up WHERE {
       VALUES ?c { ${values(qids)} }
-      { ?c wdt:P31 ?cls } UNION {
+      { ?c schema:version ?revision } UNION { ?c wdt:P31 ?cls } UNION {
         ${standing('?c', 'P276', '?up')}
       } UNION {
         ${standing('?c', 'P361', '?up')}

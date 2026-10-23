@@ -12,6 +12,7 @@ vi.mock('../../dumps/wikivoyage/usageTables.js', () => ({ latestUsage: vi.fn(), 
 
 import type { PoolEntity } from '../publicArt/queries.js';
 import type { KindShare } from '../places/gather.js';
+import { emptyContainment } from '../places/containment.js';
 import type { BridgeTrees } from './classes.js';
 import { belowGuidedLine, guidedStanding } from '../places/guidedLine.js';
 import { BRIDGE_LINE, classifyBridges } from './kind.js';
@@ -77,7 +78,7 @@ describe('classifyBridges', () => {
     pool: new Map(rows.map(([e]) => [e.qid, e])),
     byId: new Set(),
     facts: new Map(rows.map(([e, classes]) => [e.qid, { classes }])) as never,
-    containers: new Map(),
+    containers: emptyContainment(),
   });
 
   it('admits by the rule and both doors, refuses what the rule refuses, and names a fallen work', async () => {
