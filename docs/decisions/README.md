@@ -160,6 +160,7 @@ and accepted by it.
 | [0138](0138-unescos-page-about-a-site-is-kept-by-every-other-familys-run.md) | UNESCO's page about a site is kept by every other family's run | Accepted | 2026-10-23 |
 | [0139](0139-a-field-no-reader-sees-and-a-typographic-rewrite-pass-the-gate.md) | A field no reader sees, and a typographic rewrite, pass the gate | Accepted | 2026-10-23 |
 | [0140](0140-a-short-move-passes-the-gate.md) | A short move passes the gate | Accepted | 2026-10-23 |
+| [0141](0141-the-catalogue-accepts-a-component-candidate-of-the-points-own-name-at-the-point.md) | The catalogue accepts a component candidate of the point's own name at the point | Accepted | 2026-10-23 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
