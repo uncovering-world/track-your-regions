@@ -26,6 +26,8 @@ const id = preferred.properties?.region_id;
 
 This applies beyond context layers — any time two interactive fill layers overlap (e.g., island fills over region fills, or root overlay over leaf tiles), the handlers must establish a preference order.
 
+The experience markers are the point-layer case of the same rule, settled the other way round: there the topmost drawn feature *is* the right answer — the selected object's highlight dots are drawn over the other objects' pins, and the reader sees the dot — so the preference is the rendering order `queryRenderedFeatures` already returns when asked across the layers at once. What went wrong was two gestures asking differently: the hover queried pins and dots together and took the top, the click queried the pins first and fell back to the dots, so over an overlapping pair the hover card named one place and the click opened the other (#1916). `markerUnderPointer()` (`frontend/src/components/experienceMarkers/markerUnderPointer.ts`) is the one function both read, and a gesture added later reads it too rather than querying the layers itself.
+
 ## One listener per registration, not per handler
 
 ### The problem
@@ -60,7 +62,7 @@ A visual whose owner sets it from a one-shot `mouseenter` cannot be reset by any
 
 Test it against both paths. MapLibre's delegated `mouseleave` fires from a `mousemove` that no longer hits the layer *and* from a `mouseout` when the pointer leaves the canvas — and only the first guarantees the point is off the feature. A `mouseout` carries the point the pointer left *from*, which is still on the pin whenever it left onto an overlay drawn above the map, and after it `mousein` is false, so no further leave arrives until a feature is entered again. A same-target check that trusts that point leaves the hover lit for good; check `e.originalEvent.type` before trusting it.
 
-A global registration gives up one thing the delegated form did for free: MapLibre checks `getLayer(layerId)` before querying, so a click while those layers are absent did nothing. Naming a missing layer in `queryRenderedFeatures` fires an `ErrorEvent` and logs — and layers do go absent, since a component that returns `null` while its data loads unmounts its `<Source>`/`<Layer>` tree while the handler effect stays attached. Open the handler with the same check:
+A global registration gives up one thing the delegated form did for free: MapLibre checks `getLayer(layerId)` before querying, so a click while those layers are absent did nothing. Naming a missing layer in `queryRenderedFeatures` fires an `ErrorEvent` and logs — and layers do go absent, since a component that returns `null` while its data loads unmounts its `<Source>`/`<Layer>` tree while the handler effect stays attached. The check belongs where the query is made: `markerUnderPointer()` (`experienceMarkers/markerUnderPointer.ts`) names only the layers `map.getLayer()` answers for and asks nothing when none is there, so every handler that reads it — the click and the move in `useMarkerInteractions.ts` — is covered without a guard of its own. A handler that queries a layer itself opens with the same test:
 
 ```ts
 if (!map.getLayer(LAYER_MARKERS)) return;
