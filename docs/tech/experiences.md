@@ -1438,7 +1438,16 @@ which points are components and how each becomes a part: the site's own points i
 membership places (or that no membership places, rows from before placements), on a site that has
 parts already or holds two or more standing ones — a withdrawn, lost or refused point, or an arrival
 that replaces a moved one, is no second component (the Pilgrimage Church of Wies, moved once, is one
-place). Each becomes a place named and placed as its point, and the
+place). A component that stands for its whole site is not parted and stays the site's own point:
+`stands_for_whole_site()` reads a point named like the site (folded by `name_match_key()`: markup,
+accents, case and punctuation dropped), one the list gives the site's own reference (Baalbek's `294`),
+or the only standing point, as the site. A part named like its site showed the site twice; migration
+161 folded the 30 such parts the development catalogue held on 2026-10-23 back into their 22 sites,
+the Historic Centre of Prague and Angkor among them: a visit to the part went back to its point as a
+tick on one location, and the part place was marked folded into the site, so a link to it opens the
+site. Should the point stop standing for the site (a renamed site, a renumbered component),
+`part_site_components()` revives that folded place rather than making another (#1899). Each other component
+becomes a place named and placed as its point, and the
 point keeps its id, so its placements, regions, claims, candidates and held decisions follow it, and a
 traveller's visit to the component becomes a visit to the part place (§ A part reads as a place);
 its picture, credit, description and item stay on the point for now (#1425). A part's name, coordinate and reference are its point's: the trigger
@@ -1714,7 +1723,8 @@ path needs.
   pass are cleared, as a whole-site point's are.
 
   Not every point is searched. A component that stands for its whole site — the only standing
-  point of a site of one, or a point named exactly like its site, folded (`standsForWholeSite`;
+  point of a site of one, a point carrying the site's own reference, or a point named exactly like
+  its site, folded (`stands_for_whole_site()` in the schema, the rule the parting reads too;
   "Historic Centre of Siena (Cathedral)" is a part, not the site) — is the site's own item
   (ADR-0088), which carries the site's reference and is never a candidate, and anything near it
   is a building inside; such points are skipped, counted, and their open proposals from an
