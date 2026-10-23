@@ -6547,7 +6547,8 @@
                 "admission_pin_kept",
                 "admission_pin_handed_back",
                 "merge_proposal_answered",
-                "visit_question_answered"
+                "visit_question_answered",
+                "separated"
               ]
             }
           },
@@ -6678,7 +6679,8 @@
                 "admission_pin_kept",
                 "admission_pin_handed_back",
                 "merge_proposal_answered",
-                "visit_question_answered"
+                "visit_question_answered",
+                "separated"
               ]
             }
           },
@@ -14802,6 +14804,66 @@
         }
       }
     },
+    "/api/experiences/{id}/kinds/{kindId}/separate": {
+      "post": {
+        "operationId": "postExperiencesByIdKindsByKindIdSeparate",
+        "summary": "Separate one kind's membership of a place into a place of its own, with the points and works it places",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          },
+          {
+            "in": "path",
+            "name": "kindId",
+            "schema": {
+              "type": "integer",
+              "exclusiveMinimum": 0,
+              "maximum": 2147483647
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MembershipSeparated"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/sources/{sourceId}/publish-waiting": {
       "post": {
         "operationId": "postExperiencesSourcesBySourceIdPublishWaiting",
@@ -19664,7 +19726,8 @@
               "admission_pin_kept",
               "admission_pin_handed_back",
               "merge_proposal_answered",
-              "visit_question_answered"
+              "visit_question_answered",
+              "separated"
             ]
           },
           "region_id": {
@@ -19834,7 +19897,8 @@
               "admission_pin_kept",
               "admission_pin_handed_back",
               "merge_proposal_answered",
-              "visit_question_answered"
+              "visit_question_answered",
+              "separated"
             ]
           },
           "created_at": {
@@ -27066,6 +27130,35 @@
           "verified"
         ],
         "description": "Where the object stands at the curation gate of its kind. `pending` is shown to nobody but a curator. `auto` and `verified` are shown to readers, `verified` because a person passed it."
+      },
+      "MembershipSeparated": {
+        "type": "object",
+        "properties": {
+          "separationId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "originalId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The place the membership left, which keeps its other kinds, its visits and its own records."
+          },
+          "separatedId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991,
+            "description": "The new place, holding the membership with the points and works it places."
+          }
+        },
+        "required": [
+          "separationId",
+          "originalId",
+          "separatedId"
+        ],
+        "additionalProperties": false,
+        "description": "One kind's membership of a place separated into a place of its own (ADR-0142)."
       },
       "MergeFoundBy": {
         "type": "string",

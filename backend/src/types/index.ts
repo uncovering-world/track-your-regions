@@ -122,6 +122,12 @@ export const experienceIdParamSchema = z.object({
   experienceId: rowIdSchema,
 });
 
+/** `/:id/kinds/:kindId/separate` — a place, and one of its kinds, which names its membership there. */
+export const kindOfPlaceParamSchema = z.object({
+  id: rowIdSchema,
+  kindId: rowIdSchema,
+});
+
 export const locationIdParamSchema = z.object({
   locationId: rowIdSchema,
 });

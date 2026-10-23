@@ -368,6 +368,13 @@ export const MergeUndone = z.strictObject({
 }).describe('A merge of two places undone (ADR-0086): what it moved is back where it came from.');
 export type MergeUndone = z.infer<typeof MergeUndone>;
 
+export const MembershipSeparated = z.strictObject({
+  separationId: z.number().int(),
+  originalId: z.number().int().describe('The place the membership left, which keeps its other kinds, its visits and its own records.'),
+  separatedId: z.number().int().describe('The new place, holding the membership with the points and works it places.'),
+}).describe('One kind\'s membership of a place separated into a place of its own (ADR-0142).');
+export type MembershipSeparated = z.infer<typeof MembershipSeparated>;
+
 const ViewFieldWord = z.enum(VIEW_FIELDS);
 
 export const ViewsChosen = z.strictObject({

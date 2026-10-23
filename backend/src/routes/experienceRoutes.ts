@@ -27,6 +27,7 @@ import {
   LocationEditResult,
   LocationStateResult,
   ManualExperienceCreated,
+  MembershipSeparated,
   MergeUndone,
   NearbyPictures,
   ViewsChosen,
@@ -40,6 +41,7 @@ import {
 } from '../api/responses/curation.js';
 import { PublishWaitingResult } from '../api/responses/admin.js';
 import { undoPlaceMerge } from '../controllers/experience/placeMergeController.js';
+import { separatePlaceMembership } from '../controllers/experience/membershipSeparationController.js';
 import { chooseViews } from '../controllers/experience/viewChoiceController.js';
 import { answerComponentItems } from '../controllers/experience/componentItemController.js';
 import { answerMergeProposals } from '../controllers/experience/mergeProposalController.js';
@@ -115,6 +117,7 @@ import {
   regionLocationsQuerySchema,
   idParamSchema,
   sourceIdParamSchema,
+  kindOfPlaceParamSchema,
   mergeIdParamSchema,
   chooseViewsBodySchema,
   answerComponentItemsBodySchema,
@@ -714,6 +717,15 @@ export const experienceCurationRoutes = [
     params: mergeIdParamSchema,
     response: MergeUndone,
     handler: undoPlaceMerge,
+  }),
+  // Separate one kind's membership of a place into a place of its own (ADR-0142):
+  // the way back from a merge or a join on arrival that an item misled.
+  defineRoute({
+    method: 'post', path: '/:id/kinds/:kindId/separate', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
+    summary: 'Separate one kind\'s membership of a place into a place of its own, with the points and works it places',
+    params: kindOfPlaceParamSchema,
+    response: MembershipSeparated,
+    handler: separatePlaceMembership,
   }),
   defineRoute({
     method: 'post', path: '/sources/:sourceId/publish-waiting', access: 'curator', cache: 'no-store', limiter: authenticatedLimiter,
