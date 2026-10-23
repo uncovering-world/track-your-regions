@@ -19,6 +19,17 @@
  */
 export const LOCATION_UNCHANGED_METERS = 10;
 
+/**
+ * Below this, a move of a place a reader sees changes nothing a traveller
+ * notices, so the curation gate lets it through (ADR-0140): on the review queue
+ * of 2026-10-22 every such move kept the pin on the same building or site, or
+ * corrected it (the Choragic Monument of Lysicrates, 28 m onto the monument).
+ * Two sources' views of a place closer than this are not asked about either.
+ * It is held still where the new point falls nearer another place, or in
+ * another division (`shortMovePassesSql`).
+ */
+export const SHORT_MOVE_METERS = 250;
+
 /** Above this, a place has moved far enough to matter to a traveller: it may now fall in another region. */
 export const LOCATION_MAJOR_METERS = 1000;
 
