@@ -13,7 +13,7 @@ import {
   type RegionExperienceLocation,
 } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
-import { overPlacePoints, placePointsSql } from '../../db/placePoints.js';
+import { overPlacePoints, placePointsSql, pointNameSql } from '../../db/placePoints.js';
 import type { CheckValue, ExperienceLocationsRow, ExperiencesRow } from '../../db/schema.generated.js';
 import {
   hideLostSql,
@@ -127,7 +127,7 @@ export async function getRegionExperienceLocations(
       SELECT
         el.id,
         ${placeId} AS experience_id,
-        el.name,
+        ${pointNameSql('el')} AS name,
         el.external_ref,
         el.ordinal,
         el.approximate,
@@ -183,7 +183,7 @@ export async function getRegionExperienceLocations(
       SELECT
         el.id,
         ${placeId} AS experience_id,
-        el.name,
+        ${pointNameSql('el')} AS name,
         el.external_ref,
         el.ordinal,
         el.approximate,
@@ -295,7 +295,7 @@ export async function getExperienceLocations(
       -- The place asked about, which shows the point: a site's part's point is
       -- the site's here, as on the map (ADR-0100).
       pp.place_id AS experience_id,
-      el.name,
+      ${pointNameSql('el')} AS name,
       el.external_ref,
       el.ordinal,
       el.approximate,

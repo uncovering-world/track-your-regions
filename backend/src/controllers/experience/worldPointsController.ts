@@ -56,7 +56,7 @@ import { pool } from '../../db/index.js';
 import { catalogueKindJoinSql, kindMembershipJoinSql, placeKindsSql, placeOfferedSql } from '../../db/membership.js';
 import { bboxIntersectsSql, parseBbox } from '../../db/bboxEnvelopes.js';
 import { hideLostSql, offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
-import { overPlacePoints, type PlacePointArm } from '../../db/placePoints.js';
+import { overPlacePoints, pointNameSql, type PlacePointArm } from '../../db/placePoints.js';
 
 /**
  * Decimals a coordinate is rounded to, per tier.
@@ -139,7 +139,7 @@ function selectSql(
     columns.push(
       `${locationRow}.id AS location_id`,
       `${placeId} AS experience_id`,
-      `${locationRow}.name AS location_name`,
+      locationRow === 'folded' ? 'folded.name AS location_name' : `${pointNameSql(locationRow)} AS location_name`,
       'e.name AS experience_name',
       'm.kind_id',
       'm.type',
@@ -275,7 +275,7 @@ function foldedQuery(detail: PointsDetail, where: string, kindJoin: string): str
           WHERE ${where}`)}
         ) shown
       ), places AS (
-        ${overPlacePoints(({ from, placeId }) => `SELECT el.id, ${placeId} AS experience_id, el.location, el.name,
+        ${overPlacePoints(({ from, placeId }) => `SELECT el.id, ${placeId} AS experience_id, el.location, ${pointNameSql('el')} AS name,
           el.location::geography <-> e.location::geography AS off_anchor
         FROM ${from}
         JOIN matched ON matched.experience_id = ${placeId}

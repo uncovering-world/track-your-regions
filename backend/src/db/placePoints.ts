@@ -211,6 +211,23 @@ export function somePointShownSql(place: string, point: string, where: string, j
 }
 
 /**
+ * What a reader calls the point `point`: its own name, else the name of the
+ * part place it is the point of (#1924). A place another kind brought and a
+ * merge made a site's part carries its name on the part row, and its point,
+ * which that kind placed, none of its own: Etchmiadzin Cathedral's point was
+ * listed by its coordinates. A point of no part keeps its null, which the web
+ * labels by the reference or the coordinate (`locationLabel`). The curator's
+ * reads keep `name` as the source wrote it, since what the source listed is
+ * what a curator corrects.
+ */
+export function pointNameSql(point = 'el'): string {
+  return `COALESCE(NULLIF(${point}.name, ''),
+          (SELECT prt_name.name FROM experience_parts pop
+             JOIN experiences prt_name ON prt_name.id = pop.part_id
+            WHERE pop.part_id = ${point}.experience_id LIMIT 1))`;
+}
+
+/**
  * The part place the point `point` is the point of, or NULL where its own
  * place is no part (ADR-0100): a visit to such a point is recorded on the
  * part.
