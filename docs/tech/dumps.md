@@ -39,6 +39,7 @@ indexes onto its copy.
 | `enwiki-page`, `enwiki-page-props`, `enwiki-linktarget`, `enwiki-categorylinks`, `enwiki-langlinks` | `enwiki/<date>/enwiki-<date>-<table>.sql.gz` | the sha1 and size `dumpstatus.json` gives the file once its job is `done` |
 | `pageviews-user` | `other/pageview_complete/monthly/<year>/<year-month>/pageviews-<yyyymm>-user.bz2` | the host's `Content-Length` and a clean end of the bzip2 stream — no checksum is published |
 | `wikipedia-redirects` | `enwiki/<date>/enwiki-<date>-redirect.sql.gz`, and its build reads `<wiki>/<date>/<wiki>-<date>-{redirect,page}.sql.gz` of every counted edition | the sha1 and size each edition's `dumpstatus.json` gives (`wikipediaTableFile`) |
+| `wikidata-redirects` | `wikidatawiki/<date>/wikidatawiki-<date>-redirect.sql.gz`, and its build reads `wikidatawiki-<date>-page.sql.gz` of the same run | the sha1 and size the run's `dumpstatus.json` gives (`wikipediaTableFile`) |
 | `wikivoyage-usage` | `enwikivoyage/<date>/enwikivoyage-<date>-wbc_entity_usage.sql.gz`, and its build reads `<wiki>/<date>/<wiki>-<date>-{wbc_entity_usage,page}.sql.gz` of every Wikivoyage edition, English Wikivoyage's page table included | the sha1 and size each edition's `dumpstatus.json` gives its `wbcentityusagetable` job (`wikiRunFile`) |
 | `osm-planet` | `planet.openstreetmap.org/pbf/planet-<yymmdd>.osm.pbf`, the weekly planet named by its Monday | the md5 in `planet-<yymmdd>.osm.pbf.md5` beside it, and the host's `Content-Length` |
 
@@ -652,6 +653,12 @@ On September 2026 (`pageviews-202609-user.bz2`, 5.9 GB, 561.8M lines, measured
 2026-10-17 on #1436), 80 editions are counted. They have 181.9M titles, 35.9M
 of them with 10 views or more. 9.6M of those are sitelinks of 3.6M subset items,
 0.74 GB a month as a heap, with 1.0M at 400 views or more.
+
+## Wikidata's item redirects
+
+When two items are merged on Wikidata, one becomes a redirect to the other, and the JSON dump the subset is cut from carries no trace of it. A place registered under the old item and a run reading the new one would then not meet, and the resolver would create a second place (ADR-0143 decision 3, #1895). The `wikidata-redirects` keeper (`services/dumps/wikidata/redirectBuild.ts`) reads two tables of one run of `wikidatawiki`: `redirect`, the build's own file (each redirect page's id and the item it points to, an interwiki one left out), and `page`, read from the host as a stream (each main-namespace redirect page's id and the item it is titled). Both are staged and joined in the database (`redirectTables.ts`), every item redirected to another is kept in a `_next` copy of `workbench.wikidata_redirects`, and the copy is swapped in whole with the record of the build (`workbench.wikidata_redirect_builds`), so a reader never sees half a build; a run that has not finished its page table fails the build and leaves the redirects in place. Nothing samples it and nothing starts it from a copy, as for the Wikipedia redirects.
+
+What reads it: `withRedirects` (`db/experienceWriter.ts`) widens a lookup of a place by its items to the items redirected to or from them, so `lockIdentifiedPlace` finds a place registered under an item Wikidata has since merged away; `lockSourcedExperience` finds a Wikidata source's membership keyed by the old item when its run reads the new one, and the upsert moves the key to the item the run reads, filing the move on the run's changeset as the field `external_id`; the catalogue check `identifiers-redirected` lists what stays registered under an old item, a site's items or a component point's, for a curator. Measured on the development catalogue on 2026-10-23, before the first build: 0 of 8,187 registered items were redirects, read live with `wbgetentities`; the keeper is the guard for the next merge on Wikidata, not a backlog.
 
 ## English Wikipedia's structure
 
