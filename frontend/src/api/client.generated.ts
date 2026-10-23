@@ -3158,6 +3158,7 @@ export const ReviewQueueItemKind = {
   'merge-proposals': 'merge-proposals',
   'pin-question': 'pin-question',
   'visit-question': 'visit-question',
+  'approximate-points': 'approximate-points',
 } as const;
 
 export type ProposedFieldSignificance = typeof ProposedFieldSignificance[keyof typeof ProposedFieldSignificance];
@@ -3750,6 +3751,77 @@ export interface SitePoint {
 }
 
 /**
+ * Why the point is rough: given to the whole minute, or shared with another component of the property.
+ */
+export type ApproximatePointReason = typeof ApproximatePointReason[keyof typeof ApproximatePointReason];
+
+
+export const ApproximatePointReason = {
+  'whole-minute': 'whole-minute',
+  shared: 'shared',
+} as const;
+
+/**
+ * Where the hint comes from: an OpenStreetMap object carrying the component's World Heritage reference, the component's own Wikidata item, an item the component-item finder proposes for it, or an OpenStreetMap object within 2 km named like it.
+ */
+export type ApproximatePointHintSource = typeof ApproximatePointHintSource[keyof typeof ApproximatePointHintSource];
+
+
+export const ApproximatePointHintSource = {
+  'osm-ref': 'osm-ref',
+  item: 'item',
+  candidate: 'candidate',
+  'osm-name': 'osm-name',
+} as const;
+
+/**
+ * One place a component the list placed only roughly may really stand (#1853).
+ */
+export interface ApproximatePointHint {
+  /** Where the hint comes from: an OpenStreetMap object carrying the component's World Heritage reference, the component's own Wikidata item, an item the component-item finder proposes for it, or an OpenStreetMap object within 2 km named like it. */
+  source: ApproximatePointHintSource;
+  /** The Wikidata item (Q-number) or the OpenStreetMap object (N, W or R and its id). */
+  ref: string;
+  /**
+     * The hint's name, where it has one.
+     * @nullable
+     */
+  label: string | null;
+  latitude: number;
+  longitude: number;
+  /**
+     * How far from the list's point the hint stands.
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  metres: number;
+}
+
+/**
+ * A component the World Heritage list placed only roughly, which nobody has placed since (#1853).
+ */
+export interface ApproximatePoint {
+  /**
+     * @minimum -9007199254740991
+     * @maximum 9007199254740991
+     */
+  locationId: number;
+  /** @nullable */
+  name: string | null;
+  /**
+     * The component's reference in the list.
+     * @nullable
+     */
+  ref: string | null;
+  latitude: number;
+  longitude: number;
+  /** Why the point is rough: given to the whole minute, or shared with another component of the property. */
+  reason: ApproximatePointReason;
+  /** Where it may really stand, the component's own reference first. */
+  hints: ApproximatePointHint[];
+}
+
+/**
  * Which rule found the pair: names alike by trigrams, or one name's words all standing in the other's (#1652).
  */
 export type MergePairFoundBy = typeof MergePairFoundBy[keyof typeof MergePairFoundBy];
@@ -4069,8 +4141,10 @@ export interface ReviewQueueItem {
   quiet_fields?: QuietField[];
   /** The candidate items of the site's components, the points in the source's order and the better candidate first (#1272). `component-items` items only. */
   component_items?: ComponentItemProposal[] | null;
-  /** Every place the site is made of, in the source's order, each with its own picture where it has one: what the card's map draws around the candidates (#1342). `component-items` items only. */
+  /** Every place the site is made of, in the source's order, each with its own picture where it has one: what the card's map draws around the candidates (#1342), and around a point the list placed only roughly (#1853). `component-items` and `approximate-points` items only. */
   site_points?: SitePoint[] | null;
+  /** The components the World Heritage list placed only roughly, each with where it may really stand (#1853). `approximate-points` items only. */
+  approximate_points?: ApproximatePoint[] | null;
   /** The open pairs of near places with similar names this place is the lower id of, the most alike first (#1249). `merge-proposals` items only. */
   merge_pairs?: MergePair[] | null;
   /** `pin-question` items only (#1367). */
@@ -4096,6 +4170,7 @@ export const QueueKind = {
   'merge-proposals': 'merge-proposals',
   'pin-question': 'pin-question',
   'visit-question': 'visit-question',
+  'approximate-points': 'approximate-points',
 } as const;
 
 /**
@@ -4141,6 +4216,7 @@ export const QueueFacetsKindItemKind = {
   'merge-proposals': 'merge-proposals',
   'pin-question': 'pin-question',
   'visit-question': 'visit-question',
+  'approximate-points': 'approximate-points',
   arrival: 'arrival',
   held: 'held',
   contents: 'contents',
@@ -4251,6 +4327,8 @@ export interface ReviewQueue {
   pinQuestions: ReviewQueueItem[];
   /** Offered places few witnesses vouch for and Jev reads as nothing to see (#1770). */
   visitQuestions: ReviewQueueItem[];
+  /** Serial sites whose components the World Heritage list placed only roughly (#1853). */
+  approximatePoints: ReviewQueueItem[];
   arrivals: ReviewQueueItem[];
   held: ReviewQueueItem[];
   /** One per place and membership holding unread rows it placed (#1290). */
@@ -4302,6 +4380,7 @@ export const ReviewAnswerBodyRowsItemKind = {
   'merge-proposals': 'merge-proposals',
   'pin-question': 'pin-question',
   'visit-question': 'visit-question',
+  'approximate-points': 'approximate-points',
 } as const;
 
 export type ReviewAnswerBodyRowsItem = {

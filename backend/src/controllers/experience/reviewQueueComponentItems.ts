@@ -53,8 +53,12 @@ const CANDIDATES = `(SELECT jsonb_agg(jsonb_build_object(
        JOIN experience_component_item_proposals p ON p.location_id = el.id
       WHERE ${openProposalSql('p', 'el')})`;
 
-/** Every place the site is made of, in the source's order: what its map draws around the candidates. */
-const SITE_POINTS = `(SELECT jsonb_agg(jsonb_build_object(
+/**
+ * Every place the site is made of, in the source's order: what its map draws
+ * around the candidates, and around a point the list placed only roughly
+ * (`reviewQueueApproximatePoints.ts`).
+ */
+export const SITE_POINTS = `(SELECT jsonb_agg(jsonb_build_object(
            'locationId', sp.id,
            'name', sp.name,
            'ref', sp.external_ref,

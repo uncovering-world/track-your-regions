@@ -17,6 +17,7 @@
  * the other (`db/readerPredicates.ts` sets the same rule).
  */
 
+import { approximatePointOpenSql } from '../../services/sync/pointHints.js';
 import {
   MEMBERSHIPS, admissionAnsweredSql, admissionPinnedSql, membershipAdmittedSql, membershipOfferedSql,
 } from '../../db/membership.js';
@@ -238,6 +239,20 @@ export function openProposalSql(p = 'p', el = 'el'): string {
     AND ${offeredLocationSql(el)}
     AND ${publishedContentSql(el)}
     AND NOT EXISTS (SELECT 1 FROM experience_locations taken WHERE taken.wikidata_item = ${p}.wikidata_item)`;
+}
+
+
+export { approximatePointOpenSql };
+
+/**
+ * `approximate-points`: a site some component of which the list placed only
+ * roughly and nobody has placed since (#1853), under the object's own lifecycle
+ * guards, as `component-items` is.
+ */
+export function approximatePointsOpenSql(e = 'e'): string {
+  const site = e + '.id';
+  return `${experienceOfferedToReaderSql(e)} AND ${e}.missing_since IS NULL
+    AND ${somePointShownSql(site, 'el', approximatePointOpenSql('el'))}`;
 }
 
 /**

@@ -17,6 +17,7 @@
 import { sentenceFor } from '../../api/readerFacingError.js';
 import { Operation } from '../operationProgress.js';
 import { FINDER_STEPS, findComponentItems, type ComponentItemReport } from './componentItemFinder.js';
+import { findPointHints, type PointHintsReport } from './pointHints.js';
 import { WaitBudget } from './sourceRetry.js';
 import { isTerminalSyncStatus, runningSyncs, type SyncProgress } from './types.js';
 import { SPARQL_WAIT_BUDGET_MS, sayWait } from './wikidataUtils.js';
@@ -88,9 +89,8 @@ export async function findUnescoComponentItems(
       operation.finish('cancelled');
       return;
     }
-    progress.statusMessage = 'Recording the exact candidates nothing contradicts...';
-    const taken = accept ? await accept(site?.id, { isCancelled: () => progress.cancel }) : null;
-    if (progress.cancel) {
+    const after = await afterSearch(progress, site, accept);
+    if (!after) {
       progress.status = 'cancelled';
       progress.statusMessage = 'Cancelled.';
       operation.finish('cancelled');
@@ -98,7 +98,7 @@ export async function findUnescoComponentItems(
     }
     progress.status = 'complete';
     progress.created = report.partOf + report.near + report.toponym + report.numbered;
-    progress.statusMessage = sentenceOf(report, site) + acceptedSentence(taken);
+    progress.statusMessage = sentenceOf(report, site) + acceptedSentence(after.taken) + hintsSentence(after.hints);
     operation.finish(`${report.queries} requests to Wikidata's API; ${progress.statusMessage}`);
   } catch (err) {
     progress.status = progress.cancel ? 'cancelled' : 'failed';
@@ -115,7 +115,30 @@ export async function findUnescoComponentItems(
   }
 }
 
-/** What the pass's own answers recorded, as the closing line's last clause. */
+/**
+ * What the pass does once its search is over: accept the exact candidates
+ * nothing contradicts (ADR-0141), then work out where the components the list
+ * placed only roughly may stand (#1853). Null where the pass was cancelled.
+ */
+async function afterSearch(
+  progress: SyncProgress,
+  site: { id: number; name: string } | undefined,
+  accept: ((siteId: number | undefined, run: { isCancelled: () => boolean }) => Promise<CatalogueAnswers>) | undefined,
+): Promise<{ taken: CatalogueAnswers | null; hints: PointHintsReport } | null> {
+  progress.statusMessage = 'Recording the exact candidates nothing contradicts...';
+  const taken = accept ? await accept(site?.id, { isCancelled: () => progress.cancel }) : null;
+  if (progress.cancel) return null;
+  progress.statusMessage = 'Finding where the components placed only roughly may stand...';
+  const hints = await findPointHints(site?.id);
+  return progress.cancel ? null : { taken, hints };
+}
+
+/** Where the roughly placed components may stand, as the closing line's last clause. */
+function hintsSentence(hints: PointHintsReport): string {
+  return hints.points > 0 ? `; ${hints.hints} hints of where ${hints.points} roughly placed components may stand` : '';
+}
+
+/** What the pass's own answers recorded, as the closing line's clause. */
 function acceptedSentence(taken: CatalogueAnswers | null): string {
   if (!taken) return '';
   const left = taken.leftForNextPass > 0 ? `, ${taken.leftForNextPass} left for the next pass` : '';
