@@ -768,11 +768,12 @@ describe('a local name is a fact of its own', () => {
     expect(result.curatedConflicts.every(f => f.curatedConflict)).toBe(true);
   });
 
-  it('holds every language back behind the gate, each answerable on its own', () => {
+  it('writes every language past the gate, each filed on its own, since no reader is shown one (#1834)', () => {
     const result = computeChangeSet(named({ en: 'Old', ko: '옛' }), named({ en: 'New', ko: '새' }), [], HELD);
 
-    expect(result.changeType).toBe('unchanged');
-    expect(result.heldFields.map(f => f.field)).toEqual(['nameLocal.en', 'nameLocal.ko']);
+    expect(result.heldFields).toEqual([]);
+    expect(result.changedFields.map(f => [f.field, f.passedTheGate]))
+      .toEqual([['nameLocal.en', 'unseen'], ['nameLocal.ko', 'unseen']]);
   });
 });
 

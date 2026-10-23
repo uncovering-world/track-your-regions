@@ -323,12 +323,18 @@ describe('publishing a held proposal', () => {
     // that produces a held card at all — so the proposal fed back in is the
     // record such a run writes, `held` flags and all (#519).
     const diff = computeChangeSet(BEFORE_SNAPSHOT, CHANGED_SNAPSHOT, [], true);
-    const proposal = diff.heldFields;
-    const names = proposal.map(field => field.field);
     // Nothing else may have slipped into the applied bucket, or this test would
-    // be feeding the writer fields no card ever showed. A place's countries are
-    // written past the gate, since no reader sees them (#1579).
-    expect(diff.changedFields.map(field => field.field).sort()).toEqual(['countryCodes', 'countryNames']);
+    // be feeding the writer fields no card ever showed. A place's countries and
+    // local names are written past the gate, since no reader is shown them
+    // (#1579, #1834). The local names are fed back as a card filed before #1834
+    // holds them, which the writer still has to apply.
+    expect(diff.changedFields.map(field => field.field).sort())
+      .toEqual(['countryCodes', 'countryNames', 'nameLocal.en', 'nameLocal.fr']);
+    const filedBefore = diff.changedFields
+      .filter(field => field.field.startsWith('nameLocal.'))
+      .map(({ passedTheGate: _passed, ...field }) => ({ ...field, held: true }));
+    const proposal = [...diff.heldFields, ...filedBefore];
+    const names = proposal.map(field => field.field);
     // A guard on the fixture, not on the code: a snapshot pair that stopped
     // differing everywhere would quietly narrow what this test covers. `tags`
     // and the countries are not in the list because no run proposes them any

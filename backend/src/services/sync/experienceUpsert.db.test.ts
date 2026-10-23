@@ -336,10 +336,16 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
         metadata: expect.objectContaining({ imageCredit: NEW_CREDIT, areaHectares: 821.748 }), pointer: null, state: 'verified',
       });
 
-      // Moved by more than a tenth — the Brú na Bóinne's 770 → 796 is not, this is: asked.
-      const held = await upsertExperienceRecord(site({ imageCredit: NEW_CREDIT, areaHectares: 1000 }), { syncLogId: log });
-      expect(held.changeSet.heldFields.map(f => f.field)).toEqual(['metadata.areaHectares']);
-      expect(await state()).toMatchObject({ metadata: expect.objectContaining({ areaHectares: 821.748 }), pointer: log });
+      // Moved by more than a tenth — the Brú na Bóinne's 770 → 796 is not, this is:
+      // written all the same, since no reader is shown the area (#1834).
+      const moved = await upsertExperienceRecord(site({ imageCredit: NEW_CREDIT, areaHectares: 1000 }), { syncLogId: log });
+      expect(moved.changeSet.changedFields.map(f => [f.field, f.passedTheGate])).toEqual([['metadata.areaHectares', 'unseen']]);
+
+      // A credit under another licence is asked.
+      const relicensed = { ...NEW_CREDIT, license: 'CC BY-SA 4.0' };
+      const held = await upsertExperienceRecord(site({ imageCredit: relicensed, areaHectares: 1000 }), { syncLogId: log });
+      expect(held.changeSet.heldFields.map(f => f.field)).toEqual(['metadata.imageCredit']);
+      expect(await state()).toMatchObject({ metadata: expect.objectContaining({ imageCredit: NEW_CREDIT, areaHectares: 1000 }), pointer: log });
     } finally {
       await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
       await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
@@ -422,6 +428,73 @@ describe('a rewrite a visitor would not notice passes the gate (#1353)', () => {
     } finally {
       await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
       await pool.query('UPDATE experiences SET subtitle = NULL WHERE id = $1', [created.experienceId]);
+      await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
+      await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [log]);
+    }
+  });
+
+  it('writes a field no reader is shown and a typographic rewrite, and asks about the rest (#1834)', async () => {
+    // Gondwana Rainforests of Australia's description, one apostrophe apart, beside
+    // a local name and a year no reader is shown.
+    const text = 'situated along the Great Escarpment on Australia\u2019s east coast';
+    const created = await upsertExperienceRecord(site({}));
+    const stored = (await pool.query<{ metadata: Record<string, unknown> }>(
+      'SELECT metadata FROM experiences WHERE id = $1', [created.experienceId],
+    )).rows[0].metadata;
+    const record = (description: string, nameLocal: Record<string, string>, year: number) => ({
+      ...site({ ...stored, year }), description, nameLocal,
+    });
+    await upsertExperienceRecord(record(text, { ar: 'old' }, 1915));
+    await pool.query(
+      `UPDATE experience_kind_memberships SET curation_state = 'verified', published_at = NOW()
+        WHERE experience_id = $1 AND source_id = $2`,
+      [created.experienceId, archaeology],
+    );
+    const log = (await pool.query<{ id: number }>(
+      `INSERT INTO experience_sync_logs (source_id, status, started_at, is_dry_run)
+       VALUES ($1, 'running', NOW(), FALSE) RETURNING id`, [archaeology],
+    )).rows[0].id;
+    const state = async () => (await pool.query<{
+      description: string; ar: string; year: number; pointer: number | null; state: string;
+    }>(
+      `SELECT e.description, e.name_local ->> 'ar' AS ar, (e.metadata ->> 'year')::int AS year,
+              m.pending_change_sync_log_id AS pointer, m.curation_state AS state
+         FROM experiences e JOIN experience_kind_memberships m ON m.experience_id = e.id AND m.source_id = $2
+        WHERE e.id = $1`,
+      [created.experienceId, archaeology],
+    )).rows[0];
+    const straight = text.replace('\u2019', "'");
+    try {
+      const passed = await upsertExperienceRecord(record(straight, { ar: 'new' }, 1945), { syncLogId: log });
+      expect(passed.changeSet.heldFields).toEqual([]);
+      expect(passed.changeSet.changedFields.map(f => [f.field, f.passedTheGate])).toEqual([
+        ['description', 'typography'], ['nameLocal.ar', 'unseen'], ['metadata.year', 'unseen'],
+      ]);
+      expect(await state()).toEqual({ description: straight, ar: 'new', year: 1945, pointer: null, state: 'verified' });
+
+      // Another paragraph is asked; the local name beside it is still written.
+      const held = await upsertExperienceRecord(record('Another paragraph.', { ar: 'newer' }, 1945), { syncLogId: log });
+      expect(held.changeSet.heldFields.map(f => f.field)).toEqual(['description']);
+      expect(await state()).toEqual({ description: straight, ar: 'newer', year: 1945, pointer: log, state: 'verified' });
+
+      // A year the record no longer carries is a removal the held row does not
+      // take, and is asked.
+      const removed = await upsertExperienceRecord(
+        { ...record(straight, { ar: 'newer' }, 1945), metadata: { ...stored } }, { syncLogId: log },
+      );
+      expect(removed.changeSet.heldFields.map(f => f.field)).toEqual(['metadata.year']);
+      expect((await state()).year).toBe(1945);
+
+      // A curator's claim keeps the local names.
+      await pool.query(
+        `UPDATE experiences SET curated_fields = '["name_local"]'::jsonb WHERE id = $1`, [created.experienceId],
+      );
+      const claimed = await upsertExperienceRecord(record(straight, { ar: 'newest' }, 1945), { syncLogId: log });
+      expect(claimed.changeSet.curatedConflicts.map(f => f.field)).toEqual(['nameLocal.ar']);
+      expect((await state()).ar).toBe('newer');
+    } finally {
+      await pool.query('UPDATE experience_kind_memberships SET pending_change_sync_log_id = NULL WHERE experience_id = $1', [created.experienceId]);
+      await pool.query(`UPDATE experiences SET curated_fields = '[]'::jsonb, name_local = NULL WHERE id = $1`, [created.experienceId]);
       await pool.query('DELETE FROM experience_sync_changes WHERE sync_log_id = $1', [log]);
       await pool.query('DELETE FROM experience_sync_logs WHERE id = $1', [log]);
     }

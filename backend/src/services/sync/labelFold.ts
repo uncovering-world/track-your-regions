@@ -63,3 +63,33 @@ export const SQL_WHITESPACE_ALTERNATION = `(\\s|${
  */
 export const tidyLabelSql = (expression: string): string =>
   `btrim(regexp_replace(${expression}, '${SQL_WHITESPACE_ALTERNATION}+', ' ', 'g'), ' ')`;
+
+/** One of the characters a list of code points names, as a Postgres alternation. */
+const alternation = (codePoints: readonly number[]): string =>
+  '(' + codePoints.map(cp => '\\u' + cp.toString(16).padStart(4, '0')).join('|') + ')';
+
+/**
+ * `foldTypography` (`@tyr/shared/labels`) as SQL over a text expression, for
+ * the location writer's guard on a held point's name (#1834) and, spelled out
+ * in the file, migration 154. Alternations rather than bracket expressions, for
+ * the reason `SQL_WHITESPACE_ALTERNATION` gives. Pinned to the TypeScript rule
+ * by `labelFold.db.test.ts`.
+ */
+export const typographyFoldSql = (expression: string): string => {
+  const quotes = alternation([0x2018, 0x2019, 0x201a, 0x201b, 0x02bc, 0x2032]);
+  const doubleQuotes = alternation([0x201c, 0x201d, 0x201e, 0x201f, 0x2033, 0x00ab, 0x00bb]);
+  const dashes = alternation([0x2010, 0x2011, 0x2012, 0x2013, 0x2014, 0x2015, 0x2212]);
+  const folded = `regexp_replace(regexp_replace(regexp_replace(normalize(${expression}, NFC),
+      '${quotes}', '''', 'g'), '${doubleQuotes}', '"', 'g'), '${dashes}', '-', 'g')`;
+  return tidyLabelSql(`regexp_replace(${folded}, '(${SQL_WHITESPACE_ALTERNATION}|\\\\[tn])+$', '')`);
+};
+
+/**
+ * `sameTypography` as SQL: an incoming text that differs from the stored one,
+ * ends in no literal escape, and folds to the same text. Null on either side
+ * is no rewrite.
+ */
+export const sameTypographySql = (stored: string, incoming: string): string =>
+  `COALESCE(${stored} <> ${incoming}
+     AND ${incoming} !~ '\\\\[tn]${SQL_WHITESPACE_ALTERNATION}*$'
+     AND ${typographyFoldSql(stored)} = ${typographyFoldSql(incoming)}, false)`;

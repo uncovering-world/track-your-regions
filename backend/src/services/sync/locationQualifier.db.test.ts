@@ -87,3 +87,39 @@ describe("a part's name under a gated source (#1353)", () => {
     expect(result.delta.changed[0].fields[0]).not.toHaveProperty('passedTheGate');
   });
 });
+
+describe("a part's name rewritten only in its typesetting (#1834)", () => {
+  it('takes the name without the escape the World Heritage list once wrote, recorded as passed', async () => {
+    // Pergamon's Maltepe Tumulus, stored with a backslash and a t at the end.
+    await pool.query("UPDATE experience_locations SET name = $2 WHERE experience_id = $1", [CHURCHES, 'Maltepe Tumulus\\t']);
+    const result = await writeExperienceLocations(
+      CHURCHES, [{ ...POINT, name: 'Maltepe Tumulus' }], { syncLogId: null, sourceId: archaeology },
+    );
+
+    expect(await pointName()).toBe('Maltepe Tumulus');
+    expect(result.delta.changed[0].fields).toEqual([expect.objectContaining({
+      field: 'name', held: false, passedTheGate: 'typography',
+    })]);
+  });
+
+  it('takes a curly apostrophe made straight, and holds a space put inside a word', async () => {
+    await pool.query("UPDATE experience_locations SET name = $2 WHERE experience_id = $1", [CHURCHES, 'St Mary\u2019s Church']);
+    await writeExperienceLocations(CHURCHES, [{ ...POINT, name: "St Mary's Church" }], { syncLogId: null, sourceId: archaeology });
+    expect(await pointName()).toBe("St Mary's Church");
+
+    const result = await writeExperienceLocations(
+      CHURCHES, [{ ...POINT, name: "St Ma ry's Church" }], { syncLogId: null, sourceId: archaeology },
+    );
+    expect(await pointName()).toBe("St Mary's Church");
+    expect(result.delta.changed[0].fields).toEqual([expect.objectContaining({ field: 'name', held: true })]);
+  });
+
+  it('keeps a curator\'s name over a typographic rewrite', async () => {
+    await pool.query(
+      `UPDATE experience_locations SET name = 'Maltepe Tumulus\u2019', curated_fields = '["name"]'::jsonb WHERE experience_id = $1`,
+      [CHURCHES],
+    );
+    await writeExperienceLocations(CHURCHES, [{ ...POINT, name: "Maltepe Tumulus'" }], { syncLogId: null, sourceId: archaeology });
+    expect(await pointName()).toBe('Maltepe Tumulus\u2019');
+  });
+});

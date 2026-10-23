@@ -15,7 +15,7 @@
  */
 
 import { distanceMeters, LOCATION_MAJOR_METERS, LOCATION_UNCHANGED_METERS } from '@tyr/shared/moves';
-import type { FieldChange } from './changeSet.js';
+import type { FieldChange, GatePass } from './changeSet.js';
 import { sameLabel } from '@tyr/shared/labels';
 import { sameLabelSet } from './labelFold.js';
 
@@ -107,7 +107,7 @@ export function pointChanges(
   after: PointSnapshot,
   curatedFields: readonly string[] = [],
   held = false,
-  namePassed = false,
+  namePass?: Extract<GatePass, 'qualifier' | 'typography'>,
 ): FieldChange[] {
   const changes: FieldChange[] = [];
 
@@ -136,9 +136,10 @@ export function pointChanges(
   }
 
   const out = underClaims(changes, curatedFields, held ? POINT_HELD_FIELDS : NONE_HELD);
-  // A qualified name the gate let through on a point it holds says why (#1353).
-  return namePassed
-    ? out.map(f => (f.field === 'name' && !f.curatedConflict ? { ...f, passedTheGate: 'qualifier' as const } : f))
+  // A name the gate let through on a point it holds says why: a qualifier
+  // added (#1353), or its typesetting alone (#1834).
+  return namePass
+    ? out.map(f => (f.field === 'name' && !f.curatedConflict ? { ...f, passedTheGate: namePass } : f))
     : out;
 }
 

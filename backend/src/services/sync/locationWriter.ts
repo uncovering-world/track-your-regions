@@ -95,6 +95,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { retirePassAfterNewContent } from './curationDecay.js';
 import { pointHeldProposalAt, type WriteRun } from './heldProposalPointer.js';
 import { tidyLabel } from '@tyr/shared/labels';
+import { sameTypographySql } from './labelFold.js';
 import type { ContentsDelta } from './types.js';
 // The source's list, before anything is known about the store: how it becomes a
 // CTE, how its values bind, and the duplicates the source itself ships.
@@ -303,6 +304,12 @@ export async function writeExperienceLocations(
   const qualifierAdded = (stored: string) => `COALESCE(length(${stored}) > 0
                      AND left(i.name, length(${stored})) = ${stored}
                      AND substr(i.name, length(${stored}) + 1) ~ '^(, | \\(| [-–] ).', false)`;
+  /**
+   * A name rewritten only in its typesetting passes too (#1834, ADR-0139):
+   * *Maltepe Tumulus\t* as the World Heritage list once wrote it, and
+   * *Maltepe Tumulus* as it writes it now.
+   */
+  const namePasses = (stored: string) => `(${qualifierAdded(stored)} OR ${sameTypographySql(stored, 'i.name')})`;
 
   /**
    * One stored row per incoming point, and one incoming point per stored row.
@@ -667,7 +674,7 @@ export async function writeExperienceLocations(
            -- a curator answers, so the object takes this path per run while it
            -- is held -- the cost ADR-0029 decision 5 already accepts for a claimed
            -- point, and the same re-proposal the object's own held field makes.
-           name = ${claimed('name')} OR (${heldPoint} AND NOT ${qualifierAdded('el.name')}) THEN el.name ELSE i.name END,
+           name = ${claimed('name')} OR (${heldPoint} AND NOT ${namePasses('el.name')}) THEN el.name ELSE i.name END,
            source_membership = 'present',
            -- Listed here again: no longer the point that moved away (#1448).
            moved_to_location_id = NULL,
@@ -707,8 +714,10 @@ export async function writeExperienceLocations(
                  el.external_ref,
                  -- The guard's own expression, so the record cannot disagree
                  -- with the write about whether the name was written.
-                 (${heldPoint} AND NOT ${qualifierAdded('p.old_name')}) AS was_held,
-                 (${heldPoint} AND ${qualifierAdded('p.old_name')}) AS name_passed`,
+                 (${heldPoint} AND NOT ${namePasses('p.old_name')}) AS was_held,
+                 CASE WHEN NOT ${heldPoint} THEN NULL
+                      WHEN ${qualifierAdded('p.old_name')} THEN 'qualifier'
+                      WHEN ${sameTypographySql('p.old_name', 'i.name')} THEN 'typography' END AS name_pass`,
       withSource,
     );
 
