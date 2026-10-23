@@ -161,6 +161,7 @@ and accepted by it.
 | [0139](0139-a-field-no-reader-sees-and-a-typographic-rewrite-pass-the-gate.md) | A field no reader sees, and a typographic rewrite, pass the gate | Accepted | 2026-10-23 |
 | [0140](0140-a-short-move-passes-the-gate.md) | A short move passes the gate | Accepted | 2026-10-23 |
 | [0141](0141-the-catalogue-accepts-a-component-candidate-of-the-points-own-name-at-the-point.md) | The catalogue accepts a component candidate of the point's own name at the point | Accepted | 2026-10-23 |
+| [0142](0142-a-curator-separates-one-kinds-membership-into-a-place-of-its-own.md) | A curator separates one kind's membership of a place into a place of its own | Accepted | 2026-10-23 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
