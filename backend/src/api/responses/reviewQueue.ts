@@ -488,6 +488,18 @@ export type QueueOrderEntry = z.infer<typeof QueueOrderEntry>;
 
 const paged = z.strictObject({ offset: z.number().int(), hasMore: z.boolean() });
 
+export const ReviewRegionSearchResult = z.strictObject({
+  id: z.number().int(),
+  name: z.string(),
+  path: z.string().describe('Root first: `Europe > Germany > Berlin`.'),
+  worldViewId: z.number().int(),
+  worldView: z.string().describe('The world view the region is in: two regions may be called Berlin.'),
+}).describe('A region a curator may narrow the review feed to, found by name (#1920).');
+export type ReviewRegionSearchResult = z.infer<typeof ReviewRegionSearchResult>;
+export const ReviewRegionSearchResults = z.array(ReviewRegionSearchResult)
+  .describe('The best matches across every public world view, best first, at most ten.');
+export type ReviewRegionSearchResults = z.infer<typeof ReviewRegionSearchResults>;
+
 export const QueueFacets = z.strictObject({
   kind: z.array(z.strictObject({ kind: z.enum([...QUEUE_KINDS, ...WAITING_SUBS]), count: z.number().int() })),
   source: z.array(z.strictObject({ id: z.number().int(), name: z.string(), count: z.number().int() })),
@@ -500,6 +512,15 @@ export const QueueFacets = z.strictObject({
     ),
     count: z.number().int(),
   })),
+  picked: z.strictObject({
+    id: z.number().int(),
+    name: z.string(),
+    path: z.string().describe('Root first: `Europe > Germany > Berlin`.'),
+    worldView: z.string(),
+  }).nullable().describe(
+    'The region `?region=` names, whatever its depth, so the chip can say it when it is none of the roots above'
+    + ' (#1920); null when no region is picked or the unplaced bucket is.',
+  ),
   run: z.array(z.strictObject({
     id: z.number().int(),
     sourceId: z.number().int(),

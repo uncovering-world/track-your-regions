@@ -13093,6 +13093,57 @@
         }
       }
     },
+    "/api/experiences/review/regions/search": {
+      "get": {
+        "operationId": "getExperiencesReviewRegionsSearch",
+        "summary": "Find regions of every public world view by name, to narrow the review feed to one",
+        "tags": [
+          "experiences"
+        ],
+        "description": "Requires a curator or an admin.",
+        "x-access": "curator",
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "parameters": [
+          {
+            "in": "query",
+            "name": "query",
+            "schema": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 255,
+              "pattern": "^[^\\u0000]*$"
+            },
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The answer.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewRegionSearchResults"
+                }
+              }
+            }
+          },
+          "default": {
+            "description": "A failure.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/experiences/review/queue": {
       "get": {
         "operationId": "getExperiencesReviewQueue",
@@ -30030,6 +30081,41 @@
               "additionalProperties": false
             }
           },
+          "picked": {
+            "anyOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "id": {
+                    "type": "integer",
+                    "minimum": -9007199254740991,
+                    "maximum": 9007199254740991
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "path": {
+                    "type": "string",
+                    "description": "Root first: `Europe > Germany > Berlin`."
+                  },
+                  "worldView": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "id",
+                  "name",
+                  "path",
+                  "worldView"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "The region `?region=` names, whatever its depth, so the chip can say it when it is none of the roots above (#1920); null when no region is picked or the unplaced bucket is."
+          },
           "run": {
             "type": "array",
             "items": {
@@ -30099,6 +30185,7 @@
           "kind",
           "source",
           "region",
+          "picked",
           "run",
           "setAside"
         ],
@@ -33047,6 +33134,48 @@
         ],
         "additionalProperties": false,
         "description": "An object waiting on a curator, or one a curator can take a verdict back from."
+      },
+      "ReviewRegionSearchResult": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "name": {
+            "type": "string"
+          },
+          "path": {
+            "type": "string",
+            "description": "Root first: `Europe > Germany > Berlin`."
+          },
+          "worldViewId": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "worldView": {
+            "type": "string",
+            "description": "The world view the region is in: two regions may be called Berlin."
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "path",
+          "worldViewId",
+          "worldView"
+        ],
+        "additionalProperties": false,
+        "description": "A region a curator may narrow the review feed to, found by name (#1920)."
+      },
+      "ReviewRegionSearchResults": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ReviewRegionSearchResult"
+        },
+        "description": "The best matches across every public world view, best first, at most ten."
       },
       "ReviewSuggestion": {
         "type": "object",

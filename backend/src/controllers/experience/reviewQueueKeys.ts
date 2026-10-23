@@ -581,6 +581,8 @@ interface Bound {
   aside: string;
   cursor: string;
   regionCte: string;
+  /** The bound id of the region `?region=` names, or `NULL` (#1920). */
+  pickedRegion: string;
   /** The linked row and the key before it, when a page opens at a row (#843); '' otherwise. */
   anchorCte: string;
   /** Whether a listed key comes before the page's first: asked only of a page that opened mid-list. */
@@ -608,6 +610,7 @@ function boundFilters(filters: QueueFilters, bind: (value: unknown) => string): 
           OR (k.kind = 'waiting' AND k.subs && ${bind(subs)}::text[]))` : 'TRUE',
     region: region.predicate,
     regionCte: region.cte,
+    pickedRegion: pickedRegionSql(filters.regionId, bind),
     run: filters.runId === undefined ? 'TRUE' : `k.run_id = ${bind(filters.runId)}`,
     search: filters.q === undefined ? 'TRUE' : `k.name ILIKE ${bind(likeParam(filters.q))} ESCAPE '\\'`,
     aside: filters.showAside
@@ -659,6 +662,11 @@ function boundFilters(filters: QueueFilters, bind: (value: unknown) => string): 
   )`;
   }
   return bound;
+}
+
+/** The bound id the facets name the picked region by (#1920), or `NULL` for none and for the unplaced bucket. */
+function pickedRegionSql(regionId: number | 'none' | undefined, bind: (value: unknown) => string): string {
+  return typeof regionId === 'number' ? bind(regionId) : 'NULL';
 }
 
 /**
@@ -828,7 +836,7 @@ export async function queryQueueKeys(
     WHERE ${f.source} AND ${f.kind} AND ${f.region} AND ${f.run} AND ${f.cursor}
     ORDER BY ${orderSql(filters.sort)}
     LIMIT ${f.limit}
-  )${facetsSql(f, USER_ID)}${resultSql(f, filters.sort)}`;
+  )${facetsSql(f, USER_ID, isAdmin ? 'TRUE' : 'w.is_public')}${resultSql(f, filters.sort)}`;
 
   const { rows } = await pool.query(sql, params);
   const row = (rows[0] ?? {}) as {

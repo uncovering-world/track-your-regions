@@ -1188,6 +1188,11 @@ export const regionSearchQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
+/** The review feed's region search (#1920): the text alone, the limit being the chip's. */
+export const reviewRegionSearchQuerySchema = z.object({
+  query: searchText(2, 255),
+});
+
 export const addDivisionsToRegionBodySchema = z.object({
   divisionIds: z.array(bodyRowIdSchema).optional(),
   createAsSubregions: z.boolean().optional(),

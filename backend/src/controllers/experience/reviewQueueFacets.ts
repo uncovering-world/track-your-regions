@@ -20,6 +20,8 @@ interface FacetFilters {
   kind: string;
   region: string;
   run: string;
+  /** The bound id of the region `?region=` names, or `NULL` where none or the unplaced bucket is (#1920). */
+  pickedRegion: string;
 }
 
 /**
@@ -49,9 +51,40 @@ export function regionRootsCte(userId: string): string {
   )`;
 }
 
-/** The five facet aggregates, each under every filter but its own. */
-export function facetsSql(f: FacetFilters, userId: string): string {
+/**
+ * The five facet aggregates, each under every filter but its own, and the
+ * region `?region=` names with its path (#1920): one ancestors walk, so the
+ * chip can say "Berlin" for a region none of the roots is, and an address
+ * opened directly reads the same. `pickedScope` is the world-view visibility
+ * the picked region is named under: a hidden world view is a 404 to anyone
+ * but an admin (`worldViewVisibility.ts`), and an id typed into the address
+ * must not name its regions either, so a non-admin's predicate is
+ * `w.is_public` and an admin's `TRUE` — with the one exception `region_roots`
+ * makes: a region this curator is assigned is theirs to see whatever its
+ * world view, and is named. A region it refuses answers no `picked`, and the
+ * feed under that id is empty anyway.
+ */
+export function facetsSql(f: FacetFilters, userId: string, pickedScope: string): string {
   return `
+, picked_path AS (
+    WITH RECURSIVE up AS (
+      SELECT r.id, r.name, r.parent_region_id, r.world_view_id, r.name::text AS path
+      FROM regions r WHERE r.id = ${f.pickedRegion}
+      UNION ALL
+      SELECT p.id, p.name, p.parent_region_id, p.world_view_id, p.name || ' > ' || up.path
+      FROM regions p JOIN up ON p.id = up.parent_region_id
+    )
+    SELECT path, world_view_id FROM up WHERE parent_region_id IS NULL
+  )
+, picked_region AS (
+    SELECT r.id, r.name, pp.path, w.name AS world_view
+    FROM regions r
+    JOIN picked_path pp ON TRUE
+    JOIN world_views w ON w.id = r.world_view_id
+    WHERE r.id = ${f.pickedRegion}
+      AND (${pickedScope} OR EXISTS (SELECT 1 FROM curator_assignments ca
+                                      WHERE ca.user_id = ${userId} AND ca.scope_type = 'region' AND ca.region_id = r.id))
+  )
 , facet_kind AS (
     SELECT v.value, count(*)::int AS count
     FROM scoped k
@@ -137,6 +170,8 @@ export const FACETS_JSON_SQL = `json_build_object(
   'region', (SELECT COALESCE(json_agg(json_build_object('id', x.id, 'name', x.name,
                                                        'worldView', x.world_view, 'count', x.count)
                                       ORDER BY x.count DESC, x.name), '[]'::json) FROM facet_region x),
+  'picked', (SELECT json_build_object('id', x.id, 'name', x.name, 'path', x.path, 'worldView', x.world_view)
+             FROM picked_region x),
   'run', (SELECT COALESCE(json_agg(json_build_object('id', x.id, 'sourceId', x.source_id,
                                                      'completedAt', x.completed_at,
                                                      'count', x.count, 'setAside', x.set_aside)
@@ -146,5 +181,5 @@ export const FACETS_JSON_SQL = `json_build_object(
 
 /** What a statement that returned no facets row answers. */
 export const EMPTY_FACETS: QueueFacets = {
-  kind: [], source: [], region: [], run: [], setAside: { batches: 0 },
+  kind: [], source: [], region: [], picked: null, run: [], setAside: { batches: 0 },
 };
