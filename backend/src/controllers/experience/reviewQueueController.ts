@@ -15,7 +15,7 @@ import { queueItemOf, type QueueRow } from './reviewQueueItem.js';
 import type { QueryResult } from 'pg';
 import { pool } from '../../db/index.js';
 import {
-  KINDS, MEMBERSHIPS, admissionAnsweredSql, keptAsFormerSql, membershipOfferedSql, rowKindJoinSql,
+  KINDS, MEMBERSHIPS, admissionAnsweredSql, keptAsFormerSql, rowKindJoinSql,
 } from '../../db/membership.js';
 import type { reviewQueueQuerySchema } from '../../types/index.js';
 import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
@@ -38,7 +38,7 @@ import {
 } from './reviewQueueKeys.js';
 import type { QueueFilters, QueueKind, WaitingSub } from './reviewQueueKeys.js';
 import {
-  arrivalOpenSql, heldOpenSql, membershipMissingOpenSql, missingOpenSql, refusedOpenSql,
+  arrivalOpenSql, heldOpenSql, membershipMissingOpenSql, missingOpenSql, offeredElsewhereSql, refusedOpenSql,
 } from './reviewQueuePredicates.js';
 import { heldFieldAnsweredSql } from './heldDecisions.js';
 import { withDangerFields } from './experienceDanger.js';
@@ -103,7 +103,7 @@ function linkedRow(row: string | undefined): QueueFilters['row'] {
 function seenInSql(membership = 'm'): string {
   return `(SELECT COALESCE(array_agg(sk.name ORDER BY sk.display_priority, sk.id), '{}')
              FROM ${MEMBERSHIPS} sm JOIN ${KINDS} sk ON sk.id = sm.kind_id
-            WHERE sm.experience_id = e.id AND sm.id <> ${membership}.id AND ${membershipOfferedSql('sm')})`;
+            WHERE ${offeredElsewhereSql(membership, 'sm')})`;
 }
 
 /**
@@ -328,12 +328,14 @@ export async function getReviewQueue(
   //
   // A refusal is a kind's rule refusing that kind's membership, so the
   // refusal and kept-out queues ask every membership of a place (#1264): one
-  // item per refused membership, each in scope by its own source and carrying
-  // the kinds readers still see the place in. The page groups them by place.
+  // item per refused membership, each in scope by its own source. The page
+  // groups them by place. An open one is asked only where no other kind offers
+  // the place (#1838), so it carries no "readers still see it" line; a kept-out
+  // one carries the kinds readers still see the place in.
   const refusedIds = idsOf('refused');
   const refused = await hydrate(refusedIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT e.id, m.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
-           m.admission_reason, ${seenInSql()} AS seen_in,
+           m.admission_reason,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'refused' AS kind, ${countedWorksSelectSql()},
            NULL::jsonb AS proposed

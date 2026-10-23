@@ -465,23 +465,40 @@ describe('a refusal of each membership (#1264)', () => {
     return archaeology;
   }
 
-  it('asks it under the kind whose rule refused, saying where readers still see the place', async () => {
-    const archaeology = await refuseArchaeology();
+  it('asks nothing while readers see the place as an art museum (#1838)', async () => {
+    await refuseArchaeology();
 
     const archaeologyKeys = await queryQueueKeys({
       userId: adminId, isAdmin: true, filters: filters({ sourceIds: [archaeologySource] }),
     });
-    const artKeys = await queryQueueKeys({ userId: adminId, isAdmin: true, filters: filters({ sourceIds: [artSource] }) });
+    expect(archaeologyKeys.total).toBe(0);
+    const queue = await getReviewQueue({
+      query: reviewQueueQuerySchema.parse({ q: NAME }),
+      caller: { id: adminId, role: 'admin' } as Express.User,
+    });
+    expect(queue.refused).toEqual([]);
+    expect(queue.keptOut).toEqual([]);
+  });
+
+  it('asks it under the kind whose rule refused once no other kind offers the place', async () => {
+    const archaeology = await refuseArchaeology();
+    await pool.query(
+      `UPDATE experience_kind_memberships SET admission = 'refused', admission_reason = 'not a museum' WHERE id = $1`,
+      [await membershipOf(artSource)],
+    );
+
+    const archaeologyKeys = await queryQueueKeys({
+      userId: adminId, isAdmin: true, filters: filters({ sourceIds: [archaeologySource] }),
+    });
     expect(archaeologyKeys.keys).toEqual([expect.objectContaining({ kind: 'refused', id: PLACE })]);
-    expect(artKeys.total).toBe(0);
 
     const queue = await getReviewQueue({
       query: reviewQueueQuerySchema.parse({ q: NAME }),
       caller: { id: adminId, role: 'admin' } as Express.User,
     });
-    expect(queue.refused).toEqual([expect.objectContaining({
-      id: PLACE, membership_id: archaeology, kind_name: 'Archaeology', seen_in: ['Art Museums'],
-    })]);
+    expect(queue.refused).toEqual(expect.arrayContaining([expect.objectContaining({
+      id: PLACE, membership_id: archaeology, kind_name: 'Archaeology',
+    })]));
   });
 
   it('keeps a confirmed refusal in the kept-out list under its own kind', async () => {

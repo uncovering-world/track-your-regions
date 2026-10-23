@@ -373,8 +373,9 @@ export const ReviewQueueItem = z.strictObject({
   ),
   region_names: z.array(z.string()).nullable().optional(),
   seen_in: z.array(z.string()).optional().describe(
-    'On an arrival or a refusal: the kinds readers already see the place in, through another membership (#1264).'
-    + ' Empty where the membership asked about is the whole place.',
+    'On an arrival, a kind its source stopped listing, or a kept-out refusal: the kinds readers already see the place in,'
+    + ' through another membership (#1264). Empty where the membership asked about is the whole place. An open refusal'
+    + ' carries none, since it is asked only where no other kind offers the place (#1838).',
   ),
   kept_as_former: z.boolean().optional().describe(
     'On a kind its source stopped listing (#1264): whether that kind keeps a delisted place, marked former, rather than'
