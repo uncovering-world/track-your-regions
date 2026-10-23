@@ -168,7 +168,7 @@ export function offeredLocationSql(alias = 'el'): string {
  * *further* — 13.6 km instead of 12.7 for the Pico Island vineyards, 2.1 instead
  * of 1.5 for the Churches of Chiloé. It is also the rule the rest of the
  * repository already follows (`locationIncoming`'s `metresBetween`, and the medoid in
- * `resolveMainPoint`, which scales longitude by cos(lat) for this same reason), and
+ * `medoidOf` (`sync/anchorPoint.ts`), which scales longitude by cos(lat) for this same reason), and
  * the cast is what makes the answer dateline-safe rather than 358° wrong.
  *
  * **`el.id` breaks ties, because the two subqueries below are two evaluations.**
