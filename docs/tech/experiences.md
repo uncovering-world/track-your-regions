@@ -5524,6 +5524,23 @@ closing line counts what it recorded and the candidates it left. Measured on the
 development catalogue on 2026-10-22: 151 of 566 open candidates were exact and every one met the
 conditions; curators had accepted every exact candidate they answered.
 
+**A component the list placed only roughly is recorded as approximate** (#1853). The World Heritage
+run records on each point it writes why the list's coordinate only says roughly where the component
+is (`experience_locations.approximate`, from `approximateReasons` in `@tyr/shared/precision`):
+`whole-minute`, both coordinates within `WHOLE_MINUTE_TOLERANCE_DEG` of a whole minute (the Longmen
+Grottoes' 34°28′0″ N 112°28′0″ E, about 10 km from the caves), or `shared`, a point another
+component of the property under another reference stands on too (Echmiatsin's cathedral, church and
+cemetery on the property's own point). A point a curator placed is not approximate. Measured on
+2026-10-22 against the items carrying the same World Heritage reference, points to the whole minute
+stood a median 1.4 km from their item, 63 % over a kilometre, against 26 m and 13 % for points given
+to the second. Migration 157 recorded it on the points placed before, which the writer's fast path
+would not reach: 511 to the whole minute and 501 shared on the development catalogue on 2026-10-23.
+The component-item finder does not count a candidate's coordinate within `COPIED_COORDINATE_M` of an
+approximate point (`componentItemMatching.ts`): it is the list's point copied, not a measurement, as
+Wikidata's item for ancient Zvartnots carries Echmiatsin's shared point and was offered to the
+Cemetery of Congregation "1 m away". The question a curator answers about such a point is the next
+slice of #1853.
+
 **Jev's judgement on the component-items card** (#1272, ADR-0087). Where `JEV_API_KEY` is set,
 the card asks `POST /api/experiences/:id/component-item-suggestions`
 (`componentItemSuggestionController.ts`) when it opens: for each open candidate, the newest
