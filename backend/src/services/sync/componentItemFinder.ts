@@ -141,7 +141,7 @@ const listsPoint = (alias: string) => `(EXISTS (SELECT 1 FROM experience_locatio
  * it can still be cleared.
  */
 function sitePointsArm({ from, placeId }: PlacePointArm): string {
-  return `SELECT el.id, el.name, ST_Y(el.location) AS lat, ST_X(el.location) AS lon,
+  return `SELECT el.id, el.name, ST_Y(el.location) AS lat, ST_X(el.location) AS lon, el.approximate IS NOT NULL AS approximate,
             ${placeId} AS experience_id, el.external_ref, m.wikidata_items, e.name AS site_name,
             ${listsPoint('el')} AS listed,
             (SELECT count(*)::int FROM ${pointsShownSql(placeId, 's')}
@@ -167,7 +167,7 @@ function sitePointsArm({ from, placeId }: PlacePointArm): string {
  */
 async function readPoints(siteId?: number): Promise<{ points: PointRow[]; wholeSites: number; clearedIds: number[] }> {
   const result = await pool.query<{
-    id: number; name: string | null; lat: number; lon: number; experience_id: number; external_ref: string;
+    id: number; name: string | null; lat: number; lon: number; approximate: boolean; experience_id: number; external_ref: string;
     wikidata_items: string[] | null; site_name: string; standing_points: number; listed: boolean;
   }>(
     overPlacePoints(sitePointsArm),
@@ -175,7 +175,7 @@ async function readPoints(siteId?: number): Promise<{ points: PointRow[]; wholeS
   );
   const rows = result.rows.filter(row => siteId === undefined || row.experience_id === siteId);
   const read: PointRead[] = rows.filter(row => row.listed).map(row => ({
-    locationId: row.id, name: row.name, lat: row.lat, lon: row.lon,
+    locationId: row.id, name: row.name, lat: row.lat, lon: row.lon, approximate: row.approximate,
     experienceId: row.experience_id, siteItems: row.wikidata_items ?? [], externalRef: row.external_ref,
     siteName: row.site_name, standingPoints: row.standing_points,
   }));

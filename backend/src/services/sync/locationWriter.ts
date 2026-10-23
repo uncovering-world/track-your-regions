@@ -95,6 +95,7 @@ import { pool, rollbackQuietly } from '../../db/index.js';
 import { retirePassAfterNewContent } from './curationDecay.js';
 import { pointHeldProposalAt, type WriteRun } from './heldProposalPointer.js';
 import { tidyLabel } from '@tyr/shared/labels';
+import { approximateReasons } from '@tyr/shared/precision';
 import { settleShortMoves, shortMoveChange, type ShortMove } from './shortMoveWriter.js';
 import { sameTypographySql } from './labelFold.js';
 import type { ContentsDelta } from './types.js';
@@ -1148,6 +1149,25 @@ export async function writeExperienceLocations(
     }
 
     if (run.components) {
+      // How precisely the list placed each component (#1853): to the whole
+      // minute, or on a point another component shares. Matched by reference
+      // and coordinate, since one reference covers a component listed once per
+      // country. A curator's own placement is not approximate, and the run's
+      // point under a claim stands elsewhere, so it matches nothing here.
+      const reasons = approximateReasons(incoming.map(point => ({ ref: point.externalRef, lon: point.lon, lat: point.lat })));
+      await client.query(
+        `UPDATE experience_locations el
+            SET approximate = r.reason
+           FROM unnest($2::text[], $3::float8[], $4::float8[], $5::text[]) AS r(ref, lon, lat, reason)
+          WHERE ${ownPointSql('el')} AND el.missing_since IS NULL
+            AND NOT el.curated_fields ? 'location'
+            AND el.external_ref IS NOT DISTINCT FROM r.ref
+            AND round(ST_X(el.location)::numeric, 6) = round(r.lon::numeric, 6)
+            AND round(ST_Y(el.location)::numeric, 6) = round(r.lat::numeric, 6)
+            AND el.approximate IS DISTINCT FROM r.reason`,
+        [experienceId, incoming.map(point => point.externalRef), incoming.map(point => point.lon),
+          incoming.map(point => point.lat), reasons],
+      );
       await client.query(
         `SELECT part_site_components($1, (SELECT id FROM ${MEMBERSHIPS} WHERE experience_id = $1 AND source_id = $2))`,
         [experienceId, run.sourceId],

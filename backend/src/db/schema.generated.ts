@@ -400,6 +400,7 @@ export interface ExperienceLocationsRow {
   state_note: string | null;
   merged_into_id: number | null;
   moved_to_location_id: number | null;
+  approximate: string | null;
 }
 
 /** The table `experience_merge_proposals`. */
@@ -1330,6 +1331,7 @@ export const COLUMN_WIDTHS = {
     curation_state: 10,
     source_membership: 10,
     existence: 10,
+    approximate: 12,
   },
   experience_merge_proposals: {
     answer: 10,
@@ -1494,6 +1496,7 @@ export const CHECK_VALUES = {
     source_membership: ["present", "former"],
   },
   experience_locations: {
+    approximate: ["whole-minute", "shared"],
     curation_state: ["pending", "auto", "verified"],
     existence: ["extant", "lost"],
     source_membership: ["present", "former"],

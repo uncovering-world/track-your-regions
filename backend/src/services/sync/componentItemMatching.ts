@@ -41,7 +41,21 @@ export interface ComponentPoint {
   name: string | null;
   lat: number;
   lon: number;
+  /**
+   * The World Heritage list placed it only roughly (#1853): to the whole
+   * minute, or on the point the property's other components share. A
+   * candidate's coordinate on that very point is a copy of it, not a
+   * measurement, and is not counted (`COPIED_COORDINATE_M`).
+   */
+  approximate?: boolean;
 }
+
+/**
+ * Within this of an approximate point, a candidate's coordinate is the list's
+ * point copied: Wikidata's item for ancient Zvartnots carries Echmiatsin's
+ * shared point, and was offered to the Cemetery of Congregation "1 m away".
+ */
+export const COPIED_COORDINATE_M = 1;
 
 export interface CandidateItem {
   item: string;
@@ -229,6 +243,7 @@ function nearest(point: ComponentPoint, candidate: CandidateItem): { at: [lat: n
   let found: { at: [number, number]; metres: number } | null = null;
   for (const [lat, lon] of candidate.coords) {
     const metres = distanceM(point.lat, point.lon, lat, lon);
+    if (point.approximate && metres < COPIED_COORDINATE_M) continue;
     if (!found || metres < found.metres) found = { at: [lat, lon], metres };
   }
   return found;
