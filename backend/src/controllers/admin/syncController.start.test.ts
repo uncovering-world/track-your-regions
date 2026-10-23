@@ -1,9 +1,9 @@
 /**
- * A run that created a place another source already holds as the same
- * Wikidata item is followed by the merge (#1247, ADR-0046 decision 2): the
- * Places of worship run that brings the Pantheon (Q99309) beside the
- * archaeological site of the same item makes them one place once it is over.
- * However the run ended; a preview created nothing and merges nothing.
+ * A real run is followed by the join of the places that claim one Wikidata
+ * item (ADR-0046 decision 2, ADR-0143): a World Heritage run that records on a
+ * component's point the item another kind's place already is leaves two places
+ * claiming it, made one once the run is over. However the run ended; a preview
+ * wrote nothing and joins nothing.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -18,19 +18,25 @@ vi.mock('../../services/sync/index.js', async (importOriginal) => ({
 }));
 vi.mock('../experience/equalItemMerges.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../experience/equalItemMerges.js')>()),
-  mergeArrivalsOfRun: vi.fn(async () => null),
+  joinPlacesClaimingOneItem: vi.fn(async () => ({ merged: [], refused: [] })),
+}));
+vi.mock('../../services/sync/mergeProposalFinder.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../services/sync/mergeProposalFinder.js')>()),
+  proposeMergesOfRun: vi.fn(async () => null),
 }));
 
 import { pool } from '../../db/index.js';
 import { runningSyncs, syncPlacePass } from '../../services/sync/index.js';
-import { mergeArrivalsOfRun } from '../experience/equalItemMerges.js';
+import { joinPlacesClaimingOneItem } from '../experience/equalItemMerges.js';
+import { proposeMergesOfRun } from '../../services/sync/mergeProposalFinder.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
 
 const startRoute = routeAt(adminDeclaredRoutes, '/sync/sources/:sourceId/start', 'post');
 const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 const mockedSync = syncPlacePass as unknown as ReturnType<typeof vi.fn>;
-const mockedMerge = mergeArrivalsOfRun as unknown as ReturnType<typeof vi.fn>;
+const mockedJoin = joinPlacesClaimingOneItem as unknown as ReturnType<typeof vi.fn>;
+const mockedPropose = proposeMergesOfRun as unknown as ReturnType<typeof vi.fn>;
 
 function makeRes() {
   const res = { status: vi.fn(), json: vi.fn() };
@@ -50,35 +56,39 @@ async function start(dryRun: boolean) {
   await answerRoute(startRoute, { params: { sourceId: '4' }, body: { dryRun }, user: { id: 7 } } as never, makeRes() as never);
 }
 
-describe('a run is followed by the merge of what it created', () => {
+describe('a run is followed by the join of the places that claim one item', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
     mockedSync.mockReset();
-    mockedMerge.mockClear();
+    mockedJoin.mockClear();
+    mockedPropose.mockClear();
     runningSyncs.clear();
   });
 
-  it('merges the places the run created, by its log', async () => {
+  it('joins once the run is over, then pairs the places the run created, by its log', async () => {
     runEndsAs({ logId: 812, dryRun: false });
 
     await start(false);
 
-    await vi.waitFor(() => expect(mockedMerge).toHaveBeenCalledWith(812));
+    await vi.waitFor(() => expect(mockedPropose).toHaveBeenCalledWith(812));
+    expect(mockedJoin).toHaveBeenCalledTimes(1);
+    expect(mockedJoin.mock.invocationCallOrder[0]).toBeLessThan(mockedPropose.mock.invocationCallOrder[0]);
   });
 
-  it('merges nothing after a preview', async () => {
+  it('joins nothing after a preview', async () => {
     runEndsAs({ logId: 813, dryRun: true });
 
     await start(true);
 
     await vi.waitFor(() => expect(mockedSync).toHaveBeenCalled());
     await new Promise(resolve => setTimeout(resolve, 10));
-    expect(mockedMerge).not.toHaveBeenCalled();
+    expect(mockedJoin).not.toHaveBeenCalled();
+    expect(mockedPropose).not.toHaveBeenCalled();
   });
 
-  it('merges what a run created before it failed', async () => {
-    // A run that stopped half-way wrote the places it had created, and its
-    // changeset names them; leaving them a second pin helps nobody.
+  it('joins what a run wrote before it failed', async () => {
+    // A run that stopped half-way wrote the items it had recorded; leaving
+    // two places claiming one of them helps nobody.
     mockedSync.mockImplementation(async () => {
       runningSyncs.set(4, { logId: 814, dryRun: false, status: 'failed', cancel: false } as never);
       throw new Error('the source did not answer');
@@ -86,6 +96,6 @@ describe('a run is followed by the merge of what it created', () => {
 
     await start(false);
 
-    await vi.waitFor(() => expect(mockedMerge).toHaveBeenCalledWith(814));
+    await vi.waitFor(() => expect(mockedJoin).toHaveBeenCalledTimes(1));
   });
 });

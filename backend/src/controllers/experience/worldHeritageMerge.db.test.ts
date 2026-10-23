@@ -1,6 +1,6 @@
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
-import { mergeEqualItems } from './equalItemMerges.js';
+import { joinPlacesClaimingOneItem } from './equalItemMerges.js';
 import { undoMerge } from './placeMerge.js';
 
 /**
@@ -113,7 +113,7 @@ afterAll(async () => {
 
 describe('a World Heritage site of one point and its one item (ADR-0088)', () => {
   it('merges with the place of worship sharing its item, to one point, and with nothing else', async () => {
-    const report = await mergeEqualItems(['Q180274', 'Q98320', 'Q98340', 'Q98341', 'Q98360']);
+    const report = await joinPlacesClaimingOneItem(['Q180274', 'Q98320', 'Q98340', 'Q98341', 'Q98360']);
 
     expect(report.merged).toEqual([expect.objectContaining({ qid: 'Q180274', survivorId: CHARTRES, foldedId: CHARTRES_WORSHIP })]);
     expect(report.refused).toEqual([]);
@@ -126,7 +126,7 @@ describe('a World Heritage site of one point and its one item (ADR-0088)', () =>
   });
 
   it('counts only standing points: a withdrawn one neither keeps a site from its item nor adds a pin (#1360)', async () => {
-    const report = await mergeEqualItems(['Q98380']);
+    const report = await joinPlacesClaimingOneItem(['Q98380']);
 
     expect(report.merged).toEqual([expect.objectContaining({ qid: 'Q98380', survivorId: OSUN, foldedId: OSUN_GROVE })]);
     expect(await pins(OSUN)).toEqual(['9838-001']);
@@ -134,7 +134,7 @@ describe('a World Heritage site of one point and its one item (ADR-0088)', () =>
   });
 
   it('gives both places back their own point on an undo', async () => {
-    const report = await mergeEqualItems(['Q180274']);
+    const report = await joinPlacesClaimingOneItem(['Q180274']);
     const curator = await pool.query<{ id: number }>(
       `INSERT INTO users (uuid, display_name, role) VALUES ($1, 'A curator', 'curator') RETURNING id`, [CURATOR],
     );

@@ -2,7 +2,8 @@ import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
 import { writeExperienceLocations, type LocationWriteRun } from '../../services/sync/locationWriter.js';
 import { mergePlaces, undoMerge } from './placeMerge.js';
-import { mergeEqualItems } from './equalItemMerges.js';
+import { answerComponentItemsUnderLock } from './componentItemController.js';
+import { joinPlacesClaimingOneItem } from './equalItemMerges.js';
 import { editLocation } from './locationEditController.js';
 
 /**
@@ -214,7 +215,7 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
     it('folds a component part into the place of another kind its item names', async () => {
       await itemOn(KARNAK.externalRef);
       const templeId = (await parts()).find(p => p.external_ref === KARNAK.externalRef)!.part_id;
-      const report = await mergeEqualItems([ITEM]);
+      const report = await joinPlacesClaimingOneItem([ITEM]);
       expect(report.merged).toMatchObject([{ qid: ITEM, survivorId: COMPLEX, foldedId: templeId, name: 'Karnak Temple Complex' }]);
       expect((await parts())[0]).toMatchObject({ external_ref: '87-001', part_id: COMPLEX });
     });
@@ -229,7 +230,7 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
         [COMPLEX, ITEM],
       );
       const templeId = (await parts()).find(p => p.external_ref === KARNAK.externalRef)!.part_id;
-      const report = await mergeEqualItems([ITEM]);
+      const report = await joinPlacesClaimingOneItem([ITEM]);
       expect(report.refused).toEqual([]);
       expect(report.merged).toMatchObject([{ qid: ITEM, survivorId: templeId, foldedId: COMPLEX, name: 'Temple of Karnak' }]);
       // The site keeps its part under the same reference, and the part now holds
@@ -243,8 +244,25 @@ describe('a part merged with another kind\'s place (ADR-0100 decision 4)', () =>
 
     it('takes an item two components hold for their ensemble\'s, and merges neither', async () => {
       await itemOn(KARNAK.externalRef, LUXOR.externalRef);
-      const report = await mergeEqualItems([ITEM]);
+      const report = await joinPlacesClaimingOneItem([ITEM]);
       expect(report).toEqual({ merged: [], refused: [] });
+    });
+
+    it('joins the part with the place a curator confirms its item is, once the answer is written', async () => {
+      // The complex is the item; the temple's point has no item yet, and the
+      // finder proposes the complex's item for it (#1272).
+      await pool.query('UPDATE experience_kind_memberships SET external_id = $2 WHERE experience_id = $1', [COMPLEX, ITEM]);
+      const templeId = (await parts()).find(p => p.external_ref === KARNAK.externalRef)!.part_id;
+      const point = (await pool.query<{ id: number }>('SELECT id FROM experience_locations WHERE experience_id = $1', [templeId])).rows[0].id;
+      const proposal = (await pool.query<{ id: number }>(
+        `INSERT INTO experience_component_item_proposals (location_id, wikidata_item, item_label, distance_m, name_similarity, exact, basis)
+         VALUES ($1, $2, 'Karnak', 5, 1, true, 'near') RETURNING id`, [point, ITEM],
+      )).rows[0].id;
+
+      const outcome = await answerComponentItemsUnderLock(THEBES, adminId, null, [{ proposalId: proposal, answer: 'accepted' }], new Map());
+
+      expect(outcome.result).toMatchObject({ accepted: 1 });
+      expect((await parts())[0]).toMatchObject({ external_ref: '87-001', part_id: COMPLEX });
     });
   });
 });

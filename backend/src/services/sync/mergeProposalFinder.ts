@@ -13,7 +13,9 @@
  * Bremen Roland and Bremen Cathedral), which a curator answers. ADR-0120
  * makes it the third universal signal and records why no guard narrows it.
  *
- * An equal Wikidata item merges without a question (`equalItemMerges.ts`).
+ * An equal Wikidata item never reaches a proposal: a run finds the place its
+ * item names before it creates one (ADR-0143), and an item recorded on a place
+ * that exists is joined without a question (`equalItemMerges.ts`).
  * The second universal signal is weaker and is a proposal: two places whose
  * nearest points stand within the pair's reach and whose names reach a
  * trigram similarity of 0.5 on unaccented lower case — the Statue of Liberty
@@ -388,9 +390,9 @@ export async function proposeMergesOfPlaces(placeIds: readonly number[]): Promis
 }
 
 /**
- * The pass for the places a run created (#1800), read off its changeset as
- * `mergeArrivalsOfRun` reads them, after that merge: a created place an equal
- * item folded into an older one is paired as the place it is now part of.
+ * The pass for the places a run created (#1800), read off its changeset after
+ * the run's join (`joinPlacesClaimingOneItem`): a created place a merge has
+ * since folded into another is paired as the place it is now part of.
  */
 export async function proposeMergesOfRun(syncLogId: number): Promise<number | null> {
   try {

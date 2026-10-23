@@ -32,6 +32,7 @@ import { fetchCommonsCredits, type ImageCredit } from '../../services/sync/image
 import { WaitBudget } from '../../services/sync/wikidataUtils.js';
 import type { answerComponentItemsBodySchema, idParamSchema } from '../../types/index.js';
 import { answerProposals, clearMootProposals, type ProposalAnswer } from './componentItemAnswers.js';
+import { joinPlacesClaimingOneItem } from './equalItemMerges.js';
 import { claimPointItem, type ClaimedItemContent } from './experienceLocationWriter.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { openProposalSql } from './reviewQueuePredicates.js';
@@ -176,6 +177,11 @@ export async function answerComponentItemsUnderLock(
 ): Promise<{ result?: ComponentItemsAnswered; refusal?: AnswerRefusal }> {
   const client = await pool.connect();
   let unusable: Error | undefined;
+  // The items the answer confirmed, joined once the client is back in the
+  // pool: the join takes clients of its own, and an answer holding one while
+  // its join waits for another could, twenty answers at once, hold them all.
+  let toJoin: readonly string[] = [];
+  let answered: { result: ComponentItemsAnswered } | undefined;
   try {
     await client.query('BEGIN');
     const refuse = async (status: number, error: string): Promise<{ refusal: AnswerRefusal }> => {
@@ -233,13 +239,20 @@ export async function answerComponentItemsUnderLock(
       })],
     );
     await client.query('COMMIT');
-    return { result: { experienceId, accepted: confirmed.length, refused: turnedDown.length, pictured } };
+    toJoin = confirmedItems;
+    answered = { result: { experienceId, accepted: confirmed.length, refused: turnedDown.length, pictured } };
   } catch (error) {
     unusable = await rollbackQuietly(client);
     throw error;
   } finally {
     client.release(unusable);
   }
+  // A confirmed item another kind's place already is makes the part and that
+  // place one place (ADR-0046 decision 2): joined after the commit, under both
+  // places' own locks, as a run's items are joined once the run is over. A
+  // join that fails leaves the pair for the catalogue check.
+  if (toJoin.length > 0) await joinPlacesClaimingOneItem(toJoin);
+  return answered!;
 }
 
 /** The items the named open candidates of a site propose, for the content read before the lock. */
