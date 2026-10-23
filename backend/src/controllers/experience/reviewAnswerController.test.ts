@@ -14,7 +14,9 @@ vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn(), connect: vi.fn() },
   rollbackQuietly: vi.fn(),
 }));
-vi.mock('./experienceScope.js', () => ({ resolveExperienceScope: vi.fn(), resolveEverySourceScope: vi.fn() }));
+vi.mock('./experienceScope.js', () => ({
+  answeredSourceId: vi.fn(async () => 4), resolveExperienceScope: vi.fn(), resolveEverySourceScope: vi.fn(),
+}));
 vi.mock('./viewChoiceController.js', () => ({ chooseViews: vi.fn(), chooseViewsUnderLock: vi.fn(), keepingChoices: vi.fn() }));
 vi.mock('./publishController.js', () => ({ publishUnderLock: vi.fn() }));
 vi.mock('./curatorRefusalController.js', () => ({

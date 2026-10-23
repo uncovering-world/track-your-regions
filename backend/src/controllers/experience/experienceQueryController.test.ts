@@ -742,7 +742,9 @@ describe('searchExperiences region context', () => {
     // The curator's "search and assign" dialog renders the row's kind, read
     // through the membership rather than the source's name (#592, #819).
     expect(sql).toContain('ek.name AS kind_name');
-    expect(sql).toMatch(/JOIN experience_kind_memberships em ON em\.experience_id = e\.id AND em\.source_id = e\.source_id/);
+    // The membership the place is shown under, whichever source brought it (#1893).
+    expect(sql).toContain('LEFT JOIN LATERAL (SELECT shown.* FROM experience_kind_memberships shown');
+    expect(sql).not.toContain('em.source_id = e.source_id');
     expect(sql).toContain('m.kind_name');
   });
 

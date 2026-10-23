@@ -217,8 +217,9 @@ export async function publishExperience(
   const userId = caller.id;
   const userRole = caller.role;
 
-  // The answered membership's source decides the scope where the body names one (#1264).
-  const sourceId = await answeredSourceId(experienceId, body.membershipId);
+  // The answered membership's source decides the scope: the one the body names,
+  // else the one the publish answers (#1264).
+  const sourceId = await answeredSourceId(experienceId, body.membershipId, 'waiting');
   if (sourceId === null) {
     throw notFound('Experience not found');
   }

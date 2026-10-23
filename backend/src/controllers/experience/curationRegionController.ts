@@ -30,14 +30,14 @@ export async function rejectExperience(
   const userId = caller.id;
   const userRole = caller.role;
 
-  // Get experience source for scope check
-  const expResult = await pool.query('SELECT id, source_id FROM experiences WHERE id = $1', [experienceId]);
+  // The experience must exist; its scope is the place's (checkCuratorScope)
+  const expResult = await pool.query('SELECT id FROM experiences WHERE id = $1', [experienceId]);
   if (expResult.rows.length === 0) {
     throw notFound('Experience not found');
   }
 
   // Check curator scope
-  const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].source_id);
+  const hasScope = await checkCuratorScope(userId, userRole, regionId, experienceId);
   if (!hasScope) {
     throw createError('You do not have curator permissions for this region', 403);
   }
@@ -72,14 +72,14 @@ export async function unrejectExperience(
   const userId = caller.id;
   const userRole = caller.role;
 
-  // Get experience source for scope check
-  const expResult = await pool.query('SELECT id, source_id FROM experiences WHERE id = $1', [experienceId]);
+  // The experience must exist; its scope is the place's (checkCuratorScope)
+  const expResult = await pool.query('SELECT id FROM experiences WHERE id = $1', [experienceId]);
   if (expResult.rows.length === 0) {
     throw notFound('Experience not found');
   }
 
   // Check curator scope
-  const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].source_id);
+  const hasScope = await checkCuratorScope(userId, userRole, regionId, experienceId);
   if (!hasScope) {
     throw createError('You do not have curator permissions for this region', 403);
   }
@@ -116,13 +116,13 @@ export async function assignExperienceToRegion(
   const userRole = caller.role;
 
   // Verify experience exists
-  const expResult = await pool.query('SELECT id, source_id FROM experiences WHERE id = $1', [experienceId]);
+  const expResult = await pool.query('SELECT id FROM experiences WHERE id = $1', [experienceId]);
   if (expResult.rows.length === 0) {
     throw notFound('Experience not found');
   }
 
   // Check curator scope
-  const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].source_id);
+  const hasScope = await checkCuratorScope(userId, userRole, regionId, experienceId);
   if (!hasScope) {
     throw createError('You do not have curator permissions for this region', 403);
   }
@@ -181,14 +181,14 @@ export async function unassignExperienceFromRegion(
   const userId = caller.id;
   const userRole = caller.role;
 
-  // Get experience source for scope check
-  const expResult = await pool.query('SELECT id, source_id FROM experiences WHERE id = $1', [experienceId]);
+  // The experience must exist; its scope is the place's (checkCuratorScope)
+  const expResult = await pool.query('SELECT id FROM experiences WHERE id = $1', [experienceId]);
   if (expResult.rows.length === 0) {
     throw notFound('Experience not found');
   }
 
   // Check curator scope
-  const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].source_id);
+  const hasScope = await checkCuratorScope(userId, userRole, regionId, experienceId);
   if (!hasScope) {
     throw createError('You do not have curator permissions for this region', 403);
   }
@@ -229,14 +229,14 @@ export async function removeExperienceFromRegion(
   const userId = caller.id;
   const userRole = caller.role;
 
-  // Get experience source for scope check
-  const expResult = await pool.query('SELECT id, source_id FROM experiences WHERE id = $1', [experienceId]);
+  // The experience must exist; its scope is the place's (checkCuratorScope)
+  const expResult = await pool.query('SELECT id FROM experiences WHERE id = $1', [experienceId]);
   if (expResult.rows.length === 0) {
     throw notFound('Experience not found');
   }
 
   // Check curator scope
-  const hasScope = await checkCuratorScope(userId, userRole, regionId, expResult.rows[0].source_id);
+  const hasScope = await checkCuratorScope(userId, userRole, regionId, experienceId);
   if (!hasScope) {
     throw createError('You do not have curator permissions for this region', 403);
   }

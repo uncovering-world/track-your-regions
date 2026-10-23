@@ -57,10 +57,16 @@ function queueQueries(opts: {
   mockPoolConnect.mockClear();
   // The claim the transaction re-reads under its lock, which is what the
   // union is built from — not the unlocked read that answers 404 and scope.
-  mockClientQuery.mockImplementation(async (sql: string) =>
-    (typeof sql === 'string' && sql.includes(OBJECT_LOCK))
-      ? { rows: [{ curated_fields: opts.lockedCurated ?? [], name: opts.lockedName ?? 'Old name', ...opts.lockedRow }] }
-      : { rows: [] });
+  mockClientQuery.mockImplementation(async (sql: string) => {
+    if (typeof sql === 'string' && sql.includes(OBJECT_LOCK)) {
+      return { rows: [{ curated_fields: opts.lockedCurated ?? [], name: opts.lockedName ?? 'Old name', ...opts.lockedRow }] };
+    }
+    return { rows: [] };
+  });
+  // The membership the place is shown under, whose type an edit writes and
+  // whose source's scope a type edit asks (#1893).
+  mockPoolQuery.mockImplementation(async (sql: string) =>
+    (typeof sql === 'string' && sql.includes('shown_kind') ? { rows: [{ source_id: SOURCE_ID }] } : { rows: [] }));
   mockPoolQuery.mockResolvedValueOnce({
     rows: opts.experienceRows ?? [{ id: EXPERIENCE_ID, source_id: SOURCE_ID, name: 'Old name', curated_fields: [] }],
   });
@@ -105,7 +111,8 @@ describe('editExperience scope', () => {
     expect(sql).toMatch(/curator_scoped_regions/);
     expect(sql).toMatch(/experience_regions er[\s\S]*JOIN curator_scoped_regions s ON s\.id = er\.region_id/);
     expect(sql).not.toMatch(/LIMIT 1/);
-    expect(params).toEqual([REGION_CURATOR.id, EXPERIENCE_ID, SOURCE_ID]);
+    // The place as a whole: a curator of any source it holds (#1893).
+    expect(params).toEqual([REGION_CURATOR.id, EXPERIENCE_ID]);
 
     expect(res.status).not.toHaveBeenCalledWith(403);
   });
@@ -148,6 +155,26 @@ describe('editExperience scope', () => {
     expect(res.status).toHaveBeenCalledWith(403);
     // Nothing may be written — not the update, not an audit row.
     expect(mockPoolConnect).not.toHaveBeenCalled();
+    expect(mockClientQuery).not.toHaveBeenCalled();
+  });
+
+  it('refuses a type edit to a curator of the place who is not one of the shown kind\'s source (#1893)', async () => {
+    // In scope for the place as a whole (a Places of worship curator on the
+    // Ajanta Caves), but the type is the shown membership's, a World Heritage
+    // membership whose source this curator does not answer for.
+    queueQueries({ scope: { unrestricted: true, scoped_region_id: null } });
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ source_id: SOURCE_ID }] });
+    mockPoolQuery.mockResolvedValueOnce({ rows: [{ unrestricted: false, scoped_region_id: null }] });
+    const res = makeRes();
+    await answerRoute(patchEdit,
+      { params: { id: String(EXPERIENCE_ID) }, body: { type: 'cultural' }, user: REGION_CURATOR } as never,
+      res as never,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(403);
+    const [typeScopeSql, typeScopeParams] = mockPoolQuery.mock.calls[3] as [string, unknown[]];
+    expect(typeScopeSql).toContain('ca.source_id = $3');
+    expect(typeScopeParams).toEqual([REGION_CURATOR.id, EXPERIENCE_ID, SOURCE_ID]);
     expect(mockClientQuery).not.toHaveBeenCalled();
   });
 

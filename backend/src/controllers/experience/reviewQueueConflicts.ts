@@ -65,7 +65,7 @@ export async function queryConflicts(
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT * FROM (
       SELECT DISTINCT ON (e.id)
-             e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name AS kind_name,
+             e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name,
              ${lifecycleSelectSql()}, ${objectContextSelectSql()},
              'conflict' AS kind, ch.sync_log_id,
              -- When the run that is asking finished. The card names a run either

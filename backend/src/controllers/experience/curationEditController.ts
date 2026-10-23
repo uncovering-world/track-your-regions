@@ -8,6 +8,7 @@ import type { ExperienceEditResult } from '../../api/responses/curation.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
 import { badRequest, createError, notFound } from '../../middleware/errorHandler.js';
 import type { editExperienceBodySchema, idParamSchema } from '../../types/index.js';
+import type { UserRole } from '../../types/auth.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { METADATA_CLAIM_PREFIX } from '../../services/sync/changeSet.js';
 import { creditForOneImage, type ImageCredit } from '../../services/sync/imageCredit.js';
@@ -16,6 +17,7 @@ import {
   isStorableHttpUrl, isDisplayablePictureUrl, STORABLE_HTTP_URL_MESSAGE, DISPLAYABLE_PICTURE_URL_MESSAGE,
 } from '../../types/urlSafety.js';
 import { lockExperience, updateExperienceColumns } from '../../db/experienceWriter.js';
+import { MEMBERSHIPS, shownMembershipSql } from '../../db/membership.js';
 import { setTypeOnSourceMembership, typeClaimedBy } from './membershipWriter.js';
 import { refusalFor } from './curatedUrlRefusal.js';
 
@@ -181,6 +183,34 @@ function buildUpdateQuery(
  * claim whose provenance the trail cannot explain — and the photographer whose
  * name was replaced would be unrecoverable from it.
  */
+/** The source of the membership a place is shown under (`shownMembershipSql`), undefined where it has none. */
+async function shownMembershipSource(
+  db: Pick<typeof pool, 'query'>, experienceId: number,
+): Promise<number | undefined> {
+  return (await db.query<{ source_id: number }>(
+    `SELECT m.source_id FROM ${MEMBERSHIPS} m WHERE m.id = ${shownMembershipSql('$1::int')}`, [experienceId],
+  )).rows[0]?.source_id;
+}
+
+/**
+ * The source of the membership a type edit writes, or undefined where the edit
+ * changes no type or the place has no membership. The type within the kind is
+ * the membership's (ADR-0084): the edit writes the membership the place is
+ * shown under, where the dialog read it, and is that membership's source's
+ * curators' to give, as every answer about one membership is (#1893). Read
+ * once, so the membership the scope was asked about is the one written.
+ */
+async function typeEditSource(
+  payload: { updates: { column: string }[] }, userId: number, userRole: UserRole, experienceId: number,
+): Promise<number | undefined> {
+  if (!payload.updates.some(u => u.column === 'type')) return undefined;
+  const source = await shownMembershipSource(pool, experienceId);
+  if (source !== undefined && !(await resolveExperienceScope(userId, userRole, experienceId, source)).permitted) {
+    throw createError('You do not have curator permissions for the kind whose type this edits', 403);
+  }
+  return source;
+}
+
 function buildEditAuditDetails(
   payload: EditPayload,
   existing: Record<string, unknown>,
@@ -225,7 +255,7 @@ export async function editExperience(
   }
 
   const expResult = await pool.query(
-    `SELECT id, source_id, name, description, subtitle, image_url, tags, metadata, curated_fields
+    `SELECT id, name, description, subtitle, image_url, tags, metadata, curated_fields
      FROM experiences WHERE id = $1`,
     [experienceId],
   );
@@ -238,11 +268,13 @@ export async function editExperience(
     userId,
     userRole,
     experienceId,
-    existing.source_id as number,
+    'place',
   );
   if (!permitted) {
     throw createError('You do not have curator permissions for this experience', 403);
   }
+
+  const typeSource = await typeEditSource(payload, userId, userRole, experienceId);
 
   // Outside the transaction, because it is a request to somebody else's server
   // and a lock held across one is a lock held for as long as they feel like
@@ -283,13 +315,14 @@ export async function editExperience(
     if (!locked) throw notFound('Experience not found');
     const before: Record<string, unknown> = { ...locked.row };
     // The type within the kind is the membership's (ADR-0084), claimed there:
-    // the one the row is shown under, the membership its first source brought,
-    // until #1245 lets a curator name the kind they are editing.
+    // for a type edit the shown membership read above, whose source's scope the
+    // edit passed; otherwise the shown one, for whether its type is claimed.
     const typeEdit = payload.updates.find(u => u.column === 'type');
     const placePayload = { ...payload, updates: payload.updates.filter(u => u.column !== 'type') };
-    if (typeEdit) {
+    const shownSource = typeSource ?? await shownMembershipSource(client, experienceId);
+    if (typeEdit && shownSource !== undefined) {
       const typeWrite = await setTypeOnSourceMembership(
-        client, locked.lock, existing.source_id as number, clearedToNull(typeEdit.value), 'add',
+        client, locked.lock, shownSource, clearedToNull(typeEdit.value), 'add',
       );
       before.type = typeWrite?.old ?? null;
     }
@@ -298,7 +331,8 @@ export async function editExperience(
     if (placePayload.updates.length > 0 || metadataPatchOf(placePayload) !== null) {
       await updateExperienceColumns(client, locked.lock, built.assignments, built.values);
     }
-    if (typeEdit || await typeClaimedBy(client, locked.lock, existing.source_id as number)) {
+    if ((typeEdit && shownSource !== undefined)
+        || (shownSource !== undefined && await typeClaimedBy(client, locked.lock, shownSource))) {
       newCurated = [...newCurated, 'type'];
     }
     const details = buildEditAuditDetails(payload, before);

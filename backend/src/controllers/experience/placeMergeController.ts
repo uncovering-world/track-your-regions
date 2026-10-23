@@ -22,17 +22,18 @@ export async function undoPlaceMerge(
 ): Promise<MergeUndone> {
   const found = await pool.query<{ survivor_id: number; source_ids: number[] }>(
     `SELECT m.survivor_id,
-            array(SELECT DISTINCT unnest(e.source_id || array(
-              SELECT km.source_id FROM experience_kind_memberships km
-               WHERE km.id IN (SELECT jsonb_array_elements_text(m.moved->'memberships')::int)))) AS source_ids
-       FROM experience_merges m JOIN experiences e ON e.id = m.survivor_id
+            array(SELECT DISTINCT km.source_id FROM experience_kind_memberships km
+                   WHERE km.id IN (SELECT jsonb_array_elements_text(m.moved->'memberships')::int)) AS source_ids
+       FROM experience_merges m
       WHERE m.id = $1`,
     [mergeId],
   );
   const merge = found.rows[0];
   if (!merge) throw notFound('Merge not found');
+  // The undo takes the moved memberships back and splits the place: the
+  // curator answers for the place as a whole and for every source it moves.
   let logRegionId: number | null = null;
-  for (const sourceId of merge.source_ids) {
+  for (const sourceId of ['place' as const, ...merge.source_ids]) {
     const scope = await resolveExperienceScope(caller.id, caller.role, merge.survivor_id, sourceId);
     if (!scope.permitted) throw createError('You do not have curator permissions for this experience', 403);
     logRegionId ??= scope.logRegionId;

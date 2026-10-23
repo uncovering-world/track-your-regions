@@ -30,7 +30,7 @@ export interface VisitQuestionContext {
 
 export async function queryVisitQuestions(ids: number[], ctx: VisitQuestionContext): Promise<QueryResult> {
   return pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, m.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
+    SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'visit-question' AS kind, NULL::jsonb AS proposed,
            q.sync_log_id,

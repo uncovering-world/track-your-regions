@@ -41,8 +41,11 @@ import {
 // the client's `REVIEW_ANSWER_ROWS_MAX` mirrors it, and `docs/tech/experiences.md`
 // names it beside the route.
 
+/** The rows whose writer picks a membership when none is named, and how. */
+const ANSWERING_MEMBERSHIP: Record<string, 'waiting' | 'refused'> = { waiting: 'waiting', refused: 'refused' };
+
 /**
- * The scope a row is answered in: its membership's source, the place's own,
+ * The scope a row is answered in: its membership's source, the place as a whole,
  * every source of the place, or — for a site's candidate component items
  * (#1272) — a source that places such a point, or for a pair of near places
  * (#1249) a source of either place, never the membership the client names,
@@ -50,14 +53,17 @@ import {
  */
 async function scopeOfRow(
   userId: number, userRole: Parameters<typeof resolveExperienceScope>[1],
-  row: { id: number; kind: string; membershipId: number | null }, placeSourceId: number,
+  row: { id: number; kind: string; membershipId: number | null },
 ): Promise<{ permitted: boolean; logRegionId: number | null; sourceIds?: number[] }> {
   if (row.kind === 'sources') return resolveEverySourceScope(userId, userRole, row.id);
   if (row.kind === 'component-items') return componentItemsScope(userId, userRole, row.id);
   if (row.kind === 'merge-proposals') return mergeProposalsScope(userId, userRole, row.id);
-  const sourceId = row.membershipId === null
-    ? placeSourceId
-    : (await answeredSourceId(row.id, row.membershipId)) ?? placeSourceId;
+  // The membership the row's writer answers: the named one, or for a waiting or
+  // refused row the one its arm picks unnamed (`reviewAnswerDispatch.ts`); a row
+  // naming none of the others is the place's as a whole.
+  const prefer = ANSWERING_MEMBERSHIP[row.kind] ?? 'named';
+  const sourceId = await answeredSourceId(row.id, row.membershipId, prefer);
+  if (sourceId === null) return { permitted: false, logRegionId: null };
   return resolveExperienceScope(userId, userRole, row.id, sourceId);
 }
 
@@ -78,11 +84,11 @@ export async function answerReviewRows(
 
   const distinct = dedupe(rows);
   const found = await pool.query(
-    `SELECT id, name, source_id FROM experiences WHERE id = ANY($1::int[])`,
+    `SELECT id, name FROM experiences WHERE id = ANY($1::int[])`,
     [distinct.map(r => r.id)],
   );
-  const objects = new Map<number, { name: string; sourceId: number }>(
-    found.rows.map(r => [r.id as number, { name: r.name as string, sourceId: r.source_id as number }]));
+  const objects = new Map<number, { name: string }>(
+    found.rows.map(r => [r.id as number, { name: r.name as string }]));
 
   const result: ReviewAnswerResult = {
     answer, answered: [], refused: [], outOfScope: 0, placementFailed: [],
@@ -101,7 +107,7 @@ export async function answerReviewRows(
     try {
       // A row naming a membership is scoped by that membership's source (#1264);
       // a choice between two sources' views by every source of the place (#1246).
-      const { permitted, logRegionId, sourceIds } = await scopeOfRow(userId, userRole, row, object.sourceId);
+      const { permitted, logRegionId, sourceIds } = await scopeOfRow(userId, userRole, row);
       if (!permitted) {
         result.outOfScope += 1;
         continue;

@@ -113,17 +113,21 @@ describe('an answer that names its membership (ADR-0084)', () => {
     expect(await membership(artMembership)).toMatchObject({ admission: 'refused', pinned: false });
   });
 
-  it('is scoped by the source of the membership it names, not the place\'s first source', async () => {
+  it('is scoped by the source of the membership the writer answers, not the place\'s first source', async () => {
     const sources = await pool.query<{ id: number; name: string }>(
       `SELECT id, name FROM experience_sources WHERE name IN ('Art Museums', 'Archaeology')`,
     );
     const idOf = (name: string) => sources.rows.find(row => row.name === name)!.id;
 
-    expect(await answeredSourceId(CAPITOLINE, archaeologyMembership)).toBe(idOf('Archaeology'));
-    expect(await answeredSourceId(CAPITOLINE)).toBe(idOf('Art Museums'));
-    // A membership of another place leaves the place's own source; the writer refuses the answer.
-    expect(await answeredSourceId(CAPITOLINE, otherMembership)).toBe(idOf('Art Museums'));
-    expect(await answeredSourceId(9599)).toBeNull();
+    expect(await answeredSourceId(CAPITOLINE, archaeologyMembership, 'waiting')).toBe(idOf('Archaeology'));
+    // Naming none, a publish answers the waiting Archaeology arrival, so its
+    // scope is Archaeology's, though Art Museums brought the place first (#1893).
+    expect(await answeredSourceId(CAPITOLINE, undefined, 'waiting')).toBe(idOf('Archaeology'));
+    // A question naming no kind is the place's as a whole.
+    expect(await answeredSourceId(CAPITOLINE, undefined, 'named')).toBe('place');
+    // A membership of another place answers nothing here; the writer refuses the answer.
+    expect(await answeredSourceId(CAPITOLINE, otherMembership, 'waiting')).toBe('place');
+    expect(await answeredSourceId(9599, undefined, 'waiting')).toBeNull();
   });
 
   it('refuses a membership of another place as a question this place does not have', async () => {

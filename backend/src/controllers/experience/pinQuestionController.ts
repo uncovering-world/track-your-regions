@@ -31,7 +31,7 @@ export async function answerPinQuestion(
   },
 ): Promise<PinQuestionAnswered> {
   // The answered membership's source decides the scope, as every answer about one kind does (#1264).
-  const sourceId = await answeredSourceId(experienceId, body.membershipId);
+  const sourceId = await answeredSourceId(experienceId, body.membershipId, 'named');
   if (sourceId === null) throw notFound('Experience not found');
   const { permitted, logRegionId } = await resolveExperienceScope(caller.id, caller.role, experienceId, sourceId);
   if (!permitted) throw createError('You do not have curator permissions for this experience', 403);

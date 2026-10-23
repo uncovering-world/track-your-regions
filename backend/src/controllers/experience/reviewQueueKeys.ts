@@ -54,8 +54,8 @@ import { pool } from '../../db/index.js';
 import type { QueueFacets, QueueOrderEntry } from '../../api/responses/reviewQueue.js';
 import { EMPTY_FACETS, FACETS_JSON_SQL, facetsSql, regionRootsCte } from './reviewQueueFacets.js';
 import { QUEUE_KINDS, WAITING_SUBS, type QueueKind, type WaitingSub } from './reviewQueueVocabulary.js';
-import { MEMBERSHIPS, claimsFacingSql } from '../../db/membership.js';
-import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
+import { MEMBERSHIPS, claimsFacingSql, placeSourceIdsSql } from '../../db/membership.js';
+import { CURATOR_SCOPED_REGIONS_CTE, curatorPlaceScopeExists, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
 import { offeredLinkSql, offeredLocationSql } from '../../db/readerPredicates.js';
 import { contentsWaitingSql, linkMembershipSql, pointMembershipSql, unreadLinkSql, unreadPointSql } from './waitingCounts.js';
 import { CLAIM_KEY_BY_FAMILY, CURATED_KEY_BY_FIELD } from '../../services/sync/changeSet.js';
@@ -183,7 +183,7 @@ function conflictKeysSql(scopeFilter: string, claimKey: (field: string) => strin
            ARRAY[q.source_id] AS source_ids, q.sync_log_id AS run_id, q.completed_at AS asked_at,
            ARRAY[]::text[] AS subs
     FROM (
-      SELECT DISTINCT ON (e.id) e.id, e.name, e.source_id, ${claimsFacingSql('e', 'l.source_id')} AS curated_fields,
+      SELECT DISTINCT ON (e.id) e.id, e.name, l.source_id, ${claimsFacingSql('e', 'l.source_id')} AS curated_fields,
              ch.changed_fields, ch.sync_log_id, l.completed_at
       FROM experience_sync_changes ch
       JOIN experiences e ON e.id = ch.experience_id
@@ -306,14 +306,14 @@ function waitingKeysSql(membershipScopeFilter: string): string {
  */
 function withdrawnKeysSql(scopeFilter: string): string {
   return `
-    SELECT 'withdrawn', ${KIND_RANK.withdrawn}, e.id, e.name, ARRAY[e.source_id], NULL,
+    SELECT 'withdrawn', ${KIND_RANK.withdrawn}, e.id, e.name, ${placeSourceIdsSql('e')}, NULL,
            max(el.missing_since), ARRAY[]::text[]
     FROM experience_locations el
     JOIN experiences e ON e.id = ${answeringPlaceSql()}
     WHERE ${withdrawnPointOpenSql('el')}
       AND ${withdrawnContainerOpenSql('e')}
       AND ${scopeFilter}
-    GROUP BY e.id, e.name, e.source_id`;
+    GROUP BY e.id, e.name`;
 }
 
 /**
@@ -350,7 +350,7 @@ function missingKeysSql(scopeFilter: string, membershipScopeFilter: string): str
   // stopped listing a place another source still lists, one row per place in
   // scope by each of those sources (#1264).
   return `
-    SELECT 'missing', ${KIND_RANK.missing}, e.id, e.name, ARRAY[e.source_id], NULL,
+    SELECT 'missing', ${KIND_RANK.missing}, e.id, e.name, ${placeSourceIdsSql('e')}, NULL,
            e.missing_since, ARRAY[]::text[]
     FROM experiences e
     WHERE ${missingOpenSql('e')}
@@ -757,16 +757,18 @@ function toKey(row: KeyRow): QueueKey {
 }
 
 /**
- * The curator's scope over a queue row: an unrestricted scope on the source
- * the question belongs to, or a region the place lies in. Correlated on the
- * row's own source rather than on a request filter, since the union spans
- * sources; `sourceExpr` is that source — the place's for a question about
- * the place, the membership's for one a membership asks.
+ * The curator's scope over a queue row: an unrestricted scope on what the
+ * question belongs to, or a region the place lies in. Correlated on the row
+ * rather than on a request filter, since the union spans sources: `'place'`
+ * for a question about the place as a whole, which a curator of any source the
+ * place holds answers (`curatorPlaceScopeExists`), and `'m.source_id'` for one
+ * a membership asks, which is that membership's source's.
  */
-export function queueScopeSql(isAdmin: boolean, sourceExpr: 'e.source_id' | 'm.source_id'): string {
+export function queueScopeSql(isAdmin: boolean, of: 'place' | 'm.source_id'): string {
+  const unrestricted = of === 'place' ? curatorPlaceScopeExists('e.id') : curatorUnrestrictedScopeExists(of);
   return isAdmin
     ? 'TRUE'
-    : `(${curatorUnrestrictedScopeExists(sourceExpr)} OR EXISTS (
+    : `(${unrestricted} OR EXISTS (
          SELECT 1 FROM experience_regions er
          JOIN curator_scoped_regions s ON s.id = er.region_id
          WHERE er.experience_id = e.id
@@ -788,7 +790,7 @@ export async function queryQueueKeys(
 
   // The same scope the card statements carry, correlated on each row's own
   // source rather than on a request filter: the union spans sources.
-  const scopeFilter = queueScopeSql(isAdmin, 'e.source_id');
+  const scopeFilter = queueScopeSql(isAdmin, 'place');
   // A question a membership asks is in scope by that membership's source (#1264).
   const membershipScopeFilter = queueScopeSql(isAdmin, 'm.source_id');
   const keyMap = bind(JSON.stringify(CURATED_KEY_BY_FIELD));

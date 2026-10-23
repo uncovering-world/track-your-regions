@@ -95,9 +95,8 @@ export async function editWork(
   // museum's list no longer shows the work, so its scope no longer reaches it,
   // and whichever museum still holds the work is where the edit belongs.
   const found = await pool.query(
-    `SELECT e.source_id
+    `SELECT 1
        FROM experience_treasures et
-       JOIN experiences e ON e.id = et.experience_id
       WHERE et.experience_id = $1 AND et.treasure_id = $2
         AND ${offeredLinkSql('et')}`,
     [experienceId, treasureId],
@@ -105,10 +104,9 @@ export async function editWork(
   if (found.rows.length === 0) {
     throw notFound('Work not found in this experience');
   }
-  const sourceId = found.rows[0].source_id as number;
-
+  // The work is shown by the place as a whole, whichever kind placed it.
   const { permitted, logRegionId } = await resolveExperienceScope(
-    userId, userRole, experienceId, sourceId,
+    userId, userRole, experienceId, 'place',
   );
   if (!permitted) {
     throw createError('You do not have curator permissions for this experience', 403);

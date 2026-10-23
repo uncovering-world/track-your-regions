@@ -82,19 +82,12 @@ export async function setExperienceState(
   const userId = caller.id;
   const userRole = caller.role;
 
-  const expResult = await pool.query(
-    `SELECT id, source_id FROM experiences WHERE id = $1`,
-    [experienceId],
-  );
-  if (expResult.rows.length === 0) {
+  // A verdict on one kind is that kind's source's curators' to give (#1264); a
+  // verdict naming no kind is the place's as a whole.
+  const sourceId = await answeredSourceId(experienceId, body.membershipId, 'named');
+  if (sourceId === null) {
     throw notFound('Experience not found');
   }
-  const existing = expResult.rows[0];
-
-  // A verdict on one kind is that kind's source's curators' to give (#1264).
-  const sourceId = body.membershipId === undefined
-    ? existing.source_id as number
-    : (await answeredSourceId(experienceId, body.membershipId)) ?? existing.source_id as number;
   const { permitted, logRegionId } = await resolveExperienceScope(userId, userRole, experienceId, sourceId);
   if (!permitted) {
     throw createError('You do not have curator permissions for this experience', 403);
@@ -326,8 +319,9 @@ export async function setExperienceAdmission(
   const userId = caller.id;
   const userRole = caller.role;
 
-  // The answered membership's source decides the scope where the body names one (#1264).
-  const sourceId = await answeredSourceId(experienceId, body.membershipId);
+  // The answered membership's source decides the scope: the one the body names,
+  // else the refused one the verdict answers (#1264).
+  const sourceId = await answeredSourceId(experienceId, body.membershipId, 'refused');
   if (sourceId === null) {
     throw notFound('Experience not found');
   }

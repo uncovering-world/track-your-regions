@@ -48,16 +48,16 @@ export async function acceptSourceValue(
   const userRole = caller.role;
 
   const expResult = await pool.query(
-    `SELECT id, source_id FROM experiences WHERE id = $1`,
+    `SELECT id FROM experiences WHERE id = $1`,
     [experienceId],
   );
   if (expResult.rows.length === 0) {
     throw notFound('Experience not found');
   }
-  const existing = expResult.rows[0];
 
+  // The place's fields, which every kind of it shows: the place as a whole.
   const { permitted, logRegionId } = await resolveExperienceScope(
-    userId, userRole, experienceId, existing.source_id as number,
+    userId, userRole, experienceId, 'place',
   );
   if (!permitted) {
     throw createError('You do not have curator permissions for this experience', 403);

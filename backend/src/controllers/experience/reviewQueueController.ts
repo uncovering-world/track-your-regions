@@ -15,10 +15,10 @@ import { queueItemOf, type QueueRow } from './reviewQueueItem.js';
 import type { QueryResult } from 'pg';
 import { pool } from '../../db/index.js';
 import {
-  KINDS, MEMBERSHIPS, admissionAnsweredSql, keptAsFormerSql, rowKindJoinSql,
+  KINDS, MEMBERSHIPS, admissionAnsweredSql, keptAsFormerSql, placeSourceIdsSql, rowKindJoinSql,
 } from '../../db/membership.js';
 import type { reviewQueueQuerySchema } from '../../types/index.js';
-import { CURATOR_SCOPED_REGIONS_CTE, curatorUnrestrictedScopeExists } from '../../middleware/auth.js';
+import { CURATOR_SCOPED_REGIONS_CTE, curatorPlaceScopeExists } from '../../middleware/auth.js';
 import { lifecycleSelectSql } from '../../db/readerPredicates.js';
 import {
   objectContextSelectSql, countedWorksSelectSql,
@@ -212,7 +212,7 @@ export async function getReviewQueue(
 
   // The rows span sources, so the unrestricted check correlates on each
   // row's own source rather than on the optional request filter.
-  const scopeFilter = queueScopeSql(isAdmin, 'e.source_id');
+  const scopeFilter = queueScopeSql(isAdmin, 'place');
   // A question a membership asks is in scope by that membership's source (#1264).
   const membershipScopeFilter = queueScopeSql(isAdmin, 'm.source_id');
 
@@ -230,7 +230,7 @@ export async function getReviewQueue(
   let membershipSourceFilter = '';
   if (filters.sourceIds?.length) {
     params.push(filters.sourceIds);
-    sourceFilter = `AND e.source_id = ANY($${params.length}::int[])`;
+    sourceFilter = `AND ${placeSourceIdsSql('e')} && $${params.length}::int[]`;
     membershipSourceFilter = `AND m.source_id = ANY($${params.length}::int[])`;
   }
 
@@ -291,7 +291,7 @@ export async function getReviewQueue(
   // in, and whether that kind keeps a delisted place as former.
   const missing = await hydrate(missingIds, async () => {
     const places = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'missing' AS kind, NULL::jsonb AS proposed
     FROM experiences e
@@ -303,7 +303,7 @@ export async function getReviewQueue(
     ORDER BY e.missing_since DESC, e.id
   `, [...params, missingIds]);
     const kinds = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, m.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
+    SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
            m.source_membership, e.existence, m.missing_since, ${seenInSql()} AS seen_in,
            ${keptAsFormerSql('m')} AS kept_as_former, ${objectContextSelectSql()},
            'missing' AS kind, NULL::jsonb AS proposed
@@ -335,7 +335,7 @@ export async function getReviewQueue(
   // one carries the kinds readers still see the place in.
   const refusedIds = idsOf('refused');
   const refused = await hydrate(refusedIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, m.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
+    SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
            m.admission_reason,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'refused' AS kind, ${countedWorksSelectSql()},
@@ -370,7 +370,7 @@ export async function getReviewQueue(
   // to it looking for a row they answered a moment ago, having noticed the
   // mis-click, and the row they want is the last one they touched.
   const keptOut = await pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, m.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
+    SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
            m.admission_reason, ${seenInSql()} AS seen_in,
            -- When this membership's refusal was answered, and the note given
            -- (#1264): the latest confirmation or kept-out arrival the log
@@ -417,7 +417,7 @@ export async function getReviewQueue(
   // curator's), and stays visible to everyone, as it is in the log.
   const logScopeFilter = isAdmin
     ? 'TRUE'
-    : `(${curatorUnrestrictedScopeExists('e.source_id')}
+    : `(${curatorPlaceScopeExists('e.id')}
          OR log.region_id IS NULL
          OR log.region_id IN (SELECT id FROM curator_scoped_regions))`;
 
@@ -471,7 +471,7 @@ export async function getReviewQueue(
   // arrivals, each answered for its own kind, and the page groups them.
   const arrivalIds = waitingIds('arrival');
   const arrivals = await hydrate(arrivalIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
-    SELECT e.id, m.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
+    SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
            m.curation_state, m.first_seen_sync_log_id AS sync_log_id,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'arrival' AS kind, NULL::jsonb AS proposed, ${seenInSql()} AS seen_in
@@ -541,7 +541,7 @@ export async function getReviewQueue(
   const heldIds = waitingIds('held');
   const held = await hydrate(heldIds, () => pool.query(`${CURATOR_SCOPED_REGIONS_CTE}
     SELECT * FROM (
-      SELECT e.id, m.external_id, e.name, e.source_id, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
+      SELECT e.id, m.external_id, e.name, m.id AS membership_id, m.kind_id, kd.name AS kind_name,
              ${lifecycleSelectSql()}, ${objectContextSelectSql()},
              ch.sync_log_id, 'held' AS kind,
              (SELECT jsonb_agg(f) FROM jsonb_array_elements(ch.changed_fields) AS f

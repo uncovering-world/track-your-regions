@@ -69,7 +69,7 @@ const QUIET_FIELDS = `(SELECT jsonb_agg(jsonb_build_object(
 
 export async function querySources(ids: number[]): Promise<QueryResult> {
   return pool.query(`
-    SELECT e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'sources' AS kind, NULL::jsonb AS proposed,
            (SELECT jsonb_agg(jsonb_build_object('field', f, 'views', ${VIEWS_OF_FIELD})

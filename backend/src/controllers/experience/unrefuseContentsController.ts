@@ -70,7 +70,7 @@ export async function unrefuseContents(
   // (#1264, #1290): the one the body names, else the first holding turned-down rows.
   return answerThroughScope(id, caller, (experienceId, userId, logRegionId) =>
     unrefuseContentsUnderLock(experienceId, userId, logRegionId, body),
-  await contentsMembershipId(id, 'refused', body.membershipId));
+  await contentsMembershipId(id, 'refused', body.membershipId), 'named');
 }
 
 /**

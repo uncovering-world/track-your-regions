@@ -19,6 +19,7 @@ import type { z } from 'zod/v4';
 import type { SiteFindsResponse } from '../../api/responses/experiences.js';
 import type { idParamSchema } from '../../types/index.js';
 import { pool } from '../../db/index.js';
+import { MEMBERSHIPS } from '../../db/membership.js';
 import { experienceOfferedToReaderSql } from '../../db/readerPredicates.js';
 import { siteFindOf, type SiteFindRow } from './experienceAnswerRows.js';
 import { readerRegionsJsonSql } from './readerRegions.js';
@@ -80,9 +81,13 @@ export async function getSiteFinds(
        FROM (
          SELECT DISTINCT ON (sv.external_id) sv.id, sv.name, svk.id AS kind_id
          ${venuesShowingSql('t')}
-         -- One row per building; the site's own kind first, then the id, so
-         -- the choice is total.
-         ORDER BY sv.external_id, (sv.source_id = e.source_id) DESC, sv.id
+         -- One row per building; one sharing a kind with the site first, then
+         -- the id, so the choice is total.
+         ORDER BY sv.external_id,
+                  EXISTS (SELECT 1 FROM ${MEMBERSHIPS} venue_kind
+                            JOIN ${MEMBERSHIPS} site_kind ON site_kind.kind_id = venue_kind.kind_id
+                           WHERE venue_kind.experience_id = sv.id AND site_kind.experience_id = e.id) DESC,
+                  sv.id
        ) v) AS shown_at
     FROM experiences e
     JOIN treasures t ON ${findOfSiteSql('e', 't')}

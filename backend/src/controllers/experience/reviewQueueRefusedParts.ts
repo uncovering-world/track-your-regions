@@ -104,7 +104,7 @@ export async function queryRefusedParts(
         FROM experience_treasures et
        WHERE et.refused_at IS NOT NULL
     )
-    SELECT e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'contents-refused' AS kind,
            -- Whether the take-back will be accepted at all, decided by the

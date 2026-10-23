@@ -68,7 +68,7 @@ const ANCHOR_MEMBERSHIP = `(SELECT m.id FROM ${MEMBERSHIPS} m WHERE m.experience
 
 export async function queryMergeProposals(ids: number[]): Promise<QueryResult> {
   return pool.query(`
-    SELECT e.id, e.external_id, e.name, e.source_id, mk.kind_id, kd.name AS kind_name,
+    SELECT e.id, e.external_id, e.name, mk.kind_id, kd.name AS kind_name,
            ${lifecycleSelectSql()}, ${objectContextSelectSql()},
            'merge-proposals' AS kind, NULL::jsonb AS proposed,
            ${ANCHOR_MEMBERSHIP} AS membership_id,

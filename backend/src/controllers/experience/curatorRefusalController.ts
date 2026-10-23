@@ -61,7 +61,7 @@ export async function refuseArrival(
   },
 ): Promise<RefuseArrivalResult> {
   return answerThroughScope(id, caller, (experienceId, userId, logRegionId) =>
-    refuseArrivalUnderLock(experienceId, userId, logRegionId, body), body.membershipId);
+    refuseArrivalUnderLock(experienceId, userId, logRegionId, body), body.membershipId, 'waiting');
 }
 
 /**
@@ -79,7 +79,7 @@ export async function refuseContents(
   // (#1264, #1290): the one the body names, else the first holding unread rows.
   return answerThroughScope(id, caller, (experienceId, userId, logRegionId) =>
     refuseContentsUnderLock(experienceId, userId, logRegionId, body),
-  await contentsMembershipId(id, 'unread', body.membershipId));
+  await contentsMembershipId(id, 'unread', body.membershipId), 'named');
 }
 
 /**
@@ -97,13 +97,15 @@ export async function answerThroughScope<T>(
   caller: Express.User,
   write: (experienceId: number, userId: number, logRegionId: number | null)
     => Promise<{ result?: T; refusal?: AnswerRefusal }>,
-  membershipId?: number,
+  membershipId: number | undefined,
+  prefer: 'waiting' | 'named',
 ): Promise<T> {
   const userId = caller.id;
   const userRole = caller.role;
 
-  // The answered membership's source decides the scope where the body names one (#1264).
-  const sourceId = await answeredSourceId(experienceId, membershipId);
+  // The answered membership's source decides the scope: the one the body names,
+  // else the one the writer answers (#1264).
+  const sourceId = await answeredSourceId(experienceId, membershipId, prefer);
   if (sourceId === null) {
     throw notFound('Experience not found');
   }

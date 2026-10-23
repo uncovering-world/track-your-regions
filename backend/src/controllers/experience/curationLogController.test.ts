@@ -86,7 +86,7 @@ describe('getCurationLog scope', () => {
     const [sql, params] = mockedQuery.mock.calls[1] as [string, unknown[]];
     expect(sql).toMatch(/EXISTS[\s\S]*experience_regions er[\s\S]*curator_scoped_regions/);
     expect(sql).not.toMatch(/LIMIT 1/);
-    expect(params).toEqual([REGION_CURATOR.id, EXPERIENCE_ID, 1]);
+    expect(params).toEqual([REGION_CURATOR.id, EXPERIENCE_ID]);
   });
 
   it('admits a curator whose scope shows only in the log, not in the assignments', async () => {

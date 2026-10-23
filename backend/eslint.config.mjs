@@ -471,6 +471,26 @@ const WORKBENCH_TABLE_RULES = [
 ];
 const tiers = { rules: { 'no-workbench-tables': builtinRules.get('no-restricted-syntax') } };
 
+/**
+ * No statement compares anything with the source that first brought a place
+ * (ADR-0143 decision 6, #1893): `experiences.source_id` is provenance, and a
+ * place's kind, its curator's scope and its queue's source chip are read off
+ * its memberships (`shownMembershipSql`, `curatorPlaceScopeExists`,
+ * `placeSourceIdsSql`). Selecting the column to name where a place came from
+ * stays allowed, joined to `experience_sources` by its id; comparing it with
+ * a membership's, a request's or a curator's source is what made the first
+ * source decide. Matched on the aliases the
+ * statements give `experiences`. The catalogue check that the place's pair is
+ * still a membership's is the one comparison that is about provenance itself.
+ */
+const FIRST_SOURCE_TEXT = '/\\b(e|place|site|venue|pw|sv|exp)\\.source_id\\s*(=|<>)\\s*(\\w+\\.source_id|\\$\\d|ANY\\b)|\\b\\w+\\.source_id\\s*(=|<>)\\s*(e|place|site|venue|pw|sv|exp)\\.source_id\\b|\\b(e|place|site|venue|pw|sv|exp)\\.source_id\\s+IN\\b/i';
+const FIRST_SOURCE_MESSAGE = 'Nothing compares with a place\'s first source (ADR-0143 decision 6): read the kind, the scope or the source chip off its memberships (shownMembershipSql, curatorPlaceScopeExists, placeSourceIdsSql in src/db/membership.ts and src/middleware/auth.ts).';
+const FIRST_SOURCE_RULES = [
+  { selector: `TemplateElement[value.raw=${FIRST_SOURCE_TEXT}]`, message: FIRST_SOURCE_MESSAGE },
+  { selector: `Literal[value=${FIRST_SOURCE_TEXT}]`, message: FIRST_SOURCE_MESSAGE },
+];
+const provenance = { rules: { 'no-first-source-key': builtinRules.get('no-restricted-syntax') } };
+
 /** The `no-restricted-syntax` setting of every family but the ones named. */
 function restrictedSyntaxWithout(...allowed) {
   for (const family of allowed) {
@@ -737,6 +757,15 @@ export default [
     plugins: { tiers },
     rules: {
       'tiers/no-workbench-tables': ['error', ...WORKBENCH_TABLE_RULES],
+    },
+  },
+  // Nothing compares with a place's first source (FIRST_SOURCE_RULES above).
+  {
+    files: ['src/**/*.ts'],
+    ignores: ['src/**/*.test.ts', 'src/controllers/admin/dataAssertions/objectAssertions.ts'],
+    plugins: { provenance },
+    rules: {
+      'provenance/no-first-source-key': ['error', ...FIRST_SOURCE_RULES],
     },
   },
   // The one file nobody writes: `schema.generated.ts` is the schema's
