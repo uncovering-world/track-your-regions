@@ -4005,6 +4005,26 @@ CREATE INDEX IF NOT EXISTS idx_experience_parts_part ON experience_parts(part_id
 COMMENT ON TABLE experience_parts IS 'A place that is part of another (ADR-0046 decision 6, ADR-0100): a component of a serial World Heritage site, placed by the site''s membership under its reference (component); a Wikidata part-of statement (wikidata_part_of); or a curator''s (curator).';
 COMMENT ON COLUMN experience_parts.external_ref IS 'The reference the site''s source knows a component by (527ter-002); null on a part that is not a component.';
 
+-- Where a component the World Heritage list placed only roughly may stand
+-- (#1853), worked out by the Find component items pass from the subset and the
+-- OpenStreetMap layer, which no curator route reads (ADR-0124): the coordinate
+-- of the component's own Wikidata item (item), an OpenStreetMap object carrying
+-- its World Heritage reference (osm-ref), or one within 2 km named like it
+-- (osm-name), each with its distance from the point. Replaced per point by
+-- each pass. See db/migrations/158.
+CREATE TABLE IF NOT EXISTS experience_point_hints (
+    id SERIAL PRIMARY KEY,
+    location_id INTEGER NOT NULL REFERENCES experience_locations(id) ON DELETE CASCADE,
+    source VARCHAR(10) NOT NULL CHECK (source IN ('item', 'osm-ref', 'osm-name')),
+    ref TEXT NOT NULL,
+    label TEXT,
+    location geometry(Point, 4326) NOT NULL,
+    metres INTEGER NOT NULL,
+    found_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_experience_point_hints_location ON experience_point_hints(location_id);
+COMMENT ON TABLE experience_point_hints IS 'Where a component the World Heritage list placed only roughly (experience_locations.approximate) may really stand (#1853): the coordinate of its own Wikidata item (item, ref the item), an OpenStreetMap object carrying its World Heritage reference ref:whc (osm-ref, ref like W194252618), or one within 2 km named like it (osm-name), with its distance from the point in metres. Worked out by the Find component items pass from the subset and the OpenStreetMap layer and replaced per point on each pass, so the curator''s card reads no workbench table (ADR-0124).';
+
 -- Two places near each other with similar names, proposed as one place
 -- (ADR-0046 decision 2, #1249). See db/migrations/117.
 CREATE TABLE IF NOT EXISTS experience_merge_proposals (
@@ -4400,6 +4420,8 @@ CREATE TABLE IF NOT EXISTS workbench.osm_objects (
 CREATE INDEX IF NOT EXISTS osm_objects_wikidata ON workbench.osm_objects (wikidata) WHERE wikidata IS NOT NULL;
 CREATE INDEX IF NOT EXISTS osm_objects_wikipedia ON workbench.osm_objects (wikipedia) WHERE wikipedia IS NOT NULL;
 CREATE INDEX IF NOT EXISTS osm_objects_geom ON workbench.osm_objects USING GIST (geom);
+-- The objects that carry a World Heritage reference, found by it at any distance (#1853, migration 158).
+CREATE INDEX IF NOT EXISTS osm_objects_ref_whc ON workbench.osm_objects ((tags->>'ref:whc')) WHERE tags ? 'ref:whc';
 COMMENT ON TABLE workbench.osm_objects IS 'An OpenStreetMap object of the layer (#1437, ADR-0134): its type as osm2pgsql writes it (N, W, R) and id, every tag, the wikidata and wikipedia tags for lookup, and its geometry in WGS 84: the full shape where a kind draws the object (a ruin, a dig, a protected area: a way''s line or the area it encloses, an area relation''s multipolygon, another relation''s collection of members), one point for every other object (ADR-0136), which locates it and never places anything. ODbL: what the catalogue takes from it keeps its provenance (ADR-0059). Never written but by the layer''s build, which swaps a new copy in whole.';
 
 -- When the OpenStreetMap layer updates itself (#1437). See db/migrations/147.
