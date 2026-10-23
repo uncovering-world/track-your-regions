@@ -47,10 +47,11 @@ describe('the label', () => {
     // A run files `nameLocal.ko` on its own since #728; a card filed before that
     // carries the whole map for `changedKeys` to split. Both make a row, and a
     // row that read "extra data from the source, stored under this name" would
-    // say a corrected Korean name is a fact nobody sees.
+    // not say which name it is.
     expect(meaningOf('nameLocal.ko')).toEqual(keyMeaningOf('nameLocal', 'ko'));
     expect(fieldLabel('nameLocal.ko')).toBe('name in Korean');
-    expect(meaningOf('nameLocal.ko').unseen).toBeUndefined();
+    // No surface draws a local name, and the mark the gate reads says so (#1834).
+    expect(meaningOf('nameLocal.ko').unseen).toBe(true);
     // A code no one has described is still a language and not "extra data": the
     // language arm is decided by the field's family, never by whether the
     // vocabulary happens to have heard of the code.
