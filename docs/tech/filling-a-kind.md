@@ -102,6 +102,18 @@ status. The vision's "curators can promote or demote Iconic" is this sentence.
 - **The cut**: a threshold on the signal (22 sitelinks) or a count (the top N), stated once and
   applied to the whole world. A threshold is preferred: it is a property of the data and moves
   only when the data does; a count is a quota that pads or trims.
+- **A calibration list, the kind's own.** The line is chosen, and re-checked, on the tops a
+  traveller expects of *this* kind — never copied from another kind's: the 22 editions tuned
+  for about a hundred art museums (ADR-0023) say nothing about towers, whose bot-written
+  pagodas have 37 editions and 2,700 readers a year. The list is a committed file,
+  `db/catalogue-coverage/calibration/<kind>.jsonl`, each entry naming the reference lists
+  that call it a top — the coverage surveys, a federation's members, the World Heritage List,
+  the places four or more Wikivoyage editions name, a wonders list — from at least two
+  independent sources, Wikivoyage as one check (`docs/tech/catalogue-coverage.md` § The files,
+  #1864). The source record keeps the measurement the line was chosen on; the coverage report
+  (`scripts/catalogue-coverage.sh report`), read after a run, says how many of the tops the
+  kind offers and why each miss stands, so a line that moves, a rule that changes or an item
+  Wikidata retypes shows an obvious top falling out instead of losing it unremarked.
 - **Terms** that permit storing what is read and showing it (§ 5). Wikidata is CC0; the UNESCO
   list is read through its own API and its photographs are never shown (ADR-0043).
 
