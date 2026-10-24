@@ -9,7 +9,9 @@
  * members, measured on the dev subset on 2026-10-22; the record is
  * `docs/sources/global/wikidata-towers.md`): 15 editions and 25,000 readers
  * a year to enter. A tower the source holds stays while it keeps 12 and 18,000,
- * so the list does not flicker as the year's reading moves.
+ * so the list does not flicker as the year's reading moves. The line is
+ * checked against the kind's canon in
+ * `db/catalogue-coverage/calibration/towers.jsonl`.
  */
 
 import type { FilteredEntity } from '../syncContract.js';
