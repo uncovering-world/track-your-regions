@@ -43,16 +43,27 @@ const judgementOn = (regionSlug: string, slug: string, kind: string): CoverageFi
   region: regionSlug, entry: slug, kind, row: null, cause: 'door-missing', issue: 628, judged: '2026-10-16', note: 'Waits for the regional tier.',
 });
 
+/** One kind's calibration list (#1864): the tops named by one reference list. */
+const SURVEYS: CoverageFiles['calibrationSources'][number] = { slug: 'coverage-surveys', name: 'The coverage surveys', url: null, read: '2026-10-24', note: '' };
+const top = (slug: string, wikidata: string, sources = ['coverage-surveys']): CoverageFiles['calibration'] extends Map<string, (infer E)[]> ? E : never => ({
+  slug, name: slug, wikidata, sources, sitelinks: 40, note: '',
+});
+
 async function files(regionSlug: string, slugs: string[], filedUnder = 'markets', judged: string[] = []): Promise<CoverageFiles> {
   return {
     kinds: [...await liveKinds(), MARKETS, NOTABLE_WORKS],
     regions: [{ slug: regionSlug, name: regionSlug, country: 'Peru', lat: -13.532, lon: -71.967, radius_km: 110, surveyed: '2026-10-01' }],
     expectations: new Map([[regionSlug, slugs.map(slug => entry(slug, [filedUnder]))]]),
     judgements: judged.map(slug => judgementOn(regionSlug, slug, filedUnder)),
+    calibrationSources: [SURVEYS],
+    calibration: new Map([['archaeology', [top('machu-picchu', 'Q676203')]]]),
   };
 }
 
 async function empty(): Promise<void> {
+  await pool.query('DELETE FROM coverage_calibration_entry_sources');
+  await pool.query('DELETE FROM coverage_calibration_entries');
+  await pool.query('DELETE FROM coverage_calibration_sources');
   await pool.query('DELETE FROM coverage_judgements');
   await pool.query('DELETE FROM coverage_expectation_kinds');
   await pool.query('DELETE FROM coverage_expectations');
@@ -131,6 +142,27 @@ describe('replacing the catalogue-coverage tables', () => {
     await expect(replaceCoverage(entryWorthAVisit)).rejects.toThrow(/coverage_judgements_entry_causes/);
   });
 
+  it('writes a calibration list against its kind and its reference lists, and the database refuses one item twice or a list nobody registered', async () => {
+    await replaceCoverage(await files('first-region', ['moray']));
+
+    const named = await pool.query<{ kind_slug: string; slug: string; wikidata_id: string; sitelinks: number; source: string; read: string }>(
+      `SELECT c.kind_slug, c.slug, c.wikidata_id, c.sitelinks, s.name AS source, to_char(s.read, 'YYYY-MM-DD') AS read
+         FROM coverage_calibration_entries c
+         JOIN coverage_calibration_entry_sources cs ON (cs.kind_slug, cs.entry_slug) = (c.kind_slug, c.slug)
+         JOIN coverage_calibration_sources s ON s.slug = cs.source_slug`,
+    );
+    expect(named.rows).toEqual([{ kind_slug: 'archaeology', slug: 'machu-picchu', wikidata_id: 'Q676203', sitelinks: 40, source: 'The coverage surveys', read: '2026-10-24' }]);
+
+    // The files' reader would have refused these; the constraints are the second guard.
+    const twice = await files('first-region', ['moray']);
+    twice.calibration = new Map([['archaeology', [top('machu-picchu', 'Q676203'), top('machu-picchu-again', 'Q676203')]]]);
+    await expect(replaceCoverage(twice)).rejects.toThrow(/coverage_calibration_entries_one_item/);
+    const unregistered = await files('first-region', ['moray']);
+    unregistered.calibration = new Map([['archaeology', [top('machu-picchu', 'Q676203', ['a-list-nobody-registered'])]]]);
+    await expect(replaceCoverage(unregistered)).rejects.toThrow();
+    expect(await loaded()).toEqual(['first-region/moray']);
+  });
+
   it('leaves nothing of the load before', async () => {
     await replaceCoverage(await files('first-region', ['moray', 'tipon'], 'markets', ['moray']));
     await replaceCoverage(await files('second-region', ['bondi']));
@@ -140,6 +172,8 @@ describe('replacing the catalogue-coverage tables', () => {
     expect(regions.rows).toEqual([{ slug: 'second-region' }]);
     const judgements = await pool.query('SELECT 1 FROM coverage_judgements');
     expect(judgements.rowCount).toBe(0);
+    const tops = await pool.query<{ slug: string }>('SELECT slug FROM coverage_calibration_entries');
+    expect(tops.rows).toEqual([{ slug: 'machu-picchu' }]);
   });
 
   it('leaves the load before standing when the database refuses the new one', async () => {

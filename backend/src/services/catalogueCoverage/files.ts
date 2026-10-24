@@ -2,8 +2,10 @@
  * The catalogue-coverage files, read and held to their format (ADR-0081).
  *
  * `db/catalogue-coverage/` holds the register of kinds of experience, the surveyed
- * regions, per region the list of what a traveller expects there, and the ledger of
- * the gaps between the lists and the catalogue that a person has judged (ADR-0116). The files are
+ * regions, per region the list of what a traveller expects there, the ledger of
+ * the gaps between the lists and the catalogue that a person has judged (ADR-0116),
+ * and per live kind the calibration list of the tops a traveller expects of it, with
+ * the register of the reference lists that name them (#1864). The files are
  * the source of truth and are written by hand and by a survey, so this reader is the
  * one place that refuses a wrong line: it reads everything, collects every problem
  * with its file and line, and throws them together, since a list of a thousand
@@ -127,10 +129,38 @@ const judgementSchema = z.strictObject({
   note: text,
 });
 
+/** A reference list a calibration entry is named by: a federation's members, a heritage list, the surveys. */
+const calibrationSourceSchema = z.strictObject({
+  slug,
+  name: text,
+  /** Where the list is read, or null for one assembled here, such as the coverage surveys. */
+  url: z.url().nullable(),
+  /** The date the list was read, which is the date of the membership it states. */
+  read: z.iso.date(),
+  note: z.string(),
+});
+
+/**
+ * One top a traveller expects of a kind (#1864). Identified by its Wikidata item, never
+ * by name; `sources` names which reference lists call it a top, so the report can say
+ * how many of each list's members the kind offers.
+ */
+const calibrationEntrySchema = z.strictObject({
+  slug,
+  name: text,
+  wikidata: wikidataId,
+  sources: z.array(slug).min(1, 'an entry names the reference list that calls it a top'),
+  /** Sitelinks as Wikidata gave them when the list was compiled, so an absent top under the kind's editions line is told from one its classes do not reach. */
+  sitelinks: z.number().int().min(0).nullable(),
+  note: z.string(),
+});
+
 export type CoverageKind = z.infer<typeof kindSchema>;
 export type CoverageRegion = z.infer<typeof regionSchema>;
 export type CoverageExpectation = z.infer<typeof expectationSchema>;
 export type CoverageJudgement = z.infer<typeof judgementSchema>;
+export type CalibrationSource = z.infer<typeof calibrationSourceSchema>;
+export type CalibrationEntry = z.infer<typeof calibrationEntrySchema>;
 
 export interface CoverageFiles {
   kinds: CoverageKind[];
@@ -139,6 +169,10 @@ export interface CoverageFiles {
   expectations: Map<string, CoverageExpectation[]>;
   /** The judgement ledger, in file order; empty when there is no `judgements.jsonl`. */
   judgements: CoverageJudgement[];
+  /** The reference lists the calibration entries are named by; empty when there is no `calibration-sources.jsonl`. */
+  calibrationSources: CalibrationSource[];
+  /** Each live kind's calibration list, by the kind's slug, in file order; a kind with no list is absent. */
+  calibration: Map<string, CalibrationEntry[]>;
 }
 
 /** Everything wrong with the files, one sentence per problem, each naming its file and line. */
@@ -386,6 +420,68 @@ function checkJudgements(
   return kept;
 }
 
+/** The reference lists, each slug once. */
+function checkCalibrationSources(rows: Row<CalibrationSource>[], problems: string[]): Map<string, CalibrationSource> {
+  const sources = new Map<string, Row<CalibrationSource>>();
+  for (const row of rows) {
+    const first = sources.get(row.value.slug);
+    if (first) {
+      problems.push(`calibration-sources.jsonl line ${row.line}: slug ${row.value.slug} is already used on line ${first.line}`);
+      continue;
+    }
+    sources.set(row.value.slug, row);
+  }
+  return new Map([...sources].map(([key, row]) => [key, row.value]));
+}
+
+/**
+ * One kind's calibration list (#1864): the file is named by a live kind of place, each
+ * entry is one item once, and each entry names reference lists the register has.
+ */
+function checkCalibrationList(
+  file: string, kindSlug: string, rows: Row<CalibrationEntry>[],
+  kinds: Map<string, CoverageKind>, sources: Map<string, CalibrationSource>, problems: string[],
+): CalibrationEntry[] {
+  const kind = kinds.get(kindSlug);
+  if (!kind) {
+    problems.push(`${file}: no kind ${kindSlug} in kinds.jsonl`);
+  } else if (kind.status !== 'live') {
+    problems.push(`${file}: ${kindSlug} is only proposed: a fame line is a live kind's to calibrate`);
+  } else if (kind.form !== 'place') {
+    problems.push(`${file}: ${kindSlug} holds a ${kind.form}: a calibration list names places, by their Wikidata items`);
+  }
+  const slugs = new Map<string, number>();
+  const items = new Map<string, Row<CalibrationEntry>>();
+  const kept: CalibrationEntry[] = [];
+  for (const row of rows) {
+    const { value: entry, line } = row;
+    const at = `${file} line ${line}`;
+    const own: string[] = [];
+    const seen = new Set<string>();
+    for (const source of entry.sources) {
+      if (seen.has(source)) own.push(`${at}: ${entry.slug} names ${source} twice`);
+      else if (!sources.has(source)) own.push(`${at}: ${entry.slug} names ${source}, which calibration-sources.jsonl does not have`);
+      seen.add(source);
+    }
+    const usedOn = slugs.get(entry.slug);
+    if (usedOn !== undefined) {
+      // The second entry of a slug claims no item: a copied line is one problem, not two.
+      problems.push(`${at}: slug ${entry.slug} is already used on line ${usedOn}`, ...own);
+      continue;
+    }
+    slugs.set(entry.slug, line);
+    const owner = items.get(entry.wikidata);
+    if (owner) {
+      problems.push(`${at}: ${entry.wikidata} is already the item of ${owner.value.slug} on line ${owner.line}`, ...own);
+      continue;
+    }
+    items.set(entry.wikidata, row);
+    problems.push(...own);
+    kept.push(entry);
+  }
+  return kept;
+}
+
 /**
  * Read `dir` (the checkout's `db/catalogue-coverage`) whole.
  *
@@ -434,6 +530,30 @@ export function readCoverageFiles(dir: string): CoverageFiles {
   // with no ledger yet has judged nothing.
   const judgements = checkJudgements(readLines(dir, 'judgements.jsonl', judgementSchema, problems, true), kinds, regions, expectations, problems);
 
+  // The calibration lists (#1864): the register of reference lists first, since an entry
+  // names one; a directory with no lists has calibrated nothing, and may do without the register.
+  const calibrationDir = join(dir, 'calibration');
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- the caller's directory and a name this module spells
+  const calibrationFiles = existsSync(calibrationDir)
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- same path as above
+    ? readdirSync(calibrationDir).filter(name => name.endsWith('.jsonl')).sort()
+    : [];
+  const sourceRows = readLines(dir, 'calibration-sources.jsonl', calibrationSourceSchema, problems, calibrationFiles.length === 0);
+  const calibrationSources = checkCalibrationSources(sourceRows, problems);
+  const calibration = new Map<string, CalibrationEntry[]>();
+  for (const name of calibrationFiles) {
+    const kindSlug = name.slice(0, -'.jsonl'.length);
+    const file = `calibration/${name}`;
+    calibration.set(kindSlug, checkCalibrationList(file, kindSlug, readLines(dir, file, calibrationEntrySchema, problems), kinds, calibrationSources, problems));
+  }
+
   if (problems.length > 0) throw new CoverageFilesError(problems);
-  return { kinds: kindRows.map(row => row.value), regions: [...regions.values()], expectations, judgements };
+  return {
+    kinds: kindRows.map(row => row.value),
+    regions: [...regions.values()],
+    expectations,
+    judgements,
+    calibrationSources: sourceRows.map(row => row.value),
+    calibration,
+  };
 }

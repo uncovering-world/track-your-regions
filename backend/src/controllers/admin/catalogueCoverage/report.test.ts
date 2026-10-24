@@ -14,7 +14,7 @@ import { offeredLocationSql, publishedContentSql } from '../../../db/readerPredi
 import { countedMembershipSql } from '../../experience/experienceCounts.js';
 import { venuesShowingSql } from '../../experience/siteFinds.js';
 import { buildCoverageReport } from './report.js';
-import { coverageSql, type CoverageFacts, type ExpectationRow, type JudgementRow, type KindRow } from './reportQueries.js';
+import { coverageSql, type CalibrationRow, type CoverageFacts, type ExpectationRow, type JudgementRow, type KindRow } from './reportQueries.js';
 import { renderCoverageReport } from './reportText.js';
 
 const kind = (over: Partial<KindRow>): KindRow => ({
@@ -45,7 +45,13 @@ const facts = (over: Partial<CoverageFacts>): CoverageFacts => ({
   nearby: [],
   judgements: [],
   unnamed: [],
+  calibration: [],
+  calibrationSources: [],
   ...over,
+});
+const top = (slug: string, over: Partial<CalibrationRow> = {}): CalibrationRow => ({
+  kind_slug: 'archaeology', slug, name: slug, wikidata_id: `Q${slug.length}${slug.charCodeAt(0)}`, sitelinks: 40, sources: ['coverage-surveys'],
+  offered: false, held_as: null, refused_for: null, ...over,
 });
 const judged = (slug: string, cause: string, issue: number | null, over: Partial<JudgementRow> = {}): JudgementRow => ({
   region_slug: 'cusco-region', entry_slug: slug, kind_slug: 'archaeology', row_wikidata_id: null, cause, issue_number: issue, judged: '2026-10-16',
@@ -299,6 +305,75 @@ describe('what a person has judged', () => {
   });
 });
 
+describe('a live kind against its own calibration list (#1864)', () => {
+  const report = buildCoverageReport(facts({
+    calibrationSources: [
+      { slug: 'coverage-surveys', name: 'The coverage surveys', url: null, read: '2026-10-24', note: '' },
+      { slug: 'wonders', name: 'The wonders list', url: 'https://example.org/wonders', read: '2026-10-24', note: '' },
+    ],
+    calibration: [
+      top('machu-picchu', { sitelinks: 150, offered: true, sources: ['coverage-surveys', 'wonders'] }),
+      // Held: a catalogue place known by the item that the kind does not offer.
+      top('pending-dig', { held_as: 'A dig nobody read yet', sitelinks: 30 }),
+      // Offered by another kind and held here is held too, whatever the match says.
+      top('coricancha', { held_as: 'Coricancha', offered: false, sitelinks: 29, sources: ['wonders'] }),
+      top('tipon', { refused_for: 'a water system, not a site', sitelinks: 24 }),
+      // A top the catalogue still holds that the latest run refused: the run's reason is what the list is there to surface.
+      top('knocked-out', { held_as: 'Knocked Out', refused_for: 'a rule changed under it', sitelinks: 27 }),
+      top('moray', { sitelinks: 18 }),
+      top('choquequirao', { sitelinks: 26 }),
+      top('unknown-count', { sitelinks: null }),
+      // Another kind's list is its own.
+      top('obelisk', { kind_slug: 'public-art', offered: true }),
+    ],
+  }));
+  const own = (slug: string) => report.liveKinds.find(live => live.slug === slug)?.calibration;
+
+  it('counts the tops offered, and names every miss most known first with where it stands', () => {
+    expect(own('archaeology')).toMatchObject({ entries: 8, offered: 1 });
+    expect(own('archaeology')?.misses.map(miss => [miss.name, miss.standing, miss.detail])).toEqual([
+      ['pending-dig', 'held', 'A dig nobody read yet'],
+      ['coricancha', 'held', 'Coricancha'],
+      ['knocked-out', 'refused', 'a rule changed under it'],
+      ['choquequirao', 'absent', null],
+      ['tipon', 'refused', 'a water system, not a site'],
+      ['moray', 'under_line', null],
+      ['unknown-count', 'absent', null],
+    ]);
+  });
+
+  it('tells an absent top under the kind\'s editions line from one its classes do not reach, by the list\'s own sitelinks', () => {
+    const standing = (slug: string) => own('archaeology')?.misses.find(miss => miss.slug === slug)?.standing;
+    expect(standing('moray')).toBe('under_line');
+    expect(standing('choquequirao')).toBe('absent');
+    expect(standing('unknown-count')).toBe('absent');
+  });
+
+  it('gives each reference list its share, the most named first, under the register\'s name', () => {
+    expect(own('archaeology')?.bySource).toEqual([
+      { slug: 'coverage-surveys', name: 'The coverage surveys', named: 7, offered: 1 },
+      { slug: 'wonders', name: 'The wonders list', named: 2, offered: 1 },
+    ]);
+  });
+
+  it('keeps each kind to its own list, and gives a kind with no list none', () => {
+    expect(own('public-art')).toMatchObject({ entries: 1, offered: 1, misses: [] });
+    expect(own('world-heritage')).toBeNull();
+    expect(own('notable-works')).toBeNull();
+  });
+
+  it('says it as text: the share, each list\'s share, and every miss with its reason', () => {
+    const text = renderCoverageReport(report);
+    expect(text).toContain('What each live kind offers of the tops a traveller expects of it: its fame line, checked');
+    expect(text).toContain('Archaeology [archaeology]: 1 of 8 tops are offered');
+    expect(text).toContain('    The coverage surveys: 1 of 7');
+    expect(text).toContain('refused by the last run: a water system, not a site)');
+    expect(text).toContain('moray (Q5109; 18 sitelinks; coverage-surveys; absent, under the editions line)');
+    expect(text).toContain('in the catalogue, not offered by this kind: A dig nobody read yet)');
+    expect(text).not.toContain('World Heritage Sites [world-heritage]: 0 of');
+  });
+});
+
 describe('what a region offers that no guide names', () => {
   const unnamed = (name: string, over: Partial<CoverageFacts['unnamed'][number]> = {}): CoverageFacts['unnamed'][number] => ({
     region_slug: 'cusco-region', experience_id: name.length, name, wikidata_id: `Q${name.length}`, kind_ids: [5], sitelinks: 10, km: 3, ...over,
@@ -408,6 +483,22 @@ describe('the statements', () => {
     for (const identifier of ['x.wikidata_id AS id', 'unnest(x.same_as) AS same(id)', 'x.unesco_id', 'unnest(m.wikidata_items) AS item']) {
       expect(sql).toContain(identifier);
     }
+    expect(sql).not.toMatch(/\bname\s*=|ILIKE|similarity\(/i);
+  });
+
+  it('stand a calibration top by the identifiers a place is known by, the kind\'s counted membership, and the last real run\'s refusals', () => {
+    const sql = collapse(coverageSql.CALIBRATION_SQL);
+    expect(sql).toContain(collapse(countedMembershipSql('m', 'e')));
+    expect(sql).toContain('m.kind_id = ck.experience_kind_id');
+    for (const identifier of ['e.external_id AS id', 'm.external_id, false', 'unnest(m.wikidata_items) AS item']) {
+      expect(sql).toContain(identifier);
+    }
+    // Joined once and aggregated per entry, never a subquery per top over the whole union.
+    expect(sql).toContain('JOIN known_as k ON k.id = c.wikidata_id');
+    expect(sql).not.toMatch(/EXISTS \(SELECT 1 FROM known_as/);
+    // A refusal is a changeset row of the latest real, closed run, never a membership.
+    expect(sql).toContain("ch.change_type = 'filtered'");
+    expect(sql).toContain("NOT l.is_dry_run AND l.status IN ('success', 'partial')");
     expect(sql).not.toMatch(/\bname\s*=|ILIKE|similarity\(/i);
   });
 });

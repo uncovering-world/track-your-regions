@@ -15,7 +15,8 @@ import { pool } from '../../../db/index.js';
 import { MEMBERSHIPS } from '../../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../../db/readerPredicates.js';
 import type {
-  CoverageExpectationsRow, CoverageJudgementsRow, CoverageKindsRow, CoverageRegionsRow, ExperienceLocationsRow, ExperiencesRow,
+  CoverageCalibrationEntriesRow, CoverageCalibrationSourcesRow, CoverageExpectationsRow, CoverageJudgementsRow, CoverageKindsRow,
+  CoverageRegionsRow, ExperienceLocationsRow, ExperiencesRow,
 } from '../../../db/schema.generated.js';
 import { countedMembershipSql } from '../../experience/experienceCounts.js';
 import { venuesShowingSql } from '../../experience/siteFinds.js';
@@ -68,6 +69,23 @@ export interface UnnamedRow {
   km: number;
 }
 
+/**
+ * One top of a kind's calibration list (#1864) with where it stands to the kind: offered
+ * by it, held in the catalogue and not offered, refused by the kind's latest real run with
+ * the reason it recorded, or absent, nothing holding it and no run naming it.
+ */
+export type CalibrationRow = Pick<CoverageCalibrationEntriesRow, 'kind_slug' | 'slug' | 'name' | 'wikidata_id' | 'sitelinks'> & {
+  sources: string[];
+  /** The kind offers a place known by the item. */
+  offered: boolean;
+  /** A catalogue place known by the item exists and the kind does not offer it; the name of one such place, else null. */
+  held_as: string | null;
+  /** What the latest real, closed run of one of the kind's sources said when it refused the item; null where none did. */
+  refused_for: string | null;
+};
+
+export type CalibrationSourceRow = Pick<CoverageCalibrationSourcesRow, 'slug' | 'name' | 'url' | 'note'> & { read: string };
+
 export interface CoverageFacts {
   kinds: KindRow[];
   regions: RegionRow[];
@@ -76,6 +94,8 @@ export interface CoverageFacts {
   nearby: NearbyRow[];
   judgements: JudgementRow[];
   unnamed: UnnamedRow[];
+  calibration: CalibrationRow[];
+  calibrationSources: CalibrationSourceRow[];
 }
 
 const KINDS_SQL = `
@@ -268,13 +288,71 @@ const UNNAMED_SQL = `
    WHERE np.experience_id IS NULL
    ORDER BY rd.region_slug, sitelinks NULLS LAST, rd.name`;
 
+/**
+ * Where each top of a calibration list stands to its kind (#1864): offered when a place known
+ * by the item (`KNOWN_AS_SQL`, the identifiers the survey lists match by) has a counted
+ * membership in the kind; held when such a place exists and none is counted, named by the
+ * place's own id before a membership's; refused when the latest real, closed run of one of the
+ * kind's active sources filtered the item, with the reason the run recorded
+ * (`experience_sync_changes`, a refusal is never a membership row); absent otherwise. A kind of
+ * work has no catalogue kind and no list, so the join is by the kind's `experience_kind_id`.
+ *
+ * The identifiers are joined once and aggregated per entry, as `MATCHES_SQL` joins them: a
+ * subquery per entry over the whole `known_as` union ran it once per top, with no index, and
+ * the report is read on every Catalogue Checks collect.
+ */
+const CALIBRATION_SQL = `
+  WITH known_as AS (${KNOWN_AS_SQL}
+  ), latest_run AS (
+    SELECT DISTINCT ON (s.kind_id) s.kind_id, l.id AS log_id
+      FROM experience_sync_logs l
+      JOIN experience_sources s ON s.id = l.source_id
+     WHERE NOT l.is_dry_run AND l.status IN ('success', 'partial') AND s.is_active
+     ORDER BY s.kind_id, l.id DESC
+  ), holding AS (
+    SELECT c.kind_slug, c.slug,
+           bool_or(COALESCE(counted.offered, false)) AS offered,
+           (array_agg(e.name ORDER BY k.own DESC, e.id))[1] AS held_as
+      FROM coverage_calibration_entries c
+      JOIN coverage_kinds ck ON ck.slug = c.kind_slug
+      JOIN known_as k ON k.id = c.wikidata_id
+      JOIN experiences e ON e.id = k.experience_id
+      LEFT JOIN LATERAL (
+        SELECT bool_or(${countedMembershipSql('m', 'e')}) AS offered
+          FROM ${MEMBERSHIPS} m
+         WHERE m.experience_id = e.id AND m.kind_id = ck.experience_kind_id
+      ) counted ON true
+     GROUP BY c.kind_slug, c.slug
+  ), refusals AS (
+    SELECT ck.slug AS kind_slug, ch.external_id, (array_agg(ch.error ORDER BY ch.id DESC))[1] AS error
+      FROM latest_run lr
+      JOIN coverage_kinds ck ON ck.experience_kind_id = lr.kind_id
+      JOIN experience_sync_changes ch ON ch.sync_log_id = lr.log_id AND ch.change_type = 'filtered'
+     GROUP BY ck.slug, ch.external_id
+  )
+  SELECT c.kind_slug, c.slug, c.name, c.wikidata_id, c.sitelinks,
+         ARRAY(SELECT cs.source_slug FROM coverage_calibration_entry_sources cs
+                WHERE cs.kind_slug = c.kind_slug AND cs.entry_slug = c.slug ORDER BY cs.source_slug) AS sources,
+         COALESCE(h.offered, false) AS offered,
+         h.held_as,
+         r.error AS refused_for
+    FROM coverage_calibration_entries c
+    LEFT JOIN holding h ON (h.kind_slug, h.slug) = (c.kind_slug, c.slug)
+    LEFT JOIN refusals r ON r.kind_slug = c.kind_slug AND r.external_id = c.wikidata_id
+   ORDER BY c.kind_slug, c.slug`;
+
+const CALIBRATION_SOURCES_SQL = `
+  SELECT s.slug, s.name, s.url, to_char(s.read, 'YYYY-MM-DD') AS read, s.note
+    FROM coverage_calibration_sources s
+   ORDER BY s.slug`;
+
 /** How near a catalogue point must be to count as standing at an expectation's spot. */
 export const SAME_SPOT_METRES = 250;
 
 /** Read everything the report is built from, for every region or for `regionSlugs`. */
 export async function readCoverageFacts(regionSlugs?: string[]): Promise<CoverageFacts> {
   const only = regionSlugs ?? null;
-  const [kinds, regions, expectations, matches, nearby, judgements, unnamed] = await Promise.all([
+  const [kinds, regions, expectations, matches, nearby, judgements, unnamed, calibration, calibrationSources] = await Promise.all([
     pool.query<KindRow>(KINDS_SQL),
     pool.query<RegionRow>(REGIONS_SQL, [only]),
     pool.query<ExpectationRow>(EXPECTATIONS_SQL, [only]),
@@ -282,6 +360,9 @@ export async function readCoverageFacts(regionSlugs?: string[]): Promise<Coverag
     pool.query<NearbyRow>(NEARBY_SQL, [only, SAME_SPOT_METRES]),
     pool.query<JudgementRow>(JUDGEMENTS_SQL, [only]),
     pool.query<UnnamedRow>(UNNAMED_SQL, [only]),
+    // A kind's list is the whole world's, so a region never narrows it.
+    pool.query<CalibrationRow>(CALIBRATION_SQL),
+    pool.query<CalibrationSourceRow>(CALIBRATION_SOURCES_SQL),
   ]);
   return {
     kinds: kinds.rows,
@@ -291,8 +372,10 @@ export async function readCoverageFacts(regionSlugs?: string[]): Promise<Coverag
     nearby: nearby.rows,
     judgements: judgements.rows,
     unnamed: unnamed.rows,
+    calibration: calibration.rows,
+    calibrationSources: calibrationSources.rows,
   };
 }
 
 /** The statements, for the spec that holds them to the fragments they compose. */
-export const coverageSql = { KINDS_SQL, REGIONS_SQL, EXPECTATIONS_SQL, MATCHES_SQL, NEARBY_SQL, JUDGEMENTS_SQL, UNNAMED_SQL };
+export const coverageSql = { KINDS_SQL, REGIONS_SQL, EXPECTATIONS_SQL, MATCHES_SQL, NEARBY_SQL, JUDGEMENTS_SQL, UNNAMED_SQL, CALIBRATION_SQL };
