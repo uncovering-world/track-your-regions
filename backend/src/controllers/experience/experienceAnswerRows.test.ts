@@ -56,7 +56,7 @@ describe('experienceOf', () => {
       id: 14723, external_id: 'Q131013', name: 'Acropolis of Athens', subtitle: null, description: null, type: 'site',
       kind_id: 5, kind_name: 'Archaeology', kind_priority: 5, kinds: null, country_codes: ['GR'], country_names: ['Greece'],
       image_url: null, image_credit: null, created_at: null, latitude: 37.9715, longitude: 23.7263,
-      in_danger: false, danger_since: null, location_count: 1, treasure_count: 0, finds_count: 6,
+      in_danger: false, danger_since: null, location_count: 1, cast_points: false, treasure_count: 0, finds_count: 6,
       source_membership: 'present', existence: 'extant', missing_since: null, is_new: false,
     };
     const wire = JSON.parse(JSON.stringify(experienceOf(row)));

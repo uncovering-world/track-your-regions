@@ -2731,6 +2731,8 @@ CREATE TABLE IF NOT EXISTS experiences (
 );
 
 COMMENT ON TABLE experiences IS 'Location-based experiences from various sources (UNESCO sites, museums, etc.)';
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS cast_points BOOLEAN NOT NULL DEFAULT FALSE;
+COMMENT ON COLUMN experiences.cast_points IS 'The points are casts of one work: a visit to any cast marks the work visited (ADR-0145 decision 5). Run-owned; other sources leave it unchanged.';
 COMMENT ON COLUMN experiences.external_id IS 'The id the source that first brought this row knows it by (e.g., a UNESCO id_no). Provenance only since ADR-0084: a run finds a place through its membership''s external_id, never through this.';
 COMMENT ON COLUMN experiences.name_local IS 'Multilingual names: {"en": "...", "fr": "...", ...}';
 COMMENT ON COLUMN experiences.location IS 'Required point location for the experience';

@@ -171,6 +171,8 @@ export function buildRegionQueries(opts: {
         ${placeKindsSql('e')} AS kinds,
         e.country_codes,
         e.country_names,
+        -- Whether its points are casts of one work, which a visit to any marks seen (ADR-0145 decision 5).
+        e.cast_points,
         e.image_url,
         -- Beside the picture, always: these are hosted by UNESCO and Wikimedia
         -- Commons, and the licences most of them carry ask one thing of a page
@@ -254,6 +256,8 @@ export function buildRegionQueries(opts: {
         ${placeKindsSql('e')} AS kinds,
         e.country_codes,
         e.country_names,
+        -- Whether its points are casts of one work, which a visit to any marks seen (ADR-0145 decision 5).
+        e.cast_points,
         e.image_url,
         -- Beside the picture, always: these are hosted by UNESCO and Wikimedia
         -- Commons, and the licences most of them carry ask one thing of a page

@@ -3,7 +3,6 @@
  */
 
 import type { Experience } from '../../api/experiences';
-import type { VisitedStatus } from '../../api/visited';
 
 export const OUT_OF_REGION_INITIAL = 3;
 
@@ -42,12 +41,6 @@ export function resolveLocationColor(isLocationHovered: boolean, isVisited: bool
   if (isLocationHovered) return 'primary.main';
   if (isVisited) return 'text.secondary';
   return 'text.primary';
-}
-
-export function computeVisitedStatus(visitedLocations: number, totalLocations: number): VisitedStatus {
-  if (visitedLocations === 0) return 'not_visited';
-  if (visitedLocations >= totalLocations) return 'visited';
-  return 'partial';
 }
 
 /**

@@ -81,6 +81,8 @@ export interface ExperienceListRow {
   in_danger: boolean;
   danger_since: number | null;
   location_count: number;
+  /** The points are casts of one work (ADR-0145 decision 5). */
+  cast_points: boolean;
   treasure_count: number;
   finds_count: number;
   source_membership: Membership;
@@ -114,6 +116,7 @@ export function experienceOf(row: ExperienceListRow): Experience {
     kind_priority: row.kind_priority,
     kinds: kindsOf(row.kinds),
     location_count: row.location_count,
+    cast_points: row.cast_points,
     treasure_count: row.treasure_count,
     finds_count: row.finds_count,
     created_at: row.created_at?.toISOString(),

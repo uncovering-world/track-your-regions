@@ -35,6 +35,7 @@ import { PointCard } from '../shared/PointCard';
 import type { LocationRowData } from './LocationRow';
 import { isFoldable } from '../experienceMarkers/buildMarkers';
 import type { VisitedStatus } from '../../api/visited';
+import { computeVisitedStatus } from '@tyr/shared/visits';
 
 /**
  * How long the pointer must rest on a row before its card is warmed.
@@ -239,16 +240,15 @@ function ExperienceListItemComponent({
   const foldable = isFoldable(locations);
   const foldTooltip = foldLabel(foldable, isCollapsed, inRegionCount || totalLocations, totalLocations);
 
-  // Compute IN-REGION visited status using global isLocationVisited
+  // The row's visited state, read over its in-region places — except for an
+  // edition, whose every cast is the whole work: a visit to *Maman* in Bilbao
+  // marks it visited on Canada's list too (ADR-0145 decision 5).
+  const castPoints = experience.cast_points;
   const inRegionVisitedStatus = useMemo((): VisitedStatus => {
     if (inRegionCount === 0) return 'not_visited';
-
-    const inRegionVisitedCount = inRegionLocations.filter(loc => isLocationVisited(loc.id)).length;
-
-    if (inRegionVisitedCount === 0) return 'not_visited';
-    if (inRegionVisitedCount >= inRegionCount) return 'visited';
-    return 'partial';
-  }, [inRegionLocations, inRegionCount, isLocationVisited]);
+    const counted = castPoints ? locations ?? [] : inRegionLocations;
+    return computeVisitedStatus(counted.filter(loc => isLocationVisited(loc.id)).length, inRegionCount, castPoints);
+  }, [castPoints, locations, inRegionLocations, inRegionCount, isLocationVisited]);
 
   // Derive checkbox state from in-region locations
   const isPartiallyVisited = inRegionVisitedStatus === 'partial';

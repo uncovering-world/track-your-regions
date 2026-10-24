@@ -22608,6 +22608,10 @@
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
           },
+          "cast_points": {
+            "type": "boolean",
+            "description": "Its points are casts of one work: a visit to any cast marks the work visited (ADR-0145 decision 5)."
+          },
           "treasure_count": {
             "type": "integer",
             "minimum": -9007199254740991,
@@ -22690,6 +22694,7 @@
           "kind_priority",
           "kinds",
           "location_count",
+          "cast_points",
           "treasure_count",
           "finds_count",
           "source_membership",
@@ -23994,6 +23999,10 @@
             "minimum": -9007199254740991,
             "maximum": 9007199254740991
           },
+          "castPoints": {
+            "type": "boolean",
+            "description": "Each point is a cast of the whole work; any visited cast marks the work visited."
+          },
           "visitedStatus": {
             "$ref": "#/components/schemas/VisitedStatus"
           },
@@ -24016,6 +24025,7 @@
         },
         "required": [
           "experienceId",
+          "castPoints",
           "visitedStatus",
           "totalLocations",
           "visitedLocations",
