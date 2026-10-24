@@ -781,7 +781,7 @@ A Wikidata kind is filled by a source of its own, and sources whose kinds are dr
 - **The gather is made once.** `sharedGather` (`syncPass.ts`) hands every source of the pass the same promise. The first source to ask makes it, with that run's progress on screen, and a gather that failed fails every run that needed it, with the same error.
 - **Each source runs as before.** `runSyncPass` registers every source of the pass in `runningSyncs` before the first starts. A later source shows *Waiting for the pass's earlier kinds to finish...* until its turn. The runs then go through `orchestrateSync` one after another, each taking up the entry the pass registered (`PassSlot`). Each source keeps its own `fetchItems` (its share of the gather, with its own stay line), its own log, admission, sweep, badge, pins, missing detection and changeset. Per source is per kind, so none of those is shared between two kinds.
 - **A pass starts, stops and reads as one run.** A start of any of its sources starts the pass, and `startSync` answers 409 while any of them runs. A Cancel on one sets the flag on every source of the pass that can still read one (`SyncProgress.passSources`). A source that had not started is closed as cancelled with no log, since it read nothing. A run that fails for its own reason leaves the next to run. Every log after the first names the first (`experience_sync_logs.pass_log_id`). The history (`GET /api/admin/sync/logs`) lists a pass's runs together, newest pass first and its runs in the order they ran, and a later run says which run's gather it read. The sources list answers each source's `pass`, itself included, in the order it runs, and the Sync panel draws a pass as one card (`PassCard`, grouped by `cardsOf`). On top are what the pass shares: the starts and the Cancel, and a sentence naming the source whose Wikidata reader and cache the gather reads. Below, a section per source holds what is its own: how its run went, its gate, its line, what it holds for a curator, its own reader and cache, which the rest of its run reads through (its visit witnesses, #1770, Places of worship's works, Archaeology's museums and finds), and its own runs beside a sync, such as *Fix pictures* (each with its own Cancel; the card's Cancel stops the pass's sync). A start follows every source's run from that moment, so a later source's section says it waits for the earlier ones and then runs. The card moves whole when the panel is reordered.
-- **One Start Sync does every step a current catalogue needs** (#1805, `controllers/admin/afterRun.ts`). Once a run's items are written — however the run ended — `startSync` hands the pass to `afterRun`, which goes on in the entry the card is still following — the pass's last run's, since on a pass of several sources the first source's run ends minutes before the pass does and its card has stopped asking by then (`PassCard.tsx`); on a source of its own, the one run there is: the join of the places claiming one Wikidata item (`joinPlacesClaimingOneItem`), for the World Heritage source the items of the components this run created without one (`runComponentItemSearch` on `FinderOptions.pointIds`, the finder the card's *Find component items* runs over every component, then `acceptExactCandidates`; a run that created none skips the search, the ordinary case, since a full search costs eight minutes and three hundred requests to Wikidata), and the near-places pairing of the places each run created (`proposeMergesOfRun`, #1800), each a step of the run on its card (`Operation`, #1356). Every entry of the pass is kept while the steps go (`SyncProgress.continues`, which both `releaseLater`s respect), the followed one's status `processing`, and back to the run's verdict at the end with the closing line extended by what the steps did; a Cancel pressed meanwhile is accepted (`isCancellable` reads `continues`) and stops the search between its requests and the pairing between its runs, the closing line saying so; the counts stay the run's — the candidates a search proposes are counted as created only on the card's own *Find component items* job — and the steps release the entries a while after they end, as a writer would. The run's modes — a preview, a run without the cache, a run that asks again about pins — are options of that one button on the card (`SourceRunActions.tsx`); the single-purpose actions sit under *More actions*, each with the sentence saying when it is needed: *Fix pictures* stays a repair, since it writes past the gate where a run proposes, and *Find component items* over every site or one is for after a rule of the search changes. The pass over the whole catalogue for near places (`MergeProposalFinderCard.tsx`) sits on the Sync panel, for the whole catalogue, for the same reason.
+- **One Start Sync does every step a current catalogue needs** (#1805, `controllers/admin/afterRun.ts`). Once a run's items are written — however the run ended — `startSync` hands the pass to `afterRun`, which goes on in the entry the card is still following — the pass's last run's, since on a pass of several sources the first source's run ends minutes before the pass does and its card has stopped asking by then (`PassCard.tsx`); on a source of its own, the one run there is: the join of the places claiming one Wikidata item (`joinPlacesClaimingOneItem`), for the World Heritage source the items of the components this run created without one (`runComponentItemSearch` on `FinderOptions.pointIds`, the finder the card's *Find component items* runs over every component, then `acceptExactCandidates`; a run that created none skips the search, the ordinary case, since a full search costs eight minutes and three hundred requests to Wikidata), and the near-places pairing of the places the runs changed (`drainPairing`, #1950), each a step of the run on its card (`Operation`, #1356). Every entry of the pass is kept while the steps go (`SyncProgress.continues`, which both `releaseLater`s respect), the followed one's status `processing`, and back to the run's verdict at the end with the closing line extended by what the steps did; a Cancel pressed meanwhile is accepted (`isCancellable` reads `continues`) and stops the search between its requests, or the pairing before it starts, leaving its marks to the next drain, the closing line saying so; the counts stay the run's — the candidates a search proposes are counted as created only on the card's own *Find component items* job — and the steps release the entries a while after they end, as a writer would. The run's modes — a preview, a run without the cache, a run that asks again about pins — are options of that one button on the card (`SourceRunActions.tsx`); the single-purpose actions sit under *More actions*, each with the sentence saying when it is needed: *Fix pictures* stays a repair, since it writes past the gate where a run proposes, and *Find component items* over every site or one is for after a rule of the search changes. The near-places pairing has no button: it pairs again every place whose inputs change, and the whole catalogue after a rule changes (§ Near places with similar names).
 - **The gather reads Wikidata under the pass's first source**: its subset door and its cache key (ADR-0132 decision 5). Everything else a source asks goes through its own door: its visit witnesses; for Places of worship, its works and the second door they open; for Archaeology, its museum door, its finds, and what its site door asks of OpenStreetMap, the Wikipedias and the readership door. #1821 gathers the works and #1822 makes the pipeline one build (Epic #1445). #1819 is the one resolver of where a work lies.
 
 **A place kind is a classifier over the place gather** (#1820, `places/gather.ts`). A kind is declared as a `PlaceKind`: the class trees its rule reads (`trees`), the classes its candidates are asked by (`poolClasses`: broad roots in fame bands, every other class whole), and whether its rule reads what holds and owns a candidate (`readsContainers`). `gatherPlaces` walks every kind's trees, asks the pool once over the union of their classes (a root two kinds ask by is asked once), asks for every kind's admitted rows the pool did not name by id, and reads the facts of every entity once and the containers once, for the kinds that read them. It hands each kind its **share** (`shareOf`): the entities the pool named by a class of that kind (a pool question names an entity by a class it carries itself, best rank, on the live service and on the subset alike), and the rows that kind admits. Public art therefore never sees the churches only Places of worship asked for, and refuses none of them. The kind's classifier decides from its share alone: `classifyPublicArt` per rule for Public art and Monuments & memorials (`PUBLIC_ART_KIND`), `classifyPlacesByFame` for Places of worship's door one (`WORSHIP_KIND`), `collectSitesByFame` for Archaeology's site door (`ARCHAEOLOGY_SITE_KIND`), whose kind also hands its trees to the museum door, `classifyTowers` for Towers (`TOWERS_KIND`), `classifyBridges` for Bridges & engineering marvels (`BRIDGES_KIND`) and `classifySquares` for Squares & streets (`SQUARES_KIND`). A share names the admitted rows no class question named (`byId`): the site door first lets OpenStreetMap's entrance name them, so a dig the map names is vouched for by the map and only the rest by id, as before.
@@ -5756,40 +5756,55 @@ place's name (`GENERIC_NAME_WORDS`, each group with its reason), so that Geghard
 *Monastery of Geghard and the Upper Azat Valley* and 0.17 alike by trigrams, is asked about; a name
 left with no word says nothing and matches nothing. A proposal records which rule found it
 (`found_by`, migration 121): the card says *one name within the other* instead of a share that
-would read as a reason not to ask, Jev's question says so, and the pass's report counts the open
-pairs each rule found. On 2026-10-18 the second rule added 43 pairs on the development catalogue,
+would read as a reason not to ask, and Jev's question says so. On 2026-10-18 the second rule added 43 pairs on the development catalogue,
 most a property and the monument inside it (Córdoba's Mosque-Cathedral, Westminster Abbey,
 Florence Cathedral), some one place (Tikal, Machu Picchu), and a few two places that share a
 town's name (the Bremen Roland and Bremen Cathedral, Museum Ulm and Ulm Minster), which a curator
-answers. The pairs in one kind that only the second rule finds are left apart with the rest and
-say so in the pass's report.
+answers. The pairs in one kind that only the second rule finds are left apart with the rest.
 The reach is the place's (decision 3): 300 m, or for a World Heritage property the radius of a
 circle of its `metadata.areaHectares` up to 3 km (`reachSql`), the pair found under the larger
-of its two; no kind declares a reach of its own yet. The pass (`findMergeProposals`, run from the
-*Places that may be one place* card in Catalogue Checks, `POST /api/admin/places/find-merge-proposals`)
+of its two; no kind declares a reach of its own yet. The pass (`writeProposals`)
 writes each pair it finds to `experience_merge_proposals` in id order with its distance,
 similarity, reach and whether it is *exact* (one and the same folded name within fifty metres),
 forgets the open pairs it no longer finds and refreshes the open ones, and leaves an answered pair
 as it is: that is what keeps a refused pair from being proposed again (decision 4). A pair in one
-kind is not proposed, since one place cannot hold a kind twice (ADR-0086 decision 4); the pass
-reports those as left apart. A place that has parts or is one is left out — a serial site is never
+kind is not proposed, since one place cannot hold a kind twice (ADR-0086 decision 4). A place that has parts or is one is left out — a serial site is never
 merged as a whole with a part's twin (ADR-0100 decision 6), and a part's twin is #1250's — and so
 is a place no reader sees yet, which is its own arrival card. Measured on the development
 catalogue on 2026-10-17, after the equal-item pass: 7 pairs proposed, 1 exact (the Statue of
 Liberty as a World Heritage site and as public art), 6 left apart in one kind. The check
 `near-places-with-similar-names-unanswered` lists what is open (`PROPOSAL_ROWS_SQL`, the pass's own
 rows, so the two count one set).
-The pass also runs by itself for a place a reader can newly see (#1800), kept to the pairs that
-hold one of those places (`proposeMergesOfPlaces`, `writeProposals`): after every real run, for
-the places it created, as the last of the run's after-steps, once the join of the places claiming
-one item and the World Heritage component search have run (`afterRun.ts`, #1805); and when a curator publishes an arrival, for that
-place (`publishExperience`), or once for every arrival a batch published, after its loop
-(`publishWaiting`, the review queue's batch answer). It finds the pairs with the whole pass's
-statement and writes them with its statements, so the two never measure or answer a pair
-differently; every pair that holds none of those places stands as it was. A failure is logged and
-leaves the pair for the next pass, never undoing the run or the publish. A gated arrival is in no
-pair until it is published, which is why the publish asks. The card stays, for a pass over the
-whole catalogue after a rule changes.
+
+**Nobody runs the pass** (#1950, migration 169). A place is paired again whenever anything the
+rule reads about it changes, and a change of the rule pairs the whole catalogue:
+
+- **The marks.** `mark_pairing_due()` fires on every table the rule reads and marks the place in
+  `experience_pairing_due`: an insert into `experiences`, and a change of its name, `name_local`,
+  `metadata.areaHectares` or `merged_into_id` (the place it was folded into marked too); a
+  membership written, removed, or changed in its `reported_name`, kind, admission or gate state; a
+  point written, removed, moved, or changed in whether it is offered or published; a part relation
+  written or removed; a separation written or undone. A write that changes none of these marks
+  nothing. One trigger function for the writers' list, as `invalidate_member_regions_geometry()` is
+  for a region's geometry, so no writer pairs by hand.
+- **The drain** (`drainPairing`). It takes the marks and runs the whole pass's statements kept to
+  the pairs that hold a marked place (`writeProposals`), so the narrowed and the whole pass never
+  measure or answer a pair differently: an open pair the rule no longer finds is forgotten, a new
+  one proposed, and an answered pair stands. It runs as the last of a real run's after-steps
+  (`afterRun.ts`, #1805), once for the pass; after a curator's publish (`publishExperience`), an
+  override (`overrideAdmission`), a batch publish and the review queue's batch answer, once after
+  the loop; and at the backend's startup and every five minutes (`index.ts`), which reaches what no
+  run or publish drained — a curator's edit, a merge or its undo, a separation. One drain at a
+  time: it holds `experience_pairing_rule`'s row. A mark a writer still holds uncommitted is
+  skipped (`SKIP LOCKED`) and stays for the next drain, which pairs the place as the writer left
+  it; a writer marking an existing mark locks it (`ON CONFLICT DO UPDATE`), so a drain never
+  deletes a mark whose change it cannot yet see. A failure rolls the marks back and is logged,
+  never undoing the run or the publish.
+- **The rule's version.** `PAIRING_RULE_VERSION` names the rule, and `experience_pairing_rule`
+  records the version the stored proposals were found under. The first drain that finds them
+  different runs the pass over the whole catalogue and records the new one; migration 169 stores
+  0, so every database gets the current rule's pairs — ADR-0120's included — once. A change to
+  the reach, a threshold, the word list or a name the rule reads raises the constant.
 
 **Near places with similar names, on the queue** (`merge-proposals`) — one card per place that
 stays if a pair is made one, the lower id (`place_a`), with a row per open pair. Open while
