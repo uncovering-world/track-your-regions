@@ -2244,6 +2244,29 @@ question (ADR-0030), wired in `publicArt/pipeline.ts`:
    the fold's kept point, which the verdict is read on; one qualified point is a place given
    precisely, not an edition, and two points no part tells apart are the same place written twice,
    which the fold settles (ADR-0085).
+   **A group of casts enters the pool through its casts** (ADR-0145 decision 2b, `publicArt/castGroups.ts`):
+   Wikidata keeps *The Burghers of Calais* as a "group of casts" (`CAST_GROUP`) with one coordinate of
+   its own and the casts as parts (`P527`), each an item with its own coordinate, and *The Thinker* as
+   a group with no coordinate over cast items naming it (`P361`). Neither class reaches a public-art
+   root, so the kind asks for the class itself (`poolClasses`) and, for a group with no point of its
+   own, `fetchCastGroupPool` names it placeless (`PlaceKind.editions.enter`); after the facts are read,
+   `readCastGroups` fetches each group's casts (`fetchCastItems` live, `subsetCastItems` off the
+   subset: a part or an item naming the group by `P361`/`P144`, with a coordinate of its own and a
+   placement that has not ended — a part with no coordinate, the study of one figure, is no cast)
+   and `attachCasts` writes them onto the group: its `casts`, the casts' classes onto its facts (the
+   rule reads the Burghers as the sculptures its casts are), and the first cast's point and country
+   where it had no point. Casts follow numeric item order, so an equal-distance anchor stays the same
+   across reader orders. Each cast is called by where it stands (`namingPart` over its standing placements, else its
+   own label) and set in its own country (the alphabetically first best-rank country label on either
+   reader when several are given); the group's own coordinate is not a cast, since it stands
+   on one of them. Bare-QID label fallbacks are not names: an unlabelled placement uses the
+   cast's own label, and an unlabelled country is skipped. A cast that left and returned to
+   the same placement is still standing when any of its best-rank statements says so.
+   Every nonempty explicit cast list is written through `writeExperienceLocations`, including
+   one surviving cast, so its name, country and coordinate stay the cast's rather than the
+   group's. The subset keeps and derives P144 links (`scope.PLACE_PROPERTIES`,
+   `subsetTables.CLAIM_PROPERTIES`); an older copy asks for a rebuild before P144-only groups
+   can be read. The group carries the fame, the casts carry the points.
 3. **Facts** — per 50 candidates, one `UNION` question: every `P31`; `P276`, `P361` and `P195`,
    each read statement by statement as what still holds (the shared kit's `standing`, `wikidataQueries.ts`: best-ranked,
    what `wdt:` would answer, and carrying no `pq:P582` end time — the end-time rule the museum
