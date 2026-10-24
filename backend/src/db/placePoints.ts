@@ -257,6 +257,30 @@ export function pointPictureSql(point = 'el', options: { tellingOfPart?: boolean
 }
 
 /**
+ * The English Wikipedia article a reader follows from the point `point`, as
+ * the select-list column `wikipedia_url` (#1963): its own, which a World
+ * Heritage run reads off the component's item, else the article of the part
+ * place it is the point of, which another kind brought with the place (ADR-0100
+ * decision 3), as `pointPictureSql` reads the picture. Never the site's: a
+ * part's article is the part's. Null where neither holds one.
+ */
+export function pointArticleSql(point = 'el'): string {
+  return `COALESCE(NULLIF(${point}.metadata ->> 'wikipediaUrl', ''), ${partPlaceArticleSql(point)}) AS wikipedia_url`;
+}
+
+/**
+ * The article of the part place the point `point` is the point of, which a
+ * reader is shown where the point holds none (`pointArticleSql`); NULL where
+ * its place is no part or holds none. The run's content writer asks it too, so
+ * a gated run holds a change to the article a reader actually sees.
+ */
+export function partPlaceArticleSql(point = 'el'): string {
+  return `(SELECT NULLIF(prt_art.metadata ->> 'wikipediaUrl', '') FROM experiences prt_art
+            WHERE prt_art.id = ${point}.experience_id
+              AND EXISTS (SELECT 1 FROM experience_parts pop WHERE pop.part_id = prt_art.id))`;
+}
+
+/**
  * The part place the point `point` is the point of, or NULL where its own
  * place is no part (ADR-0100): a visit to such a point is recorded on the
  * part.
