@@ -73,6 +73,32 @@ export interface AiUsageLogRow {
   created_at: Date | null;
 }
 
+/** The table `coverage_calibration_entries`. */
+export interface CoverageCalibrationEntriesRow {
+  kind_slug: string;
+  slug: string;
+  name: string;
+  wikidata_id: string;
+  sitelinks: number | null;
+  note: string;
+}
+
+/** The table `coverage_calibration_entry_sources`. */
+export interface CoverageCalibrationEntrySourcesRow {
+  kind_slug: string;
+  entry_slug: string;
+  source_slug: string;
+}
+
+/** The table `coverage_calibration_sources`. */
+export interface CoverageCalibrationSourcesRow {
+  slug: string;
+  name: string;
+  url: string | null;
+  read: Date;
+  note: string;
+}
+
 /** The table `coverage_expectation_kinds`. */
 export interface CoverageExpectationKindsRow {
   region_slug: string;
@@ -1225,6 +1251,9 @@ export const RELATION_SCHEMAS = {
   ai_learned_rules: "workbench",
   ai_settings: "workbench",
   ai_usage_log: "workbench",
+  coverage_calibration_entries: "workbench",
+  coverage_calibration_entry_sources: "workbench",
+  coverage_calibration_sources: "workbench",
   coverage_expectation_kinds: "workbench",
   coverage_expectations: "workbench",
   coverage_judgements: "workbench",
@@ -1338,6 +1367,20 @@ export const COLUMN_WIDTHS = {
   ai_usage_log: {
     feature: 100,
     model: 100,
+  },
+  coverage_calibration_entries: {
+    kind_slug: 80,
+    slug: 120,
+    wikidata_id: 20,
+  },
+  coverage_calibration_entry_sources: {
+    kind_slug: 80,
+    entry_slug: 120,
+    source_slug: 80,
+  },
+  coverage_calibration_sources: {
+    slug: 80,
+    name: 255,
   },
   coverage_expectation_kinds: {
     region_slug: 80,
