@@ -5,7 +5,7 @@
  *
  * - the seeds: every item with a coordinate (P625) and every class (P279);
  * - the classes a seed is an instance of (its P31 values);
- * - the items a seed names through a place, part or collection property, and
+ * - the items a seed names through a place, part, collection or based-on property, and
  *   the items that name a seed through one: a painting names its museum, a
  *   find its find spot;
  * - the items a seed depicts (P180) or commemorates (P547): whether the
@@ -26,8 +26,8 @@ import { entityOf, forEachMainItemValue, hasMainValue } from './entityLine.js';
 const COORDINATE = 625;
 const SUBCLASS_OF = 279;
 const INSTANCE_OF = 31;
-/** The properties through which a kept item brings in its neighbours, in both directions. */
-export const PLACE_PROPERTIES = [131, 276, 361, 527, 195, 189] as const;
+/** The properties through which a kept item brings in its neighbours, in both directions; P144 keeps a cast's group. */
+export const PLACE_PROPERTIES = [131, 276, 361, 527, 195, 189, 144] as const;
 /**
  * The properties whose values a seed brings in, one way and one hop: what it
  * depicts and what it commemorates. Not walked and not followed back — a

@@ -35,7 +35,7 @@ const next = (table: SubsetTable) => inWorkbench(`${table}_next`);
  * here takes effect on the next build without a new pass over the dump.
  */
 export const CLAIM_PROPERTIES = [
-  'P31', 'P279', 'P17', 'P18', 'P131', 'P170', 'P189', 'P195', 'P276', 'P361', 'P527', 'P571', 'P576',
+  'P31', 'P279', 'P17', 'P18', 'P131', 'P144', 'P170', 'P189', 'P195', 'P276', 'P361', 'P527', 'P571', 'P576',
   'P625', 'P757', 'P856', 'P1082', 'P1435', 'P1770', 'P381', 'P4009',
 ];
 
