@@ -7,6 +7,7 @@ interface VisitedStatusButtonProps {
   visitedStatus: VisitedStatus;
   visitedCount: number;
   totalCount: number;
+  castPoints?: boolean;
 }
 
 /**
@@ -17,11 +18,12 @@ export function VisitedStatusButton({
   visitedStatus,
   visitedCount,
   totalCount,
+  castPoints = false,
 }: VisitedStatusButtonProps) {
   const statusConfig = {
-    not_visited: { label: `0/${totalCount} Visited`, color: 'default' as const },
+    not_visited: { label: castPoints ? 'Not visited' : `0/${totalCount} Visited`, color: 'default' as const },
     partial: { label: `${visitedCount}/${totalCount} Visited`, color: 'warning' as const },
-    visited: { label: 'All Visited', color: 'success' as const },
+    visited: { label: castPoints ? 'Visited' : 'All Visited', color: 'success' as const },
   };
 
 

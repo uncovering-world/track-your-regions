@@ -473,11 +473,12 @@ export function ExperienceList({ scrollContainerRef }: ExperienceListProps) {
     }
   }, [markLocationVisited, unmarkLocationVisited]);
 
-  const handleToggleAllLocations = useCallback((experienceId: number, markAsVisited: boolean) => {
+  const handleToggleAllLocations = useCallback((experienceId: number, markAsVisited: boolean, everywhere = false) => {
+    const inRegion = everywhere ? undefined : regionId ?? undefined;
     if (markAsVisited) {
-      markAllLocations({ experienceId, regionId: regionId ?? undefined });
+      markAllLocations({ experienceId, regionId: inRegion });
     } else {
-      unmarkAllLocations({ experienceId, regionId: regionId ?? undefined });
+      unmarkAllLocations({ experienceId, regionId: inRegion });
     }
   }, [markAllLocations, unmarkAllLocations, regionId]);
 

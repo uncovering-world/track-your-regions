@@ -48,7 +48,7 @@ import { ShareButton } from '../shared/ShareButton';
 import { ArtworksList } from './ArtworksList';
 import { SiteFindsList } from './SiteFindsList';
 import { VisitedStatusButton } from './VisitedStatusButton';
-import { computeVisitedStatus } from './utils';
+import { computeVisitedStatus } from '@tyr/shared/visits';
 import { CardLocationList } from './CardLocationList';
 import type { LocationRowData } from './LocationRow';
 import { typeChipsFor } from './typeChips';
@@ -69,7 +69,12 @@ export interface ExperienceExpandedDetailsProps {
   isFullyVisited: boolean;
   locationRefs: React.MutableRefObject<Map<number, HTMLElement>>;
   showCheckbox: boolean;
-  onToggleAllLocations: (experienceId: number, markAsVisited: boolean) => void;
+  /**
+   * Mark or unmark the object's places in the region — or every one of them
+   * where `everywhere` is set: an edition's tick reads every cast, so its
+   * untick has to reach the cast it was ticked by (ADR-0145 decision 5).
+   */
+  onToggleAllLocations: (experienceId: number, markAsVisited: boolean, everywhere?: boolean) => void;
   onLocationVisitedToggle: (locationId: number, isVisited: boolean) => void;
   onLocationHover: (locationId: number | null) => void;
   onCurate?: () => void;
@@ -179,7 +184,7 @@ function ExperienceExpandedDetailsComponent({
 
   // Compute visited status for multi-location badge
   const visitedLocations = locationsWithRegionInfo.filter(l => l.isVisited).length;
-  const visitedStatus: VisitedStatus = computeVisitedStatus(visitedLocations, totalLocations);
+  const visitedStatus: VisitedStatus = computeVisitedStatus(visitedLocations, totalLocations, experience.cast_points);
 
   // Resolved once, by the same helper the row's hover preload calls, so the two
   // cannot ask for different files. It answers with an empty string for a remote
@@ -417,7 +422,7 @@ function ExperienceExpandedDetailsComponent({
             disabled={!locationsResolved}
             onClick={(e) => {
               e.stopPropagation();
-              onToggleAllLocations(experience.id, !isFullyVisited);
+              onToggleAllLocations(experience.id, !isFullyVisited, isFullyVisited && experience.cast_points);
             }}
             startIcon={isFullyVisited ? <CheckCircleIcon /> : null}
             color={isFullyVisited ? 'success' : 'primary'}
@@ -432,6 +437,7 @@ function ExperienceExpandedDetailsComponent({
             visitedStatus={visitedStatus}
             visitedCount={visitedLocations}
             totalCount={totalLocations}
+            castPoints={experience.cast_points}
           />
         )}
         {/* The visitor's second verb, beside the first: send the place (#1192).

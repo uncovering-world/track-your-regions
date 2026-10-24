@@ -35,6 +35,7 @@ import { PointCard } from '../shared/PointCard';
 import type { LocationRowData } from './LocationRow';
 import { isFoldable } from '../experienceMarkers/buildMarkers';
 import type { VisitedStatus } from '../../api/visited';
+import { computeVisitedStatus } from '@tyr/shared/visits';
 
 /**
  * How long the pointer must rest on a row before its card is warmed.
@@ -77,7 +78,12 @@ export interface ExperienceListItemProps {
   onLeave: () => void;
   onClick: (experience: Experience) => void;
   onLocationVisitedToggle: (locationId: number, isVisited: boolean) => void;
-  onToggleAllLocations: (experienceId: number, markAsVisited: boolean) => void;
+  /**
+   * Mark or unmark the object's places in the region — or every one of them
+   * where `everywhere` is set: an edition's tick reads every cast, so its
+   * untick has to reach the cast it was ticked by (ADR-0145 decision 5).
+   */
+  onToggleAllLocations: (experienceId: number, markAsVisited: boolean, everywhere?: boolean) => void;
   onLocationHover: (experienceId: number, locationId: number | null) => void;
   /** This object is drawn as a single pin because the reader asked for that. */
   isCollapsed: boolean;
@@ -239,16 +245,15 @@ function ExperienceListItemComponent({
   const foldable = isFoldable(locations);
   const foldTooltip = foldLabel(foldable, isCollapsed, inRegionCount || totalLocations, totalLocations);
 
-  // Compute IN-REGION visited status using global isLocationVisited
+  // The row's visited state, read over its in-region places — except for an
+  // edition, whose every cast is the whole work: a visit to *Maman* in Bilbao
+  // marks it visited on Canada's list too (ADR-0145 decision 5).
+  const castPoints = experience.cast_points;
   const inRegionVisitedStatus = useMemo((): VisitedStatus => {
     if (inRegionCount === 0) return 'not_visited';
-
-    const inRegionVisitedCount = inRegionLocations.filter(loc => isLocationVisited(loc.id)).length;
-
-    if (inRegionVisitedCount === 0) return 'not_visited';
-    if (inRegionVisitedCount >= inRegionCount) return 'visited';
-    return 'partial';
-  }, [inRegionLocations, inRegionCount, isLocationVisited]);
+    const counted = castPoints ? locations ?? [] : inRegionLocations;
+    return computeVisitedStatus(counted.filter(loc => isLocationVisited(loc.id)).length, inRegionCount, castPoints);
+  }, [castPoints, locations, inRegionLocations, inRegionCount, isLocationVisited]);
 
   // Derive checkbox state from in-region locations
   const isPartiallyVisited = inRegionVisitedStatus === 'partial';
@@ -315,8 +320,11 @@ function ExperienceListItemComponent({
   // Handle root checkbox click - always use batch operation (works for single and multi-location)
   const handleRootCheckboxClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // Toggle all in-region locations: if not all visited, mark all; else unmark all
-    onToggleAllLocations(experience.id, inRegionVisitedStatus !== 'visited');
+    // Toggle all in-region locations: if not all visited, mark all; else unmark
+    // all — every cast of an edition, since a cast outside the region may be
+    // what ticked it.
+    const markAll = inRegionVisitedStatus !== 'visited';
+    onToggleAllLocations(experience.id, markAll, !markAll && castPoints);
   };
 
   // Batch mark all in-region locations
