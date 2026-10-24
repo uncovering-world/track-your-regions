@@ -166,9 +166,22 @@ judged either; the review queue answers it.
 
 A kind's fame line is chosen, and re-checked, on the kind's own calibration list, never copied
 from another kind's (`docs/tech/filling-a-kind.md` § 2, #1864). One list per live kind of place,
-named by the kind's slug; an entry is one place a traveller expects the kind to offer, identified
-by its Wikidata item, and names the reference lists that call it a top. The register of those
-lists is `calibration-sources.jsonl`, so a slug on an entry is one a person can read again.
+named by the kind's slug; an entry is one of the kind's tops nobody who knows it would dispute,
+identified by its Wikidata item, and names the sources that call it a top. The register of those
+sources is `calibration-sources.jsonl`, so a slug on an entry is one a person can read again.
+
+**A list is independent of the line it checks.** It is a canon: the compiler's own list,
+written before anything is read, and independent editorial selections — guides' and travel
+publishers' lists of the kind's famous places, a federation's or an engineers' list where one
+exists — never drawn from what the kind's own runs read — Wikidata's classes, Wikipedia editions, a year's
+readers, an item's use by Wikivoyage — since a list taken from what the line measures cannot show
+what the line misses. An entry enters when two independent
+sources name it, the compiler's own list counting as one, and it is of the kind by the kind's
+definition in `kinds.jsonl`, judged per entry. The canon is as long as there are tops nobody
+would dispute, and no longer than about a hundred: a place a traveller meets only in its own
+region is the regional tier's, and the surveys' lists hold it. Which guides named an entry is
+kept under `docs/local/`, since a guide's selection is its publisher's
+(`docs/tech/filling-a-kind.md` § 5); the register names the canon with that note.
 
 | Field of the register | Meaning |
 |---|---|
@@ -183,18 +196,18 @@ lists is `calibration-sources.jsonl`, so a slug on an entry is one a person can 
 | `slug` | Unique within the kind's list |
 | `name` | For a person. Never used to match anything |
 | `wikidata` | Its Wikidata id; every entry has one |
-| `sources` | The register's slugs of the lists that name it, one or more |
-| `sitelinks` | As Wikidata gave them when the list was compiled, or `null`, so the report can tell an absent top under the kind's editions line from one the kind's classes do not reach |
+| `sources` | The register's slugs: `travel-canon` for an entry the canon admitted — two independent sources named it, the compiler's own list counting as one, and which guides they were is kept under `docs/local/` — and beside it the slug of every named list the register holds that also names it (a federation's members, an engineers' wonders list). One or more; the two-source rule is checked against the local record, not read off this field |
+| `sitelinks` | Its Wikipedia editions when the list was compiled, counted by the runs' own counter, `fetchWikipediaEditions` (`wikidataQueries.ts`; the subset's `subsetWikipediaEditions` where the subset keeps the item), or `null`. Recorded after the entry is chosen, never to choose it: the report reads it to tell an absent top under the kind's editions line from one the kind's classes do not reach |
 | `note` | Anything a later reader needs: why Wikidata's typing keeps the kind from reaching it |
 
 A line, in full:
 
 ```json
-{"slug": "cn-tower", "name": "CN Tower", "wikidata": "Q134883", "sources": ["asce-seven-wonders-modern-world"], "sitelinks": 79, "note": ""}
+{"slug": "cn-tower", "name": "CN Tower", "wikidata": "Q134883", "sources": ["travel-canon", "asce-seven-wonders-modern-world"], "sitelinks": 79, "note": ""}
 ```
 
-Each list draws on at least two independent sources, Wikivoyage as one check; which lists a
-kind's record measured its line on is in `docs/sources/global/`.
+The reading a kind's line was chosen on is in its record in `docs/sources/global/`; the canon
+is what the line is checked against afterwards.
 
 ## What the reader refuses
 
@@ -271,10 +284,12 @@ Two regions may hold the same place: Nara is a day trip from more than one city.
   language editions of one article, count once towards an entry's `sources`.
 - **A kind is never renamed by editing its slug in place** without changing every entry filed
   under it in the same change; the reader refuses the leftover.
-- **A calibration list names what a traveller expects of the kind, from lists a person can read
-  again.** An entry is added because a reference list names it, with that list's slug on it, and
-  its item comes from a lookup, never from memory. What a list says that the kind's definition
-  excludes is left aside and said in the register's `note`: the federation's skyscrapers are not
+- **A calibration list is a canon, independent of the line.** An entry is added because two
+  independent sources name it, and its item comes from a lookup, never from memory; nothing is
+  added because Wikidata's classes, its editions, its readers or Wikivoyage's use of it say so,
+  and nothing is left out for that. The kind's own rule is never applied to the list: a top the
+  rule wrongly refuses must stay on it for the report to show the refusal. What a source names
+  that the kind's definition excludes is left aside, the federation's skyscrapers that are not
   towers. An entry that falls out of the kind stays on the list, which is how the loss is seen.
   Two kinds may list one place; one list never lists one item twice.
 - **A gap is judged once, in the ledger, and the judgement names its cause and its owner.** A
@@ -378,14 +393,16 @@ asked only of a place a live kind should hold: a square beside a fountain the ca
 is a neighbour and nothing else.
 
 **How each live kind stands to its own calibration list** (#1864). For every live kind with a
-list, how many of its tops a reader sees, each reference list's share (*World Federation of
-Great Towers, members: 20 of 30*), and every miss by name, the most known first, with where it
-stands, the first that applies:
+list, how many of its tops a reader sees and how many more the kind admitted and a curator has
+not read yet (the line let them through), each source's share (*World Federation of Great
+Towers, members: 20 of 30*), and every miss by name, the most known first, with where it stands,
+the first that applies:
 
 | Standing | Meaning |
 |---|---|
 | refused | The latest real, closed run of one of the kind's active sources refused the item, with the reason the run recorded (`experience_sync_changes`, `filtered`: a refusal is never a membership row). Before held, because a rule change knocks out a top the catalogue already holds through that very refusal, and the reason is what the list is there to surface |
-| held | A catalogue place known by the item exists and this kind does not offer it: it waits for a curator, was refused by name by an earlier run, or another kind alone offers it; the place is named |
+| admitted | The kind admits a place known by the item and its arrival waits in the review queue (`arrivalWaitingSql`, the queue's own fragment: unread, not marked missing). Counted beside the offered, never named as a miss, since the line holds it |
+| held | A catalogue place known by the item exists and this kind neither offers it nor holds it for a curator: refused by name by an earlier run, offered by another kind alone, passed by a curator and no longer standing, or marked missing before anyone read it; the place is named |
 | absent, under the editions line | Nothing holds it and no run named it, and the list's `sitelinks` are under the kind's editions line: the regional tier's |
 | absent, not a candidate | Nothing holds it and no run named it, at or over the line, or with no count: the kind's classes do not reach it, or a candidate under the readers' line, which the run records nowhere |
 
