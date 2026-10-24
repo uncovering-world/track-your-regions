@@ -21,7 +21,7 @@ terms:
   licence: "none; legal notice: no reproduction, distribution or public communication for commercial ends without authorisation"
   database_right: reserved
   attribution: "Viajeros Callejeros"
-  scraping: permitted
+  scraping: forbidden
 access:
   mode: scrape
   format: html
@@ -29,19 +29,19 @@ access:
   volume: unknown
   rate: unknown
 scorecard:
-  date: 2026-10-02
+  date: 2026-10-24
   completeness: 1
   identity: 0
   coordinates: unknown
   names: 1
   signal: 1
-  terms: 1
+  terms: 0
   access: 1
   cadence: 2
   total: unknown
-  verdict: curator-list
-status: looked-at
-issue: 1213
+  verdict: veto
+status: refused
+issue: 1951
 looked_at: 2026-10-02
 ---
 
@@ -57,19 +57,22 @@ publisher's country, and its unit is `any`: it is read per destination.
 destination has list articles (so many places to see, a day in the city, the best tours) and
 diary pages of a trip, day by day. A place is a numbered heading or a name in the day's text.
 
-**Terms ([the access table](../site-access.md), 2026-10-02).** `www.viajeroscallejeros.com`:
-`allowed` (legal notice silent on automated reading). `robots.txt`: open (`*`: WordPress service
-paths; Googlebot, Facebook's agents, OAI-SearchBot and ChatGPT-User each have `Allow: /`; no
-Anthropic agent named). Signal: /llms.txt exists: "# Viajeros Callejeros". Terms: silent on
-automated reading, at https://www.viajeroscallejeros.com/aviso-legal/. Reproduction,
+**Terms ([the access table](../site-access.md), 2026-10-24).** `www.viajeroscallejeros.com`:
+`refused`. `robots.txt` disallows Anthropic agents by name: `ClaudeBot`, `anthropic-ai` and
+`Claude-Web` each stand under `Disallow: /`. On 2026-10-02, when the surveys read it, the file
+was open and named no Anthropic agent. Terms, as the legal notice read on 2026-10-02 put them:
+silent on automated reading, at https://www.viajeroscallejeros.com/aviso-legal/. Reproduction,
 distribution and public communication "con fines comerciales" are forbidden without
-authorisation; nothing on robots, mining or AI.
+authorisation.
 
-**What decides it.** Identity 0, so the verdict is `curator-list`; the total is `unknown`
-because the coordinates were not looked at. The legal notice reserves commercial reuse: ask
-first.
+**What decides it.** The access table: `refused`, on the site's own `robots.txt`. Terms 0, so
+the verdict is `veto` and the status `refused`. Nothing of it counts. Identity is 0 as well: a
+place is a heading of a list article. What would reopen it is a `robots.txt` that admits an
+Anthropic agent again.
 
-**What the survey measured.** For the Cusco region, ten pages by fetch, readers' comments cut
+**What the survey measured.** The figures below were taken while the site was open. Their
+withdrawal from both surveys, and the re-judging of the entries it leaves with one source, is
+#1962. For the Cusco region, ten pages by fetch, readers' comments cut
 before reading; for Mexico City, four. The Cusco region survey of 2026-10-02 counted it on 84 of
 the 132 entries of `db/catalogue-coverage/expectations/cusco-region.jsonl` (by type: place 66,
 route 5, activity 4, food 4, work 3, drink 2). On 2 of them nothing else but the surveyor's own
