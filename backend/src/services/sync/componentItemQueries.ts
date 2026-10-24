@@ -10,6 +10,7 @@
  * person.
  */
 
+import { articleUrl } from './subset/values.js';
 import { askWikipediaOnce } from './wikipediaCategories.js';
 import { delay, SPARQL_DELAY_MS, WIKIDATA_USER_AGENT, type SourceWait, type WaitBudget } from './wikidataUtils.js';
 
@@ -86,11 +87,14 @@ export interface ItemContent {
   /** The item's picture as a Commons file address, or null where it states none. */
   image: string | null;
   description: string | null;
+  /** The item's English Wikipedia article (#1963), or null where it has none. */
+  article: string | null;
 }
 
 interface EntityContents {
   entities?: Record<string, {
     descriptions?: Record<string, { value: string }>;
+    sitelinks?: Record<string, { title?: string }>;
     claims?: Record<string, Array<{ rank?: string; mainsnak?: { datavalue?: { value?: unknown } } }>>;
   }>;
 }
@@ -124,7 +128,7 @@ export async function contentsOf(items: readonly string[], hooks: QueryHooks): P
     const ids = items.slice(i, i + ENTITY_BATCH);
     const answer = await askWikipediaOnce(
       {
-        action: 'wbgetentities', ids: ids.join('|'), props: 'claims|descriptions', languages: 'en',
+        action: 'wbgetentities', ids: ids.join('|'), props: 'claims|descriptions|sitelinks', languages: 'en', sitefilter: 'enwiki',
         format: 'json', formatversion: '2',
       },
       {
@@ -142,7 +146,12 @@ export async function contentsOf(items: readonly string[], hooks: QueryHooks): P
         .filter((value): value is string => typeof value === 'string' && value !== '')
         .map(commonsFilePath)
         .sort();
-      contents.set(item, { image: pictures[0] ?? null, description: entity.descriptions?.en?.value ?? null });
+      const title = entity.sitelinks?.enwiki?.title;
+      contents.set(item, {
+        image: pictures[0] ?? null,
+        description: entity.descriptions?.en?.value ?? null,
+        article: typeof title === 'string' && title !== '' ? articleUrl(title) : null,
+      });
     }
   }
   return contents;

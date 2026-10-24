@@ -25,7 +25,7 @@ import type { LockedExperience } from '../../db/experienceWriter.js';
 import type { ImageCredit } from '../../services/sync/imageCredit.js';
 import { MEMBERSHIPS } from '../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
-import { isCommonsPictureUrl } from '../../types/urlSafety.js';
+import { isCommonsPictureUrl, isStorableHttpUrl } from '../../types/urlSafety.js';
 import { pointAnsweredBySql, unreadPointSql } from './waitingCounts.js';
 import { shownBySql } from '../../db/placePoints.js';
 
@@ -354,6 +354,8 @@ export interface ClaimedItemContent {
   imageUrl: string | null;
   credit: ImageCredit | null;
   description: string | null;
+  /** The item's English Wikipedia article (#1963). */
+  articleUrl: string | null;
 }
 
 /**
@@ -363,7 +365,9 @@ export interface ClaimedItemContent {
  * the point holds no claim on the field. The picture only with its credit, as a
  * curator's own picture edit writes one (ADR-0043): an item whose photograph
  * nobody could credit gives the point its identity and no picture — and only
- * a Commons file, as every writer of a picture refuses anything else. Answers
+ * a Commons file, as every writer of a picture refuses anything else. The
+ * item's English article goes with it (#1963), only a web address, since the
+ * run's content writer leaves a point whose item a curator chose alone. Answers
  * whether the picture was written.
  */
 export async function claimPointItem(
@@ -374,6 +378,7 @@ export async function claimPointItem(
   content: ClaimedItemContent,
 ): Promise<{ pictured: boolean }> {
   const picture = content.imageUrl !== null && content.credit !== null && isCommonsPictureUrl(content.imageUrl);
+  const article = content.articleUrl !== null && isStorableHttpUrl(content.articleUrl) ? content.articleUrl : null;
   const result = await client.query<{ pictured: boolean }>(
     `UPDATE experience_locations
         SET wikidata_item = $3,
@@ -382,7 +387,9 @@ export async function claimPointItem(
             image_url = CASE WHEN $4::boolean AND NOT curated_fields ? 'image_url' THEN $5 ELSE image_url END,
             metadata = CASE WHEN $4::boolean AND NOT curated_fields ? 'image_url'
                             THEN metadata || jsonb_build_object('imageCredit', $6::jsonb)
-                            ELSE metadata END,
+                            ELSE metadata END
+                       || CASE WHEN $9::text IS NOT NULL AND NOT curated_fields ? 'metadata.wikipediaUrl'
+                               THEN jsonb_build_object('wikipediaUrl', $9::text) ELSE '{}'::jsonb END,
             description = CASE WHEN $7::boolean AND NOT curated_fields ? 'description' THEN $8 ELSE description END
       WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}
       RETURNING ($4::boolean AND image_url = $5) AS pictured`,
@@ -390,47 +397,51 @@ export async function claimPointItem(
       locationId, lock.id, item,
       picture, content.imageUrl, picture ? JSON.stringify(content.credit) : null,
       content.description !== null, content.description,
+      article,
     ],
   );
   return { pictured: result.rows[0]?.pictured === true };
 }
 
 /** A field a take-back clears beside the item: what the confirmation wrote with it. */
-export type ReleasedField = 'image_url' | 'description';
+export type ReleasedField = 'image_url' | 'description' | 'metadata.wikipediaUrl';
 
 /**
  * Take the confirmed item off a point (#1317): the item and the claim on it
- * go, and the picture with its credit and the description go where no curator
- * has claimed the field — a point with no item has no run-written picture or
- * description, so an unclaimed one is what the confirmation wrote. Answers
- * which of the two came off.
+ * go, and the picture with its credit, the description and the article
+ * (#1963) go where no curator has claimed the field — a point with no item has
+ * no run-written picture, description or article, so an unclaimed one is what
+ * the confirmation wrote. Answers which of them came off.
  */
 export async function releasePointItem(
   client: PoolClient,
   lock: LockedExperience,
   locationId: number,
 ): Promise<ReleasedField[]> {
-  const result = await client.query<{ picture_cleared: boolean; description_cleared: boolean }>(
+  const result = await client.query<{ picture_cleared: boolean; description_cleared: boolean; article_cleared: boolean }>(
     `WITH before AS (
-       SELECT id, image_url, description, curated_fields FROM experience_locations
+       SELECT id, image_url, description, metadata ->> 'wikipediaUrl' AS article, curated_fields FROM experience_locations
         WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}
      )
      UPDATE experience_locations el
         SET wikidata_item = NULL,
             curated_fields = el.curated_fields - 'wikidata_item',
             image_url = CASE WHEN el.curated_fields ? 'image_url' THEN el.image_url ELSE NULL END,
-            metadata = CASE WHEN el.curated_fields ? 'image_url' THEN el.metadata ELSE el.metadata - 'imageCredit' END,
+            metadata = CASE WHEN el.curated_fields ? 'image_url' THEN el.metadata ELSE el.metadata - 'imageCredit' END
+                       - CASE WHEN el.curated_fields ? 'metadata.wikipediaUrl' THEN '' ELSE 'wikipediaUrl' END,
             description = CASE WHEN el.curated_fields ? 'description' THEN el.description ELSE NULL END
        FROM before b
       WHERE el.id = b.id
       RETURNING (b.image_url IS NOT NULL AND NOT b.curated_fields ? 'image_url') AS picture_cleared,
-                (b.description IS NOT NULL AND NOT b.curated_fields ? 'description') AS description_cleared`,
+                (b.description IS NOT NULL AND NOT b.curated_fields ? 'description') AS description_cleared,
+                (b.article IS NOT NULL AND NOT b.curated_fields ? 'metadata.wikipediaUrl') AS article_cleared`,
     [locationId, lock.id],
   );
   const row = result.rows[0];
   const cleared: ReleasedField[] = [];
   if (row?.picture_cleared) cleared.push('image_url');
   if (row?.description_cleared) cleared.push('description');
+  if (row?.article_cleared) cleared.push('metadata.wikipediaUrl');
   return cleared;
 }
 
@@ -475,16 +486,23 @@ export async function movePointTo(
 }
 
 /** A point field a held proposal can carry, and so the only ones a published held point writes. */
-export type HeldPointField = 'name' | 'image_url' | 'metadata.imageCredit' | 'description';
+export type HeldPointField = 'name' | 'image_url' | 'metadata.imageCredit' | 'description' | 'metadata.wikipediaUrl';
 
 /**
  * The same list as a set: what the held-part plan accepts on a point
  * (`publishHeldParts.ts`) is what this writer can write, stated once. The
- * picture, its credit and the description are a component's own (#1270).
+ * picture, its credit and the description are a component's own (#1270), and
+ * so is its English article (#1963).
  */
 export const HELD_POINT_FIELDS: ReadonlySet<string> = new Set<HeldPointField>(
-  ['name', 'image_url', 'metadata.imageCredit', 'description'],
+  ['name', 'image_url', 'metadata.imageCredit', 'description', 'metadata.wikipediaUrl'],
 );
+
+/** The `metadata` key each held metadata field of a point is kept under. */
+const METADATA_KEY: Partial<Record<HeldPointField, string>> = {
+  'metadata.imageCredit': 'imageCredit',
+  'metadata.wikipediaUrl': 'wikipediaUrl',
+};
 
 export function isHeldPointField(field: string): field is HeldPointField {
   return HELD_POINT_FIELDS.has(field);
@@ -505,16 +523,22 @@ export async function writeHeldPointFields(
   if (fields.length === 0) return;
   const params: unknown[] = [locationId, lock.id];
   const bind = (value: unknown) => `$${params.push(value)}`;
-  const assignments = fields.map(({ field, value }) => {
-    if (field === 'metadata.imageCredit') {
-      // Absent and null are one case, as for a work's credit: the key goes.
-      return value == null
-        ? `metadata = metadata - 'imageCredit'`
-        : `metadata = metadata || jsonb_build_object('imageCredit', ${bind(JSON.stringify(value))}::jsonb)`;
-    }
+  // The metadata keys fold into one assignment, since a column is assigned once.
+  let metadata = 'metadata';
+  const assignments: string[] = [];
+  for (const { field, value } of fields) {
     if (!isHeldPointField(field)) throw new Error(`A held point field this writer does not know: ${String(field)}`);
-    return `${field} = ${bind(value)}`;
-  });
+    const key = METADATA_KEY[field];
+    if (key) {
+      // Absent and null are one case, as for a work's credit: the key goes.
+      metadata = value == null
+        ? `(${metadata} - '${key}')`
+        : `(${metadata} || jsonb_build_object('${key}', ${bind(JSON.stringify(value))}::jsonb))`;
+    } else {
+      assignments.push(`${field} = ${bind(value)}`);
+    }
+  }
+  if (metadata !== 'metadata') assignments.push(`metadata = ${metadata}`);
   await client.query(
     `UPDATE experience_locations SET ${assignments.join(', ')} WHERE id = $1 AND ${shownBySql('experience_locations', 'ARRAY[$2::int]')}`,
     params,

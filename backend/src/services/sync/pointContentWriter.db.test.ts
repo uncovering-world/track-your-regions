@@ -83,10 +83,10 @@ afterAll(async () => {
 describe("a component's own picture and description", () => {
   it('holds what a reader sees, fills what is empty, writes what nobody has passed, and keeps a claim', async () => {
     const changed = await writePointContents(PILES, [
-      { ref: '1363-002', imageUrl: RIESI, imageCredit: CREDIT, description: 'pile dwelling at Riesi' },
-      { ref: '1363-015', imageUrl: null, imageCredit: null, description: 'pile dwelling at Port' },
-      { ref: '1363-016', imageUrl: BOURG_NEW, imageCredit: CREDIT, description: 'pile dwelling at Bourg' },
-      { ref: '1363-061', imageUrl: SEE, imageCredit: CREDIT, description: 'pile dwelling at See' },
+      { ref: '1363-002', imageUrl: RIESI, imageCredit: CREDIT, description: 'pile dwelling at Riesi' , articleUrl: null },
+      { ref: '1363-015', imageUrl: null, imageCredit: null, description: 'pile dwelling at Port' , articleUrl: null },
+      { ref: '1363-016', imageUrl: BOURG_NEW, imageCredit: CREDIT, description: 'pile dwelling at Bourg' , articleUrl: null },
+      { ref: '1363-061', imageUrl: SEE, imageCredit: CREDIT, description: 'pile dwelling at See' , articleUrl: null },
     ], { syncLogId: null, sourceId });
 
     expect(await stored()).toEqual([
@@ -111,7 +111,7 @@ describe("a component's own picture and description", () => {
   it('holds a new credit for a picture a reader sees, and fills a missing one', async () => {
     const run = { syncLogId: null, sourceId };
     const changed = await writePointContents(PILES, [
-      { ref: '1363-016', imageUrl: BOURG_OLD, imageCredit: CREDIT, description: 'pile dwelling' },
+      { ref: '1363-016', imageUrl: BOURG_OLD, imageCredit: CREDIT, description: 'pile dwelling' , articleUrl: null },
     ], run);
     expect(changed[0].fields.map(field => [field.field, field.held])).toEqual([['metadata.imageCredit', true]]);
     expect((await stored())[2].credit).toEqual(OLD_CREDIT);
@@ -119,28 +119,100 @@ describe("a component's own picture and description", () => {
 
   it('keeps the credit it holds for the same file, and takes picture and credit away together', async () => {
     const run = { syncLogId: null, sourceId };
-    await writePointContents(PILES, [{ ref: '1363-061', imageUrl: SEE, imageCredit: CREDIT, description: null }], run);
+    await writePointContents(PILES, [{ ref: '1363-061', imageUrl: SEE, imageCredit: CREDIT, description: null , articleUrl: null }], run);
 
-    expect(await writePointContents(PILES, [{ ref: '1363-061', imageUrl: SEE, imageCredit: null, description: null }], run))
+    expect(await writePointContents(PILES, [{ ref: '1363-061', imageUrl: SEE, imageCredit: null, description: null , articleUrl: null }], run))
       .toEqual([]);
     expect((await stored())[3]).toEqual({ external_ref: '1363-061', image_url: SEE, credit: CREDIT, description: null });
 
-    await writePointContents(PILES, [{ ref: '1363-061', imageUrl: null, imageCredit: null, description: null }], run);
+    await writePointContents(PILES, [{ ref: '1363-061', imageUrl: null, imageCredit: null, description: null , articleUrl: null }], run);
     expect((await stored())[3]).toEqual({ external_ref: '1363-061', image_url: null, credit: null, description: null });
   });
 
   it("gives a second point the credit another point holds for the same file", async () => {
     const run = { syncLogId: null, sourceId };
-    await writePointContents(PILES, [{ ref: '1363-061', imageUrl: SEE, imageCredit: CREDIT, description: null }], run);
+    await writePointContents(PILES, [{ ref: '1363-061', imageUrl: SEE, imageCredit: CREDIT, description: null , articleUrl: null }], run);
     // Riesi resolves to an item with the same picture, and the run asked
     // Commons nothing about a file a point already holds a credit for.
-    await writePointContents(PILES, [{ ref: '1363-002', imageUrl: SEE, imageCredit: null, description: null }], run);
+    await writePointContents(PILES, [{ ref: '1363-002', imageUrl: SEE, imageCredit: null, description: null , articleUrl: null }], run);
     expect((await stored())[0]).toEqual({ external_ref: '1363-002', image_url: SEE, credit: CREDIT, description: null });
+  });
+
+  it("writes a part's own article as its picture and description are written (#1963)", async () => {
+    const run = { syncLogId: null, sourceId };
+    const article = (name: string) => `https://en.wikipedia.org/wiki/${name}`;
+    // Bourg shows readers an article already.
+    await pool.query(
+      `UPDATE experience_locations SET metadata = metadata || '{"wikipediaUrl": "https://en.wikipedia.org/wiki/Bourg_old"}'::jsonb
+        WHERE experience_id = $1 AND external_ref = '1363-016'`, [PILES],
+    );
+    const changed = await writePointContents(PILES, [
+      { ref: '1363-002', imageUrl: null, imageCredit: null, description: null, articleUrl: article('Riesi') },
+      { ref: '1363-016', imageUrl: BOURG_OLD, imageCredit: OLD_CREDIT, description: 'pile dwelling', articleUrl: article('Bourg') },
+      { ref: '1363-061', imageUrl: null, imageCredit: null, description: null, articleUrl: 'javascript:alert(1)' },
+    ], run);
+    const articles = async () => (await pool.query<{ external_ref: string; article: string | null }>(
+      `SELECT external_ref, metadata ->> 'wikipediaUrl' AS article FROM experience_locations
+        WHERE experience_id = $1 ORDER BY external_ref`, [PILES],
+    )).rows.map(row => [row.external_ref, row.article]);
+
+    // Riesi showed none and is filled; Bourg's is what readers see, so the new
+    // one waits for a curator; a value that is no web address is no article.
+    expect(await articles()).toEqual([
+      ['1363-002', article('Riesi')], ['1363-015', null], ['1363-016', 'https://en.wikipedia.org/wiki/Bourg_old'], ['1363-061', null],
+    ]);
+    const field = (ref: string) => changed.find(entry => entry.item.ref === ref)?.fields
+      .find(one => one.field === 'metadata.wikipediaUrl');
+    expect(field('1363-002')).toMatchObject({ held: false, new: article('Riesi') });
+    expect(field('1363-016')).toMatchObject({ held: true, old: 'https://en.wikipedia.org/wiki/Bourg_old', new: article('Bourg') });
+    // The article is written beside the credit, never in its place.
+    expect((await stored())[2].credit).toEqual(OLD_CREDIT);
+
+    // An item that has no article any more takes it from a part nobody has passed.
+    await writePointContents(PILES, [{ ref: '1363-061', imageUrl: null, imageCredit: null, description: null, articleUrl: article('See') }], run);
+    await writePointContents(PILES, [{ ref: '1363-061', imageUrl: null, imageCredit: null, description: null, articleUrl: null }], run);
+    expect((await articles())[3]).toEqual(['1363-061', null]);
+  });
+
+  it("holds a change to the article a reader is shown off the part place, and asks nothing where the write changes nothing seen (#1963)", async () => {
+    const run = { syncLogId: null, sourceId };
+    const PART = 9841;
+    const placeArticle = 'https://en.wikipedia.org/wiki/Riesi_place';
+    // Riesi as a part of the site, its place holding the article another kind brought.
+    await pool.query(
+      `INSERT INTO experiences (id, source_id, external_id, name, location, metadata)
+       VALUES ($1, $2, 'part-1363-002', 'Riesi', ST_SetSRID(ST_MakePoint(9.0, 47.5), 4326), jsonb_build_object('wikipediaUrl', $3::text))`,
+      [PART, sourceId, placeArticle],
+    );
+    await pool.query(
+      `INSERT INTO experience_parts (whole_id, part_id, reason, membership_id)
+       SELECT $1, $2, 'component', m.id FROM experience_kind_memberships m WHERE m.experience_id = $1`, [PILES, PART],
+    );
+    await pool.query(`UPDATE experience_locations SET experience_id = $2 WHERE experience_id = $1 AND external_ref = '1363-002'`, [PILES, PART]);
+    try {
+      const changed = await writePointContents(PILES, [
+        { ref: '1363-002', imageUrl: null, imageCredit: null, description: null, articleUrl: 'https://en.wikipedia.org/wiki/Riesi_other' },
+      ], run);
+      const field = changed[0]?.fields.find(one => one.field === 'metadata.wikipediaUrl');
+      expect(field).toMatchObject({ held: true, old: placeArticle, new: 'https://en.wikipedia.org/wiki/Riesi_other' });
+      const stored = await pool.query<{ article: string | null }>(
+        `SELECT metadata ->> 'wikipediaUrl' AS article FROM experience_locations WHERE experience_id = $1`, [PART],
+      );
+      expect(stored.rows[0].article).toBeNull();
+
+      // The place's own article offered, or none: a reader sees the same, so nothing is asked.
+      for (const articleUrl of [placeArticle, null]) {
+        const same = await writePointContents(PILES, [{ ref: '1363-002', imageUrl: null, imageCredit: null, description: null, articleUrl }], run);
+        expect(same.flatMap(entry => entry.fields).filter(one => one.field === 'metadata.wikipediaUrl')).toEqual([]);
+      }
+    } finally {
+      await pool.query('DELETE FROM experiences WHERE id = $1', [PART]);
+    }
   });
 
   it('writes no picture that is not a Commons file, and no credit beside it', async () => {
     await writePointContents(PILES, [
-      { ref: '1363-061', imageUrl: 'https://whc.unesco.org/uploads/sites/gallery/site_1363.jpg', imageCredit: CREDIT, description: null },
+      { ref: '1363-061', imageUrl: 'https://whc.unesco.org/uploads/sites/gallery/site_1363.jpg', imageCredit: CREDIT, description: null , articleUrl: null },
     ], { syncLogId: null, sourceId });
     expect((await stored())[3]).toEqual({ external_ref: '1363-061', image_url: null, credit: null, description: null });
   });

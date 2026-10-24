@@ -406,7 +406,7 @@ describe("a site's candidate component items", () => {
   const mockedCandidateItems = candidateItems as unknown as Mock;
   const mockedContents = readItemContents as unknown as Mock;
   const mockedItemsScope = componentItemsScope as unknown as Mock;
-  const contents = new Map([['Q98501', { imageUrl: null, credit: null, description: null }]]);
+  const contents = new Map([['Q98501', { imageUrl: null, credit: null, description: null, articleUrl: null }]]);
 
   beforeEach(() => {
     poolAnswers({ names: [{ id: 9850, name: 'Frontiers of the Roman Empire – Dacia', source_id: 1 }] });

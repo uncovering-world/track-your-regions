@@ -552,14 +552,17 @@ export interface ComponentContent {
   /** The item's picture, a Commons file, or null where it states none. */
   image: string | null;
   description: string | null;
+  /** The item's English Wikipedia article, or null where it has none (#1963). */
+  article: string | null;
 }
 
 /**
- * The picture and the description each component's item gives it (#1270): the
+ * The picture, the description and the English article each component's item
+ * gives it (#1270, #1963): the
  * item a reference resolved to (`resolveComponents`), read off the same index.
  * One picture per item, the first by its Commons URL (`MIN(?img)`), which is
  * ADR-0085's rule for a value Wikidata states several times at one rank. A
- * reference that resolved to no item gets neither, so a point that lost its
+ * reference that resolved to no item gets none of them, so a point that lost its
  * item loses what the item gave it.
  */
 export function componentContents(
@@ -572,7 +575,9 @@ export function componentContents(
   }
   return items.map(({ ref, item }) => {
     const candidate = item ? byItem.get(item) : undefined;
-    return { ref, image: candidate?.image ?? null, description: candidate?.description ?? null };
+    return {
+      ref, image: candidate?.image ?? null, description: candidate?.description ?? null, article: candidate?.article ?? null,
+    };
   });
 }
 

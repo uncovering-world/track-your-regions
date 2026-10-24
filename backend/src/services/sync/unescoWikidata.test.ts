@@ -409,23 +409,24 @@ describe('resolving components to their items', () => {
 
 /** What a component's item says about it (#1270): its picture and its description. */
 describe("a component's picture and description", () => {
-  const binding = (whc: string, item: string, image: string | null, description: string | null) => ({
+  const binding = (whc: string, item: string, image: string | null, description: string | null, article: string | null = null) => ({
     whc: { type: 'literal', value: whc }, item: { type: 'uri', value: `http://www.wikidata.org/entity/${item}` },
     ...(image ? { image: { type: 'uri', value: image } } : {}),
     ...(description ? { description: { type: 'literal', value: description } } : {}),
+    ...(article ? { article: { type: 'uri', value: article } } : {}),
   });
   const RIESI = 'http://commons.wikimedia.org/wiki/Special:FilePath/Riesi.jpg';
   const index = indexWorldHeritageFacts([
-    binding('1363-002', 'Q2108011', RIESI, 'prehistoric pile dwelling in Switzerland'),
+    binding('1363-002', 'Q2108011', RIESI, 'prehistoric pile dwelling in Switzerland', 'https://en.wikipedia.org/wiki/Riesi'),
     binding('1363-061', 'Q2108010', null, null),
   ] as never);
 
-  it("gives a resolved component its item's picture and description, and an unresolved one neither", () => {
+  it("gives a resolved component its item's picture, description and article (#1963), and an unresolved one none", () => {
     const resolution = resolveComponents(index, '1363', ['1363-002', '1363-061', '1363-099']);
     expect(componentContents(index, '1363', resolution.items)).toEqual([
-      { ref: '1363-002', image: RIESI, description: 'prehistoric pile dwelling in Switzerland' },
-      { ref: '1363-061', image: null, description: null },
-      { ref: '1363-099', image: null, description: null },
+      { ref: '1363-002', image: RIESI, description: 'prehistoric pile dwelling in Switzerland', article: 'https://en.wikipedia.org/wiki/Riesi' },
+      { ref: '1363-061', image: null, description: null, article: null },
+      { ref: '1363-099', image: null, description: null, article: null },
     ]);
   });
 });

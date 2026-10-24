@@ -43,13 +43,17 @@ async function point(ref: string, name: string, item: string | null): Promise<nu
 
 const stored = async (id: number) => (await pool.query<{
   wikidata_item: string | null; curated_fields: string[]; image_url: string | null; credit: unknown; description: string | null;
+  article: string | null;
 }>(
-  `SELECT wikidata_item, curated_fields, image_url, metadata -> 'imageCredit' AS credit, description
+  `SELECT wikidata_item, curated_fields, image_url, metadata -> 'imageCredit' AS credit, description,
+          metadata ->> 'wikipediaUrl' AS article
      FROM experience_locations WHERE id = $1`, [id],
 )).rows[0];
 
 const confirm = () => answerComponentItemsUnderLock(SITE, curatorId, null, [{ proposalId: fort, answer: 'accepted' }],
-  new Map([[BOLOGA_FORT, { imageUrl: PICTURE, credit: CREDIT, description: 'Roman fort in Cluj County, Romania' }]]));
+  new Map([[BOLOGA_FORT, {
+    imageUrl: PICTURE, credit: CREDIT, description: 'Roman fort in Cluj County, Romania', articleUrl: 'https://en.wikipedia.org/wiki/Castra_of_Bologa',
+  }]]));
 
 beforeEach(async () => {
   await clear();
@@ -84,12 +88,18 @@ afterAll(async () => {
 describe('a confirmed component item taken back (#1317)', () => {
   it('takes the item, its claim and what the confirmation wrote off the point, reopens the candidate and logs it', async () => {
     await confirm();
-    expect(await stored(bologa)).toMatchObject({ wikidata_item: BOLOGA_FORT, curated_fields: ['wikidata_item'], image_url: PICTURE });
+    expect(await stored(bologa)).toMatchObject({
+      wikidata_item: BOLOGA_FORT, curated_fields: ['wikidata_item'], image_url: PICTURE, article: 'https://en.wikipedia.org/wiki/Castra_of_Bologa',
+    });
 
     const outcome = await takeBackPointItemUnderLock(bologa, SITE, curatorId, null, BOLOGA_FORT);
 
-    expect(outcome.result).toEqual({ locationId: bologa, item: BOLOGA_FORT, cleared: ['image_url', 'description'] });
-    expect(await stored(bologa)).toEqual({ wikidata_item: null, curated_fields: [], image_url: null, credit: null, description: null });
+    expect(outcome.result).toEqual({
+      locationId: bologa, item: BOLOGA_FORT, cleared: ['image_url', 'description', 'metadata.wikipediaUrl'],
+    });
+    expect(await stored(bologa)).toEqual({
+      wikidata_item: null, curated_fields: [], image_url: null, credit: null, description: null, article: null,
+    });
     const proposal = await pool.query<{ answer: string | null; answered_by: number | null; answered_at: Date | null; marked: boolean }>(
       'SELECT answer, answered_by, answered_at, taken_back_at IS NOT NULL AS marked FROM experience_component_item_proposals WHERE id = $1', [fort],
     );
@@ -103,11 +113,12 @@ describe('a confirmed component item taken back (#1317)', () => {
     );
     expect(log.rows.map(row => row.action)).toEqual(['component_items_answered', 'component_item_taken_back']);
     expect(log.rows[1].details).toEqual({
-      locationId: bologa, point: 'Bologa', item: BOLOGA_FORT, label: 'Castrul Bologa', cleared: ['image_url', 'description'],
+      locationId: bologa, point: 'Bologa', item: BOLOGA_FORT, label: 'Castrul Bologa',
+      cleared: ['image_url', 'description', 'metadata.wikipediaUrl'],
     });
   });
 
-  it('keeps a picture a curator chose since the confirmation, and says only the description came off', async () => {
+  it('keeps a picture a curator chose since the confirmation, and says only the description and the article came off', async () => {
     await confirm();
     const mine = 'http://commons.wikimedia.org/wiki/Special:FilePath/My%20own%20photo.jpg';
     await pool.query(
@@ -117,7 +128,7 @@ describe('a confirmed component item taken back (#1317)', () => {
 
     const outcome = await takeBackPointItemUnderLock(bologa, SITE, curatorId, null, BOLOGA_FORT);
 
-    expect(outcome.result).toMatchObject({ cleared: ['description'] });
+    expect(outcome.result).toMatchObject({ cleared: ['description', 'metadata.wikipediaUrl'] });
     expect(await stored(bologa)).toMatchObject({ wikidata_item: null, curated_fields: ['image_url'], image_url: mine, description: null });
   });
 

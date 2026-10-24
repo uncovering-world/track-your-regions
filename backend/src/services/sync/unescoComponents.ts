@@ -8,8 +8,8 @@
  * `recordComponentItems`), and keeps a count for its own log: how many
  * components of each site resolved, and which references more than one item
  * carries, read where an admin reads the run. What the item says about the
- * component — its picture and its description — becomes the point's own
- * (#1270, `writePointContents`).
+ * component — its picture, its description and its English article — becomes
+ * the point's own (#1270, #1963, `writePointContents`).
  */
 
 import { pool } from '../../db/index.js';
@@ -99,6 +99,7 @@ export async function resolveSiteComponents(
       imageUrl: one.image,
       imageCredit: (one.image && credits.get(one.image)) || null,
       description: one.description,
+      articleUrl: one.article,
     })), run);
   } catch (error) {
     // The site and its points are written already; a side record that failed

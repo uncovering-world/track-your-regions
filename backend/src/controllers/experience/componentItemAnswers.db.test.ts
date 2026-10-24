@@ -75,7 +75,7 @@ const answersOf = async () => (await pool.query<{ id: number; answer: string | n
 const card = async () => (await queryComponentItems([SITE])).rows[0];
 
 const content = (image: string | null, credit: typeof CREDIT | null) => new Map([
-  [BOLOGA_FORT, { imageUrl: image, credit, description: 'Roman fort in Cluj County, Romania' }],
+  [BOLOGA_FORT, { imageUrl: image, credit, description: 'Roman fort in Cluj County, Romania', articleUrl: null }],
 ]);
 
 beforeEach(async () => {
@@ -252,7 +252,7 @@ describe("a site's candidate component items (#1272)", () => {
       content(PICTURE, CREDIT));
     // The run resolves Bologa's reference to no item and offers it nothing.
     const changed = await writePointContents(SITE, [
-      { ref: '9850-001', imageUrl: null, imageCredit: null, description: null },
+      { ref: '9850-001', imageUrl: null, imageCredit: null, description: null, articleUrl: null },
     ], { syncLogId: null, sourceId: 1 });
 
     expect(changed).toEqual([]);

@@ -14,11 +14,12 @@ const { askWikipediaOnce } = await import('./wikipediaCategories.js');
 const hooks = () => ({ budget: new WaitBudget(1000) });
 
 describe('contentsOf', () => {
-  it("reads each confirmed item's first picture by its address and its English description, skipping a deprecated statement", async () => {
+  it("reads each confirmed item's first picture by its address, its English description and article, skipping a deprecated statement", async () => {
     vi.mocked(askWikipediaOnce).mockResolvedValue({
       entities: {
         Q98501: {
           descriptions: { en: { value: 'Roman fort in Cluj County, Romania' } },
+          sitelinks: { enwiki: { title: "Castra of Bologa (Cluj)" } },
           claims: {
             P18: [
               { rank: 'normal', mainsnak: { datavalue: { value: 'Castrul roman (Bologa) 2.jpg' } } },
@@ -34,15 +35,17 @@ describe('contentsOf', () => {
     const contents = await contentsOf(['Q98501', 'Q98502'], hooks());
 
     expect(vi.mocked(askWikipediaOnce).mock.calls[0][0]).toMatchObject({
-      action: 'wbgetentities', ids: 'Q98501|Q98502', props: 'claims|descriptions', languages: 'en',
+      action: 'wbgetentities', ids: 'Q98501|Q98502', props: 'claims|descriptions|sitelinks', languages: 'en', sitefilter: 'enwiki',
     });
     // The query service's spelling of a file: a space as %20, a parenthesis as %28,
     // so the picture is the same address the run stores for the same file.
     expect(contents.get('Q98501')).toEqual({
       image: 'http://commons.wikimedia.org/wiki/Special:FilePath/Castrul%20roman%20%28Bologa%29%201.jpg',
       description: 'Roman fort in Cluj County, Romania',
+      // The title as an article address, parentheses kept as MediaWiki writes them.
+      article: 'https://en.wikipedia.org/wiki/Castra_of_Bologa_(Cluj)',
     });
-    expect(contents.get('Q98502')).toEqual({ image: null, description: null });
+    expect(contents.get('Q98502')).toEqual({ image: null, description: null, article: null });
   });
 });
 

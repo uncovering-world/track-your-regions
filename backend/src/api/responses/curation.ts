@@ -465,7 +465,7 @@ export type ViewSuggestions = z.infer<typeof ViewSuggestions>;
 export const PointItemTakenBack = z.strictObject({
   locationId: z.number().int(),
   item: z.string().describe('The Wikidata item taken off the point.'),
-  cleared: z.array(z.enum(['image_url', 'description']))
+  cleared: z.array(z.enum(['image_url', 'description', 'metadata.wikipediaUrl']))
     .describe('What the confirmation had written with the item and came off with it; a field a curator claimed since stays.'),
 }).describe("A confirmed component item taken back (#1317): the point has no item again, and the candidate is back in the queue, open (#1336).");
 export type PointItemTakenBack = z.infer<typeof PointItemTakenBack>;

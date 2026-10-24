@@ -124,10 +124,11 @@ describe('publishing the held fields of an object\'s parts', () => {
     expect(write.params).toEqual([9972, 5, 'Geoagiu / Drumul Romanilor (Germisara)']);
   });
 
-  it("writes a held component's own picture, its credit and its description (#1270)", async () => {
+  it("writes a held component's own picture, its credit, its description (#1270) and its article (#1963)", async () => {
     grantScope();
     const riesi = 'http://commons.wikimedia.org/wiki/Special:FilePath/Riesi%20Pfahlbau.jpg';
     const credit = { author: 'A photographer', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null };
+    const article = 'https://en.wikipedia.org/wiki/Riesi';
     const { client, queries } = makeClient({
       row: HELD_ROW,
       contents: { locations: { changed: [{
@@ -136,6 +137,7 @@ describe('publishing the held fields of an object\'s parts', () => {
           { field: 'image_url', old: null, new: riesi, held: true },
           { field: 'metadata.imageCredit', old: null, new: credit, held: true },
           { field: 'description', old: null, new: 'prehistoric pile dwelling in Switzerland', held: true },
+          { field: 'metadata.wikipediaUrl', old: null, new: article, held: true },
         ],
       }] } },
       parts: { location: { ...MONTSEGUR_ROW, id: 9203, name: 'Riesi' } },
@@ -144,12 +146,17 @@ describe('publishing the held fields of an object\'s parts', () => {
     const res = await publish({ expectedSyncLogId: 64 }, client);
 
     const write = only(queries, 'UPDATE experience_locations SET image_url');
-    expect(write.sql).toContain("metadata = metadata || jsonb_build_object('imageCredit'");
+    // Both metadata keys in one assignment: a column is assigned once.
+    expect(write.sql).toContain(
+      "metadata = ((metadata || jsonb_build_object('imageCredit', $4::jsonb)) || jsonb_build_object('wikipediaUrl', $6::jsonb))",
+    );
     expect(write.sql).toContain('description = $5');
-    expect(write.params).toEqual([9203, 5, riesi, JSON.stringify(credit), 'prehistoric pile dwelling in Switzerland']);
+    expect(write.params).toEqual([
+      9203, 5, riesi, JSON.stringify(credit), 'prehistoric pile dwelling in Switzerland', JSON.stringify(article),
+    ]);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       appliedParts: [{
-        kind: 'locations', name: 'Riesi', fields: ['image_url', 'metadata.imageCredit', 'description'], claimedFieldsSkipped: [],
+        kind: 'locations', name: 'Riesi', fields: ['image_url', 'metadata.imageCredit', 'description', 'metadata.wikipediaUrl'], claimedFieldsSkipped: [],
       }],
     }));
   });
