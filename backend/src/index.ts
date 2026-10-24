@@ -28,6 +28,8 @@ import { apiCors } from './middleware/cors.js';
 
 const app = express();
 const PORT = parseInt(process.env.BACKEND_PORT || '3001');
+/** How often the near-places pairing drains the marks no run or publish drained (#1950). */
+const PAIRING_DRAIN_MS = 5 * 60 * 1000;
 
 // Security middleware
 app.use(helmet({
@@ -129,6 +131,21 @@ const startServer = async () => {
   if (staleImportResult.rowCount && staleImportResult.rowCount > 0) {
     console.log(`🧹 Marked ${staleImportResult.rowCount} stale import run(s) as failed`);
   }
+
+  // The places whose names, points or standing changed since the last drain are
+  // paired with near places again, at startup and every few minutes, so a change
+  // no run or publish drained — a curator's edit, a merge, a separation, a
+  // writer's transaction that held its mark through the last drain — waits
+  // minutes, not a person (#1950). The first drain after a change of the pairing
+  // rule pairs the whole catalogue. Not awaited: boot never waits on it, and a
+  // failure is the drain's to log.
+  const { drainPairing, pairingSentence } = await import('./services/sync/mergeProposalFinder.js');
+  const drainAndSay = async () => {
+    const drain = await drainPairing();
+    if (drain === null || drain.places > 0 || drain.wholeCatalogue) console.log(`🔗 ${pairingSentence(drain)}`);
+  };
+  void drainAndSay();
+  setInterval(() => { void drainAndSay(); }, PAIRING_DRAIN_MS);
 
   // If no administrative divisions are loaded, the map will be empty — point the
   // operator at the loader (which can also download the GADM data if missing).

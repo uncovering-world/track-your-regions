@@ -52,7 +52,7 @@ import type { HeldSelection, SelectedPart } from './heldSelection.js';
 import { lockExperience, updateExperienceColumns, type LockedExperience } from '../../db/experienceWriter.js';
 import { lockWorksToPublish, type WorksToPublish } from './workWriter.js';
 import { clearAnsweredHeldPointers, publishMembership, publishTypeOnMembership } from './membershipWriter.js';
-import { proposeMergesOfPlaces } from '../../services/sync/mergeProposalFinder.js';
+import { drainPairing } from '../../services/sync/mergeProposalFinder.js';
 
 /**
  * What the curator asked to be published.
@@ -155,14 +155,6 @@ function selectionOf({ heldFields, heldParts }: PublishRequest): HeldSelection |
 }
 
 /**
- * An arrival published as an object: a place a reader can newly see, which the
- * publish's caller pairs with near places once (#1800).
- */
-function publishesAnArrival(contentsOnly: boolean, stateBefore: unknown): boolean {
-  return !contentsOnly && stateBefore === 'pending';
-}
-
-/**
  * Which of the three publishes this was, for the trail.
  *
  * Said rather than inferred from which counts came out zero: publishing an object
@@ -236,7 +228,9 @@ export async function publishExperience(
     const { status, ...body } = outcome.refusal;
     throw new Refusal(status, body);
   }
-  if (outcome.arrived) await proposeMergesOfPlaces([experienceId]);
+  // What the publish changed of the place's names, points or standing is paired
+  // again with near places now, not at the next periodic drain (#1950).
+  await drainPairing();
   return outcome.result!;
 }
 
@@ -462,16 +456,15 @@ async function planHeldAnswer(
  * caller actually needs. (Spelling the closing delimiter here would end this
  * comment mid-sentence, which is how the first attempt at this line broke the file.)
  *
- * `arrived` says the call published an arrival as an object. Its caller pairs the
- * place with near places of similar names (`proposeMergesOfPlaces`, #1800), a batch
- * once for every place it published, after its loop.
+ * Its caller drains the pairing marks the publish left (`drainPairing`, #1950), a
+ * batch once after its loop.
  */
 export async function publishUnderLock(
   experienceId: number,
   userId: number,
   logRegionId: number | null,
   body: PublishRequest,
-): Promise<{ result?: PublishResult; refusal?: PublishRefusal; arrived?: boolean }> {
+): Promise<{ result?: PublishResult; refusal?: PublishRefusal }> {
   const { locationIds, treasureIds, contentsOnly: bareContentsOnly, expectedSyncLogId } = body;
   const selection = selectionOf(body);
   // Naming held rows is a fields publish, said once here rather than tested for
@@ -723,7 +716,6 @@ export async function publishUnderLock(
     // TypeScript checks a literal's own keys against `PublishResult` and not the
     // keys a spread brings in.
     return {
-      arrived: publishesAnArrival(contentsOnly, before.curation_state),
       result: {
         experienceId,
         curationState: contentsOnly

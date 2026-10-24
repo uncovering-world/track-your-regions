@@ -852,12 +852,12 @@ const archaeologySiteTwinOfWorldHeritage: CatalogueAssertion = {
  *
  * The universal signals that propose rather than merge (ADR-0046 decision 2,
  * ADR-0120): names alike by trigrams, or one name's words all standing in the
- * other's. The pass in this panel proposes every such pair, and the proposal
+ * other's. The pass (`drainPairing`) proposes every such pair, and the proposal
  * carries the answer a person gives it — one place, two places or one part of
  * the other. What is open is a question waiting for a person, which is why it
  * is listed here beside the pairs the item rule left apart; an answered pair
- * is kept and never listed again. The rows are the pass's own
- * (`PROPOSAL_ROWS_SQL`), so the check and the pass count one set.
+ * is kept and never listed again. The rows are the ones the drain writes
+ * (`writeProposals`), read through `PROPOSAL_ROWS_SQL`.
  */
 const nearPlacesUnanswered: CatalogueAssertion = {
   id: 'near-places-with-similar-names-unanswered',
@@ -868,9 +868,9 @@ const nearPlacesUnanswered: CatalogueAssertion = {
     'Two places stand within reach of each other with names alike enough to be one place shown twice '
     + '(the Statue of Liberty as a World Heritage site and as public art), a part inside a whole '
     + '(Durham Cathedral within "Durham Castle and Cathedral") or two neighbours (the National Gallery '
-    + 'and the National Museum of Ireland). The near-places pass found them — after a run, around the places '
-    + 'it brought; on publishing an arrival, around that place; or from "Propose near places with similar '
-    + 'names" on the Sync page, over the whole catalogue — and they are listed until a person answers each; an answer takes the pair off this list for good.',
+    + 'and the National Museum of Ireland). The near-places pass found them — it looks again at every place '
+    + 'whose name, points or standing changed, and over the whole catalogue once after its rule changes — '
+    + 'and they are listed until a person answers each; an answer takes the pair off this list for good.',
   sql: `${PROPOSAL_ROWS_SQL}
         WHERE p.answer IS NULL
         ORDER BY p.name_similarity DESC, p.distance_m, a.name`,

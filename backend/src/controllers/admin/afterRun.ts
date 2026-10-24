@@ -16,8 +16,9 @@
  *    search, which is the ordinary run: the list changes yearly, and a full
  *    search costs eight minutes and three hundred requests to Wikidata, so
  *    that stays the card's own action for after a rule changes.
- * 3. The places each run created that a reader can see are paired with near
- *    places of similar names (#1800, `mergeProposalFinder.ts`).
+ * 3. The places whose pairing inputs the run changed — created, renamed,
+ *    moved, admitted, refused — are paired again with near places of similar
+ *    names (#1950, `drainPairing`), with every other place marked since.
  *
  * The steps run here rather than inside the run, since each is a curation
  * write the sync layer sits below. However the run ended: a run cancelled or
@@ -26,7 +27,7 @@
  * run's, goes back to `processing` while the steps go and to what the run
  * said at the end, its closing line extended by what the steps did, and a
  * Cancel pressed meanwhile (`isCancellable` accepts one while `continues`)
- * stops the search between its requests and the pairing between its runs.
+ * stops the search between its requests, or the pairing before it starts.
  * The release the run's writer scheduled leaves the entries to the steps,
  * which release them a while after they end, as the writer would have.
  */
@@ -35,7 +36,7 @@ import { pool } from '../../db/index.js';
 import { Operation } from '../../services/operationProgress.js';
 import { FINDER_STEPS } from '../../services/sync/componentItemFinder.js';
 import { runComponentItemSearch, type AcceptExact } from '../../services/sync/componentItemJob.js';
-import { proposeMergesOfRun } from '../../services/sync/mergeProposalFinder.js';
+import { drainPairing, pairingSentence } from '../../services/sync/mergeProposalFinder.js';
 import { isTerminalSyncStatus, runningSyncs, type SyncProgress } from '../../services/sync/types.js';
 import { joinPlacesClaimingOneItem } from '../experience/equalItemMerges.js';
 
@@ -71,9 +72,6 @@ async function newItemlessComponents(logId: number): Promise<number[]> {
   return result.rows.map(row => row.id);
 }
 
-/** A run of the pass as the after-steps see it. */
-interface Run { sourceId: number; progress: SyncProgress }
-
 /**
  * The World Heritage step: the finder on the component points this run
  * created without an item, or nothing where it created none. Answers the
@@ -101,22 +99,20 @@ async function searchNewComponents(
   return found.sentence;
 }
 
-/** The last step: the places each run created, paired with near places of similar names (#1800). */
-async function pairNearPlaces(shown: SyncProgress, operation: Operation, index: number, runs: readonly Run[]): Promise<string> {
-  operation.step(index, 'Pairing the places this run created with near places of similar names', runs.length);
-  shown.statusMessage = 'Pairing the places this run created with near places of similar names...';
-  let proposed = 0;
-  let paired = 0;
-  for (const run of runs) {
-    // The flag a Cancel sets while the steps go (`isCancellable`): a run left
-    // unpaired waits for the pass over the whole catalogue.
-    if (shown.cancel) break;
-    proposed += (await proposeMergesOfRun(run.progress.logId!)) ?? 0;
-    paired += 1;
-    operation.advance();
-  }
-  const pairs = `${proposed} near pair${proposed === 1 ? '' : 's'} proposed`;
-  return paired < runs.length ? `${pairs}; the pairing was cancelled before it reached every run` : pairs;
+/**
+ * The last step: the places the runs changed, paired again with near places of
+ * similar names (#1950). One drain for the pass, whatever number of runs it
+ * held, since the marks are the places', not a run's.
+ */
+async function pairNearPlaces(shown: SyncProgress, operation: Operation, index: number): Promise<string> {
+  operation.step(index, 'Pairing the changed places with near places of similar names', 1);
+  // The flag a Cancel sets while the steps go (`isCancellable`): the marks stay,
+  // and the next drain pairs them.
+  if (shown.cancel) return 'the pairing was cancelled; the next one pairs the places this run changed';
+  shown.statusMessage = 'Pairing the changed places with near places of similar names...';
+  const sentence = pairingSentence(await drainPairing());
+  operation.advance();
+  return sentence;
 }
 
 /**
@@ -156,7 +152,7 @@ export async function afterRun(startedId: number, pass: readonly number[], accep
       const found = await searchNewComponents(shown, operation, shown.logId!, accept);
       if (found !== null) said.push(found);
     }
-    said.push(await pairNearPlaces(shown, operation, steps, runs));
+    said.push(await pairNearPlaces(shown, operation, steps));
     operation.finish(said.join('; '));
   } catch (error) {
     console.error('%s the steps after run %s failed:', LOG_PREFIX, shown.logId, error);

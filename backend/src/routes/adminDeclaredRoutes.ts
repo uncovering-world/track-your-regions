@@ -10,7 +10,7 @@
 import { defineRoute, IMAGE } from '../api/route.js';
 import {
   AssignmentCancelled, AssignmentStarted, AssignmentStatus, CurationActivity, CuratorActivity, CuratorAssignmentCreated,
-  JevUsage, MergeProposalPass,
+  JevUsage,
   ComponentItemSearchStarted, CuratorAssignmentRevoked, Curators, CurationGateSet, ExperienceSources, WikidataReaderSet, PictureRepairStarted,
   PlacementCounts,
   SourceLineSet, SourcesReordered, SyncCancelled, SyncChanges, SyncLogDetail, SyncLogs, SyncStarted, SyncStatus,
@@ -33,7 +33,6 @@ import {
 import { setCurationGate } from '../controllers/admin/curationGateController.js';
 import { setWikidataReader } from '../controllers/admin/wikidataReaderController.js';
 import { setSourceLine } from '../controllers/admin/sourceLineController.js';
-import { findPlacesThatMayBeOne } from '../controllers/admin/mergeProposalController.js';
 import { getJevUsage } from '../controllers/admin/jevUsageController.js';
 import { acceptDataAssertion, getDataAssertions } from '../controllers/admin/dataAssertionsController.js';
 import {
@@ -325,19 +324,6 @@ export const adminDeclaredRoutes = [
     handler: getExperienceCounts,
   }),
 
-  // ===========================================================================
-  // Places that may be one place (ADR-0046, ADR-0086)
-  // ===========================================================================
-  // The pass over near places with similar names (#1249, ADR-0046 decision
-  // 2): what it finds is proposed for a person to answer — one place, two
-  // places or one part of the other. One pass over every offered place's
-  // points, so it is rate-limited with the expensive work.
-  defineRoute({
-    ...ADMIN, method: 'post', path: '/places/find-merge-proposals', limiter: expensiveAdminLimiter,
-    summary: 'Propose every pair of near places with similar names for a person to answer',
-    response: MergeProposalPass,
-    handler: findPlacesThatMayBeOne,
-  }),
   // What Jev has cost and how often curators took its suggestion (#1260,
   // #1272, #1249).
   defineRoute({

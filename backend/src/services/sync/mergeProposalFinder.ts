@@ -35,22 +35,22 @@
  * never merged as a whole with one of its parts' twins (ADR-0100 decision 6),
  * and a part's twin is #1250's, once the merge moves the part relations; a
  * pair in one kind, which one place cannot hold twice (ADR-0086 decision 4),
- * reported with the pass so a person sees what the rule leaves apart; and a
- * place no reader sees yet, which has an arrival card of its own.
+ * found and not proposed; and a place no reader sees yet, which has an arrival card of its own.
  *
- * The whole pass runs from the admin panel, after a rule changes. A place a
- * reader can newly see is paired by itself (#1800): after every real run, the
- * places it created (`proposeMergesOfRun`), and when a curator publishes an
- * arrival, that place (`proposeMergesOfPlaces`). Both are the whole pass's
- * statements, kept to the pairs that hold one of those places, so a pair is
- * never answered two ways.
+ * Nobody runs the pass (#1950). A trigger on every table the rule reads marks
+ * a place whose inputs change (`mark_pairing_due()`), and the backend drains
+ * the marks (`drainPairing`) after every real run, after a curator's publish
+ * or override, at startup and every few minutes: the whole pass's statements,
+ * kept to the pairs that hold a marked place, so a pair is never answered two
+ * ways. A change of the rule raises `PAIRING_RULE_VERSION`, and the first
+ * drain that finds the database's version different pairs the whole
+ * catalogue.
  */
 
 import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import { KINDS, MEMBERSHIPS, placeOfferedSql } from '../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
-import type { MergeProposalPass } from '../../api/responses/admin.js';
 
 /** The reach every place has. */
 export const BASE_REACH_M = 300;
@@ -222,7 +222,7 @@ export function candidatePairsSql(): string {
                           OR (sep.original_id = m.place_b AND sep.separated_id = m.place_a)))`;
 }
 
-/** A proposal as the pass and the check read it, with both places named. */
+/** A proposal as the check lists it, with both places named; the drain writes these rows (`writeProposals`). */
 export const PROPOSAL_ROWS_SQL = `
   SELECT p.id, p.distance_m, p.name_similarity, p.exact, p.reach_m, p.found_by, p.proposed_at, p.answer,
          a.id AS a_id, a.name AS a_name, ${kindNamesSql('a')} AS a_kinds,
@@ -236,36 +236,6 @@ function kindNamesSql(e: string): string {
   return `ARRAY(SELECT k.name FROM ${MEMBERSHIPS} km JOIN ${KINDS} k ON k.id = km.kind_id
                  WHERE km.experience_id = ${e}.id ORDER BY k.display_priority, k.id)`;
 }
-
-interface ProposalRow {
-  id: number;
-  distance_m: number;
-  name_similarity: number;
-  exact: boolean;
-  reach_m: number;
-  found_by: 'similar' | 'words';
-  proposed_at: Date;
-  a_id: number;
-  a_name: string;
-  a_kinds: string[];
-  b_id: number;
-  b_name: string;
-  b_kinds: string[];
-}
-
-interface LeftApartRow {
-  a_name: string;
-  a_kinds: string[];
-  b_name: string;
-  b_kinds: string[];
-  distance_m: number;
-  name_similarity: number;
-  found_by: 'similar' | 'words';
-}
-
-const placeOf = (row: ProposalRow, side: 'a' | 'b') => ({
-  id: row[`${side}_id`], name: row[`${side}_name`], kinds: row[`${side}_kinds`],
-});
 
 /**
  * Find the pairs and write them, inside the caller's transaction: forget the
@@ -302,117 +272,83 @@ async function writeProposals(client: PoolClient, among: readonly number[] | nul
 }
 
 /**
- * The pass over the whole catalogue, from the admin panel (`writeProposals`).
- * Returns what is open afterwards, how many pairs have been answered and how,
- * and the pairs in one kind the rule left apart.
+ * The version of the rule above. Raise it with any change to what pairs two
+ * places — a reach, a threshold, a word list, a name the rule reads — and the
+ * next drain pairs the whole catalogue under the new rule by itself: the
+ * database records the version its proposals were found under
+ * (`experience_pairing_rule`). 1 is the trigram rule of #1249; 2 adds one
+ * name's words standing in the other's (ADR-0120).
  */
-export async function findMergeProposals(): Promise<MergeProposalPass> {
-  const client = await pool.connect();
-  try {
-    await client.query('BEGIN');
-    await writeProposals(client, null);
-    const leftApart = await client.query<LeftApartRow>(
-      `SELECT a.name AS a_name, ${kindNamesSql('a')} AS a_kinds, b.name AS b_name, ${kindNamesSql('b')} AS b_kinds,
-              f.distance_m, f.name_similarity, f.found_by
-         FROM found f
-         JOIN experiences a ON a.id = f.place_a
-         JOIN experiences b ON b.id = f.place_b
-        WHERE f.shared_kind
-        ORDER BY f.name_similarity DESC, a.name`,
-    );
-    await client.query('COMMIT');
-    const open = await pool.query<ProposalRow>(
-      `${PROPOSAL_ROWS_SQL} WHERE p.answer IS NULL ORDER BY p.name_similarity DESC, p.distance_m, a.name`,
-    );
-    const answered = await pool.query<{ answer: 'one' | 'two' | 'part_of'; n: number }>(
-      `SELECT p.answer, count(*)::int AS n FROM experience_merge_proposals p WHERE p.answer IS NOT NULL GROUP BY p.answer`,
-    );
-    const by = (answer: string) => answered.rows.find(row => row.answer === answer)?.n ?? 0;
-    return {
-      open: open.rows.map(row => ({
-        id: row.id,
-        placeA: placeOf(row, 'a'),
-        placeB: placeOf(row, 'b'),
-        distanceM: row.distance_m,
-        nameSimilarity: row.name_similarity,
-        exact: row.exact,
-        reachM: row.reach_m,
-        foundBy: row.found_by,
-        proposedAt: row.proposed_at.toISOString(),
-      })),
-      foundBy: {
-        similar: open.rows.filter(row => row.found_by === 'similar').length,
-        words: open.rows.filter(row => row.found_by === 'words').length,
-      },
-      answered: { one: by('one'), two: by('two'), partOf: by('part_of') },
-      leftApart: leftApart.rows.map(row => ({
-        placeA: { name: row.a_name, kinds: row.a_kinds },
-        placeB: { name: row.b_name, kinds: row.b_kinds },
-        distanceM: row.distance_m,
-        nameSimilarity: row.name_similarity,
-        foundBy: row.found_by,
-      })),
-    };
-  } catch (error) {
-    await client.query('ROLLBACK').catch(() => undefined);
-    throw error;
-  } finally {
-    client.release();
-  }
+export const PAIRING_RULE_VERSION = 2;
+
+/** What one drain did: how many marked places it paired again, whether it ran over the whole catalogue, and how many pairs it left open among them. */
+export interface PairingDrain {
+  places: number;
+  wholeCatalogue: boolean;
+  open: number;
 }
 
 /**
- * The pass kept to the pairs that hold one of these places, for a place a reader
- * can newly see: a published arrival (#1800). A place no reader sees is in no
- * pair, so naming one changes nothing. Called once the place's own write has
- * committed, so a failure is logged and leaves the pair for the next pass, never
- * undoing what the caller wrote. Returns how many open pairs hold one of the
- * places afterwards, or null where the pass failed.
+ * Pair again every place whose pairing inputs changed since the last drain
+ * (#1950): the places `mark_pairing_due()` marked — a renamed place, a moved
+ * point, a refusal taken back, a pin that admits a place, a publish, a part
+ * added, a merge or its undo, a separation — through the one statement the
+ * whole pass uses (`writeProposals`), so the narrowed and the whole pass never
+ * measure a pair differently. When the database's rule version differs from
+ * `PAIRING_RULE_VERSION` it is the whole pass, and the version is recorded.
+ *
+ * One drain at a time: the rule's row is held for the drain's transaction. A
+ * mark a writer still holds uncommitted is skipped and stays for the next
+ * drain, which pairs the place as that writer left it. A failure rolls the
+ * marks back and is logged, never undoing what the caller wrote; it returns
+ * null.
  */
-export async function proposeMergesOfPlaces(placeIds: readonly number[]): Promise<number | null> {
-  if (placeIds.length === 0) return 0;
+export async function drainPairing(): Promise<PairingDrain | null> {
   let client: PoolClient | undefined;
   try {
     client = await pool.connect();
     await client.query('BEGIN');
-    await writeProposals(client, placeIds);
-    // Counted inside the transaction, so a failure here rolls the pass back
-    // rather than reporting a committed pass as failed.
+    const rule = await client.query<{ rule_version: number }>(
+      'SELECT rule_version FROM experience_pairing_rule FOR UPDATE',
+    );
+    const wholeCatalogue = rule.rows[0]?.rule_version !== PAIRING_RULE_VERSION;
+    const marked = await client.query<{ experience_id: number }>(
+      `DELETE FROM experience_pairing_due d
+        WHERE d.experience_id IN (SELECT experience_id FROM experience_pairing_due FOR UPDATE SKIP LOCKED)
+       RETURNING d.experience_id`,
+    );
+    const places = marked.rows.map(row => row.experience_id);
+    if (!wholeCatalogue && places.length === 0) {
+      await client.query('COMMIT');
+      return { places: 0, wholeCatalogue, open: 0 };
+    }
+    await writeProposals(client, wholeCatalogue ? null : places);
+    if (wholeCatalogue) {
+      await client.query('UPDATE experience_pairing_rule SET rule_version = $1', [PAIRING_RULE_VERSION]);
+    }
+    // Counted inside the transaction, so a failure here rolls the drain back
+    // rather than reporting a committed drain as failed.
     const open = await client.query<{ n: number }>(
       `SELECT count(*)::int AS n FROM experience_merge_proposals p
-        WHERE p.answer IS NULL AND (p.place_a = ANY($1::int[]) OR p.place_b = ANY($1::int[]))`,
-      [placeIds],
+        WHERE p.answer IS NULL AND ($1::boolean OR p.place_a = ANY($2::int[]) OR p.place_b = ANY($2::int[]))`,
+      [wholeCatalogue, places],
     );
     await client.query('COMMIT');
-    return open.rows[0].n;
+    return { places: places.length, wholeCatalogue, open: open.rows[0].n };
   } catch (error) {
     await client?.query('ROLLBACK').catch(() => undefined);
-    console.error('[merge] pairing places %s with near places failed:', placeIds.join(', '), error);
+    console.error('[merge] pairing the changed places with near places failed:', error);
     return null;
   } finally {
     client?.release();
   }
 }
 
-/**
- * The pass for the places a run created (#1800), read off its changeset after
- * the run's join (`joinPlacesClaimingOneItem`): a created place a merge has
- * since folded into another is paired as the place it is now part of.
- */
-export async function proposeMergesOfRun(syncLogId: number): Promise<number | null> {
-  try {
-    const created = await pool.query<{ id: number }>(
-      `SELECT DISTINCT COALESCE(e.merged_into_id, e.id) AS id
-         FROM experience_sync_changes c
-         JOIN experience_sync_logs run ON run.id = c.sync_log_id AND NOT run.is_dry_run
-         JOIN ${MEMBERSHIPS} m ON m.source_id = run.source_id AND m.external_id = c.external_id
-         JOIN experiences e ON e.id = m.experience_id
-        WHERE c.sync_log_id = $1 AND c.change_type = 'created'`,
-      [syncLogId],
-    );
-    return await proposeMergesOfPlaces(created.rows.map(row => row.id));
-  } catch (error) {
-    console.error('[merge] pairing the places run %d created failed:', syncLogId, error);
-    return null;
-  }
+/** A drain in words, for a run's closing line and the server log. */
+export function pairingSentence(drain: PairingDrain | null): string {
+  if (drain === null) return 'the pairing of near places failed; the server log has the cause';
+  const open = `${drain.open} near pair${drain.open === 1 ? '' : 's'} open`;
+  if (drain.wholeCatalogue) return `the whole catalogue paired again under the pairing rule's new version, ${open}`;
+  if (drain.places === 0) return 'no place changed what pairs it with near places';
+  return `${drain.places} changed place${drain.places === 1 ? '' : 's'} paired again with near places, ${open} among them`;
 }
