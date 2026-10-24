@@ -51,7 +51,7 @@ const facts = (over: Partial<CoverageFacts>): CoverageFacts => ({
 });
 const top = (slug: string, over: Partial<CalibrationRow> = {}): CalibrationRow => ({
   kind_slug: 'archaeology', slug, name: slug, wikidata_id: `Q${slug.length}${slug.charCodeAt(0)}`, sitelinks: 40, sources: ['coverage-surveys'],
-  offered: false, held_as: null, refused_for: null, ...over,
+  offered: false, admitted: false, held_as: null, refused_for: null, ...over,
 });
 const judged = (slug: string, cause: string, issue: number | null, over: Partial<JudgementRow> = {}): JudgementRow => ({
   region_slug: 'cusco-region', entry_slug: slug, kind_slug: 'archaeology', row_wikidata_id: null, cause, issue_number: issue, judged: '2026-10-16',
@@ -320,6 +320,8 @@ describe('a live kind against its own calibration list (#1864)', () => {
       top('tipon', { refused_for: 'a water system, not a site', sitelinks: 24 }),
       // A top the catalogue still holds that the latest run refused: the run's reason is what the list is there to surface.
       top('knocked-out', { held_as: 'Knocked Out', refused_for: 'a rule changed under it', sitelinks: 27 }),
+      // Let through by the line and waiting for a curator: counted, never named as a miss.
+      top('waiting-arrival', { held_as: 'Waiting Arrival', admitted: true, sitelinks: 35 }),
       top('moray', { sitelinks: 18 }),
       top('choquequirao', { sitelinks: 26 }),
       top('unknown-count', { sitelinks: null }),
@@ -330,7 +332,7 @@ describe('a live kind against its own calibration list (#1864)', () => {
   const own = (slug: string) => report.liveKinds.find(live => live.slug === slug)?.calibration;
 
   it('counts the tops offered, and names every miss most known first with where it stands', () => {
-    expect(own('archaeology')).toMatchObject({ entries: 8, offered: 1 });
+    expect(own('archaeology')).toMatchObject({ entries: 9, offered: 1, admitted: 1 });
     expect(own('archaeology')?.misses.map(miss => [miss.name, miss.standing, miss.detail])).toEqual([
       ['pending-dig', 'held', 'A dig nobody read yet'],
       ['coricancha', 'held', 'Coricancha'],
@@ -351,13 +353,13 @@ describe('a live kind against its own calibration list (#1864)', () => {
 
   it('gives each reference list its share, the most named first, under the register\'s name', () => {
     expect(own('archaeology')?.bySource).toEqual([
-      { slug: 'coverage-surveys', name: 'The coverage surveys', named: 7, offered: 1 },
+      { slug: 'coverage-surveys', name: 'The coverage surveys', named: 8, offered: 1 },
       { slug: 'wonders', name: 'The wonders list', named: 2, offered: 1 },
     ]);
   });
 
   it('keeps each kind to its own list, and gives a kind with no list none', () => {
-    expect(own('public-art')).toMatchObject({ entries: 1, offered: 1, misses: [] });
+    expect(own('public-art')).toMatchObject({ entries: 1, offered: 1, admitted: 0, misses: [] });
     expect(own('world-heritage')).toBeNull();
     expect(own('notable-works')).toBeNull();
   });
@@ -365,8 +367,9 @@ describe('a live kind against its own calibration list (#1864)', () => {
   it('says it as text: the share, each list\'s share, and every miss with its reason', () => {
     const text = renderCoverageReport(report);
     expect(text).toContain('What each live kind offers of the tops a traveller expects of it: its fame line, checked');
-    expect(text).toContain('Archaeology [archaeology]: 1 of 8 tops are offered');
-    expect(text).toContain('    The coverage surveys: 1 of 7');
+    expect(text).toContain('Archaeology [archaeology]: 1 of 9 tops are offered, 1 more admitted and waiting for a curator');
+    expect(text).toContain('    The coverage surveys: 1 of 8');
+    expect(text).not.toContain('Waiting Arrival');
     expect(text).toContain('refused by the last run: a water system, not a site)');
     expect(text).toContain('moray (Q5109; 18 sitelinks; coverage-surveys; absent, under the editions line)');
     expect(text).toContain('in the catalogue, not offered by this kind: A dig nobody read yet)');

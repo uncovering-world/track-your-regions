@@ -19,6 +19,7 @@ import type {
   CoverageRegionsRow, ExperienceLocationsRow, ExperiencesRow,
 } from '../../../db/schema.generated.js';
 import { countedMembershipSql } from '../../experience/experienceCounts.js';
+import { arrivalWaitingSql } from '../../experience/waitingCounts.js';
 import { venuesShowingSql } from '../../experience/siteFinds.js';
 import { placePointsSql } from '../../../db/placePoints.js';
 
@@ -78,6 +79,8 @@ export type CalibrationRow = Pick<CoverageCalibrationEntriesRow, 'kind_slug' | '
   sources: string[];
   /** The kind offers a place known by the item. */
   offered: boolean;
+  /** The kind admits a place known by the item, which a reader does not see yet: it waits for a curator. */
+  admitted: boolean;
   /** A catalogue place known by the item exists and the kind does not offer it; the name of one such place, else null. */
   held_as: string | null;
   /** What the latest real, closed run of one of the kind's sources said when it refused the item; null where none did. */
@@ -291,7 +294,11 @@ const UNNAMED_SQL = `
 /**
  * Where each top of a calibration list stands to its kind (#1864): offered when a place known
  * by the item (`KNOWN_AS_SQL`, the identifiers the survey lists match by) has a counted
- * membership in the kind; held when such a place exists and none is counted, named by the
+ * membership in the kind; admitted when its arrival waits in the review queue
+ * (`arrivalWaitingSql`, the queue's own fragment: admitted, unread, not marked missing — the
+ * line let it through and a curator will see it; a place a curator passed that no longer
+ * stands, or an arrival the next run marked missing, waits for nobody and stays held); held when
+ * such a place exists and the kind neither offers nor admits it, named by the
  * place's own id before a membership's; refused when the latest real, closed run of one of the
  * kind's active sources filtered the item, with the reason the run recorded
  * (`experience_sync_changes`, a refusal is never a membership row); absent otherwise. A kind of
@@ -312,13 +319,15 @@ const CALIBRATION_SQL = `
   ), holding AS (
     SELECT c.kind_slug, c.slug,
            bool_or(COALESCE(counted.offered, false)) AS offered,
+           bool_or(COALESCE(counted.admitted, false)) AS admitted,
            (array_agg(e.name ORDER BY k.own DESC, e.id))[1] AS held_as
       FROM coverage_calibration_entries c
       JOIN coverage_kinds ck ON ck.slug = c.kind_slug
       JOIN known_as k ON k.id = c.wikidata_id
       JOIN experiences e ON e.id = k.experience_id
       LEFT JOIN LATERAL (
-        SELECT bool_or(${countedMembershipSql('m', 'e')}) AS offered
+        SELECT bool_or(${countedMembershipSql('m', 'e')}) AS offered,
+               bool_or(${arrivalWaitingSql('e', 'm')}) AS admitted
           FROM ${MEMBERSHIPS} m
          WHERE m.experience_id = e.id AND m.kind_id = ck.experience_kind_id
       ) counted ON true
@@ -334,6 +343,7 @@ const CALIBRATION_SQL = `
          ARRAY(SELECT cs.source_slug FROM coverage_calibration_entry_sources cs
                 WHERE cs.kind_slug = c.kind_slug AND cs.entry_slug = c.slug ORDER BY cs.source_slug) AS sources,
          COALESCE(h.offered, false) AS offered,
+         COALESCE(h.admitted, false) AS admitted,
          h.held_as,
          r.error AS refused_for
     FROM coverage_calibration_entries c
