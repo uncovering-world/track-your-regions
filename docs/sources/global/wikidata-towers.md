@@ -88,7 +88,10 @@ automated traffic removed (`readWorks`, the reading Art Museums' works door uses
 
 ## The line
 
-Two reference lists measured the options:
+Two reference lists measured the options. That was the reading the line was chosen on; the list
+the line is checked against after every run is the committed
+`db/catalogue-coverage/calibration/towers.jsonl` (#1864), read from the same two lists and the
+engineers' wonders. The two lists:
 
 - the coverage surveys' 23 towers, 11 of which carry a tower class;
 - the World Federation of Great Towers' 52 members (`www.great-towers.com/towers`, read

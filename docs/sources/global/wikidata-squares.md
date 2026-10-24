@@ -82,7 +82,14 @@ Khaosan Road, and kept nothing out that the line does not.
 
 ## What a traveller expects: the calibration list
 
-The list was assembled from three independent sources, among the candidates:
+The list was assembled from three independent sources, among the candidates.
+
+That was the reading the line was chosen on. The list the line is checked against after every
+run is the committed `db/catalogue-coverage/calibration/squares-and-streets.jsonl` (#1864), read from the whole
+of Wikidata rather than from the run's candidates, so it also holds the tops the line or the rule
+loses.
+
+The three sources:
 
 - the coverage surveys' entries under this kind that the pool names: 45, from Red Square and
   Tiananmen Square to the Via Giulia and Yerevan's Abovyan Street;

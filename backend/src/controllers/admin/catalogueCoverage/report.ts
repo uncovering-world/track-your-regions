@@ -134,12 +134,14 @@ export interface JudgedCause {
  * offered by the kind; refused by the kind's latest real run, with the run's
  * reason — before held, since a rule change knocks a top the catalogue already
  * holds out through that very refusal, and the reason is what the list is there
- * to surface; held, in the catalogue and not offered by it (waiting for a
- * curator, refused by name earlier, offered by another kind alone); absent,
+ * to surface; admitted, the kind's rule and line let it through and it waits for
+ * a curator, so the line holds it; held, in the catalogue and neither offered nor
+ * admitted by this kind (refused by name earlier, offered by another kind
+ * alone); absent,
  * which is under the kind's editions line where the list's sitelinks say so,
  * else out of its classes' reach.
  */
-export type CalibrationStanding = 'offered' | 'held' | 'refused' | 'under_line' | 'absent';
+export type CalibrationStanding = 'offered' | 'admitted' | 'held' | 'refused' | 'under_line' | 'absent';
 
 export interface CalibrationTop {
   slug: string;
@@ -164,6 +166,8 @@ export interface CalibrationBySource {
 export interface KindCalibration {
   entries: number;
   offered: number;
+  /** Admitted by the kind and waiting for a curator: the line holds them, a reader does not see them yet. */
+  admitted: number;
   /** Every top the kind does not offer, the most known first. */
   misses: CalibrationTop[];
   bySource: CalibrationBySource[];
@@ -366,6 +370,7 @@ const byFame = (a: CalibrationTop, b: CalibrationTop): number =>
 function standingOf(row: CalibrationRow, line: number | null): CalibrationStanding {
   if (row.offered) return 'offered';
   if (row.refused_for !== null) return 'refused';
+  if (row.admitted) return 'admitted';
   if (row.held_as !== null) return 'held';
   return line !== null && row.sitelinks !== null && row.sitelinks < line ? 'under_line' : 'absent';
 }
@@ -404,7 +409,10 @@ function calibrationOf(kind: KindRow, rows: CalibrationRow[], line: number | nul
   return {
     entries: tops.length,
     offered: tops.filter(top => top.standing === 'offered').length,
-    misses: tops.filter(top => top.standing !== 'offered').sort(byFame),
+    admitted: tops.filter(top => top.standing === 'admitted').length,
+    // The admitted are the line's passes, counted rather than named: a list of waiting
+    // arrivals would bury the misses the list is there to show.
+    misses: tops.filter(top => top.standing !== 'offered' && top.standing !== 'admitted').sort(byFame),
     bySource: [...bySource.values()].sort((a, b) => b.named - a.named || a.slug.localeCompare(b.slug)),
   };
 }

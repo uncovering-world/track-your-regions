@@ -76,7 +76,7 @@ function liveLines(report: CoverageReport): string[] {
   return ['What each live kind lacks of what is expected of it', '', ...report.liveKinds.flatMap(liveKindLines)];
 }
 
-const STANDING_WORDS: Record<Exclude<CalibrationStanding, 'offered'>, string> = {
+const STANDING_WORDS: Record<Exclude<CalibrationStanding, 'offered' | 'admitted'>, string> = {
   held: 'in the catalogue, not offered by this kind',
   refused: 'refused by the last run',
   under_line: 'absent, under the editions line',
@@ -87,14 +87,15 @@ const STANDING_WORDS: Record<Exclude<CalibrationStanding, 'offered'>, string> = 
 function missLine(top: CalibrationTop): string {
   const sitelinks = top.sitelinks ?? 'no';
   const detail = top.detail === null ? '' : `: ${top.detail}`;
-  return `        ${top.name} (${top.wikidataId}; ${sitelinks} sitelinks; ${top.sources.join(', ')}; ${STANDING_WORDS[top.standing as Exclude<CalibrationStanding, 'offered'>]}${detail})`;
+  return `        ${top.name} (${top.wikidataId}; ${sitelinks} sitelinks; ${top.sources.join(', ')}; ${STANDING_WORDS[top.standing as Exclude<CalibrationStanding, 'offered' | 'admitted'>]}${detail})`;
 }
 
 /** A live kind against its own calibration list (#1864): the share offered, each reference list's share, and every miss. */
 function calibrationLines(kind: LiveKindGaps): string[] {
   const own = kind.calibration;
   if (own === null) return [];
-  const lines = [`${kind.name} [${kind.slug}]: ${own.offered} of ${own.entries} tops are offered`];
+  const waiting = own.admitted > 0 ? `, ${own.admitted} more admitted and waiting for a curator` : '';
+  const lines = [`${kind.name} [${kind.slug}]: ${own.offered} of ${own.entries} tops are offered${waiting}`];
   for (const source of own.bySource) lines.push(`    ${source.name}: ${source.offered} of ${source.named}`);
   if (own.misses.length > 0) lines.push('    not offered:', ...own.misses.map(missLine));
   return lines;
