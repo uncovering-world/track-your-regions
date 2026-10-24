@@ -67,6 +67,13 @@ export interface PlaceKind<Trees> {
     enter(run: QueryRunner): Promise<PoolEntity[]>;
     attach(run: QueryRunner, pool: Map<string, PoolEntity>, facts: Map<string, EntityFacts>): Promise<void>;
   };
+  /**
+   * Classes whose instances are its candidates below the pool's floor, with
+   * the floor they are asked at (#1947): a canal's lock or boat lift is a sight
+   * read in few languages — the Anderton Boat Lift has 11 Wikipedia editions —
+   * and the kind's own line for them decides. Only this kind sees them.
+   */
+  belowFloor?(trees: Trees): { classes: readonly string[]; floor: number };
 }
 
 /** A kind's share of the gather: its trees, and its candidates with what is known of them. */
@@ -206,6 +213,37 @@ function candidatesOf(
   return { pool, byId: askedById, facts: known };
 }
 
+/**
+ * The candidates each kind asks for below the pool's floor (`belowFloor`), by
+ * kind: entities the pool already named stay the pool's, and the rest are the
+ * asking kind's alone, so no other kind meets a candidate under its floor.
+ */
+async function collectBelowFloor(
+  run: QueryRunner, requests: GatherRequest[], trees: Map<PlaceKind<unknown>, unknown>, pooled: Map<string, PoolEntity>,
+): Promise<Map<PlaceKind<unknown>, Map<string, PoolEntity>>> {
+  const out = new Map<PlaceKind<unknown>, Map<string, PoolEntity>>();
+  for (const { kind } of requests) {
+    if (!kind.belowFloor) continue;
+    const { classes, floor } = kind.belowFloor(trees.get(kind));
+    const own = new Map<string, PoolEntity>();
+    const batches = chunk([...classes], CLASS_BATCH);
+    for (let i = 0; i < batches.length; i++) {
+      run.phase(`Fetching ${kind.name} below the pool floor (batch ${i + 1}/${batches.length})...`);
+      await run.step();
+      for (const entity of await fetchClassPool(run, batches[i], undefined, floor)) {
+        if (!pooled.has(entity.qid)) own.set(entity.qid, entity);
+      }
+    }
+    out.set(kind, own);
+  }
+  return out;
+}
+
+/** The pool as one kind sees it: the shared pool and what it asked below the floor. */
+function withOwn(pooled: Map<string, PoolEntity>, own: Map<string, PoolEntity> | undefined): Map<string, PoolEntity> {
+  return own ? new Map([...own, ...pooled]) : pooled;
+}
+
 /** Gather the candidate places of every kind asked for, and what each of them is. */
 export async function gatherPlaces(run: SubjectRunner, requests: GatherRequest[]): Promise<GatheredPlaces> {
   const { trees, classesOf, roots, narrow } = await askedClasses(run, requests);
@@ -216,12 +254,14 @@ export async function gatherPlaces(run: SubjectRunner, requests: GatherRequest[]
   }
   const admitted = new Set(requests.flatMap(({ admitted: ids }) => [...ids]));
   const byId = await collectAdmitted(run, [...admitted].filter((qid) => !pooled.has(qid)));
-  const facts = await collectFacts(run, [...pooled.keys(), ...byId.keys()]);
+  const low = await collectBelowFloor(run, requests, trees, pooled);
+  const lowIds = [...low.values()].flatMap((own) => [...own.keys()]);
+  const facts = await collectFacts(run, [...new Set([...pooled.keys(), ...byId.keys(), ...lowIds])]);
   for (const edition of editions) await edition.attach(run, pooled, facts);
 
   const shares = new Map<PlaceKind<unknown>, KindShare<unknown>>();
   for (const { kind, admitted: ids } of requests) {
-    const share = candidatesOf(classesOf.get(kind)!, ids, pooled, byId, facts);
+    const share = candidatesOf(classesOf.get(kind)!, ids, withOwn(pooled, low.get(kind)), byId, facts);
     shares.set(kind, { trees: trees.get(kind), ...share, containers: emptyContainment(), subjects: new Map() });
   }
 

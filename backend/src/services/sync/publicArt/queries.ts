@@ -150,12 +150,12 @@ function bandedPoolQuery(rootQid: string, band: Band, limit: number): string {
     LIMIT ${limit}`;
 }
 
-function classPoolQuery(classQids: string[], limit: number): string {
+function classPoolQuery(classQids: string[], limit: number, floor: number): string {
   return `
     SELECT ${POOL_COLUMNS} WHERE {
       VALUES ?cls { ${values(classQids)} }
       ?e wdt:P31 ?cls ; wdt:P625 ?coord ; wikibase:sitelinks ?sl .
-      FILTER(?sl >= ${POOL_MIN_SITELINKS})${POOL_DETAILS}
+      FILTER(?sl >= ${floor})${POOL_DETAILS}
     }
     LIMIT ${limit}`;
 }
@@ -409,23 +409,28 @@ export async function fetchEntitiesByIds(
   return settleCountriesByPoint(await inWikipediaEditions(sparql, parsePool(rows, { placeless: true }), { before: step }));
 }
 
-/** Entities of a batch of narrow classes, taken whole. */
+/**
+ * Entities of a batch of narrow classes, taken whole, at the pool floor or at
+ * the lower `floor` a kind asks for some of its classes (`PlaceKind.belowFloor`).
+ */
 export async function fetchClassPool(
   door: Door,
   classQids: string[],
   limit = POOL_LIMIT,
+  floor = POOL_MIN_SITELINKS,
 ): Promise<PoolEntity[]> {
   if (!classQids.length) return [];
   const { sparql, step } = doorOf(door);
   if (readsSubset(sparql)) {
-    return settleCountriesByPoint(await inWikipediaEditions(sparql, await subsetPoolOfClasses(classQids, POOL_MIN_SITELINKS), { floor: POOL_MIN_SITELINKS, before: step }));
+    return settleCountriesByPoint(await inWikipediaEditions(sparql, await subsetPoolOfClasses(classQids, floor), { floor, before: step }));
   }
+  const at = floor === POOL_MIN_SITELINKS ? '' : `, ${floor} editions or more`;
   const rows = await sparql(
-    classPoolQuery(classQids, limit),
-    { kind: 'pool', label: `pool: ${classQids.length} narrow classes` },
+    classPoolQuery(classQids, limit, floor),
+    { kind: 'pool', label: `pool: ${classQids.length} narrow classes${at}` },
   );
-  failIfTruncated(rows, limit, `pool: ${classQids.length} narrow classes`);
-  return settleCountriesByPoint(await inWikipediaEditions(sparql, parsePool(rows), { floor: POOL_MIN_SITELINKS, before: step }));
+  failIfTruncated(rows, limit, `pool: ${classQids.length} narrow classes${at}`);
+  return settleCountriesByPoint(await inWikipediaEditions(sparql, parsePool(rows), { floor, before: step }));
 }
 
 // =============================================================================

@@ -75,6 +75,12 @@ export type PlaceVerdict<Type extends WikidataLandmark['type']> = { pass: true; 
 export interface GuidedKind<Trees, Type extends WikidataLandmark['type']> {
   verdict(facts: { classes: readonly string[]; onEarth: boolean; lat: number | null; lon: number | null }, trees: Trees): PlaceVerdict<Type>;
   line: GuidedLine;
+  /**
+   * The line a candidate of these classes is held to, where the kind holds
+   * some of its candidates to a line of their own (#1947: a canal's lock or
+   * lift); `line` otherwise.
+   */
+  lineFor?(classes: readonly string[], trees: Trees): GuidedLine;
   /** Names the kind in the run's log, `[Bridges]`. */
   logPrefix: string;
 }
@@ -105,11 +111,12 @@ export async function classifyByGuidedLine<Trees, Type extends WikidataLandmark[
     }
     const own = readers === null ? null : readers.get(entity.qid) ?? 0;
     const isGuided = guided.has(entity.qid);
-    const stands = guidedStanding(kind.line, entity.sitelinks, own, isGuided, admitted.has(entity.qid));
+    const line = kind.lineFor?.(classes, trees) ?? kind.line;
+    const stands = guidedStanding(line, entity.sitelinks, own, isGuided, admitted.has(entity.qid));
     if (stands === 'out') continue;
     if (stands === 'fell') {
       filtered.push({
-        externalId: entity.qid, name: entity.label, reason: belowGuidedLine(kind.line, entity.sitelinks, own, isGuided), type: verdict.type,
+        externalId: entity.qid, name: entity.label, reason: belowGuidedLine(line, entity.sitelinks, own, isGuided), type: verdict.type,
       });
       continue;
     }

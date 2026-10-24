@@ -154,6 +154,36 @@ describe('gatherPlaces', () => {
     expect(shareOf(gathered, WORSHIP).pool.has('Q5')).toBe(true);
   });
 
+  it('asks a kind\'s classes below the pool floor for that kind alone (#1947)', async () => {
+    // A kind of a canal's works, asking its lock class at 3 editions; public art names locks too.
+    const LOCK = 'Q105731';
+    const WORKS: PlaceKind<{ locks: string[] }> = {
+      name: 'engineering works',
+      trees: vi.fn(async () => ({ locks: [LOCK] })),
+      poolClasses: (trees) => ({ broad: [], narrow: trees.locks }),
+      readsContainers: false,
+      belowFloor: (trees) => ({ classes: trees.locks, floor: 3 }),
+    };
+    const LOCKY_ART: PlaceKind<{ admitting: string[] }> = { ...ART, trees: vi.fn(async () => ({ admitting: [STATUE, LOCK] })) };
+    KNOWN.Q6 = facts([LOCK]);
+    vi.mocked(fetchClassPool).mockImplementation(async (_door, _classes, _limit, floor) => (
+      // The Anderton Boat Lift's shape: read in 11 languages, under the pool's floor.
+      floor === 3 ? [entity('Q6', 11)] : []
+    ));
+
+    const gathered = await gatherPlaces(run, [
+      { kind: WORKS as PlaceKind<unknown>, admitted: new Set() },
+      { kind: LOCKY_ART as PlaceKind<unknown>, admitted: new Set() },
+    ]);
+    delete KNOWN.Q6;
+
+    expect(vi.mocked(fetchClassPool).mock.calls.filter(([, , , floor]) => floor === 3).map(([, classes]) => classes)).toEqual([[LOCK]]);
+    expect(shareOf(gathered, WORKS).pool.has('Q6')).toBe(true);
+    expect(shareOf(gathered, WORKS).facts.get('Q6')?.classes).toEqual([LOCK]);
+    // The other kind meets no candidate under its floor, though its classes name it.
+    expect(shareOf(gathered, LOCKY_ART).pool.has('Q6')).toBe(false);
+  });
+
   it('refuses to hand a share of a kind it was not asked for', async () => {
     const gathered = await gatherPlaces(run, [{ kind: ART as PlaceKind<unknown>, admitted: new Set() }]);
     expect(() => shareOf(gathered, WORSHIP)).toThrow(/not asked for places of worship/);
