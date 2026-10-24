@@ -34,8 +34,20 @@ interface Fixture {
   creators?: string[];
 }
 
+/** A cast of a group of casts: its item, where it stands, its classes (#880). */
+interface CastFixture {
+  qid: string;
+  label: string;
+  coord: string;
+  at?: { qid: string; label: string; ended?: boolean };
+  country?: string;
+  classes: string[];
+}
+
 interface World {
   entities: Fixture[];
+  /** The casts of each group of casts, by the group's item. */
+  casts?: Record<string, CastFixture[]>;
   /** Direct subclasses per parent, for the bounded closure. */
   children?: Record<string, string[]>;
   museumTree?: string[];
@@ -72,8 +84,27 @@ const containersOf = (world: World, query: string): SparqlBinding[] =>
     ];
   });
 
+/** The casts question: every cast of each group asked about, one row per class (#880). */
+function castsOf(world: World, query: string): SparqlBinding[] {
+  const asks = new Set(named(query));
+  return Object.entries(world.casts ?? {}).filter(([group]) => asks.has(group)).flatMap(([group, casts]) =>
+    casts.flatMap((cast) => cast.classes.map((cls) => ({
+      g: ref(group), cast: ref(cast.qid), castLabel: { value: cast.label }, coord: { value: cast.coord }, cls: ref(cls),
+      ...(cast.at ? { at: ref(cast.at.qid), atLabel: { value: cast.at.label } } : {}),
+      ...(cast.at?.ended ? { ended: { value: '2001-01-01T00:00:00Z' } } : {}),
+      ...(cast.country ? { countryLabel: { value: cast.country } } : {}),
+    }))));
+}
+
+/** The groups of casts with no point of their own and a cast that has one, placeless (#880). */
+function castGroupsOf(world: World): SparqlBinding[] {
+  return world.entities.filter((f) => f.coord === undefined && f.under === '' && (world.casts?.[f.qid]?.length ?? 0) > 0)
+    .map((f) => ({ e: ref(f.qid), eLabel: { value: f.label }, sl: { value: String(f.sitelinks) } }));
+}
+
 /** A pool question: the broad root it names, the classes its VALUES list, or the entities asked for by id. */
 function poolOf(world: World, query: string): SparqlBinding[] {
+  if (query.includes('FILTER NOT EXISTS { ?e wdt:P625')) return castGroupsOf(world);
   const asks = new Set(named(query));
   const byId = query.includes('VALUES ?e');
   return world.entities.filter((f) => (byId ? asks.has(f.qid) : asks.has(f.under))).map((f) => ({
@@ -94,6 +125,7 @@ function doorTo(world: World, asked: CacheDescriptor['kind'][] = []): QueryRunne
     if (query.includes('wdt:P279 ?p')) return Promise.resolve(subclassesOf(world, query));
     if (tree) return Promise.resolve(treeOf(world, tree[1]));
     if (query.startsWith('SELECT ?e ?cls')) return Promise.resolve(factsOf(world, query));
+    if (query.startsWith('SELECT ?g ?cast')) return Promise.resolve(castsOf(world, query));
     if (query.startsWith('SELECT ?c ?cLabel')) return Promise.resolve(containersOf(world, query));
     return Promise.resolve(poolOf(world, query));
   };
@@ -118,6 +150,46 @@ async function collectPublicArt(
 }
 
 describe('collectPublicArt', () => {
+  it('reads a group of casts as one place with a point at every cast, entering through them where it has no point (#880)', async () => {
+    const CAST_GROUP = 'Q28890616';
+    const GROUP_OF_SCULPTURES = 'Q2293362';
+    const world: World = {
+      // The casts' class is a sculpture; the group's own says only "group of casts".
+      children: { [SCULPTURE]: [GROUP_OF_SCULPTURES] },
+      entities: [
+        // The Burghers of Calais: a group with a point of its own, named by the class question.
+        { qid: 'Q978987', label: 'The Burghers of Calais', under: CAST_GROUP, sitelinks: 30, coord: 'Point(1.8533 50.9524)', classes: [CAST_GROUP] },
+        // The Thinker: no point of its own; it enters through its one cast.
+        { qid: 'Q18003128', label: 'The Thinker', under: '', sitelinks: 53, classes: [CAST_GROUP] },
+      ],
+      casts: {
+        Q978987: [
+          { qid: 'Q29273401', label: 'The Burghers of Calais', coord: 'Point(1.8535 50.9523)', at: { qid: 'Q6454', label: 'Calais' }, country: 'France', classes: [GROUP_OF_SCULPTURES] },
+          { qid: 'Q47522991', label: 'The Burghers of Calais, Stanford', coord: 'Point(-122.1699 37.428)', at: { qid: 'Q41506', label: 'Stanford University' }, country: 'United States', classes: [GROUP_OF_SCULPTURES] },
+          // A loan that ended is no cast.
+          { qid: 'Q900001', label: 'The Burghers of Calais (loan)', coord: 'Point(2.3 48.8)', at: { qid: 'Q19675', label: 'Louvre', ended: true }, classes: [GROUP_OF_SCULPTURES] },
+        ],
+        Q18003128: [
+          { qid: 'Q130544842', label: 'Le Penseur (Kyoto National Museum)', coord: 'Point(135.7723 34.99)', at: { qid: 'Q147286', label: 'Kyoto National Museum' }, country: 'Japan', classes: [SCULPTURE] },
+        ],
+      },
+    };
+    const { items, filtered } = await collectPublicArt(doorTo(world), new Set());
+    expect(filtered).toEqual([]);
+    const burghers = items.find((i) => i.qid === 'Q978987')!;
+    expect(burghers.casts).toEqual([
+      { name: 'Calais', lat: 50.9523, lon: 1.8535, countryLabel: 'France' },
+      { name: 'Stanford University', lat: 37.428, lon: -122.1699, countryLabel: 'United States' },
+    ]);
+    // The group's own point stays what the verdict read; the casts' class is what admitted it.
+    expect([burghers.lat, burghers.lon]).toEqual([50.9524, 1.8533]);
+    expect(burghers.classes).toEqual([CAST_GROUP, GROUP_OF_SCULPTURES]);
+    const thinker = items.find((i) => i.qid === 'Q18003128')!;
+    expect([thinker.lat, thinker.lon]).toEqual([34.99, 135.7723]);
+    expect(thinker.countryLabel).toBe('Japan');
+    expect(thinker.casts).toEqual([{ name: 'Kyoto National Museum', lat: 34.99, lon: 135.7723, countryLabel: 'Japan' }]);
+  });
+
   it('admits what clears the line and files what the rule refuses, with its reason', async () => {
     const world: World = {
       worshipTree: ['Q1370598', CATHEDRAL, BASILICA],

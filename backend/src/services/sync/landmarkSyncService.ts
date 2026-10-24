@@ -202,8 +202,9 @@ async function upsertLandmarkExperience(
   // serial site is at its most central component (ADR-0095), and that anchor
   // is written past the gate — it is derived from the points, not a move of
   // the work. Its countries are every cast's, the anchor's first. A work
-  // standing in one place keeps its one point.
-  const casts = landmark.casts && landmark.casts.length > 1 ? landmark.casts : null;
+  // standing in one place keeps its one point unless the source explicitly
+  // names that point as a cast; one remaining cast still carries its own name.
+  const casts = landmark.casts && landmark.casts.length > 0 ? landmark.casts : null;
   const anchor = casts ? medoidOf(casts) : landmark;
   const countryNames = countriesOf(landmark, casts, anchor);
 

@@ -32,7 +32,8 @@ import {
 import { belowLineReason, lineStanding, type LinePair } from '../sourceLine.js';
 import { publicArtVerdict } from './publicArtTest.js';
 import type { KindRule } from './kindRules.js';
-import { emptyFacts, type PoolEntity, type EntityFacts } from './queries.js';
+import { CAST_GROUP, emptyFacts, fetchCastGroupPool, type PoolEntity, type EntityFacts } from './queries.js';
+import { attachCasts, fetchCastItems } from './castGroups.js';
 import type { PlaceKind } from '../places/gather.js';
 import { chainOf, ownersOf, type Containment } from '../places/containment.js';
 import type { SubjectFacts } from './subjects.js';
@@ -142,10 +143,31 @@ async function collectTrees(run: QueryRunner): Promise<PublicArtTrees> {
 export const PUBLIC_ART_KIND: PlaceKind<PublicArtTrees> = {
   name: 'public art and monuments',
   trees: collectTrees,
-  poolClasses: (trees) => ({ broad: BROAD_ROOTS, narrow: trees.admitting }),
+  // A group of casts is asked for by its class too, so a group with a point of
+  // its own (the Burghers of Calais) is a candidate; its casts are read below.
+  poolClasses: (trees) => ({ broad: BROAD_ROOTS, narrow: [...trees.admitting, CAST_GROUP] }),
   readsContainers: true,
   readsSubjects: true,
+  editions: {
+    enter: fetchCastGroupPool,
+    attach: readCastGroups,
+  },
 };
+
+/**
+ * The casts of every group of casts among the candidates, written onto the
+ * group (#880, ADR-0145 decision 2b): the group carries the fame and enters the
+ * pool, its casts carry the points and the classes the rule reads.
+ */
+async function readCastGroups(run: QueryRunner, pool: Map<string, PoolEntity>, facts: Map<string, EntityFacts>): Promise<void> {
+  const groups = [...pool.keys()].filter(qid => facts.get(qid)?.classes.includes(CAST_GROUP));
+  if (!groups.length) return;
+  run.phase(`Reading the casts of ${groups.length} groups of casts...`);
+  for (const [group, casts] of await fetchCastItems(run, groups)) {
+    const entity = pool.get(group);
+    if (entity) attachCasts(entity, facts.get(group), casts);
+  }
+}
 
 /** The row the run writes for an admitted entity: the pool's facts, the verdict's type, and an edition's casts (#880). */
 function landmarkOf(

@@ -57,6 +57,16 @@ export interface PlaceKind<Trees> {
   readsContainers: boolean;
   /** Whether its rule reads what a candidate depicts (`P180`): what that item is (`publicArt/subjects.ts`). */
   readsSubjects?: boolean;
+  /**
+   * The editions among its candidates (#880, ADR-0145): `enter` names the
+   * groups that enter the pool through their casts, with no point of their own;
+   * `attach` writes each group's casts onto its pool entity once the facts are
+   * read, so the rule sees the casts' classes and the run writes their points.
+   */
+  editions?: {
+    enter(run: QueryRunner): Promise<PoolEntity[]>;
+    attach(run: QueryRunner, pool: Map<string, PoolEntity>, facts: Map<string, EntityFacts>): Promise<void>;
+  };
 }
 
 /** A kind's share of the gather: its trees, and its candidates with what is known of them. */
@@ -200,9 +210,14 @@ function candidatesOf(
 export async function gatherPlaces(run: SubjectRunner, requests: GatherRequest[]): Promise<GatheredPlaces> {
   const { trees, classesOf, roots, narrow } = await askedClasses(run, requests);
   const pooled = await collectPool(run, roots, narrow);
+  const editions = requests.map(({ kind }) => kind.editions).filter((e): e is NonNullable<typeof e> => e !== undefined);
+  for (const edition of editions) {
+    for (const entity of await edition.enter(run)) if (!pooled.has(entity.qid)) pooled.set(entity.qid, entity);
+  }
   const admitted = new Set(requests.flatMap(({ admitted: ids }) => [...ids]));
   const byId = await collectAdmitted(run, [...admitted].filter((qid) => !pooled.has(qid)));
   const facts = await collectFacts(run, [...pooled.keys(), ...byId.keys()]);
+  for (const edition of editions) await edition.attach(run, pooled, facts);
 
   const shares = new Map<PlaceKind<unknown>, KindShare<unknown>>();
   for (const { kind, admitted: ids } of requests) {
