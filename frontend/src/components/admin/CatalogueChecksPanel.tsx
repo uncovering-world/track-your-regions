@@ -51,7 +51,6 @@ import {
   type DataAssertionReport,
 } from '../../api/admin/dataAssertions';
 import { EmptyState } from '../shared/EmptyState';
-import { MergeProposalFinderCard } from './MergeProposalFinderCard';
 import { formatDateTime } from '../../utils/dateFormat';
 import { plural } from '../../utils/plural';
 import { displayNameOf } from '../../utils/displayName';
@@ -302,7 +301,6 @@ export function CatalogueChecksPanel() {
         past it means something is writing those rows now.
       </Typography>
 
-      <MergeProposalFinderCard />
 
       {data?.acceptancesUnavailable && (
         <Alert severity="warning" sx={{ mb: 2 }}>{data.acceptancesUnavailable}</Alert>

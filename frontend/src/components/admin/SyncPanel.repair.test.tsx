@@ -154,6 +154,8 @@ describe('a picture repair found already in flight', () => {
     mockedFix.mockResolvedValue({ started: true, message: '' });
 
     renderPanel();
+    // A single-purpose action, under More (#1805).
+    fireEvent.click(await screen.findByRole('button', { name: 'More actions' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Fix pictures' }));
 
     expect(await screen.findByText('Fixing pictures...')).toBeInTheDocument();
@@ -167,6 +169,10 @@ describe('a picture repair found already in flight', () => {
     renderPanel();
 
     await screen.findByText('Public art');
+    // Only the source that repairs offers More at all.
+    const more = screen.getAllByRole('button', { name: 'More actions' });
+    expect(more).toHaveLength(1);
+    fireEvent.click(more[0]);
     expect(screen.getAllByRole('button', { name: 'Fix pictures' })).toHaveLength(1);
   });
 });
@@ -191,6 +197,7 @@ describe('a search for component items', () => {
 
     renderPanel();
     await screen.findByText('Art Museums');
+    for (const more of screen.getAllByRole('button', { name: 'More actions' })) fireEvent.click(more);
     expect(screen.getAllByRole('button', { name: 'Find component items' })).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: 'Find component items' }));
 

@@ -209,7 +209,11 @@ describe('following a run through a restart', () => {
     mockedStart.mockResolvedValue({ started: true });
     renderPanel();
 
-    fireEvent.click(await screen.findByRole('button', { name: /Start Sync/ }));
+    // The mount's ask goes out before the start: the card's buttons are on
+    // screen a tick before its poller's mount effect has run, and a start
+    // pressed in that tick would make the first ask the run's own.
+    await waitFor(() => expect(mockedStatus).toHaveBeenCalledTimes(1));
+    fireEvent.click(screen.getByRole('button', { name: /Start Sync/ }));
     await waitFor(() => expect(mockedStart).toHaveBeenCalled());
     // The mount's ask, sent before the run began, answers idle only now.
     await act(async () => { answerFirst(killed()); });

@@ -302,7 +302,7 @@ export function WikidataCacheSection({ sourceId }: { sourceId: number }) {
 
         {/* Only where there is a cache to describe. On a source that keeps
             nothing these two paragraphs are the negation of the line below —
-            and since "Sync without cache" is now hidden for those sources, the
+            and since "Without the cache" is now hidden for those sources, the
             second one also pointed at a button that is not on the screen. This
             file's own header argues against exactly that: a cache that does not
             exist explaining a run that never made it. */}
@@ -328,7 +328,7 @@ export function WikidataCacheSection({ sourceId }: { sourceId: number }) {
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
               <strong>Clear</strong> deletes the cache — the next run fetches it
               again. To ignore the cache for one run without deleting it, start that
-              sync with <strong>Sync without cache</strong>.
+              sync as <strong>Without the cache</strong>, behind <strong>Start Sync</strong>'s arrow.
             </Typography>
           </>
         )}
