@@ -80,7 +80,12 @@ A neighbourhood is no refusal. Wikidata files a shopping street under neighbourh
 that refused neighbourhoods refused Oxford Street, Fifth Avenue, Regent Street, Nanjing Road and
 Khaosan Road, and kept nothing out that the line does not.
 
-## What a traveller expects: the calibration list
+## What the line was chosen on
+
+The list below is the reading the line was chosen on, drawn from the run's own candidates. The
+list the line is checked against after every run is the canon in
+`db/catalogue-coverage/calibration/squares-and-streets.jsonl` (#1951), compiled independently of what the line
+measures (`docs/tech/catalogue-coverage.md`).
 
 The list was assembled from three independent sources, among the candidates:
 
@@ -105,7 +110,7 @@ the Pantheon, though both are read some 35,000 times a year. So the readers' doo
 Measured with the draft rule on the candidates, with a "no guide and no heritage listing" count as
 a rough measure of what a curator will turn away:
 
-| line | admitted | with no guide and no heritage listing | calibration list |
+| line | admitted | with no guide and no heritage listing | the reading's places |
 |---|---|---|---|
 | 25,000 readers | 273 | 54 | 95/114 |
 | 15,000 readers | 343 | 82 | 103/114 |
@@ -126,7 +131,7 @@ built, the guide door is shut.
 The branch's own code, gathering for this kind alone: of the 419 candidates the source would
 admit **326** and refuse **28**. By type: 177 squares, 136 streets, 8 promenades and 5 stairways.
 By refusal: 13 archaeological sites, 6 bridges, 4 bullrings, 3 motorways, 1 place of worship and
-1 destroyed. The calibration list: 109 of 114. Of the five not admitted, Al-Aqsa is offered by
+1 destroyed. The reading's places: 109 of 114. Of the five not admitted, Al-Aqsa is offered by
 Places of worship; Bhaktapur and Patan Durbar Squares and São Francisco Square are World Heritage
 components; and Yerevan's Abovyan Street, with 7,900 readers a year, is a regional tier's.
 
