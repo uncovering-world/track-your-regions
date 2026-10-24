@@ -225,4 +225,11 @@ The source is `experience_sources` row 4, *Places of worship*, filling the kind 
 name, seeded with `requires_curation = true` — a community-edited source's first arrival waits
 for a curator (ADR-0025) — and with its line on the row (`api_config.enterSitelinks` 22,
 `staySitelinks` 18), read by every run and edited from the admin panel's source card. The first
-live run is the maintainer's.
+live run is the maintainer's. The line was inherited from the art museums and never chosen on a
+list of the kind's own. It is checked after every run against the canon in
+`db/catalogue-coverage/calibration/places-of-worship.jsonl` (#1955), compiled independently of
+what the line measures (`docs/tech/catalogue-coverage.md`). The canon holds 155 places, past
+the soft guide of about a hundred, because the kind spans every faith on every continent. Cutting
+it to the guide would need a measure of fame, and fame is what the canon checks. A place it holds
+that turns out to be known only in its own region is a question for the line-miss issue, not a
+reason to shorten the canon after its misses are known.
