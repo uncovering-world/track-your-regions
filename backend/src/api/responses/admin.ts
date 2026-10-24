@@ -502,51 +502,6 @@ export const UserSearchResults = z.array(UserSearchResult)
   .describe('Up to twenty accounts, by display name.');
 export type UserSearchResults = z.infer<typeof UserSearchResults>;
 
-// ---------------------------------------------------------------------------
-// Places that may be one place (ADR-0046, ADR-0086)
-// ---------------------------------------------------------------------------
-
-const ProposedPlace = z.strictObject({
-  id: z.number().int(),
-  name: z.string(),
-  kinds: z.array(z.string()).describe('The names of the kinds the place is in, in display order.'),
-});
-
-/** Which rule found a pair of near places (#1652). */
-export const MergeFoundBy = z.enum(['similar', 'words'])
-  .describe('similar: the names reach a trigram similarity of 0.5; words: every significant word of one name stands in the other\'s (#1652).');
-
-export const MergeProposalPass = z.strictObject({
-  open: z.array(z.strictObject({
-    id: z.number().int().describe('The proposal, which an answer names.'),
-    placeA: ProposedPlace.describe('The place with the lower id, which stays if the two are made one.'),
-    placeB: ProposedPlace,
-    distanceM: z.number().int().describe('Between the two places\' nearest offered points, in metres.'),
-    nameSimilarity: z.number().describe('The best trigram similarity between any two of their folded names, 0 to 1.'),
-    exact: z.boolean().describe('One and the same folded name within fifty metres: the pairs a batch confirms.'),
-    reachM: z.number().int().describe('The distance the pair was found under: 300 m, or a property\'s area radius up to 3 km.'),
-    foundBy: MergeFoundBy,
-    proposedAt: z.string().describe('When the pass last found the pair.'),
-  })).describe('The pairs nobody has answered, the most alike first.'),
-  foundBy: z.strictObject({
-    similar: z.number().int(),
-    words: z.number().int(),
-  }).describe('How many of the open pairs each rule found (#1652).'),
-  answered: z.strictObject({
-    one: z.number().int(),
-    two: z.number().int(),
-    partOf: z.number().int(),
-  }).describe('How many pairs curators have answered so far, by answer; an answered pair is never proposed again.'),
-  leftApart: z.array(z.strictObject({
-    placeA: ProposedPlace.omit({ id: true }),
-    placeB: ProposedPlace.omit({ id: true }),
-    distanceM: z.number().int(),
-    nameSimilarity: z.number(),
-    foundBy: MergeFoundBy,
-  })).describe('Pairs the rule finds that share a kind, which one place cannot hold twice (ADR-0086 decision 4): not proposed, shown so a person sees them.'),
-}).describe('What the pass over near places with similar names found (ADR-0046 decision 2, ADR-0120, #1249).');
-export type MergeProposalPass = z.infer<typeof MergeProposalPass>;
-
 const JevQuestionUsage = z.strictObject({
   question: z.enum(['views', 'componentItems', 'mergeProposals', 'visits', 'pointHints']).describe(
     'Which card asked: the sources card (#1260), the component-items card (#1272), the near-places card (#1249), '

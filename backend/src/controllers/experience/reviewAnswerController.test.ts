@@ -14,6 +14,10 @@ vi.mock('../../db/index.js', () => ({
   pool: { query: vi.fn(), connect: vi.fn() },
   rollbackQuietly: vi.fn(),
 }));
+vi.mock('../../services/sync/mergeProposalFinder.js', () => ({
+  drainPairing: vi.fn(async () => ({ places: 0, wholeCatalogue: false, open: 0 })),
+}));
+
 vi.mock('./experienceScope.js', () => ({
   answeredSourceId: vi.fn(async () => 4), resolveExperienceScope: vi.fn(), resolveEverySourceScope: vi.fn(),
 }));

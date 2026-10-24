@@ -1,10 +1,12 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { pool } from '../../db/index.js';
-import { findMergeProposals, proposeMergesOfPlaces, proposeMergesOfRun } from './mergeProposalFinder.js';
+import { PAIRING_RULE_VERSION, drainPairing } from './mergeProposalFinder.js';
 
 /**
  * The pass over near places with similar names (#1249, ADR-0046 decisions 2
- * to 4), executed against PostgreSQL.
+ * to 4), executed against PostgreSQL: the marks the triggers leave on a place
+ * whose pairing inputs change, and the drain that pairs those places again
+ * (#1950).
  *
  * The fixture stands on an island nobody surveys (1 S, 170 W): a place of
  * worship and an archaeological site forty metres apart under one name; a
@@ -21,23 +23,15 @@ const P = {
   church: 9720, site: 9721, farSite: 9722, chapelA: 9723, chapelB: 9724,
   property: 9725, propertyTwin: 9726, whole: 9727, part: 9728, partTwin: 9729, pending: 9730,
   westOfTheLine: 9731, eastOfTheLine: 9732, monastery: 9733, monasteryTwin: 9734, oldTown: 9735, townMuseum: 9736,
-  fort: 9737, fortArrival: 9738, windmill: 9739, windmillArrival: 9740,
+  fort: 9737, fortTwin: 9738, windmill: 9739, windmillArrival: 9740, well: 9741, wellRefused: 9742,
+  gate: 9743, gateTwin: 9744,
 } as const;
 const ALL = Object.values(P);
 
 /** Metres east of the island's centre as degrees of longitude, on the equator. */
 const east = (metres: number) => ISLAND.lon + metres / 111_320;
 
-/** The fixture's runs, told by their marker. */
-const RUN_MARK = '[{"fixture": "near-pairs"}]';
-
 async function clear(): Promise<void> {
-  await pool.query(
-    `DELETE FROM experience_sync_changes c USING experience_sync_logs l
-      WHERE c.sync_log_id = l.id AND l.error_details @> $1::jsonb`,
-    [RUN_MARK],
-  );
-  await pool.query('DELETE FROM experience_sync_logs WHERE error_details @> $1::jsonb', [RUN_MARK]);
   await pool.query('DELETE FROM experience_merge_proposals WHERE place_a = ANY($1) OR place_b = ANY($1)', [ALL]);
   await pool.query('DELETE FROM experience_parts WHERE whole_id = ANY($1) OR part_id = ANY($1)', [ALL]);
   await pool.query('DELETE FROM experiences WHERE id = ANY($1)', [ALL]);
@@ -49,11 +43,12 @@ interface Place {
   source: 'Places of worship' | 'Archaeology' | 'UNESCO World Heritage Sites';
   lon: number;
   state?: 'auto' | 'pending';
+  admission?: 'admitted' | 'refused';
   metadata?: Record<string, unknown>;
   reportedName?: string;
 }
 
-async function place({ id, name, source, lon, state = 'auto', metadata = {}, reportedName }: Place): Promise<number> {
+async function place({ id, name, source, lon, state = 'auto', admission = 'admitted', metadata = {}, reportedName }: Place): Promise<number> {
   await pool.query(
     `INSERT INTO experiences (id, source_id, external_id, name, location, metadata)
      SELECT $1, s.id, $2, $3, ST_SetSRID(ST_MakePoint($4, $5), 4326), $6::jsonb
@@ -62,10 +57,10 @@ async function place({ id, name, source, lon, state = 'auto', metadata = {}, rep
   );
   const membership = await pool.query<{ id: number }>(
     `INSERT INTO experience_kind_memberships
-            (experience_id, kind_id, source_id, external_id, curation_state, published_at, reported_name)
-     SELECT $1, s.kind_id, s.id, $2, $3::text, CASE WHEN $3::text = 'auto' THEN NOW() END, $4
+            (experience_id, kind_id, source_id, external_id, curation_state, published_at, reported_name, admission)
+     SELECT $1, s.kind_id, s.id, $2, $3::text, CASE WHEN $3::text = 'auto' THEN NOW() END, $4, $6
        FROM experience_sources s WHERE s.name = $5 RETURNING id`,
-    [id, `fixture-${id}`, state, reportedName ?? null, source],
+    [id, `fixture-${id}`, state, reportedName ?? null, source, admission],
   );
   const point = await pool.query<{ id: number }>(
     `INSERT INTO experience_locations (experience_id, name, external_ref, location, curation_state)
@@ -124,9 +119,18 @@ afterAll(async () => {
   await pool.end();
 });
 
+const marked = async (ids: readonly number[]) => (await pool.query<{ experience_id: number }>(
+  'SELECT experience_id FROM experience_pairing_due WHERE experience_id = ANY($1) ORDER BY experience_id', [ids],
+)).rows.map(row => row.experience_id);
+
+const pairOf = async (a: number) => (await fixturePairs()).find(p => p.place_a === a);
+
 describe('the pass over near places with similar names', () => {
   it('proposes the pairs within reach with names alike, exact where one name stands within fifty metres', async () => {
-    const pass = await findMergeProposals();
+    // Every fixture place was marked as it was written, and the drain pairs them.
+    expect(await marked(ALL)).not.toHaveLength(0);
+    expect(await drainPairing()).not.toBeNull();
+    expect(await marked(ALL)).toEqual([]);
     const pairs = await fixturePairs();
     expect(pairs.map(p => [p.place_a, p.place_b, p.exact, p.found_by])).toEqual([
       [P.church, P.site, true, 'similar'],
@@ -141,45 +145,30 @@ describe('the pass over near places with similar names', () => {
     expect(pairs[1].distance_m).toBe(900);
     // Across the antimeridian: found through the twin, measured on the geography.
     expect(pairs[2].distance_m).toBe(111);
-    const open = pass.open.filter(pair => (ALL as readonly number[]).includes(pair.placeA.id));
-    expect(open.map(pair => [pair.placeA.name, pair.placeB.name, pair.foundBy])).toEqual([
-      ['Church of St Fixture', 'Church of St. Fixture', 'similar'],
-      ['Fixture Lighthouse', 'Fixture Lighthouse', 'similar'],
-      ['Fixture Mining Landscape', 'Mining landscape of Fixture', 'similar'],
-      ['Monastery of Fixturegard and the Upper Fixture Valley', 'Fixturegard', 'words'],
-    ]);
-    expect(open[3].nameSimilarity).toBeLessThan(0.5);
-    expect(pass.foundBy.words).toBeGreaterThanOrEqual(1);
-    expect(open[0].placeA.kinds).toEqual(['Places of worship']);
-    expect(open[0].placeB.kinds).toEqual(['Archaeology']);
   });
 
-  it('leaves a pair in one kind apart, and reports it', async () => {
-    const pass = await findMergeProposals();
-    const chapels = pass.leftApart.find(pair => pair.placeA.name === 'Fixture Chapel');
-    expect(chapels).toBeDefined();
-    expect(chapels?.distanceM).toBe(20);
-    expect(chapels?.foundBy).toBe('similar');
-    expect((await fixturePairs()).some(p => p.place_a === P.chapelA)).toBe(false);
-  });
-
-  it('proposes nothing for a whole of parts, a part, or a place nobody has published', async () => {
-    await findMergeProposals();
+  it('leaves a pair in one kind apart, and proposes nothing for a whole of parts, a part, or a place nobody has published', async () => {
+    await drainPairing();
     const pairs = await fixturePairs();
     const involved = new Set(pairs.flatMap(p => [p.place_a, p.place_b]));
-    for (const id of [P.whole, P.part, P.partTwin, P.pending, P.farSite]) expect(involved.has(id)).toBe(false);
+    for (const id of [P.chapelA, P.chapelB, P.whole, P.part, P.partTwin, P.pending, P.farSite]) {
+      expect(involved.has(id)).toBe(false);
+    }
   });
 
-  it('keeps an answered pair as it is and never proposes it again, and forgets an open pair it no longer finds', async () => {
-    await findMergeProposals();
+  it('keeps an answered pair as it is, and forgets an open pair a moved point takes out of reach', async () => {
+    await drainPairing();
     await pool.query(
       `UPDATE experience_merge_proposals SET answer = 'two', answered_at = NOW(), distance_m = 1
         WHERE place_a = $1 AND place_b = $2`,
       [P.church, P.site],
     );
-    // The property's twin moves out of reach.
+    // The property's twin moves out of reach: the move marks it, and the drain forgets the pair.
     await pool.query('UPDATE experience_locations SET location = ST_SetSRID(ST_MakePoint($2, $3), 4326) WHERE experience_id = $1', [P.propertyTwin, east(15000), ISLAND.lat]);
-    await findMergeProposals();
+    expect(await marked([P.propertyTwin])).toEqual([P.propertyTwin]);
+    // The church is renamed alike: marked, paired again, and its answered pair stands.
+    await pool.query(`UPDATE experiences SET name = 'Church of Saint Fixture' WHERE id = $1`, [P.church]);
+    await drainPairing();
     const pairs = await fixturePairs();
     expect(pairs.map(p => [p.place_a, p.place_b, p.answer, p.distance_m])).toEqual([
       [P.church, P.site, 'two', 1],
@@ -187,43 +176,34 @@ describe('the pass over near places with similar names', () => {
       [P.monastery, P.monasteryTwin, null, 7],
     ]);
   });
+
+  it('marks nothing for a write that changes none of what the rule reads', async () => {
+    await drainPairing();
+    await pool.query(`UPDATE experiences SET description = 'A fixture' WHERE id = $1`, [P.oldTown]);
+    await pool.query(`UPDATE experience_locations SET name = 'Fixture point' WHERE experience_id = $1`, [P.oldTown]);
+    expect(await marked([P.oldTown])).toEqual([]);
+  });
 });
 
-describe('the pass for the places a reader can newly see (#1800)', () => {
-  const proposedAt = async (a: number, b: number) => (await pool.query<{ proposed_at: Date }>(
-    'SELECT proposed_at FROM experience_merge_proposals WHERE place_a = $1 AND place_b = $2', [a, b],
-  )).rows[0]?.proposed_at;
-
-  it('pairs a place a run created with a near place of a similar name, and leaves every other pair as it was', async () => {
-    await findMergeProposals();
-    const lighthouse = await proposedAt(P.westOfTheLine, P.eastOfTheLine);
-    // A pair the whole pass would now forget, which the run's pass is not asked about.
-    await pool.query('UPDATE experience_locations SET location = ST_SetSRID(ST_MakePoint($2, $3), 4326) WHERE experience_id = $1', [P.eastOfTheLine, -179.9, ISLAND.lat]);
+describe('pairing a place again when what the rule reads changes (#1950)', () => {
+  it('pairs a renamed place with the near place whose name it now carries', async () => {
     await place({ id: P.fort, name: 'Fixture Harbour Fort', source: 'Places of worship', lon: east(60000) });
-    await place({ id: P.fortArrival, name: 'Fixture Harbour Fort', source: 'Archaeology', lon: east(60020) });
-    const run = (await pool.query<{ id: number }>(
-      `INSERT INTO experience_sync_logs (source_id, status, is_dry_run, error_details)
-       SELECT id, 'success', false, $1::jsonb FROM experience_sources WHERE name = 'Archaeology' RETURNING id`,
-      [RUN_MARK],
-    )).rows[0].id;
-    await pool.query(
-      `INSERT INTO experience_sync_changes (sync_log_id, experience_id, external_id, change_type) VALUES ($1, $2, $3, 'created')`,
-      [run, P.fortArrival, `fixture-${P.fortArrival}`],
-    );
+    await place({ id: P.fortTwin, name: 'Fixture Lookout', source: 'Archaeology', lon: east(60020) });
+    await drainPairing();
+    expect(await pairOf(P.fort)).toBeUndefined();
 
-    expect(await proposeMergesOfRun(run)).toBe(1);
+    await pool.query(`UPDATE experiences SET name = 'Fixture Harbour Fort' WHERE id = $1`, [P.fortTwin]);
+    expect(await marked([P.fortTwin])).toEqual([P.fortTwin]);
+    await drainPairing();
 
-    const pairs = await fixturePairs();
-    expect(pairs.find(p => p.place_a === P.fort)).toMatchObject({ place_b: P.fortArrival, exact: true, found_by: 'similar' });
-    expect(pairs.find(p => p.place_a === P.westOfTheLine)).toMatchObject({ place_b: P.eastOfTheLine, answer: null });
-    expect(await proposedAt(P.westOfTheLine, P.eastOfTheLine)).toEqual(lighthouse);
+    expect(await pairOf(P.fort)).toMatchObject({ place_b: P.fortTwin, exact: true, found_by: 'similar', answer: null });
   });
 
   it('pairs an arrival once it is published, and not while no reader sees it', async () => {
     await place({ id: P.windmill, name: 'Fixture Windmill', source: 'Places of worship', lon: east(70000) });
     await place({ id: P.windmillArrival, name: 'Fixture Windmill', source: 'Archaeology', lon: east(70030), state: 'pending' });
-
-    expect(await proposeMergesOfPlaces([P.windmillArrival])).toBe(0);
+    await drainPairing();
+    expect(await pairOf(P.windmill)).toBeUndefined();
 
     // What publishing the arrival does to it: the membership and its point become a reader's.
     await pool.query(
@@ -231,8 +211,62 @@ describe('the pass for the places a reader can newly see (#1800)', () => {
       [P.windmillArrival],
     );
     await pool.query(`UPDATE experience_locations SET curation_state = 'verified' WHERE experience_id = $1`, [P.windmillArrival]);
+    await drainPairing();
 
-    expect(await proposeMergesOfPlaces([P.windmillArrival])).toBe(1);
-    expect((await fixturePairs()).find(p => p.place_a === P.windmill)).toMatchObject({ place_b: P.windmillArrival, found_by: 'similar' });
+    expect(await pairOf(P.windmill)).toMatchObject({ place_b: P.windmillArrival, found_by: 'similar' });
+  });
+
+  it('pairs a place whose refusal is taken back', async () => {
+    await place({ id: P.well, name: 'Fixture Holy Well', source: 'Places of worship', lon: east(80000) });
+    await place({ id: P.wellRefused, name: 'Fixture Holy Well', source: 'Archaeology', lon: east(80010), admission: 'refused' });
+    await drainPairing();
+    expect(await pairOf(P.well)).toBeUndefined();
+
+    await pool.query(`UPDATE experience_kind_memberships SET admission = 'admitted' WHERE experience_id = $1`, [P.wellRefused]);
+    await drainPairing();
+
+    expect(await pairOf(P.well)).toMatchObject({ place_b: P.wellRefused, exact: true });
+  });
+
+  it('leaves a mark an uncommitted writer holds to the next drain, which pairs the place as the writer left it', async () => {
+    await place({ id: P.gate, name: 'Fixture Water Gate', source: 'Places of worship', lon: east(90000) });
+    await place({ id: P.gateTwin, name: 'Fixture Lantern', source: 'Archaeology', lon: east(90015) });
+    await drainPairing();
+    expect(await pairOf(P.gate)).toBeUndefined();
+    // A mark already there, committed, which the writer's own mark then locks.
+    await pool.query('INSERT INTO experience_pairing_due (experience_id) VALUES ($1)', [P.gateTwin]);
+
+    const writer = await pool.connect();
+    try {
+      await writer.query('BEGIN');
+      await writer.query(`UPDATE experiences SET name = 'Fixture Water Gate' WHERE id = $1`, [P.gateTwin]);
+      // The drain meanwhile neither waits on the writer nor takes its mark, which
+      // it would otherwise pair as the place stood before the rename.
+      await drainPairing();
+      await writer.query('COMMIT');
+    } finally {
+      writer.release();
+    }
+    expect(await pairOf(P.gate)).toBeUndefined();
+    expect(await marked([P.gateTwin])).toEqual([P.gateTwin]);
+
+    await drainPairing();
+    expect(await pairOf(P.gate)).toMatchObject({ place_b: P.gateTwin, exact: true });
+  });
+
+  it('pairs the whole catalogue once when the stored rule version is not the rule\'s', async () => {
+    await drainPairing();
+    // Pairs no drain was asked about: forgotten without a mark, as if an older rule had never found them.
+    await pool.query('DELETE FROM experience_merge_proposals WHERE answer IS NULL AND (place_a = ANY($1) OR place_b = ANY($1))', [ALL]);
+    await pool.query('UPDATE experience_pairing_rule SET rule_version = $1', [PAIRING_RULE_VERSION - 1]);
+
+    const drain = await drainPairing();
+
+    expect(drain?.wholeCatalogue).toBe(true);
+    expect((await fixturePairs()).filter(p => p.answer === null).map(p => p.place_a)).toEqual(
+      expect.arrayContaining([P.westOfTheLine, P.monastery, P.fort, P.windmill, P.well, P.gate]),
+    );
+    expect((await pool.query('SELECT rule_version FROM experience_pairing_rule')).rows[0].rule_version).toBe(PAIRING_RULE_VERSION);
+    expect((await drainPairing())?.wholeCatalogue).toBe(false);
   });
 });

@@ -31,7 +31,7 @@ import type { reviewAnswerBodySchema } from '../../types/index.js';
 import { answeredSourceId, resolveEverySourceScope, resolveExperienceScope } from './experienceScope.js';
 import { componentItemsScope } from './componentItemController.js';
 import { mergeProposalsScope } from './mergeProposalController.js';
-import { proposeMergesOfPlaces } from '../../services/sync/mergeProposalFinder.js';
+import { drainPairing } from '../../services/sync/mergeProposalFinder.js';
 import {
   answerRow, type AnswerRow,
 } from './reviewAnswerDispatch.js';
@@ -94,7 +94,6 @@ export async function answerReviewRows(
     answer, answered: [], refused: [], outOfScope: 0, placementFailed: [],
   };
 
-  const arrived: number[] = [];
   for (const row of distinct) {
     const object = objects.get(row.id);
     if (!object) {
@@ -123,8 +122,6 @@ export async function answerReviewRows(
         continue;
       }
       result.answered.push({ kind: row.kind, id: row.id, name: object.name, answer, did: outcome.did });
-      // An arrival accepted is a place a reader can newly see (#1800).
-      if (outcome.did.published) arrived.push(row.id);
       if (outcome.placement) {
         result.placementFailed.push({ id: row.id, name: object.name, ...outcome.placement });
       }
@@ -138,8 +135,9 @@ export async function answerReviewRows(
       });
     }
   }
-  // Paired with near places once, after the loop, as `publishWaiting` does.
-  await proposeMergesOfPlaces(arrived);
+  // What the answers changed, paired again with near places once after the loop,
+  // as `publishWaiting` does (#1950).
+  await drainPairing();
 
   return result;
 }

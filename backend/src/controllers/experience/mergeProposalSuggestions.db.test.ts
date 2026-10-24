@@ -169,7 +169,7 @@ describe("Jev's judgement of a place's pairs of near places (#1249)", () => {
   it('keeps a paid judgement when a pass drops the pair, and finds it again for the pair proposed anew', async () => {
     await ask();
     // The next pass no longer finds the cathedral within reach: the finder
-    // deletes the open proposal, as findMergeProposals does.
+    // deletes the open proposal, as writeProposals does.
     await pool.query('DELETE FROM experience_merge_proposals WHERE id = $1', [PAIRS.cathedral]);
     expect((await stored()).map(row => [row.place_b, row.proposal_id, row.input_tokens])).toEqual([
       [CATHEDRAL, null, 501], [PLAQUE, PAIRS.plaque, 500],

@@ -10,8 +10,9 @@ vi.mock('../../db/index.js', () => ({ pool: { query: vi.fn() } }));
 vi.mock('../../services/sync/componentItemJob.js', () => ({
   runComponentItemSearch: vi.fn(async () => ({ sentence: '2 of 3 components without an item have a candidate', candidates: 2, queries: 7 })),
 }));
-vi.mock('../../services/sync/mergeProposalFinder.js', () => ({
-  proposeMergesOfRun: vi.fn(async () => 1),
+vi.mock('../../services/sync/mergeProposalFinder.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../services/sync/mergeProposalFinder.js')>()),
+  drainPairing: vi.fn(async () => ({ places: 2, wholeCatalogue: false, open: 1 })),
 }));
 vi.mock('../experience/equalItemMerges.js', () => ({
   joinPlacesClaimingOneItem: vi.fn(async () => ({ merged: [], refused: [] })),
@@ -19,7 +20,7 @@ vi.mock('../experience/equalItemMerges.js', () => ({
 
 import { pool } from '../../db/index.js';
 import { runComponentItemSearch } from '../../services/sync/componentItemJob.js';
-import { proposeMergesOfRun } from '../../services/sync/mergeProposalFinder.js';
+import { drainPairing } from '../../services/sync/mergeProposalFinder.js';
 import { runningSyncs, type SyncProgress } from '../../services/sync/types.js';
 import { joinPlacesClaimingOneItem } from '../experience/equalItemMerges.js';
 import { afterRun } from './afterRun.js';
@@ -41,13 +42,13 @@ describe('the steps after a run', () => {
     runningSyncs.clear();
     mockedQuery.mockReset();
     vi.mocked(joinPlacesClaimingOneItem).mockClear();
-    vi.mocked(proposeMergesOfRun).mockClear();
+    vi.mocked(drainPairing).mockClear();
     vi.mocked(runComponentItemSearch).mockClear();
     accept.mockClear();
   });
   afterEach(() => { vi.useRealTimers(); });
 
-  it('joins once, pairs each run of the pass, and reports on the entry the card still follows: the pass\'s last run', async () => {
+  it('joins once, pairs the changed places once for the pass, and reports on the entry the card still follows: the pass\'s last run', async () => {
     const first = ended(101);
     const second = ended(102);
     runningSyncs.set(3, first);
@@ -65,10 +66,10 @@ describe('the steps after a run', () => {
     await done;
 
     expect(joinPlacesClaimingOneItem).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(proposeMergesOfRun).mock.calls.map(call => call[0])).toEqual([101, 102]);
+    expect(drainPairing).toHaveBeenCalledTimes(1);
     expect(runComponentItemSearch).not.toHaveBeenCalled();
     expect(second.status).toBe('complete');
-    expect(second.statusMessage).toBe('Sync completed: 102; 2 near pairs proposed');
+    expect(second.statusMessage).toBe('Sync completed: 102; 2 changed places paired again with near places, 1 near pair open among them');
     expect(first.statusMessage).toBe('Sync completed: 101');
     expect(first.continues).toBe(false);
     expect(second.continues).toBe(false);
@@ -87,22 +88,22 @@ describe('the steps after a run', () => {
 
     await afterRun(4, [4], accept);
 
-    expect(proposeMergesOfRun).toHaveBeenCalledWith(601);
+    expect(drainPairing).toHaveBeenCalledTimes(1);
     expect(run.status).toBe('cancelled');
-    expect(run.statusMessage).toBe('Cancelled.; 1 near pair proposed');
+    expect(run.statusMessage).toBe('Cancelled.; 2 changed places paired again with near places, 1 near pair open among them');
   });
 
-  it('stops the pairing where a Cancel reaches it, and says so', async () => {
+  it('leaves the marks to the next drain when a Cancel reaches the pairing, and says so', async () => {
     const first = ended(501);
     const second = ended(502);
     runningSyncs.set(3, first);
     runningSyncs.set(6, second);
-    vi.mocked(proposeMergesOfRun).mockImplementationOnce(async () => { second.cancel = true; return 1; });
+    vi.mocked(joinPlacesClaimingOneItem).mockImplementationOnce(async () => { second.cancel = true; return { merged: [], refused: [] }; });
 
     await afterRun(3, [3, 6], accept);
 
-    expect(proposeMergesOfRun).toHaveBeenCalledTimes(1);
-    expect(second.statusMessage).toBe('Sync completed: 502; 1 near pair proposed; the pairing was cancelled before it reached every run');
+    expect(drainPairing).not.toHaveBeenCalled();
+    expect(second.statusMessage).toBe('Sync completed: 502; the pairing was cancelled; the next one pairs the places this run changed');
   });
 
   it('searches the items of the components a World Heritage run left without one, and only those', async () => {
@@ -113,7 +114,7 @@ describe('the steps after a run', () => {
     await afterRun(1, [1], accept);
 
     expect(runComponentItemSearch).toHaveBeenCalledWith(run, run.operation, { pointIds: [5001, 5002] }, accept);
-    expect(run.statusMessage).toBe('Sync completed: 201; 2 of 3 components without an item have a candidate; 1 near pair proposed');
+    expect(run.statusMessage).toBe('Sync completed: 201; 2 of 3 components without an item have a candidate; 2 changed places paired again with near places, 1 near pair open among them');
   });
 
   it('skips the search when the run left no new component without an item', async () => {
@@ -124,7 +125,7 @@ describe('the steps after a run', () => {
     await afterRun(1, [1], accept);
 
     expect(runComponentItemSearch).not.toHaveBeenCalled();
-    expect(proposeMergesOfRun).toHaveBeenCalledWith(202);
+    expect(drainPairing).toHaveBeenCalledTimes(1);
   });
 
   it('does nothing for a preview, and keeps a partial verdict', async () => {
@@ -141,7 +142,7 @@ describe('the steps after a run', () => {
   it('restores the verdict and says so when a step fails', async () => {
     const run = ended(401);
     runningSyncs.set(4, run);
-    vi.mocked(proposeMergesOfRun).mockRejectedValueOnce(new Error('the database went away'));
+    vi.mocked(joinPlacesClaimingOneItem).mockRejectedValueOnce(new Error('the database went away'));
 
     await afterRun(4, [4], accept);
 
