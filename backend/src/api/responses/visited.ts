@@ -11,6 +11,7 @@
  */
 
 import { z } from 'zod/v4';
+import { VISITED_STATUSES } from '@tyr/shared/visits';
 
 /** A timestamp as the wire carries it: the handler converts the driver's `Date`. */
 const timestamp = z.iso.datetime({ offset: true }).nullable();
@@ -90,7 +91,7 @@ export const AllLocationsUnmarked = z.strictObject({
 }).describe('Every place of an object, or of it within a region, no longer marked visited.');
 export type AllLocationsUnmarked = z.infer<typeof AllLocationsUnmarked>;
 
-export const VisitedStatus = z.enum(['not_visited', 'partial', 'visited'])
+export const VisitedStatus = z.enum(VISITED_STATUSES)
   .describe('How far through an object\'s places the reader is.');
 export type VisitedStatus = z.infer<typeof VisitedStatus>;
 
@@ -108,6 +109,7 @@ export type LocationWithVisitedStatus = z.infer<typeof LocationWithVisitedStatus
 
 export const ExperienceVisitedStatusResponse = z.strictObject({
   experienceId: z.number().int(),
+  castPoints: z.boolean().describe('Each point is a cast of the whole work; any visited cast marks the work visited.'),
   visitedStatus: VisitedStatus,
   totalLocations: z.number().int(),
   visitedLocations: z.number().int(),
