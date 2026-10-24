@@ -161,6 +161,7 @@ function ExperienceExpandedDetailsComponent({
       curatedFields: loc.curated_fields,
       approximate: loc.approximate,
       hasPicture: Boolean(loc.image_url),
+      articleUrl: loc.wikipedia_url,
       isVisited: isLocationVisited(loc.id),
       inRegion: loc.in_region,
       regionPath: loc.region_path,

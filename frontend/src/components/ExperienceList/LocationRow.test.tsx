@@ -110,6 +110,17 @@ describe('LocationRow', () => {
     expect(screen.getByRole('button', { name: 'Fix 1708-003' })).toBeInTheDocument();
   });
 
+  it("links the part's own article, named for it, and none where it has none (#1963)", () => {
+    renderRow({ location: { ...see, articleUrl: 'https://en.wikipedia.org/wiki/See_pile_dwelling' } });
+    expect(screen.getByRole('link', { name: 'See on Wikipedia' }))
+      .toHaveAttribute('href', 'https://en.wikipedia.org/wiki/See_pile_dwelling');
+  });
+
+  it('offers no article where the part has none', () => {
+    renderRow();
+    expect(screen.queryByRole('link', { name: /on Wikipedia/ })).not.toBeInTheDocument();
+  });
+
   it('keeps the visited checkbox beside it', () => {
     renderRow({ showCheckbox: true });
 

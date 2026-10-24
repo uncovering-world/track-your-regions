@@ -23146,6 +23146,13 @@
             ],
             "description": "Who took that picture, from the row the picture comes from. Null where there is no picture or no credit."
           },
+          "wikipedia_url": {
+            "description": "The point's own English Wikipedia article: a World Heritage component's, read off its Wikidata item (#1963), else, for the point of a site's part, the part place's own. Never the site's. Null where neither holds one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "curation_state": {
             "$ref": "#/components/schemas/LocationCurationState"
           },
@@ -23195,6 +23202,7 @@
           "in_region",
           "image_url",
           "image_credit",
+          "wikipedia_url",
           "curation_state",
           "refused_at",
           "description",
@@ -29154,7 +29162,8 @@
               "type": "string",
               "enum": [
                 "image_url",
-                "description"
+                "description",
+                "metadata.wikipediaUrl"
               ]
             },
             "description": "What the confirmation had written with the item and came off with it; a field a curator claimed since stays."
@@ -30729,6 +30738,13 @@
             ],
             "description": "Who took that picture, from the row the picture comes from. Null where there is no picture or no credit."
           },
+          "wikipedia_url": {
+            "description": "The point's own English Wikipedia article: a World Heritage component's, read off its Wikidata item (#1963), else, for the point of a site's part, the part place's own. Never the site's. Null where neither holds one.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "region_path": {
             "description": "The leaf region the point lies in, with its ancestors, such as `Europe > France > Paris`. It is shown for a point outside the region on screen. Null where the point lies in no region of that world view.",
             "type": [
@@ -30751,6 +30767,7 @@
           "in_region",
           "image_url",
           "image_credit",
+          "wikipedia_url",
           "region_path"
         ],
         "additionalProperties": false,

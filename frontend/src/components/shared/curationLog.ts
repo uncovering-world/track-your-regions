@@ -587,7 +587,9 @@ function formatComponentItemTakenBack(d: Record<string, unknown>): string | null
 }
 
 /** What a take-back can clear beside the item, in the history's words. */
-const CLEARED_WORDS: Record<string, string> = { image_url: 'the picture', description: 'the description' };
+const CLEARED_WORDS: Record<string, string> = {
+  image_url: 'the picture', description: 'the description', 'metadata.wikipediaUrl': 'the Wikipedia article',
+};
 
 /**
  * A near place with a name alike answered (#1249): "Durham Cathedral (#13341):

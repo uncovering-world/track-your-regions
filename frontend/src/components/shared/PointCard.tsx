@@ -11,7 +11,9 @@
  * the object's, said to be the whole site's (`pointPicture`); its name and its
  * component reference, with the full name to copy; its description as Wikidata
  * gives it, shown as it is (the product decision on #1271); links to its
- * Wikidata item and article and to the object's own page; and whether the
+ * Wikidata item, to its own article where a run stored one (#1963) or through
+ * Wikidata's redirect where none is stored yet, and to the object's own page;
+ * and whether the
  * visitor has been there. The way back is to the object, and the steps go
  * through the object's parts in the source's order.
  *
@@ -140,7 +142,10 @@ export function PointCard({
   // page: the rule is declared once, and `urlSafety.test.ts` reads every href in
   // a module that carries a stored link as going through it.
   const wikidata = safeHref(wikidataItemUrl(point.wikidata_item));
-  const article = safeHref(wikipediaArticleUrl(point.wikidata_item));
+  // The part's own article as a run stored it (#1963); for a point with an item
+  // and none stored yet — one the next run has not reached, or one a curator
+  // confirmed before the article was read with the item — Wikidata's redirect.
+  const article = safeHref(point.wikipedia_url ?? wikipediaArticleUrl(point.wikidata_item));
   const unescoPage = safeHref(unescoUrl);
   // Some items give UNESCO's page as their official website, under any scheme
   // or page of it: never a second link to it (`isWorldHeritageCentreUrl`, #1851).

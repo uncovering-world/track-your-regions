@@ -34,7 +34,7 @@ function point(over: Record<string, unknown>) {
   return {
     id: 0, experience_id: 418, name: null, external_ref: null, ordinal: 1, latitude: 47.3, longitude: 8.2,
     created_at: '2026-08-04T00:00:00Z', curated_fields: [], in_region: true, curation_state: 'auto', refused_at: null,
-    image_url: null, image_credit: null, description: null, wikidata_item: null,
+    image_url: null, image_credit: null, description: null, wikidata_item: null, wikipedia_url: null,
     ...over,
   };
 }
@@ -45,6 +45,7 @@ const RIESI = point({
   image_credit: { author: 'Kantonsarchäologie Aargau', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null },
   description: 'archaeological site in Seengen in the canton of Aargau, Switzerland',
   wikidata_item: 'Q3477679',
+  wikipedia_url: 'https://en.wikipedia.org/wiki/Riesi_(Seengen)',
 });
 const SPITZ = point({ id: 8192, name: 'Spitz', external_ref: '1363-010', ordinal: 3 });
 const UNREAD = point({ id: 9999, name: 'Unread', external_ref: '1363-099', ordinal: 4, curation_state: 'pending' });
@@ -77,11 +78,30 @@ describe('PointCard', () => {
     expect(screen.getByText(/Kantonsarchäologie Aargau/)).toBeInTheDocument();
     expect(screen.getByText('archaeological site in Seengen in the canton of Aargau, Switzerland')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Wikidata Q3477679' })).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q3477679');
+    // The article a run stored for the part itself (#1963), never the site's.
+    expect(screen.getByRole('link', { name: 'Wikipedia' })).toHaveAttribute('href', 'https://en.wikipedia.org/wiki/Riesi_(Seengen)');
     expect(await screen.findByRole('link', { name: 'UNESCO page' }))
       .toHaveAttribute('href', 'https://whc.unesco.org/en/list/1363');
     // The steps count the parts a visitor sees, not the unread one a curator would.
     expect(screen.getByText('2 of 3')).toBeInTheDocument();
     expect(screen.queryByText(/whole site's picture/)).not.toBeInTheDocument();
+  });
+
+  it('links Wikidata\'s redirect for a part with an item and no article stored yet (#1963)', async () => {
+    // A part a curator confirmed before the article was read with its item.
+    const bourg = point({ id: 8195, name: 'Bourg', external_ref: '1363-016', ordinal: 5, wikidata_item: 'Q2108010' });
+    mockedLocations.mockResolvedValue({
+      experienceId: 418, experienceName: SITE.name, totalLocations: 2, regionId: null, locations: [RIESI, bourg],
+    });
+    renderCard(8195);
+    expect(await screen.findByRole('link', { name: 'Wikipedia' }))
+      .toHaveAttribute('href', 'https://www.wikidata.org/wiki/Special:GoToLinkedPage/enwiki/Q2108010');
+  });
+
+  it('offers no article for a part with no item and none stored', async () => {
+    renderCard(8188);
+    expect(await screen.findByRole('heading', { name: 'See' })).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Wikipedia' })).not.toBeInTheDocument();
   });
 
   it('offers no official website that is a World Heritage Centre page under another scheme (#1851)', async () => {

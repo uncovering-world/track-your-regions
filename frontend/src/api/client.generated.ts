@@ -2436,6 +2436,11 @@ export interface RegionExperienceLocation {
   /** Who took that picture, from the row the picture comes from. Null where there is no picture or no credit. */
   image_credit: ImageCredit | null;
   /**
+     * The point's own English Wikipedia article: a World Heritage component's, read off its Wikidata item (#1963), else, for the point of a site's part, the part place's own. Never the site's. Null where neither holds one.
+     * @nullable
+     */
+  wikipedia_url: string | null;
+  /**
      * The leaf region the point lies in, with its ancestors, such as `Europe > France > Paris`. It is shown for a point outside the region on screen. Null where the point lies in no region of that world view.
      * @nullable
      */
@@ -2621,6 +2626,11 @@ export interface ExperienceLocationWithState {
   image_url: string | null;
   /** Who took that picture, from the row the picture comes from. Null where there is no picture or no credit. */
   image_credit: ImageCredit | null;
+  /**
+     * The point's own English Wikipedia article: a World Heritage component's, read off its Wikidata item (#1963), else, for the point of a site's part, the part place's own. Never the site's. Null where neither holds one.
+     * @nullable
+     */
+  wikipedia_url: string | null;
   curation_state: LocationCurationState;
   /** Set where a curator turned this unread point down. The state cannot say so, because a refused point stays `pending`: publishing shows an unread point and refuses a turned-down one. */
   refused_at: string | null;
@@ -4853,6 +4863,7 @@ export type PointItemTakenBackClearedItem = typeof PointItemTakenBackClearedItem
 export const PointItemTakenBackClearedItem = {
   image_url: 'image_url',
   description: 'description',
+  metadatawikipediaUrl: 'metadata.wikipediaUrl',
 } as const;
 
 /**

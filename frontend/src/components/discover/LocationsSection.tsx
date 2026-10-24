@@ -43,6 +43,7 @@ import { claimLabel } from '../../utils/placeClaims';
 import { foldLabel } from '@tyr/shared/labels';
 import { filterParts, groupParts } from '../../utils/partGroups';
 import type { LocationWithVisitedStatus } from '../../api/visited';
+import { PointArticleLink } from '../shared/PointArticleLink';
 
 const LOCATIONS_COLLAPSE_THRESHOLD = 15;
 
@@ -72,6 +73,8 @@ export type PanelLocation = Pick<
   inRegion?: boolean;
   /** It has a picture of its own, which the "with a photo" filter keeps. */
   hasPicture?: boolean;
+  /** The part's own English Wikipedia article, which the row links (#1963). */
+  articleUrl?: string | null;
 };
 
 interface LocationsSectionProps {
@@ -484,6 +487,7 @@ function PanelLocationRow({
       )}
       {/* A corrected name leaves the point as rough as it was; only a placement clears it (#1912). */}
       {!loc.curatedFields?.includes('location') && <ApproximateLocationNote reason={loc.approximate} compact />}
+      <PointArticleLink href={loc.articleUrl} name={label} />
       <CopyNameButton fullName={pointFullName(objectName, point)} className="place-copy" />
       <OpenInMapsLink point={loc} label={pointFullName(objectName, point)} compact className="place-maps" />
       {onCorrect && (
