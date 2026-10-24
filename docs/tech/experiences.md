@@ -4060,7 +4060,7 @@ dam, canal or tunnel a traveller goes to or through for itself: the Golden Gate 
 Charles Bridge, the Pont du Gard, the Hoover Dam, the Panama Canal, the Channel Tunnel. Its source
 decides from the place gather (`BRIDGES_KIND`), whose candidates are asked by five roots
 (`BRIDGE_ROOTS`, `bridges/classes.ts`), and its arrivals wait for a curator. The source record,
-with the calibration list and the measurements the line was chosen from, is
+with the reading its line was chosen on, is
 [`docs/sources/global/wikidata-bridges.md`](../sources/global/wikidata-bridges.md).
 
 **The rule** is `bridgeVerdict` (`bridges/bridgeTest.ts`), in order:
@@ -4091,16 +4091,15 @@ refused with its measures named (`belowGuidedLine`). The coverage report reads t
 (`CODE_LINES`).
 
 Measured on the development subset on 2026-10-22, read-only in the dev container: the pool named
-595 candidates, and the source would admit 376 and refuse 30, with 77 of the 79 works of its
-calibration list among the admitted.
+595 candidates, and the source would admit 376 and refuse 30, with 77 of the 79 works the line
+was chosen on among the admitted.
 
 ### Squares & streets (`squares/*.ts`)
 
 **Squares & streets** (kind and source 9, #1867, ADR-0131) holds a square, a street, a promenade
 or a stairway a visitor walks as a sight in itself: Red Square, Piazza Navona, the Spanish Steps,
 the Champs-Élysées, the Arbat. Its source decides from the place gather (`SQUARES_KIND`), and its
-arrivals wait for a curator. The source record, with the calibration list and the measurements the
-line was chosen from, is
+arrivals wait for a curator. The source record, with the reading its line was chosen on, is
 [`docs/sources/global/wikidata-squares.md`](../sources/global/wikidata-squares.md).
 
 **The candidates** are asked by five roots with their trees, square, street, promenade, stairs and
@@ -4133,8 +4132,8 @@ item of Havana's Malecón or of the Piazza della Rotonda. A place the source hol
 keeps 12 editions and 21,000 readers, or 3,500 with a guide.
 
 Measured on the development subset on 2026-10-23, read-only in the dev container: the pool named
-419 candidates, and the source would admit 326 and refuse 28, with 109 of the 114 places of its
-calibration list among the admitted.
+419 candidates, and the source would admit 326 and refuse 28, with 109 of the 114 places the line
+was chosen on among the admitted.
 
 ### Shared patterns
 

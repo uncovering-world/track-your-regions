@@ -106,10 +106,13 @@ status. The vision's "curators can promote or demote Iconic" is this sentence.
   traveller expects of *this* kind — never copied from another kind's: the 22 editions tuned
   for about a hundred art museums (ADR-0023) say nothing about towers, whose bot-written
   pagodas have 37 editions and 2,700 readers a year. The list is a committed file,
-  `db/catalogue-coverage/calibration/<kind>.jsonl`, each entry naming the reference lists
-  that call it a top — the coverage surveys, a federation's members, the World Heritage List,
-  the places four or more Wikivoyage editions name, a wonders list — from at least two
-  independent sources, Wikivoyage as one check (`docs/tech/catalogue-coverage.md` § The files,
+  `db/catalogue-coverage/calibration/<kind>.jsonl`: a canon of the tops nobody who knows the
+  kind would dispute, as many as there are and no more than about a hundred, compiled
+  independently of the line — from the compiler's own list written before anything is read and
+  from independent editorial selections, guides' and travel publishers' lists of the kind's
+  famous places — and never drawn from what the kind's own runs read — Wikidata's classes, Wikipedia editions, a year's
+  readers, an item's use by Wikivoyage — since a list taken from what the line measures cannot show
+  what the line misses (`docs/tech/catalogue-coverage.md` § The files,
   #1864). The source record keeps the measurement the line was chosen on; the coverage report
   (`scripts/catalogue-coverage.sh report`), read after a run, says how many of the tops the
   kind offers and why each miss stands, so a line that moves, a rule that changes or an item
