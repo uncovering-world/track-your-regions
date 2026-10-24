@@ -49,6 +49,22 @@ export interface VisitSuggestion {
   lead: string | null;
 }
 
+/** The kind World Heritage Sites (`experience_kinds` id 1, the UNESCO source's). */
+const WORLD_HERITAGE_KIND = 1;
+
+/**
+ * The place `e` is on the World Heritage list: it holds a World Heritage Sites
+ * membership, whatever its state (#1926). The inscription already says the
+ * place is real and visited, so Jev is not asked what a visitor finds there —
+ * neither on an arrival's card nor by a kind's run: the six sites asked on dev
+ * (the Pont du Gard, the Forth Bridge, the Ajanta Caves among them) all came
+ * back as a place with something to see, each a paid call that told a curator
+ * nothing.
+ */
+export function onWorldHeritageListSql(e = 'e'): string {
+  return `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} whs WHERE whs.experience_id = ${e}.id AND whs.kind_id = ${WORLD_HERITAGE_KIND})`;
+}
+
 /**
  * The newest reading recorded for the place `e` as it stands, as
  * `{ reading, confidence }` (a null reading for an answer the client

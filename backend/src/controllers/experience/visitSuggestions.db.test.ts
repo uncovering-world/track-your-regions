@@ -141,6 +141,37 @@ describe("Jev's reading of an arriving place (#1768)", () => {
     expect(mockedAsk).not.toHaveBeenCalled();
   });
 
+  it('asks nothing of a place on the World Heritage list, and records nothing (#1926)', async () => {
+    // The place is also a World Heritage site, as the Pont du Gard is.
+    await pool.query(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, 'whs-9768-fixture', 'verified', NOW() FROM experience_sources s WHERE s.id = 1`,
+      [LUPANAR],
+    );
+
+    expect(await ask()).toEqual({ configured: true, suggestion: null });
+    expect(mockedAsk).not.toHaveBeenCalled();
+    const stored = await pool.query('SELECT 1 FROM experience_visit_suggestions WHERE experience_id = $1', [LUPANAR]);
+    expect(stored.rowCount).toBe(0);
+  });
+
+  it('shows no reading stored before the place was known as World Heritage (#1926)', async () => {
+    // A reading recorded for the place as it stands...
+    expect((await ask()).suggestion).toEqual({ reading: 'part', confidence: 0.75 });
+    mockedAsk.mockClear();
+    // ...then a World Heritage membership the place is not admitted to, which
+    // leaves what the reading was recorded for as it was: the stored reading
+    // would be served, were the list not read first.
+    await pool.query(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, admission)
+       SELECT $1, s.kind_id, s.id, 'whs-9768-fixture', 'pending', 'refused' FROM experience_sources s WHERE s.id = 1`,
+      [LUPANAR],
+    );
+
+    expect(await ask()).toEqual({ configured: true, suggestion: null });
+    expect(mockedAsk).not.toHaveBeenCalled();
+  });
+
   it("is asked in the arriving source's scope, not in the scope of the place's other kinds", async () => {
     // The place is also an art museum the curator does not look after.
     await pool.query(

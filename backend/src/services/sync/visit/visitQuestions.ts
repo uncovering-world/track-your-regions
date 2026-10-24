@@ -45,7 +45,7 @@ import { commonsPhotoDoor, photographed, type PhotoPlace, type PhotoSend } from 
 import { readVisit, type Reading } from './readVisit.js';
 import { fetchVisitFacts } from './visitFacts.js';
 import { articleLeads, type VisitAsked, type VisitReading } from './visitReading.js';
-import { askedSql, newestReadingSql } from './visitSuggestions.js';
+import { askedSql, newestReadingSql, onWorldHeritageListSql } from './visitSuggestions.js';
 import { WITNESSES_NEEDED, mapWitness, witnessesOf, type Witness } from './witnesses.js';
 
 const LOG_PREFIX = '[Visit questions]';
@@ -104,6 +104,9 @@ export async function offeredPlaces(sourceId: number): Promise<OfferedPlace[]> {
       WHERE m.source_id = $1 AND ${membershipOfferedSql('m')} AND NOT ${admissionPinnedSql('m')}
         AND e.missing_since IS NULL AND m.external_id ~ '^Q[0-9]+$'
         AND NOT EXISTS (SELECT 1 FROM experience_visit_questions q WHERE q.membership_id = m.id)
+        -- A place on the World Heritage list is not asked about, whichever kind
+        -- the run fills: the inscription answers the question (#1926).
+        AND NOT ${onWorldHeritageListSql('e')}
       ORDER BY m.id`,
     [sourceId],
   );
