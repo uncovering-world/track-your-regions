@@ -157,11 +157,14 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
     // region's batch the map already holds, the picture off the public read.
     const where = new Map((regionPlaces ?? []).map(loc => [loc.id, { regionPath: loc.region_path, inRegion: loc.in_region }]));
     const picturedIds = new Set(publicLocs.filter(loc => loc.image_url).map(loc => loc.id));
+    // And its own article (#1963), off the public read as the picture is.
+    const articleById = new Map(publicLocs.map(loc => [loc.id, loc.wikipedia_url]));
     const placed = (loc: PanelLocation): PanelLocation => ({
       ...loc,
       regionPath: where.get(loc.id)?.regionPath ?? null,
       inRegion: where.get(loc.id)?.inRegion ?? true,
       hasPicture: picturedIds.has(loc.id),
+      articleUrl: articleById.get(loc.id) ?? null,
     });
     // The place's claims travel on the public read only; the visited-status read
     // is about the visit. Joined by id here, so a corrected pin says so on a

@@ -25,6 +25,7 @@ import FixPlaceIcon from '@mui/icons-material/EditLocationAlt';
 import { locationLabel, pointFullName, pointOfRow } from '../../utils/locationLabel';
 import { CopyNameButton } from '../shared/CopyButton';
 import { OpenInMapsLink } from '../shared/OpenInMapsLink';
+import { PointArticleLink } from '../shared/PointArticleLink';
 import { ApproximateLocationNote } from '../shared/ApproximateLocationNote';
 import type { ExperienceLocation } from '../../api/experiences';
 import { claimLabel } from '../../utils/placeClaims';
@@ -60,6 +61,8 @@ export interface LocationRowData {
   hasPicture?: boolean;
   /** Why the source placed it only roughly, which the row says (#1912). */
   approximate?: ExperienceLocation['approximate'];
+  /** The part's own English Wikipedia article, which the row links (#1963). */
+  articleUrl?: string | null;
 }
 
 interface LocationRowProps {
@@ -153,6 +156,7 @@ function LocationRowComponent({
           // and a place a reader may want the name of.
           secondaryAction={(
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <PointArticleLink href={location.articleUrl} name={label} />
               <CopyNameButton fullName={fullName} className="place-copy" />
               <OpenInMapsLink point={location} label={fullName} compact className="place-maps" />
               {onCorrect && <FixPlaceButton location={location} onCorrect={onCorrect} />}
@@ -214,6 +218,7 @@ function LocationRowComponent({
         secondaryAction={
           (
             <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <PointArticleLink href={location.articleUrl} name={label} />
               <CopyNameButton fullName={fullName} className="place-copy" />
               <OpenInMapsLink point={location} label={fullName} compact className="place-maps" />
               {onCorrect && <FixPlaceButton location={location} onCorrect={onCorrect} />}
