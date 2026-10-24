@@ -282,6 +282,47 @@ describe('a separation of one kind into a place of its own (ADR-0144)', () => {
     expect(await held(PANTHEON, again.result!.separatedId)).toEqual([`${PANTHEON}:mentions`, `${again.result!.separatedId}:identifies`]);
   });
 
+  it("takes the outline with the membership whose source drew it, and leaves the original none (ADR-0146)", async () => {
+    // The Archaeology run's outline of the site, which its membership carries away.
+    await pool.query(
+      `UPDATE experiences SET boundary = ST_Multi(ST_GeomFromText('POLYGON((12.476 41.898, 12.477 41.898, 12.477 41.899, 12.476 41.899, 12.476 41.898))', 4326)),
+              area_km2 = 0.009, boundary_source_id = $2,
+              metadata = COALESCE(metadata, '{}'::jsonb) || '{"osm": {"extentFrom": "way/1"}}'::jsonb WHERE id = $1`,
+      [PANTHEON, archaeologySource],
+    );
+    const { result } = await separateMembership({ placeId: PANTHEON, membershipId: siteMembership, separatedBy: curatorId });
+    const outlines = (await pool.query<{ id: number; drawn: boolean; owner: number | null }>(
+      'SELECT id, boundary IS NOT NULL AS drawn, boundary_source_id AS owner FROM experiences WHERE id = ANY($1::int[]) ORDER BY id',
+      [[PANTHEON, result!.separatedId]],
+    )).rows;
+    expect(outlines.find(row => row.id === PANTHEON)).toEqual({ id: PANTHEON, drawn: false, owner: null });
+    expect(outlines.find(row => row.id === result!.separatedId))
+      .toEqual({ id: result!.separatedId, drawn: true, owner: archaeologySource });
+    // What OpenStreetMap said about the outline goes with it.
+    const osm = (await pool.query<{ id: number; osm: unknown }>(
+      "SELECT id, metadata -> 'osm' AS osm FROM experiences WHERE id = ANY($1::int[])", [[PANTHEON, result!.separatedId]],
+    )).rows;
+    expect(osm.find(row => row.id === PANTHEON)?.osm).toBeNull();
+    expect(osm.find(row => row.id === result!.separatedId)?.osm).toEqual({ extentFrom: 'way/1' });
+  });
+
+  it("copies what OpenStreetMap said only to a place that takes the outline (ADR-0146)", async () => {
+    await pool.query(
+      `UPDATE experiences SET boundary = ST_Multi(ST_GeomFromText('POLYGON((12.476 41.898, 12.477 41.898, 12.477 41.899, 12.476 41.899, 12.476 41.898))', 4326)),
+              area_km2 = 0.009, boundary_source_id = $2,
+              metadata = COALESCE(metadata, '{}'::jsonb) || '{"osm": {"extentFrom": "way/1"}}'::jsonb WHERE id = $1`,
+      [PANTHEON, archaeologySource],
+    );
+    // The worship membership leaves; the Archaeology outline and its note stay.
+    const { result } = await separateMembership({ placeId: PANTHEON, membershipId: worshipMembership, separatedBy: curatorId });
+    const rows = (await pool.query<{ id: number; osm: unknown; drawn: boolean }>(
+      "SELECT id, metadata -> 'osm' AS osm, boundary IS NOT NULL AS drawn FROM experiences WHERE id = ANY($1::int[])",
+      [[PANTHEON, result!.separatedId]],
+    )).rows;
+    expect(rows.find(row => row.id === PANTHEON)).toMatchObject({ osm: { extentFrom: 'way/1' }, drawn: true });
+    expect(rows.find(row => row.id === result!.separatedId)).toMatchObject({ osm: null, drawn: false });
+  });
+
   it('refuses the place\'s only kind, and changes nothing', async () => {
     await separateMembership({ placeId: PANTHEON, membershipId: siteMembership, separatedBy: curatorId });
     const outcome = await separateMembership({ placeId: PANTHEON, membershipId: worshipMembership, separatedBy: curatorId });

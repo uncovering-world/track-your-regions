@@ -340,6 +340,9 @@ async function processSite(
     // The shape a reader sees drawn around the place, where OSM has one. Null
     // for a site mapped as a point, which is most of them.
     boundaryWkt: item.extentWkt,
+    // The site door reads extents, so a site whose outline OSM no longer has
+    // loses the one this source drew (ADR-0146, #1968).
+    readsExtents: true,
     // A site enters on its own fame and is admitted for nothing else
     // (ADR-0058 decision 4).
     admittedFor: null,

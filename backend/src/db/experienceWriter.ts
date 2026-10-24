@@ -404,9 +404,12 @@ export async function insertCuratedExperience(
  * the original's content, under the membership's own view of the name, the
  * subtitle, the picture and its credit, and the point (`reported_*`), and the
  * membership's source and id. The source's next run writes the rest through
- * the usual rules, finding its membership on this place. Answers with the
- * object's token: the insert's own row lock is the object lock, as for a
- * curator's created place.
+ * the usual rules, finding its membership on this place. The outline goes
+ * with the membership whose source drew it (ADR-0146 decision 5): the new place
+ * takes it and the original lets it go, with what OpenStreetMap said about it
+ * (`metadata.osm`), since the drawer's run reaches only the place its
+ * membership is on. Answers with the object's token: the
+ * insert's own row lock is the object lock, as for a curator's created place.
  */
 export async function insertSeparatedExperience(
   client: PoolClient,
@@ -417,7 +420,7 @@ export async function insertSeparatedExperience(
     WITH next AS (SELECT nextval(pg_get_serial_sequence('experiences', 'id')) AS id)
     INSERT INTO experiences (
       id, source_id, external_id, name, name_local, subtitle, description, tags, location,
-      country_codes, country_names, image_url, metadata, status
+      country_codes, country_names, image_url, metadata, status, boundary, area_km2, boundary_source_id
     )
     SELECT next.id, m.source_id,
            -- Which source first brought a place, and under what id, is all
@@ -434,14 +437,26 @@ export async function insertSeparatedExperience(
            e.description, e.tags, COALESCE(m.reported_location, e.location),
            e.country_codes, e.country_names,
            CASE WHEN m.reported_name IS NULL THEN e.image_url ELSE m.reported_image_url END,
-           (COALESCE(e.metadata, '{}'::jsonb) - 'imageCredit')
+           -- What OpenStreetMap said goes only with the outline it is about.
+           (COALESCE(e.metadata, '{}'::jsonb) - 'imageCredit'
+              - CASE WHEN e.boundary_source_id IS NOT DISTINCT FROM m.source_id THEN '' ELSE 'osm' END)
              || CASE WHEN m.reported_name IS NULL THEN jsonb_strip_nulls(jsonb_build_object('imageCredit', e.metadata -> 'imageCredit'))
                      ELSE jsonb_strip_nulls(jsonb_build_object('imageCredit', m.reported_image_credit)) END,
-           e.status
+           e.status,
+           CASE WHEN e.boundary_source_id = m.source_id THEN e.boundary END,
+           CASE WHEN e.boundary_source_id = m.source_id THEN e.area_km2 END,
+           CASE WHEN e.boundary_source_id = m.source_id THEN m.source_id END
       FROM next, experiences e
       JOIN ${MEMBERSHIPS} m ON m.experience_id = e.id AND m.id = $2
      WHERE e.id = $1
     RETURNING id
   `, [original.id, membershipId]);
+  await client.query(
+    `UPDATE experiences e SET boundary = NULL, area_km2 = NULL, boundary_source_id = NULL,
+            metadata = COALESCE(e.metadata, '{}'::jsonb) - 'osm'
+       FROM ${MEMBERSHIPS} m
+      WHERE e.id = $1 AND m.id = $2 AND e.boundary_source_id = m.source_id`,
+    [original.id, membershipId],
+  );
   return { id: inserted.rows[0].id as number } as LockedExperience;
 }
