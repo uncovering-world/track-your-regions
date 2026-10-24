@@ -1466,7 +1466,10 @@ site. Should the point stop standing for the site (a renamed site, a renumbered 
 becomes a place named and placed as its point, and the
 point keeps its id, so its placements, regions, claims, candidates and held decisions follow it, and a
 traveller's visit to the component becomes a visit to the part place (§ A part reads as a place);
-its picture, credit, description and item stay on the point for now (#1425). A part's name, coordinate and reference are its point's: the trigger
+its picture, credit, description and item stay on the point. Where the point holds no picture, a
+reader is served the part place's own picture and credit (`pointPictureSql`, #1946). That is the case
+for a part that holds a kind of its own: the kind's place keeps its picture on the place row, and its
+point carries none. A part's name, coordinate and reference are its point's: the trigger
 `follow_component_point()` carries a rename, a move or a renumbering of the point to the part and
 its relation, whoever writes it — the run, a curator, a publish — except on a part that holds a kind of
 its own, which names itself (`part_follows_point`, migration 124, #1250). A site of one component stays one place (ADR-0088); one that falls back to one keeps its
@@ -1579,7 +1582,9 @@ path needs.
   the one the run fetched from Commons for that file — asked together with the sites' own pictures,
   only for files no point holds a credit for (`componentPicturesToCredit`) — or one a point already
   holds for the same file, since a credit is the file's, never one of another photograph. The reads serve the point's
-  `image_url` and `image_credit` on every point and its `description` and `wikidata_item` (#1271, the part's card links to it) on the object's own read
+  `image_url` and `image_credit` on every point — its own, else its part place's, the credit from the row
+  the picture comes from (`pointPictureSql` in `db/placePoints.ts`, #1946); the object's own read also says
+  `image_of_part`, so the curator's correction form (`CurationPlaces`) keeps editing the point's own empty picture — and its `description` and `wikidata_item` (#1271, the part's card links to it) on the object's own read
   only, which keeps the region feed light; the map's hover card shows a point's own picture and,
   for a part without one, its site's, saying so beside the credit (`pointPicture`,
   `docs/tech/experience-map-ui.md`).
