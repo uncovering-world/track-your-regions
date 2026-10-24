@@ -107,7 +107,8 @@ status. The vision's "curators can promote or demote Iconic" is this sentence.
   for about a hundred art museums (ADR-0023) say nothing about towers, whose bot-written
   pagodas have 37 editions and 2,700 readers a year. The list is a committed file,
   `db/catalogue-coverage/calibration/<kind>.jsonl`: a canon of the tops nobody who knows the
-  kind would dispute, as many as there are and no more than about a hundred, compiled
+  kind would dispute, as many as there are, about a hundred as a soft guide (a kind that passes
+  it says why in its record, `docs/tech/catalogue-coverage.md` § The files), compiled
   independently of the line — from the compiler's own list written before anything is read and
   from independent editorial selections, guides' and travel publishers' lists of the kind's
   famous places — and never drawn from what the kind's own runs read — Wikidata's classes, Wikipedia editions, a year's

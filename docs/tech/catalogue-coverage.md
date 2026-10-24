@@ -178,8 +178,10 @@ readers, an item's use by Wikivoyage — since a list taken from what the line m
 what the line misses. An entry enters when two independent
 sources name it, the compiler's own list counting as one, and it is of the kind by the kind's
 definition in `kinds.jsonl`, judged per entry. The canon is as long as there are tops nobody
-would dispute, and no longer than about a hundred: a place a traveller meets only in its own
-region is the regional tier's, and the surveys' lists hold it. Which guides named an entry is
+would dispute, about a hundred as a soft guide: a place a traveller meets only in its own region
+is the regional tier's, and the surveys' lists hold it. A kind that spans every continent and
+tradition, as Places of worship does, may pass the guide, and its source record says so and why;
+the canon is never cut to the guide by a rule the method does not have. Which guides named an entry is
 kept under `docs/local/`, since a guide's selection is its publisher's
 (`docs/tech/filling-a-kind.md` § 5); the register names the canon with that note.
 
