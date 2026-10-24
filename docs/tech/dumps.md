@@ -313,14 +313,18 @@ which reads the file twice through `readDump`, each pass verified:
    property, the items the main snaks name) and keeps ids and edges only, in
    bit sets and typed arrays (`idSets.ts`). It keeps the seeds (a coordinate,
    P625, or a class, P279), a seed's P31 classes and its place, part and
-   collection values (P131, P276, P361, P527, P195, P189), what a seed
+   collection values and what it is based on (P131, P276, P361, P527, P195, P189, P144), what a seed
    depicts or commemorates (P180, P547, `SUBJECT_PROPERTIES`, one hop and one
    way: Sardar Vallabhbhai Patel, whom the Statue of Unity depicts, has no
    coordinate, #1832; measured on 2026-10-23 at about 38 300 items and
    2.5 GB, 1.35% of the kept bytes), every item that
    names a seed through one of those place properties, every item whose chain of P276, P361 and
    P195 reaches a coordinate within `CHAIN_DEPTH` steps with every item on the
-   way, and every property. `finish()` answers the kept set and its counts,
+   way, and every property. A cast with a coordinate keeps the group it is based on through
+   P144 even where the group has no point of its own; `CLAIM_PROPERTIES` also derives that
+   link for the cast reader (#880). Copies made before that scope need a rebuild from the
+   held dump, since a re-derive cannot recover a group the old scope left out.
+   `finish()` answers the kept set and its counts,
    the bytes of the kept lines among them. With a local copy, the result is
    kept beside the dump as `<file>.scope` (`scopeFile.ts`, #1468): the
    kept and property id sets, a bit per id, under a header naming the file,
