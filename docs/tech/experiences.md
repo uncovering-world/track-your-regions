@@ -2202,7 +2202,10 @@ museum's work, and a Pietà is St Peter's before it is Rome's (#753 is where a w
 goes to a church to see will live). These sources fill the kinds' **world tier** — what the world
 knows, by the same fame line as the museums' — and nothing else; the regional tier, the monuments
 a region knows and the world's line does not reach, comes from regional sources by the rules of
-[filling-a-kind.md](filling-a-kind.md) (ADR-0048; #799), and carries no badge.
+[filling-a-kind.md](filling-a-kind.md) (ADR-0048; #799), and carries no badge. What Monuments &
+memorials' line admits is checked after every run against the kind's own canon in
+`db/catalogue-coverage/calibration/monuments-and-memorials.jsonl` (#1954), compiled
+independently of what the line measures (`docs/tech/catalogue-coverage.md`).
 
 **Its run is a member of the place pass** (ADR-0132, § Several kinds from one gather). The place gather reads stages 1 to 3 below (the classes, the pool and the facts) once, as `PUBLIC_ART_KIND` declares them, beside the other place kinds'. The rows either source admits are asked for by id. `classifyPublicArt` takes stages 4 and 5 (the verdict and the line) for each source from the kind's share, with the source's own admitted rows and the places other kinds offer, and asks Wikidata nothing more. Public art and Monuments & memorials (`PUBLIC_ART_SOURCES`, `[3, 6]`) each decide by their kind's rule (`publicArt/kindRules.ts`, `RULE_OF_SOURCE` in `landmarkSyncService.ts`). A place only the other of the two offers is not another kind's (`placesOtherSourcesOffer(PUBLIC_ART_SOURCES)`), while a place of worship is.
 
