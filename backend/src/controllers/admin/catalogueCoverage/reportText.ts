@@ -6,7 +6,9 @@
  */
 
 import {
-  causeWords, type CoverageReport, type ExpectationResult, type LiveKindGaps, type NearbyPoint, type UnnamedPlace, type Verdict,
+  causeWords,
+  type CalibrationStanding, type CalibrationTop, type CoverageReport, type ExpectationResult, type LiveKindGaps, type NearbyPoint,
+  type UnnamedPlace, type Verdict,
 } from './report.js';
 
 const VERDICT_WORDS: Record<Verdict, string> = {
@@ -74,6 +76,36 @@ function liveLines(report: CoverageReport): string[] {
   return ['What each live kind lacks of what is expected of it', '', ...report.liveKinds.flatMap(liveKindLines)];
 }
 
+const STANDING_WORDS: Record<Exclude<CalibrationStanding, 'offered'>, string> = {
+  held: 'in the catalogue, not offered by this kind',
+  refused: 'refused by the last run',
+  under_line: 'absent, under the editions line',
+  absent: 'absent, not a candidate the last run named',
+};
+
+/** One top a kind does not offer: how known it is, which lists name it, and why it is missed. */
+function missLine(top: CalibrationTop): string {
+  const sitelinks = top.sitelinks ?? 'no';
+  const detail = top.detail === null ? '' : `: ${top.detail}`;
+  return `        ${top.name} (${top.wikidataId}; ${sitelinks} sitelinks; ${top.sources.join(', ')}; ${STANDING_WORDS[top.standing as Exclude<CalibrationStanding, 'offered'>]}${detail})`;
+}
+
+/** A live kind against its own calibration list (#1864): the share offered, each reference list's share, and every miss. */
+function calibrationLines(kind: LiveKindGaps): string[] {
+  const own = kind.calibration;
+  if (own === null) return [];
+  const lines = [`${kind.name} [${kind.slug}]: ${own.offered} of ${own.entries} tops are offered`];
+  for (const source of own.bySource) lines.push(`    ${source.name}: ${source.offered} of ${source.named}`);
+  if (own.misses.length > 0) lines.push('    not offered:', ...own.misses.map(missLine));
+  return lines;
+}
+
+function calibrationSection(report: CoverageReport): string[] {
+  const listed = report.liveKinds.filter(kind => kind.calibration !== null);
+  if (listed.length === 0) return [];
+  return ['What each live kind offers of the tops a traveller expects of it: its fame line, checked', '', ...listed.flatMap(calibrationLines), ''];
+}
+
 const owner = (issue: number | null): string => (issue === null ? '' : ` (#${issue})`);
 
 /** The judgements whose gap has closed, and the row judgements no offered row carries: each a line to remove from the ledger. */
@@ -138,6 +170,7 @@ export function renderCoverageReport(report: CoverageReport): string {
     '',
     ...liveLines(report),
     '',
+    ...calibrationSection(report),
     ...unnamedLines(report),
     '',
     ...staleLines(report),

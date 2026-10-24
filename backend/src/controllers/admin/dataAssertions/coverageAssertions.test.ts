@@ -25,7 +25,7 @@ type Missing = LiveKindGaps['wellKnownMissing'][number];
 function liveKind(over: Partial<LiveKindGaps>): LiveKindGaps {
   return {
     slug: 'archaeology', name: 'Archaeology', line: 22, expected: 0, offered: 0,
-    wellKnownMissing: [], judgedByCause: [], belowLineMissing: 0, ...over,
+    wellKnownMissing: [], judgedByCause: [], belowLineMissing: 0, calibration: null, ...over,
   };
 }
 

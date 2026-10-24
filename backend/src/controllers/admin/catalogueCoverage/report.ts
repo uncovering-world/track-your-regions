@@ -13,7 +13,11 @@
  *   there is one (ADR-0116), and the judgements whose gap has since closed;
  * - per region, the other direction (#1601): what it offers that no guide names,
  *   least known first, each with its row judgement, and the rows a person judged
- *   not worth a visit that a kind still offers.
+ *   not worth a visit that a kind still offers;
+ * - per live kind with a calibration list (#1864), how many of the tops a
+ *   traveller expects of it a reader sees, and why each miss stands: held for a
+ *   curator, refused by the kind's last run with its reason, or absent, under
+ *   the kind's editions line or out of its classes' reach.
  */
 
 import { ROW_CAUSES, type Cause } from '../../../services/catalogueCoverage/files.js';
@@ -24,7 +28,7 @@ import { BRIDGE_LINE } from '../../../services/sync/bridges/kind.js';
 import { SQUARE_LINE } from '../../../services/sync/squares/kind.js';
 import {
   readCoverageFacts,
-  type CoverageFacts, type ExpectationRow, type JudgementRow, type KindRow, type MatchRow, type NearbyRow,
+  type CalibrationRow, type CoverageFacts, type ExpectationRow, type JudgementRow, type KindRow, type MatchRow, type NearbyRow,
 } from './reportQueries.js';
 
 /**
@@ -115,12 +119,54 @@ export interface LiveKindGaps {
   judgedByCause: JudgedCause[];
   /** Absent from this kind and under its line: the regional tier's to hold. */
   belowLineMissing: number;
+  /** The kind against its own calibration list (#1864); null where the kind has no list. */
+  calibration: KindCalibration | null;
 }
 
 export interface JudgedCause {
   cause: Cause;
   count: number;
   issues: number[];
+}
+
+/**
+ * Where one top of a kind's calibration list stands (#1864), first match wins:
+ * offered by the kind; refused by the kind's latest real run, with the run's
+ * reason — before held, since a rule change knocks a top the catalogue already
+ * holds out through that very refusal, and the reason is what the list is there
+ * to surface; held, in the catalogue and not offered by it (waiting for a
+ * curator, refused by name earlier, offered by another kind alone); absent,
+ * which is under the kind's editions line where the list's sitelinks say so,
+ * else out of its classes' reach.
+ */
+export type CalibrationStanding = 'offered' | 'held' | 'refused' | 'under_line' | 'absent';
+
+export interface CalibrationTop {
+  slug: string;
+  name: string;
+  wikidataId: string;
+  sitelinks: number | null;
+  sources: string[];
+  standing: CalibrationStanding;
+  /** The catalogue place that holds it, for a held one; the run's reason, for a refused one. */
+  detail: string | null;
+}
+
+/** One reference list's share: how many of its members the kind offers. */
+export interface CalibrationBySource {
+  slug: string;
+  name: string;
+  named: number;
+  offered: number;
+}
+
+/** How a live kind stands to its own calibration list: the tops, the misses by standing, each reference list's share. */
+export interface KindCalibration {
+  entries: number;
+  offered: number;
+  /** Every top the kind does not offer, the most known first. */
+  misses: CalibrationTop[];
+  bySource: CalibrationBySource[];
 }
 
 /** One cause's share of the judged, with the issues the judgements name: `90 door-missing (#628)`. */
@@ -313,6 +359,56 @@ function unnamedByRegion(
   return { unnamed, stale };
 }
 
+/** Most known first: the most sitelinks, a top with no count last, then by name. */
+const byFame = (a: CalibrationTop, b: CalibrationTop): number =>
+  (b.sitelinks ?? -1) - (a.sitelinks ?? -1) || a.name.localeCompare(b.name);
+
+function standingOf(row: CalibrationRow, line: number | null): CalibrationStanding {
+  if (row.offered) return 'offered';
+  if (row.refused_for !== null) return 'refused';
+  if (row.held_as !== null) return 'held';
+  return line !== null && row.sitelinks !== null && row.sitelinks < line ? 'under_line' : 'absent';
+}
+
+/** A live kind against its own list (#1864), or null where it has none. */
+function calibrationOf(kind: KindRow, rows: CalibrationRow[], line: number | null, sourceNames: Map<string, string>): KindCalibration | null {
+  const own = rows.filter(row => row.kind_slug === kind.slug);
+  if (own.length === 0) return null;
+  // What the miss is told by: the place that holds a held one, the run's reason for a refused one.
+  const detailOf = (row: CalibrationRow, standing: CalibrationStanding): string | null => {
+    if (standing === 'held') return row.held_as;
+    if (standing === 'refused') return row.refused_for;
+    return null;
+  };
+  const tops: CalibrationTop[] = own.map((row) => {
+    const standing = standingOf(row, line);
+    return {
+      slug: row.slug,
+      name: row.name,
+      wikidataId: row.wikidata_id,
+      sitelinks: row.sitelinks,
+      sources: row.sources,
+      standing,
+      detail: detailOf(row, standing),
+    };
+  });
+  const bySource = new Map<string, CalibrationBySource>();
+  for (const top of tops) {
+    for (const slug of top.sources) {
+      const share = bySource.get(slug) ?? { slug, name: sourceNames.get(slug) ?? slug, named: 0, offered: 0 };
+      share.named += 1;
+      if (top.standing === 'offered') share.offered += 1;
+      bySource.set(slug, share);
+    }
+  }
+  return {
+    entries: tops.length,
+    offered: tops.filter(top => top.standing === 'offered').length,
+    misses: tops.filter(top => top.standing !== 'offered').sort(byFame),
+    bySource: [...bySource.values()].sort((a, b) => b.named - a.named || a.slug.localeCompare(b.slug)),
+  };
+}
+
 /** How many of `missing` a person has judged under each cause, in the order of the causes' first appearance by renown. */
 function judgedByCause(missing: Pick<MissingEntry, 'judgement'>[]): JudgedCause[] {
   const counted = new Map<Cause, JudgedCause>();
@@ -383,6 +479,7 @@ export function buildCoverageReport(facts: CoverageFacts): CoverageReport {
     .filter(demand => demand.expected > 0)
     .sort((a, b) => b.regions - a.regions || b.expected - a.expected || a.slug.localeCompare(b.slug));
 
+  const sourceNames = new Map(facts.calibrationSources.map(source => [source.slug, source.name]));
   // A gap a live kind still has, over or under the line: a judgement on any other gap is stale.
   const stillLacked = new Set<string>();
   const liveKinds: LiveKindGaps[] = facts.kinds
@@ -406,6 +503,7 @@ export function buildCoverageReport(facts: CoverageFacts): CoverageReport {
         wellKnownMissing,
         judgedByCause: judgedByCause(wellKnownMissing),
         belowLineMissing: absent.length - wellKnown.length,
+        calibration: calibrationOf(kind, facts.calibration, line, sourceNames),
       };
     })
     .sort((a, b) => a.slug.localeCompare(b.slug));

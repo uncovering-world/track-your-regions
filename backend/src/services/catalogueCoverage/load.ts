@@ -2,8 +2,11 @@
  * The catalogue-coverage tables, replaced whole from the files (ADR-0081).
  *
  * `coverage_kinds`, `coverage_regions`, `coverage_expectations`,
- * `coverage_expectation_kinds` and `coverage_judgements` (ADR-0116) are a copy
- * of `db/catalogue-coverage/`. This is their one writer: it empties all five and fills them from what
+ * `coverage_expectation_kinds`, `coverage_judgements` (ADR-0116) and the
+ * calibration tables `coverage_calibration_sources`,
+ * `coverage_calibration_entries` and `coverage_calibration_entry_sources`
+ * (#1864) are a copy of `db/catalogue-coverage/`. This is their one writer: it
+ * empties them all and fills them from what
  * `readCoverageFiles` returned, in one transaction, so a reader of the tables
  * sees the previous files or these and never a mixture, and a load that fails
  * leaves the previous content standing.
@@ -24,6 +27,9 @@ export interface CoverageLoadSummary {
   expectations: number;
   filings: number;
   judgements: number;
+  /** The reference lists, and the entries of every kind's calibration list. */
+  calibrationSources: number;
+  calibrationEntries: number;
 }
 
 /** The register and `experience_kinds` do not describe the same live kinds. */
@@ -109,7 +115,19 @@ async function fill(client: PoolClient, files: CoverageFiles): Promise<CoverageL
     note: judgement.note,
   }));
 
+  const calibrationSources = files.calibrationSources.map(source => ({
+    slug: source.slug, name: source.name, url: source.url, read: source.read, note: source.note,
+  }));
+  const calibrationEntries = [...files.calibration].flatMap(([kindSlug, entries]) => entries.map(entry => ({
+    kind_slug: kindSlug, slug: entry.slug, name: entry.name, wikidata_id: entry.wikidata, sitelinks: entry.sitelinks, note: entry.note,
+  })));
+  const namings = [...files.calibration].flatMap(([kindSlug, entries]) => entries.flatMap(entry =>
+    entry.sources.map(sourceSlug => ({ kind_slug: kindSlug, entry_slug: entry.slug, source_slug: sourceSlug }))));
+
   // Children first, so no row is ever left pointing at a parent that is gone.
+  await client.query('DELETE FROM coverage_calibration_entry_sources');
+  await client.query('DELETE FROM coverage_calibration_entries');
+  await client.query('DELETE FROM coverage_calibration_sources');
   await client.query('DELETE FROM coverage_judgements');
   await client.query('DELETE FROM coverage_expectation_kinds');
   await client.query('DELETE FROM coverage_expectations');
@@ -159,8 +177,35 @@ async function fill(client: PoolClient, files: CoverageFiles): Promise<CoverageL
          AS sent(region_slug text, entry_slug text, kind_slug text, row_wikidata_id text, cause text, issue_number integer, judged date, note text)`,
     [JSON.stringify(judgements)],
   );
+  await client.query(
+    `INSERT INTO coverage_calibration_sources (slug, name, url, read, note)
+     SELECT slug, name, url, read, note
+       FROM jsonb_to_recordset($1::jsonb)
+         AS sent(slug text, name text, url text, read date, note text)`,
+    [JSON.stringify(calibrationSources)],
+  );
+  await client.query(
+    `INSERT INTO coverage_calibration_entries (kind_slug, slug, name, wikidata_id, sitelinks, note)
+     SELECT kind_slug, slug, name, wikidata_id, sitelinks, note
+       FROM jsonb_to_recordset($1::jsonb)
+         AS sent(kind_slug text, slug text, name text, wikidata_id text, sitelinks integer, note text)`,
+    [JSON.stringify(calibrationEntries)],
+  );
+  await client.query(
+    `INSERT INTO coverage_calibration_entry_sources (kind_slug, entry_slug, source_slug)
+     SELECT kind_slug, entry_slug, source_slug
+       FROM jsonb_to_recordset($1::jsonb)
+         AS sent(kind_slug text, entry_slug text, source_slug text)`,
+    [JSON.stringify(namings)],
+  );
   return {
-    kinds: kinds.length, regions: regions.length, expectations: expectations.length, filings: filings.length, judgements: judgements.length,
+    kinds: kinds.length,
+    regions: regions.length,
+    expectations: expectations.length,
+    filings: filings.length,
+    judgements: judgements.length,
+    calibrationSources: calibrationSources.length,
+    calibrationEntries: calibrationEntries.length,
   };
 }
 

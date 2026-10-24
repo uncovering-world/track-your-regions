@@ -48,6 +48,12 @@ const FILES: CoverageFiles = {
     { region: 'cusco-region', entry: 'moray', kind: 'archaeology', row: null, cause: 'rule-defect', issue: 1160, judged: '2026-10-16', note: 'Typed an archaeological site with 18 sitelinks; never asked by a run.' },
     { region: 'cusco-region', entry: null, kind: null, row: 'Q2003624', cause: 'not-a-must', issue: null, judged: '2026-10-16', note: 'A chapel no guide names.' },
   ],
+  calibrationSources: [
+    { slug: 'coverage-surveys', name: 'The coverage surveys', url: null, read: '2026-10-24', note: '' },
+  ],
+  calibration: new Map([['archaeology', [
+    { slug: 'machu-picchu', name: 'Machu Picchu', wikidata: 'Q676203', sources: ['coverage-surveys'], sitelinks: 150, note: '' },
+  ]]]),
 };
 
 function makeClient(failOn?: RegExp) {
@@ -80,6 +86,9 @@ describe('replaceCoverage', () => {
     expect(order).toEqual([
       'BEGIN',
       'SELECT id, name FROM experience_kinds ORDER BY id',
+      'DELETE FROM coverage_calibration_entry_sources',
+      'DELETE FROM coverage_calibration_entries',
+      'DELETE FROM coverage_calibration_sources',
       'DELETE FROM coverage_judgements',
       'DELETE FROM coverage_expectation_kinds',
       'DELETE FROM coverage_expectations',
@@ -90,11 +99,14 @@ describe('replaceCoverage', () => {
       'INSERT INTO coverage_expectations',
       'INSERT INTO coverage_expectation_kinds',
       'INSERT INTO coverage_judgements',
+      'INSERT INTO coverage_calibration_sources',
+      'INSERT INTO coverage_calibration_entries',
+      'INSERT INTO coverage_calibration_entry_sources',
       'COMMIT',
     ]);
     expect(mockedPoolQuery, 'nothing goes through the pool: a pooled BEGIN pins nothing').not.toHaveBeenCalled();
     expect(client.release).toHaveBeenCalledWith(undefined);
-    expect(summary).toEqual({ kinds: 3, regions: 1, expectations: 2, filings: 1, judgements: 2 });
+    expect(summary).toEqual({ kinds: 3, regions: 1, expectations: 2, filings: 1, judgements: 2, calibrationSources: 1, calibrationEntries: 1 });
   });
 
   it('sends each table its own columns, a point as text and no point as null', async () => {
@@ -122,6 +134,9 @@ describe('replaceCoverage', () => {
       judged: '2026-10-16', note: 'Typed an archaeological site with 18 sitelinks; never asked by a run.',
     });
     expect(onRow).toMatchObject({ entry_slug: null, kind_slug: null, row_wikidata_id: 'Q2003624', cause: 'not-a-must', issue_number: null });
+    expect(sent('coverage_calibration_sources')).toEqual([{ slug: 'coverage-surveys', name: 'The coverage surveys', url: null, read: '2026-10-24', note: '' }]);
+    expect(sent('coverage_calibration_entries')).toEqual([{ kind_slug: 'archaeology', slug: 'machu-picchu', name: 'Machu Picchu', wikidata_id: 'Q676203', sitelinks: 150, note: '' }]);
+    expect(sent('coverage_calibration_entry_sources')).toEqual([{ kind_slug: 'archaeology', entry_slug: 'machu-picchu', source_slug: 'coverage-surveys' }]);
   });
 
   it('deletes nothing when a catalogue kind has no live record', async () => {

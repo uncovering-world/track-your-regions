@@ -45,7 +45,21 @@ const judgement = (over: Line = {}): Line => ({
   note: 'Typed an archaeological site; never asked by a run.', ...over,
 });
 
-function files(parts: { kinds?: Line[] | string; regions?: Line[] | string; expectations?: Record<string, Line[] | string>; judgements?: Line[] | string }): string {
+const source = (over: Line = {}): Line => ({ slug: 'coverage-surveys', name: 'The coverage surveys', url: null, read: '2026-10-24', note: '', ...over });
+const top = (over: Line = {}): Line => ({ slug: 'machu-picchu', name: 'Machu Picchu', wikidata: 'Q676203', sources: ['coverage-surveys'], sitelinks: 150, note: '', ...over });
+
+interface Parts {
+  kinds?: Line[] | string;
+  regions?: Line[] | string;
+  expectations?: Record<string, Line[] | string>;
+  judgements?: Line[] | string;
+  /** The reference lists' register; written only when given. */
+  calibrationSources?: Line[] | string;
+  /** Each kind's calibration list, by the file's kind slug; the directory exists only when given. */
+  calibration?: Record<string, Line[] | string>;
+}
+
+function files(parts: Parts): string {
   const dir = mkdtempSync(join(tmpdir(), 'coverage-files-'));
   made.push(dir);
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- under the temporary directory this spec just made
@@ -62,6 +76,16 @@ function files(parts: { kinds?: Line[] | string; regions?: Line[] | string; expe
   }
   // eslint-disable-next-line security/detect-non-literal-fs-filename -- under the temporary directory this spec just made
   if (parts.judgements !== undefined) writeFileSync(join(dir, 'judgements.jsonl'), text(parts.judgements));
+  // eslint-disable-next-line security/detect-non-literal-fs-filename -- under the temporary directory this spec just made
+  if (parts.calibrationSources !== undefined) writeFileSync(join(dir, 'calibration-sources.jsonl'), text(parts.calibrationSources));
+  if (parts.calibration !== undefined) {
+    // eslint-disable-next-line security/detect-non-literal-fs-filename -- under the temporary directory this spec just made
+    mkdirSync(join(dir, 'calibration'));
+    for (const [kindSlug, lines] of Object.entries(parts.calibration)) {
+      // eslint-disable-next-line security/detect-non-literal-fs-filename -- under the temporary directory this spec just made
+      writeFileSync(join(dir, 'calibration', `${kindSlug}.jsonl`), text(lines));
+    }
+  }
   return dir;
 }
 
@@ -190,6 +214,75 @@ describe('the judgement ledger', () => {
 
   it('refuses an empty note: a judgement nobody can read later judges nothing', () => {
     expect(problemsOf(files({ judgements: [judgement({ note: '' })] }))).toEqual([expect.stringMatching(/^judgements\.jsonl line 1: note: /)]);
+  });
+});
+
+describe('the calibration lists (#1864)', () => {
+  const calibrated = (calibration: Record<string, Line[] | string>, calibrationSources: Line[] | string = [source()]) =>
+    files({ calibrationSources, calibration });
+
+  it('returns each kind\'s list and the register of reference lists, and reads a directory with neither as having calibrated nothing', () => {
+    const read = readCoverageFiles(calibrated({ archaeology: [top(), top({ slug: 'moray', wikidata: 'Q1814201', sitelinks: 18 })] }));
+    expect(read.calibrationSources.map(s => s.slug)).toEqual(['coverage-surveys']);
+    expect(read.calibration.get('archaeology')?.map(t => [t.slug, t.wikidata, t.sources])).toEqual([
+      ['machu-picchu', 'Q676203', ['coverage-surveys']], ['moray', 'Q1814201', ['coverage-surveys']],
+    ]);
+    const none = readCoverageFiles(files({}));
+    expect(none.calibrationSources).toEqual([]);
+    expect(none.calibration.size).toBe(0);
+  });
+
+  it('wants the register once there is a list, and takes a register with no list', () => {
+    expect(problemsOf(files({ calibration: { archaeology: [top()] } }))).toEqual([
+      'calibration-sources.jsonl: the file is missing',
+      'calibration/archaeology.jsonl line 1: machu-picchu names coverage-surveys, which calibration-sources.jsonl does not have',
+    ]);
+    expect(problemsOf(files({ calibrationSources: [source()] }))).toEqual([]);
+  });
+
+  it('refuses a list for a kind the register lacks, one only proposed, or one that holds no place', () => {
+    expect(problemsOf(calibrated({ digs: [top()] }))).toEqual(['calibration/digs.jsonl: no kind digs in kinds.jsonl']);
+    expect(problemsOf(calibrated({ markets: [top()] }))).toEqual([
+      'calibration/markets.jsonl: markets is only proposed: a fame line is a live kind\'s to calibrate',
+    ]);
+    expect(problemsOf(calibrated({ 'notable-works': [top()] }))).toEqual([
+      'calibration/notable-works.jsonl: notable-works holds a work: a calibration list names places, by their Wikidata items',
+    ]);
+  });
+
+  it('refuses a slug or an item used twice in one list, naming the first line', () => {
+    expect(problemsOf(calibrated({ archaeology: [top(), top({ wikidata: 'Q1814201' })] }))).toEqual([
+      'calibration/archaeology.jsonl line 2: slug machu-picchu is already used on line 1',
+    ]);
+    expect(problemsOf(calibrated({ archaeology: [top(), top({ slug: 'machu-picchu-again' })] }))).toEqual([
+      'calibration/archaeology.jsonl line 2: Q676203 is already the item of machu-picchu on line 1',
+    ]);
+    // Two kinds may name one place: a tower that is also a place of worship.
+    expect(problemsOf(calibrated({ archaeology: [top()], 'world-heritage': [top()] }))).toEqual([]);
+  });
+
+  it('refuses an entry naming no reference list, one twice, or one the register does not have', () => {
+    expect(problemsOf(calibrated({ archaeology: [top({ sources: [] })] }))).toEqual([expect.stringMatching(/^calibration\/archaeology\.jsonl line 1: sources: /)]);
+    expect(problemsOf(calibrated({ archaeology: [top({ sources: ['coverage-surveys', 'coverage-surveys'] })] }))).toEqual([
+      'calibration/archaeology.jsonl line 1: machu-picchu names coverage-surveys twice',
+    ]);
+    expect(problemsOf(calibrated({ archaeology: [top({ sources: ['wonders'] })] }))).toEqual([
+      'calibration/archaeology.jsonl line 1: machu-picchu names wonders, which calibration-sources.jsonl does not have',
+    ]);
+  });
+
+  it('refuses a reference list registered twice, and a register line that is not what the format says', () => {
+    expect(problemsOf(calibrated({ archaeology: [top()] }, [source(), source()]))).toEqual([
+      'calibration-sources.jsonl line 2: slug coverage-surveys is already used on line 1',
+    ]);
+    // A register line the format refuses registers nothing, so the entries naming it are reported too.
+    const unknown = 'calibration/archaeology.jsonl line 1: machu-picchu names coverage-surveys, which calibration-sources.jsonl does not have';
+    expect(problemsOf(calibrated({ archaeology: [top()] }, [source({ url: 'not a url' })]))).toEqual([expect.stringMatching(/^calibration-sources\.jsonl line 1: url: /), unknown]);
+    expect(problemsOf(calibrated({ archaeology: [top()] }, [source({ read: 'yesterday' })]))).toEqual([expect.stringMatching(/^calibration-sources\.jsonl line 1: read: /), unknown]);
+  });
+
+  it('refuses an entry with no item: a list matches by identifier, never by name', () => {
+    expect(problemsOf(calibrated({ archaeology: [top({ wikidata: null })] }))).toEqual([expect.stringMatching(/^calibration\/archaeology\.jsonl line 1: wikidata: /)]);
   });
 });
 

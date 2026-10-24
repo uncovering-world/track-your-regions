@@ -31,6 +31,8 @@ const QID = {
   north: 'Q96000007', acrossTheLine: 'Q96000008', byThePole: 'Q96000009',
 } as const;
 const UNESCO = '96001';
+/** The calibration list's own items (#1864): one the last run refused, one under the line, one out of reach. */
+const TOPS = { refusedByRun: 'Q96000050', underLine: 'Q96000051', outOfReach: 'Q96000052' } as const;
 const HERITAGE_ITEM = 'Q96000040';
 // The offered dig stands at 50 N 10 E; a degree of latitude is 111.2 km.
 const AT = { lat: 50, lon: 10 };
@@ -46,6 +48,9 @@ async function clearCatalogue(): Promise<void> {
 }
 
 async function clearExpectations(): Promise<void> {
+  await pool.query('DELETE FROM coverage_calibration_entry_sources');
+  await pool.query('DELETE FROM coverage_calibration_entries');
+  await pool.query('DELETE FROM coverage_calibration_sources');
   await pool.query('DELETE FROM coverage_judgements');
   await pool.query('DELETE FROM coverage_expectation_kinds');
   await pool.query('DELETE FROM coverage_expectations');
@@ -134,7 +139,36 @@ async function files(): Promise<CoverageFiles> {
       { region: REGION, entry: null, kind: null, row: 'Q96000099', cause: 'not-a-must', issue: null, judged: '2026-10-16', note: 'Judged when a row carried the id; none does now.' },
       { region: REGION, entry: null, kind: null, row: QID.unnamed, cause: 'not-a-must', issue: null, judged: '2026-10-17', note: 'A stump no guide names (#1601).' },
     ],
+    calibrationSources: [{ slug: 'coverage-surveys', name: 'The coverage surveys', url: null, read: '2026-10-24', note: '' }],
+    calibration: new Map([['archaeology', [
+      { slug: 'offered-top', name: 'Offered top', wikidata: QID.offered, sources: ['coverage-surveys'], sitelinks: 150, note: '' },
+      { slug: 'pending-top', name: 'Pending top', wikidata: QID.pending, sources: ['coverage-surveys'], sitelinks: 60, note: '' },
+      { slug: 'refused-by-run', name: 'Refused by the run', wikidata: TOPS.refusedByRun, sources: ['coverage-surveys'], sitelinks: 50, note: '' },
+      { slug: 'under-the-line', name: 'Under the line', wikidata: TOPS.underLine, sources: ['coverage-surveys'], sitelinks: 10, note: '' },
+      { slug: 'out-of-reach', name: 'Out of reach', wikidata: TOPS.outOfReach, sources: ['coverage-surveys'], sitelinks: 40, note: '' },
+    ]]]),
   };
+}
+
+let runLogId: number;
+
+/** The latest real, closed Archaeology run, refusing one item of the list; an older run that refused another says nothing. */
+async function runs(): Promise<void> {
+  const older = await pool.query<{ id: number }>(
+    `INSERT INTO experience_sync_logs (source_id, status, completed_at, is_dry_run) VALUES (5, 'success', NOW() - interval '1 day', false) RETURNING id`,
+  );
+  await pool.query(
+    `INSERT INTO experience_sync_changes (sync_log_id, external_id, name_snapshot, change_type, error) VALUES ($1, $2, 'Out of reach', 'filtered', 'an older run said so')`,
+    [older.rows[0].id, TOPS.outOfReach],
+  );
+  const latest = await pool.query<{ id: number }>(
+    `INSERT INTO experience_sync_logs (source_id, status, completed_at, is_dry_run) VALUES (5, 'success', NOW(), false) RETURNING id`,
+  );
+  await pool.query(
+    `INSERT INTO experience_sync_changes (sync_log_id, external_id, name_snapshot, change_type, error) VALUES ($1, $2, 'Refused by the run', 'filtered', 'a water system, not a site')`,
+    [latest.rows[0].id, TOPS.refusedByRun],
+  );
+  runLogId = older.rows[0].id;
 }
 
 let report: CoverageReport;
@@ -160,6 +194,7 @@ beforeAll(async () => {
   await place(PLACES.byThePole, QID.byThePole, POLE.lon + 5, dig, 'admitted', 'verified', { sitelinksCount: 1 }, POLE.lat);
   await work(WORKS.shown, PLACES.offered);
   await work(WORKS.hidden, PLACES.pending);
+  await runs();
   await replaceCoverage(await files());
   report = await coverageReport([REGION]);
 });
@@ -167,6 +202,8 @@ beforeAll(async () => {
 afterAll(async () => {
   await clearCatalogue();
   await clearExpectations();
+  // The two runs this spec logged, and their changes with them.
+  await pool.query('DELETE FROM experience_sync_logs WHERE id >= $1 AND source_id = 5 AND completed_at >= NOW() - interval \'2 days\'', [runLogId]);
   await pool.end();
 });
 
@@ -253,6 +290,19 @@ describe('the coverage report on a real database', () => {
     }]);
     // A place the lists name is never also a place the lists do not name.
     expect([...region.unjudged, ...region.standing].map(place => place.wikidataId)).not.toContain(QID.offered);
+  });
+
+  it('stands each top of the calibration list: offered, held for a curator, refused by the latest run with its reason, under the line, out of reach (#1864)', () => {
+    const archaeology = report.liveKinds.find(kind => kind.slug === 'archaeology');
+    expect(archaeology?.calibration).toMatchObject({ entries: 5, offered: 1, bySource: [{ slug: 'coverage-surveys', named: 5, offered: 1 }] });
+    expect(archaeology?.calibration?.misses.map(miss => [miss.slug, miss.standing, miss.detail])).toEqual([
+      ['pending-top', 'held', `Place ${PLACES.pending}`],
+      ['refused-by-run', 'refused', 'a water system, not a site'],
+      // The older run's refusal is not the catalogue's last word on it.
+      ['out-of-reach', 'absent', null],
+      ['under-the-line', 'under_line', null],
+    ]);
+    expect(report.liveKinds.find(kind => kind.slug === 'world-heritage')?.calibration).toBeNull();
   });
 
   it('calls stale a row judgement no offered row within reach carries', () => {
