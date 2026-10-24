@@ -24,7 +24,7 @@ const REGION = 'db-lane-region';
 const NORTH = { slug: 'db-lane-north', lat: 70, lon: 20 };
 const FAR_EAST = { slug: 'db-lane-far-east', lat: -17, lon: 179.8 };
 const POLE = { slug: 'db-lane-pole', lat: 89.9, lon: 0 };
-const PLACES = { offered: 9601, pending: 9602, refused: 9603, lost: 9604, otherItem: 9605, heritage: 9606, unnamed: 9607, north: 9608, acrossTheLine: 9609, byThePole: 9610 } as const;
+const PLACES = { offered: 9601, pending: 9602, refused: 9603, lost: 9604, otherItem: 9605, heritage: 9606, unnamed: 9607, north: 9608, acrossTheLine: 9609, byThePole: 9610, pendingMissing: 9611 } as const;
 const WORKS = { shown: 'Q96000010', hidden: 'Q96000011' } as const;
 const QID = {
   offered: 'Q96000001', pending: 'Q96000002', refused: 'Q96000003', lost: 'Q96000004', otherItem: 'Q96000005', unnamed: 'Q96000006',
@@ -32,7 +32,7 @@ const QID = {
 } as const;
 const UNESCO = '96001';
 /** The calibration list's own items (#1864): one the last run refused, one under the line, one out of reach. */
-const TOPS = { refusedByRun: 'Q96000050', underLine: 'Q96000051', outOfReach: 'Q96000052' } as const;
+const TOPS = { refusedByRun: 'Q96000050', underLine: 'Q96000051', outOfReach: 'Q96000052', pendingMissing: 'Q96000053' } as const;
 const HERITAGE_ITEM = 'Q96000040';
 // The offered dig stands at 50 N 10 E; a degree of latitude is 111.2 km.
 const AT = { lat: 50, lon: 10 };
@@ -146,6 +146,10 @@ async function files(): Promise<CoverageFiles> {
       { slug: 'refused-by-run', name: 'Refused by the run', wikidata: TOPS.refusedByRun, sources: ['coverage-surveys'], sitelinks: 50, note: '' },
       { slug: 'under-the-line', name: 'Under the line', wikidata: TOPS.underLine, sources: ['coverage-surveys'], sitelinks: 10, note: '' },
       { slug: 'out-of-reach', name: 'Out of reach', wikidata: TOPS.outOfReach, sources: ['coverage-surveys'], sitelinks: 40, note: '' },
+      // Admitted and passed by a curator, and no longer standing: not waiting for anyone, so held and named.
+      { slug: 'lost-top', name: 'Lost top', wikidata: QID.lost, sources: ['coverage-surveys'], sitelinks: 45, note: '' },
+      // Unread, and marked missing by the next run: no curator will see it, so held and named.
+      { slug: 'pending-missing-top', name: 'Pending and missing', wikidata: TOPS.pendingMissing, sources: ['coverage-surveys'], sitelinks: 44, note: '' },
     ]]]),
   };
 }
@@ -182,6 +186,9 @@ beforeAll(async () => {
   await place(PLACES.lost, QID.lost, AT.lon + 3, dig, 'admitted', 'verified');
   await pool.query(`UPDATE experiences SET existence = 'lost' WHERE id = $1`, [PLACES.lost]);
   await place(PLACES.otherItem, QID.otherItem, AT.lon + 4, dig, 'admitted', 'verified');
+  // Far from every region's reach, so only the calibration list sees it.
+  await place(PLACES.pendingMissing, TOPS.pendingMissing, AT.lon + 30, dig, 'admitted', 'pending');
+  await pool.query(`UPDATE experiences SET missing_since = NOW() WHERE id = $1`, [PLACES.pendingMissing]);
   await place(PLACES.heritage, UNESCO, AT.lon + 5, { source: 1, kind: 1, type: 'cultural' }, 'admitted', 'verified');
   await pool.query('UPDATE experience_kind_memberships SET wikidata_items = $2 WHERE experience_id = $1', [PLACES.heritage, [HERITAGE_ITEM]]);
   // Fourteen kilometres from the centre, offered, and named by no entry: the other direction's one row (#1601).
@@ -292,12 +299,14 @@ describe('the coverage report on a real database', () => {
     expect([...region.unjudged, ...region.standing].map(place => place.wikidataId)).not.toContain(QID.offered);
   });
 
-  it('stands each top of the calibration list: offered, held for a curator, refused by the latest run with its reason, under the line, out of reach (#1864)', () => {
+  it('stands each top of the calibration list: offered, admitted and waiting for a curator, refused by the latest run with its reason, under the line, out of reach (#1864)', () => {
     const archaeology = report.liveKinds.find(kind => kind.slug === 'archaeology');
-    expect(archaeology?.calibration).toMatchObject({ entries: 5, offered: 1, bySource: [{ slug: 'coverage-surveys', named: 5, offered: 1 }] });
+    // The pending dig is admitted and waits for a curator: the line holds it, so it is counted and not named.
+    expect(archaeology?.calibration).toMatchObject({ entries: 7, offered: 1, admitted: 1, bySource: [{ slug: 'coverage-surveys', named: 7, offered: 1 }] });
     expect(archaeology?.calibration?.misses.map(miss => [miss.slug, miss.standing, miss.detail])).toEqual([
-      ['pending-top', 'held', `Place ${PLACES.pending}`],
       ['refused-by-run', 'refused', 'a water system, not a site'],
+      ['lost-top', 'held', `Place ${PLACES.lost}`],
+      ['pending-missing-top', 'held', `Place ${PLACES.pendingMissing}`],
       // The older run's refusal is not the catalogue's last word on it.
       ['out-of-reach', 'absent', null],
       ['under-the-line', 'under_line', null],
