@@ -2192,7 +2192,12 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
 **What the kinds are for.** A thing a traveller stands in front of, outdoors, in two kinds a
 traveller browses apart (#1807). **Public art** (kind and source 3) is what was made to be looked
 at: a sculpture, a statue, a fountain, a mural — the Little Mermaid, the Trevi Fountain, Cloud
-Gate, the Fraternal Kiss on the East Side Gallery. **Monuments & memorials** (kind and source 6)
+Gate, the Fraternal Kiss on the East Side Gallery — and a wall or district known for its street
+art, taken whole as one place, since its works are repainted while the place stays (the East Side
+Gallery, the Wynwood Walls; #1994). The run files such a place under the `street-art` type when it
+finds one, and how it should find them is #1992. Today the run admits a panel on such a wall on its
+own (the Fraternal Kiss) and does not find the wall. A traveller visits the two as one place, so
+how the kind holds a wall and its panels together is #1992's too. **Monuments & memorials** (kind and source 6)
 is what was raised to remember: a memorial, a triumphal arch, a column, an obelisk, a monument —
 the Arc de Triomphe, Nelson's Column, the Lincoln Memorial, the Memorial to the Murdered Jews of
 Europe. One place may be both: the Motherland Calls is a statue and a memorial, Nelson's Column a

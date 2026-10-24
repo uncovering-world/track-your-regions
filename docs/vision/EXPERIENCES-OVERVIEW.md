@@ -125,7 +125,7 @@ Typing is live where a kind has types (cultural/natural/mixed for World Heritage
 
 Beyond the current four, the platform can grow to cover many more dimensions of a region:
 
-**Culture & Arts** — Books, Films, Music, Intangible Heritage, Architecture, Specific Artworks, Street Art & Murals
+**Culture & Arts** — Books, Films, Music, Intangible Heritage, Architecture, Specific Artworks (street art and murals are part of the live Public art kind, #1994)
 
 **Food & Drink** — Regional Food, Regional Drinks, Food Experiences (cooking classes, tastings, market tours)
 

@@ -416,6 +416,8 @@ Could include:
 
 ## Street Art & Murals
 
+**Part of Public art.** Street art is a type of the live Public art kind, not a kind of its own: a single mural is a work of public art, and a wall or district known for its street art (the East Side Gallery, Wynwood) is one place of that kind, taken whole (#1994).
+
 Cities and areas known for street art — murals, graffiti, public art installations.
 
 Street art tourism is real. Wynwood Walls in Miami, Shoreditch in London, Valparaíso in Chile. People take walking tours to see specific works by famous artists (Banksy, Shepard Fairey).
