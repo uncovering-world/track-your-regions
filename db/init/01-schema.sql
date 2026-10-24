@@ -5770,6 +5770,49 @@ COMMENT ON COLUMN workbench.coverage_judgements.cause IS 'Why the gap stands, or
 COMMENT ON COLUMN workbench.coverage_judgements.issue_number IS 'The issue that owns the cause, where one does.';
 COMMENT ON COLUMN workbench.coverage_judgements.judged IS 'The date the judgement was made, which is the date of the catalogue it was made against.';
 
+-- The tops a traveller expects of a live kind, named by reference lists a
+-- person can read again (#1864): a copy of
+-- db/catalogue-coverage/calibration-sources.jsonl and
+-- db/catalogue-coverage/calibration/<kind>.jsonl, loaded with the coverage
+-- tables above. A kind's fame line is chosen and re-checked on its own list,
+-- never copied from another kind's; the coverage report reads these to say,
+-- per kind, how many of its tops a reader sees and why each miss stands.
+CREATE TABLE IF NOT EXISTS workbench.coverage_calibration_sources (
+    slug VARCHAR(80) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    url TEXT,
+    read DATE NOT NULL,
+    note TEXT NOT NULL DEFAULT ''
+);
+
+CREATE TABLE IF NOT EXISTS workbench.coverage_calibration_entries (
+    kind_slug VARCHAR(80) NOT NULL REFERENCES workbench.coverage_kinds(slug) ON DELETE CASCADE,
+    slug VARCHAR(120) NOT NULL,
+    name TEXT NOT NULL,
+    wikidata_id VARCHAR(20) NOT NULL CHECK (wikidata_id ~ '^Q[1-9][0-9]*$'),
+    sitelinks INTEGER CHECK (sitelinks >= 0),
+    note TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (kind_slug, slug),
+    CONSTRAINT coverage_calibration_entries_one_item UNIQUE (kind_slug, wikidata_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_coverage_calibration_entries_wikidata
+    ON workbench.coverage_calibration_entries(wikidata_id);
+
+CREATE TABLE IF NOT EXISTS workbench.coverage_calibration_entry_sources (
+    kind_slug VARCHAR(80) NOT NULL,
+    entry_slug VARCHAR(120) NOT NULL,
+    source_slug VARCHAR(80) NOT NULL REFERENCES workbench.coverage_calibration_sources(slug) ON DELETE CASCADE,
+    PRIMARY KEY (kind_slug, entry_slug, source_slug),
+    CONSTRAINT coverage_calibration_entry_sources_entry FOREIGN KEY (kind_slug, entry_slug) REFERENCES workbench.coverage_calibration_entries(kind_slug, slug) ON DELETE CASCADE
+);
+
+COMMENT ON TABLE workbench.coverage_calibration_sources IS 'The reference lists a kind''s calibration entries are named by, loaded from db/catalogue-coverage/calibration-sources.jsonl (#1864). A copy: the file is the source of truth.';
+COMMENT ON COLUMN workbench.coverage_calibration_sources.read IS 'The date the list was read, which is the date of the membership it states.';
+COMMENT ON TABLE workbench.coverage_calibration_entries IS 'The tops a traveller expects of a live kind, one list per kind, loaded from db/catalogue-coverage/calibration/<kind>.jsonl (#1864). The kind''s fame line is chosen and re-checked on it. Identified by wikidata_id, never by name.';
+COMMENT ON COLUMN workbench.coverage_calibration_entries.sitelinks IS 'The entry''s Wikipedia editions as Wikidata gave them when the list was compiled, so the report can tell an absent top under the kind''s editions line from one the kind''s classes do not reach.';
+COMMENT ON TABLE workbench.coverage_calibration_entry_sources IS 'Which reference lists name a calibration entry as a top. An entry names at least one.';
+
 -- =============================================================================
 -- Schema Complete
 -- =============================================================================
