@@ -78,6 +78,7 @@ What follows from the split, in the code as it stands:
   - The new place is made from the original's content and the membership's own view (`insertSeparatedExperience`, `reported_*`).
   - The points and work links only that membership places move (`movePoints`, `moveLinks`); one another membership places too is copied, and the separated membership places the copy (`copyPointsFor`, `copyLinksFor`).
   - The changeset rows of its source's runs and its kind's held answers go along.
+  - The outline goes with the membership whose source drew it, with `metadata.osm` beside it; the original lets both go (ADR-0146 decision 5).
   - The original keeps its view choices, refusals of a value, region rows, parts and visits. Each visit raises a `separated_visit_questions` row for its traveller (#1887).
   - The `experience_separations` row records the membership, the identifier the two were set apart on (`scheme`, `value`) and whether the curator's word was written on it (`verdict_written`): where the original still claims the identifier the membership carried, the separation writes a `refers` verdict on it (`writeIdentifierVerdict`, `placeIdentifierController.ts`), so the registry holds the new place identifying it and both the resolver (`lockIdentifiedPlace`) and the join (`joinPlacesClaimingOneItem`) follow it there; a third source bringing the identifier later joins the new place. `candidatePairsSql` (`mergeProposalFinder.ts`) never proposes the pair while the separation stands. `undoMerge` refuses a merge whose membership was separated since. A separation is undone by merging the two again (`undoSeparation`, `POST /api/experiences/separations/:separationId/undo`, *Undo this separation* on the original's `separated` history row): the curator's own merge, with the word taken back, the unanswered questions withdrawn and the record marked undone in the merge's own transaction (`mergePlaces`'s `within`); that merge's undo separates them again in full (`reopenSeparationsUndoneBy`, from `undoMerge`): the record stands again, the word is written again and the questions asked again. The verdicts table's writer is `placeIdentifierVerdictWriter.ts`, called by the settle endpoint, the separation and that reopening.
   - Refused, with nothing changed: the place's only membership, a place merged away, and a component part. Any other membership may leave, the kind that first brought the place included: the original keeps its `source_id`/`external_id` pair (ADR-0143 decision 6: nothing reads it as a key), the new place taking the leaving membership's pair, or a name of its own (`separated-<its id>`, which no other place can take) where a place still holds it — the original, or one a merge folded; `membership-source-disagrees-with-row` reads a pair a live membership carries on another place as in order, and knows the separation's name.
@@ -3321,6 +3322,19 @@ the sync report shows as "Extent 5.7 ha → 6.1 ha". A curator's claim on `bound
 the run, as it does for every column, and is reported as a curated conflict; no screen writes one
 today, and the screen that does will have to decide what becomes of `metadata.osm` beside a shape
 the run may not touch.
+**The outline is its drawer's** (ADR-0146, #1968). A place is one row whatever kinds offer it, so
+the place records which source drew its outline (`boundary_source_id`). The rule has two halves:
+
+- A run whose source reads no extents leaves the outline as it is, in the write and in the diff.
+  Only the Archaeology site door declares that it reads them (`readsExtents`).
+- A source that reads extents replaces or clears only an outline it drew, or one no source holds.
+  It never touches another source's outline.
+
+An owner whose membership left the place holds no outline there, and a curator's separation moves
+the outline with its drawer's membership (`insertSeparatedExperience`). Which of two drawing
+sources' outlines a place shows will be a curator's choice, on the sources card, once a second kind
+draws (ADR-0146 decision 3, Epic #1969). Migration 170 names the Archaeology source as the owner of
+every outline stored before it.
 A polygon over 5,000 vertices is stored whole and **simplified on read** —
 `ST_SimplifyPreserveTopology(…, 0.0002)`, about 20 m at the equator — in the single-experience
 read that already returns `boundary_geojson`. What OSM said is on the row as `metadata.osm`

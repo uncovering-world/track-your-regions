@@ -164,6 +164,7 @@ and accepted by it.
 | [0143](0143-a-place-is-found-by-its-identifiers-before-a-run-creates-one.md) | A place is found by its identifiers before a run creates one | Accepted | 2026-10-23 |
 | [0144](0144-a-curator-separates-one-kinds-membership-into-a-place-of-its-own.md) | A curator separates one kind's membership of a place into a place of its own | Accepted | 2026-10-24 |
 | [0145](0145-an-edition-is-one-place-with-a-point-at-every-cast.md) | An edition is one place with a point at every cast | Accepted | 2026-10-23 |
+| [0146](0146-a-places-outline-belongs-to-the-source-that-drew-it.md) | A place's outline belongs to the source that drew it | Accepted | 2026-10-25 |
 | [adr-template](adr-template.md) | — Template — | — | — |
 
 ## When to create an ADR
