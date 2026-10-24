@@ -36,6 +36,7 @@ import { readsSubset } from '../subset/reader.js';
 import {
   subsetContainerFacts, subsetEntityFacts, subsetPoolOfClasses, subsetPoolOfIds,
 } from '../subset/publicArt.js';
+import { subsetCastGroupIds } from '../subset/castGroups.js';
 import {
   countryOfPlace, openCountries, standingCountries, type CountryOptions, type PlaceCountry,
 } from './countryOfPlace.js';
@@ -53,6 +54,8 @@ export const POOL_MIN_SITELINKS = 15;
 
 /** No pool query has ever returned this many rows; one that does stops the run. */
 export const POOL_LIMIT = 3000;
+/** Wikidata's "group of casts" (Q28890616): an edition kept as one item over cast items (#880, ADR-0145). */
+export const CAST_GROUP = 'Q28890616';
 
 /**
  * Fame bands for the four broad roots, cut finer at the bottom where more
@@ -339,6 +342,35 @@ export async function fetchBroadPool(
   }
   run.phase(`Counting the Wikipedia editions of ${entities.size} ${root.label}s...`);
   return settleCountriesByPoint(await inWikipediaEditions(run.sparql, [...entities.values()], { floor: POOL_MIN_SITELINKS, before: run.step }));
+}
+
+/**
+ * The groups of casts at the pool floor with no point of their own and at
+ * least one cast with one — *The Thinker*'s shape — which enter the pool
+ * through their casts (#880, ADR-0145 decision 2b). Placeless until
+ * `attachCasts` gives them their first cast's point. A group with its own
+ * point is named by the class question like any item.
+ */
+export async function fetchCastGroupPool(run: QueryRunner): Promise<PoolEntity[]> {
+  if (readsSubset(run.sparql)) {
+    run.phase('Reading the groups of casts that enter through their casts from the local Wikidata subset...');
+    await run.step();
+    const pooled = await subsetPoolOfIds(await subsetCastGroupIds(CAST_GROUP, POOL_MIN_SITELINKS));
+    return settleCountriesByPoint(await inWikipediaEditions(run.sparql, pooled, { floor: POOL_MIN_SITELINKS, before: run.step }));
+  }
+  run.phase('Fetching the groups of casts that enter through their casts...');
+  await run.step();
+  const rows = await run.sparql(`
+    SELECT ${POOL_COLUMNS} WHERE {
+      ?e wdt:P31 wd:${CAST_GROUP} ; wikibase:sitelinks ?sl .
+      FILTER(?sl >= ${POOL_MIN_SITELINKS})
+      FILTER NOT EXISTS { ?e wdt:P625 ?own }
+      { ?e wdt:P527 ?cast } UNION { ?cast wdt:P361 ?e } UNION { ?cast wdt:P144 ?e }
+      ?cast wdt:P625 ?castCoord .${POOL_DETAILS}
+    }
+    LIMIT ${POOL_LIMIT}`, { kind: 'pool', label: 'pool: groups of casts with no point of their own' });
+  failIfTruncated(rows, POOL_LIMIT, 'pool: groups of casts');
+  return settleCountriesByPoint(await inWikipediaEditions(run.sparql, parsePool(rows, { placeless: true }), { floor: POOL_MIN_SITELINKS, before: run.step }));
 }
 
 /**

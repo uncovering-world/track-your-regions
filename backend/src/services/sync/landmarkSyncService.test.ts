@@ -344,6 +344,28 @@ describe('public art in the place pass', () => {
     expect(context.onLocationsChanged).toHaveBeenCalled();
   });
 
+  it('writes the one surviving cast at its own named point and country rather than the group coordinate', async () => {
+    const mockedWrite = writeExperienceLocations as unknown as ReturnType<typeof vi.fn>;
+    mockedWrite.mockResolvedValue({ unchanged: 0, needsAssignment: [], unoffered: 0, delta: {} });
+    const config = await configOf();
+    await config.fetchItems(progress(), []);
+    const context: SyncRunContext = {
+      dryRun: false, syncLogId: 9, onLocationsChanged: vi.fn(), withdrawalSkippedReason: null,
+    };
+    await config.processItem(landmark({
+      qid: 'Q978987', label: 'The Burghers of Calais', lat: 50.9524, lon: 1.8533, countryLabel: 'France',
+      casts: [{ name: 'Stanford University', lat: 37.428, lon: -122.1699, countryLabel: 'United States' }],
+    }), progress(), context);
+
+    expect(mockedUpsert.mock.calls.at(-1)![0]).toMatchObject({
+      lat: 37.428, lon: -122.1699, countryNames: ['United States'], locationIsAnchor: true,
+    });
+    expect(mockedWrite.mock.calls.at(-1)?.[1]).toEqual([
+      { name: 'Stanford University', externalRef: 'Q978987', lon: -122.1699, lat: 37.428 },
+    ]);
+    expect(upsertSingleLocation).not.toHaveBeenCalled();
+  });
+
   it('tells two landmarks of one name apart by where the description puts them', async () => {
     mockedCollect.mockReturnValue({
       items: [
