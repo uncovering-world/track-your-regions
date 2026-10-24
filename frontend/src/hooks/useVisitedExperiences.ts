@@ -9,7 +9,7 @@ import { invalidateVisitedStatus } from '../utils/queryInvalidation';
 import {
   fetchExperienceVisitedStatus, fetchViewedTreasureIds, fetchVisitedExperienceIds, fetchVisitedLocationIds,
   markAllLocationsVisited, markExperienceVisited, markLocationVisited, markTreasureViewed, unmarkAllLocationsVisited,
-  unmarkExperienceVisited, unmarkLocationVisited, unmarkTreasureViewed, type VisitedStatus,
+  unmarkExperienceVisited, unmarkLocationVisited, unmarkTreasureViewed,
 } from '../api/visited';
 import { queryKeys } from '../api/queryKeys';
 
@@ -125,17 +125,6 @@ export function useVisitedLocations(experienceId?: number) {
     return visitedLocationIdsSet.has(locationId);
   }, [visitedLocationIdsSet]);
 
-  // Get visited status for an experience based on its locations
-  const getExperienceVisitedStatus = useCallback((
-    expId: number,
-    totalLocations: number
-  ): VisitedStatus => {
-    const visitedLocations = visitedByExperience[expId]?.length || 0;
-    if (visitedLocations === 0) return 'not_visited';
-    if (visitedLocations >= totalLocations) return 'visited';
-    return 'partial';
-  }, [visitedByExperience]);
-
   return {
     visitedLocationIds: visitedLocationIdsSet,
     visitedByExperience,
@@ -149,7 +138,6 @@ export function useVisitedLocations(experienceId?: number) {
     isMarking: markLocationVisitedMutation.isPending || markAllLocationsMutation.isPending,
     isUnmarking: unmarkLocationVisitedMutation.isPending || unmarkAllLocationsMutation.isPending,
     isLocationVisited,
-    getExperienceVisitedStatus,
   };
 }
 

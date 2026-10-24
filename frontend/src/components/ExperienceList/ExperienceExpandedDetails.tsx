@@ -48,7 +48,7 @@ import { ShareButton } from '../shared/ShareButton';
 import { ArtworksList } from './ArtworksList';
 import { SiteFindsList } from './SiteFindsList';
 import { VisitedStatusButton } from './VisitedStatusButton';
-import { computeVisitedStatus } from './utils';
+import { computeVisitedStatus } from '@tyr/shared/visits';
 import { CardLocationList } from './CardLocationList';
 import type { LocationRowData } from './LocationRow';
 import { typeChipsFor } from './typeChips';
@@ -179,7 +179,7 @@ function ExperienceExpandedDetailsComponent({
 
   // Compute visited status for multi-location badge
   const visitedLocations = locationsWithRegionInfo.filter(l => l.isVisited).length;
-  const visitedStatus: VisitedStatus = computeVisitedStatus(visitedLocations, totalLocations);
+  const visitedStatus: VisitedStatus = computeVisitedStatus(visitedLocations, totalLocations, experience.cast_points);
 
   // Resolved once, by the same helper the row's hover preload calls, so the two
   // cannot ask for different files. It answers with an empty string for a remote
@@ -432,6 +432,7 @@ function ExperienceExpandedDetailsComponent({
             visitedStatus={visitedStatus}
             visitedCount={visitedLocations}
             totalCount={totalLocations}
+            castPoints={experience.cast_points}
           />
         )}
         {/* The visitor's second verb, beside the first: send the place (#1192).
