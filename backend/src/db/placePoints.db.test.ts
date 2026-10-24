@@ -441,6 +441,71 @@ describe("a part's point with no name of its own (#1924)", () => {
   });
 });
 
+describe("a part's point with no picture of its own (#1946)", () => {
+  const CHURCH = 'http://commons.wikimedia.org/wiki/Special:FilePath/Karnak%20fixture.jpg';
+  const CHURCH_CREDIT = { author: 'E.3', license: 'CC0', detailsUrl: 'https://commons.wikimedia.org/wiki/File:Karnak_fixture.jpg' };
+  const MONTAGE = 'http://commons.wikimedia.org/wiki/Special:FilePath/Thebes%20fixture.png';
+
+  /** The point's picture and credit on the object's own read and on both shapes of the region batch. */
+  async function picturesOf(pointId: number): Promise<unknown[]> {
+    const own = await getExperienceLocations({
+      params: { id: SITE }, query: experienceLocationsQuerySchema.parse({}), caller: undefined,
+    });
+    const reads: Array<{ image_url?: string | null; image_credit?: unknown } | undefined> = [own.locations.find(l => l.id === pointId)];
+    for (const query of [{}, { includeChildren: 'false' }]) {
+      const { locationsByExperience } = await getRegionExperienceLocations({
+        params: { regionId }, query: regionLocationsQuerySchema.parse(query),
+      });
+      reads.push(locationsByExperience[SITE]?.find(l => l.id === pointId));
+    }
+    return reads.map(l => ({ image_url: l?.image_url, image_credit: l?.image_credit }));
+  }
+
+  it("shows the part place's picture with its credit, and leaves a point of no part without one", async () => {
+    // The Church of the Intercession on the Nerl's shape: a place of worship
+    // holding its picture on the place, which a merge made the site's part;
+    // its point, which that kind placed, carries none, and the component's
+    // point that carried one was folded into it.
+    await pool.query(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, $2, 'verified', NOW() FROM experience_sources s WHERE s.id = 4`,
+      [KARNAK, `${KARNAK}-worship`],
+    );
+    await pool.query(
+      `UPDATE experiences SET image_url = $2, metadata = jsonb_build_object('imageCredit', $3::jsonb) WHERE id = $1`,
+      [KARNAK, CHURCH, JSON.stringify(CHURCH_CREDIT)],
+    );
+    // The site's own picture is no point's: the web says it is the whole site's.
+    await pool.query('UPDATE experiences SET image_url = $2 WHERE id = $1', [SITE, MONTAGE]);
+
+    expect(await picturesOf(karnakPoint)).toEqual(Array(3).fill({ image_url: CHURCH, image_credit: CHURCH_CREDIT }));
+    expect(await picturesOf(luxorPoint)).toEqual(Array(3).fill({ image_url: null, image_credit: null }));
+    // The object's own read says the picture is the part place's, so the curator's
+    // form keeps editing the point's own empty column.
+    const own = await getExperienceLocations({
+      params: { id: SITE }, query: experienceLocationsQuerySchema.parse({}), caller: undefined,
+    });
+    expect(own.locations.find(l => l.id === karnakPoint)?.image_of_part).toBe(true);
+    expect(own.locations.find(l => l.id === luxorPoint)?.image_of_part).toBe(false);
+  });
+
+  it("keeps the point's own picture and its own credit over the part place's", async () => {
+    const own = 'http://commons.wikimedia.org/wiki/Special:FilePath/Karnak%20pylon%20fixture.jpg';
+    await pool.query(
+      `UPDATE experiences SET image_url = $2, metadata = jsonb_build_object('imageCredit', $3::jsonb) WHERE id = $1`,
+      [KARNAK, CHURCH, JSON.stringify(CHURCH_CREDIT)],
+    );
+    // A picture without a credit is still the point's: the credit is never borrowed from the place's.
+    await pool.query('UPDATE experience_locations SET image_url = $2 WHERE id = $1', [karnakPoint, own]);
+
+    expect(await picturesOf(karnakPoint)).toEqual(Array(3).fill({ image_url: own, image_credit: null }));
+    const read = await getExperienceLocations({
+      params: { id: SITE }, query: experienceLocationsQuerySchema.parse({}), caller: undefined,
+    });
+    expect(read.locations.find(l => l.id === karnakPoint)?.image_of_part).toBe(false);
+  });
+});
+
 describe('a part reads as a place (ADR-0100, #1425)', () => {
   it("opens the part's own card, under its site's kind, naming the site and the point its card opens it at", async () => {
     const card = await getExperience({ params: { id: KARNAK }, caller: undefined });
