@@ -405,6 +405,31 @@ describe('a build of the local Wikidata subset (#1434)', () => {
   });
 });
 
+describe('a cast group reached only through P144 (#880)', () => {
+  it('keeps the group, derives the reverse claim and lets the cast reader find it', async () => {
+    lines = [
+      dumpLine('P31', 'instance of', [], { datatype: 'wikibase-item' }),
+      dumpLine('P144', 'based on', [], { datatype: 'wikibase-item' }),
+      dumpLine('P625', 'coordinate location', [], { datatype: 'globe-coordinate' }),
+      dumpLine('Q18003128', 'The Thinker', [{ property: 31, value: item(28890616) }], { sitelinks: { enwiki: 'The Thinker' } }),
+      dumpLine('Q130544842', 'The Thinker, Kyoto', [
+        { property: 625, value: at(34.99, 135.7723) }, { property: 144, value: item(18003128) },
+      ]),
+      // A dump also has items outside the scope, whose terms are spooled.
+      dumpLine('Q900999', 'An unrelated item', []),
+    ];
+    await build();
+    expect(await ids('wikidata_entities')).toEqual(['P144', 'P31', 'P625', 'Q130544842', 'Q18003128']);
+    const { rows } = await pool.query("SELECT subject, property, rank, value_item, value FROM wikidata_claims WHERE property = 'P144'");
+    expect(rows).toEqual([{ subject: 'Q130544842', property: 'P144', rank: 0, value_item: 'Q18003128', value: null }]);
+    const { subsetCastGroupIds, subsetCastItems } = await import('../../sync/subset/castGroups.js');
+    expect(await subsetCastGroupIds('Q28890616', 1)).toEqual(['Q18003128']);
+    expect((await subsetCastItems(['Q18003128'])).get('Q18003128')).toEqual([{
+      qid: 'Q130544842', wkt: 'Point(135.7723 34.99)', name: 'The Thinker, Kyoto', countryLabel: null, classes: [],
+    }]);
+  });
+});
+
 describe('deriving the subset again from the entities in place (#1526)', () => {
   const rederive = async (signal = new AbortController().signal, onPhase: (message: string) => void = () => undefined) =>
     rederiveSubset({ buildId: await newBuild(), signal, onPhase });

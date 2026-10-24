@@ -53,6 +53,17 @@ describe('the items the local Wikidata subset keeps (#1434)', () => {
     expect(counts.classes).toBe(2);
   });
 
+  it('keeps a placeless cast group named only by a cast based on it (#880)', () => {
+    const scope = scopeOf([
+      dumpLine('Q130544842', 'The Thinker, Kyoto', [
+        { property: 625, value: at(34.99, 135.7723) }, { property: 144, value: item(18003128) },
+      ]),
+      dumpLine('Q18003128', 'The Thinker', [{ property: 31, value: item(28890616) }]),
+    ]);
+    expect(scope.kept.has(130544842)).toBe(true);
+    expect(scope.kept.has(18003128)).toBe(true);
+  });
+
   it('keeps a work that names a place with a coordinate', () => {
     expect(kept.has(MONA_LISA)).toBe(true);
   });
