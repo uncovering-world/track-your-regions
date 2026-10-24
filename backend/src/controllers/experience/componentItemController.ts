@@ -89,7 +89,7 @@ export async function readItemContents(
       // Commons' failures are swallowed upstream; under `strict` an item with a
       // missing credit is left out, or its point would keep no picture for good.
       if (strict && content.image && !credit) continue;
-      contents.set(item, { imageUrl: content.image, credit, description: content.description });
+      contents.set(item, { imageUrl: content.image, credit, description: content.description, articleUrl: content.article });
     }
   } catch (error) {
     if (strict) throw error;
@@ -217,7 +217,7 @@ export async function answerComponentItemsUnderLock(
 
     const confirmed = answers.filter(one => one.answer === 'accepted').map(one => found.get(one.proposalId)!);
     const turnedDown = answers.filter(one => one.answer === 'refused').map(one => found.get(one.proposalId)!);
-    const nothing: ClaimedItemContent = { imageUrl: null, credit: null, description: null };
+    const nothing: ClaimedItemContent = { imageUrl: null, credit: null, description: null, articleUrl: null };
     const accepted: ReturnType<typeof logged>[] = [];
     let pictured = 0;
     for (const candidate of confirmed) {

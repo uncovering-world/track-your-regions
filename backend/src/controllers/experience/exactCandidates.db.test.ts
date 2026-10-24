@@ -54,6 +54,7 @@ const readContents = async (items: readonly string[]) => new Map(items.map(item 
     imageUrl: item === NAGATSUKA ? PICTURE : null,
     credit: item === NAGATSUKA ? { author: 'A photographer', license: 'CC BY-SA 4.0', licenseUrl: null, detailsUrl: null } : null,
     description: 'Kofun in Sakai, Japan',
+    articleUrl: null,
   },
 ]));
 
