@@ -269,7 +269,7 @@ describe('reads that show a point', () => {
  */
 function visitStatusRow(over: Record<string, unknown>): Record<string, unknown> {
   return {
-    name: null, ordinal: 0, longitude: 9.4, latitude: 47.5, visited_at: null, notes: null, ...over,
+    name: null, ordinal: 0, longitude: 9.4, latitude: 47.5, visited_at: null, notes: null, cast_points: false, ...over,
   };
 }
 

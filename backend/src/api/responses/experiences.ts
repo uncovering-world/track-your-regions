@@ -182,6 +182,8 @@ export const Experience = z.strictObject({
   kind_priority: z.number().int().describe("The kind's display order, which the list orders by."),
   kinds: placeKinds,
   location_count: z.number().int(),
+  cast_points: z.boolean()
+    .describe('Its points are casts of one work: a visit to any cast marks the work visited (ADR-0145 decision 5).'),
   treasure_count: z.number().int().describe('Offered and published links to works.'),
   finds_count: z.number().int()
     .describe('Finds dug up at this site and on view in a museum a reader may be sent to — the length of GET /:id/finds. Zero on a row that is not a site.'),

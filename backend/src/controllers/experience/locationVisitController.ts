@@ -14,9 +14,10 @@
 import type { z } from 'zod/v4';
 import type {
   AllLocationsMarked, AllLocationsUnmarked, ExperienceVisitedStatusResponse, LocationVisitMarked, LocationVisitUnmarked,
-  VisitedLocationIds, VisitedStatus,
+  VisitedLocationIds,
 } from '../../api/responses/visited.js';
 import { pool, rollbackQuietly } from '../../db/index.js';
+import { computeVisitedStatus } from '@tyr/shared/visits';
 import { partOfPointSql, placePointsSql, pointNameSql, pointsShownSql, visitedPointsSql } from '../../db/placePoints.js';
 import type { ExperienceLocationsRow, ExperiencesRow, UserVisitedLocationsRow } from '../../db/schema.generated.js';
 import {
@@ -465,11 +466,13 @@ export async function getExperienceVisitedStatus(
   // The place's own columns, the two coordinates it computes, and the visit the
   // LEFT JOIN may not find, so each visit column may be null.
   const result = await pool.query<
-    Pick<ExperienceLocationsRow, 'name' | 'ordinal'> & { location_id: number; longitude: number; latitude: number }
+    Pick<ExperienceLocationsRow, 'name' | 'ordinal'> & Pick<ExperiencesRow, 'cast_points'>
+    & { location_id: number; longitude: number; latitude: number }
     & { visit_id: number | null; visited_at: UserVisitedLocationsRow['visited_at']; notes: UserVisitedLocationsRow['notes'] }
   >(`
     SELECT
       el.id as location_id,
+      e.cast_points,
       -- A reader's read: a part's unnamed point is called by its place (#1924).
       ${pointNameSql('el')} AS name,
       el.ordinal,
@@ -524,19 +527,13 @@ export async function getExperienceVisitedStatus(
   const totalLocations = result.rows.length;
   const visitedLocations = result.rows.filter(r => r.visit_id !== null).length;
 
-  // Compute visited status
-  let visitedStatus: VisitedStatus;
-  if (visitedLocations === 0) {
-    visitedStatus = 'not_visited';
-  } else if (visitedLocations === totalLocations) {
-    visitedStatus = 'visited';
-  } else {
-    visitedStatus = 'partial';
-  }
+  const castPoints = result.rows[0].cast_points;
+  const visitedStatus = computeVisitedStatus(visitedLocations, totalLocations, castPoints);
 
   return {
     experienceId,
     visitedStatus,
+    castPoints,
     totalLocations,
     visitedLocations,
     locations: result.rows.map(r => ({
