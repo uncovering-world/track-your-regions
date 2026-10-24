@@ -67,6 +67,8 @@ ask first.
 **What the survey measured.** Fifteen pages by fetch: the two indexes, six Sacred Valley guides
 and six Machu Picchu guides. The Cusco region survey of 2026-10-02 counted it on 46 of the 132
 entries of `db/catalogue-coverage/expectations/cusco-region.jsonl` (by type: place 36, route 4,
-activity 4, food 2). On 2 of them nothing else but the surveyor's own list names the entry. The
+activity 4, food 2). On 2 of them nothing else but the surveyor's own list names the entry. Since
+Viajeros Callejeros was withdrawn (#1962) it stands on 45 of the 125 entries (by type: place 35,
+route 4, activity 4, food 2): the Poc Poc waterfall left the list. The
 kinds in the front matter are those under which the survey filed two or more of the entries it
 is named on.
