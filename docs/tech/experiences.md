@@ -2055,7 +2055,9 @@ painting. See [ADR-0023](../decisions/0023-works-first-museum-selection.md).
   Wikipedia-language sitelinks (`ICONIC_SITELINKS`). A museum is in the catalogue only because it
   holds a work that clears the threshold, and a work held by more than 2 venues (`MAX_HOLDERS`)
   admits none of them — Hokusai's *Great Wave* survives in on the order of a hundred impressions,
-  and holding one is not what makes a top art museum
+  and holding one is not what makes a top art museum. What the line admits is checked after every
+  run against the canon in `db/catalogue-coverage/calibration/art-museums.jsonl` (#1952), compiled
+  independently of what the line measures (`docs/tech/catalogue-coverage.md`)
 - **A work the world reads opens a second door** (ADR-0056, #1574, `readershipDoor.ts`). A work
   below the line whose year of readership reaches the median of the pool's works at or over the
   line is Iconic. It admits its holder as a work at the line does, and keeps its badge down to the
