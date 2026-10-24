@@ -2755,6 +2755,15 @@ END $$;
 -- Spatial indexes for experiences
 CREATE INDEX IF NOT EXISTS idx_experiences_location ON experiences USING GIST(location);
 CREATE INDEX IF NOT EXISTS idx_experiences_boundary ON experiences USING GIST(boundary) WHERE boundary IS NOT NULL;
+
+-- Which source drew the place's outline (#1968): a place is one row whatever
+-- kinds offer it (ADR-0084), and its one outline belongs to the run that drew
+-- it (ADR-0146). A run whose source reads no extents never touches the outline;
+-- a source that reads them replaces or clears only an outline it drew, or one
+-- no source holds, and another source's outline stands until that source clears
+-- it. NULL where there is no outline, or none a run drew.
+ALTER TABLE experiences ADD COLUMN IF NOT EXISTS boundary_source_id INTEGER REFERENCES experience_sources(id) ON DELETE SET NULL;
+COMMENT ON COLUMN experiences.boundary_source_id IS 'The source whose run drew the outline (boundary, area_km2): only that source replaces or clears it, and a run that reads no extents leaves it (ADR-0146, #1968). NULL where there is no outline, or one no run drew.';
 CREATE INDEX IF NOT EXISTS idx_experiences_name_trgm ON experiences USING GIN(name gin_trgm_ops);
 CREATE INDEX IF NOT EXISTS idx_experiences_source_id ON experiences(source_id);
 CREATE INDEX IF NOT EXISTS idx_experiences_external_id ON experiences(source_id, external_id);
