@@ -1,13 +1,21 @@
 /**
- * A source's starts and its Cancel: a run, a preview, a full collection, a run
- * that asks again about pins, a picture repair and a component search, with
- * the start that failed and the Cancel the server refused said in words.
+ * A source's one start and its Cancel (#1805): *Start Sync*, which does every
+ * step a current catalogue needs — the run, the items of the components it
+ * left without one, the near-places pairing — with the run's modes as options
+ * of that one button (a preview, a run without the cache, a run that asks
+ * again about pins), and the single-purpose actions under *More*, each saying
+ * when it is needed: a picture repair, now, and the component search over
+ * every site or one, for after a rule changes. The start that failed and the
+ * Cancel the server refused are said in words.
  */
 
 import { useState } from 'react';
-import { Box, Typography, Button, Alert, Tooltip, TextField } from '@mui/material';
+import { Box, Typography, Button, ButtonGroup, Alert, Menu, MenuItem, ListItemText, TextField, Collapse } from '@mui/material';
 import SyncIcon from '@mui/icons-material/Sync';
 import StopIcon from '@mui/icons-material/Stop';
+import ArrowDropDownIcon from '@mui/icons-material/ArrowDropDown';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import type { ExperienceSource, SyncStatus } from '../../api/admin';
 import type { SourceRun } from './useSourceRun';
 
@@ -57,9 +65,75 @@ const START_FAILED: Record<keyof SourceRun['starts'], string> = {
   findComponents: 'Failed to start the component search',
 };
 
+/** The one button's menu: the same run in another mode, each said in a line. */
+function StartSyncMenu({ source, run, disabled }: { source: ExperienceSource; run: SourceRun; disabled: boolean }) {
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  const { starts } = run;
+  const pick = (start: () => void) => () => { setAnchor(null); start(); };
+  return (
+    <>
+      <ButtonGroup variant="outlined" color="primary" disabled={disabled}>
+        <Button startIcon={<SyncIcon />} onClick={() => starts.sync.mutate()}>
+          Start Sync
+        </Button>
+        <Button size="small" aria-label="How to run the sync" onClick={(e) => setAnchor(e.currentTarget)}>
+          <ArrowDropDownIcon />
+        </Button>
+      </ButtonGroup>
+      <Menu anchorEl={anchor} open={anchor !== null} onClose={() => setAnchor(null)}>
+        <MenuItem onClick={pick(() => starts.dryRun.mutate())}>
+          <ListItemText primary="Preview (dry run)" secondary="The same run, with nothing written: what it would change, as a changeset." />
+        </MenuItem>
+        {/* Only where there is a cache to ignore: offering to bypass a cache a
+            source does not keep would be the same pretence the cache panel
+            refuses when it says "This source caches nothing". */}
+        {source.caches && (
+          <MenuItem onClick={pick(() => starts.refresh.mutate())}>
+            <ListItemText
+              primary="Without the cache"
+              secondary="Asks the source everything again and leaves what was kept untouched; the next ordinary run uses it again. Takes the full collection time."
+            />
+          </MenuItem>
+        )}
+        {/* Its own mode: an ordinary run keeps a pin it disagrees with in the curator's own words. */}
+        <MenuItem onClick={pick(() => starts.askPins.mutate())}>
+          <ListItemText
+            primary="Asking again about pins"
+            secondary="After a rule has changed: every row pinned in or out against the rule that the run still disagrees with waits in the review queue again, with who set the pin and why."
+          />
+        </MenuItem>
+      </Menu>
+    </>
+  );
+}
+
+/** What the one run does, said for this source: only the World Heritage run looks for its components' items. */
+function StartSyncCaption({ source }: { source: ExperienceSource }) {
+  return (
+    <Typography variant="caption" color="text.secondary" sx={{ flex: 1, minWidth: 260 }}>
+      {source.findsComponentItems
+        ? 'One run brings the source up to date: it reads the source, finds the Wikidata items of the components it left without one, and pairs what it brought with near places of similar names.'
+        : 'One run brings the source up to date: it reads the source and pairs what it brought with near places of similar names.'}
+      {' '}It preserves curator edits, visit history, manual region assignments and rejections; a point the
+      source stops offering is marked, not deleted.
+    </Typography>
+  );
+}
+
+/** One single-purpose action: the button, and the sentence saying when it is needed. */
+function SecondaryAction({ children, when }: { children: React.ReactNode; when: string }) {
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+      {children}
+      <Typography variant="caption" color="text.secondary" sx={{ flex: 1, minWidth: 240 }}>{when}</Typography>
+    </Box>
+  );
+}
+
 export function SourceRunActions({ source, run, running, runningStatus, offers = 'all', held = false }: SourceRunActionsProps) {
   const { starts } = run;
   const [componentSite, setComponentSite] = useState('');
+  const [more, setMore] = useState(false);
   const componentSiteId = /^\d+$/.test(componentSite.trim()) ? Number(componentSite.trim()) : undefined;
   // `isStarting`, not one button's own request: while a preview or a no-cache
   // run is being started, an ordinary Start would be a second run launched
@@ -67,8 +141,9 @@ export function SourceRunActions({ source, run, running, runningStatus, offers =
   const disabled = !source.is_active || run.isStarting || held;
   const syncs = offers !== 'beside';
   const besides = offers !== 'sync';
+  const secondary = besides && (source.repairsPictures || source.findsComponentItems);
   // A section offers its runs beside the pass's sync only where the source has one.
-  if (!syncs && !source.repairsPictures && !source.findsComponentItems) return null;
+  if (!syncs && !secondary) return null;
   // And a sync is the pass's to cancel, on top: a section cancels only a run of its own.
   if (!syncs && running && (runningStatus?.kind ?? 'sync') === 'sync') return null;
 
@@ -94,87 +169,8 @@ export function SourceRunActions({ source, run, running, runningStatus, offers =
             : 'There was nothing to cancel: this run had already ended.'}
         </Alert>
       )}
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-        {!running ? (
-          <>
-            {syncs && (
-            <>
-            <Button startIcon={<SyncIcon />} onClick={() => starts.sync.mutate()} disabled={disabled} variant="outlined" color="primary">
-              Start Sync
-            </Button>
-            <Button variant="outlined" onClick={() => starts.dryRun.mutate()} disabled={disabled}>
-              Dry run
-            </Button>
-            {/* Only where there is a cache to ignore: offering to bypass a
-                cache a source does not keep would be the same pretence the
-                cache panel refuses when it says "This source caches nothing". */}
-            {source.caches && (
-              // "Leaves it untouched", not "replaces it": a run with the cache
-              // off neither reads nor writes it, so what is kept survives with
-              // its original age and the next ordinary run uses it again. The
-              // button that actually replaces an answer is Clear, in the cache
-              // panel — which is what its own text says.
-              <Tooltip title="An ordinary sync that ignores what we kept from the source and asks it everything again. Leaves the cache untouched — nothing is deleted and nothing is replaced, so the next ordinary sync uses the kept answers again. To replace them, clear them below. Takes the full collection time, about a quarter of an hour for museums.">
-                <span>
-                  <Button variant="outlined" onClick={() => starts.refresh.mutate()} disabled={disabled}>
-                    Sync without cache
-                  </Button>
-                </span>
-              </Tooltip>
-            )}
-            {/* Its own button: an ordinary run keeps a pin it disagrees with
-                in the curator's own words. */}
-            <Tooltip title="An ordinary sync that also asks a curator again about every row pinned in or out of this source against its rule, where the run still disagrees — after a rule has changed, the answers given on purpose as well. Nothing is released: each pin waits in the review queue with who set it, when, its note and the run's reason. The closing line says how many it asked about and how many it agrees with.">
-              <span>
-                <Button variant="outlined" onClick={() => starts.askPins.mutate()} disabled={disabled}>
-                  Ask again about pins
-                </Button>
-              </span>
-            </Tooltip>
-            </>
-            )}
-            {/* Its own button rather than part of a sync, because it is a
-                different decision: a sync proposes and this writes. Offered
-                where the server says it acts — the museums' missing pictures,
-                and the World Heritage ones whose host does not license them
-                to us. */}
-            {besides && source.repairsPictures && (
-              <Tooltip title="Puts right the pictures of this source's rows, now, without waiting for review: a picture that was never found is filled in from Commons, and one this product is not allowed to show is replaced from Commons or taken away. A picture a curator chose is left alone.">
-                <span>
-                  <Button variant="outlined" onClick={() => starts.fixPictures.mutate()} disabled={disabled}>
-                    Fix pictures
-                  </Button>
-                </span>
-              </Tooltip>
-            )}
-            {besides && source.findsComponentItems && (
-              <>
-                <Tooltip title="Looks in Wikidata for the item of each component no item records the UNESCO reference of: an item that says it is part of the site, one of the site's kind near the point with a similar name, or one carrying the component's number under another inscription with a similar name. Writes nothing on the components — each candidate waits for a curator.">
-                  <span>
-                    <Button variant="outlined" onClick={() => starts.findComponents.mutate(componentSiteId)} disabled={disabled}>
-                      {componentSiteId === undefined ? 'Find component items' : 'Find component items for this site'}
-                    </Button>
-                  </span>
-                </Tooltip>
-                <TextField
-                  size="small"
-                  label="One site (id)"
-                  value={componentSite}
-                  onChange={(e) => setComponentSite(e.target.value)}
-                  sx={{ width: 140 }}
-                  slotProps={{ htmlInput: { inputMode: 'numeric', 'aria-label': 'Search one site, by its id' } }}
-                />
-              </>
-            )}
-            {syncs && (
-            <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-              A sync preserves curator edits, visit history, manual region assignments and
-              rejections. A point the source stops offering is marked, not deleted; so is a
-              work, once a run has seen enough of the works its museums hold to be believed.
-            </Typography>
-            )}
-          </>
-        ) : (
+      {running ? (
+        <Box>
           <Button
             startIcon={<StopIcon />}
             onClick={run.cancel}
@@ -187,8 +183,58 @@ export function SourceRunActions({ source, run, running, runningStatus, offers =
           >
             {cancelLabel(runningStatus)}
           </Button>
-        )}
-      </Box>
+        </Box>
+      ) : (
+        <>
+          {syncs && (
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
+              <StartSyncMenu source={source} run={run} disabled={disabled} />
+              <StartSyncCaption source={source} />
+            </Box>
+          )}
+          {secondary && (
+            <Box>
+              <Button
+                size="small"
+                onClick={() => setMore(!more)}
+                endIcon={more ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                sx={{ textTransform: 'none', color: 'text.secondary' }}
+              >
+                {more ? 'Fewer actions' : 'More actions'}
+              </Button>
+              <Collapse in={more}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1, mt: 1 }}>
+                  {/* Its own action rather than a step of the run, because it is a
+                      different decision: a run proposes and this writes, past the
+                      gate. Offered where the server says it acts. */}
+                  {source.repairsPictures && (
+                    <SecondaryAction when="For now, not for every run: it writes past the review gate. Fills in a picture that was never found from Commons, replaces or takes away one this product is not allowed to show, and leaves a curator's choice alone.">
+                      <Button variant="outlined" size="small" onClick={() => starts.fixPictures.mutate()} disabled={disabled}>
+                        Fix pictures
+                      </Button>
+                    </SecondaryAction>
+                  )}
+                  {source.findsComponentItems && (
+                    <SecondaryAction when="After a rule of the search changes, or for one site: every component no item records the reference of is looked up in Wikidata again — about eight minutes over the whole list. An ordinary run looks only at the components it has just left without an item. Writes nothing on the components: each candidate waits for a curator.">
+                      <Button variant="outlined" size="small" onClick={() => starts.findComponents.mutate(componentSiteId)} disabled={disabled}>
+                        {componentSiteId === undefined ? 'Find component items' : 'Find component items for this site'}
+                      </Button>
+                      <TextField
+                        size="small"
+                        label="One site (id)"
+                        value={componentSite}
+                        onChange={(e) => setComponentSite(e.target.value)}
+                        sx={{ width: 140 }}
+                        slotProps={{ htmlInput: { inputMode: 'numeric', 'aria-label': 'Search one site, by its id' } }}
+                      />
+                    </SecondaryAction>
+                  )}
+                </Box>
+              </Collapse>
+            </Box>
+          )}
+        </>
+      )}
     </Box>
   );
 }

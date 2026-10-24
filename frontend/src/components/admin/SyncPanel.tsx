@@ -13,6 +13,7 @@ import { queryKeys } from '../../api/queryKeys';
 import { SourceCard } from './SourceCard';
 import { PassCard } from './PassCard';
 import { cardsOf } from './passCards';
+import { MergeProposalFinderCard } from './MergeProposalFinderCard';
 
 
 export function SyncPanel() {
@@ -96,6 +97,11 @@ export function SyncPanel() {
         ))}
       </Box>
 
+      {/* The one pass over the whole catalogue that no run does by itself: a
+          run pairs the places it brought, and a publish the arrival; this
+          looks at every place, for after a rule changes (#1805). */}
+      <Typography variant="h5" sx={{ mt: 4, mb: 1 }}>For the whole catalogue</Typography>
+      <MergeProposalFinderCard />
     </Box>
   );
 }

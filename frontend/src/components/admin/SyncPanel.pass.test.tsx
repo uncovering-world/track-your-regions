@@ -103,6 +103,10 @@ describe('a pass on the Sync panel', () => {
     renderPanel();
 
     const card = await cardOf('Public art · Monuments & memorials · Places of worship');
+    // The repair is under its section's More (#1805); the pass's top offers none.
+    const mores = within(card).getAllByRole('button', { name: 'More actions' });
+    expect(mores).toHaveLength(1);
+    fireEvent.click(mores[0]);
     const repairs = within(card).getAllByRole('button', { name: 'Fix pictures' });
     expect(repairs).toHaveLength(1);
     const worship = within(card).getByRole('heading', { level: 3, name: 'Places of worship' }).parentElement!.parentElement!.parentElement!;

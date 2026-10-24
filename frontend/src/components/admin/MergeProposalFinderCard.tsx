@@ -93,7 +93,7 @@ export function MergeProposalFinderCard() {
           places, or one part of the other. A pair answered once is never proposed again. A pair in the
           same kind is left apart, since one place cannot be in a kind twice. Every run already looks
           around the places it brought, and publishing an arrival around that place; this looks over the
-          whole catalogue, for after a rule changes.
+          whole catalogue, and is needed only after a rule of the pass changes.
         </Typography>
         <Button
           variant="contained"

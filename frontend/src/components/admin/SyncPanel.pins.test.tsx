@@ -63,7 +63,9 @@ describe('asking again about the pins of a source (#1370)', () => {
         <SyncPanel />
       </QueryClientProvider>,
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Ask again about pins' }));
+    // A mode of the one Start Sync (#1805): under its arrow.
+    fireEvent.click(await screen.findByRole('button', { name: 'How to run the sync' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Asking again about pins/ }));
     await waitFor(() => expect(startSync).toHaveBeenCalledWith(2, { askAboutPins: true }));
   });
 });
