@@ -146,6 +146,8 @@ async function files(): Promise<CoverageFiles> {
       { slug: 'refused-by-run', name: 'Refused by the run', wikidata: TOPS.refusedByRun, sources: ['coverage-surveys'], sitelinks: 50, note: '' },
       { slug: 'under-the-line', name: 'Under the line', wikidata: TOPS.underLine, sources: ['coverage-surveys'], sitelinks: 10, note: '' },
       { slug: 'out-of-reach', name: 'Out of reach', wikidata: TOPS.outOfReach, sources: ['coverage-surveys'], sitelinks: 40, note: '' },
+      // Admitted and passed by a curator, and no longer standing: not waiting for anyone, so held and named.
+      { slug: 'lost-top', name: 'Lost top', wikidata: QID.lost, sources: ['coverage-surveys'], sitelinks: 45, note: '' },
     ]]]),
   };
 }
@@ -292,12 +294,13 @@ describe('the coverage report on a real database', () => {
     expect([...region.unjudged, ...region.standing].map(place => place.wikidataId)).not.toContain(QID.offered);
   });
 
-  it('stands each top of the calibration list: offered, held for a curator, refused by the latest run with its reason, under the line, out of reach (#1864)', () => {
+  it('stands each top of the calibration list: offered, admitted and waiting for a curator, refused by the latest run with its reason, under the line, out of reach (#1864)', () => {
     const archaeology = report.liveKinds.find(kind => kind.slug === 'archaeology');
-    expect(archaeology?.calibration).toMatchObject({ entries: 5, offered: 1, bySource: [{ slug: 'coverage-surveys', named: 5, offered: 1 }] });
+    // The pending dig is admitted and waits for a curator: the line holds it, so it is counted and not named.
+    expect(archaeology?.calibration).toMatchObject({ entries: 6, offered: 1, admitted: 1, bySource: [{ slug: 'coverage-surveys', named: 6, offered: 1 }] });
     expect(archaeology?.calibration?.misses.map(miss => [miss.slug, miss.standing, miss.detail])).toEqual([
-      ['pending-top', 'held', `Place ${PLACES.pending}`],
       ['refused-by-run', 'refused', 'a water system, not a site'],
+      ['lost-top', 'held', `Place ${PLACES.lost}`],
       // The older run's refusal is not the catalogue's last word on it.
       ['out-of-reach', 'absent', null],
       ['under-the-line', 'under_line', null],
