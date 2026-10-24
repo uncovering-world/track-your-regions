@@ -26,7 +26,7 @@ access:
   mode: api
   format: "SPARQL, or the local subset (ADR-0119); readers from the pageview dumps; Wikivoyage usage from its dumps"
   cadence: continuous
-  volume: "595 candidates with 15 or more editions; 376 at the line (2026-10-22)"
+  volume: "566 candidates with 15 or more editions and 149 of a canal's works with 3 or more; 342 at the lines (2026-10-24)"
   rate: "the Query Service refuses heavy patterns; the run asks in fame bands and pauses between questions"
 scorecard:
   date: 2026-10-22
@@ -47,9 +47,11 @@ looked_at: 2026-10-22
 
 # Wikidata, read for the world's bridges and engineering works
 
-The kind *Bridges & engineering marvels* (ADR-0131) holds a bridge, aqueduct, dam, canal or
-tunnel a traveller goes to or through for itself: the Golden Gate Bridge, the Charles Bridge,
-the Pont du Gard, the Hoover Dam, the Panama Canal, the Channel Tunnel. Its world tier is read
+The kind *Bridges & engineering marvels* (ADR-0131) holds a bridge, aqueduct, dam or tunnel a
+traveller goes to or through for itself: the Golden Gate Bridge, the Charles Bridge, the Pont du
+Gard, the Hoover Dam, the Channel Tunnel. Since #1947 it also holds a canal's lock, flight of
+locks, boat lift or inclined plane, each one place (§ A canal's works), and no canal: a canal is a
+long object and waits for a model of its own (#1948). Its world tier is read
 from Wikidata by the source *Bridges & engineering marvels* (`experience_sources` row 8), which
 decides from the place pass's gather (ADR-0132 decision 5). The rule is code, and is not restated
 here: the classes are `backend/src/services/sync/bridges/classes.ts`, the verdict
@@ -149,3 +151,61 @@ Bhakra, Atatürk and Sayano–Shushenskaya dams), long waterways with one point 
 Volga–Don and White Sea–Baltic canals) and record road bridges (the Danyang–Kunshan Grand Bridge).
 The maintainer chose to let the line decide dams and canals rather than refuse them by class, so
 these arrive for a curator, like every arrival of this source.
+
+## A canal's works (2026-10-24, the dev subset, #1947)
+
+The product review of 2026-10-24 decided the kind offers only what is one place. The canal root
+and type left it: the 58 canals it held, 55 of them still waiting for a curator, are refused with
+a reason that names #1948. Three roots came in, each read from the local subset: lock Q105731,
+flight of locks Q1784096 and boat lift Q14908, with canal inclined plane Q912618 under boat
+lift. Wikidata files a flight of locks under canal, so a canal is refused only where no other
+class of the kind names it.
+
+**The candidates.** A lock is written about in few languages however many people stop at it.
+The pool's floor of 15 editions names only the Falkirk Wheel (41) and Strépy-Thieu (20); the
+Anderton Boat Lift has 11, the Caen Hill flight 3. So the kind asks these classes below the floor,
+at 3 editions, for itself alone. At 2 editions or more they name 413 candidates: 338 locks, most
+of them the navigation dams of large rivers (the Mississippi's Lock and Dam works, the
+Dnieper's hydroelectric plants), 15 boat lifts, 5 flights and 4 inclined planes. A lock
+Wikidata also files as a dam is a lock, the Soo Locks and Seattle's Ballard Locks, unless the dam
+is a power station: the Kyiv, Kaniv and Kremenchuk plants pass ships and are dams.
+
+**The canon.** No reference list of the locks and lifts a traveller expects existed, so one was
+compiled by the canon's method (`docs/tech/catalogue-coverage.md`): 18 entries, each named by
+the compiler's own list and at least one independent selection. Those were the Seven Wonders of
+the Waterways, the World Heritage list, the American engineering societies' landmarks, the
+ICOMOS international canal monuments list, and travel publishers' pages, kept under
+`docs/local/`. The canon is in `db/catalogue-coverage/calibration/bridges-and-engineering.jsonl`.
+Four of its entries are out of the kind's reach by Wikidata's typing, not by the line:
+Neptune's Staircase and the Fonseranes locks are filed as a built structure, the Canal du Centre
+lifts as an architectural ensemble (World Heritage holds them), and the Three Gorges ship lift and
+the Elbląg Canal's inclined planes have no item of their own in the subset.
+
+**The line**, measured on the candidates the rule passes as a lock, flight, lift or inclined plane,
+against the 16 canon entries with an item:
+
+| enter | admitted | canon |
+|---|---|---|
+| 3 editions, 15,000 readers, or 10,000 with a guide | 16 | 9/16 |
+| 3 editions, 15,000 readers, or 5,000 with a guide | 23 | 11/16 |
+| 3 editions, 15,000 readers, or 4,000 with a guide | 24 | 12/16 |
+| 3 editions, 25,000 readers, or 5,000 with a guide | 20 | 10/16 |
+| 4 editions, 15,000 readers, or 5,000 with a guide | 17 | 8/16 |
+| 3 editions, 10,000 readers, or 5,000 with a guide | 26 | 11/16 |
+
+**The line is 3 editions and 15,000 readers a year, or 4,000 where a Wikivoyage edition uses the
+item** (`WATERWAY_LINE`); a work stays on 3 editions and 10,000 readers, or 3,000 with a guide. It
+keeps 12 of the 16, and every canon entry the kind's classes reach but one, the Kirkfield Lift
+Lock (2 editions, 2,900 readers), a regional tier's. A lower readers' door lets in places a guide
+does not vouch for (Camden Lock, a market; the Louis Joubert lock). Beside the canon it admits the
+Soo Locks, Ronquières, Scharnebeck, Montech's water slope, the Krasnoyarsk ship lift and the Big
+Chute marine railway, which a traveller goes to see, and a few navigation locks of large rivers
+(Iffezheim, Nußdorf, McAlpine, Rothensee, the Crossed Locks in Emden). It also admits the Kakhovka
+Dam, destroyed in 2023 and not yet marked so in Wikidata. Those are a curator's to refuse, like
+every arrival of this source.
+
+**Calibration**, main's code beside the branch's over the same subset, read-only in the dev
+container: the branch admits 342 against main's 376. The 58 canals leave, all with the reason
+naming #1948, and 24 of a canal's works enter: 13 boat lifts, 9 locks and 2 inclined planes.
+Wikidata types the Arzviller inclined plane as a lift and the Bingley Five Rise flight as an
+inclined plane. No other verdict changes: 238 bridges, 45 dams, 22 tunnels and 13 aqueducts.

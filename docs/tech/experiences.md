@@ -39,7 +39,7 @@ Four concepts, and the words this document and the code use for each (Epic #815 
 - `Archaeology` (priority `5`) — fills Archaeology from Wikidata, sites and museums in one list, both doors built — museums from Wikidata and English Wikipedia, sites from Wikidata with OpenStreetMap as the second signal (ADR-0058, ADR-0059, #581, § Archaeology below). Seeded gated by migration 056, with **two** fame lines on the row rather than one: `enterSitelinks` 22 / `staySitelinks` 18 for a place, `findEnterSitelinks` 18 / `findStaySitelinks` 15 for a find, a find carrying fewer Wikipedia articles than the museum that shows it
 - `Monuments & memorials` (priority `6`) — fills Monuments & memorials from the gather Public art reads, in one pass with it (ADR-0132). Seeded gated by migration 144, which copied every Public Art & Monuments membership into it with its state, for each source's first run to sort (§ Public art and Monuments & memorials below)
 - `Towers` (priority `7`) — fills Towers from the same gather, in the same pass (#1854). Seeded gated by migration 148, with its line in code: it reads a year's readers beside the editions (§ Towers below)
-- `Bridges & engineering marvels` (priority `8`) — fills the kind from the same gather, in the same pass (#1860). Seeded gated by migration 150, with its line in code: it reads a year's readers and whether a Wikivoyage guide names the work (§ Bridges & engineering marvels below)
+- `Bridges & engineering marvels` (priority `8`) — fills the kind from the same gather, in the same pass (#1860). Seeded gated by migration 150, with its lines in code: it reads a year's readers and whether a Wikivoyage guide names the work, and holds a canal's locks and lifts to a line of their own (§ Bridges & engineering marvels below)
 - `Squares & streets` (priority `9`) — fills the kind from the same gather, in the same pass (#1867). Seeded gated by migration 151, with its line in code (§ Squares & streets below)
 
 `experience_kind_memberships.type` is the **type within a kind** (the place's own `experiences.type` until ADR-0084 moved it onto the membership, #1253; #814; the column was called `category` until then, the word the rest of the code used for the kind and its source until #819): one closed vocabulary per kind, `cultural` / `natural` / `mixed` for World Heritage and `monument` / `sculpture` for public art, `cathedral` / `church` / `chapel` / `monastery` / `mosque` / `temple` / `shrine` / `synagogue` for a place of worship, `site` / `museum` for Archaeology, and **NULL for an art museum** — an art museum and an archaeology museum are two kinds, not two types (ADR-0045 decision 1), while `museum` as an Archaeology type says which of that kind's two things this one is, the excavation or the museum of its finds (ADR-0058 decision 1). Until #814 every museum row carried the literal `art`, written by the museum sync, which is why the archaeological museums of Naples, Athens and Cyprus, the Church of Our Lady in Bruges and the Roman Forum, all admitted for one famous work, were typed `art` too (ADR-0045's context counts them against Wikidata as of its date). `utils/experienceTypes.ts` is the one place the vocabularies live: the dialogs offer a kind its own list and a museum none, and the review card explains a proposed type in the words of the vocabulary its value is from. A place is one row of `experiences` and each of its memberships in a kind is a row of `experience_kind_memberships` (below); a monument that is also a World Heritage point is still two places today — the Statue of Liberty is ids 382 and 11565 — and becomes one place with two memberships by #755's merge. Refusal as a curator-confirmed withdrawal of one membership (ADR-0045 decision 6) lands with #755 as well; today a refusal is the run's write on the membership, and the curator confirms or overrides it.
@@ -785,7 +785,7 @@ A Wikidata kind is filled by a source of its own, and sources whose kinds are dr
 - **One Start Sync does every step a current catalogue needs** (#1805, `controllers/admin/afterRun.ts`). Once a run's items are written — however the run ended — `startSync` hands the pass to `afterRun`, which goes on in the entry the card is still following — the pass's last run's, since on a pass of several sources the first source's run ends minutes before the pass does and its card has stopped asking by then (`PassCard.tsx`); on a source of its own, the one run there is: the join of the places claiming one Wikidata item (`joinPlacesClaimingOneItem`), for the World Heritage source the items of the components this run created without one (`runComponentItemSearch` on `FinderOptions.pointIds`, the finder the card's *Find component items* runs over every component, then `acceptExactCandidates`; a run that created none skips the search, the ordinary case, since a full search costs eight minutes and three hundred requests to Wikidata), and the near-places pairing of the places the runs changed (`drainPairing`, #1950), each a step of the run on its card (`Operation`, #1356). Every entry of the pass is kept while the steps go (`SyncProgress.continues`, which both `releaseLater`s respect), the followed one's status `processing`, and back to the run's verdict at the end with the closing line extended by what the steps did; a Cancel pressed meanwhile is accepted (`isCancellable` reads `continues`) and stops the search between its requests, or the pairing before it starts, leaving its marks to the next drain, the closing line saying so; the counts stay the run's — the candidates a search proposes are counted as created only on the card's own *Find component items* job — and the steps release the entries a while after they end, as a writer would. The run's modes — a preview, a run without the cache, a run that asks again about pins — are options of that one button on the card (`SourceRunActions.tsx`); the single-purpose actions sit under *More actions*, each with the sentence saying when it is needed: *Fix pictures* stays a repair, since it writes past the gate where a run proposes, and *Find component items* over every site or one is for after a rule of the search changes. The near-places pairing has no button: it pairs again every place whose inputs change, and the whole catalogue after a rule changes (§ Near places with similar names).
 - **The gather reads Wikidata under the pass's first source**: its subset door and its cache key (ADR-0132 decision 5). Everything else a source asks goes through its own door: its visit witnesses; for Places of worship, its works and the second door they open; for Archaeology, its museum door, its finds, and what its site door asks of OpenStreetMap, the Wikipedias and the readership door. #1821 gathers the works and #1822 makes the pipeline one build (Epic #1445). #1819 is the one resolver of where a work lies.
 
-**A place kind is a classifier over the place gather** (#1820, `places/gather.ts`). A kind is declared as a `PlaceKind`: the class trees its rule reads (`trees`), the classes its candidates are asked by (`poolClasses`: broad roots in fame bands, every other class whole), and whether its rule reads what holds and owns a candidate (`readsContainers`). `gatherPlaces` walks every kind's trees, asks the pool once over the union of their classes (a root two kinds ask by is asked once), asks for every kind's admitted rows the pool did not name by id, and reads the facts of every entity once and the containers once, for the kinds that read them. It hands each kind its **share** (`shareOf`): the entities the pool named by a class of that kind (a pool question names an entity by a class it carries itself, best rank, on the live service and on the subset alike), and the rows that kind admits. Public art therefore never sees the churches only Places of worship asked for, and refuses none of them. The kind's classifier decides from its share alone: `classifyPublicArt` per rule for Public art and Monuments & memorials (`PUBLIC_ART_KIND`), `classifyPlacesByFame` for Places of worship's door one (`WORSHIP_KIND`), `collectSitesByFame` for Archaeology's site door (`ARCHAEOLOGY_SITE_KIND`), whose kind also hands its trees to the museum door, `classifyTowers` for Towers (`TOWERS_KIND`), `classifyBridges` for Bridges & engineering marvels (`BRIDGES_KIND`) and `classifySquares` for Squares & streets (`SQUARES_KIND`). A share names the admitted rows no class question named (`byId`): the site door first lets OpenStreetMap's entrance name them, so a dig the map names is vouched for by the map and only the rest by id, as before.
+**A place kind is a classifier over the place gather** (#1820, `places/gather.ts`). A kind is declared as a `PlaceKind`: the class trees its rule reads (`trees`), the classes its candidates are asked by (`poolClasses`: broad roots in fame bands, every other class whole), and whether its rule reads what holds and owns a candidate (`readsContainers`). A kind may also name classes it asks below the pool's floor of 15 editions, with the floor it asks them at (`belowFloor`, #1947): a canal's lock is read in few languages, and those candidates are that kind's alone, so no other kind meets one under its floor. `gatherPlaces` walks every kind's trees, asks the pool once over the union of their classes (a root two kinds ask by is asked once), asks for every kind's admitted rows the pool did not name by id, and reads the facts of every entity once and the containers once, for the kinds that read them. It hands each kind its **share** (`shareOf`): the entities the pool named by a class of that kind (a pool question names an entity by a class it carries itself, best rank, on the live service and on the subset alike), and the rows that kind admits. Public art therefore never sees the churches only Places of worship asked for, and refuses none of them. The kind's classifier decides from its share alone: `classifyPublicArt` per rule for Public art and Monuments & memorials (`PUBLIC_ART_KIND`), `classifyPlacesByFame` for Places of worship's door one (`WORSHIP_KIND`), `collectSitesByFame` for Archaeology's site door (`ARCHAEOLOGY_SITE_KIND`), whose kind also hands its trees to the museum door, `classifyTowers` for Towers (`TOWERS_KIND`), `classifyBridges` for Bridges & engineering marvels (`BRIDGES_KIND`) and `classifySquares` for Squares & streets (`SQUARES_KIND`). A share names the admitted rows no class question named (`byId`): the site door first lets OpenStreetMap's entrance name them, so a dig the map names is vouched for by the map and only the rest by id, as before.
 
 Adding a place kind is a declaration and its seed: a `PlaceKind` with its trees and pool classes, its classifier (the verdict, the fame line, the type), its source row and kind row, and its member in `places/placePass.ts` and `PLACE_PASS`. It has no fetchers, run or service of its own. Towers was the first kind added that way, then Bridges & engineering marvels and Squares & streets: their members are `placeSource(7, gather, TOWERS_CLASSIFIER)`, `placeSource(8, gather, BRIDGES_CLASSIFIER)` and `placeSource(9, gather, SQUARES_CLASSIFIER)`, the run Public art and Monuments & memorials have, over a `PlaceClassifier` of its own (`landmarkSyncService.ts`), which names its types and its tag. The source is then registered where every Wikidata source is: the run registry (`syncController.ts`), the field families (`fieldFamilies.ts`), the subset's ready sources (`SUBSET_READY_SOURCES`), the visit questions (`ASKING_SOURCES`), its cache kinds (`CACHED_KINDS_BY_SOURCE`) and, on the web, its colour (`kindColors.ts`) and its types (`experienceTypes.ts`).
 
@@ -4110,12 +4110,16 @@ numbers: Bridges & engineering marvels and Squares & streets do.
 ### Bridges & engineering marvels (`bridges/*.ts`)
 
 **Bridges & engineering marvels** (kind and source 8, #1860, ADR-0131) holds a bridge, aqueduct,
-dam, canal or tunnel a traveller goes to or through for itself: the Golden Gate Bridge, the
-Charles Bridge, the Pont du Gard, the Hoover Dam, the Panama Canal, the Channel Tunnel. Its source
-decides from the place gather (`BRIDGES_KIND`), whose candidates are asked by five roots
-(`BRIDGE_ROOTS`, `bridges/classes.ts`), and its arrivals wait for a curator. The source record,
-with the reading its line was chosen on, is
-[`docs/sources/global/wikidata-bridges.md`](../sources/global/wikidata-bridges.md).
+dam or tunnel a traveller goes to or through for itself, and the places on a canal where its
+engineering is seen, each one place (#1947): a lock, a flight of locks, a boat lift or a canal
+inclined plane. The Golden Gate Bridge, the Charles Bridge, the Pont du Gard, the Hoover Dam and
+the Channel Tunnel are its; so are the Falkirk Wheel, the Caen Hill flight and the Ronquières
+inclined plane. A canal itself is a long object a traveller rarely goes to as a whole, and its one
+point lands at an end (the Canal du Midi's in Toulouse): it waits for a model of its own (#1948).
+Its source decides from the place gather (`BRIDGES_KIND`), whose candidates are asked by seven
+roots (`BRIDGE_ROOTS`, `bridges/classes.ts`): bridge, aqueduct, dam, tunnel, lock, flight of locks
+and boat lift. Its arrivals wait for a curator. The source record, with the readings its lines
+were chosen on, is [`docs/sources/global/wikidata-bridges.md`](../sources/global/wikidata-bridges.md).
 
 **The rule** is `bridgeVerdict` (`bridges/bridgeTest.ts`), in order:
 
@@ -4123,30 +4127,47 @@ with the reading its line was chosen on, is
    ruins (the Polcevera Viaduct, the Brenner Base Tunnel, the Fehmarn Belt link);
 2. what is no engineering work a traveller visits is refused (`OTHER_KINDS`): a river Wikidata
    also files as a canal (the Amstel), a railway line in a tunnel (the Waterloo & City line);
-3. a candidate no class of the kind names is refused;
+3. a candidate no class of the kind names is refused: a canal that is nothing else with its own
+   reason, which names #1948 (`CANAL`), anything else as no engineering class. A navigable
+   aqueduct is an aqueduct and a flight of locks a flight, though Wikidata files both under canal;
 4. an archaeological site no bridge class names is refused, since Archaeology offers it: Aqua
    Marcia, the tunnel of Eupalinos. A Roman bridge still standing and crossed is a bridge;
 5. a candidate with no point on Earth is refused.
 
 A street is no refusal: Prague files the Charles Bridge as one.
 
-**The type** (`bridgeType`) is the first of `aqueduct`, `bridge`, `dam`, `canal` and `tunnel` its
-classes name: the Pont du Gard is an aqueduct, and the Hong Kong–Zhuhai–Macau link a bridge.
+**The type** (`bridgeType`) is the first of `aqueduct`, `bridge`, `inclined-plane`, `boat-lift`,
+`lock-flight`, `lock`, `dam` and `tunnel` its classes name: the Pont du Gard is an aqueduct, the
+Hong Kong–Zhuhai–Macau link a bridge, the Peterborough Lift Lock a boat lift, and a lock Wikidata
+also files as a dam a lock (the Soo Locks, Seattle's Ballard Locks). A dam that is a power station
+is a dam whatever lock it holds (`POWER_STATION`): the Dnieper's hydroelectric plants pass ships
+and stay dams.
 
-**The line** (`BRIDGE_LINE`, `bridges/kind.ts`, read by `places/guidedLine.ts`) has two doors
-on 15 Wikipedia editions: a work enters on 50,000 readers in the latest year folded, or on 10,000
-where a Wikivoyage edition uses its item (`usedByAGuide`, the table the visit witnesses read). A disaster fills a year of readers
-and an expressway viaduct can be read as much as a bridge a traveller crosses a city for, and a
-guide naming the work is what tells them apart. A work the source holds stays while it keeps 12
-editions and 35,000 readers, or 7,000 with a guide. With no year of readership folded, nothing new
-enters and a work the source holds keeps its place on the stay line's editions, as for Towers;
-with no Wikivoyage usage built, the guide door is shut. A work that falls below the line is
-refused with its measures named (`belowGuidedLine`). The coverage report reads the editions alone
-(`CODE_LINES`).
+**The lines** (`bridges/kind.ts`, read by `places/guidedLine.ts`) each have two doors on one count
+of Wikipedia editions: a work enters on a year's readers in the latest year folded, or on fewer
+where a Wikivoyage edition uses its item (`usedByAGuide`, the table the visit witnesses read). A
+disaster fills a year of readers and an expressway viaduct can be read as much as a bridge a
+traveller crosses a city for, and a guide naming the work is what tells them apart.
 
-Measured on the development subset on 2026-10-22, read-only in the dev container: the pool named
-595 candidates, and the source would admit 376 and refuse 30, with 77 of the 79 works the line
-was chosen on among the admitted.
+- `BRIDGE_LINE`, for every type but a canal's works: 15 editions and 50,000 readers, or 10,000
+  with a guide, to enter; 12 editions and 35,000, or 7,000 with a guide, to stay.
+- `WATERWAY_LINE`, for a lock, a flight, a boat lift or an inclined plane (#1947): 3 editions and
+  15,000 readers, or 4,000 with a guide, to enter; 3 and 10,000, or 3,000 with a guide, to stay.
+  A lock is read in few languages however many people stop at it: the Caen Hill flight has 3
+  editions and 20,000 readers. The kind chooses the line by the type (`lineFor`), and asks these
+  classes below the pool's floor of 15 editions, at the stay line's 3 (`belowFloor`): only this
+  kind meets those candidates (`collectBelowFloor`, `places/gather.ts`).
+
+With no year of readership folded, nothing new enters and a work the source holds keeps its place
+on the stay line's editions, as for Towers; with no Wikivoyage usage built, the guide door is
+shut. A work that falls below its line is refused with its measures named (`belowGuidedLine`).
+The coverage report reads the editions alone (`CODE_LINES`).
+
+Measured on the development subset on 2026-10-24, read-only in the dev container, with main's
+code beside the branch's: the 58 canals the kind held leave with the reason naming #1948, and 24
+of a canal's works enter, among them the Falkirk Wheel, Strépy-Thieu, the Soo Locks, Anderton,
+Niederfinow, Ronquières, Caen Hill, Peterborough and Miraflores. Every other verdict is
+unchanged: 238 bridges, 45 dams, 22 tunnels and 13 aqueducts.
 
 ### Squares & streets (`squares/*.ts`)
 
