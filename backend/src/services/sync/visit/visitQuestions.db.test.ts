@@ -137,4 +137,16 @@ describe('a run asks a curator about an offered place with nothing to see (#1770
     expect(heritage.sparql).not.toHaveBeenCalled();
     expect(await questions()).toEqual([]);
   });
+
+  it('asks nothing of a place another kind offers that is also on the World Heritage list (#1926)', async () => {
+    await pool.query(
+      `INSERT INTO experience_kind_memberships (experience_id, kind_id, source_id, external_id, curation_state, published_at)
+       SELECT $1, s.kind_id, s.id, 'whs-9770-fixture', 'verified', NOW() FROM experience_sources s WHERE s.id = 1`,
+      [EBORACUM],
+    );
+    const asked = doors();
+    await askVisitQuestions(5, progressOf(), { doors: asked });
+    expect(asked.read).not.toHaveBeenCalled();
+    expect(await questions()).toEqual([]);
+  });
 });

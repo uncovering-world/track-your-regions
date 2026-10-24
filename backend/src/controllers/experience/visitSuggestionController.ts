@@ -13,6 +13,9 @@
  * The reading is shown beside the arrival and never applied: a curator
  * decides. A POST because a call may be made, and paid for.
  *
+ * Never asked about a place on the World Heritage list (#1926): the
+ * inscription already says it is real and visited.
+ *
  * Asked in the scope of an arriving membership's source, not of every source
  * the place holds: the question is about the arrival, so a curator who holds
  * Archaeology alone is answered about the Capitoline Museums' Archaeology
@@ -34,10 +37,12 @@ import type { idParamSchema } from '../../types/index.js';
 import { resolveExperienceScope } from './experienceScope.js';
 import { arrivalOpenSql } from './reviewQueuePredicates.js';
 import { readVisit } from '../../services/sync/visit/readVisit.js';
-import { askedSql, newestReadingSql } from '../../services/sync/visit/visitSuggestions.js';
+import { askedSql, newestReadingSql, onWorldHeritageListSql } from '../../services/sync/visit/visitSuggestions.js';
 
 interface PlaceRow {
   asked: VisitAsked;
+  /** On the World Heritage list, which Jev is not asked about (#1926). */
+  heritage: boolean;
   /** The sources of the place's open arrivals; none where it is not arriving. */
   arrivingSourceIds: number[];
   stored: { reading: VisitReading | null; confidence: number } | null;
@@ -45,10 +50,10 @@ interface PlaceRow {
 
 async function placeOf(experienceId: number): Promise<PlaceRow | null> {
   const result = await pool.query<{
-    asked: VisitAsked; arriving_source_ids: number[] | null;
+    asked: VisitAsked; heritage: boolean; arriving_source_ids: number[] | null;
     stored: PlaceRow['stored'];
   }>(
-    `SELECT ${askedSql('e')} AS asked,
+    `SELECT ${askedSql('e')} AS asked, ${onWorldHeritageListSql('e')} AS heritage,
             (SELECT array_agg(DISTINCT m.source_id ORDER BY m.source_id) FROM ${MEMBERSHIPS} m
               WHERE m.experience_id = e.id AND ${arrivalOpenSql('e', 'm')}) AS arriving_source_ids,
             ${newestReadingSql('e')} AS stored
@@ -56,7 +61,9 @@ async function placeOf(experienceId: number): Promise<PlaceRow | null> {
     [experienceId],
   );
   const row = result.rows[0];
-  return row ? { asked: row.asked, arrivingSourceIds: row.arriving_source_ids ?? [], stored: row.stored } : null;
+  return row
+    ? { asked: row.asked, heritage: row.heritage, arrivingSourceIds: row.arriving_source_ids ?? [], stored: row.stored }
+    : null;
 }
 
 /** The place is still arriving, under the lock: what a reading is shown for here. */
@@ -80,6 +87,9 @@ export async function suggestVisit(
     throw createError('You do not have curator permissions for this experience', 403);
   }
   if (!jevConfigured()) return { configured: false, suggestion: null };
+  // A World Heritage site is not asked, and no reading is shown for one, even
+  // one stored before the rule: the inscription answers the question.
+  if (place.heritage) return { configured: true, suggestion: null };
   // Asked already for the place as it stands: Jev's reading, or none where its
   // answer was refused — either way not asked, nor paid for, again.
   if (place.stored) {
