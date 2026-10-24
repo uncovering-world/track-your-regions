@@ -13,7 +13,7 @@ tier: none
 unit: { level: any, code: none, name: any }
 row:
   identity: "the location id (the one thing that may be cached)"
-  wikidata_link: none
+  wikidata_link: P3134
   coordinates: all
   languages: [many]
   signal: "ratings, rankings and review counts"
@@ -41,8 +41,8 @@ scorecard:
   total: 13
   verdict: veto
 status: refused
-issue: 799
-looked_at: 2026-09-06
+issue: 1977
+looked_at: 2026-10-25
 ---
 
 # Tripadvisor Content API
@@ -56,3 +56,11 @@ training and allows retrieval-augmented grounding for internal testing only; dis
 non-indexable. Storing rows, combining them with a register's and placing them in regions is
 everything the catalogue does, so the API is out for both tiers. A guidebook's or a review
 site's editorial list remains what a curator reads before writing their own.
+
+**The Wikidata link (#1977, 2026-10-25).** Wikidata does link to Tripadvisor's location id, by
+P3134. In the dump of 2026-10-19 the property is on 34,057 items. 31,981 of them have a
+coordinate, and a Wikivoyage edition uses 38.8 % of those. Among them are 3,677 places of
+worship, 1,432 art museums and 3,155 hotels. The statement is Wikidata's, under CC0. Reading it
+uses nothing of the API, so the refusal above stands for the API while the presence of the id
+on an item is available as a signal. `robots.txt` on www.tripadvisor.com disallows ClaudeBot
+(read 2026-10-25), so the site itself is not read either.
