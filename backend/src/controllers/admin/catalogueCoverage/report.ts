@@ -265,6 +265,13 @@ function verdictOf(entry: ExpectationRow, matches: MatchRow[], nearby: NearbyRow
  * The kinds whose line is in code: a monument enters on its own sitelinks, and
  * so does a work. A tower, a bridge and a square also ask a year's readers,
  * which a survey entry does not carry, so the report reads their editions alone.
+ * Bridges & engineering marvels holds a canal's locks and lifts to a lower line
+ * of their own (#1947), and an entry does not say which type it is, so the
+ * report reads the bridges' line, the kind's own for every type but a canal's
+ * works. Its one misreading: a canal work a run does not hold with 3 to 14
+ * editions reads as under the line where its classes did not reach it, which
+ * is two of the canon's entries, Neptune's Staircase and the Fonseranes locks,
+ * and the source record names them as such.
  */
 const CODE_LINES: Readonly<Record<string, number>> = {
   'public-art': ENTER_SITELINKS,

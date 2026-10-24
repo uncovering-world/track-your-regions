@@ -4,7 +4,7 @@
  * fame line is the classifier's (`kind.ts`).
  */
 
-import { BRIDGE_TYPES, KILLS, OTHER_KINDS, type BridgeTrees, type BridgeType } from './classes.js';
+import { BRIDGE_TYPES, CANAL, KILLS, OTHER_KINDS, WATERWAY_TYPES, type BridgeTrees, type BridgeType } from './classes.js';
 
 export interface BridgeFacts {
   classes: readonly string[];
@@ -24,7 +24,8 @@ const carries = (classes: readonly string[], set: ReadonlySet<string>) => classe
  * 1. what is no place to visit: destroyed, proposed, under construction,
  *    ruins (the Polcevera Viaduct, the Fehmarn Belt link);
  * 2. what is no engineering work a traveller visits: a river, a railway line;
- * 3. a candidate no class of the kind names;
+ * 3. a candidate no class of the kind names: a canal that is nothing else
+ *    with its own reason (#1948), anything else as no engineering class;
  * 4. an archaeological site no bridge class names (Aqua Marcia, the tunnel of
  *    Eupalinos): Archaeology offers it;
  * 5. a candidate with no point on this planet.
@@ -39,7 +40,9 @@ export function bridgeVerdict(facts: BridgeFacts, trees: BridgeTrees): BridgeVer
   for (const [key, { reason }] of Object.entries(OTHER_KINDS)) {
     if (carries(classes, trees.others[key])) return { pass: false, reason };
   }
-  if (!carries(classes, trees.work)) return { pass: false, reason: 'no bridge or engineering class' };
+  if (!carries(classes, trees.work)) {
+    return { pass: false, reason: carries(classes, trees.canal) ? CANAL.reason : 'no bridge or engineering class' };
+  }
   if (carries(classes, trees.archaeologicalSite) && !carries(classes, trees.types.bridge)) {
     return { pass: false, reason: 'an archaeological site, not a standing work' };
   }
@@ -47,7 +50,9 @@ export function bridgeVerdict(facts: BridgeFacts, trees: BridgeTrees): BridgeVer
   return { pass: true, type: bridgeType(classes, trees) };
 }
 
-/** The most telling type its classes name. */
+/** The most telling type its classes name; a power station's dam before its lock. */
 export function bridgeType(classes: readonly string[], trees: BridgeTrees): BridgeType {
-  return BRIDGE_TYPES.find((type) => carries(classes, trees.types[type])) ?? 'bridge';
+  const type = BRIDGE_TYPES.find((each) => carries(classes, trees.types[each])) ?? 'bridge';
+  const generates = carries(classes, trees.powerStation) && carries(classes, trees.types.dam);
+  return generates && WATERWAY_TYPES.includes(type) ? 'dam' : type;
 }
