@@ -1,7 +1,7 @@
 /**
  * Tests for starting a run of a source that shares its gather with others
  * (ADR-0132): the start runs the whole pass, is refused while any source of it
- * is running, and pairs what each of its runs created.
+ * is running, and hands the pass to the run's after-steps once (#1805).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -18,19 +18,13 @@ vi.mock('../../services/sync/index.js', async (importOriginal) => ({
 vi.mock('../../services/sync/passes.js', () => ({
   passOf: (sourceId: number) => ([3, 6].includes(sourceId) ? [3, 6] : [sourceId]),
 }));
-vi.mock('../../services/sync/mergeProposalFinder.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../services/sync/mergeProposalFinder.js')>()),
-  proposeMergesOfRun: vi.fn(async () => undefined),
-}));
-vi.mock('../experience/equalItemMerges.js', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../experience/equalItemMerges.js')>()),
-  joinPlacesClaimingOneItem: vi.fn(async () => ({ merged: [], refused: [] })),
+vi.mock('./afterRun.js', () => ({
+  afterRun: vi.fn(async () => undefined),
 }));
 
 import { pool } from '../../db/index.js';
 import { runningSyncs, syncPlacePass } from '../../services/sync/index.js';
-import { proposeMergesOfRun } from '../../services/sync/mergeProposalFinder.js';
-import { joinPlacesClaimingOneItem } from '../experience/equalItemMerges.js';
+import { afterRun } from './afterRun.js';
 import { answer as answerRoute, routeAt } from '../../api/routeTesting.js';
 import { adminDeclaredRoutes } from '../../routes/adminDeclaredRoutes.js';
 
@@ -49,8 +43,7 @@ describe('startSync for a source of a pass', () => {
   beforeEach(() => {
     mockedQuery.mockReset();
     vi.mocked(syncPlacePass).mockClear();
-    vi.mocked(proposeMergesOfRun).mockClear();
-    vi.mocked(joinPlacesClaimingOneItem).mockClear();
+    vi.mocked(afterRun).mockClear();
     runningSyncs.clear();
   });
 
@@ -92,7 +85,7 @@ describe('startSync for a source of a pass', () => {
     expect(syncPlacePass).toHaveBeenCalled();
   });
 
-  it('joins once for the pass, then pairs the places every run of it created', async () => {
+  it('hands the pass to the after-steps once, with the source that started it', async () => {
     mockedQuery.mockResolvedValueOnce({ rows: [{ id: 3, name: 'Public art', is_active: true }] });
     vi.mocked(syncPlacePass).mockImplementationOnce(async () => {
       runningSyncs.set(3, { kind: 'sync', status: 'complete', dryRun: false, logId: 101 } as never);
@@ -101,28 +94,9 @@ describe('startSync for a source of a pass', () => {
     const res = makeRes();
 
     await answerRoute(startRoute, request(3) as never, res as never);
-    await vi.waitFor(() => expect(proposeMergesOfRun).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(afterRun).toHaveBeenCalledTimes(1));
 
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ started: true }));
-    // The join reads the whole registry, so one for the pass, before the pairing.
-    expect(joinPlacesClaimingOneItem).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(joinPlacesClaimingOneItem).mock.invocationCallOrder[0])
-      .toBeLessThan(vi.mocked(proposeMergesOfRun).mock.invocationCallOrder[0]);
-    expect(vi.mocked(proposeMergesOfRun).mock.calls.map((call) => call[0])).toEqual([101, 102]);
-  });
-
-  it('pairs a later run\'s arrivals even when its entry goes while an earlier pass runs', async () => {
-    mockedQuery.mockResolvedValueOnce({ rows: [{ id: 3, name: 'Public art', is_active: true }] });
-    vi.mocked(syncPlacePass).mockImplementationOnce(async () => {
-      runningSyncs.set(3, { kind: 'sync', status: 'complete', dryRun: false, logId: 101 } as never);
-      runningSyncs.set(6, { kind: 'sync', status: 'complete', dryRun: false, logId: 102 } as never);
-    });
-    // The first pass outlasts the release timers.
-    vi.mocked(proposeMergesOfRun).mockImplementationOnce(async () => { runningSyncs.delete(6); return null; });
-
-    await answerRoute(startRoute, request(3) as never, makeRes() as never);
-    await vi.waitFor(() => expect(proposeMergesOfRun).toHaveBeenCalledTimes(2));
-
-    expect(vi.mocked(proposeMergesOfRun).mock.calls.map((call) => call[0])).toEqual([101, 102]);
+    expect(vi.mocked(afterRun).mock.calls[0].slice(0, 2)).toEqual([3, [3, 6]]);
   });
 });

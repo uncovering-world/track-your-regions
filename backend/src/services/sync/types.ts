@@ -80,6 +80,14 @@ export interface SyncProgress {
    * shares no gather.
    */
   passSources?: number[];
+  /**
+   * The run's own steps go on after its items (#1805, `afterRun.ts`): the
+   * items of the components it left without one, the near-places pairing.
+   * Set once the run's writer has ended, before its entry would be dropped,
+   * so the release the writer scheduled leaves the entry to those steps,
+   * which release it when they end.
+   */
+  continues?: boolean;
 }
 
 /** What a run asked of the places its source offers (#1770). */

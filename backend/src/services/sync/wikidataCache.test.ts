@@ -34,7 +34,7 @@ const mockedQuery = pool.query as unknown as ReturnType<typeof vi.fn>;
 describe('CACHED_KINDS_BY_SOURCE', () => {
   it('declares the kinds the public-art collector describes, and what its visit witnesses read', () => {
     // Decision 4 of ADR-0030: only the kinds a source's collector files exist
-    // for it. The panel offers "Sync without cache" and the cache section on
+    // for it. The panel offers "Without the cache" and the cache section on
     // the strength of this list, so a kind the collector files and this list
     // omits is a cache an admin cannot see or clear.
     expect(CACHED_KINDS_BY_SOURCE[3]).toEqual(['classes', 'pool', 'statements', 'edges', 'entities', 'osm', 'photos']);

@@ -83,7 +83,7 @@ export interface ExperienceSource {
   find_stay_sitelinks: number | null;
   /** Three zeros for a source holding nothing, and null when the server could not count, so a panel never shows a count nothing checked. */
   waiting: WaitingCounts | null;
-  /** Whether this source keeps answers between runs, which decides whether "Sync without cache" is offered. */
+  /** Whether this source keeps answers between runs, which decides whether "Without the cache" is offered among the ways to run the sync. */
   caches: boolean;
   /** Whether this source's pictures can be repaired from the panel (ADR-0043). */
   repairsPictures: boolean;

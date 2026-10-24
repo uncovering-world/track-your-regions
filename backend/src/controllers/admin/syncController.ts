@@ -6,8 +6,7 @@
 
 import { operationAnswer } from '../../services/operationProgress.js';
 import { SUBSET_READY_SOURCES, wikidataReaderOf, type WikidataReader } from '../../services/sync/subset/reader.js';
-import { joinPlacesClaimingOneItem } from '../experience/equalItemMerges.js';
-import { proposeMergesOfRun } from '../../services/sync/mergeProposalFinder.js';
+import { afterRun } from './afterRun.js';
 import type { z } from 'zod/v4';
 import type {
   AssignmentCancelled,
@@ -196,34 +195,16 @@ export async function startSync(
     .catch((err) => {
       console.error('[Sync Controller] Sync error for source %s:', sourceId, err);
     })
-    // A run finds the place an item names before it creates one (ADR-0143
-    // decision 3), and what it can still leave is an item recorded on a place
-    // that exists — a World Heritage run recording a component's item that
-    // another kind's place already is (#1269). Two places that claim one item
-    // are one place (ADR-0046 decision 2, #1247), joined once the run is over —
-    // here rather than inside it, since the join is a curation write the sync
-    // layer sits below. However the run ended: a run cancelled or failed
-    // half-way still wrote what it wrote, and a join on one item is right
-    // whatever the run's status. The run's progress is still the source's
+    // The steps a current catalogue still needs once the items are written
+    // (#1805, `afterRun.ts`): the join of the places claiming one item, the
+    // items of the components this run left without one, the near-places
+    // pairing — reported as steps of the run on its card. Here rather than
+    // inside the run, since each is a curation write the sync layer sits
+    // below; however the run ended. The run's progress is still the source's
     // entry: nothing else starts before this callback runs, and a pass holds
     // every one of its sources' entries until its last run ends
     // (`runSyncPass`).
-    .then(async () => {
-      // Every entry read before the first join: a join has no time limit, and
-      // meanwhile the pass's release timers run out and, every entry being
-      // closed, a new start may replace one.
-      const runs = pass.map((id) => runningSyncs.get(id))
-        .filter((run): run is NonNullable<typeof run> => !!run && !run.dryRun && !!run.logId);
-      // One join for the pass: it reads the whole registry, whichever run
-      // wrote the item.
-      if (runs.length > 0) await joinPlacesClaimingOneItem();
-      for (const run of runs) {
-        // Then the places each run created that a reader can see are paired
-        // with near places of similar names, as the admin's pass would pair
-        // them (#1800).
-        await proposeMergesOfRun(run.logId!);
-      }
-    });
+    .then(() => afterRun(sourceId, pass, acceptExactCandidates));
 
   return {
     started: true,
@@ -755,7 +736,7 @@ export async function getSources(): Promise<ExperienceSources> {
       ? null
       : waiting.get(source.id) ?? { arrivals: 0, held: 0, contents: 0 },
     // Whether this source keeps anything between runs, which decides whether
-    // "Sync without cache" is a real offer. The Wikidata collectors
+    // "Without the cache" is a real offer. The Wikidata collectors
     // describe their questions (ADR-0030 decision 4); the UNESCO run reads
     // its own API and does not, and a source that reads the local subset
     // keeps only what it still asks live (ADR-0119). On either, that button

@@ -870,7 +870,7 @@ const nearPlacesUnanswered: CatalogueAssertion = {
     + '(Durham Cathedral within "Durham Castle and Cathedral") or two neighbours (the National Gallery '
     + 'and the National Museum of Ireland). The near-places pass found them — after a run, around the places '
     + 'it brought; on publishing an arrival, around that place; or from "Propose near places with similar '
-    + 'names" above, over the whole catalogue — and they are listed until a person answers each; an answer takes the pair off this list for good.',
+    + 'names" on the Sync page, over the whole catalogue — and they are listed until a person answers each; an answer takes the pair off this list for good.',
   sql: `${PROPOSAL_ROWS_SQL}
         WHERE p.answer IS NULL
         ORDER BY p.name_similarity DESC, p.distance_m, a.name`,

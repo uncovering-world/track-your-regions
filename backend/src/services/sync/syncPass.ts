@@ -147,6 +147,8 @@ export async function runSyncPass(
 /** Drop a source's entry once a poller has had time to read how it ended. */
 function releaseLater(sourceId: number, progress: SyncProgress): void {
   setTimeout(() => {
+    // The run's after-steps hold the entry and release it themselves (#1805).
+    if (progress.continues) return;
     if (runningSyncs.get(sourceId) === progress) runningSyncs.delete(sourceId);
   }, 30000);
 }
