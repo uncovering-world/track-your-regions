@@ -727,6 +727,7 @@ export interface ExperiencesRow {
   created_at: Date | null;
   updated_at: Date | null;
   cast_points: boolean;
+  boundary_source_id: number | null;
   missing_since: Date | null;
   source_membership: string;
   existence: string;
