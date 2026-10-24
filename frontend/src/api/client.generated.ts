@@ -2429,11 +2429,11 @@ export interface RegionExperienceLocation {
   /** Whether the point lies in the region the read was asked about. True where none was named. */
   in_region: boolean;
   /**
-     * The point's own picture: a World Heritage component's Wikidata picture, a Commons file (#1270), or one a curator chose, which may be an /images/ path we host. Null where the point has none, and it then shows its object's picture.
+     * The point's picture: its own — a World Heritage component's Wikidata picture, a Commons file (#1270), or one a curator chose, which may be an /images/ path we host — else, for the point of a site's part, the part place's own (#1946). Null where neither holds one, and it then shows its object's picture.
      * @nullable
      */
   image_url: string | null;
-  /** Who took the point's own picture. Null where there is no picture or no credit. */
+  /** Who took that picture, from the row the picture comes from. Null where there is no picture or no credit. */
   image_credit: ImageCredit | null;
   /**
      * The leaf region the point lies in, with its ancestors, such as `Europe > France > Paris`. It is shown for a point outside the region on screen. Null where the point lies in no region of that world view.
@@ -2615,11 +2615,11 @@ export interface ExperienceLocationWithState {
   /** Whether the point lies in the region the read was asked about. True where none was named. */
   in_region: boolean;
   /**
-     * The point's own picture: a World Heritage component's Wikidata picture, a Commons file (#1270), or one a curator chose, which may be an /images/ path we host. Null where the point has none, and it then shows its object's picture.
+     * The point's picture: its own — a World Heritage component's Wikidata picture, a Commons file (#1270), or one a curator chose, which may be an /images/ path we host — else, for the point of a site's part, the part place's own (#1946). Null where neither holds one, and it then shows its object's picture.
      * @nullable
      */
   image_url: string | null;
-  /** Who took the point's own picture. Null where there is no picture or no credit. */
+  /** Who took that picture, from the row the picture comes from. Null where there is no picture or no credit. */
   image_credit: ImageCredit | null;
   curation_state: LocationCurationState;
   /** Set where a curator turned this unread point down. The state cannot say so, because a refused point stays `pending`: publishing shows an unread point and refuses a turned-down one. */
@@ -2634,6 +2634,8 @@ export interface ExperienceLocationWithState {
      * @nullable
      */
   wikidata_item: string | null;
+  /** True where `image_url` is the part place's picture rather than the point's own (#1946): the point's own column is empty, which is what a curator correcting the point edits. */
+  image_of_part: boolean;
 }
 
 /**

@@ -74,10 +74,13 @@ export const ExperienceLocation = z.strictObject({
   ),
   in_region: z.boolean().describe('Whether the point lies in the region the read was asked about. True where none was named.'),
   image_url: z.string().nullable().describe(
-    "The point's own picture: a World Heritage component's Wikidata picture, a Commons file (#1270), or one a curator"
-    + " chose, which may be an /images/ path we host. Null where the point has none, and it then shows its object's picture.",
+    "The point's picture: its own — a World Heritage component's Wikidata picture, a Commons file (#1270), or one a curator"
+    + " chose, which may be an /images/ path we host — else, for the point of a site's part, the part place's own (#1946)."
+    + " Null where neither holds one, and it then shows its object's picture.",
   ),
-  image_credit: ImageCredit.nullable().describe("Who took the point's own picture. Null where there is no picture or no credit."),
+  image_credit: ImageCredit.nullable().describe(
+    'Who took that picture, from the row the picture comes from. Null where there is no picture or no credit.',
+  ),
 }).describe('One point of an object.');
 export type ExperienceLocation = z.infer<typeof ExperienceLocation>;
 
@@ -104,6 +107,10 @@ export const ExperienceLocationWithState = ExperienceLocation.extend({
   ),
   wikidata_item: z.string().nullable().describe(
     'The Wikidata item this point is, where one is known (#1269), such as `Q3477679`; the point\'s card links to it (#1271).',
+  ),
+  image_of_part: z.boolean().describe(
+    "True where `image_url` is the part place's picture rather than the point's own (#1946): the point's own column is"
+    + ' empty, which is what a curator correcting the point edits.',
   ),
 }).describe("One point as its object's own read serves it, with where it stands at the gate.");
 export type ExperienceLocationWithState = z.infer<typeof ExperienceLocationWithState>;

@@ -13,7 +13,7 @@ import {
   type RegionExperienceLocation,
 } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
-import { overPlacePoints, placePointsSql, pointNameSql } from '../../db/placePoints.js';
+import { overPlacePoints, placePointsSql, pointNameSql, pointPictureSql } from '../../db/placePoints.js';
 import type { CheckValue, ExperienceLocationsRow, ExperiencesRow } from '../../db/schema.generated.js';
 import {
   hideLostSql,
@@ -135,8 +135,7 @@ export async function getRegionExperienceLocations(
         ST_Y(el.location) as latitude,
         el.created_at,
         el.curated_fields,
-        el.image_url,
-        el.metadata -> 'imageCredit' AS image_credit,
+        ${pointPictureSql('el')},
         EXISTS(
           SELECT 1 FROM experience_location_regions elr
           WHERE elr.location_id = el.id AND elr.region_id IN (SELECT id FROM descendant_regions)
@@ -191,8 +190,7 @@ export async function getRegionExperienceLocations(
         ST_Y(el.location) as latitude,
         el.created_at,
         el.curated_fields,
-        el.image_url,
-        el.metadata -> 'imageCredit' AS image_credit,
+        ${pointPictureSql('el')},
         EXISTS(
           SELECT 1 FROM experience_location_regions elr
           WHERE elr.location_id = el.id AND elr.region_id = $1
@@ -287,7 +285,7 @@ export async function getExperienceLocations(
   const maySeeUnreadIdx = params.length + 1;
   params.push(maySeeUnread);
 
-  const result = await pool.query<LocationRow & Pick<ExperienceLocationsRow, 'refused_at' | 'description' | 'wikidata_item'> & {
+  const result = await pool.query<LocationRow & Pick<ExperienceLocationsRow, 'refused_at' | 'description' | 'wikidata_item'> & { image_of_part: boolean } & {
     curation_state: CheckValue<'experience_locations', 'curation_state'>;
   }>(`
     SELECT
@@ -315,8 +313,7 @@ export async function getExperienceLocations(
       -- which the publish refuses, since it composes unreadPointSql and that
       -- carries the mark. The mark is what tells the two apart (#859).
       el.refused_at,
-      el.image_url,
-      el.metadata -> 'imageCredit' AS image_credit,
+      ${pointPictureSql('el', { tellingOfPart: true })},
       el.description,
       el.wikidata_item,
       ${regionId ? `EXISTS(
@@ -337,6 +334,7 @@ export async function getExperienceLocations(
     refused_at: row.refused_at?.toISOString() ?? null,
     description: row.description,
     wikidata_item: row.wikidata_item,
+    image_of_part: row.image_of_part,
   }));
 
   return {

@@ -228,6 +228,35 @@ export function pointNameSql(point = 'el'): string {
 }
 
 /**
+ * The picture a reader sees on the point `point`, as two select-list columns
+ * `image_url` and `image_credit`: its own, else the picture of the part place
+ * it is the point of (ADR-0100 decision 3, #1946). A place another kind
+ * brought holds its picture on the place row, and its point none: once a merge
+ * makes it a site's part, the component's point that carried the picture is
+ * folded into that empty one, and the Church of the Intercession on the Nerl
+ * showed its site's montage. The credit is taken from the row the picture is,
+ * never one from each. A point of no part keeps its null, which the web fills
+ * with the site's picture and says so (`pointPicture`). `tellingOfPart` adds
+ * `image_of_part`, true where the picture served is the part place's, for the
+ * object's own read a curator corrects the point from.
+ */
+export function pointPictureSql(point = 'el', options: { tellingOfPart?: boolean } = {}): string {
+  const own = `NULLIF(${point}.image_url, '') IS NOT NULL`;
+  const ofPart = (column: string) => `(SELECT ${column} FROM experiences prt_pic
+            WHERE prt_pic.id = ${point}.experience_id AND NULLIF(prt_pic.image_url, '') IS NOT NULL
+              AND EXISTS (SELECT 1 FROM experience_parts pop WHERE pop.part_id = prt_pic.id))`;
+  // Where a curator corrects the point, the picture served has to be told
+  // from the point's own: the form edits the point's column, which is empty.
+  const tell = options.tellingOfPart
+    ? `,
+          (NOT ${own} AND ${ofPart('prt_pic.image_url')} IS NOT NULL) AS image_of_part`
+    : '';
+  return `CASE WHEN ${own} THEN ${point}.image_url ELSE ${ofPart('prt_pic.image_url')} END AS image_url,
+          CASE WHEN ${own} THEN ${point}.metadata -> 'imageCredit'
+               ELSE ${ofPart("prt_pic.metadata -> 'imageCredit'")} END AS image_credit${tell}`;
+}
+
+/**
  * The part place the point `point` is the point of, or NULL where its own
  * place is no part (ADR-0100): a visit to such a point is recorded on the
  * part.

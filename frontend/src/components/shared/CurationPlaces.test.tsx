@@ -20,13 +20,14 @@ vi.mock('./PointPreviewDialog', () => ({
   PointPreviewDialog: ({ name, correction }: {
     name: string;
     correction?: {
-      place: { locationId: number; objectName: string; regionId?: number | null; unseen?: string };
+      place: { locationId: number; objectName: string; regionId?: number | null; unseen?: string; imageUrl?: string | null };
       onDone: (m: string) => void;
     };
   }) => (
     <div role="dialog">
       <span>{`opened ${name}`}</span>
       {correction && <span>{`unseen=${String(correction.place.unseen)}`}</span>}
+      {correction && <span>{`picture=${String(correction.place.imageUrl)}`}</span>}
       {correction && (
         <button onClick={() => correction.onDone(
           `fixed ${correction.place.locationId} of ${correction.place.objectName} in region ${correction.place.regionId}`,
@@ -49,7 +50,7 @@ function place(over: Partial<ExperienceLocationWithState> = {}): ExperienceLocat
   return {
     id: 9001, experience_id: 6205, name: null, external_ref: null, ordinal: 0,
     latitude: 51.5194, longitude: -0.127, created_at: '2026-08-01T00:00:00Z',
-    approximate: null, curated_fields: [], in_region: true, curation_state: 'auto', refused_at: null,
+    approximate: null, curated_fields: [], in_region: true, curation_state: 'auto', refused_at: null, image_of_part: false,
     image_url: null, image_credit: null, description: null, wikidata_item: null,
     ...over,
   };
@@ -103,6 +104,15 @@ describe('CurationPlaces', () => {
     // draws its pin, so the marker moves on the map the dialog was opened from.
     fireEvent.click(screen.getByRole('button', { name: 'fix' }));
     expect(await screen.findByText('fixed 9001 of British Museum in region 4')).toBeInTheDocument();
+  });
+
+  it("hands the form the point's own picture, not one its part place lends it (#1946)", async () => {
+    const church = 'http://commons.wikimedia.org/wiki/Special:FilePath/Church%20fixture.jpg';
+    answer(place({ image_url: church, image_of_part: true }));
+    renderPlaces();
+    fireEvent.click(await screen.findByRole('button', { name: 'Move or rename British Museum' }));
+    // The point's own column is empty, which is what the form edits and offers nearby files for.
+    expect(screen.getByText('picture=null')).toBeInTheDocument();
   });
 
   it('says on the field when the one place has been corrected', async () => {
