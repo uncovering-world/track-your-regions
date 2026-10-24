@@ -730,3 +730,92 @@ describe('whether a place\'s points are casts of one work (ADR-0145 decision 5, 
     expect(await castPointsOf(created.experienceId)).toBe(false);
   });
 });
+
+describe("a place's outline belongs to the source that drew it (ADR-0146, #1968)", () => {
+  // Two squares around the Louvre: the outline the Archaeology run draws, and
+  // another a second extent-reading source might propose.
+  const DRAWN = 'POLYGON((2.335 48.859, 2.340 48.859, 2.340 48.862, 2.335 48.862, 2.335 48.859))';
+  const OTHER = 'POLYGON((2.333 48.858, 2.342 48.858, 2.342 48.863, 2.333 48.863, 2.333 48.858))';
+  const outline = async () => (await pool.query<{ drawn: boolean; owner: number | null; area: number | null }>(
+    'SELECT boundary IS NOT NULL AS drawn, boundary_source_id AS owner, area_km2 AS area FROM experiences WHERE id = $1', [LOUVRE],
+  )).rows[0];
+  const boundaryChanged = (outcome: Awaited<ReturnType<typeof upsertExperienceRecord>>) =>
+    [...outcome.changeSet.changedFields, ...outcome.changeSet.heldFields].some(f => f.field === 'boundary');
+  const draw = (wkt: string | null, sourceId = archaeology) =>
+    ({ ...params(sourceId, LOUVRE_QID, 'Louvre Museum'), boundaryWkt: wkt, readsExtents: true });
+
+  it('is kept by a run whose source reads no extents, which reports no change to it', async () => {
+    await upsertExperienceRecord(draw(DRAWN));
+    expect(await outline()).toMatchObject({ drawn: true, owner: archaeology });
+
+    // The Places of worship run's shape on Angkor Wat: it writes the place and sends no outline.
+    const plain = await upsertExperienceRecord(params(artMuseums, LOUVRE_QID, 'Louvre Museum'));
+    expect(await outline()).toMatchObject({ drawn: true, owner: archaeology });
+    expect(boundaryChanged(plain)).toBe(false);
+    // And a preview of that run says the same.
+    const preview = await upsertExperienceRecord(params(artMuseums, LOUVRE_QID, 'Louvre Museum'), { dryRun: true });
+    expect(boundaryChanged(preview)).toBe(false);
+  });
+
+  it("is never replaced or cleared by another source that reads extents, and is cleared by its own", async () => {
+    await upsertExperienceRecord(draw(DRAWN));
+    const area = (await outline()).area;
+
+    const other = await upsertExperienceRecord(draw(OTHER, artMuseums));
+    expect(await outline()).toMatchObject({ drawn: true, owner: archaeology, area });
+    expect(boundaryChanged(other)).toBe(false);
+    await upsertExperienceRecord(draw(null, artMuseums));
+    expect(await outline()).toMatchObject({ drawn: true, owner: archaeology });
+
+    // OpenStreetMap no longer outlines the site: the run that drew it clears it, and lets go.
+    const cleared = await upsertExperienceRecord(draw(null));
+    expect(await outline()).toEqual({ drawn: false, owner: null, area: null });
+    expect(boundaryChanged(cleared)).toBe(true);
+
+    // With nobody's outline on the place, another extent-reading source may draw one.
+    await upsertExperienceRecord(draw(OTHER, artMuseums));
+    expect(await outline()).toMatchObject({ drawn: true, owner: artMuseums });
+  });
+
+  it('is held by no source whose membership left the place, so another extent-reading source may replace it', async () => {
+    await upsertExperienceRecord(draw(DRAWN));
+    // The Archaeology membership leaves the place (a separation, a merge's undo).
+    await pool.query('DELETE FROM experience_kind_memberships WHERE experience_id = $1 AND source_id = $2', [LOUVRE, archaeology]);
+
+    await upsertExperienceRecord(params(artMuseums, LOUVRE_QID, 'Louvre Museum'));
+    expect(await outline()).toMatchObject({ drawn: true, owner: archaeology });
+    const drawn = await upsertExperienceRecord(draw(OTHER, artMuseums));
+    expect(await outline()).toMatchObject({ drawn: true, owner: artMuseums });
+    expect(boundaryChanged(drawn)).toBe(true);
+  });
+
+  it('keeps what OpenStreetMap said beside the outline it keeps, even once its drawer delisted the place', async () => {
+    const osm = { verdict: 'ruin', extentFrom: 'way/9440' };
+    await upsertExperienceRecord({ ...draw(DRAWN), metadata: { wikidataQid: LOUVRE_QID, osm } });
+    // Archaeology stops listing the place; its membership stays, marked missing.
+    await pool.query(
+      'UPDATE experience_kind_memberships SET missing_since = NOW() WHERE experience_id = $1 AND source_id = $2', [LOUVRE, archaeology],
+    );
+    await upsertExperienceRecord(params(artMuseums, LOUVRE_QID, 'Louvre Museum'));
+    const kept = (await pool.query<{ osm: unknown; drawn: boolean }>(
+      "SELECT metadata -> 'osm' AS osm, boundary IS NOT NULL AS drawn FROM experiences WHERE id = $1", [LOUVRE],
+    )).rows[0];
+    expect(kept).toEqual({ osm, drawn: true });
+  });
+
+  it("keeps the note under the drawer's own source when that run reads no extents (Archaeology's museum door)", async () => {
+    const osm = { verdict: 'ruin', extentFrom: 'way/9440' };
+    await upsertExperienceRecord({ ...draw(DRAWN), metadata: { wikidataQid: LOUVRE_QID, osm } });
+    await upsertExperienceRecord(params(archaeology, LOUVRE_QID, 'Louvre Museum'));
+    const kept = (await pool.query<{ osm: unknown; drawn: boolean }>(
+      "SELECT metadata -> 'osm' AS osm, boundary IS NOT NULL AS drawn FROM experiences WHERE id = $1", [LOUVRE],
+    )).rows[0];
+    expect(kept).toEqual({ osm, drawn: true });
+  });
+
+  it('names its drawer on a place a run creates with one', async () => {
+    const created = await upsertExperienceRecord({ ...params(archaeology, NEW_SITE_QID, 'A new site'), boundaryWkt: DRAWN, readsExtents: true });
+    const row = (await pool.query<{ owner: number | null }>('SELECT boundary_source_id AS owner FROM experiences WHERE id = $1', [created.experienceId])).rows[0];
+    expect(row.owner).toBe(archaeology);
+  });
+});

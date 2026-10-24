@@ -50,7 +50,10 @@
  * polygonal parts extracted, an empty result stored as no extent at all — so
  * the area is never a second writer's opinion of the outline beside it (#763).
  * The column has existed since the schema's first day; the Archaeology site
- * door is the first run to fill it (ADR-0059 decision 2). Unlike `location` it
+ * door is the first run to fill it (ADR-0059 decision 2). The outline is the
+ * source's that drew it (`boundary_source_id`, ADR-0146, #1968): a run whose
+ * source reads no extents leaves it, and one that reads them replaces or clears
+ * only an outline it drew or one no source holds. Unlike `location` it
  * is **not** held by the gate: an outline is what somebody surveyed rather than
  * a claim about the place, and a published row whose extent was frozen would
  * keep the first run's polygon for ever while the run's own note of where it
@@ -153,14 +156,20 @@ export interface ExperienceUpsertParams {
    * text rather than a parsed shape because PostGIS is where geometry is
    * decided (ADR-0004's line, and #674's).
    *
-   * **Omitted is null**, which is not how `location` reads: a point is required
-   * of every caller, and a collector that forgot one could not compile, while a
-   * collector that sends no extent is saying this place has none and the column
-   * is written NULL. So a run whose source gained extents and whose writer was
-   * not taught to send them clears every outline it has — which is why the two
-   * kinds of writer are one statement and this parameter has a comment.
+   * **Omitted is null for a source that reads extents** (`readsExtents`): its
+   * collector sending none says this place has none, and the outline it drew is
+   * cleared. A source that reads no extents never touches the outline, which
+   * another source drew (#1968, ADR-0146).
    */
   boundaryWkt?: string | null;
+  /**
+   * Whether this run's source reads extents at all (#1968, ADR-0146): the
+   * Archaeology run, which draws OpenStreetMap's outline of a site. A run that
+   * does not leaves the place's outline as it is, in the write and in the
+   * diff; one that does replaces or clears only an outline its source drew,
+   * or one no source holds. Absent is false.
+   */
+  readsExtents?: boolean;
   /**
    * The Wikidata items a source that knows the place by another id resolves it
    * to (#1248): a World Heritage site's items through P757. Recorded on the
@@ -296,7 +305,72 @@ const EXTENT_OF = (wktParam: string): string =>
 function snapshotSelect(alias = ''): string {
   const columns = SNAPSHOT_COLUMNS.map(column => alias + column).join(', ');
   return `${columns},
-            md5(ST_AsBinary(${alias}boundary)) AS boundary_hash, ${alias}area_km2`;
+            md5(ST_AsBinary(${alias}boundary)) AS boundary_hash, ${alias}area_km2, ${alias}boundary_source_id,
+            ${ownerListedSql(alias || 'experiences.')} AS boundary_owner_listed`;
+}
+
+/**
+ * Whether the source that drew the place's outline still holds a membership on
+ * it (ADR-0146 decision 5): an owner whose membership left — a curator's
+ * separation, a merge — holds no outline, since its run no longer reaches the
+ * place. `alias` is qualified, since the membership's own `id` would shadow a
+ * bare one.
+ */
+function ownerListedSql(alias: string): string {
+  return `EXISTS (SELECT 1 FROM ${MEMBERSHIPS} owner_m
+                   WHERE owner_m.experience_id = ${alias}id AND owner_m.source_id = ${alias}boundary_source_id)`;
+}
+
+/**
+ * The arm of the upsert that keeps the stored outline (ADR-0146, #1968): a
+ * curator's claim, a source that reads no extents ($34), or an outline another
+ * source drew. `$1` is the run's source.
+ */
+const KEEPS_OUTLINE = `(experiences.curated_fields ? 'boundary' OR NOT $34::boolean
+  OR (experiences.boundary IS NOT NULL AND experiences.boundary_source_id IS NOT NULL
+      AND experiences.boundary_source_id <> $1::integer
+      AND ${ownerListedSql('experiences.')}))`;
+
+/**
+ * Whether this run leaves the stored outline as it is (ADR-0146, #1968): its
+ * source reads no extents, or another source drew the outline it holds. The
+ * write's arms (`KEEPS_OUTLINE`) and the diff ask the same question, so a run
+ * never reports an outline change it did not make.
+ */
+function keepsOutline(params: ExperienceUpsertParams, row: Record<string, unknown> | null): boolean {
+  if (!params.readsExtents) return true;
+  if (row === null || typeof row.boundary_hash !== 'string' || row.boundary_source_id == null) return false;
+  return Number(row.boundary_source_id) !== params.sourceId && row.boundary_owner_listed === true;
+}
+
+/**
+ * What OpenStreetMap said about an outline (`metadata.osm`) rides with it
+ * (ADR-0146): a run that keeps another source's outline keeps that note as the
+ * place holds it, whatever the drawer's membership state, so the OSM layer goes
+ * on keeping the object the shape came from (`pinnedObjects`). A run that
+ * writes the outline writes its own note.
+ */
+function withKeptOutlineSource(written: ExperienceUpsertParams, row: Record<string, unknown>): ExperienceUpsertParams {
+  const owner = row.boundary_source_id;
+  // Not the drawer's own source as such: Archaeology's museum door reads no
+  // extents and keeps the outline its site door drew, note and all.
+  if (owner == null || !keepsOutline(written, row)) return written;
+  const storedMetadata = (row.metadata as Record<string, unknown> | null) ?? {};
+  const metadata = { ...written.metadata };
+  if (Object.hasOwn(storedMetadata, 'osm')) metadata.osm = storedMetadata.osm;
+  else delete metadata.osm;
+  return { ...written, metadata };
+}
+
+/**
+ * The outline the run compares and writes: the stored one where it keeps it,
+ * else the incoming one, measured as the statement would store it.
+ */
+async function incomingOutline(
+  query: Pick<PoolClient, 'query'>, params: ExperienceUpsertParams, row: Record<string, unknown> | null,
+): Promise<BoundarySnapshot | null> {
+  if (row !== null && keepsOutline(params, row)) return snapshotFromRow(row).boundary ?? null;
+  return measureExtent(query, params.boundaryWkt);
 }
 
 /**
@@ -412,7 +486,7 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
   );
 
   if (result.rows.length === 0) {
-    const incoming = snapshotFromParams(params, await measureExtent(pool, params.boundaryWkt));
+    const incoming = snapshotFromParams(params, await incomingOutline(pool, params, null));
     return {
       experienceId: 0,
       // No stored row, so nothing to hold: the insert writes every column, and
@@ -427,12 +501,12 @@ async function previewUpsert(params: ExperienceUpsertParams): Promise<UpsertOutc
   const curatedFields = withTypeClaim(row.curated_fields, row.type_claimed);
   // What another source of the place contradicts is no proposal of this run's,
   // asked of the same views the run would ask (`sourceView.ts`).
-  const written = keptForFamilies(
+  const written = withKeptOutlineSource(keptForFamilies(
     keptAsStored(params, row, await fieldsKeptAsStored(pool, row.id, params, row)),
     row, await otherFamiliesFields(pool, row.id, params.sourceId),
-  );
+  ), row);
   const incoming = snapshotFromParams(
-    written, await measureExtent(pool, params.boundaryWkt),
+    written, await incomingOutline(pool, params, row),
     await shortMovePasses(pool, row.id, row, written, Boolean(row.was_held)),
   );
 
@@ -655,10 +729,10 @@ async function writeUnderLock(
   // view is still recorded on its membership, from `params`.
   const written = locked === null || stored === null
     ? params
-    : keptForFamilies(
+    : withKeptOutlineSource(keptForFamilies(
       keptAsStored(params, stored, await fieldsKeptAsStored(client, locked.id, params, stored)),
       stored, await otherFamiliesFields(client, locked.id, params.sourceId),
-    );
+    ), stored);
 
   const shortMove = stored !== null && await shortMovePasses(client, stored.id as number, stored, written, held);
 
@@ -684,7 +758,7 @@ async function writeUnderLock(
       INSERT INTO experiences (
         id, source_id, external_id, name, name_local, subtitle, description,
         tags, location, country_codes, country_names, image_url, metadata,
-        boundary, area_km2, cast_points, created_at, updated_at
+        boundary, area_km2, boundary_source_id, cast_points, created_at, updated_at
       ) VALUES (
         COALESCE($20::integer, nextval(pg_get_serial_sequence('experiences', 'id'))),
         $1, $2, $3, $4, $5, $6, $8,
@@ -692,6 +766,7 @@ async function writeUnderLock(
         $11, $12, $13, $14,
         (SELECT geom FROM extent),
         (SELECT ST_Area(geom::geography) / 1000000 FROM extent),
+        CASE WHEN EXISTS (SELECT 1 FROM extent WHERE geom IS NOT NULL) THEN $1::integer END,
         COALESCE($33::boolean, false),
         NOW(), NOW()
       )
@@ -805,8 +880,14 @@ async function writeUnderLock(
         -- The area rides with the outline in either arm, since the two are one
         -- fact measured twice: a row keeping one and not the other would be the
         -- split of #763 all over again.
-        boundary = CASE WHEN experiences.curated_fields ? 'boundary' THEN experiences.boundary ELSE EXCLUDED.boundary END,
-        area_km2 = CASE WHEN experiences.curated_fields ? 'boundary' THEN experiences.area_km2 ELSE EXCLUDED.area_km2 END,
+        --
+        -- The outline is its drawer's (ADR-0146, #1968): a run whose source
+        -- reads no extents ($34 false) leaves it, and one that does leaves an
+        -- outline another source drew. The owner goes with the outline.
+        boundary = CASE WHEN ${KEEPS_OUTLINE} THEN experiences.boundary ELSE EXCLUDED.boundary END,
+        area_km2 = CASE WHEN ${KEEPS_OUTLINE} THEN experiences.area_km2 ELSE EXCLUDED.area_km2 END,
+        boundary_source_id = CASE WHEN ${KEEPS_OUTLINE} THEN experiences.boundary_source_id
+                                  WHEN EXCLUDED.boundary IS NULL THEN NULL ELSE $1::integer END,
         -- Whether the points are casts of one work (ADR-0145 decision 5): the
         -- run that reads editions says it, every other run leaves it.
         cast_points = COALESCE($33::boolean, experiences.cast_points),
@@ -939,12 +1020,13 @@ async function writeUnderLock(
       params.typeVocabulary ? [...params.typeVocabulary] : null,
       held && stored ? passingColumns(snapshotFromRow(stored), snapshotFromParams(written, null, shortMove), stored.curated_fields ?? []) : [],
       params.castPoints ?? null,
+      params.readsExtents ?? false,
     ]
   );
 
   const row = result.rows[0];
   const before = stored && !row.inserted ? snapshotFromRow(stored) : null;
-  const incoming = snapshotFromParams(written, await measureExtent(client, params.boundaryWkt), shortMove);
+  const incoming = snapshotFromParams(written, await incomingOutline(client, params, stored ?? null), shortMove);
   const changeSet = computeChangeSet(before, incoming, withTypeClaim(row.curated_fields, stored?.type_claimed), held);
   fileKeyMove(changeSet, redirectedFrom, params.externalId);
 

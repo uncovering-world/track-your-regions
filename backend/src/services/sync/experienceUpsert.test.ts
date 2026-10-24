@@ -685,9 +685,10 @@ describe('the keys a run computes about its own pass go past both guards', () =>
     // are this statement's own, and the run's view of the place with its
     // picture's credit (#1246), and the items another id resolves to (#1248).
     // Then the claims' metadata keys, the kind's words (`typeVocabulary`, #1807),
-    // the columns a held row takes (`passingColumns`, #1834), and casts, unsaid (ADR-0145).
-    expect(params).toHaveLength(33);
-    expect(params.slice(31)).toEqual([[], null]);
+    // the columns a held row takes (`passingColumns`, #1834), casts, unsaid (ADR-0145),
+    // and whether the source reads extents, unsaid (ADR-0146).
+    expect(params).toHaveLength(34);
+    expect(params.slice(31)).toEqual([[], null, false]);
     expect(sql).not.toContain("'artworkCount'");
   });
 
@@ -1229,7 +1230,7 @@ describe('the extent a run writes', () => {
     expect(sql).toContain('ST_IsEmpty');
   });
 
-  it('lets the extent through the gate, and still refuses a claim on it', async () => {
+  it('lets the extent through the gate, and keeps it on a claim, on a source that reads none, and on another source\'s (ADR-0146)', async () => {
     await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
 
     // Read as assignments, as the rest of this file reads them: what the
@@ -1244,24 +1245,25 @@ describe('the extent a run writes', () => {
     // What says the polygon moved is the change set (the `boundary` hash, the
     // test below), filed as written because it was.
     const assigned = assignmentsOf(upsert()[0]);
-    expect(assigned.get('boundary')).toBe(
-      "CASE WHEN experiences.curated_fields ? 'boundary' "
-      + 'THEN experiences.boundary ELSE EXCLUDED.boundary END,',
-    );
-    // The area is covered by the claim on the outline, not by one of its own:
-    // they are one fact measured twice, and a row keeping a curator's shape
-    // beside a run's area of it would be the #763 split all over again.
-    expect(assigned.get('area_km2')).toBe(
-      "CASE WHEN experiences.curated_fields ? 'boundary' "
-      + 'THEN experiences.area_km2 ELSE EXCLUDED.area_km2 END,',
-    );
+    const keeps = "CASE WHEN (experiences.curated_fields ? 'boundary' OR NOT $34::boolean "
+      + 'OR (experiences.boundary IS NOT NULL AND experiences.boundary_source_id IS NOT NULL '
+      + 'AND experiences.boundary_source_id <> $1::integer AND EXISTS (SELECT 1 FROM experience_kind_memberships owner_m '
+      + 'WHERE owner_m.experience_id = experiences.id AND owner_m.source_id = experiences.boundary_source_id))) ';
+    const arm = (column: string) => assigned.get(column)?.replace(/\s+/g, ' ');
+    expect(arm('boundary')).toBe(`${keeps}THEN experiences.boundary ELSE EXCLUDED.boundary END,`);
+    // The area is covered by the same arm, not by one of its own: they are one
+    // fact measured twice, and a row keeping a curator's shape beside a run's
+    // area of it would be the #763 split all over again.
+    expect(arm('area_km2')).toBe(`${keeps}THEN experiences.area_km2 ELSE EXCLUDED.area_km2 END,`);
+    // And the owner goes with the outline: kept where it is kept, let go where
+    // the drawer clears it, the run's source where it draws.
+    expect(arm('boundary_source_id')).toBe(`${keeps}THEN experiences.boundary_source_id WHEN EXCLUDED.boundary IS NULL THEN NULL ELSE $1::integer END,`);
   });
 
-  it('writes NULL where the run sends no extent, which an omitted field is', async () => {
-    // Unlike `location`, which every caller must pass: a collector that sends
-    // no outline is saying this place has none, and the column is cleared. A
-    // writer that forgot to pass one for a source that has them would clear
-    // every outline it holds.
+  it('binds NULL where the run sends no extent, which an omitted field is', async () => {
+    // Unlike `location`, which every caller must pass. Whether the NULL clears
+    // the outline is the owner arm's (ADR-0146): only for a source that reads
+    // extents, and only an outline it drew.
     await upsertExperienceRecord(PARAMS, { syncLogId: 42 });
     expect(upsert()[1][18]).toBeNull();
     expect(flatUpsertSql()).toContain('ST_GeomFromText($19, 4326)');
@@ -1279,7 +1281,8 @@ describe('the extent a run writes', () => {
 
   it('measures the outline it was sent with the writer\'s own expression, and files a re-traced one as written even on a held row', async () => {
     const wkt = 'POLYGON((26.23 39.95,26.24 39.95,26.24 39.96,26.23 39.96,26.23 39.95))';
-    const stored = storedRow({ boundary_hash: 'a-first-tracing', area_km2: '0.0568', was_held: true });
+    // The outline its own source drew, which a run of that source re-traces.
+    const stored = storedRow({ boundary_hash: 'a-first-tracing', area_km2: '0.0568', boundary_source_id: PARAMS.sourceId, was_held: true });
     client.query.mockImplementation(async (sql: string) => {
       if (/INSERT INTO experiences/.test(sql)) return { rows: [writtenRow()] };
       if (/SELECT m\.experience_id AS id, m\.external_id AS "from" FROM experience_kind_memberships m/.test(sql)) {
@@ -1293,7 +1296,7 @@ describe('the extent a run writes', () => {
       return { rows: [] };
     });
 
-    const result = await upsertExperienceRecord({ ...PARAMS, boundaryWkt: wkt }, { syncLogId: 42 });
+    const result = await upsertExperienceRecord({ ...PARAMS, boundaryWkt: wkt, readsExtents: true }, { syncLogId: 42 });
 
     // Like with like: the incoming WKT goes through the statement's own
     // repair-and-extract expression before it is hashed, so a polygon PostGIS
