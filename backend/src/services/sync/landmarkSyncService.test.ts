@@ -288,6 +288,8 @@ describe('public art in the place pass', () => {
 
     const params = mockedUpsert.mock.calls[0][0];
     expect(params.type).toBe('monument');
+    // A work standing in one place is no edition, and says so (ADR-0145 decision 5).
+    expect(params.castPoints).toBe(false);
     // Once, in the column: the key that duplicated it in metadata is gone (#814).
     expect(params.metadata).not.toHaveProperty('type');
     expect(params.tags).toEqual(['outdoor', 'monument']);
@@ -327,6 +329,8 @@ describe('public art in the place pass', () => {
     const params = mockedUpsert.mock.calls.at(-1)![0];
     // The anchor is a cast, the most central one, written past the gate; the countries are every cast's.
     expect(params.locationIsAnchor).toBe(true);
+    // Its points are casts of one work, which a visit to any marks seen (ADR-0145 decision 5).
+    expect(params.castPoints).toBe(true);
     expect([params.lat, params.lon]).toEqual([43.269189, -2.932958]);
     // Every cast's country, the anchor's first: a reader showing one country shows the anchor's.
     expect(params.countryNames).toEqual(['Spain', 'Canada', 'United Kingdom', 'Japan']);

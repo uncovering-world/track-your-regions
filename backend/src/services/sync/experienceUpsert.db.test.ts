@@ -707,3 +707,26 @@ describe("a World Heritage Centre page offered as a place's website (#1851)", ()
     expect(fields).toContain('metadata.website');
   });
 });
+
+describe('whether a place\'s points are casts of one work (ADR-0145 decision 5, #880)', () => {
+  const castPointsOf = async (id: number) =>
+    (await pool.query<{ cast_points: boolean }>('SELECT cast_points FROM experiences WHERE id = $1', [id])).rows[0].cast_points;
+
+  it('is written as the run says, kept by a run that says nothing, and set back when the run says no', async () => {
+    const created = await upsertExperienceRecord({ ...params(archaeology, NEW_SITE_QID, 'Maman'), castPoints: true });
+    expect(await castPointsOf(created.experienceId)).toBe(true);
+
+    // A run that does not read editions leaves it as it is.
+    await upsertExperienceRecord(params(archaeology, NEW_SITE_QID, 'Maman'));
+    expect(await castPointsOf(created.experienceId)).toBe(true);
+
+    // The edition run finding one cast left says it is no edition now.
+    await upsertExperienceRecord({ ...params(archaeology, NEW_SITE_QID, 'Maman'), castPoints: false });
+    expect(await castPointsOf(created.experienceId)).toBe(false);
+  });
+
+  it('starts as no edition for a place a run creates without saying', async () => {
+    const created = await upsertExperienceRecord(params(archaeology, NEW_SITE_QID, 'A new site'));
+    expect(await castPointsOf(created.experienceId)).toBe(false);
+  });
+});
