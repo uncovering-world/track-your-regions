@@ -22,3 +22,4 @@ and says so in its first lines.
 | [2026-10-16 — How a card lets a visitor copy, share and follow a place's facts](2026-10-16-how-a-card-lets-a-visitor-copy-and-share.md) | #1188, #1190, #1191, #1192, #1193, #1194, #1195, #1196 |
 | [2026-10-17 — Which source can give a place its street address, per kind](2026-10-17-which-source-gives-a-place-its-street-address.md) | #1189, #1193 |
 | [2026-10-21 — How map products and guides sort sights, and what the surveys expect](2026-10-21-how-maps-and-guides-sort-sights.md) | #1163, ADR-0131 |
+| [2026-10-25 — What the databases Wikidata links places to could do for the catalogue](2026-10-25-what-the-databases-wikidata-links-places-to-could-do.md) | #1977 |
