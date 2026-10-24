@@ -1,13 +1,20 @@
 /**
  * Jev's reading of what a visitor finds at an arriving place (#1768,
- * ADR-0087): one grey line under the run's question on the arrival's card,
- * shown and never chosen. It is what tells a part of a larger place, an object
- * kept elsewhere or a culture from a site, which the run's witnesses cannot
- * (ADR-0128): the Lupanar has a guide and photographs, and is one house of
- * Pompeii.
+ * ADR-0087), shown and never chosen. It is what tells a part of a larger
+ * place, an object kept elsewhere or a culture from a site, which the run's
+ * witnesses cannot (ADR-0128): the Lupanar has a guide and photographs, and is
+ * one house of Pompeii.
+ *
+ * Shown only where Jev reads the card as wrong — anything but a place with
+ * something to see, at any confidence — and then as a warning (#1926): 196 of
+ * the 296 readings on dev only echoed what the card proposes, and a curator
+ * who learns to skip an echo also skips the Arch of Reunification read as
+ * demolished. A *visit* reading is still stored and counted (AI Settings), but
+ * draws nothing here.
  */
 
 import { Box, Typography } from '@mui/material';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { useQuery } from '@tanstack/react-query';
 import { suggestVisit, type VisitSuggestion } from '../../api/curation';
 import { queryKeys } from '../../api/queryKeys';
@@ -36,10 +43,22 @@ export function readingWords(reading: Reading): string {
 }
 
 /**
- * The line, where this deployment asks Jev and it could read the place;
- * nothing otherwise, and nothing while it is asked or after a failed read.
- * Keyed by the place's name as well as its id: the server answers for the
- * place as it stands, and a card showing it renamed asks again.
+ * Jev's suspicion in the warning's words, keeping a reading under one half as
+ * leaning: "Jev suspects this card is wrong: a part of a larger place · 57 %".
+ */
+export function suspicionWords(reading: Reading): string {
+  const percent = `${Math.round(reading.confidence * 100)} %`;
+  return reading.confidence < 0.5
+    ? `Jev suspects this card is wrong, unsure: leans to ${READING_WORDS[reading.reading]} · ${percent}`
+    : `Jev suspects this card is wrong: ${READING_WORDS[reading.reading]} · ${percent}`;
+}
+
+/**
+ * The warning, where this deployment asks Jev and it read the place as
+ * anything but a place with something to see; nothing otherwise, and nothing
+ * while it is asked or after a failed read. Keyed by the place's name as well
+ * as its id: the server answers for the place as it stands, and a card
+ * showing it renamed asks again.
  */
 export function VisitReadingLine({ experienceId, name }: { experienceId: number; name: string }) {
   const { data } = useQuery({
@@ -49,10 +68,15 @@ export function VisitReadingLine({ experienceId, name }: { experienceId: number;
     retry: false,
   });
   const reading = data?.suggestion;
-  if (!reading) return null;
+  if (!reading || reading.reading === 'visit') return null;
+  // The theme's error colour and an icon, so the warning does not rest on colour alone.
   return (
-    <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 0.5 }}>
-      <Box component="span" sx={{ fontWeight: 600 }}>What a visitor finds:</Box> {readingWords(reading)}
+    <Typography
+      variant="caption" color="error" display="flex" role="note"
+      sx={{ mt: 0.5, alignItems: 'center', gap: 0.5 }}
+    >
+      <WarningAmberIcon fontSize="inherit" aria-hidden />
+      <Box component="span">{suspicionWords(reading)}</Box>
     </Typography>
   );
 }

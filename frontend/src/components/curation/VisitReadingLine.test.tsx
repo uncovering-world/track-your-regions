@@ -26,24 +26,37 @@ function renderLine(id: number, name: string) {
 beforeEach(() => mockedSuggest.mockReset());
 
 describe("Jev's reading of an arriving place", () => {
-  it('says what Jev reads the place as, with its confidence', async () => {
+  it('warns that Jev suspects the card, with its confidence', async () => {
     mockedSuggest.mockResolvedValue({ configured: true, suggestion: { reading: 'part', confidence: 0.93 } });
 
     renderLine(20406, 'Lupanar');
 
-    expect(await screen.findByText(/^\s*Jev reads it as a part of a larger place · 93 %$/)).toBeInTheDocument();
-    expect(screen.getByText('What a visitor finds:')).toBeInTheDocument();
+    expect(await screen.findByText('Jev suspects this card is wrong: a part of a larger place · 93 %')).toBeInTheDocument();
+    expect(screen.getByRole('note')).toBeInTheDocument();
     expect(mockedSuggest).toHaveBeenCalledWith(20406);
   });
 
-  it('says a reading under one half as leaning', async () => {
-    mockedSuggest.mockResolvedValue({ configured: true, suggestion: { reading: 'not-a-place', confidence: 0.47 } });
+  it.each([
+    ['nothing', 'a place with little or nothing left to see'],
+    ['object', 'an object kept elsewhere, not a place'],
+    ['not-a-place', 'not one place: a culture, a kingdom or a group of sites'],
+    ['part', 'a part of a larger place'],
+    ['other-kind', 'a place visited for something other than its kind'],
+  ])('warns for a %s reading, and keeps one under one half as leaning (#1926)', async (reading, words) => {
+    mockedSuggest.mockResolvedValue({ configured: true, suggestion: { reading, confidence: 0.47 } });
 
     renderLine(20410, 'Darien scheme');
 
-    expect(await screen.findByText(
-      /Jev is unsure, leans to not one place: a culture, a kingdom or a group of sites · 47 %$/,
-    )).toBeInTheDocument();
+    expect(await screen.findByText(`Jev suspects this card is wrong, unsure: leans to ${words} · 47 %`)).toBeInTheDocument();
+  });
+
+  it('draws nothing for a place Jev reads as one with something to see (#1926)', async () => {
+    mockedSuggest.mockResolvedValue({ configured: true, suggestion: { reading: 'visit', confidence: 0.98 } });
+
+    const { container } = renderLine(20412, 'Pont du Gard');
+
+    await waitFor(() => expect(mockedSuggest).toHaveBeenCalled());
+    expect(container).toBeEmptyDOMElement();
   });
 
   it('draws nothing where the deployment does not ask Jev or Jev could not read the place', async () => {
