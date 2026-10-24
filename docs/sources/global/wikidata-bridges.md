@@ -175,11 +175,15 @@ compiled by the canon's method (`docs/tech/catalogue-coverage.md`): 18 entries, 
 the compiler's own list and at least one independent selection. Those were the Seven Wonders of
 the Waterways, the World Heritage list, the American engineering societies' landmarks, the
 ICOMOS international canal monuments list, and travel publishers' pages, kept under
-`docs/local/`. The canon is in `db/catalogue-coverage/calibration/bridges-and-engineering.jsonl`.
-Four of its entries are out of the kind's reach by Wikidata's typing, not by the line:
-Neptune's Staircase and the Fonseranes locks are filed as a built structure, the Canal du Centre
-lifts as an architectural ensemble (World Heritage holds them), and the Three Gorges ship lift and
-the Elbląg Canal's inclined planes have no item of their own in the subset.
+`docs/local/`. The 16 entries with an item are in
+`db/catalogue-coverage/calibration/bridges-and-engineering.jsonl`, beside the kind's bridges, dams
+and tunnels; the two with none wait for one, since a canon entry is identified by its item.
+Three of its entries are out of the kind's reach by Wikidata's typing, not by the line:
+Neptune's Staircase and the Fonseranes locks are filed as a built structure, and the Canal du
+Centre lifts as an architectural ensemble (World Heritage holds them). Two more, the Three Gorges
+ship lift and the Elbląg Canal's inclined planes, have no item of their own in the subset. The
+coverage report reads this kind on the bridges' line, so it files the first two as under the line;
+they are typing misses (`CODE_LINES`, `report.ts`).
 
 **The line**, measured on the candidates the rule passes as a lock, flight, lift or inclined plane,
 against the 16 canon entries with an item:
