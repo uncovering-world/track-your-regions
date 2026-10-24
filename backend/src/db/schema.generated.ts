@@ -475,6 +475,18 @@ export interface ExperienceMergesRow {
   undone_by: number | null;
 }
 
+/** The table `experience_pairing_due`. */
+export interface ExperiencePairingDueRow {
+  experience_id: number;
+  marked_at: Date;
+}
+
+/** The table `experience_pairing_rule`. */
+export interface ExperiencePairingRuleRow {
+  only_row: boolean;
+  rule_version: number;
+}
+
 /** The table `experience_parts`. */
 export interface ExperiencePartsRow {
   id: number;
@@ -1284,6 +1296,8 @@ export const RELATION_SCHEMAS = {
   experience_merge_proposals: "public",
   experience_merge_suggestions: "public",
   experience_merges: "public",
+  experience_pairing_due: "public",
+  experience_pairing_rule: "public",
   experience_parts: "public",
   experience_point_hint_suggestions: "public",
   experience_point_hints: "public",
