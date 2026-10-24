@@ -1588,6 +1588,27 @@ path needs.
   only, which keeps the region feed light; the map's hover card shows a point's own picture and,
   for a part without one, its site's, saying so beside the credit (`pointPicture`,
   `docs/tech/experience-map-ui.md`).
+- **A component carries its own English article** (#1963). The item a component resolves to gives
+  the point its English Wikipedia article too (`componentContents`, read off the same query as the
+  picture), stored on the point as `metadata.wikipediaUrl`, where a place keeps its own. The run
+  writes it with the picture and the description (`writePointContents`), through the same gate: a
+  point that showed none is filled, a change to the article a reader sees — the point's own, else its
+  part place's — is held for the card
+  (`metadata.wikipediaUrl` in `HELD_POINT_FIELDS`), a claim is never written over, and a value that
+  is no web address is no article. An item with no English article takes the stored one away from a
+  point nobody has passed. A curator who confirms a component's item writes its article with its
+  picture and description (`claimPointItem`, read with them by `contentsOf`), since the run leaves
+  such a point alone, and taking the item back takes the article off unless a curator claimed it
+  (`releasePointItem`, reported as `metadata.wikipediaUrl` in what came off). The site keeps its own
+  item's article (`factsForSite`): a part's article is never the site's, and the site's is never a
+  part's. Every point read serves `wikipedia_url` (`pointArticleSql` in `db/placePoints.ts`): the
+  point's own, else its part place's, which another kind brought with the place. The region feed
+  carries it too, since a part's row links it (`PointArticleLink`, on Map mode's and Discover's
+  rows). The part's card links the stored article, and Wikidata's redirect for a point with an
+  item and none stored yet: one the next run has not reached, or one a curator confirmed before
+  the article was read with the item. The redirect cannot tell those from an item with no English
+  article, which the row therefore never links. A run writes a point's article only where
+  `isStorableHttpUrl` holds, and so does `claimPointItem`.
 - **A component no item records the reference of is proposed one** (#1272,
   `componentItemFinder.ts`, rules in `componentItemMatching.ts`, reads of the local Wikidata
   subset in `subset/componentItems.ts`, label reads in `componentItemQueries.ts`). Started from the World Heritage source's card in the admin panel
@@ -4859,7 +4880,8 @@ picture credit's licence link already asked (#703). So are `websiteUrl` and
 `wikipediaUrl` (#708), which a sync writes as `metadata.website` /
 `metadata.wikipediaUrl` through no request schema: the surfaces that link
 them — the expanded list card, Discover's detail panel, the review page's
-`ObjectContext`, a part's `PointCard` and the id chip's `SourceId` — ask
+`ObjectContext`, a part's `PointCard`, a part's row in either list
+(`PointArticleLink`, #1963) and the id chip's `SourceId` — ask
 `safeHref` where the value meets the DOM, and a value it refuses gets no
 button or link at all.
 
