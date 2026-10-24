@@ -184,7 +184,7 @@ lists is `calibration-sources.jsonl`, so a slug on an entry is one a person can 
 | `name` | For a person. Never used to match anything |
 | `wikidata` | Its Wikidata id; every entry has one |
 | `sources` | The register's slugs of the lists that name it, one or more |
-| `sitelinks` | As Wikidata gave them when the list was compiled, or `null`, so the report can tell an absent top under the kind's editions line from one the kind's classes do not reach |
+| `sitelinks` | Its Wikipedia editions when the list was compiled, counted by the code's own counter, `fetchWikipediaEditions` (`wikidataQueries.ts`; the subset's `subsetWikipediaEditions` where the subset keeps the item) — the measure a kind's line reads, never a query service's sitelink count, which adds Wikivoyage and Commons — or `null`, so the report can tell an absent top under the kind's editions line from one the kind's classes do not reach |
 | `note` | Anything a later reader needs: why Wikidata's typing keeps the kind from reaching it |
 
 A line, in full:
@@ -193,8 +193,13 @@ A line, in full:
 {"slug": "cn-tower", "name": "CN Tower", "wikidata": "Q134883", "sources": ["asce-seven-wonders-modern-world"], "sitelinks": 79, "note": ""}
 ```
 
-Each list draws on at least two independent sources, Wikivoyage as one check; which lists a
-kind's record measured its line on is in `docs/sources/global/`.
+Which kinds have a list, and which reference lists each draws on, are the files and the
+register themselves. A member read from a global list — the items Wikidata designates World
+Heritage, the items four or more Wikivoyage editions use — is read from the whole of Wikidata
+through the kind's classes, never from what the kind's run admitted, so a top the line cuts or
+the rule refuses stays on the list. Each list draws on at least two independent sources,
+Wikivoyage as one check; the reading a kind's line was chosen on is in its record in
+`docs/sources/global/`.
 
 ## What the reader refuses
 
@@ -273,9 +278,11 @@ Two regions may hold the same place: Nara is a day trip from more than one city.
   under it in the same change; the reader refuses the leftover.
 - **A calibration list names what a traveller expects of the kind, from lists a person can read
   again.** An entry is added because a reference list names it, with that list's slug on it, and
-  its item comes from a lookup, never from memory. What a list says that the kind's definition
-  excludes is left aside and said in the register's `note`: the federation's skyscrapers are not
-  towers. An entry that falls out of the kind stays on the list, which is how the loss is seen.
+  its item comes from a lookup, never from memory. A list is never filtered by the kind's
+  own rule or line, nor drawn from what the kind admitted: a top the rule wrongly refuses must
+  stay on the list for the report to show the refusal. What is plainly not of the kind, judged by
+  name, is left aside and said in the register's `note`: the federation's skyscrapers are not
+  towers, Al-Aqsa is not a square. An entry that falls out of the kind stays on the list, which is how the loss is seen.
   Two kinds may list one place; one list never lists one item twice.
 - **A gap is judged once, in the ledger, and the judgement names its cause and its owner.** A
   defect gets an issue when none owns it yet, and the judgement names it; the next finding of
@@ -378,14 +385,16 @@ asked only of a place a live kind should hold: a square beside a fountain the ca
 is a neighbour and nothing else.
 
 **How each live kind stands to its own calibration list** (#1864). For every live kind with a
-list, how many of its tops a reader sees, each reference list's share (*World Federation of
+list, how many of its tops a reader sees and how many more the kind admitted and a curator has
+not read yet (the line let them through), each reference list's share (*World Federation of
 Great Towers, members: 20 of 30*), and every miss by name, the most known first, with where it
 stands, the first that applies:
 
 | Standing | Meaning |
 |---|---|
 | refused | The latest real, closed run of one of the kind's active sources refused the item, with the reason the run recorded (`experience_sync_changes`, `filtered`: a refusal is never a membership row). Before held, because a rule change knocks out a top the catalogue already holds through that very refusal, and the reason is what the list is there to surface |
-| held | A catalogue place known by the item exists and this kind does not offer it: it waits for a curator, was refused by name by an earlier run, or another kind alone offers it; the place is named |
+| admitted | The kind admits a place known by the item and a reader does not see it yet: it waits for a curator. Counted beside the offered, never named as a miss, since the line holds it |
+| held | A catalogue place known by the item exists and this kind neither offers nor admits it: refused by name by an earlier run, or another kind alone offers it; the place is named |
 | absent, under the editions line | Nothing holds it and no run named it, and the list's `sitelinks` are under the kind's editions line: the regional tier's |
 | absent, not a candidate | Nothing holds it and no run named it, at or over the line, or with no count: the kind's classes do not reach it, or a candidate under the readers' line, which the run records nowhere |
 

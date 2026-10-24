@@ -4006,7 +4006,9 @@ under, whatever it was built for: the Leaning Tower of Pisa, the Giralda, Big Be
 Minaret, the Eiffel Tower. Its source decides from the place gather (`TOWERS_KIND`), whose
 candidates are asked by nine tower roots (`TOWER_ROOTS`, `towers/classes.ts`), and its arrivals
 wait for a curator (`requires_curation`). The source record, with the measurements the line was
-chosen from, is [`docs/sources/global/wikidata-towers.md`](../sources/global/wikidata-towers.md).
+chosen from, is [`docs/sources/global/wikidata-towers.md`](../sources/global/wikidata-towers.md);
+the committed `db/catalogue-coverage/calibration/towers.jsonl`, read from the whole of Wikidata, is
+what the coverage report checks the line against when it is read after a run (#1864).
 
 **The rule** is `towerVerdict` (`towers/towerTest.ts`), in order:
 
@@ -4055,8 +4057,10 @@ dam, canal or tunnel a traveller goes to or through for itself: the Golden Gate 
 Charles Bridge, the Pont du Gard, the Hoover Dam, the Panama Canal, the Channel Tunnel. Its source
 decides from the place gather (`BRIDGES_KIND`), whose candidates are asked by five roots
 (`BRIDGE_ROOTS`, `bridges/classes.ts`), and its arrivals wait for a curator. The source record,
-with the calibration list and the measurements the line was chosen from, is
-[`docs/sources/global/wikidata-bridges.md`](../sources/global/wikidata-bridges.md).
+with the measurements the line was chosen from, is
+[`docs/sources/global/wikidata-bridges.md`](../sources/global/wikidata-bridges.md); the committed
+`db/catalogue-coverage/calibration/bridges-and-engineering.jsonl`, read from the whole of Wikidata,
+is what the coverage report checks the line against when it is read after a run (#1864).
 
 **The rule** is `bridgeVerdict` (`bridges/bridgeTest.ts`), in order:
 
@@ -4094,9 +4098,10 @@ calibration list among the admitted.
 **Squares & streets** (kind and source 9, #1867, ADR-0131) holds a square, a street, a promenade
 or a stairway a visitor walks as a sight in itself: Red Square, Piazza Navona, the Spanish Steps,
 the Champs-Élysées, the Arbat. Its source decides from the place gather (`SQUARES_KIND`), and its
-arrivals wait for a curator. The source record, with the calibration list and the measurements the
-line was chosen from, is
-[`docs/sources/global/wikidata-squares.md`](../sources/global/wikidata-squares.md).
+arrivals wait for a curator. The source record, with the measurements the line was chosen from, is
+[`docs/sources/global/wikidata-squares.md`](../sources/global/wikidata-squares.md); the committed
+`db/catalogue-coverage/calibration/squares-and-streets.jsonl`, read from the whole of Wikidata, is
+what the coverage report checks the line against when it is read after a run (#1864).
 
 **The candidates** are asked by five roots with their trees, square, street, promenade, stairs and
 pedestrian zone, and by a sixth, thoroughfare (`THOROUGHFARE`), asked by itself and not by its

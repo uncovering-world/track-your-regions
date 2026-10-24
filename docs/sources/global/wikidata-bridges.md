@@ -80,7 +80,14 @@ A street is no refusal: Prague files the Charles Bridge as one, and Amsterdam th
 ## What a traveller expects: the calibration list
 
 No reference list of bridges a traveller expects existed, so one was assembled from four
-independent sources, among the 595 candidates:
+independent sources, among the 595 candidates.
+
+That was the reading the line was chosen on. The list the line is checked against after every
+run is the committed `db/catalogue-coverage/calibration/bridges-and-engineering.jsonl` (#1864), read from the whole
+of Wikidata rather than from the run's candidates, so it also holds the tops the line or the rule
+loses.
+
+The four sources:
 
 - the coverage surveys' 15 entries under this kind that the pool names, from the Sydney Harbour
   Bridge to Ponte Sisto and Yerevan's Victory Bridge;
