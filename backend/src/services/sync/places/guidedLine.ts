@@ -4,7 +4,8 @@
  * disaster fills a year of readers and an expressway can be read as much as a
  * street a traveller crosses a city for; a guide naming the place is what
  * tells them apart. Each kind states its own numbers, chosen on its own
- * calibration list; this module holds how they are read, and the classifier
+ * reading and checked against its own canon (`docs/tech/catalogue-coverage.md`);
+ * this module holds how they are read, and the classifier
  * every such kind runs over its share.
  */
 

@@ -7,9 +7,9 @@
  * edition uses its item. The readers' door stays low because guides often
  * name the monument on a square rather than the square, so Havana's Malecón
  * and the Piazza della Rotonda come in on their readers alone. The doors were
- * chosen on this kind's own calibration list (the coverage surveys, World
- * Heritage, the places Wikivoyage names most), measured on the dev subset on
- * 2026-10-23: `docs/sources/global/wikidata-squares.md`. A place the source
+ * chosen on the reading in `docs/sources/global/wikidata-squares.md`, measured
+ * on the dev subset on 2026-10-23; the line is checked against the kind's
+ * canon in `db/catalogue-coverage/calibration/squares-and-streets.jsonl`. A place the source
  * holds stays while it keeps 12 editions and 21,000 readers, or 3,500 with a
  * guide.
  */

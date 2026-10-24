@@ -5,10 +5,10 @@
  * The line has two doors, both on 15 Wikipedia editions. A work enters on
  * 50,000 readers a year, or on 10,000 where a Wikivoyage edition uses its
  * item: a guide naming it is what tells the Khaju Bridge in Isfahan from an
- * expressway viaduct as well read. The doors were chosen on this kind's own
- * calibration list (the coverage surveys, World Heritage, the works Wikivoyage
- * names most, the civil engineers' wonders), measured on the dev subset on
- * 2026-10-22: `docs/sources/global/wikidata-bridges.md`. A work the source
+ * expressway viaduct as well read. The doors were chosen on the reading in
+ * `docs/sources/global/wikidata-bridges.md`, measured on the dev subset on
+ * 2026-10-22; the line is checked against the kind's canon in
+ * `db/catalogue-coverage/calibration/bridges-and-engineering.jsonl`. A work the source
  * holds stays while it keeps 12 editions and 35,000 readers, or 7,000 with a
  * guide, so the list does not flicker as the year's reading moves.
  */
