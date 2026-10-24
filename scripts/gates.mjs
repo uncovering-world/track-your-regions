@@ -151,7 +151,7 @@ export const INPUTS = [
     id: 'coverage',
     paths: [/^db\/catalogue-coverage\/.*\.jsonl$/],
     note:
-      'The catalogue-coverage register, regions and lists (ADR-0081) are data'
+      'The catalogue-coverage register, regions, survey lists and calibration lists (ADR-0081, #1864) are data'
       + ' with one reader, services/catalogueCoverage/files.ts, and one spec that'
       + ' reads the committed files whole, files.test.ts, in the backend unit'
       + ' lane. The load and the report read them from a command, and their'

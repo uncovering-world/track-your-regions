@@ -24,7 +24,9 @@ db/catalogue-coverage/
 ├── kinds.jsonl                  ← the register of kinds of experience, live and proposed
 ├── regions.jsonl                ← the surveyed regions
 ├── expectations/<region>.jsonl  ← what a traveller expects in that region
-└── judgements.jsonl             ← why each gap between the lists and the catalogue stands, judged once (ADR-0116)
+├── judgements.jsonl             ← why each gap between the lists and the catalogue stands, judged once (ADR-0116)
+├── calibration-sources.jsonl    ← the reference lists a kind's tops are named by (#1864)
+└── calibration/<kind>.jsonl     ← the tops a traveller expects of that live kind: what its fame line is checked on
 ```
 
 No directory is named `coverage/`: `.gitignore` ignores that name, and a file under it is
@@ -160,6 +162,40 @@ fault, an identifier that is the wrong one of two items or a filing a traveller 
 the list is corrected and nothing is judged. A held entry that waits for a curator is not
 judged either; the review queue answers it.
 
+### `calibration-sources.jsonl` and `calibration/<kind>.jsonl`: the tops a traveller expects of a kind
+
+A kind's fame line is chosen, and re-checked, on the kind's own calibration list, never copied
+from another kind's (`docs/tech/filling-a-kind.md` § 2, #1864). One list per live kind of place,
+named by the kind's slug; an entry is one place a traveller expects the kind to offer, identified
+by its Wikidata item, and names the reference lists that call it a top. The register of those
+lists is `calibration-sources.jsonl`, so a slug on an entry is one a person can read again.
+
+| Field of the register | Meaning |
+|---|---|
+| `slug` | The name an entry names the list by |
+| `name` | The list as a person reads it: *World Federation of Great Towers, members* |
+| `url` | Where the list is read, or `null` for one assembled here, such as the coverage surveys |
+| `read` | The date the list was read, which is the date of the membership it states |
+| `note` | What of the list was left aside and why: the federation's skyscrapers wait for their own kind |
+
+| Field of an entry | Meaning |
+|---|---|
+| `slug` | Unique within the kind's list |
+| `name` | For a person. Never used to match anything |
+| `wikidata` | Its Wikidata id; every entry has one |
+| `sources` | The register's slugs of the lists that name it, one or more |
+| `sitelinks` | As Wikidata gave them when the list was compiled, or `null`, so the report can tell an absent top under the kind's editions line from one the kind's classes do not reach |
+| `note` | Anything a later reader needs: why Wikidata's typing keeps the kind from reaching it |
+
+A line, in full:
+
+```json
+{"slug": "cn-tower", "name": "CN Tower", "wikidata": "Q134883", "sources": ["asce-seven-wonders-modern-world"], "sitelinks": 79, "note": ""}
+```
+
+Each list draws on at least two independent sources, Wikivoyage as one check; which lists a
+kind's record measured its line on is in `docs/sources/global/`.
+
 ## What the reader refuses
 
 `readCoverageFiles` in `backend/src/services/catalogueCoverage/files.ts` reads the directory
@@ -187,6 +223,11 @@ It refuses:
   without one. `world-heritage` is the inscribed property itself, so one entry of a list
   carries its id. A component of a serial property, such as one temple of Kyoto's, is filed
   under what it is;
+- in the register of reference lists: a slug used twice; in a calibration list: a file named by a
+  slug the register of kinds lacks, by a kind only proposed, or by a kind that holds no place; a
+  slug or a Wikidata id used twice in one list; an entry with no source, naming a source twice,
+  or naming one `calibration-sources.jsonl` does not have; a list with no register beside it. A
+  directory with no `calibration/` has calibrated nothing and may do without the register;
 - in the ledger: a judgement that names both an entry and a row, or neither; an entry with no
   kind, under a kind the register lacks or only proposes, or under a kind the entry is not
   filed under; a catalogue row that names a kind; a cause outside the vocabulary; a row judged
@@ -230,6 +271,12 @@ Two regions may hold the same place: Nara is a day trip from more than one city.
   language editions of one article, count once towards an entry's `sources`.
 - **A kind is never renamed by editing its slug in place** without changing every entry filed
   under it in the same change; the reader refuses the leftover.
+- **A calibration list names what a traveller expects of the kind, from lists a person can read
+  again.** An entry is added because a reference list names it, with that list's slug on it, and
+  its item comes from a lookup, never from memory. What a list says that the kind's definition
+  excludes is left aside and said in the register's `note`: the federation's skyscrapers are not
+  towers. An entry that falls out of the kind stays on the list, which is how the loss is seen.
+  Two kinds may list one place; one list never lists one item twice.
 - **A gap is judged once, in the ledger, and the judgement names its cause and its owner.** A
   defect gets an issue when none owns it yet, and the judgement names it; the next finding of
   the same cause names the same issue. A finding that turns out to be the list's fault corrects
@@ -239,15 +286,18 @@ Two regions may hold the same place: Nara is a day trip from more than one city.
 ## The tables
 
 `coverage_kinds`, `coverage_regions`, `coverage_expectations`,
-`coverage_expectation_kinds` and `coverage_judgements` hold a copy of the files, so that the
-comparison with the catalogue is a join. They are declared in `db/init/01-schema.sql` and
-`db/migrations/068-catalogue-coverage.sql`, which create them and load nothing;
-`069-coverage-kinds-in-venue.sql` adds `coverage_kinds.in_venue` to a database that has them,
-`114-coverage-judgements.sql` the ledger's table, and `115-coverage-judgements-worth-a-visit.sql`
-the cause a row alone takes and the constraints on what each subject may be judged.
+`coverage_expectation_kinds`, `coverage_judgements`, `coverage_calibration_sources`,
+`coverage_calibration_entries` and `coverage_calibration_entry_sources` hold a copy of the
+files, so that the comparison with the catalogue is a join. They are declared in
+`db/init/01-schema.sql` and `db/migrations/068-catalogue-coverage.sql`, which create them and
+load nothing; `069-coverage-kinds-in-venue.sql` adds `coverage_kinds.in_venue` to a database
+that has them, `114-coverage-judgements.sql` the ledger's table,
+`115-coverage-judgements-worth-a-visit.sql` the cause a row alone takes and the constraints on
+what each subject may be judged, and `167-coverage-calibration-lists.sql` the calibration
+tables.
 
 - **One writer.** `replaceCoverage` in `backend/src/services/catalogueCoverage/load.ts`
-  empties all five and fills them from what the reader returned, in one transaction. Nobody
+  empties them all and fills them from what the reader returned, in one transaction. Nobody
   edits a row by hand: the next load would undo it.
 - **Apart from `experience_kinds`.** That table is what a traveller browses by. A proposed
   kind lives only in `coverage_kinds`; a live kind's record there points at its
@@ -326,6 +376,22 @@ and the catalogue holds the gallery inside it); a named point of a serial World 
 place, the other item's id goes into the entry's `same_as`, and the next load finds it. It is
 asked only of a place a live kind should hold: a square beside a fountain the catalogue holds
 is a neighbour and nothing else.
+
+**How each live kind stands to its own calibration list** (#1864). For every live kind with a
+list, how many of its tops a reader sees, each reference list's share (*World Federation of
+Great Towers, members: 20 of 30*), and every miss by name, the most known first, with where it
+stands, the first that applies:
+
+| Standing | Meaning |
+|---|---|
+| refused | The latest real, closed run of one of the kind's active sources refused the item, with the reason the run recorded (`experience_sync_changes`, `filtered`: a refusal is never a membership row). Before held, because a rule change knocks out a top the catalogue already holds through that very refusal, and the reason is what the list is there to surface |
+| held | A catalogue place known by the item exists and this kind does not offer it: it waits for a curator, was refused by name by an earlier run, or another kind alone offers it; the place is named |
+| absent, under the editions line | Nothing holds it and no run named it, and the list's `sitelinks` are under the kind's editions line: the regional tier's |
+| absent, not a candidate | Nothing holds it and no run named it, at or over the line, or with no count: the kind's classes do not reach it, or a candidate under the readers' line, which the run records nowhere |
+
+A place is known by the same identifiers the survey lists match by (`KNOWN_AS_SQL`), and offered
+by the same `countedMembershipSql`, in the kind the list belongs to. A kind's list is the whole
+world's, so `--region` never narrows it.
 
 **What the surveys expect of each proposed kind.** For every kind the product does not have:
 how many expectations are filed under it, in how many regions, how many of them a reader
