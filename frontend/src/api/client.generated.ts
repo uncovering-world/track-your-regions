@@ -1592,6 +1592,8 @@ export interface ExperienceVisitedStatusResponse {
      * @maximum 9007199254740991
      */
   experienceId: number;
+  /** Each point is a cast of the whole work; any visited cast marks the work visited. */
+  castPoints: boolean;
   visitedStatus: VisitedStatus;
   /**
      * @minimum -9007199254740991
@@ -2320,6 +2322,8 @@ export interface Experience {
      * @maximum 9007199254740991
      */
   location_count: number;
+  /** Its points are casts of one work: a visit to any cast marks the work visited (ADR-0145 decision 5). */
+  cast_points: boolean;
   /**
      * Offered and published links to works.
      * @minimum -9007199254740991

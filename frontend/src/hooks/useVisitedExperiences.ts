@@ -9,7 +9,7 @@ import { invalidateVisitedStatus } from '../utils/queryInvalidation';
 import {
   fetchExperienceVisitedStatus, fetchViewedTreasureIds, fetchVisitedExperienceIds, fetchVisitedLocationIds,
   markAllLocationsVisited, markExperienceVisited, markLocationVisited, markTreasureViewed, unmarkAllLocationsVisited,
-  unmarkExperienceVisited, unmarkLocationVisited, unmarkTreasureViewed, type VisitedStatus,
+  unmarkExperienceVisited, unmarkLocationVisited, unmarkTreasureViewed,
 } from '../api/visited';
 import { queryKeys } from '../api/queryKeys';
 
@@ -81,11 +81,6 @@ export function useVisitedLocations(experienceId?: number) {
     return new Set(data?.visitedLocationIds || []);
   }, [data?.visitedLocationIds]);
 
-  // Get visited locations grouped by experience
-  const visitedByExperience = useMemo(() => {
-    return data?.byExperience || {};
-  }, [data?.byExperience]);
-
   // Mark location as visited mutation
   const markLocationVisitedMutation = useMutation({
     mutationFn: markLocationVisited,
@@ -125,20 +120,8 @@ export function useVisitedLocations(experienceId?: number) {
     return visitedLocationIdsSet.has(locationId);
   }, [visitedLocationIdsSet]);
 
-  // Get visited status for an experience based on its locations
-  const getExperienceVisitedStatus = useCallback((
-    expId: number,
-    totalLocations: number
-  ): VisitedStatus => {
-    const visitedLocations = visitedByExperience[expId]?.length || 0;
-    if (visitedLocations === 0) return 'not_visited';
-    if (visitedLocations >= totalLocations) return 'visited';
-    return 'partial';
-  }, [visitedByExperience]);
-
   return {
     visitedLocationIds: visitedLocationIdsSet,
-    visitedByExperience,
     visitedCount: data?.total || 0,
     isLoading,
     refetch,
@@ -149,7 +132,6 @@ export function useVisitedLocations(experienceId?: number) {
     isMarking: markLocationVisitedMutation.isPending || markAllLocationsMutation.isPending,
     isUnmarking: unmarkLocationVisitedMutation.isPending || unmarkAllLocationsMutation.isPending,
     isLocationVisited,
-    getExperienceVisitedStatus,
   };
 }
 
@@ -213,6 +195,7 @@ export function useExperienceVisitedStatus(experienceId: number | null) {
 
   return {
     visitedStatus: data?.visitedStatus || 'not_visited',
+    castPoints: data?.castPoints ?? false,
     totalLocations: data?.totalLocations || 0,
     visitedLocations: data?.visitedLocations || 0,
     locations: data?.locations || [],

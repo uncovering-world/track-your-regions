@@ -114,6 +114,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
   } = useVisitedLocations();
   const {
     visitedStatus,
+    castPoints,
     totalLocations: visitedTotalLocations,
     visitedLocations: visitedLocationCount,
     locations: locationsWithVisitedStatus,
@@ -269,8 +270,11 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
         {isAuthenticated && isMultiLocation && (
           <Box sx={{ mb: 2 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 0.5 }}>
+              {/* An edition is seen at any one cast (ADR-0145 decision 5): no fraction of casts to reach. */}
               <Typography variant="caption" color="text.secondary">
-                {visitedLocationCount}/{visitedTotalLocations} locations visited
+                {castPoints
+                  ? `${visitedTotalLocations} casts of one work`
+                  : `${visitedLocationCount}/${visitedTotalLocations} locations visited`}
               </Typography>
               <Chip
                 label={visitedStatusLabel}
@@ -279,7 +283,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
                 sx={{ height: 22, fontSize: '0.65rem' }}
               />
             </Box>
-            <LinearProgress
+            {!castPoints && <LinearProgress
               variant="determinate"
               value={visitedTotalLocations > 0 ? (visitedLocationCount / visitedTotalLocations) * 100 : 0}
               sx={{
@@ -290,7 +294,7 @@ export function ExperienceDetailPanel({ experience, onClose, onCurate, onOpenPoi
                   bgcolor: visitedStatus === 'visited' ? 'success.main' : 'warning.main',
                 },
               }}
-            />
+            />}
           </Box>
         )}
 
