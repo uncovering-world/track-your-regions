@@ -8,7 +8,8 @@
  * cathedral, church, chapel, monastery, mosque, temple, shrine or synagogue; a
  * tower is a pagoda, a minaret, a clock tower, a bell tower, an observation tower, a
  * fortified tower or a tower; an engineering work is an aqueduct, a bridge, a
- * dam, a canal or a tunnel; a square or a street is a stairway, a square, a
+ * dam, an inclined plane, a boat lift, a flight of locks, a lock or a tunnel; a
+ * square or a street is a stairway, a square, a
  * promenade or a street. An
  * art museum has no type; Archaeology has two, site and museum, because a
  * traveller browses the dig and its museum as one list (ADR-0058). An art
@@ -110,10 +111,13 @@ const BRIDGES: TypeVocabulary = {
     { value: 'aqueduct', label: 'Aqueduct' },
     { value: 'bridge', label: 'Bridge' },
     { value: 'dam', label: 'Dam' },
-    { value: 'canal', label: 'Canal' },
+    { value: 'inclined-plane', label: 'Inclined plane' },
+    { value: 'boat-lift', label: 'Boat lift' },
+    { value: 'lock-flight', label: 'Flight of locks' },
+    { value: 'lock', label: 'Lock' },
     { value: 'tunnel', label: 'Tunnel' },
   ],
-  what: 'What was built, read from Wikidata’s classes: an aqueduct before a bridge, so the Pont du Gard is an aqueduct, and a bridge before a tunnel.',
+  what: 'What was built, read from Wikidata’s classes: an aqueduct before a bridge, so the Pont du Gard is an aqueduct, and a bridge before a tunnel. On a waterway, a lock Wikidata also files as a dam is a lock (the Soo Locks), unless the dam is a power station, which stays a dam; a lift that is also a lock is a boat lift (the Peterborough Lift Lock); and a flight of locks is a flight before a lock.',
   whenItChanges: 'Retyped on Wikidata. The same work either way; the filter chip it answers to changes.',
 };
 
