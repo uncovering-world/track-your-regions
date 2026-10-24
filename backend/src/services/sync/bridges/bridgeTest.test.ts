@@ -1,10 +1,11 @@
 /**
- * What Bridges & engineering marvels admits and what it leaves out (#1860),
- * asked on real entities with the classes Wikidata gave them on 2026-10-22.
+ * What Bridges & engineering marvels admits and what it leaves out (#1860,
+ * #1947), asked on real entities with the classes Wikidata gave them on
+ * 2026-10-22, and for the locks and lifts on 2026-10-24 (the local subset).
  */
 
 import { describe, it, expect } from 'vitest';
-import type { BridgeTrees } from './classes.js';
+import { CANAL as CANAL_REFUSAL, type BridgeTrees } from './classes.js';
 import { bridgeVerdict, type BridgeFacts } from './bridgeTest.js';
 
 const BRIDGE = 'Q12280';
@@ -23,6 +24,12 @@ const CANAL = 'Q12284';
 const SHIP_CANAL = 'Q949819';
 const GRACHT = 'Q523166';
 const TUNNEL = 'Q44377';
+const LOCK = 'Q105731';
+const SEA_LOCK = 'Q81671041';
+const FLIGHT_OF_LOCKS = 'Q1784096';
+const STAIRCASE_LOCKS = 'Q2239533';
+const BOAT_LIFT = 'Q14908';
+const INCLINED_PLANE = 'Q912618';
 const RAILWAY_TUNNEL = 'Q1311958';
 const UNDERSEA_TUNNEL = 'Q1317590';
 const METRO_TUNNEL = 'Q41971160';
@@ -41,17 +48,28 @@ const none = new Set<string>();
 const bridges = new Set([BRIDGE, STONE_BRIDGE, ARCH_BRIDGE, FOOTBRIDGE, ROMAN_BRIDGE, CONCRETE_BRIDGE, BRIDGE_TUNNEL, NAVIGABLE_AQUEDUCT]);
 const aqueducts = new Set([AQUEDUCT, ROMAN_AQUEDUCT, NAVIGABLE_AQUEDUCT]);
 const dams = new Set([DAM, ARCH_GRAVITY_DAM]);
-const canals = new Set([CANAL, SHIP_CANAL, GRACHT]);
+// Wikidata files a flight of locks and a navigable aqueduct under canal too.
+const canals = new Set([CANAL, SHIP_CANAL, GRACHT, FLIGHT_OF_LOCKS, STAIRCASE_LOCKS, NAVIGABLE_AQUEDUCT]);
 const tunnels = new Set([TUNNEL, RAILWAY_TUNNEL, UNDERSEA_TUNNEL, METRO_TUNNEL, BRIDGE_TUNNEL]);
+const locks = new Set([LOCK, SEA_LOCK]);
+const flights = new Set([FLIGHT_OF_LOCKS, STAIRCASE_LOCKS]);
+// A canal inclined plane is filed under boat lift.
+const lifts = new Set([BOAT_LIFT, INCLINED_PLANE]);
+const inclinedPlanes = new Set([INCLINED_PLANE]);
 const trees: BridgeTrees = {
-  work: new Set([...bridges, ...aqueducts, ...dams, ...canals, ...tunnels]),
-  types: { aqueduct: aqueducts, bridge: bridges, dam: dams, canal: canals, tunnel: tunnels },
+  work: new Set([...bridges, ...aqueducts, ...dams, ...tunnels, ...locks, ...flights, ...lifts]),
+  types: {
+    aqueduct: aqueducts, bridge: bridges, dam: dams, 'inclined-plane': inclinedPlanes, 'boat-lift': lifts,
+    'lock-flight': flights, lock: locks, tunnel: tunnels,
+  },
   kills: {
     destroyed: new Set([DESTROYED]), proposed: none, proposedTunnel: new Set([PROPOSED_TUNNEL]),
     underConstruction: new Set([UNDER_CONSTRUCTION]), ruins: none,
   },
   others: { river: new Set([RIVER]), railwayLine: new Set([RAILWAY_LINE, RAPID_TRANSIT_LINE]) },
   archaeologicalSite: new Set([ARCHAEOLOGICAL_SITE]),
+  canal: canals,
+  powerStation: new Set(['Q159719', HYDRO_STATION]),
 };
 
 const at = (classes: string[]): BridgeFacts => ({ classes, onEarth: true, lat: 1, lon: 1 });
@@ -64,8 +82,14 @@ describe('bridgeVerdict', () => {
     ['the Magdeburg water bridge', [NAVIGABLE_AQUEDUCT], 'aqueduct'],
     ['the Hong Kong–Zhuhai–Macau link, a bridge before a tunnel', [BRIDGE_TUNNEL], 'bridge'],
     ['the Hoover Dam, a power station too', [ARCH_GRAVITY_DAM, HYDRO_STATION], 'dam'],
-    ['the Panama Canal', [SHIP_CANAL], 'canal'],
     ['the Channel Tunnel', [RAILWAY_TUNNEL, UNDERSEA_TUNNEL], 'tunnel'],
+    ['the Falkirk Wheel', [BOAT_LIFT], 'boat-lift'],
+    ['the Peterborough Lift Lock, a lift before a lock', [BOAT_LIFT, LOCK], 'boat-lift'],
+    ['the Ronquières inclined plane, which Wikidata files under boat lift', [INCLINED_PLANE], 'inclined-plane'],
+    ['a staircase of locks, which Wikidata files under canal', [STAIRCASE_LOCKS], 'lock-flight'],
+    ['the Caen Hill Locks', [LOCK], 'lock'],
+    ['Seattle\'s Ballard Locks, which Wikidata also files as a dam', [LOCK, DAM], 'lock'],
+    ['the Kyiv hydroelectric plant, a power station\'s dam a lock passes', [DAM, HYDRO_STATION, LOCK], 'dam'],
   ])('admits %s', (_name, classes, type) => {
     expect(bridgeVerdict(at(classes), trees)).toEqual({ pass: true, type });
   });
@@ -78,6 +102,8 @@ describe('bridgeVerdict', () => {
     ['the Waterloo & City line', [RAPID_TRANSIT_LINE, METRO_TUNNEL], 'a railway line, not a sight'],
     ['Aqua Marcia, an aqueduct that stands only as a site', [ROMAN_AQUEDUCT, ARCHAEOLOGICAL_SITE], 'an archaeological site, not a standing work'],
     ['a street no class of the kind names', [STREET], 'no bridge or engineering class'],
+    ['the Panama Canal, a long object (#1948)', [SHIP_CANAL], CANAL_REFUSAL.reason],
+    ['the Canal du Midi', [CANAL], CANAL_REFUSAL.reason],
   ])('refuses %s', (_name, classes, reason) => {
     expect(bridgeVerdict(at(classes), trees)).toEqual({ pass: false, reason });
   });

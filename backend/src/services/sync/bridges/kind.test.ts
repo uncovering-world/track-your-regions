@@ -15,7 +15,7 @@ import type { KindShare } from '../places/gather.js';
 import { emptyContainment } from '../places/containment.js';
 import type { BridgeTrees } from './classes.js';
 import { belowGuidedLine, guidedStanding } from '../places/guidedLine.js';
-import { BRIDGE_LINE, classifyBridges } from './kind.js';
+import { BRIDGE_LINE, WATERWAY_LINE, classifyBridges } from './kind.js';
 
 describe('guidedStanding, on Bridges\' line', () => {
   it('lets in a work read widely, guided or not', () => {
@@ -49,6 +49,22 @@ describe('guidedStanding, on Bridges\' line', () => {
   });
 });
 
+describe('guidedStanding, on the waterway line (#1947)', () => {
+  it('lets in a lock read in few languages but by many', () => {
+    // The Caen Hill flight: 3 editions, 20,500 readers, no guide.
+    expect(guidedStanding(WATERWAY_LINE, 3, 20_544, false, false)).toBe('in');
+    // Seattle's Ballard Locks: 4 editions, 24,000 readers, two guides.
+    expect(guidedStanding(WATERWAY_LINE, 4, 24_221, true, false)).toBe('in');
+  });
+
+  it('lets in a lift a guide names on fewer readers, and keeps out one no guide names', () => {
+    // The Fontinettes boat lift: 4 editions, 4,700 readers, one guide.
+    expect(guidedStanding(WATERWAY_LINE, 4, 4_658, true, false)).toBe('in');
+    // The Rhine's Kembs-Niffer lock: 2 editions, 3,800 readers, no guide.
+    expect(guidedStanding(WATERWAY_LINE, 2, 3_843, false, false)).toBe('out');
+  });
+});
+
 describe('belowGuidedLine, on Bridges\' line', () => {
   it('names the measures, the guide and both lines', () => {
     expect(belowGuidedLine(BRIDGE_LINE, 13, 30_000, false)).toBe(
@@ -64,10 +80,15 @@ describe('classifyBridges', () => {
   const none = new Set<string>();
   const trees: BridgeTrees = {
     work: new Set([BRIDGE]),
-    types: { aqueduct: none, bridge: new Set([BRIDGE]), dam: none, canal: none, tunnel: none },
+    types: {
+      aqueduct: none, bridge: new Set([BRIDGE]), dam: none, 'inclined-plane': none, 'boat-lift': none,
+      'lock-flight': none, lock: none, tunnel: none,
+    },
     kills: { destroyed: new Set([DESTROYED]), proposed: none, proposedTunnel: none, underConstruction: none, ruins: none },
     others: { river: none, railwayLine: none },
     archaeologicalSite: none,
+    canal: none,
+    powerStation: none,
   };
   const entity = (qid: string, label: string, sitelinks: number): PoolEntity => ({
     qid, label, description: null, lat: 50, lon: 14, onEarth: true, imageUrl: null, itemPictures: [],
