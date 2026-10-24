@@ -13,7 +13,7 @@ import {
   type RegionExperienceLocation,
 } from '../../api/responses/experiences.js';
 import { pool } from '../../db/index.js';
-import { overPlacePoints, placePointsSql, pointNameSql, pointPictureSql } from '../../db/placePoints.js';
+import { overPlacePoints, placePointsSql, pointArticleSql, pointNameSql, pointPictureSql } from '../../db/placePoints.js';
 import type { CheckValue, ExperienceLocationsRow, ExperiencesRow } from '../../db/schema.generated.js';
 import {
   hideLostSql,
@@ -40,6 +40,7 @@ import type {
 type LocationRow = Pick<ExperienceLocationsRow, 'id' | 'experience_id' | 'name' | 'external_ref' | 'ordinal' | 'created_at' | 'image_url'> & {
   approximate: ExperienceLocation['approximate'];
   image_credit: ExperienceLocation['image_credit'];
+  wikipedia_url: string | null;
   longitude: number;
   latitude: number;
   in_region: boolean;
@@ -68,6 +69,7 @@ function locationOf(row: LocationRow): ExperienceLocation {
     in_region: row.in_region,
     image_url: row.image_url,
     image_credit: row.image_credit ?? null,
+    wikipedia_url: row.wikipedia_url ?? null,
   };
 }
 
@@ -136,6 +138,7 @@ export async function getRegionExperienceLocations(
         el.created_at,
         el.curated_fields,
         ${pointPictureSql('el')},
+        ${pointArticleSql('el')},
         EXISTS(
           SELECT 1 FROM experience_location_regions elr
           WHERE elr.location_id = el.id AND elr.region_id IN (SELECT id FROM descendant_regions)
@@ -191,6 +194,7 @@ export async function getRegionExperienceLocations(
         el.created_at,
         el.curated_fields,
         ${pointPictureSql('el')},
+        ${pointArticleSql('el')},
         EXISTS(
           SELECT 1 FROM experience_location_regions elr
           WHERE elr.location_id = el.id AND elr.region_id = $1
@@ -314,6 +318,7 @@ export async function getExperienceLocations(
       -- carries the mark. The mark is what tells the two apart (#859).
       el.refused_at,
       ${pointPictureSql('el', { tellingOfPart: true })},
+      ${pointArticleSql('el')},
       el.description,
       el.wikidata_item,
       ${regionId ? `EXISTS(

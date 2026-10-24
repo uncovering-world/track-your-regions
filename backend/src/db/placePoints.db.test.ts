@@ -506,6 +506,37 @@ describe("a part's point with no picture of its own (#1946)", () => {
   });
 });
 
+describe("a part's own article (#1963)", () => {
+  const TEMPLE = 'https://en.wikipedia.org/wiki/Karnak_fixture';
+  const PLACE_ARTICLE = 'https://en.wikipedia.org/wiki/Karnak_place_fixture';
+
+  /** The point's article on the object's own read and on both shapes of the region batch. */
+  async function articlesOf(pointId: number): Promise<unknown[]> {
+    const own = await getExperienceLocations({
+      params: { id: SITE }, query: experienceLocationsQuerySchema.parse({}), caller: undefined,
+    });
+    const reads: Array<{ wikipedia_url?: string | null } | undefined> = [own.locations.find(l => l.id === pointId)];
+    for (const query of [{}, { includeChildren: 'false' }]) {
+      const { locationsByExperience } = await getRegionExperienceLocations({
+        params: { regionId }, query: regionLocationsQuerySchema.parse(query),
+      });
+      reads.push(locationsByExperience[SITE]?.find(l => l.id === pointId));
+    }
+    return reads.map(l => l?.wikipedia_url);
+  }
+
+  it("reads the point's own article first, else its part place's, and never the site's", async () => {
+    // The site's own article is the whole's, and no part shows it.
+    await pool.query(`UPDATE experiences SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('wikipediaUrl', 'https://en.wikipedia.org/wiki/Thebes') WHERE id = $1`, [SITE]);
+    await pool.query(`UPDATE experiences SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('wikipediaUrl', $2::text) WHERE id = $1`, [KARNAK, PLACE_ARTICLE]);
+    expect(await articlesOf(karnakPoint)).toEqual(Array(3).fill(PLACE_ARTICLE));
+    expect(await articlesOf(luxorPoint)).toEqual(Array(3).fill(null));
+
+    await pool.query(`UPDATE experience_locations SET metadata = COALESCE(metadata, '{}'::jsonb) || jsonb_build_object('wikipediaUrl', $2::text) WHERE id = $1`, [karnakPoint, TEMPLE]);
+    expect(await articlesOf(karnakPoint)).toEqual(Array(3).fill(TEMPLE));
+  });
+});
+
 describe('a part reads as a place (ADR-0100, #1425)', () => {
   it("opens the part's own card, under its site's kind, naming the site and the point its card opens it at", async () => {
     const card = await getExperience({ params: { id: KARNAK }, caller: undefined });

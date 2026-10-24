@@ -81,6 +81,10 @@ export const ExperienceLocation = z.strictObject({
   image_credit: ImageCredit.nullable().describe(
     'Who took that picture, from the row the picture comes from. Null where there is no picture or no credit.',
   ),
+  wikipedia_url: z.string().nullable().describe(
+    "The point's own English Wikipedia article: a World Heritage component's, read off its Wikidata item (#1963), else,"
+    + " for the point of a site's part, the part place's own. Never the site's. Null where neither holds one.",
+  ),
 }).describe('One point of an object.');
 export type ExperienceLocation = z.infer<typeof ExperienceLocation>;
 
