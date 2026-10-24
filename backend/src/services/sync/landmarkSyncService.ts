@@ -223,6 +223,9 @@ async function upsertLandmarkExperience(
     lon: anchor.lon,
     lat: anchor.lat,
     ...(casts ? { locationIsAnchor: true } : {}),
+    // A visit to any cast marks the work seen (ADR-0145 decision 5); a work in
+    // one place says it is not an edition, so a former one is set back.
+    castPoints: casts !== null,
     countryCodes: [],
     countryNames,
     imageUrl,

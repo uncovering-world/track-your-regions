@@ -685,9 +685,9 @@ describe('the keys a run computes about its own pass go past both guards', () =>
     // are this statement's own, and the run's view of the place with its
     // picture's credit (#1246), and the items another id resolves to (#1248).
     // Then the claims' metadata keys, the kind's words (`typeVocabulary`, #1807),
-    // and last the columns a held row takes all the same (`passingColumns`, #1834).
-    expect(params).toHaveLength(32);
-    expect(params[31]).toEqual([]);
+    // the columns a held row takes (`passingColumns`, #1834), and casts, unsaid (ADR-0145).
+    expect(params).toHaveLength(33);
+    expect(params.slice(31)).toEqual([[], null]);
     expect(sql).not.toContain("'artworkCount'");
   });
 

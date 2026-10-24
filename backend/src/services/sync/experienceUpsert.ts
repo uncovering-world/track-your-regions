@@ -118,6 +118,14 @@ export interface ExperienceUpsertParams {
    * never a question for a curator. Absent is a place's own coordinate.
    */
   locationIsAnchor?: boolean;
+  /**
+   * The place's points are casts of one work, so a visit to any marks it
+   * visited (ADR-0145 decision 5). Written as the run says, past the gate and
+   * no claim's: it is what the source's data is, not something a reader reads
+   * as content. Absent leaves the stored value — only the run that reads
+   * editions says it.
+   */
+  castPoints?: boolean;
   countryCodes: string[];
   countryNames: string[];
   imageUrl: string | null;
@@ -676,7 +684,7 @@ async function writeUnderLock(
       INSERT INTO experiences (
         id, source_id, external_id, name, name_local, subtitle, description,
         tags, location, country_codes, country_names, image_url, metadata,
-        boundary, area_km2, created_at, updated_at
+        boundary, area_km2, cast_points, created_at, updated_at
       ) VALUES (
         COALESCE($20::integer, nextval(pg_get_serial_sequence('experiences', 'id'))),
         $1, $2, $3, $4, $5, $6, $8,
@@ -684,6 +692,7 @@ async function writeUnderLock(
         $11, $12, $13, $14,
         (SELECT geom FROM extent),
         (SELECT ST_Area(geom::geography) / 1000000 FROM extent),
+        COALESCE($33::boolean, false),
         NOW(), NOW()
       )
       ON CONFLICT (id) DO UPDATE SET
@@ -798,6 +807,9 @@ async function writeUnderLock(
         -- split of #763 all over again.
         boundary = CASE WHEN experiences.curated_fields ? 'boundary' THEN experiences.boundary ELSE EXCLUDED.boundary END,
         area_km2 = CASE WHEN experiences.curated_fields ? 'boundary' THEN experiences.area_km2 ELSE EXCLUDED.area_km2 END,
+        -- Whether the points are casts of one work (ADR-0145 decision 5): the
+        -- run that reads editions says it, every other run leaves it.
+        cast_points = COALESCE($33::boolean, experiences.cast_points),
         updated_at = NOW()
       RETURNING id, (xmax = 0) AS inserted, curated_fields,
                 ${snapshotSelect()},
@@ -926,6 +938,7 @@ async function writeUnderLock(
       claimedMetadataKeys(stored?.curated_fields ?? [], stored?.metadata ?? null),
       params.typeVocabulary ? [...params.typeVocabulary] : null,
       held && stored ? passingColumns(snapshotFromRow(stored), snapshotFromParams(written, null, shortMove), stored.curated_fields ?? []) : [],
+      params.castPoints ?? null,
     ]
   );
 
