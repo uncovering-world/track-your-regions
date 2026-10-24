@@ -57,7 +57,7 @@ export const ExperienceSource = z.strictObject({
   find_stay_sitelinks: sitelinks,
   waiting: WaitingCounts.nullable()
     .describe('Three zeros for a source holding nothing, and null when the server could not count, so a panel never shows a count nothing checked.'),
-  caches: z.boolean().describe('Whether this source keeps answers between runs, which decides whether "Sync without cache" is offered.'),
+  caches: z.boolean().describe('Whether this source keeps answers between runs, which decides whether "Without the cache" is offered among the ways to run the sync.'),
   repairsPictures: z.boolean().describe('Whether this source\'s pictures can be repaired from the panel (ADR-0043).'),
   findsComponentItems: z.boolean()
     .describe('Whether the panel can search Wikidata for the items of this source\'s components that no item records the reference of (#1272).'),

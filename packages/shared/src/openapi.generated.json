@@ -23606,7 +23606,7 @@
           },
           "caches": {
             "type": "boolean",
-            "description": "Whether this source keeps answers between runs, which decides whether \"Sync without cache\" is offered."
+            "description": "Whether this source keeps answers between runs, which decides whether \"Without the cache\" is offered among the ways to run the sync."
           },
           "repairsPictures": {
             "type": "boolean",

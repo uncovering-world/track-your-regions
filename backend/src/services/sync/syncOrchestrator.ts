@@ -395,6 +395,8 @@ export async function orchestrateSync<T>(
 function releaseLater(sourceId: number, progress: SyncProgress, pass: PassSlot | undefined): void {
   if (pass) return;
   setTimeout(() => {
+    // The run's after-steps hold the entry and release it themselves (#1805).
+    if (progress.continues) return;
     if (runningSyncs.get(sourceId) === progress) {
       runningSyncs.delete(sourceId);
     }
@@ -417,7 +419,9 @@ export function getSyncStatus(sourceId: number): SyncProgress | null {
  *
  * Only while there is an item loop left to interrupt — fetching, or
  * processing with items remaining — or while the run asks about its offered
- * places (#1770), a step that reads the flag and stops on it alone. Past the
+ * places (#1770), a step that reads the flag and stops on it alone, or while
+ * the steps one Start Sync runs after the run go (`continues`, #1805), which
+ * read it between their requests and between the runs they pair. Past the
  * last item nothing else reads it — detection, changeset recording, log
  * closure and placement never look at it — so accepting there would report a
  * cancellation that does not happen and let the run finish as a success.
@@ -429,7 +433,8 @@ export function getSyncStatus(sourceId: number): SyncProgress | null {
 export function isCancellable(progress: SyncProgress): boolean {
   return progress.status === 'fetching'
     || (progress.status === 'processing' && progress.progress < progress.total)
-    || progress.askingVisitQuestions === true;
+    || progress.askingVisitQuestions === true
+    || progress.continues === true;
 }
 
 /**

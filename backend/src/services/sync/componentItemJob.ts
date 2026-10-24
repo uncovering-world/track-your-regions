@@ -1,7 +1,9 @@
 /**
  * The admin panel's "Find component items" (#1272): `findComponentItems` run in
  * the background for the World Heritage source, reported through the same
- * status the source's card polls for a sync or a picture repair.
+ * status the source's card polls for a sync or a picture repair — and the
+ * same search run as a step of the source's own run, for the components the
+ * run has just left without an item (#1805, `afterRun.ts`).
  *
  * It writes proposals, and a curator's answer is what records an item on a
  * point (ADR-0046), save one kind whose answer is already known: an exact
@@ -32,10 +34,67 @@ export interface CatalogueAnswers {
   leftForNextPass: number;
 }
 
+/** The catalogue's own answer to the exact candidates nothing contradicts (ADR-0141), the controller's. */
+export type AcceptExact = (siteId: number | undefined, run: { isCancelled: () => boolean }) => Promise<CatalogueAnswers>;
+
+/** What one search covers: every component, one site's (#1429), or the points named (#1805). */
+export interface SearchScope {
+  site?: { id: number; name: string };
+  pointIds?: readonly number[];
+}
+
+/** What one search came to: its closing sentence, the candidates it proposed, and what it cost. */
+export interface SearchOutcome {
+  sentence: string;
+  candidates: number;
+  /** The requests sent to Wikidata, which the job's finish line records: the cost a change to the search is measured by. */
+  queries: number;
+}
+
+/**
+ * Run the finder on `progress`, reporting its steps through `operation`, then
+ * accept the exact candidates nothing contradicts. Answers what the search
+ * came to, or null where it was cancelled. The caller owns the entry, its
+ * status and its counts; this writes the status message and the operation's
+ * steps.
+ */
+export async function runComponentItemSearch(
+  progress: SyncProgress,
+  operation: Operation,
+  scope: SearchScope,
+  accept?: AcceptExact,
+): Promise<SearchOutcome | null> {
+  const budget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
+  const { report } = await findComponentItems({
+    write: true,
+    siteId: scope.site?.id,
+    pointIds: scope.pointIds,
+    hooks: {
+      budget,
+      isCancelled: () => progress.cancel,
+      onAnswered: (count) => { operation.advance(count); },
+      onWait: (wait) => { sayWait(progress, 'Wikidata', wait, budget); },
+    },
+    onStep: (index, sentence, total) => {
+      progress.statusMessage = sentence;
+      operation.step(index, sentence, total);
+    },
+  });
+  if (progress.cancel) return null;
+  progress.statusMessage = 'Recording the exact candidates nothing contradicts...';
+  const taken = accept ? await accept(scope.site?.id, { isCancelled: () => progress.cancel }) : null;
+  if (progress.cancel) return null;
+  return {
+    sentence: sentenceOf(report, scope.site) + acceptedSentence(taken),
+    candidates: report.partOf + report.near + report.toponym + report.numbered,
+    queries: report.queries,
+  };
+}
+
 export async function findUnescoComponentItems(
   _triggeredBy: number | null,
   site?: { id: number; name: string },
-  accept?: (siteId: number | undefined, run: { isCancelled: () => boolean }) => Promise<CatalogueAnswers>,
+  accept?: AcceptExact,
 ): Promise<void> {
   const existing = runningSyncs.get(UNESCO_SOURCE_ID);
   if (existing && !isTerminalSyncStatus(existing.status)) {
@@ -68,38 +127,27 @@ export async function findUnescoComponentItems(
   runningSyncs.set(UNESCO_SOURCE_ID, progress);
 
   try {
-    const budget = new WaitBudget(SPARQL_WAIT_BUDGET_MS);
-    const { report } = await findComponentItems({
-      write: true,
-      siteId: site?.id,
-      hooks: {
-        budget,
-        isCancelled: () => progress.cancel,
-        onAnswered: (count) => { operation.advance(count); },
-        onWait: (wait) => { sayWait(progress, 'Wikidata', wait, budget); },
-      },
-      onStep: (index, sentence, total) => {
-        progress.statusMessage = sentence;
-        operation.step(index, sentence, total);
-      },
-    });
+    const found = await runComponentItemSearch(progress, operation, { site }, accept);
+    if (found === null) {
+      progress.status = 'cancelled';
+      progress.statusMessage = 'Cancelled.';
+      operation.finish('cancelled');
+      return;
+    }
+    // The job's own entry, so what it proposed is what it created; as a step
+    // of a run the count stays the run's.
+    progress.created += found.candidates;
+    progress.statusMessage = 'Finding where the components placed only roughly may stand...';
+    const hints = await findPointHints(site?.id);
     if (progress.cancel) {
       progress.status = 'cancelled';
       progress.statusMessage = 'Cancelled.';
       operation.finish('cancelled');
       return;
     }
-    const after = await afterSearch(progress, site, accept);
-    if (!after) {
-      progress.status = 'cancelled';
-      progress.statusMessage = 'Cancelled.';
-      operation.finish('cancelled');
-      return;
-    }
     progress.status = 'complete';
-    progress.created = report.partOf + report.near + report.toponym + report.numbered;
-    progress.statusMessage = sentenceOf(report, site) + acceptedSentence(after.taken) + hintsSentence(after.hints);
-    operation.finish(`${report.queries} requests to Wikidata's API; ${progress.statusMessage}`);
+    progress.statusMessage = found.sentence + hintsSentence(hints);
+    operation.finish(`${found.queries} requests to Wikidata's API; ${progress.statusMessage}`);
   } catch (err) {
     progress.status = progress.cancel ? 'cancelled' : 'failed';
     progress.statusMessage = progress.cancel ? 'Cancelled.' : sentenceFor(err, 'the server log has the cause.');
@@ -113,24 +161,6 @@ export async function findUnescoComponentItems(
       if (runningSyncs.get(UNESCO_SOURCE_ID) === thisProgress) runningSyncs.delete(UNESCO_SOURCE_ID);
     }, 60000);
   }
-}
-
-/**
- * What the pass does once its search is over: accept the exact candidates
- * nothing contradicts (ADR-0141), then work out where the components the list
- * placed only roughly may stand (#1853). Null where the pass was cancelled.
- */
-async function afterSearch(
-  progress: SyncProgress,
-  site: { id: number; name: string } | undefined,
-  accept: ((siteId: number | undefined, run: { isCancelled: () => boolean }) => Promise<CatalogueAnswers>) | undefined,
-): Promise<{ taken: CatalogueAnswers | null; hints: PointHintsReport } | null> {
-  progress.statusMessage = 'Recording the exact candidates nothing contradicts...';
-  const taken = accept ? await accept(site?.id, { isCancelled: () => progress.cancel }) : null;
-  if (progress.cancel) return null;
-  progress.statusMessage = 'Finding where the components placed only roughly may stand...';
-  const hints = await findPointHints(site?.id);
-  return progress.cancel ? null : { taken, hints };
 }
 
 /** Where the roughly placed components may stand, as the closing line's last clause. */

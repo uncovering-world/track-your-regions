@@ -92,6 +92,12 @@ export interface FinderOptions {
    * judged by are still learned from the whole catalogue's resolved components.
    */
   siteId?: number;
+  /**
+   * These points only (#1805): the components a run has just created without an
+   * item, searched as the run's own step. Every rule is the whole pass's, as
+   * for one site.
+   */
+  pointIds?: readonly number[];
   /** When false, nothing is written: the matches are returned, for measuring the rules. */
   write: boolean;
   /** A step of the pass begins (`STEP`): its sentence, and how many items or areas it has to read. */
@@ -161,7 +167,7 @@ function sitePointsArm({ from, placeId }: PlacePointArm): string {
  * from an earlier pass are cleared (the Aachen organ, offered before
  * `listsPoint`).
  */
-async function readPoints(siteId?: number): Promise<{ points: PointRow[]; wholeSites: number; clearedIds: number[] }> {
+async function readPoints(siteId?: number, pointIds?: readonly number[]): Promise<{ points: PointRow[]; wholeSites: number; clearedIds: number[] }> {
   const result = await pool.query<{
     id: number; name: string | null; lat: number; lon: number; approximate: boolean; experience_id: number; external_ref: string;
     wikidata_items: string[] | null; whole_site: boolean; listed: boolean;
@@ -169,7 +175,8 @@ async function readPoints(siteId?: number): Promise<{ points: PointRow[]; wholeS
     overPlacePoints(sitePointsArm),
     [UNESCO_SOURCE_ID],
   );
-  const rows = result.rows.filter(row => siteId === undefined || row.experience_id === siteId);
+  const only = pointIds === undefined ? null : new Set(pointIds);
+  const rows = result.rows.filter(row => (siteId === undefined || row.experience_id === siteId) && (only === null || only.has(row.id)));
   const listed = rows.filter(row => row.listed);
   const points: PointRow[] = listed.filter(row => !row.whole_site).map(row => ({
     locationId: row.id, name: row.name, lat: row.lat, lon: row.lon, approximate: row.approximate,
@@ -481,7 +488,7 @@ export async function findComponentItems(options: FinderOptions): Promise<{ repo
   let queries = 0;
   const counted: QueryHooks = { ...hooks, onQuery: () => { queries += 1; hooks.onQuery?.(); } };
 
-  const [{ points, wholeSites, clearedIds }, resolved, refused] = await Promise.all([readPoints(options.siteId), readResolved(), readRefused()]);
+  const [{ points, wholeSites, clearedIds }, resolved, refused] = await Promise.all([readPoints(options.siteId, options.pointIds), readResolved(), readRefused()]);
   const taken = new Set([...resolved.values()].flat());
   const labels = new Map<string, ItemLabels>();
   /** The candidates of one point that are free and close enough to be read. */
