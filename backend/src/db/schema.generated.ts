@@ -714,6 +714,7 @@ export interface ExperiencesRow {
   status: string;
   created_at: Date | null;
   updated_at: Date | null;
+  cast_points: boolean;
   missing_since: Date | null;
   source_membership: string;
   existence: string;
