@@ -77,7 +77,12 @@ What is no work a traveller visits, among the 595:
 
 A street is no refusal: Prague files the Charles Bridge as one, and Amsterdam the Magere Brug.
 
-## What a traveller expects: the calibration list
+## What the line was chosen on
+
+The list below is the reading the line was chosen on, drawn from the run's own candidates. The
+list the line is checked against after every run is the canon in
+`db/catalogue-coverage/calibration/bridges-and-engineering.jsonl` (#1951), compiled independently of what the line
+measures (`docs/tech/catalogue-coverage.md`).
 
 No reference list of bridges a traveller expects existed, so one was assembled from four
 independent sources, among the 595 candidates:
@@ -114,7 +119,7 @@ with 15 to 19 editions (the Tyne Bridge, Ponte d'Augusto, the Glenfinnan Viaduct
 the candidates with the rule applied, with a "no guide and no heritage listing" count as a rough
 measure of what a curator will turn away:
 
-| readers to enter | admitted | with no guide and no heritage listing | calibration list |
+| readers to enter | admitted | with no guide and no heritage listing | the reading's works |
 |---|---|---|---|
 | 25,000 | 384 | 94 | 71/79 |
 | 15,000 | 461 | 125 | 74/79 |
@@ -135,7 +140,7 @@ Wikivoyage usage built, the guide door is shut and only the readers' door is ope
 The branch's own code, gathering for this kind alone: of the 595 candidates the source would
 admit **376** and refuse **30**. That is the 379 of the table's chosen row less three, which the final rule
 refuses as archaeological sites no bridge class names: Aqua Marcia, Hezekiah's Tunnel and the
-tunnel of Eupalinos. The calibration list: 77 of 79. By type: 238 bridges, 58 canals,
+tunnel of Eupalinos. The reading's works: 77 of 79. By type: 238 bridges, 58 canals,
 45 dams, 22 tunnels and 13 aqueducts. By refusal: 11 archaeological sites, 8 destroyed, 4 rivers,
 4 proposed, 2 railway lines, 1 under construction.
 
