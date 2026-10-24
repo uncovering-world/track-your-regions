@@ -70,14 +70,20 @@ the verdict is `veto` and the status `refused`. Nothing of it counts. Identity i
 place is a heading of a list article. What would reopen it is a `robots.txt` that admits an
 Anthropic agent again.
 
-**What the survey measured.** The figures below were taken while the site was open. Their
-withdrawal from both surveys, and the re-judging of the entries it leaves with one source, is
-#1962. For the Cusco region, ten pages by fetch, readers' comments cut
-before reading; for Mexico City, four. The Cusco region survey of 2026-10-02 counted it on 84 of
-the 132 entries of `db/catalogue-coverage/expectations/cusco-region.jsonl` (by type: place 66,
-route 5, activity 4, food 4, work 3, drink 2). On 2 of them nothing else but the surveyor's own
-list names the entry. The kinds in the front matter are those under which the survey filed two
-or more of the entries it is named on. The Mexico City survey of 2026-10-02 counted it on 77 of
-the 252 entries of `db/catalogue-coverage/expectations/mexico-city.jsonl` (by type: place 57,
-work 8, activity 6, route 3, drink 2, food 1). On 2 of them nothing else but the surveyor's own
-list names the entry.
+**What the survey measured.** The Cusco region survey of 2026-10-02 read ten pages of it by
+fetch, readers' comments cut before reading, and the Mexico City survey four, while the site was
+open. Nothing of it counts: the surveys withdrew every count taken from it (#1962), and this
+record carries no figure but what was withdrawn. The kinds in the front matter are those under
+which the surveys had filed two or more of the entries it was named on. The surveys withdrew, by
+region:
+
+- Cusco region: 84 counts (`robots.txt` refuses Anthropic agents since 2026-10-24). On 11
+  entries it was one of only two sources. Re-judged, 4 are kept on a second source that names
+  them, Lonely Planet's Italian site (`www.lonelyplanetitalia.it`), and 7 are dropped, no other
+  source read naming them. The list holds 125 entries.
+- Mexico City: 77 counts (the same refusal). On 14 entries it was one of only two sources.
+  Re-judged, 7 are kept, 5 on México Desconocido (`www.mexicodesconocido.com.mx`) and 2 on Guías
+  Viajar, and 7 are dropped. The list holds 245 entries.
+
+Which entries were kept and dropped, and which pages named them, is kept under `docs/local/`,
+a guide's selection being its publisher's.

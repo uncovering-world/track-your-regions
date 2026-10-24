@@ -79,5 +79,8 @@ counted it on 166 of the 252 entries of `db/catalogue-coverage/expectations/mexi
 (by type: place 130, work 11, event 9, activity 7, food 6, drink 2, route 1). On 7 of them
 nothing else but the surveyor's own list names the entry. Places among those: Hemiciclo a
 Juárez; Museo Nacional de las Intervenciones (ex-convento de Churubusco); Isla de las Muñecas
-(Xochimilco); Churrería El Moro. The kinds in the front matter are those under which the survey
+(Xochimilco); Churrería El Moro. Since Viajeros Callejeros was withdrawn (#1962) it stands on
+165 of the 245 entries (by type: place 130, work 10, event 9, activity 7, food 6, drink 2, route
+1): the replica of Pakal's tomb left the list. On 8 of them nothing else but the surveyor's own
+list names the entry. The kinds in the front matter are those under which the survey
 filed two or more of the entries it is named on.

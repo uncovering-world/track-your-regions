@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://www.peru.travel/en/terms-and-conditions
 family: tourism-board
-kinds: [archaeology, places-of-worship, towns-and-villages, natural-landmarks, world-heritage, viewpoints, art-museums, hiking-trails-and-walks, notable-works, outdoor-activities, cultural-landscapes, neighbourhoods, markets, festivals-and-events, day-trips-and-itineraries, public-art, regional-food, history-museums, zoos-and-aquariums]
+kinds: [archaeology, places-of-worship, towns-and-villages, natural-landmarks, world-heritage, viewpoints, art-museums, hiking-trails-and-walks, notable-works, outdoor-activities, cultural-landscapes, neighbourhoods, markets, festivals-and-events, public-art, regional-food, history-museums, zoos-and-aquariums]
 tier: regional
 unit: { level: country, code: PE, name: Peru }
 row:
@@ -81,6 +81,10 @@ calendar and restaurant guide, which came back as empty filter forms) and 22 of 
 drawn by script and were left unread. The Cusco region survey of 2026-10-02 counted it on 89 of
 the 132 entries of `db/catalogue-coverage/expectations/cusco-region.jsonl` (by type: place 71,
 route 5, activity 5, work 3, event 2, food 2, drink 1). On 1 of them nothing else but the
-surveyor's own list names the entry. Places among those: San Francisco church and convent. The
-kinds in the front matter are those under which the survey filed two or more of the entries it
-is named on.
+surveyor's own list names the entry. Places among those: San Francisco church and convent. Since
+Viajeros Callejeros was withdrawn (#1962) it stands on 88 of the 125 entries (by type: place 71,
+activity 5, route 4, work 3, event 2, food 2, drink 1): the Circuito Cuatro Lagunas left the
+list. On 6 of them nothing else but the surveyor's own list names the entry. Places among those:
+the basilica and convent of La Merced, the San Cristóbal church and viewpoint, Cristo Blanco,
+Palccoyo, and the San Francisco church and convent. The kinds in the front matter are those
+under which the survey filed two or more of the entries it is named on.

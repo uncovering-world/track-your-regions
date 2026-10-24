@@ -8,7 +8,7 @@ urls:
   api: none
   terms: https://guias-viajar.com/aviso-legal-politica-cookies/
 family: commercial
-kinds: [neighbourhoods, archaeology, art-museums, squares-and-streets, world-heritage, places-of-worship, architecture, parks-and-gardens, notable-works]
+kinds: [neighbourhoods, archaeology, art-museums, squares-and-streets, world-heritage, places-of-worship, architecture, parks-and-gardens, notable-works, day-trips-and-itineraries]
 tier: regional
 unit: { level: any, code: none, name: "read per destination" }
 row:
@@ -25,8 +25,8 @@ terms:
 access:
   mode: scrape
   format: html
-  cadence: "irregular: the article read is dated 2022-12-16 and was modified 2025-08-27"
-  volume: "one article for Mexico City"
+  cadence: "irregular: the Mexico City article, the first read, is dated 2022-12-16 and was modified 2025-08-27"
+  volume: "three articles read for Mexico City"
   rate: unknown
 scorecard:
   date: 2026-10-02
@@ -65,8 +65,12 @@ text may not be copied. Nothing on automated access.
 because the coordinates were not looked at. The legal notice forbids copying the text: a curator
 reads it.
 
-**What the survey measured.** One page by fetch. The Mexico City survey of 2026-10-02 counted it
+**What the survey measured.** One page by fetch, and in the re-judging of #1962 its pages on
+Teotihuacan and on San Miguel de Allende. The Mexico City survey of 2026-10-02 counted it
 on 36 of the 252 entries of `db/catalogue-coverage/expectations/mexico-city.jsonl` (by type:
 place 31, activity 2, work 2, route 1). On none of them is the surveyor's own list the only
-other source. The kinds in the front matter are those under which the survey filed two or more
+other source. Since Viajeros Callejeros was withdrawn (#1962) it stands on 38 of the 245 entries
+(by type: place 32, activity 2, work 2, route 2): the two pages read in the re-judging named
+one entry each. On none of them is the surveyor's own list the only other source.
+The kinds in the front matter are those under which the survey filed two or more
 of the entries it is named on.
