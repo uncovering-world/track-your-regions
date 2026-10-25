@@ -82,6 +82,7 @@ export const PLACE_FIELD_MARKS: Readonly<Record<string, ReaderMark>> = {
   'metadata.wikipediaCategories': 'unseen',
   'metadata.museumReadershipNote': 'unseen',
   'metadata.worshipReadershipNote': 'unseen',
+  'metadata.publicArtReadershipNote': 'unseen',
   'metadata.osm': 'unseen',
   // The run's mark of what it took from UNESCO's dataset (ADR-0149); a reader sees the
   // credit it answers for, never the mark.

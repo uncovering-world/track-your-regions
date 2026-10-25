@@ -18,6 +18,11 @@
  * witnesses say a visitor goes there (`visit/witnesses.ts`), so a place read
  * as much as the Roman Baths with nothing to see (Stapleton International
  * Airport, Rungholt) stays out.
+ *
+ * Public art opens the place door too (#2033), for a place that is itself a
+ * work: the Kelpies, *Maman*. It asks no witnesses. Its rule admits a work by
+ * an artwork class and refuses one that is lost or stands indoors, which is
+ * what the witnesses ask of a place, so the reading is the only question left.
  */
 
 import { pool } from '../../db/index.js';
@@ -47,6 +52,14 @@ export interface ReadershipDoor {
   bar: number;
   exit: number;
 }
+
+/**
+ * The readership door over a pool of places (ADR-0127): the places below the
+ * line it opens for, with the bar read over the places at the line, and the
+ * exit holding the ones in `held`. Absent while the source's curator gate is
+ * off, and in a test that asks no readership.
+ */
+export type PlaceDoor = (places: DoorWork[], held: ReadonlySet<string>) => Promise<ReadershipDoor | null>;
 
 /** The `p`-th percentile of ascending values, interpolated between ranks. */
 export function percentile(sorted: readonly number[], p: number): number {
@@ -187,20 +200,44 @@ export async function placeReadershipDoorFor(
   sourceId: number,
   line: number,
   logPrefix: string,
-): Promise<((places: DoorWork[], held: ReadonlySet<string>) => Promise<ReadershipDoor | null>) | undefined> {
+): Promise<PlaceDoor | undefined> {
   if (!await gateIsOn(sourceId, logPrefix)) return undefined;
   return async (places, held) => {
     if (!await latestUsage()) {
       console.log(`${logPrefix} The readership door is shut: no Wikivoyage usage is built (ADR-0128)`);
       return null;
     }
-    const door = await openPlaceDoor(places, line, held);
-    if (door) {
-      console.log(`${logPrefix} The readership door opened for ${door.opened.size} places below the line `
-        + `(bar ${Math.round(door.bar)} views, exit ${Math.round(door.exit)})`);
-    } else shutForYear(logPrefix);
-    return door;
+    return openLoggedPlaceDoor(places, line, held, logPrefix);
   };
+}
+
+/**
+ * The place door a run of a kind whose places are works passes its pipeline
+ * (#2033), or nothing while the source's curator gate is off. It needs no
+ * Wikivoyage usage, since it asks no witnesses.
+ */
+export async function artworkReadershipDoorFor(
+  sourceId: number,
+  line: number,
+  logPrefix: string,
+): Promise<PlaceDoor | undefined> {
+  if (!await gateIsOn(sourceId, logPrefix)) return undefined;
+  return (places, held) => openLoggedPlaceDoor(places, line, held, logPrefix);
+}
+
+/** The place door, with what it opened for or why it is shut in the run's log. */
+async function openLoggedPlaceDoor(
+  places: readonly DoorWork[],
+  line: number,
+  held: ReadonlySet<string>,
+  logPrefix: string,
+): Promise<ReadershipDoor | null> {
+  const door = await openPlaceDoor(places, line, held);
+  if (door) {
+    console.log(`${logPrefix} The readership door opened for ${door.opened.size} places below the line `
+      + `(bar ${Math.round(door.bar)} views, exit ${Math.round(door.exit)})`);
+  } else shutForYear(logPrefix);
+  return door;
 }
 
 /**
@@ -257,6 +294,16 @@ export function placeDoorNote(place: OpenedWork, door: ReadershipDoor, witnesses
 }
 
 const capitalised = (text: string) => text.charAt(0).toUpperCase() + text.slice(1);
+
+/**
+ * The curator's question on a work the place door alone admitted (#2033): its
+ * year and where it stands against the door. Whether it still stands where it
+ * did is what the reading cannot say.
+ */
+export function artworkDoorNote(work: OpenedWork, door: ReadershipDoor): string {
+  return `Admitted below the sitelinks line, read ${roundViews(work.views)} times this year in every counted `
+    + `edition, ${readingAgainst(work, door)}${work.burst ? BURST_CLAUSE : ''}. Can a visitor see it there now?`;
+}
 
 /**
  * Why a place the year opens the door for stays out (ADR-0128): its year,

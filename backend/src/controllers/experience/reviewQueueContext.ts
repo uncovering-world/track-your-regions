@@ -101,7 +101,8 @@ export function objectContextSelectSql(alias = 'e'): string {
           NULLIF(concat_ws(' ',
             ${alias}.metadata->>'admissionNote',
             ${alias}.metadata->>'museumReadershipNote',
-            ${alias}.metadata->>'worshipReadershipNote'), '') AS admission_note,
+            ${alias}.metadata->>'worshipReadershipNote',
+            ${alias}.metadata->>'publicArtReadershipNote'), '') AS admission_note,
           (SELECT jsonb_agg(r.name ORDER BY r.name)
              FROM experience_regions er
              JOIN regions r ON r.id = er.region_id

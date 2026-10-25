@@ -331,6 +331,12 @@ export interface WikidataLandmark {
   artwork: boolean;
   articleUrl: string | null;
   website: string | null;
+  /**
+   * The curator's question on a work the readership door alone admitted
+   * (#2033): its year's reading against the bar. Absent on a work the line
+   * admits.
+   */
+  readershipNote?: string;
 }
 
 /**

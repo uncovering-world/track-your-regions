@@ -107,7 +107,8 @@ import {
   type MuseumJudging,
 } from './museumVerdict.js';
 export type { CollectedArchaeologyMuseum } from './museumVerdict.js';
-import { collectSitesByFame, type OsmReader, type PlaceDoor, type SiteEntrance } from './sites.js';
+import { collectSitesByFame, type OsmReader, type SiteEntrance } from './sites.js';
+import type { PlaceDoor } from '../readershipDoor.js';
 import type { VisitWitnessReader } from '../visit/visitWitnesses.js';
 import { reportProposal, uniteDoors, type CollectedArchaeologySite } from './proposal.js';
 import { contentsLine, type SourceLine } from '../sourceLine.js';

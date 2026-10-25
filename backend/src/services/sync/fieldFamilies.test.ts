@@ -139,3 +139,19 @@ describe("keeping a monument's year and makers under a kind that never reads the
     expect(fieldsOfOthers(4, []).metadata).not.toContain('creators');
   });
 });
+
+describe("keeping Public art's readership question under a Monuments & memorials run (#2033)", () => {
+  // A statue held by Public art (3), whose door admitted it below the line, and
+  // by Monuments & memorials (6), which opens no door: a Monuments run neither
+  // writes the question nor clears it.
+  const NOTE = 'Admitted below the sitelinks line, read 193,801 times this year in every counted edition.';
+  const held = { ...STORED, metadata: { wikidataQid: 'Q16988858', year: 2013, creators: ['Andy Scott'], publicArtReadershipNote: NOTE } };
+
+  it('writes it as the place holds it while Public art holds the place, and drops it once Public art does not', () => {
+    const run = { ...RUN, metadata: { wikidataQid: 'Q16988858', year: 2013, creators: ['Andy Scott'] } };
+    expect(keptForFamilies(run, held, fieldsOfOthers(6, [3])).metadata).toMatchObject({ publicArtReadershipNote: NOTE });
+    expect(fieldsOfOthers(6, []).metadata).not.toContain('publicArtReadershipNote');
+    // Public art's own run writes it every pass, so it is never kept under that run.
+    expect(fieldsOfOthers(3, [6]).metadata).not.toContain('publicArtReadershipNote');
+  });
+});

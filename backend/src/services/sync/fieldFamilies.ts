@@ -56,7 +56,7 @@ export const FAMILY_FIELDS: Readonly<Record<SourceFamily, FamilyFields>> = {
     metadata: [
       'website', 'wikidataQid', 'sitelinksCount', 'wikidataClasses', 'wikidataArtwork', 'year', 'creators', 'creator', 'type',
       'artworkCount', 'totalArtworkSitelinks', 'admissionNote', 'osm', 'archaeologyNature', 'wikipediaCategories',
-      'museumReadershipNote', 'worshipReadershipNote',
+      'museumReadershipNote', 'worshipReadershipNote', 'publicArtReadershipNote',
     ],
   },
 };
@@ -93,7 +93,7 @@ const KEPT_BY_EVERY_OTHER_FAMILY: Readonly<Record<SourceFamily, readonly string[
 const PLACE_FACTS = ['year', 'creators'] as const;
 const SOURCE_OWN_METADATA: Readonly<Record<number, readonly string[]>> = {
   2: ['museumReadershipNote'],
-  3: PLACE_FACTS,
+  3: [...PLACE_FACTS, 'publicArtReadershipNote'],
   4: ['worshipReadershipNote'],
   5: ['admissionNote'],
   6: PLACE_FACTS,
