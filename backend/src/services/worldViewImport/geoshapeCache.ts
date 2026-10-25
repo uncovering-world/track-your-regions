@@ -1,6 +1,7 @@
 import { pool } from '../../db/index.js';
 import type { PoolClient } from 'pg';
 import { userAgent } from '../../config/userAgent.js';
+import { assertRobotsAllow, RobotsRefusal } from '../robots/robotsSignals.js';
 
 const GEOSHAPE_URL = 'https://maps.wikimedia.org/geoshape';
 // World-view import machinery, and it says so wherever it is called from: an
@@ -60,6 +61,7 @@ export async function getOrFetchGeoshape(wikidataId: string): Promise<boolean> {
   let answered = false;
   try {
     const url = `${GEOSHAPE_URL}?getgeojson=1&ids=${wikidataId}`;
+    await assertRobotsAllow(url);
     const response = await fetch(url, {
       headers: {
         'User-Agent': USER_AGENT,
@@ -164,6 +166,7 @@ export async function getOrFetchCommonsMapGeoshape(commonsFile: string): Promise
 
   try {
     const url = `https://commons.wikimedia.org/wiki/Data:${encodeURIComponent(commonsFile)}?action=raw`;
+    await assertRobotsAllow(url);
     const response = await fetch(url, {
       headers: { 'User-Agent': USER_AGENT },
       signal: AbortSignal.timeout(15000),
@@ -238,6 +241,8 @@ export async function getOrFetchCommonsMapGeoshape(commonsFile: string): Promise
     return { available: true, title, color };
   } catch (err) {
     console.error('[GeoshapeCache] Failed to fetch Commons map %s:', commonsFile, err);
+    // A host's refusal says nothing about the map, and is asked again next time.
+    if (err instanceof RobotsRefusal) return { available: false };
     await pool.query(
       `INSERT INTO wikidata_geoshapes (wikidata_id, not_available) VALUES ($1, TRUE)
        ON CONFLICT (wikidata_id) DO NOTHING`,

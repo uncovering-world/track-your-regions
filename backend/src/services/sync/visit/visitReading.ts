@@ -100,7 +100,7 @@ export async function articleLead(articleUrl: string | null, fetchImpl?: typeof 
   const answer = await askWikipediaOnce({
     action: 'query', prop: 'extracts', exintro: '1', explaintext: '1', redirects: '1', titles: title,
     format: 'json', formatversion: '2',
-  }, { userAgent: userAgent(), fetchImpl, timeoutMs: LEAD_WAIT_MS }, new WaitBudget(0), `the lead of ${title}`);
+  }, { userAgent: userAgent(), fetchImpl, timeoutMs: LEAD_WAIT_MS, modelInput: true }, new WaitBudget(0), `the lead of ${title}`);
   const page = (pagesOf(answer) as ExtractPage[]).find((one) => !one.missing);
   const lead = page?.extract?.trim();
   return lead ? lead.slice(0, LEAD_CHARS) : null;
@@ -148,7 +148,7 @@ async function askLeads(batch: string[], options: CategoryOptions, budget: WaitB
     return await askWikipediaOnce({
       action: 'query', prop: 'extracts', exintro: '1', explaintext: '1', exlimit: 'max', redirects: '1',
       titles: batch.join('|'), format: 'json', formatversion: '2',
-    }, options, budget, `the leads of ${batch.length} articles`);
+    }, { ...options, modelInput: true }, budget, `the leads of ${batch.length} articles`);
   } catch (error) {
     if (options.isCancelled?.()) throw error;
     console.error('[jev] %s', error instanceof Error ? error.message : String(error));

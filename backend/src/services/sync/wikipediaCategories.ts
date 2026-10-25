@@ -30,6 +30,7 @@ import {
   type SourceWait,
 } from './sourceRetry.js';
 import { isStorableHttpUrl } from '../../types/urlSafety.js';
+import { assertRobotsAllow, RobotsRefusal } from '../robots/robotsSignals.js';
 
 /** Exported for the walk next door, so both questions log under one name. */
 export const LOG_PREFIX = '[Wikipedia]';
@@ -100,6 +101,8 @@ export interface CategoryAnswer {
 
 export interface CategoryOptions {
   userAgent: string;
+  /** What this read answers reaches a model (Jev), so a host's refusal of model input binds it (ADR-0148). */
+  modelInput?: boolean;
   isCancelled?: () => boolean;
   pause?: () => Promise<void>;
   /**
@@ -234,8 +237,10 @@ async function postWikipedia(
     signal,
     redirect: 'manual',
   });
+  await assertRobotsAllow(endpoint, { modelInput: options.modelInput });
   const first = await send(endpoint);
   const target = redirectedWikipedia(first, endpoint);
+  if (target) await assertRobotsAllow(target, { modelInput: options.modelInput });
   return target ? send(target) : first;
 }
 
@@ -277,7 +282,7 @@ export async function askWikipediaOnce(
       isCancelled: options.isCancelled, onWait: options.onWait, classify,
     });
   } catch (error) {
-    if (options.isCancelled?.()) throw error;
+    if (options.isCancelled?.() || error instanceof RobotsRefusal) throw error;
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`${LOG_PREFIX} ${what} could not be read: ${message}`);
   }

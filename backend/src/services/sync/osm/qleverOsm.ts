@@ -28,6 +28,7 @@ import { userAgent } from '../../../config/userAgent.js';
 import type { OsmDoor } from './readOsmObjects.js';
 import { classifyOsmError, OSM_MAX_RETRIES, refuseOrRetry } from './retry.js';
 import { assertTagValues, OSM_TAG_KEYS, type DigTags, type KeepWkt } from './types.js';
+import { assertRobotsAllow } from '../../robots/robotsSignals.js';
 
 export const OSM_ENDPOINT = 'https://qlever.dev/api/osm-planet';
 
@@ -156,6 +157,7 @@ async function askQlever(
   options: { userAgent: string; isCancelled?: () => boolean; fetchImpl?: typeof fetch },
   attempt: number,
 ): Promise<SparqlBinding[]> {
+  await assertRobotsAllow(OSM_ENDPOINT);
   const { signal, release } = abortOn(questionBudgetMs(query), options.isCancelled);
   try {
     const response = await (options.fetchImpl ?? fetch)(OSM_ENDPOINT, {

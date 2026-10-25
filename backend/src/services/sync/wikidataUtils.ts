@@ -19,6 +19,7 @@ import {
 } from './sourceRetry.js';
 import { userAgent } from '../../config/userAgent.js';
 import type { Operation } from '../operationProgress.js';
+import { assertRobotsAllow } from '../robots/robotsSignals.js';
 
 export { WaitBudget } from './sourceRetry.js';
 export type { SourceWait } from './sourceRetry.js';
@@ -240,6 +241,7 @@ export function parseWktPoint(wkt: string): { lat: number; lon: number } | null 
 const backoffOf = (attempt: number) => exponentialBackoff(attempt, SPARQL_BACKOFF_CEILING_MS);
 
 async function fetchSparqlResponse(query: string, signal: AbortSignal): Promise<Response> {
+  await assertRobotsAllow(WIKIDATA_ENDPOINT);
   return fetch(WIKIDATA_ENDPOINT, {
     method: 'POST',
     headers: {

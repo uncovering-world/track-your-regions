@@ -34,6 +34,8 @@ import { defineConfig } from 'vitest/config';
 export default defineConfig({
   test: {
     environment: 'node',
+    // No spec reads a real host's robots.txt (`services/robots/robotsSignals.ts`).
+    env: { ROBOTS_CHECK: 'off' },
     globals: true,
     include: ['src/**/*.db.test.ts'],
     // The specs share one database. Run files one after another so a fixture

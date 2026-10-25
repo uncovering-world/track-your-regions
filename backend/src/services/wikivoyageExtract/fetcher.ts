@@ -9,6 +9,7 @@
 import type { ExtractionProgress } from './types.js';
 import { FileCache } from './cache.js';
 import { userAgent } from '../../config/userAgent.js';
+import { assertRobotsAllow, RobotsRefusal } from '../robots/robotsSignals.js';
 
 const API_URL = 'https://en.wikivoyage.org/w/api.php';
 const USER_AGENT = userAgent({ bot: true, purpose: 'region hierarchy extraction' });
@@ -92,6 +93,8 @@ export class WikivoyageFetcher {
       const resp = await this.dispatchRequest(params);
       return await this.handleResponse(resp, cacheKey, attempt);
     } catch (err) {
+      // A host's refusal is final, and the caller keeps its reason.
+      if (err instanceof RobotsRefusal) throw err;
       logFetchError(err, attempt);
       await sleep(3000 * (attempt + 1));
       return { kind: 'retry' };
@@ -106,6 +109,7 @@ export class WikivoyageFetcher {
     }
     url.searchParams.set('format', 'json');
 
+    await assertRobotsAllow(url.toString());
     return fetch(url.toString(), {
       headers: { 'User-Agent': USER_AGENT },
       signal: AbortSignal.timeout(30000),
