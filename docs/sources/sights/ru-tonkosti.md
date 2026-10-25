@@ -21,7 +21,11 @@ terms:
   licence: "the site's copyright page (Авторские права); the access table finds it silent on automated reading"
   database_right: unknown
   attribution: "Тонкости туризма"
-  scraping: unknown
+  agent: allowed
+  agent_rests_on: "site-access.md, tonkosti.ru, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

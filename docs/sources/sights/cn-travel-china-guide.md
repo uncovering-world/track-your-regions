@@ -21,7 +21,11 @@ terms:
   licence: "none; only booking terms are linked from the footer; a Terms of Use page reached from the privacy page reserves reproduction and storage"
   database_right: not-asserted
   attribution: TravelChinaGuide.com
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.travelchinaguide.com, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

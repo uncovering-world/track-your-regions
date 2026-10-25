@@ -21,7 +21,11 @@ terms:
   licence: "CC0 1.0"
   database_right: waived
   attribution: "Ministerstwo Kultury i Dziedzictwa Narodowego, Państwowy Rejestr Muzeów, dane.gov.pl, file of 2026-01-16 (not required by CC0; given anyway)"
-  scraping: not-needed
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: allowed
+  program_rests_on: "a published dump under its publisher's rules (ADR-0148): the dane.gov.pl file, CC0 1.0"
+  model: none
 access:
   mode: dump
   format: xlsx

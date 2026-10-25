@@ -21,7 +21,11 @@ terms:
   licence: "opendata.swiss terms of use «Open use» (terms_open): free use for commercial and non-commercial purposes, no attribution required; the Swiss federal disclaimer (license.txt in the download)"
   database_right: not-asserted
   attribution: "Bundesamt für Bevölkerungsschutz BABS, KGS-Inventar (not required by the terms; given)"
-  scraping: not-needed
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: allowed
+  program_rests_on: "a published dump under its publisher's rules (ADR-0148): the opendata.swiss download, terms \"Open use\""
+  model: none
 access:
   mode: dump
   format: "INTERLIS 2.3 XTF (model KGS_PBC_V2_2), 7.1 MB — KGS_Objekt (Punktkoordinate in LV95, KGS_Kategorie, Objekt_Nr, Objektart codes, Beschreibung, Gemeinde, Kanton, Signatur_Typ), KGS_Image (Bild_URL on data.geo.admin.ch, Fotograf, Copyright), KGS_Link (Weblink to the canton's inventory, Bemerkung)"

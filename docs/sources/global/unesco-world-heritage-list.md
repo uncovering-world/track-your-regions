@@ -21,7 +21,11 @@ terms:
   licence: "CC BY-SA 4.0"
   database_right: share-alike
   attribution: "UNESCO World Heritage Centre, World Heritage List (whc001), CC BY-SA 4.0"
-  scraping: not-needed
+  agent: allowed
+  agent_rests_on: "site-access.md, data.unesco.org, read 2026-10-25; the line gives the reason"
+  program: allowed
+  program_rests_on: "a documented API under its operator's rules (ADR-0148): the whc001 export, CC BY-SA 4.0; the terms' bar on API clients yields to the licence"
+  model: "a property's name, offered to Jev when a curator asks which source's name to keep; a component's name, rough point and why it is rough, in the point-hint question (#1913): inference, not the AI training the terms bar (§7(d)), and the licence covers it"
 access:
   mode: api
   format: "JSON, Opendatasoft's Explore API v2.1 exports endpoint, with a select of the fields read"
@@ -94,7 +98,11 @@ interface (API) client" among automated systems. §7(c) bars bulk download "by a
 System", and §7(e) bars circumventing "robots.txt directives, rate limits or authentication". All
 of §7 opens "Except where expressly permitted under Section 5, under an applicable license or
 under a specific authorization". §5 adds: "Nothing in these Terms restricts rights expressly
-granted by a Creative Commons license." The run rests on that licence carve-out. The
+granted by a Creative Commons license." The run rests on that licence carve-out. The terms' one clause on AI use, §7(d), bars "AI
+training", which they define as training, fine-tuning or calibrating a system. Offering a
+property's name to Jev when a curator asks which source's name to keep, or a component's name and
+rough point in the point-hint question (#1913), is inference, not training, and the licence covers
+it in any case. The
 maintainer decided on 2026-10-25 that the run goes on as it is (#2000). A written confirmation
 from UNESCO, at the address §9 gives, would close the remaining doubt. Asking is the maintainer's
 call, and has not been made.

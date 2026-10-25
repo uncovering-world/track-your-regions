@@ -21,7 +21,11 @@ terms:
   licence: "none; terms and conditions: use of the content needs a written request and must not be for profit"
   database_right: reserved
   attribution: "Touring Club Italiano"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.touringclub.it, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: "html; the list of sights of a destination is drawn by script"

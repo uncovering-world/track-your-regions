@@ -21,7 +21,11 @@ terms:
   licence: "for the signal: Wikidata's CC0 statement; the site's own terms page answered 403 on 2026-10-25 and was not read"
   database_right: unknown
   attribution: "none needed for the Wikidata statement; nothing of the site is shown"
-  scraping: not-needed
+  agent: allowed
+  agent_rests_on: "site-access.md, www.atlasobscura.com, read 2026-10-02: nothing refuses it"
+  program: allowed
+  program_rests_on: "read only as Wikidata's P7772 statements, CC0, from the dump; the site itself is not called"
+  model: none
 access:
   mode: dump
   format: "the P7772 statements of the Wikidata JSON dump"

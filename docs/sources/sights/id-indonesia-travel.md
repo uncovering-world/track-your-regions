@@ -21,7 +21,11 @@ terms:
   licence: "none; Terms & Conditions: no robot, spider, automatic device or manual process to monitor or copy pages without the Ministry's prior written permission"
   database_right: not-asserted
   attribution: "Ministry of Tourism, Republic of Indonesia"
-  scraping: forbidden
+  agent: refused
+  agent_rests_on: "site-access.md, www.indonesia.travel, read 2026-10-02: terms bar robots, automated access or mining, with no leave for an AI agent"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

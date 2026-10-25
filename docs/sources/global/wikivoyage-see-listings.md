@@ -21,7 +21,11 @@ terms:
   licence: "CC BY-SA 3.0 (text)"
   database_right: not-asserted
   attribution: "Wikivoyage contributors, CC BY-SA 3.0 — the description is not copied; the name, coordinates and item are facts"
-  scraping: not-needed
+  agent: allowed
+  agent_rests_on: "site-access.md, en.wikivoyage.org, read 2026-10-02; the line gives the reason"
+  program: allowed
+  program_rests_on: "a published dump under its publisher's rules (ADR-0148): every edition's Wikimedia dump (the wikivoyage-usage build); facts are kept, not text (ADR-0048)"
+  model: none
 access:
   mode: dump
   format: "each edition's wbc_entity_usage and page SQL tables, gzip: the Wikidata items its articles use"

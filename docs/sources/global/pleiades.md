@@ -21,7 +21,11 @@ terms:
   licence: "CC BY 3.0"
   database_right: waived
   attribution: "Pleiades (pleiades.stoa.org), CC BY 3.0"
-  scraping: not-needed
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: allowed
+  program_rests_on: "a published dump under its publisher's rules (ADR-0148): Pleiades' dump, CC BY 3.0"
+  model: none
 access:
   mode: dump
   format: "daily dumps on atlantides.org — pleiades-places-latest.csv.gz (places: id, title, description, reprLat, reprLong, featureTypes, locationPrecision …), pleiades-names-latest.csv.gz (pid, nameAttested, nameTransliterated, nameLanguage …), pleiades-places-latest.json.gz (135 MB, every place whole)"

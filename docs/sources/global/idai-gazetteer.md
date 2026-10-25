@@ -21,7 +21,11 @@ terms:
   licence: "CC BY 4.0"
   database_right: waived
   attribution: "iDAI.gazetteer, Deutsches Archäologisches Institut"
-  scraping: not-needed
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: allowed
+  program_rests_on: "a documented API under its operator's rules (ADR-0148): the gazetteer's search API, CC BY 4.0"
+  model: none
 access:
   mode: api
   format: "JSON — `search.json?q=<name>` (ten thousand results at most, no paging past them, no dump found)"

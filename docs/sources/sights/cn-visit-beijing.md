@@ -21,7 +21,11 @@ terms:
   licence: "unknown: no terms page linked on either host"
   database_right: unknown
   attribution: unknown
-  scraping: reserved
+  agent: refused
+  agent_rests_on: "site-access.md, english.visitbeijing.com.cn, read 2026-10-02: `robots.txt` disallows every agent"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: "html; the lists are drawn by script and show a fetch their first screen only"

@@ -21,7 +21,11 @@ terms:
   licence: "none named; the legal notice puts the content under German copyright law, allows downloads and copies for private, non-commercial use, and asks that a text be used only as a quotation naming the portal and its operator"
   database_right: unknown
   attribution: "visitBerlin (Berlin Tourismus & Kongress GmbH), named with a link to the article quoted"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.visitberlin.de, read 2026-10-16: closed paths not read"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

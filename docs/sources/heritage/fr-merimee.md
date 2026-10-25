@@ -21,7 +21,11 @@ terms:
   licence: "Licence Ouverte / Open Licence 2.0 (data.gouv.fr: lov2)"
   database_right: waived
   attribution: "Ministère de la Culture, base Mérimée, Immeubles protégés au titre des Monuments historiques, <date of the file>"
-  scraping: not-needed
+  agent: allowed
+  agent_rests_on: "site-access.md, www.data.gouv.fr, read 2026-10-25; the line gives the reason"
+  program: allowed
+  program_rests_on: "a published dump under its publisher's rules (ADR-0148): the data.gouv.fr file, Licence Ouverte 2.0"
+  model: none
 access:
   mode: dump
   format: "CSV separated by |, 100 MB (Reference, Denomination_de_l_edifice, Typologie_de_la_protection, Date_et_typologie_de_la_protection, coordonnees_au_format_WGS84, Commune, Departement, Historique …); a GeoJSON of 223 MB"

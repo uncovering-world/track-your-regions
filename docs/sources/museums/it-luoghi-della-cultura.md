@@ -21,7 +21,11 @@ terms:
   licence: "CC BY 3.0"
   database_right: unknown
   attribution: "Ministero della Cultura, Luoghi della cultura (Cultural-ON DBUnico 2.0), CC BY 3.0 as described"
-  scraping: not-needed
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: allowed
+  program_rests_on: "a documented API under its operator's rules (ADR-0148): the ministry's SPARQL endpoint, CC BY 3.0"
+  model: none
 access:
   mode: api
   format: "SPARQL; RDF/XML, Turtle, JSON downloads"

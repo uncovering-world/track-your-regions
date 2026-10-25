@@ -21,7 +21,11 @@ terms:
   licence: "the site's own License Agreement (May 2020): one-time private or commercial use of its digital content for the purposes it lists; its user agreement bars automated scripts for mass copying"
   database_right: reserved
   attribution: "none stated; the rights holder is the National PR-centre"
-  scraping: reserved
+  agent: allowed
+  agent_rests_on: "site-access.md, uzbekistan.travel, read 2026-10-02; the line gives the reason"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

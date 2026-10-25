@@ -21,7 +21,11 @@ terms:
   licence: "none; a copyright paragraph on the privacy page: unauthorised use of any text or images is prohibited"
   database_right: reserved
   attribution: "City of Kyoto and Kyoto City Tourism Association"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, kyoto.travel, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: "html; the five-area overview is drawn by script"

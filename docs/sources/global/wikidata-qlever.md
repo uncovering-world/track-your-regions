@@ -21,7 +21,11 @@ terms:
   licence: "CC0 1.0 (Wikidata's data)"
   database_right: waived
   attribution: none
-  scraping: not-needed
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: allowed
+  program_rests_on: "a documented API under its operator's rules (ADR-0148): QLever's Wikidata endpoint, CC0; expired for other reasons, given in the body"
+  model: none
 access:
   mode: api
   format: "SPARQL over QLever's index of a Wikidata dump, JSON results"

@@ -21,7 +21,11 @@ terms:
   licence: "ODbL 1.0"
   database_right: share-alike
   attribution: "© OpenStreetMap contributors, ODbL"
-  scraping: not-needed
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: allowed
+  program_rests_on: "a published dump under its publisher's rules (ADR-0148): the planet and its diffs, ODbL 1.0; robots.txt keeps crawlers off the listings, which are not walked"
+  model: "an object's label and tags from the layer, offered to Jev in the point-hint question (#1913); ODbL places no bar on that use"
 access:
   mode: dump
   format: "PBF, the weekly planet file; OsmChange XML, gzipped, for the daily diffs"

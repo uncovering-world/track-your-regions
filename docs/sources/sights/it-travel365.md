@@ -21,7 +21,11 @@ terms:
   licence: "none; its privacy and terms page forbids reproducing, copying, publishing or exploiting the content commercially"
   database_right: reserved
   attribution: Travel365
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.travel365.it, read 2026-10-02: closed paths not read"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

@@ -21,7 +21,11 @@ terms:
   licence: "none; terms and conditions: no reproducing of any content without express written permission"
   database_right: reserved
   attribution: "Tourism Australia"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.australia.com, read 2026-10-02: closed paths not read"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

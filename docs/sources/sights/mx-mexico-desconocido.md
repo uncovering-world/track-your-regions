@@ -21,7 +21,11 @@ terms:
   licence: "none; no terms page linked, only a privacy notice"
   database_right: unknown
   attribution: "México Desconocido"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.mexicodesconocido.com.mx, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

@@ -21,7 +21,11 @@ terms:
   licence: "CC BY-SA 4.0 and GFDL (Wikipedia's text); what is kept is titles, Wikidata ids and which category a page is filed under"
   database_right: not-asserted
   attribution: "English Wikipedia contributors, CC BY-SA 4.0 (given wherever a judgement read from the categories is shown)"
-  scraping: not-needed
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: allowed
+  program_rests_on: "a published dump under its publisher's rules (ADR-0148): Wikimedia's dumps; titles, items and links are kept, not text"
+  model: none
 access:
   mode: dump
   format: "MySQL `INSERT` statements, gzipped, one table a file: `page`, `page_props`, `linktarget`, `categorylinks`"

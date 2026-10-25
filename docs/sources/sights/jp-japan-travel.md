@@ -21,7 +21,11 @@ terms:
   licence: "none; terms of use: materials may not be reproduced, distributed, displayed, copied or stored without permission"
   database_right: reserved
   attribution: "Japan National Tourism Organization"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.japan.travel, read 2026-10-02: closed paths not read"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

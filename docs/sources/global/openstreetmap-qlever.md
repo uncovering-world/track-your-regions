@@ -21,7 +21,11 @@ terms:
   licence: "ODbL 1.0"
   database_right: share-alike
   attribution: "© OpenStreetMap contributors"
-  scraping: not-needed
+  agent: unknown
+  agent_rests_on: "no line in site-access.md: not judged for an agent reading pages"
+  program: allowed
+  program_rests_on: "a documented API under its operator's rules (ADR-0148): QLever's OSM endpoint, ODbL 1.0"
+  model: none
 access:
   mode: api
   format: "SPARQL (osm2rdf's RDF of the OSM planet), JSON results"

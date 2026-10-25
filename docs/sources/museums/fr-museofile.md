@@ -21,7 +21,11 @@ terms:
   licence: "Licence Ouverte / Open Licence 2.0"
   database_right: waived
   attribution: "Ministère de la Culture, Liste des Musées de France, last updated 2025-08-27"
-  scraping: not-needed
+  agent: allowed
+  agent_rests_on: "site-access.md, www.data.gouv.fr, read 2026-10-25; the line gives the reason"
+  program: allowed
+  program_rests_on: "a published dump under its publisher's rules (ADR-0148): the data.gouv.fr file, Licence Ouverte 2.0"
+  model: none
 access:
   mode: dump
   format: csv

@@ -21,7 +21,11 @@ terms:
   licence: "unknown: no terms page linked"
   database_right: unknown
   attribution: unknown
-  scraping: reserved
+  agent: refused
+  agent_rests_on: "site-access.md, goturkiye.com, read 2026-10-02: answered a 403 challenge page to the fetch tool"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

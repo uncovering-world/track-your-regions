@@ -21,7 +21,11 @@ terms:
   licence: "the site's user agreement: its materials may not be reproduced or copied without the rights holder's leave; personal non-commercial use allowed"
   database_right: reserved
   attribution: "Туту.ру"
-  scraping: reserved
+  agent: allowed
+  agent_rests_on: "site-access.md, www.tutu.ru, read 2026-10-16: closed paths not read"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html

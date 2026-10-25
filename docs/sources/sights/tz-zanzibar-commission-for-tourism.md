@@ -21,7 +21,11 @@ terms:
   licence: unknown
   database_right: unknown
   attribution: unknown
-  scraping: reserved
+  agent: refused
+  agent_rests_on: "site-access.md, zanzibartourism.go.tz, read 2026-10-02: `robots.txt` unreachable, read as a complete disallow (RFC 9309 § 2.3.1.4)"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: "unknown: no page could be fetched"

@@ -21,7 +21,11 @@ terms:
   licence: "UNEP-WCMC and IUCN terms and conditions: commercial use only with written permission; publication only where the data are not downloadable; no redistribution; no sub-licensing, including within derived works"
   database_right: reserved
   attribution: "UNEP-WCMC and IUCN (year), Protected Planet: <database>, <month year>, Cambridge, UK: UNEP-WCMC and IUCN. www.protectedplanet.net"
-  scraping: unknown
+  agent: allowed
+  agent_rests_on: "site-access.md, www.protectedplanet.net, read 2026-10-25; the line gives the reason"
+  program: refused
+  program_rests_on: "the UNEP-WCMC and IUCN terms bar commercial use without leave, and redistribution"
+  model: none
 access:
   mode: "unknown (the terms speak of versions downloaded; the download pages were not read)"
   format: unknown

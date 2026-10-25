@@ -21,7 +21,11 @@ terms:
   licence: "the site's own reuse clause: all or part of the content may be reproduced with the source and its credit line, for personal, associative or professional use; commercial and advertising use excluded"
   database_right: not-asserted
   attribution: "© au-senegal.com - droits réservés"
-  scraping: permitted
+  agent: allowed
+  agent_rests_on: "site-access.md, www.au-senegal.com, read 2026-10-02: nothing refuses it"
+  program: unknown
+  program_rests_on: "no sync is proposed from this record"
+  model: none
 access:
   mode: scrape
   format: html
