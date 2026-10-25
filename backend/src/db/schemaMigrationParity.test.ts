@@ -524,6 +524,9 @@ describe('the curation log accepts every action a curator endpoint writes', () =
     // A published place taken out of one of its kinds from its own card, with
     // no question asked (#2022): the membership's refusal, pinned.
     'kept_out',
+    // A near pair's part of or two places taken back from the history
+    // (#1991, ADR-0150): the pair open again, never answered by the pass again.
+    'merge_proposal_taken_back',
   ];
   const quoted = ACTIONS.map(action => `'${action}'`).join(', ');
   const actionCheck = `CHECK (action IN (${quoted}))`;

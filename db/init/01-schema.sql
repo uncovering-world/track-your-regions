@@ -3929,7 +3929,7 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
     experience_id INTEGER NOT NULL REFERENCES experiences(id) ON DELETE CASCADE,
     -- Null on the catalogue's own merge alone (ADR-0086): the check below.
     curator_id INTEGER REFERENCES users(id),
-    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered', 'identifier_settled', 'separated', 'kept_out')),
+    action VARCHAR(30) NOT NULL CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered', 'identifier_settled', 'separated', 'kept_out', 'merge_proposal_taken_back')),
     region_id INTEGER REFERENCES regions(id) ON DELETE SET NULL,
     details JSONB,
     created_at TIMESTAMPTZ DEFAULT NOW()
@@ -3949,16 +3949,17 @@ CREATE TABLE IF NOT EXISTS experience_curation_log (
 -- schema change and not a code-only one.
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_action_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_action_check
-    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered', 'identifier_settled', 'separated', 'kept_out'));
+    CHECK (action IN ('created', 'rejected', 'unrejected', 'edited', 'added_to_region', 'removed_from_region', 'marked_former', 'marked_lost', 'state_restored', 'accepted_source', 'declined_source', 'declined_held', 'missing_dismissed', 'admission_confirmed', 'admission_overridden', 'published', 'location_marked_former', 'location_marked_lost', 'location_state_restored', 'location_missing_dismissed', 'location_edited', 'work_edited', 'arrival_refused', 'contents_refused', 'contents_unrefused', 'merged', 'merge_undone', 'views_chosen', 'component_items_answered', 'component_item_taken_back', 'admission_pin_released', 'admission_pin_kept', 'admission_pin_handed_back', 'merge_proposal_answered', 'visit_question_answered', 'identifier_settled', 'separated', 'kept_out', 'merge_proposal_taken_back'));
 
 -- An existing database's NOT NULL goes with migration 076; a fresh one never had it.
 -- Two acts are the catalogue's own and name no curator: a merge of two places
 -- on one Wikidata item (ADR-0086), and an exact component candidate accepted
--- by its rule (ADR-0141, migration 156).
+-- by its rule (ADR-0141, migration 156), and a near pair answered part of
+-- from Wikidata (ADR-0150, migration 173).
 ALTER TABLE experience_curation_log ALTER COLUMN curator_id DROP NOT NULL;
 ALTER TABLE experience_curation_log DROP CONSTRAINT IF EXISTS experience_curation_log_curator_check;
 ALTER TABLE experience_curation_log ADD CONSTRAINT experience_curation_log_curator_check
-    CHECK (curator_id IS NOT NULL OR action IN ('merged', 'component_items_answered'));
+    CHECK (curator_id IS NOT NULL OR action IN ('merged', 'component_items_answered', 'merge_proposal_answered'));
 CREATE INDEX IF NOT EXISTS idx_curation_log_experience ON experience_curation_log(experience_id);
 CREATE INDEX IF NOT EXISTS idx_curation_log_curator ON experience_curation_log(curator_id);
 CREATE INDEX IF NOT EXISTS idx_curation_log_created ON experience_curation_log(created_at DESC);
@@ -4524,6 +4525,22 @@ COMMENT ON COLUMN experience_merge_proposals.found_by IS 'Which rule found the p
 COMMENT ON COLUMN experience_merge_proposals.exact IS 'The two places carry one and the same folded name within fifty metres: the pairs a batch confirms.';
 COMMENT ON COLUMN experience_merge_proposals.reach_m IS 'The distance the pair was found under: 300 m, or the radius of a World Heritage property''s area up to 3 km.';
 COMMENT ON COLUMN experience_merge_proposals.part_id IS 'Which of the two is the part, when the answer is part_of; recorded here for #823, never written to experience_parts by this answer.';
+-- A pair the pass answered part of from Wikidata, the statement it rests on,
+-- and a curator's take-back (#1991, ADR-0150). See db/migrations/173.
+ALTER TABLE experience_merge_proposals
+    ADD COLUMN IF NOT EXISTS answered_by_catalogue BOOLEAN NOT NULL DEFAULT false,
+    ADD COLUMN IF NOT EXISTS answer_statement JSONB,
+    ADD COLUMN IF NOT EXISTS taken_back_at TIMESTAMPTZ;
+COMMENT ON COLUMN experience_merge_proposals.answered_by_catalogue IS 'Whether the pairing pass answered this pair from Wikidata rather than a curator (#1991, ADR-0150): part_of, from the statement in answer_statement. answered_by is null then, as it is for a curator since deleted.';
+COMMENT ON COLUMN experience_merge_proposals.answer_statement IS 'The Wikidata statement a catalogue answer rests on: {property, subject, value}, P361 "part of" stated by the part''s item toward the whole''s, or P527 "has part" stated by the whole''s toward the part''s.';
+COMMENT ON COLUMN experience_merge_proposals.taken_back_at IS 'When a curator last took this pair''s answer back (#1991): open again, and never answered by the pass again, only by a curator.';
+
+ALTER TABLE experience_merge_proposals DROP CONSTRAINT IF EXISTS experience_merge_proposals_catalogue_check;
+ALTER TABLE experience_merge_proposals ADD CONSTRAINT experience_merge_proposals_catalogue_check
+    CHECK (NOT answered_by_catalogue OR (answer = 'part_of' AND answered_by IS NULL AND answer_statement IS NOT NULL));
+ALTER TABLE experience_merge_proposals DROP CONSTRAINT IF EXISTS experience_merge_proposals_statement_check;
+ALTER TABLE experience_merge_proposals ADD CONSTRAINT experience_merge_proposals_statement_check
+    CHECK (answer_statement IS NULL OR answered_by_catalogue);
 
 -- The places whose pairing inputs changed since the near-places pass last read
 -- them (#1950): a trigger on every table the pass reads marks the place, and

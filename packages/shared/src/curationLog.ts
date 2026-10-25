@@ -51,6 +51,7 @@ export const CURATION_LOG_ACTIONS = [
   'identifier_settled',
   'separated',
   'kept_out',
+  'merge_proposal_taken_back',
 ] as const;
 
 /** One act of the curation log. */
