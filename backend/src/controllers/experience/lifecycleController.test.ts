@@ -32,7 +32,7 @@ vi.mock('../../services/sync/regionAssignmentService.js', () => ({
 
 // The pairing an override that publishes asks for (#1800), mocked for the same reason.
 vi.mock('../../services/sync/mergeProposalFinder.js', () => ({
-  drainPairing: vi.fn(async () => ({ places: 1, wholeCatalogue: false, open: 0 })),
+  drainPairing: vi.fn(async () => ({ places: 1, wholeCatalogue: false, open: 0, fromWikidata: 0 })),
 }));
 
 import { pool } from '../../db/index.js';

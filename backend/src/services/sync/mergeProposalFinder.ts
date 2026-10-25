@@ -51,6 +51,7 @@ import type { PoolClient } from 'pg';
 import { pool } from '../../db/index.js';
 import { KINDS, MEMBERSHIPS, placeOfferedSql } from '../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
+import { BEST } from './subset/entities.js';
 
 /** The reach every place has. */
 export const BASE_REACH_M = 300;
@@ -272,20 +273,91 @@ async function writeProposals(client: PoolClient, among: readonly number[] | nul
 }
 
 /**
+ * The open pairs Wikidata answers, with the part it names and the statement
+ * that names it (#1991, ADR-0150): one place's item states P361 "part of"
+ * toward the other's, or the other's states P527 "has part" toward it, read
+ * on each place's items that claim its identity (`place_identifiers`) and on
+ * the local subset's best statements. A pair whose statements name both places
+ * as the part is asked, as is one with only P276 "location", one with none,
+ * one a curator took back, and every pair where the subset is absent. P361 is
+ * the statement recorded where both state the one relation.
+ */
+function wikidataPartsSql(scope: string): string {
+  return `
+  WITH items AS (
+    SELECT pi.experience_id AS place, pi.value AS item
+      FROM place_identifiers pi
+     WHERE pi.scheme = 'wikidata' AND pi.claims_identity
+  ), statements AS (
+    SELECT p.id, part.place AS part_id,
+           jsonb_build_object('property', c.property, 'subject', c.subject, 'value', c.value_item) AS statement
+      FROM experience_merge_proposals p
+      JOIN items part ON part.place IN (p.place_a, p.place_b)
+      JOIN items whole ON whole.place IN (p.place_a, p.place_b) AND whole.place <> part.place
+      JOIN wikidata_claims c
+        ON (c.property = 'P361' AND c.subject = part.item AND c.value_item = whole.item)
+        OR (c.property = 'P527' AND c.subject = whole.item AND c.value_item = part.item)
+     WHERE p.answer IS NULL AND p.taken_back_at IS NULL AND ${scope}
+       AND c.rank >= 0 AND ${BEST('c')}
+  )
+  SELECT s.id, min(s.part_id) AS part_id,
+         (array_agg(s.statement ORDER BY s.statement->>'property', s.statement->>'subject', s.statement->>'value'))[1] AS statement
+    FROM statements s
+   GROUP BY s.id
+  HAVING count(DISTINCT s.part_id) = 1`;
+}
+
+/**
+ * Answer "part of" every open pair Wikidata answers (`wikidataPartsSql`),
+ * inside the drain's transaction, each with its row in the curation history
+ * naming no curator. A pair a curator is answering at that moment holds its
+ * advisory lock (`answerOnePair`) and is left for the curator. Answers how
+ * many pairs it answered.
+ */
+async function answerFromWikidata(client: PoolClient, among: readonly number[] | null): Promise<number> {
+  const scope = among === null ? 'true' : '(p.place_a = ANY($1::int[]) OR p.place_b = ANY($1::int[]))';
+  const result = await client.query(
+    `WITH answered AS (
+       UPDATE experience_merge_proposals p
+          SET answer = 'part_of', part_id = d.part_id, answered_by = NULL, answered_at = NOW(),
+              answered_by_catalogue = true, answer_statement = d.statement
+         FROM (${wikidataPartsSql(scope)}) d
+        WHERE p.id = d.id AND p.answer IS NULL
+          AND pg_try_advisory_xact_lock(hashtext('merge_proposal:' || p.id))
+        RETURNING p.id, p.place_a, p.place_b, p.part_id, p.answer_statement
+     )
+     INSERT INTO experience_curation_log (experience_id, curator_id, action, region_id, details)
+     SELECT a.place_a, NULL, 'merge_proposal_answered', NULL,
+            jsonb_build_object('proposalId', a.id, 'otherId', a.place_b, 'otherName', b.name, 'answer', 'part_of',
+                               'partId', a.part_id, 'catalogue', 'wikidata', 'statement', a.answer_statement)
+       FROM answered a
+       JOIN experiences b ON b.id = a.place_b`,
+    among === null ? [] : [among],
+  );
+  return result.rowCount ?? 0;
+}
+
+/**
  * The version of the rule above. Raise it with any change to what pairs two
  * places — a reach, a threshold, a word list, a name the rule reads — and the
  * next drain pairs the whole catalogue under the new rule by itself: the
  * database records the version its proposals were found under
  * (`experience_pairing_rule`). 1 is the trigram rule of #1249; 2 adds one
- * name's words standing in the other's (ADR-0120).
+ * name's words standing in the other's (ADR-0120); 3 answers "part of"
+ * from Wikidata (ADR-0150).
  */
-export const PAIRING_RULE_VERSION = 2;
+export const PAIRING_RULE_VERSION = 3;
 
-/** What one drain did: how many marked places it paired again, whether it ran over the whole catalogue, and how many pairs it left open among them. */
+/**
+ * What one drain did: how many marked places it paired again, whether it ran
+ * over the whole catalogue, how many pairs it left open among them, and how
+ * many it answered "part of" from Wikidata.
+ */
 export interface PairingDrain {
   places: number;
   wholeCatalogue: boolean;
   open: number;
+  fromWikidata: number;
 }
 
 /**
@@ -320,9 +392,10 @@ export async function drainPairing(): Promise<PairingDrain | null> {
     const places = marked.rows.map(row => row.experience_id);
     if (!wholeCatalogue && places.length === 0) {
       await client.query('COMMIT');
-      return { places: 0, wholeCatalogue, open: 0 };
+      return { places: 0, wholeCatalogue, open: 0, fromWikidata: 0 };
     }
     await writeProposals(client, wholeCatalogue ? null : places);
+    const fromWikidata = await answerFromWikidata(client, wholeCatalogue ? null : places);
     if (wholeCatalogue) {
       await client.query('UPDATE experience_pairing_rule SET rule_version = $1', [PAIRING_RULE_VERSION]);
     }
@@ -334,7 +407,7 @@ export async function drainPairing(): Promise<PairingDrain | null> {
       [wholeCatalogue, places],
     );
     await client.query('COMMIT');
-    return { places: places.length, wholeCatalogue, open: open.rows[0].n };
+    return { places: places.length, wholeCatalogue, open: open.rows[0].n, fromWikidata };
   } catch (error) {
     await client?.query('ROLLBACK').catch(() => undefined);
     console.error('[merge] pairing the changed places with near places failed:', error);
@@ -347,7 +420,9 @@ export async function drainPairing(): Promise<PairingDrain | null> {
 /** A drain in words, for a run's closing line and the server log. */
 export function pairingSentence(drain: PairingDrain | null): string {
   if (drain === null) return 'the pairing of near places failed; the server log has the cause';
-  const open = `${drain.open} near pair${drain.open === 1 ? '' : 's'} open`;
+  const answered = drain.fromWikidata === 0 ? ''
+    : `, ${drain.fromWikidata} answered part of from Wikidata`;
+  const open = `${drain.open} near pair${drain.open === 1 ? '' : 's'} open${answered}`;
   if (drain.wholeCatalogue) return `the whole catalogue paired again under the pairing rule's new version, ${open}`;
   if (drain.places === 0) return 'no place changed what pairs it with near places';
   return `${drain.places} changed place${drain.places === 1 ? '' : 's'} paired again with near places, ${open} among them`;

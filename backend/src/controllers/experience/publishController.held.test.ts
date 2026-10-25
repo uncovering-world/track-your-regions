@@ -20,7 +20,7 @@ vi.mock('../../db/index.js', () => ({
 
 // The pairing drain opens a connection of its own, outside this fake client.
 vi.mock('../../services/sync/mergeProposalFinder.js', () => ({
-  drainPairing: vi.fn(async () => ({ places: 0, wholeCatalogue: false, open: 0 })),
+  drainPairing: vi.fn(async () => ({ places: 0, wholeCatalogue: false, open: 0, fromWikidata: 0 })),
 }));
 
 // Mocked as a module rather than through the pool: placement opens its own

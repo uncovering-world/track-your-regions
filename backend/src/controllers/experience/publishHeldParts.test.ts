@@ -15,7 +15,7 @@ import { tidyLabelSql } from '../../services/sync/labelFold.js';
 
 // The pairing drain opens a connection of its own, outside the fake client.
 vi.mock('../../services/sync/mergeProposalFinder.js', () => ({
-  drainPairing: vi.fn(async () => ({ places: 0, wholeCatalogue: false, open: 0 })),
+  drainPairing: vi.fn(async () => ({ places: 0, wholeCatalogue: false, open: 0, fromWikidata: 0 })),
 }));
 
 vi.mock('../../db/index.js', () => ({
