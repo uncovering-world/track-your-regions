@@ -3963,6 +3963,28 @@ export interface MergePair {
      * @nullable
      */
   anchorWikidataItem: string | null;
+  /** The names of the kinds the card's own place is in, the same way, to name it beside its item. */
+  anchorKinds: string[];
+  /**
+     * The other place's item's label in the local Wikidata subset, English first (#1970).
+     * @nullable
+     */
+  otherWikidataLabel: string | null;
+  /**
+     * Its description there, which tells a city from the listing of its ruins.
+     * @nullable
+     */
+  otherWikidataDescription: string | null;
+  /**
+     * The card's own place's item's label, the same way.
+     * @nullable
+     */
+  anchorWikidataLabel: string | null;
+  /**
+     * Its description, the same way.
+     * @nullable
+     */
+  anchorWikidataDescription: string | null;
   /**
      * Between the two places' nearest offered points, in metres.
      * @minimum -9007199254740991

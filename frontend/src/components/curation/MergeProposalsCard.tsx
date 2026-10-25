@@ -82,6 +82,57 @@ function OtherPicture({ pair }: { pair: Pair }) {
   );
 }
 
+/** An item as a link, with its label and description from the local subset where it has them. */
+function ItemText({ item, label, description }: { item: string; label: string | null; description: string | null }) {
+  const about = [label, description].filter(Boolean).join(', ');
+  return (
+    <>
+      <Link href={wikidataItemUrl(item) ?? undefined} target="_blank" rel="noopener noreferrer">{item}</Link>
+      {about && <> — {about}</>}
+    </>
+  );
+}
+
+/**
+ * The two places' Wikidata items (#1970). One item they share is one link.
+ * Two items are each named beside the place that carries it, with the label
+ * and description that tell them apart: Babylon's city, Q5684, from the item
+ * of its World Heritage listing, Q100329356. A place with no item is said to
+ * have none, since a serial site or a place whose point was never written
+ * resolves to no item, and silence would read as the same item.
+ */
+function PairItems({ item, pair }: { item: ReviewQueueItem; pair: Pair }) {
+  const anchor = pair.anchorWikidataItem;
+  const other = pair.otherWikidataItem;
+  if (!anchor && !other) return null;
+  if (anchor === other) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        Both are Wikidata <ItemText item={anchor!} label={pair.anchorWikidataLabel} description={pair.anchorWikidataDescription} />
+      </Typography>
+    );
+  }
+  const anchorPlace = `${item.name} (${['this card', ...pair.anchorKinds].join(', ')})`;
+  const otherPlace = pair.otherKinds.length ? `${pair.otherName} (${pair.otherKinds.join(', ')})` : pair.otherName;
+  return (
+    <Box sx={{ mt: 0.25 }}>
+      <Typography variant="body2" color="text.secondary">
+        {anchor && other ? 'Two different Wikidata items:' : 'Only one of the two has a Wikidata item:'}
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ pl: 1.5 }}>
+        {anchorPlace}: {anchor
+          ? <ItemText item={anchor} label={pair.anchorWikidataLabel} description={pair.anchorWikidataDescription} />
+          : 'no item'}
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ pl: 1.5 }}>
+        {otherPlace}: {other
+          ? <ItemText item={other} label={pair.otherWikidataLabel} description={pair.otherWikidataDescription} />
+          : 'no item'}
+      </Typography>
+    </Box>
+  );
+}
+
 /** One pair: the other place, how the two stand to each other, what Jev makes of it, and the three answers. */
 function PairRow({ item, pair, judgement, answer, onAnswer }: {
   item: ReviewQueueItem;
@@ -92,7 +143,6 @@ function PairRow({ item, pair, judgement, answer, onAnswer }: {
   onAnswer: (answer: PairAnswer | undefined) => void;
 }) {
   const [looking, setLooking] = useState(false);
-  const url = wikidataItemUrl(pair.otherWikidataItem ?? '');
   const toggle = (next: Answer) => {
     if (answer?.answer === next) return onAnswer(undefined);
     // Part of starts with the other place as the part — the common shape, a
@@ -112,11 +162,8 @@ function PairRow({ item, pair, judgement, answer, onAnswer }: {
           </Stack>
           <Typography variant="body2" color="text.secondary">
             {distanceLabel(pair.distanceM)} apart · {similarityWords(pair)}
-            {url && <> · <Link href={url} target="_blank" rel="noopener noreferrer">{pair.otherWikidataItem}</Link></>}
-            {pair.anchorWikidataItem && pair.otherWikidataItem && pair.anchorWikidataItem !== pair.otherWikidataItem && (
-              <> · two different Wikidata items</>
-            )}
           </Typography>
+          <PairItems item={item} pair={pair} />
           {judgement && (
             // In grey, apart from the facts: a judgement is not a state of the places.
             <Typography variant="caption" sx={{ color: 'text.secondary', fontWeight: 600, display: 'block' }}>

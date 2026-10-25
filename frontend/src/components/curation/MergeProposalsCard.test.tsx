@@ -26,22 +26,44 @@ const DURHAM = {
     {
       proposalId: 41, otherId: 13341, otherName: 'Durham Cathedral', otherKinds: ['Places of worship'],
       otherImageUrl: null, otherImageCredit: null, otherLatitude: 54.7733, otherLongitude: -1.5755,
-      otherWikidataItem: 'Q1250209', anchorWikidataItem: 'Q1250209', distanceM: 139, nameSimilarity: 0.6486,
+      otherWikidataItem: 'Q1250209', anchorWikidataItem: 'Q1250209', anchorKinds: ['World Heritage Sites'],
+      otherWikidataLabel: null, otherWikidataDescription: null, anchorWikidataLabel: null, anchorWikidataDescription: null,
+      distanceM: 139, nameSimilarity: 0.6486,
       exact: false, reachM: 300, foundBy: 'similar', proposedAt: '2026-10-17T10:00:00.000Z',
     },
     {
       proposalId: 42, otherId: 11800, otherName: 'Durham Castle and Cathedral', otherKinds: ['Public art'],
       otherImageUrl: null, otherImageCredit: null, otherLatitude: 54.7745, otherLongitude: -1.5760,
-      otherWikidataItem: 'Q5316567', anchorWikidataItem: 'Q1250209', distanceM: 20, nameSimilarity: 1,
+      otherWikidataItem: 'Q5316567', anchorWikidataItem: 'Q1250209', anchorKinds: ['World Heritage Sites'],
+      otherWikidataLabel: null, otherWikidataDescription: null, anchorWikidataLabel: null, anchorWikidataDescription: null,
+      distanceM: 20, nameSimilarity: 1,
       exact: true, reachM: 300, foundBy: 'similar', proposedAt: '2026-10-17T10:00:00.000Z',
     },
   ],
 } as unknown as ReviewQueueItem;
 
-function renderCard(onDone = vi.fn()) {
+/**
+ * Babylon on dev, 2026-10-24 (#1970): the World Heritage site resolves to the
+ * item of its listing, the Archaeology row to the ancient city's, and the two
+ * names are the same, so only the items' descriptions tell them apart.
+ */
+const BABYLON = {
+  id: 183, external_id: '278', name: 'Babylon', kind_id: 1, kind_name: 'World Heritage Sites',
+  missing_since: null, source_membership: 'present', existence: 'extant', kind: 'merge-proposals', proposed: null,
+  merge_pairs: [{
+    proposalId: 37, otherId: 14711, otherName: 'Babylon', otherKinds: ['Archaeology'],
+    otherImageUrl: null, otherImageCredit: null, otherLatitude: 32.5363, otherLongitude: 44.4209,
+    otherWikidataItem: 'Q5684', anchorWikidataItem: 'Q100329356', anchorKinds: ['World Heritage Sites'],
+    otherWikidataLabel: 'Babylon', otherWikidataDescription: 'capital city of Babylonia and an archaeological site in modern-day Iraq',
+    anchorWikidataLabel: 'Babylon', anchorWikidataDescription: 'archaeological site of ancient Babylon, Iraq',
+    distanceM: 64, nameSimilarity: 1, exact: false, reachM: 3000, foundBy: 'similar', proposedAt: '2026-10-17T10:00:00.000Z',
+  }],
+} as unknown as ReviewQueueItem;
+
+function renderCard(onDone = vi.fn(), item = DURHAM) {
   render(
     <QueryClientProvider client={new QueryClient()}>
-      <MergeProposalsCard item={DURHAM} onDone={onDone} />
+      <MergeProposalsCard item={item} onDone={onDone} />
     </QueryClientProvider>,
   );
   return onDone;
@@ -61,10 +83,30 @@ describe('two near places with similar names', () => {
     expect(screen.getByText(/139 m apart · names 65 % alike/)).toBeTruthy();
     expect(screen.getByText(/20 m apart · the same name/)).toBeTruthy();
     expect(screen.getByText('same name, same spot')).toBeTruthy();
-    // Two different Wikidata items on the public-art pair, and not on the cathedral's.
-    expect(screen.getAllByText(/two different Wikidata items/)).toHaveLength(1);
-    expect(screen.getByRole('link', { name: 'Q1250209' })).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q1250209');
+    // Two different Wikidata items on the public-art pair, and one shared item on the cathedral's.
+    expect(screen.getAllByText('Two different Wikidata items:')).toHaveLength(1);
+    expect(screen.getByText(/Both are Wikidata/)).toBeTruthy();
+    expect(screen.getAllByRole('link', { name: 'Q1250209' })[0]).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q1250209');
     expect(screen.getByRole('button', { name: 'Save answers' })).toBeDisabled();
+  });
+
+  it('names each place beside its own Wikidata item, with what the item is', () => {
+    renderCard(vi.fn(), BABYLON);
+    expect(screen.getByText('Two different Wikidata items:')).toBeTruthy();
+    const anchor = screen.getByText(/Babylon \(this card, World Heritage Sites\):/);
+    expect(anchor.textContent).toContain('Q100329356 — Babylon, archaeological site of ancient Babylon, Iraq');
+    const other = screen.getByText(/Babylon \(Archaeology\):/);
+    expect(other.textContent).toContain('Q5684 — Babylon, capital city of Babylonia and an archaeological site in modern-day Iraq');
+    expect(screen.getByRole('link', { name: 'Q5684' })).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q5684');
+    expect(screen.getByRole('link', { name: 'Q100329356' })).toHaveAttribute('href', 'https://www.wikidata.org/wiki/Q100329356');
+  });
+
+  it('says which place has no item when only one resolves to one', () => {
+    const [pair] = BABYLON.merge_pairs!;
+    renderCard(vi.fn(), { ...BABYLON, merge_pairs: [{ ...pair, anchorWikidataItem: null, anchorWikidataLabel: null, anchorWikidataDescription: null }] });
+    expect(screen.getByText('Only one of the two has a Wikidata item:')).toBeTruthy();
+    expect(screen.getByText(/Babylon \(this card, World Heritage Sites\):/).textContent).toContain('no item');
+    expect(screen.getByRole('link', { name: 'Q5684' })).toBeTruthy();
   });
 
   it('answers one place for every exact pair at once, and sends only what was answered', async () => {
