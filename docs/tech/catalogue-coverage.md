@@ -165,8 +165,10 @@ judged either; the review queue answers it.
 ### `calibration-sources.jsonl` and `calibration/<kind>.jsonl`: the tops a traveller expects of a kind
 
 A kind's fame line is chosen, and re-checked, on the kind's own calibration list, never copied
-from another kind's (`docs/tech/filling-a-kind.md` § 2, #1864). One list per live kind of place,
-named by the kind's slug; an entry is one of the kind's tops nobody who knows it would dispute,
+from another kind's (`docs/tech/filling-a-kind.md` § 2, #1864). One list per live kind of place
+or of work, named by the kind's slug: Notable works' list holds the finds a traveller goes to a
+museum to see, since a find's line decides which museum shows it (#1988). An entry is one of the
+kind's tops nobody who knows it would dispute,
 identified by its Wikidata item, and names the sources that call it a top. The register of those
 sources is `calibration-sources.jsonl`, so a slug on an entry is one a person can read again.
 
@@ -239,7 +241,8 @@ It refuses:
   carries its id. A component of a serial property, such as one temple of Kyoto's, is filed
   under what it is;
 - in the register of reference lists: a slug used twice; in a calibration list: a file named by a
-  slug the register of kinds lacks, by a kind only proposed, or by a kind that holds no place; a
+  slug the register of kinds lacks, by a kind only proposed, or by a kind that holds neither a
+  place nor a work; a
   slug or a Wikidata id used twice in one list; an entry with no source, naming a source twice,
   or naming one `calibration-sources.jsonl` does not have; a list with no register beside it. A
   directory with no `calibration/` has calibrated nothing and may do without the register;
@@ -411,6 +414,13 @@ the first that applies:
 A place is known by the same identifiers the survey lists match by (`KNOWN_AS_SQL`), and offered
 by the same `countedMembershipSql`, in the kind the list belongs to. A kind's list is the whole
 world's, so `--region` never narrows it.
+
+A kind of work has no catalogue kind (#1988). A work is offered where a treasure its item names
+is shown by a venue a reader may go to (`venuesShowingSql`, the fragment a survey's work is matched
+by). It is held where such a treasure exists and no such venue shows it, and the treasure is
+named. No run's refusal or curator's queue is read for a work. A work reaches a venue through
+more than one door: an artwork at the museums' line, a find at the finds' line on its source row
+(`findEnterSitelinks`). So a work is under the editions line only below the lowest of them.
 
 **What the surveys expect of each proposed kind.** For every kind the product does not have:
 how many expectations are filed under it, in how many regions, how many of them a reader
