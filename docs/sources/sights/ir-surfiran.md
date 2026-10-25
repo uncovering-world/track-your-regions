@@ -70,5 +70,6 @@ and a Russian guide site share one list of sights, and counts the three as one s
 asks whether an entry has two. The Isfahan survey of 2026-10-02 counted it on 42 of the 149
 entries of `db/catalogue-coverage/expectations/isfahan.jsonl` (by type: place 27, food 7, object
 4, activity 3, drink 1). On 1 of them nothing else but the surveyor's own list names the entry.
-The kinds in the front matter are those under which the survey filed two or more of the entries
+Since UNESCO's counts were checked again (#1981) the list holds 148 entries, and these figures
+are unchanged. The kinds in the front matter are those under which the survey filed two or more of the entries
 it is named on.

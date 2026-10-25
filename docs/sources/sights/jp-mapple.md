@@ -72,5 +72,6 @@ adaptation: a curator reads it, and nothing of its text is taken.
 only. The Kyoto survey of 2026-10-02 counted it on 105 of the 246 entries of
 `db/catalogue-coverage/expectations/kyoto.jsonl` (by type: place 68, event 11, food 10, activity
 7, work 4, route 3, drink 2). On 1 of them nothing else but the surveyor's own list names the
-entry. The kinds in the front matter are those under which the survey filed two or more of the
-entries it is named on.
+entry. Since UNESCO's counts were checked again (#1981) the list holds 245 entries, and these
+figures are unchanged. The kinds in the front matter are those under which the survey filed two
+or more of the entries it is named on.

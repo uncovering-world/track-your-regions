@@ -73,5 +73,7 @@ privacy notice gives, helpdesk [at] itto.org.
 **What the survey measured.** Three pages by fetch: Isfahan city, Isfahan province and Kashan.
 The Isfahan survey of 2026-10-02 counted it on 24 of the 149 entries of
 `db/catalogue-coverage/expectations/isfahan.jsonl` (by type: place 24). On none of them is the
-surveyor's own list the only other source. The kinds in the front matter are those under which
+surveyor's own list the only other source. Since UNESCO's counts were checked again (#1981) the
+list holds 148 entries, and these figures are unchanged. The kinds in the front matter are those
+under which
 the survey filed two or more of the entries it is named on.

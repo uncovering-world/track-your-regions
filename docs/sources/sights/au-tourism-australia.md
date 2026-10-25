@@ -72,6 +72,8 @@ to the state's site. The terms reserve reproduction: ask first.
 **What the survey measured.** Nine pages by fetch, none on a closed path. The Sydney survey of
 2026-10-02 counted it on 82 of the 483 entries of
 `db/catalogue-coverage/expectations/sydney.jsonl` (by type: place 63, activity 7, route 4, event
-4, food 2, drink 2). On none of them is the surveyor's own list the only other source. The kinds
+4, food 2, drink 2). On none of them is the surveyor's own list the only other source. Since
+UNESCO's counts were checked again (#1981) the list holds 482 entries, and these figures are
+unchanged. The kinds
 in the front matter are those under which the survey filed two or more of the entries it is
 named on.

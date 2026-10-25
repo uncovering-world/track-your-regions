@@ -82,5 +82,6 @@ Juárez; Museo Nacional de las Intervenciones (ex-convento de Churubusco); Isla 
 (Xochimilco); Churrería El Moro. Since Viajeros Callejeros was withdrawn (#1962) it stands on
 165 of the 245 entries (by type: place 130, work 10, event 9, activity 7, food 6, drink 2, route
 1): the replica of Pakal's tomb left the list. On 8 of them nothing else but the surveyor's own
-list names the entry. The kinds in the front matter are those under which the survey
-filed two or more of the entries it is named on.
+list names the entry. Since UNESCO's counts were checked again (#1981) the list holds 244
+entries, and these figures are unchanged. The kinds in the front matter are those under which the
+survey filed two or more of the entries it is named on.

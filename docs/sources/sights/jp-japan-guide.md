@@ -74,5 +74,6 @@ first.
 Uji, and the Kyoto food, museum and shopping guides. The Kyoto survey of 2026-10-02 counted it
 on 116 of the 246 entries of `db/catalogue-coverage/expectations/kyoto.jsonl` (by type: place
 92, event 7, activity 4, route 4, food 4, drink 2, object 2, work 1). On none of them is the
-surveyor's own list the only other source. The kinds in the front matter are those under which
-the survey filed two or more of the entries it is named on.
+surveyor's own list the only other source. Since UNESCO's counts were checked again (#1981) the
+list holds 245 entries, and these figures are unchanged. The kinds in the front matter are those
+under which the survey filed two or more of the entries it is named on.

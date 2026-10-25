@@ -77,9 +77,14 @@ page (`dt/contact-us.html`), not read.
 
 **What the survey measured.** It could be read: the home page, Popular Monuments, the tourist
 places index, "Spiritual Delhi", Unexplored Delhi, Food Tours, Festivals in Delhi, Delhi For
-Kids and seven itineraries. Six listing pages were read and counted for nothing, as directories.
+Kids and seven itineraries, and, in the re-judging of #1981, its Dussehra page. Six listing
+pages were read and counted for nothing, as directories.
 The Delhi survey of 2026-10-02 counted it on 116 of the 220 entries of
 `db/catalogue-coverage/expectations/delhi.jsonl` (by type: place 90, event 9, food 8, activity
 4, route 4, drink 1). On 10 of them nothing else but the surveyor's own list names the entry.
-Places among those: Gauri Shankar Temple. The kinds in the front matter are those under which
+Places among those: Gauri Shankar Temple. Since UNESCO's counts were checked again (#1981) it
+stands on 117 of the 220 entries (by type: place 90, event 10, food 8, activity 4, route 4,
+drink 1): the Dussehra page names one entry UNESCO's withdrawal had left with one source. On 11
+of them nothing else but the surveyor's own list names the entry. The kinds in the front matter
+are those under which
 the survey filed two or more of the entries it is named on.

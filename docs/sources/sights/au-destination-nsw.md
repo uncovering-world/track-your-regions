@@ -78,5 +78,6 @@ ask first.
 `visitnsw.com`, by fetch. The Sydney survey of 2026-10-02 counted it on 387 of the 483 entries
 of `db/catalogue-coverage/expectations/sydney.jsonl` (by type: place 324, activity 27, route 15,
 event 13, food 4, work 3, drink 1). On 4 of them nothing else but the surveyor's own list names
-the entry. The kinds in the front matter are those under which the survey filed two or more of
-the entries it is named on.
+the entry. Since UNESCO's counts were checked again (#1981) the list holds 482 entries, and these
+figures are unchanged. The kinds in the front matter are those under which the survey filed two
+or more of the entries it is named on.

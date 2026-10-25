@@ -71,6 +71,7 @@ on 36 of the 252 entries of `db/catalogue-coverage/expectations/mexico-city.json
 place 31, activity 2, work 2, route 1). On none of them is the surveyor's own list the only
 other source. Since Viajeros Callejeros was withdrawn (#1962) it stands on 38 of the 245 entries
 (by type: place 32, activity 2, work 2, route 2): the two pages read in the re-judging named
-one entry each. On none of them is the surveyor's own list the only other source.
-The kinds in the front matter are those under which the survey filed two or more
+one entry each. On none of them is the surveyor's own list the only other source. Since
+UNESCO's counts were checked again (#1981) the list holds 244 entries, and these figures are
+unchanged. The kinds in the front matter are those under which the survey filed two or more
 of the entries it is named on.

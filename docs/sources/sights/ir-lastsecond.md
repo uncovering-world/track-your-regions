@@ -71,5 +71,6 @@ The survey compared its lists with Kojaro's and counts the two as two sources: t
 differ in order and content, the dish lists overlap heavily. The Isfahan survey of 2026-10-02
 counted it on 52 of the 149 entries of `db/catalogue-coverage/expectations/isfahan.jsonl` (by
 type: place 44, food 8). On 7 of them nothing else but the surveyor's own list names the entry.
-The kinds in the front matter are those under which the survey filed two or more of the entries
+Since UNESCO's counts were checked again (#1981) the list holds 148 entries, and these figures
+are unchanged. The kinds in the front matter are those under which the survey filed two or more of the entries
 it is named on.
