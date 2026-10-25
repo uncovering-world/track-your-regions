@@ -28,7 +28,7 @@ vi.mock('../../services/sync/regionAssignmentService.js', () => ({
 // Mocked as a module for the same reason: the pairing a published arrival asks
 // for (#1800) opens its own transaction once the publish has committed.
 vi.mock('../../services/sync/mergeProposalFinder.js', () => ({
-  drainPairing: vi.fn(async () => ({ places: 1, wholeCatalogue: false, open: 0 })),
+  drainPairing: vi.fn(async () => ({ places: 1, wholeCatalogue: false, open: 0, fromWikidata: 0 })),
 }));
 
 import {

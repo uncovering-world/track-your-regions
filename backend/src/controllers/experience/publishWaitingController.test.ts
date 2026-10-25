@@ -15,7 +15,7 @@ vi.mock('../../db/index.js', () => ({
 }));
 
 vi.mock('../../services/sync/mergeProposalFinder.js', () => ({
-  drainPairing: vi.fn(async () => ({ places: 0, wholeCatalogue: false, open: 0 })),
+  drainPairing: vi.fn(async () => ({ places: 0, wholeCatalogue: false, open: 0, fromWikidata: 0 })),
 }));
 
 vi.mock('./experienceScope.js', () => ({

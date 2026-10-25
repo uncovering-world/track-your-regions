@@ -6,7 +6,7 @@
 import { describe, it, expect } from 'vitest';
 import { placeOfferedSql } from '../../db/membership.js';
 import { offeredLocationSql, publishedContentSql } from '../../db/readerPredicates.js';
-import { BASE_REACH_M, EXACT_DISTANCE_M, MIN_SIMILARITY, PROPOSAL_ROWS_SQL, WIDEST_REACH_M, candidatePairsSql, foldedNamesSql, reachSql, GENERIC_NAME_WORDS, MIN_WORD_LENGTH } from './mergeProposalFinder.js';
+import { BASE_REACH_M, EXACT_DISTANCE_M, MIN_SIMILARITY, PROPOSAL_ROWS_SQL, WIDEST_REACH_M, candidatePairsSql, foldedNamesSql, reachSql, GENERIC_NAME_WORDS, MIN_WORD_LENGTH, pairingSentence } from './mergeProposalFinder.js';
 
 const collapse = (sql: string) => sql.replace(/\s+/g, ' ');
 
@@ -107,5 +107,16 @@ describe('the rows the pass and the check read', () => {
     expect(sql).toContain('JOIN experiences a ON a.id = p.place_a');
     expect(sql).toContain('JOIN experiences b ON b.id = p.place_b');
     expect(sql).toContain('ORDER BY k.display_priority, k.id');
+  });
+});
+
+describe('a drain in words', () => {
+  it('says how many pairs Wikidata answered part of, and nothing of it where none (#1991)', () => {
+    expect(pairingSentence({ places: 3, wholeCatalogue: false, open: 2, fromWikidata: 1 }))
+      .toBe('3 changed places paired again with near places, 2 near pairs open, 1 answered part of from Wikidata among them');
+    expect(pairingSentence({ places: 0, wholeCatalogue: true, open: 26, fromWikidata: 13 }))
+      .toBe("the whole catalogue paired again under the pairing rule's new version, 26 near pairs open, 13 answered part of from Wikidata");
+    expect(pairingSentence({ places: 1, wholeCatalogue: false, open: 1, fromWikidata: 0 }))
+      .toBe('1 changed place paired again with near places, 1 near pair open among them');
   });
 });

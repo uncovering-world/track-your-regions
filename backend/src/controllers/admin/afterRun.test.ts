@@ -12,7 +12,7 @@ vi.mock('../../services/sync/componentItemJob.js', () => ({
 }));
 vi.mock('../../services/sync/mergeProposalFinder.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../services/sync/mergeProposalFinder.js')>()),
-  drainPairing: vi.fn(async () => ({ places: 2, wholeCatalogue: false, open: 1 })),
+  drainPairing: vi.fn(async () => ({ places: 2, wholeCatalogue: false, open: 1, fromWikidata: 0 })),
 }));
 vi.mock('../experience/equalItemMerges.js', () => ({
   joinPlacesClaimingOneItem: vi.fn(async () => ({ merged: [], refused: [] })),

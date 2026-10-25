@@ -104,7 +104,9 @@ export async function getJevUsage(): Promise<JevUsage> {
          WHERE s.place_a = p.place_a AND s.place_b = p.place_b AND s.asked = ${askedPairSql('p', 'a', 'b')}
          ORDER BY s.asked_at DESC, s.id DESC LIMIT 1
       ) g ON true
-     WHERE p.answer IS NOT NULL
+     -- A curator's answers only: a part of read off Wikidata (ADR-0150) is no
+     -- curator agreeing with Jev.
+     WHERE p.answer IS NOT NULL AND NOT p.answered_by_catalogue
   `);
   const arrivals = await pool.query<Counted>(`
     SELECT (SELECT count(*) FROM experience_visit_suggestions)::int AS calls,
