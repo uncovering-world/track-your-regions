@@ -14,9 +14,25 @@ describe('a metadata rewrite a visitor would not notice', () => {
   it('holds a credit beside another picture, or under another licence', () => {
     expect(metadataPassesTheGate('imageCredit', credit('A'), credit('B'), false)).toBeNull();
     expect(metadataPassesTheGate('imageCredit', credit('A'), credit('A', 'CC BY-SA 4.0'), true)).toBeNull();
-    expect(metadataPassesTheGate('imageCredit', null, credit('A'), true)).toBeNull();
     // No licence on either side is no licence kept.
     expect(metadataPassesTheGate('imageCredit', { author: 'A' }, { author: 'B' }, true)).toBeNull();
+  });
+
+  // Stonehenge shows `Stonehenge Total.jpg` with no credit, and Archaeology and
+  // Public art both bring the file's credit: Stefan Kühn (#1966).
+  it('passes the credit of the picture the place shows where it holds none', () => {
+    const kuhn = credit('Stefan Kühn', 'CC BY-SA 3.0');
+    expect(metadataPassesTheGate('imageCredit', null, kuhn, true)).toBe('same-file-credit');
+    expect(metadataPassesTheGate('imageCredit', undefined, kuhn, true)).toBe('same-file-credit');
+    expect(passingMetadataKeys({ inDanger: false }, { inDanger: false, imageCredit: kuhn }, [], true))
+      .toEqual(['imageCredit']);
+  });
+
+  it('holds a first credit beside another picture, one naming no licence, and one a curator owns', () => {
+    expect(metadataPassesTheGate('imageCredit', null, credit('A'), false)).toBeNull();
+    expect(metadataPassesTheGate('imageCredit', null, { author: 'A' }, true)).toBeNull();
+    expect(metadataPassesTheGate('imageCredit', null, { author: 'A', license: '' }, true)).toBeNull();
+    expect(passingMetadataKeys({}, { imageCredit: credit('A') }, ['image_url'], true)).toEqual([]);
   });
 
   it('passes a number re-measured by under a tenth as re-measured, and a larger move as unseen', () => {
