@@ -47,6 +47,7 @@ import { waitMessage } from './wikidataUtils.js';
 import { userAgent } from '../../config/userAgent.js';
 import type { SyncProgress, UnescoApiRecord } from './types.js';
 import { feedText } from './unescoText.js';
+import { assertRobotsAllow } from '../robots/robotsSignals.js';
 
 const LOG_PREFIX = '[UNESCO Sync]';
 
@@ -146,6 +147,7 @@ function logQuota(response: Response): void {
 
 async function attemptExport(attempt: number, isCancelled?: () => boolean): Promise<UnescoApiRecord[]> {
   const url = `${EXPORT_URL}?select=${encodeURIComponent(EXPORT_FIELDS.join(','))}`;
+  await assertRobotsAllow(url);
   const { signal, release } = abortOn(UNESCO_TIMEOUT_MS, isCancelled);
   try {
     const response = await fetch(url, {

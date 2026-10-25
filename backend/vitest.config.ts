@@ -4,6 +4,8 @@ export default defineConfig({
   test: {
     environment: 'node',
     globals: true,
+    // No spec reads a real host's robots.txt (`services/robots/robotsSignals.ts`).
+    env: { ROBOTS_CHECK: 'off' },
     // scripts/ holds the repository's own tooling. Only the pieces that decide
     // something are worth a unit test — review-surface.mjs measures how much
     // review a branch asks for (#923), gates.mjs decides which gates a change

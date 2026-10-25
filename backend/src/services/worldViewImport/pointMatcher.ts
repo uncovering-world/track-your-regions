@@ -13,6 +13,7 @@ import { parseMarkers, parseGeoTag } from '../wikivoyageExtract/markerParser.js'
 import type { ParsedMarker } from '../wikivoyageExtract/markerParser.js';
 import { userAgent } from '../../config/userAgent.js';
 import { buildCoveringSet, deepestCommonDivisions, type CandidateDivision, type PointDivision } from './pointCovering.js';
+import { assertRobotsAllow } from '../robots/robotsSignals.js';
 
 const WIKIVOYAGE_API = 'https://en.wikivoyage.org/w/api.php';
 const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
@@ -46,6 +47,7 @@ async function fetchWikidataP625Batch(qids: string[]): Promise<WikidataEntities 
   url.searchParams.set('props', 'claims');
   url.searchParams.set('format', 'json');
 
+  await assertRobotsAllow(url.toString());
   const resp = await fetch(url.toString(), {
     headers: { 'User-Agent': USER_AGENT },
     signal: AbortSignal.timeout(30000),
@@ -153,6 +155,7 @@ async function fetchWikitextForPage(pageTitle: string): Promise<string> {
     url.searchParams.set('prop', 'wikitext');
     url.searchParams.set('format', 'json');
 
+    await assertRobotsAllow(url.toString());
     const resp = await fetch(url.toString(), {
       headers: { 'User-Agent': USER_AGENT },
       signal: AbortSignal.timeout(30000),

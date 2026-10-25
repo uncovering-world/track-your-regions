@@ -12,6 +12,7 @@ import { pool } from '../../db/index.js';
 import { sparqlQuery, extractQid } from '../sync/wikidataUtils.js';
 import { getOrFetchGeoshape } from './geoshapeCache.js';
 import { userAgent } from '../../config/userAgent.js';
+import { assertRobotsAllow } from '../robots/robotsSignals.js';
 
 const USER_AGENT = userAgent({ bot: true });
 
@@ -61,6 +62,7 @@ async function resolveWikivoyageTitlesBatch(titles: string[], childQidSet: Set<s
   qUrl.searchParams.set('prop', 'pageprops');
   qUrl.searchParams.set('ppprop', 'wikibase_item');
   qUrl.searchParams.set('format', 'json');
+  await assertRobotsAllow(qUrl.toString());
   const qResp = await fetch(qUrl.toString(), {
     headers: { 'User-Agent': USER_AGENT },
     signal: AbortSignal.timeout(15000),
@@ -124,6 +126,7 @@ async function collectChildQidsFromWikivoyage(
     url.searchParams.set('prop', 'wikitext');
     url.searchParams.set('format', 'json');
 
+    await assertRobotsAllow(url.toString());
     const resp = await fetch(url.toString(), {
       headers: { 'User-Agent': USER_AGENT },
       signal: AbortSignal.timeout(15000),

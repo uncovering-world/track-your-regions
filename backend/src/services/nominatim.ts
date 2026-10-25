@@ -20,6 +20,9 @@
  * keeps asking is a ban.
  */
 
+import { BOT_PRODUCT_TOKEN } from '../config/userAgent.js';
+import { assertRobotsAllow } from './robots/robotsSignals.js';
+
 const NOMINATIM_SEARCH = 'https://nominatim.openstreetmap.org/search';
 /** A little over the policy's one second, so clock jitter never makes it two. */
 const SPACING_MS = 1100;
@@ -153,6 +156,8 @@ export async function searchNominatim(q: string, options: NominatimSearch): Prom
       url.searchParams.set('addressdetails', '0');
       url.searchParams.set('extratags', '1');
     }
+    // The world-view import's search is a program's call; a curator's search is a person's.
+    if (options.userAgent.startsWith(BOT_PRODUCT_TOKEN)) await assertRobotsAllow(url.toString());
     const { signal, release } = boundedBy(options.signal);
     try {
       const response = await fetch(url.toString(), {

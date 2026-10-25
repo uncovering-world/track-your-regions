@@ -43,6 +43,7 @@ import { commonsUploadFileName } from '@tyr/shared/pictures';
 import { pool } from '../../db/index.js';
 import { sourcePlacesSql } from '../../db/membership.js';
 import { isCommonsPictureUrl, isStorableHttpUrl } from '../../types/urlSafety.js';
+import { assertRobotsAllow } from '../robots/robotsSignals.js';
 
 const LOG_PREFIX = '[Image Credit]';
 
@@ -372,6 +373,7 @@ async function askCommons(
     iiextmetadatafilter: 'Artist|LicenseShortName|LicenseUrl',
     titles: names.map((n) => `File:${n}`).join('|'),
   });
+  await assertRobotsAllow(`${COMMONS_API}?${params}`);
   const { signal, release } = abortOn(timeoutMs, isCancelled);
   try {
     const response = await fetch(`${COMMONS_API}?${params}`, {

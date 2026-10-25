@@ -105,6 +105,12 @@ interface UserAgentOptions {
   purpose?: string;
 }
 
+/**
+ * The product token the source runs carry, and the one a `robots.txt` group
+ * addresses them by (RFC 9309 § 2.2.1, ADR-0148).
+ */
+export const BOT_PRODUCT_TOKEN = `${CLIENT}Bot`;
+
 /** The `User-Agent` header for one outbound call. */
 export function userAgent({ bot = false, purpose }: UserAgentOptions = {}): string {
   // Whatever the environment holds becomes one line of header-safe text. A
@@ -115,7 +121,7 @@ export function userAgent({ bot = false, purpose }: UserAgentOptions = {}): stri
   // answers rather than publishing an empty one.
   const configured = headerSafe(process.env.USER_AGENT_CONTACT ?? '');
   const contact = configured || DEFAULT_CONTACT;
-  const client = bot ? `${CLIENT}Bot` : CLIENT;
+  const client = bot ? BOT_PRODUCT_TOKEN : CLIENT;
   const identity = headerSafe(purpose ? `${contact}; ${purpose}` : contact);
   return `${client}/${VERSION} (${identity})`;
 }

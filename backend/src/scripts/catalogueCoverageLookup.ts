@@ -24,6 +24,7 @@ import { pathToFileURL } from 'node:url';
 import { userAgent } from '../config/userAgent.js';
 import { pool } from '../db/index.js';
 import { worldHeritageReading } from '../services/catalogueCoverage/worldHeritageReading.js';
+import { assertRobotsAllow, RobotsRefusal } from '../services/robots/robotsSignals.js';
 
 const WIKIVOYAGE_API = 'https://en.wikivoyage.org/w/api.php';
 const WIKIDATA_API = 'https://www.wikidata.org/w/api.php';
@@ -61,6 +62,7 @@ class ApiRefusal extends Error {}
 /** One call: the answer, or why there is none yet and how long to wait before asking again. */
 async function ask(api: string, url: string, attempt: number): Promise<{ answer: Record<string, unknown> } | { failure: string; wait: number }> {
   const patience = 2000 * (attempt + 1);
+  await assertRobotsAllow(url);
   const response = await fetch(url, { headers: { 'User-Agent': USER_AGENT } });
   if (!response.ok) {
     // A 429 says when to come back; anything else is waited out a little longer each time.
@@ -85,7 +87,7 @@ async function apiGet(api: string, params: Record<string, string>): Promise<Reco
       ({ failure: lastFailure, wait } = result);
     } catch (error) {
       // A refusal is final. A request that never got an answer, a dropped connection, is asked again.
-      if (error instanceof ApiRefusal) throw error;
+      if (error instanceof ApiRefusal || error instanceof RobotsRefusal) throw error;
       lastFailure = error instanceof Error ? error.message : String(error);
     }
     await sleep(wait);

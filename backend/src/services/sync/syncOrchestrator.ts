@@ -36,6 +36,7 @@ import {
 import type { SyncRunContext, SyncServiceConfig } from './syncContract.js';
 import type { SyncProgress, RunVerdict, ErrorDetail, SyncRunOptions } from './types.js';
 import { runningSyncs, isTerminalSyncStatus } from './types.js';
+import { refreshRobotsForRun } from '../robots/robotsSignals.js';
 
 // =============================================================================
 // Orchestrator
@@ -173,7 +174,6 @@ export async function orchestrateSync<T>(
 ): Promise<void> {
   const { sourceId, logPrefix } = config;
   const dryRun = options.dryRun ?? false;
-
   // A pass registers its later sources while they wait for their turn, so the
   // panel shows them as running and a second start is refused; that entry is
   // this run's own, and the run takes it up.
@@ -181,6 +181,9 @@ export async function orchestrateSync<T>(
   if (current !== pass?.progress && isSyncStillRunning(current)) {
     throw new Error(`${logPrefix} sync already in progress`);
   }
+  // Every run asks each host's robots.txt afresh before its first call
+  // (ADR-0148); a start refused above leaves the running one's reads alone.
+  refreshRobotsForRun();
 
   // Taken up in place rather than replaced, so the pass's sources stay on it.
   const progress = pass ? Object.assign(pass.progress, initSyncProgress(dryRun)) : initSyncProgress(dryRun);

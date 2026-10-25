@@ -17,6 +17,7 @@ import type { ReadableStream as WebReadableStream } from 'node:stream/web';
 import { userAgent } from '../../config/userAgent.js';
 import { NotOnHost } from './catalog.js';
 import { downloadRanges } from './rangedDownload.js';
+import { assertRobotsAllow } from '../robots/robotsSignals.js';
 
 /** The connections a host is held to: Wikimedia's three, unless the host says otherwise. */
 const HOST_CONNECTIONS = 3;
@@ -65,7 +66,13 @@ async function connection(url: string, signal?: AbortSignal): Promise<() => void
   };
 }
 
+/**
+ * One request to a dump host, asked of the host's `robots.txt` first. A
+ * redirect is followed without a second check: the hosts redirect to the file
+ * they hand out (the planet's S3 bucket), never to another publisher.
+ */
 async function request(url: string, init: RequestInit = {}): Promise<{ response: Response; release: () => void }> {
+  await assertRobotsAllow(url);
   const release = await connection(url, init.signal ?? undefined);
   try {
     const response = await fetch(url, { ...init, headers: { ...init.headers, 'User-Agent': USER_AGENT }, redirect: 'follow' });

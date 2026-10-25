@@ -15,6 +15,8 @@
  * hook, and it is the whole of the difference between the two.
  */
 
+import { RobotsRefusal } from '../robots/robotsSignals.js';
+
 /**
  * Told when a query is about to wait, so a screen can say so.
  *
@@ -154,6 +156,18 @@ export interface RetryOptions {
 }
 
 /**
+ * Throws where an attempt's failure ends the loop before it is classified. A
+ * cancel is asked first, because the abort it causes is indistinguishable from
+ * a timeout, and retrying a run that has been stopped would wait out a backoff
+ * on its way to stopping anyway. A host's refusal is its answer, and asking
+ * again would only wait for the same one.
+ */
+function throwIfFinal(error: unknown, isCancelled?: () => boolean): void {
+  if (isCancelled?.()) throw new Error('Sync cancelled');
+  if (error instanceof RobotsRefusal) throw error;
+}
+
+/**
  * Try, wait, try again — until it works, the run is cancelled, or the patience
  * runs out.
  *
@@ -173,10 +187,7 @@ export async function withRetries<T>(
     try {
       return await attempt(n);
     } catch (error) {
-      // Asked before the error is classified, because the abort a cancel causes
-      // is indistinguishable from a timeout — and retrying a run that has been
-      // stopped would wait out a backoff on its way to stopping anyway.
-      if (isCancelled?.()) throw new Error('Sync cancelled');
+      throwIfFinal(error, isCancelled);
       const classified = classify(error, n, retries);
       if (!(classified instanceof RetrySignal)) throw classified;
       // The budget is checked before the wait rather than after it, so the run

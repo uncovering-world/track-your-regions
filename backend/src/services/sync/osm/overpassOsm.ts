@@ -39,6 +39,7 @@ import {
   classifyOsmError, OSM_BACKOFF_CEILING_MS, OSM_MAX_RETRIES, OsmQuestionRefusedError, refuseOrRetry,
 } from './retry.js';
 import { assertTagValues, OSM_TAG_KEYS, type DigTags, type KeepWkt } from './types.js';
+import { assertRobotsAllow } from '../../robots/robotsSignals.js';
 
 /**
  * The public instances this door may ask, in the order it asks them.
@@ -271,6 +272,7 @@ async function askOverpass(
   options: { userAgent: string; isCancelled?: () => boolean; fetchImpl?: typeof fetch },
   attempt: number,
 ): Promise<SparqlBinding[]> {
+  await assertRobotsAllow(endpoint);
   const { signal, release } = abortOn(declaredTimeoutMs(query), options.isCancelled);
   try {
     const response = await (options.fetchImpl ?? fetch)(endpoint, {
