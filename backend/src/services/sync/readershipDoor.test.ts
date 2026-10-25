@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { doorOf, doorNote, fewWitnessesReason, percentile, placeDoorNote, type ReadershipDoor } from './readershipDoor.js';
+import {
+  artworkDoorNote, doorOf, doorNote, fewWitnessesReason, percentile, placeDoorNote, type ReadershipDoor,
+} from './readershipDoor.js';
 
 /**
  * ADR-0056's door, on the world tier drawn small: four works at the line of
@@ -79,5 +81,17 @@ describe('the readership door (ADR-0056)', () => {
     expect(fewWitnessesReason({ views: 60_000, burst: false }, door, ['photos'])).toContain(
       'over the exit of 50,844 that keeps a place the source holds, but only one witness says a visitor goes there (photographs taken there)',
     );
+  });
+
+  it('asks the curator of a work the door alone admitted whether it stands there now, naming the bar or the exit (#2033)', () => {
+    // Public art's bar and exit over the works it held at the line on 2026-10-25.
+    const door: ReadershipDoor = { opened: new Map(), bar: 115_121, exit: 76_328 };
+    expect(artworkDoorNote({ views: 193_801, burst: false }, door)).toBe('Admitted below the sitelinks line, read '
+      + "193,801 times this year in every counted edition, over the readership door's bar of 115,121. "
+      + 'Can a visitor see it there now?');
+    expect(artworkDoorNote({ views: 80_000, burst: true }, door)).toBe('Admitted below the sitelinks line, read '
+      + '80,000 times this year in every counted edition, over the exit of 76,328 that keeps a place '
+      + 'the source holds; its year is a burst (a quarter in one week, or months that swing), so check the reading holds. '
+      + 'Can a visitor see it there now?');
   });
 });

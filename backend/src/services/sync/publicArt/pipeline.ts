@@ -30,6 +30,7 @@ import {
   type PublicArtTrees,
 } from './classes.js';
 import { belowLineReason, lineStanding, type LinePair } from '../sourceLine.js';
+import { artworkDoorNote, type PlaceDoor, type ReadershipDoor } from '../readershipDoor.js';
 import { publicArtVerdict } from './publicArtTest.js';
 import type { KindRule } from './kindRules.js';
 import { CAST_GROUP, emptyFacts, fetchCastGroupPool, type PoolEntity, type EntityFacts } from './queries.js';
@@ -196,6 +197,47 @@ function landmarkOf(
   };
 }
 
+/** The kind's verdict on one candidate of the share, read off the gathered facts. */
+function verdictOf(
+  entity: PoolEntity,
+  { trees, facts, containers, subjects }: GatheredPublicArt,
+  rule: KindRule,
+  offered?: ReadonlySet<string>,
+) {
+  const known = facts.get(entity.qid) ?? emptyFacts();
+  return publicArtVerdict({
+    qid: entity.qid,
+    classes: known.classes,
+    containers: chainOf(known, containers),
+    collections: ownersOf(known, containers),
+    commemorates: known.commemorates,
+    depicts: known.depicts,
+    genres: known.genres,
+    subjects: known.depicts.flatMap((qid) => subjects.get(qid) ?? []),
+    onEarth: entity.onEarth,
+    lat: entity.lat,
+    lon: entity.lon,
+  }, trees, rule, offered);
+}
+
+/**
+ * How a work that passed the rule stands: in by the line, in by the readership
+ * door with the curator's question, fallen below the stay line, or never in.
+ * The door's question goes only on a work the door alone lets in: one the line
+ * keeps is in whatever it reads.
+ */
+function lineOrDoor(
+  entity: PoolEntity,
+  held: boolean,
+  door: ReadershipDoor | null,
+): { readershipNote?: string } | 'fell' | 'out' {
+  const standing = lineStanding(entity.sitelinks, held, LINE);
+  if (standing === 'in') return {};
+  const read = door?.opened.get(entity.qid);
+  if (read && door) return { readershipNote: artworkDoorNote(read, door) };
+  return standing;
+}
+
 /**
  * Decide what of the gather is of the kind `rule` names: the candidates that
  * pass it and clear the fame line, and every candidate it refused, with the
@@ -204,16 +246,20 @@ function landmarkOf(
  * `admitted` is what the source holds as admitted before the run, so the
  * stay line has something to hold. `offered` is the places another kind offers a
  * reader, which decides whether a work outdoors on a venue's grounds is
- * stranded there (#1444). Items come back most famous first, which
+ * stranded there (#1444). `door` is the readership door over the share
+ * (`openArtworkDoor`): a work it opened for stands in as one at the line does,
+ * and carries the curator's question. Items come back most famous first, which
  * is the order the run writes them in and the order a person watching it
  * reads.
  */
 export function classifyPublicArt(
-  { trees, pool, facts, containers, subjects }: GatheredPublicArt,
+  gathered: GatheredPublicArt,
   rule: KindRule,
   admitted: ReadonlySet<string>,
   offered?: ReadonlySet<string>,
+  door: ReadershipDoor | null = null,
 ): CollectedPublicArt {
+  const { trees, pool, facts, subjects } = gathered;
   const items: WikidataLandmark[] = [];
   const filtered: FilteredEntity[] = [];
   const candidates = [...pool.values()].sort((a, b) => b.sitelinks - a.sitelinks);
@@ -226,19 +272,7 @@ export function classifyPublicArt(
     const type = admitted.has(entity.qid)
       ? { type: rule.type({ classes: known.classes, commemorates: known.commemorates, genres: known.genres, subjects: depicted }, trees) }
       : {};
-    const verdict = publicArtVerdict({
-      qid: entity.qid,
-      classes: known.classes,
-      containers: chainOf(known, containers),
-      collections: ownersOf(known, containers),
-      commemorates: known.commemorates,
-      depicts: known.depicts,
-      genres: known.genres,
-      subjects: depicted,
-      onEarth: entity.onEarth,
-      lat: entity.lat,
-      lon: entity.lon,
-    }, trees, rule, offered);
+    const verdict = verdictOf(entity, gathered, rule, offered);
     if (!verdict.pass) {
       filtered.push({
         externalId: entity.qid, name: entity.label, reason: verdict.reason, ...type,
@@ -250,9 +284,9 @@ export function classifyPublicArt(
     // The verdict refused anything placeless above; this narrows the type,
     // it cannot fire.
     if (entity.lat === null || entity.lon === null) continue;
-    const standing = lineStanding(entity.sitelinks, admitted.has(entity.qid), LINE);
-    if (standing === 'out') continue;
-    if (standing === 'fell') {
+    const entry = lineOrDoor(entity, admitted.has(entity.qid), door);
+    if (entry === 'out') continue;
+    if (entry === 'fell') {
       filtered.push({
         externalId: entity.qid,
         name: entity.label,
@@ -261,12 +295,39 @@ export function classifyPublicArt(
       });
       continue;
     }
-    items.push(landmarkOf(entity, entity.lat, entity.lon, known, verdict));
+    items.push({ ...landmarkOf(entity, entity.lat, entity.lon, known, verdict), ...entry });
   }
 
+  const byDoor = items.filter((item) => item.readershipNote).map((item) => item.label);
   console.log(
     `[Landmark Sync] Pool of ${pool.size} for ${rule.noun}: ${items.length} admitted, ${filtered.length} refused, `
-    + `${pool.size - items.length - filtered.length} below the line and never in`,
+    + `${pool.size - items.length - filtered.length} below the line and never in`
+    + (byDoor.length ? `; the readership door admitted ${byDoor.join(', ')}` : ''),
   );
   return { items, fetched: pool.size, filtered };
+}
+
+/**
+ * The readership door over the share (#2033, ADR-0127), or null where none is
+ * open. The bar is read over the works the source holds at the line, not over
+ * every candidate at it, where works indoors that the rule refuses (the Pietà,
+ * the Venus de Milo) would set it; so the door is handed every candidate below
+ * the line and the held works the rule still passes: a held work it now
+ * refuses is leaving and sets no bar.
+ */
+export async function openArtworkDoor(
+  openDoor: PlaceDoor | undefined,
+  gathered: GatheredPublicArt,
+  admitted: ReadonlySet<string>,
+  rule: KindRule,
+  offered?: ReadonlySet<string>,
+): Promise<ReadershipDoor | null> {
+  if (!openDoor) return null;
+  return openDoor(
+    [...gathered.pool.values()]
+      .filter((entity) => entity.sitelinks < ENTER_SITELINKS
+        || (admitted.has(entity.qid) && verdictOf(entity, gathered, rule, offered).pass))
+      .map((entity) => ({ qid: entity.qid, sitelinks: entity.sitelinks })),
+    admitted,
+  );
 }

@@ -32,7 +32,14 @@ vi.mock('./wikidataCache.js', () => ({
   pruneExpired: vi.fn().mockResolvedValue(0),
   withCache: vi.fn((door: unknown) => door),
 }));
-vi.mock('./publicArt/pipeline.js', () => ({ classifyPublicArt: vi.fn(), PUBLIC_ART_KIND: { name: 'public art' } }));
+vi.mock('./publicArt/pipeline.js', () => ({
+  classifyPublicArt: vi.fn(),
+  PUBLIC_ART_KIND: { name: 'public art' },
+  ENTER_SITELINKS: 22,
+  openArtworkDoor: vi.fn(),
+}));
+// The readership door reads the year and the source's gate (#2033); its own spec is readershipDoor.test.ts.
+vi.mock('./readershipDoor.js', () => ({ artworkReadershipDoorFor: vi.fn() }));
 vi.mock('./worship/places.js', () => ({ WORSHIP_KIND: { name: 'places of worship' } }));
 vi.mock('./places/gather.js', () => ({
   gatherPlaces: vi.fn(),
@@ -107,7 +114,8 @@ import type { SyncServiceConfig, SyncRunContext } from './syncContract.js';
 import { upsertExperienceRecord, upsertSingleLocation } from './syncUtils.js';
 import { writeExperienceLocations } from './locationWriter.js';
 import { withCache } from './wikidataCache.js';
-import { classifyPublicArt, PUBLIC_ART_KIND } from './publicArt/pipeline.js';
+import { classifyPublicArt, openArtworkDoor, PUBLIC_ART_KIND } from './publicArt/pipeline.js';
+import { artworkReadershipDoorFor } from './readershipDoor.js';
 import { WORSHIP_KIND } from './worship/places.js';
 import { ARCHAEOLOGY_SITE_KIND } from './archaeology/sites.js';
 import { gatherPlaces } from './places/gather.js';
@@ -158,6 +166,8 @@ beforeEach(() => {
   mockedAdmitted.mockResolvedValue(new Set(['Q337179']));
   mockedGather.mockResolvedValue(GATHERED);
   mockedCollect.mockReturnValue({ items: [landmark()], fetched: 1, filtered: [] });
+  vi.mocked(artworkReadershipDoorFor).mockResolvedValue(undefined);
+  vi.mocked(openArtworkDoor).mockResolvedValue(null);
   mockedUpsert.mockResolvedValue({
     experienceId: 7, changeSet: { changeType: 'unchanged' }, nameSnapshot: 'Freedom Monument', returnedFromMissing: false,
   });
@@ -199,6 +209,10 @@ describe('public art in the place pass', () => {
     // And the places another kind offers, so a work outdoors on a venue no
     // kind offers stays public art (#1444).
     expect(mockedCollect.mock.calls[0][3]).toEqual(new Set(['Q19675']));
+    // And the readership door over its share, at its own line (#2033).
+    expect(vi.mocked(artworkReadershipDoorFor)).toHaveBeenCalledWith(3, 22, '[Landmark Sync]');
+    expect(vi.mocked(openArtworkDoor)).toHaveBeenCalledWith(undefined, SHARE, new Set(['Q337179']), PUBLIC_ART_RULE, new Set(['Q19675']));
+    expect(mockedCollect.mock.calls[0][4]).toBeNull();
     expect(fetched.fetchedCount).toBe(5);
     expect(fetched.filtered).toEqual([refusal]);
     expect(fetched.items.map((i) => i.qid)).toEqual(['Q337179']);
@@ -213,6 +227,9 @@ describe('public art in the place pass', () => {
     await monuments.fetchItems(progress(), []);
     expect(mockedAdmitted).toHaveBeenCalledWith(6);
     expect(mockedCollect.mock.calls[0][1]).toBe(MONUMENTS_RULE);
+    // Monuments & memorials opens no readership door (#2033).
+    expect(vi.mocked(artworkReadershipDoorFor)).not.toHaveBeenCalled();
+    expect(vi.mocked(openArtworkDoor)).toHaveBeenCalledWith(undefined, SHARE, new Set(), MONUMENTS_RULE, expect.any(Set));
     // A place its sibling offers is not another kind's (#1444).
     expect(vi.mocked(placesOtherSourcesOffer)).toHaveBeenCalledWith([3, 6]);
     expect(art.sourceId).toBe(3);
@@ -300,6 +317,24 @@ describe('public art in the place pass', () => {
       creators: ['Kārlis Zāle'],
       sitelinksCount: 41,
     });
+  });
+
+  it('writes the readership door\'s question under Public art\'s own key, and Monuments & memorials writes none (#2033)', async () => {
+    const context: SyncRunContext = {
+      dryRun: false, syncLogId: 9, onLocationsChanged: vi.fn(), withdrawalSkippedReason: null,
+    };
+    const note = 'Admitted below the sitelinks line, read 193,801 times this year in every counted edition, '
+      + "over the readership door's bar of 115,121. Can a visitor see it there now?";
+    const kelpies = landmark({ qid: 'Q16988858', label: 'The Kelpies', sitelinks: 17, readershipNote: note });
+
+    await (await configOf()).processItem(kelpies, progress(), context);
+    expect(mockedUpsert.mock.calls[0][0].metadata.publicArtReadershipNote).toBe(note);
+    // Written null where the line admitted the work, so a question answered once does not linger.
+    await (await configOf()).processItem(landmark(), progress(), context);
+    expect(mockedUpsert.mock.calls[1][0].metadata).toHaveProperty('publicArtReadershipNote', null);
+
+    await (await configOf({}, 6)).processItem(kelpies, progress(), context);
+    expect(mockedUpsert.mock.calls[2][0].metadata).not.toHaveProperty('publicArtReadershipNote');
   });
 
   it('writes an edition as one place with a point at every cast, told to be at the most central one (#880)', async () => {

@@ -24,7 +24,8 @@ import { getSyncStatus, cancelSync } from './syncOrchestrator.js';
 import type { FetchResult, FilteredEntity, ProcessItemResult, SyncRunContext, SyncServiceConfig } from './syncContract.js';
 import { admittedExternalIds } from './admission.js';
 import { placesOtherSourcesOffer } from './shownElsewhere.js';
-import { classifyPublicArt, PUBLIC_ART_KIND } from './publicArt/pipeline.js';
+import { classifyPublicArt, ENTER_SITELINKS, openArtworkDoor, PUBLIC_ART_KIND } from './publicArt/pipeline.js';
+import { artworkReadershipDoorFor, type PlaceDoor } from './readershipDoor.js';
 import { shareOf, type GatheredPlaces, type PlaceGather } from './places/gather.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE, type KindRule } from './publicArt/kindRules.js';
 import { PUBLIC_ART_SOURCES } from './passes.js';
@@ -64,25 +65,45 @@ export interface PlaceClassifier {
   }>;
   types: readonly string[];
   tag: string;
+  /**
+   * The metadata key a classifier that asks a curator something writes its
+   * question under (`readershipNote`), one per source (`SOURCE_OWN_METADATA`).
+   */
+  noteKey?: string;
 }
 
+/**
+ * The readership door a public-art source opens each run (#2033), and the key
+ * its question is written under.
+ */
+interface ArtworkDoor { open: () => Promise<PlaceDoor | undefined>; noteKey: string }
+
 /** Public art's and Monuments & memorials' classifier: their kind's rule over the public-art share. */
-function publicArtClassifier(rule: KindRule): PlaceClassifier {
+function publicArtClassifier(rule: KindRule, door?: ArtworkDoor): PlaceClassifier {
   return {
     // The places a kind outside these two offers a reader, so a work outdoors
     // on a venue no such kind offers stays public art rather than being
     // refused onto no card (#1444).
-    classify: async (gathered, admitted) => classifyPublicArt(
-      shareOf(gathered, PUBLIC_ART_KIND), rule, admitted, await placesOtherSourcesOffer(PUBLIC_ART_SOURCES),
-    ),
+    classify: async (gathered, admitted) => {
+      const share = shareOf(gathered, PUBLIC_ART_KIND);
+      const offered = await placesOtherSourcesOffer(PUBLIC_ART_SOURCES);
+      const read = await openArtworkDoor(await door?.open(), share, admitted, rule, offered);
+      return classifyPublicArt(share, rule, admitted, offered, read);
+    },
     types: rule.types,
     tag: 'outdoor',
+    ...(door ? { noteKey: door.noteKey } : {}),
   };
 }
 
 /** The classifier each public-art source decides by. */
 const PUBLIC_ART_CLASSIFIERS: Readonly<Record<number, PlaceClassifier>> = {
-  [LANDMARK_SOURCE_ID]: publicArtClassifier(PUBLIC_ART_RULE),
+  // Public art alone opens the readership door: Monuments & memorials was not
+  // measured for it.
+  [LANDMARK_SOURCE_ID]: publicArtClassifier(PUBLIC_ART_RULE, {
+    open: () => artworkReadershipDoorFor(LANDMARK_SOURCE_ID, ENTER_SITELINKS, LOG_PREFIX),
+    noteKey: 'publicArtReadershipNote',
+  }),
   6: publicArtClassifier(MONUMENTS_RULE),
 };
 
@@ -188,6 +209,9 @@ async function upsertLandmarkExperience(
     // key from the stored rows.
     wikipediaUrl: landmark.articleUrl || null,
     website: landmark.website || null,
+    // The source's question to a curator, written every pass, null when it asks
+    // nothing, as the other doors' are.
+    ...(classifier.noteKey ? { [classifier.noteKey]: landmark.readershipNote ?? null } : {}),
     // `creator` is who made the sculpture; this is who photographed it. Two
     // different people, and only one of them has ever been named on the card.
     //

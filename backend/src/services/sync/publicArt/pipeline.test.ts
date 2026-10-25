@@ -7,7 +7,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import { classifyPublicArt, PUBLIC_ART_KIND, ENTER_SITELINKS, STAY_SITELINKS } from './pipeline.js';
+import { classifyPublicArt, openArtworkDoor, PUBLIC_ART_KIND, ENTER_SITELINKS, STAY_SITELINKS } from './pipeline.js';
+import { artworkDoorNote, type DoorWork, type ReadershipDoor } from '../readershipDoor.js';
 import { gatherPlaces, shareOf } from '../places/gather.js';
 import { MONUMENTS_RULE, PUBLIC_ART_RULE, type KindRule } from './kindRules.js';
 import { belowLineReason } from '../sourceLine.js';
@@ -531,5 +532,97 @@ describe('collectPublicArt', () => {
     expect(new Set(asked)).toEqual(new Set(['classes', 'pool', 'edges', 'entities']));
     // Every question is filed: a query with no descriptor is one the cache never keeps.
     expect(asked.length).toBeGreaterThan(0);
+  });
+});
+
+describe('the readership door (#2033)', () => {
+  const KELPIES = 'Q16988858';
+  const MAMAN = 'Q180887';
+  const doorFor = (opened: Record<string, number>): ReadershipDoor => ({
+    opened: new Map(Object.entries(opened).map(([qid, views]) => [qid, { views, burst: false }])),
+    bar: 115_121,
+    exit: 76_328,
+  });
+  const collectThrough = async (world: World, admitted: Set<string>, door: ReadershipDoor) =>
+    classifyPublicArt(await gatherPublicArt(doorTo(world), admitted), PUBLIC_ART_RULE, admitted, undefined, door);
+
+  it('admits a work below the line the door opened for, with the curator\'s question on it', async () => {
+    const world: World = {
+      entities: [
+        { qid: KELPIES, label: 'The Kelpies', under: SCULPTURE, sitelinks: 17, classes: [SCULPTURE] },
+        { qid: MAMAN, label: 'Maman', under: SCULPTURE, sitelinks: 20, classes: [SCULPTURE] },
+        { qid: 'Q3', label: 'A statue nobody reads', under: SCULPTURE, sitelinks: 17, classes: [SCULPTURE] },
+      ],
+    };
+    const door = doorFor({ [KELPIES]: 193_801, [MAMAN]: 215_384 });
+    const { items, filtered } = await collectThrough(world, new Set(), door);
+
+    expect(items.map((i) => [i.qid, i.readershipNote])).toEqual([
+      [MAMAN, artworkDoorNote({ views: 215_384, burst: false }, door)],
+      [KELPIES, artworkDoorNote({ views: 193_801, burst: false }, door)],
+    ]);
+    // A work the door did not open for is below the line and never in: no refusal is said.
+    expect(filtered).toEqual([]);
+  });
+
+  it('still refuses by its rule a work the door opened for', async () => {
+    const world: World = {
+      worshipTree: [BASILICA],
+      containers: { Q12512: { label: "St. Peter's Basilica", classes: [BASILICA] } },
+      entities: [
+        { qid: 'Q7', label: 'A statue in the basilica', under: SCULPTURE, sitelinks: 19, classes: [SCULPTURE], locations: ['Q12512'] },
+      ],
+    };
+    const { items, filtered } = await collectThrough(world, new Set(), doorFor({ Q7: 300_000 }));
+
+    expect(items).toEqual([]);
+    expect(filtered).toEqual([{
+      externalId: 'Q7', name: 'A statue in the basilica',
+      reason: "inside St. Peter's Basilica: a work of a place of worship, not public art", heldIn: ['Q12512'],
+    }]);
+  });
+
+  it('asks nothing of a work the line keeps, and keeps a held work below the stay line the door holds', async () => {
+    const world: World = {
+      entities: [
+        { qid: 'Q1', label: 'Held on the stay line', under: SCULPTURE, sitelinks: STAY_SITELINKS, classes: [SCULPTURE] },
+        { qid: 'Q2', label: 'Held, fallen below it', under: SCULPTURE, sitelinks: STAY_SITELINKS - 2, classes: [SCULPTURE] },
+      ],
+    };
+    const door = doorFor({ Q1: 200_000, Q2: 80_000 });
+    const { items, filtered } = await collectThrough(world, new Set(['Q1', 'Q2']), door);
+
+    expect(items.map((i) => [i.qid, i.readershipNote])).toEqual([
+      ['Q1', undefined],
+      ['Q2', artworkDoorNote({ views: 80_000, burst: false }, door)],
+    ]);
+    expect(filtered).toEqual([]);
+  });
+
+  it('hands the door every work below the line and the held ones the rule still passes, so the bar is read over what the source holds', async () => {
+    const world: World = {
+      worshipTree: [BASILICA],
+      containers: { Q12512: { label: "St. Peter's Basilica", classes: [BASILICA] } },
+      entities: [
+        { qid: 'Q1', label: 'Held at the line', under: SCULPTURE, sitelinks: ENTER_SITELINKS + 10, classes: [SCULPTURE] },
+        // Held, but now inside a church: the rule refuses it, so it sets no bar.
+        { qid: 'Q4', label: 'Held, now in the basilica', under: SCULPTURE, sitelinks: ENTER_SITELINKS + 30, classes: [SCULPTURE], locations: ['Q12512'] },
+        { qid: 'Q2', label: 'Over the line, not held', under: SCULPTURE, sitelinks: ENTER_SITELINKS + 20, classes: [SCULPTURE] },
+        { qid: KELPIES, label: 'The Kelpies', under: SCULPTURE, sitelinks: 17, classes: [SCULPTURE] },
+      ],
+    };
+    const admitted = new Set(['Q1', 'Q4']);
+    const gathered = await gatherPublicArt(doorTo(world), admitted);
+    const asked: Array<{ places: DoorWork[]; held: ReadonlySet<string> }> = [];
+    const opened = await openArtworkDoor((places, held) => {
+      asked.push({ places, held });
+      return Promise.resolve(doorFor({}));
+    }, gathered, admitted, PUBLIC_ART_RULE);
+
+    expect(opened).not.toBeNull();
+    expect(asked[0].places.map((p) => p.qid).sort()).toEqual(['Q1', KELPIES]);
+    expect(asked[0].held).toBe(admitted);
+    // No door while the source's gate is off: the run admits by its line alone.
+    expect(await openArtworkDoor(undefined, gathered, admitted, PUBLIC_ART_RULE)).toBeNull();
   });
 });

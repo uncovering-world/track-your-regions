@@ -38,7 +38,7 @@ import type { KeepWkt, OsmObject, OsmReaderName } from '../osm/types.js';
 import { OsmEmptyAnswerError } from '../osm/readOsmObjects.js';
 import { lineStanding, type SourceLine } from '../sourceLine.js';
 import type { FilteredEntity } from '../syncContract.js';
-import { fewWitnessesReason, placeDoorNote, type DoorWork, type OpenedWork, type ReadershipDoor } from '../readershipDoor.js';
+import { fewWitnessesReason, placeDoorNote, type OpenedWork, type PlaceDoor, type ReadershipDoor } from '../readershipDoor.js';
 import { isVisited, type Witness } from '../visit/witnesses.js';
 import type { VisitWitnessReader } from '../visit/visitWitnesses.js';
 
@@ -64,14 +64,6 @@ export type OsmReader = (
   keep: KeepWkt,
   run: Pick<QueryRunner, 'phase' | 'step'>,
 ) => Promise<Map<string, OsmObject[]>>;
-
-/**
- * The readership door over the site pool (ADR-0127, `placeReadershipDoorFor`):
- * the places below the line it opens for, with the bar read over the places at
- * the line, and the exit holding the ones in `held`. Absent while the source's
- * curator gate is off, and in a test that asks no readership.
- */
-export type PlaceDoor = (places: DoorWork[], held: ReadonlySet<string>) => Promise<ReadershipDoor | null>;
 
 /** A row the readership door alone admits: the door, what it read, and the witnesses it has (ADR-0128). */
 interface OpenedFor { door: ReadershipDoor; read: OpenedWork; witnesses: Witness[] }
